@@ -49,7 +49,7 @@ import { CoverFan } from './cover-cascade';
 import { finishConnect } from './finish-connect';
 import { beginInviteSignIn } from './invite-handoff';
 import { ProxyHeadersEditor } from './proxy-headers-editor';
-import { blankRow, draftToSet, type HeaderDraftRow } from './proxy-headers-model';
+import { draftOf, draftToSet, type HeaderDraftRow } from './proxy-headers-model';
 import { useLinkPairing } from './use-pairing';
 
 /**
@@ -97,8 +97,15 @@ export function ConnectStart() {
   // The servers of the person listening: a remembered server another person on this device
   // uses is still one this person can sign in to.
   const personServerIds = useProfileConnections().map(serverIdOf);
+  // Proxy headers the flow already holds (fe#167): the scanner hands a code back to a new
+  // instance of this screen, which must take them up, not drop them.
+  const heldProxy = useSession.getState().pendingProxyHeaders;
   // The served player's field, shown only when its own server didn't answer, has the origin.
-  const [url, setUrl] = useState(savedUrl ?? servedOrigin() ?? '');
+  const [url, setUrl] = useState(savedUrl ?? servedOrigin() ?? heldProxy?.origin ?? '');
+  // The address as the listener typed it: what proxy headers are for. Never the field after
+  // the flow rewrites it (a plain-http fallback, a remembered server's home address), so
+  // headers entered for https are never rebound to another origin.
+  const [typedUrl, setTypedUrl] = useState(() => heldProxy?.origin ?? url);
   // The served player's own server: `pending` while asking it, then `found` (the card is the
   // screen). `null` everywhere else (the field), and for a pairing link.
   const [served, setServed] = useState<'pending' | 'found' | null>(() =>
@@ -123,16 +130,15 @@ export function ConnectStart() {
   const [retryLink, setRetryLink] = useState<PairingScan | null>(null);
   // Custom headers for an auth proxy in front of the server (fe#167), for the address in
   // the field: held by the session for the connect flow's clients (`connectProxyHeaders`)
-  // while the section is open, and kept with the connection the sign-in makes.
-  const [proxyOpen, setProxyOpen] = useState(false);
-  const [proxyRows, setProxyRows] = useState<HeaderDraftRow[]>(() => [blankRow()]);
+  // while the section is open, and kept with the connection the sign-in makes. The flow's
+  // layout drops them when the flow is left. Values already held come back hidden.
+  const [proxyOpen, setProxyOpen] = useState(() => !!heldProxy);
+  const [proxyRows, setProxyRows] = useState<HeaderDraftRow[]>(() => draftOf(heldProxy));
   const setPendingProxyHeaders = useSession((s) => s.setPendingProxyHeaders);
-  const proxyOrigin = originOf(normalizeUrl(url));
+  const proxyOrigin = originOf(normalizeUrl(typedUrl));
   useEffect(() => {
     setPendingProxyHeaders(proxyOpen ? draftToSet(proxyOrigin, proxyRows) : null);
   }, [proxyOpen, proxyOrigin, proxyRows, setPendingProxyHeaders]);
-  // Nothing outlives the screen: a flow left without signing in drops them.
-  useEffect(() => () => setPendingProxyHeaders(null), [setPendingProxyHeaders]);
   // `pair` also resolves once the screen has gone: nothing after it may then touch
   // the route now on top (its params) or the session (a probe's pending address).
   const mounted = useRef(true);
@@ -434,6 +440,7 @@ export function ConnectStart() {
                   value={url}
                   onChangeText={(v) => {
                     setUrl(v);
+                    setTypedUrl(v);
                     setProbe(null);
                   }}
                   autoCapitalize="none"

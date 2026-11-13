@@ -117,6 +117,17 @@ it('runs it for a grown-up\'s "Add someone" from kids mode on a device with no g
   expect(connectForNewProfile()).toBe(false);
 });
 
+it('drops the proxy headers held for the flow when it is left (fe#167)', async () => {
+  seedProfile();
+  useSession.setState({
+    pendingProxyHeaders: { origin: 'https://a.example', headers: [{ name: 'X-A', value: 'v' }] },
+  });
+  const view = await render(<ConnectLayout />);
+  expect(useSession.getState().pendingProxyHeaders).not.toBeNull();
+  await view.unmount();
+  expect(useSession.getState().pendingProxyHeaders).toBeNull();
+});
+
 it('gives no pass with a grown-up on the device, nor for a grown-up', async () => {
   seedProfile({ kids: true });
   useProfiles.setState((s) => ({

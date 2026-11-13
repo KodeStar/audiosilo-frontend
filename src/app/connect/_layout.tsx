@@ -50,7 +50,15 @@ export default function ConnectLayout() {
   // sign-in that turned it on. Follows the render (React's way to keep state in step).
   const [openedInKids, setOpenedInKids] = useState<boolean | null>(null);
   if (known && openedInKids === null) setOpenedInKids(refused);
-  useEffect(() => () => endConnectFlow(), []);
+  // Leaving the flow also drops the proxy headers held for it (fe#167): in memory only, and
+  // only until a sign-in keeps them with its connection.
+  useEffect(
+    () => () => {
+      endConnectFlow();
+      useSession.getState().setPendingProxyHeaders(null);
+    },
+    [],
+  );
   useEffect(() => {
     if (!refused || !ready) return;
     if (openedInKids) toast({ title: t('kids.link.title'), description: t('kids.link.body') });

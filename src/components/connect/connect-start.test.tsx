@@ -868,6 +868,19 @@ describe('proxy headers for a server behind an auth proxy (fe#167)', () => {
     expect(await screen.findByText('Found Hearthside')).toBeTruthy();
     expect(mockBases).toEqual([AWAY, 'http://books.example.com']);
     expect(mockProxies).toEqual([set, null]);
+    // The field now shows the http address; the headers stay bound to the https one.
+    expect(screen.getByLabelText('Server address').props.value).toBe('http://books.example.com');
+    expect(useSession.getState().pendingProxyHeaders).toEqual(set);
+  });
+
+  it('takes up the headers the flow holds when the scanner hands a code back (a new screen)', async () => {
+    const set = { origin: AWAY, headers: [{ name: 'X-Auth', value: 'proxy-secret' }] };
+    useSession.setState({ pendingProxyHeaders: set });
+    await render(<ConnectStart />);
+    expect(screen.getByTestId('proxy-headers-section')).toBeTruthy();
+    expect(screen.getByTestId('proxy-headers-editor-value').props.value).toBe('');
+    expect(screen.queryByText('proxy-secret')).toBeNull();
+    expect(useSession.getState().pendingProxyHeaders).toEqual(set);
   });
 
   it('never shows a value, says what is wrong with a row, and drops them when closed', async () => {

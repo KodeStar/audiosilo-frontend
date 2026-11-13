@@ -298,8 +298,9 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   says whether it sends any. `buildClients` rebuilds a client whose set changed, and the provider
   reads failed queries again (`useReadAgainOnSignIn`).
 - **Before a connection exists.** The connect screen's "Proxy headers" section holds a set for the
-  address in its field (`pendingProxyHeaders`, in memory only, dropped when the screen goes or a
-  sign-in stores it). The flow's bare clients are `connectClient(base)` and `probeServerId`, both
+  address as the listener typed it (`pendingProxyHeaders`, in memory only; never rebound when the
+  flow rewrites the field, as the plain-http fallback does; taken up again by the new screen the
+  scanner hands a code to; dropped when the flow's layout unmounts or a sign-in stores it). The flow's bare clients are `connectClient(base)` and `probeServerId`, both
   through `connectProxyHeaders(url)`: the pending set for that origin, else a signed-in
   connection's (a second person, a re-pair). `finishConnect` keeps the set for the address signed
   in through; a re-pair without one keeps what the connection had. A pairing QR or link pairs with
