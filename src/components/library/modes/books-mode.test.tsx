@@ -21,6 +21,13 @@ let mockWhole: {
 jest.mock('../books/use-whole-library', () => ({ useWholeLibrary: () => mockWhole }));
 let mockProgress: (Progress & { connectionId: string })[] = [];
 jest.mock('@/api/hooks', () => ({ useAllProgressAll: () => ({ progress: mockProgress }) }));
+// The admin's Find on LibriVox menu has its own suite: here, that the mode places it.
+jest.mock('@/components/librivox/librivox-menu', () => ({
+  LibrivoxMenu: ({ connectionId, libraryId }: { connectionId: string; libraryId: number }) => {
+    const { Text } = jest.requireActual('react-native');
+    return <Text testID="librivox-menu">{`${connectionId} ${libraryId}`}</Text>;
+  },
+}));
 let mockCanDownload = true;
 jest.mock('@/downloads/store', () => ({
   useDownloads: (select: (s: object) => unknown) =>
@@ -151,6 +158,11 @@ describe('BooksMode', () => {
     expect(screen.getByRole('checkbox', { name: 'In progress, 1' })).toBeTruthy();
     expect(screen.getByRole('checkbox', { name: 'Finished, 1' })).toBeTruthy();
     expect(screen.getByText('Dune')).toBeTruthy();
+  });
+
+  it("places the library's admin menu beside sort and layout, for its own library", async () => {
+    await mount();
+    expect(screen.getByTestId('librivox-menu').props.children).toBe('c 1');
   });
 
   it('insets its scroller for the iOS tab bar itself (under the sections)', async () => {

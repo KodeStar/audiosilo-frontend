@@ -3258,5 +3258,95 @@
         "message": "The link stops working: a calendar subscribed to it stops updating."
       }
     }
+  },
+  "librivox": {
+    "title": "Find on LibriVox",
+    "intro": "Free public-domain audiobooks, found in the community metadata. Your Bridge downloads the recording you add, puts it in the library and matches it.",
+    "menu": {
+      "label": "More library actions",
+      "find": "Find on LibriVox"
+    },
+    "access": {
+      "notAdmin": "Only an admin can add books from LibriVox.",
+      "unavailable": "Adding from LibriVox needs your Bridge online and up to date.",
+      "unavailableHint": "Check your Bridge in the admin console's Bridge settings.",
+      "metadataOff": "Community metadata is off",
+      "metadataOffHint": "Searching LibriVox needs it. Turn it on in the admin console's Metadata settings."
+    },
+    "search": {
+      "label": "Title or author",
+      "placeholder": "Search by title or author",
+      "submit": "Search",
+      "again": "Search again",
+      "loading": "Searching LibriVox",
+      "none": "Nothing found",
+      "noneHint": "No LibriVox book matches that. Try another title or the author's name."
+    },
+    "library": {
+      "label": "Add to"
+    },
+    "work": {
+      "show": "Recordings of {{title}}",
+      "loading": "Loading recordings",
+      "noRecordings": "This book has no LibriVox recording yet."
+    },
+    "recording": {
+      "readBy": "Read by {{names}}",
+      "unknownReader": "Reader not listed",
+      "sections_one": "{{count}} section",
+      "sections_other": "{{count}} sections",
+      "project": "Project {{id}}",
+      "page": "LibriVox page",
+      "inLibrary": "In your library",
+      "open": "Open"
+    },
+    "add": {
+      "action": "Add to {{library}}",
+      "label": "Add the recording read by {{names}} to {{library}}",
+      "noLibrary": "Add a books library first.",
+      "inLibrary": "That recording is already in a library.",
+      "notBookLibrary": "Pick a books library. A podcast library can't hold it.",
+      "unavailable": "Your Bridge can't add LibriVox books. Update it, or pair one in the admin console.",
+      "notWritable": "Your Bridge can't write to this library.",
+      "metadataOff": "Community metadata was turned off.",
+      "notFound": "This recording or library is no longer there. Search again.",
+      "failed": "Couldn't add this recording. Try again in a moment."
+    },
+    "fetch": {
+      "title": "Adding",
+      "parkedTitle": "Needs attention",
+      "failedTitle": "Couldn't add it",
+      "cancelledTitle": "Cancelled",
+      "doneTitle": "Added",
+      "waiting": "Waiting for your Bridge",
+      "stopping": "Stopping",
+      "count": "{{done}} of {{total}}",
+      "cancelled": "Nothing was added.",
+      "done": "It appears in the library in a moment.",
+      "cancelFailed": "Couldn't cancel. Try again.",
+      "step": {
+        "manifest": "Reading the sections",
+        "download": "Downloading",
+        "cover": "Getting the cover",
+        "place": "Putting it in the library",
+        "rescan": "Adding it to the library",
+        "working": "Working"
+      },
+      "code": {
+        "not_writable": "Your Bridge can't write to this library.",
+        "exists": "A book is already at that place in the library.",
+        "disk_full": "The library's disk is full.",
+        "not_found": "LibriVox no longer lists this recording.",
+        "archive_unavailable": "archive.org couldn't be reached. Try again later.",
+        "metadata_off": "Community metadata was turned off.",
+        "other": "Something went wrong. The admin console's Bridge jobs say more."
+      }
+    },
+    "errors": {
+      "metadataOff": "Community metadata is off on this server.",
+      "invalid": "That search can't be asked. Try fewer words.",
+      "notFound": "This book is no longer in the community metadata.",
+      "failed": "Couldn't reach the community metadata. Try again in a moment."
+    }
   }
 }

@@ -3258,5 +3258,95 @@
         "message": "Der Link funktioniert nicht mehr: Ein damit abonnierter Kalender wird nicht mehr aktualisiert."
       }
     }
+  },
+  "librivox": {
+    "title": "Auf LibriVox finden",
+    "intro": "Kostenlose gemeinfreie Hörbücher aus den Community-Metadaten. Deine Bridge lädt die Aufnahme herunter, die du hinzufügst, legt sie in die Bibliothek und ordnet sie zu.",
+    "menu": {
+      "label": "Weitere Bibliotheksaktionen",
+      "find": "Auf LibriVox finden"
+    },
+    "access": {
+      "notAdmin": "Nur ein Admin kann Bücher von LibriVox hinzufügen.",
+      "unavailable": "Zum Hinzufügen von LibriVox muss deine Bridge online und aktuell sein.",
+      "unavailableHint": "Prüfe deine Bridge in den Bridge-Einstellungen der Admin-Konsole.",
+      "metadataOff": "Community-Metadaten sind aus",
+      "metadataOffHint": "Die Suche auf LibriVox braucht sie. Schalte sie in den Metadaten-Einstellungen der Admin-Konsole ein."
+    },
+    "search": {
+      "label": "Titel oder Autor",
+      "placeholder": "Nach Titel oder Autor suchen",
+      "submit": "Suchen",
+      "again": "Erneut suchen",
+      "loading": "LibriVox wird durchsucht",
+      "none": "Nichts gefunden",
+      "noneHint": "Kein LibriVox-Buch passt dazu. Versuche einen anderen Titel oder den Namen des Autors."
+    },
+    "library": {
+      "label": "Hinzufügen zu"
+    },
+    "work": {
+      "show": "Aufnahmen von {{title}}",
+      "loading": "Aufnahmen werden geladen",
+      "noRecordings": "Für dieses Buch gibt es noch keine LibriVox-Aufnahme."
+    },
+    "recording": {
+      "readBy": "Gelesen von {{names}}",
+      "unknownReader": "Sprecher nicht angegeben",
+      "sections_one": "{{count}} Abschnitt",
+      "sections_other": "{{count}} Abschnitte",
+      "project": "Projekt {{id}}",
+      "page": "LibriVox-Seite",
+      "inLibrary": "In deiner Bibliothek",
+      "open": "Öffnen"
+    },
+    "add": {
+      "action": "Zu {{library}} hinzufügen",
+      "label": "Die Aufnahme, gelesen von {{names}}, zu {{library}} hinzufügen",
+      "noLibrary": "Lege zuerst eine Bücherbibliothek an.",
+      "inLibrary": "Diese Aufnahme ist schon in einer Bibliothek.",
+      "notBookLibrary": "Wähle eine Bücherbibliothek. Eine Podcast-Bibliothek kann sie nicht aufnehmen.",
+      "unavailable": "Deine Bridge kann keine LibriVox-Bücher hinzufügen. Aktualisiere sie oder kopple eine in der Admin-Konsole.",
+      "notWritable": "Deine Bridge kann nicht in diese Bibliothek schreiben.",
+      "metadataOff": "Community-Metadaten wurden ausgeschaltet.",
+      "notFound": "Diese Aufnahme oder Bibliothek gibt es nicht mehr. Suche erneut.",
+      "failed": "Die Aufnahme konnte nicht hinzugefügt werden. Versuche es gleich noch einmal."
+    },
+    "fetch": {
+      "title": "Wird hinzugefügt",
+      "parkedTitle": "Braucht Aufmerksamkeit",
+      "failedTitle": "Konnte nicht hinzugefügt werden",
+      "cancelledTitle": "Abgebrochen",
+      "doneTitle": "Hinzugefügt",
+      "waiting": "Wartet auf deine Bridge",
+      "stopping": "Wird angehalten",
+      "count": "{{done}} von {{total}}",
+      "cancelled": "Es wurde nichts hinzugefügt.",
+      "done": "Es erscheint gleich in der Bibliothek.",
+      "cancelFailed": "Abbrechen hat nicht geklappt. Versuche es noch einmal.",
+      "step": {
+        "manifest": "Abschnitte werden gelesen",
+        "download": "Wird heruntergeladen",
+        "cover": "Cover wird geholt",
+        "place": "Wird in die Bibliothek gelegt",
+        "rescan": "Wird zur Bibliothek hinzugefügt",
+        "working": "In Arbeit"
+      },
+      "code": {
+        "not_writable": "Deine Bridge kann nicht in diese Bibliothek schreiben.",
+        "exists": "An dieser Stelle der Bibliothek liegt schon ein Buch.",
+        "disk_full": "Der Datenträger der Bibliothek ist voll.",
+        "not_found": "LibriVox führt diese Aufnahme nicht mehr.",
+        "archive_unavailable": "archive.org war nicht erreichbar. Versuche es später noch einmal.",
+        "metadata_off": "Community-Metadaten wurden ausgeschaltet.",
+        "other": "Etwas ist schiefgegangen. Die Bridge-Jobs in der Admin-Konsole sagen mehr."
+      }
+    },
+    "errors": {
+      "metadataOff": "Community-Metadaten sind auf diesem Server aus.",
+      "invalid": "Diese Suche geht nicht. Versuche es mit weniger Wörtern.",
+      "notFound": "Dieses Buch ist nicht mehr in den Community-Metadaten.",
+      "failed": "Die Community-Metadaten waren nicht erreichbar. Versuche es gleich noch einmal."
+    }
   }
 }

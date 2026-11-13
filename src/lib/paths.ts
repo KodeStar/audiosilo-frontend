@@ -264,6 +264,15 @@ export function findShowsHref(
   };
 }
 
+/** `/find-librivox?connection=<cid>&library=<id>`: finding a LibriVox recording to add to
+ * a books library (LibriVox L6, admin only), `library` the one its Add picks first. */
+export function findLibrivoxHref(connectionId: string, libraryId: number): Href {
+  return {
+    pathname: '/find-librivox',
+    params: { connection: connectionId, library: String(libraryId) },
+  };
+}
+
 /** `/narrator?connection=<cid>&library=<id>&name=<narrator>` (exact `Book.narrator`). */
 export function narratorHref(connectionId: string, libraryId: number, name: string): Href {
   return {
@@ -425,6 +434,15 @@ export function parseFindShowsParams(p: RawParams): {
       ? (section as FindShowsSection)
       : null,
   };
+}
+
+/** Find on LibriVox's params, or null without a library. */
+export function parseFindLibrivoxParams(
+  p: RawParams,
+): { connectionId: string; libraryId: number } | null {
+  const libraryId = idParam(p.library);
+  if (libraryId === null) return null;
+  return { connectionId: connectionParam(p.connection), libraryId };
 }
 
 /** The series page's params, or null when the link can't name a series (no library, or
