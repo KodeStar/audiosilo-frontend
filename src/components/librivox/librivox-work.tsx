@@ -17,6 +17,7 @@ import {
 } from '@/api/hooks';
 import type { Library, LibrivoxRecording } from '@/api/types';
 import { librivoxUrl } from '@/components/book/book-details-model';
+import { OfflineState } from '@/components/layout/offline-state';
 import { Button } from '@/components/ui/button';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
@@ -25,6 +26,7 @@ import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { isOpenJob } from '@/lib/bridge-jobs';
 import { formatDuration } from '@/lib/format';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { openExternalUrl } from '@/lib/support';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -59,7 +61,11 @@ export function LibrivoxWorkPanel({
 }) {
   const { t } = useTranslation();
   const work = useLibrivoxWork(workId, connectionId);
+  const offline = useUnreadQuery(work) === 'offline';
 
+  // With nothing to show and no network (held for it, where it stays pending, or failed
+  // without one): the offline state, never the spinner nor a Retry that can't work.
+  if (offline) return <OfflineState hint={t('common.offlineList')} className="py-4" />;
   // Only with nothing to show: a failed ask for the work again (after an Add, or when a job
   // ends) keeps the rows, and with them the job each one follows.
   if (work.isError && !work.data) {
@@ -162,7 +168,7 @@ function RecordingRow({
           icon="arrow-up-right"
           title={t('librivox.recording.page')}
           onPress={() => void openExternalUrl(page)}
-          className="self-start px-0"
+          className="self-start"
         />
       ) : null}
       {state === 'inLibrary' && here ? (

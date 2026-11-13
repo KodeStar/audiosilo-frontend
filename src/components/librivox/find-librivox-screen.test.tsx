@@ -16,8 +16,9 @@ jest.mock('@/lib/use-page-title', () => ({
   usePageTitle: (t: string | undefined) => mockTitles.push(t),
 }));
 let mockServer: ServerInfo | undefined;
+let mockHeld = false;
 jest.mock('@/api/hooks', () => ({
-  useServerInfo: () => ({ data: mockServer }),
+  useServerInfo: () => ({ data: mockServer, isPaused: mockHeld, error: null }),
 }));
 // The search has its own suite: here, whether the page shows it and for which library.
 jest.mock('./librivox-search', () => ({
@@ -54,6 +55,7 @@ const signIn = (user: object = ADMIN) =>
 beforeEach(() => {
   mockParams = { connection: 'c1', library: '3' };
   mockServer = librivoxServer();
+  mockHeld = false;
   mockTitles.length = 0;
   signIn();
 });
@@ -71,6 +73,14 @@ describe('FindLibrivoxScreen', () => {
     await mountWithPortal(<FindLibrivoxScreen />);
     expect(screen.getByTestId('find-librivox-loading')).toBeTruthy();
     expect(screen.queryByTestId('librivox-search')).toBeNull();
+  });
+
+  it('says it is offline, not a skeleton, while the server answer waits for the network', async () => {
+    mockServer = undefined;
+    mockHeld = true;
+    await mountWithPortal(<FindLibrivoxScreen />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByTestId('find-librivox-loading')).toBeNull();
   });
 
   it('tells anyone but an admin that only an admin can add, and asks nothing', async () => {

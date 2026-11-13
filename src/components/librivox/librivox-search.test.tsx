@@ -19,7 +19,13 @@ jest.mock('@/lib/open', () => ({
 const mockOpenUrl = jest.fn();
 jest.mock('@/lib/support', () => ({ openExternalUrl: (u: string) => mockOpenUrl(u) }));
 
-type ReadState<T> = { data?: T; isError?: boolean; error?: unknown; isPending?: boolean };
+type ReadState<T> = {
+  data?: T;
+  isError?: boolean;
+  error?: unknown;
+  isPending?: boolean;
+  isPaused?: boolean;
+};
 let mockLibraries: Library[] = [];
 let mockSearch: ReadState<{ results: LibrivoxHit[] }> = {};
 const mockAsked: string[] = [];
@@ -149,6 +155,31 @@ describe('LibrivoxSearch', () => {
     expect(screen.getByText('Community metadata is off on this server.')).toBeTruthy();
     await fireEvent.press(screen.getByText('Search again'));
     expect(mockSearchRefetch).toHaveBeenCalled();
+  });
+
+  it('keeps the results, and the work open under them, when reading the search again fails', async () => {
+    mockSearch = { data: { results: [librivoxHit()] }, isError: true, error: new Error('down') };
+    await mount();
+    await openWork();
+    expect(screen.queryByTestId('librivox-search-error')).toBeNull();
+    expect(screen.getByTestId('librivox-hit')).toBeTruthy();
+    expect(screen.getByTestId('librivox-recording')).toBeTruthy();
+  });
+
+  it('says it is offline, not a spinner, while a search waits for the network', async () => {
+    mockSearch = { isPending: true, isPaused: true };
+    await mount();
+    await search('crow');
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByLabelText('Searching LibriVox')).toBeNull();
+  });
+
+  it("says it is offline, not a spinner, while a work's recordings wait for the network", async () => {
+    mockWork = { isPending: true, isPaused: true };
+    await mount();
+    await openWork();
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByLabelText('Loading recordings')).toBeNull();
   });
 
   it("opens a work's recordings under it, with the reader, facts and LibriVox page", async () => {

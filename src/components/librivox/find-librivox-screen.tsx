@@ -4,9 +4,11 @@ import { View } from 'react-native';
 import { useServerInfo } from '@/api/hooks';
 import { useScopedCid } from '@/api/provider';
 import { ContentScope } from '@/components/layout/content-scope';
+import { OfflineState } from '@/components/layout/offline-state';
 import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { parseFindLibrivoxParams } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
@@ -52,11 +54,15 @@ function FindLibrivoxContent() {
   const cid = useScopedCid();
   usePageTitle(t('librivox.title'));
   const user = useSession((s) => s.connections.find((c) => c.id === cid)?.user);
-  const server = useServerInfo(cid).data;
+  const info = useServerInfo(cid);
+  const server = info.data;
   const access = librivoxAccess(user, server);
+  // Before the skeleton: a `/server` read held for the network stays pending.
+  const offline = useUnreadQuery(info) === 'offline';
 
   if (!params) return <EmptyState icon="book" title={t('library.detail.badLink')} />;
   if (access === 'unknown') {
+    if (offline) return <OfflineState hint={t('common.offlinePage')} />;
     return (
       <View className="p-4" testID="find-librivox-loading">
         <RowSkeletonList />

@@ -6,6 +6,7 @@ import { FlatList, View } from 'react-native';
 import { librariesQuery, useLibrivoxSearch } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import type { Library, LibrivoxHit } from '@/api/types';
+import { OfflineState } from '@/components/layout/offline-state';
 import { pageGutter } from '@/components/library/cover-layout';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { TAB_PAGE_SCROLL_PROPS } from '@/components/shell/tab-page-scroll';
@@ -25,6 +26,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
 import { isPodcastLibrary } from '@/lib/library-kind';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { namesLine, readErrorKey } from './librivox-model';
@@ -73,8 +75,15 @@ export function LibrivoxSearch({
     setAsked(q);
   };
 
-  const failure = asked && search.isError ? readErrorKey(search.error) : null;
-  const hits = failure ? [] : (search.data?.results ?? []);
+  // With nothing to show and no network (held for it, where it stays pending, or failed
+  // without one): the offline state, never the spinner nor a Search again that can't work.
+  const offline = useUnreadQuery(search) === 'offline';
+  // Only with nothing to show: a search read again that failed (the app back in the
+  // foreground reads every list again) keeps its results, and with them the work open
+  // under them and the fetch each of its rows follows.
+  const failure =
+    asked && search.isError && !search.data && !offline ? readErrorKey(search.error) : null;
+  const hits = search.data?.results ?? [];
 
   const form = (
     <View className="gap-3 pb-4">
@@ -140,7 +149,9 @@ export function LibrivoxSearch({
   );
 
   const empty =
-    !asked || failure ? null : search.isPending ? (
+    !asked || failure ? null : offline ? (
+      <OfflineState hint={t('common.offlineList')} />
+    ) : search.isPending ? (
       <View className="items-center py-6" accessibilityLabel={t('librivox.search.loading')}>
         <Spinner />
       </View>
