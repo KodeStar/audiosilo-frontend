@@ -60,16 +60,23 @@ describe('proxy headers storage (secure-store, beside the token)', () => {
     }
   });
 
-  it('copies a set to a new id, keeping one already there, and leaves the old key', async () => {
+  it('copies a set to a new id, writing over a stale copy, and leaves the old key', async () => {
     await saveProxyHeaders('a', SET);
     await copyProxyHeaders('a', 'b');
     expect(await readProxyHeaders('b')).toEqual(SET);
     expect(await readProxyHeaders('a')).toEqual(SET); // the clean-up deletes it, later
 
+    // Edited after a run cut short left its copy under 'b': the edited set wins, as the
+    // token's copy does.
     const other = { ...SET, headers: [{ name: 'X-Other', value: '1' }] };
     await saveProxyHeaders('a', other);
     await copyProxyHeaders('a', 'b');
-    expect(await readProxyHeaders('b')).toEqual(SET);
+    expect(await readProxyHeaders('b')).toEqual(other);
+
+    // Removed since: the stale copy goes too, so it never comes back with the connection.
+    await saveProxyHeaders('a', null);
+    await copyProxyHeaders('a', 'b');
+    expect(await readProxyHeaders('b')).toBeNull();
   });
 
   it('rejects when the copy does not read back, the old entry untouched', async () => {

@@ -57,12 +57,17 @@ export async function forgetProxyHeaders(connectionId: string): Promise<void> {
  * Copy a connection's headers to the id it moves to (the identity migration), the way its
  * token is copied: written, read back and compared, and REJECTS when the copy is not there
  * as written (or a read is refused), so the migration stops with the old entry untouched and
- * tries again on the next launch. A set already under the new id is kept. The old entry is
- * deleted only by the migration's clean-up, after every copy was verified.
+ * tries again on the next launch. Like the token, it writes over a set already under the new
+ * id (no live connection has it: a copy left by a run cut short, which must not win over a set
+ * edited or removed since). The old entry is deleted only by the migration's clean-up, after
+ * every copy was verified.
  */
 export async function copyProxyHeaders(from: string, to: string): Promise<void> {
   const set = await readProxyHeaders(from);
-  if (!set || (await readProxyHeaders(to))) return;
+  if (!set) {
+    await deleteSecure(proxyHeadersKey(to));
+    return;
+  }
   await saveProxyHeaders(to, set);
   if (!sameProxyHeaders(await readProxyHeaders(to), set)) {
     throw new Error('the proxy headers copy did not read back');
