@@ -188,8 +188,10 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
       <AccountAddresses cid={cid} caps={caps} />
 
       {/* Not gated on the server's flags: needed most when a proxy turns every request
-          away (fe#167). A demo account's server has no proxy in front of it. */}
-      {!demo ? <ProxyHeadersCard connectionId={cid} /> : null}
+          away (fe#167). A demo account has no use for it, unless its sign-in came through
+          a proxy (the connect screen's headers are kept with it): then they can be seen
+          and removed here like anyone's. */}
+      {!demo || connection?.proxyHeaders ? <ProxyHeadersCard connectionId={cid} /> : null}
 
       {caps?.my_devices === true ? (
         <DevicesSection connectionId={cid} serverName={serverName} />

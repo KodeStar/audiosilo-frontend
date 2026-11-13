@@ -324,8 +324,9 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   pairing QR or link pairs with them when its address is the field's: type the address and the
   headers first, then scan.
 - **Edited** on the Account page's Proxy headers card (`ProxyHeadersCard`, shown whatever the
-  server's flags, since it is needed most when the proxy refuses everything; not for demo
-  accounts), with a choice of the connection's origins (`proxyOriginChoices`). A value is never
+  server's flags, since it is needed most when the proxy refuses everything; for a demo
+  account only when it has a set, which a demo started behind a proxy keeps), with a choice of
+  the connection's origins (`proxyOriginChoices`). A value is never
   shown again: a stored row's field says "Kept as it is" and keeps it unless a new one is typed.
   Reserved names (`Authorization`, `Cookie`, `Host`, `Range`, `Content-Type`, `X-AudioSilo-Client`
   and framing headers) and values with control characters are refused at entry and dropped at load.

@@ -240,6 +240,18 @@ describe('AccountSection', () => {
     expect(screen.queryByText('Password')).toBeNull();
     expect(screen.queryByText('Personal API keys')).toBeNull();
     expect(screen.queryByText(/Not available/)).toBeNull();
+    expect(screen.queryByTestId('proxy-headers-card')).toBeNull();
+  });
+
+  it('shows a demo account the proxy headers its sign-in came through (fe#167)', async () => {
+    mockSession.connections[0].user = user({ is_demo: true, role: 'user' });
+    (mockSession.connections[0] as Conn & { proxyHeaders?: unknown }).proxyHeaders = {
+      origin: 'https://books.example.com',
+      headers: [{ name: 'X-Proxy', value: 'proxy-secret' }],
+    };
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.getByTestId('proxy-headers-card')).toBeTruthy();
+    expect(screen.queryByText('proxy-secret')).toBeNull();
   });
 
   it("hides API keys and pairing from a kid's account, which can't have either", async () => {
