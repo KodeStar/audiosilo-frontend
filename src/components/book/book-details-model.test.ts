@@ -243,7 +243,11 @@ describe('librivoxUrl', () => {
   it("is the recording's LibriVox page when it is http(s)", () => {
     expect(librivoxUrl(rec(PAGE))).toBe(PAGE);
     expect(librivoxUrl(rec('http://librivox.org/x/'))).toBe('http://librivox.org/x/');
-    expect(librivoxUrl(rec(' HTTPS://librivox.org/x/ '))).toBe('HTTPS://librivox.org/x/');
+  });
+
+  it('lower-cases the scheme, which the in-app browser matches by case, and nothing else', () => {
+    expect(librivoxUrl(rec(' HTTPS://librivox.org/X/ '))).toBe('https://librivox.org/X/');
+    expect(librivoxUrl(rec('Http://LibriVox.org/x/'))).toBe('http://LibriVox.org/x/');
   });
 
   it('is absent without a LibriVox page (an older server, another recording)', () => {
@@ -259,5 +263,6 @@ describe('librivoxUrl', () => {
     expect(librivoxUrl(rec('librivox.org/x/'))).toBeUndefined();
     expect(librivoxUrl(rec('ftp://librivox.org/x/'))).toBeUndefined();
     expect(librivoxUrl(rec('https://'))).toBeUndefined();
+    expect(librivoxUrl(rec('https://[]/x/'))).toBeUndefined();
   });
 });
