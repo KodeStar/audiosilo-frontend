@@ -1,7 +1,14 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
-import { ConnectReveal, RevealKeepContext, RevealViewContext } from './connect-frame';
+import {
+  ConnectReveal,
+  RevealContext,
+  RevealKeepContext,
+  RevealViewContext,
+} from './connect-frame';
+import { ProxyHeadersEditor } from './proxy-headers-editor';
+import { blankRow } from './proxy-headers-model';
 
 describe('ConnectReveal', () => {
   it('asks the frame to scroll it into view once it is laid out', async () => {
@@ -47,5 +54,20 @@ describe('ConnectReveal', () => {
     expect(unkeep).not.toHaveBeenCalled();
     await view.unmount();
     expect(unkeep).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ProxyHeadersEditor', () => {
+  it('asks the frame to scroll a header field into view when it takes the focus', async () => {
+    // The rows sit at the bottom of the connect column, where the keyboard covers them.
+    const reveal = jest.fn();
+    await render(
+      <RevealContext.Provider value={reveal}>
+        <ProxyHeadersEditor rows={[blankRow()]} onChange={() => {}} />
+      </RevealContext.Provider>,
+    );
+    await fireEvent(screen.getByTestId('proxy-headers-editor-name'), 'focus');
+    await fireEvent(screen.getByTestId('proxy-headers-editor-value'), 'focus');
+    expect(reveal).toHaveBeenCalledTimes(2);
   });
 });

@@ -2,28 +2,27 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 
+import { ConnectInput } from './connect-frame';
 import { blankRow, canAddRow, draftProblems, type HeaderDraftRow } from './proxy-headers-model';
 
 /**
  * The rows of custom headers for an auth proxy (fe#167): a name and a value each, the value
  * typed into a password field (never shown back), a row loaded from the connection showing
  * "Kept as it is" until a new value is typed. Each row says what is wrong with it under
- * itself. Used on the connect screen and the Account page's Proxy headers card.
+ * itself. Used on the connect screen and the Account page's Proxy headers card (where
+ * `ConnectInput`'s scroll into view is a no-op: no `ConnectFrame` above it).
  */
 export function ProxyHeadersEditor({
   rows,
   onChange,
   showProblems = true,
-  testID = 'proxy-headers-editor',
 }: {
   rows: readonly HeaderDraftRow[];
   onChange: (rows: HeaderDraftRow[]) => void;
   /** Say each row's problem (off until the listener has tried to use the rows). */
   showProblems?: boolean;
-  testID?: string;
 }) {
   const { t } = useTranslation();
   const problems = draftProblems(rows);
@@ -34,15 +33,15 @@ export function ProxyHeadersEditor({
     onChange(left.length ? left : [blankRow()]);
   };
   return (
-    <View className="gap-3" testID={testID}>
+    <View className="gap-3" testID="proxy-headers-editor">
       {rows.map((row, i) => {
         const problem = showProblems ? problems[i] : null;
         const name = row.name.trim();
         return (
-          <View key={row.key} className="gap-1" testID={`${testID}-row`}>
+          <View key={row.key} className="gap-1" testID="proxy-headers-editor-row">
             <View className="flex-row flex-wrap items-center gap-2">
               <View className="min-w-[140px] flex-1">
-                <Input
+                <ConnectInput
                   accessibilityLabel={t('proxyHeaders.name')}
                   placeholder={t('proxyHeaders.namePlaceholder')}
                   value={row.name}
@@ -50,11 +49,11 @@ export function ProxyHeadersEditor({
                   autoCapitalize="none"
                   autoCorrect={false}
                   spellCheck={false}
-                  testID={`${testID}-name`}
+                  testID="proxy-headers-editor-name"
                 />
               </View>
               <View className="min-w-[140px] flex-1">
-                <Input
+                <ConnectInput
                   accessibilityLabel={
                     name ? t('proxyHeaders.valueOf', { name }) : t('proxyHeaders.value')
                   }
@@ -69,7 +68,7 @@ export function ProxyHeadersEditor({
                   spellCheck={false}
                   textContentType="none"
                   autoComplete="off"
-                  testID={`${testID}-value`}
+                  testID="proxy-headers-editor-value"
                 />
               </View>
               <Button
@@ -80,7 +79,7 @@ export function ProxyHeadersEditor({
                   name ? t('proxyHeaders.removeNamed', { name }) : t('proxyHeaders.remove')
                 }
                 onPress={() => remove(row.key)}
-                testID={`${testID}-remove`}
+                testID="proxy-headers-editor-remove"
               />
             </View>
             {problem ? (
@@ -99,7 +98,7 @@ export function ProxyHeadersEditor({
           icon="plus"
           title={t('proxyHeaders.add')}
           onPress={() => onChange([...rows, blankRow()])}
-          testID={`${testID}-add`}
+          testID="proxy-headers-editor-add"
         />
       ) : null}
     </View>
