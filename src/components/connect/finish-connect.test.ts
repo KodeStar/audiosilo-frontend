@@ -263,6 +263,36 @@ describe('proxy headers the sign-in came through (fe#167)', () => {
     expect(await SecureStore.getItemAsync('audiosilo.proxy-headers.new.2')).toBeNull();
   });
 
+  it("a reset-server reconnect after another person's takes none of theirs", async () => {
+    const sam = { ...user, id: 2, username: 'sam' };
+    const HOME_SET = { origin: 'https://home.example', headers: [{ name: 'X-H', value: 'h' }] };
+    useSession.setState({ pendingProxyHeaders: SET });
+    await finishConnect({ serverUrl: AWAY, session: session('old') }); // chris, with SET
+    useSession.setState({ pendingProxyHeaders: null });
+    // Sam on the same server, with a set of his own for another address only.
+    await useSession
+      .getState()
+      .setSession(
+        { serverUrl: AWAY, serverId: 'old', token: 'tok-2', user: sam, proxyHeaders: HOME_SET },
+        { makeDefault: false },
+      );
+    useSession.getState().markNeedsReconnect('old.1', 'server-reset');
+    useSession.getState().markNeedsReconnect('old.2', 'server-reset');
+    // Chris first: new.1 keeps his set. Then Sam: never Chris's, his own comes along.
+    await finishConnect({ serverUrl: AWAY, session: session('new'), reconnectId: 'old.1' });
+    expect(useSession.getState().connections.find((c) => c.id === 'new.1')?.proxyHeaders).toEqual(
+      SET,
+    );
+    await finishConnect({
+      serverUrl: AWAY,
+      session: session('new', { user: sam }),
+      reconnectId: 'old.2',
+    });
+    const fresh = useSession.getState().connections.find((c) => c.id === 'new.2');
+    expect(fresh).toBeDefined();
+    expect(fresh?.proxyHeaders).toEqual(HOME_SET);
+  });
+
   it("a re-pair through another address keeps its own set, not another connection's for it", async () => {
     const MINE = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'mine' }] };
     const THEIRS = { origin: HOME, headers: [{ name: 'X-Home', value: 'theirs' }] };

@@ -120,8 +120,16 @@ export async function finishConnect(input: {
   const pickId = existing?.id ?? connectionIdOf(serverId, input.session.user.id);
   // A re-pair's own set first: never another connection's for the same address. A reconnect
   // to a reset server (no `existing`: the server_id is new) keeps the set its sign-in carried
-  // (`connectClient(server, _, reconnectId)`), never another person's for that address.
-  const proxyHeaders = connectProxyHeaders(input.serverUrl, existing?.id ?? input.reconnectId);
+  // (`connectClient(server, _, reconnectId)`), else the old identity's own, never another
+  // person's: given none, `setSession` would give the new connection the first set any
+  // connection to this server has.
+  // Undefined: keep the connection's own (`setSession`); null: none.
+  const reconnectOwn =
+    !existing && input.reconnectId !== undefined
+      ? (connections.find((c) => c.id === input.reconnectId)?.proxyHeaders ?? null)
+      : undefined;
+  const proxyHeaders =
+    connectProxyHeaders(input.serverUrl, existing?.id ?? input.reconnectId) ?? reconnectOwn;
   if (input.answeredAt) setAddressPick(pickId, input.answeredAt);
   const id = await setSession({
     serverUrl: plan.serverUrl,
@@ -133,7 +141,7 @@ export async function finishConnect(input: {
     retire,
     // The proxy headers this sign-in reached the server with (fe#167); none keeps the
     // connection's own.
-    ...(proxyHeaders ? { proxyHeaders } : {}),
+    ...(proxyHeaders !== undefined ? { proxyHeaders } : {}),
   }).catch((e: unknown) => {
     // Nothing was stored: a new connection's pick goes with it.
     if (input.answeredAt && !existing) setAddressPick(pickId, null);
