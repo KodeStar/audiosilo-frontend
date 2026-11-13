@@ -144,6 +144,8 @@ import type {
 export const qk = {
   server: (cid: string) => ['server', cid] as const,
   libraries: (cid: string) => ['libraries', cid] as const,
+  /** Every folder listing of a library (a prefix of `browse`: whatever its path). */
+  folders: (cid: string, lib: number) => ['browse', cid, lib] as const,
   browse: (cid: string, lib: number, path: string) => ['browse', cid, lib, path] as const,
   item: (cid: string, lib: number, path: string) => ['item', cid, lib, path] as const,
   chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path] as const,
@@ -163,9 +165,9 @@ export const qk = {
   metaWork: (cid: string, workId: string) => ['metaWork', cid, workId] as const,
   authors: (cid: string, lib: number) => ['authors', cid, lib] as const,
   narrators: (cid: string, lib: number) => ['narrators', cid, lib] as const,
-  /** `memberships`: counted in every series a book is in (`series_memberships`). */
   /** Every series list of a library (a prefix of `seriesList`: both variants). */
   seriesLists: (cid: string, lib: number) => ['seriesList', cid, lib] as const,
+  /** `memberships`: counted in every series a book is in (`series_memberships`). */
   seriesList: (cid: string, lib: number, memberships: boolean) =>
     ['seriesList', cid, lib, { memberships }] as const,
   /** Every book list of a library (a prefix of `libraryBooks`: whatever its query). */
@@ -194,6 +196,8 @@ export const qk = {
   favourites: (connectionId: string) => ['favourites', connectionId] as const,
   apiKeys: (cid: string) => ['apiKeys', cid] as const,
   search: (cid: string, q: string) => ['search', cid, q] as const,
+  /** Every recently added list of a connection (a prefix of `recent`: whatever its limit). */
+  recentLists: (cid: string) => ['books', 'recent', cid] as const,
   recent: (cid: string, limit: number) => ['books', 'recent', cid, limit] as const,
   copies: (cid: string, key: string) => ['copies', cid, key] as const,
   // User state (Phase 1b), one capability flag each (see the hooks below).
@@ -2819,14 +2823,16 @@ export function useAddLibrivox(connectionId?: string) {
 }
 
 /** After a book landed in `libraryId` (a `librivox.fetch` placed it): the library's lists
- * (its books, people and series, which a mounted Library under the page shows) are read
- * again. */
+ * (its books, folders, people and series, which a mounted Library under the page shows)
+ * and the connection's recently added (Home's rail, a mounted tab) are read again. */
 export function invalidateLibraryLists(qc: QueryClient, cid: string, libraryId: number) {
   for (const queryKey of [
     qk.libraryBookLists(cid, libraryId),
+    qk.folders(cid, libraryId),
     qk.authors(cid, libraryId),
     qk.narrators(cid, libraryId),
     qk.seriesLists(cid, libraryId),
+    qk.recentLists(cid),
   ]) {
     void qc.invalidateQueries({ queryKey });
   }

@@ -288,23 +288,27 @@ describe('useCancelBridgeJob, for a job about no book', () => {
 });
 
 describe('invalidateLibraryLists', () => {
-  it("reads one library's books, people and series again, and nothing else", async () => {
+  it("reads one library's books, folders, people and series and the recently added again, and nothing else", async () => {
     const qc = new QueryClient();
     queryClients.push(qc);
     const books = qk.libraryBooks('c1', 3, { sort: 'recent' });
     const series = qk.seriesList('c1', 3, true);
     const authors = qk.authors('c1', 3);
     const narrators = qk.narrators('c1', 3);
+    const folder = qk.browse('c1', 3, 'L. Leslie Brooke');
+    const recent = qk.recent('c1', 12);
     const other = qk.libraryBooks('c1', 4, { sort: 'recent' });
+    const otherFolder = qk.browse('c1', 4, '');
     const otherServer = qk.libraryBooks('c2', 3, { sort: 'recent' });
-    for (const key of [books, series, authors, narrators, other, otherServer]) {
+    const otherRecent = qk.recent('c2', 12);
+    const elsewhere = [other, otherFolder, otherServer, otherRecent];
+    for (const key of [books, series, authors, narrators, folder, recent, ...elsewhere]) {
       qc.setQueryData(key, []);
     }
     invalidateLibraryLists(qc, 'c1', 3);
-    for (const key of [books, series, authors, narrators]) {
+    for (const key of [books, series, authors, narrators, folder, recent]) {
       expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
     }
-    expect(qc.getQueryState(other)?.isInvalidated).toBe(false);
-    expect(qc.getQueryState(otherServer)?.isInvalidated).toBe(false);
+    for (const key of elsewhere) expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
   });
 });
