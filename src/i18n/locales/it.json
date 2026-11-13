@@ -3261,15 +3261,15 @@
   },
   "librivox": {
     "title": "Cerca su LibriVox",
-    "intro": "Audiolibri gratuiti di pubblico dominio, trovati nei metadati della community. Il tuo Bridge scarica la registrazione che aggiungi, la mette nella libreria e la abbina.",
+    "intro": "Audiolibri gratuiti di pubblico dominio, trovati nei metadati della community. Il Bridge scarica la registrazione che aggiungi, la mette nella libreria e la abbina.",
     "menu": {
       "label": "Altre azioni della libreria",
       "find": "Cerca su LibriVox"
     },
     "access": {
       "notAdmin": "Solo un amministratore può aggiungere libri da LibriVox.",
-      "unavailable": "Per aggiungere da LibriVox il tuo Bridge deve essere online e aggiornato.",
-      "unavailableHint": "Controlla il tuo Bridge nelle impostazioni Bridge della console di amministrazione.",
+      "unavailable": "Per aggiungere da LibriVox il Bridge deve essere online e aggiornato.",
+      "unavailableHint": "Controlla il Bridge nelle impostazioni Bridge della console di amministrazione.",
       "metadataOff": "I metadati della community sono disattivati",
       "metadataOffHint": "La ricerca su LibriVox ne ha bisogno. Attivali nelle impostazioni Metadati della console di amministrazione."
     },
@@ -3306,8 +3306,8 @@
       "noLibrary": "Prima aggiungi una libreria di libri.",
       "inLibrary": "Questa registrazione è già in una libreria.",
       "notBookLibrary": "Scegli una libreria di libri. Una libreria di podcast non può contenerla.",
-      "unavailable": "Il tuo Bridge non può aggiungere libri LibriVox. Aggiornalo o abbinane uno nella console di amministrazione.",
-      "notWritable": "Il tuo Bridge non può scrivere in questa libreria.",
+      "unavailable": "Il Bridge non può aggiungere libri LibriVox. Aggiornalo o abbinane uno nella console di amministrazione.",
+      "notWritable": "Il Bridge non può scrivere in questa libreria.",
       "metadataOff": "I metadati della community sono stati disattivati.",
       "notFound": "Questa registrazione o libreria non esiste più. Cerca di nuovo.",
       "failed": "Impossibile aggiungere questa registrazione. Riprova tra un momento."
@@ -3318,7 +3318,7 @@
       "failedTitle": "Impossibile aggiungerlo",
       "cancelledTitle": "Annullato",
       "doneTitle": "Aggiunto",
-      "waiting": "In attesa del tuo Bridge",
+      "waiting": "In attesa del Bridge",
       "stopping": "Interruzione in corso",
       "count": "{{done}} di {{total}}",
       "cancelled": "Non è stato aggiunto nulla.",
@@ -3333,7 +3333,7 @@
         "working": "In corso"
       },
       "code": {
-        "not_writable": "Il tuo Bridge non può scrivere in questa libreria.",
+        "not_writable": "Il Bridge non può scrivere in questa libreria.",
         "exists": "In quel punto della libreria c'è già un libro.",
         "disk_full": "Il disco della libreria è pieno.",
         "not_found": "LibriVox non elenca più questa registrazione.",

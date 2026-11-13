@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen } from '@testing-library/react-native';
 import { View } from 'react-native';
 
 import { ApiError } from '@/api/client';
@@ -64,6 +64,7 @@ jest.mock('@/api/hooks', () => {
 });
 
 /* eslint-disable import/first */
+import { DONE_RECHECK_MS } from './librivox-model';
 import { LibrivoxSearch } from './librivox-search';
 /* eslint-enable import/first */
 
@@ -234,6 +235,32 @@ describe('LibrivoxSearch', () => {
     expect(mockInvalidateLists).toHaveBeenCalledWith(qc, 'c1', 3);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['librivoxWork', 'c1'] });
     expect(screen.queryByTestId('librivox-add')).toBeNull();
+  });
+
+  it('asks the works once more a moment after a fetch is done (the book is recorded just after)', async () => {
+    jest.useFakeTimers();
+    try {
+      mockWork = { data: work({ job: { id: 41, state: 'running' } }) };
+      mockJobs = { 41: { data: librivoxJob({ state: 'done', library_id: 3 }) } };
+      const qc = await mount();
+      const invalidate = jest.spyOn(qc, 'invalidateQueries');
+      await openWork();
+      const worksAsks = () =>
+        invalidate.mock.calls.filter(
+          ([f]) => JSON.stringify(f?.queryKey) === '["librivoxWork","c1"]',
+        ).length;
+      expect(worksAsks()).toBe(1);
+      await act(async () => {
+        jest.advanceTimersByTime(DONE_RECHECK_MS - 1);
+      });
+      expect(worksAsks()).toBe(1);
+      await act(async () => {
+        jest.advanceTimersByTime(1);
+      });
+      expect(worksAsks()).toBe(2);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('picks among the books libraries only, the one the page opened from first', async () => {

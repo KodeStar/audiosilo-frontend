@@ -90,7 +90,7 @@ describe('FindLibrivoxScreen', () => {
     mockServer = librivoxServer({ bridge: { version: '0.6.0', features: ['sidecars'] } });
     await mountWithPortal(<FindLibrivoxScreen />);
     expect(
-      screen.getByText('Adding from LibriVox needs your Bridge online and up to date.'),
+      screen.getByText('Adding from LibriVox needs the Bridge online and up to date.'),
     ).toBeTruthy();
     expect(screen.queryByTestId('librivox-search')).toBeNull();
   });

@@ -3261,15 +3261,15 @@
   },
   "librivox": {
     "title": "Find on LibriVox",
-    "intro": "Free public-domain audiobooks, found in the community metadata. Your Bridge downloads the recording you add, puts it in the library and matches it.",
+    "intro": "Free public-domain audiobooks, found in the community metadata. The Bridge downloads the recording you add, puts it in the library and matches it.",
     "menu": {
       "label": "More library actions",
       "find": "Find on LibriVox"
     },
     "access": {
       "notAdmin": "Only an admin can add books from LibriVox.",
-      "unavailable": "Adding from LibriVox needs your Bridge online and up to date.",
-      "unavailableHint": "Check your Bridge in the admin console's Bridge settings.",
+      "unavailable": "Adding from LibriVox needs the Bridge online and up to date.",
+      "unavailableHint": "Check the Bridge in the admin console's Bridge settings.",
       "metadataOff": "Community metadata is off",
       "metadataOffHint": "Searching LibriVox needs it. Turn it on in the admin console's Metadata settings."
     },
@@ -3306,8 +3306,8 @@
       "noLibrary": "Add a books library first.",
       "inLibrary": "That recording is already in a library.",
       "notBookLibrary": "Pick a books library. A podcast library can't hold it.",
-      "unavailable": "Your Bridge can't add LibriVox books. Update it, or pair one in the admin console.",
-      "notWritable": "Your Bridge can't write to this library.",
+      "unavailable": "The Bridge can't add LibriVox books. Update it, or pair one in the admin console.",
+      "notWritable": "The Bridge can't write to this library.",
       "metadataOff": "Community metadata was turned off.",
       "notFound": "This recording or library is no longer there. Search again.",
       "failed": "Couldn't add this recording. Try again in a moment."
@@ -3318,7 +3318,7 @@
       "failedTitle": "Couldn't add it",
       "cancelledTitle": "Cancelled",
       "doneTitle": "Added",
-      "waiting": "Waiting for your Bridge",
+      "waiting": "Waiting for the Bridge",
       "stopping": "Stopping",
       "count": "{{done}} of {{total}}",
       "cancelled": "Nothing was added.",
@@ -3333,7 +3333,7 @@
         "working": "Working"
       },
       "code": {
-        "not_writable": "Your Bridge can't write to this library.",
+        "not_writable": "The Bridge can't write to this library.",
         "exists": "A book is already at that place in the library.",
         "disk_full": "The library's disk is full.",
         "not_found": "LibriVox no longer lists this recording.",

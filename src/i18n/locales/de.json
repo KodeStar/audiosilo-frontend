@@ -3261,15 +3261,15 @@
   },
   "librivox": {
     "title": "Auf LibriVox finden",
-    "intro": "Kostenlose gemeinfreie Hörbücher aus den Community-Metadaten. Deine Bridge lädt die Aufnahme herunter, die du hinzufügst, legt sie in die Bibliothek und ordnet sie zu.",
+    "intro": "Kostenlose gemeinfreie Hörbücher aus den Community-Metadaten. Die Bridge lädt die Aufnahme herunter, die du hinzufügst, legt sie in die Bibliothek und ordnet sie zu.",
     "menu": {
       "label": "Weitere Bibliotheksaktionen",
       "find": "Auf LibriVox finden"
     },
     "access": {
       "notAdmin": "Nur ein Admin kann Bücher von LibriVox hinzufügen.",
-      "unavailable": "Zum Hinzufügen von LibriVox muss deine Bridge online und aktuell sein.",
-      "unavailableHint": "Prüfe deine Bridge in den Bridge-Einstellungen der Admin-Konsole.",
+      "unavailable": "Zum Hinzufügen von LibriVox muss die Bridge online und aktuell sein.",
+      "unavailableHint": "Prüfe die Bridge in den Bridge-Einstellungen der Admin-Konsole.",
       "metadataOff": "Community-Metadaten sind aus",
       "metadataOffHint": "Die Suche auf LibriVox braucht sie. Schalte sie in den Metadaten-Einstellungen der Admin-Konsole ein."
     },
@@ -3306,8 +3306,8 @@
       "noLibrary": "Lege zuerst eine Bücherbibliothek an.",
       "inLibrary": "Diese Aufnahme ist schon in einer Bibliothek.",
       "notBookLibrary": "Wähle eine Bücherbibliothek. Eine Podcast-Bibliothek kann sie nicht aufnehmen.",
-      "unavailable": "Deine Bridge kann keine LibriVox-Bücher hinzufügen. Aktualisiere sie oder kopple eine in der Admin-Konsole.",
-      "notWritable": "Deine Bridge kann nicht in diese Bibliothek schreiben.",
+      "unavailable": "Die Bridge kann keine LibriVox-Bücher hinzufügen. Aktualisiere sie oder kopple eine in der Admin-Konsole.",
+      "notWritable": "Die Bridge kann nicht in diese Bibliothek schreiben.",
       "metadataOff": "Community-Metadaten wurden ausgeschaltet.",
       "notFound": "Diese Aufnahme oder Bibliothek gibt es nicht mehr. Suche erneut.",
       "failed": "Die Aufnahme konnte nicht hinzugefügt werden. Versuche es gleich noch einmal."
@@ -3318,7 +3318,7 @@
       "failedTitle": "Konnte nicht hinzugefügt werden",
       "cancelledTitle": "Abgebrochen",
       "doneTitle": "Hinzugefügt",
-      "waiting": "Wartet auf deine Bridge",
+      "waiting": "Wartet auf die Bridge",
       "stopping": "Wird angehalten",
       "count": "{{done}} von {{total}}",
       "cancelled": "Es wurde nichts hinzugefügt.",
@@ -3333,7 +3333,7 @@
         "working": "In Arbeit"
       },
       "code": {
-        "not_writable": "Deine Bridge kann nicht in diese Bibliothek schreiben.",
+        "not_writable": "Die Bridge kann nicht in diese Bibliothek schreiben.",
         "exists": "An dieser Stelle der Bibliothek liegt schon ein Buch.",
         "disk_full": "Der Datenträger der Bibliothek ist voll.",
         "not_found": "LibriVox führt diese Aufnahme nicht mehr.",

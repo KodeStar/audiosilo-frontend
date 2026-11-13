@@ -3261,15 +3261,15 @@
   },
   "librivox": {
     "title": "Chercher sur LibriVox",
-    "intro": "Des livres audio gratuits du domaine public, trouvés dans les métadonnées de la communauté. Votre Bridge télécharge l'enregistrement que vous ajoutez, le range dans la bibliothèque et l'associe.",
+    "intro": "Des livres audio gratuits du domaine public, trouvés dans les métadonnées de la communauté. Le Bridge télécharge l'enregistrement que vous ajoutez, le range dans la bibliothèque et l'associe.",
     "menu": {
       "label": "Autres actions de la bibliothèque",
       "find": "Chercher sur LibriVox"
     },
     "access": {
       "notAdmin": "Seul un administrateur peut ajouter des livres de LibriVox.",
-      "unavailable": "Pour ajouter depuis LibriVox, votre Bridge doit être en ligne et à jour.",
-      "unavailableHint": "Vérifiez votre Bridge dans les réglages Bridge de la console d'administration.",
+      "unavailable": "Pour ajouter depuis LibriVox, le Bridge doit être en ligne et à jour.",
+      "unavailableHint": "Vérifiez le Bridge dans les réglages Bridge de la console d'administration.",
       "metadataOff": "Les métadonnées de la communauté sont désactivées",
       "metadataOffHint": "La recherche sur LibriVox en a besoin. Activez-les dans les réglages Métadonnées de la console d'administration."
     },
@@ -3306,8 +3306,8 @@
       "noLibrary": "Ajoutez d'abord une bibliothèque de livres.",
       "inLibrary": "Cet enregistrement est déjà dans une bibliothèque.",
       "notBookLibrary": "Choisissez une bibliothèque de livres. Une bibliothèque de podcasts ne peut pas l'accueillir.",
-      "unavailable": "Votre Bridge ne peut pas ajouter de livres LibriVox. Mettez-le à jour, ou associez-en un dans la console d'administration.",
-      "notWritable": "Votre Bridge ne peut pas écrire dans cette bibliothèque.",
+      "unavailable": "Le Bridge ne peut pas ajouter de livres LibriVox. Mettez-le à jour, ou associez-en un dans la console d'administration.",
+      "notWritable": "Le Bridge ne peut pas écrire dans cette bibliothèque.",
       "metadataOff": "Les métadonnées de la communauté ont été désactivées.",
       "notFound": "Cet enregistrement ou cette bibliothèque n'existe plus. Cherchez à nouveau.",
       "failed": "Impossible d'ajouter cet enregistrement. Réessayez dans un instant."
@@ -3318,7 +3318,7 @@
       "failedTitle": "Ajout impossible",
       "cancelledTitle": "Annulé",
       "doneTitle": "Ajouté",
-      "waiting": "En attente de votre Bridge",
+      "waiting": "En attente du Bridge",
       "stopping": "Arrêt en cours",
       "count": "{{done}} sur {{total}}",
       "cancelled": "Rien n'a été ajouté.",
@@ -3333,7 +3333,7 @@
         "working": "En cours"
       },
       "code": {
-        "not_writable": "Votre Bridge ne peut pas écrire dans cette bibliothèque.",
+        "not_writable": "Le Bridge ne peut pas écrire dans cette bibliothèque.",
         "exists": "Un livre occupe déjà cet emplacement de la bibliothèque.",
         "disk_full": "Le disque de la bibliothèque est plein.",
         "not_found": "LibriVox ne propose plus cet enregistrement.",
