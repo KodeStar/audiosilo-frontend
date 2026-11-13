@@ -18,8 +18,12 @@ jest.mock('expo-image', () => {
 const proxied = (rel: string | null): string | null =>
   rel ? `https://s/api/v1/podcasts/discovery/artwork?id=abc&token=m` : null;
 const mockArtworkUrl = jest.fn(proxied);
+let mockProxyHeaders: Record<string, string> | undefined;
 jest.mock('@/api/provider', () => ({
-  useOptionalApi: () => ({ discoveryArtworkUrl: (rel: string | null) => mockArtworkUrl(rel) }),
+  useOptionalApi: () => ({
+    discoveryArtworkUrl: (rel: string | null) => mockArtworkUrl(rel),
+    proxyHeadersFor: () => mockProxyHeaders,
+  }),
 }));
 
 /* eslint-disable import/first */
@@ -40,6 +44,7 @@ async function fail() {
 beforeEach(() => {
   jest.useFakeTimers();
   mockArtworkUrl.mockClear().mockImplementation(proxied);
+  mockProxyHeaders = undefined;
   mockMounts = 0;
 });
 afterEach(() => {
@@ -52,6 +57,15 @@ describe('DiscoveryArtwork', () => {
     expect(mockArtworkUrl).toHaveBeenCalledWith(REL);
     expect(image()!.props.source).toEqual({
       uri: 'https://s/api/v1/podcasts/discovery/artwork?id=abc&token=m',
+    });
+  });
+
+  it("sends the connection's proxy headers with it (a server behind an auth proxy)", async () => {
+    mockProxyHeaders = { 'X-Proxy': 'secret' };
+    await render(<DiscoveryArtwork connectionId="c1" artworkUrl={REL} size={56} />);
+    expect(image()!.props.source).toEqual({
+      uri: 'https://s/api/v1/podcasts/discovery/artwork?id=abc&token=m',
+      headers: { 'X-Proxy': 'secret' },
     });
   });
 

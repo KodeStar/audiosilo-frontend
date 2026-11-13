@@ -625,9 +625,10 @@ export class ApiClient {
       : { ...this.proxyHeaders };
   }
 
-  /** The proxy headers alone, for a download of `url` that carries its token in the URL
-   * (`?token=`: a book's files and cover, the car's and the widget's covers). Undefined
-   * unless this client sends some and `url` is on their origin. */
+  /** The proxy headers alone, for a request of `url` that carries its token in the URL
+   * (`?token=`: a book's files and cover, the car's and the widget's covers, a community
+   * cover, a podcast directory's artwork). Undefined unless this client sends some and `url`
+   * is on their origin. */
   proxyHeadersFor(url: string): Record<string, string> | undefined {
     if (!this.proxyOrigin || originOf(url) !== this.proxyOrigin) return undefined;
     return { ...this.proxyHeaders };

@@ -26,7 +26,8 @@ export function DiscoveryArtwork({
   size: number;
 }) {
   const themed = useThemeColors();
-  const uri = useOptionalApi(connectionId)?.discoveryArtworkUrl(artworkUrl) ?? null;
+  const api = useOptionalApi(connectionId);
+  const uri = api?.discoveryArtworkUrl(artworkUrl) ?? null;
   // Failed tries of this URL, and whether the latest try failed (the placeholder shows
   // until the next try mounts). Another URL (a later search's row with the same key, a new
   // media token) starts over.
@@ -57,7 +58,9 @@ export function DiscoveryArtwork({
           // A new key per try: the same URL mounted again is a new request.
           key={`${uri}#${failures}`}
           testID="discovery-artwork-image"
-          source={{ uri }}
+          // The URL has the media token; a server behind an auth proxy also takes the
+          // connection's proxy headers (fe#167; the web's `<img>` sends none).
+          source={{ uri, headers: api?.proxyHeadersFor(uri) }}
           style={{ width: '100%', height: '100%' }}
           contentFit="cover"
           transition={150}
