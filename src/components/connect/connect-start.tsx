@@ -137,7 +137,7 @@ export function ConnectStart() {
   const setPendingProxyHeaders = useSession((s) => s.setPendingProxyHeaders);
   // Only an https address takes them (never sent over plain http); an http one says so.
   const typedOrigin = originOf(normalizeUrl(typedUrl));
-  const proxyOrigin = proxyOriginOf(normalizeUrl(typedUrl));
+  const proxyOrigin = typedOrigin ? proxyOriginOf(typedOrigin) : null;
   useEffect(() => {
     setPendingProxyHeaders(proxyOpen ? draftToSet(proxyOrigin, proxyRows) : null);
   }, [proxyOpen, proxyOrigin, proxyRows, setPendingProxyHeaders]);

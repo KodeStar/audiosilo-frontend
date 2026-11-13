@@ -10,12 +10,12 @@ import { sameOrigin } from '@/lib/same-origin';
  * token (`proxy-headers-store.ts`), never in AsyncStorage, the query cache or a log line. A
  * set names the ONE https origin (scheme, host and port) it was entered for, and the app
  * sends it only with requests to that origin (`proxyHeaderRecord`): never to the server's
- * other address (its home address on the house network, which the proxy does not guard),
- * never to a plain-http fallback. The app never puts them on a plain-http request: a set
- * for an http origin is refused at entry and dropped at load (`cleanProxyHeaders`), and an
- * http URL gets none (the tokenless `server_id` probe of the home address included).
- * What a redirect does with a request's headers is the platform's rule, not this one's (not
- * yet checked on a device: CONVENTIONS.md). On the web it goes only same-origin with the page: a custom header on a cross-origin request needs the server's
+ * other address (its home address on the house network, which the proxy does not guard).
+ * Https origins only: a set for an http origin is refused at entry and dropped at load
+ * (`cleanProxyHeaders`), and an http URL gets none whatever the set says (the tokenless
+ * `server_id` probe of the home address included). What a redirect does with a request's
+ * headers is the platform's rule, not this one's (CONVENTIONS.md). On the web it goes only
+ * same-origin with the page: a custom header on a cross-origin request needs the server's
  * CORS to list it, and the server lists a fixed set (`Authorization`, `Content-Type`,
  * `X-AudioSilo-Client`, `Range`).
  */
@@ -130,8 +130,9 @@ export function cleanProxyHeaders(
 /**
  * The headers to put on a request to `url`: the set's, when `url` is an https URL on the set's
  * origin, and on the web only when that is also the page's own origin (see the file comment).
- * Empty otherwise, a plain-http URL always (even for a set not built by `cleanProxyHeaders`). The one rule every sender follows (`ApiClient`, the downloads, the car's and the
- * widget's covers).
+ * Empty otherwise, and always for a plain-http URL (even with a set not built by
+ * `cleanProxyHeaders`). The one rule every sender follows (`ApiClient`, the downloads, the
+ * car's and the widget's covers).
  */
 export function proxyHeaderRecord(
   set: ProxyHeaders | null | undefined,
@@ -140,8 +141,7 @@ export function proxyHeaderRecord(
   pageOrigin: string | null,
 ): Record<string, string> {
   if (!set?.headers.length) return {};
-  const origin = proxyOriginOf(url);
-  if (!origin || origin !== set.origin) return {};
+  if (proxyOriginOf(url) !== set.origin) return {};
   if (platform === 'web' && !sameOrigin(url, pageOrigin ? { origin: pageOrigin } : null)) {
     return {};
   }
