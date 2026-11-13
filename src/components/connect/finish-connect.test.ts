@@ -293,6 +293,60 @@ describe('proxy headers the sign-in came through (fe#167)', () => {
     expect(fresh?.proxyHeaders).toEqual(HOME_SET);
   });
 
+  it('a link re-pair with no set of its own keeps the borrowed set that got it in', async () => {
+    const second = { ...user, id: 2 };
+    useSession.setState({ pendingProxyHeaders: SET });
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') }); // chris, with SET
+    useSession.setState({ pendingProxyHeaders: null });
+    await useSession
+      .getState()
+      .setSession(
+        { serverUrl: AWAY, serverId: 'srv-1', token: 'tok-2', user: second, proxyHeaders: null },
+        { makeDefault: false },
+      );
+    // The second person's QR re-pair: the exchange got through on chris's set.
+    await finishConnect({
+      serverUrl: AWAY,
+      session: { ...session('srv-1'), user: second },
+      carried: SET,
+    });
+    const again = useSession.getState().connections.find((c) => c.id === 'srv-1.2');
+    expect(again?.proxyHeaders).toEqual(SET);
+    expect(
+      JSON.parse((await SecureStore.getItemAsync('audiosilo.proxy-headers.srv-1.2'))!),
+    ).toEqual(SET);
+  });
+
+  it('never keeps a borrowed set for a reconnect, or over a set of its own', async () => {
+    const MINE = { origin: HOME, headers: [{ name: 'X-Home', value: 'mine' }] };
+    const second = { ...user, id: 2 };
+    await useSession
+      .getState()
+      .setSession(
+        { serverUrl: AWAY, serverId: 'srv-1', token: 'tok-2', user: second, proxyHeaders: MINE },
+        { makeDefault: false },
+      );
+    await finishConnect({
+      serverUrl: AWAY,
+      session: { ...session('srv-1'), user: second },
+      carried: SET,
+    });
+    expect(useSession.getState().connections.find((c) => c.id === 'srv-1.2')?.proxyHeaders).toEqual(
+      MINE,
+    );
+    // A reconnect (the banner names the connection): its own or the typed set only.
+    await useSession
+      .getState()
+      .setSession({ serverUrl: AWAY, serverId: 'srv-3', token: 't3', user, proxyHeaders: null });
+    await finishConnect({
+      serverUrl: AWAY,
+      session: session('srv-3'),
+      reconnectId: 'srv-3.1',
+      carried: SET,
+    });
+    expect(conn('srv-3')?.proxyHeaders).toBeUndefined();
+  });
+
   it("a re-pair through another address keeps its own set, not another connection's for it", async () => {
     const MINE = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'mine' }] };
     const THEIRS = { origin: HOME, headers: [{ name: 'X-Home', value: 'theirs' }] };

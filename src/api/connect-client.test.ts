@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 
 import { useSession } from '@/stores/session';
 
-import { connectClient } from './connect-client';
+import { connectClient, connectClientFor } from './connect-client';
 import { probeServerId } from './server-id-probe';
 
 // The connect flow's bare clients (fe#167): the proxy headers entered on the connect screen
@@ -108,5 +108,12 @@ describe('the connect flow carries proxy headers to their address only', () => {
     const sent = (fetchMock.mock.calls[1][1] as { headers: Record<string, string> }).headers;
     expect(sent['X-Mine']).toBe('my-secret');
     expect(sent['CF-Access-Client-Secret']).toBeUndefined();
+  });
+
+  it('names the set its requests carry, null where none goes (finishConnect keeps it)', () => {
+    expect(connectClientFor('https://books.example.com/').proxy).toEqual(SET);
+    expect(connectClientFor('https://other.example.com').proxy).toBeNull();
+    useSession.setState({ pendingProxyHeaders: null });
+    expect(connectClientFor('https://books.example.com').proxy).toBeNull();
   });
 });

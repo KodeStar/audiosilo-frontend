@@ -10,6 +10,7 @@ import { isKidAccount } from '@/lib/account';
 import { connectionIdOf, priorConnection } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
 import { bookHref, type ConnectBook } from '@/lib/paths';
+import type { ProxyHeaders } from '@/lib/proxy-headers';
 import { mergeAddresses } from '@/lib/server-address';
 import {
   activeProfile,
@@ -57,7 +58,8 @@ export function readyHref(connectionId: string) {
  * checks it as for any home pick (and leaves it on another network). It is never stored as
  * the connection's `serverUrl`, the address used when home is not an option. `book` is the
  * book the link asked to open (the admin console's "Listen in player"): the flow ends on its
- * page instead, first connection or not.
+ * page instead, first connection or not. `carried` is the proxy headers set (fe#167) the
+ * successful exchange or sign-in went out with (`connectClientFor`), null when none.
  */
 export async function finishConnect(input: {
   serverUrl: string;
@@ -67,6 +69,7 @@ export async function finishConnect(input: {
   reconnectId?: string;
   answeredAt?: string;
   book?: ConnectBook;
+  carried?: ProxyHeaders | null;
 }): Promise<string> {
   const serverId = input.session.server_id;
   // The connections first, when they never loaded (a failed session read leaves the
@@ -128,8 +131,19 @@ export async function finishConnect(input: {
     !existing && input.reconnectId !== undefined
       ? (connections.find((c) => c.id === input.reconnectId)?.proxyHeaders ?? null)
       : undefined;
+  // A sign-in or re-pair with no set of its own and none typed (a link or QR re-pair, which
+  // can't name the connection before the exchange answers) that got through the proxy on
+  // another connection's set for the address keeps that set: storing none would leave every
+  // later request turned away. Never for a reconnect (its own or the typed set only), and
+  // never over a set of its own for another address (`setSession` keeps that one).
+  const borrowed =
+    input.reconnectId === undefined && !existing?.proxyHeaders
+      ? (input.carried ?? undefined)
+      : undefined;
   const proxyHeaders =
-    connectProxyHeaders(input.serverUrl, existing?.id ?? input.reconnectId) ?? reconnectOwn;
+    connectProxyHeaders(input.serverUrl, existing?.id ?? input.reconnectId) ??
+    borrowed ??
+    reconnectOwn;
   if (input.answeredAt) setAddressPick(pickId, input.answeredAt);
   const id = await setSession({
     serverUrl: plan.serverUrl,

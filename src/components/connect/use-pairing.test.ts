@@ -93,6 +93,23 @@ describe('useLinkPairing', () => {
     );
   });
 
+  it('hands finishConnect the proxy headers the exchange went out with (fe#167)', async () => {
+    // Another connection here holds a set for the link's address; this re-pair has none.
+    const SET = { origin: scan.base, headers: [{ name: 'X-Proxy', value: 'proxy-secret' }] };
+    useSession.setState({
+      connections: [
+        { id: 'a.2', serverId: 'a', serverUrl: scan.base, token: 't', proxyHeaders: SET },
+      ] as unknown as Connection[],
+    });
+    const session = { token: 's', user: { id: 1, username: 'evie' }, server_id: 'a' };
+    mockExchange.mockResolvedValue(session);
+    const { result } = await renderHook(() => useLinkPairing());
+    await act(async () => {
+      expect(await result.current.pair(scan)).toBe('paired');
+    });
+    expect(mockFinish).toHaveBeenCalledWith(expect.objectContaining({ carried: SET }));
+  });
+
   it("says a refused link in the app's words, never the server's English", async () => {
     const said = await errorFor(new ApiError(401, 'invite has expired - ask for a new invite'));
     expect(said).toBe(

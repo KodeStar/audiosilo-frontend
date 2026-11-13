@@ -329,8 +329,12 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   signed-in connection's (a second person on the same server). With `ownId` (a reconnect's
   sign-in, `SignInStep`'s `reconnectId`, and what `finishConnect` keeps for a re-pair) it is
   only the pending set or that connection's OWN set for the address, never another
-  connection's: a reconnect never signs in with another person's credentials. A re-pair without
-  one keeps what the connection had, and so does one whose own set is for another address. A
+  connection's: a reconnect never signs in with another person's credentials. A connection keeps
+  the set that carried its own successful sign-in or exchange: `connectClientFor` names it
+  (`proxy`) and `finishConnect` takes it as `carried`, so a link or QR re-pair with no set of its
+  own (it can't name the connection before the exchange answers, so it borrows another
+  connection's set for the address) stores the set that got it in, never none. A reconnect never
+  keeps a borrowed set, and a re-pair whose own set is for another address keeps its own. A
   pairing QR or link pairs with them when its address is the field's: type the address and the
   headers first, then scan.
 - **Edited** on the Account page's Proxy headers card (`ProxyHeadersCard`, shown whatever the
