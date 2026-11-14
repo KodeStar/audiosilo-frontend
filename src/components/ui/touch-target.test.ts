@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-import { NATIVE_REM_PT, slopTo44, touchTarget } from './touch-target';
+import { minTarget, NATIVE_REM_PT, slopTo44, touchTarget } from './touch-target';
 
 const prevOS = Platform.OS;
 afterEach(() => {
@@ -19,7 +19,11 @@ describe('slopTo44', () => {
     expect(slopTo44(2.75)).toBe(3); // 38.5 pt
     expect(slopTo44(2.5)).toBe(5); // 35 pt
     expect(slopTo44(2.25)).toBe(7); // 31.5 pt
+    Platform.OS = 'android';
+    expect(slopTo44(2.75)).toBe(5); // 38.5 dp to 48
+    expect(minTarget()).toBe(48);
     Platform.OS = 'web';
+    expect(minTarget()).toBe(44);
     expect(slopTo44(2.75)).toBe(0); // 44 px
     expect(slopTo44(2.5)).toBe(2); // 40 px
     expect(slopTo44(2.25)).toBe(4); // 36 px
@@ -27,12 +31,13 @@ describe('slopTo44', () => {
 });
 
 describe('touchTarget', () => {
-  it('gives a native control a real 44 pt frame, never a slop', () => {
-    for (const os of ['ios', 'android'] as const) {
-      Platform.OS = os;
-      expect(touchTarget(1.75)).toEqual({ frameClass: 'min-h-[44px]' });
-      expect(touchTarget(2.25, 2.25)).toEqual({ frameClass: 'min-h-[44px] min-w-[44px]' });
-    }
+  it('gives a native control a real frame (44 pt on iOS, 48 dp on Android), never a slop', () => {
+    Platform.OS = 'ios';
+    expect(touchTarget(1.75)).toEqual({ frameClass: 'min-h-[44px]' });
+    expect(touchTarget(2.25, 2.25)).toEqual({ frameClass: 'min-h-[44px] min-w-[44px]' });
+    Platform.OS = 'android';
+    expect(touchTarget(1.75)).toEqual({ frameClass: 'min-h-[48px]' });
+    expect(touchTarget(2.25, 2.25)).toEqual({ frameClass: 'min-h-[48px] min-w-[48px]' });
   });
 
   it('grows a web control to 44 px with a slop, on the sides it is sized on', () => {

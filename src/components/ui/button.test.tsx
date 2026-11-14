@@ -64,7 +64,8 @@ describe('Button', () => {
     await mount(<Button title="Show more" variant="link" />);
     const classes = String(screen.getByRole('button').props.className).split(' ');
     expect(classes).toEqual(expect.arrayContaining(['h-auto', 'px-0']));
-    expect(classes).not.toContain('h-[38px]');
+    expect(classes).toContain('min-h-0');
+    expect(classes).not.toContain('min-h-[38px]');
     expect(classes).not.toContain('px-4');
   });
 

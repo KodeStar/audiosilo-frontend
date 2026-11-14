@@ -71,7 +71,7 @@ export function LibraryPicker({
         }}
       >
         <SelectTrigger
-          className={cn('h-[34px] min-w-[140px] max-w-[260px] shrink', className)}
+          className={cn('min-h-[34px] min-w-[140px] max-w-[260px] shrink', className)}
           accessibilityLabel={t('library.picker.serverLabel')}
         >
           <SelectValue placeholder={t('library.picker.serverPlaceholder')} />
@@ -101,7 +101,7 @@ export function LibraryPicker({
       }}
     >
       <SelectTrigger
-        className={cn('h-[34px] min-w-[140px] max-w-[260px] shrink', className)}
+        className={cn('min-h-[34px] min-w-[140px] max-w-[260px] shrink', className)}
         accessibilityLabel={t('library.picker.label')}
       >
         <SelectValue placeholder={t('library.picker.placeholder')} />

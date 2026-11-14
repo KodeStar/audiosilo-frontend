@@ -167,7 +167,7 @@ export function GoalTile({
       accessibilityLabel={label}
       disabled={disabled}
       hitSlop={target.hitSlop}
-      className={cn('h-7 w-[30px] px-0', target.frameClass)}
+      className={cn('h-7 min-h-7 w-[30px] px-0', target.frameClass)}
       onPress={() => save(nextGoal(progress.goal, dir))}
     />
   );
@@ -182,7 +182,7 @@ export function GoalTile({
         icon="close"
         accessibilityLabel={t('stats.goal.clear')}
         hitSlop={target.hitSlop}
-        className={cn('h-7 w-[30px] px-0', target.frameClass)}
+        className={cn('h-7 min-h-7 w-[30px] px-0', target.frameClass)}
         onPress={() => clearGoal.mutate(undefined, { onError: failed })}
       />
     </View>

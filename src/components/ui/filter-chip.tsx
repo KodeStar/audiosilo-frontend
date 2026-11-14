@@ -9,6 +9,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import { HORIZONTAL_SCROLLER } from './horizontal-scroller';
 import { Icon, type IconName } from './icon';
 import { FOCUS_RING_OFFSET_CLASS, Text } from './text';
+import { slopTo44 } from './touch-target';
 
 /**
  * The Stacks 32px pill (STYLEGUIDE section 8, "Chip"): a strong hairline on `card`,
@@ -20,7 +21,7 @@ import { FOCUS_RING_OFFSET_CLASS, Text } from './text';
  */
 export function chipClass(selected = false): string {
   return cn(
-    'h-8 flex-row items-center gap-1.5 rounded-full border px-3',
+    'min-h-8 flex-row items-center gap-1.5 rounded-full border px-3',
     selected
       ? 'border-primary bg-primary'
       : 'border-border-strong bg-card active:bg-accent hover:bg-accent',
@@ -66,7 +67,8 @@ export function FilterChip({
       accessibilityState={picker ? { selected } : { checked: selected }}
       accessibilityLabel={count === undefined ? spoken : `${spoken}, ${count}`}
       onPress={onPress}
-      hitSlop={{ top: 6, bottom: 6 }}
+      // A 2 rem pill, its touch grown to the minimum target.
+      hitSlop={{ top: slopTo44(2), bottom: slopTo44(2) }}
       className={cn(chipClass(selected), 'shrink-0')}
     >
       {icon ? <Icon name={icon} size={14} color={fg} /> : null}

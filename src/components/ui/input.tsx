@@ -27,7 +27,8 @@ const fieldBase = cn(
   }),
 );
 
-const sizes = { default: 'h-[40px]', lg: 'h-[48px]' } as const;
+// Min heights: a field grows with its text under large text (fe#267).
+const sizes = { default: 'min-h-[40px]', lg: 'min-h-[48px]' } as const;
 
 export type InputProps = TextInputProps & {
   className?: string;

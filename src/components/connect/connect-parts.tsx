@@ -9,6 +9,7 @@ import { Icon, type IconName } from '@/components/ui/icon';
 import { PressableRow } from '@/components/ui/row-surface';
 import { Spinner } from '@/components/ui/spinner';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
+import { touchTarget } from '@/components/ui/touch-target';
 import { servedOrigin } from '@/lib/base-url';
 import type { KnownServer } from '@/lib/known-servers';
 import { clothColor } from '@/lib/monogram';
@@ -146,6 +147,8 @@ export function KnownServerRow({
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
+  // Forget is a 2.75 rem square, grown to the minimum target.
+  const forgetTarget = touchTarget(2.75, 2.75);
   const action = newPerson
     ? t('connect.probe.signInTo', { name: entry.name })
     : t('reconnect.connect.action', { name: entry.name });
@@ -179,8 +182,10 @@ export function KnownServerRow({
         accessibilityRole="button"
         accessibilityLabel={t('reconnect.connect.forget', { name: entry.name })}
         onPress={onForget}
+        hitSlop={forgetTarget.hitSlop}
         className={cn(
           'h-11 w-11 items-center justify-center rounded-lg active:bg-accent',
+          forgetTarget.frameClass,
           Platform.select({ web: `hover:bg-accent ${FOCUS_RING_CLASS}` }),
         )}
       >

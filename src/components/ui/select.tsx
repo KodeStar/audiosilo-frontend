@@ -60,7 +60,7 @@ export function SelectTrigger({
   return (
     <SelectPrimitive.Trigger
       className={cn(
-        'h-[40px] flex-row items-center justify-between gap-2 rounded-control border border-input bg-card px-3',
+        'min-h-[40px] flex-row items-center justify-between gap-2 rounded-control border border-input bg-card px-3',
         Platform.select({
           web: 'cursor-pointer outline-none transition-[border-color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20',
         }),

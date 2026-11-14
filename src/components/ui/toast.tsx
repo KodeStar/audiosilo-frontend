@@ -12,6 +12,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import { Icon } from './icon';
 import { FullWindowOverlay } from './overlay';
 import { FOCUS_RING_CLASS, Text } from './text';
+import { slopTo44 } from './touch-target';
 
 /**
  * Stacks toasts (STYLEGUIDE.md section 8): ink cards with one line, an optional
@@ -165,7 +166,8 @@ function ToastCard({ item }: { item: ToastItem }) {
             dismissToast(id);
             onClose?.();
           }}
-          hitSlop={8}
+          // A 1.75 rem circle, its touch grown to the minimum target.
+          hitSlop={slopTo44(1.75)}
           className={cn(
             'h-7 w-7 items-center justify-center rounded-full active:bg-primary-foreground/15',
             Platform.select({
