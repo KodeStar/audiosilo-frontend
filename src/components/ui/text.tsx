@@ -1,5 +1,5 @@
-import { createContext, useContext } from 'react';
-import { Text as RNText, type TextProps } from 'react-native';
+import { createContext, type Ref, useContext } from 'react';
+import { Text as RNText, type TextInstance, type TextProps } from 'react-native';
 
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -62,7 +62,36 @@ const TABULAR: ReadonlySet<TextVariant> = new Set(['stat', 'mono']);
  */
 export const TextClassContext = createContext<string | undefined>(undefined);
 
-export type AppTextProps = TextProps & { variant?: TextVariant; className?: string };
+/** A heading's level (`aria-level`; the web renders `h1`..`h6`). */
+export type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
+
+export type AppTextProps = TextProps & {
+  variant?: TextVariant;
+  className?: string;
+  /** A heading at this level: the `header` role on iOS and Android, `hN` on the web. A
+   * text given the `header` role without one takes its variant's level
+   * (`headingLevelFor`). */
+  level?: HeadingLevel;
+  /** The native text (React 19 passes `ref` as a prop): a screen reader's focus target. */
+  ref?: Ref<TextInstance>;
+};
+
+/**
+ * The level a heading takes from its type role when its caller names none (fe#267: every
+ * heading was an `h1` on the web): a page title (`display-xl`, `display`) 1, a section
+ * (`heading`, `stat`) 2, anything smaller (a card or sheet title) 3.
+ */
+export function headingLevelFor(variant: TextVariant): HeadingLevel {
+  if (variant === 'display-xl' || variant === 'display') return 1;
+  if (variant === 'heading' || variant === 'stat') return 2;
+  return 3;
+}
+
+/** Whether the props make a heading (the `header` role, or `heading` on the web). */
+function isHeading(props: TextProps): boolean {
+  const role = (props as { role?: string }).role;
+  return props.accessibilityRole === 'header' || role === 'heading';
+}
 
 /**
  * Themed text on the Stacks type scale, and the app's only Text component. A caller's
@@ -70,12 +99,22 @@ export type AppTextProps = TextProps & { variant?: TextVariant; className?: stri
  * `<Text variant="caption" className="text-brand-ink">` recolours the caption in both
  * themes (the colour is one themed token, not a light/dark pair).
  */
-export function Text({ variant = 'body', className, style, ...props }: AppTextProps) {
+export function Text({ variant = 'body', className, style, level, ...props }: AppTextProps) {
   const contextClass = useContext(TextClassContext);
+  // React Native's types have no `aria-level`; react-native-web reads it (`hN`).
+  const given = (props as { 'aria-level'?: HeadingLevel })['aria-level'];
+  const heading =
+    level !== undefined || isHeading(props)
+      ? ({
+          accessibilityRole: 'header',
+          'aria-level': level ?? given ?? headingLevelFor(variant),
+        } as TextProps)
+      : null;
   return (
     <RNText
       className={cn(variants[variant], contextClass, className)}
       style={TABULAR.has(variant) ? [tabularNums, style] : style}
+      {...heading}
       {...props}
     />
   );

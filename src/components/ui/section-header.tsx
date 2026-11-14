@@ -18,7 +18,9 @@ export type SectionHeaderProps = {
 export function SectionHeader({ title, action, className }: SectionHeaderProps) {
   return (
     <View className={cn('flex-row items-center justify-between', className)}>
-      <Text variant="heading">{title}</Text>
+      <Text variant="heading" accessibilityRole="header">
+        {title}
+      </Text>
       {action ? (
         <Pressable
           onPress={action.onPress}

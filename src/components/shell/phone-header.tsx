@@ -64,7 +64,8 @@ export function PhoneHeader({
             ) : null}
           </AnimatedPressable>
           {title ? (
-            <Text variant="label" className="flex-1 text-center" numberOfLines={1}>
+            // The page's own title: its level-1 heading, like a tab root's.
+            <Text variant="label" level={1} className="flex-1 text-center" numberOfLines={1}>
               {title}
             </Text>
           ) : null}
