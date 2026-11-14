@@ -11,13 +11,16 @@ import { Icon, type IconName } from './icon';
 import { FOCUS_RING_OFFSET_CLASS, Text } from './text';
 import { slopTo44 } from './touch-target';
 
+/** A chip's hit slop: a 2 rem pill, its touch grown to the minimum target. */
+export const CHIP_SLOP = { top: slopTo44(2), bottom: slopTo44(2) };
+
 /**
  * The Stacks 32px pill (STYLEGUIDE section 8, "Chip"): a strong hairline on `card`,
  * `accent` under a press or hover, filled with ink (`primary`) when `selected`. A
  * `FilterChip`'s box, and the pills that act or link rather than toggle (a book's genres
  * and tags, a recent search); the caller adds the width rule (`shrink-0` in a scrolling
- * row, `max-w-full` where they wrap) and its own slop (`hitSlop` 6 above and below makes
- * the touch target 44).
+ * row, `max-w-full` where they wrap) and the slop (`CHIP_SLOP`, which makes the touch the
+ * minimum target).
  */
 export function chipClass(selected = false): string {
   return cn(
@@ -67,8 +70,7 @@ export function FilterChip({
       accessibilityState={picker ? { selected } : { checked: selected }}
       accessibilityLabel={count === undefined ? spoken : `${spoken}, ${count}`}
       onPress={onPress}
-      // A 2 rem pill, its touch grown to the minimum target.
-      hitSlop={{ top: slopTo44(2), bottom: slopTo44(2) }}
+      hitSlop={CHIP_SLOP}
       className={cn(chipClass(selected), 'shrink-0')}
     >
       {icon ? <Icon name={icon} size={14} color={fg} /> : null}

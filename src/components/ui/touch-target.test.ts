@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-import { minTarget, NATIVE_REM_PT, slopTo44, touchTarget } from './touch-target';
+import { minTarget, NATIVE_REM_PT, slopForPx, slopTo44, touchTarget } from './touch-target';
 
 const prevOS = Platform.OS;
 afterEach(() => {
@@ -27,6 +27,22 @@ describe('slopTo44', () => {
     expect(slopTo44(2.75)).toBe(0); // 44 px
     expect(slopTo44(2.5)).toBe(2); // 40 px
     expect(slopTo44(2.25)).toBe(4); // 36 px
+  });
+});
+
+describe('slopForPx', () => {
+  it('grows a px-sized control to 44 on iOS and the web, 48 dp on Android', () => {
+    for (const os of ['ios', 'web'] as const) {
+      Platform.OS = os;
+      expect(slopForPx(30)).toBe(7);
+      expect(slopForPx(38)).toBe(3);
+      expect(slopForPx(46)).toBe(0);
+    }
+    Platform.OS = 'android';
+    expect(slopForPx(30)).toBe(9);
+    expect(slopForPx(38)).toBe(5);
+    expect(slopForPx(46)).toBe(1);
+    expect(slopForPx(54)).toBe(0);
   });
 });
 

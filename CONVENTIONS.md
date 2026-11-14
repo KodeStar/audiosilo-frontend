@@ -3207,7 +3207,8 @@ tokens, type and components; its section 17 maps them onto these files.
     with `await setFontScale(n)` from `@/testing/font-scale`.
 - **Touch targets** (`src/components/ui/touch-target.ts`): 44 on iOS and the web, 48 dp on
   Android (`minTarget()`, Material's minimum). `touchTarget(h, w)` gives the frame classes
-  and the slop for a smaller glyph, `slopTo44(rem)` the slop alone. An icon-only `Button`
+  and the slop for a smaller glyph, `slopTo44(rem)` the slop alone (`slopForPx(px)` for a
+  px-sized control: `Button`, a segment, the transport). An icon-only `Button`
   must have an `accessibilityLabel` (the props type requires it).
 - **Screen-reader semantics** (fe#267):
   - **Headings**: `<Text accessibilityRole="header">` gets an `aria-level` (rn-web renders

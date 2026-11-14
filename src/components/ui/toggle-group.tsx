@@ -22,7 +22,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import { Button } from './button';
 import { HORIZONTAL_SCROLLER } from './horizontal-scroller';
 import { FOCUS_RING_CLASS, Text, TextClassContext } from './text';
-import { slopTo44 } from './touch-target';
+import { slopForPx, slopTo44 } from './touch-target';
 
 /**
  * The Stacks segmented control (STYLEGUIDE.md section 8: "muted track + raised card for
@@ -80,8 +80,8 @@ export function ToggleGroupItem({
       )}
     >
       <ToggleGroupPrimitive.Item
-        // A 30 tall segment in a 36 track; the slop makes the touch target 44.
-        hitSlop={{ top: 7, bottom: 7 }}
+        // A 30 tall segment in a 36 track; the slop makes the touch the minimum target.
+        hitSlop={{ top: slopForPx(30), bottom: slopForPx(30) }}
         className={cn(
           itemBase,
           selected && segmentActive,

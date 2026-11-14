@@ -13,6 +13,7 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { FOCUS_RING_CLASS } from '@/components/ui/text';
+import { slopForPx } from '@/components/ui/touch-target';
 import { useFontScale } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { onForeground } from '@/lib/when-active';
@@ -198,7 +199,7 @@ export function PlayButton({
   return (
     <AnimatedPressable
       onPress={() => void (isError ? retry() : toggle())}
-      hitSlop={Math.max(0, (44 - box) / 2)}
+      hitSlop={slopForPx(box)}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ busy: state === 'loading' }}
@@ -261,7 +262,7 @@ export function TransportControls({
 
   const scale = size === 'sm' ? 1 : controlScale(size, fontScale, room);
   const d = transportDims(size, scale);
-  const hitSlop = Math.max(0, (44 - d.button) / 2);
+  const hitSlop = slopForPx(d.button);
   const round = pillClass('ghost');
   const box = { width: d.button, height: d.button };
   const step = (dir: 1 | -1) => stepSegment(usePlayer.getState(), dir);

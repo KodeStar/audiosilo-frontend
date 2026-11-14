@@ -9,6 +9,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import { Icon, type IconName } from './icon';
 import { Spinner } from './spinner';
 import { FOCUS_RING_OFFSET_CLASS, Text, TextClassContext } from './text';
+import { slopForPx } from './touch-target';
 
 /**
  * The Stacks button (STYLEGUIDE.md section 8): react-native-reusables' Button, restyled.
@@ -92,8 +93,9 @@ function iconColor(variant: Variant, themed: ThemeColors): string {
   }
 }
 
-/** Grows the touch area of the short sizes to the 44pt minimum (STYLEGUIDE section 14). */
-const HIT_SLOP: Record<Size, number> = { sm: 7, default: 3, lg: 0, xl: 0, icon: 3 };
+/** Each size's (minimum) height: the short ones get a hit slop that grows the touch area to
+ * the minimum target (STYLEGUIDE section 14: 44 pt, 48 dp on Android). */
+const HEIGHT: Record<Size, number> = { sm: 30, default: 38, lg: 46, xl: 54, icon: 38 };
 
 type ButtonBaseProps = Omit<PressableProps, 'children'> & {
   variant?: Variant;
@@ -145,7 +147,7 @@ export function Button({
         disabled={isDisabled}
         aria-disabled={isDisabled}
         aria-busy={loading || undefined}
-        hitSlop={hitSlop ?? HIT_SLOP[size]}
+        hitSlop={hitSlop ?? slopForPx(HEIGHT[size])}
         className={cn(buttonVariants({ variant, size }), isDisabled && 'opacity-45', className)}
         {...props}
       >

@@ -12,7 +12,7 @@ import {
 import { type LibraryMode, libraryModeHref } from '@/components/library/library-modes';
 import { useSelectedLibrary } from '@/components/library/use-selected-library';
 import { EmptyState } from '@/components/ui/empty-state';
-import { chipClass } from '@/components/ui/filter-chip';
+import { CHIP_SLOP, chipClass } from '@/components/ui/filter-chip';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FOCUS_RING_CLASS, FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
@@ -108,7 +108,7 @@ function RecentChip({ label, onPress }: { label: string; onPress: () => void }) 
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={t('search.searchAgain', { query: label })}
-      hitSlop={{ top: 6, bottom: 6 }}
+      hitSlop={CHIP_SLOP}
       className={cn(chipClass(), 'max-w-full')}
     >
       <Icon name="history" size={14} color={themed.foreground} />

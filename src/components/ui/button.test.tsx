@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 
 import { Button } from './button';
 import { Text } from './text';
@@ -58,6 +59,18 @@ describe('Button', () => {
     await mount(<Button title="Small" size="sm" />);
     // 30 tall + 7 above + 7 below.
     expect(screen.getByRole('button')).toHaveProp('hitSlop', 7);
+  });
+
+  it("grows them to Android's 48 dp there", async () => {
+    const prevOS = Platform.OS;
+    Platform.OS = 'android';
+    try {
+      await mount(<Button title="Save" />);
+      // 38 tall + 5 above + 5 below.
+      expect(screen.getByRole('button')).toHaveProp('hitSlop', 5);
+    } finally {
+      Platform.OS = prevOS;
+    }
   });
 
   it("drops the size's height and padding on the link variant", async () => {

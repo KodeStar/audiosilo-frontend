@@ -27,7 +27,13 @@ export function minTarget(): number {
  */
 export function slopTo44(rem: number): number {
   const pt = Platform.OS === 'web' ? 16 : NATIVE_REM_PT;
-  return Math.max(0, Math.ceil((minTarget() - rem * pt) / 2));
+  return slopForPx(rem * pt);
+}
+
+/** `slopTo44` for a control sized in px (a Button's 30 / 38, a segment's 30, the player's
+ * round buttons): the same number on every platform, so only the target differs. */
+export function slopForPx(px: number): number {
+  return Math.max(0, Math.ceil((minTarget() - px) / 2));
 }
 
 /** How a small control reaches 44: a frame class (native) or a hit slop (web). */

@@ -13,7 +13,7 @@ import { libraryBooksHref } from '@/components/library/books/books-view';
 import { Attribution } from '@/components/player/companion/companion-pieces';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Card } from '@/components/ui/card';
-import { chipClass } from '@/components/ui/filter-chip';
+import { CHIP_SLOP, chipClass } from '@/components/ui/filter-chip';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import type { LabelKind } from '@/lib/labels';
@@ -212,7 +212,7 @@ function LabelChip({
       onPress={onPress}
       accessibilityRole="link"
       accessibilityLabel={label}
-      hitSlop={{ top: 6, bottom: 6 }}
+      hitSlop={CHIP_SLOP}
       className={cn(chipClass(), 'max-w-full')}
     >
       <Text
