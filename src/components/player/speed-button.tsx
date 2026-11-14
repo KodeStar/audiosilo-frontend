@@ -5,14 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Text } from '@/components/ui/text';
 import { formatDuration, formatSpeed } from '@/lib/format';
-import { useLargeText } from '@/lib/text-scale';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { timeLeft } from '@/playback/time-left';
 import { tabularNums } from '@/theme/tabular-nums';
 
 import { slopTo44 } from './control-pill';
 import { EffectsSettings } from './effects-settings';
-import { OptionTile, optionTileBasis } from './option-tile';
+import { OptionTile } from './option-tile';
 import { PlayerSheet } from './player-sheet';
 import {
   isSpeed,
@@ -49,7 +48,6 @@ export function SpeedSheet({ visible, onClose }: { visible: boolean; onClose: ()
  * minutes ("1h 12m"), so it follows the place by the minute, not per tick. */
 function SpeedSheetBody() {
   const { t } = useTranslation();
-  const large = useLargeText();
   const rate = usePlayer((s) => s.rate);
   const setRate = usePlayer((s) => s.setRate);
   const total = usePlayer((s) => s.nowPlaying?.queue.total ?? 0);
@@ -122,7 +120,6 @@ function SpeedSheetBody() {
             }
             selected={isSpeed(rate, speed)}
             onPress={() => apply(speed)}
-            className={optionTileBasis(large)}
           />
         ))}
       </View>

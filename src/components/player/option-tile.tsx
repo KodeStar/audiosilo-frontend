@@ -11,7 +11,7 @@ import { tabularNums } from '@/theme/tabular-nums';
  * value over a small caption, ink-filled when it is the current one. A radio (in a
  * `radiogroup` the caller renders), so a screen reader says which is chosen; at least
  * 54 tall, past the 44pt target. Under large text its words wrap instead of ending in
- * "..." (the grids give each tile more room then: `optionTileBasis`).
+ * "..." and it takes more of its grid's row (`optionTileBasis`).
  */
 export function OptionTile({
   title,
@@ -19,7 +19,7 @@ export function OptionTile({
   selected,
   onPress,
   accessibilityLabel,
-  className,
+  wide,
 }: {
   title: string;
   caption?: string;
@@ -27,9 +27,11 @@ export function OptionTile({
   onPress: () => void;
   /** Defaults to the title and caption read together. */
   accessibilityLabel?: string;
-  className?: string;
+  /** Takes two tiles' share of the row (the whole row under large text). */
+  wide?: boolean;
 }) {
-  const lines = linesFor(1, useLargeText());
+  const large = useLargeText();
+  const lines = linesFor(1, large);
   return (
     <AnimatedPressable
       onPress={onPress}
@@ -42,7 +44,7 @@ export function OptionTile({
         Platform.select({
           web: `cursor-pointer hover:border-border-strong ${FOCUS_RING_OFFSET_CLASS}`,
         }),
-        className,
+        optionTileBasis(large, wide),
       )}
     >
       <Text
@@ -69,7 +71,7 @@ export function OptionTile({
 
 /** A tile's share of its grid's row: four to a row (`basis-[21%]`), a wide tile two
  * (`wide`); under large text two to a row and a wide tile the whole row. */
-export function optionTileBasis(large: boolean, wide = false): string {
+function optionTileBasis(large: boolean, wide = false): string {
   if (wide) return large ? 'grow basis-full' : 'grow-[2] basis-[42%]';
   return large ? 'grow basis-[46%]' : 'grow basis-[21%]';
 }

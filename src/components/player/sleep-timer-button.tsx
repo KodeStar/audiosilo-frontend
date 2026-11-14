@@ -11,7 +11,7 @@ import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock, formatDuration, formatTimeOfDay, formatWallClock } from '@/lib/format';
-import { useLargeText } from '@/lib/text-scale';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { noteInteraction } from '@/playback/last-interaction';
@@ -28,7 +28,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { ControlPill, slopTo44 } from './control-pill';
-import { OptionTile, optionTileBasis } from './option-tile';
+import { OptionTile } from './option-tile';
 import { PlayerSheet } from './player-sheet';
 import {
   isDurationTimer,
@@ -149,7 +149,6 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
             accessibilityLabel={t('player.sleepTimer.minutes', { count: m })}
             selected={isDurationTimer(phase, origin, m)}
             onPress={() => pick(() => startDuration(m))}
-            className={optionTileBasis(large)}
           />
         ))}
         {chapterTarget ? (
@@ -166,7 +165,7 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
             onPress={() =>
               pick(() => startUntilPosition(chapterTarget.position, chapterTarget.label))
             }
-            className={optionTileBasis(large, true)}
+            wide
           />
         ) : null}
       </View>
@@ -199,10 +198,7 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
                   selected && 'border-primary',
                 )}
               >
-                <Text
-                  numberOfLines={large ? undefined : 1}
-                  className={large ? undefined : 'flex-1'}
-                >
+                <Text numberOfLines={linesFor(1, large)} className={large ? undefined : 'flex-1'}>
                   <Text variant="label">{name}</Text>
                   <Text variant="muted">{` · ${chapter}`}</Text>
                 </Text>
