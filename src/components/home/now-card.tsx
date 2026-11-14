@@ -205,6 +205,8 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress & Plac
       onPress={() => openBook(at.connectionId, libraryId, path)}
       accessibilityRole="button"
       accessibilityLabel={t('home.now.openBook', { title })}
+      // Stacked (large text), the cover keeps its own width instead of the column's.
+      className={large ? 'self-start' : undefined}
     >
       <BookCover
         connectionId={at.connectionId}

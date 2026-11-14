@@ -48,6 +48,7 @@ jest.mock('@/playback/store', () => {
 
 /* eslint-disable import/first */
 import { formatWallClock } from '@/lib/format';
+import { setFontScale } from '@/testing/font-scale';
 import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
@@ -272,6 +273,18 @@ describe('SeekTimes', () => {
   it('says file for a book without a whole-book timeline', async () => {
     await render(<SeekTimes elapsed={0} length={600} rate={1} kind="file" />);
     expect(screen.getByText(/^10m left in the file · ends /)).toBeTruthy();
+  });
+
+  // fe#267: one line normally; under large text the middle label wraps, never "...".
+  it('wraps the time left under large text instead of cutting it', async () => {
+    await render(<SeekTimes elapsed={0} length={600} rate={1} />);
+    expect(screen.getByText(/left in the chapter/).props.numberOfLines).toBe(1);
+    try {
+      await setFontScale(1.5);
+      expect(screen.getByText(/left in the chapter/).props.numberOfLines).toBeUndefined();
+    } finally {
+      await setFontScale(1);
+    }
   });
 });
 

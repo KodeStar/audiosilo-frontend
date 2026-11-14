@@ -30,6 +30,7 @@ import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { bookSeriesNumber } from '@/lib/series-position';
 import { webKeyDown } from '@/lib/keyboard';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { useLatest } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -187,6 +188,11 @@ function QueueRow({
   const reduced = useReducedMotion();
   const { openBook } = useOpen();
   const web = Platform.OS === 'web';
+  // Under large text the title and caption wrap; on the web the hover actions float over the
+  // row's end instead of holding their width (rem-sized, they grow with the text and left
+  // the title a column too narrow for one word, fe#267).
+  const large = useLargeText();
+  const floatActions = web && large;
   const title = entryTitle(entry);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -333,16 +339,23 @@ function QueueRow({
             <Text
               variant="label"
               className="text-[13px] web:text-[0.8125rem] leading-[17px] web:leading-[1.0625rem]"
-              numberOfLines={2}
+              numberOfLines={linesFor(2, large)}
             >
               {title}
             </Text>
-            <Text variant="caption" numberOfLines={1}>
+            <Text variant="caption" numberOfLines={linesFor(1, large)}>
               {caption}
             </Text>
           </View>
         </AnimatedPressable>
-        <View className={cn('flex-row', !showActions && 'opacity-0')}>
+        <View
+          testID={`upnext-actions-${index}`}
+          className={cn(
+            'flex-row',
+            floatActions && 'absolute bottom-0 right-1.5 top-0 items-center rounded-xl bg-muted',
+            !showActions && 'opacity-0',
+          )}
+        >
           <RowButton
             icon="play"
             label={t('upnext.playNow', { title })}

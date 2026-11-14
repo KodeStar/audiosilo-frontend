@@ -12,6 +12,7 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { openHousehold } from '@/lib/open';
 import { useLayout } from '@/lib/layout';
 import { isSupportAvailable } from '@/lib/support';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { APP_VERSION } from '@/lib/version';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -170,6 +171,8 @@ function SectionNav({
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
+  // Under large text a name wraps in the narrow column instead of ending in "..." (fe#267).
+  const lines = linesFor(1, useLargeText());
   return (
     <View
       accessibilityLabel={t('settings.sectionsLabel')}
@@ -205,7 +208,7 @@ function SectionNav({
                     'flex-1 text-sm',
                     current ? 'font-sans-semibold text-foreground' : 'text-muted-foreground',
                   )}
-                  numberOfLines={1}
+                  numberOfLines={lines}
                 >
                   {t(paneKey(p))}
                 </Text>
@@ -222,7 +225,7 @@ function SectionNav({
               className={navItemClass(false)}
             >
               <Icon name={HOUSEHOLD_ICON} size={16} color={themed.mutedForeground} />
-              <Text className="flex-1 text-sm text-muted-foreground" numberOfLines={1}>
+              <Text className="flex-1 text-sm text-muted-foreground" numberOfLines={lines}>
                 {t(HOUSEHOLD_LABEL)}
               </Text>
               <Icon name="chevron-right" size={14} color={themed.mutedForeground} />

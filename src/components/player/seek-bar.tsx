@@ -9,7 +9,7 @@ import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { useSliderControl } from '@/components/ui/use-slider-control';
 import { formatClock, formatDuration, formatWallClock } from '@/lib/format';
-import { useFontScale } from '@/lib/text-scale';
+import { linesFor, useFontScale, useLargeText } from '@/lib/text-scale';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { selectBookKey, usePlayer } from '@/playback/store';
@@ -344,6 +344,8 @@ export const SeekTimes = memo(function SeekTimes({
   const wall = timeLeft(elapsed, length, rate)?.seconds ?? 0;
   const time = formatDuration(wall);
   const clock = formatWallClock(new Date(now + wall * 1000));
+  // Under large text the middle label wraps instead of ending in "...".
+  const large = useLargeText();
   return (
     <View className={cn('flex-row items-center justify-between gap-2', className)}>
       <Text variant="caption" style={tabularNums}>
@@ -353,7 +355,7 @@ export const SeekTimes = memo(function SeekTimes({
         variant="caption"
         className="flex-1 text-center font-sans-semibold text-foreground"
         style={tabularNums}
-        numberOfLines={1}
+        numberOfLines={linesFor(1, large)}
       >
         {time ? t(SEGMENT_LEFT[kind], { time, clock }) : ''}
       </Text>

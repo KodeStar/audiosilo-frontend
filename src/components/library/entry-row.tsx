@@ -9,6 +9,7 @@ import { PressableRow } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { formatBitrate, formatDurationFull } from '@/lib/format';
 import { bookHref, libraryHref } from '@/lib/paths';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { GlyphTile } from './glyph-tile';
@@ -28,6 +29,9 @@ export function EntryRow({
 }) {
   const themed = useThemeColors();
   const { t } = useTranslation();
+  // Under large text the name and its line wrap instead of ending in "..." (the browse
+  // list sizes its rows to them then, fe#267).
+  const large = useLargeText();
   const isDir = entry.is_dir;
   const { data: favourites } = useFavourites();
   const toggleFavourite = useToggleFavourite();
@@ -68,11 +72,11 @@ export function EntryRow({
         >
           <GlyphTile icon={isDir ? 'folder' : 'book'} tone={isDir ? 'muted' : 'info'} />
           <View className="flex-1">
-            <Text variant="label" numberOfLines={1}>
+            <Text variant="label" numberOfLines={linesFor(1, large)}>
               {title}
             </Text>
             {meta ? (
-              <Text variant="caption" numberOfLines={1}>
+              <Text variant="caption" numberOfLines={linesFor(1, large)}>
                 {meta}
               </Text>
             ) : null}
