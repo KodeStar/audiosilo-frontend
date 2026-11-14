@@ -63,7 +63,8 @@ function FindShowsContent() {
   const opml = useCapability('podcast_opml', cid);
   // The import lives for the page, whichever section shows.
   const importer = useOpmlImport(cid, params?.libraryId ?? 0);
-  const libraries = useLibrariesOf(cid).data;
+  const librariesRead = useLibrariesOf(cid);
+  const libraries = librariesRead.data;
 
   if (!params) return <EmptyState icon="microphone" title={t('library.detail.badLink')} />;
   if (access === 'unknown') {
@@ -89,9 +90,10 @@ function FindShowsContent() {
     );
   }
 
-  // Only once the libraries are known: a library the server lacks. A books library is
-  // the server's to refuse (`not_podcast_library`).
-  if (libraries && !libraries.some((l) => l.id === params.libraryId)) {
+  // Only once the libraries are known and settled (a cached list read again may hold a
+  // library added since): a library the server lacks. A books library is the server's to
+  // refuse (`not_podcast_library`).
+  if (libraries && !librariesRead.isFetching && !libraries.some((l) => l.id === params.libraryId)) {
     return (
       <View testID="find-shows-library-missing">
         <EmptyState icon="microphone" title={t('library.detail.badLink')} />

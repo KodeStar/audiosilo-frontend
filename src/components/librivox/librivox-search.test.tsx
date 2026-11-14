@@ -30,6 +30,8 @@ type ReadState<T> = {
 };
 // Undefined while the libraries load.
 let mockLibraries: Library[] | undefined = [];
+// The libraries read again (a cached list kept meanwhile).
+let mockLibrariesFetching = false;
 let mockSearch: ReadState<{ results: LibrivoxHit[] }> = {};
 const mockAsked: string[] = [];
 const mockSearchRefetch = jest.fn();
@@ -48,7 +50,7 @@ jest.mock('@/api/hooks', () => {
   return {
     CapabilityError,
     qk: { librivoxWorks: (cid: string) => ['librivoxWork', cid] },
-    useLibrariesOf: () => ({ data: mockLibraries }),
+    useLibrariesOf: () => ({ data: mockLibraries, isFetching: mockLibrariesFetching }),
     useLibrivoxSearch: (q: string) => {
       mockAsked.push(q);
       return q
@@ -128,6 +130,7 @@ async function openWork() {
 
 beforeEach(() => {
   mockLibraries = [library(3, 'Books')];
+  mockLibrariesFetching = false;
   mockSearch = { data: { results: [librivoxHit()] } };
   mockAsked.length = 0;
   mockWorkAsked.length = 0;
@@ -398,6 +401,16 @@ describe('LibrivoxSearch', () => {
     expect(screen.queryByTestId('librivox-search-input')).toBeNull();
     expect(screen.queryByTestId('librivox-library')).toBeNull();
     expect(screen.queryByTestId('header')).toBeNull();
+  });
+
+  it('refuses nothing while a cached list without the library is read again', async () => {
+    mockLibraries = [library(3, 'Books')];
+    mockLibrariesFetching = true;
+    await mount(9);
+    expect(screen.queryByTestId('librivox-library-missing')).toBeNull();
+    await openWork();
+    const add = screen.getByTestId('librivox-add');
+    expect(add.props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
   });
 
   it('refuses a podcast library, and a server with no books library', async () => {

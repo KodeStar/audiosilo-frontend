@@ -25,6 +25,7 @@ let mockCaps: Record<string, boolean | undefined> = {};
 const mockCapCids = new Set<string | undefined>();
 // The connection's libraries; undefined while they load.
 let mockLibraries: { id: number; kind?: string }[] | undefined;
+let mockLibrariesFetching = false;
 const mockLibrariesCids = new Set<string>();
 jest.mock('@/api/hooks', () => ({
   useCapability: (flag: string, cid?: string) => {
@@ -33,7 +34,7 @@ jest.mock('@/api/hooks', () => ({
   },
   useLibrariesOf: (cid: string) => {
     mockLibrariesCids.add(cid);
-    return { data: mockLibraries };
+    return { data: mockLibraries, isFetching: mockLibrariesFetching };
   },
 }));
 
@@ -100,6 +101,7 @@ beforeEach(() => {
   mockCid = 'c1';
   mockCapCids.clear();
   mockLibraries = [{ id: 7, kind: 'podcasts' }];
+  mockLibrariesFetching = false;
   mockLibrariesCids.clear();
   mockCaps = { podcasts: true, podcast_discovery: true, podcast_opml: true };
   mockSetParams.mockReset();
@@ -201,6 +203,13 @@ describe('FindShowsScreen', () => {
     expect(screen.queryByTestId('section-search')).toBeNull();
     expect(screen.queryByTestId('section-address')).toBeNull();
     expect([...mockLibrariesCids]).toEqual(['c2']);
+  });
+
+  it('refuses nothing while a cached list without the library is read again', async () => {
+    mockLibraries = [{ id: 3, kind: 'podcasts' }];
+    mockLibrariesFetching = true;
+    await mountWithPortal(<FindShowsScreen />);
+    expect(screen.queryByTestId('find-shows-library-missing')).toBeNull();
   });
 
   it('shows the page while the libraries load', async () => {

@@ -62,7 +62,8 @@ export function LibrivoxSearch({
   const [openWork, setOpenWork] = useState<string | null>(null);
   // The books libraries (a podcast library can't take a LibriVox book), in the server's
   // order; undefined until they are known.
-  const known = useLibrariesOf(connectionId).data?.filter((l) => !isPodcastLibrary(l));
+  const librariesRead = useLibrariesOf(connectionId);
+  const known = librariesRead.data?.filter((l) => !isPodcastLibrary(l));
   const libraries = known ?? [];
   const [picked, setPicked] = useState<number>(libraryId);
   const named = libraries.find((l) => l.id === libraryId);
@@ -90,6 +91,16 @@ export function LibrivoxSearch({
   const failure =
     asked && search.isError && !search.data && !offline ? readErrorKey(search.error) : null;
   const hits = search.data?.results ?? [];
+
+  // Refused only on a settled list: a cached one read again (a library added since) may
+  // hold it yet.
+  if (known && !named && !librariesRead.isFetching) {
+    return (
+      <View testID="librivox-library-missing">
+        <EmptyState icon="book" title={t('library.detail.badLink')} />
+      </View>
+    );
+  }
 
   const form = (
     <View className="gap-3 pb-4">
@@ -168,14 +179,6 @@ export function LibrivoxSearch({
         hint={t('librivox.search.noneHint')}
       />
     );
-
-  if (known && !named) {
-    return (
-      <View testID="librivox-library-missing">
-        <EmptyState icon="book" title={t('library.detail.badLink')} />
-      </View>
-    );
-  }
 
   return (
     <FlatList
