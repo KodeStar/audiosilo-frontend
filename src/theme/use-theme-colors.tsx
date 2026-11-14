@@ -42,7 +42,7 @@ export function ScopedThemeColors({
   theme: 'light' | 'dark';
   children: ReactNode;
 }) {
-  const highContrast = useContext(ThemeColorsContext)?.highContrast ?? false;
+  const { highContrast } = useThemeScheme();
   const value = useMemo(() => ({ scheme: theme, highContrast }), [theme, highContrast]);
   return (
     <ScopedTheme theme={theme}>

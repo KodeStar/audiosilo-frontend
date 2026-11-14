@@ -28,8 +28,7 @@ import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { loadInitialProgress } from '@/playback/progress-sync';
 import { usePlayer } from '@/playback/store';
-import { themeColors } from '@/theme/high-contrast';
-import { ScopedThemeColors, useThemeScheme } from '@/theme/use-theme-colors';
+import { ScopedThemeColors } from '@/theme/use-theme-colors';
 
 import type { BookAt } from './home-model';
 import { overlapStart, previouslyOn } from './previously-on-model';
@@ -145,7 +144,6 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
     recaps: work?.recaps ?? [],
     chapterStarts,
   });
-  const { highContrast } = useThemeScheme();
   if (!card || !saved) return null;
 
   const title = bookTitle(book?.title, path);
@@ -166,7 +164,6 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
       })
       .finally(() => setBusy(false));
   };
-  const ink = themeColors('dark', highContrast);
 
   return (
     <ScopedThemeColors theme="dark">
@@ -205,7 +202,7 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
                   Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}` }),
                 )}
               >
-                <Icon name="close" size={16} color={ink.mutedForeground} />
+                <Icon name="close" size={16} />
               </AnimatedPressable>
             </View>
             <Text variant="display" className="text-[22px] leading-[26px] md:text-[24px]">
