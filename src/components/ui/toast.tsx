@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { create } from 'zustand';
 
 import { useLayout } from '@/lib/layout';
+import { screenReaderOn, watchScreenReader } from '@/lib/screen-reader';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -25,6 +26,12 @@ import { slopTo44 } from './touch-target';
  * `toast()` can be called from anywhere (no hook, no provider): the state lives in a
  * tiny store and `<ToastHost />` (mounted once, in the root layout) renders it. Each
  * toast is announced to screen readers and dismisses itself after `duration`.
+ *
+ * Timing for a screen reader (fe#267, WCAG 2.2.1): with VoiceOver or TalkBack on, a toast
+ * with an action (Undo) stays until it is answered or closed, and one without stays three
+ * times as long (`toastDuration`): reaching an action by swiping takes longer than 8 s. The
+ * web can't tell a screen reader is on, so there a toast's timer pauses while the pointer
+ * is over it or focus is in it, and starts again from where it was.
  */
 export type ToastOptions = {
   title: string;
@@ -47,17 +54,64 @@ type ToastItem = ToastOptions & { id: number };
 
 /** Older toasts beyond this are dropped: a stack, not a log. */
 const MAX_VISIBLE = 3;
+/** How much longer a toast without an action stays while a screen reader is on. */
+const SCREEN_READER_FACTOR = 3;
 
 const useToasts = create<{ items: ToastItem[] }>(() => ({ items: [] }));
 
 let nextId = 1;
-const timers = new Map<number, ReturnType<typeof setTimeout>>();
+/** A toast's auto-dismiss: the running timeout (none while paused), when it started and
+ * how much of its time was left then. */
+type Timer = {
+  handle?: ReturnType<typeof setTimeout>;
+  started: number;
+  remaining: number;
+  fire: () => void;
+};
+const timers = new Map<number, Timer>();
+
+watchScreenReader();
+
+/**
+ * How long a toast stays, in ms, or null for "until answered": the caller's `duration`,
+ * else 5 s (8 s with an action); with a screen reader on, a toast with an action stays and
+ * one without stays `SCREEN_READER_FACTOR` times as long.
+ */
+export function toastDuration(
+  options: Pick<ToastOptions, 'duration' | 'action'>,
+  screenReader: boolean,
+): number | null {
+  const base = options.duration ?? (options.action ? 8000 : 5000);
+  if (!screenReader) return base;
+  return options.action ? null : base * SCREEN_READER_FACTOR;
+}
 
 /** Cancels a toast's auto-dismiss timer, if it still has one. */
 function clearTimer(id: number) {
   const timer = timers.get(id);
-  if (timer) clearTimeout(timer);
+  if (timer?.handle) clearTimeout(timer.handle);
   timers.delete(id);
+}
+
+function run(timer: Timer) {
+  timer.started = Date.now();
+  timer.handle = setTimeout(timer.fire, timer.remaining);
+}
+
+/** Holds a toast's auto-dismiss (the web: the pointer is over it or focus is in it). */
+export function pauseToast(id: number) {
+  const timer = timers.get(id);
+  if (!timer?.handle) return;
+  clearTimeout(timer.handle);
+  timer.handle = undefined;
+  timer.remaining = Math.max(0, timer.remaining - (Date.now() - timer.started));
+}
+
+/** Lets a paused toast's auto-dismiss run on, for the time it had left. */
+export function resumeToast(id: number) {
+  const timer = timers.get(id);
+  if (!timer || timer.handle) return;
+  run(timer);
 }
 
 /** Removes a toast (a no-op when it has already gone). */
@@ -69,19 +123,24 @@ export function dismissToast(id: number) {
 /** Shows a toast and returns its id (for an early `dismissToast`). */
 export function toast(options: ToastOptions): number {
   const id = nextId++;
-  const duration = options.duration ?? (options.action ? 8000 : 5000);
+  const duration = toastDuration(options, screenReaderOn());
   useToasts.setState((s) => {
     const items = [...s.items, { ...options, id }];
     for (const old of items.slice(0, Math.max(0, items.length - MAX_VISIBLE))) clearTimer(old.id);
     return { items: items.slice(-MAX_VISIBLE) };
   });
-  timers.set(
-    id,
-    setTimeout(() => {
-      dismissToast(id);
-      options.onTimeout?.();
-    }, duration),
-  );
+  if (duration !== null) {
+    const timer: Timer = {
+      started: 0,
+      remaining: duration,
+      fire: () => {
+        dismissToast(id);
+        options.onTimeout?.();
+      },
+    };
+    timers.set(id, timer);
+    run(timer);
+  }
   return id;
 }
 
@@ -134,7 +193,18 @@ function ToastCard({ item }: { item: ToastItem }) {
       entering={FadeInDown.duration(320).reduceMotion(ReduceMotion.System)}
       exiting={FadeOut.duration(200).reduceMotion(ReduceMotion.System)}
     >
-      <View className="flex-row items-start gap-3 rounded-menu bg-primary py-3 pl-3.5 pr-2 shadow-overlay">
+      <View
+        className="flex-row items-start gap-3 rounded-menu bg-primary py-3 pl-3.5 pr-2 shadow-overlay"
+        // The web: the timer holds while the pointer is over the toast or focus is in it.
+        {...(Platform.OS === 'web'
+          ? {
+              onPointerEnter: () => pauseToast(id),
+              onPointerLeave: () => resumeToast(id),
+              onFocus: () => pauseToast(id),
+              onBlur: () => resumeToast(id),
+            }
+          : {})}
+      >
         <View className="flex-1 gap-0.5 py-0.5">
           <Text className="font-sans-bold text-sm text-primary-foreground">{title}</Text>
           {description ? (
