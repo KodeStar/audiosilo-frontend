@@ -79,18 +79,21 @@ const FADED: [Token, Token, number][] = [['primaryForeground', 'primary', 0.7]];
  * text; light keeps it on `card`. */
 const TEXT_DARK: [Token, Token[]][] = [['subtleForeground', ['secondary']]];
 
-const SETS: [string, ThemeColors][] = [
-  ['light', colors.light],
-  ['dark', colors.dark],
-  ['high-contrast light', colors.highContrast.light],
-  ['high-contrast dark', colors.highContrast.dark],
+const DARK_TEXT = [...TEXT, ...TEXT_DARK];
+
+/** Each set with the text pairs its scheme draws. */
+const SETS: [string, ThemeColors, [Token, Token[]][]][] = [
+  ['light', colors.light, TEXT],
+  ['dark', colors.dark, DARK_TEXT],
+  ['high-contrast light', colors.highContrast.light, TEXT],
+  ['high-contrast dark', colors.highContrast.dark, DARK_TEXT],
 ];
 
 const pairs = (list: [Token, Token[]][]) =>
   list.flatMap(([fg, surfaces]) => surfaces.map((bg) => [fg, bg] as const));
 
-describe.each(SETS)('the %s colours', (_name, t) => {
-  it.each(pairs(TEXT))('text %s on %s meets 4.5:1', (fg, bg) => {
+describe.each(SETS)('the %s colours', (_name, t, text) => {
+  it.each(pairs(text))('text %s on %s meets 4.5:1', (fg, bg) => {
     expect(contrast(t[fg], t[bg])).toBeGreaterThanOrEqual(4.5);
   });
 
@@ -100,15 +103,6 @@ describe.each(SETS)('the %s colours', (_name, t) => {
 
   it.each(FADED)('%s on %s at %s alpha meets 4.5:1', (fg, bg, alpha) => {
     expect(contrast(over(t[fg], t[bg], alpha), t[bg])).toBeGreaterThanOrEqual(4.5);
-  });
-});
-
-describe.each([
-  ['dark', colors.dark],
-  ['high-contrast dark', colors.highContrast.dark],
-] as const)('the %s colours', (_name, t) => {
-  it.each(pairs(TEXT_DARK))('text %s on %s meets 4.5:1', (fg, bg) => {
-    expect(contrast(t[fg], t[bg])).toBeGreaterThanOrEqual(4.5);
   });
 });
 
