@@ -13,7 +13,7 @@ import {
   AccessoryEpisodeFetch,
   useEpisodeFetchLine,
 } from '@/components/podcasts/episode-fetch-panel';
-import { SkipButton } from '@/components/player/skip-button';
+import { SKIP_PILL_BOX, SkipButton } from '@/components/player/skip-button';
 import { PlayButton } from '@/components/player/transport-controls';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { MINI_TITLE_CLASS, Text } from '@/components/ui/text';
@@ -126,7 +126,7 @@ export function AccessoryPlayer() {
           color={themed.foreground}
           fontSize={12}
           hitSlop={slopTo44(2.5)}
-          className="h-10 min-w-10 items-center justify-center rounded-full px-1"
+          className={`${SKIP_PILL_BOX} items-center justify-center rounded-full`}
           accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
         />
       ) : null}

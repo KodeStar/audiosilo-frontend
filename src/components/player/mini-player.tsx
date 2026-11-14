@@ -15,7 +15,7 @@ import { EpisodeFetchStrip } from '@/components/podcasts/episode-fetch-panel';
 import { ChapterProgressLine } from '@/components/player/chapter-progress';
 import { usePlayerOnTop } from '@/components/player/player-sheets';
 import { pillClass, slopTo44 } from '@/components/player/control-pill';
-import { SkipButton } from '@/components/player/skip-button';
+import { SKIP_PILL_BOX, SkipButton } from '@/components/player/skip-button';
 import { PlayButton } from '@/components/player/transport-controls';
 import { useSleepCountdown } from '@/components/player/use-sleep-countdown';
 import { usePlayingTimeLeft } from '@/components/player/use-time-left';
@@ -283,9 +283,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue
           color={themed.foreground}
           fontSize={13}
           hitSlop={slopTo44(2.5)}
-          // A min width: the label grows with the text size (to 1.3x) and "-15s" must not
-          // wrap to "-15 / s" in a 40 box (fe#267).
-          className={pillClass('ghost', 'h-10 min-w-10 px-1')}
+          className={pillClass('ghost', SKIP_PILL_BOX)}
           accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
         />
         <PlayButton size="sm" plain />

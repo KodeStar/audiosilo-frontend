@@ -4,9 +4,13 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { scaleCapped, useFontScale } from '@/lib/text-scale';
 import { tabularNums } from '@/theme/tabular-nums';
 
-/** How far the label follows the text size inside a fixed button (the mini player's 44
- * box, the iOS accessory pill): "-15s" still fits at this. */
+/** How far the label follows the text size inside a compact button (the mini player's
+ * pill, the iOS accessory pill): "-15s" still fits at this. */
 export const SKIP_LABEL_MAX_SCALE = 1.3;
+
+/** The compact pill's box (mini player, iOS accessory): a min width, so the label grows
+ * with the text size on one line instead of wrapping to "-15 / s" (fe#267). */
+export const SKIP_PILL_BOX = 'h-10 min-w-10 px-1';
 
 /**
  * A directional skip control rendered as plain signed text: back reads `-15s`,
@@ -30,7 +34,7 @@ export function SkipButton({
   color,
   fontSize = 13,
   maxFontScale = SKIP_LABEL_MAX_SCALE,
-  className = 'h-11 w-11 items-center justify-center',
+  className = 'h-11 min-w-11 items-center justify-center px-1',
   hitSlop = 8,
   style,
   accessibilityLabel,
