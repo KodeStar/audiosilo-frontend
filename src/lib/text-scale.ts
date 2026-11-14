@@ -55,8 +55,9 @@ export function linesFor(lines: number, large: boolean): number | undefined {
   return large ? undefined : lines;
 }
 
-// Dimensions' `change` fires when the font scale changes on iOS and Android (and on any
-// window resize on the web, which is when a browser re-reads its root font size too).
+// Dimensions' `change` fires when the font scale changes on iOS and Android, and on any
+// window resize on the web. A browser's font size changed in its settings resizes nothing
+// and so fires nothing: the web reads it at the next render (or reload), not live.
 function subscribe(onChange: () => void): () => void {
   const subscription = Dimensions.addEventListener('change', onChange);
   return () => subscription.remove();
