@@ -7,6 +7,7 @@ import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock, formatDurationOrZero } from '@/lib/format';
+import { isLargeText, scaleCapped, useFontScale } from '@/lib/text-scale';
 import { useLatest } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
@@ -17,7 +18,17 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import { trackLabel } from '../transport';
 import { chapterRows, type ChapterRow } from './companion-model';
 
+/** A row's height at the default text size. The list's rows are one height (its
+ * `getItemLayout`), so it follows the text scale: `chapterRowHeight`. */
 const ROW_H = 52;
+/** Past this text scale the rows stop growing (iOS's largest size is 3.12). */
+const ROW_MAX_SCALE = 3.2;
+
+/** A chapter row's height at text `scale`: grown with it, so a title of up to two lines
+ * fits under large text. */
+export function chapterRowHeight(scale: number): number {
+  return scaleCapped(ROW_H, scale, ROW_MAX_SCALE);
+}
 
 type RowProps = {
   index: number;
@@ -25,6 +36,10 @@ type RowProps = {
   state: ChapterRow['state'] | null;
   /** What the right-hand column says ("in 2h 4m", "-12:40"), already formatted. */
   side: string;
+  /** The row's height (`chapterRowHeight`). */
+  height: number;
+  /** The title may take two lines (large text). */
+  wrap: boolean;
   /** Stable across ticks (`useLatest`), so it never breaks the memo. */
   onPress: (index: number) => void;
 };
@@ -33,7 +48,7 @@ type RowProps = {
  * time left in it, or how long until it starts. Memoised on primitives, so a tick only
  * redraws the rows whose words changed (the current one each second, an ahead one when
  * its minute turns). */
-const Row = memo(function Row({ index, label, state, side, onPress }: RowProps) {
+const Row = memo(function Row({ index, label, state, side, height, wrap, onPress }: RowProps) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const current = state === 'current';
@@ -50,7 +65,7 @@ const Row = memo(function Row({ index, label, state, side, onPress }: RowProps) 
             ? `${label}, ${side}`
             : label
       }
-      style={{ height: ROW_H }}
+      style={{ height }}
       className={cn(
         'flex-row items-center gap-3 rounded-control px-3',
         current ? 'bg-brand-soft' : 'active:bg-accent',
@@ -59,17 +74,18 @@ const Row = memo(function Row({ index, label, state, side, onPress }: RowProps) 
         }),
       )}
     >
-      <View className="w-7 items-center">
+      {/* A min width: the number's own width wins under large text, never a digit a line. */}
+      <View className="min-w-7 items-center">
         {current ? (
           <Icon name="play" size={12} color={themed.brandInk} />
         ) : (
-          <Text variant="caption" style={tabularNums}>
+          <Text variant="caption" style={tabularNums} numberOfLines={1}>
             {index + 1}
           </Text>
         )}
       </View>
       <Text
-        numberOfLines={1}
+        numberOfLines={wrap ? 2 : 1}
         className={cn(
           'flex-1 text-sm',
           current ? 'font-sans-semibold text-brand-ink' : past ? 'text-muted-foreground' : '',
@@ -118,6 +134,8 @@ export function ChaptersPanel({
   const chapterIndex = usePlayer((s) => selectCurrentChapter(s)?.index ?? 0);
   const trackIndex = usePlayer((s) => s.snapshot.trackIndex);
   const rate = usePlayer((s) => s.rate);
+  const scale = useFontScale();
+  const rowHeight = chapterRowHeight(scale);
   const seekBook = usePlayer((s) => s.seekBook);
   const goToTrack = usePlayer((s) => s.goToTrack);
 
@@ -163,6 +181,8 @@ export function ChaptersPanel({
       label={labels[i]}
       state={rows[i]?.state ?? null}
       side={sideOf(rows[i])}
+      height={rowHeight}
+      wrap={isLargeText(scale)}
       onPress={onPress}
     />
   );
@@ -175,7 +195,7 @@ export function ChaptersPanel({
       extraData={`${position}|${current}|${rate}`}
       keyExtractor={(_, i) => String(i)}
       initialScrollIndex={Math.max(0, Math.min(current - 2, labels.length - 1))}
-      getItemLayout={(_, index) => ({ length: ROW_H, offset: ROW_H * index, index })}
+      getItemLayout={(_, index) => ({ length: rowHeight, offset: rowHeight * index, index })}
       onScrollToIndexFailed={() => {}}
       contentContainerStyle={{ paddingBottom: 12 }}
       renderItem={({ index }) => render(index)}

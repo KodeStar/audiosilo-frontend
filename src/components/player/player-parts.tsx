@@ -22,6 +22,7 @@ import { formatCount, formatSpeed } from '@/lib/format';
 import { pushInShell } from '@/lib/open';
 import { bookHref, finishedHref } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { selectBookLength, selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 import { useSession } from '@/stores/session';
@@ -73,6 +74,8 @@ export function PlayerHeader({
     (l) => l.connectionId === np?.connectionId && l.id === np?.libraryId,
   )?.name;
   const context = playerContext(book, library);
+  // Under large text the two lines wrap rather than end in "...".
+  const lines = linesFor(1, useLargeText());
   if (!np) return null;
   const { connectionId, libraryId, path } = np;
 
@@ -88,7 +91,7 @@ export function PlayerHeader({
   };
 
   return (
-    <View className="h-14 flex-row items-center gap-2 px-3">
+    <View className="min-h-14 flex-row items-center gap-2 px-3 py-1">
       <ControlPill
         onPress={onClose}
         label={t('player.full.minimise')}
@@ -99,12 +102,12 @@ export function PlayerHeader({
       </ControlPill>
       <View className="min-w-0 flex-1 items-center">
         {server ? (
-          <Text variant="eyebrow" className="text-[10.5px]" numberOfLines={1}>
+          <Text variant="eyebrow" className="text-center text-[10.5px]" numberOfLines={lines}>
             {t('player.full.playingFrom', { server })}
           </Text>
         ) : null}
         {context ? (
-          <Text variant="label" className="text-[13px]" numberOfLines={1}>
+          <Text variant="label" className="text-center text-[13px]" numberOfLines={lines}>
             {context.kind === 'series'
               ? context.position !== undefined
                 ? t('player.full.seriesBook', {
@@ -181,6 +184,7 @@ export function PlayerStatusLine() {
   const sync = usePlaceSync(cid, playing);
   const percent = usePlayingPercent();
   const left = usePlayingTimeLeft();
+  const large = useLargeText();
 
   if (undo) {
     return (
@@ -197,9 +201,14 @@ export function PlayerStatusLine() {
     left,
   ].filter(Boolean);
   return (
-    <View className="h-[34px] flex-row items-center justify-center gap-1.5 px-2">
+    <View className="min-h-[34px] flex-row items-center justify-center gap-1.5 px-2">
       {sync ? <Icon name={sync.icon} size={13} color={themed.mutedForeground} /> : null}
-      <Text variant="caption" numberOfLines={1} style={tabularNums} className="shrink">
+      <Text
+        variant="caption"
+        numberOfLines={linesFor(1, large)}
+        style={tabularNums}
+        className="shrink text-center"
+      >
         {parts.join(' · ')}
       </Text>
     </View>

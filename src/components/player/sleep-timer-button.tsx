@@ -199,7 +199,10 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
                   selected && 'border-primary',
                 )}
               >
-                <Text numberOfLines={large ? undefined : 1} className={large ? undefined : 'flex-1'}>
+                <Text
+                  numberOfLines={large ? undefined : 1}
+                  className={large ? undefined : 'flex-1'}
+                >
                   <Text variant="label">{name}</Text>
                   <Text variant="muted">{` · ${chapter}`}</Text>
                 </Text>

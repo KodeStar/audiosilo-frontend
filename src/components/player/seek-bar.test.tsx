@@ -51,7 +51,7 @@ import { formatWallClock } from '@/lib/format';
 import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
-import { PlayerSeekBar, SeekBar, SeekTimes, seekTextureKey } from './seek-bar';
+import { PlayerSeekBar, SeekBar, seekBarHeight, SeekTimes, seekTextureKey } from './seek-bar';
 /* eslint-enable import/first */
 
 const player = usePlayer as unknown as UseBoundStore<StoreApi<MockPlayer>>;
@@ -232,6 +232,14 @@ describe('SeekBar', () => {
     await render(<SeekBar {...bar({ peaks: [0.1, 0.9, 0.4] })} />);
     await layout();
     expect(screen.getByTestId('seek-bars-played')).toBeTruthy();
+  });
+});
+
+describe('seekBarHeight', () => {
+  it('is 44 at the default size and grows with the control scale', () => {
+    expect(seekBarHeight(1)).toBe(44);
+    expect(seekBarHeight(0.9)).toBe(44);
+    expect(seekBarHeight(1.5)).toBe(66);
   });
 });
 

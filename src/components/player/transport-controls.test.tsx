@@ -26,7 +26,17 @@ jest.mock('@/playback/store', () => {
 import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
-import { PlayButton, TransportControls } from './transport-controls';
+import { setFontScale } from '@/testing/font-scale';
+
+import {
+  CONTROL_MAX_SCALE,
+  controlScale,
+  PlayButton,
+  scaledTransportWidth,
+  TransportControls,
+  transportDims,
+  transportWidth,
+} from './transport-controls';
 /* eslint-enable import/first */
 
 const player = usePlayer as unknown as UseBoundStore<StoreApi<MockPlayer>>;
@@ -111,6 +121,57 @@ describe('TransportControls', () => {
     player.setState({ nowPlaying: null });
     await render(<TransportControls />);
     expect(screen.toJSON()).toBeNull();
+  });
+});
+
+describe('the transport grows with the text size (fe#267)', () => {
+  afterEach(async () => {
+    await setFontScale(1);
+  });
+
+  it('follows the text scale up to its cap, never below 1', () => {
+    expect(controlScale('md', 1)).toBe(1);
+    expect(controlScale('md', 0.85)).toBe(1);
+    expect(controlScale('md', 1.2)).toBe(1.2);
+    expect(controlScale('md', 3.12)).toBe(CONTROL_MAX_SCALE);
+    expect(CONTROL_MAX_SCALE).toBe(1.5);
+  });
+
+  it.each([
+    // A 320 wide phone at the largest display size, a 360 and a 400 one: the phone
+    // column is the width less its 20 pt sides.
+    [320, 280],
+    [360, 320],
+    [400, 360],
+  ])('fits a %i wide phone at the largest text size', (_phone, room) => {
+    const scale = controlScale('md', 3.12, room);
+    expect(scaledTransportWidth('md', scale)).toBeLessThanOrEqual(room);
+    // Every button keeps the 44 pt target.
+    expect(transportDims('md', scale).button).toBeGreaterThanOrEqual(44);
+  });
+
+  it('shrinks a transport wider than its column at the default size, to a floor', () => {
+    expect(transportWidth('md')).toBe(286);
+    const scale = controlScale('md', 1, 280);
+    expect(scale).toBeLessThan(1);
+    expect(scaledTransportWidth('md', scale)).toBeLessThanOrEqual(280);
+    expect(controlScale('md', 1, 100)).toBe(0.9);
+  });
+
+  it('draws the full player bigger at a large text size, the dock not', async () => {
+    await setFontScale(2);
+    await render(<TransportControls size="md" room={600} />);
+    const play = screen.getByRole('button', { name: 'Play' });
+    expect(StyleSheet.flatten(play.props.style)).toMatchObject({ width: 105, height: 105 });
+    const back = screen.getByRole('button', { name: 'Back 15 seconds' });
+    expect(StyleSheet.flatten(back.props.style)).toMatchObject({ width: 72, height: 72 });
+    expect(StyleSheet.flatten(screen.getByText('-15s').props.style)).toMatchObject({
+      fontSize: 23,
+    });
+    await render(<TransportControls size="sm" />);
+    expect(
+      StyleSheet.flatten(screen.getByRole('button', { name: 'Play' }).props.style),
+    ).toMatchObject({ width: 44, height: 44 });
   });
 });
 

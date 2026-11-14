@@ -20,6 +20,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
 import { useLayout } from '@/lib/layout';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
@@ -96,6 +97,7 @@ function PlayerTitles({ phone, onChapters }: { phone: boolean; onChapters: () =>
   const np = usePlayer((s) => s.nowPlaying);
   const chapter = usePlayer(selectCurrentChapter);
   const trackIndex = usePlayer((s) => s.snapshot.trackIndex);
+  const large = useLargeText();
   if (!np) return null;
   const { queue, title, author } = np;
   const track = queue.tracks[trackIndex];
@@ -125,7 +127,7 @@ function PlayerTitles({ phone, onChapters }: { phone: boolean; onChapters: () =>
           {heading}
         </Text>
       )}
-      <Text variant="muted" className="text-center" numberOfLines={1}>
+      <Text variant="muted" className="text-center" numberOfLines={linesFor(1, large)}>
         {author ? `${title} · ${author}` : title}
       </Text>
     </View>
@@ -208,10 +210,13 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   const w = width || windowWidth;
   const bottomPad = insets.bottom + (phone ? 12 : 24);
   const coverSize = phone ? phoneCoverSize(w, coverSlot) : playerCoverSize(layout, w, height);
+  // The main column's width, which the transport (grown with the text size) must fit.
+  const columnMax = desktop ? 640 : 560;
+  const room = Math.min(columnMax, desktop ? w - COMPANION_WIDTH - 80 : w - (phone ? 40 : 96));
   const wash = playerWash(book?.cover_color, themed.mutedForeground, themed.brand);
 
   const main = (
-    <PlayerColumn maxWidth={desktop ? 640 : 560} fill={phone}>
+    <PlayerColumn maxWidth={columnMax} fill={phone}>
       {phone ? (
         <Animated.View
           testID="player-cover-slot"
@@ -251,7 +256,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
           />
           <PlayerBookTimeline pins={pins} onTip={setTimelineTip} />
         </View>
-        <TransportControls size={phone ? 'md' : 'lg'} className="py-1" />
+        <TransportControls size={phone ? 'md' : 'lg'} room={room} className="py-1" />
         <PlayerErrorLine />
         <PlayerActions wide={!phone} upNext={!desktop} />
         {phone ? <CompanionChips /> : null}
