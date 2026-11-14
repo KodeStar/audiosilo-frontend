@@ -82,8 +82,9 @@ export function FilterChip({
       {count === undefined ? null : (
         <Text
           className={cn(
-            'font-sans text-[11.5px] opacity-60',
-            selected ? 'text-primary-foreground' : 'text-foreground',
+            // Muted, not faded: `opacity-60` ink on a card was 4.48:1, under AA.
+            'font-sans text-[11.5px]',
+            selected ? 'text-primary-foreground/75' : 'text-muted-foreground',
           )}
           style={tabularNums}
         >

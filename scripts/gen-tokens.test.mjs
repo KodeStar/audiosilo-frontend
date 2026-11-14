@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import {
   camelName,
   normalizeColor,
+  parseHighContrast,
   parsePalette,
   parseThemes,
   renderCss,
@@ -90,12 +91,49 @@ test('renderCss emits the palette as @theme and the themes as Uniwind variants',
   assert.match(css, /@variant dark \{\n {6}--color-brand-ink: #f78bbb;\n {4}\}/);
 });
 
-test('renderTs emits plain palette colours and camelCased theme colours', () => {
-  const ts = renderTs(
-    { white: '#ffffff' },
-    { light: { 'card-foreground': '#121c36' }, dark: { 'card-foreground': '#e7ebf4' } },
+test("parseHighContrast lays each scheme's overrides over its theme", () => {
+  const themes = {
+    light: { fg: '#111111', border: '#eeeeee' },
+    dark: { fg: '#eeeeee', border: '#222222' },
+  };
+  const hc = parseHighContrast(
+    { $comment: 'ignored', light: { border: '#888888' }, dark: { fg: '#FFFFFF' } },
+    themes,
   );
+  assert.deepEqual(hc.light, { fg: '#111111', border: '#888888' });
+  assert.deepEqual(hc.dark, { fg: '#ffffff', border: '#222222' });
+  // The themes themselves are untouched.
+  assert.equal(themes.light.border, '#eeeeee');
+});
+
+test('parseHighContrast rejects unknown tokens, bad colours and a missing scheme', () => {
+  const themes = { light: { fg: '#111111' }, dark: { fg: '#eeeeee' } };
+  assert.throws(
+    () => parseHighContrast({ light: { nope: '#000000' }, dark: {} }, themes),
+    /highContrast\.light\.nope is not a theme token/,
+  );
+  assert.throws(
+    () => parseHighContrast({ light: {}, dark: { fg: 'white' } }, themes),
+    /highContrast\.dark\.fg is not a colour/,
+  );
+  assert.throws(() => parseHighContrast({ light: {} }, themes), /highContrast\.dark is required/);
+  assert.throws(() => parseHighContrast(undefined, themes), /highContrast is required/);
+});
+
+test('renderTs emits plain palette colours, camelCased theme colours and the high-contrast sets', () => {
+  const themes = {
+    light: { 'card-foreground': '#121c36' },
+    dark: { 'card-foreground': '#e7ebf4' },
+  };
+  const ts = renderTs({ white: '#ffffff' }, themes, {
+    light: { 'card-foreground': '#000000' },
+    dark: { 'card-foreground': '#ffffff' },
+  });
   assert.match(ts, /white: '#ffffff',/);
-  assert.match(ts, /light: \{\n {4}cardForeground: '#121c36', \/\/ --color-card-foreground/);
-  assert.match(ts, /dark: \{\n {4}cardForeground: '#e7ebf4',/);
+  assert.match(ts, /\n {2}light: \{\n {4}cardForeground: '#121c36', \/\/ --color-card-foreground/);
+  assert.match(ts, /\n {2}dark: \{\n {4}cardForeground: '#e7ebf4',/);
+  assert.match(
+    ts,
+    /highContrast: \{\n {4}light: \{\n {6}cardForeground: '#000000',[^\n]*\n {4}\},\n {4}dark: \{\n {6}cardForeground: '#ffffff',/,
+  );
 });

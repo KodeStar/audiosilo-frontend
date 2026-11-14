@@ -28,7 +28,7 @@ describe('ProgressBar', () => {
     const { track } = await bar(<ProgressBar fraction={0.5} className="h-1.5 bg-white/35" />);
     expect(track).toContain('h-1.5');
     expect(track).toContain('bg-white/35');
-    expect(track).not.toContain('bg-muted');
+    expect(track).not.toContain('bg-track');
   });
 
   it('lets the caller recolour the fill (a second bar where the pink is elsewhere)', async () => {

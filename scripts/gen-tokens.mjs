@@ -4,7 +4,11 @@
 //     an `@theme` block, and the Stacks semantic `themes` as Uniwind theme variables
 //     (`@variant light` / `@variant dark`), which Tailwind/Uniwind turn into
 //     `bg-*`/`text-*`/`border-*` utilities that follow the theme, and
-//   - src/theme/tokens.ts, the raw `colors` values for native props.
+//   - src/theme/tokens.ts, the raw `colors` values for native props, plus the
+//     high-contrast sets (`colors.highContrast.light` / `.dark`: each theme with the
+//     `highContrast` overrides from tokens.json laid over it). They are not in the CSS:
+//     the ThemeProvider pushes them into Uniwind's theme variables at run time
+//     (src/theme/high-contrast.ts), since the switch must work without the OS asking.
 //
 //   npm run gen:tokens                      # rewrite both outputs
 //   node scripts/gen-tokens.mjs --check     # exit 1 if either is stale (no writes)
@@ -98,6 +102,30 @@ export function parseThemes(themes, paletteNames = []) {
   return out;
 }
 
+/**
+ * Validates the `highContrast` block (overrides of `themes`, per scheme: only keys
+ * `themes` has, every value a colour) and returns each scheme's FULL high-contrast set:
+ * the theme with its overrides laid over it, in the theme's key order.
+ */
+export function parseHighContrast(highContrast, themes) {
+  if (!highContrast) throw new Error('tokens.json: highContrast is required');
+  const out = {};
+  for (const scheme of ['light', 'dark']) {
+    const overrides = highContrast[scheme];
+    if (!overrides) throw new Error(`tokens.json: highContrast.${scheme} is required`);
+    out[scheme] = { ...themes[scheme] };
+    for (const name of keysOf(overrides)) {
+      if (!(name in themes[scheme])) {
+        throw new Error(`tokens.json: highContrast.${scheme}.${name} is not a theme token`);
+      }
+      const v = normalizeColor(overrides[name]);
+      if (!v) throw new Error(`tokens.json: highContrast.${scheme}.${name} is not a colour`);
+      out[scheme][name] = v;
+    }
+  }
+  return out;
+}
+
 /** The generated CSS region (unformatted). */
 export function renderCss(palette, themes) {
   const vars = (values, indent) =>
@@ -129,13 +157,16 @@ export function renderCss(palette, themes) {
 }
 
 /** src/theme/tokens.ts (unformatted). */
-export function renderTs(palette, themes) {
+export function renderTs(palette, themes, highContrast) {
   const fixed = Object.entries(palette).map(([k, v]) => `  ${camelName(k)}: '${v}',`);
-  const scheme = (name) => [
-    `  ${name}: {`,
-    ...Object.entries(themes[name]).map(([k, v]) => `    ${camelName(k)}: '${v}', // --color-${k}`),
-    '  },',
+  const block = (name, values, indent) => [
+    `${indent}${name}: {`,
+    ...Object.entries(values).map(
+      ([k, v]) => `${indent}  ${camelName(k)}: '${v}', // --color-${k}`,
+    ),
+    `${indent}},`,
   ];
+  const scheme = (name) => block(name, themes[name], '  ');
   return [
     `// GENERATED FILE - DO NOT EDIT. Source: src/theme/tokens.json; regenerate with ${REGEN}.`,
     '',
@@ -150,9 +181,14 @@ export function renderTs(palette, themes) {
     ...fixed,
     ...scheme('light'),
     ...scheme('dark'),
+    '  /** Each theme with the `highContrast` overrides from tokens.json (src/theme/high-contrast.ts). */',
+    '  highContrast: {',
+    ...block('light', highContrast.light, '    '),
+    ...block('dark', highContrast.dark, '    '),
+    '  },',
     '} as const;',
     '',
-    "/** One theme's semantic colours (`colors.light` / `colors.dark`). */",
+    "/** One theme's semantic colours (`colors.light` / `colors.dark`, or a high-contrast set). */",
     'export type ThemeColors = { readonly [K in keyof typeof colors.light]: string };',
     '',
   ].join('\n');
@@ -162,6 +198,7 @@ async function render() {
   const tokens = JSON.parse(await readFile(SOURCE, 'utf8'));
   const palette = parsePalette(tokens.palette);
   const themes = parseThemes(tokens.themes, Object.keys(palette));
+  const highContrast = parseHighContrast(tokens.highContrast, themes);
   const fmt = async (text, filepath) =>
     prettier.format(text, { ...(await prettier.resolveConfig(filepath)), filepath });
 
@@ -174,7 +211,7 @@ async function render() {
   }
   const css = currentCss.slice(0, start) + cssRegion + currentCss.slice(end + CSS_END.length);
 
-  const ts = await fmt(renderTs(palette, themes), TS_OUT);
+  const ts = await fmt(renderTs(palette, themes, highContrast), TS_OUT);
   return { css, ts };
 }
 
