@@ -126,7 +126,7 @@ export function AccessoryPlayer() {
           color={themed.foreground}
           fontSize={12}
           hitSlop={slopTo44(2.5)}
-          className="h-10 w-10 items-center justify-center rounded-full"
+          className="h-10 min-w-10 items-center justify-center rounded-full px-1"
           accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
         />
       ) : null}

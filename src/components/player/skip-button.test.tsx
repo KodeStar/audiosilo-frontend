@@ -27,6 +27,9 @@ describe('SkipButton', () => {
     expect(fontSize()).toBe(16);
     await setFontScale(3);
     expect(fontSize()).toBe(Math.round(13 * SKIP_LABEL_MAX_SCALE));
+    // Never wrapped ("-15 / s" in the mini player at Android's 2.0): one line, and the
+    // caller's box grows to it.
+    expect(screen.getByText('-15s').props.numberOfLines).toBe(1);
   });
 
   it('keeps a size its caller already scaled', async () => {

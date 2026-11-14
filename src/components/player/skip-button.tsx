@@ -61,6 +61,8 @@ export function SkipButton({
     >
       <RNText
         allowFontScaling={false}
+        // One line: the caller's box grows to fit it (a min width), never "-15 / s".
+        numberOfLines={1}
         className="font-sans-semibold"
         style={[{ fontSize: size, lineHeight: size + 2, color }, tabularNums]}
       >
