@@ -218,6 +218,18 @@ describe('ThemeProvider (Uniwind)', () => {
       );
     });
 
+    it('keeps the stored theme and normal contrast when the variables cannot be written', async () => {
+      await AsyncStorage.setItem('audiosilo.theme', JSON.stringify('light'));
+      await AsyncStorage.setItem('audiosilo.highContrast', JSON.stringify(true));
+      updateVars.mockImplementationOnce(() => {
+        throw new Error('no variable store');
+      });
+      await mount();
+      expect(screen.getByTestId('probe')).toHaveTextContent('light:light');
+      expect(screen.getByTestId('contrast')).toHaveTextContent('false:false:false');
+      expect(screen.getByTestId('muted')).toHaveTextContent(colors.light.mutedForeground);
+    });
+
     it('ignores a stored value that is not true', async () => {
       await AsyncStorage.setItem('audiosilo.highContrast', JSON.stringify('yes'));
       await mount();

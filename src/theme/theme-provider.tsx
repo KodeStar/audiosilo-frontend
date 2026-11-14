@@ -119,10 +119,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         // The theme first: a failure applying high contrast (caught below) must not cost
         // the stored theme.
         if (scheme) Uniwind.setTheme(scheme);
+        // Before first paint, so a high-contrast launch never shows the normal colours;
+        // and before the states, so a failed write leaves plain normal contrast (with the
+        // states set, the effect below would repeat the write outside the catch).
+        applyHighContrast(highContrastActive(os, pref));
         setHighContrastPrefState(pref);
         setOsHighContrast(os);
-        // Before first paint, so a high-contrast launch never shows the normal colours.
-        applyHighContrast(highContrastActive(os, pref));
       })
       .catch(() => undefined)
       .finally(() => {
