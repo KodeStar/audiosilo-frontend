@@ -9,7 +9,7 @@ import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { useSliderControl } from '@/components/ui/use-slider-control';
 import { formatClock, formatDuration, formatWallClock } from '@/lib/format';
-import { linesFor, useFontScale, useLargeText } from '@/lib/text-scale';
+import { linesFor, scaleCapped, useFontScale, useLargeText } from '@/lib/text-scale';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { selectBookKey, usePlayer } from '@/playback/store';
@@ -31,9 +31,9 @@ const PIN_H = 14;
 const HEAD_W = 4;
 const HEAD_OVER = 8;
 
-/** The bars' band at a control scale: taller with the text size, like the transport. */
+/** The bars' band at a text scale: taller with the text size, as far as the transport grows. */
 export function seekBarHeight(scale: number): number {
-  return Math.round(BAR_H * Math.max(1, scale));
+  return scaleCapped(BAR_H, scale, CONTROL_MAX_SCALE);
 }
 
 /** One layer of bars: a single SVG path, drawn once per layout (memo). */
@@ -90,7 +90,7 @@ export type SeekBarProps = {
   accessibilityLabel?: string;
   /** A fixed bar count; default, from the measured width (56 on a phone, 96 max). */
   bars?: number;
-  /** The control scale (the full player's, from the text size): the band grows with it. */
+  /** The text scale (the full player's): the band grows with it (`seekBarHeight`). */
   scale?: number;
   className?: string;
 };
@@ -402,8 +402,7 @@ export function PlayerSeekBar({
     onSeek,
     bookmarks: inSegment,
   } = usePlayingSegment(bookmarks, { hold: scrub !== null });
-  // The band grows with the text size, as far as the transport does.
-  const scale = Math.min(useFontScale(), CONTROL_MAX_SCALE);
+  const scale = useFontScale();
   if (!bookKey) return null;
 
   return (

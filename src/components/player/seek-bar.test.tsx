@@ -237,10 +237,11 @@ describe('SeekBar', () => {
 });
 
 describe('seekBarHeight', () => {
-  it('is 44 at the default size and grows with the control scale', () => {
+  it('is 44 at the default size and grows with the text as far as the transport does', () => {
     expect(seekBarHeight(1)).toBe(44);
     expect(seekBarHeight(0.9)).toBe(44);
     expect(seekBarHeight(1.5)).toBe(66);
+    expect(seekBarHeight(2)).toBe(66);
   });
 });
 
