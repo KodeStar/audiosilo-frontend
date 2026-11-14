@@ -47,9 +47,11 @@ export function PhoneTabBar() {
                 size={22}
                 color={selected ? themed.brand : themed.mutedForeground}
               />
+              {/* The label follows the browser's text size up to 13.5 px (about 1.3x): its slot
+                  is a fifth of the width and cannot grow, and "Downloads" fills it there. */}
               <RNText
                 numberOfLines={1}
-                className={`font-sans-semibold text-[10.5px] web:text-[0.65625rem] ${
+                className={`font-sans-semibold text-[10.5px] web:text-[length:min(0.65625rem,13.5px)] ${
                   selected ? 'text-foreground' : 'text-muted-foreground'
                 }`}
               >

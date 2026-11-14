@@ -3198,7 +3198,9 @@ tokens, type and components; its section 17 maps them onto these files.
   - **px text on the web**: every `text-[Npx]` / `leading-[Npx]` carries a `web:` twin in
     rem, N/16, with the same variants (`text-[13px] web:text-[0.8125rem]`, `lg:text-[17px]
     web:lg:text-[1.0625rem]`). `check-styles.cjs` fails a px size without its twin (art
-    drawn to a fixed box is exempt: covers, the A-Z rail, the connect cascade). The twin is
+    drawn to a fixed box is exempt: covers, the A-Z rail, the connect cascade). A label in a
+    slot that cannot grow caps its twin instead (the web tab bar's
+    `web:text-[length:min(0.65625rem,13.5px)]`, about 1.3x). The twin is
     a variant class, so a caller's plain `text-sm` through `cn()` does not beat it on the
     web: override a twinned size with a twinned size.
   - **Tests**: jest pins `fontScale` to 1 (`jest.setup.ts`; RN's preset mocks 2); opt in
