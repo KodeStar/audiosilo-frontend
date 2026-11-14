@@ -140,7 +140,7 @@ export function Sheet({
   useModalLayer(visible);
   const panelRef = useRef<ViewInstance>(null);
   const titleRef = useRef<TextInstance>(null);
-  useMoveFocusIn(visible, title ? titleRef : panelRef, panelRef);
+  useMoveFocusIn(visible, titleRef, panelRef);
   // Whether the sheet has ever been open; gates the exit branch so a first mount
   // with `visible={false}` doesn't flash-mount to animate a close that never opened.
   const wasVisible = useRef(visible);
@@ -331,13 +331,15 @@ export function Sheet({
 }
 
 /**
- * Moves focus into an opened sheet: the screen reader's to `target` (its title, else its
- * panel) on iOS and Android, the keyboard's to `panel` on the web, given back to what had
- * it once the sheet closes. A frame after the open, once the panel is laid out.
+ * Moves focus into an opened sheet: the screen reader's to its `title` (its panel when it
+ * has none) on iOS and Android, the keyboard's to `panel` on the web, given back to what
+ * had it once the sheet closes. A frame after the open, once the panel is laid out. Only
+ * `visible` runs it: the refs are read then, so a title that comes or goes while the sheet
+ * is open does not move focus again (on the web, out of a field being typed in).
  */
 function useMoveFocusIn(
   visible: boolean,
-  target: { current: unknown },
+  title: { current: TextInstance | null },
   panel: { current: ViewInstance | null },
 ): void {
   useEffect(() => {
@@ -354,9 +356,9 @@ function useMoveFocusIn(
       };
     }
     const id = requestAnimationFrame(() => {
-      const node = target.current;
+      const node = title.current ?? panel.current;
       if (node) AccessibilityInfo.sendAccessibilityEvent(node as never, 'focus');
     });
     return () => cancelAnimationFrame(id);
-  }, [visible, target, panel]);
+  }, [visible, title, panel]);
 }
