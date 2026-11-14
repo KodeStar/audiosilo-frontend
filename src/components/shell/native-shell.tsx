@@ -2,7 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { NativeTabs } from 'expo-router/native-tabs';
 import { type ReactNode, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { FloatingMiniPlayer } from '@/components/player/mini-player';
 
@@ -12,11 +12,12 @@ import { ShellPlayerOverlays } from '@/components/player/player-sheet-host';
 import { AuthGate } from '@/components/shell/auth-gate';
 import { useBehindModalProps } from '@/components/ui/modal-layer';
 import { TABS } from '@/components/shell/destinations';
+import { tabLabelFontSize } from '@/components/shell/tab-label-size';
 import { ShellFrame } from '@/components/shell/shell-frame';
 import { useIsTopShell } from '@/components/shell/top-shell';
 import { useShellEffects } from '@/components/shell/use-shell-effects';
 import { useLayout } from '@/lib/layout';
-import { useLargeText } from '@/lib/text-scale';
+import { useFontScale, useLargeText } from '@/lib/text-scale';
 import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
@@ -44,8 +45,14 @@ function NativeShell() {
   const fetching = useEpisodeFetch((s) => s.pending !== null);
   const top = useIsTopShell();
   // Android: at the large text sizes five labels don't fit their slots ("Ho...", "Libr...").
-  // Material's answer is the chosen tab's label only (the others keep theirs for TalkBack).
+  // Material's answer is the chosen tab's label only (the others keep theirs for TalkBack),
+  // and the label stops growing at 1.3x so even that one fits (`tab-label-size.ts`).
   const large = useLargeText();
+  const fontScale = useFontScale();
+  const labelStyle = useMemo(
+    () => (Platform.OS === 'android' ? { fontSize: tabLabelFontSize(fontScale) } : undefined),
+    [fontScale],
+  );
 
   // React Navigation's theme, from ours: the native tab and stack containers paint with
   // it (on iOS 26 a missing theme shows default-white artifacts in tab transitions).
@@ -81,6 +88,7 @@ function NativeShell() {
               // Android (Material 3, STYLEGUIDE section 10): every tab labelled, the
               // active one on a brand-soft pill; under large text the active one only.
               labelVisibilityMode={large ? 'selected' : 'labeled'}
+              labelStyle={labelStyle}
               indicatorColor={themed.brandSoft}
               minimizeBehavior="onScrollDown"
               unstable_nativeProps={{
