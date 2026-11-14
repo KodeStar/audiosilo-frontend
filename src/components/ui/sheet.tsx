@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  AccessibilityInfo,
   type LayoutChangeEvent,
   Platform,
   Pressable,
@@ -8,6 +9,8 @@ import {
   StyleSheet,
   useWindowDimensions,
   View,
+  type TextInstance,
+  type ViewInstance,
 } from 'react-native';
 import Animated, {
   Easing,
@@ -25,6 +28,7 @@ import { useLayout } from '@/lib/layout';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon } from './icon';
+import { useModalLayer } from './modal-layer';
 import { OverlayHost } from './overlay-host';
 import { Text } from './text';
 
@@ -84,6 +88,14 @@ export type SheetProps = {
  * until then, so the slide-down is seen). Reduced motion collapses to an instant
  * show/hide. Backdrop press and Android hardware back both close it.
  *
+ * It is modal to a screen reader too (fe#267): VoiceOver keeps to the layer
+ * (`accessibilityViewIsModal`, its escape gesture closes it), TalkBack's page behind is
+ * hidden while it is open (`useModalLayer`, read by the page roots through
+ * `useBehindModalProps`), the web's dialog is named by its title, and the backdrop is
+ * left out of the accessibility tree and the tab order (the title row's Close, back and
+ * Escape close it). On open the screen reader's focus (the keyboard's on the web) moves
+ * to the sheet; on the web it goes back where it was on close.
+ *
  * ALL mount state changes in effects, never during render. An earlier version
  * adjusted the mount flag during render (React's "adjust state during render"
  * pattern) and flipped it back to false from the exit-animation callback. Under
@@ -124,6 +136,11 @@ export function Sheet({
   // note) is still on screen (`useReleaseOnClose`); `exiting` takes over from there.
   const closing = useReleaseOnClose(visible);
   const mounted = visible || exiting || closing;
+  // The page behind leaves the accessibility tree while the sheet is open.
+  useModalLayer(visible);
+  const panelRef = useRef<ViewInstance>(null);
+  const titleRef = useRef<TextInstance>(null);
+  useMoveFocusIn(visible, title ? titleRef : panelRef, panelRef);
   // Whether the sheet has ever been open; gates the exit branch so a first mount
   // with `visible={false}` doesn't flash-mount to animate a close that never opened.
   const wasVisible = useRef(visible);
@@ -212,25 +229,34 @@ export function Sheet({
     <View
       className="absolute inset-0 justify-end"
       pointerEvents="box-none"
-      // Web: a modal layer (the player's keyboard shortcuts stand back while one is open,
-      // and its OverlayHost owns Escape).
+      // Web: a modal layer named by its title (the player's keyboard shortcuts stand back
+      // while one is open, and its OverlayHost owns Escape). iOS: VoiceOver keeps to it,
+      // and its escape gesture (two fingers, Z) closes it.
       {...(Platform.OS === 'web'
         ? {
             role: 'dialog' as const,
             'aria-modal': true,
+            ...(title ? { 'aria-label': title } : {}),
             // react-native-web renders `dataSet` as data-* attributes.
             ...(layer ? { dataSet: { layer } } : {}),
           }
-        : {})}
+        : { accessibilityViewIsModal: true, onAccessibilityEscape: close })}
     >
       <Animated.View
         style={[StyleSheet.absoluteFill, { backgroundColor: themed.overlay }, backdropStyle]}
       >
+        {/* A tap outside closes; to a screen reader and the keyboard it is not there (a
+            screen-wide "Close" button sat first in the order, before the sheet). */}
         <Pressable
+          testID="sheet-backdrop"
           style={StyleSheet.absoluteFill}
           onPress={close}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.close')}
+          accessible={false}
+          importantForAccessibility="no-hide-descendants"
+          accessibilityElementsHidden
+          focusable={false}
+          aria-hidden
+          tabIndex={-1}
         />
       </Animated.View>
       <Animated.View
@@ -241,7 +267,10 @@ export function Sheet({
         onLayout={onLayout}
       >
         <View
-          className="rounded-t-sheet border-t border-border bg-popover shadow-overlay"
+          ref={panelRef}
+          // Web: focusable by script only, for the focus move on open.
+          {...(Platform.OS === 'web' ? { tabIndex: -1 as const } : {})}
+          className="rounded-t-sheet border-t border-border bg-popover shadow-overlay outline-none"
           style={{
             ...(fill ? { height: panelCap } : { maxHeight: panelCap }),
             paddingBottom: insets.bottom,
@@ -255,7 +284,9 @@ export function Sheet({
           />
           {title ? (
             <View className="flex-row items-center justify-between px-4 pb-2 pt-2">
-              <Text variant="title">{title}</Text>
+              <Text ref={titleRef} variant="title" level={2}>
+                {title}
+              </Text>
               <Pressable
                 onPress={close}
                 hitSlop={12}
@@ -297,4 +328,35 @@ export function Sheet({
       {overlay}
     </OverlayHost>
   );
+}
+
+/**
+ * Moves focus into an opened sheet: the screen reader's to `target` (its title, else its
+ * panel) on iOS and Android, the keyboard's to `panel` on the web, given back to what had
+ * it once the sheet closes. A frame after the open, once the panel is laid out.
+ */
+function useMoveFocusIn(
+  visible: boolean,
+  target: { current: unknown },
+  panel: { current: ViewInstance | null },
+): void {
+  useEffect(() => {
+    if (!visible) return;
+    if (Platform.OS === 'web') {
+      const before =
+        typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null);
+      const id = requestAnimationFrame(() =>
+        (panel.current as unknown as HTMLElement | null)?.focus?.(),
+      );
+      return () => {
+        cancelAnimationFrame(id);
+        before?.focus?.();
+      };
+    }
+    const id = requestAnimationFrame(() => {
+      const node = target.current;
+      if (node) AccessibilityInfo.sendAccessibilityEvent(node as never, 'focus');
+    });
+    return () => cancelAnimationFrame(id);
+  }, [visible, target, panel]);
 }

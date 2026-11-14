@@ -16,6 +16,7 @@ import { useOptionalApi } from '@/api/provider';
 import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { Button } from '@/components/ui/button';
 import { Notice } from '@/components/ui/notice';
+import { useBehindModalProps } from '@/components/ui/modal-layer';
 import { Sheet } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
@@ -404,6 +405,7 @@ export function ReaderScreen({
       : null;
   const title = book ? bookTitle(book.title, path) : (opened?.title ?? '');
   const percent = current ? Math.round(current.fraction * 100) : null;
+  const behind = useBehindModalProps();
 
   return (
     <>
@@ -415,6 +417,8 @@ export function ReaderScreen({
         {...(Platform.OS === 'web'
           ? { role: 'dialog' as const, 'aria-modal': true, dataSet: { layer: READER_LAYER } }
           : {})}
+        // Hidden from a screen reader under its Contents sheet.
+        {...behind}
         accessibilityLabel={title}
       >
         <View className="flex-row items-center gap-1 border-b border-border px-2 py-1.5">

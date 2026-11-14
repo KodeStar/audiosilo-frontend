@@ -18,6 +18,7 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
+import { useBehindModalProps } from '@/components/ui/modal-layer';
 import { chapterLabel } from '@/lib/chapter-label';
 import { useLayout } from '@/lib/layout';
 import { linesFor, useLargeText } from '@/lib/text-scale';
@@ -123,7 +124,7 @@ function PlayerTitles({ phone, onChapters }: { phone: boolean; onChapters: () =>
           <Icon name="chevron-down" size={18} color={themed.mutedForeground} />
         </AnimatedPressable>
       ) : (
-        <Text variant="display" className={titleClass} numberOfLines={2}>
+        <Text variant="display" accessibilityRole="header" className={titleClass} numberOfLines={2}>
           {heading}
         </Text>
       )}
@@ -169,6 +170,8 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   const undoInSlot = useUndoVisible();
   // The playing book's bookmarks and notes, once for both scrubbers.
   const pins = usePlayingPins();
+  // While one of its sheets is open the player under it is hidden from a screen reader.
+  const behind = useBehindModalProps();
   // A phone's column is a flex column filling the viewport: the cover's slot takes what
   // the rest leaves (measured), so the player fits a phone without scrolling; the column
   // scrolls only once the slot is at its minimum.
@@ -271,11 +274,11 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
     >
       <CoverWash color={wash} variant="hero" />
-      <View style={{ paddingTop: insets.top }}>
+      <View style={{ paddingTop: insets.top }} {...behind}>
         <PlayerHeader book={book} onClose={onClose} onChapters={onChapters} />
       </View>
       {desktop ? (
-        <View className="flex-1 flex-row">
+        <View className="flex-1 flex-row" {...behind}>
           <ScrollView
             className="flex-1"
             contentContainerClassName="flex-grow justify-center px-10 pb-8"
@@ -293,6 +296,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
       ) : (
         <ScrollView
           testID="player-page"
+          {...behind}
           className="flex-1"
           contentContainerClassName={phone ? 'grow px-5 pt-1' : 'px-12 pt-2'}
           contentContainerStyle={{ paddingBottom: bottomPad }}

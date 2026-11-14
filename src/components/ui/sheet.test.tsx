@@ -93,8 +93,8 @@ describe('Sheet', () => {
     );
 
     expect(screen.getByText('Sheet body')).toBeTruthy();
-    // With no title there is a single "Close" affordance: the backdrop.
-    fireEvent.press(screen.getByLabelText('Close'));
+    // A tap outside closes (the backdrop is out of the accessibility tree: by test ID).
+    fireEvent.press(screen.getByTestId('sheet-backdrop', { includeHiddenElements: true }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -107,11 +107,91 @@ describe('Sheet', () => {
     );
 
     expect(screen.getByText('Chapters')).toBeTruthy();
-    // Backdrop + header button both labelled Close.
-    const closers = screen.getAllByLabelText('Close');
-    expect(closers.length).toBe(2);
-    fireEvent.press(closers[1]);
+    // The header's button is the one Close a screen reader finds.
+    const closers = screen.getAllByRole('button', { name: 'Close' });
+    expect(closers.length).toBe(1);
+    fireEvent.press(closers[0]);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  describe('modal to a screen reader (fe#267)', () => {
+    it('keeps VoiceOver to the layer, closes on its escape gesture, and titles it as a heading', async () => {
+      const onClose = jest.fn();
+      await mount(
+        <Sheet visible onClose={onClose} title="Speed">
+          <Text>Sheet body</Text>
+        </Sheet>,
+      );
+      // The layer: the sheet body's nearest ancestor flagged modal.
+      let layer = screen.getByText('Sheet body').parent;
+      while (layer && !layer.props.accessibilityViewIsModal) layer = layer.parent;
+      expect(layer).toBeTruthy();
+      layer!.props.onAccessibilityEscape();
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('header', { name: 'Speed' })).toHaveProp('aria-level', 2);
+    });
+
+    it('leaves the backdrop out of the accessibility tree and the tab order', async () => {
+      await mount(
+        <Sheet visible onClose={jest.fn()} title="Speed">
+          <Text>Sheet body</Text>
+        </Sheet>,
+      );
+      const backdrop = screen.getByTestId('sheet-backdrop', { includeHiddenElements: true });
+      expect(backdrop.props.accessible).toBe(false);
+      expect(backdrop.props.accessibilityRole).toBeUndefined();
+      expect(backdrop.props.accessibilityLabel).toBeUndefined();
+      expect(backdrop).toHaveProp('importantForAccessibility', 'no-hide-descendants');
+      expect(backdrop).toHaveProp('focusable', false);
+    });
+
+    it('counts as an open modal layer while visible, so the page behind hides', async () => {
+      const { useModalLayerOpen } = jest.requireActual(
+        './modal-layer',
+      ) as typeof import('./modal-layer');
+      const seen: boolean[] = [];
+      function Page() {
+        seen.push(useModalLayerOpen());
+        return null;
+      }
+      const view = await mount(
+        <>
+          <Page />
+          <Sheet visible onClose={jest.fn()} title="Speed">
+            <Text>Sheet body</Text>
+          </Sheet>
+        </>,
+      );
+      expect(seen.at(-1)).toBe(true);
+      await act(async () => {
+        view.rerender(
+          <>
+            <Page />
+            <Sheet visible={false} onClose={jest.fn()} title="Speed">
+              <Text>Sheet body</Text>
+            </Sheet>
+          </>,
+        );
+      });
+      expect(seen.at(-1)).toBe(false);
+    });
+
+    it('is a dialog named by its title on the web', async () => {
+      const prevOS = Platform.OS;
+      Platform.OS = 'web';
+      try {
+        await mount(
+          <Sheet visible onClose={jest.fn()} title="Sleep timer">
+            <Text>Hosted</Text>
+          </Sheet>,
+        );
+        const json = JSON.stringify(screen.toJSON());
+        expect(json).toContain('"aria-label":"Sleep timer"');
+        expect(json).not.toContain('accessibilityViewIsModal');
+      } finally {
+        Platform.OS = prevOS;
+      }
+    });
   });
 
   it('unmounts children after the exit animation completes', async () => {
@@ -149,7 +229,7 @@ describe('Sheet', () => {
     );
     const { rerender } = await mount(ui(true));
     // The backdrop (and the close button, and back): before the caller closes.
-    await fireEvent.press(screen.getByLabelText('Close'));
+    await fireEvent.press(screen.getByTestId('sheet-backdrop', { includeHiddenElements: true }));
     expect(order).toEqual(['dismiss:field', 'close']);
     // The caller turning it off (a Save in the sheet): before the field goes.
     order.length = 0;
