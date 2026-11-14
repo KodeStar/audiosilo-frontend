@@ -3206,14 +3206,14 @@ tokens, type and components; its section 17 maps them onto these files.
   - **Tests**: jest pins `fontScale` to 1 (`jest.setup.ts`; RN's preset mocks 2); opt in
     with `await setFontScale(n)` from `@/testing/font-scale`.
 - **Touch targets** (`src/components/ui/touch-target.ts`): 44 on iOS and the web, 48 dp on
-  Android (`minTarget()`, Material's minimum). `touchTarget(w, h)` gives the frame classes
+  Android (`minTarget()`, Material's minimum). `touchTarget(h, w)` gives the frame classes
   and the slop for a smaller glyph, `slopTo44(rem)` the slop alone. An icon-only `Button`
   must have an `accessibilityLabel` (the props type requires it).
 - **Screen-reader semantics** (fe#267):
   - **Headings**: `<Text accessibilityRole="header">` gets an `aria-level` (rn-web renders
     `hN`): `level` when given, else `headingLevelFor(variant)` (display 1, heading/stat 2,
-    others 3). A pushed page's title is level 1 (`PhoneHeader`), a sheet's title level 2,
-    `SectionHeader` level 3.
+    others 3). A page's title is level 1 (`PhoneHeader`, `SubNav`), a sheet's title and a
+    `SectionHeader` level 2.
   - **Sheets are modal** (`sheet.tsx` + `src/components/ui/modal-layer.ts`): a sheet
     renders in place, not in a portal, so it registers as a modal layer
     (`useModalLayer`) and the page roots behind it spread `useBehindModalProps()` (the

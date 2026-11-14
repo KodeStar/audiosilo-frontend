@@ -64,7 +64,8 @@ describe('tab root sub-nav content', () => {
         <Root onChange={onChange} />
       </>,
     );
-    expect(screen.getByRole('header', { name: 'Library' })).toBeTruthy();
+    // The tab root's title is the page's level-1 heading.
+    expect(screen.getByRole('header', { name: 'Library' })).toHaveProp('aria-level', 1);
     expect(screen.getByRole('radio', { name: 'Books', checked: true })).toBeTruthy();
     expect(screen.getByRole('radio', { name: 'Authors, 612' })).toBeTruthy();
     const texts = screen.getAllByText(/Sort|Picker/).map((n) => n.props.children);

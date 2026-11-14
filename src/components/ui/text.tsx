@@ -101,13 +101,12 @@ function isHeading(props: TextProps): boolean {
  */
 export function Text({ variant = 'body', className, style, level, ...props }: AppTextProps) {
   const contextClass = useContext(TextClassContext);
-  // React Native's types have no `aria-level`; react-native-web reads it (`hN`).
-  const given = (props as { 'aria-level'?: HeadingLevel })['aria-level'];
   const heading =
     level !== undefined || isHeading(props)
       ? ({
           accessibilityRole: 'header',
-          'aria-level': level ?? given ?? headingLevelFor(variant),
+          // React Native's types have no `aria-level`; react-native-web reads it (`hN`).
+          'aria-level': level ?? headingLevelFor(variant),
         } as TextProps)
       : null;
   return (
