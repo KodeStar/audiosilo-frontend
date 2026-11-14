@@ -48,6 +48,12 @@ describe('withFontScaleChanges (fe#267)', () => {
     expect(changesOf(none as ReturnType<typeof manifest>)).toBe('fontScale|density');
   });
 
+  it('fails the prebuild on a manifest with no main activity, rather than skip it', () => {
+    const none = manifest(TEMPLATE);
+    none.manifest.application[0].activity = none.manifest.application[0].activity.slice(1);
+    expect(() => addConfigChanges(none as never)).toThrow(/MainActivity/);
+  });
+
   it('runs as an Android manifest mod', async () => {
     const config = withFontScaleChanges({ name: 'AudioSilo', slug: 'audiosilo' } as ExpoConfig);
     type Mod = (c: Record<string, unknown>) => Promise<{ modResults: unknown }>;

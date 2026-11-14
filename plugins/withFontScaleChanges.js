@@ -11,7 +11,9 @@ const { AndroidConfig, withAndroidManifest } = require('expo/config-plugins');
  * screen.
  *
  * Merges with whatever the template (or another plugin) already lists, keeps the order,
- * and adds each flag once, so it is safe to run twice.
+ * and adds each flag once, so it is safe to run twice. A manifest with no `.MainActivity`
+ * fails the prebuild (as `withCast` does for its application): skipping it would bring the
+ * restarts back with nothing to say so.
  */
 
 /** The flags this plugin makes sure the main activity handles. */
@@ -19,8 +21,7 @@ const CONFIG_CHANGES = ['fontScale', 'density'];
 
 /** `manifest` with `.MainActivity`'s `android:configChanges` holding `CONFIG_CHANGES`. */
 function addConfigChanges(manifest) {
-  const main = AndroidConfig.Manifest.getMainActivity(manifest);
-  if (!main) return manifest;
+  const main = AndroidConfig.Manifest.getMainActivityOrThrow(manifest);
   const have = (main.$['android:configChanges'] ?? '').split('|').filter(Boolean);
   for (const flag of CONFIG_CHANGES) if (!have.includes(flag)) have.push(flag);
   main.$['android:configChanges'] = have.join('|');
