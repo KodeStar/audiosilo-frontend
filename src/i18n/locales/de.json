@@ -66,6 +66,11 @@
       "system": "System",
       "description": "Hell, dunkel oder wie dieses Gerät."
     },
+    "highContrast": {
+      "label": "Hoher Kontrast",
+      "description": "Kräftigere Schrift, Rahmen und Leisten. Aus folgt der Kontrasteinstellung dieses Geräts.",
+      "deviceOn": "An: Dieses Gerät verlangt mehr Kontrast. Ändern lässt sich das in seinen Bedienungshilfen."
+    },
     "language": {
       "label": "Sprache",
       "system": "System",

@@ -8,8 +8,8 @@ import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { openExternalUrl } from '@/lib/support';
 import { cn } from '@/lib/utils';
-import { colors } from '@/theme/tokens';
-import { useThemeColors } from '@/theme/use-theme-colors';
+import { themeColors } from '@/theme/high-contrast';
+import { useThemeColors, useThemeScheme } from '@/theme/use-theme-colors';
 
 /**
  * The licence line every companion block ends with (STYLEGUIDE section 8, "Companion"):
@@ -29,8 +29,12 @@ export function Attribution({
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
+  const { highContrast } = useThemeScheme();
   if (!attribution) return null;
-  const color = tone === 'inverse' ? colors.dark.mutedForeground : themed.subtleForeground;
+  const color =
+    tone === 'inverse'
+      ? themeColors('dark', highContrast).mutedForeground
+      : themed.subtleForeground;
   return (
     <View className={cn('flex-row flex-wrap items-center gap-x-1.5 gap-y-0.5', className)}>
       <Icon name="globe" size={12} color={color} />

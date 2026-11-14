@@ -42,8 +42,16 @@ jest.mock('@/lib/open', () => ({
   ...jest.requireActual('@/lib/open'),
   openHousehold: () => mockOpenHousehold(),
 }));
+const mockSetHighContrastPref = jest.fn();
+let mockContrast = { highContrastPref: false, osHighContrast: false };
 jest.mock('@/theme/theme-provider', () => ({
-  useTheme: () => ({ scheme: 'light', pref: 'system', setPref: jest.fn() }),
+  useTheme: () => ({
+    scheme: 'light',
+    pref: 'system',
+    setPref: jest.fn(),
+    ...mockContrast,
+    setHighContrastPref: mockSetHighContrastPref,
+  }),
 }));
 jest.mock('@/i18n/language-provider', () => ({
   useLanguage: () => ({ pref: 'system', setPref: jest.fn() }),
@@ -204,6 +212,26 @@ describe('SettingsContent, stacked', () => {
     expect(useSettings.getState().autoDownloadEpisodes).toBe(true);
     await fireEvent.press(within(group).getByLabelText('Off'));
     expect(useSettings.getState().autoDownloadEpisodes).toBe(false);
+  });
+
+  it('switches high contrast from Appearance, and says when the device has it on', async () => {
+    mockContrast = { highContrastPref: false, osHighContrast: false };
+    mockSetHighContrastPref.mockClear();
+    const { rerender } = await render(<SettingsContent section="appearance" />);
+    const row = screen.getByTestId('settings-high-contrast');
+    expect(within(row).getByText(/Off follows this device/)).toBeTruthy();
+    await fireEvent.press(within(row).getByLabelText('On'));
+    expect(mockSetHighContrastPref).toHaveBeenCalledWith(true);
+
+    mockContrast = { highContrastPref: false, osHighContrast: true };
+    await rerender(<SettingsContent section="sleep" />);
+    await rerender(<SettingsContent section="appearance" />);
+    expect(
+      within(screen.getByTestId('settings-high-contrast')).getByText(
+        /this device asks for more contrast/,
+      ),
+    ).toBeTruthy();
+    mockContrast = { highContrastPref: false, osHighContrast: false };
   });
 
   it('keeps the version line', async () => {

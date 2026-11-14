@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { themeColors } from '@/theme/high-contrast';
 
 import type { ReaderTheme } from './protocol';
 import { loadFontScale } from './reader-settings';
@@ -16,8 +16,8 @@ export function useReaderAppearance(): {
   fontScale: number | null;
   setFontScale: (scale: number) => void;
 } {
-  const { scheme } = useTheme();
-  const palette = colors[scheme];
+  const { scheme, highContrast } = useTheme();
+  const palette = themeColors(scheme, highContrast);
   const theme = useMemo<ReaderTheme>(
     () => ({ scheme, background: palette.card, foreground: palette.foreground }),
     [scheme, palette],

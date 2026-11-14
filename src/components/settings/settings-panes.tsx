@@ -341,7 +341,7 @@ function DownloadsPane() {
 
 function AppearancePane() {
   const { t } = useTranslation();
-  const { pref, setPref } = useTheme();
+  const { pref, setPref, highContrastPref, setHighContrastPref, osHighContrast } = useTheme();
   const options = APPEARANCE.map((value) => ({
     value,
     label: t(`settings.appearance.${value}`),
@@ -360,6 +360,23 @@ function AppearancePane() {
           onChange={setPref}
           grow
           accessibilityLabel={t('settings.appearance.label')}
+        />
+      </SettingRow>
+      {/* Off follows the device; the description says when the device has it on. */}
+      <SettingRow
+        control="wide"
+        testID="settings-high-contrast"
+        label={t('settings.highContrast.label')}
+        description={t(
+          osHighContrast && !highContrastPref
+            ? 'settings.highContrast.deviceOn'
+            : 'settings.highContrast.description',
+        )}
+      >
+        <OnOff
+          value={highContrastPref}
+          onChange={setHighContrastPref}
+          label={t('settings.highContrast.label')}
         />
       </SettingRow>
     </SettingsCard>

@@ -66,6 +66,11 @@
       "system": "Système",
       "description": "Clair, sombre ou comme cet appareil."
     },
+    "highContrast": {
+      "label": "Contraste élevé",
+      "description": "Texte, bordures et barres plus marqués. Désactivé suit le réglage de contraste de cet appareil.",
+      "deviceOn": "Activé : cet appareil demande plus de contraste. Modifiez-le dans ses réglages d'accessibilité."
+    },
     "language": {
       "label": "Langue",
       "system": "Système",

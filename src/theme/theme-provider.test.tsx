@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { Pressable, Text } from 'react-native';
 import { Uniwind } from 'uniwind';
 
@@ -18,20 +18,41 @@ jest.mock('expo-splash-screen', () => ({
   preventAutoHideAsync: jest.fn(() => Promise.resolve()),
   hideAsync: jest.fn(() => Promise.resolve()),
 }));
+// The OS contrast signal (per platform in ./os-contrast), driven by the tests.
+let mockOsContrast = false;
+let mockOsListener: ((on: boolean) => void) | undefined;
+jest.mock('./os-contrast', () => ({
+  readOsHighContrast: () => Promise.resolve(mockOsContrast),
+  watchOsHighContrast: (onChange: (on: boolean) => void) => {
+    mockOsListener = onChange;
+    return () => {
+      mockOsListener = undefined;
+    };
+  },
+}));
 
 /* eslint-disable import/first */
 import { forgetStorageMigration } from '@/lib/storage-migration';
 
+import { colors } from './tokens';
 import { ThemeProvider, useTheme, type SchemePref } from './theme-provider';
+import { useThemeColors } from './use-theme-colors';
 /* eslint-enable import/first */
 
 const PREFS: SchemePref[] = ['light', 'dark', 'system'];
 
 function Probe() {
   const theme = useTheme();
+  const themed = useThemeColors();
   return (
     <>
       <Text testID="probe">{`${theme.pref}:${theme.scheme}`}</Text>
+      <Text testID="contrast">
+        {`${theme.highContrast}:${theme.highContrastPref}:${theme.osHighContrast}`}
+      </Text>
+      <Text testID="muted">{themed.mutedForeground}</Text>
+      <Pressable testID="hc-on" onPress={() => theme.setHighContrastPref(true)} />
+      <Pressable testID="hc-off" onPress={() => theme.setHighContrastPref(false)} />
       {PREFS.map((p) => (
         <Pressable key={p} testID={`set-${p}`} onPress={() => theme.setPref(p)} />
       ))}
@@ -52,6 +73,12 @@ async function mount() {
   );
 }
 
+const updateVars = jest.spyOn(Uniwind, 'updateCSSVariables');
+
+/** The muted text colour the theme variables were last set to for `scheme`. */
+const lastMuted = (scheme: 'light' | 'dark') =>
+  updateVars.mock.calls.filter(([s]) => s === scheme).at(-1)?.[1]['--color-muted-foreground'];
+
 describe('ThemeProvider (Uniwind)', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
@@ -59,6 +86,9 @@ describe('ThemeProvider (Uniwind)', () => {
     // Each test is a fresh launch: the launch migration runs again.
     forgetStorageMigration();
     mockFontLoaded.mockImplementation(() => true);
+    mockOsContrast = false;
+    mockOsListener = undefined;
+    updateVars.mockClear();
   });
 
   it('follows the system on a new install, and writes that down', async () => {
@@ -143,5 +173,74 @@ describe('ThemeProvider (Uniwind)', () => {
     expect(['light', 'dark']).toContain(resolved);
     expect(screen.getByTestId('probe')).toHaveTextContent(`system:${resolved}`);
     expect(await AsyncStorage.getItem('audiosilo.theme')).toBe(JSON.stringify('system'));
+  });
+
+  describe('high contrast', () => {
+    it('is off by default and leaves the theme variables alone', async () => {
+      await AsyncStorage.setItem('audiosilo.theme', JSON.stringify('light'));
+      await mount();
+      expect(screen.getByTestId('contrast')).toHaveTextContent('false:false:false');
+      expect(screen.getByTestId('muted')).toHaveTextContent(colors.light.mutedForeground);
+      expect(updateVars).not.toHaveBeenCalled();
+    });
+
+    it('turns on with the switch, persists it, and writes the normal colours back off', async () => {
+      await AsyncStorage.setItem('audiosilo.theme', JSON.stringify('light'));
+      await mount();
+      await fireEvent.press(screen.getByTestId('hc-on'));
+      expect(screen.getByTestId('contrast')).toHaveTextContent('true:true:false');
+      expect(screen.getByTestId('muted')).toHaveTextContent(
+        colors.highContrast.light.mutedForeground,
+      );
+      expect(lastMuted('light')).toBe(colors.highContrast.light.mutedForeground);
+      expect(lastMuted('dark')).toBe(colors.highContrast.dark.mutedForeground);
+      expect(await AsyncStorage.getItem('audiosilo.highContrast')).toBe('true');
+
+      await fireEvent.press(screen.getByTestId('hc-off'));
+      expect(screen.getByTestId('contrast')).toHaveTextContent('false:false:false');
+      expect(lastMuted('light')).toBe(colors.light.mutedForeground);
+      expect(lastMuted('dark')).toBe(colors.dark.mutedForeground);
+      expect(await AsyncStorage.getItem('audiosilo.highContrast')).toBe('false');
+    });
+
+    it('restores the switch before first paint, and keeps it across a scheme change', async () => {
+      await AsyncStorage.setItem('audiosilo.theme', JSON.stringify('light'));
+      await AsyncStorage.setItem('audiosilo.highContrast', JSON.stringify(true));
+      await mount();
+      expect(screen.getByTestId('contrast')).toHaveTextContent('true:true:false');
+      expect(lastMuted('light')).toBe(colors.highContrast.light.mutedForeground);
+      await choose('dark');
+      expect(screen.getByTestId('muted')).toHaveTextContent(
+        colors.highContrast.dark.mutedForeground,
+      );
+    });
+
+    it('ignores a stored value that is not true', async () => {
+      await AsyncStorage.setItem('audiosilo.highContrast', JSON.stringify('yes'));
+      await mount();
+      expect(screen.getByTestId('contrast')).toHaveTextContent('false:false:false');
+    });
+
+    it('follows the OS when the switch is off, at launch and on a change', async () => {
+      mockOsContrast = true;
+      await mount();
+      expect(screen.getByTestId('contrast')).toHaveTextContent('true:false:true');
+
+      await act(async () => mockOsListener?.(false));
+      expect(screen.getByTestId('contrast')).toHaveTextContent('false:false:false');
+      expect(lastMuted('dark')).toBe(colors.dark.mutedForeground);
+
+      await act(async () => mockOsListener?.(true));
+      expect(screen.getByTestId('contrast')).toHaveTextContent('true:false:true');
+      expect(lastMuted('dark')).toBe(colors.highContrast.dark.mutedForeground);
+    });
+
+    it('stays on with the switch when the OS stops asking', async () => {
+      mockOsContrast = true;
+      await AsyncStorage.setItem('audiosilo.highContrast', JSON.stringify(true));
+      await mount();
+      await act(async () => mockOsListener?.(false));
+      expect(screen.getByTestId('contrast')).toHaveTextContent('true:true:false');
+    });
   });
 });
