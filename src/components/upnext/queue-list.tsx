@@ -188,11 +188,12 @@ function QueueRow({
   const reduced = useReducedMotion();
   const { openBook } = useOpen();
   const web = Platform.OS === 'web';
-  // Under large text the title and caption wrap; on the web the hover actions float over the
-  // row's end instead of holding their width (rem-sized, they grow with the text and left
-  // the title a column too narrow for one word, fe#267).
+  // Under large text the title and caption wrap; where the web can hover, the actions float
+  // over the row's end instead of holding their width (rem-sized, they grow with the text
+  // and left the title a column too narrow for one word, fe#267). A touch browser has no
+  // hover to show them, so there they keep their place.
   const large = useLargeText();
-  const floatActions = web && large;
+  const floatActions = web && large && canHover();
   const title = entryTitle(entry);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -354,6 +355,8 @@ function QueueRow({
             'flex-row',
             floatActions && 'absolute bottom-0 right-1.5 top-0 items-center rounded-xl bg-muted',
             !showActions && 'opacity-0',
+            // Hidden over the title, they must not take its clicks.
+            floatActions && !showActions && 'pointer-events-none',
           )}
         >
           <RowButton
@@ -372,6 +375,11 @@ function QueueRow({
       </Pressable>
     </Animated.View>
   );
+}
+
+/** Whether the pointer can hover (a mouse or trackpad), so hover-shown actions can show. */
+export function canHover(): boolean {
+  return typeof window !== 'undefined' && !!window.matchMedia?.('(hover: hover)').matches;
 }
 
 /** A row button is `h-9 w-9`: 36 px on the web, 31.5 pt on native, where this makes 44 pt. */

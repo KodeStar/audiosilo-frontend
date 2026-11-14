@@ -50,6 +50,7 @@ import { useJumpUndo } from '@/playback/jump-undo';
 import { usePlayer } from '@/playback/store';
 import { useTimeSavedStore } from '@/playback/time-saved';
 import { useSettings } from '@/stores/settings';
+import { setFontScale } from '@/testing/font-scale';
 import { playerStoreMock } from '@/testing/player-store-mock';
 import { mountWithPortal } from '@/testing/render-overlay';
 import { expectNativeTarget } from '@/testing/touch-target';
@@ -171,6 +172,25 @@ describe('CompanionChips', () => {
     });
     expect(usePlayerSheets.getState().open).toBe('companion');
     expectNativeTarget(screen.getByLabelText('Text'));
+  });
+
+  // fe#267: one scrolling row at the default size; under large text the chips wrap, so
+  // none is cut off at the edge.
+  it('wraps the chips onto rows under large text', async () => {
+    await mountWithPortal(<CompanionChips />);
+    expect(String(screen.getByTestId('player-companion-chips').props.className)).not.toContain(
+      'flex-wrap',
+    );
+    try {
+      await setFontScale(1.5);
+      await mountWithPortal(<CompanionChips />);
+      expect(String(screen.getByTestId('player-companion-chips').props.className)).toContain(
+        'flex-wrap',
+      );
+      expectNativeTarget(screen.getByLabelText("Who's who"));
+    } finally {
+      await setFontScale(1);
+    }
   });
 
   it("offers no Who's who or Story so far for a podcast episode", async () => {

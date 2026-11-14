@@ -378,7 +378,8 @@ const CHIPS: { tab: CompanionTab; icon: IconName; community: boolean }[] = [
  * Chapters, each opening the companion on that tab and named as the companion names its
  * tabs, in its order. One row, centred where it fits and scrolling sideways where it
  * doesn't (a narrow phone, a long translation), so it never wraps the player past the
- * fold. */
+ * fold. Under large text the player scrolls anyway, and a chip cut off at the edge hides
+ * that there is more, so the chips wrap onto centred rows instead (fe#267). */
 export function CompanionChips() {
   const cid = usePlayer((s) => s.nowPlaying?.connectionId);
   // An episode (Bridge 2d-1) has no community Who's who or Story so far.
@@ -386,6 +387,26 @@ export function CompanionChips() {
   const metadata = useCapability('metadata', cid) === true && !episode;
   const target = usePlayingTarget();
   const chips = CHIPS.filter((c) => metadata || !c.community);
+  const large = useLargeText();
+  const items = chips.map((c) =>
+    c.tab !== 'text' ? (
+      <CompanionChip key={c.tab} tab={c.tab} icon={c.icon} />
+    ) : target ? (
+      <ConnectionScope key={c.tab} connectionId={target.connectionId}>
+        <TextChip target={target} />
+      </ConnectionScope>
+    ) : null,
+  );
+  if (large) {
+    return (
+      <View
+        testID="player-companion-chips"
+        className="w-full flex-row flex-wrap justify-center gap-2"
+      >
+        {items}
+      </View>
+    );
+  }
   return (
     <ScrollView
       horizontal
@@ -395,15 +416,7 @@ export function CompanionChips() {
       className="w-full"
       contentContainerClassName="grow justify-center gap-2"
     >
-      {chips.map((c) =>
-        c.tab !== 'text' ? (
-          <CompanionChip key={c.tab} tab={c.tab} icon={c.icon} />
-        ) : target ? (
-          <ConnectionScope key={c.tab} connectionId={target.connectionId}>
-            <TextChip target={target} />
-          </ConnectionScope>
-        ) : null,
-      )}
+      {items}
     </ScrollView>
   );
 }
@@ -424,7 +437,7 @@ function CompanionChip({ tab, icon }: { tab: CompanionTab; icon: IconName }) {
       label={label}
       onPress={() => usePlayerSheets.getState().openCompanion(tab)}
       hitSlop={ROUND_SLOP}
-      className="h-11 flex-row gap-1.5 px-3"
+      className="min-h-11 flex-row gap-1.5 px-3"
       testID={`player-chip-${tab}`}
     >
       <Icon name={icon} size={15} color={themed.foreground} />
