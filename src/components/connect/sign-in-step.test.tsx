@@ -6,6 +6,7 @@ import type { User } from '@/api/types';
 import { useSession } from '@/stores/session';
 
 import { renderConnect as render } from './connect-testing';
+import { takeScanFor } from './invite-handoff';
 import { SignInStep } from './sign-in-step';
 
 const mockReplace = jest.fn();
@@ -322,6 +323,7 @@ describe('no password (fe#264)', () => {
     await render(<SignInStep server={AWAY} />);
     await fireEvent.press(screen.getByText('No password? Scan a QR code instead'));
     expect(mockPush).toHaveBeenCalledWith('/connect/scan');
+    expect(takeScanFor()).toBeUndefined();
     expect(mockApi.redeemCode).not.toHaveBeenCalled();
     expect(mockApi.login).not.toHaveBeenCalled();
   });
@@ -331,10 +333,9 @@ describe('no password (fe#264)', () => {
     await render(<SignInStep server={AWAY} reconnectId="srv.1" />);
     await fireEvent.press(screen.getByTestId('sign-in-scan'));
     // A code for the same server then re-pairs this connection, as a code typed here does.
-    expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/connect/scan',
-      params: { reconnect: 'srv.1' },
-    });
+    // Handed over in memory, never in the route: a link opens the scanner too.
+    expect(mockPush).toHaveBeenCalledWith('/connect/scan');
+    expect(takeScanFor()).toBe('srv.1');
   });
 
   it('holds the scanner back while a sign-in is on its way', async () => {

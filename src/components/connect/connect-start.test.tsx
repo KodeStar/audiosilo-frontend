@@ -9,7 +9,7 @@ import { useSession } from '@/stores/session';
 
 import { ConnectStart } from './connect-start';
 import { renderConnect as render } from './connect-testing';
-import { holdScanReconnect } from './invite-handoff';
+import { holdScanReconnect, openScanner, takeScanFor } from './invite-handoff';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -181,6 +181,16 @@ describe('a pairing link', () => {
       await render(<ConnectStart />);
       await waitFor(() => expect(paired()).toBeTruthy());
       expect(paired()?.serverUrl).toBe(HOME);
+    });
+
+    it("keeps no reconnect for the scanned token at an address that isn't the connection's", async () => {
+      // The token alone is not enough: the code's server must still be one of its addresses.
+      holdScanReconnect('scanned', 'srv-old.1');
+      mockParams = { token: 'scanned', server: 'https://other.example.com' };
+      await render(<ConnectStart />);
+      await waitFor(() => expect(paired()).toBeTruthy());
+      expect(paired()?.serverUrl).toBe('https://other.example.com');
+      expect(useSession.getState().connections.some((c) => c.id === 'srv-old.1')).toBe(true);
     });
 
     it("keeps no reconnect for another code (held by the scanned code's token)", async () => {
@@ -589,6 +599,13 @@ describe('the app leads with the QR (fe#264)', () => {
     expect(screen.getAllByText('Scan a QR code')).toHaveLength(1);
     await fireEvent.press(scanButton);
     expect(mockPush).toHaveBeenCalledWith('/connect/scan');
+  });
+
+  it('opens the scanner for no reconnect, dropping one an earlier scanner never took', async () => {
+    openScanner('srv-old.1');
+    await render(<ConnectStart />);
+    await fireEvent.press(screen.getByTestId('connect-scan'));
+    expect(takeScanFor()).toBeUndefined();
   });
 
   it('still connects from the address typed under it', async () => {

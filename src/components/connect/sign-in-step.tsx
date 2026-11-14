@@ -18,6 +18,7 @@ import { useSession } from '@/stores/session';
 import { ConnectFrame, ConnectInput, StepDots } from './connect-frame';
 import { addressesBody, BackToStart } from './connect-parts';
 import { finishConnect } from './finish-connect';
+import { openScanner } from './invite-handoff';
 import { type SignInStage, signInErrorText } from './sign-in-error';
 
 type Mode = 'code' | 'password';
@@ -49,7 +50,8 @@ export function emptyField(
  * a new server the card appears on "Your library is ready." instead, never as a guess.
  *
  * In the app, "No password? Scan a QR code instead" opens the scanner (fe#264), which
- * keeps the reconnect (`reconnectId`) for a code of the same server (`scanReconnect`).
+ * keeps the reconnect (`reconnectId`, handed over in memory: `openScanner`) for a code of
+ * the same server (`scanReconnect`).
  *
  * `initialCode`: an invite link's code (a scanned or pasted invite, #98), filled in and
  * signed in with once, as if typed; a refused one stays in the field with the reason.
@@ -249,13 +251,7 @@ export function SignInStep({
           variant="link"
           icon="qrcode"
           title={t('connect.signIn.scanInstead')}
-          onPress={() =>
-            router.push(
-              reconnectId
-                ? { pathname: '/connect/scan', params: { reconnect: reconnectId } }
-                : '/connect/scan',
-            )
-          }
+          onPress={() => openScanner(reconnectId)}
           // Not while a sign-in is on its way (an invite's code signs in as the step opens):
           // a code scanned then would start a second one under it.
           disabled={loading}

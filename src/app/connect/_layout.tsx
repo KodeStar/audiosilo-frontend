@@ -2,6 +2,7 @@ import { Stack, useRootNavigationState, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { dropScanHandoffs } from '@/components/connect/invite-handoff';
 import { KIDS_PATH } from '@/components/kids/kids-model';
 import { useKidsActive } from '@/components/kids/use-kids';
 import { endConnectFlow, kidsConnectAllowed } from '@/components/profiles/connect-intent';
@@ -51,10 +52,12 @@ export default function ConnectLayout() {
   const [openedInKids, setOpenedInKids] = useState<boolean | null>(null);
   if (known && openedInKids === null) setOpenedInKids(refused);
   // Leaving the flow also drops the proxy headers held for it (fe#167): in memory only, and
-  // only until a sign-in keeps them with its connection.
+  // only until a sign-in keeps them with its connection. And a reconnect the scanner was
+  // handed that nothing took (`dropScanHandoffs`).
   useEffect(
     () => () => {
       endConnectFlow();
+      dropScanHandoffs();
       useSession.getState().setPendingProxyHeaders(null);
     },
     [],

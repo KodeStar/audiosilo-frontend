@@ -8,7 +8,7 @@ import { useSession } from '@/stores/session';
 const mockReplace = jest.fn();
 let mockParams: Record<string, string> = {};
 jest.mock('expo-router', () => ({
-  router: { replace: (h: unknown) => mockReplace(h), back: jest.fn() },
+  router: { replace: (h: unknown) => mockReplace(h), back: jest.fn(), push: jest.fn() },
   useLocalSearchParams: () => mockParams,
 }));
 jest.mock('react-native-safe-area-context', () => ({
@@ -27,7 +27,12 @@ jest.mock('expo-camera', () => ({
 
 /* eslint-disable import/first */
 import ScanScreen from '@/app/connect/scan';
-import { takeInviteCode, takeScanReconnect } from '@/components/connect/invite-handoff';
+import {
+  openScanner,
+  takeInviteCode,
+  takeScanFor,
+  takeScanReconnect,
+} from '@/components/connect/invite-handoff';
 /* eslint-enable import/first */
 
 const scan = (data: string) => act(async () => mockOnScan?.({ data }));
@@ -36,6 +41,7 @@ beforeEach(() => {
   mockReplace.mockReset();
   mockOnScan = null;
   mockParams = {};
+  takeScanFor();
   useSession.setState({ pendingServerUrl: null, connections: [] });
 });
 
@@ -80,7 +86,7 @@ it('says where the QR is: the console for an admin, the invite page for anyone i
   expect(screen.getByText(/on your invite page/)).toBeTruthy();
 });
 
-describe("opened from a reconnect's sign-in step (`reconnect`)", () => {
+describe("opened from a reconnect's sign-in step (`openScanner`)", () => {
   // The connection being signed in again: paired at home, with an away address too.
   const reconnecting = () =>
     useSession.setState({
@@ -98,7 +104,7 @@ describe("opened from a reconnect's sign-in step (`reconnect`)", () => {
 
   it("keeps the reconnect for a pairing QR of that connection's server, never in the route", async () => {
     reconnecting();
-    mockParams = { reconnect: 'srv-1.1' };
+    openScanner('srv-1.1');
     await render(<ScanScreen />);
     await scan('https://books.example.com/web/connect?token=abc');
     expect(mockReplace).toHaveBeenCalledWith({
@@ -111,7 +117,7 @@ describe("opened from a reconnect's sign-in step (`reconnect`)", () => {
 
   it('hands it to the connect screen with the code (taken by its token)', async () => {
     reconnecting();
-    mockParams = { reconnect: 'srv-1.1' };
+    openScanner('srv-1.1');
     await render(<ScanScreen />);
     await scan('https://books.example.com/web/connect?token=abc');
     expect(takeScanReconnect('abc')).toBe('srv-1.1');
@@ -120,7 +126,7 @@ describe("opened from a reconnect's sign-in step (`reconnect`)", () => {
 
   it("keeps it for an invite QR of that server: the sign-in step's own `reconnect`", async () => {
     reconnecting();
-    mockParams = { reconnect: 'srv-1.1' };
+    openScanner('srv-1.1');
     await render(<ScanScreen />);
     await scan('https://books.example.com/connect#code=ABCD-EFGH-JKMN-PQRS');
     expect(mockReplace).toHaveBeenCalledWith({
@@ -131,15 +137,33 @@ describe("opened from a reconnect's sign-in step (`reconnect`)", () => {
 
   it('drops it for a code of any other server, or a connection that is gone: a new connection', async () => {
     reconnecting();
-    mockParams = { reconnect: 'srv-1.1' };
+    openScanner('srv-1.1');
     const first = await render(<ScanScreen />);
     await scan('https://other.example.com/web/connect?token=abc');
     expect(takeScanReconnect('abc')).toBeUndefined();
     await first.unmount();
+    openScanner('srv-1.1');
     await render(<ScanScreen />);
     await scan('https://other.example.com/connect#code=ABCD-EFGH-JKMN-PQRS');
     expect(mockReplace).toHaveBeenLastCalledWith('/connect/sign-in');
-    mockParams = { reconnect: 'gone.9' };
+    openScanner('gone.9');
+    await render(<ScanScreen />);
+    await scan('https://books.example.com/web/connect?token=def');
+    expect(takeScanReconnect('def')).toBeUndefined();
+  });
+
+  it('takes it once, and never from the route: a link that opens the scanner names none', async () => {
+    reconnecting();
+    // A link (`audiosilo://connect/scan?reconnect=`): its param is not read.
+    mockParams = { reconnect: 'srv-1.1' };
+    const linked = await render(<ScanScreen />);
+    await scan('https://books.example.com/web/connect?token=abc');
+    expect(takeScanReconnect('abc')).toBeUndefined();
+    await linked.unmount();
+    // Opened for a reconnect, then opened again without one: the first is not kept.
+    openScanner('srv-1.1');
+    const first = await render(<ScanScreen />);
+    await first.unmount();
     await render(<ScanScreen />);
     await scan('https://books.example.com/web/connect?token=def');
     expect(takeScanReconnect('def')).toBeUndefined();

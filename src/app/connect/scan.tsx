@@ -12,10 +12,12 @@ import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { scanParams, scanReconnect } from '@/components/connect/connect-model';
-import { beginInviteSignIn, holdScanReconnect } from '@/components/connect/invite-handoff';
+import {
+  beginInviteSignIn,
+  holdScanReconnect,
+  takeScanFor,
+} from '@/components/connect/invite-handoff';
 import { parseInviteScan, parsePairingScan } from '@/lib/pairing';
-import { firstParam } from '@/lib/paths';
-import { useRouteParams } from '@/lib/route-params';
 import { useSession } from '@/stores/session';
 import { colors } from '@/theme/tokens';
 import { SafeAreaView } from '@/components/ui/safe-area-view';
@@ -47,13 +49,15 @@ function CloseControl() {
 
 /**
  * `/connect/scan`, the QR scanner. `reconnect`: the connection the sign-in step it was
- * opened from re-pairs (the reconnect banner's). A code for that connection's server keeps
- * it (`scanReconnect`), so the scan ends as a sign-in typed on that step would: a server
- * that was reset keeps its person.
+ * opened from re-pairs (the reconnect banner's), handed over in memory (`openScanner`),
+ * never a route param: a link opens this route, and a link must not name a connection to
+ * re-pair. A code for that connection's server keeps it (`scanReconnect`), so the scan ends
+ * as a sign-in typed on that step would: a server that was reset keeps its person.
  */
 export default function ScanScreen() {
   const { t } = useTranslation();
-  const { reconnect } = useRouteParams<{ reconnect?: string | string[] }>();
+  // Taken once, as the scanner opens.
+  const [reconnect] = useState(takeScanFor);
   const [permission, requestPermission] = useCameraPermissions();
   const [error, setError] = useState<string | null>(null);
   // Guards against the camera firing onBarcodeScanned repeatedly for the same frame.
@@ -84,7 +88,7 @@ export default function ScanScreen() {
     const invite = parsed ? null : parseInviteScan(data);
     // The reconnect this scan continues, when the code is for that connection's server.
     const again = (base: string) =>
-      scanReconnect(firstParam(reconnect) || undefined, base, useSession.getState().connections);
+      scanReconnect(reconnect, base, useSession.getState().connections);
     if (invite) {
       setError(null);
       const reconnectId = again(invite.base);

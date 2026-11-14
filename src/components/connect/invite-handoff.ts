@@ -1,3 +1,5 @@
+import { router } from 'expo-router';
+
 import type { InviteScan } from '@/lib/pairing';
 import { useSession } from '@/stores/session';
 
@@ -28,6 +30,30 @@ export function takeInviteCode(server: string): string | undefined {
   return code;
 }
 
+/** The connection the scanner was opened to re-pair (memory only). */
+let scanFor: string | undefined;
+
+/**
+ * Open the QR scanner (`/connect/scan`). `reconnectId`: the connection the reconnect's
+ * sign-in step it is opened from re-pairs. In memory, never in the scanner's params, for
+ * the reason `holdScanReconnect` gives: a link opens that route too
+ * (`audiosilo://connect/scan`), and a link must not name a connection to re-pair. Every way
+ * into the scanner comes through here, so one that names no reconnect clears what an
+ * earlier one left.
+ */
+export function openScanner(reconnectId?: string): void {
+  scanFor = reconnectId;
+  router.push('/connect/scan');
+}
+
+/** The reconnect the scanner was opened for (`openScanner`), taken once as it opens: a
+ * scanner a link opened finds none. */
+export function takeScanFor(): string | undefined {
+  const id = scanFor;
+  scanFor = undefined;
+  return id;
+}
+
 /** The reconnect a scanned pairing code continues (memory only), by the code's token. */
 let scanned: { token: string; reconnectId: string } | null = null;
 
@@ -47,4 +73,12 @@ export function takeScanReconnect(token: string): string | undefined {
   const id = scanned?.token === token ? scanned.reconnectId : undefined;
   scanned = null;
   return id;
+}
+
+/** The connect flow was left (its layout's cleanup): a reconnect a scanner was opened for
+ * or a scanned code held, and nothing took, goes with it, so neither waits for a later flow
+ * (a scanner a link opens, the same code again). */
+export function dropScanHandoffs(): void {
+  scanFor = undefined;
+  scanned = null;
 }

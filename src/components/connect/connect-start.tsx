@@ -42,12 +42,13 @@ import {
   knownToOffer,
   looksLikeHomeAddress,
   reconnectAddress,
+  scanReconnect,
   selfSignedMayBeWhy,
 } from './connect-model';
 import { KnownServerRow, type Probe, ProbeNotice } from './connect-parts';
 import { CoverFan } from './cover-cascade';
 import { finishConnect } from './finish-connect';
-import { beginInviteSignIn, takeScanReconnect } from './invite-handoff';
+import { beginInviteSignIn, openScanner, takeScanReconnect } from './invite-handoff';
 import { ProxyHeadersEditor } from './proxy-headers-editor';
 import { draftOf, draftToSet, type HeaderDraftRow } from './proxy-headers-model';
 import { useLinkPairing } from './use-pairing';
@@ -167,9 +168,13 @@ export function ConnectStart() {
   // busy, failing or not answering) keeps its token for a reload, and offers Try again.
   const pairLink = async (scan: PairingScan) => {
     setRetryLink(null);
+    // The scanned code's reconnect, and still only for one of that connection's own
+    // addresses: a link carrying the same token for another address re-pairs nothing.
     const outcome = await pair(
       scan,
-      scanned?.token === scan.token ? scanned.reconnectId : undefined,
+      scanned?.token === scan.token
+        ? scanReconnect(scanned.reconnectId, scan.base, useSession.getState().connections)
+        : undefined,
     );
     if (outcome === 'paired' || !mounted.current) return;
     if (outcome === 'temporary') {
@@ -446,7 +451,8 @@ export function ConnectStart() {
           size="lg"
           icon="qrcode"
           title={t('connect.server.scanQr')}
-          onPress={() => router.push('/connect/scan')}
+          // No reconnect from here: it also drops one an earlier scanner never took.
+          onPress={() => openScanner()}
           testID="connect-scan"
         />
       )}
