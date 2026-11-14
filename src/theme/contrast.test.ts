@@ -47,6 +47,8 @@ const TEXT: [Token, Token[]][] = [
   ['brandForeground', ['brand']],
   ['destructive', ['background', 'card', 'destructiveSoft']],
   ['destructiveForeground', ['destructive']],
+  // The finished flag's check on a solid success fill (cover tiles, spines).
+  ['successForeground', ['success']],
   ['success', ['background', 'card', 'successSoft']],
   ['warning', ['background', 'card', 'warningSoft']],
   ['info', ['background', 'card', 'infoSoft']],

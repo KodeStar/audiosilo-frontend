@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 import { colors } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { BookCover } from './book-cover';
 import { TileActions } from './tile-actions';
@@ -140,6 +141,7 @@ export function CoverTile({
 }: CoverTileProps) {
   const { t } = useTranslation();
   const { openBook } = useOpen();
+  const themed = useThemeColors();
   const downloaded = useIsDownloaded(connectionId, libraryId, path);
   // The saved progress, unless the caller says (a screen that has it, or a live place).
   const own = givenProgress === undefined && givenFinished === undefined;
@@ -225,7 +227,7 @@ export function CoverTile({
             ) : null}
             {finished ? (
               <Flag className="bg-success">
-                <Icon name="check" size={11} color={colors.white} />
+                <Icon name="check" size={11} color={themed.successForeground} />
               </Flag>
             ) : null}
           </View>

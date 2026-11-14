@@ -94,6 +94,7 @@
   --color-brand-soft: unset;
   --color-brand-ink: unset;
   --color-success: unset;
+  --color-success-foreground: unset;
   --color-success-soft: unset;
   --color-warning: unset;
   --color-warning-soft: unset;
@@ -150,6 +151,7 @@
       --color-brand-soft: #fce7f1;
       --color-brand-ink: #a3195a;
       --color-success: #0c7a57;
+      --color-success-foreground: #ffffff;
       --color-success-soft: #e1f5ec;
       --color-warning: #9e5c06;
       --color-warning-soft: #fdf1dc;
@@ -204,6 +206,7 @@
       --color-brand-soft: #3a1530;
       --color-brand-ink: #f78bbb;
       --color-success: #3cc994;
+      --color-success-foreground: #0a0f1e;
       --color-success-soft: #0f2e26;
       --color-warning: #f0b04d;
       --color-warning-soft: #33260f;

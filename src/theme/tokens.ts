@@ -39,6 +39,7 @@ export const colors = {
     brandSoft: '#fce7f1', // --color-brand-soft
     brandInk: '#a3195a', // --color-brand-ink
     success: '#0c7a57', // --color-success
+    successForeground: '#ffffff', // --color-success-foreground
     successSoft: '#e1f5ec', // --color-success-soft
     warning: '#9e5c06', // --color-warning
     warningSoft: '#fdf1dc', // --color-warning-soft
@@ -93,6 +94,7 @@ export const colors = {
     brandSoft: '#3a1530', // --color-brand-soft
     brandInk: '#f78bbb', // --color-brand-ink
     success: '#3cc994', // --color-success
+    successForeground: '#0a0f1e', // --color-success-foreground
     successSoft: '#0f2e26', // --color-success-soft
     warning: '#f0b04d', // --color-warning
     warningSoft: '#33260f', // --color-warning-soft
@@ -149,6 +151,7 @@ export const colors = {
       brandSoft: '#fce7f1', // --color-brand-soft
       brandInk: '#961753', // --color-brand-ink
       success: '#095c41', // --color-success
+      successForeground: '#ffffff', // --color-success-foreground
       successSoft: '#e1f5ec', // --color-success-soft
       warning: '#784604', // --color-warning
       warningSoft: '#fdf1dc', // --color-warning-soft
@@ -203,6 +206,7 @@ export const colors = {
       brandSoft: '#3a1530', // --color-brand-soft
       brandInk: '#ffa3cb', // --color-brand-ink
       success: '#5fdcab', // --color-success
+      successForeground: '#0a0f1e', // --color-success-foreground
       successSoft: '#0f2e26', // --color-success-soft
       warning: '#f6c578', // --color-warning
       warningSoft: '#33260f', // --color-warning-soft

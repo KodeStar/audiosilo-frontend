@@ -226,6 +226,7 @@ Web dark-mode rule: define dark under `@media (prefers-color-scheme: dark) { :ro
 | `--destructive` | `#c42b3c` | `#f0606e` | Sign out, remove server, failed download |
 | `--destructive-foreground` | `#ffffff` | `#0a0f1e` | The label on a solid destructive fill (white on the dark coral was 3.2:1; `src/theme/contrast.test.ts` keeps it at 4.5:1) |
 | `--brand-foreground` | `#ffffff` | `#0a0f1e` | The label on a solid brand fill (the brand button; white on the dark pink was 3.4:1) |
+| `--success-foreground` | `#ffffff` | `#0a0f1e` | The check on a solid success fill (the finished flag on covers and spines; white on the dark green was 2.1:1) |
 | `--subtle-foreground` | `#636e87` | `#818ba2` | The quietest text (counts, "of goal", sync state, placeholders): AA, a step under `--muted-foreground` |
 | `--border-strong` / `--input` | `#848ea3` | `#5c6886` | Outline buttons, chips, the switch off, check boxes; field outlines. 3:1 on the page and cards (WCAG 1.4.11); plain `--border` is a decorative divider |
 | `--track` | `#d9dee7` | `#263150` | The slider and progress track. The brand fill on it carries the value, so it holds 3:1 (3.40 light, 3.74 dark) and the track stays light on the page (1.26 / 1.49). In high contrast `ProgressBar` and the slider draw a 1px `--input` outline on it (`TrackOutline`, under the fill), so its full length shows at 4.5:1; `ProgressRing` tracks and hairlines under about 4px (the mini player's chapter line) are not outlined |
