@@ -178,3 +178,15 @@ jest.mock('@shopify/flash-list/dist/recyclerview/utils/measureLayout', () => {
     measureItemLayout: jest.fn(() => ({ x: 0, y: 0, width: 100, height: 100 })),
   };
 });
+
+// React Native's jest preset reports a system font scale of 2, which every layout that reads
+// the text scale (`@/lib/text-scale`) would take for large text. Tests start at the default
+// size (1); a large-text test sets its own with `setFontScale` (`@/testing/font-scale`).
+{
+  const { Dimensions } = require('react-native') as typeof import('react-native');
+  const set = (Dimensions as unknown as { set: (dims: object) => void }).set;
+  set({
+    window: { ...Dimensions.get('window'), fontScale: 1 },
+    screen: { ...Dimensions.get('screen'), fontScale: 1 },
+  });
+}
