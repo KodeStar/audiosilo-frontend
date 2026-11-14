@@ -116,11 +116,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       )
       .then(([scheme, pref, os]) => {
         if (!active) return;
-        // Before first paint, so a high-contrast launch never shows the normal colours.
-        applyHighContrast(highContrastActive(os, pref));
+        // The theme first: a failure applying high contrast (caught below) must not cost
+        // the stored theme.
+        if (scheme) Uniwind.setTheme(scheme);
         setHighContrastPrefState(pref);
         setOsHighContrast(os);
-        if (scheme) Uniwind.setTheme(scheme);
+        // Before first paint, so a high-contrast launch never shows the normal colours.
+        applyHighContrast(highContrastActive(os, pref));
       })
       .catch(() => undefined)
       .finally(() => {
