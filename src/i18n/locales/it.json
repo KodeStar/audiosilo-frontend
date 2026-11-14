@@ -68,7 +68,7 @@
     },
     "highContrast": {
       "label": "Contrasto elevato",
-      "description": "Testo, bordi e barre più marcati. Disattivato segue l'impostazione di contrasto di questo dispositivo.",
+      "description": "Testo e bordi più marcati. Disattivato segue l'impostazione di contrasto di questo dispositivo.",
       "deviceOn": "Attivo: questo dispositivo chiede più contrasto. Cambialo nelle sue impostazioni di accessibilità."
     },
     "language": {

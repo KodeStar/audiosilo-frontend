@@ -68,7 +68,7 @@
     },
     "highContrast": {
       "label": "Alto contraste",
-      "description": "Texto, bordas e barras mais fortes. Desligado segue a definição de contraste deste dispositivo.",
+      "description": "Texto e bordas mais fortes. Desligado segue a definição de contraste deste dispositivo.",
       "deviceOn": "Ligado: este dispositivo pede mais contraste. Altere isso nas definições de acessibilidade dele."
     },
     "language": {

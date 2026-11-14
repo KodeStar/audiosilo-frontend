@@ -71,6 +71,11 @@ const NON_TEXT: [Token, Token[]][] = [
  * seek tooltip's book time, a selected option's caption, a selected chip's count). */
 const FADED: [Token, Token, number][] = [['primaryForeground', 'primary', 0.7]];
 
+/** Pairs one scheme's components draw that the other's don't: dark lifts a segmented
+ * control's selected segment to `secondary` (`toggle-group.tsx`), with its count in subtle
+ * text; light keeps it on `card`. */
+const TEXT_DARK: [Token, Token[]][] = [['subtleForeground', ['secondary']]];
+
 const SETS: [string, ThemeColors][] = [
   ['light', colors.light],
   ['dark', colors.dark],
@@ -92,6 +97,15 @@ describe.each(SETS)('the %s colours', (_name, t) => {
 
   it.each(FADED)('%s on %s at %s alpha meets 4.5:1', (fg, bg, alpha) => {
     expect(contrast(over(t[fg], t[bg], alpha), t[bg])).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe.each([
+  ['dark', colors.dark],
+  ['high-contrast dark', colors.highContrast.dark],
+] as const)('the %s colours', (_name, t) => {
+  it.each(pairs(TEXT_DARK))('text %s on %s meets 4.5:1', (fg, bg) => {
+    expect(contrast(t[fg], t[bg])).toBeGreaterThanOrEqual(4.5);
   });
 });
 

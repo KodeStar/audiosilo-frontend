@@ -68,7 +68,7 @@
     },
     "highContrast": {
       "label": "High contrast",
-      "description": "Stronger text, borders and tracks. Off follows this device's contrast setting.",
+      "description": "Stronger text and borders. Off follows this device's contrast setting.",
       "deviceOn": "On: this device asks for more contrast. Change that in its accessibility settings."
     },
     "language": {

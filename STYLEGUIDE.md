@@ -154,7 +154,7 @@ Desktop
   --card: #10172b; --card-foreground: #e7ebf4; --popover: #131b31; --popover-foreground: #e7ebf4;
   --primary: #eef1f8; --primary-foreground: #0a0f1e;
   --secondary: #1a2340; --secondary-foreground: #dfe5f2;
-  --muted: #151d34; --muted-foreground: #8f9ab3; --subtle-foreground: #7a859e;
+  --muted: #151d34; --muted-foreground: #8f9ab3; --subtle-foreground: #818ba2;
   --accent: #1a2340; --accent-foreground: #e7ebf4;
   --brand: #ec4f95; --brand-foreground: #0a0f1e; --brand-soft: #3a1530; --brand-ink: #f78bbb;
   --destructive: #f0606e; --destructive-soft: #3a1720;
@@ -226,7 +226,7 @@ Web dark-mode rule: define dark under `@media (prefers-color-scheme: dark) { :ro
 | `--destructive` | `#c42b3c` | `#f0606e` | Sign out, remove server, failed download |
 | `--destructive-foreground` | `#ffffff` | `#0a0f1e` | The label on a solid destructive fill (white on the dark coral was 3.2:1; `src/theme/contrast.test.ts` keeps it at 4.5:1) |
 | `--brand-foreground` | `#ffffff` | `#0a0f1e` | The label on a solid brand fill (the brand button; white on the dark pink was 3.4:1) |
-| `--subtle-foreground` | `#636e87` | `#7a859e` | The quietest text (counts, "of goal", sync state, placeholders): AA, a step under `--muted-foreground` |
+| `--subtle-foreground` | `#636e87` | `#818ba2` | The quietest text (counts, "of goal", sync state, placeholders): AA, a step under `--muted-foreground` |
 | `--border-strong` / `--input` | `#848ea3` | `#5c6886` | Outline buttons, chips, the switch off, check boxes; field outlines. 3:1 on the page and cards (WCAG 1.4.11); plain `--border` is a decorative divider |
 | `--track` | `#848ea3` | `#5c6886` | The slider and progress track, 3:1 on the page and cards. The brand fill on it is about 1.4:1 (light) / 1.6:1 (dark): the fill's end is told by hue and, on a slider, by the thumb |
 | `--info` | `#2c56c9` | `#7d9bf2` | "On Maya's Shelf" (a friend's server), "Also on ..." |
@@ -748,7 +748,7 @@ Older servers lack these; the UI degrades quietly (Maya's Shelf on 1.12.3 shows 
 | `--popover` | `bg-popover` | DropdownMenu, Dialog, bottom sheet, palette |
 | `--primary` | `bg-primary text-primary-foreground` | Button default, play button, Toast, Undo chip |
 | `--secondary` | `bg-secondary` | Button secondary |
-| `--muted / --muted-foreground` | `bg-muted text-muted-foreground` | Skeleton, tracks, captions |
+| `--muted / --muted-foreground` | `bg-muted text-muted-foreground` | Skeleton, quiet fills, captions (tracks are `bg-track`) |
 | `--accent` | `bg-accent` | Hover/pressed ghost items |
 | `--border / --input / --ring` | `border-border ring-ring` | Hairlines, Input, focus |
 | `--destructive / --destructive-foreground` | `bg-destructive text-destructive-foreground` | Sign out, delete |

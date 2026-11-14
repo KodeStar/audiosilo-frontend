@@ -77,7 +77,7 @@ export const colors = {
     secondaryForeground: '#dfe5f2', // --color-secondary-foreground
     muted: '#151d34', // --color-muted
     mutedForeground: '#8f9ab3', // --color-muted-foreground
-    subtleForeground: '#7a859e', // --color-subtle-foreground
+    subtleForeground: '#818ba2', // --color-subtle-foreground
     accent: '#1a2340', // --color-accent
     accentForeground: '#e7ebf4', // --color-accent-foreground
     destructive: '#f0606e', // --color-destructive
