@@ -66,7 +66,7 @@ const NON_TEXT: [Token, Token[]][] = [
   ['borderStrong', ['background', 'card']],
   ['ring', ['background', 'card']],
   ['brand', ['background', 'card', 'track']],
-  // The slider's ink fill (`tone="primary"`).
+  // The slider's ink fill (`tone="ink"`, `primary`).
   ['primary', ['track']],
 ];
 

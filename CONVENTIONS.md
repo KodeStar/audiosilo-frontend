@@ -3150,8 +3150,9 @@ tokens, type and components; its section 17 maps them onto these files.
     so `bg-gray-200` / `text-red-500` compile to nothing. Add a token to `tokens.json` (both
     themes) instead.
   - Native props that need a colour string read `useThemeColors()` (`@/theme/use-theme-colors`),
-    which returns the resolved theme's `colors.light|dark` from a context `ThemeProvider` fills (one
-    `useUniwind` subscription, not one per Icon); don't pick `scheme === 'dark' ? ... : ...`.
+    which returns the resolved theme's `colors.light|dark` (or its high-contrast set) from a
+    context `ThemeProvider` fills (one `useUniwind` subscription, not one per Icon); don't pick
+    `scheme === 'dark' ? ... : ...`.
 - **Fonts (Stacks):** Figtree (body), Bricolage Grotesque (display), JetBrains Mono, loaded by
   `ThemeProvider` from `@expo-google-fonts/*` (only the weights a token uses). One family per token,
   since RN has no font fallback or synthetic weights (web adds the system stack): `font-sans` (Figtree
