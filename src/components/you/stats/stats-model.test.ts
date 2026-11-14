@@ -323,6 +323,9 @@ describe('layout and servers', () => {
 
   it('lays the page out once for the content and its skeleton', () => {
     expect(statsGrid(360)).toMatchObject({ compact: true, tileGap: 10, tileW: 175, chartW: 360 });
+    // Large text: half the tile columns.
+    expect(statsGrid(360, true)).toMatchObject({ tileW: 360, chartW: 360 });
+    expect(statsGrid(1100, true)).toMatchObject({ tileW: 542 });
     expect(statsGrid(1100)).toMatchObject({
       compact: false,
       tileGap: 16,

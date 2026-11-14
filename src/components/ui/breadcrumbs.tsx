@@ -58,6 +58,9 @@ export function BreadCrumbs({ crumbs }: { crumbs: Crumb[] }) {
           key={`${c.label}-${i}`}
           onPress={c.onPress}
           disabled={!c.onPress}
+          // A link to a folder; the active crumb is the place itself (C8: no role on native).
+          accessibilityRole={c.onPress ? 'link' : 'text'}
+          aria-current={c.active ? 'page' : undefined}
           className={`bg-muted px-3 py-1.5 active:opacity-80 ${
             i === 0 ? 'rounded-l-md' : ''
           } ${i === last ? 'rounded-r-md' : 'border-r border-border'}`}

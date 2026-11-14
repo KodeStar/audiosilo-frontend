@@ -24,6 +24,7 @@ import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { useDownloadedEbook } from '@/downloads/store';
 import { readerHref } from '@/lib/paths';
+import { useLargeText } from '@/lib/text-scale';
 import { WithActiveModules } from '@/modules/active-modules';
 import type { PlayerModule } from '@/modules/registry';
 import { canRead } from '@/reader/can-read';
@@ -92,6 +93,9 @@ function HeroActionsView({
   active,
 }: HeroActionsProps & { active: readonly PlayerModule[] }) {
   const { t } = useTranslation();
+  // Under large text a phone's download takes a row of its own, above the icon buttons:
+  // beside them its word was cut to "Do...".
+  const large = useLargeText();
   const path = book.rel_path;
   const collections = useCapability('collections', connectionId) === true;
   const ebooks = useCapability('ebooks', connectionId);
@@ -206,14 +210,18 @@ function HeroActionsView({
         // A phone: the primary across the page (its words never wrap), then the rest on
         // ONE row: the download takes the room the icon buttons leave (Add to collection
         // is in the menu here), giving way (its words end in "...") rather than letting
-        // them wrap onto a row of their own.
+        // them wrap onto a row of their own. Under large text the download and the icons
+        // are a row each.
         <View className="gap-2">
           {primaryButton}
-          <View testID="hero-secondary-row" className="flex-row items-center gap-2">
-            <View testID="hero-download-slot" className="min-w-0 flex-1">
+          <View
+            testID="hero-secondary-row"
+            className={large ? 'gap-2' : 'flex-row items-center gap-2'}
+          >
+            <View testID="hero-download-slot" className={large ? undefined : 'min-w-0 flex-1'}>
               {download}
             </View>
-            {icons}
+            {large ? <View className="flex-row items-center gap-2">{icons}</View> : icons}
           </View>
           {readButton}
           {generateButton}
@@ -261,8 +269,9 @@ function FavouriteButton({
       size="lg"
       icon={on ? 'heart-solid' : 'heart'}
       className={ICON_BUTTON}
+      // The label says what a press does ("Remove from favourites"); a selected state on top
+      // read it twice ("Remove from favourites, selected").
       accessibilityLabel={on ? t('library.favourite.remove') : t('library.favourite.add')}
-      accessibilityState={{ selected: on }}
       onPress={() => toggle.mutate({ libraryId, path, on: !on })}
     />
   );

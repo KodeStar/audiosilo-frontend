@@ -12,6 +12,7 @@ import { ProgressRing } from '@/components/ui/progress-ring';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { touchTarget } from '@/components/ui/touch-target';
+import { linesFor, scaleCapped, useFontScale, useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -25,9 +26,11 @@ export type ValuePart = { n: string; unit?: string; spaced?: boolean };
 /** The stat value (STYLEGUIDE section 4 "Stat": Bricolage 32, 25 on a phone), figures big
  * and units small and muted. */
 export function StatValue({ parts, compact }: { parts: readonly ValuePart[]; compact: boolean }) {
+  // Under large text a value wraps rather than end in "...".
+  const lines = linesFor(1, useLargeText());
   return (
     <Text
-      numberOfLines={1}
+      numberOfLines={lines}
       className={cn(
         'font-display tracking-tight text-foreground',
         compact ? 'text-[25px] leading-[28px]' : 'text-[32px] leading-[34px]',
@@ -139,6 +142,8 @@ export function GoalTile({
   const progress = goalProgress(shown, today);
   const target = touchTarget(1.75, 1.875);
   const small = compact || width < 240;
+  // The ring grows with the text size so its percent stays inside it.
+  const ring = scaleCapped(small ? 48 : 62, useFontScale(), 2);
 
   if (!progress) {
     return (
@@ -193,7 +198,7 @@ export function GoalTile({
       <View className="flex-row items-center gap-3.5">
         <ProgressRing
           fraction={progress.fraction}
-          size={small ? 48 : 62}
+          size={ring}
           stroke={small ? 5 : 6}
           color={themed.foreground}
           trackColor={themed.mutedForeground}

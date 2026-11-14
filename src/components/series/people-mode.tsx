@@ -14,6 +14,7 @@ import { formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
+import { useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 
@@ -163,6 +164,9 @@ function PersonCard({
     .filter(Boolean)
     .join(' · ');
   const open = kind === 'author' ? openAuthor : openNarrator;
+  // Under large text a name wraps (two lines, not "..."), and loses its tight tracking,
+  // which clipped its first glyph on Android at that size.
+  const large = useLargeText();
   return (
     <Pressable
       onPress={() => open(connectionId, libraryId, person.name)}
@@ -173,8 +177,11 @@ function PersonCard({
       <Portrait name={person.name} kind={kind} size={size} />
       <View className="w-full items-center gap-0.5">
         <Text
-          className="text-center font-display text-[15px] tracking-tight text-foreground"
-          numberOfLines={1}
+          className={cn(
+            'text-center font-display text-[15px] text-foreground',
+            !large && 'tracking-tight',
+          )}
+          numberOfLines={large ? 2 : 1}
         >
           {person.name}
         </Text>

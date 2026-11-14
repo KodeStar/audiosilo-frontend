@@ -37,6 +37,7 @@ import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { bookSeriesNumber } from '@/lib/series-position';
 import { useWidth } from '@/lib/use-width';
 import { type PlacedProgress, positionOn } from '@/playback/progress-sync';
@@ -74,6 +75,9 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress & Plac
   // (Read before the first paint on the web, `useWidth`, so the card draws its shape once.)
   const { ref, width, onLayout } = useWidth();
   const compact = nowCardCompact(useLayout() === 'phone', width);
+  // Under large text the phone card puts its cover above the title and lets the words
+  // wrap instead of ending in "...".
+  const large = useLargeText();
   const { openBook } = useOpen();
   const play = usePlayBook();
   const { libraryId, path } = at;
@@ -222,7 +226,11 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress & Plac
           {placeCount}
         </Text>
       </View>
-      <Text variant="label" className="min-w-0 flex-1 text-[15px]" numberOfLines={1}>
+      <Text
+        variant="label"
+        className="min-w-0 flex-1 text-[15px]"
+        numberOfLines={linesFor(1, large)}
+      >
         {chapterLabel({ title: shownPlace.title, index: shownPlace.number - 1 }, t)}
       </Text>
     </View>
@@ -309,15 +317,23 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress & Plac
       <CoverWash color={book?.cover_color} variant="card" />
       {compact ? (
         <>
-          <View className="flex-row items-center gap-3.5">
+          <View className={large ? 'gap-3.5' : 'flex-row items-center gap-3.5'}>
             {cover}
-            <View className="min-w-0 flex-1 gap-1.5">
+            <View className={large ? 'gap-1.5' : 'min-w-0 flex-1 gap-1.5'}>
               {eyebrow ? (
-                <Text variant="eyebrow" className="text-[10.5px]" numberOfLines={2}>
+                <Text
+                  variant="eyebrow"
+                  className="text-[10.5px]"
+                  numberOfLines={linesFor(2, large)}
+                >
                   {eyebrow}
                 </Text>
               ) : null}
-              <Text variant="display" className="text-[24px] leading-[26px]" numberOfLines={3}>
+              <Text
+                variant="display"
+                className="text-[24px] leading-[26px]"
+                numberOfLines={linesFor(3, large)}
+              >
                 {title}
               </Text>
             </View>

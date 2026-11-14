@@ -6,6 +6,7 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { formatLongDate, formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { useMinuteClock } from '@/lib/use-now';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -52,6 +53,9 @@ export function Greeting({
   down?: string;
 }) {
   const { t, i18n } = useTranslation();
+  // Under large text the date and the pills stack, and their words wrap.
+  const large = useLargeText();
+  const lines = linesFor(1, large);
   const themed = useThemeColors();
   const phone = useLayout() === 'phone';
   // Once a minute, so "synced 2 min ago" and the part of the day stay true.
@@ -83,7 +87,7 @@ export function Greeting({
       />
       <Text
         className="shrink font-sans-semibold text-[12.5px] text-muted-foreground"
-        numberOfLines={1}
+        numberOfLines={lines}
       >
         {syncText}
       </Text>
@@ -95,7 +99,7 @@ export function Greeting({
         <View className={`h-[7px] w-[7px] rounded-full ${down ? 'bg-warning' : 'bg-success'}`} />
         <Text
           className="shrink font-sans-semibold text-[12.5px] text-muted-foreground"
-          numberOfLines={1}
+          numberOfLines={lines}
         >
           {serversText}
         </Text>
@@ -107,8 +111,12 @@ export function Greeting({
     // gets a row of its own under it (the healthy "2 servers" count stays desktop-only).
     return (
       <View className="gap-2">
-        <View className="min-h-[30px] flex-row items-center justify-between gap-3">
-          <Text variant="muted" className="flex-1" numberOfLines={1}>
+        <View
+          className={
+            large ? 'items-start gap-2' : 'min-h-[30px] flex-row items-center justify-between gap-3'
+          }
+        >
+          <Text variant="muted" className={large ? undefined : 'flex-1'} numberOfLines={lines}>
             {date}
           </Text>
           {syncPill}

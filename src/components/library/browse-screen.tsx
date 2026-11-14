@@ -29,6 +29,7 @@ import { useUnreadQuery } from '@/lib/offline-state';
 import { idParam, libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
 import { recallScroll, rememberScroll, scrollKey } from '@/lib/scroll-memory';
+import { useLargeText } from '@/lib/text-scale';
 import { usePageTitle } from '@/lib/use-page-title';
 
 import { AzRail } from './books/az-rail';
@@ -38,7 +39,9 @@ const NARROW_THRESHOLD = 25;
 // Stable across renders (FlatList rejects a changing viewability config).
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 10 };
 // Fixed row heights drive getItemLayout, so the A–Z rail can jump to an exact
-// offset (a folder/file row is EntryRow's min-h-[3.5rem]=56 + my-1=8).
+// offset (a folder/file row is EntryRow's min-h-[3.5rem]=56 + my-1=8). Not under large
+// text: a row then takes the height its words need (fixed heights overlapped them), and
+// the rail and the scroll memory go by row index (`scrollToIndex`).
 const HEADER_H = 48;
 const ENTRY_H = 64;
 
@@ -113,6 +116,7 @@ function BrowseContent() {
   // Retry can work.
   const offline = useUnreadQuery(browse) === 'offline';
   const paddingBottom = useMiniPlayerInset();
+  const large = useLargeText();
 
   const [query, setQuery] = useState('');
 
@@ -188,28 +192,48 @@ function BrowseContent() {
     restoredRef.current = true;
     const saved = recallScroll(key);
     if (saved > 0) {
-      const offset = offsets[Math.min(saved, rows.length - 1)] ?? 0;
-      requestAnimationFrame(() => listRef.current?.scrollToOffset({ offset, animated: false }));
+      const index = Math.min(saved, rows.length - 1);
+      const offset = offsets[index] ?? 0;
+      requestAnimationFrame(() =>
+        large
+          ? listRef.current?.scrollToIndex({ index, animated: false })
+          : listRef.current?.scrollToOffset({ offset, animated: false }),
+      );
     }
-  }, [rows.length, key, offsets]);
+  }, [rows.length, key, offsets, large]);
 
   const jumpToLetter = (letter: string) => {
     const sectionIdx = sectionIndexForLetter(sections, letter);
     if (sectionIdx < 0) return;
-    const offset = offsets[headerRows[sectionIdx]];
+    const index = headerRows[sectionIdx];
+    const offset = offsets[index];
     if (offset == null) return;
-    listRef.current?.scrollToOffset({ offset, animated: false });
+    if (large) listRef.current?.scrollToIndex({ index, animated: false });
+    else listRef.current?.scrollToOffset({ offset, animated: false });
+  };
+
+  // Large text (no getItemLayout): a row not laid out yet can't be scrolled to by index.
+  // Go near it by the rows measured so far, then try again once that part has laid out.
+  const onScrollToIndexFailed = (info: { index: number; averageItemLength: number }) => {
+    listRef.current?.scrollToOffset({
+      offset: info.averageItemLength * info.index,
+      animated: false,
+    });
+    setTimeout(() => listRef.current?.scrollToIndex({ index: info.index, animated: false }), 50);
   };
 
   const renderItem: ListRenderItem<Row> = ({ item }) =>
     item.type === 'header' ? (
       // Background matches the page (bg-background) so the sticky header
       // occludes scrolled rows without showing as a distinct block.
-      <View style={{ height: HEADER_H }} className="justify-end bg-background px-4 pb-2 lg:px-8">
+      <View
+        style={large ? { minHeight: HEADER_H } : { height: HEADER_H }}
+        className="justify-end bg-background px-4 pb-2 lg:px-8"
+      >
         <Text variant="eyebrow">{item.letter}</Text>
       </View>
     ) : (
-      <View style={{ height: ENTRY_H }} className="px-4 lg:px-8">
+      <View style={large ? undefined : { height: ENTRY_H }} className="px-4 lg:px-8">
         <EntryRow entry={item.entry} connectionId={cid} libraryId={libraryId} />
       </View>
     );
@@ -257,7 +281,8 @@ function BrowseContent() {
             data={rows}
             keyExtractor={(item) => (item.type === 'header' ? `#${item.letter}` : item.entry.path)}
             renderItem={renderItem}
-            getItemLayout={getItemLayout}
+            getItemLayout={large ? undefined : getItemLayout}
+            onScrollToIndexFailed={onScrollToIndexFailed}
             stickyHeaderIndices={headerRows}
             contentContainerStyle={{ paddingBottom }}
             onViewableItemsChanged={onViewableItemsChanged}

@@ -65,6 +65,7 @@ export function ProgressTile({
       author={book?.author}
       coverVersion={book?.cover_version}
       caption={caption}
+      captionHasProgress
       width={width}
       server={server}
       book={book}

@@ -33,8 +33,12 @@ import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-/** The card's height (STYLEGUIDE "Mini player": 56). */
+/** The card's height (STYLEGUIDE "Mini player": 56); a minimum, which its words grow
+ * past under large text (up to `MINI_TEXT_MAX_SCALE`). */
 export const MINI_PLAYER_HEIGHT = 56;
+/** How far the card's words follow the text size: chrome over every page, so it grows
+ * less than the page does (its stack is measured for the pages' insets). */
+export const MINI_TEXT_MAX_SCALE = 2;
 /** The gap between the card and the tab bar under it. */
 export const MINI_PLAYER_GAP = 6;
 /** The base bottom padding the scroll screens already carry (their `p-4`). */
@@ -115,13 +119,20 @@ export function MiniPlayerSubtitle({
             variant="caption"
             className="font-sans-semibold text-foreground"
             style={tabularNums}
+            maxFontSizeMultiplier={MINI_TEXT_MAX_SCALE}
           >
             {rest ? `${sleep} ·` : sleep}
           </Text>
         </View>
       ) : null}
       {rest ? (
-        <Text variant="caption" numberOfLines={1} className="flex-1" style={tabularNums}>
+        <Text
+          variant="caption"
+          numberOfLines={1}
+          className="flex-1"
+          style={tabularNums}
+          maxFontSizeMultiplier={MINI_TEXT_MAX_SCALE}
+        >
           {rest}
         </Text>
       ) : null}
@@ -234,8 +245,8 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue
           shadow (Android: elevation, which keeps it lifted on the porcelain page). */}
       <View
         testID="mini-player-card"
-        style={{ height: MINI_PLAYER_HEIGHT }}
-        className="flex-row items-center gap-1 rounded-card border border-border bg-card pl-[7px] pr-1.5 shadow-overlay"
+        style={{ minHeight: MINI_PLAYER_HEIGHT }}
+        className="flex-row items-center gap-1 rounded-card border border-border bg-card py-1 pl-[7px] pr-1.5 shadow-overlay"
       >
         <AnimatedPressable
           onPress={() => router.push('/player')}
@@ -254,7 +265,12 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue
             title={nowPlaying.title}
           />
           <View className="min-w-0 flex-1">
-            <Text variant="label" className="text-[13.5px] leading-[17px]" numberOfLines={1}>
+            <Text
+              variant="label"
+              className="text-[13.5px] leading-[17px]"
+              numberOfLines={1}
+              maxFontSizeMultiplier={MINI_TEXT_MAX_SCALE}
+            >
               {heading}
             </Text>
             <MiniPlayerSubtitle title={nowPlaying.title} showTitle={isChapter} />

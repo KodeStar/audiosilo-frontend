@@ -5,6 +5,7 @@ import { Platform, Pressable, View } from 'react-native';
 import type { Crumb } from '@/components/ui/breadcrumbs';
 import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -14,16 +15,19 @@ import { useThemeColors } from '@/theme/use-theme-colors';
  * Muted ink, never pink (the hero's one pink thing is its progress bar). One row that
  * never scrolls or clips: when the path is longer than the row every crumb gives way
  * (the longest most) and ends in an ellipsis (PLAYER-08). The full path stays readable
- * in the Details tab.
+ * in the Details tab. Under large text the row wraps instead and every crumb shows whole
+ * (an ellipsis at that size left "B... > James.. > The ..").
  */
 export function BookCrumbs({ crumbs }: { crumbs: Crumb[] }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const last = crumbs.length - 1;
+  const large = useLargeText();
+  const lines = linesFor(1, large);
   return (
     <View
       testID="book-crumbs"
-      className="min-w-0 flex-row items-center gap-1.5"
+      className={cn('min-w-0 flex-row items-center gap-1.5', large && 'flex-wrap gap-y-1')}
       accessibilityLabel={t('book.page.crumbs')}
     >
       {crumbs.map((c, i) => (
@@ -43,13 +47,13 @@ export function BookCrumbs({ crumbs }: { crumbs: Crumb[] }) {
                 Platform.select({ web: `cursor-pointer hover:underline ${FOCUS_RING_CLASS}` }),
               )}
             >
-              <Text variant="muted" numberOfLines={1}>
+              <Text variant="muted" numberOfLines={lines}>
                 {c.label}
               </Text>
             </Pressable>
           ) : (
             <Text
-              numberOfLines={1}
+              numberOfLines={lines}
               className="min-w-0 shrink font-sans-semibold text-sm text-foreground"
             >
               {c.label}
