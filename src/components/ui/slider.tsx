@@ -2,6 +2,7 @@ import { Platform, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
+import { TrackOutline } from '@/components/ui/progress-bar';
 import { FOCUS_RING_CLASS } from '@/components/ui/text';
 import { useSliderControl } from '@/components/ui/use-slider-control';
 import { cn } from '@/lib/utils';
@@ -98,7 +99,8 @@ export function Slider({
         )}
         {...controlProps}
       >
-        <View style={{ height: TRACK_H }} className="overflow-hidden rounded-full bg-foreground/15">
+        <View style={{ height: TRACK_H }} className="overflow-hidden rounded-full bg-track">
+          <TrackOutline />
           <Animated.View
             style={[
               { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, borderRadius: 999 },

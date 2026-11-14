@@ -107,19 +107,20 @@ Desktop
   --primary: #15203d;            --primary-foreground: #f5f7fa;   /* play button, primary buttons, toasts */
   --secondary: #eaedf3;          --secondary-foreground: #18244a;
   --muted: #eef1f5;              --muted-foreground: #5b6680;
-  --subtle-foreground: #8590a6;
+  --subtle-foreground: #636e87;   /* still AA (4.5:1) on the page, cards and muted */
   --accent: #e8ecf3;             --accent-foreground: #121c36;    /* hover on ghost items */
   --destructive: #c42b3c;        --destructive-soft: #fde8ea;
-  --border: #e0e5ed;             --border-strong: #cdd4df;
-  --input: #d4dae4;              --ring: #db2777;
+  --border: #e0e5ed;             --border-strong: #848ea3;   /* border: decorative; strong: 3:1 */
+  --input: #848ea3;              --ring: #db2777;            /* field outline 3:1 (WCAG 1.4.11) */
+  --track: #d9dee7;              /* slider and progress track: the brand fill on it is 3:1 */
 
   --brand: #db2777;              /* the one pink thing */
   --brand-foreground: #ffffff;
   --brand-soft: #fce7f1;
   --brand-ink: #a3195a;          /* pink text on light (AA) */
 
-  --success: #0d7f5a;  --success-soft: #e1f5ec;
-  --warning: #a86206;  --warning-soft: #fdf1dc;
+  --success: #0c7a57;  --success-soft: #e1f5ec;
+  --warning: #9e5c06;  --warning-soft: #fdf1dc;
   --info: #2c56c9;     --info-soft: #e6edfd;
   --community: #6a3fd4; --community-soft: #efe9fd;   /* CC BY-SA marks, note pins */
 
@@ -153,13 +154,13 @@ Desktop
   --card: #10172b; --card-foreground: #e7ebf4; --popover: #131b31; --popover-foreground: #e7ebf4;
   --primary: #eef1f8; --primary-foreground: #0a0f1e;
   --secondary: #1a2340; --secondary-foreground: #dfe5f2;
-  --muted: #151d34; --muted-foreground: #8f9ab3; --subtle-foreground: #66718b;
+  --muted: #151d34; --muted-foreground: #8f9ab3; --subtle-foreground: #818ba2;
   --accent: #1a2340; --accent-foreground: #e7ebf4;
-  --brand: #ec4f95; --brand-soft: #3a1530; --brand-ink: #f78bbb;
+  --brand: #ec4f95; --brand-foreground: #0a0f1e; --brand-soft: #3a1530; --brand-ink: #f78bbb;
   --destructive: #f0606e; --destructive-soft: #3a1720;
   --success: #3cc994; --success-soft: #0f2e26; --warning: #f0b04d; --warning-soft: #33260f; --info: #7d9bf2; --info-soft: #17234a;
   --community: #b59cff; --community-soft: #251b45;
-  --border: #1d2640; --border-strong: #2a3555; --input: #283252; --ring: #ec4f95;
+  --border: #1d2640; --border-strong: #5c6886; --input: #5c6886; --track: #263150; --ring: #ec4f95;
   --chart-1: #e4458b; --chart-2: #6680ec; --chart-3: #17a093; --chart-4: #cc7f16; --chart-5: #8f72f2;
   --seq-0: #161e36; --seq-1: #3a1a37; --seq-2: #6b1f4f; --seq-3: #a12a6a; --seq-4: #d9418a; --seq-5: #f58bbb;
   --shelf-edge: #1f2944; --shelf-shadow: rgb(0 0 0 / .5);
@@ -185,7 +186,7 @@ Desktop
   --color-accent: var(--accent);           --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive); --color-destructive-soft: var(--destructive-soft);
   --color-border: var(--border);           --color-border-strong: var(--border-strong);
-  --color-input: var(--input);             --color-ring: var(--ring);
+  --color-input: var(--input);             --color-ring: var(--ring);           --color-track: var(--track);
   --color-brand: var(--brand);             --color-brand-soft: var(--brand-soft);   --color-brand-ink: var(--brand-ink);
   --color-success: var(--success);         --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);         --color-warning-soft: var(--warning-soft);
@@ -220,10 +221,15 @@ Web dark-mode rule: define dark under `@media (prefers-color-scheme: dark) { :ro
 | `--brand-ink` | `#a3195a` | `#f78bbb` | Pink *text* (links, "Just met", Listening badge) |
 | `--brand-soft` | `#fce7f1` | `#3a1530` | Active pill (sleep timer running), Up next drop target |
 | `--community` | `#6a3fd4` | `#b59cff` | Community-notes globe, note pins on the timeline |
-| `--success` | `#0d7f5a` | `#3cc994` | Finished, downloaded, synced (always with an icon and a word) |
-| `--warning` | `#a86206` | `#f0b04d` | Offline banner, "Spoilers shown", star ratings |
+| `--success` | `#0c7a57` | `#3cc994` | Finished, downloaded, synced (always with an icon and a word) |
+| `--warning` | `#9e5c06` | `#f0b04d` | Offline banner, "Spoilers shown", star ratings |
 | `--destructive` | `#c42b3c` | `#f0606e` | Sign out, remove server, failed download |
 | `--destructive-foreground` | `#ffffff` | `#0a0f1e` | The label on a solid destructive fill (white on the dark coral was 3.2:1; `src/theme/contrast.test.ts` keeps it at 4.5:1) |
+| `--brand-foreground` | `#ffffff` | `#0a0f1e` | The label on a solid brand fill (the brand button; white on the dark pink was 3.4:1) |
+| `--success-foreground` | `#ffffff` | `#0a0f1e` | The check on a solid success fill (the finished flag on covers and spines; white on the dark green was 2.1:1) |
+| `--subtle-foreground` | `#636e87` | `#818ba2` | The quietest text (counts, "of goal", sync state, placeholders): AA, a step under `--muted-foreground` |
+| `--border-strong` / `--input` | `#848ea3` | `#5c6886` | Outline buttons, chips, the switch off, check boxes; field outlines. 3:1 on the page and cards (WCAG 1.4.11); plain `--border` is a decorative divider |
+| `--track` | `#d9dee7` | `#263150` | The slider and progress track. The brand fill on it carries the value, so it holds 3:1 (3.40 light, 3.74 dark) and the track stays light on the page (1.26 / 1.49). In high contrast `ProgressBar` and the slider draw a 1px `--input` outline on it (`TrackOutline`, under the fill), so its full length shows at 4.5:1; `ProgressRing` tracks and hairlines under about 4px (the mini player's chapter line) are not outlined |
 | `--info` | `#2c56c9` | `#7d9bf2` | "On Maya's Shelf" (a friend's server), "Also on ..." |
 | `--seq-0..5` | pink ramp | pink ramp | Listening calendar heatmap only |
 | `--chart-1..5` | fixed order | fixed order | Storage per server, any categorical chart. A sixth series folds into "Other". Where the view already has its pink thing (the Downloads page), start at `chart-2` and use `chart-1` last. |
@@ -713,7 +719,12 @@ layer. Shortcuts never fire while typing.
 - Visible focus: 2 px `--ring` outline, 2 px offset, on everything interactive.
 - Player controls have labels ("Back 15 seconds", "Next chapter"); the seek bar is a slider with value text.
 - Palette is a combobox + listbox; menus, tabs, sheets and dialogs are keyboard operable and `aria-modal`.
-- Contrast: body and muted text meet AA on both themes; pink text uses `--brand-ink`.
+- Contrast: every text token meets AA (4.5:1) on the surfaces it sits on, the field outline and strong border meet 3:1,
+  and the brand fill meets 3:1 on the page and on its track, in both themes (`src/theme/contrast.test.ts`); pink text uses `--brand-ink`.
+- High contrast: when the OS asks (iOS Increase Contrast, Android high contrast text, web `prefers-contrast: more`)
+  or Settings > Appearance > High contrast is on, the high-contrast token sets (section 17) replace the normal ones:
+  muted and subtle text at 7:1, the plain border at 3:1, strong borders and outlines at 4.5:1, stronger status
+  colours, outlined progress and slider tracks. Same layout and surfaces; Light / Dark / System unchanged.
 - Charts have `role="img"` + labels and a list alternative nearby (ranked lists, the journal).
 - 44 pt targets (64 in kids mode), Dynamic Type / Android font scale, reduce motion and haptics toggles, car mode
   (four 120 px targets) when CarPlay or Android Auto connects.
@@ -738,7 +749,7 @@ Older servers lack these; the UI degrades quietly (Maya's Shelf on 1.12.3 shows 
 | `--popover` | `bg-popover` | DropdownMenu, Dialog, bottom sheet, palette |
 | `--primary` | `bg-primary text-primary-foreground` | Button default, play button, Toast, Undo chip |
 | `--secondary` | `bg-secondary` | Button secondary |
-| `--muted / --muted-foreground` | `bg-muted text-muted-foreground` | Skeleton, tracks, captions |
+| `--muted / --muted-foreground` | `bg-muted text-muted-foreground` | Skeleton, quiet fills, captions (tracks are `bg-track`) |
 | `--accent` | `bg-accent` | Hover/pressed ghost items |
 | `--border / --input / --ring` | `border-border ring-ring` | Hairlines, Input, focus |
 | `--destructive / --destructive-foreground` | `bg-destructive text-destructive-foreground` | Sign out, delete |
@@ -763,14 +774,23 @@ The CSS in section 3 is the design reference. In the app:
     web and native with no `dark:` pair; plus the fixed `palette` (`white`, `black`) as plain `@theme` colours;
   - `src/theme/tokens.ts`: `colors.white` / `colors.black` and `colors.light.<camelName>` /
     `colors.dark.<camelName>` (`brandInk`, `mutedForeground`, `chart1` ...) for native props. Read the current
-    theme's with `useThemeColors()` (`src/theme/use-theme-colors.tsx`, a context `ThemeProvider` fills).
+    theme's with `useThemeColors()` (`src/theme/use-theme-colors.tsx`, a context `ThemeProvider` fills);
+    plus `colors.highContrast.light` / `.dark`: each theme with the `highContrast` overrides of tokens.json laid
+    over it.
   - `npm test` fails on drift (`gen-tokens.mjs --check`), and `scripts/check-styles.cjs` checks through
     Uniwind's compiler that the themed variables switch on iOS and web.
 - **Every token in section 3 is there**, light and dark, with the same names: the shadcn set, `subtle-foreground`,
-  `border-strong`, `brand` / `brand-foreground` (dark `#ffffff`, unspecified above) / `brand-soft` /
+  `border-strong`, `track`, `brand` / `brand-foreground` / `brand-soft` /
   `brand-ink`, the status pairs, `community`, `chart-1..5`, `seq-0..5`, `shelf-edge`, and the translucent
   shell colours `shelf-shadow`, `topbar`, `glass`, `glass-border`, `overlay`. Opacity modifiers work on all of
   them (`bg-brand/10`).
+- **High contrast is a run-time swap, not a third theme.** The high-contrast sets are not in the CSS:
+  `ThemeProvider` writes them into Uniwind's `light` and `dark` theme variables (`applyHighContrast` in
+  `src/theme/high-contrast.ts`, `Uniwind.updateCSSVariables`, both schemes at once; off writes the normal values
+  back) while the OS asks (`src/theme/os-contrast{,.web}.ts`) or the persisted switch (`audiosilo.highContrast`)
+  is on, so every class, `dark:` variant, scoped theme and `useThemeColors()` follows with no other change. Read
+  a fixed scheme's colours with `themeColors(scheme, highContrast)`, never `colors.dark` directly, and the
+  resolved scheme with `useThemeScheme()`. `src/theme/contrast.test.ts` holds every set to its ratios.
 - **Tailwind's default palette is switched off** (`--color-*: initial`), so `bg-gray-200` or `text-red-500`
   compiles to nothing. Use a semantic token; add one to `tokens.json` (both themes) if none fits.
 - **`primary` is ink**, as in shadcn: the play button and primary buttons. The pink is `brand`; pink text is

@@ -13,8 +13,15 @@ import { Uniwind, useUniwind } from 'uniwind';
 
 import { getItem, setItem } from '@/lib/storage';
 import { migrateStorage } from '@/lib/storage-migration';
+import {
+  applyHighContrast,
+  HIGH_CONTRAST_STORAGE_KEY,
+  highContrastActive,
+  restoredHighContrast,
+  themeColors,
+} from '@/theme/high-contrast';
+import { readOsHighContrast, watchOsHighContrast } from '@/theme/os-contrast';
 import { restoredSchemePref, type SchemePref, THEME_STORAGE_KEY } from '@/theme/scheme-pref';
-import { colors } from '@/theme/tokens';
 import { ThemeColorsProvider } from '@/theme/use-theme-colors';
 
 import '@/global.css';
@@ -52,6 +59,14 @@ type ThemeContextValue = {
   setPref: (p: SchemePref) => void;
   /** Flip to the other explicit scheme (light <-> dark) from the resolved one. */
   toggleScheme: () => void;
+  /** The high-contrast colours are in effect (the OS asks, or the switch is on). */
+  highContrast: boolean;
+  /** The OS asks for more contrast (iOS Increase Contrast, Android high contrast text,
+   * web `prefers-contrast: more`). */
+  osHighContrast: boolean;
+  /** Settings > Appearance > High contrast: on forces it; off follows the OS. */
+  highContrastPref: boolean;
+  setHighContrastPref: (on: boolean) => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -69,10 +84,18 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
  * OS. `useUniwind` reports the RESOLVED theme (light or dark, never 'system') and
  * whether adaptive mode is on, re-rendering on either change; `pref` and `scheme` are
  * derived from those.
+ *
+ * High contrast lays the tokens.json `highContrast` sets over both schemes' theme
+ * variables (`applyHighContrast`) while the OS asks for more contrast or the persisted
+ * switch is on; it is restored with the theme, before first paint, and the OS setting
+ * is watched for changes. Light / Dark / System work the same either way.
  */
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const { theme, hasAdaptiveThemes } = useUniwind();
   const [hydrated, setHydrated] = useState(false);
+  const [highContrastPref, setHighContrastPrefState] = useState(false);
+  const [osHighContrast, setOsHighContrast] = useState(false);
+  const highContrast = highContrastActive(osHighContrast, highContrastPref);
   const [fontsLoaded, fontError] = useFonts(FONTS);
   const fontsReady = fontsLoaded || !!fontError;
   useFonts(DEFERRED_FONTS);
@@ -82,14 +105,28 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     void migrateStorage()
       // A failed migration must not stop the theme read (the root layout reports it).
       .catch(() => undefined)
-      .then(() => getItem<unknown>(THEME_STORAGE_KEY))
-      .then((saved) => {
-        if (active) Uniwind.setTheme(restoredSchemePref(saved));
+      .then(() =>
+        Promise.all([
+          // A failed read must not wedge first paint (render is gated on `hydrated`);
+          // Uniwind then follows the OS until the user picks a theme.
+          getItem<unknown>(THEME_STORAGE_KEY).then(restoredSchemePref, () => null),
+          getItem<unknown>(HIGH_CONTRAST_STORAGE_KEY).then(restoredHighContrast, () => false),
+          readOsHighContrast(),
+        ]),
+      )
+      .then(([scheme, pref, os]) => {
+        if (!active) return;
+        // The theme first: a failure applying high contrast (caught below) must not cost
+        // the stored theme.
+        if (scheme) Uniwind.setTheme(scheme);
+        // Before first paint, so a high-contrast launch never shows the normal colours;
+        // and before the states, so a failed write leaves plain normal contrast (with the
+        // states set, the effect below would repeat the write outside the catch).
+        applyHighContrast(highContrastActive(os, pref));
+        setHighContrastPrefState(pref);
+        setOsHighContrast(os);
       })
-      .catch(() => {
-        // Restoring the theme must not wedge first paint (render is gated on
-        // `hydrated`); Uniwind then follows the OS until the user picks a theme.
-      })
+      .catch(() => undefined)
       .finally(() => {
         if (active) setHydrated(true);
       });
@@ -102,29 +139,50 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (fontsReady && hydrated) void SplashScreen.hideAsync();
   }, [fontsReady, hydrated]);
 
+  useEffect(() => watchOsHighContrast(setOsHighContrast), []);
+
+  useEffect(() => {
+    if (hydrated) applyHighContrast(highContrast);
+  }, [hydrated, highContrast]);
+
   // Keep the web document backdrop in sync with the resolved scheme. The static
   // shell (+html.tsx) paints the OS scheme's background before mount; this corrects it
   // for an explicit pick and ensures the browser back-swipe gesture reveals the themed
   // colour, not white.
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
-    const bg = theme === 'dark' ? colors.dark.background : colors.light.background;
+    const bg = themeColors(theme, highContrast).background;
     document.documentElement.style.backgroundColor = bg;
     document.body.style.backgroundColor = bg;
-  }, [theme]);
+  }, [theme, highContrast]);
 
   const setPref = (p: SchemePref) => {
     Uniwind.setTheme(p);
     void setItem(THEME_STORAGE_KEY, p);
   };
   const toggleScheme = () => setPref(theme === 'dark' ? 'light' : 'dark');
+  const setHighContrastPref = (on: boolean) => {
+    setHighContrastPrefState(on);
+    void setItem(HIGH_CONTRAST_STORAGE_KEY, on);
+  };
 
   if (!fontsReady || !hydrated) return null;
 
   const pref: SchemePref = hasAdaptiveThemes ? 'system' : theme;
   return (
-    <ThemeContext.Provider value={{ pref, scheme: theme, setPref, toggleScheme }}>
-      <ThemeColorsProvider>{children}</ThemeColorsProvider>
+    <ThemeContext.Provider
+      value={{
+        pref,
+        scheme: theme,
+        setPref,
+        toggleScheme,
+        highContrast,
+        osHighContrast,
+        highContrastPref,
+        setHighContrastPref,
+      }}
+    >
+      <ThemeColorsProvider highContrast={highContrast}>{children}</ThemeColorsProvider>
     </ThemeContext.Provider>
   );
 }

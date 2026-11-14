@@ -42,8 +42,16 @@ jest.mock('@/lib/open', () => ({
   ...jest.requireActual('@/lib/open'),
   openHousehold: () => mockOpenHousehold(),
 }));
+const mockSetHighContrastPref = jest.fn();
+let mockContrast = { highContrastPref: false, osHighContrast: false };
 jest.mock('@/theme/theme-provider', () => ({
-  useTheme: () => ({ scheme: 'light', pref: 'system', setPref: jest.fn() }),
+  useTheme: () => ({
+    scheme: 'light',
+    pref: 'system',
+    setPref: jest.fn(),
+    ...mockContrast,
+    setHighContrastPref: mockSetHighContrastPref,
+  }),
 }));
 jest.mock('@/i18n/language-provider', () => ({
   useLanguage: () => ({ pref: 'system', setPref: jest.fn() }),
@@ -67,6 +75,8 @@ beforeEach(() => {
   mockLayout = 'desktop';
   Platform.OS = 'web';
   useSettings.setState({ skipBackward: 15 });
+  mockContrast = { highContrastPref: false, osHighContrast: false };
+  mockSetHighContrastPref.mockClear();
 });
 afterEach(() => {
   Platform.OS = prevOS;
@@ -204,6 +214,24 @@ describe('SettingsContent, stacked', () => {
     expect(useSettings.getState().autoDownloadEpisodes).toBe(true);
     await fireEvent.press(within(group).getByLabelText('Off'));
     expect(useSettings.getState().autoDownloadEpisodes).toBe(false);
+  });
+
+  it('switches high contrast from Appearance', async () => {
+    await render(<SettingsContent section="appearance" />);
+    const row = screen.getByTestId('settings-high-contrast');
+    expect(within(row).getByText(/Off follows this device/)).toBeTruthy();
+    await fireEvent.press(within(row).getByLabelText('On'));
+    expect(mockSetHighContrastPref).toHaveBeenCalledWith(true);
+  });
+
+  it('says when the device has high contrast on', async () => {
+    mockContrast = { highContrastPref: false, osHighContrast: true };
+    await render(<SettingsContent section="appearance" />);
+    expect(
+      within(screen.getByTestId('settings-high-contrast')).getByText(
+        /this device asks for more contrast/,
+      ),
+    ).toBeTruthy();
   });
 
   it('keeps the version line', async () => {

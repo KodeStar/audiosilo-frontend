@@ -66,6 +66,11 @@
       "system": "Sistema",
       "description": "Claro, escuro ou igual a este dispositivo."
     },
+    "highContrast": {
+      "label": "Alto contraste",
+      "description": "Texto e bordas mais fortes. Desligado segue a definição de contraste deste dispositivo.",
+      "deviceOn": "Ligado: este dispositivo pede mais contraste. Altere isso nas definições de acessibilidade dele."
+    },
     "language": {
       "label": "Idioma",
       "system": "Sistema",

@@ -3136,8 +3136,11 @@ tokens, type and components; its section 17 maps them onto these files.
   unit tests) first and fails on drift. The `palette` holds plain colours only (no shade families or
   aliases).
   - Use the semantic classes, which follow the theme on web AND native with **no `dark:` pair**:
-    page `bg-background`, surfaces `bg-card` (sheets/dialogs `bg-popover`), quiet fills and tracks
-    `bg-muted`, text `text-foreground` / `text-muted-foreground` / `text-subtle-foreground`,
+    page `bg-background`, surfaces `bg-card` (sheets/dialogs `bg-popover`), quiet fills `bg-muted`,
+    slider and progress tracks `bg-track` (the brand fill holds 3:1 on it; high contrast
+    outlines it with `TrackOutline` from `ui/progress-bar`, rendered before the fill so the fill
+    covers it, and not on a track under about 4px: `ProgressBar outline={false}`), field outlines
+    `border-input`, text `text-foreground` / `text-muted-foreground` / `text-subtle-foreground`,
     hairlines `border-border`, pressed/hover `bg-accent`, status `text-destructive` / `success` /
     `warning` / `info`. Opacity modifiers work (`bg-brand/10`).
   - **`primary` is ink** (shadcn): the primary button / play button colour. **The pink is
@@ -3147,8 +3150,9 @@ tokens, type and components; its section 17 maps them onto these files.
     so `bg-gray-200` / `text-red-500` compile to nothing. Add a token to `tokens.json` (both
     themes) instead.
   - Native props that need a colour string read `useThemeColors()` (`@/theme/use-theme-colors`),
-    which returns the resolved theme's `colors.light|dark` from a context `ThemeProvider` fills (one
-    `useUniwind` subscription, not one per Icon); don't pick `scheme === 'dark' ? ... : ...`.
+    which returns the resolved theme's `colors.light|dark` (or its high-contrast set) from a
+    context `ThemeProvider` fills (one `useUniwind` subscription, not one per Icon); don't pick
+    `scheme === 'dark' ? ... : ...`.
 - **Fonts (Stacks):** Figtree (body), Bricolage Grotesque (display), JetBrains Mono, loaded by
   `ThemeProvider` from `@expo-google-fonts/*` (only the weights a token uses). One family per token,
   since RN has no font fallback or synthetic weights (web adds the system stack): `font-sans` (Figtree
@@ -3184,6 +3188,16 @@ tokens, type and components; its section 17 maps them onto these files.
   the same run, then only reads `audiosilo.theme` (`restoredSchemePref`, `src/theme/scheme-pref.ts`).
   `useTheme().toggleScheme()` flips light/dark (the profile menu, the palette). The
   static web shell (`+html.tsx`) paints the OS scheme's background before mount.
+  **High contrast** (fe#267): `useTheme().highContrast` is on while the OS asks
+  (`src/theme/os-contrast.ts`: iOS `isDarkerSystemColorsEnabled` + `darkerSystemColorsChanged`,
+  Android `isHighTextContrastEnabled` + `highTextContrastChanged`; `os-contrast.web.ts`:
+  `matchMedia('(prefers-contrast: more)')` + `change`) OR Settings > Appearance > High contrast
+  (`highContrastPref`, `audiosilo.highContrast`, only a stored `true` counts; off follows the OS).
+  Both are read in the same hydrate chain as the theme, so the first paint is already right;
+  `applyHighContrast` (`src/theme/high-contrast.ts`) then writes tokens.json's `highContrast` sets
+  into both schemes' Uniwind variables (STYLEGUIDE section 17). Colours for a fixed scheme come from
+  `themeColors(scheme, highContrast)`, never `colors.dark` (an identity check on it misread the
+  high-contrast set).
 - **Conflicting classes are not de-duplicated.** When two classes with the same variants
   set the same property, web resolves by stylesheet order and native by className order
   (the later class wins). A class with a variant (`dark:`, `active:`, `ios:`, `md:`...)

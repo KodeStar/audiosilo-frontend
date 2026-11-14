@@ -218,7 +218,7 @@ export function Spine({
             className="items-center justify-center rounded-full bg-success"
             style={{ width: 16 * scale, height: 16 * scale }}
           >
-            <Icon name="check" size={Math.round(10 * scale)} color={colors.white} />
+            <Icon name="check" size={Math.round(10 * scale)} color={themed.successForeground} />
           </View>
         ) : foot === 'server' ? (
           <Icon name="server" size={Math.round(11 * scale)} color={themed.info} />
