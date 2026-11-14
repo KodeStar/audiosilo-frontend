@@ -16,6 +16,7 @@ import { ShellFrame } from '@/components/shell/shell-frame';
 import { useIsTopShell } from '@/components/shell/top-shell';
 import { useShellEffects } from '@/components/shell/use-shell-effects';
 import { useLayout } from '@/lib/layout';
+import { useLargeText } from '@/lib/text-scale';
 import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
@@ -44,6 +45,9 @@ function NativeShell() {
   const top = useIsTopShell();
   // While a sheet is open the shell under it is hidden from VoiceOver and TalkBack.
   const behind = useBehindModalProps();
+  // Android: at the large text sizes five labels don't fit their slots ("Ho...", "Libr...").
+  // Material's answer is the chosen tab's label only (the others keep theirs for TalkBack).
+  const large = useLargeText();
 
   // React Navigation's theme, from ours: the native tab and stack containers paint with
   // it (on iOS 26 a missing theme shows default-white artifacts in tab transitions).
@@ -77,8 +81,8 @@ function NativeShell() {
               hidden={wide}
               tintColor={themed.brand}
               // Android (Material 3, STYLEGUIDE section 10): every tab labelled, the
-              // active one on a brand-soft pill.
-              labelVisibilityMode="labeled"
+              // active one on a brand-soft pill; under large text the active one only.
+              labelVisibilityMode={large ? 'selected' : 'labeled'}
               indicatorColor={themed.brandSoft}
               minimizeBehavior="onScrollDown"
               unstable_nativeProps={{
