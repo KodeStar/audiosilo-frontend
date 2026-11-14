@@ -256,6 +256,9 @@ export function SignInStep({
                 : '/connect/scan',
             )
           }
+          // Not while a sign-in is on its way (an invite's code signs in as the step opens):
+          // a code scanned then would start a second one under it.
+          disabled={loading}
           className="self-center"
           testID="sign-in-scan"
         />

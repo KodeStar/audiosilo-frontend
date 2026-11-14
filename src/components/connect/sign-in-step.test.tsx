@@ -337,6 +337,17 @@ describe('no password (fe#264)', () => {
     });
   });
 
+  it('holds the scanner back while a sign-in is on its way', async () => {
+    Platform.OS = 'ios';
+    let answer: (v: unknown) => void = () => {};
+    mockApi.redeemCode.mockImplementation(() => new Promise((r) => (answer = r)));
+    mockApi.exchange.mockResolvedValue({ token: 's', server_id: 'srv-1', user });
+    await render(<SignInStep server={AWAY} initialCode="ABCD-1234" />);
+    await fireEvent.press(screen.getByTestId('sign-in-scan'));
+    expect(mockPush).not.toHaveBeenCalled();
+    await act(async () => answer({ server_name: 'Hearthside', pairing_token: 'pt' }));
+  });
+
   it('offers no scanner on the web (no camera step there)', async () => {
     Platform.OS = 'web';
     await render(<SignInStep server={AWAY} />);
