@@ -17,11 +17,16 @@ import { ShellFrame } from '@/components/shell/shell-frame';
 import { useIsTopShell } from '@/components/shell/top-shell';
 import { useShellEffects } from '@/components/shell/use-shell-effects';
 import { useLayout } from '@/lib/layout';
-import { isLargeText, useFontScale } from '@/lib/text-scale';
+import { useFontScale, useLargeText } from '@/lib/text-scale';
 import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
+
+/** The scale the Android tab bar's labels follow; `null` elsewhere, so iOS doesn't redraw
+ * the shell on every text-size step (it needs only `useLargeText`'s threshold). Chosen
+ * once per platform, so the hook order never changes. */
+const useTabLabelScale: () => number | null = Platform.OS === 'android' ? useFontScale : () => null;
 
 /**
  * The native (iOS/Android) shell: ONE navigator, NativeTabs, at every width - only the
@@ -47,11 +52,11 @@ function NativeShell() {
   // Android: at the large text sizes five labels don't fit their slots ("Ho...", "Libr...").
   // Material's answer is the chosen tab's label only (the others keep theirs for TalkBack),
   // and the label stops growing at 1.3x so even that one fits (`tab-label-size.ts`).
-  const fontScale = useFontScale();
-  const large = isLargeText(fontScale);
+  const large = useLargeText();
+  const tabScale = useTabLabelScale();
   const labelStyle = useMemo(
-    () => (Platform.OS === 'android' ? { fontSize: tabLabelFontSize(fontScale) } : undefined),
-    [fontScale],
+    () => (tabScale === null ? undefined : { fontSize: tabLabelFontSize(tabScale) }),
+    [tabScale],
   );
 
   // React Navigation's theme, from ours: the native tab and stack containers paint with
