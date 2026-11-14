@@ -30,6 +30,7 @@ import { idParam, libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
 import { recallScroll, rememberScroll, scrollKey } from '@/lib/scroll-memory';
 import { useLargeText } from '@/lib/text-scale';
+import { useLatestRef } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
 
 import { AzRail } from './books/az-rail';
@@ -186,6 +187,18 @@ function BrowseContent() {
     if (idxs.length) rememberScroll(keyRef.current, Math.min(...idxs));
   }, []);
 
+  // Scrolls to a row by its index (large text: no fixed offsets). Often a frame or a retry
+  // after it was asked for, when the filter or a refetch may have taken the row away:
+  // `scrollToIndex` throws on an index the list no longer has, so that one is let go.
+  const rowCount = useLatestRef(rows.length);
+  const scrollToRow = useCallback(
+    (index: number) => {
+      if (index < 0 || index >= rowCount.current) return;
+      listRef.current?.scrollToIndex({ index, animated: false });
+    },
+    [rowCount],
+  );
+
   // Re-apply the saved row index once the list has rows to scroll to.
   useEffect(() => {
     if (restoredRef.current || rows.length === 0) return;
@@ -195,12 +208,10 @@ function BrowseContent() {
       const index = Math.min(saved, rows.length - 1);
       const offset = offsets[index] ?? 0;
       requestAnimationFrame(() =>
-        large
-          ? listRef.current?.scrollToIndex({ index, animated: false })
-          : listRef.current?.scrollToOffset({ offset, animated: false }),
+        large ? scrollToRow(index) : listRef.current?.scrollToOffset({ offset, animated: false }),
       );
     }
-  }, [rows.length, key, offsets, large]);
+  }, [rows.length, key, offsets, large, scrollToRow]);
 
   const jumpToLetter = (letter: string) => {
     const sectionIdx = sectionIndexForLetter(sections, letter);
@@ -208,7 +219,7 @@ function BrowseContent() {
     const index = headerRows[sectionIdx];
     const offset = offsets[index];
     if (offset == null) return;
-    if (large) listRef.current?.scrollToIndex({ index, animated: false });
+    if (large) scrollToRow(index);
     else listRef.current?.scrollToOffset({ offset, animated: false });
   };
 
@@ -219,7 +230,7 @@ function BrowseContent() {
       offset: info.averageItemLength * info.index,
       animated: false,
     });
-    setTimeout(() => listRef.current?.scrollToIndex({ index: info.index, animated: false }), 50);
+    setTimeout(() => scrollToRow(info.index), 50);
   };
 
   const renderItem: ListRenderItem<Row> = ({ item }) =>
