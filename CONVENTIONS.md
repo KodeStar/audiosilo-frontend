@@ -638,8 +638,8 @@ in step.
   A `/server` read that failed with nothing kept says so with Retry (`librivox.access.readFailed`),
   never a skeleton for ever. A link without `?connection=` is the default connection's (`useCid`,
   as Find shows).
-- **Wire** (`client.ts`, hand-mirrored from `handlers_librivox.go`): `librivoxSearch(q, {lang,
-  limit})` (`GET /admin/librivox/search`), `librivoxWork(id)` (`GET /admin/librivox/work`:
+- **Wire** (`client.ts`, hand-mirrored from `handlers_librivox.go`): `librivoxSearch(q)` (`GET
+  /admin/librivox/search`; the server's `lang` and `limit` are never sent), `librivoxWork(id)` (`GET /admin/librivox/work`:
   recordings with `in_library` and the open `job`, null for none), `librivoxFetch(lib, id)`
   (`POST /admin/librivox/fetch`, 202 `{job}`), `bridgeJob(id)` (`GET /admin/bridge/jobs/{id}`).
   Refusal codes `in_library` (409, the recording is on this server in any library; the work
@@ -666,7 +666,9 @@ in step.
   then) and drops the watch; it also drops one that is gone (404, the works asked again), refused
   (400, 401, 403: nothing read again) or whose connection signed out (never read). A failed read
   (no answer, a 5xx) keeps the watch: the poll asks again. The watcher keeps the hooks' own gate
-  (`bridge`); it does not ask `librivoxAccess`, so a lapsed heartbeat does not stop it.
+  (`bridge`, which `/server` sends true only while the Bridge is online) and does not ask
+  `librivoxAccess`: a lapsed heartbeat pauses its reads (the query is skipped) and keeps the
+  watch, and it reads again once the flag is back.
 - **The page**: `/find-librivox?connection=&library=` (`findLibrivoxHref`, `openFindLibrivox`),
   the Library tab's own page like Find shows (a browse page too, `BROWSE_PATHS`: opening it
   keeps the Library's scroll memory), opened from the Books mode's ... menu (`LibrivoxMenu`,

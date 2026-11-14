@@ -20,7 +20,9 @@ import { DONE_RECHECK_MS } from './librivox-model';
  * recording row reads the same query without polling (`useFollowedFetch`). A job that ends
  * asks the connection's works again, and a done one reads the library's lists again and asks
  * the works once more a moment later (`librivoxFetchEnded`); then it is watched no more, as
- * it is once gone (a 404), refused (a 400, 401 or 403), or its connection signed out.
+ * it is once gone (a 404), refused (a 400, 401 or 403), or its connection signed out. The
+ * read keeps its `bridge` gate (true only while the Bridge is online): a lapsed heartbeat
+ * pauses it, the watch kept, until the Bridge is back.
  */
 type Watch = { cid: string; id: number };
 

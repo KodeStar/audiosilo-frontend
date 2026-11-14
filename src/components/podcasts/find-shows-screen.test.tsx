@@ -11,7 +11,9 @@ jest.mock('expo-router', () => ({
 jest.mock('@/components/layout/content-scope', () => ({
   ContentScope: ({ children }: { children: React.ReactNode }) => children,
 }));
-jest.mock('@/api/provider', () => ({ useCid: () => 'c1' }));
+// The page's connection: the route's scope, else the default one (a link without it).
+let mockCid = 'c1';
+jest.mock('@/api/provider', () => ({ useCid: () => mockCid }));
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
 const mockTitles: (string | undefined)[] = [];
 jest.mock('@/lib/use-page-title', () => ({
@@ -19,8 +21,13 @@ jest.mock('@/lib/use-page-title', () => ({
 }));
 
 let mockCaps: Record<string, boolean | undefined> = {};
+// The connections each capability was asked of.
+const mockCapCids = new Set<string | undefined>();
 jest.mock('@/api/hooks', () => ({
-  useCapability: (flag: string) => mockCaps[flag],
+  useCapability: (flag: string, cid?: string) => {
+    mockCapCids.add(cid);
+    return mockCaps[flag];
+  },
 }));
 
 // Each section has its own suite: here, which one shows and with what.
@@ -76,13 +83,15 @@ import { useSession } from '@/stores/session';
 import { FindShowsScreen } from './find-shows-screen';
 /* eslint-enable import/first */
 
-const signIn = (user: object = {}) =>
+const signIn = (user: object = {}, id = 'c1') =>
   useSession.setState({
-    connections: [{ id: 'c1', name: 'Home', serverUrl: 'u', token: 't', user } as never],
+    connections: [{ id, name: 'Home', serverUrl: 'u', token: 't', user } as never],
   });
 
 beforeEach(() => {
   mockParams = { connection: 'c1', library: '7' };
+  mockCid = 'c1';
+  mockCapCids.clear();
   mockCaps = { podcasts: true, podcast_discovery: true, podcast_opml: true };
   mockSetParams.mockReset();
   mockTitles.length = 0;
@@ -161,6 +170,15 @@ describe('FindShowsScreen', () => {
     await mountWithPortal(<FindShowsScreen />);
     expect(screen.queryByTestId('section-search')).toBeNull();
     expect(screen.queryByText("Adding shows isn't available right now")).toBeNull();
+  });
+
+  it("is the default connection's from a link without ?connection= (fe#293)", async () => {
+    mockParams = { library: '7' };
+    mockCid = 'c2';
+    signIn({}, 'c2');
+    await mountWithPortal(<FindShowsScreen />);
+    expect(screen.getByTestId('section-search').props.children).toBe('search 7');
+    expect([...mockCapCids]).toEqual(['c2']);
   });
 
   it('says the link is broken without a library', async () => {
