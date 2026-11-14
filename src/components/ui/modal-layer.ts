@@ -30,8 +30,6 @@ function change(by: 1 | -1): void {
   for (const l of listeners) l();
 }
 
-const anyOpen = () => open > 0;
-
 /** Counts a modal layer as open while `active` (a mounted, visible sheet). */
 export function useModalLayer(active: boolean): void {
   useEffect(() => {
@@ -39,11 +37,6 @@ export function useModalLayer(active: boolean): void {
     change(1);
     return () => change(-1);
   }, [active]);
-}
-
-/** Whether a modal layer is open. */
-export function useModalLayerOpen(): boolean {
-  return useSyncExternalStore(subscribe, anyOpen, () => false);
 }
 
 /** The accessibility props for a page root BEHIND the modal layers: hidden from VoiceOver

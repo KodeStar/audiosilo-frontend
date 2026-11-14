@@ -1,6 +1,6 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { NativeTabs } from 'expo-router/native-tabs';
-import { useMemo } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -43,8 +43,6 @@ function NativeShell() {
   // An episode on its way shows in the accessory too, with nothing playing yet.
   const fetching = useEpisodeFetch((s) => s.pending !== null);
   const top = useIsTopShell();
-  // While a sheet is open the shell under it is hidden from VoiceOver and TalkBack.
-  const behind = useBehindModalProps();
   // Android: at the large text sizes five labels don't fit their slots ("Ho...", "Libr...").
   // Material's answer is the chosen tab's label only (the others keep theirs for TalkBack).
   const large = useLargeText();
@@ -70,7 +68,7 @@ function NativeShell() {
     <ThemeProvider value={navTheme}>
       {/* The player's overlays (its sheets, Up next's) render in place, over the whole shell. */}
       <View style={{ flex: 1 }}>
-        <View style={{ flex: 1 }} {...behind}>
+        <BehindSheets>
           <ShellFrame
             // Absolutely positioned in the frame, which spans the window: its bottom offset is
             // the native bar's measured top edge, so it sits on the bar on every tab and over a
@@ -106,11 +104,24 @@ function NativeShell() {
               ) : null}
             </NativeTabs>
           </ShellFrame>
-        </View>
+        </BehindSheets>
         {/* In the top shell only, should a second one ever be stacked over this one. */}
         {top ? <ShellPlayerOverlays /> : null}
       </View>
     </ThemeProvider>
+  );
+}
+
+/**
+ * The shell under the sheets: hidden from VoiceOver and TalkBack while one is open. A
+ * component of its own, so a sheet opening or closing re-renders this frame alone (its
+ * children are the same elements), not the shell and its tabs.
+ */
+function BehindSheets({ children }: { children: ReactNode }) {
+  return (
+    <View style={{ flex: 1 }} {...useBehindModalProps()}>
+      {children}
+    </View>
   );
 }
 

@@ -146,12 +146,12 @@ describe('Sheet', () => {
     });
 
     it('counts as an open modal layer while visible, so the page behind hides', async () => {
-      const { useModalLayerOpen } = jest.requireActual(
+      const { useBehindModalProps } = jest.requireActual(
         './modal-layer',
       ) as typeof import('./modal-layer');
       const seen: boolean[] = [];
       function Page() {
-        seen.push(useModalLayerOpen());
+        seen.push(useBehindModalProps().accessibilityElementsHidden === true);
         return null;
       }
       const view = await mount(
