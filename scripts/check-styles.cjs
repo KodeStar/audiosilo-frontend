@@ -96,10 +96,11 @@ function untwinnedPxText() {
           .forEach((line, i) => {
             for (const [, , variants, kind, n] of line.matchAll(px)) {
               if (variants.split(':').includes('web')) continue;
-              // The twin is N/16 rem, or a capped one (`[length:min(...rem,...px)]`) where
-              // the slot cannot grow: any `web:` twin with the same variants counts.
+              // The twin is N/16 rem exactly (any other value would change the size at the
+              // browser's default), or a capped one (`[length:min(...rem,...px)]`) where the
+              // slot cannot grow.
               const twin = `web:${variants}${kind}-[${+(Number(n) / 16).toFixed(5)}rem]`;
-              if (!line.includes(`web:${variants}${kind}-[`))
+              if (!line.includes(twin) && !line.includes(`web:${variants}${kind}-[length:`))
                 found.push(`${rel}:${i + 1} ${variants}${kind}-[${n}px] (add ${twin})`);
             }
           });
