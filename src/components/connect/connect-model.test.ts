@@ -17,6 +17,7 @@ import {
   revealOffset,
   revealSpan,
   scanParams,
+  scanReconnect,
   selfSignedMayBeWhy,
   signedInAs,
   withFallback,
@@ -536,6 +537,26 @@ describe('readyLine', () => {
     expect(readyLine({ libraries: [], books: 0 })).toEqual({ kind: 'empty' });
     expect(readyLine({ libraries: ['A'], books: 0 })).toEqual({ kind: 'empty' });
   });
+});
+
+it("scanReconnect keeps a reconnect only for a code of that connection's paired or away address", () => {
+  const connections = [
+    { id: 'srv-1.1', serverUrl: HOME, addresses: { home: HOME, away: AWAY } },
+    { id: 'srv-9.1', serverUrl: 'https://other.example.com' },
+  ];
+  // Its paired address, or its away one (the code's base is often the public address).
+  expect(scanReconnect('srv-1.1', HOME, connections)).toBe('srv-1.1');
+  expect(scanReconnect('srv-1.1', `${AWAY}/`, connections)).toBe('srv-1.1');
+  // A code for another server is a new connection; so is one with no reconnect, or a
+  // reconnect of a connection this device no longer has.
+  expect(scanReconnect('srv-1.1', 'https://other.example.com', connections)).toBeUndefined();
+  expect(scanReconnect(undefined, AWAY, connections)).toBeUndefined();
+  expect(scanReconnect('gone.1', AWAY, connections)).toBeUndefined();
+  // Never for a home address it was not paired at: another box can sit at that private
+  // address on another network, and its code must not read as this server reset.
+  const paired = [{ id: 'srv-1.1', serverUrl: AWAY, addresses: { home: HOME, away: AWAY } }];
+  expect(scanReconnect('srv-1.1', HOME, paired)).toBeUndefined();
+  expect(scanReconnect('srv-1.1', AWAY, paired)).toBe('srv-1.1');
 });
 
 it("scanParams carries the addresses, the server's id, the user and the book only when the code has them", () => {

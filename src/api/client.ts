@@ -1944,16 +1944,12 @@ export class ApiClient {
   // `metadata_off` while the lookup is off, 502 when the metadata service can't answer. The
   // reads ask the metadata service, so they get the server's budget (`UPSTREAM_TIMEOUT_MS`).
 
-  /** The works with a LibriVox recording matching `q`, best first (`limit` 1-50, the
-   * server's default 20; `lang` a language tag such as `en`). A 400 for a blank or long
-   * `q`, a `lang` that is no language tag or a `limit` out of range. */
-  async librivoxSearch(
-    q: string,
-    opts: { lang?: string; limit?: number } = {},
-    signal?: AbortSignal,
-  ): Promise<LibrivoxSearchResult> {
+  /** The works with a LibriVox recording matching `q`, best first (the server's default
+   * 20; it also takes `lang` and `limit`, which the player never sends). A 400 for a blank
+   * or long `q`. */
+  async librivoxSearch(q: string, signal?: AbortSignal): Promise<LibrivoxSearchResult> {
     const r = await this.request<LibrivoxSearchResult>('GET', '/admin/librivox/search', {
-      query: { q, lang: opts.lang || undefined, limit: opts.limit },
+      query: { q },
       signal,
       timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
     });

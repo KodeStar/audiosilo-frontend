@@ -337,10 +337,9 @@ describe('findLibrivoxHref / parseFindLibrivoxParams', () => {
       pathname: '/find-librivox',
       params: { connection: 'c', library: '5' },
     });
-    expect(parseFindLibrivoxParams({ connection: 'c', library: '5' })).toEqual({
-      connectionId: 'c',
-      libraryId: 5,
-    });
+    expect(parseFindLibrivoxParams({ connection: 'c', library: '5' })).toEqual({ libraryId: 5 });
+    // The connection is the page's scope (`useCid`), not a param read here.
+    expect(parseFindLibrivoxParams({ library: '5' })).toEqual({ libraryId: 5 });
     expect(parseFindLibrivoxParams({ connection: 'c' })).toBeNull();
     expect(parseFindLibrivoxParams({ library: 'x' })).toBeNull();
   });
@@ -361,12 +360,10 @@ describe('findShowsHref / parseFindShowsParams', () => {
 
   it('reads a link back, the section only when it is one', () => {
     expect(parseFindShowsParams({ connection: 'c', library: '5', section: 'address' })).toEqual({
-      connectionId: 'c',
       libraryId: 5,
       section: 'address',
     });
     expect(parseFindShowsParams({ connection: 'c', library: '5', section: 'nope' })).toEqual({
-      connectionId: 'c',
       libraryId: 5,
       section: null,
     });

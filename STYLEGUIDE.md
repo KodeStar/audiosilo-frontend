@@ -495,8 +495,9 @@ release · language; a chevron). Opening one lists its recordings under it, inde
 (download icon). While the Bridge works, a compact status takes Add's place like Generate's: the download icon
 (circle-exclamation in warning or destructive when parked or failed, circle-check once added), the title (Adding,
 Needs attention, Couldn't add it, Added, Cancelled), one caption line (the step and "2 of 12" sections, or why it
-stopped in plain words), a neutral ink progress bar while sections download, and Cancel while it is open; a failed
-or cancelled one offers Add again. A recording on this server says "In your library" with an outline Open. No
+stopped in plain words), a neutral ink progress bar while sections download, and an outline `sm` Cancel under it
+while it is open (where Add sits, never at the end of the title's row); a failed or cancelled one offers Add again.
+A Bridge that goes away while the page is open keeps the page: one caption under the intro says so, and Add waits. A recording on this server says "In your library" with an outline Open. No
 cover art (the recording's cover is a third-party image); never pink.
 
 ### Companion: Text (read-along) *custom*
@@ -617,6 +618,10 @@ stats a notice.
 Empty states use ghost spines or ghost covers, one headline, one sentence, one action. Skeletons are exact
 cover-shaped placeholders (no layout shift), shimmer 1.4 s (off with reduced motion). First run ends with **"Your
 library is ready."**: spines drop onto a plank one by one, with the counts and where your place came from.
+In the app, the connect step leads with **Scan a QR code** (the screen's one primary, full width, `lg`) and a lead
+that says where the QR is (the console's People > your name > Pair a device, or an invite page); the address field
+follows under "Or enter the server address", its Continue `secondary`. The sign-in step adds a `link` "No password?
+Scan a QR code instead". The web has no scanner: the address comes first, with "I have a pairing link".
 
 ---
 

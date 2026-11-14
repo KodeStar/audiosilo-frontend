@@ -37,11 +37,17 @@ jest.mock('@/components/player/companion/reveal-listener', () => ({
 jest.mock('@/components/player/shake-to-extend-listener', () => ({
   ShakeToExtendListener: () => null,
 }));
+jest.mock('@/components/librivox/fetch-watcher', () => ({
+  LibrivoxFetchWatcher: () => {
+    const { View } = jest.requireActual('react-native');
+    return <View testID="librivox-fetch-watcher" />;
+  },
+}));
 
 /* eslint-disable import/first */
-import { render } from '@testing-library/react-native';
+import { render, screen } from '@testing-library/react-native';
 
-import { RootServices, startRootServices } from './root-services-impl';
+import { RootListeners, RootServices, startRootServices } from './root-services-impl';
 /* eslint-enable import/first */
 
 describe('startRootServices', () => {
@@ -86,6 +92,13 @@ describe('startRootServices', () => {
   });
 });
 
+describe('RootListeners', () => {
+  it('watches the LibriVox fetches a page followed, on every screen (fe#293)', async () => {
+    await render(<RootListeners />);
+    expect(screen.getByTestId('librivox-fetch-watcher')).toBeTruthy();
+  });
+});
+
 describe('RootServices (the web mounts it after the first paint)', () => {
   beforeEach(() => {
     mockCalls.length = 0;
@@ -98,6 +111,8 @@ describe('RootServices (the web mounts it after the first paint)', () => {
     expect(mockDriftOptions).toEqual([{ late: true }]);
     expect(mockCalls).toContain('start autoSleep');
     expect(mockCalls).toContain('start cast');
+    // The web's listeners come with it.
+    expect(screen.getByTestId('librivox-fetch-watcher')).toBeTruthy();
     mockCalls.length = 0;
     await view.unmount();
     expect(mockCalls).toContain('stop autoSleep');

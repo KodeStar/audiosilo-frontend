@@ -139,8 +139,8 @@ export const LIBRIVOX_FEATURE = 'librivox';
 export const LIBRIVOX_POLL_MS = 5_000;
 
 /**
- * How often a `librivox.fetch` followed by its id is read again while `active` (its page
- * focused, the app in the foreground): every `LIBRIVOX_POLL_MS` while it is queued, claimed
+ * How often a `librivox.fetch` followed by its id is read again while `active` (the root's
+ * `LibrivoxFetchWatcher` asking, the app in the foreground): every `LIBRIVOX_POLL_MS` while it is queued, claimed
  * or running, every `BRIDGE_IDLE_POLL_MS` while it is parked (someone has to look, or its
  * retry time has to come), never once it ended or is gone (`gone`: a 404, deleted with its
  * library), nor while its first answer is on its way. A first read that `failed` in a way

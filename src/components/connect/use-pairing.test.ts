@@ -121,6 +121,31 @@ describe('useLinkPairing', () => {
     expect(mockFinish).toHaveBeenCalledWith(expect.objectContaining({ carried: SET }));
   });
 
+  it('pairs a code scanned from a reconnect as that reconnect: its own proxy headers, and finishConnect told', async () => {
+    const set = (value: string) => ({ origin: scan.base, headers: [{ name: 'X-Proxy', value }] });
+    // Another person's connection to the server comes first: never its set.
+    useSession.setState({
+      connections: [
+        { id: 'a.2', serverId: 'a', serverUrl: scan.base, token: 't', proxyHeaders: set('other') },
+        { id: 'a.1', serverId: 'a', serverUrl: scan.base, token: 't', proxyHeaders: set('own') },
+      ] as unknown as Connection[],
+    });
+    const session = { token: 's', user: { id: 1, username: 'evie' }, server_id: 'b' };
+    mockExchange.mockResolvedValue(session);
+    const { result } = await renderHook(() => useLinkPairing());
+    await act(async () => {
+      expect(await result.current.pair(scan, 'a.1')).toBe('paired');
+    });
+    expect(mockFinish).toHaveBeenCalledWith(
+      expect.objectContaining({ reconnectId: 'a.1', carried: set('own') }),
+    );
+    // A link names no connection to re-pair.
+    await act(async () => {
+      expect(await result.current.pair(scan)).toBe('paired');
+    });
+    expect(mockFinish.mock.calls[1][0]).not.toHaveProperty('reconnectId');
+  });
+
   it("says a refused link in the app's words, never the server's English", async () => {
     const said = await errorFor(new ApiError(401, 'invite has expired - ask for a new invite'));
     expect(said).toBe(

@@ -1,19 +1,23 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 
 import type { User } from '@/api/types';
 import { useSession } from '@/stores/session';
 
 import { renderConnect as render } from './connect-testing';
+import { takeScanFor } from './invite-handoff';
 import { SignInStep } from './sign-in-step';
 
 const mockReplace = jest.fn();
+const mockPush = jest.fn();
 const mockDismissTo = jest.fn();
 const mockBack = jest.fn();
 let mockCanGoBack = true;
 jest.mock('expo-router', () => ({
   router: {
     replace: (h: unknown) => mockReplace(h),
+    push: (h: unknown) => mockPush(h),
     dismissTo: (h: unknown) => mockDismissTo(h),
     back: () => mockBack(),
     canGoBack: () => mockCanGoBack,
@@ -299,4 +303,55 @@ it('goes to the first step from "Back" with nothing to go back to (a cold link)'
   await fireEvent.press(screen.getByText('Back'));
   expect(mockDismissTo).toHaveBeenCalledWith('/connect');
   expect(mockBack).not.toHaveBeenCalled();
+});
+
+describe('no password (fe#264)', () => {
+  const os = Platform.OS;
+  afterEach(() => {
+    Platform.OS = os;
+  });
+
+  it('says the invite code needs no password', async () => {
+    await render(<SignInStep server={AWAY} />);
+    expect(
+      screen.getByText("From the invite your admin sent you. You don't need a password."),
+    ).toBeTruthy();
+  });
+
+  it('offers the scanner in the app, and sends nothing', async () => {
+    Platform.OS = 'ios';
+    await render(<SignInStep server={AWAY} />);
+    await fireEvent.press(screen.getByText('No password? Scan a QR code instead'));
+    expect(mockPush).toHaveBeenCalledWith('/connect/scan');
+    expect(takeScanFor()).toBeUndefined();
+    expect(mockApi.redeemCode).not.toHaveBeenCalled();
+    expect(mockApi.login).not.toHaveBeenCalled();
+  });
+
+  it('offers it on a reconnect too, and tells the scanner which connection it re-pairs', async () => {
+    Platform.OS = 'android';
+    await render(<SignInStep server={AWAY} reconnectId="srv.1" />);
+    await fireEvent.press(screen.getByTestId('sign-in-scan'));
+    // A code for the same server then re-pairs this connection, as a code typed here does.
+    // Handed over in memory, never in the route: a link opens the scanner too.
+    expect(mockPush).toHaveBeenCalledWith('/connect/scan');
+    expect(takeScanFor()).toBe('srv.1');
+  });
+
+  it('holds the scanner back while a sign-in is on its way', async () => {
+    Platform.OS = 'ios';
+    let answer: (v: unknown) => void = () => {};
+    mockApi.redeemCode.mockImplementation(() => new Promise((r) => (answer = r)));
+    mockApi.exchange.mockResolvedValue({ token: 's', server_id: 'srv-1', user });
+    await render(<SignInStep server={AWAY} initialCode="ABCD-1234" />);
+    await fireEvent.press(screen.getByTestId('sign-in-scan'));
+    expect(mockPush).not.toHaveBeenCalled();
+    await act(async () => answer({ server_name: 'Hearthside', pairing_token: 'pt' }));
+  });
+
+  it('offers no scanner on the web (no camera step there)', async () => {
+    Platform.OS = 'web';
+    await render(<SignInStep server={AWAY} />);
+    expect(screen.queryByTestId('sign-in-scan')).toBeNull();
+  });
 });

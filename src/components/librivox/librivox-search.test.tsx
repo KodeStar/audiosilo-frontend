@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { View } from 'react-native';
+import { create } from 'zustand';
 
 import { ApiError } from '@/api/client';
 import type { BridgeJob, Library, LibrivoxHit, LibrivoxWork } from '@/api/types';
@@ -21,18 +22,26 @@ jest.mock('@/lib/support', () => ({ openExternalUrl: (u: string) => mockOpenUrl(
 
 type ReadState<T> = {
   data?: T;
+  dataUpdatedAt?: number;
   isError?: boolean;
   error?: unknown;
   isPending?: boolean;
   isPaused?: boolean;
 };
-let mockLibraries: Library[] = [];
+// Undefined while the libraries load.
+let mockLibraries: Library[] | undefined = [];
+// The libraries read again (a cached list kept meanwhile).
+let mockLibrariesFetching = false;
 let mockSearch: ReadState<{ results: LibrivoxHit[] }> = {};
 const mockAsked: string[] = [];
 const mockSearchRefetch = jest.fn();
 let mockWork: ReadState<LibrivoxWork> = {};
 const mockWorkAsked: (string | null)[] = [];
 let mockJobs: Record<number, ReadState<BridgeJob>> = {};
+// The `active` each job was read with (the row never polls: the watcher does).
+const mockJobActive = new Map<number, boolean[]>();
+// Moved on to have each job's row read `mockJobs` again (a poll's or a refetch's answer).
+const mockJobsRead = create(() => ({ n: 0 }));
 const mockAdd = jest.fn();
 const mockCancel = jest.fn();
 const mockInvalidateLists = jest.fn();
@@ -41,10 +50,7 @@ jest.mock('@/api/hooks', () => {
   return {
     CapabilityError,
     qk: { librivoxWorks: (cid: string) => ['librivoxWork', cid] },
-    librariesQuery: (cid: string) => ({
-      queryKey: ['libraries', cid],
-      queryFn: () => Promise.resolve(mockLibraries),
-    }),
+    useLibrariesOf: () => ({ data: mockLibraries, isFetching: mockLibrariesFetching }),
     useLibrivoxSearch: (q: string) => {
       mockAsked.push(q);
       return q
@@ -61,8 +67,12 @@ jest.mock('@/api/hooks', () => {
       mockWorkAsked.push(id);
       return { refetch: jest.fn(), isError: false, ...mockWork };
     },
-    useLibrivoxJob: (id: number | undefined) =>
-      id === undefined ? {} : (mockJobs[id] ?? { isPending: true }),
+    useLibrivoxJob: (id: number | undefined, active: boolean) => {
+      mockJobsRead((s) => s.n);
+      if (id === undefined) return {};
+      mockJobActive.set(id, [...new Set([...(mockJobActive.get(id) ?? []), active])]);
+      return mockJobs[id] ?? { isPending: true };
+    },
     useAddLibrivox: () => ({ mutateAsync: mockAdd, isPending: false }),
     useCancelBridgeJob: () => ({ mutate: mockCancel, isPending: false }),
     invalidateLibraryLists: (...a: unknown[]) => mockInvalidateLists(...a),
@@ -70,7 +80,7 @@ jest.mock('@/api/hooks', () => {
 });
 
 /* eslint-disable import/first */
-import { DONE_RECHECK_MS } from './librivox-model';
+import { useLibrivoxWatches } from './fetch-watcher';
 import { LibrivoxSearch } from './librivox-search';
 /* eslint-enable import/first */
 
@@ -92,11 +102,16 @@ const work = (over: Partial<LibrivoxWork['recordings'][number]> = {}): LibrivoxW
   recordings: [librivoxRecording(over)],
 });
 
-async function mount(libraryId = 3) {
+async function mount(libraryId = 3, bridgeAway = false) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   await mountWithPortal(
     <QueryClientProvider client={qc}>
-      <LibrivoxSearch connectionId="c1" libraryId={libraryId} header={<View testID="header" />} />
+      <LibrivoxSearch
+        connectionId="c1"
+        libraryId={libraryId}
+        header={<View testID="header" />}
+        bridgeAway={bridgeAway}
+      />
     </QueryClientProvider>,
   );
   return qc;
@@ -115,12 +130,15 @@ async function openWork() {
 
 beforeEach(() => {
   mockLibraries = [library(3, 'Books')];
+  mockLibrariesFetching = false;
   mockSearch = { data: { results: [librivoxHit()] } };
   mockAsked.length = 0;
   mockWorkAsked.length = 0;
   mockSearchRefetch.mockReset();
   mockWork = { data: work() };
   mockJobs = {};
+  mockJobActive.clear();
+  useLibrivoxWatches.setState({ watches: [] });
   mockAdd.mockReset();
   mockCancel.mockReset();
   mockToast.mockReset();
@@ -273,42 +291,97 @@ describe('LibrivoxSearch', () => {
     expect(screen.queryByTestId('librivox-add')).toBeNull();
   });
 
-  it("reads the library's lists again once a fetch is done", async () => {
+  it('hands each fetch it follows to the watcher that outlives the page (fe#293)', async () => {
+    mockWork = { data: work({ job: { id: 40, state: 'running' } }) };
+    mockJobs = { 40: { data: librivoxJob({ id: 40, state: 'running' }) } };
+    await mount();
+    await openWork();
+    expect(useLibrivoxWatches.getState().watches).toEqual([{ cid: 'c1', id: 40 }]);
+  });
+
+  it('watches the job an Add queued, and reads it without polling of its own', async () => {
+    mockAdd.mockResolvedValue({ job: librivoxJob({ id: 41, state: 'queued' }) });
+    mockJobs = { 41: { data: librivoxJob({ id: 41, state: 'queued' }) } };
+    await mount();
+    await openWork();
+    await fireEvent.press(await screen.findByTestId('librivox-add'));
+    expect(await screen.findByText('Adding')).toBeTruthy();
+    expect(useLibrivoxWatches.getState().watches).toEqual([{ cid: 'c1', id: 41 }]);
+    // The watcher is the one poller: the row asks with `active` false.
+    expect(mockJobActive.get(41)).toEqual([false]);
+  });
+
+  it('hands an open fetch back to the watcher when it is read again (signed in again)', async () => {
+    mockWork = { data: work({ job: { id: 41, state: 'running' } }) };
+    mockJobs = { 41: { data: librivoxJob({ id: 41, state: 'running' }), dataUpdatedAt: 1 } };
+    await mount();
+    await openWork();
+    // The watcher dropped it: its read was refused (the token revoked mid-download).
+    await act(async () => useLibrivoxWatches.setState({ watches: [] }));
+    expect(useLibrivoxWatches.getState().watches).toEqual([]);
+    // Signed in again, the job is read again and is still open.
+    mockJobs = { 41: { data: librivoxJob({ id: 41, state: 'running' }), dataUpdatedAt: 2 } };
+    await act(async () => mockJobsRead.setState({ n: 1 }));
+    expect(useLibrivoxWatches.getState().watches).toEqual([{ cid: 'c1', id: 41 }]);
+  });
+
+  it('watches the job an Add queued when the page was left before the answer', async () => {
+    let answer: (a: { job: BridgeJob }) => void = () => {};
+    mockAdd.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    await mount();
+    await openWork();
+    await fireEvent.press(await screen.findByTestId('librivox-add'));
+    await screen.unmount();
+    expect(useLibrivoxWatches.getState().watches).toEqual([]);
+    await act(async () => answer({ job: librivoxJob({ id: 41, state: 'queued' }) }));
+    expect(useLibrivoxWatches.getState().watches).toEqual([{ cid: 'c1', id: 41 }]);
+  });
+
+  it('has nothing to do once a fetch is done: the watcher reads the Library again', async () => {
     mockWork = { data: work({ job: { id: 41, state: 'running' } }) };
     mockJobs = { 41: { data: librivoxJob({ state: 'done', library_id: 3 }) } };
     const qc = await mount();
     const invalidate = jest.spyOn(qc, 'invalidateQueries');
     await openWork();
     expect(screen.getByText('Added')).toBeTruthy();
-    expect(mockInvalidateLists).toHaveBeenCalledWith(qc, 'c1', 3);
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['librivoxWork', 'c1'] });
     expect(screen.queryByTestId('librivox-add')).toBeNull();
+    expect(mockInvalidateLists).not.toHaveBeenCalled();
+    expect(invalidate).not.toHaveBeenCalled();
+    // Its end was the watcher's when it came: a work that still names it hands nothing back.
+    expect(useLibrivoxWatches.getState().watches).toEqual([]);
   });
 
-  it('asks the works once more a moment after a fetch is done (the book is recorded just after)', async () => {
-    jest.useFakeTimers();
-    try {
-      mockWork = { data: work({ job: { id: 41, state: 'running' } }) };
-      mockJobs = { 41: { data: librivoxJob({ state: 'done', library_id: 3 }) } };
-      const qc = await mount();
-      const invalidate = jest.spyOn(qc, 'invalidateQueries');
-      await openWork();
-      const worksAsks = () =>
-        invalidate.mock.calls.filter(
-          ([f]) => JSON.stringify(f?.queryKey) === '["librivoxWork","c1"]',
-        ).length;
-      expect(worksAsks()).toBe(1);
-      await act(async () => {
-        jest.advanceTimersByTime(DONE_RECHECK_MS - 1);
-      });
-      expect(worksAsks()).toBe(1);
-      await act(async () => {
-        jest.advanceTimersByTime(1);
-      });
-      expect(worksAsks()).toBe(2);
-    } finally {
-      jest.useRealTimers();
-    }
+  it('puts Cancel under the status, where Add sits', async () => {
+    mockWork = { data: work({ job: { id: 41, state: 'running' } }) };
+    mockJobs = { 41: { data: librivoxJob({ progress: { step: 'download', done: 1, total: 3 } }) } };
+    await mount();
+    await openWork();
+    // The status's last part, under the title, the line and the bar: not the title's row.
+    const parts = screen.getByTestId('librivox-fetch-status').children;
+    const last = parts[parts.length - 1];
+    expect(typeof last).not.toBe('string');
+    expect(within(last as never).getByTestId('librivox-cancel')).toBeTruthy();
+    expect(within(parts[0] as never).queryByTestId('librivox-cancel')).toBeNull();
+    expect(within(parts[0] as never).getByText('Adding')).toBeTruthy();
+  });
+
+  it('holds Add back while the Bridge is away, and sends nothing', async () => {
+    await mount(3, true);
+    await openWork();
+    const add = await screen.findByTestId('librivox-add');
+    await fireEvent.press(add);
+    expect(mockAdd).not.toHaveBeenCalled();
+  });
+
+  it('holds Cancel back too while the Bridge is away (a cancel is never sent)', async () => {
+    mockWork = { data: work({ job: { id: 41, state: 'running' } }) };
+    mockJobs = { 41: { data: librivoxJob({ id: 41, state: 'running' }) } };
+    await mount(3, true);
+    await openWork();
+    const cancel = screen.getByTestId('librivox-cancel');
+    expect(cancel.props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
+    await fireEvent.press(cancel);
+    expect(mockCancel).not.toHaveBeenCalled();
   });
 
   it('picks among the books libraries only, the one the page opened from first', async () => {
@@ -319,12 +392,49 @@ describe('LibrivoxSearch', () => {
     expect(screen.getByTestId('librivox-library')).toBeTruthy();
   });
 
-  it('asks for a books library first when the server has none', async () => {
+  it('refuses a library the server does not have, never adding to its first one', async () => {
+    // A link without ?connection= names a library on the default server, which has none 9.
+    mockLibraries = [library(3, 'Books'), library(4, 'Fiction')];
+    await mount(9);
+    expect(screen.getByTestId('librivox-library-missing')).toBeTruthy();
+    expect(screen.getByText("This link doesn't point to anything here.")).toBeTruthy();
+    expect(screen.queryByTestId('librivox-search-input')).toBeNull();
+    expect(screen.queryByTestId('librivox-library')).toBeNull();
+    expect(screen.queryByTestId('header')).toBeNull();
+  });
+
+  it('refuses nothing while a cached list without the library is read again', async () => {
+    mockLibraries = [library(3, 'Books')];
+    mockLibrariesFetching = true;
+    await mount(9);
+    expect(screen.queryByTestId('librivox-library-missing')).toBeNull();
+    await openWork();
+    const add = screen.getByTestId('librivox-add');
+    expect(add.props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
+  });
+
+  it('refuses a podcast library, and a server with no books library', async () => {
     mockLibraries = [library(5, 'Shows', 'podcasts')];
     await mount(5);
+    expect(screen.getByTestId('librivox-library-missing')).toBeTruthy();
+    expect(screen.queryByTestId('librivox-search-input')).toBeNull();
+  });
+
+  it('adds to the named library when the server has it', async () => {
+    mockLibraries = [library(3, 'Books'), library(9, 'Classics')];
+    await mount(9);
+    expect(screen.queryByTestId('librivox-library-missing')).toBeNull();
     await openWork();
-    expect(await screen.findByText('Add a books library first.')).toBeTruthy();
-    expect(screen.queryByTestId('librivox-add')).toBeNull();
+    expect(await screen.findByText('Add to Classics')).toBeTruthy();
+  });
+
+  it('refuses nothing while the libraries load, and holds Add back', async () => {
+    mockLibraries = undefined;
+    await mount(9);
+    expect(screen.queryByTestId('librivox-library-missing')).toBeNull();
+    await openWork();
+    const add = screen.getByTestId('librivox-add');
+    expect(add.props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
   });
 
   it('says the work has no recording yet', async () => {

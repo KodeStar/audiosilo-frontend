@@ -1,20 +1,15 @@
 import { useIsFocused } from 'expo-router';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
 
 import { useBridgeJobs } from '@/api/hooks';
 import type { BridgeJob } from '@/api/types';
 import { Button } from '@/components/ui/button';
-import { Icon } from '@/components/ui/icon';
-import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import { formatDuration, formatShortDay, formatWallClock, localIsoDay } from '@/lib/format';
-import { cn } from '@/lib/utils';
-import { tabularNums } from '@/theme/tabular-nums';
-import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { type JobStatusView, jobStatusView, parkEndsByItself, statusJob } from './bridge-model';
+import { JobStatusLayout } from './job-status-layout';
 import type { GenerateModel } from './use-generate';
 
 /** The status's one line under its title: the stage, the counts and the time left while
@@ -141,7 +136,6 @@ function JobStatus({
   className?: string;
 }) {
   const { t } = useTranslation();
-  const themed = useThemeColors();
   const view = jobStatusView(job);
   const parked = view.phase === 'parked';
   const failed = view.phase === 'failed';
@@ -151,17 +145,17 @@ function JobStatus({
       ? view.done / view.total
       : undefined;
   return (
-    <View testID={`${words.testID}-status`} className={cn('max-w-[560px] gap-1.5', className)}>
-      <View className="flex-row items-center gap-2">
-        <Icon
-          name={failed || parked ? 'circle-exclamation' : 'sparkles'}
-          size={14}
-          color={failed ? themed.destructive : parked ? themed.warning : themed.mutedForeground}
-        />
-        <Text variant="label" className="min-w-0 flex-1" numberOfLines={2}>
-          {title}
-        </Text>
-        {failed ? (
+    <JobStatusLayout
+      testID={`${words.testID}-status`}
+      className={className}
+      icon={failed || parked ? 'circle-exclamation' : 'sparkles'}
+      tone={failed ? 'destructive' : parked ? 'warning' : 'mutedForeground'}
+      title={title}
+      line={statusLine(t, view)}
+      lineLines={failed ? 4 : 2}
+      fraction={fraction}
+      action={
+        failed ? (
           <Button
             testID={`${words.testID}-retry`}
             size="sm"
@@ -181,14 +175,9 @@ function JobStatus({
             loading={model.cancelling}
             onPress={() => model.cancel(job)}
           />
-        )}
-      </View>
-      <Text variant="caption" numberOfLines={failed ? 4 : 2} style={tabularNums}>
-        {statusLine(t, view)}
-      </Text>
-      {fraction !== undefined ? (
-        <ProgressBar fraction={fraction} minPercent={4} fillClassName="bg-foreground/60" />
-      ) : null}
+        )
+      }
+    >
       {parked ? (
         <Text variant="caption">
           {view.retryAt
@@ -200,6 +189,6 @@ function JobStatus({
               )}
         </Text>
       ) : null}
-    </View>
+    </JobStatusLayout>
   );
 }

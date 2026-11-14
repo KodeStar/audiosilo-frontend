@@ -75,8 +75,10 @@ export type LinkPairing = {
   /** Say why a link can't pair (a link with no server address). */
   fail: (message: string) => void;
   /** Exchange a pairing link's token on its server and finish the connect flow (on the
-   * link's book, when it names one). Resolves how it ended (`PairOutcome`). */
-  pair: (scan: PairingScan) => Promise<PairOutcome>;
+   * link's book, when it names one). Resolves how it ended (`PairOutcome`). `reconnectId`:
+   * the connection a code scanned from a reconnect's sign-in step re-pairs
+   * (`scanReconnect`); never a link's to name. */
+  pair: (scan: PairingScan, reconnectId?: string) => Promise<PairOutcome>;
 };
 
 /**
@@ -111,7 +113,9 @@ async function stillSignedIn(connectionId: string): Promise<boolean> {
  * its first address pick (`answeredAt`). A link naming a book ends on it, and skips the
  * exchange when the device is already signed in as the link's user there (its token still
  * taken, `stillSignedIn`). Resolves how it ended (`PairOutcome`). Bare client: a failed
- * exchange must never flag a reconnect.
+ * exchange must never flag a reconnect. A code scanned from a reconnect's sign-in step
+ * pairs as that step's own sign-in does (`reconnectId`): with the connection's own proxy
+ * headers only, and `finishConnect` told which connection it re-pairs.
  */
 export function useLinkPairing(startPairing = false): LinkPairing {
   const { t } = useTranslation();
@@ -127,7 +131,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
 
   // Stable (`useLatest`): the deep link's effect lists it, and a language switch must not
   // run the exchange again.
-  const pair = useLatest(async (scan: PairingScan): Promise<PairOutcome> => {
+  const pair = useLatest(async (scan: PairingScan, reconnectId?: string): Promise<PairOutcome> => {
     setError(null);
     setPairing(true);
     // A link naming a book, for a user this device is already signed in as on its server
@@ -149,7 +153,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
     // The token's exchange at `base`, with the server's name read alongside, and the proxy
     // headers set it went out with (fe#167: the connection keeps the set that got it in).
     const exchangeAt = async (base: string) => {
-      const { client, proxy } = connectClientFor(base);
+      const { client, proxy } = connectClientFor(base, undefined, reconnectId);
       const [session, info] = await Promise.all([
         client.exchange(scan.token, getDeviceName()),
         client.serverInfo().catch(() => null),
@@ -192,6 +196,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
         linkAddresses: scan.addresses,
         name: info?.name,
         ...(answeredAt !== scan.base ? { answeredAt } : {}),
+        ...(reconnectId ? { reconnectId } : {}),
         book: scan.book,
         carried,
       });

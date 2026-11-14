@@ -8,6 +8,7 @@ import {
   isOwnAddress,
   mergeAddresses,
   pickAddress,
+  sameUrl,
   type ServerIdProbe,
 } from '@/lib/server-address';
 import { connectBookParams } from '@/lib/paths';
@@ -98,6 +99,28 @@ export function repairPlan(input: {
     };
   }
   return { serverUrl: pending, addresses: answer };
+}
+
+/**
+ * The connection a code scanned from a reconnect's sign-in step re-pairs: the reconnect's
+ * (`reconnectId`), when the code is for that connection's paired address or its away
+ * address (`base`: the pairing or invite code's server), as a sign-in typed there is. A
+ * code for any other server is a new connection, as one scanned from the first step:
+ * undefined. So is one for a home address the connection only knows of (`addresses.home`,
+ * not the one it was paired at): another box can answer at the same private address on
+ * another network, and its code scanned here would read as this server reset and retire
+ * the connection. A sign-in typed on that step never goes to an unprobed home address
+ * either (`effectiveUrl`).
+ */
+export function scanReconnect(
+  reconnectId: string | undefined,
+  base: string,
+  connections: readonly AddressedConnection[],
+): string | undefined {
+  const target = reconnectId ? connections.find((c) => c.id === reconnectId) : undefined;
+  if (!target) return undefined;
+  const away = target.addresses?.away;
+  return sameUrl(base, target.serverUrl) || (!!away && sameUrl(base, away)) ? target.id : undefined;
 }
 
 /**

@@ -1,11 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
 import { type ReactElement, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, View } from 'react-native';
 
-import { librariesQuery, useLibrivoxSearch } from '@/api/hooks';
-import { useOptionalApi } from '@/api/provider';
-import type { Library, LibrivoxHit } from '@/api/types';
+import { useLibrariesOf, useLibrivoxSearch } from '@/api/hooks';
+import type { LibrivoxHit } from '@/api/types';
 import { OfflineState } from '@/components/layout/offline-state';
 import { pageGutter } from '@/components/library/cover-layout';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
@@ -38,17 +36,22 @@ import { LibrivoxWorkPanel } from './librivox-work';
  * one opened its LibriVox recordings, each with Add (`LibrivoxWorkPanel`). Add puts the
  * book into the library the page was opened from, or the one picked above the results
  * when the server has several books libraries. The results are the page's one scroller,
- * `header` above them.
+ * `header` above them. A link naming a library this server has no books library for (a
+ * link without `?connection=` reads the default server's) gets the broken-link sentence
+ * and nothing else: Add only ever goes to a library the link or the picker named.
  */
 export function LibrivoxSearch({
   connectionId,
   libraryId,
   header,
+  bridgeAway,
 }: {
   connectionId: string;
   /** The library the page was opened from: Add's first choice. */
   libraryId: number;
   header: ReactElement;
+  /** The Bridge went away while the page was open: Add is held back. */
+  bridgeAway: boolean;
 }) {
   const { t } = useTranslation();
   const gutter = pageGutter(useLayout());
@@ -57,11 +60,15 @@ export function LibrivoxSearch({
   const [asked, setAsked] = useState('');
   const search = useLibrivoxSearch(asked, connectionId);
   const [openWork, setOpenWork] = useState<string | null>(null);
-  const known = useBookLibraries(connectionId);
+  // The books libraries (a podcast library can't take a LibriVox book), in the server's
+  // order; undefined until they are known.
+  const librariesRead = useLibrariesOf(connectionId);
+  const known = librariesRead.data?.filter((l) => !isPodcastLibrary(l));
   const libraries = known ?? [];
   const [picked, setPicked] = useState<number>(libraryId);
-  // Undefined while the libraries load, null when the server has no books library.
-  const target = known && (libraries.find((l) => l.id === picked) ?? libraries[0] ?? null);
+  const named = libraries.find((l) => l.id === libraryId);
+  // Undefined while the libraries load; the named one when the picked one is gone.
+  const target = libraries.find((l) => l.id === picked) ?? named;
 
   const submit = () => {
     const q = text.trim();
@@ -84,6 +91,16 @@ export function LibrivoxSearch({
   const failure =
     asked && search.isError && !search.data && !offline ? readErrorKey(search.error) : null;
   const hits = search.data?.results ?? [];
+
+  // Refused only on a settled list: a cached one read again (a library added since) may
+  // hold it yet.
+  if (known && !named && !librariesRead.isFetching) {
+    return (
+      <View testID="librivox-library-missing">
+        <EmptyState icon="book" title={t('library.detail.badLink')} />
+      </View>
+    );
+  }
 
   const form = (
     <View className="gap-3 pb-4">
@@ -168,7 +185,7 @@ export function LibrivoxSearch({
       testID="librivox-search"
       data={hits}
       keyExtractor={(h) => h.work_id}
-      extraData={`${openWork}:${target?.id}`}
+      extraData={`${openWork}:${target?.id}:${bridgeAway}`}
       {...TAB_PAGE_SCROLL_PROPS}
       initialNumToRender={8}
       windowSize={5}
@@ -180,7 +197,12 @@ export function LibrivoxSearch({
             onPress={() => setOpenWork(item.work_id === openWork ? null : item.work_id)}
           />
           {item.work_id === openWork ? (
-            <LibrivoxWorkPanel connectionId={connectionId} workId={item.work_id} target={target} />
+            <LibrivoxWorkPanel
+              connectionId={connectionId}
+              workId={item.work_id}
+              target={target}
+              bridgeAway={bridgeAway}
+            />
           ) : null}
         </View>
       )}
@@ -194,13 +216,6 @@ export function LibrivoxSearch({
       contentContainerStyle={{ paddingHorizontal: gutter, paddingBottom: paddingBottom + 24 }}
     />
   );
-}
-
-/** The connection's books libraries (podcast libraries can't take a LibriVox book), in
- * the server's order; undefined until they are known. */
-function useBookLibraries(connectionId: string): Library[] | undefined {
-  const { data } = useQuery(librariesQuery(connectionId, useOptionalApi(connectionId)));
-  return data?.filter((l) => !isPodcastLibrary(l));
 }
 
 /** One work found: its title, then its authors, first release and language; pressing it

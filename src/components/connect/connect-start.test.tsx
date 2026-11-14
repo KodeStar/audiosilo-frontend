@@ -9,6 +9,7 @@ import { useSession } from '@/stores/session';
 
 import { ConnectStart } from './connect-start';
 import { renderConnect as render } from './connect-testing';
+import { holdScanReconnect, openScanner, takeScanFor } from './invite-handoff';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -144,6 +145,60 @@ describe('a pairing link', () => {
     expect(mockReplace).toHaveBeenCalledWith({
       pathname: '/connect/ready',
       params: { connection: 'srv-1.1' },
+    });
+  });
+
+  describe('for a server that was reset, already signed in to here', () => {
+    // Paired at home, now under a new server_id: the code names the away address.
+    const old = {
+      id: 'srv-old.1',
+      serverId: 'srv-old',
+      name: 'Hearthside',
+      serverUrl: HOME,
+      addresses: { home: HOME, away: AWAY },
+      token: 'dead',
+      user,
+    };
+    beforeEach(() => {
+      useSession.setState({ status: 'authenticated', connections: [old] as never });
+      mockApi.exchange.mockResolvedValue({ token: 'session', server_id: 'srv-2', user });
+      mockApi.serverInfo.mockResolvedValue(info({ server_id: 'srv-2' }));
+    });
+    const paired = () => useSession.getState().connections.find((c) => c.id === 'srv-2.1');
+
+    it('is a new connection at its own address from a link, or the first step', async () => {
+      mockParams = { token: 'linked', server: AWAY };
+      await render(<ConnectStart />);
+      await waitFor(() => expect(paired()).toBeTruthy());
+      expect(paired()?.serverUrl).toBe(AWAY);
+    });
+
+    it("re-pairs the connection a reconnect's scanner held the code for", async () => {
+      // Scanned from the reconnect's sign-in step: the reconnect's own sign-in, so the
+      // connection keeps the address it was paired with (`repairPlan`'s reset rule).
+      holdScanReconnect('scanned', 'srv-old.1');
+      mockParams = { token: 'scanned', server: AWAY };
+      await render(<ConnectStart />);
+      await waitFor(() => expect(paired()).toBeTruthy());
+      expect(paired()?.serverUrl).toBe(HOME);
+    });
+
+    it("keeps no reconnect for the scanned token at an address that isn't the connection's", async () => {
+      // The token alone is not enough: the code's server must still be one of its addresses.
+      holdScanReconnect('scanned', 'srv-old.1');
+      mockParams = { token: 'scanned', server: 'https://other.example.com' };
+      await render(<ConnectStart />);
+      await waitFor(() => expect(paired()).toBeTruthy());
+      expect(paired()?.serverUrl).toBe('https://other.example.com');
+      expect(useSession.getState().connections.some((c) => c.id === 'srv-old.1')).toBe(true);
+    });
+
+    it("keeps no reconnect for another code (held by the scanned code's token)", async () => {
+      holdScanReconnect('scanned', 'srv-old.1');
+      mockParams = { token: 'linked', server: AWAY };
+      await render(<ConnectStart />);
+      await waitFor(() => expect(paired()).toBeTruthy());
+      expect(paired()?.serverUrl).toBe(AWAY);
     });
   });
 
@@ -524,6 +579,54 @@ describe('adding a server', () => {
     await fireEvent.press(screen.getByLabelText('Cancel adding a server'));
     expect(mockDismissTo).toHaveBeenCalledWith('/');
     expect(mockBack).not.toHaveBeenCalled();
+  });
+});
+
+describe('the app leads with the QR (fe#264)', () => {
+  it('puts Scan a QR code first, says where the QR is, and the address under it', async () => {
+    await render(<ConnectStart />);
+    expect(screen.getByText(/admin console under People > your name > Pair a device/)).toBeTruthy();
+    expect(screen.getByText(/on your invite page/)).toBeTruthy();
+    // The scan action is above the address field: first in the screen's order.
+    const scanButton = screen.getByTestId('connect-scan');
+    expect(screen.getByText('Or enter the server address')).toBeTruthy();
+    const tree = JSON.stringify(screen.toJSON());
+    expect(tree.indexOf('"connect-scan"')).toBeGreaterThan(-1);
+    expect(tree.indexOf('"connect-scan"')).toBeLessThan(
+      tree.indexOf('Or enter the server address'),
+    );
+    // One scan action, not a second one under the field.
+    expect(screen.getAllByText('Scan a QR code')).toHaveLength(1);
+    await fireEvent.press(scanButton);
+    expect(mockPush).toHaveBeenCalledWith('/connect/scan');
+  });
+
+  it('opens the scanner for no reconnect, dropping one an earlier scanner never took', async () => {
+    openScanner('srv-old.1');
+    await render(<ConnectStart />);
+    await fireEvent.press(screen.getByTestId('connect-scan'));
+    expect(takeScanFor()).toBeUndefined();
+  });
+
+  it('still connects from the address typed under it', async () => {
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await fireEvent.changeText(screen.getByLabelText('Server address'), 'books.example.com');
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(await screen.findByText('Found Hearthside')).toBeTruthy();
+  });
+
+  it('keeps the web as it was: the address first, no scanner, its own lead', async () => {
+    Platform.OS = 'web';
+    await render(<ConnectStart />);
+    expect(screen.queryByTestId('connect-scan')).toBeNull();
+    expect(screen.getByText('Server address')).toBeTruthy();
+    expect(screen.queryByText('Or enter the server address')).toBeNull();
+    expect(
+      screen.getByText(
+        'Enter the address your admin gave you, or paste the pairing link they sent.',
+      ),
+    ).toBeTruthy();
   });
 });
 

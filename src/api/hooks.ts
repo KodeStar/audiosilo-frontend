@@ -960,6 +960,12 @@ export function useLibraries() {
   return useQuery(librariesQuery(cid, api));
 }
 
+/** One connection's libraries, named by the page rather than its scope (a Find page's
+ * `?connection=`, else the default one). */
+export function useLibrariesOf(connectionId: string) {
+  return useQuery(librariesQuery(connectionId, useOptionalApi(connectionId)));
+}
+
 /** Server page size for the folder browse view (the server caps a page at 500). */
 const BROWSE_PAGE_SIZE = 500;
 
@@ -2760,7 +2766,7 @@ export function useLibrivoxSearch(q: string, connectionId?: string) {
   return useCapabilityQuery<LibrivoxSearchResult>(
     'metadata',
     (cid) => qk.librivoxSearch(cid, query),
-    (api, signal) => api.librivoxSearch(query, {}, signal),
+    (api, signal) => api.librivoxSearch(query, signal),
     connectionId,
     { ready: query !== '', staleTime: 60_000, retry: false },
   );
@@ -2780,7 +2786,8 @@ export function useLibrivoxWork(id: string | null, connectionId?: string) {
 }
 
 /** A Bridge job by its id (a `librivox.fetch` the page queued or saw open), polled while
- * it is open and `active` (`librivoxJobPollInterval`) with the app in the foreground, and
+ * it is open and `active` (`librivoxJobPollInterval`) with the app in the foreground (only
+ * the root's `LibrivoxFetchWatcher` asks it active; a recording row reads it), and
  * no more once it is gone (a 404: the last answer would read as open for ever). A first
  * read that failed with no answer or a server error is asked again (`retry: false`, and
  * nothing else reads it: its row would wait for ever); a refusal (a 400, 401 or 403) is

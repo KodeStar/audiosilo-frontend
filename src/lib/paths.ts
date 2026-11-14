@@ -420,9 +420,9 @@ export function parsePodcastParams(p: RawParams): {
 }
 
 /** Find shows' params, or null without a library. `section` is null when the link names
- * none, or one this build does not know. */
+ * none, or one this build does not know. The connection is the page's scope (`useCid`),
+ * not a param read here. */
 export function parseFindShowsParams(p: RawParams): {
-  connectionId: string;
   libraryId: number;
   section: FindShowsSection | null;
 } | null {
@@ -430,7 +430,6 @@ export function parseFindShowsParams(p: RawParams): {
   if (libraryId === null) return null;
   const section = firstParam(p.section);
   return {
-    connectionId: connectionParam(p.connection),
     libraryId,
     section: (FIND_SHOWS_SECTIONS as readonly unknown[]).includes(section)
       ? (section as FindShowsSection)
@@ -439,12 +438,9 @@ export function parseFindShowsParams(p: RawParams): {
 }
 
 /** Find on LibriVox's params, or null without a library. */
-export function parseFindLibrivoxParams(
-  p: RawParams,
-): { connectionId: string; libraryId: number } | null {
+export function parseFindLibrivoxParams(p: RawParams): { libraryId: number } | null {
   const libraryId = idParam(p.library);
-  if (libraryId === null) return null;
-  return { connectionId: connectionParam(p.connection), libraryId };
+  return libraryId === null ? null : { libraryId };
 }
 
 /** The series page's params, or null when the link can't name a series (no library, or

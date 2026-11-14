@@ -438,6 +438,7 @@
     "server": {
       "connecting": "Connecting your device…",
       "addressLabel": "Server address",
+      "orAddress": "Or enter the server address",
       "enterAddress": "Enter your server address",
       "missingAddress": "This pairing link is missing its server address. Enter it below.",
       "pairingRefused": "This pairing link has expired or was already used. Ask for a new one, or enter your invite code on the sign-in screen.",
@@ -466,6 +467,7 @@
       "passwordLabel": "Password",
       "passwordPlaceholder": "Password",
       "submit": "Sign in",
+      "scanInstead": "No password? Scan a QR code instead",
       "failed": "Sign in failed. Please try again.",
       "modeLabel": "How to sign in",
       "errors": {
@@ -489,7 +491,7 @@
       "permissionDenied": "AudioSilo needs camera access to scan your server's pairing QR code.",
       "tryAgain": "Try again",
       "openSettings": "Open settings",
-      "aimHint": "Point your camera at the pairing QR on your server's connect page."
+      "aimHint": "Point your camera at your QR code. If you run the server, it's in the admin console under People > your name > Pair a device. If you were invited, it's on your invite page."
     },
     "probe": {
       "found": "Found {{name}}",
@@ -519,7 +521,7 @@
     "step": "Step {{step}} of {{count}}",
     "start": {
       "title": "Your audiobooks, from your own server.",
-      "lead": "Enter the address your admin gave you, or scan the code from their screen.",
+      "lead": "Scan a QR code to sign in with nothing to type. If you run the server, yours is in the admin console under People > your name > Pair a device. If you were invited, it's on your invite page.",
       "leadWeb": "Enter the address your admin gave you, or paste the pairing link they sent.",
       "leadServed": "Sign in with the code or password your admin gave you, or paste the pairing link they sent.",
       "finding": "Finding your server…",
@@ -527,7 +529,7 @@
     },
     "signIn": {
       "eyebrow": "{{name}} · {{host}}",
-      "codeHint": "From the invite your admin sent you."
+      "codeHint": "From the invite your admin sent you. You don't need a password."
     },
     "anotherServer": "Another server",
     "addresses": {
@@ -3307,7 +3309,9 @@
       "unavailable": "Adding from LibriVox needs the Bridge online and up to date.",
       "unavailableHint": "Check the Bridge in the admin console's Bridge settings.",
       "metadataOff": "Community metadata is off",
-      "metadataOffHint": "Searching LibriVox needs it. Turn it on in the admin console's Metadata settings."
+      "metadataOffHint": "Searching LibriVox needs it. Turn it on in the admin console's Metadata settings.",
+      "away": "The Bridge isn't online right now. You can keep searching, and add once it's back.",
+      "readFailed": "Couldn't reach the server just now. Try again in a moment."
     },
     "search": {
       "label": "Title or author",
@@ -3339,7 +3343,6 @@
     "add": {
       "action": "Add to {{library}}",
       "label": "Add the recording read by {{names}} to {{library}}",
-      "noLibrary": "Add a books library first.",
       "inLibrary": "That recording is already in a library.",
       "notBookLibrary": "Pick a books library. A podcast library can't hold it.",
       "unavailable": "The Bridge can't add LibriVox books. Update it, or pair one in the admin console.",

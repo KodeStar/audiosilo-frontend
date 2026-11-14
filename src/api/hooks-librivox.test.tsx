@@ -118,7 +118,7 @@ describe('useLibrivoxSearch / useLibrivoxWork', () => {
     );
     await waitFor(() => expect(result.current.search.isSuccess).toBe(true));
     await waitFor(() => expect(result.current.work.isSuccess).toBe(true));
-    expect(mockClients.c1.librivoxSearch).toHaveBeenCalledWith('crow', {}, expect.anything());
+    expect(mockClients.c1.librivoxSearch).toHaveBeenCalledWith('crow', expect.anything());
     expect(mockClients.c1.librivoxWork).toHaveBeenCalledWith('johnny', expect.anything());
   });
 });
