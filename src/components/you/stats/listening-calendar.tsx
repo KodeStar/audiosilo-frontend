@@ -1,10 +1,10 @@
 import { memo, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, View, type ScrollViewInstance } from 'react-native';
+import { Platform, ScrollView, View, type ScrollViewInstance } from 'react-native';
 
 import type { ListeningDay } from '@/api/types';
 import { HORIZONTAL_SCROLLER } from '@/components/ui/horizontal-scroller';
-import { Text } from '@/components/ui/text';
+import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { formatDurationOrZero, formatServerShortDay } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -151,6 +151,10 @@ export function ListeningCalendar({
             horizontal
             showsHorizontalScrollIndicator={false}
             style={HORIZONTAL_SCROLLER}
+            // The web: reachable by keyboard, so the arrow keys scroll back through the
+            // weeks a narrow page cuts off.
+            {...(Platform.OS === 'web' ? { tabIndex: 0 as const } : {})}
+            className={Platform.select({ web: `rounded-md ${FOCUS_RING_CLASS}` })}
             // Start at today, the right-hand end.
             onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: false })}
           >

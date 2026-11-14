@@ -466,7 +466,7 @@ function PaletteBody() {
               role="button"
               onPress={() => setQuery(r)}
               className={cn(
-                'h-[26px] flex-row items-center gap-1 rounded-full border border-border px-2.5 active:bg-accent',
+                'min-h-[26px] flex-row items-center gap-1 rounded-full border border-border px-2.5 active:bg-accent',
                 Platform.select({ web: 'cursor-pointer hover:bg-accent' }),
               )}
             >

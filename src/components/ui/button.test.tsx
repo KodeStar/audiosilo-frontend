@@ -74,3 +74,16 @@ describe('Button', () => {
     expect(screen.getByRole('button', { name: 'Delete download' })).toBeTruthy();
   });
 });
+
+// Compile-time (fe#267): an icon-only button must name itself. `tsc` fails on these lines
+// if the type stops requiring it.
+export function iconOnlyButtonsMustBeNamed() {
+  return (
+    <>
+      {/* @ts-expect-error an icon alone with no accessibilityLabel */}
+      <Button icon="trash" />
+      <Button icon="trash" accessibilityLabel="Delete download" />
+      <Button title="Delete" icon="trash" />
+    </>
+  );
+}

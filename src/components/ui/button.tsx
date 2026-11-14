@@ -95,18 +95,28 @@ function iconColor(variant: Variant, themed: ThemeColors): string {
 /** Grows the touch area of the short sizes to the 44pt minimum (STYLEGUIDE section 14). */
 const HIT_SLOP: Record<Size, number> = { sm: 7, default: 3, lg: 0, xl: 0, icon: 3 };
 
-export type ButtonProps = Omit<PressableProps, 'children'> & {
+type ButtonBaseProps = Omit<PressableProps, 'children'> & {
   variant?: Variant;
   size?: Size;
-  /** The label. Or compose `children` (`<Icon/><Text/>`), which inherit the label style. */
-  title?: string;
-  /** A leading glyph, tinted to the variant. Icon-only buttons need an accessibilityLabel. */
+  /** A leading glyph, tinted to the variant. */
   icon?: IconName;
   /** Swaps the icon for a spinner and disables the button. */
   loading?: boolean;
   className?: string;
-  children?: ReactNode;
 };
+
+/**
+ * A button's props. It has words (a `title`, or composed `children` that inherit the label
+ * style), or it is an icon alone and then MUST name itself (`accessibilityLabel`): the
+ * type says so (fe#267), so an unnamed icon button fails to compile.
+ */
+export type ButtonProps = ButtonBaseProps &
+  (
+    | { title: string; children?: ReactNode }
+    | { title?: undefined; children: ReactNode }
+    // A title that may be absent (shown where there is room) needs the label too.
+    | { title?: string; children?: ReactNode; icon: IconName; accessibilityLabel: string }
+  );
 
 /**
  * A button. Pass `title` (+ `icon`) for the common case, or compose `children`:

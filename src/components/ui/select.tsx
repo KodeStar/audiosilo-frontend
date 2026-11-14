@@ -67,6 +67,9 @@ export function SelectTrigger({
         props.disabled && 'opacity-50',
         className,
       )}
+      // The web: Radix gives its trigger `aria-autocomplete` for a combobox, but the trigger
+      // renders as a button there (rn-primitives), where the attribute is not allowed.
+      {...(Platform.OS === 'web' ? ({ 'aria-autocomplete': undefined } as object) : {})}
       {...props}
     >
       <>{children}</>

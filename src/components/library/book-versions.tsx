@@ -51,29 +51,31 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
             .filter(Boolean)
             .join(' · ');
           return (
-            <AnimatedPressable
-              key={`${c.connectionId}:${c.libraryId}:${c.path}`}
-              onPress={() => void openBook(c.connectionId, c.libraryId, c.path)}
-              accessibilityRole="button"
-              accessibilityLabel={[src, quality].filter(Boolean).join(', ')}
-              className={cn(
-                'min-h-[48px] flex-row items-center gap-3 rounded-control px-2 py-2 active:bg-accent',
-                Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}` }),
-              )}
-            >
-              <Icon name="server" size={16} color={themed.mutedForeground} />
-              <View className="min-w-0 flex-1">
-                <Text variant="label" numberOfLines={1}>
-                  {src}
-                </Text>
-                {quality ? (
-                  <Text variant="caption" numberOfLines={1}>
-                    {quality}
+            // A list item around each button (a list holds items).
+            <View key={`${c.connectionId}:${c.libraryId}:${c.path}`} role="listitem">
+              <AnimatedPressable
+                onPress={() => void openBook(c.connectionId, c.libraryId, c.path)}
+                accessibilityRole="button"
+                accessibilityLabel={[src, quality].filter(Boolean).join(', ')}
+                className={cn(
+                  'min-h-[48px] flex-row items-center gap-3 rounded-control px-2 py-2 active:bg-accent',
+                  Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}` }),
+                )}
+              >
+                <Icon name="server" size={16} color={themed.mutedForeground} />
+                <View className="min-w-0 flex-1">
+                  <Text variant="label" numberOfLines={1}>
+                    {src}
                   </Text>
-                ) : null}
-              </View>
-              <Icon name="chevron-right" size={14} color={themed.mutedForeground} />
-            </AnimatedPressable>
+                  {quality ? (
+                    <Text variant="caption" numberOfLines={1}>
+                      {quality}
+                    </Text>
+                  ) : null}
+                </View>
+                <Icon name="chevron-right" size={14} color={themed.mutedForeground} />
+              </AnimatedPressable>
+            </View>
           );
         })}
       </View>

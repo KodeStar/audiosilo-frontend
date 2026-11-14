@@ -157,16 +157,18 @@ export function BookChaptersTab({
         />
       ) : null}
       <View accessibilityRole="list">
+        {/* Each row a list item (a list holds items; its buttons go inside them). */}
         {list.rows.map((r, i) => (
-          <Row
-            key={r.key}
-            row={r}
-            label={labels[i]}
-            state={r.index < current ? 'past' : r.index === current ? 'current' : 'ahead'}
-            bookmark={marked.has(r.index)}
-            roomy={roomy}
-            onJump={onJump}
-          />
+          <View key={r.key} role="listitem">
+            <Row
+              row={r}
+              label={labels[i]}
+              state={r.index < current ? 'past' : r.index === current ? 'current' : 'ahead'}
+              bookmark={marked.has(r.index)}
+              roomy={roomy}
+              onJump={onJump}
+            />
+          </View>
         ))}
       </View>
       {caption ? (
