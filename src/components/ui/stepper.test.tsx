@@ -40,6 +40,15 @@ describe('Stepper', () => {
     expect(screen.getByLabelText('Skip back, less')).toBeDisabled();
   });
 
+  // fe#267: a fixed w-16 wrapped "15s" to "15 / s" at iOS's AX5.
+  it('keeps its value on one line in a box that grows with it', async () => {
+    await render(<Stepper {...props} onChange={jest.fn()} />);
+    const value = screen.getByTestId('stepper-value');
+    expect(value.props.numberOfLines).toBe(1);
+    expect(String(value.props.className)).toContain('min-w-16');
+    expect(String(value.props.className)).not.toMatch(/(^|\s)w-16/);
+  });
+
   it('gives each button a 44 pt frame on native and a slop on the web', async () => {
     const prev = Platform.OS;
     try {

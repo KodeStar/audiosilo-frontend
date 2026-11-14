@@ -3194,7 +3194,12 @@ tokens, type and components; its section 17 maps them onto these files.
     room)`, `transport-controls.tsx`), so the player fits a 320-wide phone at the largest
     size; the dock's `sm` transport is not scaled. A px-sized label inside a fixed control
     (the skip number) sets `allowFontScaling={false}` and sizes itself with `scaleCapped`
-    so the scale is not applied twice.
+    so the scale is not applied twice; its box takes a min width, never a fixed one.
+  - **Text that stops growing**: `display` and `display-xl` titles stop at 2x
+    (`DISPLAY_MAX_FONT_SCALE`, `text.tsx`; at iOS's AX5 one word broke mid-word), and the
+    Android tab bar's labels at 1.3x (`tab-label-size.ts`: the Material bar's labels are sp
+    with no limit). Elsewhere prefer a row that stacks or a min width over capping: a value
+    in a fixed width ("15 / s") is a bug.
   - **px text on the web**: every `text-[Npx]` / `leading-[Npx]` carries a `web:` twin in
     rem, N/16, with the same variants (`text-[13px] web:text-[0.8125rem]`, `lg:text-[17px]
     web:lg:text-[1.0625rem]`). `check-styles.cjs` fails a px size without its twin (art

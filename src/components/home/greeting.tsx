@@ -8,6 +8,7 @@ import { formatLongDate, formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { linesFor, useLargeText } from '@/lib/text-scale';
 import { useMinuteClock } from '@/lib/use-now';
+import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { greetingPart, type SyncPill } from './home-model';
@@ -21,11 +22,18 @@ const GREETING = {
 /** One of the greeting's pills: never wider than its row, its text cut to fit (a long
  * server name on a phone). */
 function Pill({ children, label }: { children: ReactNode; label: string }) {
+  // A min height: the words grow with the text size and may wrap under large text (at
+  // iOS's AX sizes a fixed 30 cut them in half, fe#267); a wrapped pill rounds less.
+  const large = useLargeText();
   return (
     <View
       accessible
       accessibilityLabel={label}
-      className="h-[30px] max-w-full flex-row items-center gap-[7px] rounded-full border border-border bg-card px-3"
+      testID="greeting-pill"
+      className={cn(
+        'min-h-[30px] max-w-full flex-row items-center gap-[7px] border border-border bg-card px-3 py-1',
+        large ? 'rounded-2xl' : 'rounded-full',
+      )}
     >
       {children}
     </View>

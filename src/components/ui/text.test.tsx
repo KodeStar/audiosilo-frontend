@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react-native';
 
-import { headingLevelFor, Text, TextClassContext } from './text';
+import { DISPLAY_MAX_FONT_SCALE, headingLevelFor, Text, TextClassContext } from './text';
 
 function mount(ui: React.ReactElement) {
   return render(ui);
@@ -40,6 +40,25 @@ describe('Text', () => {
     const cls = String(screen.getByText('Remove').props.className);
     expect(cls).toContain('text-destructive');
     expect(cls).not.toContain('text-primary-foreground');
+  });
+});
+
+describe('display titles stop growing at 2x (fe#267)', () => {
+  it('caps a display title, not running text, and lets a caller choose', async () => {
+    await render(
+      <>
+        <Text variant="display">Settings</Text>
+        <Text variant="display-xl">Hero</Text>
+        <Text>Body</Text>
+        <Text variant="display" maxFontSizeMultiplier={1.3}>
+          Own
+        </Text>
+      </>,
+    );
+    expect(screen.getByText('Settings').props.maxFontSizeMultiplier).toBe(DISPLAY_MAX_FONT_SCALE);
+    expect(screen.getByText('Hero').props.maxFontSizeMultiplier).toBe(DISPLAY_MAX_FONT_SCALE);
+    expect(screen.getByText('Body').props.maxFontSizeMultiplier).toBeUndefined();
+    expect(screen.getByText('Own').props.maxFontSizeMultiplier).toBe(1.3);
   });
 });
 

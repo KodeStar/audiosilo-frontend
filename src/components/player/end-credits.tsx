@@ -28,6 +28,7 @@ import { useLayout } from '@/lib/layout';
 import { pushInShell } from '@/lib/open';
 import { bookHref, bookTitle, libraryHref, parentPath, playerHref } from '@/lib/paths';
 import { usePageTitle } from '@/lib/use-page-title';
+import { useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { navigateWhenActive } from '@/lib/when-active';
 import { wallClockSeconds } from '@/playback/rate';
@@ -119,6 +120,10 @@ function EndCreditsBody({
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const phone = useLayout() === 'phone';
+  // Under large text the bar keeps Close and Credits at its ends with the eyebrow on a row
+  // of its own (squeezed between them, "Credits" wrapped a letter per line at iOS's AX5),
+  // and the stat tiles stack (fe#267).
+  const large = useLargeText();
   const api = useOptionalApi(cid);
   const { data: book } = useBook(libraryId, path, cid);
   const title = bookTitle(book?.title, path);
@@ -334,6 +339,12 @@ function EndCreditsBody({
     ]);
   if (speed > 0) tiles.push([t('player.finished.yourSpeed'), formatSpeed(speed)]);
 
+  const eyebrow = (
+    <Text variant="eyebrow" className="shrink text-center" accessibilityRole="header">
+      {t('player.finished.eyebrow')}
+    </Text>
+  );
+
   return (
     <View
       style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
@@ -360,10 +371,11 @@ function EndCreditsBody({
             onPress={onClose}
           />
         </View>
-        <Text variant="eyebrow" className="shrink text-center" accessibilityRole="header">
-          {t('player.finished.eyebrow')}
-        </Text>
-        <View testID="end-credits-bar-end" className="flex-1 flex-row justify-end">
+        {large ? null : eyebrow}
+        <View
+          testID="end-credits-bar-end"
+          className={cn('flex-row justify-end', large ? 'shrink-0' : 'flex-1')}
+        >
           <Button
             variant="ghost"
             size="sm"
@@ -372,6 +384,7 @@ function EndCreditsBody({
           />
         </View>
       </View>
+      {large ? <View className="items-center px-4 pb-2">{eyebrow}</View> : null}
 
       <ScrollView
         className="flex-1"
@@ -408,7 +421,13 @@ function EndCreditsBody({
         </View>
 
         {tiles.length > 0 ? (
-          <View className="w-full max-w-[720px] flex-row justify-center gap-3">
+          <View
+            testID="end-credits-tiles"
+            className={cn(
+              'w-full max-w-[720px] gap-3',
+              large ? 'items-stretch' : 'flex-row justify-center',
+            )}
+          >
             {tiles.map(([label, value]) => (
               <StatTile key={label} label={label} value={value} phone={phone} />
             ))}

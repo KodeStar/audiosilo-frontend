@@ -92,6 +92,15 @@ export function headingLevelFor(variant: TextVariant): HeadingLevel {
   return 3;
 }
 
+/**
+ * How far a display title follows the system text size (fe#267). A page title is already the
+ * largest text on screen; at iOS's AX5 (3.1x) one word ("Settings") no longer fits the
+ * phone's width and breaks mid-word. Past 2x it stops growing, as iOS's own large titles
+ * do; a caller's `maxFontSizeMultiplier` wins.
+ */
+export const DISPLAY_MAX_FONT_SCALE = 2;
+const CAPPED = new Set<keyof typeof variants>(['display-xl', 'display']);
+
 /** Whether the props make a heading (the `header` role, or `heading` on the web). */
 function isHeading(props: TextProps): boolean {
   const role = (props as { role?: string }).role;
@@ -118,6 +127,7 @@ export function Text({ variant = 'body', className, style, level, ...props }: Ap
     <RNText
       className={cn(variants[variant], contextClass, className)}
       style={TABULAR.has(variant) ? [tabularNums, style] : style}
+      maxFontSizeMultiplier={CAPPED.has(variant) ? DISPLAY_MAX_FONT_SCALE : undefined}
       {...heading}
       {...props}
     />
