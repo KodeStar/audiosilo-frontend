@@ -10,6 +10,9 @@ import { librivoxJob } from '@/testing/librivox-fixtures';
 type Read = { data?: BridgeJob; error?: unknown; isPending?: boolean };
 // The job reads, as a store so a test can move a job on (a poll's answer) after mounting.
 const mockReads = create<Record<number, Read>>(() => ({}));
+// One object each: a selector that makes a new one at every call never settles.
+const mockNotAsked: Read = {};
+const mockUnread: Read = { isPending: true };
 // Each read asked: its id (undefined: not asked) and `active`.
 const mockAsked: { id: number | undefined; active: boolean; cid?: string }[] = [];
 const mockInvalidateLists = jest.fn();
@@ -18,7 +21,7 @@ jest.mock('@/api/hooks', () => ({
   invalidateLibraryLists: (...a: unknown[]) => mockInvalidateLists(...a),
   useLibrivoxJob: (id: number | undefined, active: boolean, cid?: string) => {
     mockAsked.push({ id, active, cid });
-    return mockReads((s) => (id === undefined ? {} : (s[id] ?? { isPending: true })));
+    return mockReads((s) => (id === undefined ? mockNotAsked : (s[id] ?? mockUnread)));
   },
 }));
 
