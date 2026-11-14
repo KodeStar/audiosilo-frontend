@@ -100,6 +100,7 @@ export function Slider({
         {...controlProps}
       >
         <View style={{ height: TRACK_H }} className="overflow-hidden rounded-full bg-track">
+          <TrackOutline />
           <Animated.View
             style={[
               { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, borderRadius: 999 },
@@ -107,7 +108,6 @@ export function Slider({
               fillStyle,
             ]}
           />
-          <TrackOutline />
         </View>
         <Animated.View
           pointerEvents="none"

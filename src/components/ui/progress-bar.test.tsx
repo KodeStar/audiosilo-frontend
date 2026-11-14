@@ -19,6 +19,12 @@ async function bar(
   };
 }
 
+const highContrast = (el: React.ReactElement) => (
+  <ThemeColorsProvider highContrast>
+    <ScopedThemeColors theme="light">{el}</ScopedThemeColors>
+  </ThemeColorsProvider>
+);
+
 describe('ProgressBar', () => {
   it('fills to the fraction, clamped, and never under the minimum', async () => {
     expect((await bar(<ProgressBar fraction={0.4} />)).fill).toBe('40%');
@@ -45,13 +51,19 @@ describe('ProgressBar', () => {
   it('outlines the track only in high contrast', async () => {
     await render(<ProgressBar fraction={0.5} />);
     expect(screen.queryByTestId('track-outline')).toBeNull();
-    await render(
-      <ThemeColorsProvider highContrast>
-        <ScopedThemeColors theme="light">
-          <ProgressBar fraction={0.5} />
-        </ScopedThemeColors>
-      </ThemeColorsProvider>,
-    );
-    expect(String(screen.getByTestId('track-outline').props.className)).toContain('border-input');
+    await render(highContrast(<ProgressBar fraction={0.5} fillTestID="fill" />));
+    const outline = screen.getByTestId('track-outline');
+    expect(String(outline.props.className)).toContain('border-input');
+    // Under the fill (an earlier sibling), so its edges never cover the value.
+    const siblings = (outline.parent?.children ?? []) as unknown as Node[];
+    expect(siblings.map((s) => (s.props as { testID?: string }).testID)).toEqual([
+      'track-outline',
+      'fill',
+    ]);
+  });
+
+  it('leaves a hairline without the outline', async () => {
+    await render(highContrast(<ProgressBar fraction={0.5} className="h-[2px]" outline={false} />));
+    expect(screen.queryByTestId('track-outline')).toBeNull();
   });
 });

@@ -3138,7 +3138,8 @@ tokens, type and components; its section 17 maps them onto these files.
   - Use the semantic classes, which follow the theme on web AND native with **no `dark:` pair**:
     page `bg-background`, surfaces `bg-card` (sheets/dialogs `bg-popover`), quiet fills `bg-muted`,
     slider and progress tracks `bg-track` (the brand fill holds 3:1 on it; high contrast
-    outlines it with `TrackOutline` from `ui/progress-bar`), field outlines
+    outlines it with `TrackOutline` from `ui/progress-bar`, rendered before the fill so the fill
+    covers it, and not on a track under about 4px: `ProgressBar outline={false}`), field outlines
     `border-input`, text `text-foreground` / `text-muted-foreground` / `text-subtle-foreground`,
     hairlines `border-border`, pressed/hover `bg-accent`, status `text-destructive` / `success` /
     `warning` / `info`. Opacity modifiers work (`bg-brand/10`).

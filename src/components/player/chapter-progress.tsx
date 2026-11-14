@@ -33,7 +33,13 @@ export function ChapterProgressLine({ className }: { className?: string }) {
       accessibilityElementsHidden
       className={cn('h-[2.5px]', className)}
     >
-      <ProgressBar fraction={fraction} className="h-full" fillTestID="chapter-progress-fill" />
+      {/* A hairline: the high-contrast outline's two 1px edges would cover it. */}
+      <ProgressBar
+        fraction={fraction}
+        className="h-full"
+        fillTestID="chapter-progress-fill"
+        outline={false}
+      />
     </View>
   );
 }

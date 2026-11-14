@@ -111,6 +111,7 @@ import { useSleepTimer } from '@/playback/sleep-timer';
 import { usePlayer } from '@/playback/store';
 import { useSearchStore } from '@/stores/search';
 import { useSession } from '@/stores/session';
+import { ThemeColorsProvider } from '@/theme/use-theme-colors';
 
 import { AccessoryPlayer } from './accessory-player';
 import { DockedPlayer } from './docked-player';
@@ -370,6 +371,21 @@ describe('AccessoryPlayer', () => {
     } finally {
       useSleepTimer.setState({ phase: 'idle', remaining: null });
     }
+  });
+
+  it('leaves the hairline chapter line without the high-contrast outline', async () => {
+    player.setState({ nowPlaying: book });
+    mockPlacement = 'regular';
+    await render(
+      <ThemeColorsProvider highContrast>
+        <AccessoryPlayer />
+      </ThemeColorsProvider>,
+    );
+    expect(
+      screen.getByTestId('chapter-progress-fill', { includeHiddenElements: true }),
+    ).toBeTruthy();
+    // Its two 1px edges would cover a 2px line.
+    expect(screen.queryByTestId('track-outline', { includeHiddenElements: true })).toBeNull();
   });
 
   it('offers Retry after a playback error', async () => {
