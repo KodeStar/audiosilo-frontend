@@ -28,7 +28,7 @@ import { LibrivoxSearch } from './librivox-search';
  * console match. The page is only for someone `librivoxAccess` allows (an admin, the
  * Bridge online with `librivox`, community metadata on); anyone else, or an older server,
  * gets a sentence and no request is sent. A link without `?connection=` is the default
- * connection's, as on every content page (`useCid`).
+ * connection's, as on the book and series pages (`useCid`).
  *
  * Once open, the page stays while a `/server` read again finds the Bridge away (its
  * heartbeat lapsed: `/server` drops its features), so the search and the fetches its rows

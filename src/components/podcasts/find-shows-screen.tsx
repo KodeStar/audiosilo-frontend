@@ -52,8 +52,8 @@ const SECTION_LABEL = {
 function FindShowsContent() {
   const { t } = useTranslation();
   const params = parseFindShowsParams(useRouteParams());
-  // A link without `?connection=` is the default connection's (`useCid`), as on every
-  // content page.
+  // A link without `?connection=` is the default connection's (`useCid`), as on the book
+  // and series pages.
   const cid = useCid();
   usePageTitle(t('podcasts.find.title'));
   const access = useAddShowsAccess(cid);

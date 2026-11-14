@@ -360,12 +360,10 @@ describe('findShowsHref / parseFindShowsParams', () => {
 
   it('reads a link back, the section only when it is one', () => {
     expect(parseFindShowsParams({ connection: 'c', library: '5', section: 'address' })).toEqual({
-      connectionId: 'c',
       libraryId: 5,
       section: 'address',
     });
     expect(parseFindShowsParams({ connection: 'c', library: '5', section: 'nope' })).toEqual({
-      connectionId: 'c',
       libraryId: 5,
       section: null,
     });
