@@ -115,7 +115,7 @@ export function parseHighContrast(highContrast, themes) {
     if (!overrides) throw new Error(`tokens.json: highContrast.${scheme} is required`);
     out[scheme] = { ...themes[scheme] };
     for (const name of keysOf(overrides)) {
-      if (!(name in themes[scheme])) {
+      if (!Object.hasOwn(themes[scheme], name)) {
         throw new Error(`tokens.json: highContrast.${scheme}.${name} is not a theme token`);
       }
       const v = normalizeColor(overrides[name]);

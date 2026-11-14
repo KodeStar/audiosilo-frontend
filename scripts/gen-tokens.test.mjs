@@ -112,6 +112,11 @@ test('parseHighContrast rejects unknown tokens, bad colours and a missing scheme
     () => parseHighContrast({ light: { nope: '#000000' }, dark: {} }, themes),
     /highContrast\.light\.nope is not a theme token/,
   );
+  // An inherited name (`toString`) is no theme token either.
+  assert.throws(
+    () => parseHighContrast({ light: { toString: '#000000' }, dark: {} }, themes),
+    /highContrast\.light\.toString is not a theme token/,
+  );
   assert.throws(
     () => parseHighContrast({ light: {}, dark: { fg: 'white' } }, themes),
     /highContrast\.dark\.fg is not a colour/,
