@@ -1,4 +1,4 @@
-const { withAndroidManifest } = require('expo/config-plugins');
+const { AndroidConfig, withAndroidManifest } = require('expo/config-plugins');
 
 /**
  * Android: the main activity handles a font size or display size change itself (fe#267)
@@ -19,8 +19,7 @@ const CONFIG_CHANGES = ['fontScale', 'density'];
 
 /** `manifest` with `.MainActivity`'s `android:configChanges` holding `CONFIG_CHANGES`. */
 function addConfigChanges(manifest) {
-  const app = manifest.manifest.application?.[0];
-  const main = app?.activity?.find((a) => a.$['android:name'] === '.MainActivity');
+  const main = AndroidConfig.Manifest.getMainActivity(manifest);
   if (!main) return manifest;
   const have = (main.$['android:configChanges'] ?? '').split('|').filter(Boolean);
   for (const flag of CONFIG_CHANGES) if (!have.includes(flag)) have.push(flag);
@@ -35,5 +34,4 @@ const withFontScaleChanges = (config) =>
   });
 
 module.exports = withFontScaleChanges;
-module.exports.CONFIG_CHANGES = CONFIG_CHANGES;
 module.exports.addConfigChanges = addConfigChanges;

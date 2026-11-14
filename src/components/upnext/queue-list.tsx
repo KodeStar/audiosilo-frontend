@@ -378,7 +378,7 @@ function QueueRow({
 }
 
 /** Whether the pointer can hover (a mouse or trackpad), so hover-shown actions can show. */
-export function canHover(): boolean {
+function canHover(): boolean {
   return typeof window !== 'undefined' && !!window.matchMedia?.('(hover: hover)').matches;
 }
 
