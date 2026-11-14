@@ -37,6 +37,7 @@ jest.mock('@/components/player/companion/reveal-listener', () => ({
 jest.mock('@/components/player/shake-to-extend-listener', () => ({
   ShakeToExtendListener: () => null,
 }));
+jest.mock('@/components/librivox/fetch-watcher', () => ({ LibrivoxFetchWatcher: () => null }));
 
 /* eslint-disable import/first */
 import { render } from '@testing-library/react-native';

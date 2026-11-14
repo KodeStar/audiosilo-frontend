@@ -495,8 +495,9 @@ release · language; a chevron). Opening one lists its recordings under it, inde
 (download icon). While the Bridge works, a compact status takes Add's place like Generate's: the download icon
 (circle-exclamation in warning or destructive when parked or failed, circle-check once added), the title (Adding,
 Needs attention, Couldn't add it, Added, Cancelled), one caption line (the step and "2 of 12" sections, or why it
-stopped in plain words), a neutral ink progress bar while sections download, and Cancel while it is open; a failed
-or cancelled one offers Add again. A recording on this server says "In your library" with an outline Open. No
+stopped in plain words), a neutral ink progress bar while sections download, and an outline `sm` Cancel under it
+while it is open (where Add sits, never at the end of the title's row); a failed or cancelled one offers Add again.
+A Bridge that goes away while the page is open keeps the page: one caption under the intro says so, and Add waits. A recording on this server says "In your library" with an outline Open. No
 cover art (the recording's cover is a third-party image); never pink.
 
 ### Companion: Text (read-along) *custom*

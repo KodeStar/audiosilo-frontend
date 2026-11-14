@@ -44,11 +44,14 @@ export function LibrivoxSearch({
   connectionId,
   libraryId,
   header,
+  bridgeAway = false,
 }: {
   connectionId: string;
   /** The library the page was opened from: Add's first choice. */
   libraryId: number;
   header: ReactElement;
+  /** The Bridge went away while the page was open: Add is held back. */
+  bridgeAway?: boolean;
 }) {
   const { t } = useTranslation();
   const gutter = pageGutter(useLayout());
@@ -168,7 +171,7 @@ export function LibrivoxSearch({
       testID="librivox-search"
       data={hits}
       keyExtractor={(h) => h.work_id}
-      extraData={`${openWork}:${target?.id}`}
+      extraData={`${openWork}:${target?.id}:${bridgeAway}`}
       {...TAB_PAGE_SCROLL_PROPS}
       initialNumToRender={8}
       windowSize={5}
@@ -180,7 +183,12 @@ export function LibrivoxSearch({
             onPress={() => setOpenWork(item.work_id === openWork ? null : item.work_id)}
           />
           {item.work_id === openWork ? (
-            <LibrivoxWorkPanel connectionId={connectionId} workId={item.work_id} target={target} />
+            <LibrivoxWorkPanel
+              connectionId={connectionId}
+              workId={item.work_id}
+              target={target}
+              bridgeAway={bridgeAway}
+            />
           ) : null}
         </View>
       )}

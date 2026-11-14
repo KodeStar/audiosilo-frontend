@@ -136,7 +136,9 @@ export function DirectorySearch({
 
   const answered = search.data;
   const providerName = t(`podcasts.find.provider.${answered?.provider ?? provider}`);
-  const failure = params && search.isError ? searchErrorCopy(search.error) : null;
+  // Only with nothing to show: a search read again that failed (the app back in the
+  // foreground reads every list again) keeps its results, and with them each row's follow.
+  const failure = params && search.isError && !answered ? searchErrorCopy(search.error) : null;
 
   const form = (
     <View className="gap-3 pb-4">

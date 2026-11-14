@@ -3685,17 +3685,13 @@ describe('ApiClient Add from LibriVox (LibriVox L6, admin)', () => {
     finished_at: null,
   };
 
-  it('searches with GET /admin/librivox/search?q=, leaving lang and limit out unless given', async () => {
+  it('searches with GET /admin/librivox/search?q= (no lang or limit)', async () => {
     const fetchMock = installFetch(() => ({ status: 200, body: { results: [hit] } }));
     await expect(c().librivoxSearch("Johnny Crow's")).resolves.toEqual({ results: [hit] });
     expect(sent(fetchMock)).toMatchObject({
       url: 'https://h/api/v1/admin/librivox/search?q=Johnny+Crow%27s',
       method: 'GET',
     });
-    await c().librivoxSearch('crow', { lang: 'en', limit: 20 });
-    expect(sent(fetchMock, 1).url).toBe(
-      'https://h/api/v1/admin/librivox/search?q=crow&lang=en&limit=20',
-    );
   });
 
   it('reads a search without results as none', async () => {

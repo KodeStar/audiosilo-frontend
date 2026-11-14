@@ -630,7 +630,14 @@ in step.
   Bridge, the job waits) the player offers nothing while the Bridge is offline. The page shows a
   sentence (`notAdmin`, `unavailable`, `metadataOff`) and sends nothing without `allowed`: the
   search and everything under it mount only then, and the hooks are called nowhere else (they do
-  not check the gate themselves).
+  not check the gate themselves) but in the fetch watcher below, which reads only jobs the page
+  queued or saw open. Once `allowed` for a connection, the page stays when a `/server` read again
+  finds the Bridge away (`unavailable`: its heartbeat lapsed and `/server` dropped its features):
+  the search and the followed fetches are kept, a caption says so (`librivox.access.away`) and
+  Add is held back (`bridgeAway`) until it is back; `notAdmin` and `metadataOff` still close it.
+  A `/server` read that failed with nothing kept says so with Retry (`librivox.access.readFailed`),
+  never a skeleton for ever. A link without `?connection=` is the default connection's (`useCid`,
+  as Find shows).
 - **Wire** (`client.ts`, hand-mirrored from `handlers_librivox.go`): `librivoxSearch(q, {lang,
   limit})` (`GET /admin/librivox/search`), `librivoxWork(id)` (`GET /admin/librivox/work`:
   recordings with `in_library` and the open `job`, null for none), `librivoxFetch(lib, id)`
@@ -644,10 +651,22 @@ in step.
   the connection's works again whatever the answer; `useLibrivoxJob` is `bridge`, and Cancel is
   `useCancelBridgeJob` (`storeJob` puts a job about no book at its own read, `qk.bridgeJob`). A
   `librivox.fetch` has no book path, so it is followed by its id (not `useBridgeJobs` /
-  `useBridgeJobSurface`, which are keyed on a book), polled while open and the page focused
+  `useBridgeJobSurface`, which are keyed on a book), polled while open and `active`
   (`librivoxJobPollInterval`: 5 s, 60 s parked), never after a 404. A first read that failed
   with no answer or a server error is asked again every 60 s (nothing else would: its row has no
   status, Cancel or Add until one gets through); a refusal (400, 401, 403) is not.
+- **The fetch watcher** (`fetch-watcher.tsx`, fe#293): every job a row follows is handed to
+  `watchLibrivoxFetch(cid, id)` (an in-memory zustand list; nothing persisted, so after a restart
+  the Library's stale time covers it), and `LibrivoxFetchWatcher` (a root listener,
+  `RootListeners`) is its ONE poller: one `useLibrivoxJob(id, true, cid)` per watch, whatever
+  page is open, while the app is in the foreground. A row reads the same query with `active`
+  false (no poll of its own, so never two). When a job ends the watcher calls
+  `librivoxFetchEnded` (the works asked again; a `done` one also `invalidateLibraryLists` and the
+  works once more after `DONE_RECHECK_MS`, on a module timer that fires whatever is mounted by
+  then) and drops the watch; it also drops one that is gone (404, the works asked again), refused
+  (400, 401, 403: nothing read again) or whose connection signed out (never read). A failed read
+  (no answer, a 5xx) keeps the watch: the poll asks again. The watcher keeps the hooks' own gate
+  (`bridge`); it does not ask `librivoxAccess`, so a lapsed heartbeat does not stop it.
 - **The page**: `/find-librivox?connection=&library=` (`findLibrivoxHref`, `openFindLibrivox`),
   the Library tab's own page like Find shows (a browse page too, `BROWSE_PATHS`: opening it
   keeps the Library's scroll memory), opened from the Books mode's ... menu (`LibrivoxMenu`,
@@ -658,13 +677,15 @@ in step.
   the rows under them hold the fetches they follow). Add goes to the library the page was opened
   from, or the one picked when the server has several books libraries (podcast libraries are
   never offered). A row follows the last job it queued or saw open on the work
-  (`useFollowedFetch`), kept after the work stops naming it so a failure still says why
+  (`useFollowedFetch`, handed to the watcher), kept after the work stops naming it so a failure
+  still says why
   (`fetchView`: steps `manifest|download|cover|place|rescan`, codes in `librivox.fetch.code.*`;
   the Bridge's English is never shown). The work's job is taken only when the work comes to name
   another one: an answer that still names the job before never takes the row back from the one
-  it just queued. A job's end asks the works again, and a `done` one asks once more after
-  `DONE_RECHECK_MS` (the server records the book just after the job ends) and reads the
-  library's lists and the connection's recently added again (`invalidateLibraryLists`). The
+  it just queued. A job's end is the watcher's (above), page or no page. The status is
+  `JobStatusLayout` (`src/components/bridge/job-status-layout.tsx`, shared with Generate's
+  `JobStatus`) with Cancel under it (`actionBelow`, where Add sits: the row is the page's width,
+  so an end-aligned Cancel floated mid-row). The
   recording's `cover_url` is never loaded (a third-party host, no server proxy). Strings under
   `librivox.*` in all 6 locales (waiting, stopping, the count and a failed cancel are
   `bridge.status.*`'s); fixtures in `src/testing/librivox-fixtures.ts`.

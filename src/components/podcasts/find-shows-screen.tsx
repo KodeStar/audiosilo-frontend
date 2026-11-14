@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useCapability } from '@/api/hooks';
-import { useScopedCid } from '@/api/provider';
+import { useCid } from '@/api/provider';
 import { pageGutter } from '@/components/library/cover-layout';
 import { ContentScope } from '@/components/layout/content-scope';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
@@ -52,7 +52,9 @@ const SECTION_LABEL = {
 function FindShowsContent() {
   const { t } = useTranslation();
   const params = parseFindShowsParams(useRouteParams());
-  const cid = useScopedCid();
+  // A link without `?connection=` is the default connection's (`useCid`), as on every
+  // content page.
+  const cid = useCid();
   usePageTitle(t('podcasts.find.title'));
   const access = useAddShowsAccess(cid);
   const discovery = useCapability('podcast_discovery', cid);

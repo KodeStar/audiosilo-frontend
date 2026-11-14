@@ -3309,7 +3309,9 @@
       "unavailable": "Per aggiungere da LibriVox il Bridge deve essere online e aggiornato.",
       "unavailableHint": "Controlla il Bridge nelle impostazioni Bridge della console di amministrazione.",
       "metadataOff": "I metadati della community sono disattivati",
-      "metadataOffHint": "La ricerca su LibriVox ne ha bisogno. Attivali nelle impostazioni Metadati della console di amministrazione."
+      "metadataOffHint": "La ricerca su LibriVox ne ha bisogno. Attivali nelle impostazioni Metadati della console di amministrazione.",
+      "away": "Il Bridge non è online in questo momento. Puoi continuare a cercare e aggiungere appena torna.",
+      "readFailed": "Impossibile raggiungere il server in questo momento. Riprova tra un momento."
     },
     "search": {
       "label": "Titolo o autore",

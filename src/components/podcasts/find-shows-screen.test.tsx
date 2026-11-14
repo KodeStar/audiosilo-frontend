@@ -11,7 +11,7 @@ jest.mock('expo-router', () => ({
 jest.mock('@/components/layout/content-scope', () => ({
   ContentScope: ({ children }: { children: React.ReactNode }) => children,
 }));
-jest.mock('@/api/provider', () => ({ useScopedCid: () => 'c1' }));
+jest.mock('@/api/provider', () => ({ useCid: () => 'c1' }));
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
 const mockTitles: (string | undefined)[] = [];
 jest.mock('@/lib/use-page-title', () => ({

@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { startAddressRouting } from '@/api/address-runner';
 import { startCarSync } from '@/car/car-controller';
 import { startCastSync } from '@/cast/cast-session';
+import { LibrivoxFetchWatcher } from '@/components/librivox/fetch-watcher';
 import { BookEndedListener } from '@/components/player/book-ended-listener';
 import { CompanionRevealListener } from '@/components/player/companion/reveal-listener';
 import { ShakeToExtendListener } from '@/components/player/shake-to-extend-listener';
@@ -86,7 +87,8 @@ export function startRootServices({ late = false }: { late?: boolean } = {}): ()
  * natural end (root-level so it covers every layout); "New in Who's who" wherever the
  * listener is when the playing book crosses into a chapter that introduces someone; and a
  * shake that keeps the listener going while the phone is locked and no player screen is
- * mounted.
+ * mounted; and the LibriVox fetches Find on LibriVox follows, whose end reads the Library
+ * again after the page is gone (`LibrivoxFetchWatcher`).
  */
 export function RootListeners() {
   return (
@@ -94,6 +96,7 @@ export function RootListeners() {
       <BookEndedListener />
       <CompanionRevealListener />
       <ShakeToExtendListener />
+      <LibrivoxFetchWatcher />
     </>
   );
 }

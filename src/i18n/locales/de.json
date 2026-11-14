@@ -3309,7 +3309,9 @@
       "unavailable": "Zum Hinzufügen von LibriVox muss die Bridge online und aktuell sein.",
       "unavailableHint": "Prüfe die Bridge in den Bridge-Einstellungen der Admin-Konsole.",
       "metadataOff": "Community-Metadaten sind aus",
-      "metadataOffHint": "Die Suche auf LibriVox braucht sie. Schalte sie in den Metadaten-Einstellungen der Admin-Konsole ein."
+      "metadataOffHint": "Die Suche auf LibriVox braucht sie. Schalte sie in den Metadaten-Einstellungen der Admin-Konsole ein.",
+      "away": "Die Bridge ist gerade nicht online. Du kannst weitersuchen und hinzufügen, sobald sie wieder da ist.",
+      "readFailed": "Der Server war gerade nicht erreichbar. Versuche es gleich noch einmal."
     },
     "search": {
       "label": "Titel oder Autor",

@@ -178,6 +178,7 @@ keep this index in step (one line per topic).
   - Slots
   - Podcasts
   - Find on LibriVox
+  - The fetch watcher (a followed LibriVox fetch outlives the page)
   - The ebook reader
   - One session setup
   - The bytes and the place together

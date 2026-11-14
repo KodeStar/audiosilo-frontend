@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useServerInfo } from '@/api/hooks';
-import { useScopedCid } from '@/api/provider';
+import { useCid } from '@/api/provider';
 import { ContentScope } from '@/components/layout/content-scope';
 import { OfflineState } from '@/components/layout/offline-state';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -25,7 +26,12 @@ import { LibrivoxSearch } from './librivox-search';
  * rescans it, and the server records the book as that recording, so it is matched with no
  * console match. The page is only for someone `librivoxAccess` allows (an admin, the
  * Bridge online with `librivox`, community metadata on); anyone else, or an older server,
- * gets a sentence and no request is sent.
+ * gets a sentence and no request is sent. A link without `?connection=` is the default
+ * connection's, as on every content page (`useCid`).
+ *
+ * Once open, the page stays while a `/server` read again finds the Bridge away (its
+ * heartbeat lapsed: `/server` drops its features), so the search and the fetches its rows
+ * follow are kept; it says so and holds Add back until the Bridge is online again.
  */
 export function FindLibrivoxScreen() {
   return (
@@ -51,7 +57,7 @@ const CLOSED = {
 function FindLibrivoxContent() {
   const { t } = useTranslation();
   const params = parseFindLibrivoxParams(useRouteParams());
-  const cid = useScopedCid();
+  const cid = useCid();
   usePageTitle(t('librivox.title'));
   const user = useSession((s) => s.connections.find((c) => c.id === cid)?.user);
   const info = useServerInfo(cid);
@@ -59,17 +65,34 @@ function FindLibrivoxContent() {
   const access = librivoxAccess(user, server);
   // Before the skeleton: a `/server` read held for the network stays pending.
   const offline = useUnreadQuery(info) === 'offline';
+  // The connection the page was open for (`allowed` once): a Bridge that went away since
+  // keeps the page (`away`), never another connection's.
+  const [openFor, setOpenFor] = useState<string | null>(null);
+  if (access === 'allowed' && openFor !== cid) setOpenFor(cid);
+  const away = access === 'unavailable' && openFor === cid;
 
   if (!params) return <EmptyState icon="book" title={t('library.detail.badLink')} />;
   if (access === 'unknown') {
     if (offline) return <OfflineState hint={t('common.offlinePage')} />;
+    // Failed with nothing kept: say so with Retry, never a skeleton for ever.
+    if (info.isError) {
+      return (
+        <View testID="find-librivox-error">
+          <EmptyState
+            icon="server"
+            title={t('librivox.access.readFailed')}
+            action={{ label: t('common.retry'), onPress: () => void info.refetch() }}
+          />
+        </View>
+      );
+    }
     return (
       <View className="p-4" testID="find-librivox-loading">
         <RowSkeletonList />
       </View>
     );
   }
-  if (access !== 'allowed') {
+  if (access !== 'allowed' && !away) {
     return (
       <View testID="find-librivox-closed">
         <EmptyState
@@ -87,6 +110,11 @@ function FindLibrivoxContent() {
         {t('librivox.title')}
       </Text>
       <Text variant="muted">{t('librivox.intro')}</Text>
+      {away ? (
+        <Text variant="caption" role="alert" testID="find-librivox-away">
+          {t('librivox.access.away')}
+        </Text>
+      ) : null}
     </View>
   );
   return (
@@ -95,6 +123,7 @@ function FindLibrivoxContent() {
       connectionId={cid}
       libraryId={params.libraryId}
       header={header}
+      bridgeAway={away}
     />
   );
 }

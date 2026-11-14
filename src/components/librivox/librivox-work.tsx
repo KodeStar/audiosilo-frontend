@@ -1,5 +1,3 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { useIsFocused } from 'expo-router';
 import type { TFunction } from 'i18next';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -8,8 +6,6 @@ import { View } from 'react-native';
 import { ApiError } from '@/api/client';
 import {
   CapabilityError,
-  invalidateLibraryLists,
-  qk,
   useAddLibrivox,
   useCancelBridgeJob,
   useLibrivoxJob,
@@ -17,10 +13,10 @@ import {
 } from '@/api/hooks';
 import type { Library, LibrivoxRecording } from '@/api/types';
 import { librivoxUrl } from '@/components/book/book-details-model';
+import { JobStatusLayout } from '@/components/bridge/job-status-layout';
 import { OfflineState } from '@/components/layout/offline-state';
 import { Button } from '@/components/ui/button';
-import { Icon, type IconName } from '@/components/ui/icon';
-import { ProgressBar } from '@/components/ui/progress-bar';
+import type { IconName } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
@@ -30,11 +26,10 @@ import { useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { openExternalUrl } from '@/lib/support';
 import { tabularNums } from '@/theme/tabular-nums';
-import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { watchLibrivoxFetch } from './fetch-watcher';
 import {
   addRefusalKey,
-  DONE_RECHECK_MS,
   type FetchView,
   fetchView,
   namesLine,
@@ -54,10 +49,13 @@ export function LibrivoxWorkPanel({
   connectionId,
   workId,
   target,
+  bridgeAway = false,
 }: {
   connectionId: string;
   workId: string;
   target: Library | null | undefined;
+  /** The Bridge went away while the page was open: Add is held back until it is back. */
+  bridgeAway?: boolean;
 }) {
   const { t } = useTranslation();
   const work = useLibrivoxWork(workId, connectionId);
@@ -106,6 +104,7 @@ export function LibrivoxWorkPanel({
           connectionId={connectionId}
           recording={r}
           target={target}
+          bridgeAway={bridgeAway}
         />
       ))}
     </View>
@@ -116,10 +115,12 @@ function RecordingRow({
   connectionId,
   recording: r,
   target,
+  bridgeAway,
 }: {
   connectionId: string;
   recording: LibrivoxRecording;
   target: Library | null | undefined;
+  bridgeAway: boolean;
 }) {
   const { t } = useTranslation();
   const { openBook } = useOpen();
@@ -138,7 +139,7 @@ function RecordingRow({
   const page = librivoxUrl({ librivox: { id: r.librivox_id, url: r.url } });
 
   const onAdd = () => {
-    if (!target) return;
+    if (!target || bridgeAway) return;
     add.mutateAsync({ libraryId: target.id, librivoxId: r.librivox_id }).then(
       (answer) => fetch.follow(answer.job.id),
       (e: unknown) => {
@@ -207,7 +208,7 @@ function RecordingRow({
               names: readers || t('librivox.recording.unknownReader'),
               library: target?.name ?? '',
             })}
-            disabled={!target}
+            disabled={!target || bridgeAway}
             loading={add.isPending}
             onPress={onAdd}
             className="self-start"
@@ -248,29 +249,29 @@ function statusLine(t: TFunction, view: FetchView): string {
 
 /** A status's title, icon and the icon's colour: one look while the Bridge works on it
  * (waiting, running, stopping), one for each way it stopped. */
-type Look = { title: string; icon: IconName; color: 'mutedForeground' | 'warning' | 'destructive' };
+type Look = { title: string; icon: IconName; tone: 'mutedForeground' | 'warning' | 'destructive' };
 const WORKING = {
   title: 'librivox.fetch.title',
   icon: 'download',
-  color: 'mutedForeground',
+  tone: 'mutedForeground',
 } as const;
 const PHASE_LOOK = {
   waiting: WORKING,
   running: WORKING,
   stopping: WORKING,
-  parked: { title: 'librivox.fetch.parkedTitle', icon: 'circle-exclamation', color: 'warning' },
+  parked: { title: 'librivox.fetch.parkedTitle', icon: 'circle-exclamation', tone: 'warning' },
   failed: {
     title: 'librivox.fetch.failedTitle',
     icon: 'circle-exclamation',
-    color: 'destructive',
+    tone: 'destructive',
   },
   cancelled: { ...WORKING, title: 'librivox.fetch.cancelledTitle' },
-  done: { title: 'librivox.fetch.doneTitle', icon: 'circle-check', color: 'mutedForeground' },
+  done: { title: 'librivox.fetch.doneTitle', icon: 'circle-check', tone: 'mutedForeground' },
 } as const satisfies Record<FetchView['phase'], Look>;
 
 /** A fetch's status (the Bridge's work on it): a title (Adding, Needs attention, Couldn't
  * add it, Added), one line, a neutral progress bar while sections download, and Cancel
- * while it is open. Status is the words and the icon, never colour alone. */
+ * under them while it is open (where Add sits: the row is the page's width). */
 function FetchStatus({
   view,
   cancelling,
@@ -281,54 +282,48 @@ function FetchStatus({
   onCancel?: () => void;
 }) {
   const { t } = useTranslation();
-  const themed = useThemeColors();
   const look = PHASE_LOOK[view.phase];
-  const fraction =
-    view.phase === 'running' && view.done !== undefined && view.total
-      ? view.done / view.total
-      : undefined;
   return (
-    <View testID="librivox-fetch-status" className="max-w-[560px] gap-1.5">
-      <View className="flex-row items-center gap-2">
-        <Icon name={look.icon} size={14} color={themed[look.color]} />
-        <Text variant="label" className="min-w-0 flex-1" numberOfLines={2}>
-          {t(look.title)}
-        </Text>
-        {onCancel ? (
+    <JobStatusLayout
+      testID="librivox-fetch-status"
+      icon={look.icon}
+      tone={look.tone}
+      title={t(look.title)}
+      line={statusLine(t, view)}
+      lineLines={3}
+      fraction={
+        view.phase === 'running' && view.done !== undefined && view.total
+          ? view.done / view.total
+          : undefined
+      }
+      actionBelow
+      action={
+        onCancel ? (
           <Button
             testID="librivox-cancel"
             size="sm"
-            variant="ghost"
+            variant="outline"
             title={t('common.cancel')}
             disabled={view.phase === 'stopping'}
             loading={cancelling}
             onPress={onCancel}
           />
-        ) : null}
-      </View>
-      <Text variant="caption" numberOfLines={3} style={tabularNums}>
-        {statusLine(t, view)}
-      </Text>
-      {fraction !== undefined ? (
-        <ProgressBar fraction={fraction} minPercent={4} fillClassName="bg-foreground/60" />
-      ) : null}
-    </View>
+        ) : undefined
+      }
+    />
   );
 }
 
 /**
  * The `librivox.fetch` a recording row follows: the last one it queued or saw open on the
  * work, kept once the work stops naming it (it lists only open jobs), so a failed fetch
- * still says why. Read by its id while the page is focused; a job that is gone (a 404,
- * deleted with its library) is followed no more. A job that ends asks the connection's
- * works again (a done one moves the recording into the library), and a done one asks again
- * a moment later (the server records the book just after the job ends) and has the
- * library's lists read again (a Library mounted under the page shows the new book).
+ * still says why. Each one followed is watched past the page (`watchLibrivoxFetch`): the
+ * root's `LibrivoxFetchWatcher` polls it and, when it ends, has the works and the library's
+ * lists read again, whether or not the page is still open. The row only reads it (no poll of
+ * its own); a job that is gone (a 404, deleted with its library) shows nothing.
  */
 function useFollowedFetch(connectionId: string, r: LibrivoxRecording) {
   const { t } = useTranslation();
-  const qc = useQueryClient();
-  const focused = useIsFocused();
   const [followed, setFollowed] = useState(r.job?.id);
   // The work's open job is followed when the work comes to name it, not on every render:
   // an answer that still names the job before (the work asked again and not in yet, or that
@@ -338,22 +333,13 @@ function useFollowedFetch(connectionId: string, r: LibrivoxRecording) {
     setNamed(r.job?.id);
     if (r.job) setFollowed(r.job.id);
   }
-  const read = useLibrivoxJob(followed, focused, connectionId);
+  useEffect(() => {
+    if (followed !== undefined) watchLibrivoxFetch(connectionId, followed);
+  }, [connectionId, followed]);
+  const read = useLibrivoxJob(followed, false, connectionId);
   const cancel = useCancelBridgeJob(connectionId);
   const gone = read.error instanceof ApiError && read.error.status === 404;
   const job = gone ? undefined : read.data;
-  const ended = gone || (!!job && !isOpenJob(job));
-  const doneIn = job?.state === 'done' ? job.library_id : null;
-
-  useEffect(() => {
-    if (!ended) return;
-    const ask = () => void qc.invalidateQueries({ queryKey: qk.librivoxWorks(connectionId) });
-    ask();
-    if (doneIn === null) return;
-    invalidateLibraryLists(qc, connectionId, doneIn);
-    const timer = setTimeout(ask, DONE_RECHECK_MS);
-    return () => clearTimeout(timer);
-  }, [ended, doneIn, qc, connectionId]);
 
   return {
     job,

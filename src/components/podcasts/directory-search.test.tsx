@@ -190,6 +190,18 @@ describe('DirectorySearch', () => {
     expect(mockRefetch).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps the results when reading the same search again fails (fe#293)', async () => {
+    mockSearch = {
+      isError: true,
+      error: new ApiError(502, 'no'),
+      data: { provider: 'itunes', query: 'history', country: 'GB', results: [result()] },
+    };
+    await mount();
+    await search('history');
+    expect(screen.getAllByTestId('discovery-result')).toHaveLength(1);
+    expect(screen.queryByTestId('directory-search-error')).toBeNull();
+  });
+
   it('maps a refusal of the provider to its own copy', async () => {
     mockSearch = { isError: true, error: new ApiError(502, 'no', 'provider_rejected') };
     await mount();
