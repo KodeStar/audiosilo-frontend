@@ -47,7 +47,7 @@ export function YearBanner({
             {t('year.ready')}
           </Text>
           <Text
-            className="font-display text-[28px] leading-[30px] tracking-tight"
+            className="font-display text-[28px] web:text-[1.75rem] leading-[30px] web:leading-[1.875rem] tracking-tight"
             style={{ color: colors.white }}
           >
             {title}

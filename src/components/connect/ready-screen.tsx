@@ -90,7 +90,10 @@ export function ReadyScreen({
         ) : sentence === null ? (
           <SkeletonText lines={2} className="w-full" />
         ) : (
-          <Text variant="muted" className="text-center text-[15px] leading-[22px]">
+          <Text
+            variant="muted"
+            className="text-center text-[15px] web:text-[0.9375rem] leading-[22px] web:leading-[1.375rem]"
+          >
             {sentence}
             {placeText ? ` ${placeText}` : ''}
           </Text>

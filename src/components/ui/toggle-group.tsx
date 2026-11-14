@@ -163,7 +163,10 @@ export function SegmentedControl<T extends string>({
           {o.label}
         </Text>
         {o.count === undefined ? null : (
-          <Text className="font-sans text-[11px] text-subtle-foreground" style={tabularNums}>
+          <Text
+            className="font-sans text-[11px] web:text-[0.6875rem] text-subtle-foreground"
+            style={tabularNums}
+          >
             {formatCount(o.count)}
           </Text>
         )}

@@ -86,7 +86,7 @@ export function Greeting({
         color={sync?.kind === 'local' ? themed.warning : themed.success}
       />
       <Text
-        className="shrink font-sans-semibold text-[12.5px] text-muted-foreground"
+        className="shrink font-sans-semibold text-[12.5px] web:text-[0.78125rem] text-muted-foreground"
         numberOfLines={lines}
       >
         {syncText}
@@ -98,7 +98,7 @@ export function Greeting({
       <Pill label={serversText}>
         <View className={`h-[7px] w-[7px] rounded-full ${down ? 'bg-warning' : 'bg-success'}`} />
         <Text
-          className="shrink font-sans-semibold text-[12.5px] text-muted-foreground"
+          className="shrink font-sans-semibold text-[12.5px] web:text-[0.78125rem] text-muted-foreground"
           numberOfLines={lines}
         >
           {serversText}
@@ -129,7 +129,11 @@ export function Greeting({
     <View className="flex-row flex-wrap items-end justify-between gap-4">
       <View className="gap-2">
         <Text variant="eyebrow">{date}</Text>
-        <Text variant="display" accessibilityRole="header" className="text-[38px] leading-[42px]">
+        <Text
+          variant="display"
+          accessibilityRole="header"
+          className="text-[38px] web:text-[2.375rem] leading-[42px] web:leading-[2.625rem]"
+        >
           {greeting}
         </Text>
       </View>

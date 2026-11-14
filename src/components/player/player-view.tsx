@@ -107,7 +107,9 @@ function PlayerTitles({ phone, onChapters }: { phone: boolean; onChapters: () =>
   const many = queue.chapters.length > 1 || queue.tracks.length > 1;
   const titleClass = cn(
     'text-center',
-    phone ? 'text-[23px] leading-[27px]' : 'text-[30px] leading-[34px]',
+    phone
+      ? 'text-[23px] web:text-[1.4375rem] leading-[27px] web:leading-[1.6875rem]'
+      : 'text-[30px] web:text-[1.875rem] leading-[34px] web:leading-[2.125rem]',
   );
   return (
     <View className="w-full items-center gap-1">

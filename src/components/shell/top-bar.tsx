@@ -87,7 +87,7 @@ function ServerLine() {
       <View
         className={`h-1.5 w-1.5 rounded-full ${line.kind === 'server' ? 'bg-success' : 'bg-warning'}`}
       />
-      <Text variant="caption" className="text-[11.5px]" numberOfLines={1}>
+      <Text variant="caption" className="text-[11.5px] web:text-[0.71875rem]" numberOfLines={1}>
         {label}
       </Text>
     </View>
@@ -171,7 +171,9 @@ export function TopBar() {
           </View>
           <View className="gap-0.5">
             {/* eslint-disable-next-line i18next/no-literal-string -- the product name */}
-            <Text className="font-display text-base leading-[18px]">AudioSilo</Text>
+            <Text className="font-display text-base leading-[18px] web:leading-[1.125rem]">
+              AudioSilo
+            </Text>
             <ServerLine />
           </View>
         </AnimatedPressable>

@@ -178,7 +178,7 @@ function PersonCard({
       <View className="w-full items-center gap-0.5">
         <Text
           className={cn(
-            'text-center font-display text-[15px] text-foreground',
+            'text-center font-display text-[15px] web:text-[0.9375rem] text-foreground',
             !large && 'tracking-tight',
           )}
           numberOfLines={large ? 2 : 1}

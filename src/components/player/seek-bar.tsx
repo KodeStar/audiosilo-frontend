@@ -288,7 +288,7 @@ export function SeekBar({
               {formatClock(tipSeconds)}
             </Text>
             <Text
-              className="font-sans text-[11px] text-primary-foreground/70"
+              className="font-sans text-[11px] web:text-[0.6875rem] text-primary-foreground/70"
               style={tabularNums}
               numberOfLines={1}
             >

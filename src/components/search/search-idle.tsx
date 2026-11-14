@@ -112,7 +112,10 @@ function RecentChip({ label, onPress }: { label: string; onPress: () => void }) 
       className={cn(chipClass(), 'max-w-full')}
     >
       <Icon name="history" size={14} color={themed.foreground} />
-      <Text className="shrink font-sans-semibold text-[13px] text-foreground" numberOfLines={1}>
+      <Text
+        className="shrink font-sans-semibold text-[13px] web:text-[0.8125rem] text-foreground"
+        numberOfLines={1}
+      >
         {label}
       </Text>
     </Pressable>

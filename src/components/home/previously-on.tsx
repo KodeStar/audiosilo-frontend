@@ -205,12 +205,15 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
                 <Icon name="close" size={16} />
               </AnimatedPressable>
             </View>
-            <Text variant="display" className="text-[22px] leading-[26px] md:text-[24px]">
+            <Text
+              variant="display"
+              className="text-[22px] web:text-[1.375rem] leading-[26px] web:leading-[1.625rem] md:text-[24px] web:md:text-[1.5rem]"
+            >
               {left}
             </Text>
             <Text
               variant="body"
-              className="text-[14.5px] leading-6 text-muted-foreground"
+              className="text-[14.5px] web:text-[0.90625rem] leading-6 text-muted-foreground"
               // One paragraph, kept short: the whole of it is a tap away (Read the full recap).
               numberOfLines={phone ? 6 : 4}
             >

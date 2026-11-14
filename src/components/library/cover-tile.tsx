@@ -222,7 +222,7 @@ export function CoverTile({
                 <Icon name="server" size={11} color={colors.white} />
                 <Text
                   testID="tile-server-flag"
-                  className="shrink font-sans-bold text-[10.5px] text-white"
+                  className="shrink font-sans-bold text-[10.5px] web:text-[0.65625rem] text-white"
                   numberOfLines={1}
                 >
                   {server}

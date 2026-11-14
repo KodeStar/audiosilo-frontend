@@ -104,7 +104,7 @@ export function BookAbout({
       {source === 'generated' ? <GeneratedChip testID="about-generated-mark" /> : null}
       <View className="gap-1">
         <Text
-          className="text-[15px] leading-6 text-foreground"
+          className="text-[15px] web:text-[0.9375rem] leading-6 text-foreground"
           numberOfLines={expanded || !canCollapse ? undefined : 6}
         >
           {text}
@@ -215,7 +215,10 @@ function LabelChip({
       hitSlop={{ top: 6, bottom: 6 }}
       className={cn(chipClass(), 'max-w-full')}
     >
-      <Text className="font-sans-semibold text-[13px] text-foreground" numberOfLines={1}>
+      <Text
+        className="font-sans-semibold text-[13px] web:text-[0.8125rem] text-foreground"
+        numberOfLines={1}
+      >
         {name}
       </Text>
     </Pressable>

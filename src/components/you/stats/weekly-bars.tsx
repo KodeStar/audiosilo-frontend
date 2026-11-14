@@ -79,7 +79,7 @@ export function WeeklyBars({ weeks, width }: { weeks: readonly number[]; width: 
         <Text
           key={v}
           pointerEvents="none"
-          className="absolute text-right font-sans text-[11px] text-muted-foreground"
+          className="absolute text-right font-sans text-[11px] web:text-[0.6875rem] text-muted-foreground"
           style={[tabularNums, { left: 0, width: left - 6, top: y(v) - 8 }]}
         >
           {v === 0 ? '0' : formatDuration(v)}
@@ -92,7 +92,7 @@ export function WeeklyBars({ weeks, width }: { weeks: readonly number[]; width: 
             pointerEvents="none"
             numberOfLines={1}
             className={cn(
-              'absolute font-sans text-[11px] text-muted-foreground',
+              'absolute font-sans text-[11px] web:text-[0.6875rem] text-muted-foreground',
               ago(i) === 0 ? 'text-right' : 'text-center',
             )}
             // This week's label ends at the chart's edge rather than past it.

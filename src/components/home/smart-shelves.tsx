@@ -101,15 +101,19 @@ export function SmartShelves({ shelves }: { shelves: readonly SmartShelf[] }) {
             <View className="gap-2" style={{ maxWidth: layout === 'phone' ? '100%' : '64%' }}>
               <View className="flex-row items-center gap-1">
                 <Icon name="sparkles" size={11} color={themed.mutedForeground} />
-                <Text variant="eyebrow" className="text-[10.5px]">
+                <Text variant="eyebrow" className="text-[10.5px] web:text-[0.65625rem]">
                   {t('home.smart.eyebrow')}
                 </Text>
               </View>
-              <Text className="font-display text-base leading-[20px] tracking-tight text-foreground">
+              <Text className="font-display text-base leading-[20px] web:leading-[1.25rem] tracking-tight text-foreground">
                 {title}
               </Text>
             </View>
-            <Text variant="muted" className="text-[12.5px]" style={{ maxWidth: '55%' }}>
+            <Text
+              variant="muted"
+              className="text-[12.5px] web:text-[0.78125rem]"
+              style={{ maxWidth: '55%' }}
+            >
               {sub}
             </Text>
           </AnimatedPressable>

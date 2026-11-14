@@ -50,7 +50,7 @@ export function SubNav() {
               <Text
                 accessibilityRole="header"
                 // The sections scroll; the page title never gives way to them.
-                className="shrink-0 font-display text-[15px]"
+                className="shrink-0 font-display text-[15px] web:text-[0.9375rem]"
                 numberOfLines={1}
               >
                 {t(root.titleKey)}

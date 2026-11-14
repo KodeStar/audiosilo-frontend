@@ -183,7 +183,11 @@ function PersonHeader({
           <Text
             variant="display"
             accessibilityRole="header"
-            className={phone ? undefined : 'text-[44px] leading-[46px]'}
+            className={
+              phone
+                ? undefined
+                : 'text-[44px] web:text-[2.75rem] leading-[46px] web:leading-[2.875rem]'
+            }
           >
             {name}
           </Text>

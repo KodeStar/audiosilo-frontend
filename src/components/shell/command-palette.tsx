@@ -447,7 +447,7 @@ function PaletteBody() {
           aria-autocomplete="list"
           aria-activedescendant={flat.length > 0 ? optionId(active) : undefined}
           className={cn(
-            'min-w-0 flex-1 font-sans text-[17px] text-foreground',
+            'min-w-0 flex-1 font-sans text-[17px] web:text-[1.0625rem] text-foreground',
             Platform.select({ web: 'outline-none' }),
           )}
         />

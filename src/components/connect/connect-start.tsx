@@ -427,7 +427,10 @@ export function ConnectStart() {
         <Text variant={phone ? 'display' : 'display-xl'} accessibilityRole="header">
           {newPerson ? t('profiles.connect.title') : t('onboarding.start.title')}
         </Text>
-        <Text variant="muted" className="text-[15px] leading-[22px]">
+        <Text
+          variant="muted"
+          className="text-[15px] web:text-[0.9375rem] leading-[22px] web:leading-[1.375rem]"
+        >
           {newPerson ? t('profiles.connect.lead') : t(lead)}
         </Text>
       </View>

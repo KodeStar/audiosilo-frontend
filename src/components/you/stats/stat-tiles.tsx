@@ -33,7 +33,9 @@ export function StatValue({ parts, compact }: { parts: readonly ValuePart[]; com
       numberOfLines={lines}
       className={cn(
         'font-display tracking-tight text-foreground',
-        compact ? 'text-[25px] leading-[28px]' : 'text-[32px] leading-[34px]',
+        compact
+          ? 'text-[25px] web:text-[1.5625rem] leading-[28px] web:leading-[1.75rem]'
+          : 'text-[32px] web:text-[2rem] leading-[34px] web:leading-[2.125rem]',
       )}
       style={tabularNums}
     >
@@ -64,7 +66,9 @@ function TileLabel({ icon, label }: { icon: IconName; label: string }) {
   return (
     <View className="flex-row items-center gap-1.5">
       <Icon name={icon} size={14} color={themed.mutedForeground} />
-      <Text className="font-sans-semibold text-[12.5px] text-muted-foreground">{label}</Text>
+      <Text className="font-sans-semibold text-[12.5px] web:text-[0.78125rem] text-muted-foreground">
+        {label}
+      </Text>
     </View>
   );
 }
@@ -205,7 +209,10 @@ export function GoalTile({
           trackOpacity={0.22}
         >
           <Text
-            className={cn('font-display text-foreground', small ? 'text-[12px]' : 'text-[15px]')}
+            className={cn(
+              'font-display text-foreground',
+              small ? 'text-[12px] web:text-[0.75rem]' : 'text-[15px] web:text-[0.9375rem]',
+            )}
             style={tabularNums}
           >
             {t('stats.goal.percent', { percent })}

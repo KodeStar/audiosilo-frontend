@@ -204,10 +204,10 @@ function NowPlayingCard({ nowPlaying }: { nowPlaying: NowPlaying }) {
         author={nowPlaying.author}
       />
       <View className="flex-1 gap-0.5">
-        <Text variant="eyebrow" className="text-[10.5px]">
+        <Text variant="eyebrow" className="text-[10.5px] web:text-[0.65625rem]">
           {t('upnext.nowPlaying')}
         </Text>
-        <Text variant="label" className="text-[13.5px]" numberOfLines={1}>
+        <Text variant="label" className="text-[13.5px] web:text-[0.84375rem]" numberOfLines={1}>
           {nowPlaying.title}
         </Text>
         <Text variant="caption" numberOfLines={1}>
@@ -260,7 +260,7 @@ function SuggestionRow({
       <View className="flex-row items-center gap-2.5 rounded-xl px-1.5 py-2">
         <GhostCover title={s.title} position={s.position} width={44} />
         <View className="flex-1 gap-0.5">
-          <Text variant="label" className="text-[13px]" numberOfLines={2}>
+          <Text variant="label" className="text-[13px] web:text-[0.8125rem]" numberOfLines={2}>
             {serverName
               ? t('upnext.ghost', { title: s.title, server: serverName })
               : t('upnext.ghostNoServer', { title: s.title })}
@@ -344,7 +344,7 @@ function SuggestedBook({
           author={book?.author}
         />
         <View className="flex-1 gap-0.5">
-          <Text variant="label" className="text-[13px]" numberOfLines={1}>
+          <Text variant="label" className="text-[13px] web:text-[0.8125rem]" numberOfLines={1}>
             {title}
           </Text>
           <Text variant="caption" numberOfLines={1}>
@@ -387,7 +387,7 @@ function AutoPlaySwitch({ episode }: { episode: boolean }) {
         accessibilityHint={hint}
       />
       <View className="flex-1">
-        <Text className="text-[13px]">{label}</Text>
+        <Text className="text-[13px] web:text-[0.8125rem]">{label}</Text>
         <Text variant="caption">{hint}</Text>
       </View>
     </Pressable>

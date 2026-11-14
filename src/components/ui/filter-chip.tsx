@@ -74,7 +74,7 @@ export function FilterChip({
       {icon ? <Icon name={icon} size={14} color={fg} /> : null}
       <Text
         className={cn(
-          'font-sans-semibold text-[13px]',
+          'font-sans-semibold text-[13px] web:text-[0.8125rem]',
           selected ? 'text-primary-foreground' : 'text-foreground',
         )}
         numberOfLines={1}
@@ -85,7 +85,7 @@ export function FilterChip({
         <Text
           className={cn(
             // Muted, not faded: `opacity-60` ink on a card was 4.48:1, under AA.
-            'font-sans text-[11.5px]',
+            'font-sans text-[11.5px] web:text-[0.71875rem]',
             selected ? 'text-primary-foreground/75' : 'text-muted-foreground',
           )}
           style={tabularNums}

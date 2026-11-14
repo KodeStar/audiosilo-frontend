@@ -102,12 +102,20 @@ export function PlayerHeader({
       </ControlPill>
       <View className="min-w-0 flex-1 items-center">
         {server ? (
-          <Text variant="eyebrow" className="text-center text-[10.5px]" numberOfLines={lines}>
+          <Text
+            variant="eyebrow"
+            className="text-center text-[10.5px] web:text-[0.65625rem]"
+            numberOfLines={lines}
+          >
             {t('player.full.playingFrom', { server })}
           </Text>
         ) : null}
         {context ? (
-          <Text variant="label" className="text-center text-[13px]" numberOfLines={lines}>
+          <Text
+            variant="label"
+            className="text-center text-[13px] web:text-[0.8125rem]"
+            numberOfLines={lines}
+          >
             {context.kind === 'series'
               ? context.position !== undefined
                 ? t('player.full.seriesBook', {

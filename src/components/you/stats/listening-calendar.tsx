@@ -71,7 +71,7 @@ export function ListeningCalendar({
       {grid.months.map((m) => (
         <Text
           key={m.column}
-          className="absolute font-sans-semibold text-[11px] text-subtle-foreground"
+          className="absolute font-sans-semibold text-[11px] web:text-[0.6875rem] text-subtle-foreground"
           style={{ left: m.column * pitch, top: 0 }}
         >
           {months[m.month] ?? ''}
@@ -138,7 +138,7 @@ export function ListeningCalendar({
             <Text
               key={i}
               numberOfLines={1}
-              className="font-sans-semibold text-[10.5px] text-subtle-foreground"
+              className="font-sans-semibold text-[10.5px] web:text-[0.65625rem] text-subtle-foreground"
               style={{ height: cell, lineHeight: cell }}
             >
               {d}

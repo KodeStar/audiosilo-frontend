@@ -49,7 +49,7 @@ export function PhoneTabBar() {
               />
               <RNText
                 numberOfLines={1}
-                className={`font-sans-semibold text-[10.5px] ${
+                className={`font-sans-semibold text-[10.5px] web:text-[0.65625rem] ${
                   selected ? 'text-foreground' : 'text-muted-foreground'
                 }`}
               >

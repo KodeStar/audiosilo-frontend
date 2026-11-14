@@ -58,7 +58,7 @@ export function PhoneHeader({
           >
             <BackGlyph size={20} color={themed.foreground} />
             {namedBack ? (
-              <Text variant="label" className="text-[15px]" numberOfLines={1}>
+              <Text variant="label" className="text-[15px] web:text-[0.9375rem]" numberOfLines={1}>
                 {backTitle}
               </Text>
             ) : null}
@@ -75,7 +75,7 @@ export function PhoneHeader({
           <Text
             variant="display"
             accessibilityRole="header"
-            className="flex-1 text-[30px] leading-[36px]"
+            className="flex-1 text-[30px] web:text-[1.875rem] leading-[36px] web:leading-[2.25rem]"
             numberOfLines={1}
           >
             {title}

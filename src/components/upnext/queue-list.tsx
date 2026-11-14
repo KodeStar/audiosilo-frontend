@@ -330,7 +330,11 @@ function QueueRow({
             author={entry.book?.author}
           />
           <View className="flex-1 gap-0.5">
-            <Text variant="label" className="text-[13px] leading-[17px]" numberOfLines={2}>
+            <Text
+              variant="label"
+              className="text-[13px] web:text-[0.8125rem] leading-[17px] web:leading-[1.0625rem]"
+              numberOfLines={2}
+            >
               {title}
             </Text>
             <Text variant="caption" numberOfLines={1}>

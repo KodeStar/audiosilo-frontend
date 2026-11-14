@@ -228,7 +228,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress & Plac
       </View>
       <Text
         variant="label"
-        className="min-w-0 flex-1 text-[15px]"
+        className="min-w-0 flex-1 text-[15px] web:text-[0.9375rem]"
         numberOfLines={linesFor(1, large)}
       >
         {chapterLabel({ title: shownPlace.title, index: shownPlace.number - 1 }, t)}
@@ -323,7 +323,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress & Plac
               {eyebrow ? (
                 <Text
                   variant="eyebrow"
-                  className="text-[10.5px]"
+                  className="text-[10.5px] web:text-[0.65625rem]"
                   numberOfLines={linesFor(2, large)}
                 >
                   {eyebrow}
@@ -331,7 +331,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress & Plac
               ) : null}
               <Text
                 variant="display"
-                className="text-[24px] leading-[26px]"
+                className="text-[24px] web:text-[1.5rem] leading-[26px] web:leading-[1.625rem]"
                 numberOfLines={linesFor(3, large)}
               >
                 {title}
@@ -357,7 +357,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress & Plac
             ) : null}
             <Text
               variant="display"
-              className="text-[36px] leading-[38px] tracking-tighter"
+              className="text-[36px] web:text-[2.25rem] leading-[38px] web:leading-[2.375rem] tracking-tighter"
               numberOfLines={3}
             >
               {title}

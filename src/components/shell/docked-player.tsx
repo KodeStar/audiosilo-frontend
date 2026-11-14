@@ -170,7 +170,11 @@ function SyncState({ connectionId, playing }: { connectionId: string; playing: b
   return (
     <View testID="dock-sync-state" className="flex-row items-center gap-[5px]">
       <Icon name={sync.icon} size={12} color={themed.subtleForeground} />
-      <Text variant="caption" className="text-[11px] text-subtle-foreground" numberOfLines={1}>
+      <Text
+        variant="caption"
+        className="text-[11px] web:text-[0.6875rem] text-subtle-foreground"
+        numberOfLines={1}
+      >
         {sync.text}
       </Text>
     </View>
@@ -195,7 +199,10 @@ function SpeedPill() {
       label={t('shell.dock.speed', { speed: formatSpeed(rate) })}
       onPress={() => usePlayerSheets.getState().openSheet('speed')}
     >
-      <Text className="font-sans-bold text-[12.5px] text-foreground" style={tabularNums}>
+      <Text
+        className="font-sans-bold text-[12.5px] web:text-[0.78125rem] text-foreground"
+        style={tabularNums}
+      >
         {formatSpeed(rate)}
       </Text>
     </ControlPill>

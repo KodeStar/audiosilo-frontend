@@ -392,7 +392,9 @@ function EndCreditsBody({
             variant="display-xl"
             className={cn(
               'text-center',
-              phone ? 'text-[34px] leading-[38px]' : 'text-[50px] leading-[54px]',
+              phone
+                ? 'text-[34px] web:text-[2.125rem] leading-[38px] web:leading-[2.375rem]'
+                : 'text-[50px] web:text-[3.125rem] leading-[54px] web:leading-[3.375rem]',
             )}
             numberOfLines={3}
           >

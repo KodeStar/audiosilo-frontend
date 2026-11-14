@@ -60,7 +60,7 @@ export function SearchField({
         autoFocus={autoFocus}
         className={cn(
           'h-full min-w-0 flex-1 font-sans text-foreground',
-          phone ? 'text-base' : 'text-[17px]',
+          phone ? 'text-base' : 'text-[17px] web:text-[1.0625rem]',
           Platform.select({ web: 'outline-none' }),
         )}
       />

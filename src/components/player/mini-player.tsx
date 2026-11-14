@@ -267,7 +267,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue
           <View className="min-w-0 flex-1">
             <Text
               variant="label"
-              className="text-[13.5px] leading-[17px]"
+              className="text-[13.5px] web:text-[0.84375rem] leading-[17px] web:leading-[1.0625rem]"
               numberOfLines={1}
               maxFontSizeMultiplier={MINI_TEXT_MAX_SCALE}
             >

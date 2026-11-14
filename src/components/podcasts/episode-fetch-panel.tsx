@@ -282,7 +282,11 @@ function AccessoryFetch({ pending, regular }: { pending: PendingEpisodeFetch; re
           className="rounded-full"
         />
         <View className="min-w-0 flex-1">
-          <Text variant="label" className="text-[13.5px] leading-[17px]" numberOfLines={1}>
+          <Text
+            variant="label"
+            className="text-[13.5px] web:text-[0.84375rem] leading-[17px] web:leading-[1.0625rem]"
+            numberOfLines={1}
+          >
             {pending.title}
           </Text>
           {regular ? (

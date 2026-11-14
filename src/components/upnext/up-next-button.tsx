@@ -80,7 +80,7 @@ export function UpNextButton({ variant }: { variant: 'bar' | 'header' | 'dock' }
           <Text
             style={tabularNums}
             maxFontSizeMultiplier={1.3}
-            className="font-sans-bold text-[10px] leading-[12px] text-primary-foreground"
+            className="font-sans-bold text-[10px] web:text-[0.625rem] leading-[12px] web:leading-[0.75rem] text-primary-foreground"
           >
             {badgeText(count)}
           </Text>

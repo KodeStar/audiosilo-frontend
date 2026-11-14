@@ -356,7 +356,7 @@ function StatsContent({
           action={
             <View className="flex-row items-center gap-1.5">
               <Icon name="cloud" size={12} color={themed.subtleForeground} />
-              <Text className="font-sans text-[11px] text-subtle-foreground">
+              <Text className="font-sans text-[11px] web:text-[0.6875rem] text-subtle-foreground">
                 {t('stats.calendar.everyDevice')}
               </Text>
             </View>
