@@ -3343,7 +3343,6 @@
     "add": {
       "action": "Adicionar a {{library}}",
       "label": "Adicionar a gravação lida por {{names}} a {{library}}",
-      "noLibrary": "Primeiro adicione uma biblioteca de livros.",
       "inLibrary": "Essa gravação já está numa biblioteca.",
       "notBookLibrary": "Escolha uma biblioteca de livros. Uma biblioteca de podcasts não a pode guardar.",
       "unavailable": "O Bridge não pode adicionar livros do LibriVox. Atualize-o ou associe um na consola de administração.",

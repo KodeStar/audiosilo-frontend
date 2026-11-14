@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { useCapability } from '@/api/hooks';
+import { useCapability, useLibrariesOf } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import { pageGutter } from '@/components/library/cover-layout';
 import { ContentScope } from '@/components/layout/content-scope';
@@ -32,7 +32,9 @@ import { useOpmlImport } from './use-opml-import';
  * `?connection=`. Its sections: a directory search (`podcast_discovery`), a feed's
  * address (always), an OPML list (`podcast_opml`). Every one ends in a follow, so the
  * page is for a listener who may follow (`useAddShowsAccess`); a kid's account, the
- * demo or a server that can't follow now get a sentence instead. An import carries on
+ * demo or a server that can't follow now get a sentence instead. A link naming a library
+ * the server does not have (a link without `?connection=` reads the default server's) gets
+ * the broken-link sentence, never a follow into another library. An import carries on
  * while another section shows, and ends with the page.
  */
 export function FindShowsScreen() {
@@ -61,6 +63,7 @@ function FindShowsContent() {
   const opml = useCapability('podcast_opml', cid);
   // The import lives for the page, whichever section shows.
   const importer = useOpmlImport(cid, params?.libraryId ?? 0);
+  const libraries = useLibrariesOf(cid).data;
 
   if (!params) return <EmptyState icon="microphone" title={t('library.detail.badLink')} />;
   if (access === 'unknown') {
@@ -83,6 +86,16 @@ function FindShowsContent() {
         }
         hint={access === 'unavailable' ? t('podcasts.find.unavailableHint') : undefined}
       />
+    );
+  }
+
+  // Only once the libraries are known: a library the server lacks. A books library is
+  // the server's to refuse (`not_podcast_library`).
+  if (libraries && !libraries.some((l) => l.id === params.libraryId)) {
+    return (
+      <View testID="find-shows-library-missing">
+        <EmptyState icon="microphone" title={t('library.detail.badLink')} />
+      </View>
     );
   }
 

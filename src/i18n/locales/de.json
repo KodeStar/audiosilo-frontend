@@ -3343,7 +3343,6 @@
     "add": {
       "action": "Zu {{library}} hinzufügen",
       "label": "Die Aufnahme, gelesen von {{names}}, zu {{library}} hinzufügen",
-      "noLibrary": "Lege zuerst eine Bücherbibliothek an.",
       "inLibrary": "Diese Aufnahme ist schon in einer Bibliothek.",
       "notBookLibrary": "Wähle eine Bücherbibliothek. Eine Podcast-Bibliothek kann sie nicht aufnehmen.",
       "unavailable": "Die Bridge kann keine LibriVox-Bücher hinzufügen. Aktualisiere sie oder kopple eine in der Admin-Konsole.",

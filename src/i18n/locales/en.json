@@ -3343,7 +3343,6 @@
     "add": {
       "action": "Add to {{library}}",
       "label": "Add the recording read by {{names}} to {{library}}",
-      "noLibrary": "Add a books library first.",
       "inLibrary": "That recording is already in a library.",
       "notBookLibrary": "Pick a books library. A podcast library can't hold it.",
       "unavailable": "The Bridge can't add LibriVox books. Update it, or pair one in the admin console.",

@@ -960,6 +960,12 @@ export function useLibraries() {
   return useQuery(librariesQuery(cid, api));
 }
 
+/** One connection's libraries, named by the page rather than its scope (a Find page's
+ * `?connection=`, else the default one). */
+export function useLibrariesOf(connectionId: string) {
+  return useQuery(librariesQuery(connectionId, useOptionalApi(connectionId)));
+}
+
 /** Server page size for the folder browse view (the server caps a page at 500). */
 const BROWSE_PAGE_SIZE = 500;
 

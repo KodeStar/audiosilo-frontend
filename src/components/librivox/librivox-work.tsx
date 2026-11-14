@@ -42,8 +42,7 @@ import {
  * One work's LibriVox recordings, under its search result (LibriVox L6): each reader with
  * its length, sections and project number, a link to its LibriVox page, and Add to the
  * target library; In your library (Open) once this server holds it, its fetch's progress
- * while the Bridge works on it. `target`: undefined while the libraries load, null when the
- * server has no books library.
+ * while the Bridge works on it. `target`: undefined while the libraries load.
  */
 export function LibrivoxWorkPanel({
   connectionId,
@@ -53,7 +52,7 @@ export function LibrivoxWorkPanel({
 }: {
   connectionId: string;
   workId: string;
-  target: Library | null | undefined;
+  target: Library | undefined;
   /** The Bridge went away while the page was open: Add and Cancel are held back until it
    * is back. */
   bridgeAway: boolean;
@@ -120,7 +119,7 @@ function RecordingRow({
 }: {
   connectionId: string;
   recording: LibrivoxRecording;
-  target: Library | null | undefined;
+  target: Library | undefined;
   bridgeAway: boolean;
 }) {
   const { t } = useTranslation();
@@ -199,24 +198,20 @@ function RecordingRow({
         />
       ) : null}
       {canAdd ? (
-        target === null ? (
-          <Text variant="caption">{t('librivox.add.noLibrary')}</Text>
-        ) : (
-          <Button
-            size="sm"
-            icon="download"
-            title={t('librivox.add.action', { library: target?.name ?? '' })}
-            accessibilityLabel={t('librivox.add.label', {
-              names: readers || t('librivox.recording.unknownReader'),
-              library: target?.name ?? '',
-            })}
-            disabled={!target || bridgeAway}
-            loading={add.isPending}
-            onPress={onAdd}
-            className="self-start"
-            testID="librivox-add"
-          />
-        )
+        <Button
+          size="sm"
+          icon="download"
+          title={t('librivox.add.action', { library: target?.name ?? '' })}
+          accessibilityLabel={t('librivox.add.label', {
+            names: readers || t('librivox.recording.unknownReader'),
+            library: target?.name ?? '',
+          })}
+          disabled={!target || bridgeAway}
+          loading={add.isPending}
+          onPress={onAdd}
+          className="self-start"
+          testID="librivox-add"
+        />
       ) : null}
     </View>
   );

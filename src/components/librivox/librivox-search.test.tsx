@@ -28,7 +28,8 @@ type ReadState<T> = {
   isPending?: boolean;
   isPaused?: boolean;
 };
-let mockLibraries: Library[] = [];
+// Undefined while the libraries load.
+let mockLibraries: Library[] | undefined = [];
 let mockSearch: ReadState<{ results: LibrivoxHit[] }> = {};
 const mockAsked: string[] = [];
 const mockSearchRefetch = jest.fn();
@@ -47,10 +48,7 @@ jest.mock('@/api/hooks', () => {
   return {
     CapabilityError,
     qk: { librivoxWorks: (cid: string) => ['librivoxWork', cid] },
-    librariesQuery: (cid: string) => ({
-      queryKey: ['libraries', cid],
-      queryFn: () => Promise.resolve(mockLibraries),
-    }),
+    useLibrariesOf: () => ({ data: mockLibraries }),
     useLibrivoxSearch: (q: string) => {
       mockAsked.push(q);
       return q
@@ -391,12 +389,39 @@ describe('LibrivoxSearch', () => {
     expect(screen.getByTestId('librivox-library')).toBeTruthy();
   });
 
-  it('asks for a books library first when the server has none', async () => {
+  it('refuses a library the server does not have, never adding to its first one', async () => {
+    // A link without ?connection= names a library on the default server, which has none 9.
+    mockLibraries = [library(3, 'Books'), library(4, 'Fiction')];
+    await mount(9);
+    expect(screen.getByTestId('librivox-library-missing')).toBeTruthy();
+    expect(screen.getByText("This link doesn't point to anything here.")).toBeTruthy();
+    expect(screen.queryByTestId('librivox-search-input')).toBeNull();
+    expect(screen.queryByTestId('librivox-library')).toBeNull();
+    expect(screen.queryByTestId('header')).toBeNull();
+  });
+
+  it('refuses a podcast library, and a server with no books library', async () => {
     mockLibraries = [library(5, 'Shows', 'podcasts')];
     await mount(5);
+    expect(screen.getByTestId('librivox-library-missing')).toBeTruthy();
+    expect(screen.queryByTestId('librivox-search-input')).toBeNull();
+  });
+
+  it('adds to the named library when the server has it', async () => {
+    mockLibraries = [library(3, 'Books'), library(9, 'Classics')];
+    await mount(9);
+    expect(screen.queryByTestId('librivox-library-missing')).toBeNull();
     await openWork();
-    expect(await screen.findByText('Add a books library first.')).toBeTruthy();
-    expect(screen.queryByTestId('librivox-add')).toBeNull();
+    expect(await screen.findByText('Add to Classics')).toBeTruthy();
+  });
+
+  it('refuses nothing while the libraries load, and holds Add back', async () => {
+    mockLibraries = undefined;
+    await mount(9);
+    expect(screen.queryByTestId('librivox-library-missing')).toBeNull();
+    await openWork();
+    const add = screen.getByTestId('librivox-add');
+    expect(add.props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
   });
 
   it('says the work has no recording yet', async () => {
