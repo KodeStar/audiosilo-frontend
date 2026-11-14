@@ -9,6 +9,7 @@ import { useSession } from '@/stores/session';
 
 import { ConnectStart } from './connect-start';
 import { renderConnect as render } from './connect-testing';
+import { holdScanReconnect } from './invite-handoff';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -144,6 +145,50 @@ describe('a pairing link', () => {
     expect(mockReplace).toHaveBeenCalledWith({
       pathname: '/connect/ready',
       params: { connection: 'srv-1.1' },
+    });
+  });
+
+  describe('for a server that was reset, already signed in to here', () => {
+    // Paired at home, now under a new server_id: the code names the away address.
+    const old = {
+      id: 'srv-old.1',
+      serverId: 'srv-old',
+      name: 'Hearthside',
+      serverUrl: HOME,
+      addresses: { home: HOME, away: AWAY },
+      token: 'dead',
+      user,
+    };
+    beforeEach(() => {
+      useSession.setState({ status: 'authenticated', connections: [old] as never });
+      mockApi.exchange.mockResolvedValue({ token: 'session', server_id: 'srv-2', user });
+      mockApi.serverInfo.mockResolvedValue(info({ server_id: 'srv-2' }));
+    });
+    const paired = () => useSession.getState().connections.find((c) => c.id === 'srv-2.1');
+
+    it('is a new connection at its own address from a link, or the first step', async () => {
+      mockParams = { token: 'linked', server: AWAY };
+      await render(<ConnectStart />);
+      await waitFor(() => expect(paired()).toBeTruthy());
+      expect(paired()?.serverUrl).toBe(AWAY);
+    });
+
+    it("re-pairs the connection a reconnect's scanner held the code for", async () => {
+      // Scanned from the reconnect's sign-in step: the reconnect's own sign-in, so the
+      // connection keeps the address it was paired with (`repairPlan`'s reset rule).
+      holdScanReconnect('scanned', 'srv-old.1');
+      mockParams = { token: 'scanned', server: AWAY };
+      await render(<ConnectStart />);
+      await waitFor(() => expect(paired()).toBeTruthy());
+      expect(paired()?.serverUrl).toBe(HOME);
+    });
+
+    it("keeps no reconnect for another code (held by the scanned code's token)", async () => {
+      holdScanReconnect('scanned', 'srv-old.1');
+      mockParams = { token: 'linked', server: AWAY };
+      await render(<ConnectStart />);
+      await waitFor(() => expect(paired()).toBeTruthy());
+      expect(paired()?.serverUrl).toBe(AWAY);
     });
   });
 

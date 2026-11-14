@@ -47,7 +47,7 @@ import {
 import { KnownServerRow, type Probe, ProbeNotice } from './connect-parts';
 import { CoverFan } from './cover-cascade';
 import { finishConnect } from './finish-connect';
-import { beginInviteSignIn } from './invite-handoff';
+import { beginInviteSignIn, takeScanReconnect } from './invite-handoff';
 import { ProxyHeadersEditor } from './proxy-headers-editor';
 import { draftOf, draftToSet, type HeaderDraftRow } from './proxy-headers-model';
 import { useLinkPairing } from './use-pairing';
@@ -130,6 +130,13 @@ export function ConnectStart() {
   const { pairing, error: pairError, fail, pair } = useLinkPairing(!!token);
   // A pairing link that failed for a reason that can pass (`PairOutcome` `temporary`).
   const [retryLink, setRetryLink] = useState<PairingScan | null>(null);
+  // The reconnect the code that opened this screen continues (scanned from a reconnect's
+  // sign-in step, `holdScanReconnect`): taken once, and only that code's (Try again too),
+  // never a link pasted or opened later.
+  const [scanned] = useState(() => {
+    const reconnectId = token ? takeScanReconnect(token) : undefined;
+    return reconnectId ? { token, reconnectId } : null;
+  });
   // Custom headers for an auth proxy in front of the server (fe#167), for the address in
   // the field: held by the session for the connect flow's clients (`connectProxyHeaders`)
   // while the section is open, and kept with the connection the sign-in makes. The flow's
@@ -160,7 +167,10 @@ export function ConnectStart() {
   // busy, failing or not answering) keeps its token for a reload, and offers Try again.
   const pairLink = async (scan: PairingScan) => {
     setRetryLink(null);
-    const outcome = await pair(scan);
+    const outcome = await pair(
+      scan,
+      scanned?.token === scan.token ? scanned.reconnectId : undefined,
+    );
     if (outcome === 'paired' || !mounted.current) return;
     if (outcome === 'temporary') {
       setRetryLink(scan);

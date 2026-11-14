@@ -379,7 +379,13 @@ iOS does NOT allow arbitrary loads: Expo's ATS default is `NSAllowsArbitraryLoad
 single-label names, but not for a `.lan`, `.home.arpa` or `.internal` home. `repairPlan`: a
 re-pair through one of a connection's own addresses keeps its paired `serverUrl`; the reconnect
 banner signs in through `effectiveUrl` and passes `reconnect=<cid>`, so a reset server reached
-through its away address still retires its dead identity. `/connect` decides its "nothing to add"
+through its away address still retires its dead identity. The sign-in step's "Scan a QR code
+instead" (fe#264) hands that `reconnect` to the scanner (`/connect/scan?reconnect=`), which keeps
+it only for a code of one of the connection's own addresses (`scanReconnect`: any other server is
+a new connection): an invite code's sign-in step gets it as its own `reconnect`, a pairing code's
+`/connect` takes it from memory by the code's token (`holdScanReconnect` / `takeScanReconnect`,
+never a `/connect` param: a link opens that route) and `useLinkPairing` pairs with it (the
+connection's own proxy headers, `finishConnect`'s `reconnectId`). `/connect` decides its "nothing to add"
 bounce when it opens and when it is back on top, never while the flow is over it; `sign-in` reads
 `pendingServerUrl` once. The connect screens are full screens: `ConnectFrame` shrinks its column by
 the keyboard overlap and `ConnectInput` scrolls the focused field into view (use both for any new

@@ -101,6 +101,21 @@ export function repairPlan(input: {
 }
 
 /**
+ * The connection a code scanned from a reconnect's sign-in step re-pairs: the reconnect's
+ * (`reconnectId`), when the code is for one of that connection's own addresses (`base`:
+ * the pairing or invite code's server), as a sign-in typed there is. A code for any other
+ * server is a new connection, as one scanned from the first step: undefined.
+ */
+export function scanReconnect(
+  reconnectId: string | undefined,
+  base: string,
+  connections: readonly AddressedConnection[],
+): string | undefined {
+  const target = reconnectId ? connections.find((c) => c.id === reconnectId) : undefined;
+  return target && isOwnAddress(base, target) ? target.id : undefined;
+}
+
+/**
  * The connection already signed in as `userId` on the server `serverId`, its token not
  * refused in this runtime (no `needsReconnect`, which is never stored: `useLinkPairing`
  * also asks the server), or undefined. A link that names both (the console's "Listen in

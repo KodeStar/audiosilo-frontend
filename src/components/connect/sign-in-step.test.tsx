@@ -326,10 +326,15 @@ describe('no password (fe#264)', () => {
     expect(mockApi.login).not.toHaveBeenCalled();
   });
 
-  it('offers it on a reconnect too (a scan re-pairs the same person)', async () => {
+  it('offers it on a reconnect too, and tells the scanner which connection it re-pairs', async () => {
     Platform.OS = 'android';
     await render(<SignInStep server={AWAY} reconnectId="srv.1" />);
-    expect(screen.getByTestId('sign-in-scan')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('sign-in-scan'));
+    // A code for the same server then re-pairs this connection, as a code typed here does.
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/connect/scan',
+      params: { reconnect: 'srv.1' },
+    });
   });
 
   it('offers no scanner on the web (no camera step there)', async () => {

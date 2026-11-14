@@ -27,3 +27,24 @@ export function takeInviteCode(server: string): string | undefined {
   held = null;
   return code;
 }
+
+/** The reconnect a scanned pairing code continues (memory only), by the code's token. */
+let scanned: { token: string; reconnectId: string } | null = null;
+
+/**
+ * A pairing QR scanned from a reconnect's sign-in step ("No password? Scan a QR code
+ * instead"): the scanner replaces itself with a new `/connect`, which must still know the
+ * connection it re-pairs (`finishConnect`'s `reconnectId`: a server that was reset keeps
+ * its person only through it). In memory and by the code's token, never in `/connect`'s
+ * params: a link opens that route, and a link must not name a connection to re-pair.
+ */
+export function holdScanReconnect(token: string, reconnectId: string): void {
+  scanned = { token, reconnectId };
+}
+
+/** The reconnect held for the pairing code `token`, taken once. */
+export function takeScanReconnect(token: string): string | undefined {
+  const id = scanned?.token === token ? scanned.reconnectId : undefined;
+  scanned = null;
+  return id;
+}

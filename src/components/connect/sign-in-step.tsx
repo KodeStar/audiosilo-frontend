@@ -48,7 +48,8 @@ export function emptyField(
  * redeeming is the sign-in itself (a redeem can spend one of the invite's uses), so for
  * a new server the card appears on "Your library is ready." instead, never as a guess.
  *
- * In the app, "No password? Scan a QR code instead" opens the scanner (fe#264).
+ * In the app, "No password? Scan a QR code instead" opens the scanner (fe#264), which
+ * keeps the reconnect (`reconnectId`) for a code of the same server (`scanReconnect`).
  *
  * `initialCode`: an invite link's code (a scanned or pasted invite, #98), filled in and
  * signed in with once, as if typed; a refused one stays in the field with the reason.
@@ -240,13 +241,21 @@ export function SignInStep({
       <Button size="lg" title={t('connect.signIn.submit')} loading={loading} onPress={onSubmit} />
       {/* Most people have no password (an invite pairs a device): in the app, the QR their
           invite page or the console's Pair a device shows signs them in instead (fe#264). The
-          scanner hands its code to a new connect step, which pairs at once. */}
+          scanner hands its code to a new connect step, which pairs at once; a reconnect's goes
+          with it, so a code for the same server re-pairs this connection as a code or a
+          password typed here does (a server that was reset keeps its person). */}
       {Platform.OS === 'web' ? null : (
         <Button
           variant="link"
           icon="qrcode"
           title={t('connect.signIn.scanInstead')}
-          onPress={() => router.push('/connect/scan')}
+          onPress={() =>
+            router.push(
+              reconnectId
+                ? { pathname: '/connect/scan', params: { reconnect: reconnectId } }
+                : '/connect/scan',
+            )
+          }
           className="self-center"
           testID="sign-in-scan"
         />
