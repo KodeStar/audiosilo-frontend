@@ -23,12 +23,7 @@ jest.mock('@/api/hooks', () => ({
 }));
 
 /* eslint-disable import/first */
-import {
-  LibrivoxFetchWatcher,
-  resetLibrivoxWatches,
-  useLibrivoxWatches,
-  watchLibrivoxFetch,
-} from './fetch-watcher';
+import { LibrivoxFetchWatcher, useLibrivoxWatches, watchLibrivoxFetch } from './fetch-watcher';
 import { DONE_RECHECK_MS } from './librivox-model';
 /* eslint-enable import/first */
 
@@ -55,7 +50,7 @@ const watches = () => useLibrivoxWatches.getState().watches;
 const answer = (id: number, read: Read) => act(async () => mockReads.setState({ [id]: read }));
 
 beforeEach(() => {
-  resetLibrivoxWatches();
+  useLibrivoxWatches.setState({ watches: [] });
   mockReads.setState({}, true);
   mockAsked.length = 0;
   mockInvalidateLists.mockReset();

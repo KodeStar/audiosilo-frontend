@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, screen, within } from '@testing-library/react-native';
+import { fireEvent, screen, within } from '@testing-library/react-native';
 import { View } from 'react-native';
 
 import { ApiError } from '@/api/client';
@@ -75,7 +75,7 @@ jest.mock('@/api/hooks', () => {
 });
 
 /* eslint-disable import/first */
-import { resetLibrivoxWatches, useLibrivoxWatches } from './fetch-watcher';
+import { useLibrivoxWatches } from './fetch-watcher';
 import { LibrivoxSearch } from './librivox-search';
 /* eslint-enable import/first */
 
@@ -132,7 +132,7 @@ beforeEach(() => {
   mockWork = { data: work() };
   mockJobs = {};
   mockJobActive.clear();
-  resetLibrivoxWatches();
+  useLibrivoxWatches.setState({ watches: [] });
   mockAdd.mockReset();
   mockCancel.mockReset();
   mockToast.mockReset();

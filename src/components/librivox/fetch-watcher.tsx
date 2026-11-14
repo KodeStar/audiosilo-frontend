@@ -2,7 +2,7 @@ import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { create } from 'zustand';
 
-import { ApiError } from '@/api/client';
+import { ApiError, isNotInLibraryError, isSignedOutError } from '@/api/client';
 import { invalidateLibraryLists, qk, useLibrivoxJob } from '@/api/hooks';
 import { isOpenJob } from '@/lib/bridge-jobs';
 import { useSession } from '@/stores/session';
@@ -42,11 +42,6 @@ function dropWatch(w: Watch) {
   useLibrivoxWatches.setState((s) => ({ watches: s.watches.filter((x) => !same(x, w)) }));
 }
 
-/** Forget every watch (tests). */
-export function resetLibrivoxWatches() {
-  useLibrivoxWatches.setState({ watches: [] });
-}
-
 /**
  * After a followed fetch ended: the connection's works are asked again (a done one moves the
  * recording into the library, a failed one offers Add again); a done one (`doneIn`, its
@@ -54,16 +49,13 @@ export function resetLibrivoxWatches() {
  * asked once more after `DONE_RECHECK_MS` (the server records the book just after the job
  * ends). The timer is the module's, so it fires whatever is mounted by then.
  */
-export function librivoxFetchEnded(qc: QueryClient, cid: string, doneIn: number | null) {
+function librivoxFetchEnded(qc: QueryClient, cid: string, doneIn: number | null) {
   const ask = () => void qc.invalidateQueries({ queryKey: qk.librivoxWorks(cid) });
   ask();
   if (doneIn === null) return;
   invalidateLibraryLists(qc, cid, doneIn);
   setTimeout(ask, DONE_RECHECK_MS);
 }
-
-/** A refusal: asking again can't help (the poll's own rule stops too). */
-const refused = (e: unknown) => e instanceof ApiError && [400, 401, 403].includes(e.status);
 
 /** Every followed fetch, each read by its own `WatchedFetch`. Renders nothing. */
 export function LibrivoxFetchWatcher() {
@@ -86,15 +78,14 @@ function WatchedFetch({ cid, id }: Watch) {
   const job = gone ? undefined : read.data;
   const ended = gone || (!!job && !isOpenJob(job));
   const doneIn = job?.state === 'done' ? job.library_id : null;
-  const stop = !signedIn || refused(read.error);
+  // A refusal (a 400, 401 or 403): asking again can't help, by the poll's own rule
+  // (`useLibrivoxJob`), which stops too. A 404 is `gone`: an end, not a refusal.
+  const refused = !gone && (isSignedOutError(read.error) || isNotInLibraryError(read.error));
+  const stop = !signedIn || refused;
 
   useEffect(() => {
-    if (stop) {
-      dropWatch({ cid, id });
-      return;
-    }
-    if (!ended) return;
-    librivoxFetchEnded(qc, cid, doneIn);
+    if (!stop && !ended) return;
+    if (!stop) librivoxFetchEnded(qc, cid, doneIn);
     dropWatch({ cid, id });
   }, [stop, ended, doneIn, qc, cid, id]);
 
