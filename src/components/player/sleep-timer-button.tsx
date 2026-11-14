@@ -11,6 +11,7 @@ import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock, formatDuration, formatTimeOfDay, formatWallClock } from '@/lib/format';
+import { useLargeText } from '@/lib/text-scale';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { noteInteraction } from '@/playback/last-interaction';
@@ -27,7 +28,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { ControlPill, slopTo44 } from './control-pill';
-import { OptionTile } from './option-tile';
+import { OptionTile, optionTileBasis } from './option-tile';
 import { PlayerSheet } from './player-sheet';
 import {
   isDurationTimer,
@@ -105,6 +106,7 @@ function selectSheetPosition(s: ReturnType<typeof usePlayer.getState>): number {
  * second). */
 function SleepSheetBody({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
+  const large = useLargeText();
   const phase = useSleepTimer(selectSleepPhase);
   const origin = useSleepTimer((s) => s.origin);
   const pauseAtPosition = useSleepTimer((s) => s.pauseAtPosition);
@@ -147,7 +149,7 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
             accessibilityLabel={t('player.sleepTimer.minutes', { count: m })}
             selected={isDurationTimer(phase, origin, m)}
             onPress={() => pick(() => startDuration(m))}
-            className="grow basis-[21%]"
+            className={optionTileBasis(large)}
           />
         ))}
         {chapterTarget ? (
@@ -164,7 +166,7 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
             onPress={() =>
               pick(() => startUntilPosition(chapterTarget.position, chapterTarget.label))
             }
-            className="grow-[2] basis-[42%]"
+            className={optionTileBasis(large, true)}
           />
         ) : null}
       </View>
@@ -191,11 +193,13 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
                 accessibilityState={{ selected }}
                 accessibilityLabel={`${name}, ${chapter}, ${ends}, ${length}`}
                 className={cn(
-                  'min-h-[48px] flex-row items-center gap-3 px-3.5 py-2.5',
+                  'min-h-[48px] px-3.5 py-2.5',
+                  // Under large text the end time goes under the chapter, which then wraps.
+                  large ? 'gap-1' : 'flex-row items-center gap-3',
                   selected && 'border-primary',
                 )}
               >
-                <Text numberOfLines={1} className="flex-1">
+                <Text numberOfLines={large ? undefined : 1} className={large ? undefined : 'flex-1'}>
                   <Text variant="label">{name}</Text>
                   <Text variant="muted">{` · ${chapter}`}</Text>
                 </Text>

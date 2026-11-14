@@ -12,6 +12,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { formatCount } from '@/lib/format';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { useDomId } from '@/lib/use-dom-id';
 import { useLatestRef } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
@@ -35,8 +36,9 @@ import { slopTo44 } from './touch-target';
  */
 const track = 'rounded-[11px] border border-border bg-muted p-[3px]';
 
+// A min height, not a height: a label that wraps under large text grows the segment.
 const itemBase = cn(
-  'h-[30px] flex-row items-center justify-center gap-1.5 rounded-lg border border-transparent px-3',
+  'min-h-[30px] flex-row items-center justify-center gap-1.5 rounded-lg border border-transparent px-3',
   Platform.select({
     web: `cursor-pointer select-none whitespace-nowrap transition-colors ${FOCUS_RING_CLASS}`,
   }),
@@ -126,7 +128,8 @@ export function SegmentedControl<T extends string>({
   value: T;
   onChange: (value: T) => void;
   /** Equal-width segments filling the row. Ignored when `scrollable` (a scroller has
-   * no width to divide, and a flex-1 segment in one collapses to nothing). */
+   * no width to divide, and a flex-1 segment in one collapses to nothing) and under large
+   * text (the segments stack then). */
   grow?: boolean;
   /** Scroll horizontally when the options don't fit (long labels, many options): the
    * chosen segment is kept in view and scroll arrows mark the sides with more. */
@@ -137,6 +140,10 @@ export function SegmentedControl<T extends string>({
   accessibilityLabel?: string;
   className?: string;
 }) {
+  // Under large text a control that does not scroll stacks its segments, one per line at
+  // the full width, and a label wraps rather than cut the chosen option to "Sys...". A
+  // scrolling one keeps its row (it has the room) with whole labels.
+  const stacked = useLargeText() && !scrollable;
   const items = (onItemLayout?: (value: T, e: LayoutChangeEvent) => void) =>
     options.map((o) => (
       <ToggleGroupItem
@@ -144,9 +151,17 @@ export function SegmentedControl<T extends string>({
         value={o.value}
         onLayout={onItemLayout ? (e) => onItemLayout(o.value, e) : undefined}
         accessibilityLabel={o.count === undefined ? o.label : `${o.label}, ${o.count}`}
-        className={grow && !scrollable ? 'flex-1' : undefined}
+        className={
+          stacked
+            ? cn('py-1', Platform.OS === 'web' && 'whitespace-normal')
+            : grow && !scrollable
+              ? 'flex-1'
+              : undefined
+        }
       >
-        <Text numberOfLines={1}>{o.label}</Text>
+        <Text numberOfLines={linesFor(1, stacked)} className={stacked ? 'shrink' : undefined}>
+          {o.label}
+        </Text>
         {o.count === undefined ? null : (
           <Text className="font-sans text-[11px] text-subtle-foreground" style={tabularNums}>
             {formatCount(o.count)}
@@ -162,7 +177,7 @@ export function SegmentedControl<T extends string>({
         if (next) onChange(next as T);
       }}
       accessibilityLabel={accessibilityLabel}
-      className={cn(wrap && 'flex-wrap', scrollable && 'flex-col', className)}
+      className={cn(wrap && 'flex-wrap', (scrollable || stacked) && 'flex-col', className)}
     >
       {scrollable ? (
         <SegmentScroller value={value}>{(onItemLayout) => items(onItemLayout)}</SegmentScroller>

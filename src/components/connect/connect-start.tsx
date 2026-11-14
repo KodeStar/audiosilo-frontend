@@ -21,6 +21,7 @@ import {
   type KnownServer,
 } from '@/lib/known-servers';
 import { useLayout } from '@/lib/layout';
+import { useLargeText } from '@/lib/text-scale';
 import {
   cleanAddresses,
   hostOf,
@@ -79,6 +80,7 @@ import { useLinkPairing } from './use-pairing';
  */
 export function ConnectStart() {
   const { t } = useTranslation();
+  const large = useLargeText();
   const phone = useLayout() === 'phone';
   const { token, server, home, away, sid, profile, book, path, uid } = useRouteParams<{
     token?: string;
@@ -464,8 +466,9 @@ export function ConnectStart() {
             <Text variant="eyebrow" nativeID="server-address-label">
               {isWeb ? t('connect.server.addressLabel') : t('connect.server.orAddress')}
             </Text>
-            <View className="flex-row items-start gap-2">
-              <View className="min-w-0 flex-1">
+            {/* Under large text Continue goes under the field, which keeps the width. */}
+            <View className={large ? 'gap-2' : 'flex-row items-start gap-2'}>
+              <View className={large ? undefined : 'min-w-0 flex-1'}>
                 <ConnectInput
                   size="lg"
                   accessibilityLabel={t('connect.server.addressLabel')}
@@ -493,7 +496,7 @@ export function ConnectStart() {
                 size="lg"
                 // One primary per screen: in the app that is Scan a QR code.
                 variant={isWeb ? 'default' : 'secondary'}
-                className="h-[48px]"
+                className="min-h-[48px]"
                 title={t('onboarding.start.continue')}
                 loading={busy === 'manual'}
                 disabled={busy !== null}

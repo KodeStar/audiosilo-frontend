@@ -3,6 +3,7 @@ import { View } from 'react-native';
 
 import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
+import { useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 
 import { INLINE_MIN } from './settings-model';
@@ -32,6 +33,8 @@ export function SettingsCard({ children, testID }: { children: ReactNode; testID
  * - `compact` (a stepper, a select): always beside the label.
  * - `wide` (a segmented control): beside it in a wide card, under it in a narrow one.
  * - `block` (a wrapping list, a status line): always under it, full width.
+ * Under large text (`useLargeText`) every control goes under its label: beside a stepper
+ * the words had a letter's width left ("Skip fo/rward").
  * Every row but the card's first has a hairline above it.
  */
 export function SettingRow({
@@ -50,7 +53,8 @@ export function SettingRow({
   testID?: string;
 }) {
   const wideCard = useContext(InlineContext);
-  const inline = control === 'compact' || (control === 'wide' && wideCard);
+  const large = useLargeText();
+  const inline = !large && (control === 'compact' || (control === 'wide' && wideCard));
   return (
     <View
       testID={testID}

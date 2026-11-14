@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 
@@ -9,7 +10,8 @@ import { tabularNums } from '@/theme/tabular-nums';
  * One choice in the speed and sleep sheets' option grids (the prototype's `.opt`): a
  * value over a small caption, ink-filled when it is the current one. A radio (in a
  * `radiogroup` the caller renders), so a screen reader says which is chosen; at least
- * 54 tall, past the 44pt target.
+ * 54 tall, past the 44pt target. Under large text its words wrap instead of ending in
+ * "..." (the grids give each tile more room then: `optionTileBasis`).
  */
 export function OptionTile({
   title,
@@ -27,6 +29,7 @@ export function OptionTile({
   accessibilityLabel?: string;
   className?: string;
 }) {
+  const lines = linesFor(1, useLargeText());
   return (
     <AnimatedPressable
       onPress={onPress}
@@ -46,7 +49,7 @@ export function OptionTile({
         variant="label"
         className={cn('text-base', selected && 'text-primary-foreground')}
         style={tabularNums}
-        numberOfLines={1}
+        numberOfLines={lines}
       >
         {title}
       </Text>
@@ -55,11 +58,18 @@ export function OptionTile({
           variant="caption"
           className={cn(selected && 'text-primary-foreground/80')}
           style={tabularNums}
-          numberOfLines={1}
+          numberOfLines={lines}
         >
           {caption}
         </Text>
       ) : null}
     </AnimatedPressable>
   );
+}
+
+/** A tile's share of its grid's row: four to a row (`basis-[21%]`), a wide tile two
+ * (`wide`); under large text two to a row and a wide tile the whole row. */
+export function optionTileBasis(large: boolean, wide = false): string {
+  if (wide) return large ? 'grow basis-full' : 'grow-[2] basis-[42%]';
+  return large ? 'grow basis-[46%]' : 'grow basis-[21%]';
 }
