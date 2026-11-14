@@ -65,7 +65,11 @@ export function PeopleMode({
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
   const { progressOf } = useProgressLookup();
-  const minWidth = 176;
+  // Under large text one card a row on a phone (and wider cards elsewhere): in two
+  // columns at Android's 2.0 a name broke mid-word ("Brando / n Sand...", fe#267).
+  const large = useLargeText();
+  const minWidth = large ? 264 : 176;
+  const phoneColumns = large ? 1 : 2;
   const unread = useUnreadQuery(list);
 
   // Before the skeleton: a list held for the network stays pending (`useUnreadQuery`).
@@ -78,7 +82,7 @@ export function PeopleMode({
         keyExtractor={String}
         renderItem={() => <PersonCardSkeleton size={phone ? 72 : 86} />}
         minWidth={minWidth}
-        phoneColumns={2}
+        phoneColumns={phoneColumns}
       />
     );
   }
@@ -110,7 +114,7 @@ export function PeopleMode({
       keyExtractor={(p) => p.name}
       name={(p) => p.name}
       minWidth={minWidth}
-      phoneColumns={2}
+      phoneColumns={phoneColumns}
       renderItem={(p) => (
         <PersonCard
           person={p}
