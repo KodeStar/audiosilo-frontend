@@ -438,6 +438,7 @@
     "server": {
       "connecting": "A ligar o teu dispositivo…",
       "addressLabel": "Endereço do servidor",
+      "orAddress": "Ou introduz o endereço do servidor",
       "enterAddress": "Introduz o endereço do teu servidor",
       "missingAddress": "Falta o endereço do servidor a esta ligação de emparelhamento. Introduze-o abaixo.",
       "pairingRefused": "Esta ligação de emparelhamento expirou ou já foi usada. Pede uma nova, ou introduz o teu código de convite no ecrã de início de sessão.",
@@ -466,6 +467,7 @@
       "passwordLabel": "Palavra-passe",
       "passwordPlaceholder": "Palavra-passe",
       "submit": "Iniciar sessão",
+      "scanInstead": "Sem palavra-passe? Lê antes um código QR",
       "failed": "Falha ao iniciar sessão. Tenta novamente.",
       "modeLabel": "Como iniciar sessão",
       "errors": {
@@ -489,7 +491,7 @@
       "permissionDenied": "O AudioSilo precisa de acesso à câmara para ler o código QR de emparelhamento do teu servidor.",
       "tryAgain": "Tentar novamente",
       "openSettings": "Abrir definições",
-      "aimHint": "Aponta a câmara para o código QR de emparelhamento na página de ligação do teu servidor."
+      "aimHint": "Aponta a câmara para o teu código QR. Se geres o servidor, está na consola de administração, em Pessoas > o teu nome > Emparelhar um dispositivo. Se foste convidado, está na tua página de convite."
     },
     "probe": {
       "found": "{{name}} encontrado",
@@ -519,7 +521,7 @@
     "step": "Passo {{step}} de {{count}}",
     "start": {
       "title": "Os teus audiolivros, do teu próprio servidor.",
-      "lead": "Introduz o endereço que o teu administrador te deu, ou lê o código no ecrã dele.",
+      "lead": "Lê um código QR para iniciares sessão sem escrever nada. Se geres o servidor, o teu está na consola de administração, em Pessoas > o teu nome > Emparelhar um dispositivo. Se foste convidado, está na tua página de convite.",
       "leadWeb": "Introduz o endereço que o teu administrador te deu, ou cola a ligação de emparelhamento que te enviou.",
       "leadServed": "Inicia sessão com o código ou a palavra-passe que o teu administrador te deu, ou cola a ligação de emparelhamento que te enviou.",
       "finding": "A procurar o teu servidor…",
@@ -527,7 +529,7 @@
     },
     "signIn": {
       "eyebrow": "{{name}} · {{host}}",
-      "codeHint": "Do convite que o teu administrador te enviou."
+      "codeHint": "Do convite que o teu administrador te enviou. Não precisas de palavra-passe."
     },
     "anotherServer": "Outro servidor",
     "addresses": {

@@ -438,6 +438,7 @@
     "server": {
       "connecting": "Connexion de votre appareil…",
       "addressLabel": "Adresse du serveur",
+      "orAddress": "Ou saisissez l'adresse du serveur",
       "enterAddress": "Saisissez l'adresse de votre serveur",
       "missingAddress": "Ce lien d'association ne comporte pas l'adresse du serveur. Saisissez-la ci-dessous.",
       "pairingRefused": "Ce lien d'association a expiré ou a déjà été utilisé. Demandez-en un nouveau, ou saisissez votre code d'invitation sur l'écran de connexion.",
@@ -466,6 +467,7 @@
       "passwordLabel": "Mot de passe",
       "passwordPlaceholder": "Mot de passe",
       "submit": "Se connecter",
+      "scanInstead": "Pas de mot de passe ? Scannez plutôt un code QR",
       "failed": "Échec de la connexion. Veuillez réessayer.",
       "modeLabel": "Mode de connexion",
       "errors": {
@@ -489,7 +491,7 @@
       "permissionDenied": "AudioSilo a besoin d'accéder à la caméra pour scanner le code QR d'association de votre serveur.",
       "tryAgain": "Réessayer",
       "openSettings": "Ouvrir les réglages",
-      "aimHint": "Pointez votre caméra vers le code QR d'association sur la page de connexion de votre serveur."
+      "aimHint": "Pointez votre caméra vers votre code QR. Si vous gérez le serveur, il se trouve dans la console d'administration, sous Personnes > votre nom > Associer un appareil. Si vous avez été invité, il est sur votre page d'invitation."
     },
     "probe": {
       "found": "{{name}} trouvé",
@@ -519,7 +521,7 @@
     "step": "Étape {{step}} sur {{count}}",
     "start": {
       "title": "Vos livres audio, depuis votre propre serveur.",
-      "lead": "Saisissez l'adresse que votre administrateur vous a donnée, ou scannez le code affiché sur son écran.",
+      "lead": "Scannez un code QR pour vous connecter sans rien saisir. Si vous gérez le serveur, le vôtre se trouve dans la console d'administration, sous Personnes > votre nom > Associer un appareil. Si vous avez été invité, il est sur votre page d'invitation.",
       "leadWeb": "Saisissez l'adresse que votre administrateur vous a donnée, ou collez le lien d'appairage qu'il vous a envoyé.",
       "leadServed": "Connectez-vous avec le code ou le mot de passe que votre administrateur vous a donné, ou collez le lien d'appairage qu'il vous a envoyé.",
       "finding": "Recherche de votre serveur…",
@@ -527,7 +529,7 @@
     },
     "signIn": {
       "eyebrow": "{{name}} · {{host}}",
-      "codeHint": "Tiré de l'invitation de votre administrateur."
+      "codeHint": "Tiré de l'invitation de votre administrateur. Aucun mot de passe n'est nécessaire."
     },
     "anotherServer": "Un autre serveur",
     "addresses": {

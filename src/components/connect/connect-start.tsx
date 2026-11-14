@@ -59,7 +59,9 @@ import { useLinkPairing } from './use-pairing';
  * when the server runs a demo, Try the demo. An address typed without a scheme is tried
  * over https, then once over plain http when https could not connect (`httpFallback`);
  * a server found over http is named as unencrypted. Scan a QR code (native) or paste a pairing
- * link (web), and one-tap "Reconnect to <server>" rows for remembered servers.
+ * link (web), and one-tap "Reconnect to <server>" rows for remembered servers. In the app,
+ * Scan a QR code is the first action (full width, the one primary) and the address field is
+ * under "Or enter the server address"; the lead says where the QR is (fe#264).
  *
  * A pairing link or QR opens this screen with its `token` (and on native the `server` it
  * belongs to, the server's `home` / `away` addresses when it has them, and its id `sid`): the token is
@@ -426,20 +428,34 @@ export function ConnectStart() {
           testID="pairing-try-again"
         />
       ) : null}
+      {/* The app's first action is the QR (fe#264): the console's Pair a device or an invite
+          page shows one, and scanning it signs in with nothing to type. The address is the
+          fallback under it. The web has no camera: it pastes a link instead (below). */}
+      {isWeb ? null : (
+        <Button
+          size="lg"
+          icon="qrcode"
+          title={t('connect.server.scanQr')}
+          onPress={() => router.push('/connect/scan')}
+          testID="connect-scan"
+        />
+      )}
       <View className="gap-3">
         {/* The label above the row, so the field and Continue line up at the top. The served
             player found its own server: no address to ask for. */}
         {isServed ? null : (
           <View className="gap-1.5">
             <Text variant="eyebrow" nativeID="server-address-label">
-              {t('connect.server.addressLabel')}
+              {isWeb ? t('connect.server.addressLabel') : t('connect.server.orAddress')}
             </Text>
             <View className="flex-row items-start gap-2">
               <View className="min-w-0 flex-1">
                 <ConnectInput
                   size="lg"
                   accessibilityLabel={t('connect.server.addressLabel')}
-                  aria-labelledby="server-address-label"
+                  // In the app the label above says "Or enter the server address": the
+                  // field's own name stays "Server address".
+                  aria-labelledby={isWeb ? 'server-address-label' : undefined}
                   placeholder="books.example.com"
                   value={url}
                   onChangeText={(v) => {
@@ -459,6 +475,8 @@ export function ConnectStart() {
               </View>
               <Button
                 size="lg"
+                // One primary per screen: in the app that is Scan a QR code.
+                variant={isWeb ? 'default' : 'secondary'}
                 className="h-[48px]"
                 title={t('onboarding.start.continue')}
                 loading={busy === 'manual'}
@@ -494,14 +512,7 @@ export function ConnectStart() {
             aria-expanded={linkOpen}
             onPress={() => setLinkOpen((o) => !o)}
           />
-        ) : (
-          <Button
-            variant="outline"
-            icon="qrcode"
-            title={t('connect.server.scanQr')}
-            onPress={() => router.push('/connect/scan')}
-          />
-        )}
+        ) : null}
         {isServed ? null : (
           <Button
             variant="ghost"

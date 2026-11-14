@@ -617,6 +617,10 @@ stats a notice.
 Empty states use ghost spines or ghost covers, one headline, one sentence, one action. Skeletons are exact
 cover-shaped placeholders (no layout shift), shimmer 1.4 s (off with reduced motion). First run ends with **"Your
 library is ready."**: spines drop onto a plank one by one, with the counts and where your place came from.
+In the app, the connect step leads with **Scan a QR code** (the screen's one primary, full width, `lg`) and a lead
+that says where the QR is (the console's People > your name > Pair a device, or an invite page); the address field
+follows under "Or enter the server address", its Continue `secondary`. The sign-in step adds a `link` "No password?
+Scan a QR code instead". The web has no scanner: the address comes first, with "I have a pairing link".
 
 ---
 

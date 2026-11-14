@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { connectClientFor } from '@/api/connect-client';
 import { AddressesCard } from '@/components/layout/addresses-card';
@@ -47,6 +47,8 @@ export function emptyField(
  * them. An invite code says which addresses the server has only once it is redeemed, and
  * redeeming is the sign-in itself (a redeem can spend one of the invite's uses), so for
  * a new server the card appears on "Your library is ready." instead, never as a guess.
+ *
+ * In the app, "No password? Scan a QR code instead" opens the scanner (fe#264).
  *
  * `initialCode`: an invite link's code (a scanned or pasted invite, #98), filled in and
  * signed in with once, as if typed; a refused one stays in the field with the reason.
@@ -236,6 +238,19 @@ export function SignInStep({
       ) : null}
 
       <Button size="lg" title={t('connect.signIn.submit')} loading={loading} onPress={onSubmit} />
+      {/* Most people have no password (an invite pairs a device): in the app, the QR their
+          invite page or the console's Pair a device shows signs them in instead (fe#264). The
+          scanner hands its code to a new connect step, which pairs at once. */}
+      {Platform.OS === 'web' ? null : (
+        <Button
+          variant="link"
+          icon="qrcode"
+          title={t('connect.signIn.scanInstead')}
+          onPress={() => router.push('/connect/scan')}
+          className="self-center"
+          testID="sign-in-scan"
+        />
+      )}
       {/* The served player's "Back" goes back: to its found card, or to the app the reconnect
           banner was tapped in (the first step there offers no way back into this reconnect). */}
       <BackToStart

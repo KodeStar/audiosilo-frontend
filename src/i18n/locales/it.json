@@ -438,6 +438,7 @@
     "server": {
       "connecting": "Connessione del dispositivo in corso…",
       "addressLabel": "Indirizzo del server",
+      "orAddress": "Oppure inserisci l'indirizzo del server",
       "enterAddress": "Inserisci l'indirizzo del tuo server",
       "missingAddress": "A questo link di abbinamento manca l'indirizzo del server. Inseriscilo qui sotto.",
       "pairingRefused": "Questo link di abbinamento è scaduto o è già stato usato. Chiedine uno nuovo, oppure inserisci il tuo codice di invito nella schermata di accesso.",
@@ -466,6 +467,7 @@
       "passwordLabel": "Password",
       "passwordPlaceholder": "Password",
       "submit": "Accedi",
+      "scanInstead": "Nessuna password? Scansiona invece un codice QR",
       "failed": "Accesso non riuscito. Riprova.",
       "modeLabel": "Come accedere",
       "errors": {
@@ -489,7 +491,7 @@
       "permissionDenied": "AudioSilo ha bisogno dell'accesso alla fotocamera per scansionare il codice QR di abbinamento del tuo server.",
       "tryAgain": "Riprova",
       "openSettings": "Apri le impostazioni",
-      "aimHint": "Inquadra con la fotocamera il codice QR di abbinamento nella pagina di connessione del tuo server."
+      "aimHint": "Inquadra con la fotocamera il tuo codice QR. Se gestisci il server, è nella console di amministrazione, in Persone > il tuo nome > Associa un dispositivo. Se sei stato invitato, è nella tua pagina d'invito."
     },
     "probe": {
       "found": "Trovato {{name}}",
@@ -519,7 +521,7 @@
     "step": "Passaggio {{step}} di {{count}}",
     "start": {
       "title": "I tuoi audiolibri, dal tuo server.",
-      "lead": "Inserisci l'indirizzo che ti ha dato il tuo amministratore, o scansiona il codice sul suo schermo.",
+      "lead": "Scansiona un codice QR per accedere senza digitare nulla. Se gestisci il server, il tuo è nella console di amministrazione, in Persone > il tuo nome > Associa un dispositivo. Se sei stato invitato, è nella tua pagina d'invito.",
       "leadWeb": "Inserisci l'indirizzo che ti ha dato il tuo amministratore, o incolla il link di associazione che ti ha inviato.",
       "leadServed": "Accedi con il codice o la password che ti ha dato il tuo amministratore, o incolla il link di associazione che ti ha inviato.",
       "finding": "Ricerca del tuo server…",
@@ -527,7 +529,7 @@
     },
     "signIn": {
       "eyebrow": "{{name}} · {{host}}",
-      "codeHint": "Dall'invito che ti ha inviato il tuo amministratore."
+      "codeHint": "Dall'invito che ti ha inviato il tuo amministratore. Non ti serve una password."
     },
     "anotherServer": "Un altro server",
     "addresses": {

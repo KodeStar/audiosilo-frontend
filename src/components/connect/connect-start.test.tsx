@@ -527,6 +527,47 @@ describe('adding a server', () => {
   });
 });
 
+describe('the app leads with the QR (fe#264)', () => {
+  it('puts Scan a QR code first, says where the QR is, and the address under it', async () => {
+    await render(<ConnectStart />);
+    expect(screen.getByText(/admin console under People > your name > Pair a device/)).toBeTruthy();
+    expect(screen.getByText(/on your invite page/)).toBeTruthy();
+    // The scan action is above the address field: first in the screen's order.
+    const scanButton = screen.getByTestId('connect-scan');
+    expect(screen.getByText('Or enter the server address')).toBeTruthy();
+    const tree = JSON.stringify(screen.toJSON());
+    expect(tree.indexOf('"connect-scan"')).toBeGreaterThan(-1);
+    expect(tree.indexOf('"connect-scan"')).toBeLessThan(
+      tree.indexOf('Or enter the server address'),
+    );
+    // One scan action, not a second one under the field.
+    expect(screen.getAllByText('Scan a QR code')).toHaveLength(1);
+    await fireEvent.press(scanButton);
+    expect(mockPush).toHaveBeenCalledWith('/connect/scan');
+  });
+
+  it('still connects from the address typed under it', async () => {
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await fireEvent.changeText(screen.getByLabelText('Server address'), 'books.example.com');
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(await screen.findByText('Found Hearthside')).toBeTruthy();
+  });
+
+  it('keeps the web as it was: the address first, no scanner, its own lead', async () => {
+    Platform.OS = 'web';
+    await render(<ConnectStart />);
+    expect(screen.queryByTestId('connect-scan')).toBeNull();
+    expect(screen.getByText('Server address')).toBeTruthy();
+    expect(screen.queryByText('Or enter the server address')).toBeNull();
+    expect(
+      screen.getByText(
+        'Enter the address your admin gave you, or paste the pairing link they sent.',
+      ),
+    ).toBeTruthy();
+  });
+});
+
 describe('the web', () => {
   beforeEach(() => {
     Platform.OS = 'web';

@@ -438,6 +438,7 @@
     "server": {
       "connecting": "Gerät wird verbunden…",
       "addressLabel": "Serveradresse",
+      "orAddress": "Oder gib die Serveradresse ein",
       "enterAddress": "Gib deine Serveradresse ein",
       "missingAddress": "Bei diesem Kopplungslink fehlt die Serveradresse. Gib sie unten ein.",
       "pairingRefused": "Dieser Kopplungslink ist abgelaufen oder wurde schon benutzt. Bitte um einen neuen oder gib deinen Einladungscode auf dem Anmeldebildschirm ein.",
@@ -466,6 +467,7 @@
       "passwordLabel": "Passwort",
       "passwordPlaceholder": "Passwort",
       "submit": "Anmelden",
+      "scanInstead": "Kein Passwort? Scanne stattdessen einen QR-Code",
       "failed": "Anmeldung fehlgeschlagen. Bitte versuche es erneut.",
       "modeLabel": "Anmeldeart",
       "errors": {
@@ -489,7 +491,7 @@
       "permissionDenied": "AudioSilo benötigt Kamerazugriff, um den Kopplungs-QR-Code deines Servers zu scannen.",
       "tryAgain": "Erneut versuchen",
       "openSettings": "Einstellungen öffnen",
-      "aimHint": "Richte deine Kamera auf den Kopplungs-QR-Code auf der Verbindungsseite deines Servers."
+      "aimHint": "Richte deine Kamera auf deinen QR-Code. Betreibst du den Server, findest du ihn in der Admin-Konsole unter Personen > dein Name > Gerät koppeln. Wurdest du eingeladen, steht er auf deiner Einladungsseite."
     },
     "probe": {
       "found": "{{name}} gefunden",
@@ -519,7 +521,7 @@
     "step": "Schritt {{step}} von {{count}}",
     "start": {
       "title": "Deine Hörbücher, von deinem eigenen Server.",
-      "lead": "Gib die Adresse ein, die du von deinem Admin bekommen hast, oder scanne den Code auf dessen Bildschirm.",
+      "lead": "Scanne einen QR-Code, um dich ohne Tippen anzumelden. Betreibst du den Server, findest du deinen in der Admin-Konsole unter Personen > dein Name > Gerät koppeln. Wurdest du eingeladen, steht er auf deiner Einladungsseite.",
       "leadWeb": "Gib die Adresse ein, die du von deinem Admin bekommen hast, oder füge den Kopplungslink ein, den du bekommen hast.",
       "leadServed": "Melde dich mit dem Code oder Passwort von deinem Admin an, oder füge den Kopplungslink ein, den du bekommen hast.",
       "finding": "Dein Server wird gesucht…",
@@ -527,7 +529,7 @@
     },
     "signIn": {
       "eyebrow": "{{name}} · {{host}}",
-      "codeHint": "Aus der Einladung deines Admins."
+      "codeHint": "Aus der Einladung deines Admins. Ein Passwort brauchst du nicht."
     },
     "anotherServer": "Anderer Server",
     "addresses": {

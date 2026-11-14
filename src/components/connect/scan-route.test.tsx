@@ -70,3 +70,9 @@ it('says a code is neither a pairing nor an invite code, then lets the camera ai
     jest.useRealTimers();
   }
 });
+
+it('says where the QR is: the console for an admin, the invite page for anyone invited', async () => {
+  await render(<ScanScreen />);
+  expect(screen.getByText(/People > your name > Pair a device/)).toBeTruthy();
+  expect(screen.getByText(/on your invite page/)).toBeTruthy();
+});
