@@ -16,7 +16,7 @@ import {
 import { SkipButton } from '@/components/player/skip-button';
 import { PlayButton } from '@/components/player/transport-controls';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
-import { Text } from '@/components/ui/text';
+import { MINI_TITLE_CLASS, Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
 import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
@@ -106,11 +106,7 @@ export function AccessoryPlayer() {
           className="rounded-full"
         />
         <View className="min-w-0 flex-1">
-          <Text
-            variant="label"
-            className="text-[13.5px] web:text-[0.84375rem] leading-[17px] web:leading-[1.0625rem]"
-            numberOfLines={1}
-          >
+          <Text variant="label" className={MINI_TITLE_CLASS} numberOfLines={1}>
             {heading}
           </Text>
           {regular && fetchLine ? (

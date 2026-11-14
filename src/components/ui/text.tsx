@@ -14,6 +14,11 @@ import { tabularNums } from '@/theme/tabular-nums';
 export const EYEBROW_CLASS =
   'font-sans-semibold text-xs uppercase tracking-wider text-muted-foreground';
 
+/** The title line of a mini card (the mini player, the accessory player, the episode fetch
+ * strip), over a `label` variant. */
+export const MINI_TITLE_CLASS =
+  'text-[13.5px] web:text-[0.84375rem] leading-[17px] web:leading-[1.0625rem]';
+
 /** The web's keyboard focus ring on a pressable (put it in its `web` classes): the
  * browser outline off, the ring token on `:focus-visible`. */
 export const FOCUS_RING_CLASS = 'outline-none focus-visible:ring-2 focus-visible:ring-ring';

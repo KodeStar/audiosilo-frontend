@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Spinner } from '@/components/ui/spinner';
-import { Text } from '@/components/ui/text';
+import { MINI_TITLE_CLASS, Text } from '@/components/ui/text';
 import { formatBytes } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
@@ -282,11 +282,7 @@ function AccessoryFetch({ pending, regular }: { pending: PendingEpisodeFetch; re
           className="rounded-full"
         />
         <View className="min-w-0 flex-1">
-          <Text
-            variant="label"
-            className="text-[13.5px] web:text-[0.84375rem] leading-[17px] web:leading-[1.0625rem]"
-            numberOfLines={1}
-          >
+          <Text variant="label" className={MINI_TITLE_CLASS} numberOfLines={1}>
             {pending.title}
           </Text>
           {regular ? (
