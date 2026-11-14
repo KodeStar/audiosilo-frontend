@@ -87,7 +87,7 @@ export type AppTextProps = TextProps & {
  * (`heading`, `stat`) 2, anything smaller (a card or sheet title) 3.
  */
 export function headingLevelFor(variant: TextVariant): HeadingLevel {
-  if (variant === 'display-xl' || variant === 'display') return 1;
+  if (isDisplay(variant)) return 1;
   if (variant === 'heading' || variant === 'stat') return 2;
   return 3;
 }
@@ -99,7 +99,11 @@ export function headingLevelFor(variant: TextVariant): HeadingLevel {
  * do; a caller's `maxFontSizeMultiplier` wins.
  */
 export const DISPLAY_MAX_FONT_SCALE = 2;
-const CAPPED = new Set<keyof typeof variants>(['display-xl', 'display']);
+
+/** A page title's type role (`display-xl`, `display`). */
+function isDisplay(variant: TextVariant): boolean {
+  return variant === 'display-xl' || variant === 'display';
+}
 
 /** Whether the props make a heading (the `header` role, or `heading` on the web). */
 function isHeading(props: TextProps): boolean {
@@ -127,7 +131,7 @@ export function Text({ variant = 'body', className, style, level, ...props }: Ap
     <RNText
       className={cn(variants[variant], contextClass, className)}
       style={TABULAR.has(variant) ? [tabularNums, style] : style}
-      maxFontSizeMultiplier={CAPPED.has(variant) ? DISPLAY_MAX_FONT_SCALE : undefined}
+      maxFontSizeMultiplier={isDisplay(variant) ? DISPLAY_MAX_FONT_SCALE : undefined}
       {...heading}
       {...props}
     />

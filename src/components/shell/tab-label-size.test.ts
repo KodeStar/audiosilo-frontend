@@ -19,9 +19,4 @@ describe('tabLabelFontSize', () => {
     const values = [0.85, 1, 1.15, 1.3, 1.5, 2].map(tabLabelFontSize);
     expect(new Set(values).size).toBe(values.length);
   });
-
-  it('reads a broken scale as 1', () => {
-    expect(tabLabelFontSize(NaN)).toBe(tabLabelFontSize(1));
-    expect(tabLabelFontSize(0)).toBe(tabLabelFontSize(1));
-  });
 });

@@ -31,7 +31,7 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { useDownloadEntry } from '@/downloads/store';
 import { formatCountdown, formatDuration } from '@/lib/format';
 import { openExternalUrl } from '@/lib/support';
-import { linesFor, useLargeText } from '@/lib/text-scale';
+import { linesFor } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import type { UnplacedWork, UpNextBook } from '@/playback/up-next-resolver';
 import { useConnectionName } from '@/stores/session';
@@ -158,14 +158,15 @@ export function StatTile({
   label,
   value,
   phone,
+  large,
 }: {
   label: string;
   value: string;
   phone: boolean;
+  /** Under large text the parent stacks the tiles: each takes the row's width, and the
+   * label wraps instead of ending in "Tim..." (fe#267). */
+  large: boolean;
 }) {
-  // Under large text the tiles stack (`end-credits.tsx`), each the row's width, and the
-  // label wraps instead of ending in "Tim..." (fe#267).
-  const large = useLargeText();
   return (
     <Card
       testID="end-credits-tile"

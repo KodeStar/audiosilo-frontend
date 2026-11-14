@@ -20,8 +20,9 @@ export const TAB_LABEL_MAX_SCALE = 1.3;
  * size would otherwise be the same number at every scale, the bar's appearance would not
  * change, and react-native-screens would keep the size it drew at the old scale after a
  * live text-size change (the activity is not recreated for one, `withFontScaleChanges`).
+ *
+ * `scale` is `useFontScale`'s, which is never 0 or NaN.
  */
 export function tabLabelFontSize(scale: number): number {
-  const s = scale > 0 && Number.isFinite(scale) ? scale : 1;
-  return (TAB_LABEL_BASE_SP * Math.min(s, TAB_LABEL_MAX_SCALE)) / s + s / 10_000;
+  return (TAB_LABEL_BASE_SP * Math.min(scale, TAB_LABEL_MAX_SCALE)) / scale + scale / 10_000;
 }

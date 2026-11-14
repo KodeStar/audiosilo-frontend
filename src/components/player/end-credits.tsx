@@ -423,13 +423,10 @@ function EndCreditsBody({
         {tiles.length > 0 ? (
           <View
             testID="end-credits-tiles"
-            className={cn(
-              'w-full max-w-[720px] gap-3',
-              large ? 'items-stretch' : 'flex-row justify-center',
-            )}
+            className={cn('w-full max-w-[720px] gap-3', !large && 'flex-row justify-center')}
           >
             {tiles.map(([label, value]) => (
-              <StatTile key={label} label={label} value={value} phone={phone} />
+              <StatTile key={label} label={label} value={value} phone={phone} large={large} />
             ))}
           </View>
         ) : null}

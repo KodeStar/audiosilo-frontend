@@ -21,10 +21,9 @@ const GREETING = {
 
 /** One of the greeting's pills: never wider than its row, its text cut to fit (a long
  * server name on a phone). */
-function Pill({ children, label }: { children: ReactNode; label: string }) {
+function Pill({ children, label, large }: { children: ReactNode; label: string; large: boolean }) {
   // A min height: the words grow with the text size and may wrap under large text (at
   // iOS's AX sizes a fixed 30 cut them in half, fe#267); a wrapped pill rounds less.
-  const large = useLargeText();
   return (
     <View
       accessible
@@ -87,7 +86,7 @@ export function Greeting({
     ? t('shell.notAnswering', { name: down })
     : t('home.servers', { count: servers });
   const syncPill = syncText ? (
-    <Pill label={syncText}>
+    <Pill label={syncText} large={large}>
       <Icon
         name={sync?.kind === 'local' ? 'hard-drive' : 'check'}
         size={14}
@@ -103,7 +102,7 @@ export function Greeting({
   ) : null;
   const serversPill =
     servers > 1 ? (
-      <Pill label={serversText}>
+      <Pill label={serversText} large={large}>
         <View className={`h-[7px] w-[7px] rounded-full ${down ? 'bg-warning' : 'bg-success'}`} />
         <Text
           className="shrink font-sans-semibold text-[12.5px] web:text-[0.78125rem] text-muted-foreground"
