@@ -634,7 +634,8 @@ in step.
   queued or saw open. Once `allowed` for a connection, the page stays when a `/server` read again
   finds the Bridge away (`unavailable`: its heartbeat lapsed and `/server` dropped its features):
   the search and the followed fetches are kept, a caption says so (`librivox.access.away`) and
-  Add is held back (`bridgeAway`) until it is back; `notAdmin` and `metadataOff` still close it.
+  Add and Cancel are held back (`bridgeAway`: a cancel is `bridge`-gated, never sent) until it is
+  back; `notAdmin` and `metadataOff` still close it.
   A `/server` read that failed with nothing kept says so with Retry (`librivox.access.readFailed`),
   never a skeleton for ever. A link without `?connection=` is the default connection's (`useCid`,
   as Find shows).

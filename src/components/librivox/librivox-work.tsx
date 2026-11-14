@@ -54,7 +54,8 @@ export function LibrivoxWorkPanel({
   connectionId: string;
   workId: string;
   target: Library | null | undefined;
-  /** The Bridge went away while the page was open: Add is held back until it is back. */
+  /** The Bridge went away while the page was open: Add and Cancel are held back until it
+   * is back. */
   bridgeAway: boolean;
 }) {
   const { t } = useTranslation();
@@ -194,6 +195,7 @@ function RecordingRow({
           view={view}
           cancelling={fetch.cancelling}
           onCancel={isOpenJob(fetch.job) ? fetch.cancel : undefined}
+          held={bridgeAway}
         />
       ) : null}
       {canAdd ? (
@@ -271,15 +273,18 @@ const PHASE_LOOK = {
 
 /** A fetch's status (the Bridge's work on it): a title (Adding, Needs attention, Couldn't
  * add it, Added), one line, a neutral progress bar while sections download, and Cancel
- * under them while it is open (where Add sits: the row is the page's width). */
+ * under them while it is open (where Add sits: the row is the page's width). `held`: the
+ * Bridge is away, so Cancel waits with Add (a cancel is the Bridge's too: never sent). */
 function FetchStatus({
   view,
   cancelling,
   onCancel,
+  held,
 }: {
   view: FetchView;
   cancelling: boolean;
   onCancel?: () => void;
+  held: boolean;
 }) {
   const { t } = useTranslation();
   const look = PHASE_LOOK[view.phase];
@@ -304,7 +309,7 @@ function FetchStatus({
             size="sm"
             variant="outline"
             title={t('common.cancel')}
-            disabled={view.phase === 'stopping'}
+            disabled={held || view.phase === 'stopping'}
             loading={cancelling}
             onPress={onCancel}
           />

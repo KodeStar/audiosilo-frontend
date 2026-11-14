@@ -353,6 +353,17 @@ describe('LibrivoxSearch', () => {
     expect(mockAdd).not.toHaveBeenCalled();
   });
 
+  it('holds Cancel back too while the Bridge is away (a cancel is never sent)', async () => {
+    mockWork = { data: work({ job: { id: 41, state: 'running' } }) };
+    mockJobs = { 41: { data: librivoxJob({ id: 41, state: 'running' }) } };
+    await mount(3, true);
+    await openWork();
+    const cancel = screen.getByTestId('librivox-cancel');
+    expect(cancel.props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
+    await fireEvent.press(cancel);
+    expect(mockCancel).not.toHaveBeenCalled();
+  });
+
   it('picks among the books libraries only, the one the page opened from first', async () => {
     mockLibraries = [library(3, 'Books'), library(4, 'Fiction'), library(5, 'Shows', 'podcasts')];
     await mount(4);
