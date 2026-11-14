@@ -2,12 +2,17 @@ import type { ApiClient } from '@/api/client';
 
 import { communityCoverSource, noCommunityCover } from './community-cover';
 
+let proxyHeaders: Record<string, string> | undefined;
 const api = {
   communityCoverUrl: jest.fn(
     (lib: number, path: string, url: string, o?: { size?: number }) =>
       `proxy:${lib}:${path}:${url}:${o?.size}`,
   ),
+  proxyHeadersFor: jest.fn(() => proxyHeaders),
 } as unknown as ApiClient;
+afterEach(() => {
+  proxyHeaders = undefined;
+});
 
 const base = {
   coverUrl: 'https://m.media-amazon.com/x.jpg',
@@ -24,6 +29,19 @@ describe('communityCoverSource', () => {
         'proxy:3:A/Book:https://m.media-amazon.com/x.jpg:320',
       );
     }
+  });
+
+  it("behind an auth proxy the app sends the connection's headers to the server's URL only", () => {
+    proxyHeaders = { 'X-Proxy': 'secret' };
+    const uri = 'proxy:3:A/Book:https://m.media-amazon.com/x.jpg:320';
+    expect(communityCoverSource({ ...base, proxied: true, web: false })).toEqual({
+      uri,
+      headers: { 'X-Proxy': 'secret' },
+    });
+    expect(api.proxyHeadersFor).toHaveBeenLastCalledWith(uri);
+    // The web's <img> sends no headers; the cover's own host never gets one.
+    expect(communityCoverSource({ ...base, proxied: true, web: true })).toBe(uri);
+    expect(communityCoverSource({ ...base, proxied: false, web: false })).toBe(base.coverUrl);
   });
 
   it('without meta_covers: native loads the cover_url directly, web shows the placeholder', () => {

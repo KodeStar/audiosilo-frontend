@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
-import { ApiClient, ApiError } from '@/api/client';
+import { ApiError } from '@/api/client';
+import { connectClientFor } from '@/api/connect-client';
 import { resolveClient } from '@/api/connection-clients';
 import { probeServerId } from '@/api/server-id-probe';
 import { connectForNewProfile } from '@/components/profiles/connect-intent';
@@ -145,13 +146,15 @@ export function useLinkPairing(startPairing = false): LinkPairing {
       }
       if (!live.current) return 'temporary';
     }
-    // The token's exchange at `base`, with the server's name read alongside.
-    const exchangeAt = (base: string) => {
-      const client = new ApiClient(base);
-      return Promise.all([
+    // The token's exchange at `base`, with the server's name read alongside, and the proxy
+    // headers set it went out with (fe#167: the connection keeps the set that got it in).
+    const exchangeAt = async (base: string) => {
+      const { client, proxy } = connectClientFor(base);
+      const [session, info] = await Promise.all([
         client.exchange(scan.token, getDeviceName()),
         client.serverInfo().catch(() => null),
       ]);
+      return { session, info, carried: proxy };
     };
     // The exchange is done: a failure after it is this device's (storing the connection),
     // never a server that couldn't be reached.
@@ -163,13 +166,13 @@ export function useLinkPairing(startPairing = false): LinkPairing {
       // origin, and an https page can't call http. A session from any other server there
       // is not kept (reported as the base not answering).
       const {
-        answer: [session, info],
+        answer: { session, info, carried },
         base: answeredAt,
       } = await withFallback(
         scan.base,
         async (base) => {
           const answer = await exchangeAt(base);
-          if (base !== scan.base && answer[0].server_id !== scan.serverId) {
+          if (base !== scan.base && answer.session.server_id !== scan.serverId) {
             throw new Error('another server answered at the home address');
           }
           return answer;
@@ -190,6 +193,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
         name: info?.name,
         ...(answeredAt !== scan.base ? { answeredAt } : {}),
         book: scan.book,
+        carried,
       });
       return 'paired';
     } catch (e) {

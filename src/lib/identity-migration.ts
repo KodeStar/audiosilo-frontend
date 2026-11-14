@@ -14,6 +14,7 @@ import { personName } from '@/lib/account';
 import { connectionOfKey, contentKey } from '@/lib/content-key';
 import { randomUUID } from '@/lib/random';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
+import { copyProxyHeaders, forgetProxyHeaders } from '@/lib/proxy-headers-store';
 import { moveCalendarLink } from '@/lib/upcoming-calendar';
 import {
   CAR_BOOKMARKS_KEY,
@@ -339,8 +340,8 @@ function remapProfiles(plan: Plan, doc: unknown): unknown {
 
 // --- The run -------------------------------------------------------------------------------
 
-/** Delete each moved-from token no connection still uses (and move its calendar link, a
- * credential kept beside it, to the new id), then the plan. Best effort. */
+/** Delete each moved-from token and proxy headers set no connection still uses (both
+ * copied in step 2) and move its calendar link to the new id, then the plan. Best effort. */
 async function cleanUp(plan: Plan, liveIds: ReadonlySet<string>): Promise<void> {
   await Promise.all(
     Object.entries(plan)
@@ -348,6 +349,7 @@ async function cleanUp(plan: Plan, liveIds: ReadonlySet<string>): Promise<void> 
       .flatMap(([from, to]) => [
         deleteSecure(tokenKey(from)).catch(() => undefined),
         moveCalendarLink(from, to),
+        forgetProxyHeaders(from), // copied and verified with the token (step 2)
       ]),
   );
   await AsyncStorage.removeItem(IDENTITY_PLAN_KEY).catch(() => undefined);
@@ -423,9 +425,10 @@ export async function migrateConnectionIdentity(
     if (loaded === UNKNOWN || (loaded && involved.has(loaded))) return abort('busy');
   }
 
-  // 2. Tokens: copy and verify every one before anything else changes. Each connection's
-  // read, copy and read-back is one chain, the chains side by side (secure-store calls are
-  // slow, and the launch waits on this); any failure aborts with nothing else changed.
+  // 2. Tokens (and each one's proxy headers): copy and verify every one before anything
+  // else changes. Each connection's read, copy and read-back is one chain, the chains side
+  // by side (secure-store calls are slow, and the launch waits on this); any failure aborts
+  // with nothing else changed.
   const present = liveIds();
   try {
     await Promise.all(
@@ -438,6 +441,8 @@ export async function migrateConnectionIdentity(
           if ((await getSecure(tokenKey(to))) !== token) {
             throw new Error('the token copy did not read back');
           }
+          // Its proxy headers (fe#167), a credential kept beside it, the same way.
+          await copyProxyHeaders(from, to);
         }),
     );
   } catch (e) {

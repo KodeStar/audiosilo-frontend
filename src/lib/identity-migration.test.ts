@@ -238,6 +238,7 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   for (const id of ['srvA', 'srvB', 'srvC', 'srvA.3', 'srvB.7', 'x', 'x.1', 'y.2', 'y', 'srvA.9']) {
     await SecureStore.deleteItemAsync(`audiosilo.token.${id}`);
+    await SecureStore.deleteItemAsync(`audiosilo.proxy-headers.${id}`);
   }
   dirs = { srvA: ['srvA-book'], srvB: ['srvB-book'], srvC: ['srvC-book'] };
   failMove = null;
@@ -264,6 +265,17 @@ describe('migrateConnectionIdentity', () => {
     // In memory for this launch's entry points, too.
     expect(connectionAliases()).toEqual({ srvA: 'srvA.3', srvB: 'srvB.7' });
     expect(resolveConnectionId('srvB')).toBe('srvB.7');
+  });
+
+  it("moves a connection's proxy headers (fe#167) with it, leaving none under the old id", async () => {
+    await seedLegacyInstall();
+    const set = { origin: 'https://a', headers: [{ name: 'X-Proxy', value: 'proxy-secret' }] };
+    await SecureStore.setItemAsync('audiosilo.proxy-headers.srvA', JSON.stringify(set));
+    await migrateConnectionIdentity(deps());
+    expect(await SecureStore.getItemAsync('audiosilo.proxy-headers.srvA')).toBeNull();
+    expect(JSON.parse((await SecureStore.getItemAsync('audiosilo.proxy-headers.srvA.3'))!)).toEqual(
+      set,
+    );
   });
 
   it("moves Sync v2's documents: the outbox, the open spans (a list) and the sync state", async () => {
@@ -514,6 +526,32 @@ describe('migrateConnectionIdentity', () => {
       });
       expect(await snapshotDocuments()).toEqual(before);
       expect(await token('srvA')).toBe('tokA');
+    });
+
+    it('a proxy headers copy that does not read back keeps the old set (fe#167)', async () => {
+      await seedLegacyInstall();
+      const set = { origin: 'https://a', headers: [{ name: 'X-Proxy', value: 'proxy-secret' }] };
+      await SecureStore.setItemAsync('audiosilo.proxy-headers.srvA', JSON.stringify(set));
+      const before = await snapshotDocuments();
+      secure.setItemAsync = (k: string, v: string, o?: unknown) =>
+        k === 'audiosilo.proxy-headers.srvA.3' ? Promise.resolve() : realSet(k, v, o);
+      expect(await migrateConnectionIdentity(deps())).toMatchObject({
+        status: 'aborted',
+        step: 'tokens',
+      });
+      expect(await snapshotDocuments()).toEqual(before);
+      expect(JSON.parse((await SecureStore.getItemAsync('audiosilo.proxy-headers.srvA'))!)).toEqual(
+        set,
+      );
+      expect(await token('srvA')).toBe('tokA');
+
+      // Next launch, the store writing again: the set moves.
+      secure.setItemAsync = realSet;
+      expect(await migrateConnectionIdentity(deps())).toMatchObject({ status: 'migrated' });
+      expect(await SecureStore.getItemAsync('audiosilo.proxy-headers.srvA')).toBeNull();
+      expect(
+        JSON.parse((await SecureStore.getItemAsync('audiosilo.proxy-headers.srvA.3'))!),
+      ).toEqual(set);
     });
 
     it('keeps a failed file move pending and completes it forward', async () => {

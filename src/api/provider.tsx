@@ -9,6 +9,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode }
 import { Platform } from 'react-native';
 
 import { connectionIdFromKey, isServerInfoKey, serverResetCid } from '@/lib/auth-failure';
+import { type ProxyHeaders, sameProxyHeaders } from '@/lib/proxy-headers';
 import { watchDeviceOnline } from '@/lib/device-online';
 import { flushConnection } from '@/playback/progress-sync';
 import { flushReadingConnection } from '@/reader/reading-progress';
@@ -16,10 +17,10 @@ import { connectionsOfProfile, useProfiles, visibleConnectionIds } from '@/store
 import { onConnectionRemoved, useSession, type Connection } from '@/stores/session';
 
 import { pickedUrl, useAddressRoute } from './address-route';
-import { ApiClient, isNotInLibraryError, isSignedOutError } from './client';
+import { type ApiClient, isNotInLibraryError, isSignedOutError } from './client';
+import { connectionClient } from './connection-clients';
 import {
   anyOffline,
-  noteAnswer,
   noteFailure,
   noteSuccess,
   onReconnect,
@@ -194,11 +195,16 @@ const ApiContext = createContext<ApiRegistry>({
 export type ApiConnection = { connection: Connection; client: ApiClient };
 
 /** A connection's client and the address and token it was built with. */
-type BuiltClient = { url: string; token: string; client: ApiClient };
+type BuiltClient = {
+  url: string;
+  token: string;
+  proxyHeaders: ProxyHeaders | undefined;
+  client: ApiClient;
+};
 
 /**
  * Each connection's client on the address it uses now (`pickedUrl`), reusing the one in
- * `previous` while its address and token are unchanged, so a switch of one connection's
+ * `previous` while its address, token and proxy headers are unchanged, so a switch of one connection's
  * address (home / away) rebuilds only that connection's client: every memo keyed on
  * another connection's client (the Journal's per-server queries, a capability query's
  * function) and its in-flight reachability probe survive.
@@ -214,23 +220,17 @@ export function buildClients(
     const kept = previous.get(c.id);
     built.set(
       c.id,
-      kept && kept.url === url && kept.token === c.token
+      kept &&
+        kept.url === url &&
+        kept.token === c.token &&
+        sameProxyHeaders(kept.proxyHeaders, c.proxyHeaders)
         ? kept
         : {
             url,
             token: c.token,
-            // Inject the dead-token callback so a 401 on ANY request through this client
-            // (query OR mutation) flags this connection for reconnect - the client is the
-            // one choke point every request path shares. Built on the address in use now
-            // (`resolveClient` does the same), never straight from `serverUrl`.
-            // Every answer it gets is counted for reachability (`noteAnswer`, FU-SLOWOK).
-            client: new ApiClient(
-              url,
-              c.token,
-              undefined,
-              () => useSession.getState().markNeedsReconnect(c.id, 'auth'),
-              () => noteAnswer(c.id),
-            ),
+            proxyHeaders: c.proxyHeaders,
+            // Built on the address in use now, as `resolveClient` builds its own.
+            client: connectionClient(c, url),
           },
     );
   }
@@ -266,20 +266,28 @@ export function readAgainOnSignIn(query: Pick<Query, 'queryKey' | 'state'>, cid:
 
 /**
  * Read a connection's answers again once it has a new token (signed in again: the
- * Household page's "Sign in again", the connect flow's reconnect): what failed while it was
- * signed out would otherwise keep its error until a reload (`readAgainOnSignIn`). In the
- * provider's effect, which runs after every screen's own: the queries already hold the new
- * client (`useApiRegistry`) by then, and a read any earlier would ask with the dead token
- * and flag the connection again.
+ * Household page's "Sign in again", the connect flow's reconnect) or new proxy headers
+ * (fe#167, the Account page): what failed while it was signed out, or while the proxy
+ * turned it away, would otherwise keep its error until a reload (`readAgainOnSignIn`). In
+ * the provider's effect, which runs after every screen's own: the queries already hold the
+ * new client (`useApiRegistry`) by then, and a read any earlier would ask with the dead
+ * token and flag the connection again.
  */
 function useReadAgainOnSignIn(connections: readonly Connection[]) {
-  const tokens = useRef(new Map<string, string>());
+  const tokens = useRef(
+    new Map<string, { token: string; proxyHeaders: ProxyHeaders | undefined }>(),
+  );
   useEffect(() => {
     const seen = tokens.current;
     for (const c of connections) {
       const before = seen.get(c.id);
-      seen.set(c.id, c.token);
-      if (before === undefined || before === c.token) continue;
+      seen.set(c.id, { token: c.token, proxyHeaders: c.proxyHeaders });
+      if (
+        before === undefined ||
+        (before.token === c.token && sameProxyHeaders(before.proxyHeaders, c.proxyHeaders))
+      ) {
+        continue;
+      }
       void queryClient.invalidateQueries({ predicate: (q) => readAgainOnSignIn(q, c.id) });
     }
     for (const id of seen.keys()) {

@@ -111,26 +111,35 @@ function noteFailure(name: string, permanent: boolean): boolean {
  * (404) is not asked again this session, any other failure waits `RETRY_MS`, doubling up to
  * `MAX_RETRY_MS`. A second call for the same name while one runs shares it.
  */
-export function ensureArtwork(name: string, url: string): Promise<string | null> {
+export function ensureArtwork(
+  name: string,
+  url: string,
+  headers?: Record<string, string>,
+): Promise<string | null> {
   const existing = existingArtwork(name);
   if (existing) return Promise.resolve(existing);
   const failed = failures.get(name);
   if (failed && Date.now() < failed.retryAt) return Promise.resolve(null);
   const running = inFlight.get(name);
   if (running) return running;
-  const job = write(name, url).finally(() => inFlight.delete(name));
+  const job = write(name, url, headers).finally(() => inFlight.delete(name));
   inFlight.set(name, job);
   return job;
 }
 
-async function write(name: string, url: string): Promise<string | null> {
+async function write(
+  name: string,
+  url: string,
+  headers?: Record<string, string>,
+): Promise<string | null> {
   try {
     const dir = artworkDir();
     if (!dir.exists) dir.create({ intermediates: true, idempotent: true });
     const dest = artworkFile(name);
     const part = new File(dir, `${name}.part`);
     if (part.exists) part.delete();
-    await File.downloadFileAsync(url, part, { idempotent: true });
+    // `headers`: a server behind an auth proxy's (fe#167); the URL carries the token.
+    await File.downloadFileAsync(url, part, { idempotent: true, ...(headers ? { headers } : {}) });
     if (!part.exists || nativeNumber(part.size) <= 0) {
       if (part.exists) part.delete();
       // An empty answer is the server's own: a book with no cover.

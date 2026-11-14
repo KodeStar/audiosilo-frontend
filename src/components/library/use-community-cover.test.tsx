@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 const mockApi = {
   communityCoverUrl: (lib: number, path: string, url: string, o?: { size?: number }) =>
     `proxy:${lib}:${path}:${url}:${o?.size}`,
+  proxyHeadersFor: () => undefined,
 };
 jest.mock('@/api/provider', () => ({ useOptionalApi: () => mockApi }));
 let mockInfo: { data?: { capabilities: { meta_covers?: boolean } }; isError: boolean };

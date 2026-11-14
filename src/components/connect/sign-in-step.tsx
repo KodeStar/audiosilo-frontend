@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { ApiClient } from '@/api/client';
+import { connectClientFor } from '@/api/connect-client';
 import { AddressesCard } from '@/components/layout/addresses-card';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -83,7 +83,12 @@ export function SignInStep({
     set(v);
     if (missing === field) setMissing(null);
   };
-  const api = useMemo(() => new ApiClient(server), [server]);
+  // With the proxy headers entered for `server` on the step before (fe#167); a reconnect
+  // carries only those or its own connection's, never another person's.
+  const { client: api, proxy: carried } = useMemo(
+    () => connectClientFor(server, undefined, reconnectId),
+    [server, reconnectId],
+  );
 
   const modes = MODE_VALUES.map((value) => ({
     value,
@@ -116,6 +121,7 @@ export function SignInStep({
           name: payload.server_name || serverName,
           reconnectId,
           book,
+          carried,
         });
       } else {
         const session = await api.login(username.trim(), password, getDeviceName());
@@ -125,6 +131,7 @@ export function SignInStep({
           name: serverName,
           reconnectId,
           book,
+          carried,
         });
       }
     } catch (e) {

@@ -2312,6 +2312,41 @@
     "usingPaired": "A usar o endereço com que te ligaste.",
     "switches": "A app alterna entre eles sozinha."
   },
+  "proxyHeaders": {
+    "title": "Cabeçalhos do proxy",
+    "body": "Para um servidor atrás de um proxy de início de sessão (Cloudflare Access, Authentik, Authelia e semelhantes): cabeçalhos que este dispositivo envia nos pedidos a um dos endereços https do servidor.",
+    "sentTo": "Enviados nos pedidos a {{origin}}.",
+    "httpsOnly": "Os cabeçalhos do proxy precisam de um endereço https, e este dispositivo chega a este servidor por HTTP simples. Ligue-se através de um endereço https para os adicionar.",
+    "toggle": "Cabeçalhos do proxy",
+    "connectBody": "Para um servidor atrás de um proxy de início de sessão: os cabeçalhos que ele pede (por exemplo, um token de serviço do Cloudflare Access). São enviados nos pedidos a {{origin}} e ficam guardados com a sua sessão neste dispositivo. Adicione-os antes de continuar ou de ler o código.",
+    "connectNoAddress": "Introduza primeiro o endereço https do servidor: os cabeçalhos são enviados nos pedidos a esse endereço.",
+    "connectHttp": "Os cabeçalhos do proxy precisam do endereço https:// do servidor. Introduza-o para os adicionar.",
+    "name": "Nome do cabeçalho",
+    "namePlaceholder": "CF-Access-Client-Id",
+    "value": "Valor",
+    "valueOf": "Valor de {{name}}",
+    "valueKept": "Fica como está",
+    "add": "Adicionar um cabeçalho",
+    "remove": "Remover este cabeçalho",
+    "removeNamed": "Remover {{name}}",
+    "addHeaders": "Adicionar cabeçalhos",
+    "edit": "Alterar cabeçalhos",
+    "save": "Guardar cabeçalhos",
+    "saveFailed": "Não foi possível guardar os cabeçalhos neste dispositivo. Nada foi alterado.",
+    "removeAll": "Remover cabeçalhos",
+    "removeTitle": "Remover os cabeçalhos do proxy?",
+    "removeBody": "Este dispositivo deixa de os enviar. Se o proxy precisar deles, o servidor fica inacessível até os adicionar de novo.",
+    "sendTo": "Enviar para",
+    "hiddenValue": "{{name}}, valor oculto",
+    "notCarried": "O Chromecast, as apps do relógio e as apps de calendário não os conseguem enviar, por isso não chegam ao servidor através do proxy.",
+    "webNote": "Num navegador só são enviados nos pedidos ao servidor de onde veio esta página, e as capas e o áudio não os levam. Inicie antes sessão no proxy neste navegador.",
+    "problem": {
+      "name": "Use letras, algarismos e hífenes no nome.",
+      "reserved": "A app já envia {{name}} por si.",
+      "duplicate": "{{name}} já está na lista.",
+      "value": "Introduza um valor numa só linha."
+    }
+  },
   "year": {
     "eyebrow": "O teu ano de audição",
     "title": "O teu {{year}}, como uma história",
@@ -2483,7 +2518,8 @@
       "codec": "O formato de áudio não toca em dispositivos Cast e o servidor não o consegue converter.",
       "no-connection": "O servidor não tem sessão iniciada neste dispositivo. Inicia sessão de novo para o transmitir.",
       "titleEpisode": "Este episódio não pode ser transmitido",
-      "episode": "Episódios de podcast ainda não podem ser transmitidos, então este fica neste dispositivo."
+      "episode": "Episódios de podcast ainda não podem ser transmitidos, então este fica neste dispositivo.",
+      "proxy": "O seu servidor está atrás de um proxy de início de sessão, que um dispositivo Cast não consegue atravessar."
     },
     "failed": {
       "title": "Não foi possível começar a transmitir",

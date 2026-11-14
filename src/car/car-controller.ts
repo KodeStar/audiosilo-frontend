@@ -478,8 +478,11 @@ async function playSpecs(
 /** What the last write handed native, without its date (an unchanged snapshot is not sent
  * again). */
 let lastBody = '';
+/** A cover to fetch: its file name, its URL and the connection's proxy headers for it
+ * (fe#167; in memory only, never in the snapshot). */
+type ArtworkJob = { name: string; url: string; headers?: Record<string, string> };
 /** Covers a written snapshot still lacks, fetched after it is out. */
-let missingArtwork = new Map<string, { name: string; url: string }>();
+let missingArtwork = new Map<string, ArtworkJob>();
 /** Whether native keeps a snapshot from before (`WRITTEN_KEY`), read once; null until then. */
 let wroteBefore: boolean | null = null;
 
@@ -566,7 +569,7 @@ async function buildAndWrite(): Promise<void> {
   const onDisk = artworkOnDisk();
   const names = new Set<string>();
   const artwork = new Map<string, string | null>();
-  const missing = new Map<string, { name: string; url: string }>();
+  const missing = new Map<string, ArtworkJob>();
   for (const [key, b] of all) {
     const local = downloadedEntryOf(b.ref)?.manifest.coverUri;
     if (local) {
@@ -589,7 +592,7 @@ async function buildAndWrite(): Promise<void> {
           version: b.book?.cover_version,
         })
       : client.coverUrl(b.ref.libraryId, b.ref.path);
-    missing.set(key, { name, url });
+    missing.set(key, { name, url, headers: client.proxyHeadersFor(url) });
   }
 
   const { generatedAt, ...body } = buildCarSnapshot(
@@ -673,7 +676,9 @@ async function fetchMissingArtwork(): Promise<void> {
   const jobs = [...missingArtwork.values()];
   missingArtwork = new Map();
   if (jobs.length === 0) return;
-  const written = await mapLimit(jobs, ARTWORK_CONCURRENCY, (j) => ensureArtwork(j.name, j.url));
+  const written = await mapLimit(jobs, ARTWORK_CONCURRENCY, (j) =>
+    ensureArtwork(j.name, j.url, j.headers),
+  );
   if (written.some(Boolean)) request(false);
 }
 

@@ -1,4 +1,5 @@
 import type { Book, ChaptersResponse } from '@/api/types';
+import { originOf, type ProxyHeaders } from '@/lib/proxy-headers';
 import { isLoopbackHost, urlHost } from '@/lib/url-host';
 import { isBrowserUndecodable, transcodeUrlAt } from '@/playback/transcode';
 import type { BookRef, PlaybackTrack } from '@/playback/types';
@@ -58,7 +59,22 @@ export type CastBlockReason =
   /** A podcast episode (Bridge Phase 2d-1: a cast token never covers one; a v2.4.0 server
    * says so with `not_a_book`). The Cast button is hidden for one, so this is a start of an
    * episode while a book is cast. */
-  | 'episode';
+  | 'episode'
+  /** The address in use is guarded by an auth proxy the app passes with custom headers
+   * (fe#167): a Cast receiver fetches the stream itself and can send none of them. */
+  | 'proxy';
+
+/**
+ * Whether `baseUrl` is the origin a connection's proxy headers go to (fe#167): a server
+ * behind an auth proxy there, which a Cast receiver can't pass. Whatever the platform: the
+ * web, which sends no headers cross-origin, can't hand the receiver a way past it either.
+ */
+export function behindProxy(
+  proxyHeaders: ProxyHeaders | null | undefined,
+  baseUrl: string | null,
+): boolean {
+  return !!proxyHeaders?.headers.length && !!baseUrl && originOf(baseUrl) === proxyHeaders.origin;
+}
 
 /**
  * Can a Cast receiver (another device on the network) fetch from this address? Not one
@@ -84,11 +100,14 @@ export function castBlockReason(input: {
   chapters?: Pick<ChaptersResponse, 'codec' | 'direct_playable'> | null;
   /** A podcast episode, which never casts (the button hides on the same value). */
   episode?: boolean;
+  /** The address in use takes the connection's proxy headers (`behindProxy`). */
+  proxied?: boolean;
 }): CastBlockReason | null {
   if (input.baseUrl === null) return 'no-connection';
   if (input.episode) return 'episode';
   if (input.canCast === false) return 'unsupported';
   if (!isReachableByReceiver(input.baseUrl)) return 'local-address';
+  if (input.proxied) return 'proxy';
   if (
     input.book &&
     input.canTranscode === false &&

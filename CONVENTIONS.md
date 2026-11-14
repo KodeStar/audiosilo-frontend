@@ -275,6 +275,81 @@ away" card is ONE component, `AddressesCard` (`src/components/layout/addresses-c
 shows it when the server has both addresses, Account shows whichever it knows and, on native, the
 one in use (`inUse`); the web passes no `inUse` and says only what the addresses are for.
 
+**Proxy headers (fe#167): custom headers for a server behind an auth proxy** (Cloudflare Access
+service tokens, Authentik, Authelia and the like; nothing changes on the server). Rules in
+`src/lib/proxy-headers.ts`, storage in `src/lib/proxy-headers-store.ts`. They are credentials:
+- **Kept like the token.** `Connection.proxyHeaders` is `{ origin, headers }`, held in memory and
+  in secure-store under `audiosilo.proxy-headers.<connection id>` (iOS: the after-first-unlock
+  service, so CarPlay streams on a locked phone; web: localStorage, as the token). Never in the
+  AsyncStorage metadata (`persist` strips it, keeping only the non-secret `hasProxyHeaders`
+  marker), the query cache, a URL or a log line. `hydrate` reads them beside the token only for a
+  marked connection (no extra keychain read for anyone else, a locked-phone CarPlay start
+  included), and a refused read fails the hydrate as a token read does. A new connection to a
+  server another connection here reaches with headers (a member signed in here, a second person)
+  takes that set, stored under its own id. They go
+  with the connection wherever the token and the calendar link go (sign-out, a retired identity,
+  the auth reset, a connection `hydrate` drops because its token is gone) and move with the
+  identity migration as the token does (`copyProxyHeaders`: copied, read back and compared in
+  its token step, a failure aborting the run with the old entry kept for the next launch; the
+  old entry deleted only in the clean-up). `removeConnection` deletes the token first: a delete
+  that fails stops the removal with the headers still kept.
+- **One https origin.** A set names the origin (scheme, host, port) it was entered for, and
+  `proxyHeaderRecord` is the one rule: only a request to that origin carries them, so the home
+  address (which the proxy doesn't guard), a plain-http fallback, another port and anything else
+  get none. **The app never puts them on a plain-http request**: a set for an http origin is
+  refused at entry and dropped at load (`cleanProxyHeaders`), `proxyHeaderRecord` sends none to an
+  http URL whatever the set says, `proxyOriginChoices` offers https addresses only, and the
+  connect screen and the Account card say so for an http address. So the tokenless `server_id`
+  probe of the home address (`probeServerId`, every 90 s) carries a set only to an https home
+  address the set was entered for. (What a redirect from that request does is the next bullet's
+  open question.) On the web only same-origin with the page (the server's CORS lists a fixed set
+  of request headers, so a custom one cross-origin would fail its preflight; changing that is a
+  server change). `ApiClient` takes the set as its sixth argument and computes the record once:
+  `request()` and every hand-built request send it, `authHeaders()` hands it with the token to
+  expo-image, the native player (AVURLAsset headers, Media3's origin-scoped `AuthHolder`) and the
+  reader's EPUB download, and `proxyHeadersFor(url)` gives it alone for a request whose URL
+  carries `?token=` (a book's files and cover, the car's covers, the widget's, a community cover
+  the server serves, a podcast directory's artwork). A new image or download of the server's needs
+  one of the two, or the proxy turns it away. `buildClients` rebuilds a client whose set changed,
+  and the provider reads failed queries again (`useReadAgainOnSignIn`).
+- **Open: redirects.** The rule covers the request the app makes, not what a 3xx does with it.
+  The platform's HTTP stack follows a redirect by itself (React Native's `fetch` has no manual
+  mode), so whether a request's custom headers go on to the address the redirect names (a proxy's
+  own sign-in host, for a set it no longer takes) is that stack's rule, not `proxyHeaderRecord`'s.
+  Unverified: a device check is owed for `fetch`, expo-image, the download tasks and the native
+  players (iOS and Android), and the web's `fetch`. Until it is done, claim no more than "the
+  request goes to one origin": the UI says "sent with requests to <origin>", never "and nowhere
+  else" or "they go only to" (`src/i18n/locales.test.ts` refuses those in every locale).
+- **Before a connection exists.** The connect screen's "Proxy headers" section holds a set for the
+  address as the listener typed it (`pendingProxyHeaders`, in memory only; never rebound when the
+  flow rewrites the field, as the plain-http fallback does; taken up again by the new screen the
+  scanner hands a code to; dropped when the flow's layout unmounts or a sign-in stores it). The
+  flow's bare clients are `connectClient(base)` (`src/api/connect-client.ts`) and `probeServerId`
+  (built by it), through `connectProxyHeaders(url)`: the pending set for that origin, else a
+  signed-in connection's (a second person on the same server). With `ownId` (a reconnect's
+  sign-in, `SignInStep`'s `reconnectId`, and what `finishConnect` keeps for a re-pair) it is
+  only the pending set or that connection's OWN set for the address, never another
+  connection's: a reconnect never signs in with another person's credentials. A sign-in or re-pair
+  with no set of its own keeps the set that carried its successful sign-in or exchange:
+  `connectClientFor` names it (`proxy`) and `finishConnect` takes it as `carried`, so a link or QR
+  re-pair (it can't name the connection before the exchange answers, so it borrows another
+  connection's set for the address) stores the set that got it in, never none. A reconnect never
+  keeps a borrowed set, and a re-pair whose own set is for another address keeps its own. A
+  pairing QR or link pairs with them when its address is the field's: type the address and the
+  headers first, then scan.
+- **Edited** on the Account page's Proxy headers card (`ProxyHeadersCard`, shown whatever the
+  server's flags, since it is needed most when the proxy refuses everything; for a demo
+  account only when it has a set, which a demo started behind a proxy keeps), with a choice of
+  the connection's origins (`proxyOriginChoices`). A value is never
+  shown again: a stored row's field says "Kept as it is" and keeps it unless a new one is typed.
+  Reserved names (`Authorization`, `Cookie`, `Host`, `Range`, `Content-Type`, `X-AudioSilo-Client`
+  and framing headers) and values with control characters are refused at entry and dropped at load.
+- **Not carried:** Chromecast (`castBlockReason` `proxy`, when the address in use is the set's
+  origin, on every platform: the receiver fetches by itself), the watch apps (they talk to the
+  server themselves; the pair message is unchanged), calendar apps (the `releases.ics` link), and
+  on the web cross-origin requests and `<img>`/`<audio>` (same-origin they ride the proxy's
+  browser sign-in).
+
 **Connect and onboarding** (`src/components/connect/`, routes `src/app/connect/{index,sign-in,ready,scan}.tsx`):
 every way in (pairing link or QR, invite code, password, demo) ends in `finishConnect`, which
 stores the connection with the server's name and the addresses the link (`linkAddresses`) and the

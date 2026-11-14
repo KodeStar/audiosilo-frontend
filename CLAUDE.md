@@ -37,7 +37,8 @@ verification, so the large main context is never what reviews or edits code.
   `src/components/ui/icon-data.ts` and drawn with `react-native-svg` - the app has
   **no `@fortawesome/*` dependency** (so no token to build). To add/change an icon,
   edit `scripts/glyphs/manifest.mjs` and regenerate (see `scripts/glyphs/README.md`).
-- **expo-secure-store** for the session token (`src/lib/secure-store.ts`; on iOS in an
+- **expo-secure-store** for the session token and the credentials kept beside it (the calendar
+  link, proxy headers) (`src/lib/secure-store.ts`; on iOS in an
   after-first-unlock keychain service, so CarPlay can start a book on a locked phone: see Car
   below); **AsyncStorage** for everything else.
 - **expo-widgets** for the iOS home screen widget and the sleep timer Live Activity
@@ -154,6 +155,7 @@ keep this index in step (one line per topic).
   - Startup queries (web)
   - Web start (the split build)
   - Web start scripts compiled off the main thread
+  - Proxy headers (fe#167)
   - `mayActFor(cid)`
   - Routes carrying `?connection=`
   - Route params are decoded once

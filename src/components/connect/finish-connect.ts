@@ -10,6 +10,7 @@ import { isKidAccount } from '@/lib/account';
 import { connectionIdOf, priorConnection } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
 import { bookHref, type ConnectBook } from '@/lib/paths';
+import type { ProxyHeaders } from '@/lib/proxy-headers';
 import { mergeAddresses } from '@/lib/server-address';
 import {
   activeProfile,
@@ -22,7 +23,12 @@ import {
   switchProfile,
   useProfiles,
 } from '@/stores/profiles';
-import { sessionHydrateFailed, staleIdentities, useSession } from '@/stores/session';
+import {
+  connectProxyHeaders,
+  sessionHydrateFailed,
+  staleIdentities,
+  useSession,
+} from '@/stores/session';
 
 import { isFirstConnection, repairPlan } from './connect-model';
 
@@ -52,7 +58,8 @@ export function readyHref(connectionId: string) {
  * checks it as for any home pick (and leaves it on another network). It is never stored as
  * the connection's `serverUrl`, the address used when home is not an option. `book` is the
  * book the link asked to open (the admin console's "Listen in player"): the flow ends on its
- * page instead, first connection or not.
+ * page instead, first connection or not. `carried` is the proxy headers set (fe#167) the
+ * successful exchange or sign-in went out with (`connectClientFor`).
  */
 export async function finishConnect(input: {
   serverUrl: string;
@@ -62,6 +69,7 @@ export async function finishConnect(input: {
   reconnectId?: string;
   answeredAt?: string;
   book?: ConnectBook;
+  carried?: ProxyHeaders;
 }): Promise<string> {
   const serverId = input.session.server_id;
   // The connections first, when they never loaded (a failed session read leaves the
@@ -113,6 +121,28 @@ export async function finishConnect(input: {
   // every store at once (and the screens render), so nothing goes to `serverUrl` first.
   // Under the id `setSession` gives the connection (the prior one's, else `connectionIdOf`).
   const pickId = existing?.id ?? connectionIdOf(serverId, input.session.user.id);
+  // A re-pair's own set first: another connection's for the same address only when it has
+  // none and the exchange got in on that one (`borrowed`, below). A reconnect
+  // to a reset server (no `existing`: the server_id is new) keeps the set its sign-in carried
+  // (`connectClientFor(server, _, reconnectId)`), else the old identity's own, never another
+  // person's: given none, `setSession` would give the new connection the first set any
+  // connection to this server has.
+  // Undefined: keep the connection's own (`setSession`); null: none.
+  const reconnectOwn =
+    !existing && input.reconnectId !== undefined
+      ? (connections.find((c) => c.id === input.reconnectId)?.proxyHeaders ?? null)
+      : undefined;
+  // A sign-in or re-pair with no set of its own and none typed (a link or QR re-pair, which
+  // can't name the connection before the exchange answers) that got through the proxy on
+  // another connection's set for the address keeps that set: storing none would leave every
+  // later request turned away. Never for a reconnect (its own or the typed set only), and
+  // never over a set of its own for another address (`setSession` keeps that one).
+  const borrowed =
+    input.reconnectId === undefined && !existing?.proxyHeaders ? input.carried : undefined;
+  const proxyHeaders =
+    connectProxyHeaders(input.serverUrl, existing?.id ?? input.reconnectId) ??
+    borrowed ??
+    reconnectOwn;
   if (input.answeredAt) setAddressPick(pickId, input.answeredAt);
   const id = await setSession({
     serverUrl: plan.serverUrl,
@@ -122,6 +152,9 @@ export async function finishConnect(input: {
     ...(input.name ? { name: input.name } : {}),
     addresses: plan.addresses,
     retire,
+    // The proxy headers this sign-in reached the server with (fe#167); none keeps the
+    // connection's own.
+    ...(proxyHeaders !== undefined ? { proxyHeaders } : {}),
   }).catch((e: unknown) => {
     // Nothing was stored: a new connection's pick goes with it.
     if (input.answeredAt && !existing) setAddressPick(pickId, null);

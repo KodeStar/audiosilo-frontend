@@ -2312,6 +2312,41 @@
     "usingPaired": "Using the address you connected with.",
     "switches": "The app switches between them by itself."
   },
+  "proxyHeaders": {
+    "title": "Proxy headers",
+    "body": "For a server behind a sign-in proxy (Cloudflare Access, Authentik, Authelia and the like): headers this device sends with its requests to one of the server's https addresses.",
+    "sentTo": "Sent with requests to {{origin}}.",
+    "httpsOnly": "Proxy headers need an https address, and this device reaches this server over plain HTTP. Connect through an https address to add them.",
+    "toggle": "Proxy headers",
+    "connectBody": "For a server behind a sign-in proxy: the headers it asks for (a Cloudflare Access service token, for example). They are sent with requests to {{origin}} and kept with your sign-in on this device. Add them before you continue or scan the code.",
+    "connectNoAddress": "Enter the server's https address first: the headers are sent with requests to that address.",
+    "connectHttp": "Proxy headers need the server's https:// address. Enter it to add them.",
+    "name": "Header name",
+    "namePlaceholder": "CF-Access-Client-Id",
+    "value": "Value",
+    "valueOf": "Value of {{name}}",
+    "valueKept": "Kept as it is",
+    "add": "Add a header",
+    "remove": "Remove this header",
+    "removeNamed": "Remove {{name}}",
+    "addHeaders": "Add headers",
+    "edit": "Change headers",
+    "save": "Save headers",
+    "saveFailed": "Couldn't keep the headers on this device. Nothing was changed.",
+    "removeAll": "Remove headers",
+    "removeTitle": "Remove the proxy headers?",
+    "removeBody": "This device stops sending them. If the proxy needs them, the server can't be reached until you add them again.",
+    "sendTo": "Send to",
+    "hiddenValue": "{{name}}, value hidden",
+    "notCarried": "Chromecast, the watch apps and calendar apps can't send them, so they can't reach the server through the proxy.",
+    "webNote": "In a browser they are sent only with requests to the server this page came from, and covers and audio don't carry them. Sign in to the proxy in this browser instead.",
+    "problem": {
+      "name": "Use letters, digits and dashes for the name.",
+      "reserved": "The app sends {{name}} itself.",
+      "duplicate": "{{name}} is already in the list.",
+      "value": "Enter a value on one line."
+    }
+  },
   "year": {
     "eyebrow": "Year in listening",
     "title": "Your {{year}}, as a story",
@@ -2483,7 +2518,8 @@
       "codec": "Its audio format doesn't play on Cast devices, and the server can't convert it.",
       "no-connection": "Its server isn't signed in on this device. Sign in again to cast it.",
       "titleEpisode": "This episode can't be cast",
-      "episode": "Podcast episodes can't be cast yet, so this one stays on this device."
+      "episode": "Podcast episodes can't be cast yet, so this one stays on this device.",
+      "proxy": "Its server is behind a sign-in proxy, which a Cast device can't get past."
     },
     "failed": {
       "title": "Couldn't start casting",

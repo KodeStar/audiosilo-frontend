@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Linking, Platform, View } from 'react-native';
 
-import { ApiClient, ApiError } from '@/api/client';
+import { ApiError } from '@/api/client';
+import { connectClient, connectClientFor } from '@/api/connect-client';
 import { probeServerId } from '@/api/server-id-probe';
 import type { ServerInfo } from '@/api/types';
 import { Logo } from '@/components/brand/logo';
@@ -29,6 +30,7 @@ import {
   type PairingScan,
 } from '@/lib/pairing';
 import { connectBookParams, firstParam, idParam, parseConnectBook } from '@/lib/paths';
+import { originOf, proxyOriginOf } from '@/lib/proxy-headers';
 import { useRouteParams } from '@/lib/route-params';
 import { sameOrigin } from '@/lib/same-origin';
 import { useProfileConnections } from '@/stores/profiles';
@@ -46,6 +48,8 @@ import { KnownServerRow, type Probe, ProbeNotice } from './connect-parts';
 import { CoverFan } from './cover-cascade';
 import { finishConnect } from './finish-connect';
 import { beginInviteSignIn } from './invite-handoff';
+import { ProxyHeadersEditor } from './proxy-headers-editor';
+import { draftOf, draftToSet, type HeaderDraftRow } from './proxy-headers-model';
 import { useLinkPairing } from './use-pairing';
 
 /**
@@ -93,8 +97,15 @@ export function ConnectStart() {
   // The servers of the person listening: a remembered server another person on this device
   // uses is still one this person can sign in to.
   const personServerIds = useProfileConnections().map(serverIdOf);
+  // Proxy headers the flow already holds (fe#167): the scanner hands a code back to a new
+  // instance of this screen, which must take them up, not drop them.
+  const heldProxy = useSession.getState().pendingProxyHeaders;
   // The served player's field, shown only when its own server didn't answer, has the origin.
-  const [url, setUrl] = useState(savedUrl ?? servedOrigin() ?? '');
+  const [url, setUrl] = useState(savedUrl ?? servedOrigin() ?? heldProxy?.origin ?? '');
+  // The address as the listener typed it: what proxy headers are for. Never the field after
+  // the flow rewrites it (a plain-http fallback, a remembered server's home address), so
+  // headers entered for https are never rebound to another origin.
+  const [typedUrl, setTypedUrl] = useState(() => heldProxy?.origin ?? url);
   // The served player's own server: `pending` while asking it, then `found` (the card is the
   // screen). `null` everywhere else (the field), and for a pairing link.
   const [served, setServed] = useState<'pending' | 'found' | null>(() =>
@@ -117,6 +128,19 @@ export function ConnectStart() {
   const { pairing, error: pairError, fail, pair } = useLinkPairing(!!token);
   // A pairing link that failed for a reason that can pass (`PairOutcome` `temporary`).
   const [retryLink, setRetryLink] = useState<PairingScan | null>(null);
+  // Custom headers for an auth proxy in front of the server (fe#167), for the address in
+  // the field: held by the session for the connect flow's clients (`connectProxyHeaders`)
+  // while the section is open, and kept with the connection the sign-in makes. The flow's
+  // layout drops them when the flow is left. Values already held come back hidden.
+  const [proxyOpen, setProxyOpen] = useState(() => !!heldProxy);
+  const [proxyRows, setProxyRows] = useState<HeaderDraftRow[]>(() => draftOf(heldProxy));
+  const setPendingProxyHeaders = useSession((s) => s.setPendingProxyHeaders);
+  // Only an https address takes them (never sent over plain http); an http one says so.
+  const typedOrigin = originOf(normalizeUrl(typedUrl));
+  const proxyOrigin = typedOrigin ? proxyOriginOf(typedOrigin) : null;
+  useEffect(() => {
+    setPendingProxyHeaders(proxyOpen ? draftToSet(proxyOrigin, proxyRows) : null);
+  }, [proxyOpen, proxyOrigin, proxyRows, setPendingProxyHeaders]);
   // `pair` also resolves once the screen has gone: nothing after it may then touch
   // the route now on top (its params) or the session (a probe's pending address).
   const mounted = useRef(true);
@@ -234,12 +258,14 @@ export function ConnectStart() {
       let base = normalized;
       let info: ServerInfo;
       try {
-        info = await new ApiClient(base).serverInfo();
+        info = await connectClient(base).serverInfo();
       } catch (e) {
         if (!http || e instanceof ApiError) throw e;
-        info = await new ApiClient(http).serverInfo().catch((e2: unknown) => {
-          throw e2 instanceof ApiError ? e2 : e;
-        });
+        info = await connectClient(http)
+          .serverInfo()
+          .catch((e2: unknown) => {
+            throw e2 instanceof ApiError ? e2 : e;
+          });
         base = http;
         setUrl(http);
       }
@@ -292,11 +318,13 @@ export function ConnectStart() {
     setDemoError(null);
     setDemoLoading(true);
     try {
-      const demo = await new ApiClient(base).demoSession(getDeviceName());
+      const { client, proxy: carried } = connectClientFor(base);
+      const demo = await client.demoSession(getDeviceName());
       await finishConnect({
         serverUrl: base,
         session: demo,
         name,
+        carried,
       });
     } catch (e) {
       setDemoError(
@@ -416,6 +444,7 @@ export function ConnectStart() {
                   value={url}
                   onChangeText={(v) => {
                     setUrl(v);
+                    setTypedUrl(v);
                     setProbe(null);
                   }}
                   autoCapitalize="none"
@@ -473,7 +502,32 @@ export function ConnectStart() {
             onPress={() => router.push('/connect/scan')}
           />
         )}
+        {isServed ? null : (
+          <Button
+            variant="ghost"
+            icon="key"
+            title={t('proxyHeaders.toggle')}
+            aria-expanded={proxyOpen}
+            onPress={() => setProxyOpen((o) => !o)}
+            testID="proxy-headers-toggle"
+          />
+        )}
       </View>
+      {proxyOpen && !isServed ? (
+        <View className="gap-3" testID="proxy-headers-section">
+          <Text variant="caption">
+            {proxyOrigin
+              ? t('proxyHeaders.connectBody', { origin: proxyOrigin })
+              : typedOrigin
+                ? t('proxyHeaders.connectHttp')
+                : t('proxyHeaders.connectNoAddress')}
+          </Text>
+          <ProxyHeadersEditor rows={proxyRows} onChange={setProxyRows} />
+          <Text variant="caption">
+            {isWeb ? t('proxyHeaders.webNote') : t('proxyHeaders.notCarried')}
+          </Text>
+        </View>
+      ) : null}
       {isWeb && linkOpen ? (
         <View className="gap-3">
           <ConnectInput

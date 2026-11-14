@@ -33,6 +33,8 @@ export function castButtonModel(input: {
   chapters?: Pick<ChaptersResponse, 'codec' | 'direct_playable'> | null;
   status: CastStatus;
   deviceName: string | null;
+  /** The address in use is behind the connection's auth proxy (`behindProxy`). */
+  proxied?: boolean;
 }): CastButtonModel {
   const { status, deviceName } = input;
   const connected = status !== 'off';
@@ -47,6 +49,7 @@ export function castButtonModel(input: {
           baseUrl: input.baseUrl,
           book: input.book,
           chapters: input.chapters,
+          proxied: input.proxied,
         })
       : null;
   return { show, blocked, status, deviceName };

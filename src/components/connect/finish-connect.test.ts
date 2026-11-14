@@ -192,6 +192,185 @@ it('a reset server reached through its away address retires the dead identity', 
   });
 });
 
+describe('proxy headers the sign-in came through (fe#167)', () => {
+  const SET = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'proxy-secret' }] };
+  afterEach(() => useSession.setState({ pendingProxyHeaders: null }));
+
+  it('keeps the ones held for the address signed in through, in secure-store only', async () => {
+    useSession.setState({ pendingProxyHeaders: SET });
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    expect(conn('srv-1')?.proxyHeaders).toEqual(SET);
+    expect(
+      JSON.parse((await SecureStore.getItemAsync('audiosilo.proxy-headers.srv-1.1'))!),
+    ).toEqual(SET);
+    expect(await AsyncStorage.getItem(CONNECTIONS_KEY)).not.toContain('proxy-secret');
+    expect(useSession.getState().pendingProxyHeaders).toBeNull();
+  });
+
+  it('keeps none held for another address (a sign-in through the home address)', async () => {
+    useSession.setState({ pendingProxyHeaders: SET });
+    await finishConnect({ serverUrl: HOME, session: session('srv-2') });
+    expect(conn('srv-2')?.proxyHeaders).toBeUndefined();
+  });
+
+  it("a re-pair keeps its own set, never another connection's for the same address", async () => {
+    const MINE = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'second-secret' }] };
+    useSession.setState({ pendingProxyHeaders: SET });
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    const second = { ...user, id: 2 };
+    await useSession.getState().setSession(
+      {
+        serverUrl: AWAY,
+        serverId: 'srv-1',
+        token: 'tok-2',
+        user: second,
+        proxyHeaders: MINE,
+      },
+      { makeDefault: false },
+    );
+    // The second person signs in again, with nothing typed on the connect screen.
+    await finishConnect({ serverUrl: AWAY, session: { ...session('srv-1'), user: second } });
+    const again = useSession.getState().connections.find((c) => c.id === 'srv-1.2');
+    expect(again?.proxyHeaders).toEqual(MINE);
+    expect(
+      JSON.parse((await SecureStore.getItemAsync('audiosilo.proxy-headers.srv-1.2'))!),
+    ).toEqual(MINE);
+    expect(conn('srv-1')?.proxyHeaders).toEqual(SET);
+  });
+
+  it("a reconnect to a reset server keeps the signer's own set, never another person's", async () => {
+    const sam = { ...user, id: 2, username: 'sam' };
+    useSession.setState({ pendingProxyHeaders: SET });
+    await finishConnect({ serverUrl: AWAY, session: session('old') }); // chris, with SET
+    // Sam on the same server, with no set of his own.
+    await useSession
+      .getState()
+      .setSession(
+        { serverUrl: AWAY, serverId: 'old', token: 'tok-2', user: sam, proxyHeaders: null },
+        { makeDefault: false },
+      );
+    useSession.getState().markNeedsReconnect('old.1', 'server-reset');
+    useSession.getState().markNeedsReconnect('old.2', 'server-reset');
+    // Sam's reconnect banner, the rebuilt server: Sam had none, so the new one keeps none.
+    await finishConnect({
+      serverUrl: AWAY,
+      session: session('new', { user: sam }),
+      reconnectId: 'old.2',
+    });
+    const fresh = useSession.getState().connections.find((c) => c.id === 'new.2');
+    expect(fresh).toBeDefined();
+    expect(fresh?.proxyHeaders).toBeUndefined();
+    expect(await SecureStore.getItemAsync('audiosilo.proxy-headers.new.2')).toBeNull();
+  });
+
+  it("a reset-server reconnect after another person's takes none of theirs", async () => {
+    const sam = { ...user, id: 2, username: 'sam' };
+    const HOME_SET = { origin: 'https://home.example', headers: [{ name: 'X-H', value: 'h' }] };
+    useSession.setState({ pendingProxyHeaders: SET });
+    await finishConnect({ serverUrl: AWAY, session: session('old') }); // chris, with SET
+    useSession.setState({ pendingProxyHeaders: null });
+    // Sam on the same server, with a set of his own for another address only.
+    await useSession
+      .getState()
+      .setSession(
+        { serverUrl: AWAY, serverId: 'old', token: 'tok-2', user: sam, proxyHeaders: HOME_SET },
+        { makeDefault: false },
+      );
+    useSession.getState().markNeedsReconnect('old.1', 'server-reset');
+    useSession.getState().markNeedsReconnect('old.2', 'server-reset');
+    // Chris first: new.1 keeps his set. Then Sam: never Chris's, his own comes along.
+    await finishConnect({ serverUrl: AWAY, session: session('new'), reconnectId: 'old.1' });
+    expect(useSession.getState().connections.find((c) => c.id === 'new.1')?.proxyHeaders).toEqual(
+      SET,
+    );
+    await finishConnect({
+      serverUrl: AWAY,
+      session: session('new', { user: sam }),
+      reconnectId: 'old.2',
+    });
+    const fresh = useSession.getState().connections.find((c) => c.id === 'new.2');
+    expect(fresh).toBeDefined();
+    expect(fresh?.proxyHeaders).toEqual(HOME_SET);
+  });
+
+  it('a link re-pair with no set of its own keeps the borrowed set that got it in', async () => {
+    const second = { ...user, id: 2 };
+    useSession.setState({ pendingProxyHeaders: SET });
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') }); // chris, with SET
+    useSession.setState({ pendingProxyHeaders: null });
+    await useSession
+      .getState()
+      .setSession(
+        { serverUrl: AWAY, serverId: 'srv-1', token: 'tok-2', user: second, proxyHeaders: null },
+        { makeDefault: false },
+      );
+    // The second person's QR re-pair: the exchange got through on chris's set.
+    await finishConnect({
+      serverUrl: AWAY,
+      session: { ...session('srv-1'), user: second },
+      carried: SET,
+    });
+    const again = useSession.getState().connections.find((c) => c.id === 'srv-1.2');
+    expect(again?.proxyHeaders).toEqual(SET);
+    expect(
+      JSON.parse((await SecureStore.getItemAsync('audiosilo.proxy-headers.srv-1.2'))!),
+    ).toEqual(SET);
+  });
+
+  it('never keeps a borrowed set for a reconnect, or over a set of its own', async () => {
+    const MINE = { origin: HOME, headers: [{ name: 'X-Home', value: 'mine' }] };
+    const second = { ...user, id: 2 };
+    await useSession
+      .getState()
+      .setSession(
+        { serverUrl: AWAY, serverId: 'srv-1', token: 'tok-2', user: second, proxyHeaders: MINE },
+        { makeDefault: false },
+      );
+    await finishConnect({
+      serverUrl: AWAY,
+      session: { ...session('srv-1'), user: second },
+      carried: SET,
+    });
+    expect(useSession.getState().connections.find((c) => c.id === 'srv-1.2')?.proxyHeaders).toEqual(
+      MINE,
+    );
+    // A reconnect (the banner names the connection): its own or the typed set only.
+    await useSession
+      .getState()
+      .setSession({ serverUrl: AWAY, serverId: 'srv-3', token: 't3', user, proxyHeaders: null });
+    await finishConnect({
+      serverUrl: AWAY,
+      session: session('srv-3'),
+      reconnectId: 'srv-3.1',
+      carried: SET,
+    });
+    expect(conn('srv-3')?.proxyHeaders).toBeUndefined();
+  });
+
+  it("a re-pair through another address keeps its own set, not another connection's for it", async () => {
+    const MINE = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'mine' }] };
+    const THEIRS = { origin: HOME, headers: [{ name: 'X-Home', value: 'theirs' }] };
+    useSession.setState({ pendingProxyHeaders: MINE });
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    await useSession.getState().setSession(
+      {
+        serverUrl: AWAY,
+        serverId: 'srv-1',
+        token: 'tok-2',
+        user: { ...user, id: 2 },
+        proxyHeaders: THEIRS,
+      },
+      { makeDefault: false },
+    );
+    // The first person signs in again through the home address, with nothing typed.
+    await finishConnect({ serverUrl: HOME, session: session('srv-1') });
+    expect(conn('srv-1')?.proxyHeaders).toEqual(MINE);
+    expect(
+      JSON.parse((await SecureStore.getItemAsync('audiosilo.proxy-headers.srv-1.1'))!),
+    ).toEqual(MINE);
+  });
+});
+
 describe('the addresses a pairing taught (link merged with the answer, once)', () => {
   const addressesAfter = async (link?: object, answer?: object) => {
     await finishConnect({

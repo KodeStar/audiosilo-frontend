@@ -1,11 +1,12 @@
 import { ApiClient, apiErrorKind } from '@/api/client';
-import { resolveClient } from '@/api/connection-clients';
+import { connectionOf, resolveClient } from '@/api/connection-clients';
 import { cachedPodcastLibrary, fetchCapabilities } from '@/api/hooks';
 import type { Capabilities } from '@/api/types';
 import { bookSourceOf } from '@/playback/book-source';
 import type { BookRef, PlaybackTrack } from '@/playback/types';
 
 import {
+  behindProxy,
   buildCastItems,
   castBlockReason,
   castNeedsTranscode,
@@ -60,6 +61,7 @@ export const prepareCast: PrepareCast = async (tracks, book) => {
     baseUrl: client.baseUrl,
     book: source?.book,
     chapters: source?.chapters,
+    proxied: behindProxy(connectionOf(book.connectionId)?.proxyHeaders, client.baseUrl),
   });
   if (reason) throw new CastBlockedError(reason);
   const transcode =

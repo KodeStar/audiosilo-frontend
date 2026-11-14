@@ -54,13 +54,19 @@ const mockApi = {
   me: jest.fn(),
 };
 const mockBases: string[] = [];
+// The proxy headers (fe#167) each bare client was built with.
+const mockProxies: unknown[] = [];
 jest.mock('@/api/client', () => {
   const actual = jest.requireActual('@/api/client');
   return {
     ...actual,
-    ApiClient: function ApiClient(base: string) {
+    ApiClient: function ApiClient(base: string, ...rest: unknown[]) {
       mockBases.push(base);
-      return mockApi;
+      mockProxies.push(rest[4] ?? null);
+      // Sends a set whenever it is given one (connect-client.test.ts holds the origin rule).
+      return Object.assign(Object.create(mockApi), {
+        proxyHeadersFor: () => (rest[4] ? {} : undefined),
+      });
     },
   };
 });
@@ -92,6 +98,7 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   jest.clearAllMocks();
   mockBases.length = 0;
+  mockProxies.length = 0;
   mockParams = {};
   mockLayout = 'phone';
   mockCanGoBack = true;
@@ -103,6 +110,7 @@ beforeEach(async () => {
     connections: [],
     defaultConnectionId: null,
     pendingServerUrl: null,
+    pendingProxyHeaders: null,
     user: null,
   });
 });
@@ -838,4 +846,123 @@ it('shows the cover cascade beside the steps on a desktop, not on a phone', asyn
   await render(<ConnectStart />);
   expect(screen.getByTestId('cover-cascade')).toBeTruthy();
   expect(screen.getByLabelText('Step 1 of 3')).toBeTruthy();
+});
+
+describe('proxy headers for a server behind an auth proxy (fe#167)', () => {
+  async function enterHeader(name: string, value: string) {
+    await fireEvent.press(screen.getByTestId('proxy-headers-toggle'));
+    await fireEvent.changeText(screen.getByTestId('proxy-headers-editor-name'), name);
+    await fireEvent.changeText(screen.getByTestId('proxy-headers-editor-value'), value);
+  }
+
+  it('holds no headers for a plain-http address, and says why', async () => {
+    await render(<ConnectStart />);
+    await fireEvent.changeText(screen.getByLabelText('Server address'), 'http://192.168.1.5:8080');
+    await enterHeader('CF-Access-Client-Secret', 'proxy-secret');
+    expect(screen.getByText(/need the server's https:\/\/ address/)).toBeTruthy();
+    expect(useSession.getState().pendingProxyHeaders).toBeNull();
+  });
+
+  it('asks the typed address with the headers entered for it, and the http fallback without', async () => {
+    mockApi.serverInfo
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValueOnce(info());
+    await render(<ConnectStart />);
+    await fireEvent.changeText(screen.getByLabelText('Server address'), 'books.example.com');
+    await enterHeader('CF-Access-Client-Secret', 'proxy-secret');
+    const set = {
+      origin: AWAY,
+      headers: [{ name: 'CF-Access-Client-Secret', value: 'proxy-secret' }],
+    };
+    expect(useSession.getState().pendingProxyHeaders).toEqual(set);
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(await screen.findByText('Found Hearthside')).toBeTruthy();
+    expect(mockBases).toEqual([AWAY, 'http://books.example.com']);
+    expect(mockProxies).toEqual([set, null]);
+    // The field now shows the http address; the headers stay bound to the https one.
+    expect(screen.getByLabelText('Server address').props.value).toBe('http://books.example.com');
+    expect(useSession.getState().pendingProxyHeaders).toEqual(set);
+  });
+
+  it("pairs a scanned code for the headers' address with them, and keeps them with the connection", async () => {
+    const set = { origin: AWAY, headers: [{ name: 'X-Auth', value: 'proxy-secret' }] };
+    useSession.setState({ pendingProxyHeaders: set });
+    mockParams = { token: 'tok', server: AWAY };
+    mockApi.exchange.mockResolvedValue({ token: 'session', server_id: 'srv-1', user });
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockBases).toEqual([AWAY]);
+    expect(mockProxies).toEqual([set]);
+    expect(conn().proxyHeaders).toEqual(set);
+  });
+
+  it('pairs a code for another server without them', async () => {
+    const set = { origin: AWAY, headers: [{ name: 'X-Auth', value: 'proxy-secret' }] };
+    useSession.setState({ pendingProxyHeaders: set });
+    mockParams = { token: 'tok', server: 'https://other.example.com' };
+    mockApi.exchange.mockResolvedValue({ token: 'session', server_id: 'srv-2', user });
+    mockApi.serverInfo.mockResolvedValue(info({ server_id: 'srv-2' }));
+    await render(<ConnectStart />);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockBases).toEqual(['https://other.example.com']);
+    expect(mockProxies).toEqual([null]);
+    expect(conn().proxyHeaders).toBeUndefined();
+  });
+
+  it('takes up the headers the flow holds when the scanner hands a code back (a new screen)', async () => {
+    const set = { origin: AWAY, headers: [{ name: 'X-Auth', value: 'proxy-secret' }] };
+    useSession.setState({ pendingProxyHeaders: set });
+    await render(<ConnectStart />);
+    expect(screen.getByTestId('proxy-headers-section')).toBeTruthy();
+    expect(screen.getByTestId('proxy-headers-editor-value').props.value).toBe('');
+    expect(screen.queryByText('proxy-secret')).toBeNull();
+    expect(useSession.getState().pendingProxyHeaders).toEqual(set);
+  });
+
+  it('never shows a value, says what is wrong with a row, and drops them when closed', async () => {
+    await render(<ConnectStart />);
+    await fireEvent.changeText(screen.getByLabelText('Server address'), AWAY);
+    await enterHeader('Authorization', 'proxy-secret');
+    expect(screen.getByTestId('proxy-headers-editor-value').props.secureTextEntry).toBe(true);
+    expect(screen.queryByText('proxy-secret')).toBeNull();
+    expect(screen.getByText('The app sends Authorization itself.')).toBeTruthy();
+    expect(useSession.getState().pendingProxyHeaders).toBeNull();
+    await fireEvent.changeText(screen.getByTestId('proxy-headers-editor-name'), 'X-Auth');
+    expect(useSession.getState().pendingProxyHeaders?.headers).toEqual([
+      { name: 'X-Auth', value: 'proxy-secret' },
+    ]);
+    await fireEvent.press(screen.getByTestId('proxy-headers-toggle'));
+    expect(useSession.getState().pendingProxyHeaders).toBeNull();
+  });
+
+  it('a demo again with no set of its own keeps the set the demo session got in on', async () => {
+    const set = { origin: AWAY, headers: [{ name: 'X-Auth', value: 'proxy-secret' }] };
+    const { setSession } = useSession.getState();
+    await setSession({ serverUrl: AWAY, serverId: 'srv-1', token: 't1', user, proxyHeaders: set });
+    await setSession(
+      { serverUrl: AWAY, serverId: 'srv-demo', token: 'old', user, proxyHeaders: null },
+      { makeDefault: false },
+    );
+    mockApi.serverInfo.mockResolvedValue(info({ demo: { enabled: true } }));
+    mockApi.demoSession.mockResolvedValue({ token: 'demo', server_id: 'srv-demo', user });
+    await render(<ConnectStart />);
+    await fireEvent.changeText(screen.getByLabelText('Server address'), AWAY);
+    await fireEvent.press(screen.getByText('Continue'));
+    await fireEvent.press(await screen.findByText('Try the demo'));
+    const demo = () => useSession.getState().connections.find((c) => c.id === 'srv-demo.1');
+    // Not the first connection: the flow leaves onboarding (no `replace`), with no error.
+    await waitFor(() => expect(demo()?.token).toBe('demo'));
+    expect(demo()?.proxyHeaders).toEqual(set);
+    expect(screen.queryByText(/Could not (start|reach) the demo/)).toBeNull();
+  });
+
+  it('follows the address: headers entered before it are for the address typed', async () => {
+    await render(<ConnectStart />);
+    await enterHeader('X-Auth', 'v');
+    expect(screen.getByText(/Enter the server's https address first/)).toBeTruthy();
+    expect(useSession.getState().pendingProxyHeaders).toBeNull();
+    await fireEvent.changeText(screen.getByLabelText('Server address'), 'other.example.com');
+    expect(useSession.getState().pendingProxyHeaders?.origin).toBe('https://other.example.com');
+  });
 });

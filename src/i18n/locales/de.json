@@ -2312,6 +2312,41 @@
     "usingPaired": "Verwendet die Adresse, mit der du verbunden hast.",
     "switches": "Die App wechselt selbst zwischen beiden."
   },
+  "proxyHeaders": {
+    "title": "Proxy-Header",
+    "body": "Für einen Server hinter einem Anmelde-Proxy (Cloudflare Access, Authentik, Authelia und ähnliche): Header, die dieses Gerät bei Anfragen an eine der HTTPS-Adressen des Servers sendet.",
+    "sentTo": "Wird bei Anfragen an {{origin}} gesendet.",
+    "httpsOnly": "Proxy-Header brauchen eine HTTPS-Adresse, und dieses Gerät erreicht den Server über einfaches HTTP. Verbinde dich über eine HTTPS-Adresse, um sie hinzuzufügen.",
+    "toggle": "Proxy-Header",
+    "connectBody": "Für einen Server hinter einem Anmelde-Proxy: die Header, die er verlangt (zum Beispiel ein Cloudflare-Access-Diensttoken). Sie werden bei Anfragen an {{origin}} gesendet und mit deiner Anmeldung auf diesem Gerät gespeichert. Füge sie hinzu, bevor du fortfährst oder den Code scannst.",
+    "connectNoAddress": "Gib zuerst die HTTPS-Adresse des Servers ein: Die Header werden bei Anfragen an diese Adresse gesendet.",
+    "connectHttp": "Proxy-Header brauchen die https://-Adresse des Servers. Gib sie ein, um sie hinzuzufügen.",
+    "name": "Header-Name",
+    "namePlaceholder": "CF-Access-Client-Id",
+    "value": "Wert",
+    "valueOf": "Wert von {{name}}",
+    "valueKept": "Bleibt unverändert",
+    "add": "Header hinzufügen",
+    "remove": "Diesen Header entfernen",
+    "removeNamed": "{{name}} entfernen",
+    "addHeaders": "Header hinzufügen",
+    "edit": "Header ändern",
+    "save": "Header speichern",
+    "saveFailed": "Die Header konnten auf diesem Gerät nicht gespeichert werden. Nichts wurde geändert.",
+    "removeAll": "Header entfernen",
+    "removeTitle": "Proxy-Header entfernen?",
+    "removeBody": "Dieses Gerät sendet sie nicht mehr. Wenn der Proxy sie braucht, ist der Server nicht erreichbar, bis du sie wieder hinzufügst.",
+    "sendTo": "Senden an",
+    "hiddenValue": "{{name}}, Wert verborgen",
+    "notCarried": "Chromecast, die Uhren-Apps und Kalender-Apps können sie nicht senden und erreichen den Server daher nicht durch den Proxy.",
+    "webNote": "Im Browser werden sie nur bei Anfragen an den Server gesendet, von dem diese Seite stammt, und Cover und Audio senden sie nicht mit. Melde dich stattdessen in diesem Browser beim Proxy an.",
+    "problem": {
+      "name": "Verwende Buchstaben, Ziffern und Bindestriche für den Namen.",
+      "reserved": "Die App sendet {{name}} selbst.",
+      "duplicate": "{{name}} ist schon in der Liste.",
+      "value": "Gib einen Wert in einer Zeile ein."
+    }
+  },
   "year": {
     "eyebrow": "Dein Hörjahr",
     "title": "Dein {{year}} als Geschichte",
@@ -2483,7 +2518,8 @@
       "codec": "Sein Audioformat läuft nicht auf Cast-Geräten, und der Server kann es nicht umwandeln.",
       "no-connection": "Sein Server ist auf diesem Gerät nicht angemeldet. Melde dich erneut an, um es zu streamen.",
       "titleEpisode": "Diese Folge kann nicht gestreamt werden",
-      "episode": "Podcastfolgen lassen sich noch nicht streamen, darum bleibt diese auf diesem Gerät."
+      "episode": "Podcastfolgen lassen sich noch nicht streamen, darum bleibt diese auf diesem Gerät.",
+      "proxy": "Sein Server liegt hinter einem Anmelde-Proxy, an dem ein Cast-Gerät nicht vorbeikommt."
     },
     "failed": {
       "title": "Streamen konnte nicht gestartet werden",

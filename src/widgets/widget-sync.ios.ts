@@ -345,17 +345,24 @@ export function runWidgetSync(deps: WidgetSyncDeps): () => void {
 
 // --- the real deps -------------------------------------------------------------------
 
-async function fetchBytes(url: string): Promise<Uint8Array | null> {
+async function fetchBytes(
+  url: string,
+  headers?: Record<string, string>,
+): Promise<Uint8Array | null> {
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, headers ? { headers } : undefined);
     return res.ok ? new Uint8Array(await res.arrayBuffer()) : null;
   } catch {
     return null;
   }
 }
 
-async function readBytesOnce(uri: string): Promise<Uint8Array | null> {
-  if (uri.startsWith('http')) return fetchBytes(uri);
+/** `headers`: the connection's proxy headers for `uri` (fe#167), when it is on their origin. */
+async function readBytesOnce(
+  uri: string,
+  headers?: Record<string, string>,
+): Promise<Uint8Array | null> {
+  if (uri.startsWith('http')) return fetchBytes(uri, headers);
   try {
     const file = new File(uri);
     return file.exists ? await file.bytes() : null;
@@ -386,7 +393,7 @@ export async function prepareCovers(dir: Directory, np: NowPlaying): Promise<Cov
   const reads = new Map<string, Promise<Uint8Array | null>>();
   const readBytes = (uri: string) => {
     let read = reads.get(uri);
-    if (!read) reads.set(uri, (read = readBytesOnce(uri)));
+    if (!read) reads.set(uri, (read = readBytesOnce(uri, client?.proxyHeadersFor(uri))));
     return read;
   };
   const prepare = async (key: keyof Covers, size: CoverSize, max: number) => {

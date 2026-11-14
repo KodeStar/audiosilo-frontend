@@ -13,10 +13,21 @@ jest.mock('@/api/client', () => {
     ApiClient: class {
       base: string;
       token: string | null;
-      constructor(base: string, token: string | null = null) {
+      proxy: unknown;
+      constructor(
+        base: string,
+        token: string | null = null,
+        _t?: unknown,
+        _a?: unknown,
+        _o?: unknown,
+        proxy?: unknown,
+      ) {
         this.base = base;
         this.token = token;
+        this.proxy = proxy;
       }
+      // Sends a set whenever it is given one (connect-client.test.ts holds the origin rule).
+      proxyHeadersFor = () => (this.proxy ? {} : undefined);
       exchange = (...a: unknown[]) => {
         mockExchangedAt.push(this.base);
         return mockExchange(...a);
@@ -91,6 +102,23 @@ describe('useLinkPairing', () => {
     expect(mockFinish).toHaveBeenCalledWith(
       expect.objectContaining({ serverUrl: scan.base, session, name: 'Hearthside' }),
     );
+  });
+
+  it('hands finishConnect the proxy headers the exchange went out with (fe#167)', async () => {
+    // Another connection here holds a set for the link's address; this re-pair has none.
+    const SET = { origin: scan.base, headers: [{ name: 'X-Proxy', value: 'proxy-secret' }] };
+    useSession.setState({
+      connections: [
+        { id: 'a.2', serverId: 'a', serverUrl: scan.base, token: 't', proxyHeaders: SET },
+      ] as unknown as Connection[],
+    });
+    const session = { token: 's', user: { id: 1, username: 'evie' }, server_id: 'a' };
+    mockExchange.mockResolvedValue(session);
+    const { result } = await renderHook(() => useLinkPairing());
+    await act(async () => {
+      expect(await result.current.pair(scan)).toBe('paired');
+    });
+    expect(mockFinish).toHaveBeenCalledWith(expect.objectContaining({ carried: SET }));
   });
 
   it("says a refused link in the app's words, never the server's English", async () => {

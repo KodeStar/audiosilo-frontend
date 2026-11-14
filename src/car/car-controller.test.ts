@@ -272,6 +272,7 @@ function fakeClient(data: {
     }),
     coverUrl: (lib: number, path: string, opts?: { size?: number }) =>
       `https://srv/cover?lib=${lib}&path=${path}${opts?.size ? `&size=${opts.size}` : ''}&token=secret`,
+    proxyHeadersFor: (_url: string): Record<string, string> | undefined => undefined,
   };
 }
 
@@ -630,6 +631,7 @@ describe('startCarSync', () => {
     expect(ensureArtwork).toHaveBeenCalledWith(
       'c1:2:L1#v7.jpg',
       'https://srv/cover?lib=2&path=L1&size=320&token=secret',
+      undefined,
     );
     await settle(SETTLE_MS + MIN_GAP_MS);
     const snap = lastSnapshot();
@@ -655,7 +657,27 @@ describe('startCarSync', () => {
     expect(ensureArtwork).toHaveBeenCalledWith(
       'c1:2:L1#.jpg',
       'https://srv/cover?lib=2&path=L1&token=secret',
+      undefined,
     );
+  });
+
+  it("fetches a cover with its connection's proxy headers for that address (fe#167)", async () => {
+    connect(['c1']);
+    const client = fakeClient({ books: [makeBook({ rel_path: 'L1' })] });
+    const proxyHeadersFor = jest.fn((url: string) =>
+      url.startsWith('https://srv/') ? { 'CF-Access-Client-Id': 'proxy-secret' } : undefined,
+    );
+    mockClients.c1 = { ...client, proxyHeadersFor };
+    stop = startCarSync();
+    await settle();
+    expect(proxyHeadersFor).toHaveBeenCalledWith('https://srv/cover?lib=2&path=L1&token=secret');
+    expect(ensureArtwork).toHaveBeenCalledWith(
+      'c1:2:L1#.jpg',
+      'https://srv/cover?lib=2&path=L1&token=secret',
+      { 'CF-Access-Client-Id': 'proxy-secret' },
+    );
+    // Never in what native is handed.
+    expect(JSON.stringify(lastSnapshot())).not.toMatch(/CF-Access|proxy-secret/);
   });
 
   it('writes again after a list changes, never closer than the gap, and not when nothing changed', async () => {

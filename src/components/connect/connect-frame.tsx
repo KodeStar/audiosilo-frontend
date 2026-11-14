@@ -53,7 +53,7 @@ const SHARE = {
   desktop: { column: 1, panel: 1 },
 } as const;
 
-const RevealContext = createContext<Reveal>(() => {});
+export const RevealContext = createContext<Reveal>(() => {});
 export const RevealViewContext = createContext<RevealView>(() => {});
 /** Keep a shown view (a `ConnectReveal`) in view with the focused field on every later
  * reveal; returns the unregister function. */

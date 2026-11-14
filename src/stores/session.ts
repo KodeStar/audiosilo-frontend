@@ -13,6 +13,8 @@ import { connectionIdOf, priorConnection, serverIdOf } from '@/lib/connection-id
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
 import { forgetCalendarLink } from '@/lib/upcoming-calendar';
 import { hostOf } from '@/lib/pairing';
+import { originOf, type ProxyHeaders } from '@/lib/proxy-headers';
+import { forgetProxyHeaders, readProxyHeaders, saveProxyHeaders } from '@/lib/proxy-headers-store';
 import { mergeAddresses, sameAddresses, sameUrl } from '@/lib/server-address';
 import { getItem, getItemStrict, removeItem, setItem } from '@/lib/storage';
 import {
@@ -126,10 +128,12 @@ export async function resetStaleStorage(): Promise<StorageResetResult> {
     // cache is folded in: its owning connections are being cleared, so it's now orphaned.
     const meta = (await getItem<PersistedConnection[]>(CONNECTIONS_KEY)) ?? [];
     // Each one's calendar link (Track U3) is a credential kept beside its token: it goes too.
+    // So are its proxy headers (fe#167).
     await Promise.all(
       meta.flatMap((m) => [
         deleteSecure(tokenKey(m.id)).catch(() => undefined),
         forgetCalendarLink(m.id),
+        forgetProxyHeaders(m.id),
       ]),
     );
     await Promise.all([
@@ -261,12 +265,20 @@ export type Connection = {
    * storage-version bump). The player picks which one to use by itself
    * (`src/api/address-route.ts`); `serverUrl` stays what the user paired with or typed. */
   addresses?: ServerAddresses;
+  /** Custom headers for an auth proxy in front of the server (fe#167), and the one origin
+   * they go to (`src/lib/proxy-headers.ts`). Credentials like the token: held in memory,
+   * kept in secure-store (`proxyHeadersKey`), never in the AsyncStorage metadata. */
+  proxyHeaders?: ProxyHeaders;
 };
 
-/** Connection metadata persisted to AsyncStorage (token + the in-memory reconnect flag
- * excluded - see secure-store / `needsReconnect`). `serverId` is absent on a connection
- * saved before Phase 8. */
-export type PersistedConnection = Omit<Connection, 'token' | 'needsReconnect'>;
+/** Connection metadata persisted to AsyncStorage (the token, the proxy headers and the
+ * in-memory reconnect flag excluded - see secure-store / `needsReconnect`). `serverId` is
+ * absent on a connection saved before Phase 8. `hasProxyHeaders` (no secret, only that a set
+ * exists) is what makes `hydrate` read the set: a connection without one costs no extra
+ * keychain read at launch (a CarPlay start on a locked phone included). */
+export type PersistedConnection = Omit<Connection, 'token' | 'needsReconnect' | 'proxyHeaders'> & {
+  hasProxyHeaders?: true;
+};
 
 type SessionState = {
   status: SessionStatus;
@@ -279,6 +291,10 @@ type SessionState = {
   defaultConnectionId: string | null;
   /** The server URL being connected to during the connect → sign-in handoff. */
   pendingServerUrl: string | null;
+  /** Proxy headers entered on the connect screen for the address being connected to
+   * (fe#167): in memory only, sent by the connect flow's bare clients to that origin
+   * (`connectProxyHeaders`), kept with the connection by `setSession`, then cleared. */
+  pendingProxyHeaders: ProxyHeaders | null;
   /** Mirror of the default connection's user, for ergonomic selectors. */
   user: User | null;
 
@@ -310,6 +326,10 @@ type SessionState = {
        * it would delete them (their profile, PIN and kids settings) from the device. Absent:
        * none is retired. */
       retire?: readonly string[];
+      /** The proxy headers the connect flow reached the server with (fe#167). Absent keeps
+       * what the connection already had (a re-pair never erases them); a set replaces
+       * them. */
+      proxyHeaders?: ProxyHeaders | null;
     },
     opts?: {
       /** False: the default connection stays where it is (a household member signed in on
@@ -321,6 +341,11 @@ type SessionState = {
   ) => Promise<string>;
   /** Remember the server URL mid-connect, before authenticating. */
   setPendingServerUrl: (url: string) => Promise<void>;
+  /** The proxy headers the connect screen holds for its address (null: none). */
+  setPendingProxyHeaders: (set: ProxyHeaders | null) => void;
+  /** Keep (or, with null, drop) a signed-in connection's proxy headers: secure-store first,
+   * then memory, so its clients are rebuilt with them. A no-op for an unknown id. */
+  setProxyHeaders: (id: string, set: ProxyHeaders | null) => Promise<void>;
   /** Update a specific connection's user (a `/me` refresh after a password change
    * lands on the connection it was made against, not whatever is default). */
   setConnectionUser: (id: string, user: User) => Promise<void>;
@@ -417,10 +442,12 @@ function hydrateEnded(failed: boolean, locked = false) {
 }
 
 async function persist(connections: Connection[], defaultId: string | null) {
-  // Strip the token (→ secure-store) AND the in-memory `needsReconnect` flag, so a stale
-  // reconnect prompt never survives a restart (it's recomputed from the next failure).
+  // Strip the token and the proxy headers (→ secure-store) AND the in-memory
+  // `needsReconnect` flag, so a stale reconnect prompt never survives a restart (it's
+  // recomputed from the next failure).
   const meta: PersistedConnection[] = connections.map(
-    ({ token: _t, needsReconnect: _r, ...rest }) => rest,
+    ({ token: _t, needsReconnect: _r, proxyHeaders, ...rest }) =>
+      proxyHeaders ? { ...rest, hasProxyHeaders: true } : rest,
   );
   await Promise.all([setItem(CONNECTIONS_KEY, meta), setItem(DEFAULT_KEY, defaultId)]);
 }
@@ -430,6 +457,7 @@ export const useSession = create<SessionState>()((set, get) => ({
   connections: [],
   defaultConnectionId: null,
   pendingServerUrl: null,
+  pendingProxyHeaders: null,
   user: null,
 
   hydrate: async () => {
@@ -442,10 +470,25 @@ export const useSession = create<SessionState>()((set, get) => ({
       ]);
 
       if (meta && meta.length) {
+        // The proxy headers only for a connection marked as having them; a read of them
+        // that fails (a locked keychain) fails the hydrate as the token's does: never a
+        // connection that goes on without its headers.
         const withTokens = await Promise.all(
-          meta.map(async (m) => {
-            const token = await getSecure(tokenKey(m.id));
-            return token ? ({ ...m, serverId: serverIdOf(m), token } as Connection) : null;
+          meta.map(async ({ hasProxyHeaders, ...m }) => {
+            const [token, proxyHeaders] = await Promise.all([
+              getSecure(tokenKey(m.id)),
+              hasProxyHeaders ? readProxyHeaders(m.id) : null,
+            ]);
+            // A set the rules drop at load (one for an http origin, a damaged item), or the
+            // set of a connection dropped with its token gone, must not stay in the store.
+            if (hasProxyHeaders && (!token || !proxyHeaders)) await forgetProxyHeaders(m.id);
+            if (!token) return null;
+            return {
+              ...m,
+              serverId: serverIdOf(m),
+              token,
+              ...(proxyHeaders ? { proxyHeaders } : {}),
+            } as Connection;
           }),
         );
         const connections = withTokens.filter((c): c is Connection => c !== null);
@@ -471,7 +514,7 @@ export const useSession = create<SessionState>()((set, get) => ({
   },
 
   setSession: async (
-    { serverUrl, serverId, token, user, name, addresses, retire },
+    { serverUrl, serverId, token, user, name, addresses, retire, proxyHeaders },
     { makeDefault = true } = {},
   ) => {
     // The connection id is the server-minted server_id plus the user's id
@@ -510,6 +553,15 @@ export const useSession = create<SessionState>()((set, get) => ({
       ? prior.addresses
       : (sameServer.find((c) => c.addresses)?.addresses ?? (await knownAddresses(serverId)));
     const known = mergeAddresses(knew, addresses);
+    // The proxy headers: the ones the sign-in came through, else the ones it had, else (a
+    // new connection: another person on the server, a member signed in here) the ones
+    // another connection to this server has. Still sent only to their own origin.
+    const headers =
+      proxyHeaders !== undefined
+        ? (proxyHeaders ?? undefined)
+        : prior
+          ? prior.proxyHeaders
+          : sameServer.find((c) => c.proxyHeaders)?.proxyHeaders;
     const conn: Connection = {
       id,
       serverId,
@@ -518,6 +570,7 @@ export const useSession = create<SessionState>()((set, get) => ({
       token,
       user,
       addresses: known,
+      ...(headers ? { proxyHeaders: headers } : {}),
     };
     const surviving = existing
       .filter((c) => !stale.includes(c))
@@ -526,13 +579,17 @@ export const useSession = create<SessionState>()((set, get) => ({
       ? surviving.map((c) => (c === prior ? conn : c))
       : [...surviving, conn];
     await setSecure(tokenKey(id), token);
+    if (proxyHeaders !== undefined || (!prior && headers)) {
+      await saveProxyHeaders(id, headers ?? null);
+    }
     // Best-effort drop each stale identity's dead token. No server revoke - the token is
     // already dead, so there's nothing to call.
-    // Their calendar links (Track U3) are dead with them.
+    // Their calendar links (Track U3) and proxy headers (fe#167) go with them.
     await Promise.all(
       stale.flatMap((c) => [
         deleteSecure(tokenKey(c.id)).catch(() => undefined),
         forgetCalendarLink(c.id),
+        forgetProxyHeaders(c.id),
       ]),
     );
     // The default: this connection, unless the caller keeps the current one (which must
@@ -559,7 +616,12 @@ export const useSession = create<SessionState>()((set, get) => ({
     }
     // Building `conn` fresh (with no `needsReconnect`) inherently clears any prior flag on
     // a re-pair of an existing connection.
-    set({ connections, pendingServerUrl: null, ...mirror(connections, defaultId) });
+    set({
+      connections,
+      pendingServerUrl: null,
+      pendingProxyHeaders: null,
+      ...mirror(connections, defaultId),
+    });
     // Purge each dropped stale identity's scoped state (downloads, progress mirror/queue,
     // query cache, scroll memory), same semantics as removeConnection: run every cleanup,
     // never let one block the re-pair.
@@ -576,6 +638,28 @@ export const useSession = create<SessionState>()((set, get) => ({
   },
 
   setPendingServerUrl: async (url) => set({ pendingServerUrl: url }),
+
+  setPendingProxyHeaders: (pendingProxyHeaders) => set({ pendingProxyHeaders }),
+
+  setProxyHeaders: async (id, headers) => {
+    if (!get().connections.some((c) => c.id === id)) return;
+    await saveProxyHeaders(id, headers);
+    // Read again after the write: the list may have changed meanwhile.
+    const { connections, defaultConnectionId } = get();
+    if (!connections.some((c) => c.id === id)) {
+      // Removed while this was being written: its headers must not outlive it.
+      await forgetProxyHeaders(id);
+      return;
+    }
+    const next = connections.map((c) => {
+      if (c.id !== id) return c;
+      const { proxyHeaders: _old, ...rest } = c;
+      return headers?.headers.length ? { ...rest, proxyHeaders: headers } : rest;
+    });
+    set({ connections: next, ...mirror(next, defaultConnectionId) });
+    // The marker that has the next launch read them (`hasProxyHeaders`).
+    await persist(next, defaultConnectionId);
+  },
 
   setConnectionUser: async (id, user) => {
     const { connections, defaultConnectionId } = get();
@@ -621,9 +705,12 @@ export const useSession = create<SessionState>()((set, get) => ({
     const { connections, defaultConnectionId } = get();
     const next = connections.filter((c) => c.id !== id);
     const nextDefault = defaultConnectionId === id ? (next[0]?.id ?? null) : defaultConnectionId;
-    // The connection's calendar link (Track U3) is a credential like its token: this device
-    // forgets it with the connection (the link itself keeps working until turned off).
-    await Promise.all([deleteSecure(tokenKey(id)), forgetCalendarLink(id)]);
+    // The connection's calendar link (Track U3) and proxy headers (fe#167) are credentials
+    // like its token: this device forgets them with the connection (the link itself keeps
+    // working until turned off). The token first: a delete of it that fails stops the
+    // removal, and the connection must then still have its headers.
+    await deleteSecure(tokenKey(id));
+    await Promise.all([forgetCalendarLink(id), forgetProxyHeaders(id)]);
     await persist(next, nextDefault);
     set({ connections: next, ...mirror(next, nextDefault) });
     // Purge the removed connection's scoped state (downloads, progress mirror/queue,
@@ -666,4 +753,31 @@ export const useSession = create<SessionState>()((set, get) => ({
 /** A signed-in server's name ('' for none): "isn't on <server>", a card's server line. */
 export function useConnectionName(connectionId: string | undefined): string {
   return useSession((s) => s.connections.find((c) => c.id === connectionId)?.name ?? '');
+}
+
+/**
+ * The proxy headers a request to `url` made outside a signed-in connection's client should
+ * carry (the connect flow's bare clients, the home-address probe): the ones the connect
+ * screen holds for that origin, else a signed-in connection's for that origin (a second
+ * person on the same server). Null when there are none for it. The client still sends them
+ * only to their own origin (`proxyHeaderRecord`).
+ *
+ * `ownId` names the connection the sign-in is for (a reconnect or a re-pair): then only the
+ * set typed for that origin or the connection's OWN set for it, never another connection's,
+ * so a reconnect's sign-in never carries another person's credentials and two people who
+ * each keep their own headers for one address never take each other's. Its own set for
+ * ANOTHER origin (or none) answers null (a re-pair through the home address, or a second
+ * public one): `setSession` then keeps what the connection had, unless a re-pair with no set
+ * at all got in on another connection's (`finishConnect`'s `carried`), which it then keeps.
+ */
+export function connectProxyHeaders(url: string, ownId?: string): ProxyHeaders | null {
+  const origin = originOf(url);
+  if (!origin) return null;
+  const { pendingProxyHeaders, connections } = useSession.getState();
+  if (pendingProxyHeaders?.origin === origin) return pendingProxyHeaders;
+  if (ownId !== undefined) {
+    const own = connections.find((c) => c.id === ownId)?.proxyHeaders;
+    return own?.origin === origin ? own : null;
+  }
+  return connections.find((c) => c.proxyHeaders?.origin === origin)?.proxyHeaders ?? null;
 }
