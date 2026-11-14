@@ -3176,6 +3176,56 @@ tokens, type and components; its section 17 maps them onto these files.
   per theme on iOS and switching under `.dark` on web.
 - **rem is 14px on native** (`polyfills.rem` in `metro.config.js`, NativeWind's value);
   web uses real CSS rems against the browser's 16px root.
+- **Large text** (fe#267). Native `<Text>` grows with the system font scale (Dynamic Type,
+  Android's font size) but boxes sized in rem or px do not; on the web rem grows with the
+  browser's font size and px does not. The rules:
+  - **One helper, one threshold** (`src/lib/text-scale.ts`): `useFontScale()` (the system
+    scale on native, root font / 16 on the web), `useLargeText()` (at or past
+    `LARGE_TEXT_SCALE` = 1.3; re-renders only on crossing it), `scaleCapped(base, scale,
+    max)` for a px-drawn control that grows with the words, and `linesFor(n, large)` (a
+    `numberOfLines` cap that lifts under large text). Never read `fontScale` per screen.
+  - **Under large text a layout changes shape**, not size: an inline row stacks (the
+    label above its control: `SettingsRow`, the connect address step), option tiles and
+    `ToggleGroup` wrap their words (`ToggleGroup` stacks unless scrollable), stat grids
+    halve their columns (`statsGrid(width, large)`), one-line labels wrap. Fixed heights
+    become `min-h-*` (buttons, inputs, selects, tabs, chips, badges) so a second line fits.
+  - **Controls scale, capped**: the player's transport and scrubber follow the scale up to
+    `CONTROL_MAX_SCALE` (1.5) and shrink back to fit the room (`controlScale(size, scale,
+    room)`, `transport-controls.tsx`), so the player fits a 320-wide phone at the largest
+    size; the dock's `sm` transport is not scaled. A px-sized label inside a fixed control
+    (the skip number) sets `allowFontScaling={false}` and sizes itself with `scaleCapped`
+    so the scale is not applied twice.
+  - **px text on the web**: every `text-[Npx]` / `leading-[Npx]` carries a `web:` twin in
+    rem, N/16, with the same variants (`text-[13px] web:text-[0.8125rem]`, `lg:text-[17px]
+    web:lg:text-[1.0625rem]`). `check-styles.cjs` fails a px size without its twin (art
+    drawn to a fixed box is exempt: covers, the A-Z rail, the connect cascade). The twin is
+    a variant class, so a caller's plain `text-sm` through `cn()` does not beat it on the
+    web: override a twinned size with a twinned size.
+  - **Tests**: jest pins `fontScale` to 1 (`jest.setup.ts`; RN's preset mocks 2); opt in
+    with `await setFontScale(n)` from `@/testing/font-scale`.
+- **Touch targets** (`src/components/ui/touch-target.ts`): 44 on iOS and the web, 48 dp on
+  Android (`minTarget()`, Material's minimum). `touchTarget(w, h)` gives the frame classes
+  and the slop for a smaller glyph, `slopTo44(rem)` the slop alone. An icon-only `Button`
+  must have an `accessibilityLabel` (the props type requires it).
+- **Screen-reader semantics** (fe#267):
+  - **Headings**: `<Text accessibilityRole="header">` gets an `aria-level` (rn-web renders
+    `hN`): `level` when given, else `headingLevelFor(variant)` (display 1, heading/stat 2,
+    others 3). A pushed page's title is level 1 (`PhoneHeader`), a sheet's title level 2,
+    `SectionHeader` level 3.
+  - **Sheets are modal** (`sheet.tsx` + `src/components/ui/modal-layer.ts`): a sheet
+    renders in place, not in a portal, so it registers as a modal layer
+    (`useModalLayer`) and the page roots behind it spread `useBehindModalProps()` (the
+    native shell's frame, the full player, the reader): hidden from VoiceOver and
+    TalkBack while a layer is open. The sheet itself is `accessibilityViewIsModal`
+    (iOS), escapes on the two-finger Z, and moves focus in on open (web: the panel,
+    restored on close; native: an accessibility focus event on the title, else the panel). On the web
+    it is a named `role="dialog"` with `aria-modal`. A new full-page root that can sit
+    behind a sheet spreads the props too.
+  - **Toasts** (`toast.tsx`, `toastDuration`): with a screen reader on
+    (`src/lib/screen-reader.ts`), a toast with an action stays until dismissed and a
+    plain one stays three times as long; on the web pointer hover and focus pause it.
+  - **Lists**: a list's rows sit in `role="listitem"` wrappers (a list holds items; a
+    row's buttons go inside them), as the book's chapters and versions do.
 - **Theme**: `ThemeProvider` drives `Uniwind.setTheme('light'|'dark'|'system')` and reads
   the resolved scheme from `useUniwind()`; `useTheme().scheme` is that resolved value.
   **Default (owner decision 2026-10-05, "System, new installs only"):** a new install follows

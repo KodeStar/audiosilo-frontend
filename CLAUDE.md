@@ -237,6 +237,9 @@ keep this index in step (one line per topic).
   - Fonts (Stacks)
   - `<Text>` variants are the Stacks type roles
   - rem is 14px on native
+  - Large text (`text-scale.ts`, the 1.3 threshold, capped controls, web twins of px text)
+  - Touch targets (44, 48 dp on Android)
+  - Screen-reader semantics (heading levels, modal sheets, toast timing, lists)
   - Theme
   - Conflicting classes are not de-duplicated
   - Web cascade layers
