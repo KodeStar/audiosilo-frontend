@@ -56,10 +56,14 @@ jest.mock('./librivox-search', () => ({
 }));
 
 /* eslint-disable import/first */
+import { BRIDGE_IDLE_POLL_MS } from '@/lib/bridge-jobs';
 import { useSession } from '@/stores/session';
+import { driveAppState } from '@/testing/app-state';
 
 import { FindLibrivoxScreen } from './find-librivox-screen';
 /* eslint-enable import/first */
+
+const app = driveAppState();
 
 const signIn = (user: object = ADMIN, id = 'c1') =>
   useSession.setState({
@@ -172,6 +176,31 @@ describe('FindLibrivoxScreen', () => {
       mockServer = librivoxServer();
       await readAgain();
       expect(screen.queryByTestId('librivox-search-away')).toBeNull();
+    });
+
+    it('asks /server again while it is away, so Add comes back with the Bridge', async () => {
+      await mountWithPortal(<FindLibrivoxScreen />);
+      jest.useFakeTimers();
+      try {
+        await act(async () => jest.advanceTimersByTime(BRIDGE_IDLE_POLL_MS));
+        // Not while the Bridge is online: nothing to wait for.
+        expect(mockInfoRefetch).not.toHaveBeenCalled();
+        mockServer = away();
+        await readAgain();
+        await act(async () => jest.advanceTimersByTime(BRIDGE_IDLE_POLL_MS));
+        expect(mockInfoRefetch).toHaveBeenCalledTimes(1);
+        // Never from the background.
+        app.becomes('background');
+        await act(async () => jest.advanceTimersByTime(BRIDGE_IDLE_POLL_MS));
+        expect(mockInfoRefetch).toHaveBeenCalledTimes(1);
+        app.becomes('active');
+        mockServer = librivoxServer();
+        await readAgain();
+        await act(async () => jest.advanceTimersByTime(BRIDGE_IDLE_POLL_MS));
+        expect(mockInfoRefetch).toHaveBeenCalledTimes(1);
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('still closes when the page was never open (it says why)', async () => {

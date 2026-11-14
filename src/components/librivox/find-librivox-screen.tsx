@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { AppState, View } from 'react-native';
 
 import { useServerInfo } from '@/api/hooks';
 import { useCid } from '@/api/provider';
@@ -9,6 +9,7 @@ import { OfflineState } from '@/components/layout/offline-state';
 import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { BRIDGE_IDLE_POLL_MS } from '@/lib/bridge-jobs';
 import { useUnreadQuery } from '@/lib/offline-state';
 import { parseFindLibrivoxParams } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
@@ -31,7 +32,9 @@ import { LibrivoxSearch } from './librivox-search';
  *
  * Once open, the page stays while a `/server` read again finds the Bridge away (its
  * heartbeat lapsed: `/server` drops its features), so the search and the fetches its rows
- * follow are kept; it says so and holds Add back until the Bridge is online again.
+ * follow are kept; it says so and holds Add back until the Bridge is online again. While
+ * it is away the page asks `/server` again every `BRIDGE_IDLE_POLL_MS` (nothing else
+ * would while the page stays open), so Add comes back with the Bridge.
  */
 export function FindLibrivoxScreen() {
   return (
@@ -70,6 +73,18 @@ function FindLibrivoxContent() {
   const [openFor, setOpenFor] = useState<string | null>(null);
   if (access === 'allowed' && openFor !== cid) setOpenFor(cid);
   const away = access === 'unavailable' && openFor === cid;
+  // Away: `/server` is asked again while the app is in the foreground. Its answer is fresh
+  // for minutes and nothing reads it again on an open page, so "add once it's back" would
+  // wait for the app to be left and opened again (and the followed fetches' reads with it,
+  // which the same flag holds).
+  const refetchInfo = info.refetch;
+  useEffect(() => {
+    if (!away) return;
+    const timer = setInterval(() => {
+      if (AppState.currentState === 'active') void refetchInfo();
+    }, BRIDGE_IDLE_POLL_MS);
+    return () => clearInterval(timer);
+  }, [away, refetchInfo]);
 
   if (!params) return <EmptyState icon="book" title={t('library.detail.badLink')} />;
   if (access === 'unknown') {

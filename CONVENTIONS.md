@@ -641,7 +641,9 @@ in step.
   finds the Bridge away (`unavailable`: its heartbeat lapsed and `/server` dropped its features):
   the search and the followed fetches are kept, a caption says so (`librivox.access.away`) and
   Add and Cancel are held back (`bridgeAway`: a cancel is `bridge`-gated, never sent) until it is
-  back; `notAdmin` and `metadataOff` still close it.
+  back; `notAdmin` and `metadataOff` still close it. While away the page asks `/server` again
+  every `BRIDGE_IDLE_POLL_MS` with the app in the foreground (its answer is fresh for minutes and
+  nothing else reads it on an open page), so Add and the followed fetches' reads come back.
   A `/server` read that failed with nothing kept says so with Retry (`librivox.access.readFailed`),
   never a skeleton for ever. A link without `?connection=` is the default connection's (`useCid`,
   as Find shows).
