@@ -55,16 +55,19 @@ const TEXT: [Token, Token[]][] = [
 
 /**
  * Non-text: WCAG AA 1.4.11, 3:1 against what is next to them. The field outline, the
- * strong border (outline buttons, chips, the switch off, a check box), the slider and
- * progress track, the focus ring, and the brand fill (progress, playhead). The plain
- * `border` is a decorative divider in the normal sets (high contrast raises it too).
+ * strong border (outline buttons, chips, the switch off, a check box), the focus ring,
+ * and the brand fill (progress, playhead) on the page AND on the slider and progress
+ * track: the fill against the track carries the value, so the track stays light (it may
+ * sit under 3:1 on the page; high contrast outlines it in `input`, held to 4.5:1 below).
+ * The plain `border` is a decorative divider in the normal sets (high contrast raises it).
  */
 const NON_TEXT: [Token, Token[]][] = [
   ['input', ['background', 'card']],
   ['borderStrong', ['background', 'card']],
-  ['track', ['background', 'card']],
   ['ring', ['background', 'card']],
-  ['brand', ['background', 'card']],
+  ['brand', ['background', 'card', 'track']],
+  // The slider's ink fill (`tone="primary"`).
+  ['primary', ['track']],
 ];
 
 /** Faded text the app draws on a solid fill (`text-primary-foreground/70` and up: the

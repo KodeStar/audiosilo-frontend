@@ -1,5 +1,7 @@
 import { render, screen } from '@testing-library/react-native';
 
+import { ScopedThemeColors, ThemeColorsProvider } from '@/theme/use-theme-colors';
+
 import { ProgressBar } from './progress-bar';
 
 type Node = { props: { className?: string; style?: { width?: string } }; children: Node[] };
@@ -38,5 +40,18 @@ describe('ProgressBar', () => {
     );
     expect(fillClass).toContain('bg-foreground/60');
     expect(fillClass).not.toContain('bg-brand');
+  });
+
+  it('outlines the track only in high contrast', async () => {
+    await render(<ProgressBar fraction={0.5} />);
+    expect(screen.queryByTestId('track-outline')).toBeNull();
+    await render(
+      <ThemeColorsProvider highContrast>
+        <ScopedThemeColors theme="light">
+          <ProgressBar fraction={0.5} />
+        </ScopedThemeColors>
+      </ThemeColorsProvider>,
+    );
+    expect(String(screen.getByTestId('track-outline').props.className)).toContain('border-input');
   });
 });

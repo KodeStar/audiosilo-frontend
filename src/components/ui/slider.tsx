@@ -2,6 +2,7 @@ import { Platform, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
+import { TrackOutline } from '@/components/ui/progress-bar';
 import { FOCUS_RING_CLASS } from '@/components/ui/text';
 import { useSliderControl } from '@/components/ui/use-slider-control';
 import { cn } from '@/lib/utils';
@@ -106,6 +107,7 @@ export function Slider({
               fillStyle,
             ]}
           />
+          <TrackOutline />
         </View>
         <Animated.View
           pointerEvents="none"

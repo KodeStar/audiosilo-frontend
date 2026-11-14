@@ -32,7 +32,7 @@ export const colors = {
     border: '#e0e5ed', // --color-border
     borderStrong: '#848ea3', // --color-border-strong
     input: '#848ea3', // --color-input
-    track: '#848ea3', // --color-track
+    track: '#d9dee7', // --color-track
     ring: '#db2777', // --color-ring
     brand: '#db2777', // --color-brand
     brandForeground: '#ffffff', // --color-brand-foreground
@@ -86,7 +86,7 @@ export const colors = {
     border: '#1d2640', // --color-border
     borderStrong: '#5c6886', // --color-border-strong
     input: '#5c6886', // --color-input
-    track: '#5c6886', // --color-track
+    track: '#263150', // --color-track
     ring: '#ec4f95', // --color-ring
     brand: '#ec4f95', // --color-brand
     brandForeground: '#0a0f1e', // --color-brand-foreground
@@ -142,7 +142,7 @@ export const colors = {
       border: '#848ea3', // --color-border
       borderStrong: '#5f6982', // --color-border-strong
       input: '#5f6982', // --color-input
-      track: '#848ea3', // --color-track
+      track: '#d9dee7', // --color-track
       ring: '#db2777', // --color-ring
       brand: '#db2777', // --color-brand
       brandForeground: '#ffffff', // --color-brand-foreground
@@ -196,7 +196,7 @@ export const colors = {
       border: '#5c6886', // --color-border
       borderStrong: '#808ba7', // --color-border-strong
       input: '#808ba7', // --color-input
-      track: '#5c6886', // --color-track
+      track: '#263150', // --color-track
       ring: '#ec4f95', // --color-ring
       brand: '#ec4f95', // --color-brand
       brandForeground: '#0a0f1e', // --color-brand-foreground

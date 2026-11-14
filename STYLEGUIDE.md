@@ -112,7 +112,7 @@ Desktop
   --destructive: #c42b3c;        --destructive-soft: #fde8ea;
   --border: #e0e5ed;             --border-strong: #848ea3;   /* border: decorative; strong: 3:1 */
   --input: #848ea3;              --ring: #db2777;            /* field outline 3:1 (WCAG 1.4.11) */
-  --track: #848ea3;              /* slider and progress track, 3:1 on the page */
+  --track: #d9dee7;              /* slider and progress track: the brand fill on it is 3:1 */
 
   --brand: #db2777;              /* the one pink thing */
   --brand-foreground: #ffffff;
@@ -160,7 +160,7 @@ Desktop
   --destructive: #f0606e; --destructive-soft: #3a1720;
   --success: #3cc994; --success-soft: #0f2e26; --warning: #f0b04d; --warning-soft: #33260f; --info: #7d9bf2; --info-soft: #17234a;
   --community: #b59cff; --community-soft: #251b45;
-  --border: #1d2640; --border-strong: #5c6886; --input: #5c6886; --track: #5c6886; --ring: #ec4f95;
+  --border: #1d2640; --border-strong: #5c6886; --input: #5c6886; --track: #263150; --ring: #ec4f95;
   --chart-1: #e4458b; --chart-2: #6680ec; --chart-3: #17a093; --chart-4: #cc7f16; --chart-5: #8f72f2;
   --seq-0: #161e36; --seq-1: #3a1a37; --seq-2: #6b1f4f; --seq-3: #a12a6a; --seq-4: #d9418a; --seq-5: #f58bbb;
   --shelf-edge: #1f2944; --shelf-shadow: rgb(0 0 0 / .5);
@@ -228,7 +228,7 @@ Web dark-mode rule: define dark under `@media (prefers-color-scheme: dark) { :ro
 | `--brand-foreground` | `#ffffff` | `#0a0f1e` | The label on a solid brand fill (the brand button; white on the dark pink was 3.4:1) |
 | `--subtle-foreground` | `#636e87` | `#818ba2` | The quietest text (counts, "of goal", sync state, placeholders): AA, a step under `--muted-foreground` |
 | `--border-strong` / `--input` | `#848ea3` | `#5c6886` | Outline buttons, chips, the switch off, check boxes; field outlines. 3:1 on the page and cards (WCAG 1.4.11); plain `--border` is a decorative divider |
-| `--track` | `#848ea3` | `#5c6886` | The slider and progress track, 3:1 on the page and cards. The brand fill on it is about 1.4:1 (light) / 1.6:1 (dark): the fill's end is told by hue and, on a slider, by the thumb |
+| `--track` | `#d9dee7` | `#263150` | The slider and progress track. The brand fill on it carries the value, so it holds 3:1 (3.40 light, 3.74 dark) and the track stays light on the page (1.26 / 1.49). In high contrast `ProgressBar` and the slider draw a 1px `--input` outline over it (`TrackOutline`), so its full length shows at 4.5:1; `ProgressRing` tracks are not outlined |
 | `--info` | `#2c56c9` | `#7d9bf2` | "On Maya's Shelf" (a friend's server), "Also on ..." |
 | `--seq-0..5` | pink ramp | pink ramp | Listening calendar heatmap only |
 | `--chart-1..5` | fixed order | fixed order | Storage per server, any categorical chart. A sixth series folds into "Other". Where the view already has its pink thing (the Downloads page), start at `chart-2` and use `chart-1` last. |
@@ -718,12 +718,12 @@ layer. Shortcuts never fire while typing.
 - Visible focus: 2 px `--ring` outline, 2 px offset, on everything interactive.
 - Player controls have labels ("Back 15 seconds", "Next chapter"); the seek bar is a slider with value text.
 - Palette is a combobox + listbox; menus, tabs, sheets and dialogs are keyboard operable and `aria-modal`.
-- Contrast: every text token meets AA (4.5:1) on the surfaces it sits on and the field outline, strong border and
-  track meet 3:1, in both themes (`src/theme/contrast.test.ts`); pink text uses `--brand-ink`.
+- Contrast: every text token meets AA (4.5:1) on the surfaces it sits on, the field outline and strong border meet 3:1,
+  and the brand fill meets 3:1 on the page and on its track, in both themes (`src/theme/contrast.test.ts`); pink text uses `--brand-ink`.
 - High contrast: when the OS asks (iOS Increase Contrast, Android high contrast text, web `prefers-contrast: more`)
   or Settings > Appearance > High contrast is on, the high-contrast token sets (section 17) replace the normal ones:
   muted and subtle text at 7:1, the plain border at 3:1, strong borders and outlines at 4.5:1, stronger status
-  colours. Same layout and surfaces; Light / Dark / System unchanged.
+  colours, outlined progress and slider tracks. Same layout and surfaces; Light / Dark / System unchanged.
 - Charts have `role="img"` + labels and a list alternative nearby (ranked lists, the journal).
 - 44 pt targets (64 in kids mode), Dynamic Type / Android font scale, reduce motion and haptics toggles, car mode
   (four 120 px targets) when CarPlay or Android Auto connects.
