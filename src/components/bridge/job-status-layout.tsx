@@ -8,12 +8,15 @@ import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
+/** The status icon's colour, a theme colour's name. */
+export type JobStatusTone = 'mutedForeground' | 'warning' | 'destructive';
+
 /**
  * A Bridge job's compact status, as Generate's (`JobStatus`) and Find on LibriVox's fetch
  * (`FetchStatus`) show it: an icon and a title, one caption line, a neutral progress bar
  * while there is a fraction, then `children` (a further line). Status is the words and the
- * icon, never colour alone. `action` (Cancel, Try again) sits at the title's end, or with
- * `actionBelow` under the lines, left-aligned (a full-width row, where an end-aligned button
+ * icon, never colour alone. `action` (Cancel, Try again) sits at the title's end; a status
+ * as wide as its page puts its button in `children` instead, left-aligned (an end-aligned one
  * would float in the middle of the row).
  */
 export function JobStatusLayout({
@@ -22,22 +25,20 @@ export function JobStatusLayout({
   tone,
   title,
   line,
-  lineLines = 2,
+  lineLines,
   fraction,
   action,
-  actionBelow = false,
   className,
   children,
 }: {
   testID: string;
   icon: IconName;
-  tone: 'mutedForeground' | 'warning' | 'destructive';
+  tone: JobStatusTone;
   title: string;
   line: string;
-  lineLines?: number;
+  lineLines: number;
   fraction?: number;
   action?: ReactNode;
-  actionBelow?: boolean;
   className?: string;
   children?: ReactNode;
 }) {
@@ -49,7 +50,7 @@ export function JobStatusLayout({
         <Text variant="label" className="min-w-0 flex-1" numberOfLines={2}>
           {title}
         </Text>
-        {actionBelow ? null : action}
+        {action}
       </View>
       <Text variant="caption" numberOfLines={lineLines} style={tabularNums}>
         {line}
@@ -58,7 +59,6 @@ export function JobStatusLayout({
         <ProgressBar fraction={fraction} minPercent={4} fillClassName="bg-foreground/60" />
       ) : null}
       {children}
-      {actionBelow && action ? <View className="flex-row">{action}</View> : null}
     </View>
   );
 }

@@ -44,14 +44,14 @@ export function LibrivoxSearch({
   connectionId,
   libraryId,
   header,
-  bridgeAway = false,
+  bridgeAway,
 }: {
   connectionId: string;
   /** The library the page was opened from: Add's first choice. */
   libraryId: number;
   header: ReactElement;
   /** The Bridge went away while the page was open: Add is held back. */
-  bridgeAway?: boolean;
+  bridgeAway: boolean;
 }) {
   const { t } = useTranslation();
   const gutter = pageGutter(useLayout());

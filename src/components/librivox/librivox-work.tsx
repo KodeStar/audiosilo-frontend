@@ -13,7 +13,7 @@ import {
 } from '@/api/hooks';
 import type { Library, LibrivoxRecording } from '@/api/types';
 import { librivoxUrl } from '@/components/book/book-details-model';
-import { JobStatusLayout } from '@/components/bridge/job-status-layout';
+import { JobStatusLayout, type JobStatusTone } from '@/components/bridge/job-status-layout';
 import { OfflineState } from '@/components/layout/offline-state';
 import { Button } from '@/components/ui/button';
 import type { IconName } from '@/components/ui/icon';
@@ -49,13 +49,13 @@ export function LibrivoxWorkPanel({
   connectionId,
   workId,
   target,
-  bridgeAway = false,
+  bridgeAway,
 }: {
   connectionId: string;
   workId: string;
   target: Library | null | undefined;
   /** The Bridge went away while the page was open: Add is held back until it is back. */
-  bridgeAway?: boolean;
+  bridgeAway: boolean;
 }) {
   const { t } = useTranslation();
   const work = useLibrivoxWork(workId, connectionId);
@@ -249,7 +249,7 @@ function statusLine(t: TFunction, view: FetchView): string {
 
 /** A status's title, icon and the icon's colour: one look while the Bridge works on it
  * (waiting, running, stopping), one for each way it stopped. */
-type Look = { title: string; icon: IconName; tone: 'mutedForeground' | 'warning' | 'destructive' };
+type Look = { title: string; icon: IconName; tone: JobStatusTone };
 const WORKING = {
   title: 'librivox.fetch.title',
   icon: 'download',
@@ -296,9 +296,9 @@ function FetchStatus({
           ? view.done / view.total
           : undefined
       }
-      actionBelow
-      action={
-        onCancel ? (
+    >
+      {onCancel ? (
+        <View className="flex-row">
           <Button
             testID="librivox-cancel"
             size="sm"
@@ -308,9 +308,9 @@ function FetchStatus({
             loading={cancelling}
             onPress={onCancel}
           />
-        ) : undefined
-      }
-    />
+        </View>
+      ) : null}
+    </JobStatusLayout>
   );
 }
 

@@ -686,7 +686,7 @@ in step.
   another one: an answer that still names the job before never takes the row back from the one
   it just queued. A job's end is the watcher's (above), page or no page. The status is
   `JobStatusLayout` (`src/components/bridge/job-status-layout.tsx`, shared with Generate's
-  `JobStatus`) with Cancel under it (`actionBelow`, where Add sits: the row is the page's width,
+  `JobStatus`) with Cancel under it (its `children`, where Add sits: the row is the page's width,
   so an end-aligned Cancel floated mid-row). The
   recording's `cover_url` is never loaded (a third-party host, no server proxy). Strings under
   `librivox.*` in all 6 locales (waiting, stopping, the count and a failed cancel are
