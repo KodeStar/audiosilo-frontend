@@ -288,6 +288,7 @@ function BrowseContent() {
         <View className="flex-1 flex-row">
           <FlatList
             ref={listRef}
+            testID="browse-list"
             className="flex-1"
             data={rows}
             keyExtractor={(item) => (item.type === 'header' ? `#${item.letter}` : item.entry.path)}

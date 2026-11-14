@@ -20,18 +20,20 @@ jest.mock('@/api/provider', () => ({
 const mockRefetch = jest.fn();
 const mockBrowse = jest.fn();
 let mockError: Error | null = null;
+let mockData: unknown;
 let mockPaused = false;
 let mockDeviceOnline = true;
 jest.mock('@/lib/device-online', () => ({
   ...jest.requireActual('@/lib/device-online'),
   useDeviceOnline: () => mockDeviceOnline,
 }));
+jest.mock('./entry-row', () => ({ EntryRow: () => null }));
 jest.mock('@/api/hooks', () => ({
   useLibraries: () => ({ data: [{ id: 1, name: 'Fiction' }] }),
   useBrowseInfinite: (...a: unknown[]) => {
     mockBrowse(...a);
     return {
-      data: undefined,
+      data: mockData,
       isLoading: false,
       isPaused: mockPaused,
       error: mockError,
@@ -46,6 +48,7 @@ jest.mock('@/api/hooks', () => ({
 /* eslint-disable import/first */
 import { ApiError } from '@/api/client';
 import { useSession } from '@/stores/session';
+import { setFontScale } from '@/testing/font-scale';
 
 import { BrowseScreen } from './browse-screen';
 /* eslint-enable import/first */
@@ -57,6 +60,7 @@ beforeEach(() => {
   mockBrowse.mockClear();
   mockRefetch.mockClear();
   mockError = null;
+  mockData = undefined;
   mockPaused = false;
   mockDeviceOnline = true;
   mockScope = 'home';
@@ -136,5 +140,30 @@ describe('BrowseScreen', () => {
     await render(<BrowseScreen />);
     expect(screen.getByText("This folder isn't in the library")).toBeTruthy();
     expect(mockBrowse).not.toHaveBeenCalled();
+  });
+
+  // Under large text a jump goes by row index, retried 50 ms after one that failed. A list
+  // that lost the row meanwhile (a filter, a refetch) must not throw from the timer.
+  it('lets go of a retried jump to a row the list no longer has', async () => {
+    const entry = { name: 'Abe', path: 'Abe', is_dir: true, is_audio: false, size: 0, mod_time: 0 };
+    mockData = { pages: [{ entries: [entry], total: 1 }] };
+    await setFontScale(1.5);
+    jest.useFakeTimers();
+    try {
+      await render(<BrowseScreen />);
+      const list = screen.getByTestId('browse-list');
+      expect(list.props.getItemLayout).toBeUndefined();
+      expect(() => {
+        list.props.onScrollToIndexFailed({
+          index: 40,
+          averageItemLength: 60,
+          highestMeasuredFrameIndex: 0,
+        });
+        jest.advanceTimersByTime(50);
+      }).not.toThrow();
+    } finally {
+      jest.useRealTimers();
+      await setFontScale(1);
+    }
   });
 });
