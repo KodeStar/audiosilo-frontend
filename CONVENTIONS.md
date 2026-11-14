@@ -675,7 +675,9 @@ in step.
   `librivoxFetchEnded` (the works asked again; a `done` one also `invalidateLibraryLists` and the
   works once more after `DONE_RECHECK_MS`, on a module timer that fires whatever is mounted by
   then) and drops the watch; it also drops one that is gone (404, the works asked again), refused
-  (400, 401, 403: nothing read again) or whose connection signed out (never read). A failed read
+  (400, 401, 403: nothing read again) or whose connection signed out (never read). A row still
+  open hands its fetch over again with each answer that reads it open (a no-op while watched), so
+  one dropped on a 401 is watched again once its connection is signed in again. A failed read
   (no answer, a 5xx) keeps the watch: the poll asks again. The watcher keeps the hooks' own gate
   (`bridge`, which `/server` sends true only while the Bridge is online) and does not ask
   `librivoxAccess`: a lapsed heartbeat pauses its reads (the query is skipped) and keeps the

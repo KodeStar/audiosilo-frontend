@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { View } from 'react-native';
+import { create } from 'zustand';
 
 import { ApiError } from '@/api/client';
 import type { BridgeJob, Library, LibrivoxHit, LibrivoxWork } from '@/api/types';
@@ -21,6 +22,7 @@ jest.mock('@/lib/support', () => ({ openExternalUrl: (u: string) => mockOpenUrl(
 
 type ReadState<T> = {
   data?: T;
+  dataUpdatedAt?: number;
   isError?: boolean;
   error?: unknown;
   isPending?: boolean;
@@ -35,6 +37,8 @@ const mockWorkAsked: (string | null)[] = [];
 let mockJobs: Record<number, ReadState<BridgeJob>> = {};
 // The `active` each job was read with (the row never polls: the watcher does).
 const mockJobActive = new Map<number, boolean[]>();
+// Moved on to have each job's row read `mockJobs` again (a poll's or a refetch's answer).
+const mockJobsRead = create(() => ({ n: 0 }));
 const mockAdd = jest.fn();
 const mockCancel = jest.fn();
 const mockInvalidateLists = jest.fn();
@@ -64,6 +68,7 @@ jest.mock('@/api/hooks', () => {
       return { refetch: jest.fn(), isError: false, ...mockWork };
     },
     useLibrivoxJob: (id: number | undefined, active: boolean) => {
+      mockJobsRead((s) => s.n);
       if (id === undefined) return {};
       mockJobActive.set(id, [...new Set([...(mockJobActive.get(id) ?? []), active])]);
       return mockJobs[id] ?? { isPending: true };
@@ -303,6 +308,20 @@ describe('LibrivoxSearch', () => {
     expect(useLibrivoxWatches.getState().watches).toEqual([{ cid: 'c1', id: 41 }]);
     // The watcher is the one poller: the row asks with `active` false.
     expect(mockJobActive.get(41)).toEqual([false]);
+  });
+
+  it('hands an open fetch back to the watcher when it is read again (signed in again)', async () => {
+    mockWork = { data: work({ job: { id: 41, state: 'running' } }) };
+    mockJobs = { 41: { data: librivoxJob({ id: 41, state: 'running' }), dataUpdatedAt: 1 } };
+    await mount();
+    await openWork();
+    // The watcher dropped it: its read was refused (the token revoked mid-download).
+    await act(async () => useLibrivoxWatches.setState({ watches: [] }));
+    expect(useLibrivoxWatches.getState().watches).toEqual([]);
+    // Signed in again, the job is read again and is still open.
+    mockJobs = { 41: { data: librivoxJob({ id: 41, state: 'running' }), dataUpdatedAt: 2 } };
+    await act(async () => mockJobsRead.setState({ n: 1 }));
+    expect(useLibrivoxWatches.getState().watches).toEqual([{ cid: 'c1', id: 41 }]);
   });
 
   it('watches the job an Add queued when the page was left before the answer', async () => {

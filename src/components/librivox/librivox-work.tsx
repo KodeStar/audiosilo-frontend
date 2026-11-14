@@ -27,7 +27,7 @@ import { useOpen } from '@/lib/open';
 import { openExternalUrl } from '@/lib/support';
 import { tabularNums } from '@/theme/tabular-nums';
 
-import { watchLibrivoxFetch } from './fetch-watcher';
+import { followedRead, watchLibrivoxFetch } from './fetch-watcher';
 import {
   addRefusalKey,
   type FetchView,
@@ -340,14 +340,16 @@ function useFollowedFetch(connectionId: string, r: LibrivoxRecording) {
   }
   const read = useLibrivoxJob(followed, false, connectionId);
   const cancel = useCancelBridgeJob(connectionId);
-  const gone = read.error instanceof ApiError && read.error.status === 404;
-  const job = gone ? undefined : read.data;
   // One already known ended is the watcher's no more: a work opened again shows its last
   // answer first, which still names the fetch whose end was handled when it came.
-  const ended = gone || (!!job && !isOpenJob(job));
+  const { job, ended } = followedRead(read);
+  // Handed over again with each answer that reads it open (nothing changes while it is
+  // watched): the watcher drops a watch its read was refused (a 401, the token revoked),
+  // and once signed in again the row would show a fetch nobody polls.
+  const readAt = read.dataUpdatedAt;
   useEffect(() => {
     if (followed !== undefined && !ended) watchLibrivoxFetch(connectionId, followed);
-  }, [connectionId, followed, ended]);
+  }, [connectionId, followed, ended, readAt]);
 
   return {
     job,

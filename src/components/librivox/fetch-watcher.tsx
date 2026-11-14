@@ -4,6 +4,7 @@ import { create } from 'zustand';
 
 import { ApiError, isNotInLibraryError, isSignedOutError } from '@/api/client';
 import { invalidateLibraryLists, qk, useLibrivoxJob } from '@/api/hooks';
+import type { BridgeJob } from '@/api/types';
 import { isOpenJob } from '@/lib/bridge-jobs';
 import { useSession } from '@/stores/session';
 
@@ -43,6 +44,17 @@ function dropWatch(w: Watch) {
 }
 
 /**
+ * A followed fetch's read (`useLibrivoxJob`), as the watcher and a recording row both take
+ * it: `gone` (a 404, deleted with its library: the last answer no longer stands), its
+ * `job` (none once gone) and whether it `ended` (gone, or no longer open).
+ */
+export function followedRead(read: { data?: BridgeJob; error: unknown }) {
+  const gone = read.error instanceof ApiError && read.error.status === 404;
+  const job = gone ? undefined : read.data;
+  return { gone, job, ended: gone || (!!job && !isOpenJob(job)) };
+}
+
+/**
  * After a followed fetch ended: the connection's works are asked again (a done one moves the
  * recording into the library, a failed one offers Add again); a done one (`doneIn`, its
  * library) also has the library's lists and the recently added read again, and the works
@@ -74,9 +86,7 @@ function WatchedFetch({ cid, id }: Watch) {
   const signedIn = useSession((s) => s.connections.some((c) => c.id === cid));
   // Never asked for a connection that is gone (its client is too).
   const read = useLibrivoxJob(signedIn ? id : undefined, true, cid);
-  const gone = read.error instanceof ApiError && read.error.status === 404;
-  const job = gone ? undefined : read.data;
-  const ended = gone || (!!job && !isOpenJob(job));
+  const { gone, job, ended } = followedRead(read);
   const doneIn = job?.state === 'done' ? job.library_id : null;
   // A refusal (a 400, 401 or 403): asking again can't help, by the poll's own rule
   // (`useLibrivoxJob`), which stops too. A 404 is `gone`: an end, not a refusal.
