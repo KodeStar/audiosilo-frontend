@@ -62,7 +62,11 @@ export function behindModalProps(hidden: boolean): BehindModalProps {
   };
 }
 
+// The web's props never change (`behindModalProps`), so its page roots never re-render for
+// a sheet opening or closing.
+const hidesBehind = () => Platform.OS !== 'web' && open > 0;
+
 /** Spread on a page root that sits behind the sheets (see the module doc). */
 export function useBehindModalProps(): BehindModalProps {
-  return behindModalProps(useModalLayerOpen());
+  return behindModalProps(useSyncExternalStore(subscribe, hidesBehind, () => false));
 }
