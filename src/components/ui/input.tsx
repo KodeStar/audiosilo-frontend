@@ -27,8 +27,11 @@ const fieldBase = cn(
   }),
 );
 
-// Min heights: a field grows with its text under large text (fe#267).
-const sizes = { default: 'min-h-[40px]', lg: 'min-h-[48px]' } as const;
+// Min heights: a field grows with its text under large text (fe#267). The padding is the
+// field's own: with none in its style, Android adds its EditText theme padding (about 10 dp
+// above and below), which a fixed height hid and a minimum one would grow past at the
+// default size.
+const sizes = { default: 'min-h-[40px] py-1', lg: 'min-h-[48px] py-1' } as const;
 
 export type InputProps = TextInputProps & {
   className?: string;
