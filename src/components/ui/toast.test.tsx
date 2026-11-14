@@ -192,4 +192,26 @@ describe('toast timing for a screen reader (fe#267)', () => {
     });
     expect(screen.queryByText('Saved')).toBeNull();
   });
+
+  it('stays held while either the pointer or focus still holds it', async () => {
+    await mountHost();
+    let id = 0;
+    await act(async () => {
+      id = toast({ title: 'Removed', action: { label: 'Undo', onPress: jest.fn() } });
+    });
+    // Focus is on Undo and the pointer passes over and away: the toast must not time out
+    // under the keyboard.
+    await act(async () => {
+      pauseToast(id, 'focus');
+      pauseToast(id, 'pointer');
+      resumeToast(id, 'pointer');
+      jest.advanceTimersByTime(20_000);
+    });
+    expect(screen.getByText('Removed')).toBeTruthy();
+    await act(async () => {
+      resumeToast(id, 'focus');
+      jest.advanceTimersByTime(8000);
+    });
+    expect(screen.queryByText('Removed')).toBeNull();
+  });
 });

@@ -60,13 +60,16 @@ const SCREEN_READER_FACTOR = 3;
 const useToasts = create<{ items: ToastItem[] }>(() => ({ items: [] }));
 
 let nextId = 1;
-/** A toast's auto-dismiss: the running timeout (none while paused), when it started and
- * how much of its time was left then. */
+/** What holds a toast's auto-dismiss on the web: the pointer over it, focus in it. */
+type ToastHold = 'pointer' | 'focus';
+/** A toast's auto-dismiss: the running timeout (none while paused), when it started, how
+ * much of its time was left then, and what is holding it. */
 type Timer = {
   handle?: ReturnType<typeof setTimeout>;
   started: number;
   remaining: number;
   fire: () => void;
+  holds: Set<ToastHold>;
 };
 const timers = new Map<number, Timer>();
 
@@ -99,18 +102,23 @@ function run(timer: Timer) {
 }
 
 /** Holds a toast's auto-dismiss (the web: the pointer is over it or focus is in it). */
-export function pauseToast(id: number) {
+export function pauseToast(id: number, hold: ToastHold = 'pointer') {
   const timer = timers.get(id);
-  if (!timer?.handle) return;
+  if (!timer) return;
+  timer.holds.add(hold);
+  if (!timer.handle) return;
   clearTimeout(timer.handle);
   timer.handle = undefined;
   timer.remaining = Math.max(0, timer.remaining - (Date.now() - timer.started));
 }
 
-/** Lets a paused toast's auto-dismiss run on, for the time it had left. */
-export function resumeToast(id: number) {
+/** Lets go of one hold on a toast; once nothing holds it (the pointer has left AND focus
+ * is out), its auto-dismiss runs on for the time it had left. */
+export function resumeToast(id: number, hold: ToastHold = 'pointer') {
   const timer = timers.get(id);
-  if (!timer || timer.handle) return;
+  if (!timer) return;
+  timer.holds.delete(hold);
+  if (timer.handle || timer.holds.size > 0) return;
   run(timer);
 }
 
@@ -137,6 +145,7 @@ export function toast(options: ToastOptions): number {
         dismissToast(id);
         options.onTimeout?.();
       },
+      holds: new Set(),
     };
     timers.set(id, timer);
     run(timer);
@@ -200,8 +209,8 @@ function ToastCard({ item }: { item: ToastItem }) {
           ? {
               onPointerEnter: () => pauseToast(id),
               onPointerLeave: () => resumeToast(id),
-              onFocus: () => pauseToast(id),
-              onBlur: () => resumeToast(id),
+              onFocus: () => pauseToast(id, 'focus'),
+              onBlur: () => resumeToast(id, 'focus'),
             }
           : {})}
       >
