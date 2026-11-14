@@ -7,7 +7,7 @@ import { Figtree_700Bold } from '@expo-google-fonts/figtree/700Bold';
 import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono/500Medium';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 import { Uniwind, useUniwind } from 'uniwind';
 
@@ -95,8 +95,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [highContrastPref, setHighContrastPrefState] = useState(false);
   const [osHighContrast, setOsHighContrast] = useState(false);
-  // What the theme variables hold now: the CSS starts with the normal colours.
-  const appliedHighContrast = useRef(false);
   const highContrast = highContrastActive(osHighContrast, highContrastPref);
   const [fontsLoaded, fontError] = useFonts(FONTS);
   const fontsReady = fontsLoaded || !!fontError;
@@ -109,26 +107,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       .catch(() => undefined)
       .then(() =>
         Promise.all([
-          getItem<unknown>(THEME_STORAGE_KEY)
-            .then((saved) => {
-              if (active) Uniwind.setTheme(restoredSchemePref(saved));
-            })
-            .catch(() => {
-              // Restoring the theme must not wedge first paint (render is gated on
-              // `hydrated`); Uniwind then follows the OS until the user picks a theme.
-            }),
+          // A failed read must not wedge first paint (render is gated on `hydrated`);
+          // Uniwind then follows the OS until the user picks a theme.
+          getItem<unknown>(THEME_STORAGE_KEY).then(restoredSchemePref, () => null),
           getItem<unknown>(HIGH_CONTRAST_STORAGE_KEY).then(restoredHighContrast, () => false),
           readOsHighContrast(),
         ]),
       )
-      .then(([, pref, os]) => {
+      .then(([scheme, pref, os]) => {
         if (!active) return;
         // Before first paint, so a high-contrast launch never shows the normal colours.
-        const on = highContrastActive(os, pref);
-        if (on !== appliedHighContrast.current) applyHighContrast(on);
-        appliedHighContrast.current = on;
+        applyHighContrast(highContrastActive(os, pref));
         setHighContrastPrefState(pref);
         setOsHighContrast(os);
+        if (scheme) Uniwind.setTheme(scheme);
       })
       .catch(() => undefined)
       .finally(() => {
@@ -146,9 +138,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => watchOsHighContrast(setOsHighContrast), []);
 
   useEffect(() => {
-    if (!hydrated || highContrast === appliedHighContrast.current) return;
-    applyHighContrast(highContrast);
-    appliedHighContrast.current = highContrast;
+    if (hydrated) applyHighContrast(highContrast);
   }, [hydrated, highContrast]);
 
   // Keep the web document backdrop in sync with the resolved scheme. The static

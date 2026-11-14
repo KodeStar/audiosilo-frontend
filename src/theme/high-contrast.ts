@@ -28,21 +28,38 @@ export const themeColors = (scheme: 'light' | 'dark', highContrast: boolean): Th
 export const cssVariableName = (camel: string): string =>
   `--color-${camel.replace(/[A-Z0-9]/g, (c) => `-${c.toLowerCase()}`)}`;
 
-/** Every theme variable of one scheme's set, as Uniwind's `updateCSSVariables` takes them. */
-export function cssVariables(values: ThemeColors): Record<string, string> {
-  return Object.fromEntries(Object.entries(values).map(([k, v]) => [cssVariableName(k), v]));
+/** The theme variables one scheme's high-contrast set changes (the rest never move), at
+ * their normal or high-contrast values, as Uniwind's `updateCSSVariables` takes them. */
+export function contrastVariables(
+  scheme: 'light' | 'dark',
+  highContrast: boolean,
+): Record<string, string> {
+  const normal = colors[scheme];
+  const high = colors.highContrast[scheme];
+  const values = highContrast ? high : normal;
+  return Object.fromEntries(
+    (Object.keys(normal) as (keyof ThemeColors)[])
+      .filter((k) => normal[k] !== high[k])
+      .map((k) => [cssVariableName(k), values[k]]),
+  );
 }
+
+// What the theme variables hold now: the CSS starts with the normal colours.
+let applied = false;
 
 /**
  * Puts the light and dark theme variables to their normal or high-contrast values, so
- * every themed class (`text-muted-foreground`, `border-input`, `bg-track`, a scoped
- * theme's too) follows. Both schemes at once, so a later Light/Dark/System change keeps
- * the contrast. Turning it off writes the normal values back (Uniwind has no "reset").
- * Web: rules in Uniwind's own `<style>` (`.light{}` / `.dark{}`), which outrank the
- * layered theme CSS; native: Uniwind's per-theme variable store.
+ * every themed class (`text-muted-foreground`, `border-input`, a scoped theme's too)
+ * follows. Both schemes at once, so a later Light/Dark/System change keeps the contrast.
+ * Turning it off writes the normal values back (Uniwind has no "reset"). Writes nothing
+ * when the variables already hold what is asked, so a launch without high contrast leaves
+ * them alone. Web: rules in Uniwind's own `<style>` (`.light{}` / `.dark{}`), which
+ * outrank the layered theme CSS; native: Uniwind's per-theme variable store.
  */
 export function applyHighContrast(highContrast: boolean): void {
+  if (highContrast === applied) return;
   for (const scheme of ['light', 'dark'] as const) {
-    Uniwind.updateCSSVariables(scheme, cssVariables(themeColors(scheme, highContrast)));
+    Uniwind.updateCSSVariables(scheme, contrastVariables(scheme, highContrast));
   }
+  applied = highContrast;
 }

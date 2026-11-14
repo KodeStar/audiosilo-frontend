@@ -3,8 +3,8 @@ import { Uniwind } from 'uniwind';
 import tokens from './tokens.json';
 import {
   applyHighContrast,
+  contrastVariables,
   cssVariableName,
-  cssVariables,
   highContrastActive,
   restoredHighContrast,
   themeColors,
@@ -42,34 +42,55 @@ describe('themeColors', () => {
 
 describe('cssVariableName', () => {
   it('names the theme variable of every token in tokens.json', () => {
-    // The reverse of the generator's camelName, for every token there is.
-    const camel = (n: string) => n.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase());
-    for (const name of Object.keys(tokens.themes.light).filter((k) => !k.startsWith('$'))) {
-      expect(cssVariableName(camel(name))).toBe(`--color-${name}`);
-    }
+    // The generated keys are the generator's camelName of each token, in tokens.json's order.
+    expect(Object.keys(colors.light).map(cssVariableName)).toEqual(
+      Object.keys(tokens.themes.light)
+        .filter((k) => !k.startsWith('$'))
+        .map((name) => `--color-${name}`),
+    );
   });
+});
 
-  it('lists every token of a set as a variable', () => {
-    const vars = cssVariables(colors.highContrast.dark);
-    expect(Object.keys(vars)).toHaveLength(Object.keys(colors.dark).length);
-    expect(vars['--color-muted-foreground']).toBe(colors.highContrast.dark.mutedForeground);
-    expect(vars['--color-chart-1']).toBe(colors.dark.chart1);
+describe('contrastVariables', () => {
+  it.each(['light', 'dark'] as const)('lists only what high contrast changes in %s', (scheme) => {
+    const on = contrastVariables(scheme, true);
+    const off = contrastVariables(scheme, false);
+    expect(on['--color-muted-foreground']).toBe(colors.highContrast[scheme].mutedForeground);
+    expect(off['--color-muted-foreground']).toBe(colors[scheme].mutedForeground);
+    // The same variables both ways, so turning it off puts every one back.
+    expect(Object.keys(off)).toEqual(Object.keys(on));
+    expect(Object.keys(on)).toHaveLength(Object.keys(tokens.highContrast[scheme]).length);
+    expect(on).not.toHaveProperty('--color-background');
+    expect(on).not.toHaveProperty('--color-chart-1');
   });
 });
 
 describe('applyHighContrast', () => {
   const update = jest.spyOn(Uniwind, 'updateCSSVariables');
-  afterEach(() => update.mockClear());
+  beforeEach(() => {
+    applyHighContrast(false);
+    update.mockClear();
+  });
 
   it('writes both schemes, high contrast on and the normal colours back off', () => {
     applyHighContrast(true);
     expect(update).toHaveBeenCalledTimes(2);
-    expect(update).toHaveBeenCalledWith('light', cssVariables(colors.highContrast.light));
-    expect(update).toHaveBeenCalledWith('dark', cssVariables(colors.highContrast.dark));
+    expect(update).toHaveBeenCalledWith('light', contrastVariables('light', true));
+    expect(update).toHaveBeenCalledWith('dark', contrastVariables('dark', true));
 
     update.mockClear();
     applyHighContrast(false);
-    expect(update).toHaveBeenCalledWith('light', cssVariables(colors.light));
-    expect(update).toHaveBeenCalledWith('dark', cssVariables(colors.dark));
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenCalledWith('light', contrastVariables('light', false));
+    expect(update).toHaveBeenCalledWith('dark', contrastVariables('dark', false));
+  });
+
+  it('writes nothing when the variables already hold what is asked', () => {
+    applyHighContrast(false);
+    expect(update).not.toHaveBeenCalled();
+    applyHighContrast(true);
+    update.mockClear();
+    applyHighContrast(true);
+    expect(update).not.toHaveBeenCalled();
   });
 });

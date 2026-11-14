@@ -34,6 +34,7 @@ jest.mock('./os-contrast', () => ({
 /* eslint-disable import/first */
 import { forgetStorageMigration } from '@/lib/storage-migration';
 
+import { applyHighContrast } from './high-contrast';
 import { colors } from './tokens';
 import { ThemeProvider, useTheme, type SchemePref } from './theme-provider';
 import { useThemeColors } from './use-theme-colors';
@@ -88,6 +89,8 @@ describe('ThemeProvider (Uniwind)', () => {
     mockFontLoaded.mockImplementation(() => true);
     mockOsContrast = false;
     mockOsListener = undefined;
+    // A fresh launch starts on the normal colours.
+    applyHighContrast(false);
     updateVars.mockClear();
   });
 
