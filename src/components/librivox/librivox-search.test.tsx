@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { View } from 'react-native';
 
 import { ApiError } from '@/api/client';
@@ -305,6 +305,18 @@ describe('LibrivoxSearch', () => {
     expect(mockJobActive.get(41)).toEqual([false]);
   });
 
+  it('watches the job an Add queued when the page was left before the answer', async () => {
+    let answer: (a: { job: BridgeJob }) => void = () => {};
+    mockAdd.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    await mount();
+    await openWork();
+    await fireEvent.press(await screen.findByTestId('librivox-add'));
+    await screen.unmount();
+    expect(useLibrivoxWatches.getState().watches).toEqual([]);
+    await act(async () => answer({ job: librivoxJob({ id: 41, state: 'queued' }) }));
+    expect(useLibrivoxWatches.getState().watches).toEqual([{ cid: 'c1', id: 41 }]);
+  });
+
   it('has nothing to do once a fetch is done: the watcher reads the Library again', async () => {
     mockWork = { data: work({ job: { id: 41, state: 'running' } }) };
     mockJobs = { 41: { data: librivoxJob({ state: 'done', library_id: 3 }) } };
@@ -315,6 +327,8 @@ describe('LibrivoxSearch', () => {
     expect(screen.queryByTestId('librivox-add')).toBeNull();
     expect(mockInvalidateLists).not.toHaveBeenCalled();
     expect(invalidate).not.toHaveBeenCalled();
+    // Its end was the watcher's when it came: a work that still names it hands nothing back.
+    expect(useLibrivoxWatches.getState().watches).toEqual([]);
   });
 
   it('puts Cancel under the status, where Add sits', async () => {

@@ -655,9 +655,11 @@ in step.
   (`librivoxJobPollInterval`: 5 s, 60 s parked), never after a 404. A first read that failed
   with no answer or a server error is asked again every 60 s (nothing else would: its row has no
   status, Cancel or Add until one gets through); a refusal (400, 401, 403) is not.
-- **The fetch watcher** (`fetch-watcher.tsx`, fe#293): every job a row follows is handed to
+- **The fetch watcher** (`fetch-watcher.tsx`, fe#293): every open job a row follows is handed to
   `watchLibrivoxFetch(cid, id)` (an in-memory zustand list; nothing persisted, so after a restart
-  the Library's stale time covers it), and `LibrivoxFetchWatcher` (a root listener,
+  the Library's stale time covers it; an Add's job as it answers, row or no row by then, and
+  never one the row already reads as ended, whose end the watcher handled), and
+  `LibrivoxFetchWatcher` (a root listener,
   `RootListeners`) is its ONE poller: one `useLibrivoxJob(id, true, cid)` per watch, whatever
   page is open, while the app is in the foreground. A row reads the same query with `active`
   false (no poll of its own, so never two). When a job ends the watcher calls

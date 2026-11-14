@@ -317,9 +317,9 @@ function FetchStatus({
 /**
  * The `librivox.fetch` a recording row follows: the last one it queued or saw open on the
  * work, kept once the work stops naming it (it lists only open jobs), so a failed fetch
- * still says why. Each one followed is watched past the page (`watchLibrivoxFetch`): the
- * root's `LibrivoxFetchWatcher` polls it and, when it ends, has the works and the library's
- * lists read again, whether or not the page is still open. The row only reads it (no poll of
+ * still says why. Each open one followed is watched past the page (`watchLibrivoxFetch`):
+ * the root's `LibrivoxFetchWatcher` polls it and, when it ends, has the works and the
+ * library's lists read again, whether or not the page is still open. The row only reads it (no poll of
  * its own); a job that is gone (a 404, deleted with its library) shows nothing.
  */
 function useFollowedFetch(connectionId: string, r: LibrivoxRecording) {
@@ -333,17 +333,25 @@ function useFollowedFetch(connectionId: string, r: LibrivoxRecording) {
     setNamed(r.job?.id);
     if (r.job) setFollowed(r.job.id);
   }
-  useEffect(() => {
-    if (followed !== undefined) watchLibrivoxFetch(connectionId, followed);
-  }, [connectionId, followed]);
   const read = useLibrivoxJob(followed, false, connectionId);
   const cancel = useCancelBridgeJob(connectionId);
   const gone = read.error instanceof ApiError && read.error.status === 404;
   const job = gone ? undefined : read.data;
+  // One already known ended is the watcher's no more: a work opened again shows its last
+  // answer first, which still names the fetch whose end was handled when it came.
+  const ended = gone || (!!job && !isOpenJob(job));
+  useEffect(() => {
+    if (followed !== undefined && !ended) watchLibrivoxFetch(connectionId, followed);
+  }, [connectionId, followed, ended]);
 
   return {
     job,
-    follow: setFollowed,
+    // Watched as it is queued, not only by the effect above: the row may be gone by the
+    // time Add answers (the page left meanwhile), and its state with it.
+    follow: (id: number) => {
+      watchLibrivoxFetch(connectionId, id);
+      setFollowed(id);
+    },
     cancelling: cancel.isPending,
     cancel: () => {
       if (!job) return;
