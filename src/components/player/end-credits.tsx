@@ -360,7 +360,8 @@ function EndCreditsBody({
 
       {/* The eyebrow sits on the page's centre line like the title block below: the two
           buttons differ in width, so each gets an equal flex-1 side slot (a flex-1 eyebrow
-          between them centred it on the gap, off to the left). */}
+          between them centred it on the gap, off to the left). Under large text it moves to
+          a row of its own below, and Credits keeps its width at the end. */}
       <View className={cn('flex-row items-center gap-2 py-2', phone ? 'px-2' : 'px-4')}>
         <View testID="end-credits-bar-start" className="flex-1 flex-row justify-start">
           <Button
