@@ -19,9 +19,11 @@ remaining track.
 ## Model routing (every session follows this)
 
 Work runs through the workspace `/ship` skill (`~/dev/audiosilo/.claude/skills/ship/`):
-the main session plans, decides and checks; fresh Opus agents (`ship-implementer`,
-`ship-reviewer`, `ship-verifier`) do the reading, writing, reviewing and live
-verification, so the large main context is never what reviews or edits code.
+the main session plans, decides and checks; fresh agents (`ship-implementer`,
+`ship-reviewer`, `ship-deep-reviewer`, `ship-verifier`) do the reading, writing,
+reviewing and live verification, so the large main context is never what reviews or
+edits code. Which model each agent runs on is pinned in its definition
+(`~/dev/audiosilo/.claude/agents/`), not here.
 
 ## Stack
 - **Expo SDK 58** (expo 58.0.23), **React Native 0.88** (new architecture), **React 19.3**, **Expo Router** (file-based, in `src/app`), **Jest 30**.
