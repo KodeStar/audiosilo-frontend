@@ -66,6 +66,10 @@ describe('tab label size', () => {
       tabLabelFontSize(s, DEFAULT_SLOT, 15),
     ]);
     expect(new Set(values).size).toBe(values.length);
+    // As react-native-screens compares them (32-bit floats): a Pixel's display size steps at
+    // the default text size draw the same 12 dp, and must still be different values.
+    const steps = [411, 392, 373, 345, 320].map((w) => Math.fround(tabLabelFontSize(1, w / 5, 9)));
+    expect(new Set(steps).size).toBe(steps.length);
     // The sliver never shows: under 0.001 sp.
     expect(tabLabelFontSize(2, MAX_SLOT, 15) * 2 - TAB_LABEL_BASE_SP).toBeLessThan(0.002);
   });
