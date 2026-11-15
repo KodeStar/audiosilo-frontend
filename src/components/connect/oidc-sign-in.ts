@@ -40,7 +40,8 @@ export function oidcButtonName(info: ServerInfo | null): string | null {
 }
 
 /**
- * A failed finish in words of our own: a 429 names the wait (`sharedRefusalText`); no
+ * A failed finish in words of our own: a 429's wait and a disabled member as every
+ * sign-in words them (`sharedRefusalText`); no
  * finished sign-in in this browser (`oidc_no_sign_in`: a reload, or a browser keeping the
  * cookie back); one spent or past its minute (`oidc_sign_in_expired`); no answer from
  * the server; anything else (a 400, a 5xx) as a sign-in that didn't finish. Each says to
@@ -48,7 +49,8 @@ export function oidcButtonName(info: ServerInfo | null): string | null {
  */
 export function oidcFinishText(e: unknown, t: TFunction): string {
   if (!(e instanceof ApiError)) return t('connect.oidc.errors.reach');
-  if (e.status === 429) return sharedRefusalText(e, t) ?? t('common.tooManyTries');
+  const shared = sharedRefusalText(e, t);
+  if (shared !== undefined) return shared;
   switch (apiErrorKind(e)) {
     case 'oidc_no_sign_in':
       return t('connect.oidc.errors.noSignIn');
