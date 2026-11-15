@@ -95,7 +95,7 @@ describe('withFontScaleChanges (fe#267)', () => {
         'com.facebook.react.ReactApplication',
         'com.facebook.react.bridge.LifecycleEventListener',
       ]) {
-        expect(out.split('\n').filter((l) => l === `import ${i}`)).toHaveLength(1);
+        expect(out.split('\n').filter((l: string) => l === `import ${i}`)).toHaveLength(1);
       }
       // Inside the class, after its opening line.
       expect(out.indexOf('override fun onConfigurationChanged')).toBeGreaterThan(
