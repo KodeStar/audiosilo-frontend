@@ -16,9 +16,9 @@ export const TAB_LABEL_BASE_SP = 12;
 export const TAB_LABEL_MAX_SCALE = 1.3;
 
 /** A label's width per character, in ems, with a margin: on a Pixel the bar's "Downloads"
- * measures 0.45 em a character (164 px at 12 dp, density 3.375), and at the largest display
- * size it was cut at 15.6 dp in its 64 dp slot. */
-export const TAB_LABEL_EM_PER_CHAR = 0.5;
+ * measures 0.57 em a character (211 px at 15.6 dp, density 2.625), and at the largest
+ * display size it was cut at 15.6 dp in its 64 dp slot. */
+export const TAB_LABEL_EM_PER_CHAR = 0.62;
 
 /** The dp size the label is drawn at: grown with `scale` to the cap, within what fits a
  * `slotDp`-wide slot for a `longest`-character name, never below the default size. */
@@ -33,13 +33,14 @@ export function tabLabelDrawnDp(scale: number, slotDp: number, longest: number):
  * The `labelStyle.fontSize` (sp) for `tabLabelDrawnDp`: sp is multiplied by the scale on
  * the native side, so the scale is divided back out.
  *
- * The value also carries the scale in a sliver (1/10000 sp per step): the drawn size is
- * often the same at two scales, the bar's appearance would then not change, and
- * react-native-screens would keep the size it set at the old scale after a live text-size
- * change (the activity is not recreated for one, `withFontScaleChanges`).
+ * The value also carries the scale and the slot in a sliver (under 0.001 sp): the drawn
+ * size is often the same at two scales or display sizes, the bar's appearance would then
+ * not change, and react-native-screens, which converts sp to px when it applies it, would
+ * keep the px size of the old scale or density after a live change (the activity is not
+ * recreated for one, `withFontScaleChanges`).
  *
  * `scale` is `useFontScale`'s, which is never 0 or NaN.
  */
 export function tabLabelFontSize(scale: number, slotDp: number, longest: number): number {
-  return tabLabelDrawnDp(scale, slotDp, longest) / scale + scale / 10_000;
+  return tabLabelDrawnDp(scale, slotDp, longest) / scale + (scale + slotDp / 1000) / 10_000;
 }

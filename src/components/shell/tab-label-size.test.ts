@@ -24,14 +24,13 @@ describe('tab label size', () => {
   });
 
   it('grows "Downloads" only as far as its slot allows', () => {
-    // Default display: the whole growth fits.
-    expect(tabLabelDrawnDp(2, DEFAULT_SLOT, DOWNLOADS)).toBeCloseTo(
-      TAB_LABEL_BASE_SP * TAB_LABEL_MAX_SCALE,
-    );
-    // Largest display: cut ("Downl...") at 15.6 dp, so it grows less, with a margin.
-    const tight = tabLabelDrawnDp(2, MAX_SLOT, DOWNLOADS);
-    expect(tight).toBeGreaterThan(TAB_LABEL_BASE_SP);
-    expect(tight).toBeLessThan(15);
+    // Default display: most of the growth (82 dp / (9 x 0.62 em) = 14.7 dp).
+    const roomy = tabLabelDrawnDp(2, DEFAULT_SLOT, DOWNLOADS);
+    expect(roomy).toBeGreaterThan(14);
+    expect(roomy).toBeLessThanOrEqual(TAB_LABEL_BASE_SP * TAB_LABEL_MAX_SCALE);
+    // Largest display: cut ("Downl...") at 15.6 dp, and at the default size "Downloads"
+    // (9 x 0.57 em x 12 = 62 dp) only just fits its 64 dp slot, so it does not grow.
+    expect(tabLabelDrawnDp(2, MAX_SLOT, DOWNLOADS)).toBe(TAB_LABEL_BASE_SP);
   });
 
   it('never draws smaller than the default size, even for a name that never fits', () => {
@@ -58,9 +57,14 @@ describe('tab label size', () => {
     }
   });
 
-  it('is a different value at every scale, so a live change is applied', () => {
-    const values = [0.85, 1, 1.15, 1.3, 1.5, 2].map((s) => tabLabelFontSize(s, MAX_SLOT, 9));
+  it('is a different value at every scale and display size, so a live change is applied', () => {
+    const values = [0.85, 1, 1.15, 1.3, 1.5, 2].flatMap((s) => [
+      tabLabelFontSize(s, MAX_SLOT, 15),
+      tabLabelFontSize(s, DEFAULT_SLOT, 15),
+    ]);
     expect(new Set(values).size).toBe(values.length);
+    // The sliver never shows: under 0.001 sp.
+    expect(tabLabelFontSize(2, MAX_SLOT, 15) * 2 - TAB_LABEL_BASE_SP).toBeLessThan(0.002);
   });
 
   it('ignores a slot not yet measured', () => {
