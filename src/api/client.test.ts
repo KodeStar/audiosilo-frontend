@@ -234,6 +234,38 @@ describe('ApiClient', () => {
     expect(headerValue(init, 'Content-Type')).toBe('application/json');
   });
 
+  // Single sign-on (server#235): the start is a page the browser loads, the finish a POST
+  // whose answer is the exchange's; the server's 401 codes come through as kinds.
+  it('starts single sign-on at /auth/oidc/start?return=web and finishes it by POST', async () => {
+    expect(new ApiClient('https://h').oidcStartUrl()).toBe(
+      'https://h/api/v1/auth/oidc/start?return=web',
+    );
+    const raw = { home: 'ftp://nas', away: ' https://books.example.com/ ' };
+    const fetchMock = installFetch(() => ({
+      status: 200,
+      body: { token: 't', server_id: 's', user: { id: 1 }, addresses: raw },
+    }));
+    const session = await new ApiClient('https://h').oidcFinish('iPhone');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://h/api/v1/auth/oidc/finish');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ device_name: 'iPhone' });
+    // No token of ours: the server reads its own cookie (the browser's same-origin default).
+    expect(headerValue(init, 'Authorization')).toBeUndefined();
+    expect(init.credentials).toBeUndefined();
+    expect(session).toMatchObject({ token: 't', addresses: { away: 'https://books.example.com' } });
+  });
+
+  it.each(['oidc_no_sign_in', 'oidc_sign_in_expired'] as const)(
+    "a refused finish carries the server's %s code",
+    async (code) => {
+      installFetch(() => ({ status: 401, body: { error: 'no', code } }));
+      const e = await new ApiClient('https://h').oidcFinish('d').catch((x: unknown) => x);
+      expect(e).toBeInstanceOf(ApiError);
+      expect(apiErrorKind(e as InstanceType<typeof ApiError>)).toBe(code);
+    },
+  );
+
   it('lists favourites by GET /me/favourites and tolerates a null array', async () => {
     const fetchMock = installFetch(() => ({ status: 200, body: { favourites: null } }));
     await expect(new ApiClient('https://h', 'tok').favourites()).resolves.toEqual([]);

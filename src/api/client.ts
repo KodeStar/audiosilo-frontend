@@ -225,6 +225,10 @@ const API_ERROR_CODES = [
   'metadata_off',
   'in_library',
   'not_book_library',
+  // Single sign-on's finish (server#235, `POST /auth/oidc/finish`, 401): no finished
+  // sign-in's cookie in this browser, and one spent or expired.
+  'oidc_no_sign_in',
+  'oidc_sign_in_expired',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -749,6 +753,22 @@ export class ApiClient {
   exchange(pairingToken: string, deviceName: string) {
     return this.request<AuthSession>('POST', '/auth/exchange', {
       body: { pairing_token: pairingToken, device_name: deviceName },
+    }).then(withCleanAddresses);
+  }
+  /** Where the web player sends the browser (a full page load, never a fetch) to sign in
+   * with the server's single sign-on (capability `oidc`): the provider, then back to
+   * `/web/connect?oidc=1`, where `oidcFinish` trades the sign-in for a session. */
+  oidcStartUrl() {
+    return this.apiUrl('/auth/oidc/start', { return: 'web' });
+  }
+  /** Finish a single sign-on (capability `oidc`): the server reads the finished sign-in
+   * from a cookie it set on its own origin (sent by the browser's default same-origin
+   * credentials, so only the player the server serves can), and answers as `exchange`
+   * does. 401 `oidc_no_sign_in` (no sign-in to finish in this browser) or
+   * `oidc_sign_in_expired` (spent or expired), 429 while the address is locked out. */
+  oidcFinish(deviceName: string) {
+    return this.request<AuthSession>('POST', '/auth/oidc/finish', {
+      body: { device_name: deviceName },
     }).then(withCleanAddresses);
   }
   login(username: string, password: string, deviceName: string) {
