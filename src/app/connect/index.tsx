@@ -2,6 +2,7 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ConnectStart } from '@/components/connect/connect-start';
+import { oidcReturnOrigin } from '@/components/connect/oidc-sign-in';
 import { setConnectForNewProfile } from '@/components/profiles/connect-intent';
 import { LeaveOnboarding, leaveOnboarding } from '@/components/shell/leave-onboarding';
 import { useRouteParams } from '@/lib/route-params';
@@ -38,14 +39,14 @@ export default function ConnectRoute() {
     if (profile === 'new') setConnectForNewProfile(true);
     else if (add === '1') setConnectForNewProfile(false);
   }, [add, profile]);
-  const [bounce] = useState(
-    () => status === 'authenticated' && !add && !token && !oidc && !pendingServerUrl,
-  );
+  // Opened by a link: a pairing token, or the served player's return from a single sign-on.
+  const link = !!token || oidcReturnOrigin(oidc) !== null;
+  const [bounce] = useState(() => status === 'authenticated' && !add && !link && !pendingServerUrl);
   // A pairing link's flow stays one after its dead token leaves the address (CONNECT-14),
   // and a single sign-on's after `?oidc=1` does (it leaves as the finish starts): the
   // screen must not bounce home while it says why the sign-in failed.
-  const [linked, setLinked] = useState(!!token || !!oidc);
-  if ((token || oidc) && !linked) setLinked(true);
+  const [linked, setLinked] = useState(link);
+  if (link && !linked) setLinked(true);
   const shown = useRef(false);
   useFocusEffect(
     useCallback(() => {

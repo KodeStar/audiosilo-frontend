@@ -375,10 +375,10 @@ plain-http address could be another box), and `finishConnect`'s `answeredAt` mak
 address pick so the first requests go there; the address runner re-checks it as any home pick.
 Android allows cleartext for it (`expo-build-properties` `android.usesCleartextTraffic`).
 Single sign-on (server#235, `oidc-sign-in.ts`) is the served web player's only: the sign-in step
-at its own origin (`ownServerPage`) asks `GET /server` and offers "Sign in with <name>" while the
+at its own origin (`onlyOwnServer`) asks `GET /server` and offers "Sign in with <name>" while the
 `oidc` capability is on, a full page load of `client.oidcStartUrl()`; the server lands on
-`/connect?oidc=1` with the sign-in in an HttpOnly cookie, and `ConnectStart` takes the param off
-first (`setParams`), then `POST /auth/oidc/finish` (`finishOidcSignIn`, the exchange's answer)
+`/connect?oidc=1` with the sign-in in an HttpOnly cookie (`oidcReturnOrigin` tells a return, for
+the route and the screen), and `ConnectStart` takes the param off first (`setParams`), then `POST /auth/oidc/finish` (`finishOidcSignIn`, the exchange's answer)
 and `finishConnect`; a failure is worded above the served card (`oidcFinishText`). Nothing in
 memory survives the page load (a reconnect id, "Add someone", a signed-out visit's book).
 iOS does NOT allow arbitrary loads: Expo's ATS default is `NSAllowsArbitraryLoads: false` with

@@ -69,6 +69,8 @@ beforeEach(async () => {
   mockCanGoBack = true;
   await AsyncStorage.clear();
   jest.clearAllMocks();
+  // The served player asks its own server whether single sign-on is on: here it is not.
+  mockApi.serverInfo.mockResolvedValue({ capabilities: {}, auth: { methods: [] } });
   mockBases.length = 0;
   mockProxies.length = 0;
   useSession.setState({
@@ -422,8 +424,7 @@ describe('single sign-on', () => {
   });
 
   it.each([
-    ['in the app', () => (Platform.OS = 'ios')],
-    ['under the Metro dev server (no served origin)', () => (mockServed = null)],
+    ['in the app or under the Metro dev server (no served origin)', () => (mockServed = null)],
     ['for a server on another origin', () => (mockServed = 'https://other.example.com')],
   ])('is not offered, nor asked about, %s', async (_, arrange) => {
     arrange();

@@ -9,7 +9,7 @@ import { AddressesCard } from '@/components/layout/addresses-card';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
-import { servedOrigin } from '@/lib/base-url';
+import { onlyOwnServer, servedOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
 import { useLayout } from '@/lib/layout';
 import { hostOf } from '@/lib/pairing';
@@ -20,7 +20,7 @@ import { ConnectFrame, ConnectInput, StepDots } from './connect-frame';
 import { addressesBody, BackToStart } from './connect-parts';
 import { finishConnect } from './finish-connect';
 import { openScanner } from './invite-handoff';
-import { offersOidc, oidcName, ownServerPage } from './oidc-sign-in';
+import { oidcButtonName } from './oidc-sign-in';
 import { type SignInStage, signInErrorText } from './sign-in-error';
 
 type Mode = 'code' | 'password';
@@ -59,10 +59,8 @@ export function emptyField(
  * signed in with once, as if typed; a refused one stays in the field with the reason.
  *
  * The player the server serves, signing in to its own server, asks it once whether single
- * sign-on is on (capability `oidc`, server#235) and then offers "Sign in with <name>": a
- * full page load of the server's start route, which comes back to `/connect?oidc=1`
- * (`offersOidc`, `finishOidcSignIn`). Only the served player can finish one: the server
- * hands the sign-in over in a cookie on its own origin.
+ * sign-on is on (capability `oidc`, server#235) and then offers "Sign in with <name>", a
+ * full page load of the server's start route (`oidc-sign-in.ts` has the whole flow).
  */
 export function SignInStep({
   server,
@@ -103,9 +101,8 @@ export function SignInStep({
     [server, reconnectId],
   );
 
-  // Single sign-on: only the served player at its own server asks (`ownServerPage`).
-  const origin = servedOrigin();
-  const ownServer = ownServerPage(server, origin, Platform.OS);
+  // Single sign-on: only the served player at its own server asks (`oidc-sign-in.ts`).
+  const ownServer = onlyOwnServer(servedOrigin(), [server]);
   const [ssoInfo, setSsoInfo] = useState<ServerInfo | null>(null);
   useEffect(() => {
     if (!ownServer) return;
@@ -119,7 +116,7 @@ export function SignInStep({
       .catch(() => {});
     return () => ask.abort();
   }, [api, ownServer]);
-  const sso = offersOidc(ssoInfo, server, origin, Platform.OS) ? oidcName(ssoInfo) : null;
+  const sso = ownServer ? oidcButtonName(ssoInfo) : null;
 
   const modes = MODE_VALUES.map((value) => ({
     value,
@@ -267,8 +264,6 @@ export function SignInStep({
       ) : null}
 
       <Button size="lg" title={t('connect.signIn.submit')} loading={loading} onPress={onSubmit} />
-      {/* A full page load, never a fetch: the provider's sign-in page, then back to
-          `/connect?oidc=1` (the connect screen finishes it). */}
       {sso !== null ? (
         <Button
           size="lg"

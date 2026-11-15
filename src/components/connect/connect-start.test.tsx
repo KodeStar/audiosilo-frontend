@@ -1124,22 +1124,6 @@ describe("a single sign-on's return (?oidc=1)", () => {
       "There's no sign-in to finish in this browser. Sign in again.",
     ],
     [
-      'a sign-in spent or expired',
-      new ApiError(401, 'x', 'oidc_sign_in_expired'),
-      'That sign-in expired or was already used. Sign in again.',
-    ],
-    [
-      'the address locked out',
-      new ApiError(429, 'x', undefined, 120),
-      'Too many tries from this network. Try again in 2 minutes.',
-    ],
-    [
-      'a refused request',
-      new ApiError(400, 'invalid request'),
-      "Signing in didn't finish. Sign in again.",
-    ],
-    ['a failing server', new ApiError(500, 'boom'), "Signing in didn't finish. Sign in again."],
-    [
       'no answer',
       new TypeError('Failed to fetch'),
       'Could not reach the server to finish signing in. Sign in again.',

@@ -3,8 +3,9 @@ import type { TFunction } from 'i18next';
 import { ApiError, apiErrorKind } from '@/api/client';
 import { connectClientFor } from '@/api/connect-client';
 import type { AuthSession, ServerInfo } from '@/api/types';
+import { servedOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
-import { sameOrigin } from '@/lib/same-origin';
+import { firstParam } from '@/lib/paths';
 
 import { finishConnect } from './finish-connect';
 import { sharedRefusalText } from './sign-in-error';
@@ -15,33 +16,27 @@ import { sharedRefusalText } from './sign-in-error';
  * provider, then the server's callback); the server lands the browser on
  * `/web/connect?oidc=1` with the finished sign-in in an HttpOnly cookie on its own
  * origin, and the connect screen trades it for a session (`finishOidcSignIn`). A cookie
- * is the whole hand-over, so only the player the server serves (`servedOrigin`, the
- * server's own origin) can offer it: never the app, the Metro dev server, or a player
- * hosted on another origin.
+ * is the whole hand-over, so only the player the server serves signing in to its own
+ * server (`onlyOwnServer(servedOrigin(), [server])`) can offer it: never the app, the
+ * Metro dev server, or a player hosted on another origin.
  */
 
-/** Whether a page can finish a single sign-on at `server`: the served web player
- * (`origin`, `servedOrigin()`: null on native and under Metro) signing in to its own
- * origin, where the server's cookie goes. */
-export function ownServerPage(server: string, origin: string | null, os: string): boolean {
-  return os === 'web' && origin !== null && sameOrigin(server, { origin });
+/** The served player's return from a single sign-on (`/connect?oidc=1`): its own origin,
+ * where the server's cookie is, or null (the app, Metro, another value, or a pairing link,
+ * which wins). The route and the connect screen both decide by it. */
+export function oidcReturnOrigin(
+  oidc: string | string[] | undefined,
+  token?: string,
+): string | null {
+  return !token && firstParam(oidc) === '1' ? servedOrigin() : null;
 }
 
-/** Whether the sign-in step at `server` offers single sign-on: a page that can finish one
- * (`ownServerPage`) on a server whose `oidc` capability is on. */
-export function offersOidc(
-  info: ServerInfo | null,
-  server: string,
-  origin: string | null,
-  os: string,
-): boolean {
-  return ownServerPage(server, origin, os) && info?.capabilities?.oidc === true;
-}
-
-/** The provider's name for the button ("Sign in with Keycloak"), or '' when the server
- * sent none (the button then names single sign-on itself). */
-export function oidcName(info: ServerInfo | null): string {
-  return info?.auth?.oidc?.name?.trim() ?? '';
+/** The sign-in step's button while the server's `oidc` capability is on: the provider's
+ * name ("Sign in with Keycloak"), '' when it sent none (the button then names single
+ * sign-on itself), and null while it is off or the server is older. */
+export function oidcButtonName(info: ServerInfo | null): string | null {
+  if (info?.capabilities?.oidc !== true) return null;
+  return info.auth?.oidc?.name?.trim() ?? '';
 }
 
 /**
