@@ -189,6 +189,7 @@ const KNOWN_CHAPTERS_SOURCES: Readonly<Record<ChaptersSource, true>> = {
   community: true,
   generated: true,
   id3_chap: true,
+  edited: true,
 };
 
 /** The chapters answer's `chapters_source` as a source this build knows, else undefined:

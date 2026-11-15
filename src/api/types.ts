@@ -401,10 +401,11 @@ export type Chapter = {
 };
 
 /** Where a book's chapters come from when they are not the files' own (see
- * Book.chapters_source): a community recording's list, a Bridge's detection, or (Bridge
- * Phase 2c-2) a podcast episode file's own ID3 CHAP frames. The wire field stays open: a
- * newer server may send a source this build does not know. */
-export type ChaptersSource = 'community' | 'generated' | 'id3_chap';
+ * Book.chapters_source): a community recording's list, a Bridge's detection, (Bridge
+ * Phase 2c-2) a podcast episode file's own ID3 CHAP frames, or (server#240) the list an
+ * admin edited in the console. The wire field stays open: a newer server may send a source
+ * this build does not know. */
+export type ChaptersSource = 'community' | 'generated' | 'id3_chap' | 'edited';
 
 export type Book = {
   id: number;
@@ -495,8 +496,9 @@ export type Book = {
   /** `"community"` when the book's chapters are a community recording's list (from
    * the metadata service) fitted onto its audio, rather than the files' own;
    * `"generated"` when a Bridge on this server found them in the narration of a book
-   * with no chapters of its own (Bridge Phase 1d). Only GET /libraries/{id}/item sends
-   * it; absent means the files' own chapters, and on older servers. */
+   * with no chapters of its own (Bridge Phase 1d); `"edited"` when an admin edited the
+   * chapters in the console (server#240). Only GET /libraries/{id}/item sends it; absent
+   * means the files' own chapters, and on older servers. */
   chapters_source?: ChaptersSource | (string & {});
   /** True when the book's `.audiosilo/` folder holds characters, recaps or a description a
    * Bridge generated on this server (Bridge Phases 1a and 1c; list, search, item, recent
@@ -686,8 +688,9 @@ export type ChaptersResponse = {
   direct_playable?: boolean;
   /** `"community"` when `chapters` are a community recording's list fitted onto the
    * book's audio, `"generated"` when a Bridge on this server found them in the
-   * narration (see Book.chapters_source); absent means the files' own chapters, and on
-   * older servers. The chapters themselves have the same shape either way. */
+   * narration, `"edited"` when an admin edited them in the console (see
+   * Book.chapters_source); absent means the files' own chapters, and on older servers. The
+   * chapters themselves have the same shape either way. */
   chapters_source?: ChaptersSource | (string & {});
 };
 

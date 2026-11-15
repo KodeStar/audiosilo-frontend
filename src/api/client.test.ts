@@ -648,8 +648,9 @@ describe('ApiClient', () => {
   };
 
   // "community": a community recording's list; "generated" (Bridge Phase 1d): chapters a
-  // Bridge found in the narration of a chapterless book.
-  it.each(['community', 'generated'] as const)(
+  // Bridge found in the narration of a chapterless book; "edited" (server#240): a list an
+  // admin edited in the console.
+  it.each(['community', 'generated', 'edited'] as const)(
     'passes chapters_source %s through on the chapters and item envelopes',
     async (source) => {
       const fetchMock = installFetch((url) => ({

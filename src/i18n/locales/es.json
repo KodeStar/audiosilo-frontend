@@ -1401,6 +1401,7 @@
       "community": "Capítulos de la base de datos de la comunidad de AudioSilo",
       "generated": "Capítulos encontrados en la narración en este servidor",
       "id3Chap": "Capítulos del archivo del episodio",
+      "edited": "Capítulos editados en este servidor",
       "wholeEpisode": "El episodio completo",
       "partsTitleEpisode": "Este episodio no tiene marcas de capítulo"
     },

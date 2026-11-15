@@ -1148,7 +1148,9 @@ quiet globe caption ("Chapters from the AudioSilo community database") only when
 answer says `chapters_source: "community"` and the rows are those chapters (not parts or files),
 or a server-glyph caption ("Chapters found in the narration on this server") for
 `chapters_source: "generated"` (Bridge Phase 1d: a Bridge found them in a chapterless book's
-narration; same rule). `knownChaptersSource` (`book-page-model.ts`) reads the answer's open
+narration; same rule), or a pen caption ("Chapters edited on this server") for
+`chapters_source: "edited"` (server#240: an admin edited the list in the console; same rule).
+`knownChaptersSource` (`book-page-model.ts`) reads the answer's open
 `chapters_source` (an own-key lookup: a source this build does not know is none, so no
 caption); the tab keeps the rule that a caption goes only under real chapters, and one
 `SOURCE_CAPTION` table (`satisfies Record<ChaptersSource, ...>`) picks the words and glyph.

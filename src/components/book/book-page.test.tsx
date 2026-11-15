@@ -825,13 +825,32 @@ describe('book page chapters tab', () => {
     expect(screen.queryByTestId('book-chapters-generated')).toBeNull();
   });
 
+  // server#240: a list an admin edited in the console says so, never as the community's.
+  it('says the chapters were edited on this server when the server says edited', async () => {
+    mockChapters = { ...CHAPTERS, chapters_source: 'edited' };
+    await mountAt('desktop');
+    expect(screen.getByTestId('book-chapters-edited')).toBeTruthy();
+    expect(screen.getByText('Chapters edited on this server')).toBeTruthy();
+    expect(screen.queryByTestId('book-chapters-community')).toBeNull();
+    expect(screen.queryByTestId('book-chapters-generated')).toBeNull();
+    expect(screen.getByRole('button', { name: /^Stormblessed/ })).toBeTruthy();
+
+    // Parts the player makes are not the edited list: no caption under them.
+    mockBook = { ...BOOK, duration: 2 * 3600 };
+    mockChapters = { ...CHAPTERS, duration: 2 * 3600, chapters: [], chapters_source: 'edited' };
+    await mountAt('desktop');
+    expect(screen.getByText('This book has no chapter marks')).toBeTruthy();
+    expect(screen.queryByTestId('book-chapters-edited')).toBeNull();
+  });
+
   // A newer server may name a source this build does not know: no caption, never a raw
   // translation key.
   it('shows no source caption for a chapters source it does not know', async () => {
-    mockChapters = { ...CHAPTERS, chapters_source: 'edited' };
+    mockChapters = { ...CHAPTERS, chapters_source: 'retimed' };
     await mountAt('desktop');
     expect(screen.queryByTestId('book-chapters-community')).toBeNull();
     expect(screen.queryByTestId('book-chapters-generated')).toBeNull();
+    expect(screen.queryByTestId('book-chapters-edited')).toBeNull();
     expect(screen.queryByText(/book\.chapters\./)).toBeNull();
     expect(screen.getByRole('button', { name: /^Stormblessed/ })).toBeTruthy();
   });
