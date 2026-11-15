@@ -38,6 +38,7 @@ import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
 import { linesFor, useLargeText } from '@/lib/text-scale';
+import { cn } from '@/lib/utils';
 import { bookSeriesNumber } from '@/lib/series-position';
 import { useWidth } from '@/lib/use-width';
 import { type PlacedProgress, positionOn } from '@/playback/progress-sync';
@@ -221,8 +222,13 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress & Plac
     </AnimatedPressable>
   );
 
+  // Under large text the chip and the chapter's name stack: beside the chip a one-word name
+  // broke mid-word ("Epilogu / e") at Android's 2.0 with the largest display size.
   const chapterLine = shownPlace ? (
-    <View className="flex-row items-center gap-2.5">
+    <View
+      testID="now-card-chapter"
+      className={large ? 'items-start gap-1.5' : 'flex-row items-center gap-2.5'}
+    >
       <View className="rounded-md bg-muted px-[7px] py-0.5">
         <Text variant="mono" className="text-muted-foreground">
           {placeCount}
@@ -230,7 +236,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress & Plac
       </View>
       <Text
         variant="label"
-        className="min-w-0 flex-1 text-[15px] web:text-[0.9375rem]"
+        className={cn('text-[15px] web:text-[0.9375rem]', !large && 'min-w-0 flex-1')}
         numberOfLines={linesFor(1, large)}
       >
         {chapterLabel({ title: shownPlace.title, index: shownPlace.number - 1 }, t)}

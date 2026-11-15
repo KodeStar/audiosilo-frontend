@@ -124,6 +124,8 @@ jest.mock('@/api/hooks', () => ({
 }));
 
 /* eslint-disable import/first */
+import { setFontScale } from '@/testing/font-scale';
+
 import { NowCard } from './now-card';
 /* eslint-enable import/first */
 
@@ -201,6 +203,22 @@ describe('NowCard', () => {
     expect(screen.getByText('16m')).toBeTruthy();
     expect(screen.getByText('left at 1.5×')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Resume chapter 2' })).toBeTruthy();
+  });
+
+  // fe#267: beside the chip a one-word chapter name broke mid-word at Android's 2.0.
+  it('stacks the chapter chip over its name under large text', async () => {
+    await render(<NowCard at={at} saved={saved} />);
+    expect(String(screen.getByTestId('now-card-chapter').props.className)).toContain('flex-row');
+    try {
+      await setFontScale(2);
+      await render(<NowCard at={at} saved={saved} />);
+      expect(String(screen.getByTestId('now-card-chapter').props.className)).not.toContain(
+        'flex-row',
+      );
+      expect(String(screen.getByText('Holden').props.className)).not.toContain('flex-1');
+    } finally {
+      await setFontScale(1);
+    }
   });
 
   // fe#211: this device's place saved in the download's file order reads where Resume
