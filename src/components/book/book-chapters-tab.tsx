@@ -88,10 +88,8 @@ export type BookChaptersTabProps = {
   interval: number;
   /** Where the chapters come from when they are not the files' own (the answer's
    * `chapters_source` as `knownChaptersSource` reads it: a source this build does not know
-   * is none): a community recording's list fitted onto this audio, the chapters a Bridge
-   * found in the narration, or a list an admin edited in the console. A quiet line under
-   * the rows says so while they are those chapters (never under the player's parts or the
-   * files). */
+   * is none). A quiet line under the rows says so while they are those chapters (never
+   * under the player's parts or the files). */
   source: ChaptersSource | undefined;
   /** A podcast episode's page: the card and the parts notice say "episode", not "book". */
   episode?: boolean;
@@ -104,8 +102,8 @@ export type BookChaptersTabProps = {
  * a tap on a book that isn't playing starts it there), then the rows: the current one
  * marked, the ones behind ticked, a bookmark glyph on a chapter holding one, the start
  * time on wide layouts. A chapterless file lists the player's parts, with a notice
- * saying why; community chapters, chapters a Bridge found in the narration and a list an
- * admin edited end with a line saying where they came from.
+ * saying why; chapters from a known source (`SOURCE_CAPTION`) end with a line saying where
+ * they came from.
  */
 export function BookChaptersTab({
   list,
