@@ -1,6 +1,10 @@
 import type { ExpoConfig } from 'expo/config';
 
-import withFontScaleChanges, { addConfigChanges } from './withFontScaleChanges';
+import { MAIN_ACTIVITY_SDK58 } from './__fixtures__/main-activity-sdk58';
+import withFontScaleChanges, {
+  addConfigChanges,
+  addConfigurationForward,
+} from './withFontScaleChanges';
 
 /** The SDK 58 template's main activity flags (an `expo prebuild` of this app). */
 const TEMPLATE =
@@ -74,5 +78,61 @@ describe('withFontScaleChanges (fe#267)', () => {
     expect(changesOf(result.modResults as ReturnType<typeof manifest>)).toContain(
       'fontScale|density',
     );
+  });
+
+  // React Native re-lays out text on the change but its DeviceInfo re-reads fontScale only on
+  // resume, so JS never heard of a change made with the app in front (fe#267 verification).
+  describe('MainActivity forwards the change to DeviceInfo', () => {
+    it('adds the override and its imports to the SDK 58 template, once', () => {
+      const out = addConfigurationForward(MAIN_ACTIVITY_SDK58);
+      expect(out).toContain('override fun onConfigurationChanged(newConfig: Configuration) {');
+      expect(out).toContain('super.onConfigurationChanged(newConfig)');
+      expect(out).toContain(
+        '(context?.getNativeModule("DeviceInfo") as? LifecycleEventListener)?.onHostResume()',
+      );
+      for (const i of [
+        'android.content.res.Configuration',
+        'com.facebook.react.ReactApplication',
+        'com.facebook.react.bridge.LifecycleEventListener',
+      ]) {
+        expect(out.split('\n').filter((l) => l === `import ${i}`)).toHaveLength(1);
+      }
+      // Inside the class, after its opening line.
+      expect(out.indexOf('override fun onConfigurationChanged')).toBeGreaterThan(
+        out.indexOf('class MainActivity : ReactActivity() {'),
+      );
+      expect(addConfigurationForward(out)).toBe(out);
+    });
+
+    it('fails the prebuild where it cannot place the override', () => {
+      expect(() => addConfigurationForward('package x\n\nclass Other {}\n')).toThrow(
+        /MainActivity/,
+      );
+      const own = MAIN_ACTIVITY_SDK58.replace(
+        'class MainActivity : ReactActivity() {\n',
+        'class MainActivity : ReactActivity() {\n  override fun onConfigurationChanged(c: Configuration) {}\n',
+      );
+      expect(() => addConfigurationForward(own)).toThrow(/already overrides/);
+    });
+
+    it('runs as a main activity mod', async () => {
+      const config = withFontScaleChanges({ name: 'AudioSilo', slug: 'audiosilo' } as ExpoConfig);
+      type Mod = (c: Record<string, unknown>) => Promise<{ modResults: { contents: string } }>;
+      const mod = (config as unknown as { mods: { android: { mainActivity: Mod } } }).mods.android
+        .mainActivity;
+      const result = await mod({
+        name: 'AudioSilo',
+        slug: 'audiosilo',
+        modResults: { path: 'MainActivity.kt', language: 'kt', contents: MAIN_ACTIVITY_SDK58 },
+        modRequest: {
+          platform: 'android',
+          modName: 'mainActivity',
+          projectRoot: '/tmp/app',
+          platformProjectRoot: '/tmp/app/android',
+          introspect: false,
+        },
+      });
+      expect(result.modResults.contents).toContain('onHostResume()');
+    });
   });
 });
