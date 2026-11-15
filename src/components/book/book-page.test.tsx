@@ -787,40 +787,26 @@ describe('book page chapters tab', () => {
     expect(mockPlayBook).not.toHaveBeenCalled();
   });
 
-  it('says the chapters come from the community only when the server says so', async () => {
+  it("shows no source caption for the files' own chapters", async () => {
     await mountAt('desktop');
-    expect(screen.queryByTestId('book-chapters-community')).toBeNull();
+    expect(screen.queryByTestId(/^book-chapters-/)).toBeNull();
     expect(screen.queryByText('Chapters from the AudioSilo community database')).toBeNull();
-
-    mockChapters = { ...CHAPTERS, chapters_source: 'community' };
-    await mountAt('desktop');
-    expect(screen.getByText('Chapters from the AudioSilo community database')).toBeTruthy();
-    expect(screen.getAllByTestId(/^book-chapters-/).map((c) => c.props.testID)).toEqual([
-      'book-chapters-community',
-    ]);
-    // The rows are the chapters as ever.
-    expect(screen.getByRole('button', { name: /^Stormblessed/ })).toBeTruthy();
-
-    // Parts the player makes are not the community's list: no caption under them.
-    mockBook = { ...BOOK, duration: 2 * 3600 };
-    mockChapters = { ...CHAPTERS, duration: 2 * 3600, chapters: [], chapters_source: 'community' };
-    await mountAt('desktop');
-    expect(screen.getByText('This book has no chapter marks')).toBeTruthy();
-    expect(screen.queryByTestId('book-chapters-community')).toBeNull();
   });
 
-  // Bridge Phase 1d: chapters a Bridge found in the narration; server#240: a list an admin
-  // edited in the console. Each says so with its own caption, and only that one.
+  // A community recording's list; Bridge Phase 1d: chapters a Bridge found in the narration;
+  // Bridge Phase 2c-2: an episode file's own marks; server#240: a list an admin edited in
+  // the console. Each says so with its own caption, and only that one.
   it.each([
-    ['generated', 'Chapters found in the narration on this server'],
-    ['edited', 'Chapters edited on this server'],
-  ] as const)('captions %s chapters, and never the parts', async (source, caption) => {
+    ['community', 'book-chapters-community', 'Chapters from the AudioSilo community database'],
+    ['generated', 'book-chapters-generated', 'Chapters found in the narration on this server'],
+    ['id3_chap', 'book-chapters-id3-chap', 'Chapters from the episode file'],
+    ['edited', 'book-chapters-edited', 'Chapters edited on this server'],
+  ] as const)('captions %s chapters, and never the parts', async (source, testID, caption) => {
     mockChapters = { ...CHAPTERS, chapters_source: source };
     await mountAt('desktop');
-    expect(screen.getAllByTestId(/^book-chapters-/).map((c) => c.props.testID)).toEqual([
-      `book-chapters-${source}`,
-    ]);
+    expect(screen.getAllByTestId(/^book-chapters-/).map((c) => c.props.testID)).toEqual([testID]);
     expect(screen.getByText(caption)).toBeTruthy();
+    // The rows are the chapters as ever.
     expect(screen.getByRole('button', { name: /^Stormblessed/ })).toBeTruthy();
 
     // Parts the player makes are not that list: no caption under them.
