@@ -23,18 +23,24 @@ import { usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-/** What the Android tab bar's label size follows (`tab-label-size.ts`): the text scale and
- * a tab's slot (a fifth of the window, in dp); `null` elsewhere, so iOS doesn't redraw the
- * shell on every text-size step or resize (it needs only `useLargeText`'s threshold).
- * Chosen once per platform, so the hook order never changes. */
-const useTabLabelFit: () => { scale: number; slot: number } | null =
+/** The Android tab bar's `labelStyle` (`tab-label-size.ts`): it follows the text scale, a
+ * tab's slot (a fifth of the window, in dp) and the longest tab name in this language
+ * ("Téléchargements" in French); `undefined` elsewhere, so iOS doesn't redraw the shell on
+ * every text-size step or resize (it needs only `useLargeText`'s threshold). Chosen once
+ * per platform, so the hook order never changes. */
+const useTabLabelStyle: () => { fontSize: number } | undefined =
   Platform.OS === 'android'
-    ? function useAndroidTabLabelFit() {
+    ? function useAndroidTabLabelStyle() {
+        const { t } = useTranslation();
         const scale = useFontScale();
         const slot = useWindowDimensions().width / TABS.length;
-        return useMemo(() => ({ scale, slot }), [scale, slot]);
+        const longest = useMemo(() => Math.max(...TABS.map((d) => t(d.labelKey).length)), [t]);
+        return useMemo(
+          () => ({ fontSize: tabLabelFontSize(scale, slot, longest) }),
+          [scale, slot, longest],
+        );
       }
-    : () => null;
+    : () => undefined;
 
 /**
  * The native (iOS/Android) shell: ONE navigator, NativeTabs, at every width - only the
@@ -61,16 +67,7 @@ function NativeShell() {
   // Material's answer is the chosen tab's label only (the others keep theirs for TalkBack),
   // and the label grows only as far as the longest name fits its slot (`tab-label-size.ts`).
   const large = useLargeText();
-  const tabFit = useTabLabelFit();
-  // The longest tab name in this language ("Téléchargements" in French).
-  const longest = Math.max(...TABS.map((d) => t(d.labelKey).length));
-  const labelStyle = useMemo(
-    () =>
-      tabFit === null
-        ? undefined
-        : { fontSize: tabLabelFontSize(tabFit.scale, tabFit.slot, longest) },
-    [tabFit, longest],
-  );
+  const labelStyle = useTabLabelStyle();
 
   // React Navigation's theme, from ours: the native tab and stack containers paint with
   // it (on iOS 26 a missing theme shows default-white artifacts in tab transitions).
