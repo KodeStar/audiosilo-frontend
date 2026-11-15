@@ -2,7 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { NativeTabs } from 'expo-router/native-tabs';
 import { type ReactNode, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, View } from 'react-native';
+import { Platform, useWindowDimensions, View } from 'react-native';
 
 import { FloatingMiniPlayer } from '@/components/player/mini-player';
 
@@ -23,10 +23,18 @@ import { usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-/** The scale the Android tab bar's labels follow; `null` elsewhere, so iOS doesn't redraw
- * the shell on every text-size step (it needs only `useLargeText`'s threshold). Chosen
- * once per platform, so the hook order never changes. */
-const useTabLabelScale: () => number | null = Platform.OS === 'android' ? useFontScale : () => null;
+/** What the Android tab bar's label size follows (`tab-label-size.ts`): the text scale and
+ * a tab's slot (a fifth of the window, in dp); `null` elsewhere, so iOS doesn't redraw the
+ * shell on every text-size step or resize (it needs only `useLargeText`'s threshold).
+ * Chosen once per platform, so the hook order never changes. */
+const useTabLabelFit: () => { scale: number; slot: number } | null =
+  Platform.OS === 'android'
+    ? function useAndroidTabLabelFit() {
+        const scale = useFontScale();
+        const slot = useWindowDimensions().width / TABS.length;
+        return useMemo(() => ({ scale, slot }), [scale, slot]);
+      }
+    : () => null;
 
 /**
  * The native (iOS/Android) shell: ONE navigator, NativeTabs, at every width - only the
@@ -51,12 +59,17 @@ function NativeShell() {
   const top = useIsTopShell();
   // Android: at the large text sizes five labels don't fit their slots ("Ho...", "Libr...").
   // Material's answer is the chosen tab's label only (the others keep theirs for TalkBack),
-  // and the label stops growing at 1.3x so even that one fits (`tab-label-size.ts`).
+  // and the label grows only as far as the longest name fits its slot (`tab-label-size.ts`).
   const large = useLargeText();
-  const tabScale = useTabLabelScale();
+  const tabFit = useTabLabelFit();
+  // The longest tab name in this language ("Téléchargements" in French).
+  const longest = Math.max(...TABS.map((d) => t(d.labelKey).length));
   const labelStyle = useMemo(
-    () => (tabScale === null ? undefined : { fontSize: tabLabelFontSize(tabScale) }),
-    [tabScale],
+    () =>
+      tabFit === null
+        ? undefined
+        : { fontSize: tabLabelFontSize(tabFit.scale, tabFit.slot, longest) },
+    [tabFit, longest],
   );
 
   // React Navigation's theme, from ours: the native tab and stack containers paint with
