@@ -107,7 +107,7 @@ export function SeriesCard({
       <View className="gap-0.5">
         {heading ?? (
           <Text
-            className="font-display text-[17px] tracking-tight text-foreground"
+            className="font-display text-[17px] web:text-[1.0625rem] tracking-tight text-foreground"
             numberOfLines={2}
           >
             {series.name}

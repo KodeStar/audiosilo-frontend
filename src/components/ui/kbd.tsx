@@ -16,7 +16,9 @@ export function Kbd({ children, className }: { children: string; className?: str
       importantForAccessibility="no-hide-descendants"
       accessibilityElementsHidden
     >
-      <Text className="font-mono text-[11px] leading-[18px] text-muted-foreground">{children}</Text>
+      <Text className="font-mono text-[11px] web:text-[0.6875rem] leading-[18px] web:leading-[1.125rem] text-muted-foreground">
+        {children}
+      </Text>
     </View>
   );
 }

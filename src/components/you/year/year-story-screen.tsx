@@ -10,6 +10,7 @@ import { useCid } from '@/api/provider';
 import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { FOCUS_RING_CLASS } from '@/components/ui/text';
+import { touchTarget } from '@/components/ui/touch-target';
 import { useGlobalShortcut } from '@/lib/keyboard';
 import { cn } from '@/lib/utils';
 import { colors } from '@/theme/tokens';
@@ -46,6 +47,7 @@ export function YearStoryScreen(params: {
   card?: string | string[];
 }) {
   const { t } = useTranslation();
+  const pill = touchTarget(2.75);
   const { range, connection, card } = parseYearParams(params);
   const cid = useCid(connection);
   const story = useYearStory(cid, range);
@@ -93,8 +95,10 @@ export function YearStoryScreen(params: {
             <Pressable
               role="button"
               onPress={closeStory}
+              hitSlop={pill.hitSlop}
               className={cn(
                 'h-11 items-center justify-center rounded-xl border border-white/40 px-5',
+                pill.frameClass,
                 Platform.select({ web: `cursor-pointer ${FOCUS_RING_CLASS}` }),
               )}
             >
@@ -119,6 +123,8 @@ function FullStory({
   initial: number;
 }) {
   const { t } = useTranslation();
+  const pill = touchTarget(2.75);
+  const square = touchTarget(2.75, 2.75);
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { player, sharing, shareCard, stage } = useStoryStage(story, cid, initial);
@@ -137,8 +143,10 @@ function FullStory({
           role="button"
           accessibilityLabel={t('year.close')}
           onPress={closeStory}
+          hitSlop={square.hitSlop}
           className={cn(
             'absolute right-1 h-11 w-11 items-center justify-center',
+            square.frameClass,
             Platform.select({ web: `cursor-pointer ${FOCUS_RING_CLASS}` }),
           )}
           style={{ top: 22 * u }}
@@ -152,8 +160,10 @@ function FullStory({
           onPress={shareCard}
           disabled={sharing}
           aria-busy={sharing || undefined}
+          hitSlop={pill.hitSlop}
           className={cn(
             'h-11 flex-row items-center gap-2 rounded-xl border border-white/40 px-5',
+            pill.frameClass,
             sharing && 'opacity-60',
             Platform.select({ web: `cursor-pointer ${FOCUS_RING_CLASS}` }),
           )}

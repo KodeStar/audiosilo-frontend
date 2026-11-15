@@ -17,7 +17,7 @@ export function Highlighted({
   display?: boolean;
 }) {
   const range = matchRange(text, query);
-  const face = display ? 'font-display text-[17px] tracking-tight' : undefined;
+  const face = display ? 'font-display text-[17px] web:text-[1.0625rem] tracking-tight' : undefined;
   return (
     <Text variant="label" numberOfLines={numberOfLines} className={face}>
       {range ? (

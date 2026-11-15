@@ -39,7 +39,7 @@ function StoryPart({ recap, spoiler }: { recap: BookMetaRecap; spoiler?: boolean
           {spoiler ? <SpoilerChip /> : null}
         </View>
       ) : null}
-      <Text variant="body" className="text-[15px] leading-6">
+      <Text variant="body" className="text-[15px] web:text-[0.9375rem] leading-6">
         {recap.text}
       </Text>
     </View>

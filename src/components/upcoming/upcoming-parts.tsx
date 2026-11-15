@@ -140,7 +140,11 @@ export function UpcomingRow({ first, ...props }: ItemProps & { first?: boolean }
         <UpcomingCover item={item} width={phone ? 56 : 72} />
         <View className="min-w-0 flex-1 gap-0.5">
           <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
-            <Text variant="label" className="shrink text-[15px]" numberOfLines={2}>
+            <Text
+              variant="label"
+              className="shrink text-[15px] web:text-[0.9375rem]"
+              numberOfLines={2}
+            >
               {item.work.title}
             </Text>
             {isNew ? <NewBadge /> : null}

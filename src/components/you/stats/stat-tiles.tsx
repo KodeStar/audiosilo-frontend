@@ -12,6 +12,7 @@ import { ProgressRing } from '@/components/ui/progress-ring';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { touchTarget } from '@/components/ui/touch-target';
+import { linesFor, scaleCapped, useFontScale, useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -25,12 +26,16 @@ export type ValuePart = { n: string; unit?: string; spaced?: boolean };
 /** The stat value (STYLEGUIDE section 4 "Stat": Bricolage 32, 25 on a phone), figures big
  * and units small and muted. */
 export function StatValue({ parts, compact }: { parts: readonly ValuePart[]; compact: boolean }) {
+  // Under large text a value wraps rather than end in "...".
+  const lines = linesFor(1, useLargeText());
   return (
     <Text
-      numberOfLines={1}
+      numberOfLines={lines}
       className={cn(
         'font-display tracking-tight text-foreground',
-        compact ? 'text-[25px] leading-[28px]' : 'text-[32px] leading-[34px]',
+        compact
+          ? 'text-[25px] web:text-[1.5625rem] leading-[28px] web:leading-[1.75rem]'
+          : 'text-[32px] web:text-[2rem] leading-[34px] web:leading-[2.125rem]',
       )}
       style={tabularNums}
     >
@@ -61,7 +66,9 @@ function TileLabel({ icon, label }: { icon: IconName; label: string }) {
   return (
     <View className="flex-row items-center gap-1.5">
       <Icon name={icon} size={14} color={themed.mutedForeground} />
-      <Text className="font-sans-semibold text-[12.5px] text-muted-foreground">{label}</Text>
+      <Text className="font-sans-semibold text-[12.5px] web:text-[0.78125rem] text-muted-foreground">
+        {label}
+      </Text>
     </View>
   );
 }
@@ -139,6 +146,8 @@ export function GoalTile({
   const progress = goalProgress(shown, today);
   const target = touchTarget(1.75, 1.875);
   const small = compact || width < 240;
+  // The ring grows with the text size so its percent stays inside it.
+  const ring = scaleCapped(small ? 48 : 62, useFontScale(), 2);
 
   if (!progress) {
     return (
@@ -167,7 +176,7 @@ export function GoalTile({
       accessibilityLabel={label}
       disabled={disabled}
       hitSlop={target.hitSlop}
-      className={cn('h-7 w-[30px] px-0', target.frameClass)}
+      className={cn('h-7 min-h-7 w-[30px] px-0', target.frameClass)}
       onPress={() => save(nextGoal(progress.goal, dir))}
     />
   );
@@ -182,7 +191,7 @@ export function GoalTile({
         icon="close"
         accessibilityLabel={t('stats.goal.clear')}
         hitSlop={target.hitSlop}
-        className={cn('h-7 w-[30px] px-0', target.frameClass)}
+        className={cn('h-7 min-h-7 w-[30px] px-0', target.frameClass)}
         onPress={() => clearGoal.mutate(undefined, { onError: failed })}
       />
     </View>
@@ -193,14 +202,17 @@ export function GoalTile({
       <View className="flex-row items-center gap-3.5">
         <ProgressRing
           fraction={progress.fraction}
-          size={small ? 48 : 62}
+          size={ring}
           stroke={small ? 5 : 6}
           color={themed.foreground}
           trackColor={themed.mutedForeground}
           trackOpacity={0.22}
         >
           <Text
-            className={cn('font-display text-foreground', small ? 'text-[12px]' : 'text-[15px]')}
+            className={cn(
+              'font-display text-foreground',
+              small ? 'text-[12px] web:text-[0.75rem]' : 'text-[15px] web:text-[0.9375rem]',
+            )}
             style={tabularNums}
           >
             {t('stats.goal.percent', { percent })}

@@ -15,7 +15,7 @@ import { EpisodeFetchStrip } from '@/components/podcasts/episode-fetch-panel';
 import { ChapterProgressLine } from '@/components/player/chapter-progress';
 import { usePlayerOnTop } from '@/components/player/player-sheets';
 import { pillClass, slopTo44 } from '@/components/player/control-pill';
-import { SkipButton } from '@/components/player/skip-button';
+import { SKIP_PILL_BOX, SkipButton } from '@/components/player/skip-button';
 import { PlayButton } from '@/components/player/transport-controls';
 import { useSleepCountdown } from '@/components/player/use-sleep-countdown';
 import { usePlayingTimeLeft } from '@/components/player/use-time-left';
@@ -23,7 +23,7 @@ import { ACCESSORY_SUPPORTED } from '@/components/shell/accessory-support';
 import { useChromeEdge, useShellMetrics } from '@/components/shell/shell-metrics';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
-import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
+import { FOCUS_RING_CLASS, MINI_TITLE_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel, namesTheItem } from '@/lib/chapter-label';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
@@ -33,8 +33,12 @@ import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-/** The card's height (STYLEGUIDE "Mini player": 56). */
+/** The card's height (STYLEGUIDE "Mini player": 56); a minimum, which its words grow
+ * past under large text (up to `MINI_TEXT_MAX_SCALE`). */
 export const MINI_PLAYER_HEIGHT = 56;
+/** How far the card's words follow the text size: chrome over every page, so it grows
+ * less than the page does (its stack is measured for the pages' insets). */
+export const MINI_TEXT_MAX_SCALE = 2;
 /** The gap between the card and the tab bar under it. */
 export const MINI_PLAYER_GAP = 6;
 /** The base bottom padding the scroll screens already carry (their `p-4`). */
@@ -115,13 +119,20 @@ export function MiniPlayerSubtitle({
             variant="caption"
             className="font-sans-semibold text-foreground"
             style={tabularNums}
+            maxFontSizeMultiplier={MINI_TEXT_MAX_SCALE}
           >
             {rest ? `${sleep} ·` : sleep}
           </Text>
         </View>
       ) : null}
       {rest ? (
-        <Text variant="caption" numberOfLines={1} className="flex-1" style={tabularNums}>
+        <Text
+          variant="caption"
+          numberOfLines={1}
+          className="flex-1"
+          style={tabularNums}
+          maxFontSizeMultiplier={MINI_TEXT_MAX_SCALE}
+        >
           {rest}
         </Text>
       ) : null}
@@ -234,8 +245,8 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue
           shadow (Android: elevation, which keeps it lifted on the porcelain page). */}
       <View
         testID="mini-player-card"
-        style={{ height: MINI_PLAYER_HEIGHT }}
-        className="flex-row items-center gap-1 rounded-card border border-border bg-card pl-[7px] pr-1.5 shadow-overlay"
+        style={{ minHeight: MINI_PLAYER_HEIGHT }}
+        className="flex-row items-center gap-1 rounded-card border border-border bg-card py-1 pl-[7px] pr-1.5 shadow-overlay"
       >
         <AnimatedPressable
           onPress={() => router.push('/player')}
@@ -254,7 +265,12 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue
             title={nowPlaying.title}
           />
           <View className="min-w-0 flex-1">
-            <Text variant="label" className="text-[13.5px] leading-[17px]" numberOfLines={1}>
+            <Text
+              variant="label"
+              className={MINI_TITLE_CLASS}
+              numberOfLines={1}
+              maxFontSizeMultiplier={MINI_TEXT_MAX_SCALE}
+            >
               {heading}
             </Text>
             <MiniPlayerSubtitle title={nowPlaying.title} showTitle={isChapter} />
@@ -267,7 +283,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue
           color={themed.foreground}
           fontSize={13}
           hitSlop={slopTo44(2.5)}
-          className={pillClass('ghost', 'h-10 w-10')}
+          className={pillClass('ghost', SKIP_PILL_BOX)}
           accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
         />
         <PlayButton size="sm" plain />

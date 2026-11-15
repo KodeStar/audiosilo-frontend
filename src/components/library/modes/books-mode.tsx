@@ -384,7 +384,11 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
   const progressOf = (b: Book): Progress | undefined => progressMap.get(b.rel_path);
   const renderHead = (letter: string) => (
     <View className="-mb-3 border-b border-border pb-1.5 pt-1">
-      <Text variant="heading" className="text-[22px]" accessibilityRole="header">
+      <Text
+        variant="heading"
+        className="text-[22px] web:text-[1.375rem]"
+        accessibilityRole="header"
+      >
         {letter}
       </Text>
     </View>

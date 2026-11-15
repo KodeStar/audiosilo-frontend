@@ -109,7 +109,7 @@ export function LabelChip({ label, drift = false }: { label?: string; drift?: bo
   return (
     <View className="flex-row items-center gap-1">
       {drift ? <Icon name="moon" size={11} color={themed.mutedForeground} /> : null}
-      <Text className="font-sans-semibold text-[11px] uppercase tracking-wider text-muted-foreground">
+      <Text className="font-sans-semibold text-[11px] web:text-[0.6875rem] uppercase tracking-wider text-muted-foreground">
         {text}
       </Text>
     </View>
@@ -154,7 +154,7 @@ export function LabelPicker({
         const text = (
           <Text
             className={cn(
-              'font-sans-semibold text-[13px]',
+              'font-sans-semibold text-[13px] web:text-[0.8125rem]',
               selected ? 'text-primary-foreground' : 'text-foreground',
             )}
             numberOfLines={1}

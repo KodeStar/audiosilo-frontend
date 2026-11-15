@@ -120,7 +120,6 @@ function SpeedSheetBody() {
             }
             selected={isSpeed(rate, speed)}
             onPress={() => apply(speed)}
-            className="grow basis-[21%]"
           />
         ))}
       </View>

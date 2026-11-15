@@ -17,6 +17,13 @@
 //    artifact. This asserts `bg-background` exists and resolves to each theme's value
 //    on iOS (also through an opacity modifier, `bg-brand/10`), and that the web CSS
 //    switches it under `.dark`.
+// 4. Large text on the web (fe#267). px text does not follow the browser's font size, rem
+//    does, so every `text-[Npx]` / `leading-[Npx]` carries a `web:` twin in rem (N/16) with
+//    the same variants (`lg:text-[17px] web:lg:text-[1.0625rem]`). This asserts the twin
+//    wins on the web (its rule comes after the px rule, and `web:lg:` after `lg:`), that iOS
+//    has no rule for it (native text scales with fontScale already), and that no source
+//    line has a px size without its twin (the art drawn to a fixed box is exempt: covers,
+//    the A-Z rail, the connect cascade).
 //
 // It runs the same steps Uniwind's Metro transformer runs (`generateArtifacts`, then
 // `compileCSS`, read out of the installed transformer because Uniwind doesn't export
@@ -67,6 +74,43 @@ function withoutBlocks(css, prelude) {
   }
   return out;
 }
+
+/** Source lines with a px text size or line height and no `web:` rem twin (guard 4). */
+function untwinnedPxText() {
+  const exempt = new Set([
+    'src/components/ui/cover.tsx',
+    'src/components/library/books/az-rail.tsx',
+    'src/components/connect/cover-cascade.tsx',
+  ]);
+  const px = /(^|[\s"'`{])((?:[a-z0-9-]+:)*)(text|leading)-\[([0-9.]+)px\](?![\w\]-])/g;
+  const found = [];
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.tsx?$/.test(e.name) && !/\.test\./.test(e.name)) {
+        const rel = path.relative(root, p);
+        if (exempt.has(rel)) continue;
+        fs.readFileSync(p, 'utf8')
+          .split('\n')
+          .forEach((line, i) => {
+            for (const [, , variants, kind, n] of line.matchAll(px)) {
+              if (variants.split(':').includes('web')) continue;
+              // The twin is N/16 rem exactly (any other value would change the size at the
+              // browser's default), or a capped one (`[length:min(...rem,...px)]`) where the
+              // slot cannot grow.
+              const twin = `web:${variants}${kind}-[${+(Number(n) / 16).toFixed(5)}rem]`;
+              if (!line.includes(twin) && !line.includes(`web:${variants}${kind}-[length:`))
+                found.push(`${rel}:${i + 1} ${variants}${kind}-[${n}px] (add ${twin})`);
+            }
+          });
+      }
+    }
+  };
+  walk(path.join(root, 'src'));
+  return found;
+}
+const untwinned = untwinnedPxText();
 
 const failures = [];
 const check = (ok, message) => ok || failures.push(message);
@@ -140,6 +184,25 @@ const check = (ok, message) => ok || failures.push(message);
       webCss,
     ) && /\.bg-background\s*\{\s*background-color:\s*var\(--color-background\)/.test(webCss),
     'web: bg-background is not a themed variable switched under .dark',
+  );
+
+  // 4. web twins of px text sizes.
+  const pos = (cls) => webCss.indexOf(`.${cls.replace(/[[\]:.]/g, '\\$&')} {`);
+  for (const [px, twin] of [
+    ['text-[13px]', 'web:text-[0.8125rem]'],
+    ['lg:text-[17px]', 'web:lg:text-[1.0625rem]'],
+  ]) {
+    check(pos(twin) !== -1, `web: no rule for ${twin}`);
+    check(pos(twin) > pos(px), `web: ${twin} comes before ${px}, so the px size wins`);
+  }
+  check(
+    stylesheet['web:text-[0.8125rem]'] === undefined &&
+      entry('text-[13px]', 'fontSize')?.(vars) === 13,
+    'ios: web:text-[0.8125rem] has a native rule, or text-[13px] is no longer 13',
+  );
+  check(
+    untwinned.length === 0,
+    `px text without its web: rem twin (fe#267):\n  ${untwinned.join('\n  ')}`,
   );
 
   if (failures.length) {

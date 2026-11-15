@@ -22,6 +22,7 @@ import { formatCount, formatSpeed } from '@/lib/format';
 import { pushInShell } from '@/lib/open';
 import { bookHref, finishedHref } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { selectBookLength, selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 import { useSession } from '@/stores/session';
@@ -73,6 +74,8 @@ export function PlayerHeader({
     (l) => l.connectionId === np?.connectionId && l.id === np?.libraryId,
   )?.name;
   const context = playerContext(book, library);
+  // Under large text the two lines wrap rather than end in "...".
+  const lines = linesFor(1, useLargeText());
   if (!np) return null;
   const { connectionId, libraryId, path } = np;
 
@@ -88,7 +91,7 @@ export function PlayerHeader({
   };
 
   return (
-    <View className="h-14 flex-row items-center gap-2 px-3">
+    <View className="min-h-14 flex-row items-center gap-2 px-3 py-1">
       <ControlPill
         onPress={onClose}
         label={t('player.full.minimise')}
@@ -99,12 +102,20 @@ export function PlayerHeader({
       </ControlPill>
       <View className="min-w-0 flex-1 items-center">
         {server ? (
-          <Text variant="eyebrow" className="text-[10.5px]" numberOfLines={1}>
+          <Text
+            variant="eyebrow"
+            className="text-center text-[10.5px] web:text-[0.65625rem]"
+            numberOfLines={lines}
+          >
             {t('player.full.playingFrom', { server })}
           </Text>
         ) : null}
         {context ? (
-          <Text variant="label" className="text-[13px]" numberOfLines={1}>
+          <Text
+            variant="label"
+            className="text-center text-[13px] web:text-[0.8125rem]"
+            numberOfLines={lines}
+          >
             {context.kind === 'series'
               ? context.position !== undefined
                 ? t('player.full.seriesBook', {
@@ -181,6 +192,7 @@ export function PlayerStatusLine() {
   const sync = usePlaceSync(cid, playing);
   const percent = usePlayingPercent();
   const left = usePlayingTimeLeft();
+  const large = useLargeText();
 
   if (undo) {
     return (
@@ -197,9 +209,14 @@ export function PlayerStatusLine() {
     left,
   ].filter(Boolean);
   return (
-    <View className="h-[34px] flex-row items-center justify-center gap-1.5 px-2">
+    <View className="min-h-[34px] flex-row items-center justify-center gap-1.5 px-2">
       {sync ? <Icon name={sync.icon} size={13} color={themed.mutedForeground} /> : null}
-      <Text variant="caption" numberOfLines={1} style={tabularNums} className="shrink">
+      <Text
+        variant="caption"
+        numberOfLines={linesFor(1, large)}
+        style={tabularNums}
+        className="shrink text-center"
+      >
         {parts.join(' · ')}
       </Text>
     </View>
@@ -361,7 +378,8 @@ const CHIPS: { tab: CompanionTab; icon: IconName; community: boolean }[] = [
  * Chapters, each opening the companion on that tab and named as the companion names its
  * tabs, in its order. One row, centred where it fits and scrolling sideways where it
  * doesn't (a narrow phone, a long translation), so it never wraps the player past the
- * fold. */
+ * fold. Under large text the player scrolls anyway, and a chip cut off at the edge hides
+ * that there is more, so the chips wrap onto centred rows instead (fe#267). */
 export function CompanionChips() {
   const cid = usePlayer((s) => s.nowPlaying?.connectionId);
   // An episode (Bridge 2d-1) has no community Who's who or Story so far.
@@ -369,6 +387,26 @@ export function CompanionChips() {
   const metadata = useCapability('metadata', cid) === true && !episode;
   const target = usePlayingTarget();
   const chips = CHIPS.filter((c) => metadata || !c.community);
+  const large = useLargeText();
+  const items = chips.map((c) =>
+    c.tab !== 'text' ? (
+      <CompanionChip key={c.tab} tab={c.tab} icon={c.icon} />
+    ) : target ? (
+      <ConnectionScope key={c.tab} connectionId={target.connectionId}>
+        <TextChip target={target} />
+      </ConnectionScope>
+    ) : null,
+  );
+  if (large) {
+    return (
+      <View
+        testID="player-companion-chips"
+        className="w-full flex-row flex-wrap justify-center gap-2"
+      >
+        {items}
+      </View>
+    );
+  }
   return (
     <ScrollView
       horizontal
@@ -378,15 +416,7 @@ export function CompanionChips() {
       className="w-full"
       contentContainerClassName="grow justify-center gap-2"
     >
-      {chips.map((c) =>
-        c.tab !== 'text' ? (
-          <CompanionChip key={c.tab} tab={c.tab} icon={c.icon} />
-        ) : target ? (
-          <ConnectionScope key={c.tab} connectionId={target.connectionId}>
-            <TextChip target={target} />
-          </ConnectionScope>
-        ) : null,
-      )}
+      {items}
     </ScrollView>
   );
 }
@@ -407,7 +437,7 @@ function CompanionChip({ tab, icon }: { tab: CompanionTab; icon: IconName }) {
       label={label}
       onPress={() => usePlayerSheets.getState().openCompanion(tab)}
       hitSlop={ROUND_SLOP}
-      className="h-11 flex-row gap-1.5 px-3"
+      className="min-h-11 flex-row gap-1.5 px-3"
       testID={`player-chip-${tab}`}
     >
       <Icon name={icon} size={15} color={themed.foreground} />

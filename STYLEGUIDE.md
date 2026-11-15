@@ -290,7 +290,7 @@ deterministic palette that draws the procedural cover.
   and spines (lift to `--shadow-cover-hover` + `translateY(-3px)` on hover); (3) `--shadow-overlay` for dock,
   drawer-as-overlay, sheets, menus, toasts, palette.
 - **Density**: comfortable. Cover grid `repeat(auto-fill, minmax(158px, 1fr))` (2 columns on phone), shelf rows
-  164 px tiles (132 phone), list rows 56-72, touch targets 44 pt (64 in kids mode, 120 for the kids play button).
+  164 px tiles (132 phone), list rows 56-72, touch targets 44 pt (48 dp on Android, Material's minimum; 64 in kids mode, 120 for the kids play button).
 
 ---
 

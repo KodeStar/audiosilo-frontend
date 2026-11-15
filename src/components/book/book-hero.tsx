@@ -23,10 +23,10 @@ import { heroSubtitle, titleScale } from './book-page-model';
 /** The title's display size per step (STYLEGUIDE section 4, Display XL: 52 desktop, 40
  * tablet, 30 phone; one step down for a long title). */
 const TITLE_CLASS: Record<TitleScale, string> = {
-  lg: 'text-[52px] leading-[54px]',
-  md: 'text-[40px] leading-[43px]',
-  sm: 'text-[30px] leading-[33px]',
-  xs: 'text-[25px] leading-[29px]',
+  lg: 'text-[52px] web:text-[3.25rem] leading-[54px] web:leading-[3.375rem]',
+  md: 'text-[40px] web:text-[2.5rem] leading-[43px] web:leading-[2.6875rem]',
+  sm: 'text-[30px] web:text-[1.875rem] leading-[33px] web:leading-[2.0625rem]',
+  xs: 'text-[25px] web:text-[1.5625rem] leading-[29px] web:leading-[1.8125rem]',
 };
 
 /** Where the listener is in a book in progress: the percent, "Chapter 23 of 81", the
@@ -137,7 +137,7 @@ export function BookHero({
               <Text
                 variant="heading"
                 testID="book-subtitle"
-                className="-mt-1.5 text-muted-foreground lg:text-[22px] lg:leading-[28px]"
+                className="-mt-1.5 text-muted-foreground lg:text-[22px] web:lg:text-[1.375rem] lg:leading-[28px] web:lg:leading-[1.75rem]"
               >
                 {subtitle}
               </Text>
@@ -243,7 +243,9 @@ function Byline({
   const { t } = useTranslation();
   const name = (value: string, onPress: (() => void) | undefined, label: string) => {
     const words = (
-      <Text className="font-sans-semibold text-base text-foreground lg:text-[17px]">{value}</Text>
+      <Text className="font-sans-semibold text-base text-foreground lg:text-[17px] web:lg:text-[1.0625rem]">
+        {value}
+      </Text>
     );
     return onPress ? (
       <TextLink label={label} onPress={onPress}>
@@ -254,7 +256,9 @@ function Byline({
     );
   };
   const part = (word: string) => (
-    <Text className="font-sans text-base text-muted-foreground lg:text-[17px]">{word}</Text>
+    <Text className="font-sans text-base text-muted-foreground lg:text-[17px] web:lg:text-[1.0625rem]">
+      {word}
+    </Text>
   );
   if (!book.author && !book.narrator) return null;
   return (
@@ -303,14 +307,23 @@ function Place({ place }: { place: HeroPlace }) {
   return (
     <View className="mt-2 max-w-[560px] gap-2">
       <View className="flex-row flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-        <Text className="text-[13px] text-muted-foreground" style={tabularNums}>
-          <Text className="font-sans-bold text-[13px] text-foreground" style={tabularNums}>
+        <Text
+          className="text-[13px] web:text-[0.8125rem] text-muted-foreground"
+          style={tabularNums}
+        >
+          <Text
+            className="font-sans-bold text-[13px] web:text-[0.8125rem] text-foreground"
+            style={tabularNums}
+          >
             {`${place.percent}%`}
           </Text>
           {place.line ? ` · ${place.line}` : ''}
         </Text>
         {place.timeLeft ? (
-          <Text className="text-[13px] text-muted-foreground" style={tabularNums}>
+          <Text
+            className="text-[13px] web:text-[0.8125rem] text-muted-foreground"
+            style={tabularNums}
+          >
             {place.timeLeft}
           </Text>
         ) : null}

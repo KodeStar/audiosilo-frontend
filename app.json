@@ -79,6 +79,7 @@
       ],
       "expo-localization",
       "./plugins/withCast",
+      "./plugins/withFontScaleChanges",
       "./plugins/withCarPlay",
       "./plugins/withXcode26SwiftUICoreFix",
       [

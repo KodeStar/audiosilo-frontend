@@ -26,6 +26,7 @@ import {
   usePlayer,
 } from '@/playback/store';
 import { useProfileConnections } from '@/stores/profiles';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { useConnectionName } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -187,6 +188,8 @@ function NowPlayingCard({ nowPlaying }: { nowPlaying: NowPlaying }) {
   const isPlaying = usePlayer(selectIsPlaying);
   const toggle = usePlayer((s) => s.toggle);
   const left = usePlayingTimeLeft();
+  // Under large text the lines wrap instead of ending in "..." (fe#267).
+  const large = useLargeText();
   const chapterName = chapter ? chapterLabel(chapter, t) : '';
   // The title sits right above: a chapter named the same (an episode's lone chapter, or
   // its first chapter mark) would only say it twice.
@@ -204,13 +207,17 @@ function NowPlayingCard({ nowPlaying }: { nowPlaying: NowPlaying }) {
         author={nowPlaying.author}
       />
       <View className="flex-1 gap-0.5">
-        <Text variant="eyebrow" className="text-[10.5px]">
+        <Text variant="eyebrow" className="text-[10.5px] web:text-[0.65625rem]">
           {t('upnext.nowPlaying')}
         </Text>
-        <Text variant="label" className="text-[13.5px]" numberOfLines={1}>
+        <Text
+          variant="label"
+          className="text-[13.5px] web:text-[0.84375rem]"
+          numberOfLines={linesFor(1, large)}
+        >
           {nowPlaying.title}
         </Text>
-        <Text variant="caption" numberOfLines={1}>
+        <Text variant="caption" numberOfLines={linesFor(1, large)}>
           {where}
         </Text>
       </View>
@@ -255,12 +262,17 @@ function SuggestionRow({
 }) {
   const { t } = useTranslation();
   const { openBook, openSeries } = useOpen();
+  const large = useLargeText();
   if (s.kind === 'ghost') {
     return (
       <View className="flex-row items-center gap-2.5 rounded-xl px-1.5 py-2">
         <GhostCover title={s.title} position={s.position} width={44} />
         <View className="flex-1 gap-0.5">
-          <Text variant="label" className="text-[13px]" numberOfLines={2}>
+          <Text
+            variant="label"
+            className="text-[13px] web:text-[0.8125rem]"
+            numberOfLines={linesFor(2, large)}
+          >
             {serverName
               ? t('upnext.ghost', { title: s.title, server: serverName })
               : t('upnext.ghostNoServer', { title: s.title })}
@@ -321,6 +333,7 @@ function SuggestedBook({
   // Offline, a cached list's copy of the book (its `/item` can't answer).
   const book = useKnownBook(libraryId, path, cid);
   const title = bookTitle(book?.title, path);
+  const lines = linesFor(1, useLargeText());
   return (
     <View
       className={cn(
@@ -344,10 +357,10 @@ function SuggestedBook({
           author={book?.author}
         />
         <View className="flex-1 gap-0.5">
-          <Text variant="label" className="text-[13px]" numberOfLines={1}>
+          <Text variant="label" className="text-[13px] web:text-[0.8125rem]" numberOfLines={lines}>
             {title}
           </Text>
-          <Text variant="caption" numberOfLines={1}>
+          <Text variant="caption" numberOfLines={lines}>
             {reason}
           </Text>
         </View>
@@ -387,7 +400,7 @@ function AutoPlaySwitch({ episode }: { episode: boolean }) {
         accessibilityHint={hint}
       />
       <View className="flex-1">
-        <Text className="text-[13px]">{label}</Text>
+        <Text className="text-[13px] web:text-[0.8125rem]">{label}</Text>
         <Text variant="caption">{hint}</Text>
       </View>
     </Pressable>

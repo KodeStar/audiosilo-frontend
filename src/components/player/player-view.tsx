@@ -18,8 +18,10 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
+import { useBehindModalProps } from '@/components/ui/modal-layer';
 import { chapterLabel } from '@/lib/chapter-label';
 import { useLayout } from '@/lib/layout';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
@@ -96,6 +98,7 @@ function PlayerTitles({ phone, onChapters }: { phone: boolean; onChapters: () =>
   const np = usePlayer((s) => s.nowPlaying);
   const chapter = usePlayer(selectCurrentChapter);
   const trackIndex = usePlayer((s) => s.snapshot.trackIndex);
+  const large = useLargeText();
   if (!np) return null;
   const { queue, title, author } = np;
   const track = queue.tracks[trackIndex];
@@ -104,7 +107,9 @@ function PlayerTitles({ phone, onChapters }: { phone: boolean; onChapters: () =>
   const many = queue.chapters.length > 1 || queue.tracks.length > 1;
   const titleClass = cn(
     'text-center',
-    phone ? 'text-[23px] leading-[27px]' : 'text-[30px] leading-[34px]',
+    phone
+      ? 'text-[23px] web:text-[1.4375rem] leading-[27px] web:leading-[1.6875rem]'
+      : 'text-[30px] web:text-[1.875rem] leading-[34px] web:leading-[2.125rem]',
   );
   return (
     <View className="w-full items-center gap-1">
@@ -121,11 +126,11 @@ function PlayerTitles({ phone, onChapters }: { phone: boolean; onChapters: () =>
           <Icon name="chevron-down" size={18} color={themed.mutedForeground} />
         </AnimatedPressable>
       ) : (
-        <Text variant="display" className={titleClass} numberOfLines={2}>
+        <Text variant="display" accessibilityRole="header" className={titleClass} numberOfLines={2}>
           {heading}
         </Text>
       )}
-      <Text variant="muted" className="text-center" numberOfLines={1}>
+      <Text variant="muted" className="text-center" numberOfLines={linesFor(1, large)}>
         {author ? `${title} · ${author}` : title}
       </Text>
     </View>
@@ -167,6 +172,8 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   const undoInSlot = useUndoVisible();
   // The playing book's bookmarks and notes, once for both scrubbers.
   const pins = usePlayingPins();
+  // While one of its sheets is open the player under it is hidden from a screen reader.
+  const behind = useBehindModalProps();
   // A phone's column is a flex column filling the viewport: the cover's slot takes what
   // the rest leaves (measured), so the player fits a phone without scrolling; the column
   // scrolls only once the slot is at its minimum.
@@ -208,10 +215,13 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   const w = width || windowWidth;
   const bottomPad = insets.bottom + (phone ? 12 : 24);
   const coverSize = phone ? phoneCoverSize(w, coverSlot) : playerCoverSize(layout, w, height);
+  // The main column's width, which the transport (grown with the text size) must fit.
+  const columnMax = desktop ? 640 : 560;
+  const room = Math.min(columnMax, desktop ? w - COMPANION_WIDTH - 80 : w - (phone ? 40 : 96));
   const wash = playerWash(book?.cover_color, themed.mutedForeground, themed.brand);
 
   const main = (
-    <PlayerColumn maxWidth={desktop ? 640 : 560} fill={phone}>
+    <PlayerColumn maxWidth={columnMax} fill={phone}>
       {phone ? (
         <Animated.View
           testID="player-cover-slot"
@@ -251,7 +261,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
           />
           <PlayerBookTimeline pins={pins} onTip={setTimelineTip} />
         </View>
-        <TransportControls size={phone ? 'md' : 'lg'} className="py-1" />
+        <TransportControls size={phone ? 'md' : 'lg'} room={room} className="py-1" />
         <PlayerErrorLine />
         <PlayerActions wide={!phone} upNext={!desktop} />
         {phone ? <CompanionChips /> : null}
@@ -266,11 +276,11 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
     >
       <CoverWash color={wash} variant="hero" />
-      <View style={{ paddingTop: insets.top }}>
+      <View style={{ paddingTop: insets.top }} {...behind}>
         <PlayerHeader book={book} onClose={onClose} onChapters={onChapters} />
       </View>
       {desktop ? (
-        <View className="flex-1 flex-row">
+        <View className="flex-1 flex-row" {...behind}>
           <ScrollView
             className="flex-1"
             contentContainerClassName="flex-grow justify-center px-10 pb-8"
@@ -288,6 +298,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
       ) : (
         <ScrollView
           testID="player-page"
+          {...behind}
           className="flex-1"
           contentContainerClassName={phone ? 'grow px-5 pt-1' : 'px-12 pt-2'}
           contentContainerStyle={{ paddingBottom: bottomPad }}

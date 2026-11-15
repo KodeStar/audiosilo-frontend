@@ -186,9 +186,14 @@ function SessionRow({
         accessibilityLabel={t('journal.openBook', { title })}
       />
       <View className="min-w-0 flex-1 gap-0.5">
-        <Text variant="body" className="text-[13px]" numberOfLines={2}>
-          <Text className="font-sans-semibold text-[13px] text-foreground">{title}</Text>
-          <Text className="text-[13px] text-muted-foreground" style={tabularNums}>
+        <Text variant="body" className="text-[13px] web:text-[0.8125rem]" numberOfLines={2}>
+          <Text className="font-sans-semibold text-[13px] web:text-[0.8125rem] text-foreground">
+            {title}
+          </Text>
+          <Text
+            className="text-[13px] web:text-[0.8125rem] text-muted-foreground"
+            style={tabularNums}
+          >
             {` · ${caption}`}
           </Text>
         </Text>
@@ -234,7 +239,11 @@ export function DiaryDayCard({
   return (
     <Card className={cn('gap-4 p-4', wide && 'flex-row gap-6 p-5')}>
       <View className={cn('gap-0.5', wide && 'w-[120px]')}>
-        <Text variant="title" className="text-[17px]" accessibilityRole="header">
+        <Text
+          variant="title"
+          className="text-[17px] web:text-[1.0625rem]"
+          accessibilityRole="header"
+        >
           {name}
         </Text>
         <Text variant="caption" style={tabularNums}>

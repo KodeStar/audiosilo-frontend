@@ -48,10 +48,11 @@ jest.mock('@/playback/store', () => {
 
 /* eslint-disable import/first */
 import { formatWallClock } from '@/lib/format';
+import { setFontScale } from '@/testing/font-scale';
 import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
-import { PlayerSeekBar, SeekBar, SeekTimes, seekTextureKey } from './seek-bar';
+import { PlayerSeekBar, SeekBar, seekBarHeight, SeekTimes, seekTextureKey } from './seek-bar';
 /* eslint-enable import/first */
 
 const player = usePlayer as unknown as UseBoundStore<StoreApi<MockPlayer>>;
@@ -235,6 +236,15 @@ describe('SeekBar', () => {
   });
 });
 
+describe('seekBarHeight', () => {
+  it('is 44 at the default size and grows with the text as far as the transport does', () => {
+    expect(seekBarHeight(1)).toBe(44);
+    expect(seekBarHeight(0.9)).toBe(44);
+    expect(seekBarHeight(1.5)).toBe(66);
+    expect(seekBarHeight(2)).toBe(66);
+  });
+});
+
 describe('seekTextureKey', () => {
   it('is one look per book and segment', () => {
     expect(seekTextureKey('srv:1:a', 1800.4)).toBe('srv:1:a#1800');
@@ -264,6 +274,18 @@ describe('SeekTimes', () => {
   it('says file for a book without a whole-book timeline', async () => {
     await render(<SeekTimes elapsed={0} length={600} rate={1} kind="file" />);
     expect(screen.getByText(/^10m left in the file · ends /)).toBeTruthy();
+  });
+
+  // fe#267: one line normally; under large text the middle label wraps, never "...".
+  it('wraps the time left under large text instead of cutting it', async () => {
+    await render(<SeekTimes elapsed={0} length={600} rate={1} />);
+    expect(screen.getByText(/left in the chapter/).props.numberOfLines).toBe(1);
+    try {
+      await setFontScale(1.5);
+      expect(screen.getByText(/left in the chapter/).props.numberOfLines).toBeUndefined();
+    } finally {
+      await setFontScale(1);
+    }
   });
 });
 

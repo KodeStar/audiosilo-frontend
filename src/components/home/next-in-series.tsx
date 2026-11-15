@@ -74,7 +74,11 @@ function NextCard({ item, width, server }: { item: NextItem; width: number; serv
         size={12}
         color={themed.mutedForeground}
       />
-      <Text variant="caption" className="flex-1 font-sans-semibold text-[11.5px]" numberOfLines={2}>
+      <Text
+        variant="caption"
+        className="flex-1 font-sans-semibold text-[11.5px] web:text-[0.71875rem]"
+        numberOfLines={2}
+      >
         {reason}
       </Text>
     </View>

@@ -10,6 +10,7 @@ import { AnimatedPressable } from './animated-pressable';
 import { HORIZONTAL_SCROLLER } from './horizontal-scroller';
 import { Icon } from './icon';
 import { FOCUS_RING_CLASS, TextClassContext } from './text';
+import { slopTo44 } from './touch-target';
 
 /**
  * Stacks tabs (STYLEGUIDE.md section 8), on react-native-reusables' Tabs: a `tablist` of
@@ -112,7 +113,13 @@ function ScrollingTabsList({
           onPress={page}
           accessibilityRole="button"
           accessibilityLabel={cue === 'forward' ? t('ui.tabs.more') : t('ui.tabs.earlier')}
-          hitSlop={4}
+          // A 2.5 x 2.25 rem cue, its touch grown to the minimum target.
+          hitSlop={{
+            top: slopTo44(2.5),
+            bottom: slopTo44(2.5),
+            left: slopTo44(2.25),
+            right: slopTo44(2.25),
+          }}
           className={cn(
             '-mr-2 ml-1 h-10 w-9 items-center justify-center rounded-full active:bg-accent',
             Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}` }),
@@ -140,7 +147,7 @@ export function TabsTrigger({
       <TabsPrimitive.Trigger
         className={cn(
           // 42 tall + the underline overlapping the list's hairline (-mb-px).
-          '-mb-px h-[42px] flex-row items-center justify-center gap-1.5 border-b-2',
+          '-mb-px min-h-[42px] flex-row items-center justify-center gap-1.5 border-b-2',
           active ? 'border-foreground' : 'border-transparent',
           Platform.select({
             web: `cursor-pointer select-none whitespace-nowrap ${FOCUS_RING_CLASS}`,

@@ -1,7 +1,9 @@
 import { type Insets, Platform } from 'react-native';
 
 /**
- * The 44 pt minimum touch target (STYLEGUIDE section 14) for a control sized in rem.
+ * The minimum touch target (STYLEGUIDE section 14) for a control sized in rem: 44 pt on iOS
+ * and 44 px on the web, 48 dp on Android (Material's minimum, fe#267). The names say 44,
+ * the iOS and web number.
  *
  * A rem is 16 px on the web but 14 pt on iOS and Android (`polyfills.rem` in
  * `uniwind.config.js`), so a rem-sized class that is 44 px on the web (`h-11`) is 38.5 pt
@@ -12,15 +14,26 @@ import { type Insets, Platform } from 'react-native';
  * uses the browser's 16 px root). */
 export const NATIVE_REM_PT = 14;
 
+/** The minimum target on this platform: 48 dp on Android, 44 elsewhere. */
+export function minTarget(): number {
+  return Platform.OS === 'android' ? 48 : 44;
+}
+
 /**
  * The hit slop, on each side, that grows a control `rem` rem across (its class size:
- * `h-11` is 2.75) to 44 on this platform. The SLOP policy, which the player's round
+ * `h-11` is 2.75) to the minimum target on this platform (`minTarget`). The SLOP policy, which the player's round
  * controls use on every platform: the control keeps its drawn size and the touch grows
  * around it.
  */
 export function slopTo44(rem: number): number {
   const pt = Platform.OS === 'web' ? 16 : NATIVE_REM_PT;
-  return Math.max(0, Math.ceil((44 - rem * pt) / 2));
+  return slopForPx(rem * pt);
+}
+
+/** `slopTo44` for a control sized in px (a Button's 30 / 38, a segment's 30, the player's
+ * round buttons): the same number on every platform, so only the target differs. */
+export function slopForPx(px: number): number {
+  return Math.max(0, Math.ceil((minTarget() - px) / 2));
 }
 
 /** How a small control reaches 44: a frame class (native) or a hit slop (web). */
@@ -41,6 +54,9 @@ export type TouchTarget = {
  * grows the touch (`hitSlop`, from `slopTo44`).
  */
 export function touchTarget(height: number, width?: number): TouchTarget {
+  if (Platform.OS === 'android') {
+    return { frameClass: width === undefined ? 'min-h-[48px]' : 'min-h-[48px] min-w-[48px]' };
+  }
   if (Platform.OS !== 'web') {
     return { frameClass: width === undefined ? 'min-h-[44px]' : 'min-h-[44px] min-w-[44px]' };
   }

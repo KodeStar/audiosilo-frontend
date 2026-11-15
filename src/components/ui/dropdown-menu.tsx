@@ -20,7 +20,13 @@ import { EYEBROW_CLASS, TextClassContext } from './text';
  * leading glyph and a `destructive` item variant. Portaled and safe-area aware.
  */
 export const DropdownMenu = DropdownMenuPrimitive.Root;
-export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
+/** The menu's trigger: a button to assistive tech on every platform (fe#267: on the web
+ * it rendered a `div` with a name and `aria-expanded` but no role). */
+export function DropdownMenuTrigger(
+  props: React.ComponentProps<typeof DropdownMenuPrimitive.Trigger>,
+) {
+  return <DropdownMenuPrimitive.Trigger role="button" {...props} />;
+}
 
 /** Through `withFlatStyle` (see ./overlay). */
 const Content = withFlatStyle(DropdownMenuPrimitive.Content);

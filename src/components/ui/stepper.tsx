@@ -81,7 +81,15 @@ export function Stepper({
         disabled={value <= min}
         accessibilityLabel={t('settings.stepper.less', { label })}
       />
-      <Text variant="label" className="w-16 text-center" accessibilityLiveRegion="polite">
+      {/* A min width, so the buttons don't jump as the value changes, and the value grows
+          with the text size instead of wrapping to "15 / s" (fe#267). */}
+      <Text
+        variant="label"
+        testID="stepper-value"
+        className="min-w-16 text-center"
+        numberOfLines={1}
+        accessibilityLiveRegion="polite"
+      >
         {format(value)}
       </Text>
       <StepButton

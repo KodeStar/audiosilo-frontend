@@ -1,8 +1,8 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { NativeTabs } from 'expo-router/native-tabs';
-import { useMemo } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Platform, useWindowDimensions, View } from 'react-native';
 
 import { FloatingMiniPlayer } from '@/components/player/mini-player';
 
@@ -10,15 +10,37 @@ import { AccessoryPlayer } from '@/components/shell/accessory-player';
 import { ACCESSORY_SUPPORTED } from '@/components/shell/accessory-support';
 import { ShellPlayerOverlays } from '@/components/player/player-sheet-host';
 import { AuthGate } from '@/components/shell/auth-gate';
+import { useBehindModalProps } from '@/components/ui/modal-layer';
 import { TABS } from '@/components/shell/destinations';
+import { tabLabelFontSize } from '@/components/shell/tab-label-size';
 import { ShellFrame } from '@/components/shell/shell-frame';
 import { useIsTopShell } from '@/components/shell/top-shell';
 import { useShellEffects } from '@/components/shell/use-shell-effects';
 import { useLayout } from '@/lib/layout';
+import { useFontScale, useLargeText } from '@/lib/text-scale';
 import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
+
+/** The Android tab bar's `labelStyle` (`tab-label-size.ts`): it follows the text scale, a
+ * tab's slot (a fifth of the window, in dp) and the longest tab name in this language
+ * ("Téléchargements" in French); `undefined` elsewhere, so iOS doesn't redraw the shell on
+ * every text-size step or resize (it needs only `useLargeText`'s threshold). Chosen once
+ * per platform, so the hook order never changes. */
+const useTabLabelStyle: () => { fontSize: number } | undefined =
+  Platform.OS === 'android'
+    ? function useAndroidTabLabelStyle() {
+        const { t } = useTranslation();
+        const scale = useFontScale();
+        const slot = useWindowDimensions().width / TABS.length;
+        const longest = useMemo(() => Math.max(...TABS.map((d) => t(d.labelKey).length)), [t]);
+        return useMemo(
+          () => ({ fontSize: tabLabelFontSize(scale, slot, longest) }),
+          [scale, slot, longest],
+        );
+      }
+    : () => undefined;
 
 /**
  * The native (iOS/Android) shell: ONE navigator, NativeTabs, at every width - only the
@@ -41,6 +63,11 @@ function NativeShell() {
   // An episode on its way shows in the accessory too, with nothing playing yet.
   const fetching = useEpisodeFetch((s) => s.pending !== null);
   const top = useIsTopShell();
+  // Android: at the large text sizes five labels don't fit their slots ("Ho...", "Libr...").
+  // Material's answer is the chosen tab's label only (the others keep theirs for TalkBack),
+  // and the label grows only as far as the longest name fits its slot (`tab-label-size.ts`).
+  const large = useLargeText();
+  const labelStyle = useTabLabelStyle();
 
   // React Navigation's theme, from ours: the native tab and stack containers paint with
   // it (on iOS 26 a missing theme shows default-white artifacts in tab transitions).
@@ -63,43 +90,61 @@ function NativeShell() {
     <ThemeProvider value={navTheme}>
       {/* The player's overlays (its sheets, Up next's) render in place, over the whole shell. */}
       <View style={{ flex: 1 }}>
-        <ShellFrame
-          // Absolutely positioned in the frame, which spans the window: its bottom offset is
-          // the native bar's measured top edge, so it sits on the bar on every tab and over a
-          // pushed page, and a tab switch never remounts it.
-          phoneBottom={ACCESSORY_SUPPORTED ? null : <FloatingMiniPlayer />}
-        >
-          <NativeTabs
-            hidden={wide}
-            tintColor={themed.brand}
-            // Android (Material 3, STYLEGUIDE section 10): every tab labelled, the
-            // active one on a brand-soft pill.
-            labelVisibilityMode="labeled"
-            indicatorColor={themed.brandSoft}
-            minimizeBehavior="onScrollDown"
-            unstable_nativeProps={{ ios: { bottomAccessoryHidden: !(loaded || fetching) || wide } }}
+        <BehindSheets>
+          <ShellFrame
+            // Absolutely positioned in the frame, which spans the window: its bottom offset is
+            // the native bar's measured top edge, so it sits on the bar on every tab and over a
+            // pushed page, and a tab switch never remounts it.
+            phoneBottom={ACCESSORY_SUPPORTED ? null : <FloatingMiniPlayer />}
           >
-            {TABS.map((d) => (
-              <NativeTabs.Trigger
-                key={d.name}
-                name={d.name}
-                role={d.name === '(search)' ? 'search' : undefined}
-              >
-                <NativeTabs.Trigger.Icon sf={d.sf} md={d.md} />
-                <NativeTabs.Trigger.Label>{t(d.labelKey)}</NativeTabs.Trigger.Label>
-              </NativeTabs.Trigger>
-            ))}
-            {ACCESSORY_SUPPORTED ? (
-              <NativeTabs.BottomAccessory>
-                <AccessoryPlayer />
-              </NativeTabs.BottomAccessory>
-            ) : null}
-          </NativeTabs>
-        </ShellFrame>
+            <NativeTabs
+              hidden={wide}
+              tintColor={themed.brand}
+              // Android (Material 3, STYLEGUIDE section 10): every tab labelled, the
+              // active one on a brand-soft pill; under large text the active one only.
+              labelVisibilityMode={large ? 'selected' : 'labeled'}
+              labelStyle={labelStyle}
+              indicatorColor={themed.brandSoft}
+              minimizeBehavior="onScrollDown"
+              unstable_nativeProps={{
+                ios: { bottomAccessoryHidden: !(loaded || fetching) || wide },
+              }}
+            >
+              {TABS.map((d) => (
+                <NativeTabs.Trigger
+                  key={d.name}
+                  name={d.name}
+                  role={d.name === '(search)' ? 'search' : undefined}
+                >
+                  <NativeTabs.Trigger.Icon sf={d.sf} md={d.md} />
+                  <NativeTabs.Trigger.Label>{t(d.labelKey)}</NativeTabs.Trigger.Label>
+                </NativeTabs.Trigger>
+              ))}
+              {ACCESSORY_SUPPORTED ? (
+                <NativeTabs.BottomAccessory>
+                  <AccessoryPlayer />
+                </NativeTabs.BottomAccessory>
+              ) : null}
+            </NativeTabs>
+          </ShellFrame>
+        </BehindSheets>
         {/* In the top shell only, should a second one ever be stacked over this one. */}
         {top ? <ShellPlayerOverlays /> : null}
       </View>
     </ThemeProvider>
+  );
+}
+
+/**
+ * The shell under the sheets: hidden from VoiceOver and TalkBack while one is open. A
+ * component of its own, so a sheet opening or closing re-renders this frame alone (its
+ * children are the same elements), not the shell and its tabs.
+ */
+function BehindSheets({ children }: { children: ReactNode }) {
+  return (
+    <View style={{ flex: 1 }} {...useBehindModalProps()}>
+      {children}
+    </View>
   );
 }
 

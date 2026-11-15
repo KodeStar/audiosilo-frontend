@@ -72,7 +72,7 @@ export function ListeningClock({ summary, size }: { summary: ClockSummary; size:
         <Text
           key={h}
           pointerEvents="none"
-          className="absolute w-6 text-center font-sans text-[11px] text-muted-foreground"
+          className="absolute w-6 text-center font-sans text-[11px] web:text-[0.6875rem] text-muted-foreground"
           style={[tabularNums, { left: x - 12, top: y - 8 }]}
         >
           {String(h).padStart(2, '0')}

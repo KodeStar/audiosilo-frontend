@@ -2,7 +2,9 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { AccessibilityInfo, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { dismissToast, toast, ToastHost } from './toast';
+import * as screenReader from '@/lib/screen-reader';
+
+import { dismissToast, pauseToast, resumeToast, toast, toastDuration, ToastHost } from './toast';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -133,5 +135,83 @@ describe('toast / ToastHost', () => {
         jest.runOnlyPendingTimers();
       });
     }
+  });
+});
+
+describe('toast timing for a screen reader (fe#267)', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('keeps a toast with an action until answered, and a plain one three times as long', () => {
+    expect(toastDuration({}, false)).toBe(5000);
+    expect(toastDuration({ action: { label: 'Undo', onPress: jest.fn() } }, false)).toBe(8000);
+    expect(toastDuration({ duration: 2000 }, false)).toBe(2000);
+    expect(toastDuration({ action: { label: 'Undo', onPress: jest.fn() } }, true)).toBeNull();
+    expect(toastDuration({}, true)).toBe(15000);
+  });
+
+  it('leaves an Undo on screen while VoiceOver or TalkBack is on', async () => {
+    jest.spyOn(screenReader, 'screenReaderOn').mockReturnValue(true);
+    await mountHost();
+    let id = 0;
+    await act(async () => {
+      id = toast({ title: 'Removed', action: { label: 'Undo', onPress: jest.fn() } });
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(60_000);
+    });
+    expect(screen.getByText('Removed')).toBeTruthy();
+    await act(async () => {
+      dismissToast(id);
+    });
+    expect(screen.queryByText('Removed')).toBeNull();
+  });
+
+  it('holds a paused toast and lets it run on for the time it had left', async () => {
+    await mountHost();
+    let id = 0;
+    await act(async () => {
+      id = toast({ title: 'Saved' });
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
+      pauseToast(id);
+      jest.advanceTimersByTime(20_000);
+    });
+    expect(screen.getByText('Saved')).toBeTruthy();
+    await act(async () => {
+      resumeToast(id);
+      jest.advanceTimersByTime(1900);
+    });
+    expect(screen.getByText('Saved')).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(200);
+    });
+    expect(screen.queryByText('Saved')).toBeNull();
+  });
+
+  it('stays held while either the pointer or focus still holds it', async () => {
+    await mountHost();
+    let id = 0;
+    await act(async () => {
+      id = toast({ title: 'Removed', action: { label: 'Undo', onPress: jest.fn() } });
+    });
+    // Focus is on Undo and the pointer passes over and away: the toast must not time out
+    // under the keyboard.
+    await act(async () => {
+      pauseToast(id, 'focus');
+      pauseToast(id, 'pointer');
+      resumeToast(id, 'pointer');
+      jest.advanceTimersByTime(20_000);
+    });
+    expect(screen.getByText('Removed')).toBeTruthy();
+    await act(async () => {
+      resumeToast(id, 'focus');
+      jest.advanceTimersByTime(8000);
+    });
+    expect(screen.queryByText('Removed')).toBeNull();
   });
 });

@@ -447,7 +447,7 @@ function PaletteBody() {
           aria-autocomplete="list"
           aria-activedescendant={flat.length > 0 ? optionId(active) : undefined}
           className={cn(
-            'min-w-0 flex-1 font-sans text-[17px] text-foreground',
+            'min-w-0 flex-1 font-sans text-[17px] web:text-[1.0625rem] text-foreground',
             Platform.select({ web: 'outline-none' }),
           )}
         />
@@ -466,7 +466,7 @@ function PaletteBody() {
               role="button"
               onPress={() => setQuery(r)}
               className={cn(
-                'h-[26px] flex-row items-center gap-1 rounded-full border border-border px-2.5 active:bg-accent',
+                'min-h-[26px] flex-row items-center gap-1 rounded-full border border-border px-2.5 active:bg-accent',
                 Platform.select({ web: 'cursor-pointer hover:bg-accent' }),
               )}
             >

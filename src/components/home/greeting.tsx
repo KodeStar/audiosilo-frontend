@@ -6,7 +6,9 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { formatLongDate, formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { useMinuteClock } from '@/lib/use-now';
+import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { greetingPart, type SyncPill } from './home-model';
@@ -19,12 +21,18 @@ const GREETING = {
 
 /** One of the greeting's pills: never wider than its row, its text cut to fit (a long
  * server name on a phone). */
-function Pill({ children, label }: { children: ReactNode; label: string }) {
+function Pill({ children, label, large }: { children: ReactNode; label: string; large: boolean }) {
+  // A min height: the words grow with the text size and may wrap under large text (at
+  // iOS's AX sizes a fixed 30 cut them in half, fe#267); a wrapped pill rounds less.
   return (
     <View
       accessible
       accessibilityLabel={label}
-      className="h-[30px] max-w-full flex-row items-center gap-[7px] rounded-full border border-border bg-card px-3"
+      testID="greeting-pill"
+      className={cn(
+        'min-h-[30px] max-w-full flex-row items-center gap-[7px] border border-border bg-card px-3 py-1',
+        large ? 'rounded-2xl' : 'rounded-full',
+      )}
     >
       {children}
     </View>
@@ -52,6 +60,9 @@ export function Greeting({
   down?: string;
 }) {
   const { t, i18n } = useTranslation();
+  // Under large text the date and the pills stack, and their words wrap.
+  const large = useLargeText();
+  const lines = linesFor(1, large);
   const themed = useThemeColors();
   const phone = useLayout() === 'phone';
   // Once a minute, so "synced 2 min ago" and the part of the day stay true.
@@ -75,15 +86,15 @@ export function Greeting({
     ? t('shell.notAnswering', { name: down })
     : t('home.servers', { count: servers });
   const syncPill = syncText ? (
-    <Pill label={syncText}>
+    <Pill label={syncText} large={large}>
       <Icon
         name={sync?.kind === 'local' ? 'hard-drive' : 'check'}
         size={14}
         color={sync?.kind === 'local' ? themed.warning : themed.success}
       />
       <Text
-        className="shrink font-sans-semibold text-[12.5px] text-muted-foreground"
-        numberOfLines={1}
+        className="shrink font-sans-semibold text-[12.5px] web:text-[0.78125rem] text-muted-foreground"
+        numberOfLines={lines}
       >
         {syncText}
       </Text>
@@ -91,11 +102,11 @@ export function Greeting({
   ) : null;
   const serversPill =
     servers > 1 ? (
-      <Pill label={serversText}>
+      <Pill label={serversText} large={large}>
         <View className={`h-[7px] w-[7px] rounded-full ${down ? 'bg-warning' : 'bg-success'}`} />
         <Text
-          className="shrink font-sans-semibold text-[12.5px] text-muted-foreground"
-          numberOfLines={1}
+          className="shrink font-sans-semibold text-[12.5px] web:text-[0.78125rem] text-muted-foreground"
+          numberOfLines={lines}
         >
           {serversText}
         </Text>
@@ -107,8 +118,12 @@ export function Greeting({
     // gets a row of its own under it (the healthy "2 servers" count stays desktop-only).
     return (
       <View className="gap-2">
-        <View className="min-h-[30px] flex-row items-center justify-between gap-3">
-          <Text variant="muted" className="flex-1" numberOfLines={1}>
+        <View
+          className={
+            large ? 'items-start gap-2' : 'min-h-[30px] flex-row items-center justify-between gap-3'
+          }
+        >
+          <Text variant="muted" className={large ? undefined : 'flex-1'} numberOfLines={lines}>
             {date}
           </Text>
           {syncPill}
@@ -121,7 +136,11 @@ export function Greeting({
     <View className="flex-row flex-wrap items-end justify-between gap-4">
       <View className="gap-2">
         <Text variant="eyebrow">{date}</Text>
-        <Text variant="display" accessibilityRole="header" className="text-[38px] leading-[42px]">
+        <Text
+          variant="display"
+          accessibilityRole="header"
+          className="text-[38px] web:text-[2.375rem] leading-[42px] web:leading-[2.625rem]"
+        >
           {greeting}
         </Text>
       </View>

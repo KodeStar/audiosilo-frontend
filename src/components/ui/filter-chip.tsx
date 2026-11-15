@@ -9,18 +9,22 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import { HORIZONTAL_SCROLLER } from './horizontal-scroller';
 import { Icon, type IconName } from './icon';
 import { FOCUS_RING_OFFSET_CLASS, Text } from './text';
+import { slopTo44 } from './touch-target';
+
+/** A chip's hit slop: a 2 rem pill, its touch grown to the minimum target. */
+export const CHIP_SLOP = { top: slopTo44(2), bottom: slopTo44(2) };
 
 /**
  * The Stacks 32px pill (STYLEGUIDE section 8, "Chip"): a strong hairline on `card`,
  * `accent` under a press or hover, filled with ink (`primary`) when `selected`. A
  * `FilterChip`'s box, and the pills that act or link rather than toggle (a book's genres
  * and tags, a recent search); the caller adds the width rule (`shrink-0` in a scrolling
- * row, `max-w-full` where they wrap) and its own slop (`hitSlop` 6 above and below makes
- * the touch target 44).
+ * row, `max-w-full` where they wrap) and the slop (`CHIP_SLOP`, which makes the touch the
+ * minimum target).
  */
 export function chipClass(selected = false): string {
   return cn(
-    'h-8 flex-row items-center gap-1.5 rounded-full border px-3',
+    'min-h-8 flex-row items-center gap-1.5 rounded-full border px-3',
     selected
       ? 'border-primary bg-primary'
       : 'border-border-strong bg-card active:bg-accent hover:bg-accent',
@@ -66,13 +70,13 @@ export function FilterChip({
       accessibilityState={picker ? { selected } : { checked: selected }}
       accessibilityLabel={count === undefined ? spoken : `${spoken}, ${count}`}
       onPress={onPress}
-      hitSlop={{ top: 6, bottom: 6 }}
+      hitSlop={CHIP_SLOP}
       className={cn(chipClass(selected), 'shrink-0')}
     >
       {icon ? <Icon name={icon} size={14} color={fg} /> : null}
       <Text
         className={cn(
-          'font-sans-semibold text-[13px]',
+          'font-sans-semibold text-[13px] web:text-[0.8125rem]',
           selected ? 'text-primary-foreground' : 'text-foreground',
         )}
         numberOfLines={1}
@@ -83,7 +87,7 @@ export function FilterChip({
         <Text
           className={cn(
             // Muted, not faded: `opacity-60` ink on a card was 4.48:1, under AA.
-            'font-sans text-[11.5px]',
+            'font-sans text-[11.5px] web:text-[0.71875rem]',
             selected ? 'text-primary-foreground/75' : 'text-muted-foreground',
           )}
           style={tabularNums}

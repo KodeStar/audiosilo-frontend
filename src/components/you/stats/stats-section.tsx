@@ -29,6 +29,7 @@ import { formatDurationOrZero } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -190,7 +191,8 @@ function StatsContent({
   const open = useOpen();
   const wide = useLayout() !== 'phone';
   const libraries = useLibrariesAll().groups.find((g) => g.connectionId === cid)?.libraries;
-  const { cols, compact, tileGap, tileW, chartW, rankW } = statsGrid(width);
+  const large = useLargeText();
+  const { cols, compact, tileGap, tileW, chartW, rankW } = statsGrid(width, large);
   const { weeks, week, streak, longest, average } = useMemo(() => {
     const totals = weeklyTotals(listening.days, today);
     return {
@@ -300,7 +302,7 @@ function StatsContent({
           context={
             <Text
               variant="caption"
-              numberOfLines={2}
+              numberOfLines={linesFor(2, large)}
               className={cn(week.delta > 0 && 'font-sans-semibold text-success')}
               style={tabularNums}
             >
@@ -319,7 +321,7 @@ function StatsContent({
           width={tileW}
           accessibilityLabel={`${t('stats.tiles.streak')}, ${t('stats.tiles.streakValue', { count: streak })}, ${t('stats.tiles.longest', { count: longest })}`}
           context={
-            <Text variant="caption" numberOfLines={2} style={tabularNums}>
+            <Text variant="caption" numberOfLines={linesFor(2, large)} style={tabularNums}>
               {t('stats.tiles.longest', { count: longest })}
             </Text>
           }
@@ -339,7 +341,7 @@ function StatsContent({
           width={tileW}
           accessibilityLabel={`${t('stats.tiles.average')}, ${averageValue}, ${t('stats.tiles.books', { count: stats.totals.books })}`}
           context={
-            <Text variant="caption" numberOfLines={2} style={tabularNums}>
+            <Text variant="caption" numberOfLines={linesFor(2, large)} style={tabularNums}>
               {t('stats.tiles.books', { count: stats.totals.books })}
             </Text>
           }
@@ -354,7 +356,7 @@ function StatsContent({
           action={
             <View className="flex-row items-center gap-1.5">
               <Icon name="cloud" size={12} color={themed.subtleForeground} />
-              <Text className="font-sans text-[11px] text-subtle-foreground">
+              <Text className="font-sans text-[11px] web:text-[0.6875rem] text-subtle-foreground">
                 {t('stats.calendar.everyDevice')}
               </Text>
             </View>
@@ -451,7 +453,7 @@ function StatsContent({
 /** The loading state: placeholders shaped like the header, the tiles, the calendar and
  * the two charts, at their sizes (no shift when the data lands). */
 function StatsSkeleton({ width }: { width: number }) {
-  const { tileGap, tileW, chartW } = statsGrid(width);
+  const { tileGap, tileW, chartW } = statsGrid(width, useLargeText());
   return (
     <View className="gap-4" testID="stats-skeleton">
       <View className="gap-2">

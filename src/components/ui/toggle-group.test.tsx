@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { Platform, ScrollView, StyleSheet } from 'react-native';
 
+import { setFontScale } from '@/testing/font-scale';
+
 import { SegmentedControl } from './toggle-group';
 
 function mount(ui: React.ReactElement) {
@@ -145,6 +147,27 @@ describe('SegmentedControl', () => {
       expect(scrollTo).toHaveBeenLastCalledWith({ x: 0, animated: expect.any(Boolean) });
     } finally {
       scrollTo.mockRestore();
+    }
+  });
+
+  it('stacks its segments and lets a label wrap under large text (fe#267)', async () => {
+    await setFontScale(2);
+    try {
+      await mount(
+        <SegmentedControl
+          options={[...options]}
+          value="all"
+          onChange={jest.fn()}
+          grow
+          accessibilityLabel="Kind"
+        />,
+      );
+      expect(String(screen.getByLabelText('Kind').props.className)).toContain('flex-col');
+      const all = screen.getByRole('radio', { name: 'All' });
+      expect(String(all.props.className)).not.toContain('flex-1');
+      expect(screen.getByText('All').props.numberOfLines).toBeUndefined();
+    } finally {
+      await setFontScale(1);
     }
   });
 });

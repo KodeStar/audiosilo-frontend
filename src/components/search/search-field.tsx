@@ -4,6 +4,7 @@ import { Platform, Pressable, TextInput, View, type TextInputInstance } from 're
 
 import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS } from '@/components/ui/text';
+import { touchTarget } from '@/components/ui/touch-target';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -26,6 +27,8 @@ export function SearchField({
   ref?: Ref<TextInputInstance>;
 }) {
   const { t } = useTranslation();
+  // Clear is a 2.5 rem square, grown to the minimum target.
+  const clearTarget = touchTarget(2.5, 2.5);
   const themed = useThemeColors();
   const [focused, setFocused] = useState(false);
   // The full list of what can be found doesn't fit a phone's field.
@@ -57,7 +60,7 @@ export function SearchField({
         autoFocus={autoFocus}
         className={cn(
           'h-full min-w-0 flex-1 font-sans text-foreground',
-          phone ? 'text-base' : 'text-[17px]',
+          phone ? 'text-base' : 'text-[17px] web:text-[1.0625rem]',
           Platform.select({ web: 'outline-none' }),
         )}
       />
@@ -66,8 +69,10 @@ export function SearchField({
           onPress={() => onChangeText('')}
           accessibilityRole="button"
           accessibilityLabel={t('search.clear')}
+          hitSlop={clearTarget.hitSlop}
           className={cn(
             'h-10 w-10 items-center justify-center rounded-control active:bg-accent',
+            clearTarget.frameClass,
             Platform.select({
               web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}`,
             }),

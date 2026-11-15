@@ -155,7 +155,9 @@ export function ShelfCaption({
           <Text
             className={cn(
               'font-display tracking-tight text-foreground',
-              wide ? 'text-[26px] leading-[28px]' : 'text-[21px] leading-[24px]',
+              wide
+                ? 'text-[26px] web:text-[1.625rem] leading-[28px] web:leading-[1.75rem]'
+                : 'text-[21px] web:text-[1.3125rem] leading-[24px] web:leading-[1.5rem]',
             )}
             accessibilityRole="header"
           >
@@ -300,7 +302,7 @@ export function EntryList({
               <GhostCover title={title} position={e.title ? e.position : undefined} width={cover} />
             )}
             <View className="min-w-0 flex-1 gap-0.5">
-              <Text variant="label" className="text-[15px]" numberOfLines={2}>
+              <Text variant="label" className="text-[15px] web:text-[0.9375rem]" numberOfLines={2}>
                 {title}
               </Text>
               {line ? (

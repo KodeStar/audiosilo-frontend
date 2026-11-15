@@ -58,6 +58,7 @@ jest.mock('@/i18n/language-provider', () => ({
 }));
 
 /* eslint-disable import/first */
+import * as textScale from '@/lib/text-scale';
 import { useSettings } from '@/stores/settings';
 
 import { SettingsContent } from './settings-content';
@@ -95,6 +96,23 @@ describe('SettingsContent, wide', () => {
     expect(screen.getByTestId('settings-nav-accounts')).toHaveProp('aria-current', 'page');
     expect(screen.queryByTestId('settings-pane-playback')).toBeNull();
     expect(screen.getByRole('header', { name: 'Settings' })).toBeTruthy();
+  });
+
+  // fe#267: under large text a section's name wraps in the narrow nav, never "...".
+  it('wraps the nav names under large text only', async () => {
+    await render(<SettingsContent section="accounts" />);
+    await layOut(1000);
+    const name = () =>
+      within(screen.getByTestId('settings-nav-accounts')).getByText('Accounts and devices');
+    expect(name().props.numberOfLines).toBe(1);
+    const large = jest.spyOn(textScale, 'useLargeText').mockReturnValue(true);
+    try {
+      await render(<SettingsContent section="accounts" />);
+      await layOut(1000);
+      expect(name().props.numberOfLines).toBeUndefined();
+    } finally {
+      large.mockRestore();
+    }
   });
 
   it('opens the first pane for preferences and moves between panes from the nav', async () => {

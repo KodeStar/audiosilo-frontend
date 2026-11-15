@@ -9,6 +9,7 @@ import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { useSliderControl } from '@/components/ui/use-slider-control';
 import { formatClock, formatDuration, formatWallClock } from '@/lib/format';
+import { linesFor, scaleCapped, useFontScale, useLargeText } from '@/lib/text-scale';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { selectBookKey, usePlayer } from '@/playback/store';
@@ -19,32 +20,40 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { headFraction, Playhead, ScrubTip, useWebHoverFraction } from './scrub-parts';
 import { barCountFor, barsPath, seekBars } from './seek-texture';
+import { CONTROL_MAX_SCALE } from './transport-controls';
 import { SEGMENT_LABEL, type SegmentKind, usePlayingSegment } from './use-playing-segment';
 
-/** The bars' band. */
+/** The bars' band at the default text size (`scale` grows it). */
 const BAR_H = 44;
 /** The strip above the bars that holds the bookmark glyphs. */
 const PIN_H = 14;
 /** The playhead: 4 wide, a little taller than the band. */
 const HEAD_W = 4;
-const HEAD_H = 52;
+const HEAD_OVER = 8;
+
+/** The bars' band at a text scale: taller with the text size, as far as the transport grows. */
+export function seekBarHeight(scale: number): number {
+  return scaleCapped(BAR_H, scale, CONTROL_MAX_SCALE);
+}
 
 /** One layer of bars: a single SVG path, drawn once per layout (memo). */
 const BarLayer = memo(function BarLayer({
   path,
   width,
+  height,
   color,
   opacity = 1,
   testID,
 }: {
   path: string;
   width: number;
+  height: number;
   color: string;
   opacity?: number;
   testID: string;
 }) {
   return (
-    <Svg testID={testID} width={width} height={BAR_H} pointerEvents="none">
+    <Svg testID={testID} width={width} height={height} pointerEvents="none">
       <Path d={path} fill={color} fillOpacity={opacity} />
     </Svg>
   );
@@ -81,6 +90,8 @@ export type SeekBarProps = {
   accessibilityLabel?: string;
   /** A fixed bar count; default, from the measured width (56 on a phone, 96 max). */
   bars?: number;
+  /** The text scale (the full player's): the band grows with it (`seekBarHeight`). */
+  scale?: number;
   className?: string;
 };
 
@@ -112,8 +123,10 @@ export function SeekBar({
   onStep,
   accessibilityLabel,
   bars,
+  scale = 1,
   className,
 }: SeekBarProps) {
+  const barH = seekBarHeight(scale);
   const { t } = useTranslation();
   const themed = useThemeColors();
   const skipForward = useSettings((s) => s.skipForward);
@@ -146,7 +159,7 @@ export function SeekBar({
 
   const count = bars ?? barCountFor(width);
   const heights = useMemo(() => seekBars(textureKey, count, peaks), [textureKey, count, peaks]);
-  const path = useMemo(() => barsPath(heights, width, BAR_H), [heights, width]);
+  const path = useMemo(() => barsPath(heights, width, barH), [heights, width, barH]);
 
   // The played layer: a clip that slides in from the left, its content slid back by the
   // same amount so the bars stay put. The playhead rides its edge.
@@ -173,7 +186,7 @@ export function SeekBar({
         {...controlProps}
         {...hoverProps}
         onLayout={onLayout}
-        style={{ height: PIN_H + BAR_H }}
+        style={{ height: PIN_H + barH }}
         className={cn(
           Platform.select({ web: `cursor-pointer rounded-md ${FOCUS_RING_CLASS}` }),
           className,
@@ -195,13 +208,14 @@ export function SeekBar({
               ))
           : null}
 
-        <View style={{ position: 'absolute', top: PIN_H, left: 0, right: 0, height: BAR_H }}>
+        <View style={{ position: 'absolute', top: PIN_H, left: 0, right: 0, height: barH }}>
           {width > 0 && path ? (
             <>
               <BarLayer
                 testID="seek-bars"
                 path={path}
                 width={width}
+                height={barH}
                 color={themed.mutedForeground}
                 opacity={0.28}
               />
@@ -213,7 +227,7 @@ export function SeekBar({
                     top: 0,
                     left: 0,
                     width: hover * width,
-                    height: BAR_H,
+                    height: barH,
                     overflow: 'hidden',
                   }}
                 >
@@ -221,6 +235,7 @@ export function SeekBar({
                     testID="seek-bars-hovered"
                     path={path}
                     width={width}
+                    height={barH}
                     color={themed.foreground}
                     opacity={0.55}
                   />
@@ -234,7 +249,7 @@ export function SeekBar({
                     top: 0,
                     left: 0,
                     width,
-                    height: BAR_H,
+                    height: barH,
                     overflow: 'hidden',
                   },
                   clipStyle,
@@ -245,6 +260,7 @@ export function SeekBar({
                     testID="seek-bars-played"
                     path={path}
                     width={width}
+                    height={barH}
                     color={themed.foreground}
                   />
                 </Animated.View>
@@ -252,7 +268,7 @@ export function SeekBar({
             </>
           ) : null}
 
-          <Playhead track={track} width={HEAD_W} height={HEAD_H} top={(BAR_H - HEAD_H) / 2} />
+          <Playhead track={track} width={HEAD_W} height={barH + HEAD_OVER} top={-HEAD_OVER / 2} />
         </View>
 
         {/* The scrub (or, on the web, hover) tip. */}
@@ -261,7 +277,7 @@ export function SeekBar({
             x={tipFrac * width}
             width={width}
             edge={48}
-            bottom={PIN_H + BAR_H + 4}
+            bottom={PIN_H + barH + 4}
             onTip={onTip}
           >
             <Text
@@ -272,7 +288,7 @@ export function SeekBar({
               {formatClock(tipSeconds)}
             </Text>
             <Text
-              className="font-sans text-[11px] text-primary-foreground/70"
+              className="font-sans text-[11px] web:text-[0.6875rem] text-primary-foreground/70"
               style={tabularNums}
               numberOfLines={1}
             >
@@ -328,6 +344,8 @@ export const SeekTimes = memo(function SeekTimes({
   const wall = timeLeft(elapsed, length, rate)?.seconds ?? 0;
   const time = formatDuration(wall);
   const clock = formatWallClock(new Date(now + wall * 1000));
+  // Under large text the middle label wraps instead of ending in "...".
+  const large = useLargeText();
   return (
     <View className={cn('flex-row items-center justify-between gap-2', className)}>
       <Text variant="caption" style={tabularNums}>
@@ -337,7 +355,7 @@ export const SeekTimes = memo(function SeekTimes({
         variant="caption"
         className="flex-1 text-center font-sans-semibold text-foreground"
         style={tabularNums}
-        numberOfLines={1}
+        numberOfLines={linesFor(1, large)}
       >
         {time ? t(SEGMENT_LEFT[kind], { time, clock }) : ''}
       </Text>
@@ -384,6 +402,7 @@ export function PlayerSeekBar({
     onSeek,
     bookmarks: inSegment,
   } = usePlayingSegment(bookmarks, { hold: scrub !== null });
+  const scale = useFontScale();
   if (!bookKey) return null;
 
   return (
@@ -401,6 +420,7 @@ export function PlayerSeekBar({
         onStep={(dir) => void skipSeconds(dir === 1 ? skipForward : -skipBackward)}
         accessibilityLabel={t(SEGMENT_LABEL[kind])}
         bars={bars}
+        scale={scale}
       />
       <View
         style={timesHidden ? { opacity: 0 } : undefined}

@@ -29,6 +29,8 @@ import { useUnreadQuery } from '@/lib/offline-state';
 import { idParam, libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
 import { recallScroll, rememberScroll, scrollKey } from '@/lib/scroll-memory';
+import { useLargeText } from '@/lib/text-scale';
+import { useLatestRef } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
 
 import { AzRail } from './books/az-rail';
@@ -38,7 +40,9 @@ const NARROW_THRESHOLD = 25;
 // Stable across renders (FlatList rejects a changing viewability config).
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 10 };
 // Fixed row heights drive getItemLayout, so the A–Z rail can jump to an exact
-// offset (a folder/file row is EntryRow's min-h-[3.5rem]=56 + my-1=8).
+// offset (a folder/file row is EntryRow's min-h-[3.5rem]=56 + my-1=8). Not under large
+// text: a row then takes the height its words need (fixed heights overlapped them), and
+// the rail and the scroll memory go by row index (`scrollToIndex`).
 const HEADER_H = 48;
 const ENTRY_H = 64;
 
@@ -113,6 +117,7 @@ function BrowseContent() {
   // Retry can work.
   const offline = useUnreadQuery(browse) === 'offline';
   const paddingBottom = useMiniPlayerInset();
+  const large = useLargeText();
 
   const [query, setQuery] = useState('');
 
@@ -182,34 +187,64 @@ function BrowseContent() {
     if (idxs.length) rememberScroll(keyRef.current, Math.min(...idxs));
   }, []);
 
+  // Scrolls to a row by its index (large text: no fixed offsets). Often a frame or a retry
+  // after it was asked for, when the filter or a refetch may have taken the row away:
+  // `scrollToIndex` throws on an index the list no longer has, so that one is let go.
+  const rowCount = useLatestRef(rows.length);
+  const scrollToRow = useCallback(
+    (index: number) => {
+      if (index < 0 || index >= rowCount.current) return;
+      listRef.current?.scrollToIndex({ index, animated: false });
+    },
+    [rowCount],
+  );
+
   // Re-apply the saved row index once the list has rows to scroll to.
   useEffect(() => {
     if (restoredRef.current || rows.length === 0) return;
     restoredRef.current = true;
     const saved = recallScroll(key);
     if (saved > 0) {
-      const offset = offsets[Math.min(saved, rows.length - 1)] ?? 0;
-      requestAnimationFrame(() => listRef.current?.scrollToOffset({ offset, animated: false }));
+      const index = Math.min(saved, rows.length - 1);
+      const offset = offsets[index] ?? 0;
+      requestAnimationFrame(() =>
+        large ? scrollToRow(index) : listRef.current?.scrollToOffset({ offset, animated: false }),
+      );
     }
-  }, [rows.length, key, offsets]);
+  }, [rows.length, key, offsets, large, scrollToRow]);
 
   const jumpToLetter = (letter: string) => {
     const sectionIdx = sectionIndexForLetter(sections, letter);
     if (sectionIdx < 0) return;
-    const offset = offsets[headerRows[sectionIdx]];
+    const index = headerRows[sectionIdx];
+    const offset = offsets[index];
     if (offset == null) return;
-    listRef.current?.scrollToOffset({ offset, animated: false });
+    if (large) scrollToRow(index);
+    else listRef.current?.scrollToOffset({ offset, animated: false });
+  };
+
+  // Large text (no getItemLayout): a row not laid out yet can't be scrolled to by index.
+  // Go near it by the rows measured so far, then try again once that part has laid out.
+  const onScrollToIndexFailed = (info: { index: number; averageItemLength: number }) => {
+    listRef.current?.scrollToOffset({
+      offset: info.averageItemLength * info.index,
+      animated: false,
+    });
+    setTimeout(() => scrollToRow(info.index), 50);
   };
 
   const renderItem: ListRenderItem<Row> = ({ item }) =>
     item.type === 'header' ? (
       // Background matches the page (bg-background) so the sticky header
       // occludes scrolled rows without showing as a distinct block.
-      <View style={{ height: HEADER_H }} className="justify-end bg-background px-4 pb-2 lg:px-8">
+      <View
+        style={large ? { minHeight: HEADER_H } : { height: HEADER_H }}
+        className="justify-end bg-background px-4 pb-2 lg:px-8"
+      >
         <Text variant="eyebrow">{item.letter}</Text>
       </View>
     ) : (
-      <View style={{ height: ENTRY_H }} className="px-4 lg:px-8">
+      <View style={large ? undefined : { height: ENTRY_H }} className="px-4 lg:px-8">
         <EntryRow entry={item.entry} connectionId={cid} libraryId={libraryId} />
       </View>
     );
@@ -253,11 +288,13 @@ function BrowseContent() {
         <View className="flex-1 flex-row">
           <FlatList
             ref={listRef}
+            testID="browse-list"
             className="flex-1"
             data={rows}
             keyExtractor={(item) => (item.type === 'header' ? `#${item.letter}` : item.entry.path)}
             renderItem={renderItem}
-            getItemLayout={getItemLayout}
+            getItemLayout={large ? undefined : getItemLayout}
+            onScrollToIndexFailed={onScrollToIndexFailed}
             stickyHeaderIndices={headerRows}
             contentContainerStyle={{ paddingBottom }}
             onViewableItemsChanged={onViewableItemsChanged}

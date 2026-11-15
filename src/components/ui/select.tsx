@@ -60,13 +60,16 @@ export function SelectTrigger({
   return (
     <SelectPrimitive.Trigger
       className={cn(
-        'h-[40px] flex-row items-center justify-between gap-2 rounded-control border border-input bg-card px-3',
+        'min-h-[40px] flex-row items-center justify-between gap-2 rounded-control border border-input bg-card px-3',
         Platform.select({
           web: 'cursor-pointer outline-none transition-[border-color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20',
         }),
         props.disabled && 'opacity-50',
         className,
       )}
+      // The web: Radix gives its trigger `aria-autocomplete` for a combobox, but the trigger
+      // renders as a button there (rn-primitives), where the attribute is not allowed.
+      {...(Platform.OS === 'web' ? ({ 'aria-autocomplete': undefined } as object) : {})}
       {...props}
     >
       <>{children}</>

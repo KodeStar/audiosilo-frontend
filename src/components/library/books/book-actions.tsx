@@ -393,7 +393,7 @@ export function BookActionsMenu({
                 />
                 <Text
                   className={cn(
-                    'font-sans-medium text-[15px]',
+                    'font-sans-medium text-[15px] web:text-[0.9375rem]',
                     a.destructive && 'text-destructive',
                   )}
                 >

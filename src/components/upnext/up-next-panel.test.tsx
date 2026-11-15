@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import type { Book, QueueEntry } from '@/api/types';
+import { setFontScale } from '@/testing/font-scale';
 import { expectNativeTarget } from '@/testing/touch-target';
 
 jest.mock('react-native-gesture-handler', () => ({
@@ -147,6 +148,31 @@ describe('UpNextPanel', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Title of P, 40% · continue' }));
     expect(onNavigate).toHaveBeenCalled();
     expect(mockPush).toHaveBeenCalled();
+  });
+
+  // fe#267: the suggestion rows keep one line at the default size and wrap under large text.
+  it('wraps the suggestions under large text', async () => {
+    const props = {
+      cid: 'c',
+      data: data({
+        suggestions: [
+          { kind: 'next', ref: { library_id: 1, path: 'S/2' }, series: 'Saga' },
+          { kind: 'ghost', title: 'Book Three', position: '3', workId: 'w3' },
+        ],
+      }),
+    } as const;
+    await render(<UpNextPanel {...props} />);
+    expect(screen.getByText('Next in Saga').props.numberOfLines).toBe(1);
+    expect(screen.getByText("Book Three isn't on Home Library").props.numberOfLines).toBe(2);
+    try {
+      await setFontScale(1.5);
+      expect(screen.getByText('Next in Saga').props.numberOfLines).toBeUndefined();
+      expect(
+        screen.getByText("Book Three isn't on Home Library").props.numberOfLines,
+      ).toBeUndefined();
+    } finally {
+      await setFontScale(1);
+    }
   });
 
   it('labels the auto-play switch for what it does today', async () => {

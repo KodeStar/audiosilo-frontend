@@ -425,9 +425,12 @@ const COMPACT_BELOW = 640;
 
 /** The stats page's grid at a measured content `width`, for the page and its skeleton
  * alike (so the data lands without a shift): columns per block, whether it is compact,
- * the tiles' gap, and a tile's, a chart card's and a rank card's width. */
-export function statsGrid(width: number) {
-  const cols = statsColumns(width);
+ * the tiles' gap, and a tile's, a chart card's and a rank card's width. Under large text
+ * (`large`) the tiles take half the columns (one to a row on a phone): two to a row cut
+ * the goal to "1..." and its ring's figure ran out of the ring. */
+export function statsGrid(width: number, large = false) {
+  const base = statsColumns(width);
+  const cols = large ? { ...base, tiles: Math.max(1, base.tiles / 2) } : base;
   const compact = width < COMPACT_BELOW;
   const tileGap = compact ? 10 : STATS_GAP;
   return {

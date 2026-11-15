@@ -70,13 +70,17 @@ export function UpNextButton({ variant }: { variant: 'bar' | 'header' | 'dock' }
           importantForAccessibility="no-hide-descendants"
           accessibilityElementsHidden
           className={cn(
-            'absolute h-[17px] min-w-[17px] items-center justify-center rounded-full border-2 border-background bg-primary px-1',
+            'absolute min-h-[17px] min-w-[17px] items-center justify-center rounded-full border-2 border-background bg-primary px-1',
             variant === 'header' ? 'right-0.5 top-1' : 'right-0 top-0.5',
           )}
         >
+          {/* The count grows a little with the text size, no more: the badge sits on the
+              icon's corner, and past this it covered the icon (the button's label says
+              the count). */}
           <Text
             style={tabularNums}
-            className="font-sans-bold text-[10px] leading-[12px] text-primary-foreground"
+            maxFontSizeMultiplier={1.3}
+            className="font-sans-bold text-[10px] web:text-[0.625rem] leading-[12px] web:leading-[0.75rem] text-primary-foreground"
           >
             {badgeText(count)}
           </Text>

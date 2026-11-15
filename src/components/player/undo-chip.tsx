@@ -83,7 +83,7 @@ export function UndoChip() {
         </View>
         <Text
           variant="label"
-          className="text-[13px] text-primary-foreground"
+          className="text-[13px] web:text-[0.8125rem] text-primary-foreground"
           numberOfLines={1}
           style={tabularNums}
         >

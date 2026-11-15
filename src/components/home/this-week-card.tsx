@@ -53,7 +53,7 @@ export function ThisWeekCard({ className }: { className?: string }) {
       ) : null}
       <View className="min-w-0 flex-1">
         <Text
-          className="font-display text-[26px] leading-[28px] tracking-tight text-foreground"
+          className="font-display text-[26px] web:text-[1.625rem] leading-[28px] web:leading-[1.75rem] tracking-tight text-foreground"
           style={tabularNums}
           accessibilityLabel={t('home.week.hoursLabel', {
             duration: formatDurationOrZero(hours),
@@ -159,11 +159,14 @@ function GoalRing({
           fill="none"
         />
       </Svg>
-      <Text className="font-display text-[19px] leading-[20px] text-foreground" style={tabularNums}>
+      <Text
+        className="font-display text-[19px] web:text-[1.1875rem] leading-[20px] web:leading-[1.25rem] text-foreground"
+        style={tabularNums}
+      >
         {finished}
       </Text>
       <Text
-        className="font-sans-semibold text-[10px] leading-[12px] text-subtle-foreground"
+        className="font-sans-semibold text-[10px] web:text-[0.625rem] leading-[12px] web:leading-[0.75rem] text-subtle-foreground"
         style={tabularNums}
       >
         {t('home.week.ofGoal', { goal })}
@@ -202,7 +205,7 @@ function WeekBars({
             )}
             style={{ height: Math.max(6, (d.listened / max) * BAR_MAX) }}
           />
-          <Text className="font-sans-semibold text-[10.5px] text-subtle-foreground">
+          <Text className="font-sans-semibold text-[10.5px] web:text-[0.65625rem] text-subtle-foreground">
             {letters[d.weekday] ?? ''}
           </Text>
         </View>

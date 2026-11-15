@@ -219,7 +219,9 @@ export function SeriesPage({
             <Text
               variant="display-xl"
               accessibilityRole="header"
-              className={layout === 'desktop' ? 'text-5xl leading-[52px]' : undefined}
+              className={
+                layout === 'desktop' ? 'text-5xl leading-[52px] web:leading-[3.25rem]' : undefined
+              }
             >
               {name}
             </Text>

@@ -9,11 +9,13 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import { Icon, type IconName } from './icon';
 import { Spinner } from './spinner';
 import { FOCUS_RING_OFFSET_CLASS, Text, TextClassContext } from './text';
+import { slopForPx } from './touch-target';
 
 /**
  * The Stacks button (STYLEGUIDE.md section 8): react-native-reusables' Button, restyled.
  * `default` is INK (primary actions); `brand` (pink) is for at most one moment in a
- * flow. Sizes are 30 / 38 / 46 / 54 tall.
+ * flow. Sizes are 30 / 38 / 46 / 54 tall: MIN heights for a labelled button, so its label
+ * has room under large text (fe#267); the icon size keeps its square.
  */
 const buttonVariants = cva(
   cn(
@@ -36,16 +38,16 @@ const buttonVariants = cva(
         link: '',
       },
       size: {
-        sm: 'h-[30px] gap-1.5 rounded-lg px-2.5',
-        default: 'h-[38px] px-4',
-        lg: 'h-[46px] rounded-xl px-5',
-        xl: 'h-[54px] rounded-menu px-6',
+        sm: 'min-h-[30px] gap-1.5 rounded-lg px-2.5',
+        default: 'min-h-[38px] px-4',
+        lg: 'min-h-[46px] rounded-xl px-5',
+        xl: 'min-h-[54px] rounded-menu px-6',
         icon: 'h-[38px] w-[38px] px-0',
       },
     },
     // After the size classes, so a link drops the size's height and padding (as a plain
     // variant class, tailwind-merge let the later size class win).
-    compoundVariants: [{ variant: 'link', class: 'h-auto px-0' }],
+    compoundVariants: [{ variant: 'link', class: 'h-auto min-h-0 px-0' }],
     defaultVariants: { variant: 'default', size: 'default' },
   },
 );
@@ -91,21 +93,32 @@ function iconColor(variant: Variant, themed: ThemeColors): string {
   }
 }
 
-/** Grows the touch area of the short sizes to the 44pt minimum (STYLEGUIDE section 14). */
-const HIT_SLOP: Record<Size, number> = { sm: 7, default: 3, lg: 0, xl: 0, icon: 3 };
+/** Each size's (minimum) height: the short ones get a hit slop that grows the touch area to
+ * the minimum target (STYLEGUIDE section 14: 44 pt, 48 dp on Android). */
+const HEIGHT: Record<Size, number> = { sm: 30, default: 38, lg: 46, xl: 54, icon: 38 };
 
-export type ButtonProps = Omit<PressableProps, 'children'> & {
+type ButtonBaseProps = Omit<PressableProps, 'children'> & {
   variant?: Variant;
   size?: Size;
-  /** The label. Or compose `children` (`<Icon/><Text/>`), which inherit the label style. */
-  title?: string;
-  /** A leading glyph, tinted to the variant. Icon-only buttons need an accessibilityLabel. */
+  /** A leading glyph, tinted to the variant. */
   icon?: IconName;
   /** Swaps the icon for a spinner and disables the button. */
   loading?: boolean;
   className?: string;
-  children?: ReactNode;
 };
+
+/**
+ * A button's props. It has words (a `title`, or composed `children` that inherit the label
+ * style), or it is an icon alone and then MUST name itself (`accessibilityLabel`): the
+ * type says so (fe#267), so an unnamed icon button fails to compile.
+ */
+export type ButtonProps = ButtonBaseProps &
+  (
+    | { title: string; children?: ReactNode }
+    | { title?: undefined; children: ReactNode }
+    // A title that may be absent (shown where there is room) needs the label too.
+    | { title?: string; children?: ReactNode; icon: IconName; accessibilityLabel: string }
+  );
 
 /**
  * A button. Pass `title` (+ `icon`) for the common case, or compose `children`:
@@ -134,7 +147,7 @@ export function Button({
         disabled={isDisabled}
         aria-disabled={isDisabled}
         aria-busy={loading || undefined}
-        hitSlop={hitSlop ?? HIT_SLOP[size]}
+        hitSlop={hitSlop ?? slopForPx(HEIGHT[size])}
         className={cn(buttonVariants({ variant, size }), isDisabled && 'opacity-45', className)}
         {...props}
       >

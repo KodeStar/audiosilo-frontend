@@ -48,7 +48,7 @@ export function RankList({
           )}
         >
           <Text
-            className="w-[22px] text-center font-display text-[15px] text-subtle-foreground"
+            className="w-[22px] text-center font-display text-[15px] web:text-[0.9375rem] text-subtle-foreground"
             style={tabularNums}
           >
             {row.rank}

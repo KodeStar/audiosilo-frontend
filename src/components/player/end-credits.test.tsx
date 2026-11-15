@@ -3,6 +3,7 @@ import { act, fireEvent, screen } from '@testing-library/react-native';
 import { AppState } from 'react-native';
 
 import type { QueueEntry, UserStats } from '@/api/types';
+import { setFontScale } from '@/testing/font-scale';
 import { mountWithPortal } from '@/testing/render-overlay';
 import type { UpNextAnswer } from '@/playback/up-next-resolver';
 
@@ -281,6 +282,25 @@ describe('EndCredits', () => {
       expect(classes(screen.getByTestId('end-credits-bar-end'))).toContain('justify-end');
     },
   );
+
+  // fe#267: at iOS's AX5 "Credits" wrapped a letter per line beside the eyebrow and the
+  // three tiles cut their labels ("Tim...").
+  it('under large text gives the eyebrow its own row and stacks the tiles', async () => {
+    const classes = (el: { props: { className?: unknown } }) => String(el.props.className ?? '');
+    try {
+      await setFontScale(3);
+      await mount();
+      expect(classes(screen.getByTestId('end-credits-bar-end'))).toContain('shrink-0');
+      expect(classes(screen.getByTestId('end-credits-bar-end'))).not.toContain('flex-1');
+      expect(classes(screen.getByTestId('end-credits-tiles'))).not.toContain('flex-row');
+      for (const tile of screen.getAllByTestId('end-credits-tile')) {
+        expect(classes(tile)).toContain('w-full');
+      }
+      expect(screen.getByText('Time listened').props.numberOfLines).toBeUndefined();
+    } finally {
+      await setFontScale(1);
+    }
+  });
 
   it("says the speed the book plays at: its saved one, else the listener's default", async () => {
     mockSavedSpeed = 0;

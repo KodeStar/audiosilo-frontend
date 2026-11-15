@@ -93,6 +93,9 @@ export type CoverTileProps = {
   /** The one line under the title (author by default at the call site, or "72% · 3h
    * left", "Added 2 days ago"). */
   caption?: string;
+  /** The caption already says how far in the book is ("40% · 1h left", "Finished"), so the
+   * tile's label leaves its own percent or Finished out rather than say it twice. */
+  captionHasProgress?: boolean;
   /** For the cover's fallback text. */
   author?: string;
   coverVersion?: string;
@@ -129,6 +132,7 @@ export function CoverTile({
   path,
   title,
   caption,
+  captionHasProgress = false,
   author,
   coverVersion,
   width,
@@ -160,9 +164,14 @@ export function CoverTile({
   const tileRef = useRef<ViewInstance>(null);
   useContextMenuRequest(tileRef, onMenu);
   const inProgress = !finished && progress !== undefined && progress > 0 && progress < 1;
-  const label = [title, caption, ...tileStateLabels({ progress, finished, downloaded, server, t })]
-    .filter(Boolean)
-    .join(', ');
+  const states = tileStateLabels({
+    progress: captionHasProgress ? undefined : progress,
+    finished: captionHasProgress ? undefined : finished,
+    downloaded,
+    server,
+    t,
+  });
+  const label = [title, caption, ...states].filter(Boolean).join(', ');
 
   return (
     <AnimatedPressable
@@ -213,7 +222,7 @@ export function CoverTile({
                 <Icon name="server" size={11} color={colors.white} />
                 <Text
                   testID="tile-server-flag"
-                  className="shrink font-sans-bold text-[10.5px] text-white"
+                  className="shrink font-sans-bold text-[10.5px] web:text-[0.65625rem] text-white"
                   numberOfLines={1}
                 >
                   {server}

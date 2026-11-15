@@ -277,6 +277,9 @@ export function StepDots({ step }: { step: ConnectStep }) {
   return (
     <View
       accessible
+      // A picture of the place in the steps, named "Step 2 of 3" (a label alone, on no
+      // role, is not read on the web).
+      role="img"
       accessibilityLabel={t('onboarding.step', { step: step + 1, count: CONNECT_STEPS })}
       className="flex-row gap-1.5"
     >

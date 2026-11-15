@@ -13,10 +13,10 @@ import {
   AccessoryEpisodeFetch,
   useEpisodeFetchLine,
 } from '@/components/podcasts/episode-fetch-panel';
-import { SkipButton } from '@/components/player/skip-button';
+import { SKIP_PILL_BOX, SkipButton } from '@/components/player/skip-button';
 import { PlayButton } from '@/components/player/transport-controls';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
-import { Text } from '@/components/ui/text';
+import { MINI_TITLE_CLASS, Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
 import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
@@ -106,7 +106,7 @@ export function AccessoryPlayer() {
           className="rounded-full"
         />
         <View className="min-w-0 flex-1">
-          <Text variant="label" className="text-[13.5px] leading-[17px]" numberOfLines={1}>
+          <Text variant="label" className={MINI_TITLE_CLASS} numberOfLines={1}>
             {heading}
           </Text>
           {regular && fetchLine ? (
@@ -126,7 +126,7 @@ export function AccessoryPlayer() {
           color={themed.foreground}
           fontSize={12}
           hitSlop={slopTo44(2.5)}
-          className="h-10 w-10 items-center justify-center rounded-full"
+          className={`${SKIP_PILL_BOX} items-center justify-center rounded-full`}
           accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
         />
       ) : null}

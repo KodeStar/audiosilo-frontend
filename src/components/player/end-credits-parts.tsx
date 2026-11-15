@@ -31,6 +31,7 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { useDownloadEntry } from '@/downloads/store';
 import { formatCountdown, formatDuration } from '@/lib/format';
 import { openExternalUrl } from '@/lib/support';
+import { linesFor } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import type { UnplacedWork, UpNextBook } from '@/playback/up-next-resolver';
 import { useConnectionName } from '@/stores/session';
@@ -157,14 +158,25 @@ export function StatTile({
   label,
   value,
   phone,
+  large,
 }: {
   label: string;
   value: string;
   phone: boolean;
+  /** Under large text the parent stacks the tiles: each takes the row's width, and the
+   * label wraps instead of ending in "Tim..." (fe#267). */
+  large: boolean;
 }) {
   return (
-    <Card className={cn('min-w-0 max-w-[232px] flex-1 gap-1', phone ? 'p-3' : 'p-4')}>
-      <Text variant="caption" numberOfLines={1}>
+    <Card
+      testID="end-credits-tile"
+      className={cn(
+        'gap-1',
+        large ? 'w-full' : 'min-w-0 max-w-[232px] flex-1',
+        phone ? 'p-3' : 'p-4',
+      )}
+    >
+      <Text variant="caption" numberOfLines={linesFor(1, large)}>
         {label}
       </Text>
       <Text

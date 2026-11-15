@@ -114,7 +114,11 @@ export function ListeningSyncCard({
                   )}
                 >
                   <View className="min-w-0 flex-1 gap-0.5">
-                    <Text className="text-[13px]" style={tabularNums} numberOfLines={2}>
+                    <Text
+                      className="text-[13px] web:text-[0.8125rem]"
+                      style={tabularNums}
+                      numberOfLines={2}
+                    >
                       {what}
                     </Text>
                     <Text variant="caption">

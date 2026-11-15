@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
 import type { Book, QueueEntry } from '@/api/types';
+import * as textScale from '@/lib/text-scale';
 import { expectNativeTarget } from '@/testing/touch-target';
 
 // The drag is gesture-handler + reanimated on the UI thread; this suite covers the
@@ -102,6 +103,44 @@ describe('QueueList', () => {
       params: { libraryId: '1', connection: 'c', path: 'Dir/A' },
     });
     expect(onNavigate).toHaveBeenCalledTimes(1);
+  });
+
+  // fe#267: under large text the words wrap; on the web the hover actions float over the
+  // row's end instead of holding a width that leaves the title no room.
+  it('wraps the title under large text, floating the actions where the web can hover', async () => {
+    const large = jest.spyOn(textScale, 'useLargeText').mockReturnValue(true);
+    const hover = (matches: boolean) =>
+      Object.assign(window, { matchMedia: jest.fn(() => ({ matches })) });
+    const actions = () => String(screen.getByTestId('upnext-actions-0').props.className);
+    const prev = window.matchMedia;
+    try {
+      hover(true);
+      await setup();
+      expect(screen.getByText('Alpha').props.numberOfLines).toBeUndefined();
+      expect(actions()).not.toContain('absolute'); // native: always shown, in the row
+      Platform.OS = 'web';
+      await setup();
+      // Shown on hover only, floating; hidden, they don't take the title's clicks.
+      expect(actions()).toContain('absolute');
+      expect(actions()).toContain('pointer-events-none');
+      // A touch browser can't hover: the actions keep their place.
+      hover(false);
+      await setup();
+      expect(actions()).not.toContain('absolute');
+      expect(actions()).not.toContain('pointer-events-none');
+    } finally {
+      large.mockRestore();
+      Object.assign(window, { matchMedia: prev });
+    }
+  });
+
+  it('keeps one-line captions and the actions in the row at the default size', async () => {
+    Platform.OS = 'web';
+    await setup();
+    expect(screen.getByText('Alpha').props.numberOfLines).toBe(2);
+    expect(String(screen.getByTestId('upnext-actions-0').props.className)).not.toContain(
+      'absolute',
+    );
   });
 
   it('moves a row with the arrow keys on its grip (web), showing the new order at once', async () => {

@@ -10,7 +10,7 @@ import { TextClassContext } from './text';
  * the guide's 22-tall pill and its nine tones. Status badges pair the colour with a
  * word (and an icon where there is room): colour alone never carries meaning.
  */
-const badgeVariants = cva('h-[22px] shrink-0 flex-row items-center gap-1 rounded-full px-2', {
+const badgeVariants = cva('min-h-[22px] shrink-0 flex-row items-center gap-1 rounded-full px-2', {
   variants: {
     variant: {
       secondary: 'bg-secondary',

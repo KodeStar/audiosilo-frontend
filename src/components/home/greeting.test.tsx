@@ -7,6 +7,8 @@ jest.mock('@/lib/layout', () => ({
 }));
 
 /* eslint-disable import/first */
+import { setFontScale } from '@/testing/font-scale';
+
 import { Greeting } from './greeting';
 /* eslint-enable import/first */
 
@@ -24,5 +26,23 @@ describe('Greeting', () => {
       await jest.advanceTimersByTimeAsync(3 * 60_000);
     });
     expect(screen.getByText('Progress synced 5 minutes ago')).toBeTruthy();
+  });
+
+  // fe#267: a pill's height is a minimum, so text grown past it (iOS AX5) is not cut in
+  // half, and a pill whose words wrap rounds less.
+  it('lets a pill grow with its words', async () => {
+    const at = new Date(NOW).toISOString();
+    const pill = () => String(screen.getByTestId('greeting-pill').props.className);
+    await render(<Greeting name="Sam" sync={{ kind: 'synced', at }} servers={1} />);
+    expect(pill()).toContain('rounded-full');
+    try {
+      await setFontScale(3);
+      await render(<Greeting name="Sam" sync={{ kind: 'synced', at }} servers={1} />);
+      expect(pill()).toContain('min-h-[30px]');
+      expect(pill()).not.toMatch(/(^|\s)h-\[30px\]/);
+      expect(pill()).toContain('rounded-2xl');
+    } finally {
+      await setFontScale(1);
+    }
   });
 });

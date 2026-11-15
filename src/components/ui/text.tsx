@@ -1,5 +1,5 @@
-import { createContext, useContext } from 'react';
-import { Text as RNText, type TextProps } from 'react-native';
+import { createContext, type Ref, useContext } from 'react';
+import { Text as RNText, type TextInstance, type TextProps } from 'react-native';
 
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -13,6 +13,11 @@ import { tabularNums } from '@/theme/tabular-nums';
  * label, a menu label) and so can't use `<Text variant="eyebrow">`. */
 export const EYEBROW_CLASS =
   'font-sans-semibold text-xs uppercase tracking-wider text-muted-foreground';
+
+/** The title line of a mini card (the mini player, the accessory player, the episode fetch
+ * strip), over a `label` variant. */
+export const MINI_TITLE_CLASS =
+  'text-[13.5px] web:text-[0.84375rem] leading-[17px] web:leading-[1.0625rem]';
 
 /** The web's keyboard focus ring on a pressable (put it in its `web` classes): the
  * browser outline off, the ring token on `:focus-visible`. */
@@ -62,7 +67,49 @@ const TABULAR: ReadonlySet<TextVariant> = new Set(['stat', 'mono']);
  */
 export const TextClassContext = createContext<string | undefined>(undefined);
 
-export type AppTextProps = TextProps & { variant?: TextVariant; className?: string };
+/** A heading's level (`aria-level`; the web renders `h1`..`h6`). */
+export type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
+
+export type AppTextProps = TextProps & {
+  variant?: TextVariant;
+  className?: string;
+  /** A heading at this level: the `header` role on iOS and Android, `hN` on the web. A
+   * text given the `header` role without one takes its variant's level
+   * (`headingLevelFor`). */
+  level?: HeadingLevel;
+  /** The native text (React 19 passes `ref` as a prop): a screen reader's focus target. */
+  ref?: Ref<TextInstance>;
+};
+
+/**
+ * The level a heading takes from its type role when its caller names none (fe#267: every
+ * heading was an `h1` on the web): a page title (`display-xl`, `display`) 1, a section
+ * (`heading`, `stat`) 2, anything smaller (a card or sheet title) 3.
+ */
+export function headingLevelFor(variant: TextVariant): HeadingLevel {
+  if (isDisplay(variant)) return 1;
+  if (variant === 'heading' || variant === 'stat') return 2;
+  return 3;
+}
+
+/**
+ * How far a display title follows the system text size (fe#267). A page title is already the
+ * largest text on screen; at iOS's AX5 (3.1x) one word ("Settings") no longer fits the
+ * phone's width and breaks mid-word. Past 2x it stops growing, as iOS's own large titles
+ * do; a caller's `maxFontSizeMultiplier` wins.
+ */
+export const DISPLAY_MAX_FONT_SCALE = 2;
+
+/** A page title's type role (`display-xl`, `display`). */
+function isDisplay(variant: TextVariant): boolean {
+  return variant === 'display-xl' || variant === 'display';
+}
+
+/** Whether the props make a heading (the `header` role, or `heading` on the web). */
+function isHeading(props: TextProps): boolean {
+  const role = (props as { role?: string }).role;
+  return props.accessibilityRole === 'header' || role === 'heading';
+}
 
 /**
  * Themed text on the Stacks type scale, and the app's only Text component. A caller's
@@ -70,12 +117,22 @@ export type AppTextProps = TextProps & { variant?: TextVariant; className?: stri
  * `<Text variant="caption" className="text-brand-ink">` recolours the caption in both
  * themes (the colour is one themed token, not a light/dark pair).
  */
-export function Text({ variant = 'body', className, style, ...props }: AppTextProps) {
+export function Text({ variant = 'body', className, style, level, ...props }: AppTextProps) {
   const contextClass = useContext(TextClassContext);
+  const heading =
+    level !== undefined || isHeading(props)
+      ? ({
+          accessibilityRole: 'header',
+          // React Native's types have no `aria-level`; react-native-web reads it (`hN`).
+          'aria-level': level ?? headingLevelFor(variant),
+        } as TextProps)
+      : null;
   return (
     <RNText
       className={cn(variants[variant], contextClass, className)}
       style={TABULAR.has(variant) ? [tabularNums, style] : style}
+      maxFontSizeMultiplier={isDisplay(variant) ? DISPLAY_MAX_FONT_SCALE : undefined}
+      {...heading}
       {...props}
     />
   );

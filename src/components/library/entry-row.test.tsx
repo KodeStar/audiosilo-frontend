@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import type { FsEntry } from '@/api/types';
+import { setFontScale } from '@/testing/font-scale';
 import { colors } from '@/theme/tokens';
 
 // Link (asChild) just renders its child so the pressable mounts, recording the href
@@ -147,5 +148,17 @@ describe('EntryRow', () => {
     });
     expect(screen.getByText('The Final Empire')).toBeTruthy();
     expect(screen.queryByText('Not scanned yet')).toBeNull();
+  });
+
+  // fe#267: one line normally; under large text the name wraps (the list sizes the row).
+  it('wraps the name under large text instead of cutting it', async () => {
+    await mount(<EntryRow entry={dir} connectionId="c1" libraryId={1} />);
+    expect(screen.getByText('Brandon Sanderson').props.numberOfLines).toBe(1);
+    try {
+      await setFontScale(1.5);
+      expect(screen.getByText('Brandon Sanderson').props.numberOfLines).toBeUndefined();
+    } finally {
+      await setFontScale(1);
+    }
   });
 });

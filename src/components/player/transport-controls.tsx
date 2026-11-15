@@ -13,6 +13,8 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { FOCUS_RING_CLASS } from '@/components/ui/text';
+import { slopForPx } from '@/components/ui/touch-target';
+import { useFontScale } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { onForeground } from '@/lib/when-active';
 import { selectIsPlaying, usePlayer } from '@/playback/store';
@@ -25,19 +27,18 @@ import { stepSegment } from './transport';
 
 export type TransportSize = 'lg' | 'md' | 'sm';
 
+type TransportDims = {
+  play: number;
+  button: number;
+  playIcon: number;
+  chapterIcon: number;
+  skipFont: number;
+  gap: number;
+};
+
 /** Dimensions per size: the full player (76 play / 54), a phone (70 / 48), the dock
  * (44 / 40, with hit slop to 44). */
-const SIZES: Record<
-  TransportSize,
-  {
-    play: number;
-    button: number;
-    playIcon: number;
-    chapterIcon: number;
-    skipFont: number;
-    gap: number;
-  }
-> = {
+const SIZES: Record<TransportSize, TransportDims> = {
   lg: { play: 76, button: 54, playIcon: 30, chapterIcon: 22, skipFont: 16, gap: 14 },
   md: { play: 70, button: 48, playIcon: 28, chapterIcon: 20, skipFont: 15, gap: 6 },
   sm: { play: 44, button: 40, playIcon: 18, chapterIcon: 16, skipFont: 13, gap: 6 },
@@ -46,8 +47,55 @@ const SIZES: Record<
 /** The transport's width at a size: four buttons and the play button, a gap between each
  * (for a column that lays out around it, like the dock's middle one). */
 export function transportWidth(size: TransportSize): number {
-  const d = SIZES[size];
+  return widthOf(SIZES[size]);
+}
+
+function widthOf(d: TransportDims): number {
   return 4 * d.button + d.play + 4 * d.gap;
+}
+
+/** The most the full player's controls grow with the text (fe#267, owner decision 3). */
+export const CONTROL_MAX_SCALE = 1.5;
+/** The least they shrink to fit a narrow column (a 320 wide phone at the largest display
+ * size): a 48 button is still past the 44 target at this. */
+const CONTROL_MIN_SCALE = 0.9;
+
+/**
+ * The full player's control scale: the text scale (never under 1), capped at
+ * `CONTROL_MAX_SCALE` and at what fits `room` (the column's width; 0 = not measured yet,
+ * no fit). A column narrower than the transport at 1 shrinks it to fit, down to
+ * `CONTROL_MIN_SCALE`, rather than run it past the edges.
+ */
+export function controlScale(size: TransportSize, fontScale: number, room = 0): number {
+  const wanted = Math.min(Math.max(1, fontScale), CONTROL_MAX_SCALE);
+  if (room <= 0) return wanted;
+  // The gaps keep their size (`transportDims`): only the buttons scale.
+  const d = SIZES[size];
+  const fit = (room - 4 * d.gap) / (4 * d.button + d.play);
+  return Math.max(CONTROL_MIN_SCALE, Math.min(wanted, fit));
+}
+
+/** A size's dimensions at a control scale (`controlScale`). */
+export function transportDims(size: TransportSize, scale = 1): TransportDims {
+  const d = SIZES[size];
+  if (scale === 1) return d;
+  const at = (n: number) => Math.round(n * scale);
+  // The boxes round down, so a fitted transport never passes its room.
+  const box = (n: number) => Math.floor(n * scale);
+  return {
+    play: box(d.play),
+    button: box(d.button),
+    playIcon: at(d.playIcon),
+    chapterIcon: at(d.chapterIcon),
+    skipFont: at(d.skipFont),
+    // The gaps stay: the room goes to the buttons.
+    gap: d.gap,
+  };
+}
+
+/** The transport's width at a control scale (for a test, or a layout around it). */
+export function scaledTransportWidth(size: TransportSize, scale: number): number {
+  return widthOf(transportDims(size, scale));
 }
 
 /** Duration of the play/pause morph. */
@@ -125,9 +173,12 @@ function PlayPauseGlyph({
 export function PlayButton({
   size = 'md',
   plain = false,
+  scale = 1,
 }: {
   size?: TransportSize;
   plain?: boolean;
+  /** The control scale (`controlScale`), the full player's transport only. */
+  scale?: number;
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
@@ -136,7 +187,7 @@ export function PlayButton({
   const toggle = usePlayer((s) => s.toggle);
   const retry = usePlayer((s) => s.retry);
   const turn = useForegroundTurn();
-  const d = SIZES[size];
+  const d = transportDims(size, scale);
   const isError = state === 'error';
   const label = isError
     ? t('common.retry')
@@ -148,7 +199,7 @@ export function PlayButton({
   return (
     <AnimatedPressable
       onPress={() => void (isError ? retry() : toggle())}
-      hitSlop={Math.max(0, (44 - box) / 2)}
+      hitSlop={slopForPx(box)}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ busy: state === 'loading' }}
@@ -185,24 +236,33 @@ export function PlayButton({
  * 54), a phone's `md` (70 / 48) or the dock's `sm` (44 / 40). Previous/next read the live
  * position at press time (`stepSegment`: chapters, else files); back/forward are the
  * listener's skip lengths. Renders nothing with no book loaded.
+ *
+ * The full player's sizes grow with the text size (`controlScale`, capped, and fitted to
+ * `room`, the column's width); the dock's `sm` keeps its size (its bar lays out around
+ * `transportWidth('sm')`).
  */
 export function TransportControls({
   size = 'md',
+  room,
   className,
 }: {
   size?: TransportSize;
+  /** The width the transport may take (the full player's column), to fit it. */
+  room?: number;
   className?: string;
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
+  const fontScale = useFontScale();
   const loaded = usePlayer((s) => s.nowPlaying !== null);
   const skipSeconds = usePlayer((s) => s.skipSeconds);
   const skipForward = useSettings((s) => s.skipForward);
   const skipBackward = useSettings((s) => s.skipBackward);
   if (!loaded) return null;
 
-  const d = SIZES[size];
-  const hitSlop = Math.max(0, (44 - d.button) / 2);
+  const scale = size === 'sm' ? 1 : controlScale(size, fontScale, room);
+  const d = transportDims(size, scale);
+  const hitSlop = slopForPx(d.button);
   const round = pillClass('ghost');
   const box = { width: d.button, height: d.button };
   const step = (dir: 1 | -1) => stepSegment(usePlayer.getState(), dir);
@@ -225,18 +285,20 @@ export function TransportControls({
         onPress={() => void skipSeconds(-skipBackward)}
         color={themed.foreground}
         fontSize={d.skipFont}
+        maxFontScale={1}
         hitSlop={hitSlop}
         className={round}
         style={box}
         accessibilityLabel={t('player.controls.skipBack', { seconds: skipBackward })}
       />
-      <PlayButton size={size} />
+      <PlayButton size={size} scale={scale} />
       <SkipButton
         direction="forward"
         seconds={skipForward}
         onPress={() => void skipSeconds(skipForward)}
         color={themed.foreground}
         fontSize={d.skipFont}
+        maxFontScale={1}
         hitSlop={hitSlop}
         className={round}
         style={box}

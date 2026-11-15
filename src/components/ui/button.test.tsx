@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 
 import { Button } from './button';
 import { Text } from './text';
@@ -60,11 +61,24 @@ describe('Button', () => {
     expect(screen.getByRole('button')).toHaveProp('hitSlop', 7);
   });
 
+  it("grows them to Android's 48 dp there", async () => {
+    const prevOS = Platform.OS;
+    Platform.OS = 'android';
+    try {
+      await mount(<Button title="Save" />);
+      // 38 tall + 5 above + 5 below.
+      expect(screen.getByRole('button')).toHaveProp('hitSlop', 5);
+    } finally {
+      Platform.OS = prevOS;
+    }
+  });
+
   it("drops the size's height and padding on the link variant", async () => {
     await mount(<Button title="Show more" variant="link" />);
     const classes = String(screen.getByRole('button').props.className).split(' ');
     expect(classes).toEqual(expect.arrayContaining(['h-auto', 'px-0']));
-    expect(classes).not.toContain('h-[38px]');
+    expect(classes).toContain('min-h-0');
+    expect(classes).not.toContain('min-h-[38px]');
     expect(classes).not.toContain('px-4');
   });
 
@@ -73,3 +87,16 @@ describe('Button', () => {
     expect(screen.getByRole('button', { name: 'Delete download' })).toBeTruthy();
   });
 });
+
+// Compile-time (fe#267): an icon-only button must name itself. `tsc` fails on these lines
+// if the type stops requiring it.
+export function iconOnlyButtonsMustBeNamed() {
+  return (
+    <>
+      {/* @ts-expect-error an icon alone with no accessibilityLabel */}
+      <Button icon="trash" />
+      <Button icon="trash" accessibilityLabel="Delete download" />
+      <Button title="Delete" icon="trash" />
+    </>
+  );
+}

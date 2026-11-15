@@ -92,7 +92,10 @@ export function DropZone({ connectionId, serverName, empty, onDrop }: DropZonePr
       ) : null}
       <Text
         variant="caption"
-        className={cn('text-center text-[12.5px]', over === 'ok' && 'text-brand-ink')}
+        className={cn(
+          'text-center text-[12.5px] web:text-[0.78125rem]',
+          over === 'ok' && 'text-brand-ink',
+        )}
       >
         {line}
       </Text>

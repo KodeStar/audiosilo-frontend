@@ -14,6 +14,7 @@ import { formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
+import { useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 
@@ -64,7 +65,11 @@ export function PeopleMode({
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
   const { progressOf } = useProgressLookup();
-  const minWidth = 176;
+  // Under large text one card a row on a phone (and wider cards elsewhere): in two
+  // columns at Android's 2.0 a name broke mid-word ("Brando / n Sand...", fe#267).
+  const large = useLargeText();
+  const minWidth = large ? 264 : 176;
+  const phoneColumns = large ? 1 : 2;
   const unread = useUnreadQuery(list);
 
   // Before the skeleton: a list held for the network stays pending (`useUnreadQuery`).
@@ -77,7 +82,7 @@ export function PeopleMode({
         keyExtractor={String}
         renderItem={() => <PersonCardSkeleton size={phone ? 72 : 86} />}
         minWidth={minWidth}
-        phoneColumns={2}
+        phoneColumns={phoneColumns}
       />
     );
   }
@@ -109,7 +114,7 @@ export function PeopleMode({
       keyExtractor={(p) => p.name}
       name={(p) => p.name}
       minWidth={minWidth}
-      phoneColumns={2}
+      phoneColumns={phoneColumns}
       renderItem={(p) => (
         <PersonCard
           person={p}
@@ -163,6 +168,9 @@ function PersonCard({
     .filter(Boolean)
     .join(' · ');
   const open = kind === 'author' ? openAuthor : openNarrator;
+  // Under large text a name wraps (two lines, not "..."), and loses its tight tracking,
+  // which clipped its first glyph on Android at that size.
+  const large = useLargeText();
   return (
     <Pressable
       onPress={() => open(connectionId, libraryId, person.name)}
@@ -173,8 +181,11 @@ function PersonCard({
       <Portrait name={person.name} kind={kind} size={size} />
       <View className="w-full items-center gap-0.5">
         <Text
-          className="text-center font-display text-[15px] tracking-tight text-foreground"
-          numberOfLines={1}
+          className={cn(
+            'text-center font-display text-[15px] web:text-[0.9375rem] text-foreground',
+            !large && 'tracking-tight',
+          )}
+          numberOfLines={large ? 2 : 1}
         >
           {person.name}
         </Text>

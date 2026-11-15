@@ -150,7 +150,9 @@ export function revealFromStart(reveal: BookMetaPosition): boolean {
 function Chip({ label }: { label: string }) {
   return (
     <View className="rounded-full bg-muted px-2 py-0.5">
-      <Text className="font-sans-medium text-[10px] uppercase text-muted-foreground">{label}</Text>
+      <Text className="font-sans-medium text-[10px] web:text-[0.625rem] uppercase text-muted-foreground">
+        {label}
+      </Text>
     </View>
   );
 }

@@ -257,9 +257,7 @@ describe('HomeScreen', () => {
     await mountHome();
     expect(screen.getByText('Now card: Newest')).toBeTruthy();
     expect(screen.getByText('1 more in progress')).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: 'Older, 30% · 11m left, 30% listened' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Older, 30% · 11m left' })).toBeTruthy();
   });
 
   it('places Listening in the house with the signed-in servers', async () => {
