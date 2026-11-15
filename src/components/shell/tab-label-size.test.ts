@@ -1,3 +1,5 @@
+import { BUNDLED_CATALOGS, CATALOG_LOADERS } from '@/i18n/catalogs';
+
 import {
   TAB_LABEL_BASE_SP,
   TAB_LABEL_EM_PER_CHAR,
@@ -40,16 +42,17 @@ describe('tab label size', () => {
     expect(tabLabelDrawnDp(0.85, MAX_SLOT, fr)).toBeCloseTo(TAB_LABEL_BASE_SP * 0.85, 5);
   });
 
-  // Every shipped language's longest tab name (de, en/it, fr, es, pt): no larger than fits
-  // the largest display's slot, never smaller than the default size.
-  it.each([
-    'Bibliothek',
-    'Downloads',
-    'Bibliothèque',
-    'Biblioteca',
-    'Téléchargements',
-    'Transferências',
-  ])('keeps %s within its slot at 2.0 on the largest display', (name) => {
+  // Every shipped language's longest tab name: no larger than fits the largest display's
+  // slot, never smaller than the default size.
+  const catalogs = {
+    ...BUNDLED_CATALOGS,
+    ...Object.fromEntries(Object.entries(CATALOG_LOADERS).map(([code, load]) => [code, load()])),
+  };
+  const longestNames = Object.entries(catalogs).map(([code, { nav }]) => {
+    const names = [nav.home, nav.library, nav.search, nav.downloads, nav.me];
+    return [code, names.reduce((a, b) => (b.length > a.length ? b : a))] as const;
+  });
+  it.each(longestNames)('keeps %s %s within its slot at 2.0 on the largest display', (_, name) => {
     const size = tabLabelDrawnDp(2, MAX_SLOT, name.length);
     expect(size).toBeGreaterThanOrEqual(TAB_LABEL_BASE_SP);
     if (size > TAB_LABEL_BASE_SP) {
