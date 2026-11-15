@@ -16,8 +16,7 @@ const mockReplace = jest.fn();
 const mockDismissTo = jest.fn();
 const mockBack = jest.fn();
 const mockSetParams = jest.fn();
-// The screen's own navigation (`useNavigation`): its `setParams` is queued, so it holds as the
-// screen mounts on a page load, where a router's reaches nothing yet.
+// `useNavigation().setParams`, the queued one the screen strips `?oidc=1` with as it mounts.
 const mockNavSetParams = jest.fn();
 let mockCanGoBack = true;
 let mockParams: Record<string, string> = {};
@@ -31,12 +30,7 @@ jest.mock('expo-router', () => {
     setParams: (p: unknown) => mockSetParams(p),
   };
   const navigation = { setParams: (p: unknown) => mockNavSetParams(p) };
-  return {
-    router,
-    useRouter: () => router,
-    useNavigation: () => navigation,
-    useLocalSearchParams: () => mockParams,
-  };
+  return { router, useNavigation: () => navigation, useLocalSearchParams: () => mockParams };
 });
 
 let mockLayout = 'phone';

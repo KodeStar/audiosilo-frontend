@@ -243,8 +243,8 @@ export function ConnectStart() {
     navigation.setParams({ oidc: undefined });
     void finishOidcSignIn(oidcOrigin, t).then((message) => {
       if (message === null || !mounted.current) return;
-      // Again once settled, now through the router as a dead link's token leaves: the
-      // address must not keep it under the reason.
+      // A backstop once settled, when the navigators surely listen: the reason must not sit
+      // under an address that would try the finish again.
       router.setParams({ oidc: undefined });
       fail(message);
       showServedCard(oidcOrigin);
