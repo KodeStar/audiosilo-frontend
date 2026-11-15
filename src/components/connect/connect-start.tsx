@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Linking, Platform, View } from 'react-native';
@@ -234,10 +234,13 @@ export function ConnectStart() {
   // cookie goes with the first try, so a reload could only fail). A failure shows its own
   // server's card under the reason, as a dead pairing link does.
   const oidcStarted = useRef(false);
+  // The hook's router: this runs as the screen mounts, on a page load, where the
+  // module-level `router` may not be bound yet (CONVENTIONS.md, "Navigation at mount").
+  const mountRouter = useRouter();
   useEffect(() => {
     if (!oidcOrigin || oidcStarted.current) return;
     oidcStarted.current = true;
-    router.setParams({ oidc: undefined });
+    mountRouter.setParams({ oidc: undefined });
     void finishOidcSignIn(oidcOrigin, t).then((message) => {
       if (message === null || !mounted.current) return;
       fail(message);

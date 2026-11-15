@@ -18,17 +18,17 @@ const mockBack = jest.fn();
 const mockSetParams = jest.fn();
 let mockCanGoBack = true;
 let mockParams: Record<string, string> = {};
-jest.mock('expo-router', () => ({
-  router: {
+jest.mock('expo-router', () => {
+  const router = {
     push: (h: unknown) => mockPush(h),
     replace: (h: unknown) => mockReplace(h),
     dismissTo: (h: unknown) => mockDismissTo(h),
     back: () => mockBack(),
     canGoBack: () => mockCanGoBack,
     setParams: (p: unknown) => mockSetParams(p),
-  },
-  useLocalSearchParams: () => mockParams,
-}));
+  };
+  return { router, useRouter: () => router, useLocalSearchParams: () => mockParams };
+});
 
 let mockLayout = 'phone';
 jest.mock('@/lib/layout', () => ({
