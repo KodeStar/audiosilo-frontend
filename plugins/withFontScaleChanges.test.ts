@@ -35,6 +35,26 @@ const changesOf = (m: ReturnType<typeof manifest>, name = '.MainActivity') =>
     'android:configChanges' as never
   ] as string;
 
+/** Runs the plugin's `modName` mod (as `expo prebuild` would) over `modResults`. */
+async function runMod<T>(modName: 'manifest' | 'mainActivity', modResults: T): Promise<T> {
+  const config = withFontScaleChanges({ name: 'AudioSilo', slug: 'audiosilo' } as ExpoConfig);
+  type Mod = (c: Record<string, unknown>) => Promise<{ modResults: T }>;
+  const mods = (config as unknown as { mods: { android: Record<string, Mod> } }).mods.android;
+  const result = await mods[modName]({
+    name: 'AudioSilo',
+    slug: 'audiosilo',
+    modResults,
+    modRequest: {
+      platform: 'android',
+      modName,
+      projectRoot: '/tmp/app',
+      platformProjectRoot: '/tmp/app/android',
+      introspect: false,
+    },
+  });
+  return result.modResults;
+}
+
 describe('withFontScaleChanges (fe#267)', () => {
   it("adds fontScale and density to the template's flags, keeping them and their order", () => {
     const out = addConfigChanges(manifest(TEMPLATE) as never) as ReturnType<typeof manifest>;
@@ -59,25 +79,8 @@ describe('withFontScaleChanges (fe#267)', () => {
   });
 
   it('runs as an Android manifest mod', async () => {
-    const config = withFontScaleChanges({ name: 'AudioSilo', slug: 'audiosilo' } as ExpoConfig);
-    type Mod = (c: Record<string, unknown>) => Promise<{ modResults: unknown }>;
-    const mod = (config as unknown as { mods: { android: { manifest: Mod } } }).mods.android
-      .manifest;
-    const result = await mod({
-      name: 'AudioSilo',
-      slug: 'audiosilo',
-      modResults: manifest(TEMPLATE),
-      modRequest: {
-        platform: 'android',
-        modName: 'manifest',
-        projectRoot: '/tmp/app',
-        platformProjectRoot: '/tmp/app/android',
-        introspect: false,
-      },
-    });
-    expect(changesOf(result.modResults as ReturnType<typeof manifest>)).toContain(
-      'fontScale|density',
-    );
+    const out = await runMod('manifest', manifest(TEMPLATE));
+    expect(changesOf(out)).toContain('fontScale|density');
   });
 
   // React Native re-lays out text on the change but its DeviceInfo re-reads fontScale only on
@@ -116,23 +119,12 @@ describe('withFontScaleChanges (fe#267)', () => {
     });
 
     it('runs as a main activity mod', async () => {
-      const config = withFontScaleChanges({ name: 'AudioSilo', slug: 'audiosilo' } as ExpoConfig);
-      type Mod = (c: Record<string, unknown>) => Promise<{ modResults: { contents: string } }>;
-      const mod = (config as unknown as { mods: { android: { mainActivity: Mod } } }).mods.android
-        .mainActivity;
-      const result = await mod({
-        name: 'AudioSilo',
-        slug: 'audiosilo',
-        modResults: { path: 'MainActivity.kt', language: 'kt', contents: MAIN_ACTIVITY_SDK58 },
-        modRequest: {
-          platform: 'android',
-          modName: 'mainActivity',
-          projectRoot: '/tmp/app',
-          platformProjectRoot: '/tmp/app/android',
-          introspect: false,
-        },
+      const out = await runMod('mainActivity', {
+        path: 'MainActivity.kt',
+        language: 'kt',
+        contents: MAIN_ACTIVITY_SDK58,
       });
-      expect(result.modResults.contents).toContain('onHostResume()');
+      expect(out.contents).toContain('onHostResume()');
     });
   });
 });

@@ -74,11 +74,10 @@ function addConfigurationForward(src) {
       'withFontScaleChanges: no `class MainActivity : ReactActivity()` in MainActivity.kt',
     );
   }
-  const missing = IMPORTS.filter(
-    (i) => !new RegExp(`^import ${i.replace(/\./g, '\\.')}$`, 'm').test(src),
+  return AndroidConfig.CodeMod.addImports(src, IMPORTS, false).replace(
+    cls,
+    (m) => `${m}${FORWARD}\n`,
   );
-  const imports = missing.map((i) => `import ${i}\n`).join('');
-  return src.replace(pkg, (m) => `${m}${imports}`).replace(cls, (m) => `${m}${FORWARD}\n`);
 }
 
 const withFontScaleChanges = (config) =>
