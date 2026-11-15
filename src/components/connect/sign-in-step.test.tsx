@@ -3,7 +3,10 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
 import type { User } from '@/api/types';
+import { endConnectFlow, openAddSomeone } from '@/components/profiles/connect-intent';
+import { resetProfilesForTests } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
+import { seedProfile } from '@/testing/seed-profile';
 
 import { renderConnect as render } from './connect-testing';
 import { takeScanFor } from './invite-handoff';
@@ -432,5 +435,21 @@ describe('single sign-on', () => {
     await render(<SignInStep server={AWAY} />);
     expect(mockApi.serverInfo).not.toHaveBeenCalled();
     expect(screen.queryByTestId('sign-in-oidc')).toBeNull();
+  });
+
+  // The pass is in memory and the server's return is a page load: kids mode would turn the
+  // return away as a link, with the sign-in unspent.
+  it("is not offered, nor asked about, on a grown-up's pass through kids mode", async () => {
+    seedProfile({ kids: true });
+    openAddSomeone();
+    try {
+      mockApi.serverInfo.mockResolvedValue(serverInfo(true, 'Keycloak'));
+      await render(<SignInStep server={AWAY} />);
+      expect(mockApi.serverInfo).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('sign-in-oidc')).toBeNull();
+    } finally {
+      endConnectFlow();
+      resetProfilesForTests();
+    }
   });
 });

@@ -4,8 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
 import { connectClientFor } from '@/api/connect-client';
-import type { ServerInfo } from '@/api/types';
 import { AddressesCard } from '@/components/layout/addresses-card';
+import { kidsConnectAllowed } from '@/components/profiles/connect-intent';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
@@ -102,21 +102,24 @@ export function SignInStep({
   );
 
   // Single sign-on: only the served player at its own server asks (`oidc-sign-in.ts`).
-  const ownServer = onlyOwnServer(servedOrigin(), [server]);
-  const [ssoInfo, setSsoInfo] = useState<ServerInfo | null>(null);
+  // Never on a grown-up's pass through kids mode (`kidsConnectAllowed`): the pass is in
+  // memory, so the page the server returns to would be turned away as a link in kids mode.
+  const canSso = onlyOwnServer(servedOrigin(), [server]) && !kidsConnectAllowed();
+  // The button's name once the server said single sign-on is on (`oidcButtonName`).
+  const [ssoName, setSsoName] = useState<string | null>(null);
   useEffect(() => {
-    if (!ownServer) return;
+    if (!canSso) return;
     const ask = new AbortController();
     api
       .serverInfo(ask.signal)
       .then((info) => {
-        if (!ask.signal.aborted) setSsoInfo(info);
+        if (!ask.signal.aborted) setSsoName(oidcButtonName(info));
       })
       // A server that doesn't answer offers no single sign-on; the other ways stay.
       .catch(() => {});
     return () => ask.abort();
-  }, [api, ownServer]);
-  const sso = ownServer ? oidcButtonName(ssoInfo) : null;
+  }, [api, canSso]);
+  const sso = canSso ? ssoName : null;
 
   const modes = MODE_VALUES.map((value) => ({
     value,

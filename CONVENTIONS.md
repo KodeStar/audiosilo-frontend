@@ -378,9 +378,12 @@ Single sign-on (server#235, `oidc-sign-in.ts`) is the served web player's only: 
 at its own origin (`onlyOwnServer`) asks `GET /server` and offers "Sign in with <name>" while the
 `oidc` capability is on, a full page load of `client.oidcStartUrl()`; the server lands on
 `/connect?oidc=1` with the sign-in in an HttpOnly cookie (`oidcReturnOrigin` tells a return, for
-the route and the screen), and `ConnectStart` takes the param off first (`setParams`), then `POST /auth/oidc/finish` (`finishOidcSignIn`, the exchange's answer)
-and `finishConnect`; a failure is worded above the served card (`oidcFinishText`). Nothing in
-memory survives the page load (a reconnect id, "Add someone", a signed-out visit's book).
+the route and the screen), and `ConnectStart` takes the param off first (`setParams`, the
+hook's router: it runs at mount), then `POST /auth/oidc/finish` (`finishOidcSignIn`, the
+exchange's answer) and `finishConnect`; a failure is worded above the served card
+(`oidcFinishText`). Nothing in memory survives the page load (a reconnect id, "Add someone", a
+signed-out visit's book), so a grown-up's pass through kids mode (`kidsConnectAllowed`), which
+kids mode would turn the return away without, is offered no single sign-on.
 iOS does NOT allow arbitrary loads: Expo's ATS default is `NSAllowsArbitraryLoads: false` with
 `NSAllowsLocalNetworking: true`, so plain http works there for IP addresses, `.local` and
 single-label names, but not for a `.lan`, `.home.arpa` or `.internal` home. `repairPlan`: a

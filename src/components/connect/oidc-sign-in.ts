@@ -18,7 +18,10 @@ import { sharedRefusalText } from './sign-in-error';
  * origin, and the connect screen trades it for a session (`finishOidcSignIn`). A cookie
  * is the whole hand-over, so only the player the server serves signing in to its own
  * server (`onlyOwnServer(servedOrigin(), [server])`) can offer it: never the app, the
- * Metro dev server, or a player hosted on another origin.
+ * Metro dev server, or a player hosted on another origin. The return is a page load, so
+ * nothing the flow held in memory comes back with it; a grown-up's pass through kids mode
+ * (`kidsConnectAllowed`) is one, and kids mode would turn the return away, so the step
+ * offers no single sign-on there.
  */
 
 /** The served player's return from a single sign-on (`/connect?oidc=1`): its own origin,
