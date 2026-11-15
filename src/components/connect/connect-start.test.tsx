@@ -1096,6 +1096,8 @@ describe("a single sign-on's return (?oidc=1)", () => {
     await render(<ConnectStart />);
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined });
+    // No failure backstop on the way to "Your library is ready.".
+    expect(mockSetParams).not.toHaveBeenCalled();
     expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
     expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device');
     expect(mockApi.exchange).not.toHaveBeenCalled();
@@ -1133,6 +1135,16 @@ describe("a single sign-on's return (?oidc=1)", () => {
     expect(mockSetParams).not.toHaveBeenCalled();
   });
 
+  it('leaves the address alone when it fails after the screen has gone', async () => {
+    let reject!: (e: unknown) => void;
+    mockApi.oidcFinish.mockReturnValue(new Promise((_, r) => (reject = r)));
+    const view = await render(<ConnectStart />);
+    await view.unmount();
+    await act(async () => reject(new ApiError(401, 'x', 'oidc_no_sign_in')));
+    expect(mockNavSetParams).toHaveBeenCalledTimes(1);
+    expect(mockSetParams).not.toHaveBeenCalled();
+  });
+
   it.each([
     [
       'no sign-in to finish in this browser',
@@ -1150,7 +1162,7 @@ describe("a single sign-on's return (?oidc=1)", () => {
     await render(<ConnectStart />);
     await waitFor(() => expect(screen.getByText('Found Hearthside')).toBeTruthy());
     expect(screen.getByText(words)).toBeTruthy();
-    // Off the address before the finish went out (a reload can't try it again), and again
+    // Its strip queued before the finish went out (a reload can't try it again), and again
     // through the router once it failed.
     expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined });
     expect(mockSetParams).toHaveBeenCalledWith({ oidc: undefined });
