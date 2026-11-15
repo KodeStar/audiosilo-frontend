@@ -21,8 +21,9 @@ const { AndroidConfig, withAndroidManifest, withMainActivity } = require('expo/c
  * of a change made with the app in front (a quick-settings tile, split screen, adb) only
  * at the next resume, and laid out for the old size meanwhile. The main activity's
  * `onConfigurationChanged` therefore asks DeviceInfo to re-read it then (its
- * `LifecycleEventListener.onHostResume`, which emits `didUpdateDimensions` when anything
- * changed, the display scale included).
+ * `LifecycleEventListener.onHostResume`, which emits `didUpdateDimensions` when the font
+ * scale changed; a display size change alone reaches JS through the root view's next
+ * layout, as before).
  */
 
 /** The flags this plugin makes sure the main activity handles. */

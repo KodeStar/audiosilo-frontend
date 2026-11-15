@@ -1,6 +1,7 @@
 // The MainActivity.kt of the Expo SDK 58 template (expo-template-bare-minimum 58.0.32),
 // verbatim. withCast.test.ts runs the Cast plugin over it (it anchors on
-// `super.onCreate(`); refresh it when the Expo template changes.
+// `super.onCreate(`), withFontScaleChanges.test.ts the font scale one (on the class line);
+// refresh it when the Expo template changes.
 export const MAIN_ACTIVITY_SDK58 = String.raw`package com.helloworld
 
 import android.os.Build
