@@ -3343,7 +3343,11 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
 - **Navigation at mount uses `useRouter()`.** Since expo-router 58 the module-level `router`
   throws until the router has rendered once, so an effect or guard that navigates on mount
   (`kids-route-guard.tsx`, the connect layout) takes the hook's router. The module-level one
-  stays fine in press handlers and later code.
+  stays fine in press handlers and later code. `setParams` is the exception: both routers hand
+  it straight to the navigation container, not the routing queue, and in a page load's first
+  effects (before the navigators listen) it never reaches the screen's route (the exported
+  player kept `?oidc=1`). A param to take off as the screen mounts goes through the screen's
+  own `useNavigation().setParams` (queued like `push`), as `connect-start.tsx` does for `?oidc=1`.
 - **Web: `<TabSlot/>` stays at a FIXED ancestor path at every width**; only sibling chrome
   toggles (moving it remounts every screen and jumps the URL on resize). **Native: never add or
   remove tabs at runtime**; tablet/desktop toggle `NativeTabs hidden` (state survives).

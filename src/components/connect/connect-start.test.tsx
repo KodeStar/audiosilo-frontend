@@ -16,6 +16,9 @@ const mockReplace = jest.fn();
 const mockDismissTo = jest.fn();
 const mockBack = jest.fn();
 const mockSetParams = jest.fn();
+// The screen's own navigation (`useNavigation`): its `setParams` is queued, so it holds as the
+// screen mounts on a page load, where a router's reaches nothing yet.
+const mockNavSetParams = jest.fn();
 let mockCanGoBack = true;
 let mockParams: Record<string, string> = {};
 jest.mock('expo-router', () => {
@@ -27,7 +30,13 @@ jest.mock('expo-router', () => {
     canGoBack: () => mockCanGoBack,
     setParams: (p: unknown) => mockSetParams(p),
   };
-  return { router, useRouter: () => router, useLocalSearchParams: () => mockParams };
+  const navigation = { setParams: (p: unknown) => mockNavSetParams(p) };
+  return {
+    router,
+    useRouter: () => router,
+    useNavigation: () => navigation,
+    useLocalSearchParams: () => mockParams,
+  };
 });
 
 let mockLayout = 'phone';
@@ -1092,7 +1101,7 @@ describe("a single sign-on's return (?oidc=1)", () => {
     mockApi.serverInfo.mockResolvedValue(info());
     await render(<ConnectStart />);
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
-    expect(mockSetParams).toHaveBeenCalledWith({ oidc: undefined });
+    expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined });
     expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
     expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device');
     expect(mockApi.exchange).not.toHaveBeenCalled();
@@ -1117,6 +1126,19 @@ describe("a single sign-on's return (?oidc=1)", () => {
     expect(screen.queryByText('Found Hearthside')).toBeNull();
   });
 
+  // A page load: the screen's first effects run before its navigators listen, when a
+  // router's `setParams` reaches nothing and the address kept `?oidc=1` for every reload.
+  it("takes ?oidc=1 off through the screen's own navigation as it mounts", async () => {
+    mockApi.oidcFinish.mockReturnValue(new Promise(() => {}));
+    await render(<ConnectStart />);
+    expect(mockNavSetParams).toHaveBeenCalledTimes(1);
+    expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined });
+    expect(mockNavSetParams.mock.invocationCallOrder[0]).toBeLessThan(
+      mockApi.oidcFinish.mock.invocationCallOrder[0],
+    );
+    expect(mockSetParams).not.toHaveBeenCalled();
+  });
+
   it.each([
     [
       'no sign-in to finish in this browser',
@@ -1134,7 +1156,9 @@ describe("a single sign-on's return (?oidc=1)", () => {
     await render(<ConnectStart />);
     await waitFor(() => expect(screen.getByText('Found Hearthside')).toBeTruthy());
     expect(screen.getByText(words)).toBeTruthy();
-    // Off the address before the finish went out: a reload can't try it again.
+    // Off the address before the finish went out (a reload can't try it again), and again
+    // through the router once it failed.
+    expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined });
     expect(mockSetParams).toHaveBeenCalledWith({ oidc: undefined });
     expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
     expect(useSession.getState().connections).toEqual([]);
@@ -1175,6 +1199,7 @@ describe("a single sign-on's return (?oidc=1)", () => {
     mockApi.serverInfo.mockResolvedValue(info());
     await render(<ConnectStart />);
     expect(mockApi.oidcFinish).not.toHaveBeenCalled();
+    expect(mockNavSetParams).not.toHaveBeenCalled();
     expect(mockSetParams).not.toHaveBeenCalled();
   });
 

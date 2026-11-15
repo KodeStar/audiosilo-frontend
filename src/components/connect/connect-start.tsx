@@ -1,4 +1,4 @@
-import { router, useRouter } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Linking, Platform, View } from 'react-native';
@@ -234,15 +234,18 @@ export function ConnectStart() {
   // cookie goes with the first try, so a reload could only fail). A failure shows its own
   // server's card under the reason, as a dead pairing link does.
   const oidcStarted = useRef(false);
-  // The hook's router: this runs as the screen mounts, on a page load, where the
-  // module-level `router` may not be bound yet (CONVENTIONS.md, "Navigation at mount").
-  const mountRouter = useRouter();
+  // The screen's own navigation: this runs as the screen mounts, on a page load, where a
+  // router's `setParams` reaches nothing yet (CONVENTIONS.md, "Navigation at mount").
+  const navigation = useNavigation<{ setParams(params: { oidc?: string }): void }>();
   useEffect(() => {
     if (!oidcOrigin || oidcStarted.current) return;
     oidcStarted.current = true;
-    mountRouter.setParams({ oidc: undefined });
+    navigation.setParams({ oidc: undefined });
     void finishOidcSignIn(oidcOrigin, t).then((message) => {
       if (message === null || !mounted.current) return;
+      // Again once settled, now through the router as a dead link's token leaves: the
+      // address must not keep it under the reason.
+      router.setParams({ oidc: undefined });
       fail(message);
       showServedCard(oidcOrigin);
     });
