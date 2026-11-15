@@ -3,7 +3,10 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
 import type { User } from '@/api/types';
+import { endConnectFlow, openAddSomeone } from '@/components/profiles/connect-intent';
+import { resetProfilesForTests } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
+import { seedProfile } from '@/testing/seed-profile';
 
 import { renderConnect as render } from './connect-testing';
 import { takeScanFor } from './invite-handoff';
@@ -30,7 +33,13 @@ jest.mock('@/lib/base-url', () => ({
   servedOrigin: () => mockServed,
 }));
 
-const mockApi = { redeemCode: jest.fn(), exchange: jest.fn(), login: jest.fn() };
+const mockApi = {
+  redeemCode: jest.fn(),
+  exchange: jest.fn(),
+  login: jest.fn(),
+  serverInfo: jest.fn(),
+  oidcStartUrl: () => `${AWAY}/api/v1/auth/oidc/start?return=web`,
+};
 const mockBases: string[] = [];
 // The proxy headers (fe#167) each client was built with (its sixth argument).
 const mockProxies: unknown[] = [];
@@ -63,6 +72,8 @@ beforeEach(async () => {
   mockCanGoBack = true;
   await AsyncStorage.clear();
   jest.clearAllMocks();
+  // The served player asks its own server whether single sign-on is on: here it is not.
+  mockApi.serverInfo.mockResolvedValue({ capabilities: {}, auth: { methods: [] } });
   mockBases.length = 0;
   mockProxies.length = 0;
   useSession.setState({
@@ -353,5 +364,92 @@ describe('no password (fe#264)', () => {
     Platform.OS = 'web';
     await render(<SignInStep server={AWAY} />);
     expect(screen.queryByTestId('sign-in-scan')).toBeNull();
+  });
+});
+
+// Single sign-on (server#235): offered only by the player the server serves, signing in to
+// its own origin, on a server whose `oidc` capability is on; a full page load of the
+// server's start route.
+describe('single sign-on', () => {
+  const os = Platform.OS;
+  const realLocation = (globalThis as { location?: unknown }).location;
+  const assign = jest.fn();
+  const serverInfo = (oidc: boolean | undefined, name?: string) => ({
+    name: 'Hearthside',
+    server_id: 'srv-1',
+    version: '2.7.0',
+    api: 'v1',
+    capabilities: oidc === undefined ? {} : { oidc },
+    auth: name ? { methods: ['auth_code', 'password', 'oidc'], oidc: { name } } : { methods: [] },
+  });
+  beforeEach(() => {
+    Platform.OS = 'web';
+    mockServed = AWAY;
+    (globalThis as { location?: unknown }).location = { assign };
+  });
+  afterEach(() => {
+    Platform.OS = os;
+    (globalThis as { location?: unknown }).location = realLocation;
+  });
+
+  it('offers "Sign in with <name>" when it is on, and loads the start page', async () => {
+    mockApi.serverInfo.mockResolvedValue(serverInfo(true, 'Keycloak'));
+    await render(<SignInStep server={AWAY} serverName="Hearthside" />);
+    const button = await screen.findByRole('button', { name: 'Sign in with Keycloak' });
+    expect(mockBases).toEqual([AWAY]);
+    await fireEvent.press(button);
+    expect(assign).toHaveBeenCalledWith(`${AWAY}/api/v1/auth/oidc/start?return=web`);
+    expect(mockApi.login).not.toHaveBeenCalled();
+  });
+
+  it('names single sign-on itself when the server sent no name', async () => {
+    mockApi.serverInfo.mockResolvedValue(serverInfo(true));
+    await render(<SignInStep server={AWAY} />);
+    expect(await screen.findByTestId('sign-in-oidc')).toBeTruthy();
+    expect(screen.getByText('Sign in with single sign-on')).toBeTruthy();
+  });
+
+  it.each([
+    ['off', false],
+    ['absent (an older server)', undefined],
+  ])('is not offered with the capability %s', async (_, oidc) => {
+    mockApi.serverInfo.mockResolvedValue(serverInfo(oidc, 'Keycloak'));
+    await render(<SignInStep server={AWAY} />);
+    await waitFor(() => expect(mockApi.serverInfo).toHaveBeenCalled());
+    expect(screen.queryByTestId('sign-in-oidc')).toBeNull();
+  });
+
+  it('is not offered when the server does not answer', async () => {
+    mockApi.serverInfo.mockRejectedValue(new Error('offline'));
+    await render(<SignInStep server={AWAY} />);
+    await waitFor(() => expect(mockApi.serverInfo).toHaveBeenCalled());
+    expect(screen.queryByTestId('sign-in-oidc')).toBeNull();
+  });
+
+  it.each([
+    ['in the app or under the Metro dev server (no served origin)', () => (mockServed = null)],
+    ['for a server on another origin', () => (mockServed = 'https://other.example.com')],
+  ])('is not offered, nor asked about, %s', async (_, arrange) => {
+    arrange();
+    mockApi.serverInfo.mockResolvedValue(serverInfo(true, 'Keycloak'));
+    await render(<SignInStep server={AWAY} />);
+    expect(mockApi.serverInfo).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('sign-in-oidc')).toBeNull();
+  });
+
+  // The pass is in memory and the server's return is a page load: kids mode would turn the
+  // return away as a link, with the sign-in unspent.
+  it("is not offered, nor asked about, on a grown-up's pass through kids mode", async () => {
+    seedProfile({ kids: true });
+    openAddSomeone();
+    try {
+      mockApi.serverInfo.mockResolvedValue(serverInfo(true, 'Keycloak'));
+      await render(<SignInStep server={AWAY} />);
+      expect(mockApi.serverInfo).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('sign-in-oidc')).toBeNull();
+    } finally {
+      endConnectFlow();
+      resetProfilesForTests();
+    }
   });
 });

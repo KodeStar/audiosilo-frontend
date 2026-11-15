@@ -351,7 +351,7 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   browser sign-in).
 
 **Connect and onboarding** (`src/components/connect/`, routes `src/app/connect/{index,sign-in,ready,scan}.tsx`):
-every way in (pairing link or QR, invite code, password, demo) ends in `finishConnect`, which
+every way in (pairing link or QR, invite code, password, single sign-on, demo) ends in `finishConnect`, which
 stores the connection with the server's name and the addresses the link (`linkAddresses`) and the
 answer taught, merged there once, and shows `/connect/ready?connection=` ("Your library is
 ready.") only for the device's first connection; an added server goes back with `leaveOnboarding()`. A
@@ -374,6 +374,16 @@ it goes to that server only. The connection is still stored with the https base 
 plain-http address could be another box), and `finishConnect`'s `answeredAt` makes home its first
 address pick so the first requests go there; the address runner re-checks it as any home pick.
 Android allows cleartext for it (`expo-build-properties` `android.usesCleartextTraffic`).
+Single sign-on (server#235, `oidc-sign-in.ts`) is the served web player's only: the sign-in step
+at its own origin (`onlyOwnServer`) asks `GET /server` and offers "Sign in with <name>" while the
+`oidc` capability is on, a full page load of `client.oidcStartUrl()`; the server lands on
+`/connect?oidc=1` with the sign-in in an HttpOnly cookie (`oidcReturnOrigin` tells a return, for
+the route and the screen), and `ConnectStart` takes the param off first (the screen's own
+`useNavigation().setParams`: it runs at mount), then `POST /auth/oidc/finish`
+(`finishOidcSignIn`, the exchange's answer) and `finishConnect`; a failure is worded above the served card
+(`oidcFinishText`). Nothing in memory survives the page load (a reconnect id, "Add someone", a
+signed-out visit's book), so a grown-up's pass through kids mode (`kidsConnectAllowed`), which
+kids mode would turn the return away without, is offered no single sign-on.
 iOS does NOT allow arbitrary loads: Expo's ATS default is `NSAllowsArbitraryLoads: false` with
 `NSAllowsLocalNetworking: true`, so plain http works there for IP addresses, `.local` and
 single-label names, but not for a `.lan`, `.home.arpa` or `.internal` home. `repairPlan`: a
@@ -3333,7 +3343,11 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
 - **Navigation at mount uses `useRouter()`.** Since expo-router 58 the module-level `router`
   throws until the router has rendered once, so an effect or guard that navigates on mount
   (`kids-route-guard.tsx`, the connect layout) takes the hook's router. The module-level one
-  stays fine in press handlers and later code.
+  stays fine in press handlers and later code. `setParams` is the exception: both routers hand it
+  to the navigation container, which drops it (`NOT_INITIALIZED_ERROR`) until a navigator has
+  registered as focused, so in a page load's first effects it is lost. A param taken off as the
+  screen mounts goes through the screen's own `useNavigation().setParams` (queued like `push`),
+  as `connect-start.tsx` does for `?oidc=1`.
 - **Web: `<TabSlot/>` stays at a FIXED ancestor path at every width**; only sibling chrome
   toggles (moving it remounts every screen and jumps the URL on resize). **Native: never add or
   remove tabs at runtime**; tablet/desktop toggle `NativeTabs hidden` (state survives).

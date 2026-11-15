@@ -16,19 +16,22 @@ const mockReplace = jest.fn();
 const mockDismissTo = jest.fn();
 const mockBack = jest.fn();
 const mockSetParams = jest.fn();
+// `useNavigation().setParams`, the queued one the screen strips `?oidc=1` with as it mounts.
+const mockNavSetParams = jest.fn();
 let mockCanGoBack = true;
 let mockParams: Record<string, string> = {};
-jest.mock('expo-router', () => ({
-  router: {
+jest.mock('expo-router', () => {
+  const router = {
     push: (h: unknown) => mockPush(h),
     replace: (h: unknown) => mockReplace(h),
     dismissTo: (h: unknown) => mockDismissTo(h),
     back: () => mockBack(),
     canGoBack: () => mockCanGoBack,
     setParams: (p: unknown) => mockSetParams(p),
-  },
-  useLocalSearchParams: () => mockParams,
-}));
+  };
+  const navigation = { setParams: (p: unknown) => mockNavSetParams(p) };
+  return { router, useNavigation: () => navigation, useLocalSearchParams: () => mockParams };
+});
 
 let mockLayout = 'phone';
 jest.mock('@/lib/layout', () => ({
@@ -53,6 +56,7 @@ const mockApi = {
   exchange: jest.fn(),
   demoSession: jest.fn(),
   me: jest.fn(),
+  oidcFinish: jest.fn(),
 };
 const mockBases: string[] = [];
 // The proxy headers (fe#167) each bare client was built with.
@@ -1067,5 +1071,151 @@ describe('proxy headers for a server behind an auth proxy (fe#167)', () => {
     expect(useSession.getState().pendingProxyHeaders).toBeNull();
     await fireEvent.changeText(screen.getByLabelText('Server address'), 'other.example.com');
     expect(useSession.getState().pendingProxyHeaders?.origin).toBe('https://other.example.com');
+  });
+});
+
+// Single sign-on (server#235): the server lands the browser on its player's
+// `/web/connect?oidc=1` with the finished sign-in in a cookie, and the screen trades it for a
+// session at once, as a pairing link's token is exchanged.
+describe("a single sign-on's return (?oidc=1)", () => {
+  const ORIGIN = 'https://books.example.com';
+  beforeEach(() => {
+    Platform.OS = 'web';
+    mockServed = ORIGIN;
+    mockParams = { oidc: '1' };
+  });
+
+  it('finishes it on its own server, names the server, and takes ?oidc=1 off the address', async () => {
+    mockApi.oidcFinish.mockResolvedValue({
+      token: 'session',
+      server_id: 'srv-1',
+      user,
+      addresses: { away: ORIGIN },
+    });
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined });
+    // No failure backstop on the way to "Your library is ready.".
+    expect(mockSetParams).not.toHaveBeenCalled();
+    expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
+    expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device');
+    expect(mockApi.exchange).not.toHaveBeenCalled();
+    expect(new Set(mockBases)).toEqual(new Set([ORIGIN]));
+    expect(conn()).toMatchObject({
+      id: 'srv-1.1',
+      serverUrl: ORIGIN,
+      name: 'Hearthside',
+      token: 'session',
+    });
+    expect(mockReplace).toHaveBeenCalledWith({
+      pathname: '/connect/ready',
+      params: { connection: 'srv-1.1' },
+    });
+  });
+
+  it('says "Connecting" while it finishes, never the address field', async () => {
+    mockApi.oidcFinish.mockReturnValue(new Promise(() => {}));
+    await render(<ConnectStart />);
+    expect(screen.getByText('Connecting your device…')).toBeTruthy();
+    expect(screen.queryByLabelText('Server address')).toBeNull();
+    expect(screen.queryByText('Found Hearthside')).toBeNull();
+  });
+
+  // A page load: the screen's first effects run before its navigators listen, when a
+  // router's `setParams` reaches nothing and the address kept `?oidc=1` for every reload.
+  it("takes ?oidc=1 off through the screen's own navigation as it mounts", async () => {
+    mockApi.oidcFinish.mockReturnValue(new Promise(() => {}));
+    await render(<ConnectStart />);
+    expect(mockNavSetParams).toHaveBeenCalledTimes(1);
+    expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined });
+    expect(mockNavSetParams.mock.invocationCallOrder[0]).toBeLessThan(
+      mockApi.oidcFinish.mock.invocationCallOrder[0],
+    );
+    expect(mockSetParams).not.toHaveBeenCalled();
+  });
+
+  it('leaves the address alone when it fails after the screen has gone', async () => {
+    let reject!: (e: unknown) => void;
+    mockApi.oidcFinish.mockReturnValue(new Promise((_, r) => (reject = r)));
+    const view = await render(<ConnectStart />);
+    await view.unmount();
+    await act(async () => reject(new ApiError(401, 'x', 'oidc_no_sign_in')));
+    expect(mockNavSetParams).toHaveBeenCalledTimes(1);
+    expect(mockSetParams).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'no sign-in to finish in this browser',
+      new ApiError(401, 'x', 'oidc_no_sign_in'),
+      "There's no sign-in to finish in this browser. Sign in again.",
+    ],
+    [
+      'no answer',
+      new TypeError('Failed to fetch'),
+      'Could not reach the server to finish signing in. Sign in again.',
+    ],
+  ])("says why on its own server's card for %s, once", async (_, error, words) => {
+    mockApi.oidcFinish.mockRejectedValue(error);
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await waitFor(() => expect(screen.getByText('Found Hearthside')).toBeTruthy());
+    expect(screen.getByText(words)).toBeTruthy();
+    // Its strip queued before the finish went out (a reload can't try it again), and again
+    // through the router once it failed.
+    expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined });
+    expect(mockSetParams).toHaveBeenCalledWith({ oidc: undefined });
+    expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
+    expect(useSession.getState().connections).toEqual([]);
+    expect(mockReplace).not.toHaveBeenCalled();
+    // Sign in again from the card.
+    await fireEvent.press(screen.getByText('Sign in'));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/connect/sign-in',
+      params: { serverName: 'Hearthside' },
+    });
+  });
+
+  it("says a session this device couldn't keep is spent", async () => {
+    mockApi.oidcFinish.mockResolvedValue({ token: 'session', server_id: 'srv-1', user });
+    mockApi.serverInfo.mockResolvedValue(info());
+    const { setSession } = useSession.getState();
+    useSession.setState({ setSession: jest.fn().mockRejectedValue(new Error('disk full')) });
+    try {
+      await render(<ConnectStart />);
+      await waitFor(() =>
+        expect(
+          screen.getByText(
+            "You signed in, but this device couldn't keep the sign-in. Sign in again.",
+          ),
+        ).toBeTruthy(),
+      );
+    } finally {
+      useSession.setState({ setSession });
+    }
+  });
+
+  it.each([
+    ['in the app', 'ios'],
+    ['under the Metro dev server (not the server)', 'web'],
+  ])('is not finished %s (no served origin)', async (_, os) => {
+    Platform.OS = os as typeof Platform.OS;
+    mockServed = null;
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    expect(mockApi.oidcFinish).not.toHaveBeenCalled();
+    expect(mockNavSetParams).not.toHaveBeenCalled();
+    expect(mockSetParams).not.toHaveBeenCalled();
+  });
+
+  it('leaves a pairing link to pair when both are in the address', async () => {
+    mockParams = { oidc: '1', token: 'tok' };
+    mockApi.exchange.mockResolvedValue({ token: 'session', server_id: 'srv-1', user });
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device');
+    expect(mockApi.oidcFinish).not.toHaveBeenCalled();
   });
 });

@@ -489,6 +489,17 @@
         "enterPassword": "Introduce tu contraseña."
       }
     },
+    "oidc": {
+      "signIn": "Iniciar sesión con {{name}}",
+      "signInUnnamed": "Iniciar sesión con inicio de sesión único",
+      "errors": {
+        "noSignIn": "No hay ningún inicio de sesión que completar en este navegador. Vuelve a iniciar sesión.",
+        "expired": "Ese inicio de sesión ha caducado o ya se usó. Vuelve a iniciar sesión.",
+        "reach": "No se pudo contactar con el servidor para completar el inicio de sesión. Vuelve a iniciar sesión.",
+        "notKept": "Has iniciado sesión, pero este dispositivo no pudo guardarla. Vuelve a iniciar sesión.",
+        "failed": "El inicio de sesión no se completó. Vuelve a iniciar sesión."
+      }
+    },
     "scan": {
       "closeLabel": "Cerrar el escáner",
       "invalidCode": "Ese código QR no es un código de emparejamiento ni de invitación de AudioSilo.",

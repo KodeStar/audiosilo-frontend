@@ -489,6 +489,17 @@
         "enterPassword": "Inserisci la tua password."
       }
     },
+    "oidc": {
+      "signIn": "Accedi con {{name}}",
+      "signInUnnamed": "Accedi con il single sign-on",
+      "errors": {
+        "noSignIn": "Non c'è nessun accesso da completare in questo browser. Accedi di nuovo.",
+        "expired": "Quell'accesso è scaduto o è già stato usato. Accedi di nuovo.",
+        "reach": "Impossibile raggiungere il server per completare l'accesso. Accedi di nuovo.",
+        "notKept": "Hai effettuato l'accesso, ma questo dispositivo non è riuscito a conservarlo. Accedi di nuovo.",
+        "failed": "L'accesso non è stato completato. Accedi di nuovo."
+      }
+    },
     "scan": {
       "closeLabel": "Chiudi lo scanner",
       "invalidCode": "Questo codice QR non è un codice di associazione o di invito di AudioSilo.",

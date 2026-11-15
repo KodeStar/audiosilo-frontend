@@ -56,6 +56,12 @@ jest.mock('@/components/connect/ready-screen', () => ({
     return <T>{`ready ${name}`}</T>;
   },
 }));
+// The page's own server (`servedOrigin`): null in the app and under Metro.
+let mockServed: string | null = null;
+jest.mock('@/lib/base-url', () => ({
+  ...jest.requireActual('@/lib/base-url'),
+  servedOrigin: () => mockServed,
+}));
 jest.mock('@/api/provider', () => ({
   ConnectionScope: ({ children }: { children: unknown }) => children,
 }));
@@ -87,6 +93,7 @@ const signedOut = (pending: string | null = null) =>
 
 beforeEach(() => {
   mockParams = {};
+  mockServed = null;
   mockLeave.mockClear();
 });
 
@@ -138,6 +145,28 @@ describe('/connect', () => {
     await act(async () => mockRefocus?.());
     expect(screen.getByText('first step')).toBeTruthy();
     expect(mockLeave).not.toHaveBeenCalled();
+  });
+
+  // server#235: a single sign-on's return (?oidc=1) for another account, whose param
+  // leaves the address as the finish starts; the screen stays to finish or say why.
+  it("stays signed in for a single sign-on's return, after ?oidc=1 leaves too", async () => {
+    signedIn();
+    mockServed = 'https://a';
+    mockParams = { oidc: '1' };
+    const r = await render(<ConnectRoute />);
+    expect(screen.getByText('first step')).toBeTruthy();
+    mockParams = {};
+    await r.rerender(<ConnectRoute />);
+    await act(async () => mockRefocus?.());
+    expect(screen.getByText('first step')).toBeTruthy();
+    expect(mockLeave).not.toHaveBeenCalled();
+  });
+
+  it('bounces ?oidc=1 on a page no single sign-on returns to (the app, Metro)', async () => {
+    signedIn();
+    mockParams = { oidc: '1' };
+    await render(<ConnectRoute />);
+    expect(screen.getByText('left onboarding')).toBeTruthy();
   });
 
   it('back on top mid-way through adding a server: stays', async () => {

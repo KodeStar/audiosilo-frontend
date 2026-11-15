@@ -2,6 +2,7 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ConnectStart } from '@/components/connect/connect-start';
+import { oidcReturnOrigin } from '@/components/connect/oidc-sign-in';
 import { setConnectForNewProfile } from '@/components/profiles/connect-intent';
 import { LeaveOnboarding, leaveOnboarding } from '@/components/shell/leave-onboarding';
 import { useRouteParams } from '@/lib/route-params';
@@ -9,8 +10,9 @@ import { useSession } from '@/stores/session';
 
 /**
  * `/connect`, the first step. An authenticated user can still reach it to ADD another
- * server: the entry point passes ?add=1, a QR/invite carries ?token=, and the sign-in
- * step is mid-flow (pendingServerUrl set). Otherwise they're bounced home. Decided here,
+ * server: the entry point passes ?add=1, a QR/invite carries ?token=, the server's return
+ * from a single sign-on carries ?oidc= (server#235), and the sign-in step is mid-flow
+ * (pendingServerUrl set). Otherwise they're bounced home. Decided here,
  * from this route's own params (see the note in `_layout.tsx`):
  *
  * - when the screen opens, and
@@ -22,10 +24,11 @@ import { useSession } from '@/stores/session';
 export default function ConnectRoute() {
   const status = useSession((s) => s.status);
   const pendingServerUrl = useSession((s) => s.pendingServerUrl);
-  const { add, token, profile } = useRouteParams<{
+  const { add, token, profile, oidc } = useRouteParams<{
     add?: string;
     token?: string;
     profile?: string;
+    oidc?: string;
   }>();
   // "Add someone" (`profile=new`): the connection this flow makes is a new person's. The
   // intent is the whole flow's, not this screen's params: the QR scan replaces its own
@@ -36,13 +39,14 @@ export default function ConnectRoute() {
     if (profile === 'new') setConnectForNewProfile(true);
     else if (add === '1') setConnectForNewProfile(false);
   }, [add, profile]);
-  const [bounce] = useState(
-    () => status === 'authenticated' && !add && !token && !pendingServerUrl,
-  );
-  // A pairing link's flow stays one after its dead token leaves the address (CONNECT-14):
-  // the screen must not bounce home while it says why the link failed.
-  const [linked, setLinked] = useState(!!token);
-  if (token && !linked) setLinked(true);
+  // Opened by a link: a pairing token, or the served player's return from a single sign-on.
+  const link = !!token || oidcReturnOrigin(oidc) !== null;
+  const [bounce] = useState(() => status === 'authenticated' && !add && !link && !pendingServerUrl);
+  // A pairing link's flow stays one after its dead token leaves the address (CONNECT-14),
+  // and a single sign-on's after `?oidc=1` does (it leaves as the finish starts): the
+  // screen must not bounce home while it says why the sign-in failed.
+  const [linked, setLinked] = useState(link);
+  if (link && !linked) setLinked(true);
   const shown = useRef(false);
   useFocusEffect(
     useCallback(() => {

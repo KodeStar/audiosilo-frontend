@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Linking, Platform, View } from 'react-native';
@@ -50,6 +50,7 @@ import { KnownServerRow, type Probe, ProbeNotice } from './connect-parts';
 import { CoverFan } from './cover-cascade';
 import { finishConnect } from './finish-connect';
 import { beginInviteSignIn, openScanner, takeScanReconnect } from './invite-handoff';
+import { finishOidcSignIn, oidcReturnOrigin } from './oidc-sign-in';
 import { ProxyHeadersEditor } from './proxy-headers-editor';
 import { draftOf, draftToSet, type HeaderDraftRow } from './proxy-headers-model';
 import { useLinkPairing } from './use-pairing';
@@ -77,13 +78,19 @@ import { useLinkPairing } from './use-pairing';
  * who it is on open and shows what it found, with Sign in, and no address field or remembered
  * servers (the server's CSP lets it reach no other). Only when that fails does the field show,
  * filled in with the origin.
+ *
+ * The served player opened as `?oidc=1` is the server's return from a single sign-on
+ * (server#235, started on the sign-in step): the sign-in is finished at once
+ * (`finishOidcSignIn`), the param leaving the address first so a reload never tries it
+ * again; a failure says why above its own server's card, as a dead pairing link does.
  */
 export function ConnectStart() {
   const { t } = useTranslation();
   const large = useLargeText();
   const phone = useLayout() === 'phone';
-  const { token, server, home, away, sid, profile, book, path, uid } = useRouteParams<{
+  const { token, server, home, away, sid, profile, book, path, uid, oidc } = useRouteParams<{
     token?: string;
+    oidc?: string;
     server?: string;
     home?: string;
     away?: string;
@@ -105,6 +112,12 @@ export function ConnectStart() {
   // Proxy headers the flow already holds (fe#167): the scanner hands a code back to a new
   // instance of this screen, which must take them up, not drop them.
   const heldProxy = useSession.getState().pendingProxyHeaders;
+  // The server's return from a single sign-on, on the player it serves (read once: the
+  // param leaves the address as the finish starts). A pairing link wins.
+  const [oidcOrigin] = useState(() => oidcReturnOrigin(oidc, token));
+  // Opened by a link (a pairing token or a single sign-on's return): it runs at once, with
+  // no address field or served card until it fails.
+  const linkFlow = !!token || oidcOrigin !== null;
   // The served player's field, shown only when its own server didn't answer, has the origin.
   const [url, setUrl] = useState(savedUrl ?? servedOrigin() ?? heldProxy?.origin ?? '');
   // The address as the listener typed it: what proxy headers are for. Never the field after
@@ -114,7 +127,7 @@ export function ConnectStart() {
   // The served player's own server: `pending` while asking it, then `found` (the card is the
   // screen). `null` everywhere else (the field), and for a pairing link.
   const [served, setServed] = useState<'pending' | 'found' | null>(() =>
-    servedOrigin() && !token ? 'pending' : null,
+    servedOrigin() && !linkFlow ? 'pending' : null,
   );
   const [known, setKnown] = useState<KnownServer[]>([]);
   // Which connect action is in flight (a remembered server's `serverId`, or `'manual'` for
@@ -130,7 +143,7 @@ export function ConnectStart() {
   const [linkError, setLinkError] = useState<string | null>(null);
   // A pasted link for another server, on a server's own player (`onPasteLink`).
   const [foreignLink, setForeignLink] = useState<string | null>(null);
-  const { pairing, error: pairError, fail, pair } = useLinkPairing(!!token);
+  const { pairing, error: pairError, fail, pair } = useLinkPairing(linkFlow);
   // A pairing link that failed for a reason that can pass (`PairOutcome` `temporary`).
   const [retryLink, setRetryLink] = useState<PairingScan | null>(null);
   // The reconnect the code that opened this screen continues (scanned from a reconnect's
@@ -188,10 +201,8 @@ export function ConnectStart() {
     const origin = servedOrigin();
     // A pasted link (or Try again) on the card already found: the card stays as it is.
     if (origin && served === 'found') return;
-    if (origin) {
-      setServed('pending');
-      void connect(origin, 'manual').then((found) => setServed(found ? 'found' : null));
-    } else setUrl((u) => u || scan.base);
+    if (origin) showServedCard(origin);
+    else setUrl((u) => u || scan.base);
   };
 
   // A pairing link's token: exchange it once (a language switch must not run it again).
@@ -219,13 +230,33 @@ export function ConnectStart() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, server, home, away, sid, book, path, uid, pair, fail]);
 
+  // A single sign-on's return: finish it once, with `?oidc=1` off the address first (the
+  // cookie goes with the first try, so a reload could only fail). A failure shows its own
+  // server's card under the reason, as a dead pairing link does.
+  const oidcStarted = useRef(false);
+  // The screen's own navigation: this runs as the screen mounts, on a page load, where a
+  // router's `setParams` reaches nothing yet (CONVENTIONS.md, "Navigation at mount").
+  const navigation = useNavigation<{ setParams(params: { oidc?: string }): void }>();
+  useEffect(() => {
+    if (!oidcOrigin || oidcStarted.current) return;
+    oidcStarted.current = true;
+    navigation.setParams({ oidc: undefined });
+    void finishOidcSignIn(oidcOrigin, t).then((message) => {
+      if (message === null || !mounted.current) return;
+      // A backstop once settled, when the navigators surely listen: the reason must not sit
+      // under an address that would try the finish again.
+      router.setParams({ oidc: undefined });
+      fail(message);
+      showServedCard(oidcOrigin);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // The served player: ask its own server who it is, once.
   useEffect(() => {
     const origin = servedOrigin();
     if (served !== 'pending' || !origin) return;
-    // As typed: the card shows, nothing goes on by itself (an origin has its scheme, so
-    // there is no http retry).
-    void connect(origin, 'manual').then((found) => setServed(found ? 'found' : null));
+    showServedCard(origin);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -256,6 +287,13 @@ export function ConnectStart() {
         ...(returnBook ? connectBookParams(returnBook) : {}),
       },
     });
+
+  // The served player's own server's card: ask it who it is, as typed (the card shows,
+  // nothing goes on by itself; an origin has its scheme, so there is no http retry).
+  const showServedCard = (origin: string) => {
+    setServed('pending');
+    void connect(origin, 'manual').then((found) => setServed(found ? 'found' : null));
+  };
 
   // Ask the server who it is. The typed address and the served player's own server show what
   // was found (or why not); a remembered server goes straight on to sign-in unless it runs a

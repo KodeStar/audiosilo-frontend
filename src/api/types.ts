@@ -186,6 +186,12 @@ export type Capabilities = {
    * which kinds is `ServerInfo.renditions`. True when the server has ffmpeg and a data dir.
    * Absent on older servers. The watch app reads the kinds (`targets/watch/Core/WireModels.swift`). */
   renditions?: boolean;
+  /** Whether single sign-on (OpenID Connect, server#235) can run on the server now: the
+   * browser flow starts at `GET /auth/oidc/start?return=web` (`client.oidcStartUrl`) and the
+   * served web player finishes it at `POST /auth/oidc/finish` (`client.oidcFinish`), a
+   * cookie the server set, so only a page on the server's own origin can. The button's name
+   * is `ServerInfo.auth.oidc.name`. Absent on older servers: treat missing as false. */
+  oidc?: boolean;
 };
 
 /** A server's two addresses (capability `addresses`). Either may be absent. `home` is
@@ -204,7 +210,9 @@ export type ServerInfo = {
   version: string;
   api: string;
   capabilities: Capabilities;
-  auth: { methods: string[] };
+  /** The sign-in methods (`auth_code`, `password`, and `oidc` while single sign-on can run)
+   * and, only then, the provider's button name (`oidc.name`, "Sign in with <name>"). */
+  auth: { methods: string[]; oidc?: { name: string } };
   /** The rendition kinds the server makes (`["watch"]`; `[]` when `capabilities.renditions`
    * is false). Absent on older servers. */
   renditions?: string[];

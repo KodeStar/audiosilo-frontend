@@ -4,8 +4,8 @@ import { activeProfile, useProfiles } from '@/stores/profiles';
 
 /**
  * What the connect flow on screen is for. Module state, not route params, because every
- * way in (a pairing link, a code, a password, the demo) ends in `finishConnect` from a
- * different screen, and a link must never be able to carry either. Both end when the flow
+ * way in (a pairing link, a code, a password, single sign-on, the demo) ends in
+ * `finishConnect` from a different screen, and a link must never be able to carry either. Both end when the flow
  * is left (`endConnectFlow`, as `connect/_layout.tsx` unmounts), so the next flow starts as
  * a sign-in of the person listening again.
  *

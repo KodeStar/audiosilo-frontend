@@ -5,10 +5,11 @@ import { Platform, View } from 'react-native';
 
 import { connectClientFor } from '@/api/connect-client';
 import { AddressesCard } from '@/components/layout/addresses-card';
+import { kidsConnectAllowed } from '@/components/profiles/connect-intent';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
-import { servedOrigin } from '@/lib/base-url';
+import { onlyOwnServer, servedOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
 import { useLayout } from '@/lib/layout';
 import { hostOf } from '@/lib/pairing';
@@ -19,6 +20,7 @@ import { ConnectFrame, ConnectInput, StepDots } from './connect-frame';
 import { addressesBody, BackToStart } from './connect-parts';
 import { finishConnect } from './finish-connect';
 import { openScanner } from './invite-handoff';
+import { oidcButtonName } from './oidc-sign-in';
 import { type SignInStage, signInErrorText } from './sign-in-error';
 
 type Mode = 'code' | 'password';
@@ -55,6 +57,10 @@ export function emptyField(
  *
  * `initialCode`: an invite link's code (a scanned or pasted invite, #98), filled in and
  * signed in with once, as if typed; a refused one stays in the field with the reason.
+ *
+ * The player the server serves, signing in to its own server, asks it once whether single
+ * sign-on is on (capability `oidc`, server#235) and then offers "Sign in with <name>", a
+ * full page load of the server's start route (`oidc-sign-in.ts` has the whole flow).
  */
 export function SignInStep({
   server,
@@ -94,6 +100,26 @@ export function SignInStep({
     () => connectClientFor(server, undefined, reconnectId),
     [server, reconnectId],
   );
+
+  // Single sign-on: only the served player at its own server asks (`oidc-sign-in.ts`).
+  // Never on a grown-up's pass through kids mode (`kidsConnectAllowed`): the pass is in
+  // memory, so the page the server returns to would be turned away as a link in kids mode.
+  const canSso = onlyOwnServer(servedOrigin(), [server]) && !kidsConnectAllowed();
+  // The button's name once the server said single sign-on is on (`oidcButtonName`).
+  const [ssoName, setSsoName] = useState<string | null>(null);
+  useEffect(() => {
+    if (!canSso) return;
+    const ask = new AbortController();
+    api
+      .serverInfo(ask.signal)
+      .then((info) => {
+        if (!ask.signal.aborted) setSsoName(oidcButtonName(info));
+      })
+      // A server that doesn't answer offers no single sign-on; the other ways stay.
+      .catch(() => {});
+    return () => ask.abort();
+  }, [api, canSso]);
+  const sso = canSso ? ssoName : null;
 
   const modes = MODE_VALUES.map((value) => ({
     value,
@@ -241,6 +267,16 @@ export function SignInStep({
       ) : null}
 
       <Button size="lg" title={t('connect.signIn.submit')} loading={loading} onPress={onSubmit} />
+      {sso !== null ? (
+        <Button
+          size="lg"
+          variant="outline"
+          title={sso ? t('connect.oidc.signIn', { name: sso }) : t('connect.oidc.signInUnnamed')}
+          disabled={loading}
+          onPress={() => window.location.assign(api.oidcStartUrl())}
+          testID="sign-in-oidc"
+        />
+      ) : null}
       {/* Most people have no password (an invite pairs a device): in the app, the QR their
           invite page or the console's Pair a device shows signs them in instead (fe#264). The
           scanner hands its code to a new connect step, which pairs at once; a reconnect's goes
