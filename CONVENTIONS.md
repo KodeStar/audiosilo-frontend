@@ -378,9 +378,9 @@ Single sign-on (server#235, `oidc-sign-in.ts`) is the served web player's only: 
 at its own origin (`onlyOwnServer`) asks `GET /server` and offers "Sign in with <name>" while the
 `oidc` capability is on, a full page load of `client.oidcStartUrl()`; the server lands on
 `/connect?oidc=1` with the sign-in in an HttpOnly cookie (`oidcReturnOrigin` tells a return, for
-the route and the screen), and `ConnectStart` takes the param off first (`setParams`, the
-hook's router: it runs at mount), then `POST /auth/oidc/finish` (`finishOidcSignIn`, the
-exchange's answer) and `finishConnect`; a failure is worded above the served card
+the route and the screen), and `ConnectStart` takes the param off first (the screen's own
+`useNavigation().setParams`: it runs at mount), then `POST /auth/oidc/finish`
+(`finishOidcSignIn`, the exchange's answer) and `finishConnect`; a failure is worded above the served card
 (`oidcFinishText`). Nothing in memory survives the page load (a reconnect id, "Add someone", a
 signed-out visit's book), so a grown-up's pass through kids mode (`kidsConnectAllowed`), which
 kids mode would turn the return away without, is offered no single sign-on.
@@ -3343,8 +3343,9 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
 - **Navigation at mount uses `useRouter()`.** Since expo-router 58 the module-level `router`
   throws until the router has rendered once, so an effect or guard that navigates on mount
   (`kids-route-guard.tsx`, the connect layout) takes the hook's router. The module-level one
-  stays fine in press handlers and later code. `setParams` is the exception: both routers skip
-  the routing queue, so in a page load's first effects it is lost. A param taken off as the
+  stays fine in press handlers and later code. `setParams` is the exception: both routers hand it
+  to the navigation container, which drops it (`NOT_INITIALIZED_ERROR`) until a navigator has
+  registered as focused, so in a page load's first effects it is lost. A param taken off as the
   screen mounts goes through the screen's own `useNavigation().setParams` (queued like `push`),
   as `connect-start.tsx` does for `?oidc=1`.
 - **Web: `<TabSlot/>` stays at a FIXED ancestor path at every width**; only sibling chrome
