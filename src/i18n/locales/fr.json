@@ -489,6 +489,17 @@
         "enterPassword": "Saisissez votre mot de passe."
       }
     },
+    "oidc": {
+      "signIn": "Se connecter avec {{name}}",
+      "signInUnnamed": "Se connecter avec l'authentification unique",
+      "errors": {
+        "noSignIn": "Aucune connexion à terminer dans ce navigateur. Connectez-vous à nouveau.",
+        "expired": "Cette connexion a expiré ou a déjà été utilisée. Connectez-vous à nouveau.",
+        "reach": "Impossible de joindre le serveur pour terminer la connexion. Connectez-vous à nouveau.",
+        "notKept": "Vous êtes connecté, mais cet appareil n'a pas pu garder la connexion. Connectez-vous à nouveau.",
+        "failed": "La connexion n'a pas abouti. Connectez-vous à nouveau."
+      }
+    },
     "scan": {
       "closeLabel": "Fermer le scanner",
       "invalidCode": "Ce code QR n'est pas un code d'appairage ni d'invitation AudioSilo.",

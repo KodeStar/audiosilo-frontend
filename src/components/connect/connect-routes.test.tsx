@@ -140,6 +140,20 @@ describe('/connect', () => {
     expect(mockLeave).not.toHaveBeenCalled();
   });
 
+  // server#235: a single sign-on's return (?oidc=1) for another account, whose param
+  // leaves the address as the finish starts; the screen stays to finish or say why.
+  it("stays signed in for a single sign-on's return, after ?oidc=1 leaves too", async () => {
+    signedIn();
+    mockParams = { oidc: '1' };
+    const r = await render(<ConnectRoute />);
+    expect(screen.getByText('first step')).toBeTruthy();
+    mockParams = {};
+    await r.rerender(<ConnectRoute />);
+    await act(async () => mockRefocus?.());
+    expect(screen.getByText('first step')).toBeTruthy();
+    expect(mockLeave).not.toHaveBeenCalled();
+  });
+
   it('back on top mid-way through adding a server: stays', async () => {
     signedIn('https://b');
     await render(<ConnectRoute />);

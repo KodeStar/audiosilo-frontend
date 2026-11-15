@@ -489,6 +489,17 @@
         "enterPassword": "Gib dein Passwort ein."
       }
     },
+    "oidc": {
+      "signIn": "Mit {{name}} anmelden",
+      "signInUnnamed": "Mit Single Sign-on anmelden",
+      "errors": {
+        "noSignIn": "In diesem Browser gibt es keine Anmeldung abzuschließen. Melde dich erneut an.",
+        "expired": "Diese Anmeldung ist abgelaufen oder wurde schon verwendet. Melde dich erneut an.",
+        "reach": "Der Server war nicht erreichbar, um die Anmeldung abzuschließen. Melde dich erneut an.",
+        "notKept": "Du hast dich angemeldet, aber dieses Gerät konnte die Anmeldung nicht speichern. Melde dich erneut an.",
+        "failed": "Die Anmeldung wurde nicht abgeschlossen. Melde dich erneut an."
+      }
+    },
     "scan": {
       "closeLabel": "Scanner schließen",
       "invalidCode": "Dieser QR-Code ist kein Kopplungs- oder Einladungscode von AudioSilo.",

@@ -489,6 +489,17 @@
         "enterPassword": "Introduza a sua palavra-passe."
       }
     },
+    "oidc": {
+      "signIn": "Iniciar sessão com {{name}}",
+      "signInUnnamed": "Iniciar sessão com início de sessão único",
+      "errors": {
+        "noSignIn": "Não há nenhum início de sessão para concluir neste navegador. Inicia sessão novamente.",
+        "expired": "Esse início de sessão expirou ou já foi usado. Inicia sessão novamente.",
+        "reach": "Não foi possível contactar o servidor para concluir o início de sessão. Inicia sessão novamente.",
+        "notKept": "Iniciaste sessão, mas este dispositivo não conseguiu guardá-la. Inicia sessão novamente.",
+        "failed": "O início de sessão não foi concluído. Inicia sessão novamente."
+      }
+    },
     "scan": {
       "closeLabel": "Fechar o leitor",
       "invalidCode": "Esse código QR não é um código de emparelhamento nem de convite do AudioSilo.",

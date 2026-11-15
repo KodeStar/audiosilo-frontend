@@ -39,7 +39,7 @@ export function readyHref(connectionId: string) {
 
 /**
  * The end of every way into a server (a pairing link or QR, an invite code, a password,
- * the demo): store the connection, then show "Your library is ready." when it is the
+ * single sign-on, the demo): store the connection, then show "Your library is ready." when it is the
  * device's first (not for a kid's account, which goes straight to kids mode), else go
  * straight back to the app (`leaveOnboarding`).
  *

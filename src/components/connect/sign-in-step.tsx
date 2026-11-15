@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
 import { connectClientFor } from '@/api/connect-client';
+import type { ServerInfo } from '@/api/types';
 import { AddressesCard } from '@/components/layout/addresses-card';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -19,6 +20,7 @@ import { ConnectFrame, ConnectInput, StepDots } from './connect-frame';
 import { addressesBody, BackToStart } from './connect-parts';
 import { finishConnect } from './finish-connect';
 import { openScanner } from './invite-handoff';
+import { offersOidc, oidcName, ownServerPage } from './oidc-sign-in';
 import { type SignInStage, signInErrorText } from './sign-in-error';
 
 type Mode = 'code' | 'password';
@@ -55,6 +57,12 @@ export function emptyField(
  *
  * `initialCode`: an invite link's code (a scanned or pasted invite, #98), filled in and
  * signed in with once, as if typed; a refused one stays in the field with the reason.
+ *
+ * The player the server serves, signing in to its own server, asks it once whether single
+ * sign-on is on (capability `oidc`, server#235) and then offers "Sign in with <name>": a
+ * full page load of the server's start route, which comes back to `/connect?oidc=1`
+ * (`offersOidc`, `finishOidcSignIn`). Only the served player can finish one: the server
+ * hands the sign-in over in a cookie on its own origin.
  */
 export function SignInStep({
   server,
@@ -94,6 +102,24 @@ export function SignInStep({
     () => connectClientFor(server, undefined, reconnectId),
     [server, reconnectId],
   );
+
+  // Single sign-on: only the served player at its own server asks (`ownServerPage`).
+  const origin = servedOrigin();
+  const ownServer = ownServerPage(server, origin, Platform.OS);
+  const [ssoInfo, setSsoInfo] = useState<ServerInfo | null>(null);
+  useEffect(() => {
+    if (!ownServer) return;
+    const ask = new AbortController();
+    api
+      .serverInfo(ask.signal)
+      .then((info) => {
+        if (!ask.signal.aborted) setSsoInfo(info);
+      })
+      // A server that doesn't answer offers no single sign-on; the other ways stay.
+      .catch(() => {});
+    return () => ask.abort();
+  }, [api, ownServer]);
+  const sso = offersOidc(ssoInfo, server, origin, Platform.OS) ? oidcName(ssoInfo) : null;
 
   const modes = MODE_VALUES.map((value) => ({
     value,
@@ -241,6 +267,18 @@ export function SignInStep({
       ) : null}
 
       <Button size="lg" title={t('connect.signIn.submit')} loading={loading} onPress={onSubmit} />
+      {/* A full page load, never a fetch: the provider's sign-in page, then back to
+          `/connect?oidc=1` (the connect screen finishes it). */}
+      {sso !== null ? (
+        <Button
+          size="lg"
+          variant="outline"
+          title={sso ? t('connect.oidc.signIn', { name: sso }) : t('connect.oidc.signInUnnamed')}
+          disabled={loading}
+          onPress={() => window.location.assign(api.oidcStartUrl())}
+          testID="sign-in-oidc"
+        />
+      ) : null}
       {/* Most people have no password (an invite pairs a device): in the app, the QR their
           invite page or the console's Pair a device shows signs them in instead (fe#264). The
           scanner hands its code to a new connect step, which pairs at once; a reconnect's goes
