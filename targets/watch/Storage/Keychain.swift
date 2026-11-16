@@ -14,8 +14,12 @@ enum Keychain {
 
   static func token() -> String? { read().token }
 
-  /// False before the watch's first unlock: `token()` says nil then, a token kept or not.
-  static var readable: Bool { read().status != errSecInteractionNotAllowed }
+  /// Whether a token is kept; nil before the watch's first unlock, when `token()` says nil
+  /// whether one is kept or not.
+  static func hasToken() -> Bool? {
+    let r = read()
+    return r.status == errSecInteractionNotAllowed ? nil : r.token != nil
+  }
 
   private static func read() -> (status: OSStatus, token: String?) {
     var q = query

@@ -110,12 +110,11 @@ final class AppModel: ObservableObject {
     })
     self.spans = spans
     engine = WatchAudioEngine(spans: spans, places: places)
-    loaded = Keychain.readable
-    let account = Keychain.token() == nil ? nil : Account.load()
-    let server = ServerCache.load()
-    self.account = account
-    self.server = server
-    phase = Self.phase(account: account, server: server)
+    let kept = Self.readKept()
+    loaded = kept != nil
+    account = kept?.account
+    server = kept?.server
+    phase = Self.phase(account: kept?.account, server: kept?.server)
     relay.call = { [weak self] in self?.spanClosed() }
     engine.reachable = { [weak self] in !(self?.outbox.lastFlushFailed ?? true) }
     engine.onPickedUp = { [weak self] in
@@ -154,6 +153,12 @@ final class AppModel: ObservableObject {
     publishState()
   }
 
+  /// The account and server kept here; nil before the watch's first unlock, when none reads.
+  private static func readKept() -> (account: Account?, server: ServerInfo?)? {
+    guard let hasToken = Keychain.hasToken() else { return nil }
+    return (hasToken ? Account.load() : nil, ServerCache.load())
+  }
+
   /// What the screens start on for what is kept.
   private static func phase(account: Account?, server: ServerInfo?) -> Phase {
     if account == nil { return .setup(.waiting) }
@@ -168,16 +173,15 @@ final class AppModel: ObservableObject {
   @discardableResult
   private func catchUp() -> Bool {
     if loaded {
-      // An index that did not read at launch for another reason is tried again.
-      if !downloads.loaded { downloads.reload() }
+      // An index that did not read at launch for another reason is tried again (a no-op once read).
+      downloads.reload()
       return true
     }
-    guard Keychain.readable else { return false }
-    let a = Keychain.token() == nil ? nil : Account.load()
-    account = a
-    server = ServerCache.load()
+    guard let kept = Self.readKept() else { return false }
+    account = kept.account
+    server = kept.server
     // A setup screen a pair set meanwhile (expired) stands when nobody is signed in.
-    if a != nil { phase = Self.phase(account: a, server: server) }
+    if kept.account != nil { phase = Self.phase(account: kept.account, server: kept.server) }
     acks.reload()
     places.reload()
     library.reload()
