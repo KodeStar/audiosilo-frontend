@@ -3,6 +3,7 @@ import {
   percentHeard,
   percentOf,
   progressFractionRemaining,
+  savedProgressView,
 } from '@/lib/progress-view';
 
 describe('progressFractionRemaining', () => {
@@ -49,5 +50,31 @@ describe('percentOf', () => {
     expect(percentOf(0.004)).toBe(0);
     expect(percentOf(-1)).toBe(0);
     expect(percentOf(0.2, true)).toBe(100);
+  });
+});
+
+describe('savedProgressView', () => {
+  const row = {
+    position: 900,
+    duration: 3600,
+    finished: false,
+    updated_at: '2026-10-01T00:00:00Z',
+  };
+  it('reads a saved place as a fraction, by the row duration else the book', () => {
+    expect(savedProgressView(row, 7200)).toEqual({
+      fraction: 0.25,
+      started: true,
+      finished: false,
+      updatedAt: '2026-10-01T00:00:00Z',
+    });
+    expect(savedProgressView({ ...row, duration: 0 }, 1800).fraction).toBe(0.5);
+    expect(savedProgressView({ ...row, finished: true }, 0).fraction).toBe(1);
+  });
+  it('is not started with nothing saved', () => {
+    expect(savedProgressView(undefined, 3600)).toEqual({
+      fraction: 0,
+      started: false,
+      finished: false,
+    });
   });
 });
