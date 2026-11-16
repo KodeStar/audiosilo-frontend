@@ -75,6 +75,32 @@ final class OutboxTests: XCTestCase {
     Outbox(directory: dir, acks: acks, deviceId: deviceId, clock: { [unowned self] in clock.now })
   }
 
+  // Stay wins (row 9c-2): a queued `stay` goes as a `jump` once the server lacks
+  // `listening_stay`, as it is otherwise; the stored event keeps its start and id.
+  func testAQueuedStayIsSentAsAJumpWhenTheServerNoLongerTakesIt() async {
+    let o = outbox()
+    guard case .listen(var s) = listen("a") else { return XCTFail() }
+    s.start = .stay
+    o.append([.listen(s), listen("b")])
+    var takes = false
+    o.takesStay = { takes }
+    let t = FakeTransport { _ in throw NoAnswer() }
+    await o.flush(via: t)
+    takes = true
+    await o.flush(via: t)
+    let starts = t.bodies.map { b in b.events.compactMap { e -> ListeningStart? in
+      if case .listen(let l) = e { return l.start } else { return nil }
+    } }
+    XCTAssertEqual(starts, [[.jump, .resume], [.stay, .resume]])
+    XCTAssertEqual(t.bodies[0].events.map(\.id), ["a", "b"])
+    guard case .listen(let kept) = o.events[0] else { return XCTFail() }
+    XCTAssertEqual(kept.start, .stay)
+    takes = false
+    XCTAssertEqual(o.backgroundBody()?.events.first.flatMap { e -> ListeningStart? in
+      if case .listen(let l) = e { return l.start } else { return nil }
+    }, .jump)
+  }
+
   func testSendsAFreshSentAtPerAttemptAndTheDeviceId() async {
     let o = outbox()
     o.append([listen("a")])

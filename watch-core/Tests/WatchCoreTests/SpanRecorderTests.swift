@@ -240,7 +240,7 @@ final class SpanRecorderTests: XCTestCase {
 
   func testAfterStayTheNextSpanBeginsAsAJump() {
     let r = recorder()
-    r.standBy(book, at: nil, playing: false, speed: 1)
+    r.standBy(book, at: nil, playing: false, speed: 1, stay: false)
     r.open(book, at: at(5), speed: 1)
     clock.advance(4)
     r.close(at: at(9))
@@ -251,9 +251,60 @@ final class SpanRecorderTests: XCTestCase {
     let r = recorder()
     r.open(book, at: at(5), speed: 1)
     clock.advance(4)
-    r.standBy(book, at: at(9), playing: true, speed: 1)
+    r.standBy(book, at: at(9), playing: true, speed: 1, stay: false)
     XCTAssertEqual(listens.map(\.start), [.resume])
     XCTAssertEqual(r.span?.start, .jump)
+  }
+
+  // Stay wins (row 9c-2): on a `listening_stay` server the cut opens a `stay` span.
+  func testStayWhilePlayingCutsIntoAStayOnAServerThatTakesIt() {
+    let r = recorder()
+    r.open(book, at: at(5), speed: 1)
+    clock.advance(4)
+    r.standBy(book, at: at(9), playing: true, speed: 1, stay: true)
+    XCTAssertEqual(listens.map(\.start), [.resume])
+    XCTAssertEqual(r.span?.start, .stay)
+    XCTAssertEqual(r.span?.from, at(9))
+    clock.advance(15)
+    r.cut(book, at: at(24), playing: true, speed: 1)
+    XCTAssertEqual(listens.map(\.start), [.resume, .stay])
+    XCTAssertEqual(r.span?.start, .continue)
+  }
+
+  // Paused, the Stay goes at once as a span that moved nowhere, on the version answered.
+  func testAPausedStayIsSentAtOnceAsABareStaySpan() {
+    acks.ack(folder, version: 7)
+    let r = recorder()
+    r.standBy(book, at: at(30), playing: false, speed: 1, stay: true)
+    XCTAssertEqual(listens.count, 1)
+    XCTAssertEqual(listens[0].start, .stay)
+    XCTAssertEqual(listens[0].fromPos, 30)
+    XCTAssertEqual(listens[0].toPos, 30)
+    XCTAssertEqual(listens[0].startedAt, listens[0].endedAt)
+    XCTAssertEqual(listens[0].baseVersion, 7)
+    XCTAssertNil(r.span)
+    // A bare move: the next play carries it.
+    XCTAssertEqual(r.nextStart, .stay)
+    clock.advance(60)
+    r.open(book, at: at(30), speed: 1)
+    XCTAssertEqual(r.span?.start, .stay)
+  }
+
+  func testAPausedStayOnAServerWithoutItIsAJumpSentAtOnce() {
+    let r = recorder()
+    r.standBy(book, at: at(30), playing: false, speed: 1, stay: false)
+    XCTAssertEqual(listens.map(\.start), [.jump])
+    XCTAssertEqual(r.nextStart, .jump)
+  }
+
+  func testAStaySpanNothingWasHeardAfterIsABareMove() {
+    let r = recorder()
+    r.open(book, at: at(5), speed: 1)
+    clock.advance(4)
+    r.standBy(book, at: at(9), playing: true, speed: 1, stay: true)
+    r.close(at: at(9))
+    XCTAssertEqual(listens.map(\.start), [.resume, .stay])
+    XCTAssertEqual(r.nextStart, .stay)
   }
 
   func testARateChangeCutsTheSpanAndTheNextRunsAtTheNewSpeed() {
@@ -327,7 +378,7 @@ final class SpanRecorderTests: XCTestCase {
     let r = recorder()
     r.prepareStart(.movedBack)
     r.open(book, at: at(10), speed: 1)
-    r.standBy(book, at: at(10), playing: true, speed: 1)
+    r.standBy(book, at: at(10), playing: true, speed: 1, stay: false)
     XCTAssertEqual(r.span?.start, .jump)
   }
 

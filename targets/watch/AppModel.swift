@@ -130,6 +130,7 @@ final class AppModel: ObservableObject {
       self?.publishState()
     }
     outbox.onAnswer = { [weak self] rows in self?.checkOffer(rows) }
+    outbox.takesStay = { [weak self] in self?.takesStay ?? false }
     SyncUploader.shared.handler = { [weak self] answer in
       MainActor.assumeIsolated { self?.applyUpload(answer) }
     }
@@ -384,12 +385,16 @@ final class AppModel: ObservableObject {
     if engine.loadedBook == p.ref { engine.seek(to: p.offer.position, reason: .jump) }
   }
 
-  /// Stay: this place stands (acknowledged), and the next span is a deliberate move.
+  /// Stay: this place stands (acknowledged), and the next span is a Stay (`stay` on a
+  /// `listening_stay` server, else `jump`), sent at once when paused.
   func stay(_ p: OfferPrompt) {
     acks.answerOffer(p.ref, row: p.row, key: p.offer.key)
     offerPrompt = nil
-    if engine.loadedBook == p.ref { engine.stay() }
+    if engine.loadedBook == p.ref { engine.stay(stay: takesStay) }
   }
+
+  /// Whether the server takes a `stay` span (`listening_stay`; unknown: no).
+  private var takesStay: Bool { server?.capabilities?.listeningStay == true }
 
   /// The offer closed with neither (swiped away): not offered again, nothing acknowledged (the
   /// phone's toast timing out, `ignoreOffer`). After Jump or Stay its key is noted already.
