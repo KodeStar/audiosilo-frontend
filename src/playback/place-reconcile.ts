@@ -3,7 +3,7 @@ import { t } from 'i18next';
 import { networkChecked } from '@/api/address-route';
 import { resolveClient } from '@/api/connection-clients';
 import { isReachable, onReconnect } from '@/api/reachability';
-import type { Chapter, ListeningEvent, Progress } from '@/api/types';
+import type { Chapter, Progress } from '@/api/types';
 import { toast } from '@/components/ui/toast';
 import { contradictedTitle } from '@/lib/chapter-label';
 import { contentKeyOf } from '@/lib/content-key';
@@ -239,11 +239,7 @@ export async function offerLoadedPlace(
 
 /** The sync answer's row for the loaded book, offered (never moved to); at once when the
  * answer held this device's Stay on it (`stayHeld`). */
-function offerFromAnswer(
-  connectionId: string,
-  rows: Progress[],
-  staysHeld: readonly ListeningEvent[],
-) {
+function offerFromAnswer(connectionId: string, rows: Progress[], staysHeld: ReadonlySet<string>) {
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   const bookKey = selectBookKey(player);
@@ -251,7 +247,7 @@ function offerFromAnswer(
   const row = rows.find((r) => r.library_id === np.libraryId && r.path === np.path);
   // This device's own row with no other place offers nothing (`offerOf`): no reads then.
   if (!row || (row.device_id === cachedDeviceId() && !row.other_place)) return;
-  const stayHeld = staysHeld.some((e) => e.library_id === np.libraryId && e.path === np.path);
+  const stayHeld = staysHeld.has(bookKey);
   void Promise.all([getDeviceId(), readMirror(np.connectionId, np.libraryId, np.path)])
     .then(([deviceId, mirror]) => offerLoadedPlace(bookKey, row, deviceId, mirror, { stayHeld }))
     .catch(() => undefined);

@@ -16,6 +16,7 @@ import type {
   Progress,
 } from '@/api/types';
 import { downloadBookLength } from '@/downloads/kept-offline';
+import { contentKey } from '@/lib/content-key';
 import { randomUUID } from '@/lib/random';
 import { getItem, getItemStrict, setItem, setItemStrict } from '@/lib/storage';
 import { hasWebLocks, tabLock } from '@/lib/tab-lock';
@@ -1244,11 +1245,11 @@ async function sendOneByOne(
 }
 
 /** Told of every sync answer's progress rows (the place reconcile's offer check), and of
- * this device's Stays the answer held (`staysHeld`). */
+ * the books (`contentKey`s) whose Stay from this device the answer held (`staysHeld`). */
 type AnswerListener = (
   connectionId: string,
   rows: Progress[],
-  staysHeld: readonly ListeningEvent[],
+  staysHeld: ReadonlySet<string>,
 ) => void;
 const answerListeners = new Set<AnswerListener>();
 
@@ -1348,7 +1349,9 @@ async function applyAnswer(
   if (events.some((e) => e.kind === 'listen')) {
     void queryClient.invalidateQueries({ queryKey: qk.historyAll(connectionId) });
   }
-  const held = staysHeld(events, results);
+  const held = new Set(
+    staysHeld(events, results).map((e) => contentKey(connectionId, e.library_id, e.path)),
+  );
   for (const listener of answerListeners) listener(connectionId, rows, held);
 }
 

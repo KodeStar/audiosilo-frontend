@@ -602,11 +602,11 @@ describe('offerOf', () => {
 });
 
 describe('on a server with listening_sync', () => {
-  beforeEach(() => {
+  const serverCaps = (capabilities: Record<string, boolean>) =>
     (queryClient.getQueryData as jest.Mock).mockImplementation((key: readonly unknown[]) =>
-      key[0] === 'server' ? { capabilities: { listening_sync: true } } : undefined,
+      key[0] === 'server' ? { capabilities: { listening_sync: true, ...capabilities } } : undefined,
     );
-  });
+  beforeEach(() => serverCaps({}));
   afterEach(() =>
     (queryClient.getQueryData as jest.Mock).mockImplementation((k: readonly unknown[]) =>
       k?.[0] === 'server' ? { capabilities: {} } : undefined,
@@ -736,12 +736,7 @@ describe('on a server with listening_sync', () => {
   // other device's own Stay holds the row), so the place kept is offered at once, not
   // OFFER_REPEAT_MS after that device's first offer; a span held otherwise waits for it.
   describe('a Stay the server held', () => {
-    const stayServer = (stay: boolean) =>
-      (queryClient.getQueryData as jest.Mock).mockImplementation((key: readonly unknown[]) =>
-        key[0] === 'server'
-          ? { capabilities: { listening_sync: true, listening_stay: stay } }
-          : undefined,
-      );
+    const stayServer = (stay: boolean) => serverCaps({ listening_stay: stay });
     // Every batch held: the paused play's span may go in one of its own first.
     const applied = mockClient.syncListening.getMockImplementation();
     afterEach(() => mockClient.syncListening.mockImplementation(applied));
