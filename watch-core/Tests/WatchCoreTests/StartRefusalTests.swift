@@ -45,19 +45,10 @@ final class StartRefusalTests: XCTestCase {
     XCTAssertNil(r.message(at: at(5)))
   }
 
-  func testHeadphonesGonePauseAPlayAlsoWhileItsQueueSettles() {
-    // `landed` would otherwise start a settling queue on whatever route is left.
-    XCTAssertTrue(RouteChange.deviceGone.pauses(playing: true))
-    XCTAssertFalse(RouteChange.deviceGone.pauses(playing: false))
-    XCTAssertFalse(RouteChange.other.pauses(playing: true), "a new device or a category change keeps playing")
-  }
-
-  func testHeadphonesGoneWithinTheSlackExplainARefusedStart() {
-    var r = StartRefusal()
-    r.refused(at: at(0))
-    XCTAssertTrue(RouteChange.deviceGone.explainsRefusal)
-    XCTAssertFalse(RouteChange.other.explainsRefusal)
-    r.explained(at: at(0.4))
-    XCTAssertNil(r.message(at: at(StartRefusal.INTERRUPTION_SLACK)))
+  func testTheSlackWindowCountsFromThePause() {
+    // The engine's `justPaused`: a `began` this soon after the system's pause was that pause.
+    XCTAssertTrue(StartRefusal.withinSlack(of: at(0), at: at(StartRefusal.INTERRUPTION_SLACK - 0.1)))
+    XCTAssertFalse(StartRefusal.withinSlack(of: at(0), at: at(StartRefusal.INTERRUPTION_SLACK)))
+    XCTAssertFalse(StartRefusal.withinSlack(of: nil, at: at(0)), "no pause, nothing within it")
   }
 }

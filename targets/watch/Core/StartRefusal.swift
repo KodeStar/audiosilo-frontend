@@ -16,11 +16,15 @@ struct StartRefusal {
   /// The player stopped before its audio moved: the message waits for the slack.
   mutating func refused(at now: Date) { refusedAt = now }
 
+  /// Whether `now` is still within the slack of a pause at `pausedAt`.
+  static func withinSlack(of pausedAt: Date?, at now: Date) -> Bool {
+    pausedAt.map { now.timeIntervalSince($0) < INTERRUPTION_SLACK } ?? false
+  }
+
   /// An interruption began, or the route's old device went: a refusal within the slack was the
   /// system's pause, so it says nothing.
   mutating func explained(at now: Date) {
-    guard let at = refusedAt, now.timeIntervalSince(at) < Self.INTERRUPTION_SLACK else { return }
-    refusedAt = nil
+    if Self.withinSlack(of: refusedAt, at: now) { refusedAt = nil }
   }
 
   /// A new play, a load, a stop or a failure with its own message: an earlier refusal says nothing more.
@@ -32,19 +36,4 @@ struct StartRefusal {
     refusedAt = nil
     return PlaybackFailure.audioStart.message
   }
-}
-
-/// A route change, read from `AVAudioSession.routeChangeNotification` (Core has no AVFoundation).
-enum RouteChange {
-  /// The old device went (headphones off or out of range: `oldDeviceUnavailable`).
-  case deviceGone
-  case other
-
-  /// Whether it pauses the play. Headphones gone pause it, as on the phone, also while its queue
-  /// still settles: that player is held paused on purpose, so the system pauses nothing, and once
-  /// the queue lands it would start on whatever route is left. Paused already, nothing changes.
-  func pauses(playing: Bool) -> Bool { self == .deviceGone && playing }
-
-  /// Whether it explains a refused start (`StartRefusal.explained`).
-  var explainsRefusal: Bool { self == .deviceGone }
 }
