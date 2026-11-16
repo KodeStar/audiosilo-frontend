@@ -10,6 +10,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
 import org.junit.Before
 import org.junit.Test
 
@@ -147,6 +148,30 @@ class JsonFileTest {
     val aside = dir.listFiles()!!.single { it.name.startsWith("downloads-unread-") }
     assertEquals("not this build's format", aside.readText())
     assertEquals(listOf("A/Book"), DownloadIndex(main).records.value.map { it.ref.path })
+  }
+
+  // One that can't be moved aside either stays in the way: nothing is written over it, the books
+  // are in memory alone (`saved` false), and it is moved once it can be.
+  @Test
+  fun aDownloadIndexThatCantBeMovedAsideIsNeverWrittenOver() {
+    val main = File(dir, "downloads.json").apply { writeText("not this build's format") }
+    dir.setWritable(false)
+    try {
+      // Where permissions hold (not as root).
+      assumeFalse(dir.canWrite())
+      val index = DownloadIndex(main) { "folder-1" }
+      index.enqueue(BookRef(1, "A/Book"), "Book", null, iso("2026-11-16T10:00:00Z"))
+      assertFalse(index.saved)
+      assertEquals("not this build's format", main.readText())
+      dir.setWritable(true)
+      index.update(BookRef(1, "A/Book")) { it.copy(title = "Book again") }
+      assertTrue(index.saved)
+      val aside = dir.listFiles()!!.single { it.name.startsWith("downloads-unread-") }
+      assertEquals("not this build's format", aside.readText())
+      assertEquals(listOf("Book again"), DownloadIndex(main).records.value.map { it.title })
+    } finally {
+      dir.setWritable(true)
+    }
   }
 }
 

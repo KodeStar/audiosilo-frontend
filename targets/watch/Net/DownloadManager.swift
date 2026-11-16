@@ -131,7 +131,8 @@ final class DownloadManager: ObservableObject {
   /// Read the index, until it has been: at launch, and again once the watch is unlocked
   /// (`AppModel.catchUp`). One that can't be read yet (locked before the first unlock) is left as
   /// it is; one that does not decode is moved aside (`downloads-unread-*.json`, never written over,
-  /// as the outbox does) and the watch starts with no books.
+  /// as the outbox does) and the watch starts with no books. One that can't be moved either is
+  /// still not read: nothing is written over it, and the next `reload` tries again.
   func reload() {
     guard !loaded else { return }
     // Nothing is queued before it reads (no account is read either), but a record that was is kept.
@@ -142,7 +143,8 @@ final class DownloadManager: ObservableObject {
       let have = Set(kept.map(\.id))
       since = records.filter { !have.contains($0.id) }
       records = kept + since
-    case .corrupt: index.moveAside(prefix: Self.ASIDE_PREFIX)
+    case .corrupt:
+      guard index.moveAside(prefix: Self.ASIDE_PREFIX) else { return }
     case .missing: break
     }
     loaded = true

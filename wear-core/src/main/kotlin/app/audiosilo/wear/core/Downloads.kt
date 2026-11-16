@@ -176,6 +176,12 @@ object ContinueRows {
 class DownloadIndex(file: File?, private val newFolder: () -> String = { java.util.UUID.randomUUID().toString() }) {
   private val file = file?.let { JsonFile(it, ListSerializer(DownloadRecord.serializer())) }
   private val lock = Any()
+
+  /**
+   * The index is there, but could be neither read nor moved aside (`restored`; set before `flow`
+   * reads it): nothing is written over it, and each commit tries the move again.
+   */
+  private var inTheWay = false
   private val flow = MutableStateFlow(this.file?.let(::restored) ?: emptyList())
 
   val records: StateFlow<List<DownloadRecord>> = flow.asStateFlow()
@@ -254,7 +260,7 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
   /**
    * The index kept. One that exists but can't be read or decoded is moved aside
    * (`downloads-unread-*.json`, as the outbox does), never written over, and the watch starts with
-   * no books (fe#219).
+   * no books (fe#219). One that can't be moved either stays in the way (`inTheWay`).
    */
   private fun restored(file: JsonFile<List<DownloadRecord>>): List<DownloadRecord> =
     when (val kept = file.load()) {
@@ -262,15 +268,17 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
       JsonLoad.Missing -> emptyList()
       JsonLoad.Unreadable,
       JsonLoad.Corrupt -> {
-        file.moveAside(ASIDE_PREFIX)
+        inTheWay = !file.setAside(ASIDE_PREFIX)
         emptyList()
       }
     }
 
   private fun commit(next: List<DownloadRecord>) {
+    // Never over an index still in the way: aside now if it moves, else these stay in memory alone.
+    if (inTheWay) inTheWay = file?.setAside(ASIDE_PREFIX) == false
     // Saved before the flow moves: the `stages` collector (AppModel's publish) reads `saved`, and it
     // can run inside the assignment below (on the main thread) or while a worker's write is still on.
-    saved = file?.write(next.ifEmpty { null }) ?: true
+    saved = if (inTheWay) false else file?.write(next.ifEmpty { null }) ?: true
     flow.value = next
   }
 

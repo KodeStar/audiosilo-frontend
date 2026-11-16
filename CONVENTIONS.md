@@ -2675,10 +2675,15 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   download event reads the index itself first (`DownloadManager.handle`); before the first unlock
   it is dropped. A download index that does not decode is moved aside
   (`downloads-unread-*.json`, never written over) and the watch starts with no books; until the
-  index has been read the phone is told nothing and nothing is written over it. Wear OS is not
-  direct-boot aware (no process before the first unlock), reads `watch-state` as a Data Layer item
-  (no identical-context drop) and has no activation; it shares only the undecodable index
-  (`DownloadIndex` sets an unreadable or corrupt one aside, `JsonFile.load`, the same vectors).
+  index has been read the phone is told nothing and nothing is written over it. A move aside can
+  fail: the file is then still in the way and never written over. The index stays unread and
+  `reload` tries again at each `catchUp`; the outbox keeps what waits in memory (`stuck`) and tries
+  at each save, joining the file if it reads by then (a discard drops it with the rest). Wear OS is
+  not direct-boot aware (no process before the first unlock), reads `watch-state` as a Data Layer
+  item (no identical-context drop) and has no activation; it shares only the undecodable index
+  (`DownloadIndex` sets an unreadable or corrupt one aside, `JsonFile.load`, the same vectors) and
+  the failed move (`DownloadIndex` and `Outbox` write nothing until `JsonFile.setAside` has it out
+  of the way).
 - **Downloads are the watch rendition**, prepared and polled in the foreground
   (`Core/RenditionPlan.swift`), each ready file fetched by the background `URLSession`
   (`Net/BackgroundDownloads.swift`, the one session, reattached at launch) after a free-space
