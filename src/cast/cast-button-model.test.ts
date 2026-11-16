@@ -3,6 +3,7 @@ import { castButtonModel, sdkButtonDraws } from './cast-button-model';
 const base = {
   loaded: true,
   supported: true,
+  online: true,
   canCast: true,
   canTranscode: true,
   baseUrl: 'http://192.168.1.5:8080',
@@ -60,6 +61,13 @@ describe('castButtonModel', () => {
   });
 
   // Bridge Phase 2d-1: a cast token never covers a podcast episode.
+  it('hides it while the device is offline, unless a session runs (fe#275)', () => {
+    expect(castButtonModel({ ...base, online: false }).show).toBe(false);
+    expect(
+      castButtonModel({ ...base, online: false, status: 'connected', deviceName: 'Den' }).show,
+    ).toBe(true);
+  });
+
   it('hides it for a podcast episode, unless a session runs', () => {
     expect(castButtonModel({ ...base, episode: true }).show).toBe(false);
     expect(castButtonModel({ ...base, episode: true, status: 'connected' }).show).toBe(true);
