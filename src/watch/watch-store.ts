@@ -72,10 +72,11 @@ export function pairEpoch(connectionId: string): number {
 
 /** A pair went out. The native link has cancelled any older one still undelivered, this
  * connection's or another's, so only this one counts. `epoch`: `pairEpoch` when it was minted; a
- * pair forgotten since (its token ended meanwhile) is not on its way. */
+ * pair forgotten since (its token ended meanwhile) is not on its way, and has still cancelled the
+ * older one: then none is. */
 export function notePairSent(connectionId: string, until: number, epoch: number): void {
-  if (epoch !== pairEpoch(connectionId)) return;
-  useWatchStore.setState({ pairUntil: { [connectionId]: until } });
+  const live = epoch === pairEpoch(connectionId);
+  useWatchStore.setState({ pairUntil: live ? { [connectionId]: until } : {} });
 }
 
 /** The connection's pair on its way can no longer sign the watch in: its token was ended (a

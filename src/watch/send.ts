@@ -50,10 +50,19 @@ const refused = (cause: unknown): never => {
   throw new WatchSendError('The watch link refused the message', { cause });
 };
 
-async function mintAndSendPair(api: Pick<ApiClient, 'pair'>, connection: Connection) {
+/** A pair being minted and sent. `epoch`: `pairEpoch` as its mint began, unset while it still waits
+ * for another account's pair ahead of it. */
+type Pairing = { sending: Promise<void>; epoch?: number };
+
+async function mintAndSendPair(
+  api: Pick<ApiClient, 'pair'>,
+  connection: Connection,
+  pairing: Pairing,
+) {
   // A pair forgotten while this one is minted or sent (a password change ends its token) is not
-  // noted as on its way when it lands (fe#322).
+  // noted as on its way when it lands, and a set up asked meanwhile mints another (fe#322).
   const epoch = pairEpoch(connection.id);
+  pairing.epoch = epoch;
   const asked = Date.now();
   const payload = await api.pair({ ttlSeconds: WATCH_PAIR_TTL_SECONDS });
   const expiresAt = asked + WATCH_PAIR_TTL_SECONDS * 1000;
@@ -69,7 +78,7 @@ async function mintAndSendPair(api: Pick<ApiClient, 'pair'>, connection: Connect
 }
 
 /** The pair being minted and sent, by connection id (up to 10 s with a watch slow to reply). */
-const inFlight = new Map<string, Promise<void>>();
+const inFlight = new Map<string, Pairing>();
 
 /**
  * Sign the watch in to `connection`: a new single-use pairing token each time, so a send again
@@ -78,18 +87,24 @@ const inFlight = new Map<string, Promise<void>>();
  * can run under a second later: only a hint, since the watch's exchange is what decides. A second
  * call while one is on its way joins it: two tokens would sign the watch in twice, leaving a
  * session behind. Another account's pair still being minted or sent (a book's own) goes first, so
- * the one asked last is the one the watch keeps, whichever is quicker to mint (fe#322).
+ * the one asked last is the one the watch keeps, whichever is quicker to mint (fe#322). One minted
+ * before its pair was forgotten (`forgetPair`: its token was ended) is not joined: a new one goes
+ * after it.
  */
 export function setUpWatch(api: Pick<ApiClient, 'pair'>, connection: Connection): Promise<void> {
   const running = inFlight.get(connection.id);
-  if (running) return running;
-  const ahead = [...inFlight.values()];
-  const mint = () => mintAndSendPair(api, connection);
-  const sending = (ahead.length ? Promise.allSettled(ahead).then(mint) : mint()).finally(() =>
-    inFlight.delete(connection.id),
-  );
-  inFlight.set(connection.id, sending);
-  return sending;
+  if (running && (running.epoch === undefined || running.epoch === pairEpoch(connection.id))) {
+    return running.sending;
+  }
+  const ahead = [...inFlight.values()].map((p) => p.sending);
+  const pairing: Pairing = { sending: Promise.resolve() };
+  const mint = () => mintAndSendPair(api, connection, pairing);
+  pairing.sending = (ahead.length ? Promise.allSettled(ahead).then(mint) : mint()).finally(() => {
+    // Only its own entry: a forgotten one may have been followed by the next already.
+    if (inFlight.get(connection.id) === pairing) inFlight.delete(connection.id);
+  });
+  inFlight.set(connection.id, pairing);
+  return pairing.sending;
 }
 
 /** The refusal naming the connection whose pair is on its way, as the watch card names it. */

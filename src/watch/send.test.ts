@@ -268,6 +268,36 @@ describe('sendBookToWatch', () => {
       await sendBookToWatch(api, connection, 3, book);
       expect(mockSendBook).toHaveBeenCalledTimes(1);
     });
+
+    it("drops another account's pair when a forgotten one goes out over it (fe#322)", async () => {
+      await setUpWatch(api, other);
+      let answer = (_p: PairingPayload) => {};
+      api.pair.mockReturnValueOnce(new Promise<PairingPayload>((r) => (answer = r)));
+      const pairing = setUpWatch(api, connection);
+      forgetPair('srv.7');
+      answer(payload);
+      await pairing;
+      // The link cancelled the other account's undelivered pair for this one, whose token is gone.
+      expect(useWatchStore.getState().pairUntil).toEqual({});
+    });
+  });
+
+  it('mints again when set up while a forgotten pair is still on its way (fe#322)', async () => {
+    let answer = (_p: PairingPayload) => {};
+    api.pair.mockReturnValueOnce(new Promise<PairingPayload>((r) => (answer = r)));
+    const first = setUpWatch(api, connection);
+    forgetPair('srv.7');
+    // Joined, it would only bring the pair whose token the password change ended.
+    const again = setUpWatch(api, connection);
+    expect(again).not.toBe(first);
+    answer(payload);
+    await Promise.all([first, again]);
+    expect(api.pair).toHaveBeenCalledTimes(2);
+    expect(mockSendPair).toHaveBeenCalledTimes(2);
+    expect(useWatchStore.getState().pairUntil['srv.7']).toBe(NOW + 600_000);
+    // A third ask while none is on its way mints afresh, not joining a settled one.
+    await setUpWatch(api, connection);
+    expect(api.pair).toHaveBeenCalledTimes(3);
   });
 
   it('forgets a pair still being minted when a password change ends it (fe#322)', async () => {
