@@ -47,7 +47,7 @@ export function failureText(
   scope: StorageEstimate['scope'],
 ): string {
   const f: DownloadFailure = entry.failure ?? { kind: 'unknown' };
-  const cause = {
+  const causes: Record<DownloadFailure['kind'], () => string> = {
     network: () => t('downloads.failure.network', { server }),
     server: () => t('downloads.failure.server', { server, status: f.status }),
     storage: () =>
@@ -66,7 +66,11 @@ export function failureText(
     signedOut: () => t('downloads.failure.signedOut', { server }),
     noAccess: () => t('downloads.failure.noAccess', { server }),
     unknown: () => t('downloads.failure.unknown'),
-  }[f.kind]();
+  };
+  // A kind this build has no words for (one a newer build saved on this device, read after a
+  // downgrade or a web player rolled back with its server) reads as "stopped", never a crash
+  // of the page listing it.
+  const cause = (Object.hasOwn(causes, f.kind) ? causes[f.kind] : causes.unknown)();
   // An unservable download is fully saved: the cause already says what to do. Nothing of
   // an episode its server could not fetch, or that refused the listener, was downloaded.
   if (NOTHING_KEPT.has(f.kind)) return cause;
