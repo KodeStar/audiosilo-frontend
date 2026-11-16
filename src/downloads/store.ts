@@ -732,7 +732,9 @@ function stepAside(key: string) {
  * - a downloaded book stays downloaded while every file is there;
  * - a downloaded book with some of its files gone (the system or the listener deleted
  *   them) stays as a failure keeping the files still there (`missing`), so Retry fetches
- *   only the rest instead of the whole book being dropped (fe#158);
+ *   only the rest instead of the whole book being dropped (fe#158). A keep-ahead one is
+ *   dropped with its folder instead, as before: keep-ahead never retries a failure, and
+ *   plans a dropped book again;
  * - an episode waiting for its server stays waiting (`resumeEpisodeWaits` asks again), unless
  *   files a failed attempt finished are gone;
  * - a failed download, or one the app closed mid-way (still `queued` / `downloading`:
@@ -763,7 +765,7 @@ export function reviveEntry(
   const e = saved.serverFetch ? withoutServerFetch(saved) : saved;
   if (e.status === 'downloaded') {
     if (allPresent) return e;
-    if (files.length === 0) return null;
+    if (files.length === 0 || e.origin === 'keep-ahead') return null;
   }
   if (files.length === 0) {
     if (e.origin === 'keep-ahead') return null;

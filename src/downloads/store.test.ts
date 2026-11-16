@@ -1829,6 +1829,14 @@ describe('reviveEntry', () => {
     });
   });
 
+  it('drops a keep-ahead download with a file gone (keep-ahead plans it again)', () => {
+    expect(revive(downloadedEntry({ origin: 'keep-ahead' }), [false, true])).toBeNull();
+    // The book the listener started keeps its files, to retry.
+    expect(revive(downloadedEntry({ origin: 'auto' }), [false, true])?.failure?.kind).toBe(
+      'missing',
+    );
+  });
+
   it("keeps a failure's files still there, with its cause", () => {
     expect(revive(failed(), [true, false])).toMatchObject({
       status: 'error',
