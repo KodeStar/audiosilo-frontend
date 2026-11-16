@@ -2728,6 +2728,22 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     }
     const np = get().nowPlaying;
     if (!np) return;
+    // A download of this book that landed while it failed, one the hot-swap could not take
+    // (a dead stream refuses a gapless swap): the book starts again from the device, as a
+    // fresh start picks its source, at the place the listener chose, else resumed (fe#278).
+    const request = lastPlayRequest;
+    if (
+      request &&
+      contentKey(request.connectionId, request.libraryId, request.book.rel_path) ===
+        contentKeyOf(np) &&
+      streamsDownloadedFile(np)
+    ) {
+      const at = placeChosen ? Math.max(resumeFloor, selectBookPosition(get())) : undefined;
+      await get()
+        .playBook(np.connectionId, np.libraryId, request.book, request.chapterData, at)
+        .catch((err: unknown) => console.warn('[player] could not start playback', err));
+      return;
+    }
     // Rebuild the engine's items from the known-good book position so a failed/
     // unreachable stream is re-requested (a dead AVPlayerItem can't recover via
     // play() alone), then resume. Never reload below the resume floor, so a transient
@@ -3672,6 +3688,15 @@ usePlayer.subscribe((state, prev) => {
   if (state.snapshot.state === 'playing') pickedUpAgainListener?.();
   else pausedAt = 0;
 });
+
+/** Whether `np`'s queue streams a file its download holds (a download that landed and was
+ * not swapped in). */
+function streamsDownloadedFile(np: NowPlaying): boolean {
+  const files = downloadedEntryOf(np)?.manifest.files;
+  if (!files?.length) return false;
+  const held = new Set(files.map((f) => trackIdOf(np.libraryId, f.relPath)));
+  return np.queue.tracks.some((t) => !t.local && held.has(t.id));
+}
 
 function moveOntoDownload() {
   switchCurrentBookToLocal().catch((err) =>

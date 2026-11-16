@@ -2243,6 +2243,27 @@ describe('the download hot-swap across file orders', () => {
       expect(queueUrls()).toEqual(newOrder.map(urlOf));
     });
 
+    it('Retry after a failed start plays the download that landed meanwhile (fe#278)', async () => {
+      web.swapTo = jest.fn(async () => 'refused');
+      await streamIn(newOrder, { at: 20 });
+      pushSnapshot(snap('error', 20, { trackIndex: 0, duration: 70 }));
+      await flushMicrotasks();
+      downloadLands(newOrder);
+      await flushMicrotasks();
+      // The swap did not take it: the queue still streams.
+      expect(queueUrls()?.[0]).toBe('stream:2:A/Folder/2.mp3');
+      useReachability.setState({ online: { c1: false } });
+      (mockSvc.load as jest.Mock).mockClear();
+      try {
+        await usePlayer.getState().retry();
+      } finally {
+        useReachability.setState({ online: {} });
+      }
+      // Started again from the device, at the place it was at.
+      expect(queueUrls()).toEqual(newOrder.map(urlOf));
+      expect(swapLoad()).toEqual({ url: urlOf('A/Folder/2.mp3'), index: 0, position: 20 });
+    });
+
     it('keeps the stream, and holds nothing, when the swap is refused', async () => {
       web.swapTo = jest.fn(async () => 'refused');
       await streamIn(newOrder, { at: 60 });
