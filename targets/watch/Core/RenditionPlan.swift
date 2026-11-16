@@ -103,6 +103,27 @@ enum RenditionPlan {
     }
   }
 
+  /// What went wrong in a book's run (DownloadManager `run`; a cancellation is the caller's).
+  enum Trouble: Equatable {
+    /// The server's own answer, not a success.
+    case refused(Refusal)
+    /// A success whose body the watch can't decode (another build's format, a proxy's page). The
+    /// server answered, so this is no wait on the connection: asked again, it says the same
+    /// (fe#320). The book fails with `UNREADABLE`, and Try again asks afresh.
+    case unreadable
+    /// No answer at all: the book waits on the connection.
+    case noAnswer
+  }
+
+  /// A book's row when the server's answer could not be read.
+  static let UNREADABLE = "Your server sent something this watch can't read."
+
+  static func trouble(_ error: Error) -> Trouble {
+    if let e = error as? APIError { return .refused(refusal(e)) }
+    if error is DecodingError { return .unreadable }
+    return .noAnswer
+  }
+
   static func refusal(_ e: APIError) -> Refusal {
     let retry = max(MIN_POLL, e.retryAfter ?? DEFAULT_POLL)
     switch (e.status, e.code) {

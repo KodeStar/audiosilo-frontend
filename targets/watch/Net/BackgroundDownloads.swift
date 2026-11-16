@@ -8,7 +8,9 @@
 //
 // While suspended, a task begun at the home address goes on there with its token, on whatever
 // network the system finds: cancelled and started again when the app next sees the pick has left
-// home (`RenditionPlan.keepsTransfer`, DownloadManager), not before.
+// home (`RenditionPlan.keepsTransfer`, DownloadManager), not before. Accepted (fe#216, owner
+// decision): cancelling such tasks on going to the background would lose the downloads of a server
+// only reachable at home.
 //
 // One delegate for the app's one background session; the DownloadManager sets `handler`.
 import Foundation

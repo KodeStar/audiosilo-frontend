@@ -91,6 +91,9 @@ final class DownloadManager: ObservableObject {
   /// False until the index has been read (`reload`): before the watch's first unlock it can't be,
   /// and until it is nothing is written over it and the phone is told nothing of the books.
   private(set) var loaded = false
+  /// Every book was removed while the index was unread (`removeAll`: the account was left), so the
+  /// books it holds are that account's: dropped when it reads, never joined (fe#323).
+  private var clearOnRead = false
   /// The files this launch handed to the background session (`DownloadTaskTag.key`).
   private var handedOff: Set<String> = []
 
@@ -132,23 +135,34 @@ final class DownloadManager: ObservableObject {
   /// (`AppModel.catchUp`). One that can't be read yet (locked before the first unlock) is left as
   /// it is; one that does not decode is moved aside (`downloads-unread-*.json`, never written over,
   /// as the outbox does) and the watch starts with no books. One that can't be moved either is
-  /// still not read: nothing is written over it, and the next `reload` tries again.
+  /// still not read: nothing is written over it, and the next `reload` tries again. When every book
+  /// was removed meanwhile (an account left), the books it holds go, files and all
+  /// (`DownloadIndexJoin`).
   func reload() {
     guard !loaded else { return }
     // Nothing is queued before it reads (no account is read either), but a record that was is kept.
-    var since = records
+    var kept: [DownloadRecord] = []
+    var dropped: [DownloadRecord] = []
     switch index.load() {
     case .unreadable: return
-    case .value(let kept):
-      let have = Set(kept.map(\.id))
-      since = records.filter { !have.contains($0.id) }
-      records = kept + since
+    case .value(let read):
+      kept = read
+      (records, dropped) = DownloadIndexJoin.join(kept: read, since: records, forgotten: clearOnRead)
     case .corrupt:
       guard index.moveAside(prefix: Self.ASIDE_PREFIX) else { return }
     case .missing: break
     }
     loaded = true
-    indexSaved = since.isEmpty || index.write(records)
+    clearOnRead = false
+    for r in dropped {
+      // The same book queued again since keeps its tasks and item cache: only the left one's folder goes.
+      if records.contains(where: { $0.id == r.id }) {
+        try? FileManager.default.removeItem(at: folder(of: r))
+      } else {
+        discard(r)
+      }
+    }
+    indexSaved = records == kept || index.write(records)
     for r in records { refreshPercent(r.id) }
     onChange?()
   }
@@ -235,6 +249,13 @@ final class DownloadManager: ObservableObject {
   func remove(_ ref: BookRef) {
     guard let r = record(ref) else { return }
     willRemove?(ref)
+    discard(r)
+    records.removeAll { $0.id == r.id }
+    save()
+  }
+
+  /// Everything of a book on the watch but its record: its run, its tasks, its files, its item cache.
+  private func discard(_ r: DownloadRecord) {
     stopWork(r.id)
     retryAttempts[r.id] = nil
     broken[r.id] = nil
@@ -250,14 +271,14 @@ final class DownloadManager: ObservableObject {
     serverReady[r.id] = nil
     percents[r.id] = nil
     try? FileManager.default.removeItem(at: folder(of: r))
-    try? FileManager.default.removeItem(at: Files.item(ref))
-    records.removeAll { $0.id == r.id }
-    save()
+    try? FileManager.default.removeItem(at: Files.item(r.ref))
   }
 
-  /// Remove every book (the account was replaced).
+  /// Remove every book (the account was replaced). With the index unread, what it holds goes once
+  /// it reads (`reload`).
   func removeAll() {
     for r in records { remove(r.ref) }
+    if !loaded { clearOnRead = true }
     sweepStaging(olderThan: 0)
   }
 
@@ -380,9 +401,9 @@ final class DownloadManager: ObservableObject {
     } catch let e where e is CancellationError || Task.isCancelled {
       // Backgrounded (or removed): carried on at the next foreground. A cancelled request
       // throws URLError(.cancelled), not CancellationError.
-    } catch let e as APIError {
-      let refusal = RenditionPlan.refusal(e)
-      if case .retry(let after) = refusal {
+    } catch {
+      switch RenditionPlan.trouble(error) {
+      case .refused(.retry(let after)):
         update(key) { $0.message = DownloadWait.server.message }
         try? await Task.sleep(for: .seconds(after))
         if !Task.isCancelled {
@@ -391,12 +412,15 @@ final class DownloadManager: ObservableObject {
           runs[key] = nil
           process(key)
         }
-      } else if let message = RenditionPlan.message(refusal) {
-        fail(key, message)
+      case .refused(let refusal):
+        if let message = RenditionPlan.message(refusal) { fail(key, message) }
+      case .unreadable:
+        // The server answered: waiting on the connection would ask it again every minute for good.
+        fail(key, RenditionPlan.UNREADABLE)
+      case .noAnswer:
+        // The book waits on the connection, and the next try starts when this run ends.
+        waitOnConnection(key)
       }
-    } catch {
-      // No answer: the book waits on the connection, and the next try starts when this run ends.
-      waitOnConnection(key)
     }
   }
 
