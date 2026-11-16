@@ -9,13 +9,19 @@ final class MemorySpanStore: OpenSpanStore {
   var stored: OpenSpan?
   var saves: [OpenSpan?] = []
   var move: RecoveredMove?
+  /// What the store held after each write: what a kill right behind that write leaves.
+  var writes: [(span: OpenSpan?, move: RecoveredMove?)] = []
   func load() -> OpenSpan? { stored }
   func save(_ span: OpenSpan?) {
     stored = span
     saves.append(span)
+    writes.append((stored, move))
   }
   func loadMove() -> RecoveredMove? { move }
-  func saveMove(_ move: RecoveredMove?) { self.move = move }
+  func saveMove(_ move: RecoveredMove?) {
+    self.move = move
+    writes.append((stored, move))
+  }
 }
 
 final class Clock {
@@ -589,6 +595,28 @@ final class SpanRecorderTests: XCTestCase {
     s.prepareStart(.resume)
     s.open(book, at: at(10), speed: 1)
     XCTAssertEqual(s.span?.start, .resume)
+  }
+
+  // The span that takes a kept move is stored before the move leaves the store: a kill between
+  // the two writes leaves both, never neither, and the launch after gives the book the move again.
+  func testAKillAsASpanTakesAKeptMoveKeepsTheMove() {
+    store.move = RecoveredMove(ref: book.ref, start: .jump)
+    let r = recorder()
+    r.prepareStart(.resume)
+    r.open(book, at: at(10), speed: 1)
+    XCTAssertEqual(r.span?.start, .jump)
+    XCTAssertNil(store.move)
+    // A kill right behind the first of the two writes: a new launch on what the store held then.
+    let killed = MemorySpanStore()
+    (killed.stored, killed.move) = store.writes[0]
+    store = killed
+    emitted = []
+    let next = recorder()
+    next.prepareStart(.resume)
+    next.open(book, at: at(10), speed: 1)
+    XCTAssertEqual(next.span?.start, .jump)
+    XCTAssertEqual(listens.map(\.start), [.jump], "the span the kill left, recovered")
+    XCTAssertNil(store.move, "taken once")
   }
 
   func testASpanHeardAfterTheMoveReplacesAKeptMove() {

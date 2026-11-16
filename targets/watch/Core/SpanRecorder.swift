@@ -251,10 +251,7 @@ final class SpanRecorder {
     if span?.ref == book.ref { return }
     // Taken first: closing another book's span may leave that book's move in `nextStart`.
     var start = nextStart
-    if let m = recoveredMove {
-      keepMove(nil)
-      if m.ref == book.ref && start == .resume { start = m.start }
-    }
+    if let m = recoveredMove, m.ref == book.ref, start == .resume { start = m.start }
     close(at: nil)
     let now = clock()
     nextStart = .resume
@@ -270,6 +267,9 @@ final class SpanRecorder {
       start: start, baseVersion: base, id: newId())
     span = opened
     store.save(opened)
+    // Any book's span ends the recovered move, once that span is stored: a kill in between leaves
+    // both, and the next launch recovers the move again (`recover`).
+    keepMove(nil)
   }
 
   /// Close the open span at `at` (nil: where it was last seen) into the outbox. Returns it.
