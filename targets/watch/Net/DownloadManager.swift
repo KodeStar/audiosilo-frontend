@@ -110,6 +110,9 @@ final class DownloadManager: ObservableObject {
   private var serverReady: [String: Set<String>] = [:]
   /// How many tries in a row found no answer, by book key: the next one waits longer.
   private var retryAttempts: [String: Int] = [:]
+  /// The files whose transfer broke since the server last answered, by book key: until each is
+  /// handed over again (or lands), another file landing is no sign the connection is back.
+  private var broken: [String: Set<String>] = [:]
 
   init() {
     records = index.read() ?? []
@@ -186,6 +189,7 @@ final class DownloadManager: ObservableObject {
     willRemove?(ref)
     stopWork(r.id)
     retryAttempts[r.id] = nil
+    broken[r.id] = nil
     BackgroundDownloads.shared.cancel(book: r.id)
     // A cancelled task brings no event: forget its hand-off and resume data here, or the same
     // book downloaded again would skip those files (and resume with this sign-in's request).
@@ -424,15 +428,19 @@ final class DownloadManager: ObservableObject {
         try FileManager.default.moveItem(at: staged, to: dest)
         let size = Files.size(of: dest)
         fractions[tag.book]?[tag.path] = nil
+        // A file landing ends a wait on the connection only when no other file's transfer is
+        // still broken: its last bytes may have been on the wire when the server went away.
+        broken[tag.book]?.remove(tag.path)
+        let whole = broken[tag.book]?.isEmpty ?? true
         // Ready in the same change when it was the last: the phone is never told of a book still
         // downloading with every file here.
         update(tag.book) {
           $0.files[i].done = true
           $0.files[i].bytes = size
-          $0.endWait(.landed)
+          if whole { $0.endWait(.landed) }
           $0.readyIfDone()
         }
-        retryAttempts[tag.book] = nil
+        if whole { retryAttempts[tag.book] = nil }
       } catch {
         try? FileManager.default.removeItem(at: staged)
         fail(tag.book, "The watch could not keep a file of this book.")
@@ -462,6 +470,7 @@ final class DownloadManager: ObservableObject {
       if let data { resumeData[tag.key] = data } else { fractions[tag.book]?[tag.path] = nil }
       // A failed book keeps saying why.
       guard r.state != .failed else { return }
+      broken[tag.book, default: []].insert(tag.path)
       waitOnConnection(tag.book)
     case .progress(let tag, let fraction):
       // No sign the server answers (`DownloadWait.ends`): a wait stays.
@@ -478,6 +487,8 @@ final class DownloadManager: ObservableObject {
   /// next wait on the connection starts again from the shortest delay.
   private func serverAnswered(_ key: String) {
     retryAttempts[key] = nil
+    // This run hands over again the files whose transfer broke.
+    broken[key] = nil
     guard let r = records.first(where: { $0.id == key }), DownloadWait(message: r.message) != nil else { return }
     update(key) { $0.endWait(.answered) }
   }
