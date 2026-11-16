@@ -207,9 +207,9 @@ final class AppModel: ObservableObject {
   func becameActive() {
     inForeground = true
     PhoneLink.shared.retryState(activating: true)
-    if catchUp(), let p = waitingPair {
-      waitingPair = nil
-      serially { await self.signIn(p) }
+    if catchUp(), waitingPair != nil {
+      // Read in its turn: a newer pair queued ahead of it has taken its place (`signIn`).
+      serially { if let p = self.waitingPair { await self.signIn(p) } }
     }
     releaseHeld()
     guard let a = account else { return }
