@@ -154,20 +154,26 @@ const offeredAt = new Map<string, number>();
 /**
  * Offer the loaded book another device's place from `row` (the server's row for it), when
  * `offerOf` finds one. Never moves the book by itself: a toast with Jump (seek there) and
- * Stay (close: this device's place stands, its next span a deliberate move that the server
- * applies). Either answer acknowledges the row's version. Resolves once it is shown or not.
+ * Stay (close: this device's place stands, its next span a `stay` that the server applies
+ * over the other device's writes since the offer, a `jump` without `listening_stay`; sent at
+ * once when paused: `standByPlace`). Either answer acknowledges the row's version. Resolves
+ * once it is shown or not.
  *
  * `held`: the legacy PUT path's replay guard held a save of this book back for `row`
  * (fe#198; `onHeldSave`). There is no acknowledged version there (the row's own is new),
  * Stay saves this device's place at once (and lifts the session's guard), and a toast that
  * times out answers nothing: the place stays held, and is offered again next launch.
+ *
+ * `stayHeld`: this device's Stay came back held (`staysHeld`: another device's Stay holds
+ * the row), so the place it kept is offered now, not `OFFER_REPEAT_MS` after that device's
+ * last offer: the listener's Stay did not stand, and every span after it is held too.
  */
 export async function offerLoadedPlace(
   bookKey: string,
   row: Progress | null,
   deviceId: string,
   mirror: Pick<ProgressSave, 'ack_version' | 'answered'> | null,
-  { held = false }: { held?: boolean } = {},
+  { held = false, stayHeld = false }: { held?: boolean; stayHeld?: boolean } = {},
 ): Promise<boolean> {
   const player = usePlayer.getState();
   const np = player.nowPlaying;
@@ -186,7 +192,7 @@ export async function offerLoadedPlace(
   // The key is `device_id|updated_at`; an ISO time has no `|`.
   const fromDevice = `${bookKey}|${offer.key.slice(0, offer.key.lastIndexOf('|'))}`;
   const last = offeredAt.get(fromDevice);
-  if (last !== undefined && Date.now() - last < OFFER_REPEAT_MS) return false;
+  if (!stayHeld && last !== undefined && Date.now() - last < OFFER_REPEAT_MS) return false;
   shownOffers.add(`${bookKey}|${offer.key}`);
   offeredAt.set(fromDevice, Date.now());
   const answer = () => answerOffer(np.connectionId, np.libraryId, np.path, row, offer.key);
@@ -231,8 +237,9 @@ export async function offerLoadedPlace(
   return true;
 }
 
-/** The sync answer's row for the loaded book, offered (never moved to). */
-function offerFromAnswer(connectionId: string, rows: Progress[]) {
+/** The sync answer's row for the loaded book, offered (never moved to); at once when the
+ * answer held this device's Stay on it (`stayHeld`). */
+function offerFromAnswer(connectionId: string, rows: Progress[], staysHeld: ReadonlySet<string>) {
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   const bookKey = selectBookKey(player);
@@ -240,8 +247,9 @@ function offerFromAnswer(connectionId: string, rows: Progress[]) {
   const row = rows.find((r) => r.library_id === np.libraryId && r.path === np.path);
   // This device's own row with no other place offers nothing (`offerOf`): no reads then.
   if (!row || (row.device_id === cachedDeviceId() && !row.other_place)) return;
+  const stayHeld = staysHeld.has(bookKey);
   void Promise.all([getDeviceId(), readMirror(np.connectionId, np.libraryId, np.path)])
-    .then(([deviceId, mirror]) => offerLoadedPlace(bookKey, row, deviceId, mirror))
+    .then(([deviceId, mirror]) => offerLoadedPlace(bookKey, row, deviceId, mirror, { stayHeld }))
     .catch(() => undefined);
 }
 

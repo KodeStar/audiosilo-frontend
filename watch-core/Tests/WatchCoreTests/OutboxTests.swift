@@ -6,11 +6,12 @@ import XCTest
 
 let deviceId = "watch-device"
 
-func listen(_ id: String, endedAt: String = "2026-10-25T07:33:30.000Z", lib: Int = 3, path: String = "Author/Book")
+func listen(_ id: String, endedAt: String = "2026-10-25T07:33:30.000Z", lib: Int = 3, path: String = "Author/Book",
+            start: ListeningStart = .resume)
   -> ListeningEvent
 {
   .listen(SpanEvent(id: id, libraryId: lib, path: path, fromPos: 14400, toPos: 16800, duration: 61200,
-                    startedAt: "2026-10-25T07:00:12.000Z", endedAt: endedAt, start: .resume, baseVersion: 41))
+                    startedAt: "2026-10-25T07:00:12.000Z", endedAt: endedAt, start: start, baseVersion: 41))
 }
 
 /// A transport that answers with `respond` and records every body it was sent.
@@ -73,6 +74,29 @@ final class OutboxTests: XCTestCase {
 
   func outbox(_ dir: URL? = nil) -> Outbox {
     Outbox(directory: dir, acks: acks, deviceId: deviceId, clock: { [unowned self] in clock.now })
+  }
+
+  // Stay wins (row 9c-2): a queued `stay` goes as a `jump` once the server lacks
+  // `listening_stay`, as it is otherwise; the stored event keeps its start and id.
+  func testAQueuedStayIsSentAsAJumpWhenTheServerNoLongerTakesIt() async {
+    let o = outbox()
+    o.append([listen("a", start: .stay), listen("b")])
+    var takes = false
+    o.takesStay = { takes }
+    let t = FakeTransport { _ in throw NoAnswer() }
+    await o.flush(via: t)
+    takes = true
+    await o.flush(via: t)
+    func start(_ e: ListeningEvent) -> ListeningStart? {
+      if case .listen(let l) = e { return l.start } else { return nil }
+    }
+    let starts = t.bodies.map { $0.events.compactMap(start) }
+    XCTAssertEqual(starts, [[.jump, .resume], [.stay, .resume]])
+    XCTAssertEqual(t.bodies[0].events.map(\.id), ["a", "b"])
+    guard case .listen(let kept) = o.events[0] else { return XCTFail() }
+    XCTAssertEqual(kept.start, .stay)
+    takes = false
+    XCTAssertEqual(o.backgroundBody()?.events.first.flatMap(start), .jump)
   }
 
   func testSendsAFreshSentAtPerAttemptAndTheDeviceId() async {
@@ -204,10 +228,36 @@ final class OutboxTests: XCTestCase {
     let o = outbox()
     o.append([listen("a")])
     var rows: [ProgressRow] = []
-    o.onAnswer = { rows = $0 }
+    o.onAnswer = { r, _ in rows = r }
     await o.flush(via: FakeTransport { answer($0, progress: [row(version: 42)]) })
     XCTAssertEqual(acks.ackVersion(BookRef(libraryId: 3, path: "Author/Book")), 42)
     XCTAssertEqual(rows.map(\.version), [42])
+  }
+
+  // Another device's Stay held this watch's (`diverged`, `kept: stored`): the answer says so,
+  // so the kept place is offered at once (`OfferThrottle.shouldShow`'s `stayHeld`).
+  func testTheAnswerNamesTheBooksWhoseStayItHeld() async {
+    let o = outbox()
+    o.append([listen("a", start: .stay), listen("b", path: "Other", start: .stay), listen("c", path: "Third")])
+    o.takesStay = { true }
+    var held: Set<BookRef> = []
+    o.onAnswer = { _, h in held = h }
+    let stored = { (e: ListeningEvent) -> SyncResult? in
+      e.id == "b" ? nil : SyncResult(id: e.id, status: "diverged", kept: "stored")
+    }
+    await o.flush(via: FakeTransport { answer($0, status: stored) })
+    XCTAssertEqual(held, [BookRef(libraryId: 3, path: "Author/Book")])
+  }
+
+  // A `stay` sent as a `jump` (the server no longer takes it) was held by the usual rule.
+  func testAStaySentAsAJumpIsNotAHeldStay() async {
+    let o = outbox()
+    o.append([listen("a", start: .stay)])
+    o.takesStay = { false }
+    var held: Set<BookRef> = [BookRef(libraryId: 0, path: "")]
+    o.onAnswer = { _, h in held = h }
+    await o.flush(via: FakeTransport { answer($0, status: { SyncResult(id: $0.id, status: "diverged", kept: "stored") }) })
+    XCTAssertEqual(held, [])
   }
 
   func testAcknowledgesTheRowAnUnfinishHandsThisDevice() async {
@@ -379,7 +429,7 @@ final class OutboxTests: XCTestCase {
     await t.requestArrives()
     o.discardAll()
     var told = false
-    o.onAnswer = { _ in told = true }
+    o.onAnswer = { _, _ in told = true }
     t.reply(answer(t.bodies[0], progress: [row(version: 9)]))
     await flush.value
     XCTAssertNil(o.state.lastSyncAt)
@@ -507,6 +557,17 @@ final class AckAndOfferTests: XCTestCase {
     XCTAssertFalse(AckRules.keptMine(row(path: "Else", version: 1, device: "me"), deviceId: "me", sent: events, results: results("applied")))
   }
 
+  func testStaysHeldNamesOnlyAStayTheServerKeptTheStoredRowOver() {
+    let events = [listen("a", start: .stay), listen("b", path: "B"), listen("c", path: "C", start: .stay), listen("d", path: "D", start: .stay)]
+    let results: [String: SyncResult] = [
+      "a": SyncResult(id: "a", status: "diverged", kept: "stored"),
+      "b": SyncResult(id: "b", status: "diverged", kept: "stored"),
+      "c": SyncResult(id: "c", status: "diverged", kept: "event"),
+      "d": SyncResult(id: "d", status: "applied"),
+    ]
+    XCTAssertEqual(AckRules.staysHeld(sent: events, results: results), [ref])
+  }
+
   func testAckNeverLowersAndResumeAcksAVersionAboveZero() {
     let acks = AckStore(url: nil)
     XCTAssertNil(acks.ackVersion(ref))
@@ -596,5 +657,18 @@ final class AckAndOfferTests: XCTestCase {
     let later = PlaceOffer(position: 900, deviceName: "Tablet", key: "tablet|2026-10-08T12:00:15Z")
     XCTAssertTrue(throttle.shouldShow(later, for: ref, now: t0.addingTimeInterval(Offers.OFFER_REPEAT)))
     XCTAssertTrue(throttle.shouldShow(next, for: BookRef(libraryId: 9, path: "other"), now: t0), "per book")
+  }
+
+  // This watch's Stay came back held by the other device's: the place kept is offered at once,
+  // not ten minutes after that device's last offer, and still once per launch.
+  func testAStayHeldOffersTheKeptPlaceAtOnce() {
+    let throttle = OfferThrottle()
+    let t0 = Date()
+    let first = PlaceOffer(position: 800, deviceName: "Phone", key: "phone|2026-10-08T11:50:00Z")
+    XCTAssertTrue(throttle.shouldShow(first, for: ref, now: t0))
+    let stayed = PlaceOffer(position: 800, deviceName: "Phone", key: "phone|2026-10-08T11:50:20Z")
+    XCTAssertFalse(throttle.shouldShow(stayed, for: ref, now: t0.addingTimeInterval(30)))
+    XCTAssertTrue(throttle.shouldShow(stayed, for: ref, now: t0.addingTimeInterval(30), stayHeld: true))
+    XCTAssertFalse(throttle.shouldShow(stayed, for: ref, now: t0.addingTimeInterval(40), stayHeld: true), "once per launch")
   }
 }

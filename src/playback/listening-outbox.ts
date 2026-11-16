@@ -9,12 +9,14 @@ import { keepServerAnswer } from '@/api/server-snapshots';
 import type {
   ListeningEvent,
   ListeningFinishEvent,
+  ListeningStart,
   ListeningSpanEvent,
   ListeningSyncResponse,
   ListeningSyncResult,
   Progress,
 } from '@/api/types';
 import { downloadBookLength } from '@/downloads/kept-offline';
+import { contentKey } from '@/lib/content-key';
 import { randomUUID } from '@/lib/random';
 import { getItem, getItemStrict, setItem, setItemStrict } from '@/lib/storage';
 import { hasWebLocks, tabLock } from '@/lib/tab-lock';
@@ -191,10 +193,12 @@ function spanHeard(span: OpenSpan): boolean {
   return ms >= EMPTY_SPAN_MS || Math.abs(span.to.pos - span.from.pos) >= 1;
 }
 
+/** The starts that say a deliberate move. */
+const MOVE_STARTS: ReadonlySet<ListeningStart> = new Set(['jump', 'moved_back', 'restart', 'stay']);
+
 /** Whether a span carries anything: listening, or a deliberate move (pure). */
 export function spanSaysSomething(span: OpenSpan): boolean {
-  if (spanHeard(span)) return true;
-  return span.start === 'jump' || span.start === 'moved_back' || span.start === 'restart';
+  return spanHeard(span) || MOVE_STARTS.has(span.start);
 }
 
 /**
@@ -710,6 +714,31 @@ export function usesListeningSync(connectionId: string): boolean {
   return cachedCapability(connectionId, 'listening_sync') ?? true;
 }
 
+/**
+ * Whether a Stay on `connectionId` is sent as a `stay` span (row 9c-2, CROSS-REPO section 25
+ * "Stay wins"): its server's `listening_stay` as the query cache's `/server` holds it (the
+ * answer this launch, else the kept one). Unknown counts as no, unlike `usesListeningSync`: a
+ * server without it refuses the start as `invalid`, so the Stay goes as a `jump` there.
+ */
+export function usesListeningStay(connectionId: string): boolean {
+  return (
+    usesListeningSync(connectionId) && cachedCapability(connectionId, 'listening_stay') === true
+  );
+}
+
+/**
+ * The events as `connectionId`'s server takes them now (pure but for the capability read): a
+ * `stay` queued while its server had `listening_stay` goes as a `jump` once the flag is gone
+ * (an older server's decoder refuses the start). The stored event is unchanged; its id is the
+ * same, so the answer still matches it.
+ */
+function eventsForServer(connectionId: string, events: ListeningEvent[]): ListeningEvent[] {
+  if (usesListeningStay(connectionId)) return events;
+  return events.map((e) =>
+    e.kind === 'listen' && e.start === 'stay' ? { ...e, start: 'jump' as const } : e,
+  );
+}
+
 // --- Sending ---------------------------------------------------------------------------
 
 const inFlight = new Map<string, Promise<void>>();
@@ -1083,9 +1112,14 @@ export async function unsentListens(connectionId: string): Promise<number> {
   return (await pendingSaves(connectionId)).events;
 }
 
-/** A batch's envelope with this attempt's clock. */
-function syncBody(events: ListeningEvent[], deviceId: string) {
-  return { device_id: deviceId, sent_at: new Date().toISOString(), events };
+/** A batch's envelope with this attempt's clock, its events as the server takes them now
+ * (`eventsForServer`). */
+function syncBody(connectionId: string, events: ListeningEvent[], deviceId: string) {
+  return {
+    device_id: deviceId,
+    sent_at: new Date().toISOString(),
+    events: eventsForServer(connectionId, events),
+  };
 }
 
 /** How many rounds one flush makes at most (a 500-event backlog in chunks of 200 is 3). */
@@ -1141,6 +1175,7 @@ async function sendChunk(
       const sentAt = Date.now();
       const answer = await client.syncListening(
         syncBody(
+          connectionId,
           live.map((e) => e.event),
           deviceId,
         ),
@@ -1194,7 +1229,7 @@ async function sendOneByOne(
       const deviceId = await getDeviceId();
       await sending([entry], async (live) => {
         if (live.length === 0) return;
-        const answer = await client.syncListening(syncBody([entry.event], deviceId));
+        const answer = await client.syncListening(syncBody(connectionId, [entry.event], deviceId));
         await applyAnswer(connectionId, [entry], answer);
       });
     } catch (e) {
@@ -1209,8 +1244,13 @@ async function sendOneByOne(
   return 'more';
 }
 
-/** Told of every sync answer's progress rows (the place reconcile's offer check). */
-type AnswerListener = (connectionId: string, rows: Progress[]) => void;
+/** Told of every sync answer's progress rows (the place reconcile's offer check), and of
+ * the books (`contentKey`s) whose Stay from this device the answer held (`staysHeld`). */
+type AnswerListener = (
+  connectionId: string,
+  rows: Progress[],
+  staysHeld: ReadonlySet<string>,
+) => void;
 const answerListeners = new Set<AnswerListener>();
 
 /** Be told of each sync answer's rows; returns the unsubscribe. */
@@ -1234,6 +1274,22 @@ export function keptMine(
     if (e.library_id !== row.library_id || e.path !== row.path) return false;
     const r = results.get(e.id);
     return r?.status === 'applied' || (r?.status === 'diverged' && r.kept === 'event');
+  });
+}
+
+/**
+ * This device's Stays the answer held (pure): a `stay` the server kept the stored row over
+ * (`diverged`, `kept: stored`), another device's Stay holding it (CROSS-REPO section 25 "Stay
+ * wins", S2). Their books' kept place is offered again at once (`offerLoadedPlace`).
+ */
+export function staysHeld(
+  sent: ListeningEvent[],
+  results: Map<string, ListeningSyncResult>,
+): ListeningEvent[] {
+  return sent.filter((e) => {
+    if (e.kind !== 'listen' || e.start !== 'stay') return false;
+    const r = results.get(e.id);
+    return r?.status === 'diverged' && r.kept === 'stored';
   });
 }
 
@@ -1293,7 +1349,13 @@ async function applyAnswer(
   if (events.some((e) => e.kind === 'listen')) {
     void queryClient.invalidateQueries({ queryKey: qk.historyAll(connectionId) });
   }
-  for (const listener of answerListeners) listener(connectionId, rows);
+  // As sent: a `stay` that went as a `jump` (the flag gone) was held by the usual rule.
+  const held = new Set(
+    staysHeld(eventsForServer(connectionId, events), results).map((e) =>
+      contentKey(connectionId, e.library_id, e.path),
+    ),
+  );
+  for (const listener of answerListeners) listener(connectionId, rows, held);
 }
 
 // --- The rollback ----------------------------------------------------------------------
@@ -1434,6 +1496,7 @@ export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
     void client
       .syncListening(
         syncBody(
+          cid,
           fit.map((e) => e.event),
           deviceId,
         ),

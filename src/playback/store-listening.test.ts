@@ -69,6 +69,7 @@ jest.mock('./progress-sync', () => ({
 
 // The outbox: the path choice is the test's, storage and sending are captured.
 let mockSync = true;
+let mockStay = false;
 const mockClosed: OpenSpan[] = [];
 const mockAppended: ListeningEvent[] = [];
 const mockSendOnPageHide = jest.fn((..._a: unknown[]) => {});
@@ -83,6 +84,7 @@ jest.mock('./listening-outbox', () => {
     finishEvent: actual.finishEvent,
     newEventId: actual.newEventId,
     usesListeningSync: () => mockSync,
+    usesListeningStay: () => mockSync && mockStay,
     closeSpan: jest.fn(async (span: OpenSpan) => {
       mockClosed.push(structuredClone(span));
     }),
@@ -238,6 +240,7 @@ beforeEach(() => {
   mockClosed.length = 0;
   mockAppended.length = 0;
   mockSync = true;
+  mockStay = false;
   mockReadMirror.mockResolvedValue({ ack_version: 41 });
   mockLoadInitialProgress.mockResolvedValue({ kind: 'empty' });
   useSettings.setState({ autoDownloadNext: 'never' });
@@ -786,6 +789,182 @@ describe('with listening_sync', () => {
     pushSnapshot(snap('paused', 0, 9));
     await settle();
     expect(mockClosed.map((s) => s.start)).toEqual(['jump']);
+  });
+
+  // Stay wins (row 9c-2): on a `listening_stay` server the Stay is a `stay` span.
+  describe('Stay on a listening_stay server', () => {
+    beforeEach(() => {
+      mockStay = true;
+    });
+
+    // Waiting for the next cut let the other device's sync answers offer this place from
+    // before the Stay meanwhile (and use up its once-in-10-minutes offer).
+    it('playing, the Stay is sent at once on the version answered; the play goes on as a jump', async () => {
+      await start();
+      pushSnapshot(snap('playing', 0, 30));
+      await settle();
+      jest.advanceTimersByTime(4_000);
+      pushSnapshot(snap('playing', 0, 34));
+      mockReadMirror.mockResolvedValue({ ack_version: 57 });
+      // The span closing ahead of it still on its way into the outbox: the Stay goes after it.
+      let closed = () => {};
+      (closeSpan as jest.Mock).mockImplementationOnce(async (span: OpenSpan) => {
+        await new Promise<void>((resolve) => (closed = resolve));
+        mockClosed.push(structuredClone(span));
+      });
+      standByPlace();
+      await settle();
+      expect(mockAppended).toEqual([]);
+      closed();
+      await settle();
+      expect(mockAppended).toHaveLength(1);
+      expect(mockAppended[0]).toMatchObject({
+        kind: 'listen',
+        start: 'stay',
+        from_pos: 34,
+        to_pos: 34,
+        base_version: 57,
+      });
+      const e = mockAppended[0] as Extract<ListeningEvent, { kind: 'listen' }>;
+      expect(e.started_at).toBe(e.ended_at);
+      expect(mockFlushOutbox).toHaveBeenCalledWith('c1');
+      jest.advanceTimersByTime(3_000);
+      pushSnapshot(snap('paused', 0, 37));
+      await settle();
+      // Nothing heard twice: the span before ends where the Stay is, the next begins there.
+      expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([
+        ['resume', 30, 34],
+        ['jump', 34, 37],
+      ]);
+    });
+
+    it('paused, a span that moved nowhere is sent at once on the version answered', async () => {
+      await start();
+      pushSnapshot(snap('paused', 1, 20));
+      await settle();
+      mockReadMirror.mockResolvedValue({ ack_version: 57 });
+      standByPlace();
+      await settle();
+      expect(mockAppended).toHaveLength(1);
+      expect(mockAppended[0]).toMatchObject({
+        kind: 'listen',
+        start: 'stay',
+        from_pos: 70,
+        to_pos: 70,
+        from_file: 'A/Folder/10.mp3',
+        from_file_pos: 20,
+        base_version: 57,
+      });
+      const e = mockAppended[0] as Extract<ListeningEvent, { kind: 'listen' }>;
+      expect(e.started_at).toBe(e.ended_at);
+      expect(mockFlushOutbox).toHaveBeenCalledWith('c1');
+      // A bare move: the next play carries it, as a jump (the Stay went; a second `stay`
+      // at a later play would beat what another device chose since).
+      pushSnapshot(snap('playing', 1, 20));
+      jest.advanceTimersByTime(2_000);
+      pushSnapshot(snap('paused', 1, 22));
+      await settle();
+      expect(mockClosed.map((s) => s.start)).toEqual(['jump']);
+    });
+
+    it('a playing Stay paused before anything was heard gives the next play a jump', async () => {
+      await start();
+      pushSnapshot(snap('playing', 0, 30));
+      await settle();
+      jest.advanceTimersByTime(4_000);
+      pushSnapshot(snap('playing', 0, 34));
+      standByPlace();
+      pushSnapshot(snap('paused', 0, 34));
+      await settle();
+      pushSnapshot(snap('playing', 0, 34));
+      jest.advanceTimersByTime(2_000);
+      pushSnapshot(snap('paused', 0, 36));
+      await settle();
+      expect(mockAppended.map((e) => e.kind === 'listen' && e.start)).toEqual(['stay']);
+      expect(mockClosed.map((s) => s.start)).toEqual(['resume', 'jump', 'jump']);
+    });
+
+    it('paused with no place to send, nothing goes and the next play is a jump', async () => {
+      await start();
+      pushSnapshot(snap('paused', 0, NaN));
+      await settle();
+      standByPlace();
+      await settle();
+      expect(mockAppended).toEqual([]);
+      pushSnapshot(snap('playing', 0, 5));
+      jest.advanceTimersByTime(2_000);
+      pushSnapshot(snap('paused', 0, 7));
+      await settle();
+      expect(mockClosed.map((s) => s.start)).toEqual(['jump']);
+    });
+
+    // Playing with no span open (the load held the place): the Stay waits for the one the
+    // keep opens, but only while this play goes on.
+    const playingWithNoneOpen = async () => {
+      (mockSvc.load as jest.Mock).mockImplementationOnce(async () => {
+        pushSnapshot(snap('playing', 0, 5)); // Android keeps playWhenReady through a load
+      });
+      await start();
+      pushSnapshot(snap('playing', 0, 8));
+    };
+
+    it('playing with none open, the Stay goes at once and the span that opens is a jump', async () => {
+      await playingWithNoneOpen();
+      standByPlace();
+      await settle();
+      expect(mockAppended.map((e) => e.kind === 'listen' && [e.start, e.from_pos])).toEqual([
+        ['stay', 8],
+      ]);
+      jest.advanceTimersByTime(5_000);
+      await settle();
+      pushSnapshot(snap('paused', 0, 25));
+      await settle();
+      expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['jump', 8, 25]]);
+    });
+
+    // Playing with no place to send now (not a place: the engine's NaN): the next span is the
+    // Stay, but only while this play goes on.
+    it('playing with no place to send, the span that opens is the stay', async () => {
+      await playingWithNoneOpen();
+      pushSnapshot(snap('playing', 0, NaN));
+      standByPlace();
+      await usePlayer.getState().setRate(1.5); // a cut with none open leaves it waiting
+      await settle();
+      expect(mockAppended).toEqual([]);
+      pushSnapshot(snap('playing', 0, 8));
+      jest.advanceTimersByTime(5_000);
+      await settle();
+      pushSnapshot(snap('paused', 0, 25));
+      await settle();
+      expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['stay', 8, 25]]);
+    });
+
+    it('a play that ends before that span opened leaves the next play a jump', async () => {
+      await playingWithNoneOpen();
+      pushSnapshot(snap('playing', 0, NaN));
+      standByPlace();
+      pushSnapshot(snap('paused', 0, 9));
+      await settle();
+      // Much later: a `stay` now would beat what another device chose since.
+      jest.advanceTimersByTime(60 * 60_000);
+      pushSnapshot(snap('playing', 0, 9));
+      jest.advanceTimersByTime(2_000);
+      pushSnapshot(snap('paused', 0, 11));
+      await settle();
+      expect(mockAppended).toEqual([]);
+      expect(mockClosed.map((s) => s.start)).toEqual(['jump']);
+    });
+  });
+
+  it('without listening_stay a paused Stay is sent at once as a jump', async () => {
+    await start();
+    pushSnapshot(snap('paused', 0, 20));
+    await settle();
+    standByPlace();
+    await settle();
+    expect(mockAppended.map((e) => e.kind === 'listen' && [e.start, e.from_pos])).toEqual([
+      ['jump', 20],
+    ]);
   });
 
   it('the web page going closes the span and sends it with keepalive', async () => {

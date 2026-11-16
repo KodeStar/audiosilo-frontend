@@ -521,10 +521,11 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     savePlace()
   }
 
-  /// An offer answered with Stay: the next span is a deliberate move.
-  func stay() {
+  /// An offer answered with Stay: sent at once, playing or paused, as a `stay` span (`stay`: the
+  /// server has `listening_stay`) or a `jump` (`SpanRecorder.standBy`).
+  func stay(stay: Bool) {
     guard let b = book else { return }
-    spans.standBy(b.playing, at: spanEnd(), playing: playing, speed: rate)
+    spans.standBy(b.playing, at: spanEnd(), playing: playing, speed: rate, stay: stay)
   }
 
   // MARK: - Ticks

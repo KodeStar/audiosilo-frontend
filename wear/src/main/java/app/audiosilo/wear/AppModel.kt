@@ -217,7 +217,8 @@ class AppModel private constructor(private val context: Context) {
       _syncRevision.value += 1
       publishState()
     }
-    outbox.onAnswer = { rows -> scope.launch { checkOffer(rows) } }
+    outbox.onAnswer = { rows, staysHeld -> scope.launch { checkOffer(rows, staysHeld) } }
+    outbox.takesStay = { takesStay }
     engine.reachable = { !outbox.lastFlushFailed }
     engine.onPickedUp = { scope.launch { reconcileLoaded() } }
     scope.launch { for (work in inbox) work() }
@@ -492,13 +493,16 @@ class AppModel private constructor(private val context: Context) {
     if (pulled is Pulled.Answered && pulled.row != null && engine.loadedBook == ref) checkOffer(listOf(pulled.row))
   }
 
-  /** Offer another device's place for the loaded book (Offers.offerOf + the throttles); not over the speaker question. */
-  private fun checkOffer(rows: List<ProgressRow>) {
+  /**
+   * Offer another device's place for the loaded book (Offers.offerOf + the throttles; at once when
+   * the answer held this watch's Stay on it, `staysHeld`); not over the speaker question.
+   */
+  private fun checkOffer(rows: List<ProgressRow>, staysHeld: Set<BookRef> = emptySet()) {
     val ref = engine.loadedBook ?: return
     if (_offerPrompt.value != null || engine.state.value.speakerPrompt) return
     val row = rows.firstOrNull { it.ref == ref } ?: return
     val offer = Offers.offerOf(row, deviceId, acks.ackVersion(ref), engine.currentPosition, acks.answered(ref)) ?: return
-    if (!offers.shouldShow(offer, ref, Instant.now())) return
+    if (!offers.shouldShow(offer, ref, Instant.now(), ref in staysHeld)) return
     _offerPrompt.value = OfferPrompt(ref, offer, row)
   }
 
@@ -509,12 +513,19 @@ class AppModel private constructor(private val context: Context) {
     if (engine.loadedBook == p.ref) engine.seek(p.offer.position, ListeningStart.JUMP)
   }
 
-  /** Stay: this place stands (acknowledged), and the next span is a deliberate move. */
+  /**
+   * Stay: this place stands (acknowledged), sent at once as a Stay span (`stay` on a
+   * `listening_stay` server, else `jump`).
+   */
   fun stay(p: OfferPrompt) {
     acks.answerOffer(p.ref, p.row, p.offer.key)
     _offerPrompt.value = null
-    if (engine.loadedBook == p.ref) engine.stay()
+    if (engine.loadedBook == p.ref) engine.stay(takesStay)
   }
+
+  /** Whether the server takes a `stay` span (`listening_stay`; unknown: no). */
+  private val takesStay: Boolean
+    get() = _server.value?.capabilities?.listeningStay == true
 
   /** The offer closed with neither (swiped away): not offered again, nothing acknowledged. */
   fun ignore(p: OfferPrompt) {

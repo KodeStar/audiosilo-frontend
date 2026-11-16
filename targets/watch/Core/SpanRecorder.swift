@@ -101,16 +101,23 @@ enum Spans {
     span.endedAt.timeIntervalSince(span.startedAt) >= EMPTY_SPAN || abs(span.to.pos - span.from.pos) >= 1
   }
 
+  /// The starts that say a deliberate move.
+  private static let MOVE_STARTS: Set<ListeningStart> = [.jump, .movedBack, .restart, .stay]
+
   /// Whether a span carries anything: listening, or a deliberate move.
-  static func saysSomething(_ span: OpenSpan) -> Bool {
-    heard(span) || span.start == .jump || span.start == .movedBack || span.start == .restart
-  }
+  static func saysSomething(_ span: OpenSpan) -> Bool { heard(span) || MOVE_STARTS.contains(span.start) }
 
   /// A deliberate move nothing was heard after (a stop right behind a seek): all it says is the
   /// move, like a move made while paused. Stamped ms after the span before it, its event can lose
   /// to that span's when they are sent apart (`not_applied/older`; two batches' clock shifts
   /// differ by their latency), so the next span must carry the move too.
   static func isBareMove(_ span: OpenSpan) -> Bool { saysSomething(span) && !heard(span) }
+
+  /// The reason a bare move sent already gives the book's next play: its own, but a Stay's as a
+  /// `jump`. That play may come hours later, and the server measures a Stay's slack from its
+  /// span's end (`staysWin`): a second `stay` then would beat what another device chose since the
+  /// first one (the phone's `carriedStart`).
+  static func carried(_ start: ListeningStart) -> ListeningStart { start == .stay ? .jump : start }
 
   /// A move to where the place already is moves nothing (Previous at the book's start). A place
   /// that is not one is not this: `abs(.nan)` compares false; nor is a move to another file,
@@ -175,7 +182,7 @@ final class SpanRecorder {
       store.save(nil)
       // A kill within `OPEN_SPAN_KEEP` of a move left the span the move opened, nothing heard:
       // a bare move, so the book's next span carries it, as after a pause (`close`).
-      if Spans.isBareMove(left) { recoveredMove = (left.ref, left.start) }
+      if Spans.isBareMove(left) { recoveredMove = (left.ref, Spans.carried(left.start)) }
     }
   }
 
@@ -242,21 +249,27 @@ final class SpanRecorder {
   /// player while the app was suspended); never after now, never before the span's start.
   @discardableResult
   func close(at: SpanEnd?, stoppedAt: Date? = nil) -> OpenSpan? {
-    guard var closing = span else { return nil }
+    guard var closing = span else {
+      // A Stay still waiting for its span (`standBy`, playing with none open) does not outlive
+      // the play: one that ends first leaves the next a `jump` (`carried`).
+      nextStart = Spans.carried(nextStart)
+      return nil
+    }
     span = nil
     if let at { closing.to = at }
     let now = clock()
     closing.endedAt = max(closing.startedAt, min(now, stoppedAt ?? now))
     append(closing)
     store.save(nil)
-    // Like a paused move: the next play begins with the same reason (`isBareMove`).
-    if Spans.isBareMove(closing) { nextStart = closing.start }
+    // Like a paused move: the next play begins with the same reason (`isBareMove`, `carried`).
+    if Spans.isBareMove(closing) { nextStart = Spans.carried(closing.start) }
     return closing
   }
 
   /// Cut the span (close it, a span opening where it ended for `start`) while playing.
   func cut(_ book: PlayingBook, at: SpanEnd?, playing: Bool, speed: Double, start: ListeningStart = .continue) {
-    guard let closed = close(at: at), playing else { return }
+    // None open: nothing to cut, and a Stay waiting for its span goes on waiting (`close`).
+    guard span != nil, let closed = close(at: at), playing else { return }
     // A bare move's reason is already there (`close`); a reason asked for (Stay) still wins.
     if start != .continue || !Spans.isBareMove(closed) { nextStart = start }
     open(book, at: closed.to, speed: speed)
@@ -300,13 +313,20 @@ final class SpanRecorder {
       open(book, at: target, speed: speed)
       return
     }
+    sendStill(book, at: target, start: why, speed: speed)
+  }
+
+  /// A move made while paused, or a Stay (`start`, to `at`): sent at once as a span of its own
+  /// that moved nowhere, and the next span begins with the same reason (a Stay's as a `jump`:
+  /// `carried`).
+  private func sendStill(_ book: PlayingBook, at: SpanEnd, start: ListeningStart, speed: Double) {
     let now = clock()
     let still = OpenSpan(
-      libraryId: book.ref.libraryId, path: book.ref.path, from: target, to: target,
-      duration: book.audioDuration, speed: speed, startedAt: now, endedAt: now, start: why,
+      libraryId: book.ref.libraryId, path: book.ref.path, from: at, to: at,
+      duration: book.audioDuration, speed: speed, startedAt: now, endedAt: now, start: start,
       baseVersion: acks.ackVersion(book.ref) ?? 0, id: newId())
     emit([.listen(Spans.event(still))])
-    nextStart = why
+    nextStart = Spans.carried(start)
   }
 
   /// The book's last span closed, then its `finish`, once.
@@ -317,11 +337,31 @@ final class SpanRecorder {
     emit([.finish(finishEvent("finish", book.ref, at: clock(), base: acks.ackVersion(book.ref) ?? 0))])
   }
 
-  /// The listener answered an offer with Stay: this device's place stands, so its next span is
-  /// a deliberate move (`jump`), which the server applies over the other place.
-  func standBy(_ book: PlayingBook, at: SpanEnd?, playing: Bool, speed: Double) {
-    nextStart = .jump
-    if span != nil && playing { cut(book, at: at, playing: playing, speed: speed, start: .jump) }
+  /// The listener answered an offer with Stay: this device's place stands, sent at once as a
+  /// span that moved nowhere (a paused move's) on the version the answer acknowledged: a `stay`
+  /// on a `listening_stay` server (`stay`), which the server applies over the other device's
+  /// writes since the offer, else a `jump`. Sent at once while playing too: a Stay that waited for
+  /// the next cut would let the other device's sync answers offer this place from before it
+  /// meanwhile. Playing, the span ends here and the next one begins here as a `jump` (`carried`),
+  /// so nothing is heard twice; paused, the next play begins as a `jump`: a `stay` sent at a play
+  /// that may come much later would beat what another device chose since. With no place to send
+  /// (`at` nil), the next span is the Stay: the one cut now while playing, else the one that
+  /// opens while this play goes on (`close`); paused, the next play is a `jump`.
+  func standBy(_ book: PlayingBook, at: SpanEnd?, playing: Bool, speed: Double, stay: Bool) {
+    let start: ListeningStart = stay ? .stay : .jump
+    if let at {
+      // The open span (a playing one, or a stop noticed late) ends where the Stay is.
+      let closed = close(at: at)
+      sendStill(book, at: at, start: start, speed: speed)
+      if playing && closed != nil { open(book, at: at, speed: speed) }
+      return
+    }
+    if playing {
+      if span != nil { cut(book, at: nil, playing: true, speed: speed, start: start) } else { nextStart = start }
+      return
+    }
+    close(at: nil)
+    nextStart = Spans.carried(start)
   }
 
   private func finishEvent(_ kind: String, _ ref: BookRef, at: Date, base: Int) -> FinishEvent {

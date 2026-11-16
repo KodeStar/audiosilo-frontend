@@ -67,8 +67,11 @@ final class Outbox {
   /// about what waits now, and ends that flush.
   private var discards = 0
 
-  /// Told of every answer's progress rows (the offer check).
-  var onAnswer: (([ProgressRow]) -> Void)?
+  /// Whether the server takes a `stay` span now (`listening_stay`); asked as each body is built.
+  var takesStay: () -> Bool = { false }
+  /// Told of every answer's progress rows (the offer check), and of the books whose `stay` it
+  /// held (`AckRules.staysHeld`).
+  var onAnswer: (([ProgressRow], Set<BookRef>) -> Void)?
   /// Told whenever the events or the state change (watch-state, Sync status).
   var onChange: (() -> Void)?
 
@@ -244,7 +247,21 @@ final class Outbox {
   }
 
   private func body(_ events: [ListeningEvent]) -> SyncRequest {
-    SyncRequest(deviceId: deviceId, sentAt: ISOTime.string(clock()), clockOffset: nil, events: events)
+    SyncRequest(
+      deviceId: deviceId, sentAt: ISOTime.string(clock()), clockOffset: nil,
+      events: Self.asServerTakes(events, stay: takesStay()))
+  }
+
+  /// The events as the server takes them now: a `stay` queued while it had `listening_stay` goes
+  /// as a `jump` once the flag is gone (an older server's decoder refuses the start). The stored
+  /// event is unchanged and keeps its id, so the answer still matches it.
+  static func asServerTakes(_ events: [ListeningEvent], stay: Bool) -> [ListeningEvent] {
+    guard !stay else { return events }
+    return events.map { e in
+      guard case .listen(var s) = e, s.start == .stay else { return e }
+      s.start = .jump
+      return .listen(s)
+    }
   }
 
   private func sendChunk(_ chunk: [ListeningEvent], _ transport: ListeningSyncTransport) async -> Next {
@@ -323,7 +340,8 @@ final class Outbox {
     for row in rows where AckRules.keptMine(row, deviceId: deviceId, sent: sent, results: results) {
       acks.ack(row.ref, version: row.version)
     }
-    onAnswer?(rows)
+    // As sent: a `stay` that went as a `jump` (the flag gone) was held by the usual rule.
+    onAnswer?(rows, AckRules.staysHeld(sent: Self.asServerTakes(sent, stay: takesStay()), results: results))
   }
 
   // MARK: - The background upload (decision 10; SyncUploader sends it)
@@ -335,7 +353,7 @@ final class Outbox {
     guard !events.isEmpty else { return nil }
     return SyncRequest(
       deviceId: deviceId, sentAt: nil, clockOffset: ClockSkew.clockOffset(skewMs: state.clockSkewMs),
-      events: Array(events.prefix(chunkSize)))
+      events: Self.asServerTakes(Array(events.prefix(chunkSize)), stay: takesStay()))
   }
 
   /// Apply the answer to a background upload of these event ids (those still waiting; one a

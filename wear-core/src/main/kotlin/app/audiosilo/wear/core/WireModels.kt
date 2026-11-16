@@ -41,6 +41,8 @@ object Wire {
 @Serializable
 data class ServerCapabilities(
   val listeningSync: Boolean? = null,
+  /** A Stay may go as a `stay` span (row 9c-2); absent (an older server refuses the start): `jump`. */
+  val listeningStay: Boolean? = null,
   val renditions: Boolean? = null,
   val coverSizes: Boolean? = null,
   val addresses: Boolean? = null,
@@ -206,7 +208,10 @@ data class BookRef(val libraryId: Int, val path: String) {
 
 // Listening events (Sync v2, `POST /me/listening/sync`)
 
-/** Why a span began. */
+/**
+ * Why a span began. `stay`: the listener answered another device's offer with Stay, sent only to a
+ * `listening_stay` server (`Outbox.asServerTakes` makes it a `jump` for any other).
+ */
 @Serializable
 enum class ListeningStart {
   @SerialName("resume") RESUME,
@@ -214,6 +219,7 @@ enum class ListeningStart {
   @SerialName("moved_back") MOVED_BACK,
   @SerialName("jump") JUMP,
   @SerialName("restart") RESTART,
+  @SerialName("stay") STAY,
 }
 
 /** A listening event: a span (`listen`) or a `finish` / `unfinish`. */

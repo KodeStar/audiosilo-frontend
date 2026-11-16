@@ -39,6 +39,7 @@ fun listen(
   endedAt: String = "2026-10-25T07:33:30.000Z",
   lib: Int = 3,
   path: String = "Author/Book",
+  start: ListeningStart = ListeningStart.RESUME,
 ): ListeningEvent =
   SpanEvent(
     id = id,
@@ -49,7 +50,7 @@ fun listen(
     duration = 61200.0,
     startedAt = "2026-10-25T07:00:12.000Z",
     endedAt = endedAt,
-    start = ListeningStart.RESUME,
+    start = start,
     baseVersion = 41,
   )
 

@@ -253,7 +253,7 @@ class SpanRecorderTest {
   @Test
   fun afterStayTheNextSpanBeginsAsAJump() {
     val r = recorder()
-    r.standBy(book, null, playing = false, speed = 1.0)
+    r.standBy(book, null, playing = false, speed = 1.0, stay = false)
     r.open(book, at(5.0), 1.0)
     clock.advance(4.0)
     r.close(at(9.0))
@@ -261,12 +261,161 @@ class SpanRecorderTest {
   }
 
   @Test
-  fun stayWhilePlayingCutsIntoAJump() {
+  fun stayWhilePlayingIsAJumpSentAtOnce() {
     val r = recorder()
     r.open(book, at(5.0), 1.0)
     clock.advance(4.0)
-    r.standBy(book, at(9.0), playing = true, speed = 1.0)
+    r.standBy(book, at(9.0), playing = true, speed = 1.0, stay = false)
+    assertEquals(listOf(ListeningStart.RESUME, ListeningStart.JUMP), listens.map { it.start })
+    assertEquals(ListeningStart.JUMP, r.span?.start)
+  }
+
+  // Stay wins (row 9c-2): on a `listening_stay` server a Stay made while playing goes at once as a
+  // `stay` span that moved nowhere, on the version answered (waiting for the next cut let the other
+  // device's answers offer this place from before it); the play goes on from there as a `jump`, so
+  // nothing is heard twice.
+  @Test
+  fun aPlayingStayIsSentAtOnceAndThePlayGoesOnAsAJump() {
+    val r = recorder()
+    r.open(book, at(5.0), 1.0)
+    clock.advance(4.0)
+    acks.ack(folder, 7)
+    r.standBy(book, at(9.0), playing = true, speed = 1.0, stay = true)
+    assertEquals(listOf(ListeningStart.RESUME, ListeningStart.STAY), listens.map { it.start })
+    assertEquals(9.0, listens[0].toPos, 0.0)
+    assertEquals(9.0, listens[1].fromPos, 0.0)
+    assertEquals(9.0, listens[1].toPos, 0.0)
+    assertEquals(listens[1].startedAt, listens[1].endedAt)
+    assertEquals(7, listens[1].baseVersion)
+    assertEquals(ListeningStart.JUMP, r.span?.start)
+    assertEquals(at(9.0), r.span?.from)
+    assertEquals(r.span, store.stored)
+    clock.advance(15.0)
+    r.cut(book, at(24.0), playing = true, speed = 1.0)
+    assertEquals(
+      listOf(ListeningStart.RESUME, ListeningStart.STAY, ListeningStart.JUMP),
+      listens.map { it.start },
+    )
+    assertEquals(9.0, listens[2].fromPos, 0.0)
+    assertEquals(ListeningStart.CONTINUE, r.span?.start)
+  }
+
+  // Paused, the Stay goes at once as a span that moved nowhere, on the version answered.
+  @Test
+  fun aPausedStayIsSentAtOnceAsABareStaySpan() {
+    acks.ack(folder, 7)
+    val r = recorder()
+    r.standBy(book, at(30.0), playing = false, speed = 1.0, stay = true)
+    assertEquals(1, listens.size)
+    assertEquals(ListeningStart.STAY, listens[0].start)
+    assertEquals(30.0, listens[0].fromPos, 0.0)
+    assertEquals(30.0, listens[0].toPos, 0.0)
+    assertEquals(listens[0].startedAt, listens[0].endedAt)
+    assertEquals(7, listens[0].baseVersion)
+    assertNull(r.span)
+    // A bare move: the next play carries it, as a jump (the Stay went; a second `stay` at a later
+    // play would beat what another device chose since).
+    assertEquals(ListeningStart.JUMP, r.nextStart)
+    clock.advance(60.0)
+    r.open(book, at(30.0), 1.0)
+    assertEquals(ListeningStart.JUMP, r.span?.start)
+  }
+
+  @Test
+  fun aPausedStayWithNoPlaceGivesTheNextPlayAJump() {
+    val r = recorder()
+    r.standBy(book, null, playing = false, speed = 1.0, stay = true)
+    assertTrue(listens.isEmpty())
+    assertEquals(ListeningStart.JUMP, r.nextStart)
+  }
+
+  @Test
+  fun aPausedStayOnAServerWithoutItIsAJumpSentAtOnce() {
+    val r = recorder()
+    r.standBy(book, at(30.0), playing = false, speed = 1.0, stay = false)
+    assertEquals(listOf(ListeningStart.JUMP), listens.map { it.start })
+    assertEquals(ListeningStart.JUMP, r.nextStart)
+  }
+
+  @Test
+  fun aPlayingStayPausedAtOnceGivesTheNextPlayAJump() {
+    val r = recorder()
+    r.open(book, at(5.0), 1.0)
+    clock.advance(4.0)
+    r.standBy(book, at(9.0), playing = true, speed = 1.0, stay = true)
+    r.close(at(9.0))
+    assertEquals(
+      listOf(ListeningStart.RESUME, ListeningStart.STAY, ListeningStart.JUMP),
+      listens.map { it.start },
+    )
+    assertEquals(ListeningStart.JUMP, r.nextStart)
+  }
+
+  @Test
+  fun aKillRightBehindAStayGivesTheBooksNextSpanAJump() {
+    val r = recorder()
+    r.open(book, at(5.0), 1.0)
+    clock.advance(4.0)
+    r.standBy(book, at(9.0), playing = true, speed = 1.0, stay = true)
+    assertEquals(listOf(ListeningStart.RESUME, ListeningStart.STAY), listens.map { it.start })
+    // A kill: a new launch, the same store (the span the Stay opened, nothing heard).
+    emitted.clear()
+    clock.advance(3600.0)
+    val next = recorder()
+    next.recover()
+    assertEquals(listOf(ListeningStart.JUMP), listens.map { it.start })
+    next.prepareStart(ListeningStart.RESUME)
+    next.open(book, at(9.0), 1.0)
+    assertEquals(ListeningStart.JUMP, next.span?.start)
+  }
+
+  // Playing with no span open but a place (a call or an alert holds the audio): the Stay goes at
+  // once all the same, and the span that opens is a jump.
+  @Test
+  fun aPlayingStayWithNoSpanOpenIsSentAtOnce() {
+    val r = recorder()
+    r.standBy(book, at(9.0), playing = true, speed = 1.0, stay = true)
+    assertEquals(listOf(ListeningStart.STAY), listens.map { it.start })
+    assertNull(r.span)
+    r.tick(book, at(9.0), playing = true, reachable = true, speed = 1.0)
+    assertEquals(ListeningStart.JUMP, r.span?.start)
+  }
+
+  // Playing with no place to send: the Stay waits for the span that opens, a cut with none open
+  // (a rate change, the background) leaving it waiting.
+  @Test
+  fun aStayWithNoPlaceWaitsForTheSpanThatOpens() {
+    val r = recorder()
+    r.standBy(book, null, playing = true, speed = 1.0, stay = true)
+    r.cut(book, null, playing = true, speed = 1.0)
+    assertTrue(listens.isEmpty())
+    assertEquals(ListeningStart.STAY, r.nextStart)
+    r.tick(book, at(9.0), playing = true, reachable = true, speed = 1.0)
+    assertEquals(ListeningStart.STAY, r.span?.start)
+  }
+
+  // With a span open and no place, the cut takes the Stay.
+  @Test
+  fun aStayWithNoPlaceCutsTheOpenSpanIntoAStay() {
+    val r = recorder()
+    r.open(book, at(5.0), 1.0)
+    clock.advance(4.0)
+    r.standBy(book, null, playing = true, speed = 1.0, stay = true)
     assertEquals(listOf(ListeningStart.RESUME), listens.map { it.start })
+    assertEquals(ListeningStart.STAY, r.span?.start)
+  }
+
+  // Only while that play goes on: one that ends first leaves the next a jump (a `stay` at a play
+  // that may come much later would beat what another device chose since).
+  @Test
+  fun aStayStillWaitingWhenThePlayEndsGivesTheNextPlayAJump() {
+    val r = recorder()
+    r.standBy(book, null, playing = true, speed = 1.0, stay = true)
+    r.close(at(9.0))
+    assertTrue(listens.isEmpty())
+    assertEquals(ListeningStart.JUMP, r.nextStart)
+    clock.advance(3600.0)
+    r.open(book, at(9.0), 1.0)
     assertEquals(ListeningStart.JUMP, r.span?.start)
   }
 
@@ -348,7 +497,7 @@ class SpanRecorderTest {
     val r = recorder()
     r.prepareStart(ListeningStart.MOVED_BACK)
     r.open(book, at(10.0), 1.0)
-    r.standBy(book, at(10.0), playing = true, speed = 1.0)
+    r.standBy(book, at(10.0), playing = true, speed = 1.0, stay = false)
     assertEquals(ListeningStart.JUMP, r.span?.start)
   }
 
@@ -643,7 +792,17 @@ class SpanEventTest {
     assertFalse(Spans.saysSomething(span { still(it).copy(start = ListeningStart.CONTINUE) }))
     assertTrue(Spans.saysSomething(span { still(it).copy(start = ListeningStart.JUMP) }))
     assertTrue(Spans.saysSomething(span { still(it).copy(start = ListeningStart.RESTART) }))
+    assertTrue(Spans.saysSomething(span { still(it).copy(start = ListeningStart.STAY) }))
     assertTrue(Spans.saysSomething(span()))
+    assertTrue(Spans.isBareMove(span { still(it).copy(start = ListeningStart.STAY) }))
+    assertFalse(Spans.isBareMove(span { it.copy(start = ListeningStart.STAY) }))
+  }
+
+  // Stay wins (row 9c-2): the start's wire name, which a server without `listening_stay` refuses.
+  @Test
+  fun aStayGoesAsStay() {
+    val json = json(Spans.event(span { it.copy(start = ListeningStart.STAY) }))
+    assertEquals("stay", plain(json.getValue("start")))
   }
 
   @Test

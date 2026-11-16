@@ -402,7 +402,7 @@ final class BackgroundSyncTests: XCTestCase {
                 SyncResult(id: "c", status: "duplicate")],
       progress: [row(version: 9)])
     var rows: [ProgressRow] = []
-    o.onAnswer = { rows = $0 }
+    o.onAnswer = { r, _ in rows = r }
     o.applyBackground(answer, sentIds: body.events.map(\.id))
     XCTAssertTrue(o.events.isEmpty)
     XCTAssertEqual(o.couldNotSync().map(\.event.id), ["b"])

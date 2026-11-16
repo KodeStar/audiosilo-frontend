@@ -32,6 +32,8 @@ struct ServerAddresses: Codable, Equatable, Sendable {
 /// The capability flags the watch reads (`GET /api/v1/server`). Absent means an older server.
 struct ServerCapabilities: Codable, Equatable, Sendable {
   var listeningSync: Bool?
+  /// A Stay may go as a `stay` span (row 9c-2); absent (an older server refuses the start): `jump`.
+  var listeningStay: Bool?
   var renditions: Bool?
   var coverSizes: Bool?
   var addresses: Bool?
@@ -187,13 +189,15 @@ struct BookRef: Codable, Hashable, Sendable {
 
 // MARK: - Listening events (Sync v2, `POST /me/listening/sync`)
 
-/// Why a span began.
+/// Why a span began. `stay`: the listener answered another device's offer with Stay, sent only
+/// to a `listening_stay` server (`Outbox.asServerTakes` makes it a `jump` for any other).
 enum ListeningStart: String, Codable, Sendable {
   case resume
   case `continue`
   case movedBack = "moved_back"
   case jump
   case restart
+  case stay
 }
 
 /// A span of listening: whole-book seconds on this device's timeline, each end's audio file
