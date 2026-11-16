@@ -109,8 +109,7 @@ enum DownloadWait: String, CaseIterable, Equatable, Sendable {
   static func retryDelay(attempt: Int) -> TimeInterval {
     let first: TimeInterval = 10
     let most: TimeInterval = 60
-    guard attempt > 0 else { return first }
-    // Capped before the shift can overflow.
-    return min(most, first * Double(1 << min(attempt, 8)))
+    // 80 s at the fourth try is past the cap: the shift never needs more.
+    return min(most, first * Double(1 << min(max(attempt, 0), 3)))
   }
 }

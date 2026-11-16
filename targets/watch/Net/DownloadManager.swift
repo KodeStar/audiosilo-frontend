@@ -53,6 +53,8 @@ struct DownloadRecord: Codable, Equatable, Identifiable {
   var doneCount: Int { files.filter(\.done).count }
   /// The bytes on the watch (each file's size, set when it lands).
   var bytes: Int64 { files.compactMap(\.bytes).reduce(0, +) }
+  /// Neither ready nor failed: a run has work to do (a failed one waits for Try again).
+  var wantsWork: Bool { state != .ready && state != .failed }
 
   /// The server answered or a file landed: a wait the message named is over when `sign` ends it
   /// (`DownloadWait.ends`; a failure stays).
@@ -106,8 +108,6 @@ final class DownloadManager: ObservableObject {
   private var fractions: [String: [String: Double]] = [:]
   /// The files the server last said were ready, by book key (the phone's "n of m files").
   private var serverReady: [String: Set<String>] = [:]
-  /// A book's next try while it waits on the connection, by book key (`retryLater`).
-  private var retries: [String: Task<Void, Never>] = [:]
   /// How many tries in a row found no answer, by book key: the next one waits longer.
   private var retryAttempts: [String: Int] = [:]
 
@@ -168,7 +168,7 @@ final class DownloadManager: ObservableObject {
   func resumeAll() {
     active = true
     sweepStaging(olderThan: Self.STAGING_KEEP)
-    for r in records where r.state != .ready && r.state != .failed { process(r.id) }
+    for r in records where r.wantsWork { process(r.id) }
   }
 
   /// The app went to the background: the polling stops (the background session goes on).
@@ -177,8 +177,6 @@ final class DownloadManager: ObservableObject {
     for t in working.values { t.cancel() }
     working = [:]
     runs = [:]
-    for t in retries.values { t.cancel() }
-    retries = [:]
     retryAttempts = [:]
   }
 
@@ -187,7 +185,6 @@ final class DownloadManager: ObservableObject {
     guard let r = record(ref) else { return }
     willRemove?(ref)
     stopWork(r.id)
-    retries.removeValue(forKey: r.id)?.cancel()
     retryAttempts[r.id] = nil
     BackgroundDownloads.shared.cancel(book: r.id)
     // A cancelled task brings no event: forget its hand-off and resume data here, or the same
@@ -233,7 +230,8 @@ final class DownloadManager: ObservableObject {
     runs[key] = nil
   }
 
-  /// Start a book's run (`after` seconds from now: a refusal's wait), unless it has one.
+  /// Start a book's run (`after` seconds from now: a refusal's wait, or a wait on the connection),
+  /// unless it has one.
   private func process(_ key: String, after wait: TimeInterval = 0) {
     guard active, working[key] == nil else { return }
     let run = UUID()
@@ -259,7 +257,8 @@ final class DownloadManager: ObservableObject {
   }
 
   private func run(_ key: String) async {
-    guard let r0 = records.first(where: { $0.id == key }), client() != nil else { return }
+    // Ready, or failed (Try again queues it), since the run was asked for: nothing to do.
+    guard let r0 = records.first(where: { $0.id == key }), r0.wantsWork, client() != nil else { return }
     let ref = r0.ref
     /// Read for every request: a run can outlast the pick it began on (the watch left home), and
     /// the token must not go on following that address. Signed out meanwhile, the run is over.
@@ -267,11 +266,9 @@ final class DownloadManager: ObservableObject {
       guard let api = client() else { throw CancellationError() }
       return api
     }
-    if r0.files.isEmpty || r0.state == .queued {
-      update(key) {
-        $0.state = .preparing
-        $0.message = nil
-      }
+    // A wait stays until the server answers (`DownloadWait.ends`).
+    if r0.files.isEmpty || r0.state == .queued, r0.state != .preparing {
+      update(key) { $0.state = .preparing }
     }
     do {
       // The item and chapters first: the timeline orders the files and lasts offline.
@@ -345,9 +342,10 @@ final class DownloadManager: ObservableObject {
         fail(key, message)
       }
     } catch {
-      // No answer: it asks again in a while (in the background, at the next foreground).
-      update(key) { $0.message = DownloadWait.connection.message }
-      retryLater(key)
+      // No answer. This run is the one in `working`: clear it so the next try can start.
+      working[key] = nil
+      runs[key] = nil
+      waitOnConnection(key)
     }
   }
 
@@ -465,9 +463,7 @@ final class DownloadManager: ObservableObject {
       if let data { resumeData[tag.key] = data } else { fractions[tag.book]?[tag.path] = nil }
       // A failed book keeps saying why.
       guard r.state != .failed else { return }
-      update(tag.book) { $0.message = DownloadWait.connection.message }
-      // The next run (or the one polling now) hands the file over again.
-      retryLater(tag.book)
+      waitOnConnection(tag.book)
     case .progress(let tag, let fraction):
       // No sign the server answers (`DownloadWait.ends`): a wait stays.
       guard records.contains(where: { $0.id == tag.book }) else { return }  // removed meanwhile
@@ -487,24 +483,17 @@ final class DownloadManager: ObservableObject {
     update(key) { $0.endWait(.answered) }
   }
 
-  /// Ask the server again in a while: a book waiting on the connection, only while the app is in
-  /// front (each try that finds no answer waits longer, `DownloadWait.retryDelay`). Its run puts
-  /// the wait back while there is still no answer, and once there is one hands over the files not
-  /// handed yet and those whose transfer broke. One try per book at a time.
-  private func retryLater(_ key: String) {
-    guard active, retries[key] == nil else { return }
+  /// No answer, or a transfer broke: the book waits on the connection and, while the app is in
+  /// front, asks again in a while (each try that finds no answer waits longer,
+  /// `DownloadWait.retryDelay`; in the background, at the next foreground). A run already going
+  /// asks the server itself, and hands over again the files whose transfer broke.
+  private func waitOnConnection(_ key: String) {
+    guard let r = records.first(where: { $0.id == key }) else { return }
+    if r.message != DownloadWait.connection.message { update(key) { $0.message = DownloadWait.connection.message } }
+    guard active, working[key] == nil else { return }
     let attempt = retryAttempts[key, default: 0]
     retryAttempts[key] = attempt + 1
-    retries[key] = Task { [weak self] in
-      try? await Task.sleep(for: .seconds(DownloadWait.retryDelay(attempt: attempt)))
-      // Cancelled while it waited: whoever cancelled it has cleared its entry.
-      guard !Task.isCancelled, let self else { return }
-      retries[key] = nil
-      // Ready, or failed (Try again starts it), meanwhile: nothing to ask.
-      guard let r = records.first(where: { $0.id == key }), r.state != .ready, r.state != .failed else { return }
-      // A run already going asks the server itself.
-      process(key)
-    }
+    process(key, after: DownloadWait.retryDelay(attempt: attempt))
   }
 
   /// The files the server has ready now; told to the phone when they change.
