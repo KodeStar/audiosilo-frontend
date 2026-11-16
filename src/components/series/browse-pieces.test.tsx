@@ -282,7 +282,7 @@ describe('SeriesMode', () => {
   it('counts in progress and finished per recording, the unit of its "N books"', async () => {
     // Four works, the first held in two recordings (server#241): the shelf shows the work
     // once, but the five recordings /series counts are each finished.
-    const book = (title: string, index: number, extra: Partial<Book> = {}): Book => ({
+    const book = (title: string, index: number): Book => ({
       id: index,
       library_id: 1,
       rel_path: `Corey/Expanse/${title}`,
@@ -296,7 +296,6 @@ describe('SeriesMode', () => {
       format: 'm4b',
       size: 1,
       work_id: `w${index}`,
-      ...extra,
     });
     const books = [
       book('Leviathan Wakes', 1),
