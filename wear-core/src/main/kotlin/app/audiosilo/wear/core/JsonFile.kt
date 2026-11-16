@@ -15,8 +15,22 @@ import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
+import java.util.UUID
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
+
+/** What `JsonFile.load` found (Core/JSONFile.swift's `JSONLoad`). */
+sealed interface JsonLoad<out T> {
+  data object Missing : JsonLoad<Nothing>
+
+  data class Value<T>(val value: T) : JsonLoad<T>
+
+  /** There, but it can't be read. */
+  data object Unreadable : JsonLoad<Nothing>
+
+  /** It reads but does not decode (damaged, or another build's format). */
+  data object Corrupt : JsonLoad<Nothing>
+}
 
 class JsonFile<T>(
   val file: File,
@@ -24,13 +38,36 @@ class JsonFile<T>(
   /** Sync each write to the disk (see the header): for a file whose loss loses listening. */
   private val durable: Boolean = false,
 ) {
-  /** The stored value, null when there is none or it can't be read. */
-  fun read(): T? =
-    try {
-      if (!file.isFile) null else FORMAT.decodeFromString(serializer, file.readText(Charsets.UTF_8))
+  /** The stored value, null when there is none or it can't be read (`load` tells them apart). */
+  fun read(): T? = (load() as? JsonLoad.Value)?.value
+
+  /** What is stored: none, a value, a file that can't be read, or one that does not decode. */
+  fun load(): JsonLoad<T> {
+    if (!file.exists()) return JsonLoad.Missing
+    val text =
+      try {
+        file.readText(Charsets.UTF_8)
+      } catch (_: Exception) {
+        return JsonLoad.Unreadable
+      }
+    return try {
+      JsonLoad.Value(FORMAT.decodeFromString(serializer, text))
     } catch (_: Exception) {
-      null
+      JsonLoad.Corrupt
     }
+  }
+
+  /**
+   * Move the file aside, beside it as `<prefix><uuid>.json`, so the next write never goes over it.
+   * False when it could not be moved.
+   */
+  fun moveAside(prefix: String): Boolean = file.renameTo(File(file.absoluteFile.parentFile, prefix + UUID.randomUUID() + ".json"))
+
+  /**
+   * `moveAside` for a file that must not be written over: true once it is out of the way (moved,
+   * or gone meanwhile), false while it is still there, when nothing may be written in its place.
+   */
+  fun setAside(prefix: String): Boolean = moveAside(prefix) || !file.exists()
 
   /**
    * Store `value` (null removes the file). False when it could not be stored (a full disk: the

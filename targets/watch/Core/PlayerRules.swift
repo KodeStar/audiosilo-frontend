@@ -254,12 +254,18 @@ enum Resume {
 @MainActor
 final class PlaceStore {
   private let file: JSONFile<[String: LocalPlace]>?
-  private var places: [String: LocalPlace]
+  private var places: [String: LocalPlace] = [:]
 
   /// `url` nil keeps them in memory (tests).
   init(url: URL?) {
     file = url.map { JSONFile(url: $0) }
-    places = file?.read() ?? [:]
+    reload()
+  }
+
+  /// Read the file: at launch, and again after a launch before the watch's first unlock read none
+  /// (nothing has changed it since: no book plays until then).
+  func reload() {
+    if let kept = file?.read() { places = kept }
   }
 
   func place(_ ref: BookRef) -> LocalPlace? { places[ref.key] }

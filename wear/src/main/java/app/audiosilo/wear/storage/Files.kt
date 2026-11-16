@@ -11,6 +11,7 @@
 //   places.json         this watch's own place per book (PlaceStore)
 //   continue.json       Continue listening's last rows (ContinueListening)
 //   downloads.json      the books on this watch (DownloadIndex)
+//   downloads-unread-*.json an index that could not be read, kept aside (DownloadIndex)
 //   held-books.json     books from the phone not taken yet, or given up on (HeldBooks)
 //   items/              each book's item + chapters, kept for offline playback
 //   books/<folder>/     each book's rendition files (BookDownload)

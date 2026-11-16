@@ -215,6 +215,12 @@ describe('parseWatchState', () => {
     expect(state?.books[1]).not.toHaveProperty('added_at');
   });
 
+  it("ignores the watch's per-launch id (fe#219)", () => {
+    expect(parseWatchState({ ...wire, launch_id: '8F0C3C1A-1111-4E2B-9D2F-0123456789AB' })).toEqual(
+      parseWatchState(wire),
+    );
+  });
+
   it('reads a signed-out watch, which omits the optional fields', () => {
     const state = parseWatchState({
       v: 1,

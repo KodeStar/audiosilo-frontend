@@ -109,6 +109,10 @@ struct WatchState: Equatable, Sendable {
   var unsentEvents: Int
   var couldntSync: Int
   var lastSyncAt: Date?
+  /// New at each launch (fe#219; optional, the phone ignores it). The session drops a context
+  /// identical to the last it took, so without it a phone app installed again, which has lost what
+  /// it held, would hear nothing until the watch's state changed.
+  var launchId: String?
 }
 
 enum PhoneMessages {
@@ -183,6 +187,7 @@ enum PhoneMessages {
     if let id = s.serverId { out["server_id"] = id }
     if let id = s.userId { out["user_id"] = id }
     if let t = s.lastSyncAt { out["last_sync_at"] = ISOTime.string(t) }
+    if let id = s.launchId { out["launch_id"] = id }
     return out
   }
 

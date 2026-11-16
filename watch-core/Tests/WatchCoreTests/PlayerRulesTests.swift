@@ -358,6 +358,28 @@ final class AccountRulesTests: XCTestCase {
     XCTAssertEqual(AccountRules.change(current: "s.1", incoming: "t.1", unsent: 0), .replace)
   }
 
+  // Before the watch's first unlock nothing kept reads: no account is no proof of none (fe#216).
+  func testAPairWaitsWhileNothingKeptReads() {
+    XCTAssertEqual(AccountRules.change(current: nil, incoming: "s.1", unsent: 0, readable: false), .wait)
+    XCTAssertEqual(AccountRules.change(current: nil, incoming: "s.1", unsent: 0, discard: true, readable: false), .wait)
+    XCTAssertEqual(AccountRules.change(current: "s.1", incoming: "s.2", unsent: 2, readable: false), .wait)
+    XCTAssertEqual(AccountRules.change(current: nil, incoming: "s.1", unsent: 0, readable: true), .signIn)
+  }
+
+  // An expired pair that comes after the unlock is never tried: the pair that waited still signs in.
+  func testAnExpiredPairDoesNotEndTheWaitOfAValidOne() {
+    XCTAssertFalse(AccountRules.endsWait(readable: true, incomingExpired: true, waitingExpired: false))
+    // A pair that can be tried stands for the one that waited, and the waiting pair's own turn ends it.
+    XCTAssertTrue(AccountRules.endsWait(readable: true, incomingExpired: false, waitingExpired: false))
+    // Run out as well (or the expired pair is the one that waited): nothing is left to sign in with.
+    XCTAssertTrue(AccountRules.endsWait(readable: true, incomingExpired: true, waitingExpired: true))
+    // Still before the first unlock: the turn only makes a pair wait.
+    XCTAssertFalse(AccountRules.endsWait(readable: false, incomingExpired: false, waitingExpired: false))
+    XCTAssertFalse(AccountRules.endsWait(readable: false, incomingExpired: true, waitingExpired: true))
+    // None waiting.
+    XCTAssertFalse(AccountRules.endsWait(readable: true, incomingExpired: false, waitingExpired: nil))
+  }
+
   func testSigningOutIsBlockedWhileEventsWaitUnlessDiscarded() {
     XCTAssertEqual(AccountRules.signOut(unsent: 2, discard: false), .blocked(unsent: 2))
     XCTAssertEqual(AccountRules.signOut(unsent: 2, discard: true), .allowed)

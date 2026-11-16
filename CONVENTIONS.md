@@ -2627,10 +2627,16 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   activated at launch before anything else; messages are versioned (`v: 1`) and decoded in
   `Core/PhoneMessages.swift`. Every file under `targets/watch/` is compiled into the watch target
   (a synchronized group), so keep notes and fixtures out of it. `watch-state` goes once per launch
-  whatever it says (not before the first unlock, when nothing kept can be read), then on a change,
-  and counts as sent only when `updateApplicationContext` took it (`Core/StatePublication.swift`):
-  a refusal goes again at activation, `becameActive`, a reachability or companion change, or with
-  the next changed state, never on a timer. A book on its way also says how far it has come
+  whatever it says (not before what is kept has been read: the first unlock, then the download
+  index), then on a change, and counts as sent only when `updateApplicationContext` took it
+  (`Core/StatePublication.swift`): a refusal goes again at activation, `becameActive`, a
+  reachability or companion change, or with the next changed state, never on a timer. It carries
+  a `launch_id`, new at each launch (optional, the phone ignores it): the session drops a context
+  identical to the last it took, so a phone app installed again would otherwise hear nothing until
+  the state changed (fe#219). An activation that failed is not retried by the system:
+  `becameActive` activates again once the delegate has reported one that failed (`.notActivated`
+  alone is also one still on its way; `retryState(activating:)`, never from the delegate, where a
+  failing one would loop). A book on its way also says how far it has come
   (fe#241, optional fields, still `v: 1`; `DownloadManager.stateBook`): while preparing or
   downloading `files_ready` / `files_total` (files the server has ready: landed, handed to the
   session, or ready in the last renditions answer) and `waiting` (`connection` | `server`,
@@ -2649,6 +2655,37 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   every 60 s (`DownloadWait.retryDelay`), which keeps the wait while the server is away and hands
   over the remaining files when it is back. Content identical to the session's last
   context returns success and sends nothing (seen in the watchOS 26.5 framework), so it is no error.
+- **Before the first unlock** (fe#216, fe#219): every file is
+  `completeFileProtectionUntilFirstUserAuthentication` and the token `AfterFirstUnlock`, so a
+  launch for a background wake after a reboot reads nothing kept (`Keychain.hasToken()` nil; it is
+  read before any store, so an unlock mid-launch never leaves the stores unread with the account
+  read). `JSONFile.load` tells a missing file, a value, an unreadable one (read again later, written
+  over never) and a corrupt one apart. Such a launch decides and reports nothing: no `watch-state`, a
+  `pair` waits in memory (`AccountRules.change` says `.wait` while nothing reads, never a sign-in
+  that would forget the account and discard its listening) and signs in at `becameActive` (read in
+  its inbox turn, so a newer pair queued ahead of it stands; an expired one that comes after the
+  unlock does not take its place, `AccountRules.endsWait`), a `remove` waits with its ticket, a
+  book is held, the open span is not recovered, `HeldBooks` writes nothing over its file (and
+  writes again, once it can, what no file could take), and `Files.deviceId` is not read (the outbox
+  asks for it only to send; an id there but unreadable is never written over). Once the keychain
+  reads (`AppModel.catchUp`: `becameActive`, a phone message, a sign-in, the refresh task, a
+  background upload's answer) the account, server, acks, places, Continue listening, held books
+  (what came meanwhile joins, every `remove` left over, with or without a file to read again, about
+  the row the file kept), the outbox
+  (the copy a locked launch set aside joins in the same launch) and the download index are read
+  again, the span recovered, then the books released and the state published. A background
+  download event reads the index itself first (`DownloadManager.handle`); before the first unlock
+  it is dropped. A download index that does not decode is moved aside
+  (`downloads-unread-*.json`, never written over) and the watch starts with no books; until the
+  index has been read the phone is told nothing and nothing is written over it. A move aside can
+  fail: the file is then still in the way and never written over. The index stays unread and
+  `reload` tries again at each `catchUp`; the outbox keeps what waits in memory (`stuck`) and tries
+  at each save, joining the file if it reads by then (a discard drops it with the rest). Wear OS is
+  not direct-boot aware (no process before the first unlock), reads `watch-state` as a Data Layer
+  item (no identical-context drop) and has no activation; it shares only the undecodable index
+  (`DownloadIndex` sets an unreadable or corrupt one aside, `JsonFile.load`, the same vectors) and
+  the failed move (`DownloadIndex` and `Outbox` write nothing until `JsonFile.setAside` has it out
+  of the way).
 - **Downloads are the watch rendition**, prepared and polled in the foreground
   (`Core/RenditionPlan.swift`), each ready file fetched by the background `URLSession`
   (`Net/BackgroundDownloads.swift`, the one session, reattached at launch) after a free-space

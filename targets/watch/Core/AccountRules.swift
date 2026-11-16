@@ -12,6 +12,10 @@ enum AccountChange: Equatable {
   case replace
   /// Another account while events wait: not until they have gone or are discarded.
   case blocked(unsent: Int)
+  /// Nothing kept here reads yet (before the watch's first unlock): `current` says nobody whoever
+  /// is signed in, so nothing is decided (no account forgotten, no listening discarded). The pair
+  /// waits until it reads (fe#216).
+  case wait
 }
 
 enum SignOutGate: Equatable {
@@ -20,12 +24,24 @@ enum SignOutGate: Equatable {
 }
 
 enum AccountRules {
-  /// What a `pair` message for `incoming` does to the watch signed in to `current`.
-  static func change(current: String?, incoming: String, unsent: Int, discard: Bool = false) -> AccountChange {
+  /// What a `pair` message for `incoming` does to the watch signed in to `current`. `readable`:
+  /// whether what is kept here has been read (`current` and `unsent` are guesses until it has).
+  static func change(current: String?, incoming: String, unsent: Int, discard: Bool = false,
+                     readable: Bool = true) -> AccountChange {
+    guard readable else { return .wait }
     guard let current else { return .signIn }
     if current == incoming { return .sameAccount }
     if unsent > 0 && !discard { return .blocked(unsent: unsent) }
     return .replace
+  }
+
+  /// Whether a pair that waited on the first unlock (`waitingExpired`, nil with none waiting) gives
+  /// way after another pair's turn. One that can be tried stands for it. An expired one is never
+  /// tried and stops nothing, so the waiting pair still signs in at its turn, unless it has run out
+  /// too. Never while nothing reads: that turn only makes the incoming pair wait (fe#216).
+  static func endsWait(readable: Bool, incomingExpired: Bool, waitingExpired: Bool?) -> Bool {
+    guard readable, let waitingExpired else { return false }
+    return !incomingExpired || waitingExpired
   }
 
   /// A `pair` for the account signed in here (`.sameAccount`, D6, fe#219): whether the token kept

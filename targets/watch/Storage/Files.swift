@@ -1,6 +1,7 @@
 // Where the watch keeps everything but the token: Application Support/AudioSilo. The
 // downloads are excluded from backup; every file is readable after the first unlock
-// (`JSONFile`), so a background wake on a locked watch can write.
+// (`JSONFile`), so a background wake on a locked watch can write. Before the first unlock none
+// reads: a launch then reads them again once it can (`AppModel.catchUp`).
 //
 //   account.json       the signed-in account (no token: Keychain.swift)
 //   device-id          this watch's device_id, a UUID made once (decision 12)
@@ -14,6 +15,7 @@
 //   outbox-unread-*.json an outbox that could not be read, kept aside (Outbox)
 //   continue.json      Continue listening's last rows (ContinueListening)
 //   downloads.json     the books on this watch (DownloadManager)
+//   downloads-unread-*.json an index that could not be decoded, kept aside (DownloadManager)
 //   held-books.json    books from the phone not taken yet, or given up on (HeldBooks)
 //   items/             each book's item + chapters, kept for offline playback
 //   downloads/<id>/    each book's rendition files
@@ -51,10 +53,19 @@ enum Files {
   /// Where a finished file waits to be moved to its book's folder.
   static var staging: URL { downloads.appendingPathComponent(".staging", isDirectory: true) }
 
-  /// This watch's `device_id`, made once and kept.
+  /// This watch's `device_id`, made once and kept. Read on first use, which comes after the first
+  /// unlock (`Outbox` asks only to send, the player only to play): read before it, the id kept
+  /// would not read and another would stand in for the rest of the launch, never written over it.
   static let deviceId: String = {
     let url = root.appendingPathComponent("device-id")
-    if let s = try? String(contentsOf: url, encoding: .utf8), !s.isEmpty { return s }
+    do {
+      if let s = String(data: try Data(contentsOf: url), encoding: .utf8), !s.isEmpty { return s }
+    } catch let e as CocoaError where e.meansNoFile {
+      // None yet: made below.
+    } catch {
+      // There, but it can't be read now: the id kept stays this watch's.
+      return UUID().uuidString
+    }
     let id = UUID().uuidString
     try? Data(id.utf8).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     return id
