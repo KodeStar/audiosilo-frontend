@@ -301,8 +301,8 @@ export function sameDetail(a: WatchRowDetail | undefined, b: WatchRowDetail | un
 
 /**
  * The row's actions. A `remove` still with the system has none: it is on its way, and it says so.
- * Delivered, it can offer Remove again: the watch keeps what it has yet to handle only in memory, so
- * a kill loses it, and the row would otherwise sit with no way out until the hold limit.
+ * Delivered, it can offer Remove again: a watch before 2.7.0 kept what it had yet to handle only in
+ * memory, so a kill lost it, and the row would otherwise sit with no way out until the hold limit.
  */
 export function rowActions(phase: WatchRowPhase): {
   remove: boolean;
