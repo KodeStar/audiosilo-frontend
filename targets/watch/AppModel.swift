@@ -640,6 +640,9 @@ final class AppModel: ObservableObject {
       let keptToken = Keychain.token()
       guard Keychain.setToken(session.token) else {
         failed("The watch could not keep its sign-in.")
+        // The session the exchange just made is kept nowhere: ended on its server, best effort.
+        let unkept = APIClient(base: base, token: session.token)
+        Task { try? await unkept.logout() }
         // The account may be gone already (above): the phone is told, and its titles leave.
         publishState()
         return
