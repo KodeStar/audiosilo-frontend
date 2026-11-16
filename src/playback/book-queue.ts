@@ -357,11 +357,12 @@ export function chapterEndPosition(ch: Chapter): number {
 /**
  * The chapter active at a given whole-book position (the first chapter before any).
  *
- * Chapters that share a whole-book start (their files' lengths are unknown, so every
- * one of them starts at the same offset) resolve to the first of them, as `locate` does
- * for the files. `playing`, when given, says whether a file is the one playing: among the
- * tied chapters the first in that file wins, so the player names the chapter of the file
- * it is in rather than the first file's (fe#324).
+ * Chapters that share a whole-book start in DIFFERENT files (their files' lengths are
+ * unknown, so every one of them starts at the same offset) resolve to the first file's, as
+ * `locate` does for the files. `playing`, when given, says whether a file is the one
+ * playing: among the tied chapters that file's wins, so the player names the chapter of
+ * the file it is in rather than the first file's (fe#324). Within one file a tie is a
+ * chapter of no length before another: the later one is the chapter playing.
  */
 export function chapterAt(
   chapters: Chapter[],
@@ -370,17 +371,26 @@ export function chapterAt(
 ): Chapter | null {
   let current = -1;
   for (let i = 0; i < chapters.length; i++) {
-    if (bookPosition < chapters[i].book_offset) break;
+    // Not `<`: a NaN place or start stops here, as it always did.
+    if (!(bookPosition >= chapters[i].book_offset)) break;
     if (current < 0 || chapters[i].book_offset !== chapters[current].book_offset) current = i;
   }
   if (current < 0) return chapters[0] ?? null;
   const tied = chapters[current].book_offset;
-  if (playing && !playing(chapters[current].file_path)) {
+  let file = chapters[current].file_path;
+  if (playing && !playing(file)) {
     for (let i = current + 1; i < chapters.length && chapters[i].book_offset === tied; i++) {
-      if (playing(chapters[i].file_path)) return chapters[i];
+      if (playing(chapters[i].file_path)) {
+        file = chapters[i].file_path;
+        break;
+      }
     }
   }
-  return chapters[current];
+  let pick = current;
+  for (let i = current + 1; i < chapters.length && chapters[i].book_offset === tied; i++) {
+    if (chapters[i].file_path === file) pick = i;
+  }
+  return chapters[pick];
 }
 
 export type ChapterCountdown = {

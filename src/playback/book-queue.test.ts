@@ -475,6 +475,17 @@ describe('timeline math', () => {
     expect(chapterAt(tied, 0, (f) => f === 'B/04.mp3')?.index).toBe(0);
   });
 
+  it('chapterAt takes the later of two chapters starting together in one file', () => {
+    // A chapter of no length (a duplicated marker) before the real one: the real one plays.
+    const chapters = [
+      chapter({ index: 0, book_offset: 0, start: 0, end: 0, file_path: 'B/01.mp3' }),
+      chapter({ index: 1, book_offset: 0, start: 0, end: 600, file_path: 'B/01.mp3' }),
+      chapter({ index: 2, book_offset: 600, start: 600, end: 900, file_path: 'B/01.mp3' }),
+    ];
+    expect(chapterAt(chapters, 30)?.index).toBe(1);
+    expect(chapterAt(chapters, 30, (f) => f === 'B/01.mp3')?.index).toBe(1);
+  });
+
   it('chapterAt finds the active chapter and clamps below the first', () => {
     const chapters = [
       chapter({ index: 0, book_offset: 0 }),
