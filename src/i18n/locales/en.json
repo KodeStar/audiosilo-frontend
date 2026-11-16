@@ -1237,7 +1237,10 @@
         "stale": "Your watch hasn't taken this in 7 days. Send it again if you still want it.",
         "queued": "Waiting on your watch",
         "preparing": "Preparing on the server. This can take a few minutes.",
+        "preparingFiles_one": "Preparing on the server: {{ready}} of {{count}} file ready. This can take a few minutes.",
+        "preparingFiles_other": "Preparing on the server: {{ready}} of {{count}} files ready. This can take a few minutes.",
         "downloading": "Downloading to your watch",
+        "downloadingPercent": "Downloading to your watch · {{percent}}%",
         "ready": "On your watch",
         "failed": "Couldn't download. Send it again to retry.",
         "removing-undelivered": "Removing once your watch is in reach",
@@ -1245,6 +1248,10 @@
         "removingWear": "Removing from your watch",
         "remove-failed": "Couldn't reach your watch to remove this. Try again.",
         "remove-refused": "Not removed: your watch isn't signed in to this account."
+      },
+      "waiting": {
+        "connection": "Your watch is waiting for a connection",
+        "server": "Waiting for your server"
       }
     }
   },

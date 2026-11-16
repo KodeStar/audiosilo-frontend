@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -34,6 +35,7 @@ import {
 import {
   rowActions,
   sameBook,
+  sameDetail,
   type WatchRow,
   type WatchRowPhase,
   watchRows,
@@ -175,6 +177,22 @@ const PHASE_TONE: Partial<Record<WatchRowPhase, string>> = {
   'remove-refused': 'text-warning',
 };
 
+/** What a row says of where it stands: its phase, with how far it has come when the watch told it
+ * (fe#241: "n of m files ready" while the server prepares, the percent while it downloads). The
+ * watch fetches from the server by itself, so a download is "to your watch", never "sending". */
+function phaseText(t: TFunction, row: WatchRow): string {
+  if (row.detail?.kind === 'files') {
+    return t('downloads.watch.phase.preparingFiles', {
+      ready: row.detail.ready,
+      count: row.detail.total,
+    });
+  }
+  if (row.detail?.kind === 'percent') {
+    return t('downloads.watch.phase.downloadingPercent', { percent: row.detail.percent });
+  }
+  return t(watchWording(watchLink.kind, `downloads.watch.phase.${row.phase}` as const));
+}
+
 /** The watch's news builds every row anew (a count of events waiting, a minute going by), so a row
  * that says the same stays as it is. `onRemove` is the section's state setter, always the same. */
 const WatchBookRow = memo(
@@ -222,9 +240,14 @@ const WatchBookRow = memo(
         title={row.title}
         meta={sizeMeta(t, server, row.phase === 'ready' ? (row.bytes ?? 0) : 0, false)}
         status={
-          <Text variant="caption" className={cn(PHASE_TONE[row.phase])}>
-            {t(watchWording(watchLink.kind, `downloads.watch.phase.${row.phase}` as const))}
-          </Text>
+          <>
+            <Text variant="caption" className={cn(PHASE_TONE[row.phase])}>
+              {phaseText(t, row)}
+            </Text>
+            {row.waiting ? (
+              <Text variant="caption">{t(`downloads.watch.waiting.${row.waiting}`)}</Text>
+            ) : null}
+          </>
         }
         actions={
           <>
@@ -272,5 +295,7 @@ const WatchBookRow = memo(
     a.row.title === b.row.title &&
     a.row.author === b.row.author &&
     a.row.bytes === b.row.bytes &&
-    a.row.phase === b.row.phase,
+    a.row.phase === b.row.phase &&
+    sameDetail(a.row.detail, b.row.detail) &&
+    a.row.waiting === b.row.waiting,
 );

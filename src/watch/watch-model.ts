@@ -70,12 +70,25 @@ type RemoveMessage = {
 const WATCH_BOOK_STATES = ['queued', 'preparing', 'downloading', 'ready', 'failed'] as const;
 type WatchBookState = (typeof WATCH_BOOK_STATES)[number];
 
+/** What a download on its way waits for (`DownloadWait` on the watch). */
+const WATCH_WAITS = ['connection', 'server'] as const;
+export type WatchWait = (typeof WATCH_WAITS)[number];
+
 export type WatchBook = {
   library_id: number;
   path: string;
   title: string;
   state: WatchBookState;
   bytes?: number;
+  /** How far a download on its way has come (fe#241), all optional: an older watch, and a Wear OS
+   * one, says none of it. While downloading, the share of its audio on the watch (0-99, in steps
+   * of 5). */
+  progress?: number;
+  /** While preparing or downloading: how many of its files the server has ready, of how many. */
+  files_ready?: number;
+  files_total?: number;
+  /** While preparing or downloading: what it waits for. */
+  waiting?: WatchWait;
 };
 
 /** `watch-state`: what the watch last said about itself. */
@@ -240,9 +253,29 @@ export function buildRemoveMessage(
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
 const count = (v: unknown): number => (typeof v === 'number' && v > 0 ? v : 0);
+/** A whole number from 0 to `max`, else nothing. */
+const wholeUpTo = (v: unknown, max: number): number | undefined =>
+  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= max ? v : undefined;
+
+/** A book's optional "how far" fields, each only when it makes sense: a count of files ready
+ * needs the total and is no more than it. */
+function parseHowFar(b: Record<string, unknown>): Partial<WatchBook> {
+  const total = wholeUpTo(b.files_total, Number.MAX_SAFE_INTEGER);
+  const ready = total !== undefined && total > 0 ? wholeUpTo(b.files_ready, total) : undefined;
+  const progress = wholeUpTo(b.progress, 100);
+  const waiting = (WATCH_WAITS as readonly unknown[]).includes(b.waiting)
+    ? (b.waiting as WatchWait)
+    : undefined;
+  return {
+    ...(progress !== undefined ? { progress } : {}),
+    ...(ready !== undefined ? { files_ready: ready, files_total: total } : {}),
+    ...(waiting ? { waiting } : {}),
+  };
+}
 
 /** A received `watch-state`; null for anything else or a newer version. A state a newer watch
- * app names reads as `queued`, a book without its ids is left out. */
+ * app names reads as `queued`, a book without its ids is left out, and an optional field that
+ * can't be read is left out alone. */
 export function parseWatchState(raw: unknown): WatchState | null {
   if (!isRecord(raw) || raw.v !== WATCH_MESSAGE_VERSION || raw.type !== 'watch-state') return null;
   const books: WatchBook[] = [];
@@ -256,6 +289,7 @@ export function parseWatchState(raw: unknown): WatchState | null {
         ? (b.state as WatchBookState)
         : 'queued',
       bytes: num(b.bytes),
+      ...parseHowFar(b),
     });
   }
   return {

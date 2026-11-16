@@ -1237,7 +1237,10 @@
         "stale": "Votre montre ne l'a pas pris en 7 jours. Envoyez-le de nouveau si vous le voulez toujours.",
         "queued": "En attente sur votre montre",
         "preparing": "Préparation sur le serveur. Cela peut prendre quelques minutes.",
+        "preparingFiles_one": "Préparation sur le serveur : {{ready}} sur {{count}} fichier prêt. Cela peut prendre quelques minutes.",
+        "preparingFiles_other": "Préparation sur le serveur : {{ready}} sur {{count}} fichiers prêts. Cela peut prendre quelques minutes.",
         "downloading": "Téléchargement sur votre montre",
+        "downloadingPercent": "Téléchargement sur votre montre · {{percent}} %",
         "ready": "Sur votre montre",
         "failed": "Téléchargement impossible. Envoyez-le de nouveau pour réessayer.",
         "removing-undelivered": "Sera retiré dès que votre montre sera à portée",
@@ -1245,6 +1248,10 @@
         "removingWear": "Retrait de votre montre en cours",
         "remove-failed": "Impossible de joindre votre montre pour le retirer. Réessayez.",
         "remove-refused": "Pas retiré : votre montre n'est pas connectée à ce compte."
+      },
+      "waiting": {
+        "connection": "Votre montre attend une connexion",
+        "server": "En attente de votre serveur"
       }
     }
   },

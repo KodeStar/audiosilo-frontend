@@ -207,6 +207,82 @@ describe('parseWatchState', () => {
     expect(parseWatchState('watch-state')).toBeNull();
   });
 
+  it('reads how far a book on its way has come (fe#241)', () => {
+    const state = parseWatchState({
+      ...wire,
+      books: [
+        {
+          library_id: 1,
+          path: 'A/C',
+          title: 'C',
+          state: 'downloading',
+          progress: 45,
+          files_ready: 3,
+          files_total: 10,
+          waiting: 'connection',
+        },
+        {
+          library_id: 1,
+          path: 'A/D',
+          title: 'D',
+          state: 'preparing',
+          files_ready: 0,
+          files_total: 4,
+        },
+      ],
+    });
+    expect(state?.books).toEqual([
+      {
+        library_id: 1,
+        path: 'A/C',
+        title: 'C',
+        state: 'downloading',
+        progress: 45,
+        files_ready: 3,
+        files_total: 10,
+        waiting: 'connection',
+      },
+      {
+        library_id: 1,
+        path: 'A/D',
+        title: 'D',
+        state: 'preparing',
+        files_ready: 0,
+        files_total: 4,
+      },
+    ]);
+  });
+
+  it('leaves out a "how far" field it cannot read, and keeps the book', () => {
+    const state = parseWatchState({
+      ...wire,
+      books: [
+        {
+          library_id: 1,
+          path: 'A/C',
+          state: 'downloading',
+          progress: 140,
+          files_ready: 5,
+          files_total: 4,
+          waiting: 'wifi',
+        },
+        { library_id: 1, path: 'A/D', state: 'downloading', progress: 4.5, files_ready: 2 },
+        { library_id: 1, path: 'A/E', state: 'preparing', progress: '45', files_total: 0 },
+      ],
+    });
+    expect(state?.books).toEqual([
+      { library_id: 1, path: 'A/C', title: 'A/C', state: 'downloading' },
+      { library_id: 1, path: 'A/D', title: 'A/D', state: 'downloading' },
+      { library_id: 1, path: 'A/E', title: 'A/E', state: 'preparing' },
+    ]);
+    for (const b of state?.books ?? []) {
+      expect(b).not.toHaveProperty('progress');
+      expect(b).not.toHaveProperty('files_ready');
+      expect(b).not.toHaveProperty('files_total');
+      expect(b).not.toHaveProperty('waiting');
+    }
+  });
+
   it('keeps going past a bad book or a state it does not know', () => {
     const state = parseWatchState({
       ...wire,

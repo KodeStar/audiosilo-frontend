@@ -1237,7 +1237,10 @@
         "stale": "Tu reloj no lo ha recogido en 7 días. Envíalo de nuevo si aún lo quieres.",
         "queued": "En espera en tu reloj",
         "preparing": "Preparándose en el servidor. Puede tardar unos minutos.",
+        "preparingFiles_one": "Preparándose en el servidor: {{ready}} de {{count}} archivo listo. Puede tardar unos minutos.",
+        "preparingFiles_other": "Preparándose en el servidor: {{ready}} de {{count}} archivos listos. Puede tardar unos minutos.",
         "downloading": "Descargándose en tu reloj",
+        "downloadingPercent": "Descargándose en tu reloj · {{percent}} %",
         "ready": "En tu reloj",
         "failed": "No se pudo descargar. Envíalo de nuevo para reintentar.",
         "removing-undelivered": "Se quitará cuando tu reloj esté al alcance",
@@ -1245,6 +1248,10 @@
         "removingWear": "Quitándose de tu reloj",
         "remove-failed": "No se pudo contactar con tu reloj para quitarlo. Inténtalo de nuevo.",
         "remove-refused": "No se ha quitado: tu reloj no ha iniciado sesión en esta cuenta."
+      },
+      "waiting": {
+        "connection": "Tu reloj está esperando una conexión",
+        "server": "Esperando a tu servidor"
       }
     }
   },

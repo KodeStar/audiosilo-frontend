@@ -2823,7 +2823,12 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     is written when Send is tapped (`handed_over: false`, so a kill mid-send can't read as
     delivered), put back if the send fails, and stops claiming progress after 7 days (`WATCH_HOLD_MS`,
     the watch's own hold limit) with Send again. Once seen in `watch-state`, a book that leaves it is
-    gone, so the row goes (removed by hand on the watch, or the watch left that account).
+    gone, so the row goes (removed by hand on the watch, or the watch left that account). A listed
+    book on its way says how far it has come when the watch tells it (`watchRows`' `detail` and
+    `waiting`, fe#241): preparing "n of m files ready", downloading "Downloading to your watch ·
+    45%" (the watch fetches from the server itself; the phone sends no bytes, so never "sending"),
+    and what it waits for on a second line. A Wear OS watch, and an Apple Watch before 2.7.0, tells
+    none of it, so its rows keep the plain phase.
   - **`remove` (phone to watch, `transferUserInfo`, no server or wire change).** The row says
     removing until `watch-state` drops it, surviving a restart, and never claims it finished while
     the message is outstanding. There is no reply: a `remove` delivered while the watch says it is
@@ -2975,6 +2980,9 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   state never lands last); `AppModel.publishState` works it out on the main thread only (posted
   from a worker or PhoneLink, never locked: `HeldBooks.finishRemove` publishes under its lock);
   a book's stage moving publishes on its own (`DownloadIndex.stages`, collected once per process).
+  It sends none of the Apple Watch's optional "how far" fields (`progress`, `files_ready`,
+  `files_total`, `waiting`, fe#241): bytes landing are no change here, so the phone's row keeps
+  the plain phase for a Wear OS watch.
 - **Playback (decision 10, `playback/`)**: `PlayerEngine` (the twin of WatchAudioEngine.swift)
   owns one ExoPlayer, one MediaItem per downloaded file; speech attributes with focus handled,
   noisy handled, `setSuppressPlaybackOnUnsuitableOutput(true)` until the speaker is confirmed

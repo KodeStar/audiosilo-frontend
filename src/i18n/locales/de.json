@@ -1237,7 +1237,10 @@
         "stale": "Deine Uhr hat es in 7 Tagen nicht übernommen. Sende es erneut, falls du es noch möchtest.",
         "queued": "Wartet auf deiner Uhr",
         "preparing": "Wird auf dem Server vorbereitet. Das kann einige Minuten dauern.",
+        "preparingFiles_one": "Wird auf dem Server vorbereitet: {{ready}} von {{count}} Datei fertig. Das kann einige Minuten dauern.",
+        "preparingFiles_other": "Wird auf dem Server vorbereitet: {{ready}} von {{count}} Dateien fertig. Das kann einige Minuten dauern.",
         "downloading": "Wird auf deine Uhr geladen",
+        "downloadingPercent": "Wird auf deine Uhr geladen · {{percent}} %",
         "ready": "Auf deiner Uhr",
         "failed": "Download fehlgeschlagen. Sende es erneut, um es noch einmal zu versuchen.",
         "removing-undelivered": "Wird entfernt, sobald deine Uhr in Reichweite ist",
@@ -1245,6 +1248,10 @@
         "removingWear": "Wird von deiner Uhr entfernt",
         "remove-failed": "Deine Uhr war zum Entfernen nicht erreichbar. Versuche es erneut.",
         "remove-refused": "Nicht entfernt: Deine Uhr ist nicht bei diesem Konto angemeldet."
+      },
+      "waiting": {
+        "connection": "Deine Uhr wartet auf eine Verbindung",
+        "server": "Wartet auf deinen Server"
       }
     }
   },

@@ -1237,7 +1237,10 @@
         "stale": "Il tuo orologio non lo ha preso in 7 giorni. Invialo di nuovo se lo vuoi ancora.",
         "queued": "In attesa sul tuo orologio",
         "preparing": "In preparazione sul server. Può richiedere qualche minuto.",
+        "preparingFiles_one": "In preparazione sul server: {{ready}} di {{count}} file pronto. Può richiedere qualche minuto.",
+        "preparingFiles_other": "In preparazione sul server: {{ready}} di {{count}} file pronti. Può richiedere qualche minuto.",
         "downloading": "Download sul tuo orologio",
+        "downloadingPercent": "Download sul tuo orologio · {{percent}}%",
         "ready": "Sul tuo orologio",
         "failed": "Download non riuscito. Invialo di nuovo per riprovare.",
         "removing-undelivered": "Verrà rimosso quando il tuo orologio sarà a portata",
@@ -1245,6 +1248,10 @@
         "removingWear": "Rimozione dal tuo orologio in corso",
         "remove-failed": "Impossibile raggiungere il tuo orologio per rimuoverlo. Riprova.",
         "remove-refused": "Non rimosso: il tuo orologio non ha effettuato l'accesso a questo account."
+      },
+      "waiting": {
+        "connection": "Il tuo orologio è in attesa di una connessione",
+        "server": "In attesa del tuo server"
       }
     }
   },
