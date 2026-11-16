@@ -92,7 +92,8 @@ final class DownloadManager: ObservableObject {
   /// and until it is nothing is written over it and the phone is told nothing of the books.
   private(set) var loaded = false
   /// Every book was removed while the index was unread (`removeAll`: the account was left), so the
-  /// books it holds are that account's: dropped when it reads, never joined (fe#323).
+  /// books it holds are that account's: dropped when it reads, never joined (fe#323). In memory
+  /// only, so `removeAll` removes the index itself when it can.
   private var clearOnRead = false
   /// The files this launch handed to the background session (`DownloadTaskTag.key`).
   private var handedOff: Set<String> = []
@@ -155,7 +156,8 @@ final class DownloadManager: ObservableObject {
     loaded = true
     clearOnRead = false
     for r in dropped {
-      // The same book queued again since keeps its tasks and item cache: only the left one's folder goes.
+      // The same book queued again since keeps its tasks (the left one's were cancelled as it
+      // left, `removeAll`) and item cache: only the left one's folder goes.
       if records.contains(where: { $0.id == r.id }) {
         try? FileManager.default.removeItem(at: folder(of: r))
       } else {
@@ -274,11 +276,24 @@ final class DownloadManager: ObservableObject {
     try? FileManager.default.removeItem(at: Files.item(r.ref))
   }
 
-  /// Remove every book (the account was replaced). With the index unread, what it holds goes once
-  /// it reads (`reload`).
+  /// Remove every book (the account left). Every transfer is that account's, also one of a book no
+  /// record here names (the index unread): left going, it would land under the same book queued by
+  /// the next account. With the index unread, what it holds is that account's too: it goes now with
+  /// every folder, so a kill before it reads brings none of it back. One that can't be removed
+  /// either is dropped once it reads (`reload`).
   func removeAll() {
     for r in records { remove(r.ref) }
-    if !loaded { clearOnRead = true }
+    BackgroundDownloads.shared.cancelAll()
+    if !loaded {
+      clearOnRead = true
+      index.write(nil)
+      // What is in the directory, not the directory: it is made once, kept out of the backup.
+      let fm = FileManager.default
+      for url in (try? fm.contentsOfDirectory(at: Files.downloads, includingPropertiesForKeys: nil)) ?? [] {
+        try? fm.removeItem(at: url)
+      }
+      reload()
+    }
     sweepStaging(olderThan: 0)
   }
 

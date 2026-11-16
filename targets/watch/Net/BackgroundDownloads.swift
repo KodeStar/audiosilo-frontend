@@ -96,6 +96,12 @@ final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate, @unchecke
     }
   }
 
+  /// Cancel every task: the account left, and each is its own (also one of a book no record names
+  /// while the download index is unread).
+  func cancelAll() {
+    session.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
+  }
+
   /// A background wake for this session: resolves once the system's events are delivered.
   func wake() async {
     attach()

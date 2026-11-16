@@ -2678,7 +2678,10 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   download event reads the index itself first (`DownloadManager.handle`); before the first unlock
   it is dropped. Every book removed while the index is unread (an account left, `removeAll`), what
   it holds is that account's: dropped with its files once it reads, never joined under the account
-  signed in now (`DownloadIndexJoin`, fe#323). A download index that does not decode is moved aside
+  signed in now (`DownloadIndexJoin`, fe#323). `removeAll` removes the unread index and every folder
+  at once when it can (that flag is in memory only, and a kill before the index read would bring the
+  books back), and cancels every transfer of the session: one of a book no record names would land
+  under the same book queued by the next account. A download index that does not decode is moved aside
   (`downloads-unread-*.json`, never written over) and the watch starts with no books; until the
   index has been read the phone is told nothing and nothing is written over it. A move aside can
   fail: the file is then still in the way and never written over. The index stays unread and
