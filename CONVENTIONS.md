@@ -2654,8 +2654,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   lands), and nothing resumes it. An interruption resumes
   in either order of `began` and the system's pause. Pausing
   while a play still asks for the session ends that play. A file that fails stops the book at the
-  last known place, the one further on when its turn comes (`AVQueuePlayer` would skip it
-  silently), and Play tries it again. A place is kept only as the book plays or moves, stamped
+  last known place, its span ending where the audio last moved, the one further on when its turn
+  comes (`AVQueuePlayer` would skip it silently), and Play tries it again. A place is kept only as the book plays or moves, stamped
   when that happened (`stoppedAt` for a late-noticed stop): a later stamp would read as newer than
   another device's real place. A book starts again (an `unfinish`, then a
   `restart` span) only after it played to its end: a queue a failed file emptied plays on from

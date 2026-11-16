@@ -267,7 +267,6 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     DispatchQueue.main.asyncAfter(deadline: .now() + Self.SETTLE_LIMIT) { [weak self] in
       MainActor.assumeIsolated {
         guard let self, self.playbackAttempt.timedOut(token, settling: self.settling, playing: self.playing) else { return }
-        self.pause(stoppedAt: self.lastAdvance)
         self.fail(.settling)
       }
     }
@@ -593,8 +592,9 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   }
 
   /// The queue goes first: the place then comes from the last tick, not from wherever the player
-  /// skipped to, and a play tries the file again from there (`play`). Its message says more than a
-  /// refused start's still waiting, which it replaces.
+  /// skipped to, and a play tries the file again from there (`play`). The span ends where the audio
+  /// last moved, not when the failure was noticed (as the settling deadline's does). Its message
+  /// says more than a refused start's still waiting, which it replaces.
   private func fail(_ failure: PlaybackFailure) {
     cancelStart()
     startRefusal.reset()
@@ -603,7 +603,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     items = []
     pendingSeek = nil
     settling = false
-    pause(stoppedAt: nil)
+    pause(stoppedAt: lastAdvance)
     problem = failure.message
   }
 
