@@ -868,8 +868,8 @@ function chaptersRefresh(
  * files take a new order (server v2.4.0 plays them in natural order, "2-" before "10-"):
  * the chapters carry the order every queue over the download plays them in
  * (`bookFileSpecs`, each file found by its path: `localFromManifest`), and `files` itself
- * never moves, since a file's index there is its name on disk (`fileName`;
- * `relocateEntry` keeps a saved file's own name, `storedName`). A
+ * never moves, since a file's name on disk is its index (`fileName`; `relocateEntry` keeps
+ * a saved file's own name, `storedIndex`). A
  * background answer never does it (`refreshedChapters`): JS cannot see a book the Android
  * service or a Cast receiver holds before it is adopted. Chapters naming other files
  * change nothing.
@@ -1361,8 +1361,12 @@ async function relocateEntry(e: DownloadEntry): Promise<DownloadEntry> {
   const at = (name: string) => resolve(connectionId, libraryId, path, name);
   const files = await Promise.all(
     e.manifest.files.map(async (f, i) => {
-      const name = storedName(i, f.localUri) ?? fileName(i, f.relPath);
-      return { ...f, localUri: at(await playableName(i, name, at)) };
+      // The index its stored name says, else its place in the list: a launch that found a
+      // file gone lists only the ones still there (`reviveEntry`), so a file listed after
+      // a gone one is saved under a later index than its place (fe#158).
+      const index = storedIndex(f.localUri) ?? i;
+      const name = storedName(index, f.localUri) ?? fileName(index, f.relPath);
+      return { ...f, localUri: at(await playableName(index, name, at)) };
     }),
   );
   const coverUri = e.manifest.coverUri ? at(COVER_FILE) : e.manifest.coverUri;
@@ -1424,9 +1428,16 @@ function fileName(index: number, relPath: string): string {
  * `file://` uri carries, which is not the name on disk) falls back to `fileName`.
  */
 function storedName(index: number, localUri: string): string | undefined {
-  const name = localUri.slice(localUri.lastIndexOf('/') + 1);
-  const m = /^(\d+)(\.[^./:?#%]+)?$/.exec(name);
-  return m?.[1] === String(index) ? name : undefined;
+  return storedIndex(localUri) === index
+    ? localUri.slice(localUri.lastIndexOf('/') + 1)
+    : undefined;
+}
+
+/** The index a saved file's stored name says, when it is one `fileName` could have given
+ * (`<index>` plus an optional extension, as `storedName` reads it), else undefined. */
+function storedIndex(localUri: string): number | undefined {
+  const m = /^(\d+)(\.[^./:?#%]+)?$/.exec(localUri.slice(localUri.lastIndexOf('/') + 1));
+  return m ? Number(m[1]) : undefined;
 }
 
 async function runQueue() {
@@ -1561,17 +1572,15 @@ async function runOne(key: string) {
       lastTick = now;
       patch({ bytes, totalBytes: knownTotal, progress: step / steps });
     };
-    // Files a failed attempt already finished, by position (the on-disk name is the
-    // index, so a file only counts where it was saved).
+    // Files a failed attempt already finished, each at the index it was saved under: the
+    // one its stored name says, else its place in the list (`storedIndex`; a launch that
+    // found a file gone lists only the ones still there, `reviveEntry`). A file counts only
+    // for that index, since a download of the index writes over it.
     const earlier = entry.manifest.files;
+    const savedAt = (f: DownloadedFile, k: number) => storedIndex(f.localUri) ?? k;
     for (let i = 0; i < specs.length; i++) {
       const s = specs[i];
-      // In its place, else saved under this index's name further on in the list: a launch
-      // that found an earlier file gone lists only the ones still there (`reviveEntry`).
-      const done =
-        earlier[i]?.relPath === s.path
-          ? earlier[i]
-          : earlier.find((f) => f.relPath === s.path && storedName(i, f.localUri) !== undefined);
+      const done = earlier.find((f, k) => f.relPath === s.path && savedAt(f, k) === i);
       if (done && (await engine.fileExists(done.localUri))) {
         files.push(done);
         priorBytes += done.bytes ?? s.size;
@@ -1597,14 +1606,17 @@ async function runOne(key: string) {
       files.push({ relPath: s.path, localUri, bytes: curBytes });
       // List each finished file as it lands, so a download the app is closed in the
       // middle of keeps them across the restart (`reviveEntry`). Files a failed attempt
-      // finished further on stay listed in their places (the name on disk is the index).
+      // saved under a later index stay listed (the name on disk is the index).
       const cur = useDownloads.getState().entries[key];
       if (cur && live()) {
         patchEntry(key, {
           bytes: priorBytes,
           totalBytes: knownTotal,
           progress: (i + 1) / steps,
-          manifest: { ...cur.manifest, files: [...files, ...earlier.slice(files.length)] },
+          manifest: {
+            ...cur.manifest,
+            files: [...files, ...earlier.filter((f, k) => savedAt(f, k) >= files.length)],
+          },
         });
         persistSoon();
       }

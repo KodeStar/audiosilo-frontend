@@ -663,10 +663,11 @@ describe('relocateEntry keeps a saved file its own name', () => {
     }
   });
 
-  it("falls back to fileName when the stored name is not this index's", async () => {
+  it('keeps a stored name of a later index, else falls back to fileName', async () => {
     Platform.OS = 'ios';
     expect(
       await relocated([
+        // Saved as index 3 (a list with gone files before it, fe#158): its own name.
         { relPath: 'A/Book/01.mka', localUri: 'file:///old/root/3.mka' },
         { relPath: 'A/Book/02.mka', localUri: 'file:///old/root/track.mka' },
         { relPath: 'A/Book/03.mka', localUri: '' },
@@ -674,7 +675,7 @@ describe('relocateEntry keeps a saved file its own name', () => {
         { relPath: 'A/Book/04.mka', localUri: 'file:///old/root/3.m%20ka' },
       ]),
     ).toEqual([
-      'live:c1:2:A/Book:0.mp3',
+      'live:c1:2:A/Book:3.mka',
       'live:c1:2:A/Book:1.mp3',
       'live:c1:2:A/Book:2.mp3',
       'live:c1:2:A/Book:3.mp3',
@@ -754,6 +755,30 @@ describe('relocateEntry keeps a saved file its own name', () => {
     ]);
     expect(renames()).toEqual([]);
     expect(useDownloads.getState().entries[key]?.status).toBe('downloaded');
+  });
+
+  // fe#158: a launch that found a file gone lists only the ones still there, so a kept
+  // file's place in the list is no longer its index; the next launch must still find it.
+  it('keeps a file listed after a gone one under its own name across launches', async () => {
+    Platform.OS = 'android';
+    onDisk('0.mp3', '2.mp3');
+    const entry = downloadedEntry();
+    entry.manifest.book = threeFileBook();
+    entry.manifest.coverUri = null;
+    entry.manifest.files = [0, 1, 2].map((i) => ({
+      relPath: `A/Book/0${i}.mp3`,
+      localUri: at(`${i}.mp3`),
+    }));
+    await seed({ [key]: entry });
+    await useDownloads.getState().hydrate();
+    expect(uris()).toEqual([at('0.mp3'), at('2.mp3')]);
+
+    await hydrateAgain();
+    expect(uris()).toEqual([at('0.mp3'), at('2.mp3')]);
+    expect(useDownloads.getState().entries[key]?.failure).toEqual({
+      kind: 'missing',
+      kept: 2 / 3,
+    });
   });
 
   it('keeps an iOS .mka name where the engine cannot rename', async () => {
@@ -3224,6 +3249,65 @@ describe('failures, retry and the session decline mark', () => {
     ]);
     // Only the cover and the gone file were fetched.
     expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg', '1.mp3']);
+  });
+
+  /** A `missing` failure whose file 00 went: the launch listed 01 and 02 only. */
+  const firstGone = () => {
+    const entry = downloadedEntry({ status: 'error', failure: { kind: 'missing', kept: 2 / 3 } });
+    entry.manifest.book = book;
+    entry.manifest.files = [
+      { relPath: 'A/Book/01.mp3', localUri: 'file:///dl/1.mp3' },
+      { relPath: 'A/Book/02.mp3', localUri: 'file:///dl/2.mp3' },
+    ];
+    return entry;
+  };
+
+  it('a retry lists the kept files saved further on while it fetches a gone one', async () => {
+    useDownloads.setState({ entries: { [key]: firstGone() } });
+    let release: (present: boolean) => void = () => {};
+    mockEngine.fileExists.mockImplementation((uri: string) =>
+      uri.endsWith('/1.mp3') ? new Promise<boolean>((r) => (release = r)) : Promise.resolve(true),
+    );
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `file:///dl/${name}`,
+    );
+
+    useDownloads.getState().download('c1', 2, book);
+    await settle();
+    // File 00 landed; 01 and 02 are still listed for an app closed now.
+    expect(useDownloads.getState().entries[key]?.manifest.files.map((f) => f.localUri)).toEqual([
+      'file:///dl/0.mp3',
+      'file:///dl/1.mp3',
+      'file:///dl/2.mp3',
+    ]);
+    release(true);
+    await settle();
+    expect(useDownloads.getState().entries[key]?.status).toBe('downloaded');
+    expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg', '0.mp3']);
+  });
+
+  it('a retry never takes a kept file for an index it was not saved under', async () => {
+    // The book's order changed since: 01, 02, then 00. Each kept file was saved under
+    // another index, which this order downloads over, so none is reused.
+    const reordered = makeBook({
+      files: book.files?.map((f) => ({ ...f, seq: (f.seq + 2) % 3 })),
+    });
+    useDownloads.setState({ entries: { [key]: firstGone() } });
+    mockEngine.fileExists.mockResolvedValue(true);
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `file:///dl/${name}`,
+    );
+
+    useDownloads.getState().download('c1', 2, reordered);
+    await settle();
+
+    const done = useDownloads.getState().entries[key];
+    expect(done?.status).toBe('downloaded');
+    expect(done?.manifest.files.map((f) => [f.relPath, f.localUri])).toEqual([
+      ['A/Book/01.mp3', 'file:///dl/0.mp3'],
+      ['A/Book/02.mp3', 'file:///dl/1.mp3'],
+      ['A/Book/00.mp3', 'file:///dl/2.mp3'],
+    ]);
   });
 
   it('lists each finished file as it lands, so an app closed mid-way keeps them', async () => {

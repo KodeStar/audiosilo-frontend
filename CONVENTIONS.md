@@ -4004,8 +4004,9 @@ are asked, at most 10,000 rows.
   with the listed files still on disk (an interrupted one says the app closed, or on web with
   every file saved that only the offline check was left, `unservable`). A downloaded book with
   some of its files gone is kept the same way, as a failure holding the rest (`missing`, fe#158),
-  so Retry fetches only the gone ones; a retry reuses a kept file in its place, else one listed
-  later that was saved under this index's name (`storedName`). One with no file left (most books
+  so Retry fetches only the gone ones. A kept file is found by the index its stored name says
+  (`storedIndex`, else its place in the list): at launch (`relocateEntry`) and by a retry, which
+  reuses it only for that index. One with no file left (most books
   are one M4B) stays as a row to retry from the start, its folder emptied, unless keep-ahead
   started it (keep-ahead plans it again); a downloaded book with no file left is dropped with its
   folder. While an identity move is pending an entry is kept exactly as stored. No storage format
@@ -4048,8 +4049,8 @@ are asked, at most 10,000 rows.
   chapters only when they are exactly that order, else reloads the engine in the manifest's
   (fe#134; the Cast receiver adoption still maps its track index through the manifest). The
   chapters carry the order (every queue over a download orders its files by them and finds each by
-  path); `manifest.files` itself never moves, since a file's index there is its name on disk
-  (`fileName`; `relocateEntry` keeps each saved file's own name at every launch). A place saved on the old
+  path); `manifest.files` itself never moves, since a file's name on disk is its index
+  (`fileName`; `relocateEntry` keeps each saved file's own name at every launch, `storedIndex`). A place saved on the old
   timeline reads as moved once the new order is taken (as the server's re-index moves any
   whole-book place: no remap). A downloaded book whose chapters change gets its Android car play
   spec rebuilt (`car-controller.ts`).
