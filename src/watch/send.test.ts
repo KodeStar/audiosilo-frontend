@@ -244,12 +244,43 @@ describe('sendBookToWatch', () => {
       expect(Object.keys(useWatchStore.getState().pairUntil)).toEqual(['srv.7']);
     });
 
+    it("holds another account's set up until this book's own pair is out (fe#322)", async () => {
+      let answer = (_p: PairingPayload) => {};
+      api.pair.mockReturnValueOnce(new Promise<PairingPayload>((r) => (answer = r)));
+      const sending = sendBookToWatch(api, connection, 3, book);
+      // The book's pair is being minted when the card sets the watch up for the other account.
+      await jest.advanceTimersByTimeAsync(0);
+      expect(api.pair).toHaveBeenCalledTimes(1);
+      const setUp = setUpWatch(api, other);
+      await jest.advanceTimersByTimeAsync(0);
+      expect(api.pair).toHaveBeenCalledTimes(1);
+      answer(payload);
+      await Promise.all([sending, setUp]);
+      expect(api.pair).toHaveBeenCalledTimes(2);
+      // Asked last, sent last: the watch keeps the other account's.
+      expect(mockSendPair.mock.calls.map(([m]) => m.user_id)).toEqual([7, 8]);
+      expect(Object.keys(useWatchStore.getState().pairUntil)).toEqual(['srv.8']);
+    });
+
     it('takes no notice of a pair whose connection has gone', async () => {
       await setUpWatch(api, other);
       forgetPair('srv.8');
       await sendBookToWatch(api, connection, 3, book);
       expect(mockSendBook).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('forgets a pair still being minted when a password change ends it (fe#322)', async () => {
+    let answer = (_p: PairingPayload) => {};
+    api.pair.mockReturnValueOnce(new Promise<PairingPayload>((r) => (answer = r)));
+    const pairing = setUpWatch(api, connection);
+    forgetPair('srv.7');
+    answer(payload);
+    await pairing;
+    expect(useWatchStore.getState().pairUntil).toEqual({});
+    // The next one is noted as ever.
+    await setUpWatch(api, connection);
+    expect(useWatchStore.getState().pairUntil['srv.7']).toBe(NOW + 600_000);
   });
 
   it('mints again once the pair on its way was forgotten (a password change ended it)', async () => {

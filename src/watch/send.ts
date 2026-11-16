@@ -25,7 +25,7 @@ import {
   type WatchableBook,
 } from './watch-model';
 import { removeAskedAt, sameBook } from './watch-rows';
-import { notePairSent, refreshWatch, useWatchStore } from './watch-store';
+import { notePairSent, pairEpoch, refreshWatch, useWatchStore } from './watch-store';
 
 /** The watch link refused a message (no ApiError: the server was never the problem). */
 export class WatchSendError extends Error {}
@@ -51,6 +51,9 @@ const refused = (cause: unknown): never => {
 };
 
 async function mintAndSendPair(api: Pick<ApiClient, 'pair'>, connection: Connection) {
+  // A pair forgotten while this one is minted or sent (a password change ends its token) is not
+  // noted as on its way when it lands (fe#322).
+  const epoch = pairEpoch(connection.id);
   const asked = Date.now();
   const payload = await api.pair({ ttlSeconds: WATCH_PAIR_TTL_SECONDS });
   const expiresAt = asked + WATCH_PAIR_TTL_SECONDS * 1000;
@@ -62,7 +65,7 @@ async function mintAndSendPair(api: Pick<ApiClient, 'pair'>, connection: Connect
     useSession.getState().connections,
   );
   await watchLink.sendPair(message).catch(refused);
-  notePairSent(connection.id, expiresAt);
+  notePairSent(connection.id, expiresAt, epoch);
 }
 
 /** The pair being minted and sent, by connection id (up to 10 s with a watch slow to reply). */
@@ -74,12 +77,17 @@ const inFlight = new Map<string, Promise<void>>();
  * counts from before the request, but the server truncates its own to whole seconds, so this one
  * can run under a second later: only a hint, since the watch's exchange is what decides. A second
  * call while one is on its way joins it: two tokens would sign the watch in twice, leaving a
- * session behind.
+ * session behind. Another account's pair still being minted or sent (a book's own) goes first, so
+ * the one asked last is the one the watch keeps, whichever is quicker to mint (fe#322).
  */
 export function setUpWatch(api: Pick<ApiClient, 'pair'>, connection: Connection): Promise<void> {
   const running = inFlight.get(connection.id);
   if (running) return running;
-  const sending = mintAndSendPair(api, connection).finally(() => inFlight.delete(connection.id));
+  const ahead = [...inFlight.values()];
+  const mint = () => mintAndSendPair(api, connection);
+  const sending = (ahead.length ? Promise.allSettled(ahead).then(mint) : mint()).finally(() =>
+    inFlight.delete(connection.id),
+  );
   inFlight.set(connection.id, sending);
   return sending;
 }

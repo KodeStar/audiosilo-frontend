@@ -7,6 +7,7 @@ import {
   buildPairMessage,
   buildRemoveMessage,
   NO_WATCH,
+  pairAfterSignIn,
   parseTransfers,
   parseWatchState,
   sendToWatchVisible,
@@ -587,6 +588,32 @@ describe('watchSectionVisible', () => {
     expect(watchSectionVisible(installed, { id: 7, member_kind: 'kid' })).toBe(false);
     expect(watchSectionVisible(installed, { id: 7, is_demo: true })).toBe(false);
     expect(watchSectionVisible(installed, { id: 0 })).toBe(false);
+  });
+});
+
+describe('pairAfterSignIn', () => {
+  const user = { id: 7, username: 'ada' };
+
+  it('drops the pair once the watch says it is signed in to its account', () => {
+    expect(pairAfterSignIn({ 'srv.7': 5 }, 'srv.7', [connection])).toEqual({});
+  });
+
+  it("drops a legacy-id connection's pair too (fe#322)", () => {
+    // Keyed by the bare server id, while the watch names its account `<server>.<user>`.
+    const legacy = { id: 'srv', user };
+    expect(pairAfterSignIn({ srv: 5 }, 'srv.7', [legacy])).toEqual({});
+  });
+
+  it("keeps another account's pair, and keeps it while the watch names nobody", () => {
+    const pair = { 'srv.8': 5 };
+    expect(pairAfterSignIn(pair, 'srv.7', [connection])).toBe(pair);
+    expect(pairAfterSignIn(pair, null, [connection])).toBe(pair);
+    // A legacy id of another user on the same server is not this account.
+    expect(
+      pairAfterSignIn({ srv: 5 }, 'srv.7', [{ id: 'srv', user: { id: 8, username: 'b' } }]),
+    ).toEqual({
+      srv: 5,
+    });
   });
 });
 

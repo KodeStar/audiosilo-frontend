@@ -374,6 +374,23 @@ export function signedInHere(state: WatchState | null, connection: WatchAccount)
   );
 }
 
+/** The pair on its way once the watch says it is signed in to `here` (`accountOnWatch`): none when
+ * it was for that account, which has landed and used its token. Matched by account, not by key: a
+ * connection still under its legacy id (the bare `server_id`) keys its pair by that id, never
+ * `here` (fe#322). A key no connection has is taken as the account it names. */
+export function pairAfterSignIn(
+  pairUntil: Readonly<Record<string, number>>,
+  here: string | null,
+  connections: readonly WatchAccount[],
+): Readonly<Record<string, number>> {
+  if (here === null) return pairUntil;
+  const landed = Object.keys(pairUntil).some((id) => {
+    const c = connections.find((x) => x.id === id);
+    return (c ? watchAccountOf(c) : id) === here;
+  });
+  return landed ? {} : pairUntil;
+}
+
 /** What a book for this connection needs ahead of it. `pairUntil`: when the pair on its way runs
  * out, epoch ms, by connection id (at most one, `useWatchStore`).
  * - `busy`: another account's pair is on its way with time left (D5, fe#219). The watch takes
