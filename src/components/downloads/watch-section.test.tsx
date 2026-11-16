@@ -50,11 +50,17 @@ const connectionOf = (id: string, serverId: string, name: string, user: Partial<
   user,
 });
 let mockDefaultId = 'srv.7';
+// The same objects from one render to the next, as the store gives them: a row's memo holds.
+const mockConnectionLists = new Map<Partial<User>, unknown[]>();
 jest.mock('@/stores/profiles', () => ({
-  useProfileConnections: () => [
-    connectionOf('srv.7', 'srv', 'Hearthside', mockUser),
-    connectionOf('two.9', 'two', 'Second', { id: 9, username: 'bea' }),
-  ],
+  useProfileConnections: () => {
+    const list = mockConnectionLists.get(mockUser) ?? [
+      connectionOf('srv.7', 'srv', 'Hearthside', mockUser),
+      connectionOf('two.9', 'two', 'Second', { id: 9, username: 'bea' }),
+    ];
+    mockConnectionLists.set(mockUser, list);
+    return list;
+  },
 }));
 jest.mock('@/stores/session', () => ({
   useSession: Object.assign(
@@ -174,6 +180,75 @@ describe('WatchSection', () => {
     expect(screen.getByText('Downloading to your watch')).toBeTruthy();
     expect(screen.getByText('On your watch')).toBeTruthy();
     expect(screen.getByText('Hearthside · 1 MB')).toBeTruthy();
+  });
+
+  it('says how far a book on its way has come, and what it waits for (fe#241)', async () => {
+    await mount({
+      ...base,
+      state: here([
+        {
+          library_id: 1,
+          path: 'P',
+          title: 'Preparing book',
+          state: 'preparing',
+          files_ready: 1,
+          files_total: 4,
+          waiting: 'server',
+        },
+        {
+          library_id: 1,
+          path: 'S',
+          title: 'Short book',
+          state: 'preparing',
+          files_ready: 0,
+          files_total: 1,
+        },
+        {
+          library_id: 1,
+          path: 'D',
+          title: 'Busy book',
+          state: 'downloading',
+          progress: 45,
+          files_ready: 4,
+          files_total: 4,
+          waiting: 'connection',
+        },
+        { library_id: 1, path: 'R', title: 'Ready book', state: 'ready', bytes: 1048576 },
+        { library_id: 1, path: 'F', title: 'Failed book', state: 'failed' },
+      ]),
+    });
+    expect(
+      screen.getByText('Preparing on the server: 1 of 4 files ready. This can take a few minutes.'),
+    ).toBeTruthy();
+    expect(screen.getByText('Waiting for your server')).toBeTruthy();
+    expect(
+      screen.getByText('Preparing on the server: 0 of 1 file ready. This can take a few minutes.'),
+    ).toBeTruthy();
+    expect(screen.getByText('Downloading to your watch · 45%')).toBeTruthy();
+    expect(screen.getByText('Your watch is waiting for a connection')).toBeTruthy();
+    expect(screen.getByText('On your watch')).toBeTruthy();
+    expect(screen.getByText("Couldn't download. Send it again to retry.")).toBeTruthy();
+  });
+
+  it('moves the percent on as the watch tells it, and drops a wait that is over', async () => {
+    const busy = (progress: number, waiting?: 'connection') =>
+      here([
+        {
+          library_id: 1,
+          path: 'D',
+          title: 'Busy book',
+          state: 'downloading',
+          progress,
+          ...(waiting ? { waiting } : {}),
+        },
+      ]);
+    await mount({ ...base, state: busy(45, 'connection') });
+    expect(screen.getByText('Downloading to your watch · 45%')).toBeTruthy();
+    await act(async () => {
+      useWatchStore.setState({ status: { ...base, state: busy(50) } });
+    });
+    expect(screen.getByText('Downloading to your watch · 50%')).toBeTruthy();
+    expect(screen.queryByText('Your watch is waiting for a connection')).toBeNull();
   });
 
   it('stops claiming progress after 7 days and offers Send again', async () => {

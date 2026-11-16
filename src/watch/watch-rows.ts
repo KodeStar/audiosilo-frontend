@@ -5,6 +5,7 @@ import {
   type WatchBook,
   type WatchStatus,
   type WatchTransfer,
+  type WatchWait,
 } from './watch-model';
 
 /**
@@ -167,6 +168,13 @@ export type WatchRowPhase =
   /** The watch is on another account or signed out, so it did not. */
   | 'remove-refused';
 
+/** What a row on its way says beyond its phase (fe#241), when the watch told it. */
+export type WatchRowDetail =
+  /** Preparing on the server: how many of its files are ready there. */
+  | { kind: 'files'; ready: number; total: number }
+  /** Downloading: the share of its audio on the watch. */
+  | { kind: 'percent'; percent: number };
+
 export type WatchRow = {
   library_id: number;
   path: string;
@@ -174,7 +182,33 @@ export type WatchRow = {
   author?: string;
   bytes?: number;
   phase: WatchRowPhase;
+  detail?: WatchRowDetail;
+  /** Preparing or downloading, and held up: by what. */
+  waiting?: WatchWait;
 };
+
+/** A listed book's detail and wait for the phase its row shows. Nothing for a row that says
+ * something else (a Remove on its way), or from a watch that tells none of it. */
+function howFar(book: WatchBook, phase: WatchRowPhase): Pick<WatchRow, 'detail' | 'waiting'> {
+  if (phase !== 'preparing' && phase !== 'downloading') return {};
+  let detail: WatchRowDetail | undefined;
+  if (phase === 'downloading') {
+    if (book.progress !== undefined) detail = { kind: 'percent', percent: book.progress };
+  } else if (book.files_total !== undefined) {
+    detail = { kind: 'files', ready: book.files_ready ?? 0, total: book.files_total };
+  }
+  return {
+    ...(detail ? { detail } : {}),
+    ...(book.waiting ? { waiting: book.waiting } : {}),
+  };
+}
+
+/** Whether two rows' details say the same (the section's memo). */
+export function sameDetail(a: WatchRowDetail | undefined, b: WatchRowDetail | undefined): boolean {
+  if (!a || !b) return a === b;
+  if (a.kind === 'percent') return b.kind === 'percent' && a.percent === b.percent;
+  return b.kind === 'files' && a.ready === b.ready && a.total === b.total;
+}
 
 /**
  * The row's actions. A `remove` still with the system has none: it is on its way, and it says so.
@@ -240,13 +274,15 @@ export function watchRows(
   const listed = here ? (status.state?.books ?? []) : [];
   const out: WatchRow[] = listed.map((book) => {
     const row = rows.find((r) => sameBook(r, book));
+    const phase = removePhase(row, account, status.transfers, now) ?? book.state;
     return {
       library_id: book.library_id,
       path: book.path,
       title: book.title,
       author: row?.author,
       bytes: book.bytes,
-      phase: removePhase(row, account, status.transfers, now) ?? book.state,
+      phase,
+      ...howFar(book, phase),
     };
   });
   for (const row of rows) {

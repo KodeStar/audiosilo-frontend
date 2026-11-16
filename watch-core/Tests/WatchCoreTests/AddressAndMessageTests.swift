@@ -413,6 +413,35 @@ final class PhoneMessagesTests: XCTestCase {
     XCTAssertNil(signedOut["server_id"])
     XCTAssertTrue(PropertyListSerialization.propertyList(signedOut, isValidFor: .binary))
   }
+
+  func testEncodesHowFarABookOnItsWayHasCome() throws {
+    let ref = BookRef(libraryId: 2, path: "A/Book")
+    var downloading = WatchStateBook(ref: ref, title: "Book", state: .downloading)
+    downloading.progress = 45
+    downloading.filesReady = 3
+    downloading.filesTotal = 10
+    downloading.waiting = .connection
+    var preparing = WatchStateBook(ref: ref, title: "Book", state: .preparing)
+    preparing.filesReady = 0
+    preparing.filesTotal = 4
+    preparing.waiting = .server
+    let s = WatchState(signedIn: true, serverId: "srv", userId: 7, appVersion: "2.7.0",
+                       books: [downloading, preparing, WatchStateBook(ref: ref, title: "Book", state: .ready, bytes: 10)],
+                       unsentEvents: 0, couldntSync: 0)
+    let d = PhoneMessages.encode(s)
+    XCTAssertTrue(PropertyListSerialization.propertyList(d, isValidFor: .binary))
+    XCTAssertEqual(d["v"] as? Int, 1, "the fields are optional: the version stays")
+    let books = try XCTUnwrap(d["books"] as? [[String: Any]])
+    XCTAssertEqual(books[0]["progress"] as? Int, 45)
+    XCTAssertEqual(books[0]["files_ready"] as? Int, 3)
+    XCTAssertEqual(books[0]["files_total"] as? Int, 10)
+    XCTAssertEqual(books[0]["waiting"] as? String, "connection")
+    XCTAssertNil(books[1]["progress"])
+    XCTAssertEqual(books[1]["files_ready"] as? Int, 0)
+    XCTAssertEqual(books[1]["waiting"] as? String, "server")
+    // A book with none of them says none of them (no nils in a property list).
+    XCTAssertEqual(Set(books[2].keys), ["library_id", "path", "title", "state", "bytes"])
+  }
 }
 
 final class ClientHeaderAndWireTests: XCTestCase {

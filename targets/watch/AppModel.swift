@@ -663,10 +663,7 @@ final class AppModel: ObservableObject {
     let rows = held.stateRows(accountId: who)
     // One entry per book: a row kept beside its record speaks for it until it settles.
     let rowRefs = Set(rows.map(\.ref))
-    let books = downloads.records.filter { !rowRefs.contains($0.ref) }.map { r in
-      WatchStateBook(ref: r.ref, title: r.title, state: r.state,
-                     bytes: r.state == .ready ? r.bytes : nil)
-    } + rows
+    let books = downloads.records.filter { !rowRefs.contains($0.ref) }.map(downloads.stateBook) + rows
     PhoneLink.shared.publish(WatchState(
       signedIn: account != nil, serverId: account?.serverId, userId: account?.userId, appVersion: appVersion,
       books: books, unsentEvents: outbox.unsentCount, couldntSync: outbox.couldNotSync().count,

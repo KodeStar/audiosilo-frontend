@@ -85,9 +85,33 @@ describe('buildPairMessage', () => {
     });
   });
 
+  it('names the server as the phone does after a rename on the server (fe#233)', () => {
+    // The token's payload carries the server's new name; the phone's card still shows the saved
+    // one, so the watch is told that, and they agree.
+    const renamed = { ...payload, server_name: 'Hearthside Library' };
+    expect(buildPairMessage(renamed, connection, 'iPhone', 0, [connection]).server_name).toBe(
+      'Hearthside',
+    );
+    // With another saved server of the same name, both add the address.
+    const other = {
+      ...connection,
+      id: 'other.7',
+      serverId: 'other',
+      serverUrl: 'https://o.example',
+    };
+    expect(
+      buildPairMessage(renamed, connection, 'iPhone', 0, [connection, other]).server_name,
+    ).toBe('Hearthside (paired.example)');
+    // A new name that matches another saved server is no collision: the card never shows it.
+    const second = { ...other, name: 'Hearthside Library' };
+    expect(
+      buildPairMessage(renamed, connection, 'iPhone', 0, [connection, second]).server_name,
+    ).toBe('Hearthside');
+  });
+
   it('sends no nulls or undefined values with no address to tell', () => {
     const message = buildPairMessage(
-      { ...payload, addresses: undefined, server_name: '' },
+      { ...payload, addresses: undefined },
       { ...connection, addresses: undefined },
       'iPhone',
       0,
@@ -181,6 +205,87 @@ describe('parseWatchState', () => {
     expect(parseWatchState(null)).toBeNull();
     expect(parseWatchState(undefined)).toBeNull();
     expect(parseWatchState('watch-state')).toBeNull();
+  });
+
+  it('reads how far a book on its way has come (fe#241)', () => {
+    const state = parseWatchState({
+      ...wire,
+      books: [
+        {
+          library_id: 1,
+          path: 'A/C',
+          title: 'C',
+          state: 'downloading',
+          progress: 45,
+          files_ready: 3,
+          files_total: 10,
+          waiting: 'connection',
+        },
+        {
+          library_id: 1,
+          path: 'A/D',
+          title: 'D',
+          state: 'preparing',
+          files_ready: 0,
+          files_total: 4,
+        },
+      ],
+    });
+    expect(state?.books).toEqual([
+      {
+        library_id: 1,
+        path: 'A/C',
+        title: 'C',
+        state: 'downloading',
+        progress: 45,
+        files_ready: 3,
+        files_total: 10,
+        waiting: 'connection',
+      },
+      {
+        library_id: 1,
+        path: 'A/D',
+        title: 'D',
+        state: 'preparing',
+        files_ready: 0,
+        files_total: 4,
+      },
+    ]);
+  });
+
+  it('leaves out a "how far" field it cannot read, and keeps the book', () => {
+    const state = parseWatchState({
+      ...wire,
+      books: [
+        {
+          library_id: 1,
+          path: 'A/C',
+          state: 'downloading',
+          progress: 140,
+          files_ready: 5,
+          files_total: 4,
+          waiting: 'wifi',
+        },
+        { library_id: 1, path: 'A/D', state: 'downloading', progress: 4.5, files_ready: 2 },
+        { library_id: 1, path: 'A/E', state: 'preparing', progress: '45', files_total: 0 },
+        // A book still downloading is never all here, and a count is never part of a file.
+        { library_id: 1, path: 'A/F', state: 'downloading', progress: 100, files_ready: -1 },
+        { library_id: 1, path: 'A/G', state: 'downloading', progress: NaN, files_total: 2.5 },
+      ],
+    });
+    expect(state?.books).toEqual([
+      { library_id: 1, path: 'A/C', title: 'A/C', state: 'downloading' },
+      { library_id: 1, path: 'A/D', title: 'A/D', state: 'downloading' },
+      { library_id: 1, path: 'A/E', title: 'A/E', state: 'preparing' },
+      { library_id: 1, path: 'A/F', title: 'A/F', state: 'downloading' },
+      { library_id: 1, path: 'A/G', title: 'A/G', state: 'downloading' },
+    ]);
+    for (const b of state?.books ?? []) {
+      expect(b).not.toHaveProperty('progress');
+      expect(b).not.toHaveProperty('files_ready');
+      expect(b).not.toHaveProperty('files_total');
+      expect(b).not.toHaveProperty('waiting');
+    }
   });
 
   it('keeps going past a bad book or a state it does not know', () => {

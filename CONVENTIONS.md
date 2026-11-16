@@ -10,7 +10,9 @@ profile menus and the phone's Apple Watch card append the paired host and port o
 saved server has the same name. Multiple accounts on one server do not create a collision. Servers
 sharing a host use their full address. Stable connection and server ids never change. The phone
 sends this same label in the existing `pair.server_name`, so the watch's account text agrees after
-Set up or Send again. A label change on an already paired watch takes Send again; no token is
+Set up or Send again: built from the saved connection name (`buildPairMessage`), never the pairing
+payload's fresh `server_name`, which after a rename on the server would disagree with the card
+(fe#233). A label change on an already paired watch takes Send again; no token is
 minted silently just to refresh a label.
 
 **Path is identity, scoped by connection.** All content is addressed by
@@ -2607,7 +2609,24 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   whatever it says (not before the first unlock, when nothing kept can be read), then on a change,
   and counts as sent only when `updateApplicationContext` took it (`Core/StatePublication.swift`):
   a refusal goes again at activation, `becameActive`, a reachability or companion change, or with
-  the next changed state, never on a timer. Content identical to the session's last
+  the next changed state, never on a timer. A book on its way also says how far it has come
+  (fe#241, optional fields, still `v: 1`; `DownloadManager.stateBook`): while preparing or
+  downloading `files_ready` / `files_total` (files the server has ready: landed, handed to the
+  session, or ready in the last renditions answer) and `waiting` (`connection` | `server`,
+  `DownloadWait`, the record's message), and while downloading `progress`, the share of its
+  audio on the watch (`Core/DownloadProgress.swift`: by duration, each file the same unless every
+  file has one, under 100 until every file has landed) in 5% steps, so the phone hears of a
+  download about 20 times. The bytes in flight come from the session's `didWriteData` (told per
+  1%, a refusal's body left out), only while the app runs: a suspended app hears of a file when it
+  lands. The percent never goes back: the record keeps the furthest it got (`reached`, saved with
+  the index at each step, `DownloadProgress.shown`), so a launch, which has lost the bytes in
+  flight, or a transfer begun again starts from there. A wait ends only when the server answers
+  the renditions request, or (a connection wait) a file lands while no other file's transfer is
+  broken, never on bytes in flight (`DownloadWait.ends`): a transfer the server dropped still
+  delivers what was on the wire, and one file's bytes say nothing of another's broken transfer.
+  While the app is in front, a book waiting on the connection asks again after 10 s, doubling to
+  every 60 s (`DownloadWait.retryDelay`), which keeps the wait while the server is away and hands
+  over the remaining files when it is back. Content identical to the session's last
   context returns success and sends nothing (seen in the watchOS 26.5 framework), so it is no error.
 - **Downloads are the watch rendition**, prepared and polled in the foreground
   (`Core/RenditionPlan.swift`), each ready file fetched by the background `URLSession`
@@ -2813,7 +2832,12 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     is written when Send is tapped (`handed_over: false`, so a kill mid-send can't read as
     delivered), put back if the send fails, and stops claiming progress after 7 days (`WATCH_HOLD_MS`,
     the watch's own hold limit) with Send again. Once seen in `watch-state`, a book that leaves it is
-    gone, so the row goes (removed by hand on the watch, or the watch left that account).
+    gone, so the row goes (removed by hand on the watch, or the watch left that account). A listed
+    book on its way says how far it has come when the watch tells it (`watchRows`' `detail` and
+    `waiting`, fe#241): preparing "n of m files ready", downloading "Downloading to your watch ·
+    45%" (the watch fetches from the server itself; the phone sends no bytes, so never "sending"),
+    and what it waits for on a second line. A Wear OS watch, and an Apple Watch before 2.7.0, tells
+    none of it, so its rows keep the plain phase.
   - **`remove` (phone to watch, `transferUserInfo`, no server or wire change).** The row says
     removing until `watch-state` drops it, surviving a restart, and never claims it finished while
     the message is outstanding. There is no reply: a `remove` delivered while the watch says it is
@@ -2835,7 +2859,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     playing book publishes with it still there) that record settles no row, so a book sent again
     right after a Remove stands.
   - **Home on the watch** lists what is held, queued, preparing or downloading (On the way) above On
-    this watch and Continue listening, so a sent book is in plain sight. A book shows once: Continue
+    this watch and Continue listening, so a sent book is in plain sight; a book downloading says
+    its files and percent ("Downloading 3 of 10 files · 45%", `DownloadManager.percents`). A book shows once: Continue
     listening leaves out what On the way lists. "Preparing on the server" says the wrist can go
     down because the server's encode runs under its own lifetime (`renditionsOfBook` queues every
     file under `baseCtx`, `FileCache.Queue`), while the watch polls and starts files only in the
@@ -2964,6 +2989,9 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   state never lands last); `AppModel.publishState` works it out on the main thread only (posted
   from a worker or PhoneLink, never locked: `HeldBooks.finishRemove` publishes under its lock);
   a book's stage moving publishes on its own (`DownloadIndex.stages`, collected once per process).
+  It sends none of the Apple Watch's optional "how far" fields (`progress`, `files_ready`,
+  `files_total`, `waiting`, fe#241): bytes landing are no change here, so the phone's row keeps
+  the plain phase for a Wear OS watch.
 - **Playback (decision 10, `playback/`)**: `PlayerEngine` (the twin of WatchAudioEngine.swift)
   owns one ExoPlayer, one MediaItem per downloaded file; speech attributes with focus handled,
   noisy handled, `setSuppressPlaybackOnUnsuitableOutput(true)` until the speaker is confirmed

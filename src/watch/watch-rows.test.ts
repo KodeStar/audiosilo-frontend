@@ -6,6 +6,7 @@ import {
   putRow,
   reconcileRows,
   rowActions,
+  sameDetail,
   WATCH_HOLD_MS,
   watchRows,
 } from './watch-rows';
@@ -140,6 +141,69 @@ describe('watchRows: what the watch lists', () => {
       NOW,
     );
     expect(rows.map((r) => r.path)).toEqual(['A/B', 'Sent']);
+  });
+});
+
+describe('watchRows: how far a book on its way has come (fe#241)', () => {
+  const one = (book: WatchState['books'][number], row?: LedgerRow) =>
+    watchRows(
+      row ? [row] : [],
+      ACCOUNT,
+      { state: state({ books: [book] }), transfers: [] },
+      NOW,
+    )[0];
+
+  it('says how many files the server has ready while it prepares, and what it waits for', () => {
+    const r = one({ ...listed, files_ready: 2, files_total: 5, waiting: 'server' });
+    expect(r.phase).toBe('preparing');
+    expect(r.detail).toEqual({ kind: 'files', ready: 2, total: 5 });
+    expect(r.waiting).toBe('server');
+  });
+
+  it('says the percent while it downloads, not the files', () => {
+    const r = one({
+      ...listed,
+      state: 'downloading',
+      progress: 45,
+      files_ready: 3,
+      files_total: 10,
+      waiting: 'connection',
+    });
+    expect(r.detail).toEqual({ kind: 'percent', percent: 45 });
+    expect(r.waiting).toBe('connection');
+  });
+
+  it('says nothing more from a watch that tells none of it (older, or Wear OS)', () => {
+    const preparing = one(listed);
+    expect(preparing).not.toHaveProperty('detail');
+    expect(preparing).not.toHaveProperty('waiting');
+    expect(one({ ...listed, state: 'downloading' })).not.toHaveProperty('detail');
+  });
+
+  it('says nothing more once ready or failed, or while a Remove speaks for the row', () => {
+    const extra = { progress: 45, files_ready: 1, files_total: 2, waiting: 'server' } as const;
+    for (const s of ['ready', 'failed', 'queued'] as const) {
+      const r = one({ ...listed, ...extra, state: s });
+      expect([r.detail, r.waiting]).toEqual([undefined, undefined]);
+    }
+    const removing = one(
+      { ...listed, ...extra, state: 'downloading' },
+      sent({ remove_at: NOW - 1000, seen: true }),
+    );
+    expect(removing.phase).toBe('removing');
+    expect([removing.detail, removing.waiting]).toEqual([undefined, undefined]);
+  });
+
+  it('tells one detail from another', () => {
+    const files = { kind: 'files', ready: 1, total: 2 } as const;
+    const pct = { kind: 'percent', percent: 45 } as const;
+    expect(sameDetail(undefined, undefined)).toBe(true);
+    expect(sameDetail(files, { ...files })).toBe(true);
+    expect(sameDetail(pct, { ...pct })).toBe(true);
+    expect(sameDetail(files, { ...files, ready: 2 })).toBe(false);
+    expect(sameDetail(pct, { ...pct, percent: 50 })).toBe(false);
+    expect(sameDetail(files, pct)).toBe(false);
+    expect(sameDetail(pct, undefined)).toBe(false);
   });
 });
 

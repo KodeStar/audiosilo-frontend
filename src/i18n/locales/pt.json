@@ -1237,7 +1237,10 @@
         "stale": "O teu relógio não o recebeu em 7 dias. Envia-o de novo se ainda o quiseres.",
         "queued": "À espera no teu relógio",
         "preparing": "A preparar no servidor. Pode demorar alguns minutos.",
+        "preparingFiles_one": "A preparar no servidor: {{ready}} de {{count}} ficheiro pronto. Pode demorar alguns minutos.",
+        "preparingFiles_other": "A preparar no servidor: {{ready}} de {{count}} ficheiros prontos. Pode demorar alguns minutos.",
         "downloading": "A transferir para o teu relógio",
+        "downloadingPercent": "A transferir para o teu relógio · {{percent}}%",
         "ready": "No teu relógio",
         "failed": "Não foi possível transferir. Envia-o de novo para tentar outra vez.",
         "removing-undelivered": "Será removido quando o teu relógio estiver ao alcance",
@@ -1245,6 +1248,10 @@
         "removingWear": "A remover do teu relógio",
         "remove-failed": "Não foi possível contactar o teu relógio para o remover. Tenta de novo.",
         "remove-refused": "Não removido: o teu relógio não tem sessão iniciada nesta conta."
+      },
+      "waiting": {
+        "connection": "O teu relógio está à espera de uma ligação",
+        "server": "À espera do teu servidor"
       }
     }
   },
