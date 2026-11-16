@@ -3059,7 +3059,9 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   clock: a book's place is saved only as its span opens, so the span a kill left is the newer, and
   a wall clock set back would hide it. The keep, and the span a tick's cut opens, end when the
   audio last moved (`heardAt` = the engine's `lastAdvance`), so buffering never stamps the place
-  later than it was heard. A move a kill cut short (`recoveredMove`) is kept in `open-span-move.json` until a span
+  later than it was heard. The book's last span and its `finish` go into the outbox in one append
+  (`SpanRecorder.finish`): the span's event alone would recover the book's end as the place with
+  no `finish` behind it. A move a kill cut short (`recoveredMove`) is kept in `open-span-move.json` until a span
   opens (it takes it or drops it), `loadsFromRow` drops it, and so does sign-out
   (`SpanRecorder.forgetMove`): a background launch that never plays keeps it. A
   next span that can't be written (a full disk) leaves the closed one in the file: recovered, its

@@ -477,6 +477,26 @@ class DurableRateTest {
     assertEquals(listOf("places.json", "outbox.json", "open-span.json"), syncedBy { next.recover() })
   }
 
+  // The book's end keeps its last span and its `finish` in one append: a kill right after it finds
+  // both in the outbox, so the place the launch recovers (the book's end, from the span's event)
+  // never stands there without the finish.
+  @Test
+  fun aKillInsideTheBooksLastCloseKeepsItsFinish() {
+    val first = Launch()
+    first.spans.open(book, at(3580.0), 1.0)
+    clock.advance(15.0)
+    first.tick(3595.0, keepDue = true, cutDue = false)
+    clock.advance(5.0)
+    first.killAfterAppend = true
+    assertThrows(Kill::class.java) { first.spans.finish(book, at(3600.0)) }
+    assertEquals("the span file still holds the last keep", 3595.0, fileSpanStore(dir).load()!!.to.pos, 0.0)
+    val next = Launch()
+    next.recover()
+    assertEquals(3600.0, next.places.place(ref)!!.position, 0.0)
+    assertEquals(listOf("e1"), next.outbox.events.filterIsInstance<SpanEvent>().map { it.id })
+    assertEquals(listOf("finish"), next.outbox.events.filterIsInstance<FinishEvent>().map { it.kind })
+  }
+
   // fe#321: the move a kill cut short outlives a launch that never plays (a background one).
   @Test
   fun aKilledMoveOutlivesALaunchThatNeverPlays() {

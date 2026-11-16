@@ -249,9 +249,12 @@ class SpanRecorder(
     return max(span.baseVersion ?: 0, acked)
   }
 
-  private fun append(span: OpenSpan) {
-    if (!Spans.saysSomething(span)) return
-    emit(listOf(Spans.event(span.copy(baseVersion = baseAtClose(span)))))
+  /** `then`: what goes into the outbox with the span's event, in the one append (`finish`). */
+  private fun append(span: OpenSpan, then: List<ListeningEvent> = emptyList()) {
+    val own =
+      if (Spans.saysSomething(span)) listOf(Spans.event(span.copy(baseVersion = baseAtClose(span)))) else emptyList()
+    val events = own + then
+    if (events.isNotEmpty()) emit(events)
   }
 
   /**
@@ -329,9 +332,16 @@ class SpanRecorder(
 
   /**
    * `clearStore` false: the caller opens the next span at once, and its store replaces this one in
-   * one write (still after the event is kept), rather than a removal and a write.
+   * one write (still after the event is kept), rather than a removal and a write. `then`: an event
+   * kept with the span's own in the one append (the book's `finish`), built once the span has
+   * ended; not asked for with no span open.
    */
-  private fun close(at: SpanEnd?, stoppedAt: Instant?, clearStore: Boolean): OpenSpan? {
+  private fun close(
+    at: SpanEnd?,
+    stoppedAt: Instant?,
+    clearStore: Boolean,
+    then: (() -> ListeningEvent)? = null,
+  ): OpenSpan? {
     var closing = span
     if (closing == null) {
       // A Stay still waiting for its span (`standBy`, playing with none open) does not outlive the
@@ -345,7 +355,7 @@ class SpanRecorder(
     val stop = stoppedAt ?: now
     val ended = maxOf(closing.startedAt, minOf(now, stop))
     closing = closing.copy(endedAt = ended)
-    append(closing)
+    append(closing, listOfNotNull(then?.invoke()))
     if (clearStore) store.save(null)
     // Like a paused move: the next play begins with the same reason (`isBareMove`, `carried`).
     if (Spans.isBareMove(closing)) nextStart = Spans.carried(closing.start)
@@ -488,12 +498,19 @@ class SpanRecorder(
     nextStart = Spans.carried(start)
   }
 
-  /** The book's last span closed, then its `finish`, once. */
+  /**
+   * The book's last span closed, then its `finish`, once. The two go into the outbox in one append:
+   * a kill between them would leave the span's event there without the `finish`, and the launch
+   * after it takes that event's end, the book's end, as the place (`PlaceStore.recover`), where the
+   * book starts again and never plays to its end to send one.
+   */
   fun finish(book: PlayingBook, at: SpanEnd?) {
-    close(at)
-    if (finishSent == book.ref) return
+    val due = finishSent != book.ref
+    val finish = { finishEvent("finish", book.ref, clock(), acks.ackVersion(book.ref) ?: 0) }
+    val closed = close(at, null, clearStore = true, then = if (due) finish else null)
+    if (!due) return
     finishSent = book.ref
-    emit(listOf(finishEvent("finish", book.ref, clock(), acks.ackVersion(book.ref) ?: 0)))
+    if (closed == null) emit(listOf(finish()))
   }
 
   /**
