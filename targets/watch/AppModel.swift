@@ -637,7 +637,7 @@ final class AppModel: ObservableObject {
         forgetAccount()
       }
       // Read before it is written over: ended on its server below once the new one is kept.
-      let keptToken = change == .sameAccount ? Keychain.token() : nil
+      let keptToken = Keychain.token()
       guard Keychain.setToken(session.token) else {
         failed("The watch could not keep its sign-in.")
         // The account may be gone already (above): the phone is told, and its titles leave.

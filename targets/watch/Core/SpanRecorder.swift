@@ -132,17 +132,8 @@ enum Spans {
 
 /// A move a kill cut short (`SpanRecorder.recover`): the book and the reason its next span takes.
 struct RecoveredMove: Codable, Equatable, Sendable {
-  var libraryId: Int
-  var path: String
+  var ref: BookRef
   var start: ListeningStart
-
-  init(ref: BookRef, start: ListeningStart) {
-    libraryId = ref.libraryId
-    path = ref.path
-    self.start = start
-  }
-
-  var ref: BookRef { BookRef(libraryId: libraryId, path: path) }
 }
 
 /// Where the open span is kept between launches (Files.swift's `open-span.json`; a memory
@@ -216,7 +207,8 @@ final class SpanRecorder {
     store.saveMove(move)
   }
 
-  /// The account left the watch: a move it recovered is no other account's.
+  /// The account left the watch: a move it recovered is no other account's. Written even with none
+  /// in memory (not `keepMove(nil)`): before `recover` the store may still hold one.
   func forgetMove() {
     recoveredMove = nil
     store.saveMove(nil)

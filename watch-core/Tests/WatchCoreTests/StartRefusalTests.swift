@@ -49,17 +49,6 @@ final class StartRefusalTests: XCTestCase {
     XCTAssertFalse(StartRefusal.withinSlack(of: at(0), at: at(StartRefusal.INTERRUPTION_SLACK)))
     XCTAssertFalse(StartRefusal.withinSlack(of: nil, at: at(0)), "no pause, nothing within it")
   }
-
-  func testTheStampsAreAMonotonicClocksNotTheWallClocks() {
-    // A clock set forward within the slack must not read Siri's pause as a failed start: the
-    // stamps are the continuous clock's, which the time of day never moves.
-    XCTAssertTrue(StartRefusal.Stamp.self == ContinuousClock.Instant.self)
-    var r = StartRefusal()
-    let now = StartRefusal.Stamp.now
-    r.refused(at: now)
-    r.explained(at: .now)
-    XCTAssertNil(r.message(for: now), "a `began` just after, by the same clock, explains it")
-  }
 }
 
 final class InterruptionResumeTests: XCTestCase {

@@ -639,8 +639,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     // The player may have stopped for it already (`controlChanged`): then an interruption beginning
     // within the slack of that pause must not take it for its own and resume the book. Paused by an
     // interruption under way, its end must not play the book either (fe#320).
-    interruption.held()
-    if playing { hold(stoppedAt: lastAdvance) }
+    if playing { hold(stoppedAt: lastAdvance) } else { interruption.held() }
   }
 
   // MARK: - The session
