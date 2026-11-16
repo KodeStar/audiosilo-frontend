@@ -10,6 +10,7 @@
 //   outbox.json        events waiting (Outbox)
 //   sync-state.json    last sync, couldn't-sync list, clock skew (Outbox)
 //   open-span.json     the span being played (SpanRecorder)
+//   open-span-move.json the move a kill cut short, until a span takes it (SpanRecorder)
 //   places.json        this watch's own place per book (PlaceStore)
 //   sync-upload-*.json the background upload's body (SyncUploader)
 //   outbox-unread-*.json an outbox that could not be read, kept aside (Outbox)
@@ -34,6 +35,7 @@ enum Files {
   static var server: URL { root.appendingPathComponent("server.json") }
   static var acks: URL { root.appendingPathComponent("acks.json") }
   static var openSpan: URL { root.appendingPathComponent("open-span.json") }
+  static var openSpanMove: URL { root.appendingPathComponent("open-span-move.json") }
   static var places: URL { root.appendingPathComponent("places.json") }
   static var downloadsIndex: URL { root.appendingPathComponent("downloads.json") }
   static var heldBooks: URL { root.appendingPathComponent("held-books.json") }
@@ -53,23 +55,11 @@ enum Files {
   /// Where a finished file waits to be moved to its book's folder.
   static var staging: URL { downloads.appendingPathComponent(".staging", isDirectory: true) }
 
-  /// This watch's `device_id`, made once and kept. Read on first use, which comes after the first
-  /// unlock (`Outbox` asks only to send, the player only to play): read before it, the id kept
-  /// would not read and another would stand in for the rest of the launch, never written over it.
-  static let deviceId: String = {
-    let url = root.appendingPathComponent("device-id")
-    do {
-      if let s = String(data: try Data(contentsOf: url), encoding: .utf8), !s.isEmpty { return s }
-    } catch let e as CocoaError where e.meansNoFile {
-      // None yet: made below.
-    } catch {
-      // There, but it can't be read now: the id kept stays this watch's.
-      return UUID().uuidString
-    }
-    let id = UUID().uuidString
-    try? Data(id.utf8).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-    return id
-  }()
+  /// This watch's `device_id`, made once and kept. Asked for after the first unlock (`Outbox` asks
+  /// only to send, the player only to play); asked before it, the id kept would not read: that ask
+  /// gets a stand-in, and the next one reads it again (`DeviceIdFile`).
+  static var deviceId: String { deviceIdFile.read() }
+  private static let deviceIdFile = DeviceIdFile(url: root.appendingPathComponent("device-id"))
 
   /// A book's item cache file.
   static func item(_ ref: BookRef) -> URL {
@@ -97,9 +87,13 @@ enum Files {
   }
 }
 
-/// The open span kept in `open-span.json` (SpanRecorder's store).
+/// The open span kept in `open-span.json`, and a recovered move in `open-span-move.json`
+/// (SpanRecorder's store).
 final class FileSpanStore: OpenSpanStore {
   private let file = JSONFile<OpenSpan>(url: Files.openSpan)
+  private let moveFile = JSONFile<RecoveredMove>(url: Files.openSpanMove)
   func load() -> OpenSpan? { file.read() }
   func save(_ span: OpenSpan?) { file.write(span) }
+  func loadMove() -> RecoveredMove? { moveFile.read() }
+  func saveMove(_ move: RecoveredMove?) { moveFile.write(move) }
 }

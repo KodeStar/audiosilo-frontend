@@ -636,6 +636,8 @@ final class AppModel: ObservableObject {
         // The token was lost, and what is here is another account's: never sent under this one.
         forgetAccount()
       }
+      // Read before it is written over: ended on its server below once the new one is kept.
+      let keptToken = change == .sameAccount ? Keychain.token() : nil
       guard Keychain.setToken(session.token) else {
         failed("The watch could not keep its sign-in.")
         // The account may be gone already (above): the phone is told, and its titles leave.
@@ -649,6 +651,10 @@ final class AppModel: ObservableObject {
       Account.save(a)
       account = a
       router.start(at: AddressPicker.isOwn(base, serverURL: a.serverURL, addresses: a.addresses) ? base : nil)
+      if let keptToken, AccountRules.endsKeptToken(change, kept: keptToken, new: session.token) {
+        // A Send again whose `GET /me` got no word: the session the old token holds ends too.
+        Task { try? await APIClient(base: base, token: keptToken).logout() }
+      }
       phase = .ready
       pendingReplace = nil
       publishState()
@@ -731,6 +737,7 @@ final class AppModel: ObservableObject {
     try? FileManager.default.removeItem(at: Files.items)
     acks.clear()
     places.clear()
+    spans.forgetMove()
     outbox.discardAll()
     SyncUploader.shared.cancelAll()
     router.reset()

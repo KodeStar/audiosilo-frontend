@@ -54,6 +54,16 @@ enum AccountRules {
     meUserId == userId
   }
 
+  /// Whether a sign-in that exchanged the pair's token ends the token it replaces (`kept`, nil with
+  /// none) on the server, best effort (fe#322). Only for `.sameAccount`: the token kept had no word
+  /// from the server (`keepsToken`), most often no answer at an address the watch could not reach,
+  /// and its session would stay on the server for good; the exchange's address is asked, since it
+  /// answered. A replace ends the account it leaves itself, and a first sign-in keeps no token.
+  static func endsKeptToken(_ change: AccountChange, kept: String?, new: String) -> Bool {
+    guard change == .sameAccount, let kept, !kept.isEmpty else { return false }
+    return kept != new
+  }
+
   /// Whether signing out may go ahead now.
   static func signOut(unsent: Int, discard: Bool) -> SignOutGate {
     unsent > 0 && !discard ? .blocked(unsent: unsent) : .allowed

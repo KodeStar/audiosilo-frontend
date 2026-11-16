@@ -8,11 +8,14 @@ import XCTest
 final class MemorySpanStore: OpenSpanStore {
   var stored: OpenSpan?
   var saves: [OpenSpan?] = []
+  var move: RecoveredMove?
   func load() -> OpenSpan? { stored }
   func save(_ span: OpenSpan?) {
     stored = span
     saves.append(span)
   }
+  func loadMove() -> RecoveredMove? { move }
+  func saveMove(_ move: RecoveredMove?) { self.move = move }
 }
 
 final class Clock {
@@ -543,6 +546,64 @@ final class SpanRecorderTests: XCTestCase {
     next.close(at: at(30))
     next.open(book, at: at(30), speed: 1)
     XCTAssertEqual(next.span?.start, .resume, "taken once")
+  }
+
+  // fe#321: a launch that recovered the move but ended before the book played (a background wake)
+  // leaves it to the next launch: it is kept in the store, not in memory alone.
+  func testAKilledMoveOutlivesALaunchThatNeverPlays() {
+    let r = recorder()
+    r.open(book, at: at(80), speed: 1)
+    clock.advance(10)
+    r.move(book, to: at(10), from: at(90), playing: true, speed: 1)
+    // A kill, then a background wake that recovers the span and ends without playing.
+    let wake = recorder()
+    wake.recover()
+    XCTAssertNil(store.stored)
+    XCTAssertEqual(store.move, RecoveredMove(ref: book.ref, start: .movedBack))
+    // The launch after that.
+    let next = recorder()
+    next.recover()
+    next.prepareStart(.resume)
+    next.open(book, at: at(10), speed: 1)
+    XCTAssertEqual(next.span?.start, .movedBack)
+    XCTAssertNil(store.move, "taken once, off the store too")
+    // And not again at the launch after.
+    next.close(at: at(10))
+    let later = recorder()
+    later.prepareStart(.resume)
+    later.open(book, at: at(10), speed: 1)
+    XCTAssertEqual(later.span?.start, .resume)
+  }
+
+  func testAKeptMoveGoesWithARowTakenOrTheAccount() {
+    store.move = RecoveredMove(ref: book.ref, start: .jump)
+    let r = recorder()
+    r.loadsFromRow(book.ref)
+    XCTAssertNil(store.move, "the place came from the server's row")
+
+    store.move = RecoveredMove(ref: book.ref, start: .jump)
+    let s = recorder()
+    s.recover()
+    s.forgetMove()
+    XCTAssertNil(store.move, "the account left")
+    s.prepareStart(.resume)
+    s.open(book, at: at(10), speed: 1)
+    XCTAssertEqual(s.span?.start, .resume)
+  }
+
+  func testASpanHeardAfterTheMoveReplacesAKeptMove() {
+    // A kept move whose launch then played and was killed after listening: that span says nothing
+    // of a move, so the kept one (stale) does not reach the next play.
+    store.move = RecoveredMove(ref: book.ref, start: .jump)
+    store.stored = OpenSpan(libraryId: 2, path: "A/Folder", from: at(5), to: at(15), duration: 100, speed: 1,
+                            startedAt: clock.now, endedAt: clock.now.addingTimeInterval(10), start: .resume,
+                            baseVersion: 0, id: "left")
+    let r = recorder()
+    r.recover()
+    XCTAssertNil(store.move)
+    r.prepareStart(.resume)
+    r.open(book, at: at(15), speed: 1)
+    XCTAssertEqual(r.span?.start, .resume)
   }
 
   func testAKilledMoveGivesWayToAReasonAskedFor() {
