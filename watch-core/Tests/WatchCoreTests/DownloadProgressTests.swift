@@ -23,6 +23,8 @@ final class DownloadProgressTests: XCTestCase {
   func testWeighsEachFileTheSameWithNoDurations() {
     XCTAssertEqual(DownloadProgress.percent([file(0, done: true), file(0), file(0), file(0, 0.5)]), 37)
     XCTAssertEqual(DownloadProgress.percent([file(.nan, done: true), file(-5)]), 50)
+    // One file of no known length: by duration it would weigh nothing, and the book read 99.
+    XCTAssertEqual(DownloadProgress.percent([file(3600, done: true), file(0)]), 50)
   }
 
   func testReadsNothingIntoNoFilesOrABadFraction() {

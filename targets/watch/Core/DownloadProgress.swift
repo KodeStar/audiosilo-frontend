@@ -21,13 +21,13 @@ enum DownloadProgress {
 
   /// The share of the book's audio on the watch, 0...100: whole files landed plus the part of each
   /// transfer in flight. Under 100 until every file has landed (a rounded 100 would read as ready).
-  /// Files weigh by duration; with no durations at all, each weighs the same.
+  /// Files weigh by duration; unless every file has one, each weighs the same (a file of no known
+  /// length would weigh nothing, and the book read as all but here with that file still to come).
   static func percent(_ files: [File]) -> Int {
     guard !files.isEmpty else { return 0 }
     if files.allSatisfy(\.done) { return 100 }
     let durations = files.map { $0.duration.isFinite && $0.duration > 0 ? $0.duration : 0 }
-    let total = durations.reduce(0, +)
-    let weights = total > 0 ? durations : files.map { _ in 1.0 }
+    let weights = durations.allSatisfy({ $0 > 0 }) ? durations : files.map { _ in 1.0 }
     let whole = weights.reduce(0, +)
     let have = zip(files, weights).reduce(0.0) { sum, pair in
       let (f, w) = pair
