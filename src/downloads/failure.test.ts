@@ -80,4 +80,12 @@ describe('failureText', () => {
       "This account can't get this episode from Home.",
     );
   });
+
+  // fe#158: a finished download with a file gone keeps the rest.
+  it('says some files are gone, and what is kept', () => {
+    const t = i18n.t.bind(i18n) as TFunction;
+    expect(failureText(t, { failure: { kind: 'missing', kept: 0.5 } }, 'Home', 'device')).toBe(
+      'Some of its files are no longer on this device. Your 50% is kept.',
+    );
+  });
 });

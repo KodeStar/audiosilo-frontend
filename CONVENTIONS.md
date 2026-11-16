@@ -4001,11 +4001,15 @@ are asked, at most 10,000 rows.
   never by the error's text: Android reports a dropped connection as "Software caused connection
   abort", a failure like any other. `runOne` lists each finished file
   in the saved entry as it lands, and launch (`reviveEntry`) keeps a failed or interrupted download
-  whose listed files are all still on disk (an interrupted one says the app closed, or on web with
-  every file saved that only the offline check was left, `unservable`). One that finished no file
-  yet (most books are one M4B) stays as a row to retry from the start, its folder emptied, unless
-  keep-ahead started it (keep-ahead plans it again); anything else is dropped with its folder. No
-  storage format change.
+  with the listed files still on disk (an interrupted one says the app closed, or on web with
+  every file saved that only the offline check was left, `unservable`). A downloaded book with
+  some of its files gone is kept the same way, as a failure holding the rest (`missing`, fe#158),
+  so Retry fetches only the gone ones; a retry reuses a kept file in its place, else one listed
+  later that was saved under this index's name (`storedName`). One with no file left (most books
+  are one M4B) stays as a row to retry from the start, its folder emptied, unless keep-ahead
+  started it (keep-ahead plans it again); a downloaded book with no file left is dropped with its
+  folder. While an identity move is pending an entry is kept exactly as stored. No storage format
+  change.
 - **Web**: the service worker now registers in the exported player even when the root layout loads
   after the page's load event (before, offline web playback never worked), and the download-support
   probe waits at most 10 s for a worker (it used to hang, offering downloads that couldn't play).

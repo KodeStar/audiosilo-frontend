@@ -1173,6 +1173,7 @@
       "unservable": "Guardado, mas a reprodução offline ainda não está pronta. Recarrega a app e tenta de novo.",
       "removed": "Você não está mais conectado a este servidor.",
       "interrupted": "A app fechou antes de terminar.",
+      "missing": "Alguns dos ficheiros já não estão neste dispositivo.",
       "serverFetch": "{{server}} não conseguiu obter este episódio.",
       "signedOut": "{{server}} terminou a tua sessão. Inicia sessão de novo e tenta outra vez.",
       "noAccess": "Esta conta não pode obter este episódio de {{server}}.",

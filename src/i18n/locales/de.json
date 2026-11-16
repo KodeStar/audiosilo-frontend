@@ -1173,6 +1173,7 @@
       "unservable": "Gespeichert, aber die Offline-Wiedergabe ist noch nicht bereit. Lade die App neu und versuche es dann erneut.",
       "removed": "Du bist bei diesem Server nicht mehr angemeldet.",
       "interrupted": "Die App wurde geschlossen, bevor der Download fertig war.",
+      "missing": "Einige seiner Dateien sind nicht mehr auf diesem Gerät.",
       "serverFetch": "{{server}} konnte diese Folge nicht holen.",
       "signedOut": "{{server}} hat dich abgemeldet. Melde dich wieder an und versuche es dann erneut.",
       "noAccess": "Dieses Konto kann diese Folge nicht von {{server}} laden.",

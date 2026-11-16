@@ -59,6 +59,7 @@ export function failureText(
     unservable: () => t('downloads.failure.unservable'),
     removed: () => t('downloads.failure.removed'),
     interrupted: () => t('downloads.failure.interrupted'),
+    missing: () => t('downloads.failure.missing'),
     // A podcast episode its server could not fetch: why, in the episode views' words.
     serverFetch: () =>
       `${t('downloads.failure.serverFetch', { server })} ${t(fetchReasonKey(f.code))}`,

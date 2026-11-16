@@ -1173,6 +1173,7 @@
       "unservable": "Saved, but offline playback isn't ready yet. Reload the app, then retry.",
       "removed": "You're no longer signed in to this server.",
       "interrupted": "The app closed before it finished.",
+      "missing": "Some of its files are no longer on this device.",
       "serverFetch": "{{server}} couldn't get this episode.",
       "signedOut": "{{server}} signed you out. Sign in again, then retry.",
       "noAccess": "This account can't get this episode from {{server}}.",

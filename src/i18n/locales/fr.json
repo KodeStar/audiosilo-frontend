@@ -1173,6 +1173,7 @@
       "unservable": "Enregistré, mais la lecture hors ligne n’est pas encore prête. Rechargez l’app, puis réessayez.",
       "removed": "Vous n’êtes plus connecté à ce serveur.",
       "interrupted": "L’app s’est fermée avant la fin.",
+      "missing": "Certains de ses fichiers ne sont plus sur cet appareil.",
       "serverFetch": "{{server}} n’a pas pu récupérer cet épisode.",
       "signedOut": "{{server}} vous a déconnecté. Reconnectez-vous, puis réessayez.",
       "noAccess": "Ce compte ne peut pas obtenir cet épisode de {{server}}.",
