@@ -162,15 +162,36 @@ class FileSpanStoreTest {
     val dir = tempDir()
     try {
       val file = File(dir, "open-span.json")
-      FileSpanStore(file).save(span("A"))
+      val moveFile = File(dir, "open-span-move.json")
+      FileSpanStore(file, moveFile).save(span("A"))
       // A new process reads what the last one kept, and a recorder closes it into the outbox.
-      assertEquals(span("A"), FileSpanStore(file).load())
+      assertEquals(span("A"), FileSpanStore(file, moveFile).load())
       val emitted = ArrayList<ListeningEvent>()
-      val rec = SpanRecorder(FileSpanStore(file), AckStore(null), emit = { emitted += it })
+      val rec = SpanRecorder(FileSpanStore(file, moveFile), AckStore(null), emit = { emitted += it })
       rec.recover()
       assertEquals(listOf("A"), emitted.map { it.id })
-      assertNull(FileSpanStore(file).load())
+      assertNull(FileSpanStore(file, moveFile).load())
       assertFalse(file.exists())
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  // An open span the build before `from_heard` wrote still reads (a kill across the update).
+  @Test
+  fun aSpanAnEarlierBuildKeptStillReads() {
+    val dir = tempDir()
+    try {
+      val file = File(dir, "open-span.json")
+      file.writeText(
+        """{"library_id":3,"path":"Author/Book","from":{"pos":10.0,"file":"a.m4a","file_pos":10.0},""" +
+          """"to":{"pos":25.0,"file":"a.m4a","file_pos":25.0},"duration":3600.0,"speed":1.25,""" +
+          """"started_at":"2026-11-12T10:00:00.000Z","ended_at":"2026-11-12T10:00:12.000Z",""" +
+          """"start":"jump","base_version":7,"id":"A"}"""
+      )
+      val store = FileSpanStore(file, File(dir, "open-span-move.json"))
+      assertEquals(span("A"), store.load())
+      assertNull(store.loadMove())
     } finally {
       dir.deleteRecursively()
     }
@@ -182,7 +203,7 @@ class FileSpanStoreTest {
     try {
       val file = File(dir, "open-span.json")
       file.writeText("{not json")
-      assertNull(FileSpanStore(file).load())
+      assertNull(FileSpanStore(file, File(dir, "open-span-move.json")).load())
     } finally {
       dir.deleteRecursively()
     }

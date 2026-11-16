@@ -4,9 +4,9 @@
 //
 // `durable` documents survive a power cut too: the bytes are synced to the disk before the
 // rename and the folder after it, so a battery dying mid-write leaves the old file or the new
-// one, never an empty one. Only what holds listening is durable (the outbox, the open span, the
-// places); the rest is rebuilt from the server or the phone, so it skips the sync (CONVENTIONS.md,
-// the Wear OS app).
+// one, never an empty one. Only what holds listening is durable (the outbox, the open span and the
+// move recovered from one, the places); the rest is rebuilt from the server or the phone, so it
+// skips the sync (CONVENTIONS.md, the Wear OS app).
 package app.audiosilo.wear.core
 
 import java.io.File

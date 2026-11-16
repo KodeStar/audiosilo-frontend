@@ -587,8 +587,9 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     if (cutDue) lastCut = now
     // Held by a transient focus loss there is no span, and none opens until the audio moves.
     val cuttable = exo?.isPlaying == true || spans.span != null
-    // The open span is written once a tick (a cut stores the next one, so no keep then).
-    val cut = spans.playingTick(b.playing, spanEnd(), rate, keepDue, cutDue && cuttable, reachable())
+    // The open span is written once a tick (a cut stores the next one, so no keep then), ending
+    // when the audio last moved (buffering holds it there).
+    val cut = spans.playingTick(b.playing, spanEnd(), rate, keepDue, cutDue && cuttable, reachable(), lastAdvance)
     // Held by a call or an alert nothing moved: the place keeps the time the audio last did
     // (the hold saved it at `lastAdvance`), or it would look newer than another device's. Saved
     // to the disk when a span closed; on the plain 5 s tick the stored open span carries it.

@@ -10,7 +10,7 @@
 // `finish`). The open span is stored every 5 s (`OPEN_SPAN_KEEP`) with its id fixed at open, and one
 // a kill left is closed into the outbox at the next launch (one a move opened and a kill cut short
 // gives the launch's first span, when it is that book's and resumes this watch's own place, the
-// move's reason).
+// move's reason; kept in the store until a span takes it, so a launch that never plays keeps it).
 package app.audiosilo.wear.core
 
 import java.time.Instant
@@ -40,6 +40,11 @@ data class OpenSpan(
   val baseVersion: Int? = null,
   /** Its event's id, chosen at open: a span closed twice is one event (`duplicate`). */
   val id: String,
+  /**
+   * Wear only: it opened where the span before it ended, at that time (a cut's, a playing Stay's),
+   * so its `from` is a place heard, which `PlaceStore.recover` takes before any keep.
+   */
+  val fromHeard: Boolean = false,
 ) {
   val ref: BookRef
     get() = BookRef(libraryId, path)
@@ -152,11 +157,25 @@ object Spans {
   }
 }
 
-/** Where the open span is kept between launches (Files' `open-span.json`; a memory copy in tests). */
+/** A move a kill cut short (`SpanRecorder.recover`): its book and the reason its next span takes. */
+@Serializable
+data class RecoveredMove(val libraryId: Int, val path: String, val start: ListeningStart) {
+  val ref: BookRef
+    get() = BookRef(libraryId, path)
+}
+
+/**
+ * Where the open span is kept between launches (Files' `open-span.json`; a memory copy in tests),
+ * and the move a kill cut short until a span takes it (`open-span-move.json`).
+ */
 interface OpenSpanStore {
   fun load(): OpenSpan?
 
   fun save(span: OpenSpan?)
+
+  fun loadMove(): RecoveredMove?
+
+  fun saveMove(move: RecoveredMove?)
 }
 
 /**
@@ -188,27 +207,47 @@ class SpanRecorder(
   /**
    * The move a kill cut short (`recover`): the launch's first span, when it is that book's,
    * nothing else was asked for (a resume) and it begins at this watch's own place (`loadsFromRow`),
-   * begins with the move's reason.
+   * begins with the move's reason. Kept in the store too, until a span opens: a launch that ends
+   * before the listener plays (a background one) leaves it to the next (fe#321).
    */
-  private var recoveredMove: Pair<BookRef, ListeningStart>? = null
+  private var recoveredMove: RecoveredMove? = null
 
   /**
    * Close a span a kill left open (at its last stored values) into the outbox. Once per launch,
-   * before the first span opens (every open runs it first). Returns that span (the place it
-   * carries: `PlaceStore.recover`).
+   * before the first span opens (every open runs it first). Returns that span. `carry` is given it
+   * first (the place it carries: `PlaceStore.recover`, which reads the outbox as the last process
+   * left it), so a kill before the span leaves the store finds it there again.
    */
-  fun recover(): OpenSpan? {
+  fun recover(carry: (OpenSpan) -> Unit = {}): OpenSpan? {
     if (recovered) return null
     recovered = true
+    recoveredMove = store.loadMove()
     val left = store.load() ?: return null
+    carry(left)
     // In this order, as in `close`: a kill between the two sends the span twice under its one id
     // (`duplicate`), the other way round it would lose the span.
     append(left)
-    store.save(null)
     // A kill within `OPEN_SPAN_KEEP` of a move left the span the move opened, nothing heard: a
-    // bare move, so the book's next span carries it, as after a pause (`close`).
-    if (Spans.isBareMove(left)) recoveredMove = left.ref to Spans.carried(left.start)
+    // bare move, so the book's next span carries it, as after a pause (`close`). Any span left is
+    // newer than a move kept from an earlier launch: it opened after it, and took it or dropped it.
+    val move =
+      if (Spans.isBareMove(left)) RecoveredMove(left.libraryId, left.path, Spans.carried(left.start)) else null
+    keepMove(move)
+    store.save(null)
     return left
+  }
+
+  /** The recovered move, in memory and in the store (written only when it changes). */
+  private fun keepMove(move: RecoveredMove?) {
+    if (move == recoveredMove) return
+    recoveredMove = move
+    store.saveMove(move)
+  }
+
+  /** The account left the watch: a move it recovered is no other account's. */
+  fun forgetMove() {
+    recoveredMove = null
+    store.saveMove(null)
   }
 
   /** The base a span goes on as it closes: the version acknowledged now, never below the one it opened on. */
@@ -239,19 +278,20 @@ class SpanRecorder(
    */
   fun loadsFromRow(ref: BookRef) {
     recover()
-    if (recoveredMove?.first == ref) recoveredMove = null
+    if (recoveredMove?.ref == ref) keepMove(null)
   }
 
   /** Playing began (or goes on after a cut) at `at`. */
-  fun open(book: PlayingBook, at: SpanEnd, speed: Double) {
+  fun open(book: PlayingBook, at: SpanEnd, speed: Double) = open(book, at, speed, fromHeard = false)
+
+  /** `fromHeard`: `at` is where the span closed just now ended (`OpenSpan.fromHeard`). */
+  private fun open(book: PlayingBook, at: SpanEnd, speed: Double, fromHeard: Boolean) {
     recover()
     if (span?.ref == book.ref) return
     // Taken first: closing another book's span may leave that book's move in `nextStart`.
     var start = nextStart
-    recoveredMove?.let { (ref, moved) ->
-      recoveredMove = null
-      if (ref == book.ref && start == ListeningStart.RESUME) start = moved
-    }
+    val moved = recoveredMove
+    if (moved != null && moved.ref == book.ref && start == ListeningStart.RESUME) start = moved.start
     close(null)
     val now = clock()
     nextStart = ListeningStart.RESUME
@@ -274,9 +314,12 @@ class SpanRecorder(
         start = start,
         baseVersion = base,
         id = newId(),
+        fromHeard = fromHeard,
       )
     span = opened
     store.save(opened)
+    // Taken or dropped (another book's span, a reason asked for), after the span that took it is kept.
+    keepMove(null)
   }
 
   /**
@@ -325,7 +368,7 @@ class SpanRecorder(
     if (!playing) return
     // A bare move's reason is already there (`close`); a reason asked for (Stay) still wins.
     if (start != ListeningStart.CONTINUE || !Spans.isBareMove(closed)) nextStart = start
-    open(book, closed.to, speed)
+    open(book, closed.to, speed, fromHeard = true)
   }
 
   /**
@@ -349,6 +392,7 @@ class SpanRecorder(
    * One playing tick of the engine (Wear's PlayerEngine): the 15 s `tick` when `cutDue`, then the
    * 5 s `keep` when `keepDue`, unless the tick already stored the span (a cut or an open): the open
    * span is written once a tick. True when it cut (a span closed: the place is kept durably then).
+   * `heardAt`: when the audio last moved (`keep`).
    */
   fun playingTick(
     book: PlayingBook,
@@ -357,21 +401,25 @@ class SpanRecorder(
     keepDue: Boolean,
     cutDue: Boolean,
     reachable: Boolean,
+    heardAt: Instant? = null,
   ): Boolean {
     val before = span
     val cut = cutDue && tick(book, at, true, reachable, speed)
-    if (keepDue && span === before) keep(at)
+    if (keepDue && span === before) keep(at, heardAt)
     return cut
   }
 
   /**
    * Bring the open span up to `at` (never back: a remote move landing first ends the span at its
-   * last place) and store it. Every `OPEN_SPAN_KEEP` while playing.
+   * last place) and store it. Every `OPEN_SPAN_KEEP` while playing. `heardAt` (Wear): when the
+   * audio last moved, so a span held up by buffering ends then, not now: a kill's recovered place
+   * (`PlaceStore.recover`) is stamped when it was heard, never later.
    */
-  fun keep(at: SpanEnd?) {
+  fun keep(at: SpanEnd?, heardAt: Instant? = null) {
     var s = span ?: return
     if (at != null && at.pos >= s.to.pos - 1) s = s.copy(to = at)
-    s = s.copy(endedAt = clock())
+    val now = clock()
+    s = s.copy(endedAt = if (heardAt != null && heardAt < now) heardAt else now)
     span = s
     store.save(s)
   }
@@ -455,7 +503,7 @@ class SpanRecorder(
       // span opened next replaces it in the store (`cut`).
       val closed = close(at, null, clearStore = !playing)
       sendStill(book, at, start, speed)
-      if (playing && closed != null) open(book, at, speed)
+      if (playing && closed != null) open(book, at, speed, fromHeard = true)
       return
     }
     if (playing) {
@@ -470,13 +518,23 @@ class SpanRecorder(
     FinishEvent(newId(), kind, ref.libraryId, ref.path, ISOTime.string(at), base)
 }
 
-/** The open span on disk (Files' `open-span.json`), what a kill leaves for the next launch to recover. */
-class FileSpanStore(file: java.io.File) : OpenSpanStore {
+/**
+ * The open span on disk (Files' `open-span.json`), what a kill leaves for the next launch to
+ * recover, and the move recovered from one until a span takes it (`open-span-move.json`).
+ */
+class FileSpanStore(file: java.io.File, moveFile: java.io.File) : OpenSpanStore {
   private val doc = JsonFile(file, OpenSpan.serializer(), durable = true)
+  private val moveDoc = JsonFile(moveFile, RecoveredMove.serializer(), durable = true)
 
   override fun load(): OpenSpan? = doc.read()
 
   override fun save(span: OpenSpan?) {
     doc.write(span)
+  }
+
+  override fun loadMove(): RecoveredMove? = moveDoc.read()
+
+  override fun saveMove(move: RecoveredMove?) {
+    moveDoc.write(move)
   }
 }

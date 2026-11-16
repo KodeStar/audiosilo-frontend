@@ -20,12 +20,19 @@ class TestClock(iso: String = "2026-10-25T07:00:00.000Z") {
 class MemorySpanStore : OpenSpanStore {
   var stored: OpenSpan? = null
   val saves = ArrayList<OpenSpan?>()
+  var move: RecoveredMove? = null
 
   override fun load(): OpenSpan? = stored
 
   override fun save(span: OpenSpan?) {
     stored = span
     saves += span
+  }
+
+  override fun loadMove(): RecoveredMove? = move
+
+  override fun saveMove(move: RecoveredMove?) {
+    this.move = move
   }
 }
 
