@@ -4,8 +4,9 @@
 //   adb -s <wear> shell am start -n app.audiosilo/app.audiosilo.wear.MainActivity \
 //     --es debug_pair "$(node scripts/watch-debug-pair.mjs <server> <user> <password>)"
 //
-// - `debug_pair`: a v1 `pair` message as JSON, signed in to as if the phone had sent it (ignored
-//   when already signed in to that account). scripts/watch-debug-pair.mjs mints one.
+// - `debug_pair`: a v1 `pair` message as JSON, signed in to as if the phone had sent it; for the
+//   account already signed in it is a Send again (D6: the token kept stays while `GET /me` takes
+//   it), as on the Apple Watch. scripts/watch-debug-pair.mjs mints one.
 // - `debug_book`: a v1 `book` message as JSON, taken as if the phone had sent it.
 // - `debug_remove`: a v1 `remove` message as JSON, taken the same way.
 // - `debug_play` (`--es debug_play 1`): play the first book on the watch once the rest is done.
@@ -41,7 +42,7 @@ object DebugSignIn {
         model.showSetupProblem("$PAIR is not a v1 pair message.")
         return
       }
-      if (model.account.value?.accountId != m.message.accountId) pair = m
+      pair = m
     }
     model.scope.launch {
       pair?.let { model.receive(it) }
