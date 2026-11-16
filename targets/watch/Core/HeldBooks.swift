@@ -43,12 +43,9 @@ struct RemoveTicket: Codable, Equatable, Identifiable, Sendable {
 struct HeldFile: Codable, Equatable {
   var books: [HeldBook]
   var removes: [RemoveTicket]
+}
 
-  init(books: [HeldBook], removes: [RemoveTicket]) {
-    self.books = books
-    self.removes = removes
-  }
-
+extension HeldFile {
   init(from decoder: Decoder) throws {
     if let books = try? decoder.singleValueContainer().decode([HeldBook].self) {
       self.init(books: books, removes: [])

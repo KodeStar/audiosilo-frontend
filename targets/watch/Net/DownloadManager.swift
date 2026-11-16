@@ -137,9 +137,9 @@ final class DownloadManager: ObservableObject {
     save()
   }
 
-  private func save() {
+  private func save(notify: Bool = true) {
     indexSaved = index.write(records)
-    onChange?()
+    if notify { onChange?() }
   }
 
   func folder(of r: DownloadRecord) -> URL {
@@ -177,7 +177,7 @@ final class DownloadManager: ObservableObject {
   func noteAsked(_ ref: BookRef, at askedAt: Date) {
     guard let i = records.firstIndex(where: { $0.ref == ref }), records[i].addedAt < askedAt else { return }
     records[i].addedAt = askedAt
-    indexSaved = index.write(records)
+    save(notify: false)
   }
 
   /// The app came to the foreground (or signed in): carry on with every book not done.

@@ -101,6 +101,10 @@ data class RemoveMessage(
   /** When the listener first asked for it (a phone from 2.7.0): in `sentAt`'s place where present. */
   val askedAt: Instant? = null,
 ) {
+  /** What orders it against a download: when it was first asked for, else when it was sent. */
+  val orderedAt: Instant?
+    get() = askedAt ?: sentAt
+
   val accountId: String
     get() = accountIdOf(serverId, userId)
 }
@@ -335,7 +339,7 @@ object PhoneMessages {
    * older phone) applies, as on the Apple Watch.
    */
   fun removeApplies(remove: RemoveMessage, downloadAt: Instant?): Boolean {
-    val sent = remove.askedAt ?: remove.sentAt ?: return true
+    val sent = remove.orderedAt ?: return true
     val queued = downloadAt ?: return true
     return !sent.isBefore(queued)
   }
