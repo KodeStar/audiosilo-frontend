@@ -50,11 +50,18 @@ jobs:
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
+      # provenance: false keeps the pushed tag a plain single-platform manifest.
+      # With the default provenance attestation the tag is an OCI index of the
+      # amd64 image plus an attestation-only entry (platform unknown/unknown),
+      # which BuildKit refuses to resolve for another platform ("no match for
+      # platform in manifest") when the server image COPYs from it. The server
+      # pins this image's platform (its Dockerfile WEB_PLATFORM) as well.
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
           context: dist
           file: Dockerfile.web
           push: true
+          provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
