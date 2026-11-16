@@ -194,7 +194,12 @@ function spanHeard(span: OpenSpan): boolean {
 /** Whether a span carries anything: listening, or a deliberate move (pure). */
 export function spanSaysSomething(span: OpenSpan): boolean {
   if (spanHeard(span)) return true;
-  return span.start === 'jump' || span.start === 'moved_back' || span.start === 'restart';
+  return (
+    span.start === 'jump' ||
+    span.start === 'moved_back' ||
+    span.start === 'restart' ||
+    span.start === 'stay'
+  );
 }
 
 /**
@@ -710,6 +715,31 @@ export function usesListeningSync(connectionId: string): boolean {
   return cachedCapability(connectionId, 'listening_sync') ?? true;
 }
 
+/**
+ * Whether a Stay on `connectionId` is sent as a `stay` span (row 9c-2, CROSS-REPO section 25
+ * "Stay wins"): its server's `listening_stay` as the query cache's `/server` holds it (the
+ * answer this launch, else the kept one). Unknown counts as no, unlike `usesListeningSync`: a
+ * server without it refuses the start as `invalid`, so the Stay goes as a `jump` there.
+ */
+export function usesListeningStay(connectionId: string): boolean {
+  return (
+    usesListeningSync(connectionId) && cachedCapability(connectionId, 'listening_stay') === true
+  );
+}
+
+/**
+ * The events as `connectionId`'s server takes them now (pure but for the capability read): a
+ * `stay` queued while its server had `listening_stay` goes as a `jump` once the flag is gone
+ * (an older server's decoder refuses the start). The stored event is unchanged; its id is the
+ * same, so the answer still matches it.
+ */
+function eventsForServer(connectionId: string, events: ListeningEvent[]): ListeningEvent[] {
+  if (usesListeningStay(connectionId)) return events;
+  return events.map((e) =>
+    e.kind === 'listen' && e.start === 'stay' ? { ...e, start: 'jump' as const } : e,
+  );
+}
+
 // --- Sending ---------------------------------------------------------------------------
 
 const inFlight = new Map<string, Promise<void>>();
@@ -1083,9 +1113,14 @@ export async function unsentListens(connectionId: string): Promise<number> {
   return (await pendingSaves(connectionId)).events;
 }
 
-/** A batch's envelope with this attempt's clock. */
-function syncBody(events: ListeningEvent[], deviceId: string) {
-  return { device_id: deviceId, sent_at: new Date().toISOString(), events };
+/** A batch's envelope with this attempt's clock, its events as the server takes them now
+ * (`eventsForServer`). */
+function syncBody(connectionId: string, events: ListeningEvent[], deviceId: string) {
+  return {
+    device_id: deviceId,
+    sent_at: new Date().toISOString(),
+    events: eventsForServer(connectionId, events),
+  };
 }
 
 /** How many rounds one flush makes at most (a 500-event backlog in chunks of 200 is 3). */
@@ -1141,6 +1176,7 @@ async function sendChunk(
       const sentAt = Date.now();
       const answer = await client.syncListening(
         syncBody(
+          connectionId,
           live.map((e) => e.event),
           deviceId,
         ),
@@ -1194,7 +1230,7 @@ async function sendOneByOne(
       const deviceId = await getDeviceId();
       await sending([entry], async (live) => {
         if (live.length === 0) return;
-        const answer = await client.syncListening(syncBody([entry.event], deviceId));
+        const answer = await client.syncListening(syncBody(connectionId, [entry.event], deviceId));
         await applyAnswer(connectionId, [entry], answer);
       });
     } catch (e) {
@@ -1434,6 +1470,7 @@ export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
     void client
       .syncListening(
         syncBody(
+          cid,
           fit.map((e) => e.event),
           deviceId,
         ),

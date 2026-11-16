@@ -68,6 +68,7 @@ import {
   spanIsBareMove,
   spanToEvent,
   storeOpenSpan,
+  usesListeningStay,
   usesListeningSync,
   withdrawFinish,
 } from './listening-outbox';
@@ -1118,11 +1119,17 @@ function moveListeningSpan(target: SpanEnd | null, opts: { from?: SpanEnd | null
     openListeningSpan(target);
     return;
   }
+  sendStill(np, target, reason);
+}
+
+/** A move made while paused (`start`, to `at`): sent at once as a span of its own that moved
+ * nowhere (the place syncs as a PUT did), and the next play begins with the same reason. */
+function sendStill(np: NowPlaying, at: SpanEnd, start: ListeningStart) {
   const now = new Date().toISOString();
   void baseVersionOf(np).then((base) =>
-    emit(np.connectionId, [spanToEvent(spanAt(np, target, reason, now, base))]),
+    emit(np.connectionId, [spanToEvent(spanAt(np, at, start, now, base))]),
   );
-  nextStart = reason;
+  nextStart = start;
 }
 
 /**
@@ -1254,12 +1261,26 @@ setFinishRecorder({
 
 /**
  * After the listener answered an offer of another device's place with Stay: this device's
- * place stands, so its next span begins as a deliberate move (`jump`), which the server
- * applies over the other place. Playing, the span is cut so that begins now.
+ * place stands, so its next span begins as a `stay` on a `listening_stay` server
+ * (`usesListeningStay`), which the server applies over the other device's writes since the
+ * offer, else as a `jump`, which it applies over the other place under its usual rule.
+ * Playing, the span is cut so that begins now; paused, the Stay is sent at once as a span
+ * that moved nowhere (a paused move's), and the next play begins with the same reason.
  */
 export function standByPlace(): void {
-  nextStart = 'jump';
-  if (span && isPlayingState(usePlayer.getState().snapshot.state)) cutListeningSpan('jump');
+  const np = usePlayer.getState().nowPlaying;
+  const start: ListeningStart = np && usesListeningStay(np.connectionId) ? 'stay' : 'jump';
+  if (isPlayingState(usePlayer.getState().snapshot.state)) {
+    // With none open yet, the one that opens takes it (`openMissingSpan`).
+    if (span) cutListeningSpan(start);
+    else nextStart = start;
+    return;
+  }
+  const here = np && usesListeningSync(np.connectionId) ? engineEnd() : null;
+  // One still open while not playing (a stall) ends where the Stay is, as a paused move's does.
+  closeListeningSpan(here ? { at: here } : {});
+  nextStart = start;
+  if (np && here) sendStill(np, here, start);
 }
 
 /** Cut the playing span now (the server came back, the app went to the background); a

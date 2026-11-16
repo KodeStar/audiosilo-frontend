@@ -77,6 +77,7 @@ import {
   sendOnPageHide,
   syncStateOf,
   unsentListens,
+  usesListeningStay,
   usesListeningSync,
   withdrawFinish,
 } from './listening-outbox';
@@ -212,6 +213,7 @@ describe('spanToEvent', () => {
     expect(spanSaysSomething(span({ ...still, start: 'continue' }))).toBe(false);
     expect(spanSaysSomething(span({ ...still, start: 'jump' }))).toBe(true);
     expect(spanSaysSomething(span({ ...still, start: 'restart' }))).toBe(true);
+    expect(spanSaysSomething(span({ ...still, start: 'stay' }))).toBe(true);
     expect(spanSaysSomething(span())).toBe(true);
   });
 
@@ -219,6 +221,7 @@ describe('spanToEvent', () => {
     expect(spanIsBareMove(span({ ...still, start: 'moved_back' }))).toBe(true);
     expect(spanIsBareMove(span({ ...still, start: 'jump' }))).toBe(true);
     expect(spanIsBareMove(span({ ...still, start: 'restart' }))).toBe(true);
+    expect(spanIsBareMove(span({ ...still, start: 'stay' }))).toBe(true);
     expect(spanIsBareMove(span({ ...still, start: 'resume' }))).toBe(false);
     expect(spanIsBareMove(span({ ...still, start: 'continue' }))).toBe(false);
     // Heard: a second of playing, or a place moved one.
@@ -1168,6 +1171,67 @@ describe('usesListeningSync', () => {
     expect(usesListeningSync('c1')).toBe(false);
     mockCaps = undefined; // unknown: events wait in the outbox (a 404 turns them into PUTs)
     expect(usesListeningSync('c1')).toBe(true);
+  });
+});
+
+describe('usesListeningStay (row 9c-2)', () => {
+  it('only a server that said listening_stay takes a stay; unknown is no', () => {
+    mockCaps = { listening_sync: true, listening_stay: true };
+    expect(usesListeningStay('c1')).toBe(true);
+    mockCaps = { listening_sync: true };
+    expect(usesListeningStay('c1')).toBe(false);
+    mockCaps = undefined; // unknown: sync counts as on, a stay does not (it would be `invalid`)
+    expect(usesListeningSync('c1')).toBe(true);
+    expect(usesListeningStay('c1')).toBe(false);
+  });
+});
+
+describe('a queued stay to a server without listening_stay (row 9c-2)', () => {
+  const stay = () => listen('s', { start: 'stay' } as Partial<ListeningEvent>);
+  const starts = (body: ListeningSyncRequest) =>
+    body.events.map((e) => (e.kind === 'listen' ? e.start : e.kind));
+
+  it('goes as a jump once the flag is gone, and as a stay while it is there', async () => {
+    await appendEvents('c1', [stay(), listen('a')]);
+    let fail = true;
+    const c = client(async (body) => {
+      if (fail) throw new TypeError('Network request failed');
+      return answer(body);
+    });
+    mockCaps = { listening_sync: true };
+    await flushOutbox('c1');
+    mockCaps = { listening_sync: true, listening_stay: true };
+    fail = false;
+    await flushOutbox('c1');
+    expect(sent(c).map(starts)).toEqual([
+      ['jump', 'resume'],
+      ['stay', 'resume'],
+    ]);
+    // Same ids: the answer matched the stored events, which left the outbox.
+    expect(sent(c)[0].events.map((e) => e.id)).toEqual(['s', 'a']);
+    expect(await outboxEvents('c1')).toEqual([]);
+  });
+
+  it('the stored event keeps its stay; a batch sent one by one and the page going map it too', async () => {
+    await appendEvents('c1', [stay(), listen('a')]);
+    let calls = 0;
+    const c = client(async (body) => {
+      calls += 1;
+      if (calls === 1) throw new ApiError(400, 'invalid request');
+      return answer(body);
+    });
+    await flushOutbox('c1');
+    expect(sent(c).map(starts)).toEqual([['jump', 'resume'], ['jump'], ['resume']]);
+
+    await appendEvents(
+      'c1',
+      [stay()].map((e) => ({ ...e, id: 's2' }) as ListeningEvent),
+    );
+    const waiting = await outboxEvents('c1');
+    expect(waiting.map((e) => e.event.kind === 'listen' && e.event.start)).toEqual(['stay']);
+    const h = client(() => new Promise(() => {}));
+    sendOnPageHide([], 'dev');
+    expect(sent(h).map(starts)).toEqual([['jump']]);
   });
 });
 

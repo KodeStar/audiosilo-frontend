@@ -2026,15 +2026,23 @@ media GETs only.
     deliberate move nothing was heard after (`spanIsBareMove`, a pause or a cut under a second
     behind a seek) gives the next span its reason, as a paused move does: its event can come back
     `not_applied`/`older` when sent apart from the span before it (a reason asked for, Stay's
-    `jump`, still wins). A move to where the place already is, in the same file (`movesNowhere`,
+    `stay` or `jump`, still wins). A move to where the place already is, in the same file (`movesNowhere`,
     Previous at the book's start; a book with unknown file lengths starts every file at 0) is no
     move: the span goes on and no event says it, unless the last move went
     elsewhere (a seek still on its way reads as where it left) or the engine moved first with
     nothing to compare (a paused lock-screen move: `from: null`). The watches share both rules
     (`Spans`). A
     finished book started again sends `unfinish` first, then a `restart` span; an explicit 0 is
-    `restart`, another explicit place `jump`, Stay on an offer makes the next span `jump`
-    (`standByPlace`). The open span is stored every 5 s online or offline (`OPEN_SPAN_KEEP_MS`),
+    `restart`, another explicit place `jump`. Stay on an offer (`standByPlace`, row 9c-2,
+    CROSS-REPO section 25 "Stay wins") makes the next span a `stay` when the connection's
+    `/server` said `listening_stay` (`usesListeningStay`; unknown is no, unlike
+    `usesListeningSync`: a server without it refuses the start as `invalid`), else a `jump`:
+    playing, the span is cut so it begins now; paused, it is sent at once as a span that moved
+    nowhere (a paused move's, `sendStill`, on the version the answer acknowledged), and as a
+    bare move (`spanSaysSomething` counts `stay` as a deliberate move) the next play begins
+    with it too. The outbox sends a queued `stay` as a `jump` when the flag is gone by then
+    (`eventsForServer`, every send path: the batch, one by one, the page's keepalive); the
+    stored event keeps its `stay` and id. The open span is stored every 5 s online or offline (`OPEN_SPAN_KEEP_MS`),
     so a kill loses at most that, and takes its event id when it opens (`OpenSpan.id`): closed
     twice it is one event. A book playing with none open (its play's own could not open: a
     load, the hot-swap or an adoption's reload held the place) gets one at that same 5 s keep
@@ -2679,6 +2687,11 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   sync answered (else after an hour), on a rate change and on going to the background; kept every
   5 s; a kill's open span is recovered at launch. A bare move and a move to nowhere go as on the
   phone (`Spans.isBareMove`, `Spans.movesNowhere`; the phone's `spanIsBareMove`, `movesNowhere`).
+  Stay is the phone's too (row 9c-2): `SpanRecorder.standBy(..., stay:)` with `stay` = the
+  cached `/server`'s `listening_stay` (`AppModel.takesStay`), a paused Stay sent at once as a
+  bare `stay` (or `jump`) span, and the outbox's `asServerTakes` sending a queued `stay` as a
+  `jump` while the flag is off (`Outbox.takesStay`, read as each body is built, the background
+  upload's too). Wear OS ports all three (`SpanRecorder.kt`, `Outbox.kt`, `PlayerEngine.stay`).
   Only the watches store the span at open, so only they recover a move a kill cut short (within
   the 5 s keep): the launch's first span, when it is that book's and a resume from this watch's
   own place, takes its reason (`recoveredMove`; not when `Resume.plan` took the server's row,

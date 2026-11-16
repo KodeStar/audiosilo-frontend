@@ -154,8 +154,10 @@ const offeredAt = new Map<string, number>();
 /**
  * Offer the loaded book another device's place from `row` (the server's row for it), when
  * `offerOf` finds one. Never moves the book by itself: a toast with Jump (seek there) and
- * Stay (close: this device's place stands, its next span a deliberate move that the server
- * applies). Either answer acknowledges the row's version. Resolves once it is shown or not.
+ * Stay (close: this device's place stands, its next span a `stay` that the server applies
+ * over the other device's writes since the offer, a `jump` without `listening_stay`; sent at
+ * once when paused: `standByPlace`). Either answer acknowledges the row's version. Resolves
+ * once it is shown or not.
  *
  * `held`: the legacy PUT path's replay guard held a save of this book back for `row`
  * (fe#198; `onHeldSave`). There is no acknowledged version there (the row's own is new),

@@ -181,6 +181,11 @@ export type Capabilities = {
    * `device_name` / `other_place` on {@link Progress}. Absent on older servers: treat missing
    * as false and save by `PUT /libraries/{id}/progress` + `POST .../history` as before. */
   listening_sync?: boolean;
+  /** Whether a listen span's `start` may be `stay` (row 9c-2, CROSS-REPO section 25 "Stay
+   * wins"): the listener's Stay on another device's offer, which the server applies over that
+   * device's writes since the offer and holds against its older spans. Absent on older
+   * servers, whose decoder refuses the start: send `jump` (`usesListeningStay`). */
+  listening_stay?: boolean;
   /** Whether the server makes small copies of a book's audio files for a watch (Track W2:
    * `GET /libraries/{id}/stream?rendition=watch`, `POST`/`GET /libraries/{id}/renditions`);
    * which kinds is `ServerInfo.renditions`. True when the server has ffmpeg and a data dir.
@@ -999,8 +1004,10 @@ export type ListeningOtherPlace = {
 
 /** Why a listening span began. `resume`: the loaded or resumed place; `continue`: carrying
  * on after a cut; `moved_back` / `jump`: a deliberate move (a seek, a chapter, a bookmark,
- * Undo, an offer's Jump); `restart`: starting again from 0. */
-export type ListeningStart = 'resume' | 'continue' | 'moved_back' | 'jump' | 'restart';
+ * Undo, an offer's Jump); `restart`: starting again from 0; `stay`: the listener answered
+ * another device's offer with Stay (only to a `listening_stay` server: an older one refuses
+ * it, so the Stay goes as a `jump` there). */
+export type ListeningStart = 'resume' | 'continue' | 'moved_back' | 'jump' | 'restart' | 'stay';
 
 /** What every listening event carries. `id` is the device's own (1-64 of
  * `[A-Za-z0-9_-]`, a UUID here), so a resend is a `duplicate`. `base_version` is the

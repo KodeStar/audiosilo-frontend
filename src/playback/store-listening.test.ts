@@ -69,6 +69,7 @@ jest.mock('./progress-sync', () => ({
 
 // The outbox: the path choice is the test's, storage and sending are captured.
 let mockSync = true;
+let mockStay = false;
 const mockClosed: OpenSpan[] = [];
 const mockAppended: ListeningEvent[] = [];
 const mockSendOnPageHide = jest.fn((..._a: unknown[]) => {});
@@ -83,6 +84,7 @@ jest.mock('./listening-outbox', () => {
     finishEvent: actual.finishEvent,
     newEventId: actual.newEventId,
     usesListeningSync: () => mockSync,
+    usesListeningStay: () => mockSync && mockStay,
     closeSpan: jest.fn(async (span: OpenSpan) => {
       mockClosed.push(structuredClone(span));
     }),
@@ -238,6 +240,7 @@ beforeEach(() => {
   mockClosed.length = 0;
   mockAppended.length = 0;
   mockSync = true;
+  mockStay = false;
   mockReadMirror.mockResolvedValue({ ack_version: 41 });
   mockLoadInitialProgress.mockResolvedValue({ kind: 'empty' });
   useSettings.setState({ autoDownloadNext: 'never' });
@@ -786,6 +789,69 @@ describe('with listening_sync', () => {
     pushSnapshot(snap('paused', 0, 9));
     await settle();
     expect(mockClosed.map((s) => s.start)).toEqual(['jump']);
+  });
+
+  // Stay wins (row 9c-2): on a `listening_stay` server the Stay is a `stay` span.
+  describe('Stay on a listening_stay server', () => {
+    beforeEach(() => {
+      mockStay = true;
+    });
+
+    it('playing, the cut opens a stay span where it was', async () => {
+      await start();
+      pushSnapshot(snap('playing', 0, 30));
+      await settle();
+      jest.advanceTimersByTime(4_000);
+      pushSnapshot(snap('playing', 0, 34));
+      standByPlace();
+      jest.advanceTimersByTime(3_000);
+      pushSnapshot(snap('paused', 0, 37));
+      await settle();
+      expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([
+        ['resume', 30, 34],
+        ['stay', 34, 37],
+      ]);
+      expect(mockAppended).toEqual([]);
+    });
+
+    it('paused, a span that moved nowhere is sent at once on the version answered', async () => {
+      await start();
+      pushSnapshot(snap('paused', 1, 20));
+      await settle();
+      mockReadMirror.mockResolvedValue({ ack_version: 57 });
+      standByPlace();
+      await settle();
+      expect(mockAppended).toHaveLength(1);
+      expect(mockAppended[0]).toMatchObject({
+        kind: 'listen',
+        start: 'stay',
+        from_pos: 70,
+        to_pos: 70,
+        from_file: 'A/Folder/10.mp3',
+        from_file_pos: 20,
+        base_version: 57,
+      });
+      const e = mockAppended[0] as Extract<ListeningEvent, { kind: 'listen' }>;
+      expect(e.started_at).toBe(e.ended_at);
+      expect(mockFlushOutbox).toHaveBeenCalledWith('c1');
+      // A bare move: the next play carries it.
+      pushSnapshot(snap('playing', 1, 20));
+      jest.advanceTimersByTime(2_000);
+      pushSnapshot(snap('paused', 1, 22));
+      await settle();
+      expect(mockClosed.map((s) => s.start)).toEqual(['stay']);
+    });
+  });
+
+  it('without listening_stay a paused Stay is sent at once as a jump', async () => {
+    await start();
+    pushSnapshot(snap('paused', 0, 20));
+    await settle();
+    standByPlace();
+    await settle();
+    expect(mockAppended.map((e) => e.kind === 'listen' && [e.start, e.from_pos])).toEqual([
+      ['jump', 20],
+    ]);
   });
 
   it('the web page going closes the span and sends it with keepalive', async () => {
