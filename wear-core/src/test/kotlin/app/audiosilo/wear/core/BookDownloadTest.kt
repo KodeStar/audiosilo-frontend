@@ -155,6 +155,21 @@ class BookDownloadTest {
     assertFalse("no part or etag left", File(dir, "folder-1").list()!!.any { it.endsWith(".part") || it.endsWith(".etag") })
   }
 
+  // fe#320 parity: a 200 answer the watch can't decode fails the book with its own words; it is no
+  // wait on the connection, so it does not retry for good.
+  @Test
+  fun anAnswerTheWatchCantReadFailsTheBook() = runTest {
+    val idx = index()
+    idx.enqueue(REF, "Book", null, T0)
+    val server = FakeServer(content)
+    server.answers += { throw kotlinx.serialization.SerializationException("Unexpected JSON token") }
+    assertEquals(BookDownload.Outcome.Failed, run(server, idx).run())
+    val r = idx.record(REF)!!
+    assertEquals(WatchStateBook.State.FAILED, r.state)
+    assertEquals(RenditionPlan.UNREADABLE, r.message)
+    assertTrue(server.downloads.isEmpty())
+  }
+
   @Test
   fun aCutFileResumesWithRangeAndIfRange() = runTest {
     val idx = index()

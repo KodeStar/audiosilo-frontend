@@ -3075,7 +3075,10 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   address over its own network (`AddressPicker.pick`, home only after the probe) and, since a
   run can outlast that network, asks a home pick again once it is 90 s old before the next
   request (`ProvenBookServer`; a home that stops answering as this server gives way to away). A
-  resume the server answers 416 (a part already whole) starts that file again from 0.
+  resume the server answers 416 (a part already whole) starts that file again from 0. A success
+  the watch can't decode (another build's format, a proxy's page) fails the book with "Your server
+  sent something this watch can't read." (`RenditionPlan.UNREADABLE`, the Apple Watch's words): no
+  wait on the connection, and Try again asks afresh.
 - **Storage (decision 11)**: `TokenStore` seals the token with a non-exportable Keystore
   AES-GCM key (`audiosilo.session`), ciphertext and `device_id` in `noBackupFilesDir`;
   `allowBackup=false` and `data_extraction_rules.xml` exclude every domain. `device_name` is

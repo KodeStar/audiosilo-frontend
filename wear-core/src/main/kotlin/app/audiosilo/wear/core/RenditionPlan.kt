@@ -122,6 +122,9 @@ object RenditionPlan {
       Refusal.Gone -> true
     }
 
+  /** A book's row when the server's answer could not be read (the Apple Watch's `UNREADABLE`). */
+  const val UNREADABLE = "Your server sent something this watch can't read."
+
   /** What a book's row says after a refusal; null for `Retry`, which waits instead. */
   fun message(r: Refusal): String? =
     when (r) {
