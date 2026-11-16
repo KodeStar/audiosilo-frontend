@@ -334,12 +334,18 @@ class AppModel private constructor(private val context: Context) {
     val fresh = orNull { api.addresses() } ?: return
     val now = _account.value ?: return
     if (now.accountId != a.accountId) return
-    val merged = AddressPicker.merge(now.addresses, fresh)
-    if (merged == now.addresses) return
-    val next = now.copy(addresses = merged)
+    keep(now.copy(addresses = AddressPicker.merge(now.addresses, fresh)), old = now)
+  }
+
+  /**
+   * Keep [next] as the signed-in account, saved only on a change. New addresses are picked among at
+   * once, but not in the background: leaving home dropped the home pick, and no probe runs there.
+   */
+  private suspend fun keep(next: Account, old: Account) {
+    if (next == old) return
     accountFile.write(next)
     _account.value = next
-    if (inForeground) router.repick(next)
+    if (inForeground && next.addresses != old.addresses) router.repick(next)
   }
 
   /**
@@ -762,7 +768,7 @@ class AppModel private constructor(private val context: Context) {
    * the server, and the phone's pairing token runs out unused. What the phone now says of the
    * account (its label, the user's name, the addresses) is taken, as a sign-in would.
    */
-  private fun keepSignIn(current: Account, p: PairMessage) {
+  private suspend fun keepSignIn(current: Account, p: PairMessage) {
     val a =
       current.copy(
         serverName = p.serverName,
@@ -770,10 +776,7 @@ class AppModel private constructor(private val context: Context) {
         serverUrl = p.serverUrl,
         addresses = AddressPicker.merge(current.addresses, p.addresses),
       )
-    if (a != current) {
-      accountFile.write(a)
-      _account.value = a
-    }
+    keep(a, old = current)
     publishState()
   }
 

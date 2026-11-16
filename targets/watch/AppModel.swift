@@ -220,15 +220,20 @@ final class AppModel: ObservableObject {
   private func refreshAddresses(of a: Account) async {
     guard server?.capabilities?.addresses == true, let api = client(), let fresh = try? await api.addresses(),
       // Signed out or switched while it was asked: the answer is no longer this account's.
-      var now = account, now.accountId == a.accountId
+      let now = account, now.accountId == a.accountId
     else { return }
-    let merged = AddressPicker.merge(prior: now.addresses, fresh: fresh)
-    guard merged != now.addresses else { return }
-    now.addresses = merged
-    Account.save(now)
-    account = now
-    // Not in the background: leaving home dropped the home pick, and no probe runs there.
-    if inForeground { await router.repick(now) }
+    var next = now
+    next.addresses = AddressPicker.merge(prior: now.addresses, fresh: fresh)
+    await keep(next, over: now)
+  }
+
+  /// Keep `next` as the signed-in account, saved only on a change. New addresses are picked among
+  /// at once, but not in the background: leaving home dropped the home pick, and no probe runs there.
+  private func keep(_ next: Account, over old: Account) async {
+    guard next != old else { return }
+    Account.save(next)
+    account = next
+    if inForeground, next.addresses != old.addresses { await router.repick(next) }
   }
 
   // MARK: - Sync
@@ -517,7 +522,7 @@ final class AppModel: ObservableObject {
       // Signed out or switched while it was asked: this pair is not for the watch as it is now.
       guard account?.accountId == current.accountId else { return }
       if AccountRules.keepsToken(meStatus: status) {
-        keepSignIn(current, p)
+        await keepSignIn(current, p)
         return
       }
     }
@@ -593,15 +598,12 @@ final class AppModel: ObservableObject {
   /// A `pair` for this account while its token still signs in (D6): no exchange, so no new session
   /// on the server, and the phone's pairing token runs out unused. What the phone now says of the
   /// account (its label, the user's name, the addresses) is taken, as a sign-in would.
-  private func keepSignIn(_ current: Account, _ p: PairMessage) {
+  private func keepSignIn(_ current: Account, _ p: PairMessage) async {
     let a = Account(
       serverId: current.serverId, serverName: p.serverName, userId: current.userId,
       userName: p.userName.isEmpty ? current.userName : p.userName, serverURL: p.serverURL,
       addresses: AddressPicker.merge(prior: current.addresses, fresh: p.addresses), signedInAt: current.signedInAt)
-    if a != current {
-      Account.save(a)
-      account = a
-    }
+    await keep(a, over: current)
     publishState()
   }
 
