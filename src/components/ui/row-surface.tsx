@@ -1,10 +1,12 @@
-import { forwardRef } from 'react';
+import { forwardRef, type ReactNode } from 'react';
 import { Platform, View, type ViewProps, type ViewInstance } from 'react-native';
 
 import { FOCUS_RING_CLASS } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { AnimatedPressable, type AnimatedPressableProps } from './animated-pressable';
+import { Icon } from './icon';
 
 /**
  * The quiet list-row surface (STYLEGUIDE.md section 5: chrome is flat with a 1px
@@ -43,3 +45,32 @@ export const PressableRow = forwardRef<ViewInstance, AnimatedPressableProps>(fun
     />
   );
 });
+
+/**
+ * A tappable row inside a card's list (the book page's Other versions and Other recordings):
+ * no surface of its own, a 48 px target with the `accent` fill when pressed (and, on web,
+ * hovered), the caller's content, then a chevron. Wrapped in a list item (a list holds items).
+ */
+export function InsetRow({
+  className,
+  children,
+  ...props
+}: Omit<AnimatedPressableProps, 'children'> & { children: ReactNode }) {
+  const themed = useThemeColors();
+  return (
+    <View role="listitem">
+      <AnimatedPressable
+        accessibilityRole="button"
+        className={cn(
+          'min-h-[48px] flex-row items-center gap-3 rounded-control px-2 py-2 active:bg-accent',
+          Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}` }),
+          className,
+        )}
+        {...props}
+      >
+        {children}
+        <Icon name="chevron-right" size={14} color={themed.mutedForeground} />
+      </AnimatedPressable>
+    </View>
+  );
+}
