@@ -75,6 +75,7 @@ import {
   storedOpenSpan,
   storeOpenSpan,
   onOutboxChange,
+  onSyncAnswer,
   sendOnPageHide,
   syncStateOf,
   unsentListens,
@@ -1230,6 +1231,23 @@ describe('a queued stay to a server without listening_stay (row 9c-2)', () => {
     const h = client(() => new Promise(() => {}));
     sendOnPageHide([], 'dev');
     expect(sent(h).map(starts)).toEqual([['jump']]);
+  });
+
+  it('held as the jump it went as, it is no held Stay (the usual 10 minutes apply)', async () => {
+    const told: string[][] = [];
+    const stop = onSyncAnswer((_cid, _rows, held) => told.push([...held]));
+    try {
+      await appendEvents('c1', [stay()]);
+      client(async (body) => answer(body, () => ({ status: 'diverged', kept: 'stored' })));
+      mockCaps = { listening_sync: true };
+      await flushOutbox('c1');
+      await appendEvents('c1', [stay('s2')]);
+      mockCaps = { listening_sync: true, listening_stay: true };
+      await flushOutbox('c1');
+      expect(told.map((keys) => keys.length)).toEqual([0, 1]);
+    } finally {
+      stop();
+    }
   });
 });
 

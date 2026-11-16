@@ -239,6 +239,7 @@ final class OutboxTests: XCTestCase {
   func testTheAnswerNamesTheBooksWhoseStayItHeld() async {
     let o = outbox()
     o.append([listen("a", start: .stay), listen("b", path: "Other", start: .stay), listen("c", path: "Third")])
+    o.takesStay = { true }
     var held: Set<BookRef> = []
     o.onAnswer = { _, h in held = h }
     let stored = { (e: ListeningEvent) -> SyncResult? in
@@ -246,6 +247,17 @@ final class OutboxTests: XCTestCase {
     }
     await o.flush(via: FakeTransport { answer($0, status: stored) })
     XCTAssertEqual(held, [BookRef(libraryId: 3, path: "Author/Book")])
+  }
+
+  // A `stay` sent as a `jump` (the server no longer takes it) was held by the usual rule.
+  func testAStaySentAsAJumpIsNotAHeldStay() async {
+    let o = outbox()
+    o.append([listen("a", start: .stay)])
+    o.takesStay = { false }
+    var held: Set<BookRef> = [BookRef(libraryId: 0, path: "")]
+    o.onAnswer = { _, h in held = h }
+    await o.flush(via: FakeTransport { answer($0, status: { SyncResult(id: $0.id, status: "diverged", kept: "stored") }) })
+    XCTAssertEqual(held, [])
   }
 
   func testAcknowledgesTheRowAnUnfinishHandsThisDevice() async {

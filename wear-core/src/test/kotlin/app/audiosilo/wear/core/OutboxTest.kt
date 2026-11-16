@@ -217,6 +217,7 @@ class OutboxTest {
   fun theAnswerNamesTheBooksWhoseStayItHeld() = runBlocking {
     val o = outbox()
     o.append(listOf(listen("a", start = ListeningStart.STAY), listen("b", path = "Other", start = ListeningStart.STAY), listen("c", path = "Third")))
+    o.takesStay = { true }
     var held = emptySet<BookRef>()
     o.onAnswer = { _, h -> held = h }
     o.flush(
@@ -225,6 +226,18 @@ class OutboxTest {
       }
     )
     assertEquals(setOf(ref), held)
+  }
+
+  // A `stay` sent as a `jump` (the server no longer takes it) was held by the usual rule.
+  @Test
+  fun aStaySentAsAJumpIsNotAHeldStay() = runBlocking {
+    val o = outbox()
+    o.append(listOf(listen("a", start = ListeningStart.STAY)))
+    o.takesStay = { false }
+    var held = setOf(BookRef(0, ""))
+    o.onAnswer = { _, h -> held = h }
+    o.flush(FakeTransport { body -> answer(body, status = { e -> SyncResult(e.id, "diverged", kept = "stored") }) })
+    assertEquals(emptySet<BookRef>(), held)
   }
 
   @Test

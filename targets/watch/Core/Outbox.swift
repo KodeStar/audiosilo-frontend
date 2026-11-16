@@ -340,7 +340,8 @@ final class Outbox {
     for row in rows where AckRules.keptMine(row, deviceId: deviceId, sent: sent, results: results) {
       acks.ack(row.ref, version: row.version)
     }
-    onAnswer?(rows, AckRules.staysHeld(sent: sent, results: results))
+    // As sent: a `stay` that went as a `jump` (the flag gone) was held by the usual rule.
+    onAnswer?(rows, AckRules.staysHeld(sent: Self.asServerTakes(sent, stay: takesStay()), results: results))
   }
 
   // MARK: - The background upload (decision 10; SyncUploader sends it)

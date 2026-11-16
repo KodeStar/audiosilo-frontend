@@ -373,7 +373,8 @@ class Outbox(
     for (row in rows) {
       if (AckRules.keptMine(row, deviceId, sent, results)) acks.ack(row.ref, row.version)
     }
-    onAnswer?.invoke(rows, AckRules.staysHeld(sent, results))
+    // As sent: a `stay` that went as a `jump` (the flag gone) was held by the usual rule.
+    onAnswer?.invoke(rows, AckRules.staysHeld(asServerTakes(sent, takesStay()), results))
   }
 
   companion object {

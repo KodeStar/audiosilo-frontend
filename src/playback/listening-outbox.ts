@@ -1349,8 +1349,11 @@ async function applyAnswer(
   if (events.some((e) => e.kind === 'listen')) {
     void queryClient.invalidateQueries({ queryKey: qk.historyAll(connectionId) });
   }
+  // As sent: a `stay` that went as a `jump` (the flag gone) was held by the usual rule.
   const held = new Set(
-    staysHeld(events, results).map((e) => contentKey(connectionId, e.library_id, e.path)),
+    staysHeld(eventsForServer(connectionId, events), results).map((e) =>
+      contentKey(connectionId, e.library_id, e.path),
+    ),
   );
   for (const listener of answerListeners) listener(connectionId, rows, held);
 }
