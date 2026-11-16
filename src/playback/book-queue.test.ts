@@ -459,6 +459,13 @@ describe('timeline math', () => {
     expect(locate([0, 0], 30)).toEqual({ index: 0, positionInTrack: 30 });
     expect(locate([0, 60, 60, 60], 60)).toEqual({ index: 1, positionInTrack: 0 });
     expect(locate([0, 60, 60, 90], 95)).toEqual({ index: 3, positionInTrack: 5 });
+    // The file the place is known to be in, among those sharing its offset.
+    expect(locate([0, 60, 60, 60], 70, 2)).toEqual({ index: 2, positionInTrack: 10 });
+    expect(locate([0, 0, 0], 30, 2)).toEqual({ index: 2, positionInTrack: 30 });
+    // Not one of them: no say.
+    expect(locate([0, 60, 60, 90], 70, 0)).toEqual({ index: 1, positionInTrack: 10 });
+    expect(locate([0, 60, 60, 90], 70, 3)).toEqual({ index: 1, positionInTrack: 10 });
+    expect(locate([0, 60], NaN)).toMatchObject({ index: 0 });
   });
 
   it('chapterAt takes the first of tied chapters, or the one in the playing file', () => {

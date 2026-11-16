@@ -10,6 +10,7 @@ import { formatClock, formatDurationOrZero } from '@/lib/format';
 import { isLargeText, scaleCapped, useFontScale } from '@/lib/text-scale';
 import { useLatest } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
+import { trackIdOf, trackIndexById } from '@/playback/book-queue';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -126,6 +127,7 @@ export function ChaptersPanel({
 }) {
   const { t } = useTranslation();
   const queue = usePlayer((s) => s.nowPlaying?.queue ?? null);
+  const libraryId = usePlayer((s) => s.nowPlaying?.libraryId ?? 0);
   const title = usePlayer((s) => s.nowPlaying?.title ?? '');
   const total = queue?.total ?? 0;
   const perTrack = total <= 0;
@@ -153,7 +155,10 @@ export function ChaptersPanel({
     if (perTrack) void goToTrack(i);
     else {
       const c = queue?.chapters[i];
-      if (c) void seekBook(c.book_offset);
+      // In the chapter's own file: files of unknown length share a start (fe#324).
+      if (queue && c) {
+        void seekBook(c.book_offset, trackIndexById(queue, trackIdOf(libraryId, c.file_path)));
+      }
     }
     onSelected?.();
   });

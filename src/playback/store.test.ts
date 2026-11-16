@@ -3026,6 +3026,15 @@ describe('a book whose files have no known length', () => {
     pushSnapshot(snap('playing', 30, { trackIndex: 1 }));
     expect(selectCurrentChapter(usePlayer.getState())?.title).toBe('Part 2');
   });
+
+  it('retries in the file that failed, not the first', async () => {
+    await usePlayer.getState().playBook('c1', 2, book, chapters, 0);
+    pushSnapshot(snap('error', 30, { trackIndex: 1 }));
+    (mockSvc.load as jest.Mock).mockClear();
+    await usePlayer.getState().retry();
+    const [, index, position] = (mockSvc.load as jest.Mock).mock.lastCall as unknown[];
+    expect([index, position]).toEqual([1, 30]);
+  });
 });
 
 // --- the two readings of "the user is listening" ---------------------------

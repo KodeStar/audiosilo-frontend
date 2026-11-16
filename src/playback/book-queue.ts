@@ -324,17 +324,22 @@ function distinctFilesFromChapters(chapters: Chapter[]): { path: string; duratio
  * Tracks that share an offset (each one before the last of them has no known length: a
  * server with no prober, or a VBR MP3 with no header, reports 0) resolve to the FIRST of
  * them: its length is unknown, not zero, so the book's start is its first file, never the
- * last (fe#324). A caller that knows the playing file asks by track instead.
+ * last (fe#324). A caller that knows which file the place is in (the playing one, a
+ * chapter's) names it as `prefer`: among the tracks sharing the offset it is that one.
  */
 export function locate(
   offsets: number[],
   bookPosition: number,
+  prefer?: number,
 ): { index: number; positionInTrack: number } {
   let index = 0;
   for (let i = 1; i < offsets.length; i++) {
-    if (bookPosition < offsets[i]) break;
+    // Not `<`: a NaN place stays in the first track, as it always did.
+    if (!(bookPosition >= offsets[i])) break;
     if (offsets[i] !== offsets[index]) index = i;
   }
+  // Offsets never fall, so a later track at this offset is one of those sharing it.
+  if (prefer !== undefined && prefer > index && offsets[prefer] === offsets[index]) index = prefer;
   return { index, positionInTrack: Math.max(0, bookPosition - (offsets[index] ?? 0)) };
 }
 

@@ -471,7 +471,10 @@ type PlayerState = {
   /** Re-load the current track at the current position and resume - recovery after
    * the engine reports an `error` (e.g. the stream became unreachable). */
   retry: () => Promise<void>;
-  seekBook: (bookPosition: number) => Promise<void>;
+  /** Seek to a whole-book place. `track`: the file it is in, when the caller knows it (a
+   * chapter's), else the playing one: among files that share a start (lengths unknown,
+   * `locate`) it is that file, not the first. */
+  seekBook: (bookPosition: number, track?: number) => Promise<void>;
   /** Seek within the current track (used when the whole-book timeline is unknown). */
   seekInTrack: (positionInTrack: number) => Promise<void>;
   /** Jump to a track by index (multi-file books without a reliable timeline). */
@@ -2763,13 +2766,15 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         : null;
     if (place) adoptTabPlace(np, place);
     const bookPos = Math.max(resumeFloor, selectBookPosition(get()));
-    const { index, positionInTrack } = place ?? locate(np.queue.offsets, bookPos);
+    // The playing file, when files share its start (`locate`).
+    const { index, positionInTrack } =
+      place ?? locate(np.queue.offsets, bookPos, get().snapshot.trackIndex);
     await svc.load(np.queue.tracks, index, positionInTrack, np.queue.chapterClips, bookRefOf(np));
     await svc.setRate(get().rate);
     await startLoadedEngine(svc);
   },
 
-  seekBook: async (bookPosition) => {
+  seekBook: async (bookPosition, track) => {
     const np = get().nowPlaying;
     if (!np || !Number.isFinite(bookPosition)) return;
     const clamped =
@@ -2777,7 +2782,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         ? Math.max(0, Math.min(bookPosition, np.queue.total))
         : Math.max(0, bookPosition);
     const svc = await ensureService();
-    const target = locate(np.queue.offsets, clamped);
+    const target = locate(np.queue.offsets, clamped, track ?? get().snapshot.trackIndex);
     moveListeningSpan(endAt(np, target.index, target.positionInTrack));
     userMoved(clamped); // a deliberate user seek may legitimately move backward
     if (target.index === get().snapshot.trackIndex) {
