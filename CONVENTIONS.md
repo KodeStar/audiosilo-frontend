@@ -2652,7 +2652,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   and nothing shows. The engine's timer is that wait, matched to its refusal by the stamp, so a
   clock set back meanwhile cannot drop the message. Headphones gone (`oldDeviceUnavailable`, one
   route-change observer) pause a play, also one whose queue still settles (it would start on
-  whatever route is left when it lands), and nothing resumes it. An interruption resumes
+  whatever route is left when it lands), and nothing resumes it, in either order of the route
+  change and the system's pause (`systemPausedAt` is cleared). An interruption resumes
   in either order of `began` and the system's pause. Pausing
   while a play still asks for the session ends that play. A file that fails stops the book at the
   last known place, its span ending where the audio last moved, the one further on when its turn

@@ -637,6 +637,9 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
     guard raw.flatMap(AVAudioSession.RouteChangeReason.init(rawValue:)) == .oldDeviceUnavailable else { return }
     startRefusal.explained(at: Date())
+    // The player may have stopped for it already (`controlChanged`): then an interruption beginning
+    // within the slack of that pause must not take it for its own and resume the book.
+    systemPausedAt = nil
     if playing { hold(stoppedAt: lastAdvance) }
   }
 
