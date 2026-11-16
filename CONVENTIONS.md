@@ -2860,9 +2860,11 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     `DownloadManager.noteAsked`; the Download button and Try again stamp the watch's clock), and a
     `remove` takes only a copy added no later than it was asked (`RemoveMessage.covers`, the held
     row too), so asking again never takes a copy that came back since. Wear OS orders by `asked_at`
-    in place of `sent_at` where present (`removeApplies`), and sends no `added_at`. `watch-state`
+    in place of `sent_at` where present (`removeApplies`; Try again counts as queued then,
+    `DownloadIndex.enqueue`), and sends no `added_at`. `watch-state`
     books carry `added_at`: a Remove whose book was added after it is over, and a listed copy from
-    before the row's last Send (by over a second: the round trip can lose a millisecond), or with a
+    before the row's last Send (by over a second: the round trip can lose a millisecond; never on a
+    row the watch has listed since that Send, which took its copy as the one sent), or with a
     `remove` still on its way, shows where that Send stands, not "On your watch" (a book sent again
     while it was being removed).
   - **`remove` (phone to watch, `transferUserInfo`, no server or wire change).** The row says

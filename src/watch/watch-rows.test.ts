@@ -555,4 +555,13 @@ describe('a book sent again while it was being removed (fe#219)', () => {
     expect(phase(sent(), old(NOW - 1000))).toBe('ready');
     expect(phase(sent(), old(NOW))).toBe('ready');
   });
+
+  it('takes an older copy as the one sent on a row the watch has listed since that Send', () => {
+    // A row from before 2.7.0: a Send for a book already on the watch, which that watch took for
+    // the copy it had and no stamp moved on. It is on the watch, not "delivered" or stale.
+    const seen = sent({ seen: true });
+    expect(phase(seen, old(NOW - 60_000))).toBe('ready');
+    expect(phase(seen, old(NOW - 60_000), [], NOW + WATCH_HOLD_MS)).toBe('ready');
+    expect(settle([seen], old(NOW - 60_000))).toEqual([seen]);
+  });
 });

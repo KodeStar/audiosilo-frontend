@@ -101,9 +101,13 @@ export function removeAskedAt(row: LedgerRow | undefined, now: number): number {
 }
 
 /** A listed copy added before the row's last Send: an earlier one, not the copy sent. Only from a
- * watch that says when (`added_at`), and not for a row whose Remove speaks for it. */
+ * watch that says when (`added_at`), and not for a row whose Remove speaks for it, nor one the
+ * watch has listed since that Send: a row is seen only once its copy counts as the one sent, so a
+ * seen row's older copy is one an earlier watch or phone took as that Send's (a Send for a book
+ * already there, before either stamped `asked_at`), which no later word re-stamps. */
 function olderThanSend(copy: WatchBook, row: LedgerRow): boolean {
   return (
+    !row.seen &&
     row.remove_at === undefined &&
     copy.added_at !== undefined &&
     copy.added_at < row.sent_at - STAMP_SLACK_MS
