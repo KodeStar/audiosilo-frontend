@@ -39,6 +39,7 @@ fun listen(
   endedAt: String = "2026-10-25T07:33:30.000Z",
   lib: Int = 3,
   path: String = "Author/Book",
+  start: ListeningStart = ListeningStart.RESUME,
 ): ListeningEvent =
   SpanEvent(
     id = id,
@@ -49,15 +50,11 @@ fun listen(
     duration = 61200.0,
     startedAt = "2026-10-25T07:00:12.000Z",
     endedAt = endedAt,
-    start = ListeningStart.RESUME,
+    start = start,
     baseVersion = 41,
   )
 
 class NoAnswer : Exception("no answer")
-
-/** `listen` with a `stay` start (row 9c-2). */
-fun stayListen(id: String, path: String = "Author/Book"): ListeningEvent =
-  (listen(id, path = path) as SpanEvent).copy(start = ListeningStart.STAY)
 
 fun answer(
   body: SyncRequest,

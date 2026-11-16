@@ -6,18 +6,12 @@ import XCTest
 
 let deviceId = "watch-device"
 
-func listen(_ id: String, endedAt: String = "2026-10-25T07:33:30.000Z", lib: Int = 3, path: String = "Author/Book")
+func listen(_ id: String, endedAt: String = "2026-10-25T07:33:30.000Z", lib: Int = 3, path: String = "Author/Book",
+            start: ListeningStart = .resume)
   -> ListeningEvent
 {
   .listen(SpanEvent(id: id, libraryId: lib, path: path, fromPos: 14400, toPos: 16800, duration: 61200,
-                    startedAt: "2026-10-25T07:00:12.000Z", endedAt: endedAt, start: .resume, baseVersion: 41))
-}
-
-/// `listen` with a `stay` start (row 9c-2).
-func stayListen(_ id: String, path: String = "Author/Book") -> ListeningEvent {
-  guard case .listen(var e) = listen(id, path: path) else { return listen(id, path: path) }
-  e.start = .stay
-  return .listen(e)
+                    startedAt: "2026-10-25T07:00:12.000Z", endedAt: endedAt, start: start, baseVersion: 41))
 }
 
 /// A transport that answers with `respond` and records every body it was sent.
@@ -86,9 +80,7 @@ final class OutboxTests: XCTestCase {
   // `listening_stay`, as it is otherwise; the stored event keeps its start and id.
   func testAQueuedStayIsSentAsAJumpWhenTheServerNoLongerTakesIt() async {
     let o = outbox()
-    guard case .listen(var s) = listen("a") else { return XCTFail() }
-    s.start = .stay
-    o.append([.listen(s), listen("b")])
+    o.append([listen("a", start: .stay), listen("b")])
     var takes = false
     o.takesStay = { takes }
     let t = FakeTransport { _ in throw NoAnswer() }
@@ -246,7 +238,7 @@ final class OutboxTests: XCTestCase {
   // so the kept place is offered at once (`OfferThrottle.shouldShow`'s `stayHeld`).
   func testTheAnswerNamesTheBooksWhoseStayItHeld() async {
     let o = outbox()
-    o.append([stayListen("a"), stayListen("b", path: "Other"), listen("c", path: "Third")])
+    o.append([listen("a", start: .stay), listen("b", path: "Other", start: .stay), listen("c", path: "Third")])
     var held: Set<BookRef> = []
     o.onAnswer = { _, h in held = h }
     let stored = { (e: ListeningEvent) -> SyncResult? in
@@ -554,7 +546,7 @@ final class AckAndOfferTests: XCTestCase {
   }
 
   func testStaysHeldNamesOnlyAStayTheServerKeptTheStoredRowOver() {
-    let events = [stayListen("a"), listen("b", path: "B"), stayListen("c", path: "C"), stayListen("d", path: "D")]
+    let events = [listen("a", start: .stay), listen("b", path: "B"), listen("c", path: "C", start: .stay), listen("d", path: "D", start: .stay)]
     let results: [String: SyncResult] = [
       "a": SyncResult(id: "a", status: "diverged", kept: "stored"),
       "b": SyncResult(id: "b", status: "diverged", kept: "stored"),

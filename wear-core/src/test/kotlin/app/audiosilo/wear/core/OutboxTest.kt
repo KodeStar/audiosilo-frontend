@@ -38,8 +38,7 @@ class OutboxTest {
   @Test
   fun aQueuedStayIsSentAsAJumpWhenTheServerNoLongerTakesIt() = runBlocking {
     val o = outbox()
-    val stay = (listen("a") as SpanEvent).copy(start = ListeningStart.STAY)
-    o.append(listOf(stay, listen("b")))
+    o.append(listOf(listen("a", start = ListeningStart.STAY), listen("b")))
     var takes = false
     o.takesStay = { takes }
     val t = FakeTransport { throw NoAnswer() }
@@ -217,7 +216,7 @@ class OutboxTest {
   @Test
   fun theAnswerNamesTheBooksWhoseStayItHeld() = runBlocking {
     val o = outbox()
-    o.append(listOf(stayListen("a"), stayListen("b", path = "Other"), listen("c", path = "Third")))
+    o.append(listOf(listen("a", start = ListeningStart.STAY), listen("b", path = "Other", start = ListeningStart.STAY), listen("c", path = "Third")))
     var held = emptySet<BookRef>()
     o.onAnswer = { _, h -> held = h }
     o.flush(
@@ -537,7 +536,7 @@ class AckAndOfferTest {
 
   @Test
   fun staysHeldNamesOnlyAStayTheServerKeptTheStoredRowOver() {
-    val events = listOf(stayListen("a"), listen("b", path = "B"), stayListen("c", path = "C"), stayListen("d", path = "D"))
+    val events = listOf(listen("a", start = ListeningStart.STAY), listen("b", path = "B"), listen("c", path = "C", start = ListeningStart.STAY), listen("d", path = "D", start = ListeningStart.STAY))
     val results =
       mapOf(
         "a" to SyncResult("a", "diverged", kept = "stored"),
