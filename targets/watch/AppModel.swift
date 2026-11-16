@@ -521,9 +521,10 @@ final class AppModel: ObservableObject {
         status = nil
       }
       // Signed out or switched while it was asked: this pair is not for the watch as it is now.
-      guard account?.accountId == current.accountId else { return }
+      // The account as it is now, not as it was: an address refresh may have landed meanwhile.
+      guard let now = account, now.accountId == current.accountId else { return }
       if AccountRules.keepsToken(meStatus: status) {
-        await keepSignIn(current, p)
+        await keepSignIn(now, p)
         return
       }
     }

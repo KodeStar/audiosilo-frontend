@@ -680,9 +680,11 @@ class AppModel private constructor(private val context: Context) {
           null
         }
       // Signed out or switched while it was asked: this pair is not for the watch as it is now.
-      if (_account.value?.accountId != current.accountId) return
+      // The account as it is now, not as it was: an address refresh may have landed meanwhile.
+      val now = _account.value
+      if (now == null || now.accountId != current.accountId) return
       if (AccountRules.keepsToken(status)) {
-        keepSignIn(current, p)
+        keepSignIn(now, p)
         return
       }
     }
