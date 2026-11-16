@@ -556,11 +556,16 @@ final class AppModel: ObservableObject {
   /// `discard`: the listener chose to drop what waits to replace the account.
   func signIn(_ p: PairMessage, discard: Bool = false) async {
     let readable = catchUp()
-    // A pair now stands for one that waited on the first unlock.
-    if readable { waitingPair = nil }
+    let now = Date()
+    // A pair that can be tried stands for one that waited on the first unlock; an expired one does
+    // not, unless that one has run out as well (or is this one).
+    if AccountRules.endsWait(readable: readable, incomingExpired: p.expired(now: now),
+                             waitingExpired: waitingPair?.expired(now: now)) {
+      waitingPair = nil
+    }
     let another = account != nil && account?.accountId != p.accountId
     // An expired pairing token is never tried, and stops nothing.
-    if p.expired(now: Date()) {
+    if p.expired(now: now) {
       if account == nil {
         phase = .setup(.expired)
       } else if another {

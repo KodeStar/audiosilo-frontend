@@ -2663,7 +2663,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   over never) and a corrupt one apart. Such a launch decides and reports nothing: no `watch-state`, a
   `pair` waits in memory (`AccountRules.change` says `.wait` while nothing reads, never a sign-in
   that would forget the account and discard its listening) and signs in at `becameActive` (read in
-  its inbox turn, so a newer pair queued ahead of it stands), a `remove` waits with its ticket, a
+  its inbox turn, so a newer pair queued ahead of it stands; an expired one that comes after the
+  unlock does not take its place, `AccountRules.endsWait`), a `remove` waits with its ticket, a
   book is held, the open span is not recovered, `HeldBooks` writes nothing over its file (and
   writes again, once it can, what no file could take), and `Files.deviceId` is not read (the outbox
   asks for it only to send; an id there but unreadable is never written over). Once the keychain

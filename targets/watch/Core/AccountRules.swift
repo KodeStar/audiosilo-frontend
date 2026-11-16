@@ -35,6 +35,15 @@ enum AccountRules {
     return .replace
   }
 
+  /// Whether a pair that waited on the first unlock (`waitingExpired`, nil with none waiting) gives
+  /// way after another pair's turn. One that can be tried stands for it. An expired one is never
+  /// tried and stops nothing, so the waiting pair still signs in at its turn, unless it has run out
+  /// too. Never while nothing reads: that turn only makes the incoming pair wait (fe#216).
+  static func endsWait(readable: Bool, incomingExpired: Bool, waitingExpired: Bool?) -> Bool {
+    guard readable, let waitingExpired else { return false }
+    return !incomingExpired || waitingExpired
+  }
+
   /// A `pair` for the account signed in here (`.sameAccount`, D6, fe#219): whether the token kept
   /// here stays. Exchanged every time, each Send again left another session on the server that
   /// nothing ever ended. It stays only on the server's own word that it signs in as the pair's
