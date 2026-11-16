@@ -43,7 +43,13 @@ function parseLedger(raw: unknown): Partial<Ledger> {
 
 const stored = persistedDocument<Ledger>(WATCH_LEDGER_KEY, parseLedger);
 
-/** Read what is kept. Once: later calls join the first. */
+/** Another watch's rows go once every one is this old: a watch unpaired or reset is never heard
+ * from again, and its id names nothing. */
+const DEAD_WATCH_MS = 90 * 24 * 60 * 60 * 1000;
+
+/** Read what is kept. Once: later calls join the first. A write before it ends replaces the whole
+ * watch's entry (`persistedDocument` lays early changes over the stored document by top-level key),
+ * so whatever writes a row waits for it. */
 export function hydrateLedger(): Promise<void> {
   return stored.hydrate(useWatchLedger.getState().ledger, (ledger) =>
     useWatchLedger.setState({ ledger }),
@@ -100,10 +106,14 @@ export function noteSending(
   return before;
 }
 
-/** The native link took the `book`. */
+/** The native link took the `book`: an earlier failure to deliver it is over. */
 export function noteHandedOver(watchId: string, account: string, book: Book): void {
   changeRows(watchId, account, (rows) =>
-    rows.map((r) => (sameBook(r, book) ? { ...r, handed_over: true } : r)),
+    rows.map((r) => {
+      if (!sameBook(r, book)) return r;
+      const { send_failed: _failed, ...rest } = r;
+      return { ...rest, handed_over: true };
+    }),
   );
 }
 
@@ -117,9 +127,16 @@ export function restoreRow(
   changeRows(watchId, account, (rows) => (before ? putRow(rows, before) : dropRow(rows, book)));
 }
 
-/** A `remove` went: the row says so until the watch's word settles it. A book the phone never sent
- * (the watch's own Download button) gets its row here, already seen. */
-export function noteRemoving(watchId: string, account: string, book: Book, now: number): void {
+/** A `remove` went, asked for at `askedAt` (`removeAskedAt`; earlier than `now` when it was asked
+ * again): the row says so until the watch's word settles it. A book the phone never sent (the
+ * watch's own Download button) gets its row here, already seen. */
+export function noteRemoving(
+  watchId: string,
+  account: string,
+  book: Book,
+  now: number,
+  askedAt: number = now,
+): void {
   changeRows(watchId, account, (rows) => {
     const fresh: LedgerRow = {
       library_id: book.library_id,
@@ -130,8 +147,17 @@ export function noteRemoving(watchId: string, account: string, book: Book, now: 
       seen: true,
     };
     const before = rows.find((r) => sameBook(r, book));
-    const { remove_refused: _refused, ...row } = before ?? fresh;
-    return putRow(rows, { ...row, remove_at: now });
+    const {
+      remove_refused: _refused,
+      remove_failed: _failed,
+      remove_asked_at: _asked,
+      ...row
+    } = before ?? fresh;
+    return putRow(rows, {
+      ...row,
+      remove_at: now,
+      ...(askedAt < now ? { remove_asked_at: askedAt } : {}),
+    });
   });
 }
 
@@ -140,13 +166,32 @@ export function forgetRow(watchId: string, account: string, book: Book): void {
   changeRows(watchId, account, (rows) => dropRow(rows, book));
 }
 
-/** Take the watch's latest word. Only for the watch it is from: another's rows wait for that one. */
-export function applyWatchStatus(status: Pick<WatchStatus, 'watchId' | 'state' | 'transfers'>) {
+/** When a row was last asked about (a Send or a Remove). */
+const lastAsked = (row: LedgerRow) => Math.max(row.sent_at, row.remove_at ?? 0);
+
+/** Take the watch's latest word. Only for the watch it is from: another's rows wait for that one,
+ * unless every one of them is over 90 days old (`DEAD_WATCH_MS`). */
+export function applyWatchStatus(
+  status: Pick<WatchStatus, 'watchId' | 'state' | 'transfers'>,
+  now: number = Date.now(),
+) {
   const { watchId } = status;
   if (!watchId) return;
   for (const account of Object.keys(useWatchLedger.getState().ledger[watchId] ?? {})) {
     changeRows(watchId, account, (rows) => reconcileRows(rows, account, status));
   }
+  const { ledger } = useWatchLedger.getState();
+  const dead = Object.keys(ledger).filter(
+    (id) =>
+      id !== watchId &&
+      Object.values(ledger[id]).every((rows) =>
+        rows.every((r) => now - lastAsked(r) > DEAD_WATCH_MS),
+      ),
+  );
+  if (dead.length === 0) return;
+  const kept = Object.fromEntries(Object.entries(ledger).filter(([id]) => !dead.includes(id)));
+  useWatchLedger.setState({ ledger: kept });
+  stored.write({}, kept);
 }
 
 /** A removed account's rows go with it. A legacy connection id names only a server: every account

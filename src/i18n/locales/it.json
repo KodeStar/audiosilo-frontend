@@ -290,6 +290,7 @@
       "otherAccount": "L'orologio ha effettuato l'accesso a un altro account. Configurarlo per {{server}} sostituisce quell'account dopo la sincronizzazione dei suoi ascolti.",
       "serverCannot": "{{server}} non può preparare libri per un orologio. Serve la versione 2.6 o successiva, con ffmpeg.",
       "sendFailed": "Impossibile raggiungere l'orologio. Non è stato inviato nulla, quindi riprova.",
+      "settingUpFor": "L'orologio è in fase di configurazione per {{user}} su {{server}}. Invia questo libro quando avrà effettuato l'accesso.",
       "waiting_one": "{{count}} ascolto in attesa sull'orologio",
       "waiting_other": "{{count}} ascolti in attesa sull'orologio",
       "allSynced": "Tutto ciò che viene dall'orologio è sincronizzato",

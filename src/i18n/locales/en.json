@@ -290,6 +290,7 @@
       "otherAccount": "Your watch is signed in to another account. Setting it up for {{server}} replaces that account once its listening has synced.",
       "serverCannot": "{{server}} can't prepare books for a watch. It needs version 2.6 or later, with ffmpeg.",
       "sendFailed": "Couldn't reach your watch. Nothing was sent, so try again.",
+      "settingUpFor": "Your watch is being set up for {{user}} on {{server}}. Send this book once it has signed in.",
       "waiting_one": "{{count}} listen waiting on your watch",
       "waiting_other": "{{count}} listens waiting on your watch",
       "allSynced": "Everything from your watch has synced",

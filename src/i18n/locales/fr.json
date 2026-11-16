@@ -290,6 +290,7 @@
       "otherAccount": "Votre montre est connectée à un autre compte. La configurer pour {{server}} remplace ce compte une fois ses écoutes synchronisées.",
       "serverCannot": "{{server}} ne peut pas préparer de livres pour une montre. Il lui faut la version 2.6 ou ultérieure, avec ffmpeg.",
       "sendFailed": "Impossible de joindre votre montre. Rien n'a été envoyé, réessayez.",
+      "settingUpFor": "Votre montre est en cours de configuration pour {{user}} sur {{server}}. Envoyez ce livre une fois qu'elle sera connectée.",
       "waiting_one": "{{count}} écoute en attente sur votre montre",
       "waiting_other": "{{count}} écoutes en attente sur votre montre",
       "allSynced": "Tout ce qui vient de votre montre est synchronisé",

@@ -21,6 +21,9 @@ jest.mock('@/stores/session', () => ({
       setConnectionUser: mockSetConnectionUser,
     }),
 }));
+// A change ends the account's open pairing tokens: the one on its way to a watch is forgotten.
+const mockForgetPair = jest.fn();
+jest.mock('@/watch/watch-store', () => ({ forgetPair: (id: string) => mockForgetPair(id) }));
 
 /* eslint-disable import/first */
 import { PasswordCard, PasswordDialog } from './password-card';
@@ -91,8 +94,9 @@ describe('password card and dialog', () => {
       title: 'Password set',
       description: 'Your other devices stay signed in.',
     });
-    // A first password ends no session: nothing to read again.
+    // A first password ends no session, nor a pairing token: nothing to read again or forget.
     expect(mockReadDevices).not.toHaveBeenCalled();
+    expect(mockForgetPair).not.toHaveBeenCalled();
     // has_password is refreshed on this connection.
     await waitFor(() =>
       expect(mockSetConnectionUser).toHaveBeenCalledWith('c', expect.objectContaining({})),
@@ -113,6 +117,8 @@ describe('password card and dialog', () => {
       expect(mockApi.setPassword).toHaveBeenCalledWith('newpassword', 'oldpassword'),
     );
     expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Password changed' }));
+    // The server ended the open pairing tokens with the other sessions (fe#219).
+    expect(mockForgetPair).toHaveBeenCalledWith('c');
   });
 
   it.each<[string, MyDevice[] | undefined, string]>([
@@ -163,6 +169,7 @@ describe('password card and dialog', () => {
     expect(await screen.findByText('current password is incorrect')).toBeTruthy();
     expect(screen.getByLabelText('New password')).toBeTruthy();
     expect(mockToast).not.toHaveBeenCalled();
+    expect(mockForgetPair).not.toHaveBeenCalled();
   });
 
   it('says only what is true of an account without a password, never "an invite code" (D8)', async () => {

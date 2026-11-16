@@ -320,6 +320,7 @@ describe('WatchSection', () => {
         user_id: 7,
         library_id: 1,
         path: 'A/B',
+        asked_at: expect.any(String),
         sent_at: expect.any(String),
       });
       expect(screen.getByText('Removing. Open AudioSilo on your watch to finish.')).toBeTruthy();

@@ -290,6 +290,7 @@
       "otherAccount": "Deine Uhr ist bei einem anderen Konto angemeldet. Die Einrichtung für {{server}} ersetzt dieses Konto, sobald sein Hörverlauf synchronisiert ist.",
       "serverCannot": "{{server}} kann keine Bücher für eine Uhr vorbereiten. Dafür braucht es Version 2.6 oder neuer mit ffmpeg.",
       "sendFailed": "Deine Uhr war nicht erreichbar. Es wurde nichts gesendet, versuche es also noch einmal.",
+      "settingUpFor": "Deine Uhr wird gerade für {{user}} auf {{server}} eingerichtet. Sende dieses Buch, sobald sie angemeldet ist.",
       "waiting_one": "{{count}} Hörabschnitt wartet auf deiner Uhr",
       "waiting_other": "{{count}} Hörabschnitte warten auf deiner Uhr",
       "allSynced": "Alles von deiner Uhr ist synchronisiert",

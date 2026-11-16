@@ -1,11 +1,20 @@
 import type { ApiClient } from '@/api/client';
 import { getDeviceName } from '@/lib/device';
+import { serverDisplayName } from '@/lib/server-display-name';
 import { useSession, type Connection } from '@/stores/session';
 
 import { watchLink } from './link';
-import { noteHandedOver, noteRemoving, noteSending, restoreRow } from './watch-ledger';
 import {
-  bookNeedsPair,
+  hydrateLedger,
+  ledgerRows,
+  noteHandedOver,
+  noteRemoving,
+  noteSending,
+  restoreRow,
+  useWatchLedger,
+} from './watch-ledger';
+import {
+  bookPairStep,
   buildBookMessage,
   buildPairMessage,
   buildRemoveMessage,
@@ -14,10 +23,27 @@ import {
   WATCH_PAIR_TTL_SECONDS,
   type WatchableBook,
 } from './watch-model';
+import { removeAskedAt, sameBook } from './watch-rows';
 import { notePairSent, refreshWatch, useWatchStore } from './watch-store';
 
 /** The watch link refused a message (no ApiError: the server was never the problem). */
 export class WatchSendError extends Error {}
+
+/** A book refused because the watch is being set up for another account (D5, fe#219): it would
+ * sign in to that one first, and this book would only be held for an account it has just left.
+ * `user` and `server` name that account as the watch card does. */
+export class WatchBusyError extends Error {
+  constructor(
+    readonly user: string,
+    readonly server: string,
+  ) {
+    super('The watch is being set up for another account');
+  }
+}
+
+/** Read the ledger first: a row written before it has loaded would replace what is kept for the
+ * whole watch. Best effort: unread, the rows still show for this run. */
+const ledgerRead = () => hydrateLedger().catch(() => {});
 
 const refused = (cause: unknown): never => {
   throw new WatchSendError('The watch link refused the message', { cause });
@@ -57,6 +83,15 @@ export function setUpWatch(api: Pick<ApiClient, 'pair'>, connection: Connection)
   return sending;
 }
 
+/** The refusal naming the connection whose pair is on its way, as the watch card names it. */
+function busyFor(connectionId: string): WatchBusyError {
+  const { connections } = useSession.getState();
+  const other = connections.find((c) => c.id === connectionId);
+  return other
+    ? new WatchBusyError(other.user.username, serverDisplayName(other, connections))
+    : new WatchBusyError('', connectionId);
+}
+
 /** What is under way per book: its sends and Removes go one at a time, in the order asked. A send
  * can wait 10 s for its pair, and a Remove tapped meanwhile would reach the watch ahead of the `book`
  * it is about: the book would come all the same, under a row saying "removing". */
@@ -88,7 +123,10 @@ async function sendBook(
 ): Promise<{ signInLeft: boolean }> {
   // The row appears now, whatever the sign-in ahead of it takes. Up to 5 s go by when the session
   // has yet to answer, so with no watch named yet the row waits for that.
+  await ledgerRead();
   const account = watchAccountOf(connection);
+  // When Send was tapped: the row's `sent_at` and the message's `asked_at`, one time for both.
+  const asked = Date.now();
   const row = {
     library_id: libraryId,
     path: book.rel_path,
@@ -96,7 +134,7 @@ async function sendBook(
     author: book.author,
   };
   let watchId = useWatchStore.getState().status.watchId;
-  let before = watchId ? noteSending(watchId, account, row, Date.now()) : undefined;
+  let before = watchId ? noteSending(watchId, account, row, asked) : undefined;
   try {
     await refreshWatch();
     const { status, pairUntil } = useWatchStore.getState();
@@ -104,12 +142,14 @@ async function sendBook(
     if (status.watchId !== watchId) {
       if (watchId) restoreRow(watchId, account, row, before);
       watchId = status.watchId;
-      before = watchId ? noteSending(watchId, account, row, Date.now()) : undefined;
+      before = watchId ? noteSending(watchId, account, row, asked) : undefined;
     }
-    if (bookNeedsPair(status.state, connection, pairUntil[connection.id], Date.now())) {
-      await setUpWatch(api, connection);
-    }
-    await watchLink.sendBook(buildBookMessage(connection, libraryId, book)).catch(refused);
+    const pair = bookPairStep(status.state, connection, pairUntil, Date.now());
+    if (pair.step === 'busy') throw busyFor(pair.connectionId);
+    if (pair.step === 'pair') await setUpWatch(api, connection);
+    await watchLink
+      .sendBook(buildBookMessage(connection, libraryId, book, Date.now(), asked))
+      .catch(refused);
     // Read first: with the transfer in the answer, the row can't read as delivered in between.
     await refreshWatch();
     if (watchId) noteHandedOver(watchId, account, row);
@@ -141,21 +181,28 @@ export function sendBookToWatch(
  * Ask the watch to take a book off. It answers only by no longer listing it (or, on another
  * account, by naming that one), so the row says "removing" until then, here and after a restart.
  * A send again after this comes behind it, in order, and stands. Asked again from a delivered row,
- * it sends the same message and starts the row's hold limit over: the first may have died with the
- * watch app. If it did not, the repeat finds the book gone and does nothing, unless the book is back
- * on the watch by then (its own Download button): the message can't tell, so that copy goes too.
+ * it sends the same message, with the first one's `asked_at`, and starts the row's hold limit over:
+ * the first may not have reached the watch app. If it did, the repeat finds the book gone and does
+ * nothing; a copy back on the watch since (its own Download button) was added after that `asked_at`,
+ * so it stays (fe#219).
  */
 export function removeFromWatch(
   connection: Connection,
   book: { library_id: number; path: string; title: string },
 ): Promise<void> {
   return inTurn(connection, book.library_id, book.path, async () => {
-    const message = buildRemoveMessage(connection, book.library_id, book.path);
+    await ledgerRead();
+    const account = watchAccountOf(connection);
+    const now = Date.now();
+    const { ledger } = useWatchLedger.getState();
+    const row = ledgerRows(ledger, useWatchStore.getState().status.watchId, account).find((r) =>
+      sameBook(r, book),
+    );
+    const askedAt = removeAskedAt(row, now);
+    const message = buildRemoveMessage(connection, book.library_id, book.path, now, askedAt);
     await watchLink.sendRemove(message).catch(refused);
     const { watchId } = useWatchStore.getState().status;
-    if (watchId) {
-      noteRemoving(watchId, watchAccountOf(connection), book, Date.now());
-    }
+    if (watchId) noteRemoving(watchId, account, book, now, askedAt);
     await refreshWatch();
   });
 }

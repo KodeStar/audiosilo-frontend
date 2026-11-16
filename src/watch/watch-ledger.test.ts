@@ -96,11 +96,11 @@ describe('the ledger', () => {
       unsent_events: 0,
       couldnt_sync: 0,
     };
-    m.applyWatchStatus({ watchId: W, state: empty, transfers: [] });
+    m.applyWatchStatus({ watchId: W, state: empty, transfers: [] }, 300);
     expect(rows(m)).toEqual([]);
     expect(rows(m, 'watch-2')).toHaveLength(1);
     // A status that can't name its watch settles nothing.
-    m.applyWatchStatus({ watchId: null, state: empty, transfers: [] });
+    m.applyWatchStatus({ watchId: null, state: empty, transfers: [] }, 300);
     expect(rows(m, 'watch-2')).toHaveLength(1);
   });
 
@@ -197,4 +197,111 @@ describe('the ledger', () => {
     expect(rows(m)).toEqual([]);
     expect(rows(m, W, 'other.7')).toHaveLength(1);
   });
+
+  describe('another watch never heard from again', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const now = 200 * DAY;
+    const word = (watchId: string) => ({
+      watchId,
+      state: { signed_in: false, books: [], unsent_events: 0, couldnt_sync: 0 },
+      transfers: [],
+    });
+
+    it('drops its rows once every one is over 90 days old, and keeps that on disk', async () => {
+      const m = load();
+      await m.hydrateLedger();
+      m.noteSending('old', A, book, now - 91 * DAY);
+      m.noteSending('old', 'srv.8', book, now - 95 * DAY);
+      m.noteSending(W, A, book, now - 100 * DAY);
+      m.applyWatchStatus(word(W), now);
+      expect(Object.keys(m.useWatchLedger.getState().ledger)).toEqual([W]);
+      // The watch the word is from keeps its rows, however old: its own word settles them.
+      expect(rows(m)).toHaveLength(1);
+      await flush();
+      expect(
+        Object.keys(JSON.parse((await AsyncStorage.getItem(WATCH_LEDGER_KEY)) ?? '{}')),
+      ).toEqual([W]);
+    });
+
+    it('keeps them while one row was asked about within 90 days, a Remove included', async () => {
+      const m = load();
+      await m.hydrateLedger();
+      m.noteSending('old', A, book, now - 120 * DAY);
+      m.noteSending('recent', A, book, now - 120 * DAY);
+      m.noteRemoving('recent', A, book, now - 10 * DAY);
+      m.noteSending('old', 'srv.8', book, now - 89 * DAY);
+      m.applyWatchStatus(word(W), now);
+      expect(Object.keys(m.useWatchLedger.getState().ledger).sort()).toEqual(['old', 'recent']);
+    });
+  });
+
+  it('clears a failed send once the link takes the book again', async () => {
+    const m = load();
+    await m.hydrateLedger();
+    m.noteSending(W, A, book, 100);
+    m.noteHandedOver(W, A, book);
+    m.applyWatchStatus(
+      {
+        watchId: W,
+        state: null,
+        transfers: [{ type: 'book', account: A, library_id: 1, path: 'A/B', failed: true }],
+      },
+      200,
+    );
+    // Never told anything by the watch: nothing is concluded, the failure included.
+    expect(rows(m)[0].send_failed).toBeUndefined();
+    const signedIn = {
+      signed_in: true,
+      server_id: 'srv',
+      user_id: 7,
+      books: [],
+      unsent_events: 0,
+      couldnt_sync: 0,
+    };
+    m.applyWatchStatus(
+      {
+        watchId: W,
+        state: signedIn,
+        transfers: [{ type: 'book', account: A, library_id: 1, path: 'A/B', failed: true }],
+      },
+      200,
+    );
+    expect(rows(m)[0].send_failed).toBe(true);
+    m.noteSending(W, A, book, 300);
+    m.noteHandedOver(W, A, book);
+    expect(rows(m)[0].send_failed).toBeUndefined();
+  });
+
+  it("clears a failed Remove when asked again, keeping the first one's time", async () => {
+    const m = load();
+    await m.hydrateLedger();
+    m.noteRemoving(W, A, book, 200);
+    changeFailed(m);
+    expect(rows(m)[0].remove_failed).toBe(true);
+    m.noteRemoving(W, A, book, 300, 200);
+    expect(rows(m)[0]).toMatchObject({ remove_at: 300, remove_asked_at: 200 });
+    expect(rows(m)[0].remove_failed).toBeUndefined();
+    // A Remove that is a new one carries no first time.
+    m.noteRemoving(W, A, book, 400);
+    expect(rows(m)[0].remove_asked_at).toBeUndefined();
+  });
 });
+
+/** The watch lists the book still, and the link says the Remove could not go. */
+function changeFailed(m: Ledger) {
+  m.applyWatchStatus(
+    {
+      watchId: W,
+      state: {
+        signed_in: true,
+        server_id: 'srv',
+        user_id: 7,
+        books: [{ ...book, state: 'ready' }],
+        unsent_events: 0,
+        couldnt_sync: 0,
+      },
+      transfers: [{ type: 'remove', account: A, library_id: 1, path: 'A/B', failed: true }],
+    },
+    250,
+  );
+}
