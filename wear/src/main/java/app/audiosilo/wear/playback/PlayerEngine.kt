@@ -451,8 +451,8 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
   }
 
   /**
-   * An offer answered with Stay: the next span is a `stay` (`stay`: the server has `listening_stay`)
-   * or a `jump`; paused, it is sent at once.
+   * An offer answered with Stay: sent at once, playing or paused, as a `stay` span (`stay`: the
+   * server has `listening_stay`) or a `jump` (`SpanRecorder.standBy`).
    */
   fun stay(stay: Boolean) {
     val b = book ?: return

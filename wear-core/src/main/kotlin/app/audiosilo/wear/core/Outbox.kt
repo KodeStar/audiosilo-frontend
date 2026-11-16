@@ -87,8 +87,11 @@ class Outbox(
   /** Whether the server takes a `stay` span now (`listening_stay`); asked as each body is built. */
   @Volatile var takesStay: () -> Boolean = { false }
 
-  /** Told of every answer's progress rows (the offer check). */
-  @Volatile var onAnswer: ((List<ProgressRow>) -> Unit)? = null
+  /**
+   * Told of every answer's progress rows (the offer check), and of the books whose `stay` it held
+   * (`AckRules.staysHeld`).
+   */
+  @Volatile var onAnswer: ((List<ProgressRow>, Set<BookRef>) -> Unit)? = null
 
   /** Told whenever the events or the state change (watch-state, Sync status). */
   @Volatile var onChange: (() -> Unit)? = null
@@ -370,7 +373,7 @@ class Outbox(
     for (row in rows) {
       if (AckRules.keptMine(row, deviceId, sent, results)) acks.ack(row.ref, row.version)
     }
-    onAnswer?.invoke(rows)
+    onAnswer?.invoke(rows, AckRules.staysHeld(sent, results))
   }
 
   companion object {

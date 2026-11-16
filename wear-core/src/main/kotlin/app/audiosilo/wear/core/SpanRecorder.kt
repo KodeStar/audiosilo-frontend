@@ -405,8 +405,8 @@ class SpanRecorder(
   }
 
   /**
-   * A move made while paused (`start`, to `at`): sent at once as a span of its own that moved
-   * nowhere, and the next play begins with the same reason (a Stay's as a `jump`: `carried`).
+   * A move made while paused, or a Stay (`start`, to `at`): sent at once as a span of its own that
+   * moved nowhere, and the next span begins with the same reason (a Stay's as a `jump`: `carried`).
    */
   private fun sendStill(book: PlayingBook, at: SpanEnd, start: ListeningStart, speed: Double) {
     val now = clock()
@@ -437,23 +437,33 @@ class SpanRecorder(
   }
 
   /**
-   * The listener answered an offer with Stay: this device's place stands, so its next span begins
-   * as a `stay` on a `listening_stay` server (`stay`), which the server applies over the other
-   * device's writes since the offer, else as a `jump`. Playing, the span is cut so that begins now;
-   * paused, the Stay is sent at once as a span that moved nowhere (a paused move's), and the next
-   * play begins as a `jump` (`carried`), as it does when there is no place to send now: a `stay`
-   * sent at a play that may come much later would beat what another device chose since.
+   * The listener answered an offer with Stay: this device's place stands, sent at once as a span
+   * that moved nowhere (a paused move's) on the version the answer acknowledged: a `stay` on a
+   * `listening_stay` server (`stay`), which the server applies over the other device's writes since
+   * the offer, else a `jump`. Sent at once while playing too: a Stay that waited for the next cut
+   * would let the other device's sync answers offer this place from before it meanwhile. Playing,
+   * the span ends here and the next one begins here as a `jump` (`carried`), so nothing is heard
+   * twice; paused, the next play begins as a `jump`: a `stay` sent at a play that may come much
+   * later would beat what another device chose since. With no place to send (`at` null), the next
+   * span is the Stay: the one cut now while playing, else the one that opens while this play goes
+   * on (`close`); paused, the next play is a `jump`.
    */
   fun standBy(book: PlayingBook, at: SpanEnd?, playing: Boolean, speed: Double, stay: Boolean) {
     val start = if (stay) ListeningStart.STAY else ListeningStart.JUMP
-    if (playing) {
-      // With none open yet, the one that opens takes it, while this play goes on (`close`).
-      if (span != null) cut(book, at, true, speed, start) else nextStart = start
+    if (at != null) {
+      // The open span (a playing one, or a stop noticed late) ends where the Stay is; playing, the
+      // span opened next replaces it in the store (`cut`).
+      val closed = close(at, null, clearStore = !playing)
+      sendStill(book, at, start, speed)
+      if (playing && closed != null) open(book, at, speed)
       return
     }
-    // One still open while not playing (a stop noticed late) ends here, as a paused move's does.
-    close(at)
-    if (at != null) sendStill(book, at, start, speed) else nextStart = Spans.carried(start)
+    if (playing) {
+      if (span != null) cut(book, null, true, speed, start) else nextStart = start
+      return
+    }
+    close(null)
+    nextStart = Spans.carried(start)
   }
 
   private fun finishEvent(kind: String, ref: BookRef, at: Instant, base: Int) =

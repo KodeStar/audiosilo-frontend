@@ -111,6 +111,22 @@ object AckRules {
       e.ref == row.ref && r != null && (r.status == "applied" || (r.status == "diverged" && r.kept == "event"))
     }
   }
+
+  /**
+   * The books whose `stay` this answer held: the server kept the stored row over it (`diverged`,
+   * `kept: stored`), another device's Stay holding it (CROSS-REPO section 25 "Stay wins", S2). Their
+   * kept place is offered again at once (`OfferThrottle.shouldShow`'s `stayHeld`; the phone's
+   * `staysHeld`).
+   */
+  fun staysHeld(sent: List<ListeningEvent>, results: Map<String, SyncResult>): Set<BookRef> =
+    sent
+      .filter { e ->
+        val r = results[e.id]
+        e is SpanEvent && e.start == ListeningStart.STAY && r != null && r.status == "diverged" &&
+          r.kept == "stored"
+      }
+      .map { it.ref }
+      .toSet()
 }
 
 /** Another device's place to offer (never to move to by itself). */
@@ -160,21 +176,28 @@ object Offers {
   }
 }
 
-/** Each offer once per launch, each device at most once per book in `OFFER_REPEAT`. */
+/**
+ * Each offer once per launch, each device at most once per book in `OFFER_REPEAT`, except right
+ * after this watch's Stay came back held (`stayHeld`).
+ */
 class OfferThrottle {
   private val shown = HashSet<String>()
   private val offeredAt = HashMap<String, Instant>()
 
-  /** Whether to show `offer` for `ref` now; records it when so. */
+  /**
+   * Whether to show `offer` for `ref` now; records it when so. `stayHeld`: this watch's Stay came
+   * back held by another device's (`AckRules.staysHeld`), so the place kept is offered now, not
+   * `OFFER_REPEAT` after that device's last offer (still once per launch).
+   */
   @Synchronized
-  fun shouldShow(offer: PlaceOffer, ref: BookRef, now: Instant): Boolean {
+  fun shouldShow(offer: PlaceOffer, ref: BookRef, now: Instant, stayHeld: Boolean = false): Boolean {
     val shownKey = "${ref.key}|${offer.key}"
     if (shown.contains(shownKey)) return false
     val bar = offer.key.lastIndexOf('|')
     val device = if (bar >= 0) offer.key.substring(0, bar) else offer.key
     val deviceKey = "${ref.key}|$device"
     val last = offeredAt[deviceKey]
-    if (last != null && now.secondsSince(last) < Offers.OFFER_REPEAT) return false
+    if (!stayHeld && last != null && now.secondsSince(last) < Offers.OFFER_REPEAT) return false
     shown.add(shownKey)
     offeredAt[deviceKey] = now
     return true

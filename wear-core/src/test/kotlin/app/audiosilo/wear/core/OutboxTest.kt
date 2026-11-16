@@ -206,10 +206,26 @@ class OutboxTest {
     val o = outbox()
     o.append(listOf(listen("a")))
     var rows = emptyList<ProgressRow>()
-    o.onAnswer = { rows = it }
+    o.onAnswer = { r, _ -> rows = r }
     o.flush(FakeTransport { answer(it, progress = listOf(row(version = 42))) })
     assertEquals(42, acks.ackVersion(ref))
     assertEquals(listOf(42), rows.map { it.version })
+  }
+
+  // Another device's Stay held this watch's (`diverged`, `kept: stored`): the answer says so, so
+  // the kept place is offered at once (`OfferThrottle.shouldShow`'s `stayHeld`).
+  @Test
+  fun theAnswerNamesTheBooksWhoseStayItHeld() = runBlocking {
+    val o = outbox()
+    o.append(listOf(stayListen("a"), stayListen("b", path = "Other"), listen("c", path = "Third")))
+    var held = emptySet<BookRef>()
+    o.onAnswer = { _, h -> held = h }
+    o.flush(
+      FakeTransport { body ->
+        answer(body, status = { e -> if (e.id == "b") null else SyncResult(e.id, "diverged", kept = "stored") })
+      }
+    )
+    assertEquals(setOf(ref), held)
   }
 
   @Test
@@ -390,7 +406,7 @@ class OutboxTest {
     t.requestArrives()
     o.discardAll()
     var told = false
-    o.onAnswer = { told = true }
+    o.onAnswer = { _, _ -> told = true }
     t.reply(answer(t.bodies[0], progress = listOf(row(version = 9))))
     flush.join()
     assertNull(o.state.lastSyncAt)
@@ -518,6 +534,19 @@ class ClockSkewTest {
 
 class AckAndOfferTest {
   private val ref = BookRef(3, "Author/Book")
+
+  @Test
+  fun staysHeldNamesOnlyAStayTheServerKeptTheStoredRowOver() {
+    val events = listOf(stayListen("a"), listen("b", path = "B"), stayListen("c", path = "C"), stayListen("d", path = "D"))
+    val results =
+      mapOf(
+        "a" to SyncResult("a", "diverged", kept = "stored"),
+        "b" to SyncResult("b", "diverged", kept = "stored"),
+        "c" to SyncResult("c", "diverged", kept = "event"),
+        "d" to SyncResult("d", "applied"),
+      )
+    assertEquals(setOf(ref), AckRules.staysHeld(events, results))
+  }
 
   @Test
   fun keptMineAcknowledgesOnlyThisDevicesRowThatKeptItsEvent() {
@@ -656,5 +685,19 @@ class AckAndOfferTest {
     val later = PlaceOffer(900.0, "Tablet", "tablet|2026-10-08T12:00:15Z")
     assertTrue(throttle.shouldShow(later, ref, t0.addingSeconds(Offers.OFFER_REPEAT)))
     assertTrue("per book", throttle.shouldShow(next, BookRef(9, "other"), t0))
+  }
+
+  // This watch's Stay came back held by the other device's: the place kept is offered at once, not
+  // ten minutes after that device's last offer, and still once per launch.
+  @Test
+  fun aStayHeldOffersTheKeptPlaceAtOnce() {
+    val throttle = OfferThrottle()
+    val t0 = java.time.Instant.now()
+    val first = PlaceOffer(800.0, "Phone", "phone|2026-10-08T11:50:00Z")
+    assertTrue(throttle.shouldShow(first, ref, t0))
+    val stayed = PlaceOffer(800.0, "Phone", "phone|2026-10-08T11:50:20Z")
+    assertFalse(throttle.shouldShow(stayed, ref, t0.addingSeconds(30.0)))
+    assertTrue(throttle.shouldShow(stayed, ref, t0.addingSeconds(30.0), stayHeld = true))
+    assertFalse("once per launch", throttle.shouldShow(stayed, ref, t0.addingSeconds(40.0), stayHeld = true))
   }
 }

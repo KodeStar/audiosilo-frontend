@@ -55,6 +55,10 @@ fun listen(
 
 class NoAnswer : Exception("no answer")
 
+/** `listen` with a `stay` start (row 9c-2). */
+fun stayListen(id: String, path: String = "Author/Book"): ListeningEvent =
+  (listen(id, path = path) as SpanEvent).copy(start = ListeningStart.STAY)
+
 fun answer(
   body: SyncRequest,
   serverTime: String = "2026-10-25T07:41:03.480Z",
