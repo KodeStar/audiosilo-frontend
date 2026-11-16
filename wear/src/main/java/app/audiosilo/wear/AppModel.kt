@@ -335,12 +335,18 @@ class AppModel private constructor(private val context: Context) {
     val fresh = orNull { api.addresses() } ?: return
     val now = _account.value ?: return
     if (now.accountId != a.accountId) return
-    val merged = AddressPicker.merge(now.addresses, fresh)
-    if (merged == now.addresses) return
-    val next = now.copy(addresses = merged)
+    keep(now.copy(addresses = AddressPicker.merge(now.addresses, fresh)), old = now)
+  }
+
+  /**
+   * Keep [next] as the signed-in account, saved only on a change. New addresses are picked among at
+   * once, but not in the background: leaving home dropped the home pick, and no probe runs there.
+   */
+  private suspend fun keep(next: Account, old: Account) {
+    if (next == old) return
     accountFile.write(next)
     _account.value = next
-    if (inForeground) router.repick(next)
+    if (inForeground && next.addresses != old.addresses) router.repick(next)
   }
 
   /**
@@ -637,7 +643,7 @@ class AppModel private constructor(private val context: Context) {
   private fun releaseHeld() {
     if (held.books.isEmpty()) return
     val ready = _phase.value == Phase.Ready && _server.value?.supportsWatch == true
-    for (b in held.due(_account.value?.accountId, ready, Instant.now())) queue(b.ref, b.title, b.author, b.sentAt)
+    for (b in held.due(_account.value?.accountId, ready, Instant.now())) queue(b.ref, b.title, b.author, b.orderedAt)
     publishState()
   }
 
@@ -671,6 +677,26 @@ class AppModel private constructor(private val context: Context) {
     }
     pendingPair = null
     _pendingReplace.value = if (change == AccountChange.Replace) PendingReplace.Switching else null
+    val api = if (change == AccountChange.SameAccount) client() else null
+    if (current != null && api != null) {
+      // Anything but its answer (a refusal, an unreadable body, no answer) is no word on the token.
+      val meUserId =
+        try {
+          api.me()
+        } catch (e: CancellationException) {
+          throw e
+        } catch (_: Exception) {
+          null
+        }
+      // Signed out or switched while it was asked: this pair is not for the watch as it is now.
+      // The account as it is now, not as it was: an address refresh may have landed meanwhile.
+      val now = _account.value
+      if (now == null || now.accountId != current.accountId) return
+      if (AccountRules.keepsToken(meUserId, p.userId)) {
+        keepSignIn(now, p)
+        return
+      }
+    }
     if (current == null) _phase.value = Phase.Setup(SetupStatus.SigningIn)
 
     fun failed(message: String) {
@@ -711,7 +737,8 @@ class AppModel private constructor(private val context: Context) {
     val session = exchanged.answer
     if (change == AccountChange.Replace) {
       // Its token ends on its server too (as Sign out does): this watch forgets it now. A sign-in
-      // again for the same account keeps its old token, as the phone does.
+      // again for the same account exchanges only without the server's word for its token (D6,
+      // above).
       leaveAccount()
     } else if (change == AccountChange.SignIn && accountFile.read()?.accountId != p.accountId) {
       // The token was lost, and what is here is another account's: never sent under this one.
@@ -746,6 +773,26 @@ class AppModel private constructor(private val context: Context) {
       router.leaveHome(a)
       checkServer()
     }
+  }
+
+  /**
+   * A `pair` for this account while its token still signs in as that user (D6): no exchange, so no
+   * new session on the server, and the phone's pairing token runs out unused. What the phone now
+   * says of the account (its label, the user's name, the addresses) is taken, as a sign-in would.
+   */
+  private suspend fun keepSignIn(current: Account, p: PairMessage) {
+    val a =
+      current.copy(
+        serverName = p.serverName,
+        userName = p.userName.ifEmpty { current.userName },
+        serverUrl = p.serverUrl,
+        addresses = AddressPicker.merge(current.addresses, p.addresses),
+      )
+    keep(a, old = current)
+    // The gate is asked again, as a sign-in asks it, unless it stands: a server that was too old
+    // may serve the watch now, and a book behind this pair waits for that word (`releaseHeld`).
+    if (_phase.value != Phase.Ready || _server.value?.supportsWatch != true) checkServer()
+    publishState()
   }
 
   /**

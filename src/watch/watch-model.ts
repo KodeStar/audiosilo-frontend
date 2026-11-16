@@ -11,8 +11,11 @@ import { isRecord } from '@/lib/storage-keys';
  * wear-core's PhoneMessages.kt (Wear OS): a field changed here changes there, with tests on both.
  * Every message carries `v: 1`; a newer one is ignored, and so is a field a watch does not know.
  * Every message also carries `sent_at` (RFC 3339): on Wear OS it makes each send a new Data Layer
- * item (an identical one sends nothing), orders a `remove` against a later download and is echoed
- * in the watch's receipt; the Apple Watch ignores it for now.
+ * item (an identical one sends nothing) and is echoed in the watch's receipt. A `book` and a
+ * `remove` also carry `asked_at` (RFC 3339, fe#219): when the listener asked for it, which a
+ * `remove` sent again keeps from the first. A watch keeps a book's as when its copy was added
+ * (`added_at` in `watch-state`), and a `remove` takes only a copy added no later than it was asked,
+ * so a copy that came back since stays. An older watch reads neither.
  */
 const WATCH_MESSAGE_VERSION = 1;
 
@@ -54,6 +57,8 @@ type BookMessage = {
   path: string;
   title: string;
   author?: string;
+  /** RFC 3339, when Send was tapped (the ledger row's `sent_at`). */
+  asked_at: string;
   sent_at: string;
 };
 
@@ -64,6 +69,8 @@ type RemoveMessage = {
   user_id: number;
   library_id: number;
   path: string;
+  /** RFC 3339, when Remove was first tapped for the copy it is about (`removeAskedAt`). */
+  asked_at: string;
   sent_at: string;
 };
 
@@ -89,6 +96,9 @@ export type WatchBook = {
   files_total?: number;
   /** While preparing or downloading: what it waits for. */
   waiting?: WatchWait;
+  /** Epoch ms of when this copy was added: the phone's `asked_at` for a book it sent, the watch's
+   * clock for its own Download button (fe#219). An older watch, and a Wear OS one, says nothing. */
+  added_at?: number;
 };
 
 /** `watch-state`: what the watch last said about itself. */
@@ -211,13 +221,15 @@ export function buildPairMessage(
   };
 }
 
-/** The `book` message for one of `connection`'s books. No nulls or undefined values:
- * WatchConnectivity takes property lists only. */
+/** The `book` message for one of `connection`'s books, asked for at `askedAt` (epoch ms, the
+ * ledger row's `sent_at`). No nulls or undefined values: WatchConnectivity takes property lists
+ * only. */
 export function buildBookMessage(
   connection: WatchAccount,
   libraryId: number,
   book: WatchableBook,
   now: number = Date.now(),
+  askedAt: number = now,
 ): BookMessage {
   return {
     v: WATCH_MESSAGE_VERSION,
@@ -228,16 +240,19 @@ export function buildBookMessage(
     path: book.rel_path,
     title: book.title,
     ...(book.author ? { author: book.author } : {}),
+    asked_at: rfc3339(askedAt),
     sent_at: rfc3339(now),
   };
 }
 
-/** The `remove` message for one of `connection`'s books (phone to watch only). */
+/** The `remove` message for one of `connection`'s books (phone to watch only), asked for at
+ * `askedAt` (epoch ms; a Remove asked again keeps the first one's, `removeAskedAt`). */
 export function buildRemoveMessage(
   connection: WatchAccount,
   libraryId: number,
   path: string,
   now: number = Date.now(),
+  askedAt: number = now,
 ): RemoveMessage {
   return {
     v: WATCH_MESSAGE_VERSION,
@@ -246,6 +261,7 @@ export function buildRemoveMessage(
     user_id: connection.user.id,
     library_id: libraryId,
     path,
+    asked_at: rfc3339(askedAt),
     sent_at: rfc3339(now),
   };
 }
@@ -253,6 +269,11 @@ export function buildRemoveMessage(
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
 const count = (v: unknown): number => (typeof v === 'number' && v > 0 ? v : 0);
+/** An RFC 3339 time as epoch ms, else nothing. */
+const time = (v: unknown): number | undefined => {
+  const ms = typeof v === 'string' ? Date.parse(v) : NaN;
+  return Number.isFinite(ms) ? ms : undefined;
+};
 /** A whole number from 0 to `max`, else nothing. */
 const wholeUpTo = (v: unknown, max: number): number | undefined =>
   typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= max ? v : undefined;
@@ -281,6 +302,7 @@ export function parseWatchState(raw: unknown): WatchState | null {
   const books: WatchBook[] = [];
   for (const b of Array.isArray(raw.books) ? raw.books : []) {
     if (!isRecord(b) || typeof b.library_id !== 'number' || typeof b.path !== 'string') continue;
+    const added = time(b.added_at);
     books.push({
       library_id: b.library_id,
       path: b.path,
@@ -290,6 +312,7 @@ export function parseWatchState(raw: unknown): WatchState | null {
         : 'queued',
       bytes: num(b.bytes),
       ...parseHowFar(b),
+      ...(added !== undefined ? { added_at: added } : {}),
     });
   }
   return {
@@ -350,17 +373,27 @@ export function signedInHere(state: WatchState | null, connection: WatchAccount)
   );
 }
 
-/** Whether a book for this connection has to bring a `pair`: the watch is not signed in to it
- * (as far as it last said) and none on its way has time left. `pairUntil`: when the last one
- * sent runs out, epoch ms. */
-export function bookNeedsPair(
+/** What a book for this connection needs ahead of it. `pairUntil`: when the pair on its way runs
+ * out, epoch ms, by connection id (at most one, `useWatchStore`).
+ * - `busy`: another account's pair is on its way with time left (D5, fe#219). The watch takes
+ *   that one first and signs in to it, so this book would only be held there for an account the
+ *   watch has just left; it is refused instead, naming that connection.
+ * - `pair`: the watch is not signed in here (as far as it last said) and no pair of this
+ *   connection's on its way has over a minute left.
+ * - `none`: it is signed in here, or this connection's pair is on its way. */
+export function bookPairStep(
   state: WatchState | null,
-  connection: WatchAccount,
-  pairUntil: number | undefined,
+  connection: WatchAccount & Pick<WatchConnection, 'id'>,
+  pairUntil: Readonly<Record<string, number>>,
   now: number,
-): boolean {
-  if (signedInHere(state, connection)) return false;
-  return pairUntil === undefined || pairUntil - now <= PAIR_REUSE_MARGIN_MS;
+): { step: 'none' | 'pair' } | { step: 'busy'; connectionId: string } {
+  const other = Object.entries(pairUntil).find(
+    ([id, until]) => id !== connection.id && now < until,
+  );
+  if (other) return { step: 'busy', connectionId: other[0] };
+  if (signedInHere(state, connection)) return { step: 'none' };
+  const until = pairUntil[connection.id];
+  return { step: until === undefined || until - now <= PAIR_REUSE_MARGIN_MS ? 'pair' : 'none' };
 }
 
 /** Whether this account can sign a watch in: a kid's can't pair (403 `kid_account`), nor can a

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { onForeground } from '@/lib/when-active';
+import { onConnectionRemoved } from '@/stores/session';
 
 import { watchLink } from './link';
 import { applyWatchStatus, followConnectionRemovals, hydrateLedger } from './watch-ledger';
@@ -47,6 +48,8 @@ export function startWatchLink(): void {
   if (started) return;
   started = true;
   followConnectionRemovals();
+  // A removed connection's pair is no one's to wait for.
+  onConnectionRemoved(forgetPair);
   watchLink.subscribe(setStatus);
   // Paired or installed can change while the app is away, with no event reaching it.
   onForeground(() => void refreshWatch());
@@ -61,4 +64,15 @@ export function startWatchLink(): void {
  * connection's or another's, so only this one counts. */
 export function notePairSent(connectionId: string, until: number): void {
   useWatchStore.setState({ pairUntil: { [connectionId]: until } });
+}
+
+/** The connection's pair on its way can no longer sign the watch in: its token was ended (a
+ * password change ends the account's open pairing tokens on the server), or the connection went.
+ * The next book brings a new one, and the card offers set up again. */
+export function forgetPair(connectionId: string): void {
+  useWatchStore.setState((s) => {
+    if (!Object.hasOwn(s.pairUntil, connectionId)) return s;
+    const { [connectionId]: _gone, ...rest } = s.pairUntil;
+    return { pairUntil: rest };
+  });
 }

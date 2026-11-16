@@ -6,6 +6,7 @@ import { useReadMyDevicesAgain } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import { toast } from '@/components/ui/toast';
 import { useSession } from '@/stores/session';
+import { forgetPair } from '@/watch/watch-store';
 
 /** The shortest password the server takes. */
 export const PW_MIN = 8;
@@ -83,6 +84,8 @@ export function usePasswordEditor(connectionId: string) {
       | 'account.password.doneSignedOut' = 'account.password.doneBody';
     if (hasPassword) {
       setChanges((n) => n + 1);
+      // The change ended the account's open pairing tokens, the one on its way to a watch too.
+      forgetPair(connectionId);
       const devices = await readDevicesAgain();
       if (!devices) body = 'account.password.doneThisDevice';
       else if (!devices.some((d) => d.kind === 'session' && !d.current))

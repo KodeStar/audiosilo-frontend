@@ -5,6 +5,7 @@ import {
   parseLedgerRow,
   putRow,
   reconcileRows,
+  removeAskedAt,
   rowActions,
   sameDetail,
   WATCH_HOLD_MS,
@@ -317,6 +318,9 @@ describe('reconcileRows', () => {
       const [row] = settle([sent({ remove_at: NOW })], s);
       expect(row.remove_refused).toBe(true);
       expect(row.remove_at).toBeUndefined();
+      // One asked again leaves nothing of its first time behind.
+      const [again] = settle([sent({ remove_at: NOW, remove_asked_at: NOW - 900 })], s);
+      expect(again).toEqual(sent({ remove_refused: true }));
     }
   });
 
@@ -360,6 +364,13 @@ describe('the rows as stored', () => {
   it('reads back what was kept', () => {
     const row = sent({ author: 'A', seen: true, remove_at: 5, remove_refused: true });
     expect(parseLedgerRow(JSON.parse(JSON.stringify(row)))).toEqual(row);
+    const failed = sent({
+      send_failed: true,
+      remove_failed: true,
+      remove_at: 9,
+      remove_asked_at: 5,
+    });
+    expect(parseLedgerRow(JSON.parse(JSON.stringify(failed)))).toEqual(failed);
   });
 
   it('refuses what it cannot read, and takes a missing flag as false', () => {
@@ -427,5 +438,142 @@ describe('the ledger on Wear OS (nothing is ever failed)', () => {
     }
     // The hold limit is what ends a book the watch never takes.
     expect(phase(sent(), state(), wearHeld('book'), NOW + WATCH_HOLD_MS)).toBe('stale');
+  });
+});
+
+describe('failed sends and removes kept on the row (fe#219)', () => {
+  const settle = (rows: LedgerRow[], s: WatchState | null, transfers: WatchTransfer[] = []) =>
+    reconcileRows(rows, ACCOUNT, { state: s, transfers });
+
+  it('notes a failure the link reports, and still says it after a restart forgot it', () => {
+    const [row] = settle([sent()], state(), [transfer('book', { failed: true })]);
+    expect(row.send_failed).toBe(true);
+    // The link's report is gone with the run: the row says it on its own.
+    expect(phase(row, state())).toBe('send-failed');
+    expect(settle([row], state())).toEqual([row]);
+    expect(phase(row, signedOut)).toBe('send-failed');
+  });
+
+  it('keeps a seen book whose send again failed, rather than reading it as gone', () => {
+    const [row] = settle([sent({ seen: true })], state(), [transfer('book', { failed: true })]);
+    expect(settle([row], state())).toEqual([row]);
+    expect(settle([row], signedOut)).toEqual([row]);
+  });
+
+  it('notes a failed remove, and does not read it as refused once the watch is elsewhere', () => {
+    const on = state({ books: [listed] });
+    const [row] = settle([sent({ seen: true, remove_at: NOW - 10 })], on, [
+      transfer('remove', { failed: true }),
+    ]);
+    expect(row.remove_failed).toBe(true);
+    expect(phase(row, on)).toBe('remove-failed');
+    // A row the watch never listed (it may be held there for this account).
+    const [elsewhere] = settle([{ ...row, seen: undefined }], otherAccount);
+    expect(elsewhere.remove_refused).toBeUndefined();
+    expect(phase(elsewhere, otherAccount)).toBe('remove-failed');
+  });
+
+  it('notes no failed remove on a row with no Remove of its own', () => {
+    const rows = [sent({ seen: true })];
+    expect(settle(rows, state({ books: [listed] }), [transfer('remove', { failed: true })])).toBe(
+      rows,
+    );
+  });
+
+  it('forgets a failed send once the book is on the watch', () => {
+    const [row] = settle([sent({ send_failed: true })], state({ books: [listed] }));
+    expect(row).toEqual(sent({ seen: true }));
+  });
+});
+
+describe('a copy added since a Remove, and a Remove asked again (fe#219)', () => {
+  const settle = (rows: LedgerRow[], s: WatchState | null, transfers: WatchTransfer[] = []) =>
+    reconcileRows(rows, ACCOUNT, { state: s, transfers });
+  const removing = sent({ seen: true, remove_at: NOW - 500 });
+
+  it('drops the Remove when the listed copy was added after it was asked', () => {
+    const back = state({ books: [{ ...listed, state: 'ready', added_at: NOW - 100 }] });
+    const [row] = settle([removing], back);
+    expect(row.remove_at).toBeUndefined();
+    expect(phase(row, back)).toBe('ready');
+  });
+
+  it('keeps it for a copy from before, from the first Remove when it was asked again', () => {
+    const before = state({ books: [{ ...listed, added_at: NOW - 600 }] });
+    expect(settle([removing], before)).toEqual([removing]);
+    // Asked again at NOW - 500 after a first Remove at NOW - 900: a copy added in between stays.
+    const again = sent({ seen: true, remove_at: NOW - 500, remove_asked_at: NOW - 900 });
+    const between = state({ books: [{ ...listed, added_at: NOW - 700 }] });
+    expect(settle([again], between)[0].remove_at).toBeUndefined();
+  });
+
+  it('keeps it from a watch that does not say when (older, or Wear OS)', () => {
+    expect(settle([removing], state({ books: [listed] }))).toEqual([removing]);
+  });
+
+  it('asks again with the first time while the Remove is under way, else now', () => {
+    const copy = { ...listed, added_at: NOW - 5000 };
+    expect(removeAskedAt(undefined, copy, NOW)).toBe(NOW);
+    expect(removeAskedAt(sent(), copy, NOW)).toBe(NOW);
+    expect(removeAskedAt(removing, copy, NOW)).toBe(NOW - 500);
+    expect(removeAskedAt(removing, undefined, NOW)).toBe(NOW - 500);
+    const again = sent({ remove_at: NOW - 500, remove_asked_at: NOW - 900 });
+    expect(removeAskedAt(again, copy, NOW)).toBe(NOW - 900);
+    // Past the hold limit the row is the watch's again: a Remove then is a new one.
+    expect(removeAskedAt(sent({ remove_at: NOW - WATCH_HOLD_MS }), copy, NOW)).toBe(NOW);
+  });
+
+  it('asks again as a new Remove over a copy that does not say when it was added', () => {
+    // A Wear OS watch: a copy back since the first Remove can't be told from the one it was for,
+    // and the first one's time would never take it.
+    expect(removeAskedAt(removing, listed, NOW)).toBe(NOW);
+    const again = sent({ remove_at: NOW - 500, remove_asked_at: NOW - 900 });
+    expect(removeAskedAt(again, listed, NOW)).toBe(NOW);
+  });
+});
+
+describe('a book sent again while it was being removed (fe#219)', () => {
+  const settle = (rows: LedgerRow[], s: WatchState | null, transfers: WatchTransfer[] = []) =>
+    reconcileRows(rows, ACCOUNT, { state: s, transfers });
+  // Sent again at NOW - 1000 (`sent`), the old copy still listed until the watch has removed it.
+  const old = (added: number | undefined) =>
+    state({ books: [{ ...listed, state: 'ready', ...(added ? { added_at: added } : {}) }] });
+
+  it('says where the Send stands, not "on your watch", over a copy from before it', () => {
+    expect(phase(sent({ handed_over: false }), old(NOW - 60_000))).toBe('undelivered');
+    expect(phase(sent(), old(NOW - 60_000))).toBe('delivered');
+    expect(phase(sent(), old(NOW - 60_000), [transfer('book')])).toBe('undelivered');
+  });
+
+  it('does not count that copy as the one sent', () => {
+    const rows = [sent()];
+    expect(settle(rows, old(NOW - 60_000))).toBe(rows);
+  });
+
+  it('takes the copy as the one sent within a second of the Send (the stamp round trip)', () => {
+    expect(phase(sent(), old(NOW - 1000 - 1))).toBe('ready');
+    expect(settle([sent()], old(NOW - 1000 - 1))[0].seen).toBe(true);
+  });
+
+  it('says where the Send stands while a remove is still on its way, from any watch', () => {
+    expect(phase(sent(), old(undefined), [transfer('remove'), transfer('book')])).toBe(
+      'undelivered',
+    );
+    // One that could not go removes nothing: the copy stays, and is the book's.
+    expect(phase(sent(), old(undefined), [transfer('remove', { failed: true })])).toBe('ready');
+  });
+
+  it('shows the copy as it is once the watch has the book sent again', () => {
+    expect(phase(sent(), old(NOW - 1000))).toBe('ready');
+    expect(phase(sent(), old(NOW))).toBe('ready');
+  });
+
+  it('takes an older copy as the one sent on a row the watch has listed since that Send', () => {
+    // A row from before 2.7.0: a Send for a book already on the watch, which that watch took for
+    // the copy it had and no stamp moved on. It is on the watch, not "delivered" or stale.
+    const seen = sent({ seen: true });
+    expect(phase(seen, old(NOW - 60_000))).toBe('ready');
+    expect(phase(seen, old(NOW - 60_000), [], NOW + WATCH_HOLD_MS)).toBe('ready');
+    expect(settle([seen], old(NOW - 60_000))).toEqual([seen]);
   });
 });

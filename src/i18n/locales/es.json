@@ -290,6 +290,7 @@
       "otherAccount": "Tu reloj tiene sesión iniciada en otra cuenta. Configurarlo para {{server}} sustituye esa cuenta cuando se haya sincronizado lo que escuchaste.",
       "serverCannot": "{{server}} no puede preparar libros para un reloj. Necesita la versión 2.6 o posterior, con ffmpeg.",
       "sendFailed": "No se pudo contactar con tu reloj. No se ha enviado nada, así que inténtalo de nuevo.",
+      "settingUpFor": "Tu reloj se está configurando para {{user}} en {{server}}. Envía este libro cuando haya iniciado sesión.",
       "waiting_one": "{{count}} escucha pendiente en tu reloj",
       "waiting_other": "{{count}} escuchas pendientes en tu reloj",
       "allSynced": "Todo lo de tu reloj está sincronizado",

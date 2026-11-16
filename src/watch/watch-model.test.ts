@@ -2,7 +2,7 @@ import type { Book, PairingPayload } from '@/api/types';
 import en from '@/i18n/locales/en.json';
 
 import {
-  bookNeedsPair,
+  bookPairStep,
   buildBookMessage,
   buildPairMessage,
   buildRemoveMessage,
@@ -144,8 +144,15 @@ describe('buildBookMessage', () => {
       path: 'Author/Book',
       title: 'Book',
       author: 'Author',
+      asked_at: '2026-11-12T10:00:00.000Z',
       sent_at: '2026-11-12T10:00:00.000Z',
     });
+  });
+
+  it('carries when Send was tapped apart from when it went (fe#219)', () => {
+    const sent = buildBookMessage(connection, 3, book, Date.UTC(2026, 10, 12, 10), 1_000);
+    expect(sent.asked_at).toBe('1970-01-01T00:00:01.000Z');
+    expect(sent.sent_at).toBe('2026-11-12T10:00:00.000Z');
   });
 
   it('leaves out an author it does not have (property lists take no nulls)', () => {
@@ -183,6 +190,29 @@ describe('parseWatchState', () => {
       couldnt_sync: 1,
       last_sync_at: '2026-11-05T10:00:00.000Z',
     });
+  });
+
+  it('reads when each copy was added, and leaves out one it cannot read (fe#219)', () => {
+    const state = parseWatchState({
+      ...wire,
+      books: [
+        {
+          library_id: 1,
+          path: 'A/B',
+          title: 'B',
+          state: 'ready',
+          added_at: '2026-11-05T10:00:00.250Z',
+        },
+        { library_id: 1, path: 'A/C', title: 'C', state: 'ready', added_at: 'yesterday' },
+        { library_id: 1, path: 'A/D', title: 'D', state: 'ready', added_at: 1234 },
+      ],
+    });
+    expect(state?.books.map((b) => b.added_at)).toEqual([
+      Date.UTC(2026, 10, 5, 10, 0, 0, 250),
+      undefined,
+      undefined,
+    ]);
+    expect(state?.books[1]).not.toHaveProperty('added_at');
   });
 
   it('reads a signed-out watch, which omits the optional fields', () => {
@@ -307,22 +337,44 @@ describe('signedInHere', () => {
   });
 });
 
-describe('bookNeedsPair', () => {
+describe('bookPairStep', () => {
   const now = 1_000_000;
+  const mine = (until: number) => ({ [connection.id]: until });
 
   it('needs none once the watch is signed in here', () => {
-    expect(bookNeedsPair(signedIn, connection, undefined, now)).toBe(false);
+    expect(bookPairStep(signedIn, connection, {}, now)).toEqual({ step: 'none' });
   });
 
   it('needs one when the watch is signed in elsewhere or has said nothing', () => {
-    expect(bookNeedsPair(null, connection, undefined, now)).toBe(true);
-    expect(bookNeedsPair({ ...signedIn, user_id: 8 }, connection, undefined, now)).toBe(true);
+    expect(bookPairStep(null, connection, {}, now)).toEqual({ step: 'pair' });
+    expect(bookPairStep({ ...signedIn, user_id: 8 }, connection, {}, now)).toEqual({
+      step: 'pair',
+    });
   });
 
   it('follows a pair on its way with time left, not one about to run out', () => {
-    expect(bookNeedsPair(null, connection, now + 5 * 60_000, now)).toBe(false);
-    expect(bookNeedsPair(null, connection, now + 60_000, now)).toBe(true);
-    expect(bookNeedsPair(null, connection, now - 1, now)).toBe(true);
+    expect(bookPairStep(null, connection, mine(now + 5 * 60_000), now)).toEqual({ step: 'none' });
+    expect(bookPairStep(null, connection, mine(now + 60_000), now)).toEqual({ step: 'pair' });
+    expect(bookPairStep(null, connection, mine(now - 1), now)).toEqual({ step: 'pair' });
+  });
+
+  it("refuses while another account's pair is on its way, signed in here or not (D5)", () => {
+    const other = { 'srv.8': now + 5 * 60_000 };
+    expect(bookPairStep(null, connection, other, now)).toEqual({
+      step: 'busy',
+      connectionId: 'srv.8',
+    });
+    expect(bookPairStep(signedIn, connection, other, now)).toEqual({
+      step: 'busy',
+      connectionId: 'srv.8',
+    });
+  });
+
+  it("takes no notice of another account's pair once it has run out", () => {
+    expect(bookPairStep(null, connection, { 'srv.8': now }, now)).toEqual({ step: 'pair' });
+    expect(bookPairStep(signedIn, connection, { 'srv.8': now - 1 }, now)).toEqual({
+      step: 'none',
+    });
   });
 });
 
@@ -414,8 +466,15 @@ describe('the remove message', () => {
       user_id: 7,
       library_id: 3,
       path: 'A/B',
+      asked_at: '2026-11-12T10:00:00.000Z',
       sent_at: '2026-11-12T10:00:00.000Z',
     });
+  });
+
+  it("carries the first Remove's time when asked again (fe#219)", () => {
+    const again = buildRemoveMessage(connection, 3, 'A/B', Date.UTC(2026, 10, 12, 10), 5_000);
+    expect(again.asked_at).toBe('1970-01-01T00:00:05.000Z');
+    expect(again.sent_at).toBe('2026-11-12T10:00:00.000Z');
   });
 });
 

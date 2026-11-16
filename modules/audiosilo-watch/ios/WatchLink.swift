@@ -37,6 +37,10 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
   /// The `book`s and `remove`s the system could not deliver, this run: it answers once and forgets
   /// them, so they would read as delivered. They stay until sent again or the watch changes.
   private var failedTransfers: [[String: Any]] = []
+  /// The transfers this link cancelled (a `pair` replaced, or a `book`/`remove` moved behind a new
+  /// `pair`): the system reports each with an error, which says nothing of the copy sent in its place,
+  /// and that copy may have been delivered by then. Weak: the system lets go of them once reported.
+  private let cancelled = NSHashTable<WCSessionUserInfoTransfer>.weakObjects()
 
   /// Idempotent. Runs on the main queue.
   func activate() {
@@ -144,7 +148,7 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
       let session = WCSession.default
       // A pair not yet delivered holds an older token, and a watch still has to sign in for the
       // books queued behind it: this one takes its place, and they follow it.
-      session.outstandingUserInfoTransfers.filter { Self.type(of: $0.userInfo) == "pair" }.forEach { $0.cancel() }
+      session.outstandingUserInfoTransfers.filter { Self.type(of: $0.userInfo) == "pair" }.forEach(self.cancel)
       var settled = false
       let finish = {
         guard !settled else { return }
@@ -153,7 +157,7 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
         // sent meanwhile stays behind those ahead of it. A `remove` and a `book` sent again must reach
         // the watch as they were sent.
         for transfer in session.outstandingUserInfoTransfers where Self.row(of: transfer.userInfo) != nil {
-          transfer.cancel()
+          self.cancel(transfer)
           session.transferUserInfo(transfer.userInfo)
         }
         done(.success(()))
@@ -183,6 +187,13 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
       WCSession.default.transferUserInfo(message)
       done(.success(()))
     }
+  }
+
+  /// Cancel a transfer this link no longer wants, remembering it so its error report is not read as
+  /// a failure (`didFinish`).
+  private func cancel(_ transfer: WCSessionUserInfoTransfer) {
+    cancelled.add(transfer)
+    transfer.cancel()
   }
 
   private static func type(of message: [String: Any]) -> String? { message["type"] as? String }
@@ -232,11 +243,14 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
     DispatchQueue.main.async { self.notify() }
   }
 
-  /// A `book` or `remove` went, or could not. One moved behind a new `pair` (`sendPair`) has a copy
-  /// still on its way, so a report on the first is no failure.
+  /// A `book` or `remove` went, or could not. One this link cancelled (`cancel`) is no failure: a
+  /// copy went in its place, delivered by now or still on its way, which is why a report on one with
+  /// a copy outstanding is none either (the system may hand over another object for the same transfer).
   func session(_ session: WCSession, didFinish userInfoTransfer: WCSessionUserInfoTransfer, error: Error?) {
     DispatchQueue.main.async {
-      if error != nil, let row = Self.row(of: userInfoTransfer.userInfo),
+      if self.cancelled.contains(userInfoTransfer) {
+        self.cancelled.remove(userInfoTransfer)
+      } else if error != nil, let row = Self.row(of: userInfoTransfer.userInfo),
         !session.outstandingUserInfoTransfers.contains(where: {
           Self.row(of: $0.userInfo).map { Self.same($0, row) } ?? false
         })

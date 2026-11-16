@@ -12,7 +12,9 @@
 // A `remove` is handled in its turn (a sign-in may run ahead of it), but a book is held the moment
 // it arrives, so a book sent again right after a `remove` is already here when that turn comes.
 // The ticket keeps them apart: a `remove` clears only the row it arrived after, and until it is
-// handled a book's record, about to go, settles no row.
+// handled a book's record, about to go, settles no row. Tickets are kept in the same file (fe#219),
+// so a kill before their turn loses none: those read at launch are handed out once an account is
+// there to finish them (`takeLeftoverRemoves`).
 import Foundation
 
 struct HeldBook: Codable, Equatable, Identifiable, Sendable {
@@ -27,9 +29,32 @@ struct HeldBook: Codable, Equatable, Identifiable, Sendable {
 }
 
 /// A `remove` from when it arrived until its turn: the row it found then, if any.
-struct RemoveTicket: Equatable, Sendable {
+struct RemoveTicket: Codable, Equatable, Identifiable, Sendable {
+  var id = UUID()
   var message: RemoveMessage
   var row: HeldBook?
+  /// When it arrived: one older than `HeldBooks.MAX_AGE` is dropped (the phone has stopped saying
+  /// "removing" by then).
+  var arrivedAt: Date
+}
+
+/// `held-books.json`: the books, then the `remove`s not handled yet. Before 2.7.0 it held the books
+/// alone, as an array, which still reads.
+struct HeldFile: Codable, Equatable {
+  var books: [HeldBook]
+  var removes: [RemoveTicket]
+}
+
+extension HeldFile {
+  init(from decoder: Decoder) throws {
+    if let books = try? decoder.singleValueContainer().decode([HeldBook].self) {
+      self.init(books: books, removes: [])
+      return
+    }
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    self.init(books: try c.decode([HeldBook].self, forKey: .books),
+              removes: try c.decodeIfPresent([RemoveTicket].self, forKey: .removes) ?? [])
+  }
 }
 
 @MainActor
@@ -43,17 +68,21 @@ final class HeldBooks {
   /// How long a book given up on stays visible.
   static let GAVE_UP_KEEP: TimeInterval = 7 * 24 * 60 * 60
 
-  private let file: JSONFile<[HeldBook]>?
+  private let file: JSONFile<HeldFile>?
   /// In the order they arrived.
   private(set) var books: [HeldBook]
-  /// The books of the `remove`s not handled yet. Not on disk: they arrived with the app running
-  /// and go with it, and the phone's row offers Remove again.
-  private var removing: [BookRef] = []
+  /// The `remove`s not handled yet, in the order they arrived.
+  private(set) var removes: [RemoveTicket]
+  /// The ids of those read at launch and not handed out yet (`takeLeftoverRemoves`).
+  private var leftover: Set<UUID>
 
   /// `url` nil keeps them in memory (tests).
   init(url: URL?) {
     file = url.map { JSONFile(url: $0) }
-    books = file?.read() ?? []
+    let kept = file?.read()
+    books = kept?.books ?? []
+    removes = kept?.removes ?? []
+    leftover = Set(removes.map(\.id))
   }
 
   /// Keep a book until it is on the watch. Sent again, it replaces its earlier row (one given up on
@@ -72,11 +101,17 @@ final class HeldBooks {
   }
 
   /// Age what is here and forget what `accountId` now has on the watch (`onWatch`, whichever way it
-  /// got there: nothing is left to hold, or to report as not delivered).
-  func settle(accountId: String?, onWatch: [BookRef], now: Date) {
-    guard !books.isEmpty else { return }
-    let here = Set(onWatch).subtracting(removing)
-    commit(books.filter { !($0.book.accountId == accountId && here.contains($0.book.ref)) }, now: now)
+  /// got there: nothing is left to hold, or to report as not delivered). Returns the books settled
+  /// so, still waiting: each was asked for again, which its record takes as when it was added
+  /// (`DownloadManager.noteAsked`), or a Remove asked before this Send would take it.
+  @discardableResult
+  func settle(accountId: String?, onWatch: [BookRef], now: Date) -> [BookMessage] {
+    guard !books.isEmpty || !removes.isEmpty else { return [] }
+    let here = Set(onWatch).subtracting(removes.map(\.message.ref))
+    let settles = { (row: HeldBook) in row.book.accountId == accountId && here.contains(row.book.ref) }
+    let settled = books.filter { settles($0) && $0.waiting }.map(\.book)
+    commit(books.filter { !settles($0) }, now: now)
+    return settled
   }
 
   /// The watch has left this account (sign-out, a replace that succeeded): all its rows go, given
@@ -94,24 +129,34 @@ final class HeldBooks {
     commit(rows, now: now)
   }
 
-  /// A `remove` arrived: note it, and which row it is about, for when its turn comes.
-  func noteRemove(_ message: RemoveMessage) -> RemoveTicket {
-    removing.append(message.ref)
+  /// A `remove` arrived: note it, on disk, and which row it is about, for when its turn comes.
+  func noteRemove(_ message: RemoveMessage, now: Date) -> RemoveTicket {
     let row = books.first { $0.book.accountId == message.accountId && $0.book.ref == message.ref }
-    return RemoveTicket(message: message, row: row)
+    let ticket = RemoveTicket(message: message, row: row, arrivedAt: now)
+    commit(books, removes: removes + [ticket], now: now)
+    return ticket
+  }
+
+  /// The `remove`s a kill left on disk, once: the caller finishes each in its turn, with an account
+  /// signed in (signed out, it would only refuse them, and the account may just not be read yet).
+  func takeLeftoverRemoves() -> [RemoveTicket] {
+    let out = removes.filter { leftover.contains($0.id) }
+    leftover = []
+    return out
   }
 
   /// A `remove`'s turn, with the watch signed in to `accountId`: true when the book goes too, which
-  /// `takeBook` sees to. Its own account only: signed out or on another account nothing changes, so
-  /// its book still comes if that account signs in, as the phone's row says. The row it found goes,
-  /// waiting or given up on; one sent again since has another `heldAt`, and stays. The ticket closes
-  /// only after `takeBook`: stopping a playing book publishes with its record still here, and that
-  /// must settle no row.
+  /// `takeBook` sees to (only a copy the `remove` covers: `RemoveMessage.covers`). Its own account
+  /// only: signed out or on another account nothing changes, so its book still comes if that account
+  /// signs in, as the phone's row says. The row it found goes, waiting or given up on, unless it was
+  /// asked for after the `remove` was; one sent again since has another `heldAt`, and stays. The
+  /// ticket closes only after `takeBook`: stopping a playing book publishes with its record still
+  /// here, and that must settle no row.
   @discardableResult
   func finishRemove(_ ticket: RemoveTicket, accountId: String?, now: Date, takeBook: () -> Void = {}) -> Bool {
-    defer { if let i = removing.firstIndex(of: ticket.message.ref) { removing.remove(at: i) } }
+    defer { commit(books, removes: removes.filter { $0.id != ticket.id }, now: now) }
     guard ticket.message.accountId == accountId else { return false }
-    if let row = ticket.row {
+    if let row = ticket.row, ticket.message.covers(addedAt: row.book.askedAt) {
       commit(books.filter { !($0.id == row.id && $0.heldAt == row.heldAt) }, now: now)
     }
     takeBook()
@@ -128,12 +173,17 @@ final class HeldBooks {
   /// The rows for `watch-state`, which names `accountId` (signed out names none, so none).
   func stateRows(accountId: String?) -> [WatchStateBook] {
     books.filter { $0.book.accountId == accountId }.map {
-      WatchStateBook(ref: $0.book.ref, title: $0.book.title, state: $0.waiting ? .queued : .failed, bytes: nil)
+      WatchStateBook(ref: $0.book.ref, title: $0.book.title, state: $0.waiting ? .queued : .failed, bytes: nil,
+                     addedAt: $0.book.askedAt ?? $0.heldAt)
     }
   }
 
   /// Apply the age and the caps, and write only a real change.
   private func commit(_ next: [HeldBook], now: Date) {
+    commit(next, removes: removes, now: now)
+  }
+
+  private func commit(_ next: [HeldBook], removes nextRemoves: [RemoveTicket], now: Date) {
     var rows: [HeldBook] = next.compactMap { row in
       var row = row
       if let gaveUpAt = row.gaveUpAt {
@@ -146,8 +196,10 @@ final class HeldBooks {
     let gaveUp = rows.compactMap { row in row.gaveUpAt.map { (at: $0, id: row.id) } }.sorted { $0.at < $1.at }
     let dropped = Set(gaveUp.dropLast(Self.MAX_BOOKS).map(\.id))
     rows.removeAll { dropped.contains($0.id) }
-    guard rows != books else { return }
+    let tickets = nextRemoves.filter { now.timeIntervalSince($0.arrivedAt) < Self.MAX_AGE }
+    guard rows != books || tickets != removes else { return }
     books = rows
-    file?.write(rows.isEmpty ? nil : rows)
+    removes = tickets
+    file?.write(rows.isEmpty && tickets.isEmpty ? nil : HeldFile(books: rows, removes: tickets))
   }
 }

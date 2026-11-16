@@ -334,6 +334,24 @@ class DownloadIndexTest {
     assertNull(idx.record(REF)!!.message)
   }
 
+  // fe#219: a retry is a new ask, as on the Apple Watch, so a remove asked before it leaves it.
+  @Test
+  fun aRetryCountsAsQueuedWhenItWasAskedFor() {
+    val idx = DownloadIndex(null) { "f" }
+    idx.enqueue(REF, "Book", null, T0, sentAt = T0.addingSeconds(-60.0))
+    idx.update(REF) { it.copy(state = WatchStateBook.State.FAILED) }
+    val later = T0.addingSeconds(30.0)
+    // Try again on the watch: its own clock, not the phone's first send.
+    idx.enqueue(REF, "Book", null, later)
+    assertEquals(later, idx.record(REF)!!.queuedAt)
+    val remove = RemoveMessage("srv", 7, REF, sentAt = T0)
+    assertFalse("a remove asked before the retry", PhoneMessages.removeApplies(remove, idx.record(REF)!!.queuedAt))
+    // The phone's book sent again: its time.
+    idx.update(REF) { it.copy(state = WatchStateBook.State.FAILED) }
+    idx.enqueue(REF, "Book", null, T0.addingSeconds(90.0), sentAt = T0.addingSeconds(45.0))
+    assertEquals(T0.addingSeconds(45.0), idx.record(REF)!!.queuedAt)
+  }
+
   @Test
   fun survivesAKillAndForgetsTheFileWhenEmpty() {
     val file = File(dir, "downloads.json")

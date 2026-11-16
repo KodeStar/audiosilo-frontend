@@ -363,6 +363,15 @@ final class AccountRulesTests: XCTestCase {
     XCTAssertEqual(AccountRules.signOut(unsent: 2, discard: true), .allowed)
     XCTAssertEqual(AccountRules.signOut(unsent: 0, discard: false), .allowed)
   }
+
+  // D6 (fe#219): a pair for the account signed in keeps the token only on the server's word that it
+  // signs in as the pair's user.
+  func testASameAccountPairKeepsTheTokenOnlyWhenTheServerNamesItsUser() {
+    XCTAssertTrue(AccountRules.keepsToken(meUserId: 7, userId: 7))
+    XCTAssertFalse(AccountRules.keepsToken(meUserId: 8, userId: 7), "the token signs in as someone else")
+    // A 401, any other refusal, a body with no id, no answer at all: the exchange decides.
+    XCTAssertFalse(AccountRules.keepsToken(meUserId: nil, userId: 7))
+  }
 }
 
 @MainActor

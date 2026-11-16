@@ -2769,13 +2769,22 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   the listener taps Discard (a confirmation); Sync now is offered beside it. A blocked replace
   stays on Home (or the too-old screen) with the live count and becomes a plain Switch once nothing
   waits; nothing plays while the switch signs in, and an expired or failed switch says why there.
-  A replace ends the old token on its server, as Sign out does (a sign-in again for the same
-  account keeps it, as the phone does); a sign-in with no token kept but another account's files
+  A replace ends the old token on its server, as Sign out does. A `pair` for the account signed in
+  (Send again) first asks `GET /me` with the token kept: it stays only when the server answers
+  with the pair's own user (`AccountRules.keepsToken`), so a Send again no longer leaves another
+  session on the server each time (D6, fe#219). A 401, any other refusal or no answer at all
+  exchanges the pair's token as a first sign-in does (with no answer the watch may only be at an
+  address it can't reach, and the exchange tries the pair's `base_url`, away and home). Kept, the
+  pair's label, user name and addresses are taken (`keepSignIn`) and its token runs out unused;
+  the server gate is asked again unless it stands, so a server that was too old can take the book
+  behind the pair.
+  Wear OS does the same. A sign-in with no token kept but another account's files
   left behind forgets them first, so they are never sent under the new token. The phone's messages
   are handled one at a time, in order, so a `book` after its `pair` waits for that sign-in. A book
   that can't be taken yet (signing in, a failed sign-in, a too-old server, another account) is held
   on disk the moment it arrives, ahead of any sign-in still running (`Core/HeldBooks.swift`,
-  `held-books.json`: 20 books, 7 days) and queued through the Download button's path once its account
+  `held-books.json`: 20 books, 7 days; the file also holds the `remove`s not handled yet, and a
+  pre-2.7.0 file, the books alone as an array, still reads) and queued through the Download button's path once its account
   is ready and its server has said it serves the watch; its row goes only once a record not failed is
   safely in the download index. One that ages out, goes over the cap or whose account the
   listener refused (Keep this account) is given up on and kept 7 more days. `watch-state` has no
@@ -2839,7 +2848,12 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     again; a book sent while a pair has over a minute left follows it rather than minting another.
     `pairUntil` holds only that last pair: one for another account replaces it, as it does on the
     native side, and the watch saying it signed in ends it (its token is used, so nothing may
-    follow it later). Two sends at once for a connection share one pair (`setUpWatch`).
+    follow it later). A password change forgets it (`forgetPair`: the server ends the account's
+    open pairing tokens with its other sessions), and so does removing its connection. While
+    another account's pair has time left, a book is refused with "Your watch is being set up for
+    {user} on {server}" (`bookPairStep` `busy`, `WatchBusyError`, D5; one still being minted, in
+    `inFlight` and not yet in `pairUntil`, counts too): the watch would sign in to that account first
+    and only hold the book. Two sends at once for a connection share one pair (`setUpWatch`).
   - **Who sees what** (`watch-model.ts`): the card for a paired watch and an account that can use
     one (not a kid's, 403 `kid_account`; not a demo's), with Install in place of its button until
     the app is on the watch; the book action `'watch'` needs the app installed and `watch` in the
@@ -2860,8 +2874,13 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     over the ledger and is shown only for the account it names (it has no account per book). The
     snapshot's `outstanding` holds the undelivered `book`s and `remove`s, never a `pair` (it holds a
     token), which tells "not delivered yet" from "delivered, open AudioSilo on your watch"; one the
-    system reports failed stays listed (`failed`) for the run, or it would read as delivered. A row
-    is written when Send is tapped (`handed_over: false`, so a kill mid-send can't read as
+    system reports failed stays listed (`failed`) for the run, and the ledger row keeps it
+    (`send_failed`, `remove_failed`, cleared by the next send or Remove), or after a restart it would
+    read as delivered. A transfer the link cancelled itself (a `pair` replaced, a `book` or `remove`
+    moved behind a new `pair`) is remembered (a weak hash table) and its error report is no failure.
+    Sends and Removes read the ledger before they write a row (`hydrateLedger`): an early write
+    replaces the whole watch's entry. Another watch's rows go once every one is over 90 days old.
+    A row is written when Send is tapped (`handed_over: false`, so a kill mid-send can't read as
     delivered), put back if the send fails, and stops claiming progress after 7 days (`WATCH_HOLD_MS`,
     the watch's own hold limit) with Send again. Once seen in `watch-state`, a book that leaves it is
     gone, so the row goes (removed by hand on the watch, or the watch left that account). A listed
@@ -2870,15 +2889,34 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     45%" (the watch fetches from the server itself; the phone sends no bytes, so never "sending"),
     and what it waits for on a second line. A Wear OS watch, and an Apple Watch before 2.7.0, tells
     none of it, so its rows keep the plain phase.
+  - **`asked_at` and `added_at` (fe#219, optional both ways, still `v: 1`).** A `book` carries the
+    time Send was tapped (the row's `sent_at`) and a `remove` the time Remove was, a Remove asked
+    again the first one's (`removeAskedAt`, the row's `remove_asked_at`). The Apple Watch keeps a
+    book's as its record's `addedAt` (a book sent for a copy already there moves it on,
+    `DownloadManager.noteAsked`; the Download button and Try again stamp the watch's clock), and a
+    `remove` takes only a copy added no later than it was asked (`RemoveMessage.covers`, the held
+    row too), so asking again never takes a copy that came back since. Wear OS orders by `asked_at`
+    in place of `sent_at` where present (`removeApplies`; Try again counts as queued then,
+    `DownloadIndex.enqueue`), and sends no `added_at`: the phone can't learn there that a copy came
+    back, so a Remove asked again over a listed copy with no `added_at` carries the time of that
+    tap, never the first one's (which would not take a copy queued since, with the row left saying
+    "removing"). `watch-state`
+    books carry `added_at`: a Remove whose book was added after it is over, and a listed copy from
+    before the row's last Send (by over a second: the round trip can lose a millisecond; never on a
+    row the watch has listed since that Send, which took its copy as the one sent), or with a
+    `remove` still on its way, shows where that Send stands, not "On your watch" (a book sent again
+    while it was being removed).
   - **`remove` (phone to watch, `transferUserInfo`, no server or wire change).** The row says
     removing until `watch-state` drops it, surviving a restart, and never claims it finished while
     the message is outstanding. There is no reply: a `remove` delivered while the watch says it is
     signed out or on another account reads as refused (`remove_refused`, the row explains and can be
     dismissed), and this heals itself if that was only a sign-in still running. Delivered, the row
-    offers Remove again through the same confirm (`rowActions`): the watch keeps a `remove` not yet
-    handled only in memory, so a kill loses it. The repeat is the same message and restarts the row's
-    hold limit; it does nothing to a book already gone, but has no way to tell a copy that came back
-    on the watch since, and stops and removes that one. A book's sends and
+    offers Remove again through the same confirm (`rowActions`): a watch before 2.7.0 kept a `remove`
+    not yet handled only in memory, so a kill lost it. The repeat is the same message, with the first
+    one's `asked_at`, and restarts the row's hold limit; it does nothing to a book already gone, and
+    leaves a copy that came back on the watch since. The watch keeps a `remove` on disk from its
+    arrival until its turn (`held-books.json`), and those a kill left are finished at launch once an
+    account is signed in (`takeLeftoverRemoves`). A book's sends and
     Removes go one at a time, in the order asked (`send.ts`, `inTurn`), or a Remove tapped while a
     send waits for its pair would overtake that `book`. `sendPair` moves what is still queued when it
     settles (never a snapshot from before its reply: that would send a delivered one twice, and put
@@ -2899,7 +2937,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     foreground, so the download itself waits for the app.
 - **DEBUG launch variables (simulator only, compiled out of release).** The watch simulator has
   no phone and simctl cannot tap, so in DEBUG builds the launch environment stands in:
-  `AUDIOSILO_DEBUG_PAIR` (a v1 `pair` message as JSON: sign in), `AUDIOSILO_DEBUG_BOOK` (a v1
+  `AUDIOSILO_DEBUG_PAIR` (a v1 `pair` message as JSON: sign in; for the account signed in, a Send
+  again, which keeps the token while `GET /me` takes it), `AUDIOSILO_DEBUG_BOOK` (a v1
   `book` message: queue a download), `AUDIOSILO_DEBUG_REMOVE` (a v1 `remove` message: as if the
   phone sent it) and `AUDIOSILO_DEBUG_PLAY=1` (play the first book on the watch). A verifier against a scratch server (plain HTTP, reachable from the Mac):
   ```sh
@@ -3003,7 +3042,8 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   `{v:1, type:"taken", path, sent_at}` (the item's `sent_at` echoed as text) and the phone
   deletes its own item on a match; the watch reads all its `/to/` items at each start, skips one
   its receipt names, ignores DELETED there, and drops a receipt once its item is gone. A
-  `remove` older than the download it would remove is ignored. `watch-state` at
+  `remove` older than the download it would remove is ignored (by `asked_at` where the phone sent
+  one, else `sent_at`). `watch-state` at
   `/audiosilo/v1/watch-state`. No `state-please`. The app advertises `audiosilo_wear_app`
   (`res/values/wear.xml`), which only Play services reads, by name: `res/raw/audiosilo_wear_keep.xml`
   keeps it through release resource shrinking (a `tools:keep` on a values file's root is dropped at

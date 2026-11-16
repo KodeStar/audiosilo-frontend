@@ -1,6 +1,9 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { ApiError } from '@/api/client';
 import type { PairingPayload } from '@/api/types';
-import type { Connection } from '@/stores/session';
+import { WATCH_LEDGER_KEY } from '@/lib/storage-keys';
+import { type Connection, useSession } from '@/stores/session';
 
 const mockRead = jest.fn();
 const mockSendPair = jest.fn();
@@ -19,10 +22,16 @@ jest.mock('./link', () => ({
 jest.mock('@/lib/device', () => ({ getDeviceName: () => 'iPhone' }));
 
 /* eslint-disable import/first */
-import { removeFromWatch, sendBookToWatch, setUpWatch, WatchSendError } from './send';
+import {
+  removeFromWatch,
+  sendBookToWatch,
+  setUpWatch,
+  WatchBusyError,
+  WatchSendError,
+} from './send';
 import { ledgerRows, useWatchLedger } from './watch-ledger';
 import { NO_WATCH } from './watch-model';
-import { refreshWatch, useWatchStore } from './watch-store';
+import { forgetPair, refreshWatch, useWatchStore } from './watch-store';
 /* eslint-enable import/first */
 
 const connection = {
@@ -190,13 +199,65 @@ describe('sendBookToWatch', () => {
     expect(mockSendBook).toHaveBeenCalledTimes(1);
   });
 
-  it('mints again after a pair for another account took the place of this one', async () => {
+  describe("another account's pair on its way (D5)", () => {
     const other = { ...connection, id: 'srv.8', user: { id: 8, username: 'bo' } } as Connection;
+
+    beforeEach(() => useSession.setState({ connections: [connection, other] }));
+    afterEach(() => useSession.setState({ connections: [] }));
+
+    it('refuses the book, naming the account the watch is being set up for', async () => {
+      await setUpWatch(api, other);
+      const sending = sendBookToWatch(api, connection, 3, book);
+      await expect(sending).rejects.toBeInstanceOf(WatchBusyError);
+      await expect(sending).rejects.toMatchObject({ user: 'bo', server: 'Hearthside' });
+      expect(mockSendBook).not.toHaveBeenCalled();
+      expect(api.pair).toHaveBeenCalledTimes(1);
+      expect(Object.keys(useWatchStore.getState().pairUntil)).toEqual(['srv.8']);
+    });
+
+    it('refuses it even with the watch signed in here: that pair gets there first', async () => {
+      mockRead.mockResolvedValue(signedInStatus(7));
+      await setUpWatch(api, other);
+      await expect(sendBookToWatch(api, connection, 3, book)).rejects.toBeInstanceOf(
+        WatchBusyError,
+      );
+    });
+
+    it('refuses it while that pair is still being minted, before the link has it', async () => {
+      let answer = (_p: PairingPayload) => {};
+      api.pair.mockReturnValueOnce(new Promise<PairingPayload>((r) => (answer = r)));
+      const pairing = setUpWatch(api, other);
+      await expect(sendBookToWatch(api, connection, 3, book)).rejects.toMatchObject({
+        user: 'bo',
+      });
+      expect(api.pair).toHaveBeenCalledTimes(1);
+      answer(payload);
+      await pairing;
+      expect(Object.keys(useWatchStore.getState().pairUntil)).toEqual(['srv.8']);
+    });
+
+    it('mints for this account once that pair has run out, in its place', async () => {
+      await setUpWatch(api, other);
+      jest.setSystemTime(NOW + 601_000);
+      await sendBookToWatch(api, connection, 3, book);
+      expect(api.pair).toHaveBeenCalledTimes(2);
+      expect(Object.keys(useWatchStore.getState().pairUntil)).toEqual(['srv.7']);
+    });
+
+    it('takes no notice of a pair whose connection has gone', async () => {
+      await setUpWatch(api, other);
+      forgetPair('srv.8');
+      await sendBookToWatch(api, connection, 3, book);
+      expect(mockSendBook).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('mints again once the pair on its way was forgotten (a password change ended it)', async () => {
     await sendBookToWatch(api, connection, 3, book);
-    await sendBookToWatch(api, other, 3, book);
-    expect(Object.keys(useWatchStore.getState().pairUntil)).toEqual(['srv.8']);
+    forgetPair('srv.7');
+    expect(useWatchStore.getState().pairUntil).toEqual({});
     await sendBookToWatch(api, connection, 3, book);
-    expect(api.pair).toHaveBeenCalledTimes(3);
+    expect(api.pair).toHaveBeenCalledTimes(2);
   });
 
   it('mints again once the watch signed in with the pair and has since left the account', async () => {
@@ -253,8 +314,9 @@ describe('the ledger', () => {
     let release = () => {};
     mockSendBook.mockReturnValue(new Promise<void>((r) => (release = r)));
     const sending = sendBookToWatch(api, connection, 3, book);
+    // Once the ledger has been read (at once after the first time).
+    await jest.advanceTimersByTimeAsync(0);
     expect(rows()).toMatchObject([{ library_id: 3, path: 'A/B', title: 'B', handed_over: false }]);
-    await Promise.resolve();
     release();
     await sending;
     expect(rows()).toMatchObject([{ path: 'A/B', handed_over: true, sent_at: NOW }]);
@@ -301,9 +363,65 @@ describe('the ledger', () => {
       user_id: 7,
       library_id: 3,
       path: 'A/B',
+      asked_at: new Date(NOW).toISOString(),
       sent_at: new Date(NOW).toISOString(),
     });
     expect(rows()).toMatchObject([{ path: 'A/B', remove_at: NOW }]);
+  });
+
+  it('asks for the book at the moment Send was tapped, the row and the message alike', async () => {
+    let release = () => {};
+    mockSendPair.mockReturnValue(new Promise<void>((r) => (release = r)));
+    mockRead.mockResolvedValue({ ...here, state: { ...here.state, user_id: 8 } });
+    const sending = sendBookToWatch(api, connection, 3, book);
+    await jest.advanceTimersByTimeAsync(0);
+    // The pair takes its time; the book goes after it.
+    jest.setSystemTime(NOW + 4_000);
+    release();
+    await sending;
+    expect(mockSendBook.mock.calls[0][0]).toMatchObject({
+      asked_at: new Date(NOW).toISOString(),
+      sent_at: new Date(NOW + 4_000).toISOString(),
+    });
+    expect(rows()[0].sent_at).toBe(NOW);
+  });
+
+  it('takes the row back when the watch is being set up for another account', async () => {
+    const other = { ...connection, id: 'srv.8', user: { id: 8, username: 'bo' } } as Connection;
+    useWatchStore.setState({ pairUntil: { [other.id]: NOW + 300_000 } });
+    await expect(sendBookToWatch(api, connection, 3, book)).rejects.toBeInstanceOf(WatchBusyError);
+    expect(rows()).toEqual([]);
+  });
+
+  it('reads what is kept before it writes a row, on a cold start (fe#219)', async () => {
+    const kept = { library_id: 1, path: 'Kept', title: 'Kept', sent_at: 1, handed_over: true };
+    await AsyncStorage.setItem(WATCH_LEDGER_KEY, JSON.stringify({ [W]: { 'srv.7': [kept] } }));
+    try {
+      let fresh!: { send: typeof import('./send'); ledger: typeof import('./watch-ledger') };
+      jest.isolateModules(() => {
+        fresh = {
+          send: jest.requireActual('./send'),
+          ledger: jest.requireActual('./watch-ledger'),
+        };
+        jest.requireActual<typeof import('./watch-store')>('./watch-store').useWatchStore.setState({
+          status: here,
+          pairUntil: {},
+        });
+      });
+      await fresh.send.sendBookToWatch(api, connection, 3, book);
+      const paths = (doc: Record<string, Record<string, { path: string }[]>>) =>
+        doc[W]['srv.7'].map((r) => r.path);
+      expect(paths(fresh.ledger.useWatchLedger.getState().ledger)).toEqual(['Kept', 'A/B']);
+      // What a write kept: both, never the one row written before the read.
+      await jest.advanceTimersByTimeAsync(0);
+      expect(paths(JSON.parse((await AsyncStorage.getItem(WATCH_LEDGER_KEY)) ?? '{}'))).toEqual([
+        'Kept',
+        'A/B',
+      ]);
+    } finally {
+      // Never left for the tests after this one, passed or not.
+      await AsyncStorage.clear();
+    }
   });
 
   it('notes nothing when the link refuses a remove', async () => {
@@ -318,15 +436,12 @@ describe('the ledger', () => {
 
   describe('asked again, with the watch still listing the book', () => {
     const target = { library_id: 3, path: 'A/B', title: 'B' };
+    const copy = { library_id: 3, path: 'A/B', title: 'B', state: 'ready', bytes: 5 };
+    const listing = (books: object[]) => ({ ...here, state: { ...here.state, books } });
 
     beforeEach(async () => {
-      mockRead.mockResolvedValue({
-        ...here,
-        state: {
-          ...here.state,
-          books: [{ library_id: 3, path: 'A/B', title: 'B', state: 'ready', bytes: 5 }],
-        },
-      });
+      // An Apple Watch from 2.7.0 says when the copy was added: at this Send.
+      mockRead.mockResolvedValue(listing([{ ...copy, added_at: NOW }]));
       await sendBookToWatch(api, connection, 3, book);
       await removeFromWatch(connection, target);
     });
@@ -338,10 +453,27 @@ describe('the ledger', () => {
       await removeFromWatch(connection, target);
       expect(mockSendRemove).toHaveBeenCalledTimes(2);
       // The same message, sent anew: on Wear OS a new `sent_at` is a new Data Layer item.
+      // It keeps the first one's `asked_at`, so a copy added on the watch since stays (fe#219).
       expect(mockSendRemove.mock.calls[1]).toEqual([
         { ...mockSendRemove.mock.calls[0][0], sent_at: new Date(NOW + 60_000).toISOString() },
       ]);
-      expect(rows()).toEqual([{ ...first, remove_at: NOW + 60_000 }]);
+      expect(mockSendRemove.mock.calls[1][0].asked_at).toBe(new Date(NOW).toISOString());
+      expect(rows()).toEqual([{ ...first, remove_at: NOW + 60_000, remove_asked_at: NOW }]);
+    });
+
+    it('is a new Remove over a copy that does not say when it was added (Wear OS)', async () => {
+      // A copy back on the watch since the first Remove reads the same as the one it was for, so
+      // the first one's `asked_at` would never take it and the row would say "removing" for good.
+      mockRead.mockResolvedValue(listing([copy]));
+      await refreshWatch();
+      jest.setSystemTime(NOW + 60_000);
+      await removeFromWatch(connection, target);
+      expect(mockSendRemove.mock.calls[1][0]).toMatchObject({
+        asked_at: new Date(NOW + 60_000).toISOString(),
+        sent_at: new Date(NOW + 60_000).toISOString(),
+      });
+      expect(rows()).toMatchObject([{ path: 'A/B', remove_at: NOW + 60_000 }]);
+      expect(rows()[0].remove_asked_at).toBeUndefined();
     });
 
     it('leaves the row as it was when the link refuses', async () => {

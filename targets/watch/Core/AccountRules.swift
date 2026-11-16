@@ -28,6 +28,16 @@ enum AccountRules {
     return .replace
   }
 
+  /// A `pair` for the account signed in here (`.sameAccount`, D6, fe#219): whether the token kept
+  /// here stays. Exchanged every time, each Send again left another session on the server that
+  /// nothing ever ended. It stays only on the server's own word that it signs in as the pair's
+  /// user: `meUserId` is the id a 2xx `GET /me` with it answered, nil for anything else (a 401,
+  /// any other refusal, a body with no id, no answer). With no answer the watch may only be at an
+  /// address it can't reach from here, and the exchange tries the pair's own.
+  static func keepsToken(meUserId: Int?, userId: Int) -> Bool {
+    meUserId == userId
+  }
+
   /// Whether signing out may go ahead now.
   static func signOut(unsent: Int, discard: Bool) -> SignOutGate {
     unsent > 0 && !discard ? .blocked(unsent: unsent) : .allowed

@@ -11,7 +11,7 @@ import { openDownloads } from '@/lib/open';
 import { useSession } from '@/stores/session';
 
 import { watchLink } from './link';
-import { sendBookToWatch, WatchSendError } from './send';
+import { sendBookToWatch, WatchBusyError, WatchSendError } from './send';
 import {
   sendToWatchVisible,
   type WatchableBook,
@@ -26,8 +26,12 @@ export function useWatchStatus(): WatchStatus {
   return useWatchStore((s) => s.status);
 }
 
-/** What a failed send says: the watch's fault, or the server's when the token was the problem. */
+/** What a failed send says: the watch's fault, the watch busy with another account's sign-in, or
+ * the server's when the token was the problem. */
 export function watchErrorText(e: unknown, server: string, t: TFunction): string {
+  if (e instanceof WatchBusyError) {
+    return t('account.watch.settingUpFor', { user: e.user, server: e.server });
+  }
   return e instanceof WatchSendError ? t('account.watch.sendFailed') : pairingError(e, server, t);
 }
 

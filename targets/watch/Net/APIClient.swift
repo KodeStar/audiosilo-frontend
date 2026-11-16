@@ -87,6 +87,14 @@ final class APIClient: ListeningSyncTransport, @unchecked Sendable {
     return try await send(request("POST", "/auth/exchange", body: json(Body(pairingToken: pairingToken, deviceName: deviceName))))
   }
 
+  /// `GET /me`: the id of the user this token signs in as (an `APIError` 401 once it no longer
+  /// does; a body with no id throws too).
+  func me() async throws -> Int {
+    struct Me: Decodable { var id: Int }
+    let me: Me = try await send(request("GET", "/me"))
+    return me.id
+  }
+
   /// `GET /addresses`: the server's addresses as seen from here (capability `addresses`).
   func addresses() async throws -> ServerAddresses {
     try await send(request("GET", "/addresses"))

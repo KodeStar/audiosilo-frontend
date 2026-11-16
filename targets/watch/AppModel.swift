@@ -221,15 +221,20 @@ final class AppModel: ObservableObject {
   private func refreshAddresses(of a: Account) async {
     guard server?.capabilities?.addresses == true, let api = client(), let fresh = try? await api.addresses(),
       // Signed out or switched while it was asked: the answer is no longer this account's.
-      var now = account, now.accountId == a.accountId
+      let now = account, now.accountId == a.accountId
     else { return }
-    let merged = AddressPicker.merge(prior: now.addresses, fresh: fresh)
-    guard merged != now.addresses else { return }
-    now.addresses = merged
-    Account.save(now)
-    account = now
-    // Not in the background: leaving home dropped the home pick, and no probe runs there.
-    if inForeground { await router.repick(now) }
+    var next = now
+    next.addresses = AddressPicker.merge(prior: now.addresses, fresh: fresh)
+    await keep(next, over: now)
+  }
+
+  /// Keep `next` as the signed-in account, saved only on a change. New addresses are picked among
+  /// at once, but not in the background: leaving home dropped the home pick, and no probe runs there.
+  private func keep(_ next: Account, over old: Account) async {
+    guard next != old else { return }
+    Account.save(next)
+    account = next
+    if inForeground, next.addresses != old.addresses { await router.repick(next) }
   }
 
   // MARK: - Sync
@@ -420,7 +425,8 @@ final class AppModel: ObservableObject {
       // Queued now if its account is ready, else it waits for that.
       serially { self.releaseHeld() }
     case .remove(let r):
-      let ticket = held.noteRemove(r)
+      // On disk now, like a book: a kill before its turn must not lose it.
+      let ticket = held.noteRemove(r, now: Date())
       serially { self.remove(ticket) }
     }
   }
@@ -445,24 +451,39 @@ final class AppModel: ObservableObject {
   }
 
   /// A `remove`'s turn: the same path as removing by hand, so the playing book stops and its span
-  /// closes first (`downloads.willRemove`). Refused for any account but this one (`finishRemove`).
+  /// closes first (`downloads.willRemove`). Refused for any account but this one (`finishRemove`),
+  /// and a copy added after the listener asked (by the watch's own Download button, or sent again)
+  /// stays (`covers`).
   private func remove(_ ticket: RemoveTicket) {
     held.finishRemove(ticket, accountId: account?.accountId, now: Date()) {
-      downloads.remove(ticket.message.ref)
+      let ref = ticket.message.ref
+      if let r = downloads.record(ref), ticket.message.covers(addedAt: r.addedAt) { downloads.remove(ref) }
     }
     publishState()
+  }
+
+  /// The `remove`s a kill left on disk, once an account is there to finish them (before the first
+  /// unlock none is read yet, and refused they would be lost). Now, not through the inbox: they
+  /// arrived before anything this run, so a `pair` queued since must not switch the account under
+  /// them, and a book sent again behind one must find its old copy gone when `releaseHeld` queues
+  /// it (left behind them, `enqueue` would take that copy for the book and leave it alone).
+  private func finishLeftoverRemoves() {
+    guard account != nil else { return }
+    for ticket in held.takeLeftoverRemoves() { remove(ticket) }
   }
 
   /// Queue what waits for the account, if it is ready, and age the rest. Through the Download
   /// button's path; `publishState` then settles what is on the watch out of the list. Ready needs
   /// the server's own word: a sign-in sets `.ready` before `checkServer` has asked, and a server
   /// too old for the watch would turn a held book into a failed download ("no longer on the
-  /// server", its 404). `checkServer` releases them once it has answered.
+  /// server", its 404). `checkServer` releases them once it has answered. The `remove`s a kill left
+  /// are finished first (`finishLeftoverRemoves`).
   private func releaseHeld() {
+    finishLeftoverRemoves()
     guard !held.books.isEmpty else { return }
     let ready = phase == .ready && server?.supportsWatch == true
     for b in held.due(accountId: account?.accountId, ready: ready, now: Date()) {
-      downloads.enqueue(b.ref, title: b.title, author: b.author)
+      downloads.enqueue(b.ref, title: b.title, author: b.author, askedAt: b.askedAt)
     }
     publishState()
   }
@@ -495,6 +516,17 @@ final class AppModel: ObservableObject {
     }
     pendingPair = nil
     pendingReplace = change == .replace ? .switching : nil
+    if change == .sameAccount, let current = account, let api = client() {
+      // Anything but its answer (a refusal, an unreadable body, no answer) is no word on the token.
+      let meUserId = try? await api.me()
+      // Signed out or switched while it was asked: this pair is not for the watch as it is now.
+      // The account as it is now, not as it was: an address refresh may have landed meanwhile.
+      guard let now = account, now.accountId == current.accountId else { return }
+      if AccountRules.keepsToken(meUserId: meUserId, userId: p.userId) {
+        await keepSignIn(now, p)
+        return
+      }
+    }
     if account == nil { phase = .setup(.signingIn) }
     /// Why it failed: on the setup screen, or on Home when it was replacing another account
     /// (a same-account refresh fails quietly: its sign-in stands).
@@ -518,7 +550,8 @@ final class AppModel: ObservableObject {
         isTimeout: APIClient.isTimeout, probe: APIClient.probeServerId)
       if change == .replace {
         // Its token ends on its server too (as Sign out does): this watch forgets it now. A sign-in
-        // again for the same account keeps its old token, as the phone does.
+        // again for the same account exchanges only without the server's word for its token (D6,
+        // above).
         let leaving = client()
         forgetAccount()
         if let leaving { Task { try? await leaving.logout() } }
@@ -562,6 +595,21 @@ final class AppModel: ObservableObject {
     } catch {
       failed("Can't reach your server. Send again from your iPhone when the watch is online.")
     }
+  }
+
+  /// A `pair` for this account while its token still signs in as that user (D6): no exchange, so no
+  /// new session on the server, and the phone's pairing token runs out unused. What the phone now
+  /// says of the account (its label, the user's name, the addresses) is taken, as a sign-in would.
+  private func keepSignIn(_ current: Account, _ p: PairMessage) async {
+    let a = Account(
+      serverId: current.serverId, serverName: p.serverName, userId: current.userId,
+      userName: p.userName.isEmpty ? current.userName : p.userName, serverURL: p.serverURL,
+      addresses: AddressPicker.merge(prior: current.addresses, fresh: p.addresses), signedInAt: current.signedInAt)
+    await keep(a, over: current)
+    // The gate is asked again, as a sign-in asks it, unless it stands: a server that was too old
+    // may serve the watch now, and a book behind this pair waits for that word (`releaseHeld`).
+    if phase != .ready || server?.supportsWatch != true { await checkServer() }
+    publishState()
   }
 
   /// Switch to the account the blocked pair message is for: `discard` drops the listening that
@@ -625,8 +673,8 @@ final class AppModel: ObservableObject {
     /// The simulator has no paired phone, and simctl cannot tap, so the launch environment
     /// stands in (`SIMCTL_CHILD_<NAME>=... xcrun simctl launch ...`; not in release builds):
     /// - `AUDIOSILO_DEBUG_PAIR`: a v1 `pair` message as JSON, signed in as if the phone had sent
-    ///   it (ignored when already signed in to that account). `scripts/watch-debug-pair.mjs`
-    ///   mints one.
+    ///   it; for the account already signed in it is a Send again (D6: the token kept stays while
+    ///   `GET /me` takes it). `scripts/watch-debug-pair.mjs` mints one.
     /// - `AUDIOSILO_DEBUG_BOOK`: a v1 `book` message as JSON, queued like the Download button.
     /// - `AUDIOSILO_DEBUG_REMOVE`: a v1 `remove` message as JSON, taken as if the phone had sent it.
     /// - `AUDIOSILO_DEBUG_PLAY=1`: play the first book on the watch once signed in.
@@ -638,7 +686,7 @@ final class AppModel: ObservableObject {
           phase = .setup(.failed("AUDIOSILO_DEBUG_PAIR is not a v1 pair message."))
           return
         }
-        if account?.accountId != p.accountId { pair = p }
+        pair = p
       }
       Task {
         if let pair { await signIn(pair) }
@@ -664,7 +712,10 @@ final class AppModel: ObservableObject {
     // A row goes only for a record a kill can't lose (a full disk keeps it in memory alone), and
     // not for a failed one: sent again, that book still wants the retry `enqueue` gives it.
     let onWatch = downloads.indexSaved ? downloads.records.filter { $0.state != .failed }.map(\.ref) : []
-    held.settle(accountId: who, onWatch: onWatch, now: Date())
+    // A book sent again for a copy already here: that copy is the one asked for now.
+    for b in held.settle(accountId: who, onWatch: onWatch, now: Date()) {
+      if let at = b.askedAt { downloads.noteAsked(b.ref, at: at) }
+    }
     if heldBooks != held.books { heldBooks = held.books }
     let rows = held.stateRows(accountId: who)
     // One entry per book: a row kept beside its record speaks for it until it settles.

@@ -195,15 +195,21 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
   fun record(ref: BookRef): DownloadRecord? = flow.value.firstOrNull { it.ref == ref }
 
   /**
-   * Queue a book (the Download button, the phone's `book`). A failed one is tried again; one already
-   * here or on its way is left alone. True when there is work to start.
+   * Queue a book (the Download button, the phone's `book`). A failed one is tried again, as queued
+   * now (fe#219, the Apple Watch's `enqueue` too): Try again is a new ask, so a `remove` asked before
+   * it leaves it (`removeApplies`). One already here or on its way is left alone. True when there is
+   * work to start.
    */
   fun enqueue(ref: BookRef, title: String, author: String?, now: Instant, sentAt: Instant? = null): Boolean =
     synchronized(lock) {
       val r = record(ref)
       if (r != null) {
         if (r.state != WatchStateBook.State.FAILED) return false
-        commit(flow.value.map { if (it.ref == ref) it.copy(state = WatchStateBook.State.QUEUED, message = null, sentAt = sentAt ?: it.sentAt) else it })
+        commit(
+          flow.value.map {
+            if (it.ref == ref) it.copy(state = WatchStateBook.State.QUEUED, message = null, addedAt = now, sentAt = sentAt) else it
+          },
+        )
       } else {
         val rec =
           DownloadRecord(
