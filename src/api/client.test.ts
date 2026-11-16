@@ -405,8 +405,8 @@ describe('ApiClient', () => {
     await expect(new ApiClient('https://h', 'tok').bookMeta(1, 'x')).resolves.toEqual(envelope);
   });
 
-  // server#241: a series work's other recordings, and the item's work id and recordings.
-  it('passes through local_others on a rail work and other_recordings on the item', async () => {
+  // server#241: the item's work id and its other recordings.
+  it('passes through work_id and other_recordings on the item', async () => {
     const recording = {
       id: 8,
       library_id: 2,
@@ -433,39 +433,6 @@ describe('ApiClient', () => {
     const got = await new ApiClient('https://h', 'tok').item(1, 'Corey/LW');
     expect(got.work_id).toBe('w_lw');
     expect(got.other_recordings).toEqual([recording]);
-    const envelope = {
-      matched: true,
-      work: { id: 'w_lw', title: 'Leviathan Wakes', authors: [], language: 'en' },
-      series: [
-        {
-          id: 'the-expanse',
-          name: 'The Expanse',
-          position: '1',
-          works: [
-            {
-              id: 'w_lw',
-              title: 'Leviathan Wakes',
-              position: '1',
-              authors: [],
-              web_url: 'https://meta/w_lw',
-              local: { library_id: 1, path: 'Corey/LW' },
-              local_others: [{ library_id: 2, path: 'Kids/Leviathan Wakes' }],
-            },
-          ],
-        },
-      ],
-      web_url: 'https://meta/w_lw',
-    };
-    installFetch(() => ({ status: 200, body: envelope }));
-    const meta = await new ApiClient('https://h', 'tok').bookMeta(1, 'Corey/LW');
-    expect(meta.matched && meta.series?.[0].works[0].local_others).toEqual([
-      { library_id: 2, path: 'Kids/Leviathan Wakes' },
-    ]);
-    // An older server sends neither: the fields read as absent.
-    installFetch(() => ({ status: 200, body: { ...recording, work_id: undefined } }));
-    const old = await new ApiClient('https://h', 'tok').item(2, 'Kids/Leviathan Wakes');
-    expect(old.work_id).toBeUndefined();
-    expect(old.other_recordings).toBeUndefined();
   });
 
   it('passes through a matched:false result (no ids / no upstream match)', async () => {

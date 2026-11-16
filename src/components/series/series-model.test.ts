@@ -285,7 +285,7 @@ describe('other recordings of a work (server#241)', () => {
     ]);
     const [first, second] = entries;
     expect(first.copy?.path).toBe(lw.rel_path);
-    expect(first.recordings?.map((r) => [r.copy.path, r.narrator])).toEqual([
+    expect(first.recordings?.map((r) => [r.copy.path, r.copy.book?.narrator])).toEqual([
       [lw.rel_path, 'Jefferson Mays'],
       [lwCast.rel_path, 'A Full Cast'],
       [lwKids.rel_path, 'Someone Else'],

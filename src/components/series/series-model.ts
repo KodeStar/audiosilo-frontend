@@ -10,7 +10,7 @@ import type {
 import { contentKey } from '@/lib/content-key';
 import { foldAccents } from '@/lib/names';
 import { bookTitle } from '@/lib/paths';
-import { isInProgress, savedProgressView } from '@/lib/progress-view';
+import { isInProgress, type SavedProgressView, savedProgressView } from '@/lib/progress-view';
 import { yearOf } from '@/lib/published';
 import { releaseIsFuture } from '@/lib/release-date';
 import {
@@ -84,11 +84,8 @@ type EntryFields = {
   coverVersion?: string;
 };
 
-/** One recording of a work the listener owns, with its own facts and progress. */
-export type SeriesRecording = { copy: SeriesCopy } & Pick<
-  EntryFields,
-  'seconds' | 'narrator' | 'coverVersion' | 'fraction' | 'started' | 'finished' | 'updatedAt'
->;
+/** One recording of a work the listener owns, with the listener's progress in it. */
+export type SeriesRecording = { copy: SeriesCopy } & SavedProgressView;
 
 /** One entry of the series: a book with a copy to play or open (`owned` here,
  * `elsewhere` on another server), or a `ghost` nobody has. An owned work held in more than
@@ -117,10 +114,7 @@ export function looseKey(s: string | undefined): string {
     .replace(/[^\p{L}\p{N}]+/gu, '');
 }
 
-function progressFields(
-  copy: SeriesCopy,
-  progressOf: ProgressLookup,
-): Pick<EntryFields, 'fraction' | 'started' | 'finished' | 'updatedAt'> {
+function progressFields(copy: SeriesCopy, progressOf: ProgressLookup): SavedProgressView {
   return savedProgressView(
     progressOf(copy.connectionId, copy.libraryId, copy.path),
     copy.book?.duration ?? 0,
@@ -244,11 +238,6 @@ function copyEntry(
   return { ...fields, kind, copy, ...copyFields(copy), ...progressFields(copy, progressOf) };
 }
 
-function recordingOf(copy: SeriesCopy, progressOf: ProgressLookup): SeriesRecording {
-  const { seconds, narrator, coverVersion } = copyFields(copy);
-  return { copy, seconds, narrator, coverVersion, ...progressFields(copy, progressOf) };
-}
-
 /**
  * The recording a work's entry shows (server#241): the one the listener is on (started,
  * not finished; the latest played of several), else the latest finished one (the work is
@@ -277,16 +266,18 @@ function workEntry(
   progressOf: ProgressLookup,
   title: (copy: SeriesCopy) => string,
 ): SeriesEntry {
-  if (copies.length === 1) {
-    return copyEntry('owned', { ...fields, title: title(copies[0]) }, copies[0], progressOf);
-  }
-  const recordings = copies.map((c) => recordingOf(c, progressOf));
-  const shown = pickShown(recordings).copy;
+  const recordings: SeriesRecording[] = copies.map((copy) => ({
+    copy,
+    ...progressFields(copy, progressOf),
+  }));
+  const shown = pickShown(recordings);
   return {
-    ...copyEntry('owned', { ...fields, title: title(shown) }, shown, progressOf),
+    ...fields,
+    title: title(shown.copy),
     kind: 'owned',
-    copy: shown,
-    recordings,
+    ...copyFields(shown.copy),
+    ...shown,
+    ...(recordings.length > 1 ? { recordings } : {}),
   };
 }
 
@@ -331,14 +322,15 @@ function elsewhereEntry(
   );
 }
 
-/** An owned book by its own `series_index` (and `series_index_end`); with `group`, every
- * recording of its work (`groupByWork`, the book first), as one entry at the book's place,
- * keyed `r:` (never a rail entry's `w:`, which a rail work it was not placed on keeps). */
-function ownedBookEntry(b: Book, src: Source, group: readonly Book[] = [b]): SeriesEntry {
+/** A `groupByWork` group (one book, or every recording of its work): one entry at its first
+ * book's place, by that book's own `series_index` (and `series_index_end`). A work's is keyed
+ * `r:` (never a rail entry's `w:`, which a rail work it was not placed on keeps). */
+function ownedBookEntry(group: readonly Book[], src: Source): SeriesEntry {
+  const b = group[0];
   return workEntry(
     {
       key:
-        group.length > 1 && b.work_id
+        group.length > 1
           ? `r:${b.work_id}`
           : `b:${contentKey(src.connectionId, b.library_id, b.rel_path)}`,
       position: bookSeriesNumber(b),
@@ -357,7 +349,7 @@ function ownedBookEntry(b: Book, src: Source, group: readonly Book[] = [b]): Ser
  * it covers, once).
  */
 export function localEntries(books: readonly Book[], src: Source): SeriesEntry[] {
-  const out = groupByWork(sortSeriesBooks(books)).map((g) => ownedBookEntry(g[0], src, g));
+  const out = groupByWork(sortSeriesBooks(books)).map((g) => ownedBookEntry(g, src));
   let filled: SeriesSpan | undefined;
   for (const n of localGaps(books.map(bookSeriesSpan))) {
     if (filled && spanCovers(filled, n)) continue;
@@ -462,12 +454,13 @@ export function railEntries(
     } else {
       const title = looseKey(w.title);
       const b =
-        books.find((x) => !used.has(bookKey(x)) && x.work_id === w.id) ??
+        sorted.find((x) => x.work_id === w.id && !used.has(bookKey(x))) ??
         books.find((x) => !used.has(bookKey(x)) && looseKey(x.title) === title);
       if (b) take(bookCopy(b, src.connectionId, src.connectionName));
     }
-    // Its other recordings: the server's, then any of the series' own books of the work.
+    const base = { key: `w:${w.id}`, position, workId: w.id, webUrl: w.web_url };
     if (copies.length > 0) {
+      // Its other recordings: the server's, then any of the series' own books of the work.
       for (const r of w.local_others ?? []) {
         if (!used.has(keyOf(r.library_id, r.path))) take(refCopy(r));
       }
@@ -476,9 +469,6 @@ export function railEntries(
           take(bookCopy(b, src.connectionId, src.connectionName));
         }
       }
-    }
-    const base = { key: `w:${w.id}`, position, workId: w.id, webUrl: w.web_url };
-    if (copies.length > 0) {
       out.push(workEntry(base, copies, src.progressOf, (c) => c.book?.title || w.title));
       continue;
     }
@@ -498,7 +488,7 @@ export function railEntries(
   }
   for (const group of groupByWork(sorted.filter((b) => !used.has(bookKey(b))))) {
     const b = group[0];
-    const entry = ownedBookEntry(b, src, group);
+    const entry = ownedBookEntry(group, src);
     if (b.series_index > 0) insertByPosition(out, entry, b.series_index, -Infinity);
     else out.push(entry);
   }

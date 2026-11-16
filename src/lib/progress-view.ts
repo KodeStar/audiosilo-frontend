@@ -1,3 +1,5 @@
+import type { Progress } from '@/api/types';
+
 /**
  * Progress-bar fraction + remaining seconds for a book from its current position
  * and total duration (both in seconds). Guards an unknown/zero duration (fraction
@@ -33,13 +35,22 @@ export function percentHeard(position: number, total: number, finished: boolean)
   return total > 0 ? percentOf(position / total) : 0;
 }
 
+/** A saved place as a row reads it (`savedProgressView`). */
+export type SavedProgressView = {
+  /** 0..1 listened (1 once finished). */
+  fraction: number;
+  started: boolean;
+  finished: boolean;
+  updatedAt?: string;
+};
+
 /** A saved place as a row reads it: how far through (1 once finished; the row's own
  * `duration`, else `fallbackDuration`, the book's), whether it is started and finished, and
  * when it was saved. Nothing saved is not started. */
 export function savedProgressView(
-  p: { position: number; duration: number; finished: boolean; updated_at: string } | undefined,
+  p: Pick<Progress, 'position' | 'duration' | 'finished' | 'updated_at'> | undefined,
   fallbackDuration: number,
-): { fraction: number; started: boolean; finished: boolean; updatedAt?: string } {
+): SavedProgressView {
   if (!p) return { fraction: 0, started: false, finished: false };
   const total = p.duration > 0 ? p.duration : fallbackDuration;
   const fraction = p.finished ? 1 : progressFractionRemaining(p.position, total).fraction;
