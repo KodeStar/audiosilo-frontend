@@ -3,7 +3,8 @@
 // can arrive up to INTERRUPTION_SLACK after the pause) or headphones that went away (a route change
 // whose old device is gone). So "could not start" waits out the slack, and either of those within
 // it says the pause was the system's: nothing is shown. The engine carries this out
-// (WatchAudioEngine `controlChanged`, `interrupted`, `routeChanged`).
+// (WatchAudioEngine `controlChanged`, `interrupted`, `routeChanged`): its timer is what waits, so
+// the message never depends on the wall clock (set back within the slack, it would never show).
 import Foundation
 
 struct StartRefusal {
@@ -30,9 +31,11 @@ struct StartRefusal {
   /// A new play, a load, a stop or a failure with its own message: an earlier refusal says nothing more.
   mutating func reset() { refusedAt = nil }
 
-  /// The message once the slack has passed with nothing explaining the refusal; given once.
-  mutating func message(at now: Date) -> String? {
-    guard let at = refusedAt, now.timeIntervalSince(at) >= Self.INTERRUPTION_SLACK else { return nil }
+  /// The message of the refusal at `refusal`, asked for when its slack has passed (the engine's
+  /// timer) and given once. Nil when that refusal was explained or reset; a newer one waits its own
+  /// slack.
+  mutating func message(for refusal: Date) -> String? {
+    guard refusedAt == refusal else { return nil }
     refusedAt = nil
     return PlaybackFailure.audioStart.message
   }

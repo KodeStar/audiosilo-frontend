@@ -8,41 +8,38 @@ final class StartRefusalTests: XCTestCase {
   func testAPauseThenAnInterruptionWithinTheSlackShowsNoMessage() {
     var r = StartRefusal()
     r.refused(at: at(0))
-    XCTAssertNil(r.message(at: at(1)), "the message waits for the slack")
     r.explained(at: at(1.5)) // Siri's `began`, 1.5 s after the system paused the player.
-    XCTAssertNil(r.message(at: at(StartRefusal.INTERRUPTION_SLACK)))
-    XCTAssertNil(r.message(at: at(10)))
+    XCTAssertNil(r.message(for: at(0)), "its timer finds it explained")
   }
 
-  func testARefusalNothingExplainsShowsItsMessageAfterTheSlackOnce() {
+  func testARefusalNothingExplainsShowsItsMessageOnce() {
     var r = StartRefusal()
     r.refused(at: at(0))
-    XCTAssertNil(r.message(at: at(StartRefusal.INTERRUPTION_SLACK - 0.1)))
-    XCTAssertEqual(r.message(at: at(StartRefusal.INTERRUPTION_SLACK)), PlaybackFailure.audioStart.message)
-    XCTAssertNil(r.message(at: at(StartRefusal.INTERRUPTION_SLACK + 1)), "given once")
+    XCTAssertEqual(r.message(for: at(0)), PlaybackFailure.audioStart.message)
+    XCTAssertNil(r.message(for: at(0)), "given once")
   }
 
   func testAnInterruptionAfterTheSlackDoesNotExplainTheRefusal() {
     var r = StartRefusal()
     r.refused(at: at(0))
-    r.explained(at: at(StartRefusal.INTERRUPTION_SLACK + 0.5)) // A timer that fired late.
-    XCTAssertEqual(r.message(at: at(StartRefusal.INTERRUPTION_SLACK + 0.6)), PlaybackFailure.audioStart.message)
+    r.explained(at: at(StartRefusal.INTERRUPTION_SLACK + 0.5)) // Before a timer that fired late.
+    XCTAssertEqual(r.message(for: at(0)), PlaybackFailure.audioStart.message)
   }
 
   func testAnotherPlayDropsAnEarlierRefusalAndANewOneWaitsItsOwnSlack() {
     var r = StartRefusal()
     r.refused(at: at(0))
     r.reset() // Play again within the slack.
-    XCTAssertNil(r.message(at: at(StartRefusal.INTERRUPTION_SLACK)))
+    XCTAssertNil(r.message(for: at(0)))
     r.refused(at: at(1))
-    XCTAssertNil(r.message(at: at(StartRefusal.INTERRUPTION_SLACK)), "the first refusal's timer finds the second waiting")
-    XCTAssertNotNil(r.message(at: at(1 + StartRefusal.INTERRUPTION_SLACK)))
+    XCTAssertNil(r.message(for: at(0)), "the first refusal's timer finds the second waiting")
+    XCTAssertNotNil(r.message(for: at(1)))
   }
 
   func testNothingRefusedSaysNothing() {
     var r = StartRefusal()
     r.explained(at: at(0))
-    XCTAssertNil(r.message(at: at(5)))
+    XCTAssertNil(r.message(for: at(0)))
   }
 
   func testTheSlackWindowCountsFromThePause() {

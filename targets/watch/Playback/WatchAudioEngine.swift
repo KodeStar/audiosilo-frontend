@@ -152,16 +152,17 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     pause(stoppedAt: lastAdvance)
     if refusedStart {
       startRefusal.refused(at: now)
-      showRefusal()
+      showRefusal(of: now)
     }
   }
 
-  /// The refused start's message once the slack has passed. No playback generation: `StartRefusal`
-  /// keeps its own stamp, so a timer finding a newer refusal (or none) shows nothing.
-  private func showRefusal() {
+  /// The message of the start refused at `refusal`, once the slack has passed. No playback
+  /// generation: `StartRefusal` keeps that stamp, so a timer finding a newer refusal (or none)
+  /// shows nothing. The timer alone is the wait: a clock set back meanwhile cannot drop the message.
+  private func showRefusal(of refusal: Date) {
     DispatchQueue.main.asyncAfter(deadline: .now() + StartRefusal.INTERRUPTION_SLACK) { [weak self] in
       MainActor.assumeIsolated {
-        guard let self, let message = self.startRefusal.message(at: Date()) else { return }
+        guard let self, let message = self.startRefusal.message(for: refusal) else { return }
         self.problem = message
       }
     }
