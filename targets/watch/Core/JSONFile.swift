@@ -12,6 +12,11 @@ enum JSONLoad<T> {
   case corrupt
 }
 
+extension CocoaError {
+  /// The read failed because there is no file, not because it can't be read now.
+  var meansNoFile: Bool { code == .fileReadNoSuchFile || code == .fileNoSuchFile }
+}
+
 struct JSONFile<T: Codable> {
   let url: URL
 
@@ -40,7 +45,7 @@ struct JSONFile<T: Codable> {
     let data: Data
     do {
       data = try Data(contentsOf: url)
-    } catch let e as CocoaError where e.code == .fileReadNoSuchFile || e.code == .fileNoSuchFile {
+    } catch let e as CocoaError where e.meansNoFile {
       return .missing
     } catch {
       return .unreadable

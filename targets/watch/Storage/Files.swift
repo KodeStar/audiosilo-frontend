@@ -55,10 +55,17 @@ enum Files {
 
   /// This watch's `device_id`, made once and kept. Read on first use, which comes after the first
   /// unlock (`Outbox` asks only to send, the player only to play): read before it, the id kept
-  /// would not read and another would stand in for the rest of the launch.
+  /// would not read and another would stand in for the rest of the launch, never written over it.
   static let deviceId: String = {
     let url = root.appendingPathComponent("device-id")
-    if let s = try? String(contentsOf: url, encoding: .utf8), !s.isEmpty { return s }
+    do {
+      if let s = String(data: try Data(contentsOf: url), encoding: .utf8), !s.isEmpty { return s }
+    } catch let e as CocoaError where e.meansNoFile {
+      // None yet: made below.
+    } catch {
+      // There, but it can't be read now: the id kept stays this watch's.
+      return UUID().uuidString
+    }
     let id = UUID().uuidString
     try? Data(id.utf8).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     return id
