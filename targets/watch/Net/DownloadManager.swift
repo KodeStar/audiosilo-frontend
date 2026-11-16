@@ -26,6 +26,9 @@ struct DownloadedFile: Codable, Equatable {
   var local: String
   var bytes: Int64?
   var done: Bool
+  /// Its audio seconds (the timeline's), weighing it in the book's percent; nil on a record
+  /// written before 2.7.0, where every file weighs the same.
+  var duration: Double? = nil
 }
 
 struct DownloadRecord: Codable, Equatable, Identifiable {
@@ -45,6 +48,11 @@ struct DownloadRecord: Codable, Equatable, Identifiable {
   var doneCount: Int { files.filter(\.done).count }
   /// The bytes on the watch (each file's size, set when it lands).
   var bytes: Int64 { files.compactMap(\.bytes).reduce(0, +) }
+
+  /// Bytes came or the server answered: a wait the message named is over (a failure stays).
+  mutating func endWait() {
+    if DownloadWait(message: message) != nil { message = nil }
+  }
 }
 
 @MainActor
@@ -83,8 +91,6 @@ final class DownloadManager: ObservableObject {
   private var fractions: [String: Double] = [:]
   /// The files the server last said were ready, by book key (the phone's "n of m files").
   private var serverReady: [String: Set<String>] = [:]
-  /// Each book's file durations by path, read once from its item cache.
-  private var durations: [String: [String: Double]] = [:]
 
   init() {
     records = index.read() ?? []
@@ -164,7 +170,6 @@ final class DownloadManager: ObservableObject {
       fractions[k] = nil
     }
     serverReady[r.id] = nil
-    durations[r.id] = nil
     percents[r.id] = nil
     try? FileManager.default.removeItem(at: folder(of: r))
     try? FileManager.default.removeItem(at: Files.item(ref))
@@ -255,12 +260,12 @@ final class DownloadManager: ObservableObject {
         let cache = ItemCache(book: book, chapters: chapters, serverPlace: serverPlace)
         cache.save(ref)
         let timeline = cache.timeline
-        durations[key] = nil  // read afresh from this item
         update(key) { rec in
           rec.title = book.title.isEmpty ? rec.title : book.title
           rec.author = book.author ?? rec.author
           rec.files = timeline.files.enumerated().map { i, f in
-            DownloadedFile(path: f.path, local: String(format: "%03d.m4a", i), bytes: nil, done: false)
+            DownloadedFile(path: f.path, local: String(format: "%03d.m4a", i), bytes: nil, done: false,
+                           duration: f.duration)
           }
         }
       }
@@ -398,7 +403,7 @@ final class DownloadManager: ObservableObject {
         update(tag.book) {
           $0.files[i].done = true
           $0.files[i].bytes = size
-          if DownloadWait(message: $0.message) != nil { $0.message = nil }
+          $0.endWait()
         }
         markIfDone(tag.book)
       } catch {
@@ -437,7 +442,7 @@ final class DownloadManager: ObservableObject {
   /// Bytes are coming or the server answered: a wait the row named is over.
   private func stopWaiting(_ key: String) {
     guard let r = records.first(where: { $0.id == key }), DownloadWait(message: r.message) != nil else { return }
-    update(key) { $0.message = nil }
+    update(key) { $0.endWait() }
   }
 
   /// The files the server has ready now; told to the phone when their number moves.
@@ -461,14 +466,8 @@ final class DownloadManager: ObservableObject {
   /// A downloading book's share of its audio on the watch, nil for any other.
   private func percent(_ r: DownloadRecord) -> Int? {
     guard r.state == .downloading, !r.files.isEmpty else { return nil }
-    if durations[r.id] == nil {
-      durations[r.id] = ItemCache.load(r.ref).map { cache in
-        Dictionary(cache.timeline.files.map { ($0.path, $0.duration) }, uniquingKeysWith: { a, _ in a })
-      }
-    }
-    let lengths = durations[r.id] ?? [:]
     return DownloadProgress.percent(r.files.map { f in
-      DownloadProgress.File(duration: lengths[f.path] ?? 0, done: f.done,
+      DownloadProgress.File(duration: f.duration ?? 0, done: f.done,
                             fraction: fractions[DownloadTaskTag(book: r.id, path: f.path).key] ?? 0)
     })
   }

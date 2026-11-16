@@ -58,7 +58,7 @@ enum DownloadProgress {
 }
 
 /// What a download on its way waits for, as the phone's row says it (`watch-state`'s `waiting`).
-enum DownloadWait: String, Equatable, Sendable {
+enum DownloadWait: String, CaseIterable, Equatable, Sendable {
   /// No answer from the server, or a transfer broke: it carries on with the next connection.
   case connection
   /// The server asked for time (still encoding, or busy).
@@ -74,9 +74,7 @@ enum DownloadWait: String, Equatable, Sendable {
 
   /// The wait a record's message names; nil for any other message (a failure says why itself).
   init?(message: String?) {
-    guard let message, let wait = [DownloadWait.connection, .server].first(where: { $0.message == message }) else {
-      return nil
-    }
+    guard let wait = Self.allCases.first(where: { $0.message == message }) else { return nil }
     self = wait
   }
 }
