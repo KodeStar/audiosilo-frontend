@@ -33,6 +33,31 @@ class OutboxTest {
 
   private fun failures(o: Outbox) = o.couldNotSync().map { listOf(it.event.id, it.reason) }
 
+  // Stay wins (row 9c-2): a queued `stay` goes as a `jump` once the server lacks
+  // `listening_stay`, as it is otherwise; the stored event keeps its start and id.
+  @Test
+  fun aQueuedStayIsSentAsAJumpWhenTheServerNoLongerTakesIt() = runBlocking {
+    val o = outbox()
+    val stay = (listen("a") as SpanEvent).copy(start = ListeningStart.STAY)
+    o.append(listOf(stay, listen("b")))
+    var takes = false
+    o.takesStay = { takes }
+    val t = FakeTransport { throw NoAnswer() }
+    o.flush(t)
+    takes = true
+    o.flush(t)
+    val starts = t.bodies.map { b -> b.events.map { (it as SpanEvent).start } }
+    assertEquals(
+      listOf(
+        listOf(ListeningStart.JUMP, ListeningStart.RESUME),
+        listOf(ListeningStart.STAY, ListeningStart.RESUME),
+      ),
+      starts,
+    )
+    assertEquals(listOf("a", "b"), t.bodies[0].events.map { it.id })
+    assertEquals(ListeningStart.STAY, (o.events[0] as SpanEvent).start)
+  }
+
   @Test
   fun sendsAFreshSentAtPerAttemptAndTheDeviceId() = runBlocking {
     val o = outbox()

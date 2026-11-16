@@ -450,10 +450,13 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     savePlace()
   }
 
-  /** An offer answered with Stay: the next span is a deliberate move. */
-  fun stay() {
+  /**
+   * An offer answered with Stay: the next span is a `stay` (`stay`: the server has `listening_stay`)
+   * or a `jump`; paused, it is sent at once.
+   */
+  fun stay(stay: Boolean) {
     val b = book ?: return
-    spans.standBy(b.playing, spanEnd(), playing, rate)
+    spans.standBy(b.playing, spanEnd(), playing, rate, stay)
   }
 
   // What Media3 says

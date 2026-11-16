@@ -84,6 +84,9 @@ class Outbox(
    */
   private var discards = 0
 
+  /** Whether the server takes a `stay` span now (`listening_stay`); asked as each body is built. */
+  @Volatile var takesStay: () -> Boolean = { false }
+
   /** Told of every answer's progress rows (the offer check). */
   @Volatile var onAnswer: ((List<ProgressRow>) -> Unit)? = null
 
@@ -270,7 +273,11 @@ class Outbox(
   }
 
   private fun body(events: List<ListeningEvent>) =
-    SyncRequest(deviceId = deviceId, sentAt = ISOTime.string(clock()), events = events)
+    SyncRequest(
+      deviceId = deviceId,
+      sentAt = ISOTime.string(clock()),
+      events = asServerTakes(events, takesStay()),
+    )
 
   private fun discardsNow(): Int = synchronized(lock) { discards }
 
@@ -374,6 +381,20 @@ class Outbox(
 
     /** How many rounds one flush makes at most. */
     const val MAX_ROUNDS = 50
+
+    /**
+     * The events as the server takes them now: a `stay` queued while it had `listening_stay` goes as
+     * a `jump` once the flag is gone (an older server's decoder refuses the start). The stored event
+     * is unchanged and keeps its id, so the answer still matches it.
+     */
+    fun asServerTakes(events: List<ListeningEvent>, stay: Boolean): List<ListeningEvent> =
+      if (stay) {
+        events
+      } else {
+        events.map {
+          if (it is SpanEvent && it.start == ListeningStart.STAY) it.copy(start = ListeningStart.JUMP) else it
+        }
+      }
 
     private const val ASIDE_PREFIX = "outbox-unread-"
     private val EVENTS = ListSerializer(ListeningEvent.serializer())

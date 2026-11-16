@@ -122,7 +122,8 @@ object Spans {
     heard(span) ||
       span.start == ListeningStart.JUMP ||
       span.start == ListeningStart.MOVED_BACK ||
-      span.start == ListeningStart.RESTART
+      span.start == ListeningStart.RESTART ||
+      span.start == ListeningStart.STAY
 
   /**
    * A deliberate move nothing was heard after (a stop right behind a seek): all it says is the move,
@@ -384,23 +385,31 @@ class SpanRecorder(
       open(book, target, speed)
       return
     }
+    sendStill(book, target, why, speed)
+  }
+
+  /**
+   * A move made while paused (`start`, to `at`): sent at once as a span of its own that moved
+   * nowhere, and the next play begins with the same reason.
+   */
+  private fun sendStill(book: PlayingBook, at: SpanEnd, start: ListeningStart, speed: Double) {
     val now = clock()
     val still =
       OpenSpan(
         libraryId = book.ref.libraryId,
         path = book.ref.path,
-        from = target,
-        to = target,
+        from = at,
+        to = at,
         duration = book.audioDuration,
         speed = speed,
         startedAt = now,
         endedAt = now,
-        start = why,
+        start = start,
         baseVersion = acks.ackVersion(book.ref) ?: 0,
         id = newId(),
       )
     emit(listOf(Spans.event(still)))
-    nextStart = why
+    nextStart = start
   }
 
   /** The book's last span closed, then its `finish`, once. */
@@ -412,13 +421,25 @@ class SpanRecorder(
   }
 
   /**
-   * The listener answered an offer with Stay: this device's place stands, so its next span is a
-   * deliberate move (`jump`), which the server applies over the other place.
+   * The listener answered an offer with Stay: this device's place stands, so its next span begins
+   * as a `stay` on a `listening_stay` server (`stay`), which the server applies over the other
+   * device's writes since the offer, else as a `jump`. Playing, the span is cut so that begins now;
+   * paused, the Stay is sent at once as a span that moved nowhere (a paused move's), and the next
+   * play begins with the same reason.
    */
-  fun standBy(book: PlayingBook, at: SpanEnd?, playing: Boolean, speed: Double) {
-    nextStart = ListeningStart.JUMP
-    if (span != null && playing) cut(book, at, playing, speed, ListeningStart.JUMP)
+  fun standBy(book: PlayingBook, at: SpanEnd?, playing: Boolean, speed: Double, stay: Boolean) {
+    val start = if (stay) ListeningStart.STAY else ListeningStart.JUMP
+    if (playing) {
+      // With none open yet, the one that opens takes it.
+      if (span != null) cut(book, at, true, speed, start) else nextStart = start
+      return
+    }
+    // One still open while not playing (a stop noticed late) ends here, as a paused move's does.
+    close(at)
+    nextStart = start
+    if (at != null) sendStill(book, at, start, speed)
   }
+
 
   private fun finishEvent(kind: String, ref: BookRef, at: Instant, base: Int) =
     FinishEvent(newId(), kind, ref.libraryId, ref.path, ISOTime.string(at), base)

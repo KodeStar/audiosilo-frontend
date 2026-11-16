@@ -218,6 +218,7 @@ class AppModel private constructor(private val context: Context) {
       publishState()
     }
     outbox.onAnswer = { rows -> scope.launch { checkOffer(rows) } }
+    outbox.takesStay = { takesStay }
     engine.reachable = { !outbox.lastFlushFailed }
     engine.onPickedUp = { scope.launch { reconcileLoaded() } }
     scope.launch { for (work in inbox) work() }
@@ -509,12 +510,19 @@ class AppModel private constructor(private val context: Context) {
     if (engine.loadedBook == p.ref) engine.seek(p.offer.position, ListeningStart.JUMP)
   }
 
-  /** Stay: this place stands (acknowledged), and the next span is a deliberate move. */
+  /**
+   * Stay: this place stands (acknowledged), and the next span is a Stay (`stay` on a
+   * `listening_stay` server, else `jump`), sent at once when paused.
+   */
   fun stay(p: OfferPrompt) {
     acks.answerOffer(p.ref, p.row, p.offer.key)
     _offerPrompt.value = null
-    if (engine.loadedBook == p.ref) engine.stay()
+    if (engine.loadedBook == p.ref) engine.stay(takesStay)
   }
+
+  /** Whether the server takes a `stay` span (`listening_stay`; unknown: no). */
+  private val takesStay: Boolean
+    get() = _server.value?.capabilities?.listeningStay == true
 
   /** The offer closed with neither (swiped away): not offered again, nothing acknowledged. */
   fun ignore(p: OfferPrompt) {
