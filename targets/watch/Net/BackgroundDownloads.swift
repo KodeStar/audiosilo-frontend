@@ -133,6 +133,10 @@ final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate, @unchecke
                   totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64)
   {
     guard let tag = Self.tag(downloadTask) else { return }
+    // A refusal's body (the JSON of a 503 or 422) is no part of the file.
+    if let status = (downloadTask.response as? HTTPURLResponse)?.statusCode, !RenditionPlan.downloadSucceeded(status: status) {
+      return
+    }
     let expected = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : downloadTask.countOfBytesClientExpectsToReceive
     let fraction = DownloadProgress.fraction(received: totalBytesWritten, expected: expected)
     let due = lock.withLock {
