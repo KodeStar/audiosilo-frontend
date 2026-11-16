@@ -4006,7 +4006,8 @@ are asked, at most 10,000 rows.
   some of its files gone is kept the same way, as a failure holding the rest (`missing`, fe#158),
   so Retry fetches only the gone ones. A kept file is found by the index its stored name says
   (`storedIndex`, else its place in the list): at launch (`relocateEntry`) and by a retry, which
-  reuses it only for that index. One with no file left (most books
+  reuses it only for that index, and which keeps the ones saved further on listed when it fails
+  before reaching them. One with no file left (most books
   are one M4B) stays as a row to retry from the start, its folder emptied, unless keep-ahead
   started it (keep-ahead plans it again); a downloaded book with no file left is dropped with its
   folder. While an identity move is pending an entry is kept exactly as stored. No storage format

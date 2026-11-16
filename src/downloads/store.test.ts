@@ -3286,6 +3286,35 @@ describe('failures, retry and the session decline mark', () => {
     expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg', '0.mp3']);
   });
 
+  it('a retry that fails on the gone file keeps the kept files listed', async () => {
+    useDownloads.setState({ entries: { [key]: firstGone() } });
+    mockEngine.fileExists.mockResolvedValue(true);
+    mockEngine.downloadFile.mockImplementation(async (_c, _l, _p, name: string) => {
+      if (name === '0.mp3') throw new TypeError('Failed to fetch');
+      return `file:///dl/${name}`;
+    });
+
+    useDownloads.getState().download('c1', 2, book);
+    await settle();
+
+    // Files 01 and 02 are still on the device, and still the next retry's to skip.
+    const failed = useDownloads.getState().entries[key];
+    expect(failed).toMatchObject({ status: 'error', failure: { kind: 'network', kept: 2 / 3 } });
+    expect(failed?.manifest.files.map((f) => f.localUri)).toEqual([
+      'file:///dl/1.mp3',
+      'file:///dl/2.mp3',
+    ]);
+
+    mockEngine.downloadFile.mockClear();
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `file:///dl/${name}`,
+    );
+    useDownloads.getState().download('c1', 2, book);
+    await settle();
+    expect(useDownloads.getState().entries[key]?.status).toBe('downloaded');
+    expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg', '0.mp3']);
+  });
+
   it('a retry never takes a kept file for an index it was not saved under', async () => {
     // The book's order changed since: 01, 02, then 00. Each kept file was saved under
     // another index, which this order downloads over, so none is reused.

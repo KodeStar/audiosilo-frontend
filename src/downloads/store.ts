@@ -1440,6 +1440,13 @@ function storedIndex(localUri: string): number | undefined {
   return m ? Number(m[1]) : undefined;
 }
 
+/** The files of `earlier` (a failed attempt's) saved under index `from` or later: each at
+ * the index its stored name says, else its place in the list (`storedIndex`; a launch that
+ * found a file gone lists only the ones still there, `reviveEntry`). */
+function savedFrom(earlier: readonly DownloadedFile[], from: number): DownloadedFile[] {
+  return earlier.filter((f, k) => (storedIndex(f.localUri) ?? k) >= from);
+}
+
 async function runQueue() {
   if (running) return;
   running = true;
@@ -1613,10 +1620,7 @@ async function runOne(key: string) {
           bytes: priorBytes,
           totalBytes: knownTotal,
           progress: (i + 1) / steps,
-          manifest: {
-            ...cur.manifest,
-            files: [...files, ...earlier.filter((f, k) => savedAt(f, k) >= files.length)],
-          },
+          manifest: { ...cur.manifest, files: [...files, ...savedFrom(earlier, files.length)] },
         });
         persistSoon();
       }
@@ -1723,15 +1727,18 @@ async function runOne(key: string) {
     } else if (live()) {
       // Keep the files that finished: a retry skips them, so a failure 41% through a
       // multi-file book doesn't throw that 41% away. (The one being written is partial,
-      // and is written over by the retry.)
-      const kept = fileCount > 0 ? files.length / fileCount : 0;
+      // and is written over by the retry.) So are the files an earlier attempt saved
+      // further on, which this one never reached (a download with a file gone, fe#158: a
+      // retry that fails on the gone file must not unlist the rest).
+      const held = [...files, ...savedFrom(entry.manifest.files, files.length + 1)];
+      const kept = fileCount > 0 ? Math.min(1, held.length / fileCount) : 0;
       const failure: DownloadFailure = { ...classifyDownloadError(e), kept };
       const cur = useDownloads.getState().entries[key];
       patchEntry(key, {
         status: 'error',
         error: e instanceof Error ? e.message : 'Download failed',
         failure,
-        ...(cur ? { manifest: { ...cur.manifest, files } } : {}),
+        ...(cur ? { manifest: { ...cur.manifest, files: held } } : {}),
       });
       void persist();
     }
