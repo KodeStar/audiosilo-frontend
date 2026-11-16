@@ -30,6 +30,9 @@ enum DownloadEvent {
   case refused(DownloadTaskTag, APIError)
   /// No answer, or the transfer broke; `resumeData` resumes it.
   case failed(DownloadTaskTag, resumeData: Data?)
+  /// Bytes came in: this share of the file is here (0...1). Only while the app runs: a suspended
+  /// app hears of a file when it lands.
+  case progress(DownloadTaskTag, fraction: Double)
 }
 
 final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
@@ -39,6 +42,11 @@ final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate, @unchecke
   /// Told of every event, on the main queue.
   var handler: ((DownloadEvent) -> Void)?
   private let backgroundWake = BackgroundWake()
+  /// The share last told per task (by `taskIdentifier`), so a file's progress is told in steps of
+  /// `PROGRESS_STEP`, not per chunk. Guarded by `lock`.
+  private var told: [Int: Double] = [:]
+  private let lock = NSLock()
+  private static let PROGRESS_STEP = 0.01
 
   private lazy var session: URLSession = URLSession(configuration: BackgroundSession.configuration(Self.identifier), delegate: self,
                                         delegateQueue: nil)
@@ -121,7 +129,22 @@ final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate, @unchecke
     }
   }
 
+  func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
+                  totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64)
+  {
+    guard let tag = Self.tag(downloadTask) else { return }
+    let expected = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : downloadTask.countOfBytesClientExpectsToReceive
+    let fraction = DownloadProgress.fraction(received: totalBytesWritten, expected: expected)
+    let due = lock.withLock {
+      guard fraction - (told[downloadTask.taskIdentifier] ?? -1) >= Self.PROGRESS_STEP else { return false }
+      told[downloadTask.taskIdentifier] = fraction
+      return true
+    }
+    if due { emit(.progress(tag, fraction: fraction)) }
+  }
+
   func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+    lock.withLock { told[task.taskIdentifier] = nil }
     guard let error, let tag = Self.tag(task) else { return }
     if (error as? URLError)?.code == .cancelled, (error as NSError).userInfo[NSURLSessionDownloadTaskResumeData] == nil {
       return  // removed by hand

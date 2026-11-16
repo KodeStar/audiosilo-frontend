@@ -53,6 +53,9 @@ final class DownloadManager: ObservableObject {
   private static let STAGING_KEEP: TimeInterval = 10 * 60
 
   @Published private(set) var records: [DownloadRecord]
+  /// How far each book downloading has come, 0...99 by audio time (`DownloadProgress.percent`),
+  /// by book key. In memory: a suspended app hears of a file only when it lands.
+  @Published private(set) var percents: [String: Int] = [:]
   /// False when the last write of the index failed (a full disk): `records` would not survive a kill.
   private(set) var indexSaved = true
   /// The files this launch handed to the background session (`DownloadTaskTag.key`).
@@ -76,9 +79,16 @@ final class DownloadManager: ObservableObject {
   private var runs: [String: UUID] = [:]
   /// Resume data for a file whose transfer broke (`book|path`).
   private var resumeData: [String: Data] = [:]
+  /// The share of each file in flight that has come (`book|path`, 0...1).
+  private var fractions: [String: Double] = [:]
+  /// The files the server last said were ready, by book key (the phone's "n of m files").
+  private var serverReady: [String: Set<String>] = [:]
+  /// Each book's file durations by path, read once from its item cache.
+  private var durations: [String: [String: Double]] = [:]
 
   init() {
     records = index.read() ?? []
+    for r in records { refreshPercent(r.id) }
     BackgroundDownloads.shared.handler = { [weak self] e in self?.handle(e) }
   }
 
@@ -87,6 +97,7 @@ final class DownloadManager: ObservableObject {
   private func update(_ key: String, _ change: (inout DownloadRecord) -> Void) {
     guard let i = records.firstIndex(where: { $0.id == key }) else { return }
     change(&records[i])
+    refreshPercent(key)
     save()
   }
 
@@ -150,7 +161,11 @@ final class DownloadManager: ObservableObject {
       let k = DownloadTaskTag(book: r.id, path: f.path).key
       handedOff.remove(k)
       resumeData[k] = nil
+      fractions[k] = nil
     }
+    serverReady[r.id] = nil
+    durations[r.id] = nil
+    percents[r.id] = nil
     try? FileManager.default.removeItem(at: folder(of: r))
     try? FileManager.default.removeItem(at: Files.item(ref))
     records.removeAll { $0.id == r.id }
@@ -240,6 +255,7 @@ final class DownloadManager: ObservableObject {
         let cache = ItemCache(book: book, chapters: chapters, serverPlace: serverPlace)
         cache.save(ref)
         let timeline = cache.timeline
+        durations[key] = nil  // read afresh from this item
         update(key) { rec in
           rec.title = book.title.isEmpty ? rec.title : book.title
           rec.author = book.author ?? rec.author
@@ -249,10 +265,12 @@ final class DownloadManager: ObservableObject {
         }
       }
       var answer = try await current().prepareRenditions(ref)
+      stopWaiting(key)
       guard checkSpace(key, answer) else { return }
       while !Task.isCancelled {
         guard answerCovers(key, answer) else { return }
         let step = RenditionPlan.step(answer)
+        noteServerReady(key, step.ready)
         if !step.ready.isEmpty {
           // What the session carries now, a previous launch's transfers too: never handed twice.
           let inFlight = await BackgroundDownloads.shared.inFlight()
@@ -280,7 +298,7 @@ final class DownloadManager: ObservableObject {
     } catch let e as APIError {
       let refusal = RenditionPlan.refusal(e)
       if case .retry(let after) = refusal {
-        update(key) { $0.message = "Waiting for the server" }
+        update(key) { $0.message = DownloadWait.server.message }
         try? await Task.sleep(for: .seconds(after))
         if !Task.isCancelled {
           // This run is the one in `working`: clear it so the next can start.
@@ -293,7 +311,7 @@ final class DownloadManager: ObservableObject {
       }
     } catch {
       // No answer: it waits for the next foreground.
-      update(key) { $0.message = "Waiting for a connection" }
+      update(key) { $0.message = DownloadWait.connection.message }
     }
   }
 
@@ -376,9 +394,11 @@ final class DownloadManager: ObservableObject {
       do {
         try FileManager.default.moveItem(at: staged, to: dest)
         let size = Files.size(of: dest)
+        fractions[tag.key] = nil
         update(tag.book) {
           $0.files[i].done = true
           $0.files[i].bytes = size
+          if DownloadWait(message: $0.message) != nil { $0.message = nil }
         }
         markIfDone(tag.book)
       } catch {
@@ -387,6 +407,7 @@ final class DownloadManager: ObservableObject {
       }
     case .refused(let tag, let error):
       handedOff.remove(tag.key)
+      fractions[tag.key] = nil
       let refusal = RenditionPlan.refusal(error)
       if case .retry(let after) = refusal {
         // Not ready after all (`rendition_pending`): poll again, after the server's wait (the
@@ -400,8 +421,73 @@ final class DownloadManager: ObservableObject {
     case .failed(let tag, let data):
       handedOff.remove(tag.key)
       guard records.contains(where: { $0.id == tag.book }) else { return }  // removed meanwhile
-      if let data { resumeData[tag.key] = data }
-      update(tag.book) { $0.message = "Waiting for a connection" }
+      // With no resume data the file starts again from nothing.
+      if let data { resumeData[tag.key] = data } else { fractions[tag.key] = nil }
+      update(tag.book) { $0.message = DownloadWait.connection.message }
+    case .progress(let tag, let fraction):
+      guard records.contains(where: { $0.id == tag.book }) else { return }  // removed meanwhile
+      fractions[tag.key] = fraction
+      stopWaiting(tag.book)
+      if refreshPercent(tag.book) { onChange?() }
     }
+  }
+
+  // MARK: - How far a book has come (watch-state, Home)
+
+  /// Bytes are coming or the server answered: a wait the row named is over.
+  private func stopWaiting(_ key: String) {
+    guard let r = records.first(where: { $0.id == key }), DownloadWait(message: r.message) != nil else { return }
+    update(key) { $0.message = nil }
+  }
+
+  /// The files the server has ready now; told to the phone when their number moves.
+  private func noteServerReady(_ key: String, _ ready: [RenditionFile]) {
+    let paths = Set(ready.map(\.path))
+    let was = serverReady[key]
+    serverReady[key] = paths
+    if was?.count != paths.count { onChange?() }
+  }
+
+  /// Work the book's percent out again (every change of its record, every chunk told); true when
+  /// the step `watch-state` carries moved, which is news for the phone.
+  @discardableResult
+  private func refreshPercent(_ key: String) -> Bool {
+    let was = percents[key]
+    let now = records.first(where: { $0.id == key }).flatMap(percent)
+    if now != was { percents[key] = now }
+    return now.map(DownloadProgress.published) != was.map(DownloadProgress.published)
+  }
+
+  /// A downloading book's share of its audio on the watch, nil for any other.
+  private func percent(_ r: DownloadRecord) -> Int? {
+    guard r.state == .downloading, !r.files.isEmpty else { return nil }
+    if durations[r.id] == nil {
+      durations[r.id] = ItemCache.load(r.ref).map { cache in
+        Dictionary(cache.timeline.files.map { ($0.path, $0.duration) }, uniquingKeysWith: { a, _ in a })
+      }
+    }
+    let lengths = durations[r.id] ?? [:]
+    return DownloadProgress.percent(r.files.map { f in
+      DownloadProgress.File(duration: lengths[f.path] ?? 0, done: f.done,
+                            fraction: fractions[DownloadTaskTag(book: r.id, path: f.path).key] ?? 0)
+    })
+  }
+
+  /// What `watch-state` says of a book: its stage, its size once ready, and while on its way how
+  /// far it has come (fe#241: the phone's Downloads row).
+  func stateBook(_ r: DownloadRecord) -> WatchStateBook {
+    var b = WatchStateBook(ref: r.ref, title: r.title, state: r.state, bytes: r.state == .ready ? r.bytes : nil)
+    guard r.state == .preparing || r.state == .downloading else { return b }
+    b.waiting = DownloadWait(message: r.message)
+    guard !r.files.isEmpty else { return b }
+    let handed = Set(r.files.filter { f in
+      f.done || f.bytes != nil || handedOff.contains(DownloadTaskTag(book: r.id, path: f.path).key)
+    }.map(\.path))
+    b.filesTotal = r.files.count
+    b.filesReady = DownloadProgress.filesReady(r.files.map(\.path), handed: handed, serverReady: serverReady[r.id] ?? [])
+    if r.state == .downloading {
+      b.progress = DownloadProgress.published(percents[r.id] ?? 0)
+    }
+    return b
   }
 }

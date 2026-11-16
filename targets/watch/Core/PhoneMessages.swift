@@ -73,6 +73,13 @@ struct WatchStateBook: Equatable, Sendable {
   var title: String
   var state: State
   var bytes: Int64?
+  /// While downloading: the share of its audio on the watch, in `DownloadProgress.STEP`s, under 100.
+  var progress: Int? = nil
+  /// While preparing or downloading: how many of its files the server has ready, of how many.
+  var filesReady: Int? = nil
+  var filesTotal: Int? = nil
+  /// While preparing or downloading: what it waits for, if anything.
+  var waiting: DownloadWait? = nil
 }
 
 /// `watch-state`: the latest only (`updateApplicationContext`).
@@ -146,6 +153,11 @@ enum PhoneMessages {
           "library_id": b.ref.libraryId, "path": b.ref.path, "title": b.title, "state": b.state.rawValue,
         ]
         if let bytes = b.bytes { d["bytes"] = bytes }
+        // Optional (fe#241): an older watch, and a Wear OS one, sends none of them.
+        if let p = b.progress { d["progress"] = p }
+        if let n = b.filesReady { d["files_ready"] = n }
+        if let n = b.filesTotal { d["files_total"] = n }
+        if let w = b.waiting { d["waiting"] = w.rawValue }
         return d
       },
     ]

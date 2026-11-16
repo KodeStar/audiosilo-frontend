@@ -2609,7 +2609,15 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   whatever it says (not before the first unlock, when nothing kept can be read), then on a change,
   and counts as sent only when `updateApplicationContext` took it (`Core/StatePublication.swift`):
   a refusal goes again at activation, `becameActive`, a reachability or companion change, or with
-  the next changed state, never on a timer. Content identical to the session's last
+  the next changed state, never on a timer. A book on its way also says how far it has come
+  (fe#241, optional fields, still `v: 1`; `DownloadManager.stateBook`): while preparing or
+  downloading `files_ready` / `files_total` (files the server has ready: landed, handed to the
+  session, or ready in the last renditions answer) and `waiting` (`connection` | `server`,
+  `DownloadWait`, the record's message), and while downloading `progress`, the share of its
+  audio on the watch (`Core/DownloadProgress.swift`: by duration, under 100 until every file has
+  landed) in 5% steps, so the phone hears of a download about 20 times. The bytes in flight come
+  from the session's `didWriteData` (told per 1%), only while the app runs: a suspended app hears
+  of a file when it lands. A wait ends when bytes come or the server answers. Content identical to the session's last
   context returns success and sends nothing (seen in the watchOS 26.5 framework), so it is no error.
 - **Downloads are the watch rendition**, prepared and polled in the foreground
   (`Core/RenditionPlan.swift`), each ready file fetched by the background `URLSession`
@@ -2837,7 +2845,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     playing book publishes with it still there) that record settles no row, so a book sent again
     right after a Remove stands.
   - **Home on the watch** lists what is held, queued, preparing or downloading (On the way) above On
-    this watch and Continue listening, so a sent book is in plain sight. A book shows once: Continue
+    this watch and Continue listening, so a sent book is in plain sight; a book downloading says
+    its files and percent ("Downloading 3 of 10 files · 45%", `DownloadManager.percents`). A book shows once: Continue
     listening leaves out what On the way lists. "Preparing on the server" says the wrist can go
     down because the server's encode runs under its own lifetime (`renditionsOfBook` queues every
     file under `baseCtx`, `FileCache.Queue`), while the watch polls and starts files only in the

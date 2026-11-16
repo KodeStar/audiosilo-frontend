@@ -186,7 +186,7 @@ struct OnTheWaySection: View {
     let rows = HeldBooks.waiting(model.heldBooks, accountId: model.account?.accountId, records: records.map(\.ref))
     if !records.isEmpty || !rows.isEmpty {
       Section("On the way") {
-        ForEach(records) { BookOnWatchRow(record: $0) }
+        ForEach(records) { BookOnWatchRow(record: $0, percent: downloads.percents[$0.id]) }
         ForEach(rows) { HeldBookRow(held: $0) }
       }
     }
@@ -275,7 +275,7 @@ struct OnThisWatchView: View {
               BookOnWatchRow(record: r)
             }
           } else {
-            Button { removing = r } label: { BookOnWatchRow(record: r) }
+            Button { removing = r } label: { BookOnWatchRow(record: r, percent: downloads.percents[r.id]) }
           }
         }
         .swipeActions {
@@ -303,6 +303,8 @@ struct OnThisWatchView: View {
 
 struct BookOnWatchRow: View {
   let record: DownloadRecord
+  /// How far it has come while downloading (`DownloadManager.percents`).
+  var percent: Int? = nil
 
   var body: some View {
     VStack(alignment: .leading, spacing: 3) {
@@ -311,7 +313,8 @@ struct BookOnWatchRow: View {
       case .ready:
         Text(Labels.bytes(record.bytes)).font(.footnote).foregroundStyle(.secondary)
       case .downloading:
-        Text("Downloading \(record.doneCount) of \(record.files.count) files").font(.footnote).foregroundStyle(.secondary)
+        Text(Labels.downloading(done: record.doneCount, of: record.files.count, percent: percent))
+          .font(.footnote).foregroundStyle(.secondary)
       default:
         Text(Labels.state(record.state)).font(.footnote).foregroundStyle(.secondary)
       }
@@ -403,6 +406,12 @@ enum Labels {
     case .ready: return "On this watch"
     case .failed: return "Couldn't download"
     }
+  }
+
+  /// "Downloading 3 of 10 files · 45%" (the percent once known).
+  static func downloading(done: Int, of total: Int, percent: Int?) -> String {
+    let files = "Downloading \(done) of \(total) files"
+    return percent.map { "\(files) · \($0)%" } ?? files
   }
 
   /// "1 listening update has", "2 listening updates have".
