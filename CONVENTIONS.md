@@ -2646,12 +2646,20 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   status recheck carry a playback generation (`Core/PlaybackAttempt.swift`): a pause, resume or
   rebuilt queue invalidates them, and each resumed play gets its own full settling interval.
   Audio-session and start refusals also ask for another Play; only confirmed file-format or parse
-  failures suggest removing the download and fetching it again. An interruption resumes
+  failures suggest removing the download and fetching it again. A start refused before the audio
+  moved says so only after `StartRefusal.INTERRUPTION_SLACK` (2 s, `Core/StartRefusal.swift`):
+  an interruption's `began` (Siri, a call) or headphones gone within it make it the system's pause,
+  and nothing shows. The engine's timer is that wait, matched to its refusal by the stamp, so a
+  clock set back meanwhile cannot drop the message. Headphones gone (`oldDeviceUnavailable`, one
+  route-change observer) pause a play, also one whose queue still settles (it would start on
+  whatever route is left when it lands), and nothing resumes it, in either order of the route
+  change and the system's pause (`systemPausedAt` is cleared). An interruption resumes
   in either order of `began` and the system's pause. Pausing
   while a play still asks for the session ends that play. A file that fails stops the book at the
-  last known place, the one further on when its turn comes (`AVQueuePlayer` would skip it
-  silently), and Play tries it again. A place is kept only as the book plays or moves, stamped
-  when that happened (`stoppedAt` for a late-noticed stop): a later stamp would read as newer than
+  last known place, its span ending where the audio last moved, the one further on when its turn
+  comes (`AVQueuePlayer` would skip it silently), and Play tries it again. A place is kept only as
+  the book plays or moves, stamped when that happened (`stoppedAt` for a late-noticed stop): a
+  later stamp would read as newer than
   another device's real place. A book starts again (an `unfinish`, then a
   `restart` span) only after it played to its end: a queue a failed file emptied plays on from
   the place, since the server applies a `restart` as a move to 0. Moved back after its end, the
@@ -2873,9 +2881,10 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   vectors as JUnit tests: a rule changed on one watch changes on both, tests included. Swift's
   `rounded()` is `roundHalfAway` (Kotlin's `round` is half-even). Not ported (Apple-only, W4
   decision 9): `Outbox.backgroundBody`/`applyBackground`, `ClockSkew.clockOffset`,
-  `BackgroundSync`, `AddressPicker.unattended`, `RenditionPlan.keepsTransfer`; Wear's
-  `SyncSchedule` says when a send runs instead. `PlaybackAttempt` is ported with its tests, its
-  `PlaybackFailure` read from Media3's error codes (mirrored as constants; `:wear`'s
+  `BackgroundSync`, `AddressPicker.unattended`, `RenditionPlan.keepsTransfer`, `StartRefusal`
+  (AVFoundation's interruption and route-change timing; Wear reads Media3's reasons, `SystemPause`);
+  Wear's `SyncSchedule` says when a send runs instead. `PlaybackAttempt` is ported with its tests,
+  its `PlaybackFailure` read from Media3's error codes (mirrored as constants; `:wear`'s
   PlaybackTest checks them against Media3). Wear's own, also pure: `Downloads.kt` (the account,
   the item cache, the downloads index, Continue listening's rows), `BookDownload` (one book's
   run), `SystemPause` (a pause the system made, from Media3's reasons), `PhoneInbox` (PhoneLink's
