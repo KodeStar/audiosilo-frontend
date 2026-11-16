@@ -390,10 +390,10 @@ function sameAuthor(work: BookMetaSeriesWork, book: Book): boolean {
  * listener's copy - by the server's placement (`local`) first, else by the work id a book
  * carries (`work_id`), else by title among the series' own books (a series named unlike
  * the rail is not placed by the server; never a book whose `work_id` is another of the
- * rail's works, nor one the server placed at another entry) - then to a copy on another
- * server by title and author, else a ghost. A work the listener holds in several
- * recordings (server#241: the server's `local_others`, and the series' own books of the
- * same `work_id`) is one entry (`workEntry`). Owned books the rail doesn't list keep their
+ * rail's works), neither fallback taking a book the server placed at another entry - then
+ * to a copy on another server by title and author, else a ghost. A work the listener holds
+ * in several recordings (server#241: the server's `local_others`, and the series' own
+ * books of the same `work_id`) is one entry (`workEntry`). Owned books the rail doesn't list keep their
  * place by `series_index` among the numbered entries (unnumbered ones go last), those of
  * one work together, so nothing the listener owns ever disappears from the page. An
  * omnibus the server placed at the single entry it starts at shows its range there
