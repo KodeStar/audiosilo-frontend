@@ -21,6 +21,9 @@ final class PhoneLink: NSObject, WCSessionDelegate, @unchecked Sendable {
   private var waiting: [PhoneMessage] = []
   /// What the phone is still owed (main queue only).
   private var publication = StatePublication()
+  /// The last activation ended not activated (main queue only). `.notActivated` alone also means
+  /// one still on its way, as at a launch straight into the foreground.
+  private var activationFailed = false
 
   func activate() {
     guard WCSession.isSupported() else { return }
@@ -54,8 +57,9 @@ final class PhoneLink: NSObject, WCSessionDelegate, @unchecked Sendable {
   /// not from the delegate, where a failing activation would ask again at once.
   func retryState(activating: Bool = false) {
     DispatchQueue.main.async {
-      if activating, WCSession.isSupported(), WCSession.default.activationState == .notActivated {
+      if activating, self.activationFailed, WCSession.isSupported(), WCSession.default.activationState == .notActivated {
         // Its delegate sends the state once it has activated.
+        self.activationFailed = false
         self.activate()
         return
       }
@@ -93,6 +97,7 @@ final class PhoneLink: NSObject, WCSessionDelegate, @unchecked Sendable {
   // MARK: - WCSessionDelegate
 
   func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+    DispatchQueue.main.async { self.activationFailed = activationState == .notActivated }
     retryState()
   }
 

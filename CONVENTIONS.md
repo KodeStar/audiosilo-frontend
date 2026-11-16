@@ -2634,8 +2634,9 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   a `launch_id`, new at each launch (optional, the phone ignores it): the session drops a context
   identical to the last it took, so a phone app installed again would otherwise hear nothing until
   the state changed (fe#219). An activation that failed is not retried by the system:
-  `becameActive` activates again while the session is `.notActivated` (`retryState(activating:)`,
-  never from the delegate, where a failing one would loop). A book on its way also says how far it has come
+  `becameActive` activates again once the delegate has reported one that failed (`.notActivated`
+  alone is also one still on its way; `retryState(activating:)`, never from the delegate, where a
+  failing one would loop). A book on its way also says how far it has come
   (fe#241, optional fields, still `v: 1`; `DownloadManager.stateBook`): while preparing or
   downloading `files_ready` / `files_total` (files the server has ready: landed, handed to the
   session, or ready in the last renditions answer) and `waiting` (`connection` | `server`,
