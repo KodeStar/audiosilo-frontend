@@ -14,6 +14,7 @@ import {
   pickRail,
   type ProgressLike,
   railEntries,
+  recordingCounts,
   seriesOf,
   seriesStats,
   trackSegments,
@@ -293,6 +294,15 @@ describe('other recordings of a work (server#241)', () => {
     // One recording: no picker.
     expect(second.recordings).toBeUndefined();
     expect(seriesStats(entries)).toMatchObject({ entries: 2, owned: 2 });
+  });
+
+  it('counts in progress and finished per recording, a work held twice as two', () => {
+    setProgress(lw, { position: 36_000, finished: true });
+    setProgress(lwCast, { position: 10_000, duration: 40_000 });
+    setProgress(cw, { position: 1_000 });
+    const entries = localEntries([lw, lwCast, cw], src);
+    expect(entries).toHaveLength(2);
+    expect(recordingCounts(entries)).toEqual({ inProgress: 2, finished: 1 });
   });
 
   it("shows the recording the listener is on, and keeps each one's own progress", () => {

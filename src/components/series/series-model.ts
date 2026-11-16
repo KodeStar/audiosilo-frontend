@@ -555,6 +555,24 @@ export function seriesStats(entries: readonly SeriesEntry[]): SeriesStats {
   return s;
 }
 
+/** How many recordings the listener is in and has finished, each recording of a work held
+ * twice counted on its own (an entry without `recordings` counts as one): a Library series
+ * card's counts, in the unit of its "N books" (the server's `/series` counts recordings). */
+export function recordingCounts(entries: readonly SeriesEntry[]): {
+  inProgress: number;
+  finished: number;
+} {
+  let inProgress = 0;
+  let finished = 0;
+  for (const e of entries) {
+    for (const r of e.recordings ?? [e]) {
+      if (r.finished) finished++;
+      else if (r.started) inProgress++;
+    }
+  }
+  return { inProgress, finished };
+}
+
 /** The median known length, the stand-in width for entries of unknown length. */
 export function typicalSeconds(entries: readonly SeriesEntry[]): number | undefined {
   const known = entries
