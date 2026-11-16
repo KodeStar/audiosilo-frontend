@@ -422,7 +422,8 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
   fun setRate(r: Double) {
     val next = PlaybackSpeed.clamp(r)
     if (next == rate) return
-    book?.let { spans.cut(it.playing, spanEnd(), playing, next) }
+    // The next span ends when the audio last moved, as the tick's cut has it (buffering holds it there).
+    book?.let { spans.cut(it.playing, spanEnd(), playing, next, heardAt = lastAdvance) }
     rate = next
     prefs.edit().putFloat(SPEED_KEY, next.toFloat()).apply()
     exo?.playbackParameters = PlaybackParameters(next.toFloat())
@@ -442,12 +443,15 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     publish()
   }
 
-  /** Going to the background while playing: the span is cut (Sync v2's trigger), and the place kept. */
+  /**
+   * Going to the background while playing: the span is cut (Sync v2's trigger), and the place kept,
+   * both stamped when the audio last moved: held by a call or buffering, nothing was heard since.
+   */
   fun cutForBackground() {
     val b = book ?: return
     if (!playing) return
-    spans.cut(b.playing, spanEnd(), true, rate)
-    savePlace()
+    spans.cut(b.playing, spanEnd(), true, rate, heardAt = lastAdvance)
+    savePlace(lastAdvance)
   }
 
   /**

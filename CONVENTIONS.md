@@ -3057,7 +3057,8 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   a cut or a playing Stay opened it where the closed span ended (`fromHeard`); a play's span that
   never moved carries the loaded place, a move's its target (saved by the seek). Never by the
   clock: a book's place is saved only as its span opens, so the span a kill left is the newer, and
-  a wall clock set back would hide it. The keep, and the span a tick's cut opens, end when the
+  a wall clock set back would hide it. The keep, and the span a cut opens (the tick's, a speed
+  change's, the background's, whose place is stamped the same), end when the
   audio last moved (`heardAt` = the engine's `lastAdvance`), so buffering never stamps the place
   later than it was heard. The book's last span and its `finish` go into the outbox in one append
   (`SpanRecorder.finish`): the span's event alone would recover the book's end as the place with
