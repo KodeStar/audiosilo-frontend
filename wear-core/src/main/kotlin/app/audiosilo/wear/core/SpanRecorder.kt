@@ -8,7 +8,9 @@
 // offline it stays open and is cut only after an hour (`MAX_SPAN`). It is CLOSED on a pause, a move
 // (the next span opens with the move's reason), a stop, a book switch and the end (then one
 // `finish`). The open span is stored every 5 s (`OPEN_SPAN_KEEP`) with its id fixed at open, and one
-// a kill left is closed into the outbox at the next launch.
+// a kill left is closed into the outbox at the next launch (one a move opened and a kill cut short
+// gives the launch's first span, when it is that book's and resumes this watch's own place, the
+// move's reason).
 package app.audiosilo.wear.core
 
 import java.time.Instant
@@ -131,10 +133,12 @@ object Spans {
 
   /**
    * A move to where the place already is moves nothing (Previous at the book's start). A place that
-   * is not one is not this: a NaN difference compares false.
+   * is not one is not this: a NaN difference compares false; nor is a move to another file, whatever
+   * the timeline says (the phone's book with unknown file lengths starts each at 0).
    */
   fun movesNowhere(from: SpanEnd?, to: SpanEnd?): Boolean {
     if (from == null || to == null) return false
+    if (from.file != null && to.file != null && from.file != to.file) return false
     return abs(to.pos - from.pos) < ChapterNav.AT_START
   }
 }
@@ -173,6 +177,13 @@ class SpanRecorder(
   private var recovered = false
 
   /**
+   * The move a kill cut short (`recover`): the launch's first span, when it is that book's,
+   * nothing else was asked for (a resume) and it begins at this watch's own place (`loadsFromRow`),
+   * begins with the move's reason.
+   */
+  private var recoveredMove: Pair<BookRef, ListeningStart>? = null
+
+  /**
    * Close a span a kill left open (at its last stored values) into the outbox. Once per launch,
    * before the first span opens (every open runs it first). Returns that span (the place it
    * carries: `PlaceStore.recover`).
@@ -185,6 +196,9 @@ class SpanRecorder(
     // (`duplicate`), the other way round it would lose the span.
     append(left)
     store.save(null)
+    // A kill within `OPEN_SPAN_KEEP` of a move left the span the move opened, nothing heard: a
+    // bare move, so the book's next span carries it, as after a pause (`close`).
+    if (Spans.isBareMove(left)) recoveredMove = left.ref to left.start
     return left
   }
 
@@ -209,12 +223,26 @@ class SpanRecorder(
     unfinishDue = unfinish
   }
 
+  /**
+   * `ref` loads at the server's row (`ResumePlan.tookRow`: another device's newer place, or the
+   * server's when the watch has none), not where this watch left it. A move a kill cut short here
+   * was not made from that place, so it is not the reason of the book's first span.
+   */
+  fun loadsFromRow(ref: BookRef) {
+    recover()
+    if (recoveredMove?.first == ref) recoveredMove = null
+  }
+
   /** Playing began (or goes on after a cut) at `at`. */
   fun open(book: PlayingBook, at: SpanEnd, speed: Double) {
     recover()
     if (span?.ref == book.ref) return
     // Taken first: closing another book's span may leave that book's move in `nextStart`.
-    val start = nextStart
+    var start = nextStart
+    recoveredMove?.let { (ref, moved) ->
+      recoveredMove = null
+      if (ref == book.ref && start == ListeningStart.RESUME) start = moved
+    }
     close(null)
     val now = clock()
     nextStart = ListeningStart.RESUME

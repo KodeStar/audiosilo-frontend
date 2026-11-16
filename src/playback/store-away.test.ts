@@ -104,6 +104,8 @@ jest.mock('./listening-outbox', () => {
   const actual = jest.requireActual('./listening-outbox');
   return {
     spanToEvent: actual.spanToEvent,
+    spanIsBareMove: actual.spanIsBareMove,
+    movesNowhere: actual.movesNowhere,
     finishEvent: actual.finishEvent,
     newEventId: actual.newEventId,
     usesListeningSync: () => mockSync,

@@ -207,6 +207,8 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     rate = PlaybackSpeed.book(saved: savedSpeed, defaultRate: UserDefaults.standard.double(forKey: Self.speedKey))
     player.defaultRate = Float(rate)
     spans.prepareStart(plan.start, unfinish: plan.unfinish)
+    // The server's row, not this watch's place: a move a kill cut short here is not its reason.
+    if plan.tookRow { spans.loadsFromRow(next.ref) }
     let place = next.timeline.resumePlace(position: plan.position, file: plan.file, filePos: plan.filePos)
     position = next.timeline.bookPosition(index: place.index, positionInTrack: place.positionInTrack)
     rebuild(from: place.index, at: place.positionInTrack)

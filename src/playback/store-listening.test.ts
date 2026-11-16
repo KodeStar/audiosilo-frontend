@@ -78,6 +78,8 @@ jest.mock('./listening-outbox', () => {
   const actual = jest.requireActual('./listening-outbox');
   return {
     spanToEvent: actual.spanToEvent,
+    spanIsBareMove: actual.spanIsBareMove,
+    movesNowhere: actual.movesNowhere,
     finishEvent: actual.finishEvent,
     newEventId: actual.newEventId,
     usesListeningSync: () => mockSync,
@@ -133,6 +135,7 @@ import type { DownloadEntry } from '@/downloads/types';
 import { finishTakesEvent, recordFinishEvent, undoFinish } from './finish-route';
 import { appendEvents, closeSpan } from './listening-outbox';
 import {
+  cutListeningSpanNow,
   flushHistoryOnHide,
   saveLoadedPlace,
   selectBookLength,
@@ -513,6 +516,142 @@ describe('with listening_sync', () => {
         start: 'jump',
         base_version: 41,
       }),
+    ]);
+  });
+
+  it('a pause right behind a seek: the next play begins with the move too', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 30));
+    await settle();
+    jest.advanceTimersByTime(5_000);
+    await usePlayer.getState().seekBook(10);
+    // Nothing heard after the move: a bare move, sent as one.
+    pushSnapshot(snap('paused', 0, 10));
+    await settle();
+    pushSnapshot(snap('playing', 0, 10));
+    jest.advanceTimersByTime(4_000);
+    pushSnapshot(snap('paused', 0, 14));
+    await settle();
+    expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([
+      ['resume', 30, 30],
+      ['moved_back', 10, 10],
+      ['moved_back', 10, 14],
+    ]);
+    // Taken once: the play after that is a resume.
+    pushSnapshot(snap('playing', 0, 14));
+    jest.advanceTimersByTime(2_000);
+    pushSnapshot(snap('paused', 0, 16));
+    await settle();
+    expect(mockClosed.at(-1)?.start).toBe('resume');
+  });
+
+  it('a cut right behind a seek carries the move; Stay asked for there still begins a jump', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 30));
+    await settle();
+    await usePlayer.getState().seekBook(10);
+    pushSnapshot(snap('playing', 0, 10));
+    cutListeningSpanNow();
+    jest.advanceTimersByTime(3_000);
+    pushSnapshot(snap('playing', 0, 13));
+    await usePlayer.getState().seekBook(40);
+    pushSnapshot(snap('playing', 0, 40));
+    standByPlace();
+    jest.advanceTimersByTime(2_000);
+    pushSnapshot(snap('paused', 0, 42));
+    await settle();
+    expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([
+      ['resume', 30, 30],
+      ['moved_back', 10, 10],
+      ['moved_back', 10, 13],
+      ['jump', 40, 40],
+      ['jump', 40, 42],
+    ]);
+  });
+
+  it('a move to where the place already is (Previous at the start) sends nothing', async () => {
+    await start();
+    pushSnapshot(snap('paused', 0, 0));
+    await settle();
+    await usePlayer.getState().seekBook(0);
+    // A seek lands a hair off the place it was asked for.
+    await usePlayer.getState().seekInTrack(0.004);
+    await usePlayer.getState().goToTrack(0);
+    await settle();
+    expect(mockAppended).toEqual([]);
+    expect(mockClosed).toEqual([]);
+  });
+
+  it('playing, a move to where the place is leaves the span open', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 20));
+    await settle();
+    await usePlayer.getState().seekBook(20);
+    expect(mockClosed).toEqual([]);
+    jest.advanceTimersByTime(5_000);
+    pushSnapshot(snap('paused', 0, 25));
+    await settle();
+    expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 20, 25]]);
+  });
+
+  it('a seek still on its way: a move back to where the engine reports is a move', async () => {
+    await start();
+    pushSnapshot(snap('paused', 0, 0));
+    await settle();
+    // The engine has not reported the first seek's landing when the second is asked for.
+    await usePlayer.getState().seekBook(30);
+    await usePlayer.getState().seekBook(0);
+    await settle();
+    expect(mockAppended.map((e) => e.kind === 'listen' && [e.start, e.to_pos])).toEqual([
+      ['jump', 30],
+      ['jump', 0],
+    ]);
+  });
+
+  describe('a book whose file lengths are unknown (every file starts at 0)', () => {
+    const unknown: ChaptersResponse = {
+      ...chapters,
+      duration: 0,
+      files: chapters.files.map((f) => ({ ...f, duration: 0 })),
+      chapters: [],
+    };
+    const startUnknown = async () => {
+      await usePlayer.getState().playBook('c1', 2, { ...book, duration: 0 }, unknown);
+      await settle();
+    };
+
+    it('paused, a move to the next file is a move', async () => {
+      await startUnknown();
+      pushSnapshot(snap('paused', 0, 0));
+      await settle();
+      await usePlayer.getState().goToTrack(1);
+      await settle();
+      expect(mockAppended.map((e) => e.kind === 'listen' && [e.start, e.to_file])).toEqual([
+        ['jump', order[1]],
+      ]);
+    });
+
+    it('playing, a move to the next file closes the span in the file it left', async () => {
+      await startUnknown();
+      pushSnapshot(snap('playing', 0, 0));
+      await settle();
+      await usePlayer.getState().goToTrack(1);
+      await settle();
+      expect(mockClosed.map((s) => [s.start, s.from.file, s.to.file])).toEqual([
+        ['resume', order[0], order[0]],
+      ]);
+    });
+  });
+
+  it('paused, a lock-screen move the engine already made is sent', async () => {
+    await start();
+    pushSnapshot(snap('paused', 0, 20));
+    await settle();
+    pushSnapshot(snap('paused', 0, 5));
+    remoteMove(0, 5);
+    await settle();
+    expect(mockAppended.map((e) => e.kind === 'listen' && [e.start, e.to_pos])).toEqual([
+      ['jump', 5],
     ]);
   });
 

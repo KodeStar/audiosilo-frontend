@@ -59,11 +59,13 @@ import {
   closeSpan,
   finishEvent,
   flushOutbox,
+  movesNowhere,
   newEventId,
   type OpenSpan,
   type OutboxEntry,
   sendOnPageHide,
   type SpanEnd,
+  spanIsBareMove,
   spanToEvent,
   storeOpenSpan,
   usesListeningSync,
@@ -992,19 +994,30 @@ function takeSpan(at?: SpanEnd, endedAt?: number): OpenSpan | null {
   span = null;
   if (!closing) return null;
   const np = usePlayer.getState().nowPlaying;
-  closing.to = at ?? (np && sameBook(closing, np) ? engineEnd() : null) ?? closing.to;
+  const loaded = np !== null && sameBook(closing, np);
+  closing.to = at ?? (loaded ? engineEnd() : null) ?? closing.to;
   const now = Date.now();
   const ended = endedAt !== undefined && Number.isFinite(endedAt) ? Math.min(now, endedAt) : now;
   // Never before it began (a span cut since the other tab's claim was made).
   closing.endedAt = new Date(Math.max(ended, Date.parse(closing.startedAt) || 0)).toISOString();
+  // Like a paused move: the loaded book's next play begins with the same reason.
+  if (carriesMove(closing)) nextStart = closing.start;
   return closing;
+}
+
+/** Whether a span closing is a bare move of the loaded book (`spanIsBareMove`), whose
+ * reason the book's next span takes too. Another book's move is not carried to this one. */
+function carriesMove(closing: OpenSpan): boolean {
+  const np = usePlayer.getState().nowPlaying;
+  return np !== null && sameBook(closing, np) && spanIsBareMove(closing);
 }
 
 /** Cut the span (close it, a span opening where it ended, for `start`) while playing. */
 function cutListeningSpan(start: ListeningStart = 'continue') {
   const closed = closeListeningSpan();
   if (!closed || !isPlayingState(usePlayer.getState().snapshot.state)) return;
-  nextStart = start;
+  // A bare move's reason is already there (`takeSpan`); a reason asked for (Stay) still wins.
+  if (start !== 'continue' || !carriesMove(closed)) nextStart = start;
   openListeningSpan(closed.to);
 }
 
@@ -1076,25 +1089,30 @@ function keepOpenSpan() {
   });
 }
 
+/** Where the last move sent the loaded book (`moveListeningSpan`), null until one does. */
+let movedTo: SpanEnd | null = null;
+
 /**
  * A move of the place (a seek, a chapter, a bookmark, Undo, a lock-screen scrub) to
  * `target`: the span ends where it was (`from`, else the engine's place now, else where it
- * was last seen) and the next one begins at the target with the move's reason. Paused, the
- * move is sent at once as a span of its own that moved nowhere (the place syncs as a PUT
- * did), and the next play begins with the same reason.
+ * was last seen; `from: null`, the engine has moved already and where it was is not known)
+ * and the next one begins at the target with the move's reason. Paused, the move is sent at
+ * once as a span of its own that moved nowhere (the place syncs as a PUT did), and the next
+ * play begins with the same reason.
  */
-function moveListeningSpan(
-  target: SpanEnd | null,
-  opts: { from?: SpanEnd; reason?: ListeningStart } = {},
-) {
+function moveListeningSpan(target: SpanEnd | null, opts: { from?: SpanEnd | null } = {}) {
   const np = usePlayer.getState().nowPlaying;
   if (!np || !usesListeningSync(np.connectionId)) return;
-  const before = opts.from ?? (span ? (engineEnd() ?? span.to) : engineEnd());
+  const before = opts.from !== undefined ? opts.from : (engineEnd() ?? span?.to ?? null);
+  // A move to where the place already is (Previous at the book's start) is none: the span
+  // goes on and no event says it. The engine's place alone is not enough: a seek still on
+  // its way reads as where it left, so the last move must have gone there too.
+  if (movesNowhere(before, target) && (!movedTo || movesNowhere(movedTo, target))) return;
   const closed = closeListeningSpan(before ? { at: before } : {});
   // A place that is not one (NaN) moves nothing: the span just ends where it was.
   if (!target) return;
-  const reason: ListeningStart =
-    opts.reason ?? (before && target.pos < before.pos - 1 ? 'moved_back' : 'jump');
+  movedTo = target;
+  const reason: ListeningStart = before && target.pos < before.pos - 1 ? 'moved_back' : 'jump';
   if (closed && isPlayingState(usePlayer.getState().snapshot.state)) {
     nextStart = reason;
     openListeningSpan(target);
@@ -1972,6 +1990,7 @@ function switchBook(api: ApiClient | null, request: NonNullable<typeof lastPlayR
   // resume.
   nextStart = 'resume';
   unfinishDue = false;
+  movedTo = null;
   cancelStallWatchdog();
   stopSaveLoop();
   userMoved();
@@ -2196,8 +2215,9 @@ async function createService(): Promise<PlaybackService> {
     // hot-swap moves the playing file (`swapHold`).
     if (loadingBook || (np && heldBySwap(np, trackIndex))) return;
     userMoved(np ? toBookPosition(np.queue.offsets, trackIndex, positionInTrack) : undefined);
-    // The engine has moved already: the span ends where it was last seen.
-    if (np) moveListeningSpan(endAt(np, trackIndex, positionInTrack), { from: span?.to });
+    // The engine has moved already: the span ends where it was last seen (paused, where it
+    // was is not known, so no move is taken for one that moves nowhere).
+    if (np) moveListeningSpan(endAt(np, trackIndex, positionInTrack), { from: span?.to ?? null });
     void persist();
   });
   // Native: the OS changed the speed and the engine already runs at it. Only a speed

@@ -8,7 +8,9 @@
 // background; offline it stays open and is cut only after an hour (`MAX_SPAN`). It is
 // CLOSED on a pause, a move (the next span opens with the move's reason), a stop, a book switch
 // and the end (then one `finish`). The open span is stored every 5 s (`OPEN_SPAN_KEEP`) with its
-// id fixed at open, and one a kill left is closed into the outbox at the next launch.
+// id fixed at open, and one a kill left is closed into the outbox at the next launch (one a
+// move opened and a kill cut short gives the launch's first span, when it is that book's and
+// resumes this watch's own place, the move's reason).
 import Foundation
 
 /// One end of a span: whole-book seconds, and the audio file (rel path) and seconds in it.
@@ -111,9 +113,11 @@ enum Spans {
   static func isBareMove(_ span: OpenSpan) -> Bool { saysSomething(span) && !heard(span) }
 
   /// A move to where the place already is moves nothing (Previous at the book's start). A place
-  /// that is not one is not this: `abs(.nan)` compares false.
+  /// that is not one is not this: `abs(.nan)` compares false; nor is a move to another file,
+  /// whatever the timeline says (the phone's book with unknown file lengths starts each at 0).
   static func movesNowhere(from: SpanEnd?, to: SpanEnd?) -> Bool {
     guard let from, let to else { return false }
+    if let a = from.file, let b = to.file, a != b { return false }
     return abs(to.pos - from.pos) < ChapterNav.AT_START
   }
 }
@@ -143,6 +147,10 @@ final class SpanRecorder {
   /// The book whose `finish` was sent: one per end, until it plays again.
   private var finishSent: BookRef?
   private var recovered = false
+  /// The move a kill cut short (`recover`): the launch's first span, when it is that book's,
+  /// nothing else was asked for (a resume) and it begins at this watch's own place
+  /// (`loadsFromRow`), begins with the move's reason.
+  private var recoveredMove: (ref: BookRef, start: ListeningStart)?
 
   init(store: OpenSpanStore, acks: AckStore, clock: @escaping () -> Date = Date.init,
        newId: @escaping () -> String = { UUID().uuidString },
@@ -165,6 +173,9 @@ final class SpanRecorder {
       // id (`duplicate`), the other way round it would lose the span.
       append(left)
       store.save(nil)
+      // A kill within `OPEN_SPAN_KEEP` of a move left the span the move opened, nothing heard:
+      // a bare move, so the book's next span carries it, as after a pause (`close`).
+      if Spans.isBareMove(left) { recoveredMove = (left.ref, left.start) }
     }
   }
 
@@ -191,12 +202,24 @@ final class SpanRecorder {
     unfinishDue = unfinish
   }
 
+  /// `ref` loads at the server's row (`ResumePlan.tookRow`: another device's newer place, or the
+  /// server's when the watch has none), not where this watch left it. A move a kill cut short
+  /// here was not made from that place, so it is not the reason of the book's first span.
+  func loadsFromRow(_ ref: BookRef) {
+    recover()
+    if recoveredMove?.ref == ref { recoveredMove = nil }
+  }
+
   /// Playing began (or goes on after a cut) at `at`.
   func open(_ book: PlayingBook, at: SpanEnd, speed: Double) {
     recover()
     if span?.ref == book.ref { return }
     // Taken first: closing another book's span may leave that book's move in `nextStart`.
-    let start = nextStart
+    var start = nextStart
+    if let m = recoveredMove {
+      recoveredMove = nil
+      if m.ref == book.ref && start == .resume { start = m.start }
+    }
     close(at: nil)
     let now = clock()
     nextStart = .resume

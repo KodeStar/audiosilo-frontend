@@ -350,6 +350,8 @@ final class SpanRecorderTests: XCTestCase {
     XCTAssertFalse(Spans.movesNowhere(from: nil, to: at(0)))
     XCTAssertFalse(Spans.movesNowhere(from: at(0), to: nil))
     XCTAssertFalse(Spans.movesNowhere(from: at(.nan), to: at(0)))
+    XCTAssertFalse(Spans.movesNowhere(from: at(0), to: at(0, "A/Folder/2.mp3")), "another file")
+    XCTAssertTrue(Spans.movesNowhere(from: at(0, nil), to: at(0)), "a file on one end only")
   }
 
   // The open span is kept every 5 s.
@@ -386,6 +388,91 @@ final class SpanRecorderTests: XCTestCase {
     XCTAssertEqual(listens[0].id, "e1")
     XCTAssertEqual(listens[0].toPos, 6)
     XCTAssertNil(store.stored)
+  }
+
+  // #216: a kill within `OPEN_SPAN_KEEP` of a move leaves the span the move opened. Its event
+  // can lose to the span before it, so the book's next span (a resume) carries the move.
+  func testAKillRightBehindAMoveGivesTheBooksNextSpanTheMove() {
+    let r = recorder()
+    r.open(book, at: at(80), speed: 1)
+    clock.advance(10)
+    r.move(book, to: at(10), from: at(90), playing: true, speed: 1)
+    // A kill: a new launch, the same store.
+    emitted = []
+    clock.advance(60)
+    let next = recorder()
+    next.recover()
+    XCTAssertEqual(listens.map(\.start), [.movedBack])
+    next.prepareStart(.resume)
+    next.open(book, at: at(10), speed: 1)
+    XCTAssertEqual(next.span?.start, .movedBack)
+    XCTAssertEqual(next.nextStart, .resume)
+    clock.advance(20)
+    next.close(at: at(30))
+    next.open(book, at: at(30), speed: 1)
+    XCTAssertEqual(next.span?.start, .resume, "taken once")
+  }
+
+  func testAKilledMoveGivesWayToAReasonAskedFor() {
+    let r = recorder()
+    r.open(book, at: at(80), speed: 1)
+    r.move(book, to: at(10), from: at(80), playing: true, speed: 1)
+    let next = recorder()
+    next.prepareStart(.jump)
+    next.open(book, at: at(40), speed: 1)
+    XCTAssertEqual(next.span?.start, .jump)
+  }
+
+  // `Resume.plan` took another device's newer row: the span begins there, not where the move went.
+  func testAKilledMoveIsNotCarriedToAPlaceTakenFromTheServer() {
+    let r = recorder()
+    r.open(book, at: at(80), speed: 1)
+    r.move(book, to: at(10), from: at(80), playing: true, speed: 1)
+    let next = recorder()
+    next.prepareStart(.resume)
+    next.loadsFromRow(book.ref)
+    next.open(book, at: at(60), speed: 1)
+    XCTAssertEqual(next.span?.start, .resume)
+  }
+
+  func testAnotherBooksRowLeavesAKilledMoveToItsOwnBook() {
+    let r = recorder()
+    r.open(book, at: at(80), speed: 1)
+    r.move(book, to: at(10), from: at(80), playing: true, speed: 1)
+    let next = recorder()
+    // Loaded from its row, never played.
+    next.prepareStart(.resume)
+    next.loadsFromRow(BookRef(libraryId: 2, path: "A/Other"))
+    next.prepareStart(.resume)
+    next.open(book, at: at(10), speed: 1)
+    XCTAssertEqual(next.span?.start, .movedBack)
+  }
+
+  func testAKilledMoveIsNotCarriedToAnotherBookNorPastIt() {
+    let r = recorder()
+    r.open(book, at: at(80), speed: 1)
+    r.move(book, to: at(10), from: at(80), playing: true, speed: 1)
+    let next = recorder()
+    let other = PlayingBook(ref: BookRef(libraryId: 2, path: "A/Other"), audioDuration: 50)
+    next.open(other, at: at(1, "A/Other/1.mp3"), speed: 1)
+    XCTAssertEqual(next.span?.start, .resume)
+    clock.advance(20)
+    next.close(at: at(21, "A/Other/1.mp3"))
+    next.prepareStart(.resume)
+    next.open(book, at: at(10), speed: 1)
+    XCTAssertEqual(next.span?.start, .resume)
+  }
+
+  func testASpanAKillLeftAfterItWasHeardGivesTheNextSpanNothing() {
+    let r = recorder()
+    r.prepareStart(.movedBack)
+    r.open(book, at: at(10), speed: 1)
+    clock.advance(5)
+    r.keep(at: at(15))
+    let next = recorder()
+    next.prepareStart(.resume)
+    next.open(book, at: at(15), speed: 1)
+    XCTAssertEqual(next.span?.start, .resume)
   }
 
   func testTheFirstOpenRecoversFirst() {

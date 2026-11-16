@@ -67,6 +67,8 @@ import {
   refreshOutboxFrom,
   resendMismatched,
   resetOutboxForTests,
+  movesNowhere,
+  spanIsBareMove,
   spanSaysSomething,
   spanToEvent,
   storedOpenSpan,
@@ -202,13 +204,41 @@ describe('spanToEvent', () => {
     expect(spanToEvent(span()).id).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
   });
 
+  // A span nothing was heard in: no time passed and the place stayed.
+  const still = { endedAt: span().startedAt, to: span().from };
+
   it('a span that moved nowhere says nothing unless it is a deliberate move', () => {
-    const still = { endedAt: span().startedAt, to: span().from };
     expect(spanSaysSomething(span(still))).toBe(false);
     expect(spanSaysSomething(span({ ...still, start: 'continue' }))).toBe(false);
     expect(spanSaysSomething(span({ ...still, start: 'jump' }))).toBe(true);
     expect(spanSaysSomething(span({ ...still, start: 'restart' }))).toBe(true);
     expect(spanSaysSomething(span())).toBe(true);
+  });
+
+  it('a bare move is a deliberate move nothing was heard after', () => {
+    expect(spanIsBareMove(span({ ...still, start: 'moved_back' }))).toBe(true);
+    expect(spanIsBareMove(span({ ...still, start: 'jump' }))).toBe(true);
+    expect(spanIsBareMove(span({ ...still, start: 'restart' }))).toBe(true);
+    expect(spanIsBareMove(span({ ...still, start: 'resume' }))).toBe(false);
+    expect(spanIsBareMove(span({ ...still, start: 'continue' }))).toBe(false);
+    // Heard: a second of playing, or a place moved one.
+    expect(spanIsBareMove(span({ to: span().from, start: 'jump' }))).toBe(false);
+    expect(
+      spanIsBareMove(span({ endedAt: span().startedAt, to: { pos: span().from.pos + 1 } })),
+    ).toBe(false);
+  });
+
+  it('a move moves nowhere only to where the place already is', () => {
+    expect(movesNowhere({ pos: 0 }, { pos: 0 })).toBe(true);
+    expect(movesNowhere({ pos: 180.004 }, { pos: 180 })).toBe(true); // a seek lands a hair off
+    expect(movesNowhere({ pos: 0.5 }, { pos: 0 })).toBe(false);
+    expect(movesNowhere(null, { pos: 0 })).toBe(false);
+    expect(movesNowhere(undefined, { pos: 0 })).toBe(false);
+    expect(movesNowhere({ pos: 0 }, null)).toBe(false);
+    expect(movesNowhere({ pos: NaN }, { pos: 0 })).toBe(false);
+    // Another file is another place (unknown file lengths start every file at 0).
+    expect(movesNowhere({ pos: 0, file: 'a.mp3' }, { pos: 0, file: 'b.mp3' })).toBe(false);
+    expect(movesNowhere({ pos: 0 }, { pos: 0, file: 'a.mp3' })).toBe(true);
   });
 });
 
