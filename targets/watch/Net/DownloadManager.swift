@@ -242,10 +242,11 @@ final class DownloadManager: ObservableObject {
       if Task.isCancelled { return }
       await self?.run(key)
       // Only this run's own entry: a retry may have started the next one already.
-      if self?.runs[key] == run {
-        self?.working[key] = nil
-        self?.runs[key] = nil
-      }
+      guard let self, self.runs[key] == run else { return }
+      self.working[key] = nil
+      self.runs[key] = nil
+      // No answer, or a transfer broke after the run's last answer: ask again in a while.
+      self.retryIfWaiting(key)
     }
   }
 
@@ -342,9 +343,7 @@ final class DownloadManager: ObservableObject {
         fail(key, message)
       }
     } catch {
-      // No answer. This run is the one in `working`: clear it so the next try can start.
-      working[key] = nil
-      runs[key] = nil
+      // No answer: the book waits on the connection, and the next try starts when this run ends.
       waitOnConnection(key)
     }
   }
@@ -494,6 +493,15 @@ final class DownloadManager: ObservableObject {
     let attempt = retryAttempts[key, default: 0]
     retryAttempts[key] = attempt + 1
     process(key, after: DownloadWait.retryDelay(attempt: attempt))
+  }
+
+  /// A run ended (its own entries cleared): when the book still waits on the connection (it found
+  /// no answer, or a transfer broke after its last one), ask again in a while. Not signed out.
+  private func retryIfWaiting(_ key: String) {
+    guard let r = records.first(where: { $0.id == key }), r.wantsWork,
+          DownloadWait(message: r.message) == .connection, client() != nil
+    else { return }
+    waitOnConnection(key)
   }
 
   /// The files the server has ready now; told to the phone when they change.
