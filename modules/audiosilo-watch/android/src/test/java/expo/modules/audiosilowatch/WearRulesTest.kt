@@ -104,6 +104,10 @@ class PathForTest {
     assertNull(pathFor(book + ("path" to " \t"), "w1"))
     assertNull(pathFor(message("remove", "path" to "   "), "w1"))
     assertNotNull(pathFor(book + ("path" to " A/B"), "w1"))
+    val pair = message("pair", "pairing_token" to "t")
+    assertNull(pathFor(pair + ("server_id" to " "), "w1"))
+    assertNull(pathFor(pair + ("pairing_token" to "\t"), "w1"))
+    assertNull(pathFor(pair - "pairing_token", "w1"))
   }
 }
 

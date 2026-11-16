@@ -197,7 +197,8 @@ object WearRules {
     if (integer(message["v"]) != VERSION.toLong()) return null
     if ((message["sent_at"] as? String).isNullOrEmpty()) return null
     return when (message["type"]) {
-      "pair" -> WearPaths.PAIR
+      // Its ids as the watch's `decodePair` reads them: a blank one is never taken.
+      "pair" -> WearPaths.PAIR.takeIf { id(message["server_id"]) != null && id(message["pairing_token"]) != null }
       "book", "remove" ->
         bookOf(message)?.let { WearPaths.BOOKS + BookKey.of(it.serverId, it.userId, it.libraryId, it.path) }
       else -> null
