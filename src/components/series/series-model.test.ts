@@ -344,6 +344,26 @@ describe('other recordings of a work (server#241)', () => {
     expect(e).toMatchObject({ kind: 'owned', key: 'w:lw', title: 'Leviathan Wakes (Unabridged)' });
   });
 
+  it("never places a book by title on a work when it is another of the rail's works", () => {
+    // Two works share a title (the novel and its adaptation); only the adaptation is owned.
+    const adaptation = book('Leviathan Wakes', 1, { work_id: 'lw-cast' });
+    const both = seriesViews({
+      ...view,
+      id: 'z',
+      position: '1',
+      works: [
+        work('lw', 'Leviathan Wakes', '1'),
+        work('lw-cast', 'Leviathan Wakes', '1.5'),
+        work('cw', "Caliban's War", '2'),
+      ],
+    })[0];
+    expect(railEntries(both, [adaptation], src).map((e) => [e.key, e.kind])).toEqual([
+      ['w:lw', 'ghost'],
+      ['w:lw-cast', 'owned'],
+      ['w:cw', 'ghost'],
+    ]);
+  });
+
   it("is one entry per work on a local shelf (the Library's cards), started one shown", () => {
     setProgress(lwCast, { position: 5000 });
     const entries = localEntries([cw, lwCast, lw], src);

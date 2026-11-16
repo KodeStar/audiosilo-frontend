@@ -395,7 +395,8 @@ function sameAuthor(work: BookMetaSeriesWork, book: Book): boolean {
  * The page with a community rail: the shown reading order's works, each matched to the
  * listener's copy - by the server's placement (`local`) first, else by the work id a book
  * carries (`work_id`), else by title among the series' own books (a series named unlike
- * the rail is not placed by the server) - then to a copy on another server by title and
+ * the rail is not placed by the server; never a book whose `work_id` is another of the
+ * rail's works) - then to a copy on another server by title and
  * author, else a ghost. A work the listener holds in several recordings (server#241: the
  * server's `local_others`, and the series' own books of the same `work_id`) is one entry
  * (`workEntry`). Owned books the rail doesn't list keep their place by `series_index` among
@@ -437,6 +438,7 @@ export function railEntries(
   const out: SeriesEntry[] = [];
   const now = src.now ?? new Date();
   const sorted = sortSeriesBooks(books);
+  const railWorks = new Set(view.works.map((w) => w.id));
   for (const w of view.works) {
     // The work's recordings, the one to fall back on first.
     const copies: SeriesCopy[] = [];
@@ -453,9 +455,16 @@ export function railEntries(
       }
     } else {
       const title = looseKey(w.title);
+      // By title, never a book known to be another of the rail's works (two works can
+      // share a title: an adaptation): that one waits for its own entry.
       const b =
         sorted.find((x) => x.work_id === w.id && !used.has(bookKey(x))) ??
-        books.find((x) => !used.has(bookKey(x)) && looseKey(x.title) === title);
+        books.find(
+          (x) =>
+            !used.has(bookKey(x)) &&
+            !(x.work_id && railWorks.has(x.work_id)) &&
+            looseKey(x.title) === title,
+        );
       if (b) take(bookCopy(b, src.connectionId, src.connectionName));
     }
     const base = { key: `w:${w.id}`, position, workId: w.id, webUrl: w.web_url };
