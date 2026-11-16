@@ -555,9 +555,10 @@ export function seriesStats(entries: readonly SeriesEntry[]): SeriesStats {
   return s;
 }
 
-/** How many recordings the listener is in and has finished, each recording of a work held
- * twice counted on its own (an entry without `recordings` counts as one): a Library series
- * card's counts, in the unit of its "N books" (the server's `/series` counts recordings). */
+/** How many of the listener's own recordings they are in and have finished, each recording
+ * of a work held twice counted on its own (an owned entry without `recordings` counts as one;
+ * a copy elsewhere or a ghost not at all): a Library series card's counts, in the unit of its
+ * "N books" (the server's `/series` counts this library's recordings). */
 export function recordingCounts(entries: readonly SeriesEntry[]): {
   inProgress: number;
   finished: number;
@@ -565,6 +566,7 @@ export function recordingCounts(entries: readonly SeriesEntry[]): {
   let inProgress = 0;
   let finished = 0;
   for (const e of entries) {
+    if (e.kind !== 'owned') continue;
     for (const r of e.recordings ?? [e]) {
       if (r.finished) finished++;
       else if (r.started) inProgress++;

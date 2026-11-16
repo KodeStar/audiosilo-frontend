@@ -303,6 +303,16 @@ describe('other recordings of a work (server#241)', () => {
     const entries = localEntries([lw, lwCast, cw], src);
     expect(entries).toHaveLength(2);
     expect(recordingCounts(entries)).toEqual({ inProgress: 2, finished: 1 });
+    // A copy on another server is not one of this library's recordings.
+    const [, owned] = entries;
+    if (owned.kind !== 'owned') throw new Error('expected an owned entry');
+    const elsewhere = {
+      ...owned,
+      kind: 'elsewhere',
+      recordings: undefined,
+      finished: true,
+    } as const;
+    expect(recordingCounts([...entries, elsewhere])).toEqual({ inProgress: 2, finished: 1 });
   });
 
   it("shows the recording the listener is on, and keeps each one's own progress", () => {
