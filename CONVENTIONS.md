@@ -2672,8 +2672,9 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   5 s; a kill's open span is recovered at launch. A bare move and a move to nowhere go as on the
   phone (`Spans.isBareMove`, `Spans.movesNowhere`; the phone's `spanIsBareMove`, `movesNowhere`).
   Only the watches store the span at open, so only they recover a move a kill cut short (within
-  the 5 s keep): the launch's first span, when it is that book's and a resume, takes its reason
-  (`recoveredMove`). Play pulls the
+  the 5 s keep): the launch's first span, when it is that book's and a resume from this watch's
+  own place, takes its reason (`recoveredMove`; not when `Resume.plan` took the server's row,
+  `loadsFromRow`). Play pulls the
   book's row first (5 s at most) and
   resumes by `Resume.plan`; with no answer the server's place kept for the book stands in (the
   last Continue listening refresh's, or the one read when its download started: the phone's

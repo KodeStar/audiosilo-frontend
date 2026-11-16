@@ -9,8 +9,8 @@
 // CLOSED on a pause, a move (the next span opens with the move's reason), a stop, a book switch
 // and the end (then one `finish`). The open span is stored every 5 s (`OPEN_SPAN_KEEP`) with its
 // id fixed at open, and one a kill left is closed into the outbox at the next launch (one a
-// move opened and a kill cut short gives the launch's first span, when it is that book's, the
-// move's reason).
+// move opened and a kill cut short gives the launch's first span, when it is that book's and
+// resumes this watch's own place, the move's reason).
 import Foundation
 
 /// One end of a span: whole-book seconds, and the audio file (rel path) and seconds in it.
@@ -147,8 +147,9 @@ final class SpanRecorder {
   /// The book whose `finish` was sent: one per end, until it plays again.
   private var finishSent: BookRef?
   private var recovered = false
-  /// The move a kill cut short (`recover`): the launch's first span, when it is that book's
-  /// and nothing else was asked for (a resume), begins with the move's reason.
+  /// The move a kill cut short (`recover`): the launch's first span, when it is that book's,
+  /// nothing else was asked for (a resume) and it begins at this watch's own place
+  /// (`loadsFromRow`), begins with the move's reason.
   private var recoveredMove: (ref: BookRef, start: ListeningStart)?
 
   init(store: OpenSpanStore, acks: AckStore, clock: @escaping () -> Date = Date.init,
@@ -199,6 +200,14 @@ final class SpanRecorder {
   func prepareStart(_ start: ListeningStart, unfinish: Bool = false) {
     nextStart = start
     unfinishDue = unfinish
+  }
+
+  /// `ref` loads at the server's row (`ResumePlan.tookRow`: another device's newer place, or the
+  /// server's when the watch has none), not where this watch left it. A move a kill cut short
+  /// here was not made from that place, so it is not the reason of the book's first span.
+  func loadsFromRow(_ ref: BookRef) {
+    recover()
+    if recoveredMove?.ref == ref { recoveredMove = nil }
   }
 
   /// Playing began (or goes on after a cut) at `at`.

@@ -451,6 +451,33 @@ class SpanRecorderTest {
     assertEquals(ListeningStart.JUMP, next.span?.start)
   }
 
+  // `Resume.plan` took another device's newer row: the span begins there, not where the move went.
+  @Test
+  fun aKilledMoveIsNotCarriedToAPlaceTakenFromTheServer() {
+    val r = recorder()
+    r.open(book, at(80.0), 1.0)
+    r.move(book, to = at(10.0), from = at(80.0), playing = true, speed = 1.0)
+    val next = recorder()
+    next.prepareStart(ListeningStart.RESUME)
+    next.loadsFromRow(book.ref)
+    next.open(book, at(60.0), 1.0)
+    assertEquals(ListeningStart.RESUME, next.span?.start)
+  }
+
+  @Test
+  fun anotherBooksRowLeavesAKilledMoveToItsOwnBook() {
+    val r = recorder()
+    r.open(book, at(80.0), 1.0)
+    r.move(book, to = at(10.0), from = at(80.0), playing = true, speed = 1.0)
+    val next = recorder()
+    // Loaded from its row, never played.
+    next.prepareStart(ListeningStart.RESUME)
+    next.loadsFromRow(BookRef(2, "A/Other"))
+    next.prepareStart(ListeningStart.RESUME)
+    next.open(book, at(10.0), 1.0)
+    assertEquals(ListeningStart.MOVED_BACK, next.span?.start)
+  }
+
   @Test
   fun aKilledMoveIsNotCarriedToAnotherBookNorPastIt() {
     val r = recorder()

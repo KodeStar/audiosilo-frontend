@@ -9,7 +9,8 @@
 // (the next span opens with the move's reason), a stop, a book switch and the end (then one
 // `finish`). The open span is stored every 5 s (`OPEN_SPAN_KEEP`) with its id fixed at open, and one
 // a kill left is closed into the outbox at the next launch (one a move opened and a kill cut short
-// gives the launch's first span, when it is that book's, the move's reason).
+// gives the launch's first span, when it is that book's and resumes this watch's own place, the
+// move's reason).
 package app.audiosilo.wear.core
 
 import java.time.Instant
@@ -176,8 +177,9 @@ class SpanRecorder(
   private var recovered = false
 
   /**
-   * The move a kill cut short (`recover`): the launch's first span, when it is that book's and
-   * nothing else was asked for (a resume), begins with the move's reason.
+   * The move a kill cut short (`recover`): the launch's first span, when it is that book's,
+   * nothing else was asked for (a resume) and it begins at this watch's own place (`loadsFromRow`),
+   * begins with the move's reason.
    */
   private var recoveredMove: Pair<BookRef, ListeningStart>? = null
 
@@ -219,6 +221,16 @@ class SpanRecorder(
   fun prepareStart(start: ListeningStart, unfinish: Boolean = false) {
     nextStart = start
     unfinishDue = unfinish
+  }
+
+  /**
+   * `ref` loads at the server's row (`ResumePlan.tookRow`: another device's newer place, or the
+   * server's when the watch has none), not where this watch left it. A move a kill cut short here
+   * was not made from that place, so it is not the reason of the book's first span.
+   */
+  fun loadsFromRow(ref: BookRef) {
+    recover()
+    if (recoveredMove?.first == ref) recoveredMove = null
   }
 
   /** Playing began (or goes on after a cut) at `at`. */

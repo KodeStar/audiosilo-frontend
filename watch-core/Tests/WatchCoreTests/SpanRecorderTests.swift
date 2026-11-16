@@ -423,6 +423,31 @@ final class SpanRecorderTests: XCTestCase {
     XCTAssertEqual(next.span?.start, .jump)
   }
 
+  // `Resume.plan` took another device's newer row: the span begins there, not where the move went.
+  func testAKilledMoveIsNotCarriedToAPlaceTakenFromTheServer() {
+    let r = recorder()
+    r.open(book, at: at(80), speed: 1)
+    r.move(book, to: at(10), from: at(80), playing: true, speed: 1)
+    let next = recorder()
+    next.prepareStart(.resume)
+    next.loadsFromRow(book.ref)
+    next.open(book, at: at(60), speed: 1)
+    XCTAssertEqual(next.span?.start, .resume)
+  }
+
+  func testAnotherBooksRowLeavesAKilledMoveToItsOwnBook() {
+    let r = recorder()
+    r.open(book, at: at(80), speed: 1)
+    r.move(book, to: at(10), from: at(80), playing: true, speed: 1)
+    let next = recorder()
+    // Loaded from its row, never played.
+    next.prepareStart(.resume)
+    next.loadsFromRow(BookRef(libraryId: 2, path: "A/Other"))
+    next.prepareStart(.resume)
+    next.open(book, at: at(10), speed: 1)
+    XCTAssertEqual(next.span?.start, .movedBack)
+  }
+
   func testAKilledMoveIsNotCarriedToAnotherBookNorPastIt() {
     let r = recorder()
     r.open(book, at: at(80), speed: 1)

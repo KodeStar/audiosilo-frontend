@@ -237,6 +237,8 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     rate = PlaybackSpeed.book(savedSpeed, prefs.getFloat(SPEED_KEY, 0f).toDouble())
     player().playbackParameters = PlaybackParameters(rate.toFloat())
     spans.prepareStart(plan.start, plan.unfinish)
+    // The server's row, not this watch's place: a move a kill cut short here is not its reason.
+    if (plan.tookRow) spans.loadsFromRow(next.ref)
     val place = next.timeline.resumePlace(plan.position, plan.file, plan.filePos)
     position = next.timeline.bookPosition(place.index, place.positionInTrack)
     ended = false
