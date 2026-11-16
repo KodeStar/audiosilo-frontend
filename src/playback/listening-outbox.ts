@@ -26,7 +26,7 @@ import {
 } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
 
-import { isPos, type OpenSpan, type StoredSpan, storedSpans } from './open-span-doc';
+import { isPos, type OpenSpan, type SpanEnd, type StoredSpan, storedSpans } from './open-span-doc';
 import {
   ackVersion,
   bookPlace,
@@ -185,11 +185,41 @@ export function eventIsFinite(event: ListeningEvent): boolean {
   return Object.values(event).every((v) => typeof v !== 'number' || Number.isFinite(v));
 }
 
+/** Whether anything was heard in a span: it ran a second, or the place moved one (pure). */
+function spanHeard(span: OpenSpan): boolean {
+  const ms = Date.parse(span.endedAt) - Date.parse(span.startedAt);
+  return ms >= EMPTY_SPAN_MS || Math.abs(span.to.pos - span.from.pos) >= 1;
+}
+
 /** Whether a span carries anything: listening, or a deliberate move (pure). */
 export function spanSaysSomething(span: OpenSpan): boolean {
-  const ms = Date.parse(span.endedAt) - Date.parse(span.startedAt);
-  if (ms >= EMPTY_SPAN_MS || Math.abs(span.to.pos - span.from.pos) >= 1) return true;
+  if (spanHeard(span)) return true;
   return span.start === 'jump' || span.start === 'moved_back' || span.start === 'restart';
+}
+
+/**
+ * A deliberate move nothing was heard after (a pause right behind a seek; pure): all it says
+ * is the move, like a move made while paused. Stamped ms after the span before it, its event
+ * can lose to that span's when they are sent apart (`not_applied`/`older`: two batches' clock
+ * shifts differ by their latency), so the next span carries the move too. The watch's
+ * `Spans.isBareMove`.
+ */
+export function spanIsBareMove(span: OpenSpan): boolean {
+  return spanSaysSomething(span) && !spanHeard(span);
+}
+
+/** A place this little from another is the same place: a seek lands a hair off the place it
+ * was asked for (the transport's 0.01, the watch's `ChapterNav.AT_START`). */
+const SAME_PLACE = 0.01;
+
+/**
+ * A move to where the place already is moves nothing (Previous at the book's start; pure):
+ * no span is closed for it and no event says it. Either end unknown, or a place that is not
+ * a number (NaN compares false), is not this. The watch's `Spans.movesNowhere`.
+ */
+export function movesNowhere(from: SpanEnd | null | undefined, to: SpanEnd | null): boolean {
+  if (!from || !to) return false;
+  return Math.abs(to.pos - from.pos) < SAME_PLACE;
 }
 
 /** A `finish` or `unfinish` event at `at` (ISO). */

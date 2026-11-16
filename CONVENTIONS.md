@@ -2023,6 +2023,14 @@ media GETs only.
     (`listening-sync.ts`) and the web page hiding; offline the tick leaves it open (the 5 s keep
     below stores it), and either way a span is cut after an hour of wall clock (`MAX_SPAN_MS`;
     the server refuses one over 24 h). A move while paused is sent at once as a span that moved nowhere. A
+    deliberate move nothing was heard after (`spanIsBareMove`, a pause or a cut under a second
+    behind a seek) gives the next span its reason, as a paused move does: its event can come back
+    `not_applied`/`older` when sent apart from the span before it (a reason asked for, Stay's
+    `jump`, still wins). A move to where the place already is (`movesNowhere`, Previous at the
+    book's start) is no move: the span goes on and no event says it, unless the last move went
+    elsewhere (a seek still on its way reads as where it left) or the engine moved first with
+    nothing to compare (a paused lock-screen move: `from: null`). The watches share both rules
+    (`Spans`). A
     finished book started again sends `unfinish` first, then a `restart` span; an explicit 0 is
     `restart`, another explicit place `jump`, Stay on an offer makes the next span `jump`
     (`standByPlace`). The open span is stored every 5 s online or offline (`OPEN_SPAN_KEEP_MS`),
@@ -2660,11 +2668,13 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   close on pause / move / stop / end (then one `finish`) / sleep, cut every 15 s (the watch
   keeps that pace throughout: the phone's 60 s one is the phone's) while the last
   sync answered (else after an hour), on a rate change and on going to the background; kept every
-  5 s; a kill's open span is recovered at launch. Beyond the phone's rules: a deliberate move
-  nothing was heard after (`Spans.isBareMove`, a stop under a second behind a seek) gives the next
-  span its reason, as a paused move does, since its event can come back `not_applied/older` when
-  sent apart from the span before it; a move to where the place already is
-  (`Spans.movesNowhere`, Previous at the book's start) is no move, so no event. Play pulls the
+  5 s; a kill's open span is recovered at launch. As on the phone (`spanIsBareMove`,
+  `movesNowhere`): a deliberate move nothing was heard after (`Spans.isBareMove`, a stop under a
+  second behind a seek) gives the next span its reason, as a paused move does, since its event can
+  come back `not_applied/older` when sent apart from the span before it; a move to where the
+  place already is (`Spans.movesNowhere`, Previous at the book's start) is no move, so no event.
+  Only the watches store the span at open, so only they recover a move a kill cut short (within
+  the 5 s keep): the book's next span, a resume, takes its reason (`recoveredMove`). Play pulls the
   book's row first (5 s at most) and
   resumes by `Resume.plan`; with no answer the server's place kept for the book stands in (the
   last Continue listening refresh's, or the one read when its download started: the phone's
