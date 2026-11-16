@@ -9,7 +9,8 @@
 // CLOSED on a pause, a move (the next span opens with the move's reason), a stop, a book switch
 // and the end (then one `finish`). The open span is stored every 5 s (`OPEN_SPAN_KEEP`) with its
 // id fixed at open, and one a kill left is closed into the outbox at the next launch (one a
-// move opened and a kill cut short gives that book's next span the move's reason).
+// move opened and a kill cut short gives the launch's first span, when it is that book's, the
+// move's reason).
 import Foundation
 
 /// One end of a span: whole-book seconds, and the audio file (rel path) and seconds in it.

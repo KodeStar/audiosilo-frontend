@@ -9,7 +9,7 @@
 // (the next span opens with the move's reason), a stop, a book switch and the end (then one
 // `finish`). The open span is stored every 5 s (`OPEN_SPAN_KEEP`) with its id fixed at open, and one
 // a kill left is closed into the outbox at the next launch (one a move opened and a kill cut short
-// gives that book's next span the move's reason).
+// gives the launch's first span, when it is that book's, the move's reason).
 package app.audiosilo.wear.core
 
 import java.time.Instant
