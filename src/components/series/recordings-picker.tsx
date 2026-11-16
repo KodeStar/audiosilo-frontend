@@ -29,6 +29,7 @@ export function RecordingsChip({
   const recordings = entry.recordings;
   if (!recordings) return null;
   const label = t('series.recordings.count', { count: recordings.length });
+  const title = entry.title ?? '';
   return (
     <>
       <FilterChip
@@ -37,12 +38,12 @@ export function RecordingsChip({
         picker
         icon="microphone"
         onPress={() => setOpen(true)}
-        accessibilityLabel={`${label}, ${t('series.recordings.choose', { title: entry.title })}`}
+        accessibilityLabel={`${label}, ${t('series.recordings.choose', { title })}`}
       />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader className="pr-10">
-            <DialogTitle>{t('series.recordings.title', { title: entry.title ?? '' })}</DialogTitle>
+            <DialogTitle>{t('series.recordings.title', { title })}</DialogTitle>
           </DialogHeader>
           <ScrollView
             className="-mx-2 max-h-[420px]"

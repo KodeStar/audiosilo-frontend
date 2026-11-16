@@ -226,17 +226,8 @@ type Source = {
   now?: Date;
 };
 
-type CopyEntryFields = Pick<EntryFields, 'key' | 'position' | 'title' | 'workId' | 'webUrl'>;
-
-/** An entry with a copy: its facts and the listener's progress in it. */
-function copyEntry(
-  kind: 'owned' | 'elsewhere',
-  fields: CopyEntryFields,
-  copy: SeriesCopy,
-  progressOf: ProgressLookup,
-): SeriesEntry {
-  return { ...fields, kind, copy, ...copyFields(copy), ...progressFields(copy, progressOf) };
-}
+/** What places an entry with a copy; its title and facts come from the copy. */
+type PlaceFields = Pick<EntryFields, 'key' | 'position' | 'workId' | 'webUrl'>;
 
 /**
  * The recording a work's entry shows (server#241): the one the listener is on (started,
@@ -261,7 +252,7 @@ function pickShown(recordings: readonly SeriesRecording[]): SeriesRecording {
  * recording listed when there is more than one. `title` names a copy by its book.
  */
 function workEntry(
-  fields: Omit<CopyEntryFields, 'title'>,
+  fields: PlaceFields,
   copies: readonly SeriesCopy[],
   progressOf: ProgressLookup,
   title: (copy: SeriesCopy) => string,
@@ -308,18 +299,21 @@ function insertByPosition(out: SeriesEntry[], entry: SeriesEntry, n: number, unn
   else out.splice(at, 0, entry);
 }
 
+/** A copy on another server: its facts and the listener's progress in it. */
 function elsewhereEntry(
-  fields: Pick<EntryFields, 'key' | 'position' | 'workId' | 'webUrl'>,
+  fields: PlaceFields,
   match: ElsewhereBook,
   progressOf: ProgressLookup,
 ): SeriesEntry {
   const copy = bookCopy(match, match.connectionId, match.connectionName);
-  return copyEntry(
-    'elsewhere',
-    { ...fields, title: bookTitle(match.title, match.rel_path) },
+  return {
+    ...fields,
+    title: bookTitle(match.title, match.rel_path),
+    kind: 'elsewhere',
     copy,
-    progressOf,
-  );
+    ...copyFields(copy),
+    ...progressFields(copy, progressOf),
+  };
 }
 
 /** A `groupByWork` group (one book, or every recording of its work): one entry at its first
@@ -337,7 +331,7 @@ function ownedBookEntry(group: readonly Book[], src: Source): SeriesEntry {
     },
     group.map((x) => bookCopy(x, src.connectionId, src.connectionName)),
     src.progressOf,
-    (c) => bookTitle(c.book?.title ?? '', c.path),
+    (c) => bookTitle(c.book?.title, c.path),
   );
 }
 

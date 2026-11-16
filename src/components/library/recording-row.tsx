@@ -25,7 +25,7 @@ export type RecordingFacts = {
 /** "Read by Jefferson Mays", else the recording's title: what tells two recordings apart. */
 export function recordingLabel(t: TFunction, r: Pick<RecordingFacts, 'book' | 'path'>): string {
   const narrator = r.book?.narrator;
-  return narrator ? t('series.readBy', { narrator }) : bookTitle(r.book?.title ?? '', r.path);
+  return narrator ? t('series.readBy', { narrator }) : bookTitle(r.book?.title, r.path);
 }
 
 /** "Kids · Abridged · 10h 3m · 40% listened": where it is (`where`, the name of a library
@@ -81,7 +81,7 @@ export function RecordingRow({
         path={path}
         coverVersion={book?.cover_version}
         width={44}
-        title={bookTitle(book?.title ?? '', path)}
+        title={bookTitle(book?.title, path)}
         author={book?.author}
       />
       <View className="min-w-0 flex-1 gap-0.5">
