@@ -652,8 +652,13 @@ final class AppModel: ObservableObject {
       account = a
       router.start(at: AddressPicker.isOwn(base, serverURL: a.serverURL, addresses: a.addresses) ? base : nil)
       if let keptToken, AccountRules.endsKeptToken(change, kept: keptToken, new: session.token) {
-        // A Send again whose `GET /me` got no word: the session the old token holds ends too.
-        Task { try? await APIClient(base: base, token: keptToken).logout() }
+        // A Send again whose `GET /me` got no word: the session the old token holds ends too, once
+        // no download goes on with it (one refused 401 after this would fail its book as signed out).
+        let ended = APIClient(base: base, token: keptToken)
+        Task {
+          await downloads.tokenReplaced()
+          try? await ended.logout()
+        }
       }
       phase = .ready
       pendingReplace = nil

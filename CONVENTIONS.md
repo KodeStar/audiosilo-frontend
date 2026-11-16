@@ -2831,7 +2831,10 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   session on the server each time (D6, fe#219). A 401, any other refusal or no answer at all
   exchanges the pair's token as a first sign-in does (with no answer the watch may only be at an
   address it can't reach, and the exchange tries the pair's `base_url`, away and home; the token
-  kept is then ended there, best effort: on the Apple Watch, `AccountRules.endsKeptToken`, fe#322). Kept, the
+  kept is then ended there, best effort: on the Apple Watch, `AccountRules.endsKeptToken`, fe#322,
+  once the transfers and runs still carrying it are cancelled and asked for again
+  (`DownloadManager.tokenReplaced`): refused 401 after it ended, one would fail its book as signed
+  out). Kept, the
   pair's label, user name and addresses are taken (`keepSignIn`) and its token runs out unused;
   the server gate is asked again unless it stands, so a server that was too old can take the book
   behind the pair.

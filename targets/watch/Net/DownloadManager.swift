@@ -297,6 +297,23 @@ final class DownloadManager: ObservableObject {
     sweepStaging(olderThan: 0)
   }
 
+  /// The account's token was replaced (a Send again that exchanged, `AppModel.signIn`) and the old
+  /// one ends on the server next: nothing goes on with it. A transfer the system has yet to begin
+  /// or tries again after that, or a run's request still on its way, would be refused 401 and fail
+  /// its book as signed out. The runs start again, and hand those files over with the token kept now
+  /// (in the background there is no run: at the next foreground, `resumeAll`).
+  func tokenReplaced() async {
+    for key in Array(working.keys) { stopWork(key) }
+    for tag in await BackgroundDownloads.shared.cancel(notSending: client()?.authorization) {
+      // A cancelled task brings no event (as in `startFile`).
+      handedOff.remove(tag.key)
+      resumeData[tag.key] = nil
+      fractions[tag.book]?[tag.path] = nil
+    }
+    guard active else { return }
+    for r in records where r.wantsWork { process(r.id) }
+  }
+
   /// A staged file whose event never came (a kill just after the move): nothing else removes it.
   /// Not at launch: an event still on its way holds a staged file.
   private func sweepStaging(olderThan age: TimeInterval) {

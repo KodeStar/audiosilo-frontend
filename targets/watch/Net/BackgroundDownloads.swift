@@ -102,6 +102,20 @@ final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate, @unchecke
     session.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
   }
 
+  /// Cancel every transfer that does not send `authorization`: the files they were for. The token
+  /// was replaced and the one they carry ends on the server next, so a request the system makes
+  /// for one later (not begun yet, or tried again after a broken connection) would be refused 401.
+  /// A plain cancel brings no event.
+  func cancel(notSending authorization: String?) async -> [DownloadTaskTag] {
+    var cancelled: [DownloadTaskTag] = []
+    for task in await session.allTasks
+    where task.originalRequest?.value(forHTTPHeaderField: "Authorization") != authorization {
+      task.cancel()
+      if let tag = Self.tag(task) { cancelled.append(tag) }
+    }
+    return cancelled
+  }
+
   /// A background wake for this session: resolves once the system's events are delivered.
   func wake() async {
     attach()
