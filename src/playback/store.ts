@@ -3713,8 +3713,14 @@ export const selectBookPosition = (s: PlayerState): number =>
     ? toBookPosition(s.nowPlaying.queue.offsets, s.snapshot.trackIndex, s.snapshot.position)
     : 0;
 
-export const selectCurrentChapter = (s: PlayerState): Chapter | null =>
-  s.nowPlaying ? chapterAt(s.nowPlaying.queue.chapters, selectBookPosition(s)) : null;
+/** The chapter playing. Chapters that share a start (files of unknown length) are told
+ * apart by the file playing (`chapterAt`). */
+export const selectCurrentChapter = (s: PlayerState): Chapter | null => {
+  const np = s.nowPlaying;
+  if (!np) return null;
+  const file = fileOf(np, s.snapshot.trackIndex);
+  return chapterAt(np.queue.chapters, selectBookPosition(s), (filePath) => filePath === file);
+};
 
 /** Memo for `selectBookKey`, keyed on the `nowPlaying` OBJECT. */
 let bookKeyMemo: { nowPlaying: NowPlaying; key: string } | null = null;

@@ -168,6 +168,48 @@ describe('chapterList', () => {
     ]);
   });
 
+  it('jumps by file to the chapters that open a file of unknown length (fe#324)', () => {
+    const inFile = (index: number, file_path: string, start = 0): Chapter => ({
+      ...chapter(index, start, 0),
+      file_path,
+      book_offset: 0,
+    });
+    // Every length unknown: each file's chapter starts its track.
+    const unknown = chapterList({
+      ...base,
+      chapters: [inFile(0, 'A/B/01.mp3'), inFile(1, 'A/B/02.mp3')],
+      files: [
+        { rel_path: 'A/B/01.mp3', duration: 0 },
+        { rel_path: 'A/B/02.mp3', duration: 0 },
+      ],
+      chapterStarts: [0, 0],
+    });
+    expect(unknown.rows.map((r) => r.jump)).toEqual([{ track: 0 }, { track: 1 }]);
+    // Known files before the first unknown one keep their whole-book starts, and so does
+    // a chapter inside a file (its start is no file's start).
+    const mixed = chapterList({
+      ...base,
+      chapters: [
+        { ...chapter(0, 0, 100), file_path: 'A/B/01.mp3' },
+        inFile(1, 'A/B/02.mp3'),
+        inFile(2, 'A/B/02.mp3', 30),
+        inFile(3, 'A/B/03.mp3'),
+      ],
+      files: [
+        { rel_path: 'A/B/01.mp3', duration: 100 },
+        { rel_path: 'A/B/02.mp3', duration: 0 },
+        { rel_path: 'A/B/03.mp3', duration: 0 },
+      ],
+      chapterStarts: [0, 100, 130, 100],
+    });
+    expect(mixed.rows.map((r) => r.jump)).toEqual([
+      { position: 0 },
+      { track: 1 },
+      { position: 130 },
+      { track: 2 },
+    ]);
+  });
+
   it("splits one long chapterless file into the player's parts", () => {
     const list = chapterList({
       ...base,

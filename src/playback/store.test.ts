@@ -160,6 +160,7 @@ import {
   onPickedUpAgain,
   selectBookKey,
   selectBookPosition,
+  selectCurrentChapter,
   selectEndsPartial,
   selectIsPlaying,
   selectIsTransportLive,
@@ -2967,6 +2968,42 @@ describe('setOutputVolume', () => {
     expect(setVolume).toHaveBeenLastCalledWith(0);
     // ...and back to full for the tests that follow (the gain is module state).
     await usePlayer.getState().setOutputVolume(1);
+  });
+});
+
+// --- files of unknown length (fe#324) -----------------------------------------
+
+describe('a book whose files have no known length', () => {
+  const files = ['A/Unknown/01.mp3', 'A/Unknown/02.mp3'];
+  const chapters: ChaptersResponse = {
+    library_id: 2,
+    path: 'A/Unknown',
+    duration: 0,
+    is_folder: true,
+    files: files.map((rel_path, seq) => ({ rel_path, seq, duration: 0, format: 'mp3', size: 1 })),
+    chapters: files.map((file_path, index) => ({
+      index,
+      title: `Part ${index + 1}`,
+      file_index: index,
+      file_path,
+      start: 0,
+      end: 0,
+      book_offset: 0,
+    })),
+  };
+  const book = makeBook({ rel_path: 'A/Unknown', is_folder: true, format: 'mp3', duration: 0 });
+
+  it('starts in the first file and names the chapter of the file playing', async () => {
+    await usePlayer.getState().playBook('c1', 2, book, chapters, 0);
+    const [, index, position] = (mockSvc.load as jest.Mock).mock.lastCall as unknown[];
+    expect([index, position]).toEqual([0, 0]);
+
+    pushSnapshot(snap('playing', 12, { trackIndex: 0 }));
+    expect(selectCurrentChapter(usePlayer.getState())?.title).toBe('Part 1');
+    pushSnapshot(snap('playing', 0, { trackIndex: 1 }));
+    expect(selectCurrentChapter(usePlayer.getState())?.title).toBe('Part 2');
+    pushSnapshot(snap('playing', 30, { trackIndex: 1 }));
+    expect(selectCurrentChapter(usePlayer.getState())?.title).toBe('Part 2');
   });
 });
 
