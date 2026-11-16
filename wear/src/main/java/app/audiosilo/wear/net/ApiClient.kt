@@ -103,6 +103,11 @@ class ApiClient(base: String, private val token: String?, private val http: OkHt
     return send(request("POST", "/auth/exchange", body = body.toString()), AuthSession.serializer())
   }
 
+  /** `GET /me`, read only for its status: whether this token still signs in (an `APIError` 401 when not). */
+  suspend fun me() {
+    execute(request("GET", "/me"), TIMEOUT)
+  }
+
   /** `GET /addresses`: the server's addresses as seen from here (capability `addresses`). */
   suspend fun addresses(): ServerAddresses = send(request("GET", "/addresses"), ServerAddresses.serializer())
 

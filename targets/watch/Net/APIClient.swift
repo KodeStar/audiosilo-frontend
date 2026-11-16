@@ -87,6 +87,12 @@ final class APIClient: ListeningSyncTransport, @unchecked Sendable {
     return try await send(request("POST", "/auth/exchange", body: json(Body(pairingToken: pairingToken, deviceName: deviceName))))
   }
 
+  /// `GET /me`, read only for its status: whether this token still signs in (a 401 when not).
+  func me() async throws {
+    let (data, response) = try await session.data(for: request("GET", "/me"))
+    try Self.check(response, data)
+  }
+
   /// `GET /addresses`: the server's addresses as seen from here (capability `addresses`).
   func addresses() async throws -> ServerAddresses {
     try await send(request("GET", "/addresses"))

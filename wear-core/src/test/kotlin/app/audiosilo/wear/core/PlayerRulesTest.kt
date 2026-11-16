@@ -444,6 +444,16 @@ class AccountRulesTest {
     assertEquals(SignOutGate.Allowed, AccountRules.signOut(2, discard = true))
     assertEquals(SignOutGate.Allowed, AccountRules.signOut(0, discard = false))
   }
+
+  /** D6 (fe#219): a pair for the account signed in exchanges only when the token kept no longer signs in. */
+  @Test
+  fun aSameAccountPairKeepsTheTokenUnlessTheServerRefusesIt() {
+    assertTrue(AccountRules.keepsToken(200))
+    assertTrue("no answer: the exchange would fail too", AccountRules.keepsToken(null))
+    assertTrue(AccountRules.keepsToken(500))
+    assertTrue(AccountRules.keepsToken(403))
+    assertFalse(AccountRules.keepsToken(401))
+  }
 }
 
 class DebugPairTest {

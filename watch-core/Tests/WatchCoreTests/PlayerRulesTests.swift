@@ -363,6 +363,15 @@ final class AccountRulesTests: XCTestCase {
     XCTAssertEqual(AccountRules.signOut(unsent: 2, discard: true), .allowed)
     XCTAssertEqual(AccountRules.signOut(unsent: 0, discard: false), .allowed)
   }
+
+  // D6 (fe#219): a pair for the account signed in exchanges only when the token kept no longer signs in.
+  func testASameAccountPairKeepsTheTokenUnlessTheServerRefusesIt() {
+    XCTAssertTrue(AccountRules.keepsToken(meStatus: 200))
+    XCTAssertTrue(AccountRules.keepsToken(meStatus: nil), "no answer: the exchange would fail too")
+    XCTAssertTrue(AccountRules.keepsToken(meStatus: 500))
+    XCTAssertTrue(AccountRules.keepsToken(meStatus: 403))
+    XCTAssertFalse(AccountRules.keepsToken(meStatus: 401))
+  }
 }
 
 @MainActor

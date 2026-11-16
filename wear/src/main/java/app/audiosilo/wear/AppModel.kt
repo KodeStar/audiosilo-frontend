@@ -660,6 +660,26 @@ class AppModel private constructor(private val context: Context) {
     }
     pendingPair = null
     _pendingReplace.value = if (change == AccountChange.Replace) PendingReplace.Switching else null
+    val api = if (change == AccountChange.SameAccount) client() else null
+    if (current != null && api != null) {
+      val status =
+        try {
+          api.me()
+          200
+        } catch (e: CancellationException) {
+          throw e
+        } catch (e: APIError) {
+          e.status
+        } catch (_: Exception) {
+          null
+        }
+      // Signed out or switched while it was asked: this pair is not for the watch as it is now.
+      if (_account.value?.accountId != current.accountId) return
+      if (AccountRules.keepsToken(status)) {
+        keepSignIn(current, p)
+        return
+      }
+    }
     if (current == null) _phase.value = Phase.Setup(SetupStatus.SigningIn)
 
     fun failed(message: String) {
@@ -700,7 +720,7 @@ class AppModel private constructor(private val context: Context) {
     val session = exchanged.answer
     if (change == AccountChange.Replace) {
       // Its token ends on its server too (as Sign out does): this watch forgets it now. A sign-in
-      // again for the same account keeps its old token, as the phone does.
+      // again for the same account exchanges only once its token no longer signs in (D6, above).
       leaveAccount()
     } else if (change == AccountChange.SignIn && accountFile.read()?.accountId != p.accountId) {
       // The token was lost, and what is here is another account's: never sent under this one.
@@ -735,6 +755,26 @@ class AppModel private constructor(private val context: Context) {
       router.leaveHome(a)
       checkServer()
     }
+  }
+
+  /**
+   * A `pair` for this account while its token still signs in (D6): no exchange, so no new session on
+   * the server, and the phone's pairing token runs out unused. What the phone now says of the
+   * account (its label, the user's name, the addresses) is taken, as a sign-in would.
+   */
+  private fun keepSignIn(current: Account, p: PairMessage) {
+    val a =
+      current.copy(
+        serverName = p.serverName,
+        userName = p.userName.ifEmpty { current.userName },
+        serverUrl = p.serverUrl,
+        addresses = AddressPicker.merge(current.addresses, p.addresses),
+      )
+    if (a != current) {
+      accountFile.write(a)
+      _account.value = a
+    }
+    publishState()
   }
 
   /**

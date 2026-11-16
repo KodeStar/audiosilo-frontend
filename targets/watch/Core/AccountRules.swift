@@ -28,6 +28,14 @@ enum AccountRules {
     return .replace
   }
 
+  /// A `pair` for the account signed in here (`.sameAccount`, D6, fe#219): whether the token kept
+  /// here stays, by what `GET /me` with it answered (`meStatus`, nil for no answer). Exchanged every
+  /// time, each Send again left another session on the server that nothing ever ended. Only a 401
+  /// says the token no longer signs in; with no answer the exchange would fail too.
+  static func keepsToken(meStatus: Int?) -> Bool {
+    meStatus != 401
+  }
+
   /// Whether signing out may go ahead now.
   static func signOut(unsent: Int, discard: Bool) -> SignOutGate {
     unsent > 0 && !discard ? .blocked(unsent: unsent) : .allowed

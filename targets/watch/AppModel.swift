@@ -504,6 +504,23 @@ final class AppModel: ObservableObject {
     }
     pendingPair = nil
     pendingReplace = change == .replace ? .switching : nil
+    if change == .sameAccount, let current = account, let api = client() {
+      let status: Int?
+      do {
+        try await api.me()
+        status = 200
+      } catch let e as APIError {
+        status = e.status
+      } catch {
+        status = nil
+      }
+      // Signed out or switched while it was asked: this pair is not for the watch as it is now.
+      guard account?.accountId == current.accountId else { return }
+      if AccountRules.keepsToken(meStatus: status) {
+        keepSignIn(current, p)
+        return
+      }
+    }
     if account == nil { phase = .setup(.signingIn) }
     /// Why it failed: on the setup screen, or on Home when it was replacing another account
     /// (a same-account refresh fails quietly: its sign-in stands).
@@ -527,7 +544,7 @@ final class AppModel: ObservableObject {
         isTimeout: APIClient.isTimeout, probe: APIClient.probeServerId)
       if change == .replace {
         // Its token ends on its server too (as Sign out does): this watch forgets it now. A sign-in
-        // again for the same account keeps its old token, as the phone does.
+        // again for the same account exchanges only once its token no longer signs in (D6, above).
         let leaving = client()
         forgetAccount()
         if let leaving { Task { try? await leaving.logout() } }
@@ -571,6 +588,21 @@ final class AppModel: ObservableObject {
     } catch {
       failed("Can't reach your server. Send again from your iPhone when the watch is online.")
     }
+  }
+
+  /// A `pair` for this account while its token still signs in (D6): no exchange, so no new session
+  /// on the server, and the phone's pairing token runs out unused. What the phone now says of the
+  /// account (its label, the user's name, the addresses) is taken, as a sign-in would.
+  private func keepSignIn(_ current: Account, _ p: PairMessage) {
+    let a = Account(
+      serverId: current.serverId, serverName: p.serverName, userId: current.userId,
+      userName: p.userName.isEmpty ? current.userName : p.userName, serverURL: p.serverURL,
+      addresses: AddressPicker.merge(prior: current.addresses, fresh: p.addresses), signedInAt: current.signedInAt)
+    if a != current {
+      Account.save(a)
+      account = a
+    }
+    publishState()
   }
 
   /// Switch to the account the blocked pair message is for: `discard` drops the listening that
@@ -634,8 +666,8 @@ final class AppModel: ObservableObject {
     /// The simulator has no paired phone, and simctl cannot tap, so the launch environment
     /// stands in (`SIMCTL_CHILD_<NAME>=... xcrun simctl launch ...`; not in release builds):
     /// - `AUDIOSILO_DEBUG_PAIR`: a v1 `pair` message as JSON, signed in as if the phone had sent
-    ///   it (ignored when already signed in to that account). `scripts/watch-debug-pair.mjs`
-    ///   mints one.
+    ///   it; for the account already signed in it is a Send again (D6: the token kept stays while
+    ///   `GET /me` takes it). `scripts/watch-debug-pair.mjs` mints one.
     /// - `AUDIOSILO_DEBUG_BOOK`: a v1 `book` message as JSON, queued like the Download button.
     /// - `AUDIOSILO_DEBUG_REMOVE`: a v1 `remove` message as JSON, taken as if the phone had sent it.
     /// - `AUDIOSILO_DEBUG_PLAY=1`: play the first book on the watch once signed in.
@@ -647,7 +679,7 @@ final class AppModel: ObservableObject {
           phase = .setup(.failed("AUDIOSILO_DEBUG_PAIR is not a v1 pair message."))
           return
         }
-        if account?.accountId != p.accountId { pair = p }
+        pair = p
       }
       Task {
         if let pair { await signIn(pair) }

@@ -32,6 +32,14 @@ object AccountRules {
     return AccountChange.Replace
   }
 
+  /**
+   * A `pair` for the account signed in here (`SameAccount`, D6, fe#219): whether the token kept here
+   * stays, by what `GET /me` with it answered (`meStatus`, null for no answer). Exchanged every time,
+   * each Send again left another session on the server that nothing ever ended. Only a 401 says the
+   * token no longer signs in; with no answer the exchange would fail too.
+   */
+  fun keepsToken(meStatus: Int?): Boolean = meStatus != 401
+
   /** Whether signing out may go ahead now. */
   fun signOut(unsent: Int, discard: Boolean): SignOutGate =
     if (unsent > 0 && !discard) SignOutGate.Blocked(unsent) else SignOutGate.Allowed
