@@ -283,11 +283,19 @@ final class SpanRecorderTests: XCTestCase {
     XCTAssertEqual(listens[0].startedAt, listens[0].endedAt)
     XCTAssertEqual(listens[0].baseVersion, 7)
     XCTAssertNil(r.span)
-    // A bare move: the next play carries it.
-    XCTAssertEqual(r.nextStart, .stay)
+    // A bare move: the next play carries it, as a jump (the Stay went; a second `stay` at a later
+    // play would beat what another device chose since).
+    XCTAssertEqual(r.nextStart, .jump)
     clock.advance(60)
     r.open(book, at: at(30), speed: 1)
-    XCTAssertEqual(r.span?.start, .stay)
+    XCTAssertEqual(r.span?.start, .jump)
+  }
+
+  func testAPausedStayWithNoPlaceGivesTheNextPlayAJump() {
+    let r = recorder()
+    r.standBy(book, at: nil, playing: false, speed: 1, stay: true)
+    XCTAssertTrue(listens.isEmpty)
+    XCTAssertEqual(r.nextStart, .jump)
   }
 
   func testAPausedStayOnAServerWithoutItIsAJumpSentAtOnce() {
@@ -304,7 +312,23 @@ final class SpanRecorderTests: XCTestCase {
     r.standBy(book, at: at(9), playing: true, speed: 1, stay: true)
     r.close(at: at(9))
     XCTAssertEqual(listens.map(\.start), [.resume, .stay])
-    XCTAssertEqual(r.nextStart, .stay)
+    XCTAssertEqual(r.nextStart, .jump)
+  }
+
+  func testAKillRightBehindAStayGivesTheBooksNextSpanAJump() {
+    let r = recorder()
+    r.open(book, at: at(5), speed: 1)
+    clock.advance(4)
+    r.standBy(book, at: at(9), playing: true, speed: 1, stay: true)
+    // A kill: a new launch, the same store.
+    emitted = []
+    clock.advance(3600)
+    let next = recorder()
+    next.recover()
+    XCTAssertEqual(listens.map(\.start), [.stay])
+    next.prepareStart(.resume)
+    next.open(book, at: at(9), speed: 1)
+    XCTAssertEqual(next.span?.start, .jump)
   }
 
   func testARateChangeCutsTheSpanAndTheNextRunsAtTheNewSpeed() {

@@ -837,7 +837,8 @@ const MAX_SPAN_MS = 60 * 60_000;
 /** The span being played, else null. */
 let span: OpenSpan | null = null;
 /** Why the next span begins: a book started or resumed (`resume`), a move (`jump`,
- * `moved_back`), starting again (`restart`). Back to `resume` once a span takes it. */
+ * `moved_back`), starting again (`restart`), a Stay while playing (`stay`). Back to `resume`
+ * once a span takes it. */
 let nextStart: ListeningStart = 'resume';
 /** A finished book started again owes an `unfinish` before its first span. */
 let unfinishDue = false;
@@ -1002,7 +1003,7 @@ function takeSpan(at?: SpanEnd, endedAt?: number): OpenSpan | null {
   // Never before it began (a span cut since the other tab's claim was made).
   closing.endedAt = new Date(Math.max(ended, Date.parse(closing.startedAt) || 0)).toISOString();
   // Like a paused move: the loaded book's next play begins with the same reason.
-  if (carriesMove(closing)) nextStart = closing.start;
+  if (carriesMove(closing)) nextStart = carriedStart(closing.start);
   return closing;
 }
 
@@ -1011,6 +1012,14 @@ function takeSpan(at?: SpanEnd, endedAt?: number): OpenSpan | null {
 function carriesMove(closing: OpenSpan): boolean {
   const np = usePlayer.getState().nowPlaying;
   return np !== null && sameBook(closing, np) && spanIsBareMove(closing);
+}
+
+/** The reason a bare move sent already gives the book's next play: its own, but a Stay's as
+ * a `jump`. That play may come hours later, and the server measures a Stay's slack from its
+ * span's end (`staysWin`): a second `stay` then would beat what another device chose since
+ * the first one (Jump on its offer, then listening on). */
+function carriedStart(start: ListeningStart): ListeningStart {
+  return start === 'stay' ? 'jump' : start;
 }
 
 /** Cut the span (close it, a span opening where it ended, for `start`) while playing. */
@@ -1123,13 +1132,14 @@ function moveListeningSpan(target: SpanEnd | null, opts: { from?: SpanEnd | null
 }
 
 /** A move made while paused (`start`, to `at`): sent at once as a span of its own that moved
- * nowhere (the place syncs as a PUT did), and the next play begins with the same reason. */
+ * nowhere (the place syncs as a PUT did), and the next play begins with the same reason (a
+ * Stay's as a `jump`: `carriedStart`). */
 function sendStill(np: NowPlaying, at: SpanEnd, start: ListeningStart) {
   const now = new Date().toISOString();
   void baseVersionOf(np).then((base) =>
     emit(np.connectionId, [spanToEvent(spanAt(np, at, start, now, base))]),
   );
-  nextStart = start;
+  nextStart = carriedStart(start);
 }
 
 /**
@@ -1265,7 +1275,9 @@ setFinishRecorder({
  * (`usesListeningStay`), which the server applies over the other device's writes since the
  * offer, else as a `jump`, which it applies over the other place under its usual rule.
  * Playing, the span is cut so that begins now; paused, the Stay is sent at once as a span
- * that moved nowhere (a paused move's), and the next play begins with the same reason.
+ * that moved nowhere (a paused move's), and the next play begins as a `jump`
+ * (`carriedStart`), as it does when there is no place to send now: a `stay` sent at a play
+ * that may come much later would beat what another device chose since.
  */
 export function standByPlace(): void {
   const np = usePlayer.getState().nowPlaying;
@@ -1280,7 +1292,7 @@ export function standByPlace(): void {
   // One still open while not playing (a stall) ends where the Stay is, as a paused move's does.
   closeListeningSpan(here ? { at: here } : {});
   if (np && here) sendStill(np, here, start);
-  else nextStart = start;
+  else nextStart = carriedStart(start);
 }
 
 /** Cut the playing span now (the server came back, the app went to the background); a

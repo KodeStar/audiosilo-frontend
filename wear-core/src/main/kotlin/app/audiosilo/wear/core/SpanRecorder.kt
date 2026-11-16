@@ -125,6 +125,15 @@ object Spans {
   fun saysSomething(span: OpenSpan): Boolean = heard(span) || span.start in MOVE_STARTS
 
   /**
+   * The reason a bare move sent already gives the book's next play: its own, but a Stay's as a
+   * `jump`. That play may come hours later, and the server measures a Stay's slack from its span's
+   * end (`staysWin`): a second `stay` then would beat what another device chose since the first one
+   * (the phone's `carriedStart`).
+   */
+  fun carried(start: ListeningStart): ListeningStart =
+    if (start == ListeningStart.STAY) ListeningStart.JUMP else start
+
+  /**
    * A deliberate move nothing was heard after (a stop right behind a seek): all it says is the move,
    * like a move made while paused. Stamped ms after the span before it, its event can lose to that
    * span's when they are sent apart (`not_applied/older`), so the next span must carry the move too.
@@ -198,7 +207,7 @@ class SpanRecorder(
     store.save(null)
     // A kill within `OPEN_SPAN_KEEP` of a move left the span the move opened, nothing heard: a
     // bare move, so the book's next span carries it, as after a pause (`close`).
-    if (Spans.isBareMove(left)) recoveredMove = left.ref to left.start
+    if (Spans.isBareMove(left)) recoveredMove = left.ref to Spans.carried(left.start)
     return left
   }
 
@@ -291,8 +300,8 @@ class SpanRecorder(
     closing = closing.copy(endedAt = ended)
     append(closing)
     if (clearStore) store.save(null)
-    // Like a paused move: the next play begins with the same reason (`isBareMove`).
-    if (Spans.isBareMove(closing)) nextStart = closing.start
+    // Like a paused move: the next play begins with the same reason (`isBareMove`, `carried`).
+    if (Spans.isBareMove(closing)) nextStart = Spans.carried(closing.start)
     return closing
   }
 
@@ -389,7 +398,7 @@ class SpanRecorder(
 
   /**
    * A move made while paused (`start`, to `at`): sent at once as a span of its own that moved
-   * nowhere, and the next play begins with the same reason.
+   * nowhere, and the next play begins with the same reason (a Stay's as a `jump`: `carried`).
    */
   private fun sendStill(book: PlayingBook, at: SpanEnd, start: ListeningStart, speed: Double) {
     val now = clock()
@@ -408,7 +417,7 @@ class SpanRecorder(
         id = newId(),
       )
     emit(listOf(Spans.event(still)))
-    nextStart = start
+    nextStart = Spans.carried(start)
   }
 
   /** The book's last span closed, then its `finish`, once. */
@@ -424,7 +433,8 @@ class SpanRecorder(
    * as a `stay` on a `listening_stay` server (`stay`), which the server applies over the other
    * device's writes since the offer, else as a `jump`. Playing, the span is cut so that begins now;
    * paused, the Stay is sent at once as a span that moved nowhere (a paused move's), and the next
-   * play begins with the same reason.
+   * play begins as a `jump` (`carried`), as it does when there is no place to send now: a `stay`
+   * sent at a play that may come much later would beat what another device chose since.
    */
   fun standBy(book: PlayingBook, at: SpanEnd?, playing: Boolean, speed: Double, stay: Boolean) {
     val start = if (stay) ListeningStart.STAY else ListeningStart.JUMP
@@ -435,7 +445,7 @@ class SpanRecorder(
     }
     // One still open while not playing (a stop noticed late) ends here, as a paused move's does.
     close(at)
-    if (at != null) sendStill(book, at, start, speed) else nextStart = start
+    if (at != null) sendStill(book, at, start, speed) else nextStart = Spans.carried(start)
   }
 
   private fun finishEvent(kind: String, ref: BookRef, at: Instant, base: Int) =

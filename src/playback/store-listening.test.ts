@@ -834,12 +834,29 @@ describe('with listening_sync', () => {
       const e = mockAppended[0] as Extract<ListeningEvent, { kind: 'listen' }>;
       expect(e.started_at).toBe(e.ended_at);
       expect(mockFlushOutbox).toHaveBeenCalledWith('c1');
-      // A bare move: the next play carries it.
+      // A bare move: the next play carries it, as a jump (the Stay went; a second `stay`
+      // at a later play would beat what another device chose since).
       pushSnapshot(snap('playing', 1, 20));
       jest.advanceTimersByTime(2_000);
       pushSnapshot(snap('paused', 1, 22));
       await settle();
-      expect(mockClosed.map((s) => s.start)).toEqual(['stay']);
+      expect(mockClosed.map((s) => s.start)).toEqual(['jump']);
+    });
+
+    it('a stay span paused before anything was heard gives the next play a jump', async () => {
+      await start();
+      pushSnapshot(snap('playing', 0, 30));
+      await settle();
+      jest.advanceTimersByTime(4_000);
+      pushSnapshot(snap('playing', 0, 34));
+      standByPlace();
+      pushSnapshot(snap('paused', 0, 34));
+      await settle();
+      pushSnapshot(snap('playing', 0, 34));
+      jest.advanceTimersByTime(2_000);
+      pushSnapshot(snap('paused', 0, 36));
+      await settle();
+      expect(mockClosed.map((s) => s.start)).toEqual(['resume', 'stay', 'jump']);
     });
   });
 

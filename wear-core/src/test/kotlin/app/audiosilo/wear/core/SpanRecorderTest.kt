@@ -299,11 +299,20 @@ class SpanRecorderTest {
     assertEquals(listens[0].startedAt, listens[0].endedAt)
     assertEquals(7, listens[0].baseVersion)
     assertNull(r.span)
-    // A bare move: the next play carries it.
-    assertEquals(ListeningStart.STAY, r.nextStart)
+    // A bare move: the next play carries it, as a jump (the Stay went; a second `stay` at a later
+    // play would beat what another device chose since).
+    assertEquals(ListeningStart.JUMP, r.nextStart)
     clock.advance(60.0)
     r.open(book, at(30.0), 1.0)
-    assertEquals(ListeningStart.STAY, r.span?.start)
+    assertEquals(ListeningStart.JUMP, r.span?.start)
+  }
+
+  @Test
+  fun aPausedStayWithNoPlaceGivesTheNextPlayAJump() {
+    val r = recorder()
+    r.standBy(book, null, playing = false, speed = 1.0, stay = true)
+    assertTrue(listens.isEmpty())
+    assertEquals(ListeningStart.JUMP, r.nextStart)
   }
 
   @Test
@@ -322,7 +331,24 @@ class SpanRecorderTest {
     r.standBy(book, at(9.0), playing = true, speed = 1.0, stay = true)
     r.close(at(9.0))
     assertEquals(listOf(ListeningStart.RESUME, ListeningStart.STAY), listens.map { it.start })
-    assertEquals(ListeningStart.STAY, r.nextStart)
+    assertEquals(ListeningStart.JUMP, r.nextStart)
+  }
+
+  @Test
+  fun aKillRightBehindAStayGivesTheBooksNextSpanAJump() {
+    val r = recorder()
+    r.open(book, at(5.0), 1.0)
+    clock.advance(4.0)
+    r.standBy(book, at(9.0), playing = true, speed = 1.0, stay = true)
+    // A kill: a new launch, the same store.
+    emitted.clear()
+    clock.advance(3600.0)
+    val next = recorder()
+    next.recover()
+    assertEquals(listOf(ListeningStart.STAY), listens.map { it.start })
+    next.prepareStart(ListeningStart.RESUME)
+    next.open(book, at(9.0), 1.0)
+    assertEquals(ListeningStart.JUMP, next.span?.start)
   }
 
   @Test
