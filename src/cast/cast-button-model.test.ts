@@ -60,7 +60,6 @@ describe('castButtonModel', () => {
     expect(castButtonModel({ ...base, proxied: false }).blocked).toBeNull();
   });
 
-  // Bridge Phase 2d-1: a cast token never covers a podcast episode.
   it('hides it while the device is offline, unless a session runs (fe#275)', () => {
     expect(castButtonModel({ ...base, online: false }).show).toBe(false);
     expect(
@@ -68,6 +67,7 @@ describe('castButtonModel', () => {
     ).toBe(true);
   });
 
+  // Bridge Phase 2d-1: a cast token never covers a podcast episode.
   it('hides it for a podcast episode, unless a session runs', () => {
     expect(castButtonModel({ ...base, episode: true }).show).toBe(false);
     expect(castButtonModel({ ...base, episode: true, status: 'connected' }).show).toBe(true);
