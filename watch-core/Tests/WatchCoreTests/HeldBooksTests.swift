@@ -304,6 +304,30 @@ final class HeldBooksTests: XCTestCase {
     XCTAssertEqual(HeldBooks(url: url).books, [])
   }
 
+  // Before the first unlock the file can't be read: what arrives is held in memory, nothing is
+  // written over the file, and once it reads both are kept, with every remove left over.
+  func testALockedFileIsNeverWrittenOverAndJoinsOnReload() throws {
+    let url = try tempURL()
+    let kept = HeldBooks(url: url)
+    kept.hold(bookA("A/Kept"), now: t0)
+    let earlier = kept.noteRemove(RemoveMessage(serverId: "srv-a", userId: 1, ref: BookRef(libraryId: 1, path: "A/Gone")),
+                                  now: t0)
+    let before = try Data(contentsOf: url)
+    try lock(url)
+    let held = HeldBooks(url: url)
+    XCTAssertEqual(held.books, [])
+    held.hold(bookA("A/New"), now: t0)
+    let later = held.noteRemove(RemoveMessage(serverId: "srv-a", userId: 1, ref: BookRef(libraryId: 1, path: "A/Other")),
+                                now: t0)
+    held.reload()
+    try unlock(url)
+    XCTAssertEqual(try Data(contentsOf: url), before, "never written over while locked")
+    held.reload()
+    XCTAssertEqual(held.books.map(\.book.ref.path), ["A/Kept", "A/New"])
+    XCTAssertEqual(Set(held.takeLeftoverRemoves().map(\.id)), [earlier.id, later.id])
+    XCTAssertEqual(HeldBooks(url: url).books.map(\.book.ref.path), ["A/Kept", "A/New"], "kept on disk")
+  }
+
   // MARK: - remove
 
   private func removeA(_ path: String = "A/One") -> RemoveMessage {

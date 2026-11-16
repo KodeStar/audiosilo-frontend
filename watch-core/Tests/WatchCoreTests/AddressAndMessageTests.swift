@@ -440,6 +440,17 @@ final class PhoneMessagesTests: XCTestCase {
     XCTAssertNil(books[1]["added_at"])
   }
 
+  // A phone app installed again has lost what it held; an identical context is never delivered.
+  func testEncodesTheLaunchIdWhenThereIsOne() throws {
+    var s = WatchState(signedIn: false, appVersion: "2.7.0", books: [], unsentEvents: 0, couldntSync: 0)
+    XCTAssertNil(PhoneMessages.encode(s)["launch_id"])
+    s.launchId = "8F0C3C1A-1111-4E2B-9D2F-0123456789AB"
+    let d = PhoneMessages.encode(s)
+    XCTAssertTrue(PropertyListSerialization.propertyList(d, isValidFor: .binary))
+    XCTAssertEqual(d["launch_id"] as? String, "8F0C3C1A-1111-4E2B-9D2F-0123456789AB")
+    XCTAssertEqual(d["v"] as? Int, 1, "optional: the version stays")
+  }
+
   func testEncodesWatchStateAsAPropertyList() throws {
     let s = WatchState(signedIn: true, serverId: "srv", userId: 7, appVersion: "2.6.0",
                        books: [WatchStateBook(ref: BookRef(libraryId: 2, path: "A/Book"), title: "Book", state: .downloading, bytes: 10)],

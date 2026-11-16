@@ -262,6 +262,12 @@ final class PlaceStore {
     places = file?.read() ?? [:]
   }
 
+  /// Read the file again: a launch before the watch's first unlock read none, and nothing has
+  /// changed it since (no book plays until then).
+  func reload() {
+    if let kept = file?.read() { places = kept }
+  }
+
   func place(_ ref: BookRef) -> LocalPlace? { places[ref.key] }
 
   func set(_ ref: BookRef, _ place: LocalPlace) {

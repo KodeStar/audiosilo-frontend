@@ -26,6 +26,12 @@ final class AckStore {
     books = file?.read() ?? [:]
   }
 
+  /// Read the file again: a launch before the watch's first unlock read none, and nothing has
+  /// changed it since (no book plays until then).
+  func reload() {
+    if let kept = file?.read() { books = kept }
+  }
+
   func ackVersion(_ ref: BookRef) -> Int? { books[ref.key]?.ackVersion }
   func answered(_ ref: BookRef) -> [String] { books[ref.key]?.answered ?? [] }
 

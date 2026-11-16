@@ -221,7 +221,7 @@ keep this index in step (one line per topic).
   - Android Auto
   - CarPlay and the UIScene life cycle
   - Tokens on a locked phone
-  - Apple Watch app (`targets/watch/`: Swift ports, Foundation-only Core, one WCSession delegate, the watch scheme, the player, spans and background sync, sign-out, the phone's side `modules/audiosilo-watch` + `src/watch/` (iOS, and Android's Wear OS link), the watch in Downloads and `remove`, DEBUG launch variables)
+  - Apple Watch app (`targets/watch/`: Swift ports, Foundation-only Core, one WCSession delegate, before the first unlock, the watch scheme, the player, spans and background sync, sign-out, the phone's side `modules/audiosilo-watch` + `src/watch/` (iOS, and Android's Wear OS link), the watch in Downloads and `remove`, DEBUG launch variables)
   - Wear OS app (`wear/` + `wear-core/`: build wiring and AUDIOSILO_NO_WEAR, the Core boundary and what is not ported, BookWorker downloads and the Wi-Fi wait, TokenStore, sign-in, the Data Layer contract with receipts, PhoneLink, playback and the speaker question, sync triggers and SyncWorker, the debug sign-in, build and test)
   - A route, not a second player (decision 7)
   - The receiver never gets the session token

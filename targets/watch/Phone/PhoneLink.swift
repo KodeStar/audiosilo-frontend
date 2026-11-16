@@ -2,7 +2,8 @@
 // `pair`, `book` and `remove` in (sendMessage while reachable, transferUserInfo otherwise, delivered
 // even when the app was closed), `watch-state` out (updateApplicationContext, the latest only).
 // No sync relay through the phone (decision 2): with the phone in reach watchOS already routes
-// the watch's own URLSession through it. Activated at launch, before any message can arrive.
+// the watch's own URLSession through it. Activated at launch, before any message can arrive, and
+// again on coming to the foreground if that failed (`retryState`).
 import Foundation
 import WatchConnectivity
 
@@ -48,9 +49,18 @@ final class PhoneLink: NSObject, WCSessionDelegate, @unchecked Sendable {
   }
 
   /// A natural moment for a state the session has not taken yet: its activation, a return to the
-  /// foreground, a reachability or companion change. No timer.
-  func retryState() {
-    DispatchQueue.main.async { self.sendState() }
+  /// foreground, a reachability or companion change. No timer. `activating` (the foreground): a
+  /// session whose activation failed is activated again first, as the system never tries again;
+  /// not from the delegate, where a failing activation would ask again at once.
+  func retryState(activating: Bool = false) {
+    DispatchQueue.main.async {
+      if activating, WCSession.isSupported(), WCSession.default.activationState == .notActivated {
+        // Its delegate sends the state once it has activated.
+        self.activate()
+        return
+      }
+      self.sendState()
+    }
   }
 
   private func sendState() {

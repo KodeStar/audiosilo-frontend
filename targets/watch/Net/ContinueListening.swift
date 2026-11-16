@@ -38,6 +38,12 @@ final class ContinueListening: ObservableObject {
 
   init() { rows = file.read() ?? [] }
 
+  /// Read the file again: a launch before the watch's first unlock read none (nothing refreshes
+  /// before then: no account is read).
+  func reload() {
+    if let kept = file.read() { rows = kept }
+  }
+
   func refresh(_ api: APIClient) async {
     generation += 1
     let mine = generation

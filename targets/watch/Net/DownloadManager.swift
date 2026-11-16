@@ -78,6 +78,8 @@ struct DownloadRecord: Codable, Equatable, Identifiable {
 final class DownloadManager: ObservableObject {
   /// A staged file this old has lost its event.
   private static let STAGING_KEEP: TimeInterval = 10 * 60
+  /// An index that could not be decoded, kept beside it (Storage/Files.swift).
+  private static let ASIDE_PREFIX = "downloads-unread-"
 
   @Published private(set) var records: [DownloadRecord]
   /// How far each book downloading has come, 0...99 by audio time (`DownloadProgress.percent`),
@@ -86,6 +88,9 @@ final class DownloadManager: ObservableObject {
   @Published private(set) var percents: [String: Int] = [:]
   /// False when the last write of the index failed (a full disk): `records` would not survive a kill.
   private(set) var indexSaved = true
+  /// False until the index has been read (`reload`): before the watch's first unlock it can't be,
+  /// and until it is nothing is written over it and the phone is told nothing of the books.
+  private(set) var loaded = false
   /// The files this launch handed to the background session (`DownloadTaskTag.key`).
   private var handedOff: Set<String> = []
 
@@ -118,9 +123,32 @@ final class DownloadManager: ObservableObject {
   private var broken: [String: Set<String>] = [:]
 
   init() {
-    records = index.read() ?? []
-    for r in records { refreshPercent(r.id) }
+    records = []
+    reload()
     BackgroundDownloads.shared.handler = { [weak self] e in self?.handle(e) }
+  }
+
+  /// Read the index, until it has been: at launch, and again once the watch is unlocked
+  /// (`AppModel.catchUp`). One that can't be read yet (locked before the first unlock) is left as
+  /// it is; one that does not decode is moved aside (`downloads-unread-*.json`, never written over,
+  /// as the outbox does) and the watch starts with no books.
+  func reload() {
+    guard !loaded else { return }
+    // Nothing is queued before it reads (no account is read either), but a record that was is kept.
+    var since = records
+    switch index.load() {
+    case .unreadable: return
+    case .value(let kept):
+      let have = Set(kept.map(\.id))
+      since = records.filter { !have.contains($0.id) }
+      records = kept + since
+    case .corrupt: index.moveAside(prefix: Self.ASIDE_PREFIX)
+    case .missing: break
+    }
+    loaded = true
+    indexSaved = since.isEmpty || index.write(records)
+    for r in records { refreshPercent(r.id) }
+    onChange?()
   }
 
   func record(_ ref: BookRef) -> DownloadRecord? { records.first { $0.ref == ref } }
@@ -138,8 +166,13 @@ final class DownloadManager: ObservableObject {
   }
 
   private func save(notify: Bool = true) {
-    indexSaved = index.write(records)
+    indexSaved = writeIndex()
     if notify { onChange?() }
+  }
+
+  /// Never over an index not read yet: a record there would be lost.
+  private func writeIndex() -> Bool {
+    loaded && index.write(records)
   }
 
   func folder(of r: DownloadRecord) -> URL {

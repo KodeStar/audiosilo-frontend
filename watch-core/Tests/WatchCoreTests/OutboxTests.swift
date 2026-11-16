@@ -497,6 +497,44 @@ final class OutboxTests: XCTestCase {
     XCTAssertEqual(outbox(dir).events.map(\.id), ["old", "new"], "kept in the outbox itself")
   }
 
+  // A launch before the first unlock set the outbox aside unread and counted nothing waiting: once
+  // it reads, it joins in the same launch, before a sign-in or a sign-out asks how much waits.
+  func testAnOutboxLockedAtLaunchJoinsOnReload() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let main = dir.appendingPathComponent("outbox.json")
+    JSONFile<[ListeningEvent]>(url: main).write([listen("kept")])
+    try lock(main)
+    let o = outbox(dir)
+    XCTAssertEqual(o.unsentCount, 0)
+    let aside = try XCTUnwrap(try FileManager.default.contentsOfDirectory(atPath: dir.path).first { $0.hasPrefix("outbox-unread-") })
+    o.reload()
+    XCTAssertEqual(o.unsentCount, 0, "still locked: it stays aside")
+    try unlock(dir.appendingPathComponent(aside))
+    var told = 0
+    o.onChange = { told += 1 }
+    o.reload()
+    XCTAssertEqual(o.events.map(\.id), ["kept"])
+    XCTAssertGreaterThan(told, 0, "the watch's state and Sync status hear of it")
+    XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: dir.path).contains(aside))
+    XCTAssertEqual(outbox(dir).events.map(\.id), ["kept"])
+  }
+
+  // The device id kept can't be read before the first unlock: the outbox asks for it only to send.
+  func testTheDeviceIdIsAskedForOnlyToSend() {
+    var asked = 0
+    func id() -> String {
+      asked += 1
+      return "watch-1"
+    }
+    let o = Outbox(directory: nil, acks: acks, deviceId: id())
+    o.append([listen("a")])
+    XCTAssertEqual(asked, 0)
+    XCTAssertEqual(o.backgroundBody()?.deviceId, "watch-1")
+    XCTAssertEqual(asked, 1)
+  }
+
   func testADiscardRemovesWhatWasSetAside() throws {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

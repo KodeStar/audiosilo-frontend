@@ -76,12 +76,42 @@ final class HeldBooks {
   /// The ids of those read at launch and not handed out yet (`takeLeftoverRemoves`).
   private var leftover: Set<UUID>
 
+  /// The file could not be read (before the watch's first unlock): nothing is written over it
+  /// until `reload` has read it.
+  private var unread = false
+
   /// `url` nil keeps them in memory (tests).
   init(url: URL?) {
     file = url.map { JSONFile(url: $0) }
-    let kept = file?.read()
-    books = kept?.books ?? []
-    removes = kept?.removes ?? []
+    books = []
+    removes = []
+    leftover = []
+    read()
+  }
+
+  /// Read the file again after a launch that could not (`AppModel.catchUp`): what it keeps joins
+  /// what arrived meanwhile (which wins: a book sent again replaces its row), and every `remove` not
+  /// handled yet is left over, finished once an account is there (`takeLeftoverRemoves`).
+  func reload() {
+    guard unread else { return }
+    read()
+    save()
+  }
+
+  private func read() {
+    let kept: HeldFile?
+    switch file?.load() {
+    case .unreadable:
+      unread = true
+      return
+    case .value(let v): kept = v
+    default: kept = nil  // none, or damaged: started afresh
+    }
+    unread = false
+    let mine = Set(books.map(\.id))
+    let noted = Set(removes.map(\.id))
+    books = (kept?.books ?? []).filter { !mine.contains($0.id) } + books
+    removes = (kept?.removes ?? []).filter { !noted.contains($0.id) } + removes
     leftover = Set(removes.map(\.id))
   }
 
@@ -200,6 +230,11 @@ final class HeldBooks {
     guard rows != books || tickets != removes else { return }
     books = rows
     removes = tickets
-    file?.write(rows.isEmpty && tickets.isEmpty ? nil : HeldFile(books: rows, removes: tickets))
+    save()
+  }
+
+  private func save() {
+    guard !unread else { return }
+    file?.write(books.isEmpty && removes.isEmpty ? nil : HeldFile(books: books, removes: removes))
   }
 }

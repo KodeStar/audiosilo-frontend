@@ -49,7 +49,10 @@ final class Outbox {
   private let eventsFile: JSONFile<[ListeningEvent]>?
   private let stateFile: JSONFile<SyncState>?
   private let acks: AckStore
-  private let deviceId: String
+  /// Asked when first needed, never at launch: before the watch's first unlock the id kept for it
+  /// can't be read yet (`Files.deviceId`), and nothing is sent until it can.
+  private let deviceIdOf: () -> String
+  private var deviceId: String { deviceIdOf() }
   private let clock: () -> Date
 
   private(set) var events: [ListeningEvent]
@@ -76,12 +79,13 @@ final class Outbox {
   var onChange: (() -> Void)?
 
   /// `directory` nil keeps everything in memory (tests).
-  init(directory: URL?, acks: AckStore, deviceId: String, clock: @escaping () -> Date = Date.init) {
+  init(directory: URL?, acks: AckStore, deviceId: @autoclosure @escaping () -> String,
+       clock: @escaping () -> Date = Date.init) {
     self.directory = directory
     eventsFile = directory.map { JSONFile(url: $0.appendingPathComponent("outbox.json")) }
     stateFile = directory.map { JSONFile(url: $0.appendingPathComponent("sync-state.json")) }
     self.acks = acks
-    self.deviceId = deviceId
+    deviceIdOf = deviceId
     self.clock = clock
     events = directory.map(Self.restoredEvents) ?? []
     state = stateFile?.read() ?? SyncState()
@@ -103,9 +107,7 @@ final class Outbox {
     let fm = FileManager.default
     let main = JSONFile<[ListeningEvent]>(url: directory.appendingPathComponent("outbox.json"))
     let current = main.read()
-    if current == nil, fm.fileExists(atPath: main.url.path) {
-      try? fm.moveItem(at: main.url, to: directory.appendingPathComponent(ASIDE_PREFIX + UUID().uuidString + ".json"))
-    }
+    if current == nil, fm.fileExists(atPath: main.url.path) { main.moveAside(prefix: ASIDE_PREFIX) }
     var have = Set((current ?? []).map(\.id))
     var older: [ListeningEvent] = []
     var joined: [URL] = []
@@ -120,6 +122,20 @@ final class Outbox {
     // Gone only once they are safely in the outbox (a full disk: tried again next launch).
     if main.read()?.count == events.count { joined.forEach { try? fm.removeItem(at: $0) } }
     return events
+  }
+
+  /// Read the files again: a launch before the watch's first unlock read nothing and set the
+  /// outbox aside, so it joins what waits now (once each, by id), as at a launch, and the state
+  /// kept is taken. Until then it counted as empty, so this comes before any sign-in or sign-out
+  /// asks how much waits (`AppModel.catchUp`).
+  func reload() {
+    guard let directory else { return }
+    let restored = Self.restoredEvents(in: directory)
+    var have = Set(restored.map(\.id))
+    let since = events.filter { have.insert($0.id).inserted }
+    events = restored + since
+    if let kept = stateFile?.read() { state = kept }
+    if since.isEmpty { onChange?() } else { saveEvents() }
   }
 
   /// Append closed events (immutable from here); one with a number that is not one, or an id

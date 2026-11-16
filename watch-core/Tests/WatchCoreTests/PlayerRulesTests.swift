@@ -358,6 +358,14 @@ final class AccountRulesTests: XCTestCase {
     XCTAssertEqual(AccountRules.change(current: "s.1", incoming: "t.1", unsent: 0), .replace)
   }
 
+  // Before the watch's first unlock nothing kept reads: no account is no proof of none (fe#216).
+  func testAPairWaitsWhileNothingKeptReads() {
+    XCTAssertEqual(AccountRules.change(current: nil, incoming: "s.1", unsent: 0, readable: false), .wait)
+    XCTAssertEqual(AccountRules.change(current: nil, incoming: "s.1", unsent: 0, discard: true, readable: false), .wait)
+    XCTAssertEqual(AccountRules.change(current: "s.1", incoming: "s.2", unsent: 2, readable: false), .wait)
+    XCTAssertEqual(AccountRules.change(current: nil, incoming: "s.1", unsent: 0, readable: true), .signIn)
+  }
+
   func testSigningOutIsBlockedWhileEventsWaitUnlessDiscarded() {
     XCTAssertEqual(AccountRules.signOut(unsent: 2, discard: false), .blocked(unsent: 2))
     XCTAssertEqual(AccountRules.signOut(unsent: 2, discard: true), .allowed)

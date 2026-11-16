@@ -5,7 +5,9 @@
 // the background as a background URLSession upload with `clock_offset` (decision 10) plus a
 // best-effort refresh task. Signing out or replacing the account is blocked while events wait,
 // unless the listener discards them (decision 9). A book from the phone that can't be taken yet
-// is held on disk until its account is ready (Core/HeldBooks.swift).
+// is held on disk until its account is ready (Core/HeldBooks.swift). A launch before the watch's
+// first unlock (a background wake) can read nothing kept here: it decides and reports nothing until
+// it can, then reads it all (`catchUp`).
 import Foundation
 import WatchKit
 
@@ -82,6 +84,14 @@ final class AppModel: ObservableObject {
   private let offers = OfferThrottle()
   /// The pair message a blocked replace waits on.
   private var pendingPair: PairMessage?
+  /// A pair that came before the watch's first unlock, kept in memory only (its pairing token is
+  /// a secret, and no file can be written then), signed in with at `becameActive` (fe#216).
+  private var waitingPair: PairMessage?
+  /// Whether what is kept here has been read: false from a launch before the first unlock until
+  /// `catchUp`. Until then `account` says nobody whoever is signed in, so nothing acts on it.
+  private var loaded = false
+  /// `watch-state`'s `launch_id`: new at each launch.
+  private static let launchId = UUID().uuidString
   /// The phone's messages, handled one at a time in order (`receive`).
   private var inbox: Task<Void, Never>?
   private let afterEmit = Relay()
@@ -100,17 +110,12 @@ final class AppModel: ObservableObject {
     })
     self.spans = spans
     engine = WatchAudioEngine(spans: spans, places: places)
+    loaded = Keychain.readable
     let account = Keychain.token() == nil ? nil : Account.load()
     let server = ServerCache.load()
     self.account = account
     self.server = server
-    if account == nil {
-      phase = .setup(.waiting)
-    } else if let s = server, !s.supportsWatch {
-      phase = .tooOld(version: s.version)
-    } else {
-      phase = .ready
-    }
+    phase = Self.phase(account: account, server: server)
     relay.call = { [weak self] in self?.spanClosed() }
     engine.reachable = { [weak self] in !(self?.outbox.lastFlushFailed ?? true) }
     engine.onPickedUp = { [weak self] in
@@ -136,7 +141,8 @@ final class AppModel: ObservableObject {
     }
     PhoneLink.shared.onMessage = { [weak self] m in self?.receive(m) }
     // A span a kill left open goes into the outbox before anything else (sent on becoming active).
-    spans.recover()
+    // Before the first unlock its file can't be read: `catchUp` does it (nothing plays until then).
+    if loaded { spans.recover() }
     // Held across a kill: aged, and queued if a sign-in finished just before it.
     releaseHeld()
     #if DEBUG
@@ -144,9 +150,45 @@ final class AppModel: ObservableObject {
     #endif
     // Once per launch whatever it says (it goes when the session activates): nothing else may
     // change this launch, and the phone can still hold what an earlier install told it. Not before
-    // the first unlock: nothing kept here reads yet, so "signed out, no books" would be a guess, and
-    // on that word the phone drops the rows it keeps for this watch.
-    if Keychain.readable { publishState() }
+    // the first unlock (`publishState`).
+    publishState()
+  }
+
+  /// What the screens start on for what is kept.
+  private static func phase(account: Account?, server: ServerInfo?) -> Phase {
+    if account == nil { return .setup(.waiting) }
+    if let s = server, !s.supportsWatch { return .tooOld(version: s.version) }
+    return .ready
+  }
+
+  /// Read what is kept here, once it reads: a launch before the watch's first unlock read nothing
+  /// (no account, no books, no listening, the outbox set aside), and every store comes before
+  /// anything acts on it. Then the books held, the `remove`s left and the phone's view. True once
+  /// read. The pair that waited is `becameActive`'s.
+  @discardableResult
+  private func catchUp() -> Bool {
+    if loaded {
+      // An index that did not read at launch for another reason is tried again.
+      if !downloads.loaded { downloads.reload() }
+      return true
+    }
+    guard Keychain.readable else { return false }
+    let a = Keychain.token() == nil ? nil : Account.load()
+    account = a
+    server = ServerCache.load()
+    // A setup screen a pair set meanwhile (expired) stands when nobody is signed in.
+    if a != nil { phase = Self.phase(account: a, server: server) }
+    acks.reload()
+    places.reload()
+    library.reload()
+    held.reload()
+    outbox.reload()
+    downloads.reload()
+    loaded = true
+    spans.recover()
+    releaseHeld()
+    publishState()
+    return true
   }
 
   /// The client for the account's address now, with its token; nil when signed out.
@@ -160,7 +202,11 @@ final class AppModel: ObservableObject {
   /// Launch and every return to the foreground.
   func becameActive() {
     inForeground = true
-    PhoneLink.shared.retryState()
+    PhoneLink.shared.retryState(activating: true)
+    if catchUp(), let p = waitingPair {
+      waitingPair = nil
+      serially { await self.signIn(p) }
+    }
     releaseHeld()
     guard let a = account else { return }
     router.startRechecks { [weak self] in self?.account }
@@ -286,6 +332,7 @@ final class AppModel: ObservableObject {
 
   /// The best-effort refresh task (decision 10): flush, else leave the background upload.
   func backgroundRefresh() async {
+    catchUp()
     guard canSync, outbox.unsentCount > 0 else { return }
     await flush()
     if outbox.unsentCount > 0 {
@@ -414,6 +461,8 @@ final class AppModel: ObservableObject {
   /// a `book` that follows its `pair` (the phone sends both to a watch not signed in to that
   /// connection) is handled once that sign-in is done.
   private func receive(_ m: PhoneMessage) {
+    // The first message after the first unlock finds what is kept (before it, each waits).
+    catchUp()
     switch m {
     case .pair(let p):
       serially { await self.signIn(p) }
@@ -455,6 +504,9 @@ final class AppModel: ObservableObject {
   /// and a copy added after the listener asked (by the watch's own Download button, or sent again)
   /// stays (`covers`).
   private func remove(_ ticket: RemoveTicket) {
+    // Before the first unlock no account is read, and refused it would be lost: `catchUp` hands it
+    // out again with the rest (`takeLeftoverRemoves`). One finished already is not done twice.
+    guard loaded, held.removes.contains(where: { $0.id == ticket.id }) else { return }
     held.finishRemove(ticket, accountId: account?.accountId, now: Date()) {
       let ref = ticket.message.ref
       if let r = downloads.record(ref), ticket.message.covers(addedAt: r.addedAt) { downloads.remove(ref) }
@@ -492,6 +544,9 @@ final class AppModel: ObservableObject {
   /// pairingFallback's rule), keep the token in the keychain, then gate on the server.
   /// `discard`: the listener chose to drop what waits to replace the account.
   func signIn(_ p: PairMessage, discard: Bool = false) async {
+    let readable = catchUp()
+    // A pair now stands for one that waited on the first unlock.
+    if readable { waitingPair = nil }
     let another = account != nil && account?.accountId != p.accountId
     // An expired pairing token is never tried, and stops nothing.
     if p.expired(now: Date()) {
@@ -508,7 +563,13 @@ final class AppModel: ObservableObject {
       engine.stop()
     }
     let change = AccountRules.change(current: account?.accountId, incoming: p.accountId, unsent: outbox.unsentCount,
-                                     discard: discard)
+                                     discard: discard, readable: readable)
+    if change == .wait {
+      // Before the first unlock: no account reads, so a sign-in would forget the one kept here and
+      // discard its listening. It signs in once the watch is unlocked and the app opened.
+      waitingPair = p
+      return
+    }
     if case .blocked = change {
       pendingReplace = .waiting
       pendingPair = p
@@ -708,6 +769,10 @@ final class AppModel: ObservableObject {
   // MARK: - The phone's view of the watch
 
   func publishState() {
+    // Not before what is kept has been read (the first unlock, then the download index): "signed
+    // out, no books" would be a guess, and on that word the phone drops the rows it keeps for this
+    // watch. `catchUp` publishes once it has read them.
+    guard loaded, downloads.loaded else { return }
     let who = account?.accountId
     // A row goes only for a record a kill can't lose (a full disk keeps it in memory alone), and
     // not for a failed one: sent again, that book still wants the retry `enqueue` gives it.
@@ -724,7 +789,7 @@ final class AppModel: ObservableObject {
     PhoneLink.shared.publish(WatchState(
       signedIn: account != nil, serverId: account?.serverId, userId: account?.userId, appVersion: appVersion,
       books: books, unsentEvents: outbox.unsentCount, couldntSync: outbox.couldNotSync().count,
-      lastSyncAt: outbox.state.lastSyncAt))
+      lastSyncAt: outbox.state.lastSyncAt, launchId: Self.launchId))
   }
 }
 

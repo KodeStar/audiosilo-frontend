@@ -101,7 +101,8 @@ export type WatchBook = {
   added_at?: number;
 };
 
-/** `watch-state`: what the watch last said about itself. */
+/** `watch-state`: what the watch last said about itself. An Apple Watch also sends `launch_id`, new
+ * at each launch so WatchConnectivity never drops its first state as unchanged; it is not read. */
 export type WatchState = {
   signed_in: boolean;
   server_id?: string;
