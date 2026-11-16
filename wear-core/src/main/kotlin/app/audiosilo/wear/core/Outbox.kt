@@ -13,7 +13,8 @@
 //
 // `lastFlushFailed` says the last ANSWER: true from a failed attempt until the server next answers,
 // also while a retry is in flight (it is what the 15 s cut reads, so offline the span stays open).
-// A file that exists but can't be read is moved aside, never overwritten (`restoredEvents`).
+// A file that exists but can't be read is moved aside, never overwritten (`restoredEvents`); one
+// that can't be moved either stays in the way, unwritten, until a later save can (`stuck`).
 //
 // Thread-safe: the app's main thread and the SyncWorker may both call it; one flush runs at a time.
 package app.audiosilo.wear.core
@@ -55,6 +56,13 @@ class Outbox(
   private val lock = Any()
   private val eventsFile = directory?.let { JsonFile(File(it, "outbox.json"), EVENTS, durable = true) }
   private val stateFile = directory?.let { JsonFile(File(it, "sync-state.json"), SyncState.serializer()) }
+
+  /**
+   * The outbox file is there, but could be neither read nor moved aside (`kept`; set before
+   * `events` reads it): nothing is written over it, so what waits is in memory alone until a save
+   * finds it reads or moves (`saveEventsLocked`).
+   */
+  private var stuck = false
 
   /** What waits, oldest first. */
   var events: List<ListeningEvent> = eventsFile?.let(::restoredEvents) ?: emptyList()
@@ -98,22 +106,25 @@ class Outbox(
   // The document
 
   /**
-   * What waited at the last launch. A file that exists but can't be read (damaged, or another
-   * build's format) is moved aside, so the next save never writes over that listening, and joins
-   * what waits at a later launch if it reads by then.
+   * The outbox file's events, null with none that reads. One there that can't be read (damaged, or
+   * another build's format) is moved aside; `stuck` says that failed too, so it is still in the
+   * way and must not be written over.
+   */
+  private fun kept(main: JsonFile<List<ListeningEvent>>): List<ListeningEvent>? {
+    val kept = main.load()
+    stuck = (kept == JsonLoad.Unreadable || kept == JsonLoad.Corrupt) && !main.setAside(ASIDE_PREFIX)
+    return (kept as? JsonLoad.Value)?.value
+  }
+
+  /**
+   * What waited at the last launch. A file that exists but can't be read is moved aside (`kept`),
+   * so the next save never writes over that listening, and joins what waits at a later launch if
+   * it reads by then. While it is `stuck` nothing is written (what was set aside earlier stays
+   * there, joined in memory alone).
    */
   private fun restoredEvents(main: JsonFile<List<ListeningEvent>>): List<ListeningEvent> {
     val directory = checkNotNull(main.file.parentFile)
-    val current =
-      when (val kept = main.load()) {
-        is JsonLoad.Value -> kept.value
-        JsonLoad.Missing -> null
-        JsonLoad.Unreadable,
-        JsonLoad.Corrupt -> {
-          main.moveAside(ASIDE_PREFIX)
-          null
-        }
-      }
+    val current = kept(main)
     val have = (current ?: emptyList()).map { it.id }.toMutableSet()
     val older = ArrayList<ListeningEvent>()
     val joined = ArrayList<File>()
@@ -123,10 +134,24 @@ class Outbox(
       joined += file
     }
     val events = older + (current ?: emptyList())
-    if (joined.isEmpty()) return events
+    if (joined.isEmpty() || stuck) return events
     // Gone only once they are safely in the outbox (a full disk: tried again next launch).
     if (main.save(events)) joined.forEach { it.delete() }
     return events
+  }
+
+  /** Store what waits (the lock held). Never over a file that could be neither read nor moved. */
+  private fun saveEventsLocked() {
+    val file = eventsFile ?: return
+    if (stuck) {
+      // The file in the way, tried again: it joins if it reads now (first, once each by id), else
+      // it is moved aside.
+      kept(file)?.let { kept ->
+        val have = kept.map { it.id }.toSet()
+        events = kept + events.filter { it.id !in have }
+      }
+    }
+    if (!stuck) file.save(events)
   }
 
   /**
@@ -139,7 +164,7 @@ class Outbox(
       val add = given.filter { it.isFinite && have.add(it.id) }
       if (add.isEmpty()) return
       events = events + add
-      eventsFile?.save(events)
+      saveEventsLocked()
     }
     onChange?.invoke()
   }
@@ -176,7 +201,9 @@ class Outbox(
       lastFlushFailed = false
       // Never joined to another account's outbox at a later launch.
       directory?.let { d -> asideFiles(d).forEach { it.delete() } }
-      eventsFile?.save(events)
+      // A file still in the way goes with them: the listener chose to drop what waits.
+      stuck = false
+      saveEventsLocked()
       stateFile?.write(state)
     }
     onChange?.invoke()
@@ -200,7 +227,7 @@ class Outbox(
     if (ids.isEmpty()) return
     val before = events.size
     events = events.filter { it.id !in ids }
-    if (events.size != before) eventsFile?.save(events)
+    if (events.size != before) saveEventsLocked()
   }
 
   /**

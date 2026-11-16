@@ -521,6 +521,75 @@ final class OutboxTests: XCTestCase {
     XCTAssertEqual(outbox(dir).events.map(\.id), ["kept"])
   }
 
+  /// A folder nothing can be moved in or out of, until the returned closure lets it be again
+  /// (skipped where permissions don't hold, as for root).
+  private func sealed(_ dir: URL) throws -> () -> Void {
+    let fm = FileManager.default
+    try fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dir.path)
+    let open = { try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dir.path) }
+    addTeardownBlock { _ = open() }
+    try XCTSkipIf(fm.isWritableFile(atPath: dir.path), "permissions are not enforced here")
+    return { _ = open() }
+  }
+
+  // A damaged outbox that can't be moved aside either stays in the way: the next save must not
+  // write over it, and moves it once it can.
+  func testAnOutboxThatCantBeMovedAsideIsNeverWrittenOver() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let main = dir.appendingPathComponent("outbox.json")
+    try Data("not this build's format".utf8).write(to: main)
+    let open = try sealed(dir)
+    let o = outbox(dir)
+    o.append([listen("first")])
+    XCTAssertEqual(try String(contentsOf: main, encoding: .utf8), "not this build's format")
+    open()
+    // Still in memory, and written with the next save, the damaged file aside by then.
+    o.append([listen("second")])
+    let names = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+    let aside = try XCTUnwrap(names.first { $0.hasPrefix("outbox-unread-") })
+    XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent(aside), encoding: .utf8), "not this build's format")
+    XCTAssertEqual(outbox(dir).events.map(\.id), ["first", "second"])
+  }
+
+  // Locked, and not to be moved either: once it reads, what it holds joins what came meanwhile.
+  func testAnOutboxStillInTheWayJoinsAtTheNextSaveOnceItReads() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let main = dir.appendingPathComponent("outbox.json")
+    JSONFile<[ListeningEvent]>(url: main).write([listen("kept")])
+    try lock(main)
+    let open = try sealed(dir)
+    let o = outbox(dir)
+    XCTAssertEqual(o.unsentCount, 0)
+    open()
+    try unlock(main)
+    o.append([listen("new")])
+    XCTAssertEqual(o.events.map(\.id), ["kept", "new"])
+    XCTAssertEqual(outbox(dir).events.map(\.id), ["kept", "new"])
+    XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: dir.path).contains { $0.hasPrefix("outbox-unread-") })
+  }
+
+  // A discard drops a file still in the way too: it is never the next account's listening.
+  func testADiscardDropsAnOutboxStillInTheWay() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let main = dir.appendingPathComponent("outbox.json")
+    JSONFile<[ListeningEvent]>(url: main).write([listen("theirs")])
+    try lock(main)
+    let open = try sealed(dir)
+    let o = outbox(dir)
+    open()
+    try unlock(main)
+    o.discardAll()
+    o.append([listen("mine")])
+    XCTAssertEqual(o.events.map(\.id), ["mine"])
+    XCTAssertEqual(outbox(dir).events.map(\.id), ["mine"])
+  }
+
   // The device id kept can't be read before the first unlock: the outbox asks for it only to send.
   func testTheDeviceIdIsAskedForOnlyToSend() {
     var asked = 0

@@ -13,7 +13,8 @@
 //
 // `lastFlushFailed` says the last ANSWER: true from a failed attempt until the server next answers,
 // also while a retry is in flight (it is what the 15 s cut reads, so offline the span stays open).
-// A file that exists but can't be read is moved aside, never overwritten (`restoredEvents`).
+// A file that exists but can't be read is moved aside, never overwritten (`restoredEvents`); one
+// that can't be moved either stays in the way, unwritten, until a later save can (`stuck`).
 import Foundation
 
 /// An event the server would not take, kept to show (the couldn't-sync list).
@@ -57,6 +58,9 @@ final class Outbox {
 
   private(set) var events: [ListeningEvent]
   private(set) var state: SyncState
+  /// The outbox file is there, but could be neither read nor moved aside: nothing is written over
+  /// it, so what waits is in memory alone until a save finds it reads or moves (`saveEvents`).
+  private var stuck = false
   /// The server has not answered since a flush failed (offline, or the server failed).
   private(set) var lastFlushFailed = false
 
@@ -87,7 +91,9 @@ final class Outbox {
     self.acks = acks
     deviceIdOf = deviceId
     self.clock = clock
-    events = directory.map(Self.restoredEvents) ?? []
+    let restored = directory.map(Self.restoredEvents)
+    events = restored?.events ?? []
+    stuck = restored?.stuck ?? false
     state = stateFile?.read() ?? SyncState()
   }
 
@@ -100,18 +106,25 @@ final class Outbox {
     return names.filter { $0.hasPrefix(ASIDE_PREFIX) }.map(directory.appendingPathComponent)
   }
 
-  /// What waited at the last launch. A file that exists but can't be read (damaged, or locked
-  /// until the watch's first unlock) is moved aside, so the next save never writes over that
-  /// listening, and joins what waits at a later launch if it reads by then.
-  private static func restoredEvents(in directory: URL) -> [ListeningEvent] {
+  /// The outbox file's events, nil with none that reads. One there that can't be read (damaged, or
+  /// locked until the watch's first unlock) is moved aside; `stuck` when that failed too, so it
+  /// is still in the way and must not be written over.
+  private static func kept(in main: JSONFile<[ListeningEvent]>) -> (events: [ListeningEvent]?, stuck: Bool) {
+    switch main.load() {
+    case .value(let v): return (v, false)
+    case .missing: return (nil, false)
+    case .unreadable, .corrupt: return (nil, !main.moveAside(prefix: ASIDE_PREFIX))
+    }
+  }
+
+  /// What waited at the last launch. A file that exists but can't be read is moved aside (`kept`),
+  /// so the next save never writes over that listening, and joins what waits at a later launch if
+  /// it reads by then. `stuck`: it could not be moved, so nothing was written (what was set aside
+  /// earlier stays there, joined in memory alone).
+  private static func restoredEvents(in directory: URL) -> (events: [ListeningEvent], stuck: Bool) {
     let fm = FileManager.default
     let main = JSONFile<[ListeningEvent]>(url: directory.appendingPathComponent("outbox.json"))
-    var current: [ListeningEvent]?
-    switch main.load() {
-    case .value(let v): current = v
-    case .missing: break
-    case .unreadable, .corrupt: main.moveAside(prefix: ASIDE_PREFIX)
-    }
+    let (current, stuck) = kept(in: main)
     var have = Set((current ?? []).map(\.id))
     var older: [ListeningEvent] = []
     var joined: [URL] = []
@@ -121,11 +134,19 @@ final class Outbox {
       joined.append(url)
     }
     let events = older + (current ?? [])
-    guard !joined.isEmpty else { return events }
+    guard !joined.isEmpty, !stuck else { return (events, stuck) }
     main.write(events)
     // Gone only once they are safely in the outbox (a full disk: tried again next launch).
     if main.read()?.count == events.count { joined.forEach { try? fm.removeItem(at: $0) } }
-    return events
+    return (events, false)
+  }
+
+  /// `kept` joins what waits here, first and once each by id. True when anything here was not in it.
+  private func join(_ kept: [ListeningEvent]) -> Bool {
+    var have = Set(kept.map(\.id))
+    let since = events.filter { have.insert($0.id).inserted }
+    events = kept + since
+    return !since.isEmpty
   }
 
   /// Read the files again: a launch before the watch's first unlock read nothing and set the
@@ -135,11 +156,10 @@ final class Outbox {
   func reload() {
     guard let directory else { return }
     let restored = Self.restoredEvents(in: directory)
-    var have = Set(restored.map(\.id))
-    let since = events.filter { have.insert($0.id).inserted }
-    events = restored + since
+    stuck = restored.stuck
+    let more = join(restored.events)
     if let kept = stateFile?.read() { state = kept }
-    if since.isEmpty { onChange?() } else { saveEvents() }
+    if more { saveEvents() } else { onChange?() }
   }
 
   /// Append closed events (immutable from here); one with a number that is not one, or an id
@@ -184,12 +204,21 @@ final class Outbox {
     lastFlushFailed = false
     // Never joined to another account's outbox at a later launch.
     if let directory { Self.asideFiles(in: directory).forEach { try? FileManager.default.removeItem(at: $0) } }
+    // A file still in the way goes with them: the listener chose to drop what waits.
+    stuck = false
     saveEvents()
     saveState()
   }
 
   private func saveEvents() {
-    eventsFile?.write(events)
+    if stuck, let eventsFile {
+      // The file in the way, tried again: it joins if it reads now, else it is moved aside.
+      let again = Self.kept(in: eventsFile)
+      stuck = again.stuck
+      if let kept = again.events { _ = join(kept) }
+    }
+    // Never over a file that could be neither read nor moved.
+    if !stuck { eventsFile?.write(events) }
     onChange?()
   }
 

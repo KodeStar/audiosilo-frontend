@@ -14,6 +14,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
 import org.junit.Before
 import org.junit.Test
 
@@ -486,6 +487,80 @@ class OutboxTest {
       assertFalse(dir.list()!!.contains(aside))
       assertEquals("kept in the outbox itself", listOf("old", "new"), outbox(dir).events.map { it.id })
     } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  // A damaged outbox that can't be moved aside either stays in the way: the next save must not
+  // write over it (or remove it, as an empty outbox does), and moves it once it can.
+  @Test
+  fun anOutboxThatCantBeMovedAsideIsNeverWrittenOver() {
+    val dir = tempDir()
+    try {
+      val main = File(dir, "outbox.json").apply { writeText("not this build's format") }
+      dir.setWritable(false)
+      // Where permissions hold (not as root).
+      assumeFalse(dir.canWrite())
+      val o = outbox(dir)
+      o.append(listOf(listen("first")))
+      o.apply(answer(SyncRequest(DEVICE_ID, events = o.events)), o.events, null, null)
+      assertTrue(o.events.isEmpty())
+      assertEquals("not this build's format", main.readText())
+      dir.setWritable(true)
+      // Written with the next save, the damaged file aside by then.
+      o.append(listOf(listen("second")))
+      val aside = dir.list()!!.first { it.startsWith("outbox-unread-") }
+      assertEquals("not this build's format", File(dir, aside).readText())
+      assertEquals(listOf("second"), outbox(dir).events.map { it.id })
+    } finally {
+      dir.setWritable(true)
+      dir.deleteRecursively()
+    }
+  }
+
+  // Not to be read, and not to be moved either: once it reads, what it holds joins what came since.
+  @Test
+  fun anOutboxStillInTheWayJoinsAtTheNextSaveOnceItReads() {
+    val dir = tempDir()
+    try {
+      val main = File(dir, "outbox.json")
+      JsonFile(main, kotlinx.serialization.builtins.ListSerializer(ListeningEvent.serializer())).write(listOf(listen("kept")))
+      main.setReadable(false)
+      dir.setWritable(false)
+      assumeFalse(main.canRead() || dir.canWrite())
+      val o = outbox(dir)
+      assertEquals(0, o.unsentCount)
+      dir.setWritable(true)
+      main.setReadable(true)
+      o.append(listOf(listen("new")))
+      assertEquals(listOf("kept", "new"), o.events.map { it.id })
+      assertEquals(listOf("kept", "new"), outbox(dir).events.map { it.id })
+      assertFalse(dir.list()!!.any { it.startsWith("outbox-unread-") })
+    } finally {
+      dir.setWritable(true)
+      dir.deleteRecursively()
+    }
+  }
+
+  // A discard drops a file still in the way too: it is never the next account's listening.
+  @Test
+  fun aDiscardDropsAnOutboxStillInTheWay() {
+    val dir = tempDir()
+    try {
+      val main = File(dir, "outbox.json")
+      JsonFile(main, kotlinx.serialization.builtins.ListSerializer(ListeningEvent.serializer())).write(listOf(listen("theirs")))
+      main.setReadable(false)
+      dir.setWritable(false)
+      assumeFalse(main.canRead() || dir.canWrite())
+      val o = outbox(dir)
+      dir.setWritable(true)
+      main.setReadable(true)
+      o.discardAll()
+      o.append(listOf(listen("mine")))
+      assertEquals(listOf("mine"), o.events.map { it.id })
+      assertEquals(listOf("mine"), outbox(dir).events.map { it.id })
+    } finally {
+      dir.setWritable(true)
       dir.deleteRecursively()
     }
   }

@@ -64,6 +64,12 @@ class JsonFile<T>(
   fun moveAside(prefix: String): Boolean = file.renameTo(File(file.absoluteFile.parentFile, prefix + UUID.randomUUID() + ".json"))
 
   /**
+   * `moveAside` for a file that must not be written over: true once it is out of the way (moved,
+   * or gone meanwhile), false while it is still there, when nothing may be written in its place.
+   */
+  fun setAside(prefix: String): Boolean = moveAside(prefix) || !file.exists()
+
+  /**
    * Store `value` (null removes the file). False when it could not be stored (a full disk: the
    * memory copy goes on; the next write tries again).
    */
