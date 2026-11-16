@@ -11,6 +11,7 @@
 // the item it replaces.
 package expo.modules.audiosilowatch
 
+import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -99,6 +100,9 @@ object WearLink {
   private val observers = CopyOnWriteArraySet<() -> Unit>()
 
   @Volatile private var localNode: String? = null
+
+  /** The time the pair prune's alarm is set for (epoch ms), so a snapshot that changes nothing sets none. */
+  @Volatile private var pruneArmedAt: Long? = null
   private var started = false
   private lateinit var app: Context
 
@@ -200,12 +204,48 @@ object WearLink {
     drop(context, me, taken.mapNotNull { WearRules.deletable(it.path, it.node, it.receipt, held[it.receipt.path]) })
   }
 
-  /** Drop the pairs past their time at `now`; what is left of `own`. Under `lock`. */
+  /**
+   * Drop the pairs past their time at `now`, and set the alarm for the next one's; what is left of
+   * `own`. Under `lock`.
+   */
   private suspend fun prune(context: Context, me: String, own: List<Item>, now: Long): List<Item> {
     val stale = WearRules.stalePairs(own, now)
-    if (stale.isEmpty()) return own
-    drop(context, me, stale)
-    return own.filter { it.path !in stale }
+    val left = if (stale.isEmpty()) own else own.filter { it.path !in stale }
+    if (stale.isNotEmpty()) drop(context, me, stale)
+    armPrune(context, left)
+    return left
+  }
+
+  /**
+   * The alarm at the first pair's `expires_at` (PairPruneReceiver), or none with no pair held: the
+   * prunes at a snapshot, a send and the start only run while the app does, and an idle phone
+   * would keep a pair (its token dead on the server) in the Data Layer while the watch is away. A
+   * reboot drops the alarm; the next start's sweep prunes and sets it again.
+   */
+  private fun armPrune(context: Context, own: List<Item>) {
+    val at = WearRules.nextPairExpiry(own)
+    if (at == pruneArmedAt) return
+    quietly("prune alarm") {
+      val alarms = context.getSystemService(AlarmManager::class.java) ?: return@quietly
+      val due = PairPruneReceiver.pending(context)
+      // Inexact, and allowed while the phone dozes: a minute late is fine, never kept for hours.
+      if (at == null) alarms.cancel(due) else alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, due)
+      pruneArmedAt = at
+    }
+  }
+
+  /** The alarm went off (PairPruneReceiver): drop the pairs past their time, and set the next alarm. */
+  suspend fun pruneDue(context: Context) {
+    // Set again whatever is found: an alarm a moment early must not leave the pair to the next start.
+    pruneArmedAt = null
+    quietly("prune") {
+      if (!available(context)) return@quietly
+      lock.withLock {
+        val me = me(context) ?: return@withLock
+        prune(context, me, ownItems(context, me), System.currentTimeMillis())
+      }
+    }
+    notifyChanged()
   }
 
   /**
@@ -235,9 +275,11 @@ object WearLink {
       val target = WearRules.target(view) ?: throw NoWatchException()
       val me = me(context) ?: throw NoWatchException()
       if (slot == WearPaths.PAIR) drop(context, me, WearRules.stalePairs(view.own, now, sendingTo = target))
-      val put =
-        PutDataRequest.create(WearPaths.to(target) + slot).setData(Json.encode(message).toByteArray(Charsets.UTF_8)).setUrgent()
+      val path = WearPaths.to(target) + slot
+      val put = PutDataRequest.create(path).setData(Json.encode(message).toByteArray(Charsets.UTF_8)).setUrgent()
       Wearable.getDataClient(context).putDataItem(put).await()
+      // The only pair held now: its own expiry is the next prune.
+      if (slot == WearPaths.PAIR) armPrune(context, listOf(Item(path, message)))
     }
     notifyChanged()
   }

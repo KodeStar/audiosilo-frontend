@@ -176,11 +176,14 @@ object WearRules {
   /** The book a `book` or `remove` names: what its item's key is made of. */
   private class NamedBook(val serverId: String, val userId: Long, val libraryId: Long, val path: String)
 
+  /** A blank id is no id, as on the watch (PhoneMessages' `nonEmpty`): never sent, never matched. */
+  private fun id(v: Any?): String? = (v as? String)?.takeIf { it.isNotBlank() }
+
   private fun bookOf(m: Map<String, Any?>): NamedBook? {
-    val serverId = (m["server_id"] as? String)?.takeIf { it.isNotEmpty() } ?: return null
+    val serverId = id(m["server_id"]) ?: return null
     val userId = integer(m["user_id"]) ?: return null
     val libraryId = integer(m["library_id"]) ?: return null
-    val path = (m["path"] as? String)?.takeIf { it.isNotEmpty() } ?: return null
+    val path = id(m["path"]) ?: return null
     return NamedBook(serverId, userId, libraryId, path)
   }
 
@@ -204,7 +207,7 @@ object WearRules {
   /** A receipt's payload, null for anything that is not one. */
   fun receipt(payload: Map<String, Any?>?): Receipt? {
     if (payload == null || integer(payload["v"]) != VERSION.toLong() || payload["type"] != "taken") return null
-    val path = (payload["path"] as? String)?.takeIf { it.isNotEmpty() } ?: return null
+    val path = id(payload["path"]) ?: return null
     return Receipt(path, sentAtText(payload["sent_at"]))
   }
 
@@ -232,13 +235,24 @@ object WearRules {
   fun stalePairs(own: List<Item>, now: Long, sendingTo: String? = null): List<String> =
     own
       .filter { item ->
-        val node = WearPaths.addressee(item.path) ?: return@filter false
-        if (item.path != WearPaths.pair(node)) return@filter false
+        val node = pairNode(item) ?: return@filter false
         if (sendingTo != null && node != sendingTo) return@filter true
-        val expires = (item.payload?.get("expires_at") as? String)?.let(::epochMs) ?: return@filter true
+        val expires = expiresAt(item) ?: return@filter true
         now >= expires
       }
       .map { it.path }
+
+  /**
+   * When the first `pair` in `own` runs out (epoch ms), null with none: the time of the prune that
+   * drops it with the app idle (WearLink's alarm), so a pairing token never sits in the Data Layer
+   * past its life. A pair with no readable time is not counted: `stalePairs` drops it at once.
+   */
+  fun nextPairExpiry(own: List<Item>): Long? = own.filter { pairNode(it) != null }.mapNotNull(::expiresAt).minOrNull()
+
+  /** The watch a `pair` item is for, null for any other item. */
+  private fun pairNode(item: Item): String? = WearPaths.addressee(item.path)?.takeIf { item.path == WearPaths.pair(it) }
+
+  private fun expiresAt(item: Item): Long? = (item.payload?.get("expires_at") as? String)?.let(::epochMs)
 
   /** An RFC 3339 time (as JavaScript's `toISOString` writes it, or without the milliseconds) in epoch ms. */
   fun epochMs(text: String): Long? {

@@ -94,6 +94,17 @@ class PathForTest {
     assertNull(pathFor(book + ("server_id" to ""), "w1"))
     assertNull(pathFor(book + ("type" to "watch-state"), "w1"))
   }
+
+  // fe#286: the watch takes no blank id (PhoneMessages' `nonEmpty`), so the phone sends none.
+  @Test
+  fun refusesABlankIdAsTheWatchDoes() {
+    val book = message("book", "path" to "A/B")
+    assertNull(pathFor(book + ("server_id" to "  "), "w1"))
+    assertNull(pathFor(book + ("path" to " \t"), "w1"))
+    assertNull(pathFor(message("remove", "path" to "   "), "w1"))
+    assertEquals(pathFor(book, "w1"), pathFor(book + ("path" to "A/B"), "w1"))
+    assertTrue(pathFor(book + ("path" to " A/B"), "w1") != null)
+  }
 }
 
 class TargetAndSnapshotTest {
@@ -207,6 +218,7 @@ class ReceiptTest {
     assertNull(WearRules.receipt(mapOf("v" to 2L, "type" to "taken", "path" to bookPath)))
     assertNull(WearRules.receipt(mapOf("v" to 1L, "type" to "watch-state", "path" to bookPath)))
     assertNull(WearRules.receipt(mapOf("v" to 1L, "type" to "taken", "path" to "")))
+    assertNull(WearRules.receipt(mapOf("v" to 1L, "type" to "taken", "path" to "  ")))
     assertNull(WearRules.receipt(null))
   }
 
@@ -272,6 +284,23 @@ class StalePairsTest {
       listOf(WearPaths.pair("w1"), WearPaths.pair("w3"), WearPaths.pair("w4"), WearPaths.pair("w5")),
       WearRules.stalePairs(own, now),
     )
+  }
+
+  // fe#286: the alarm that drops a pair with the app idle goes off at the first one's time.
+  @Test
+  fun theNextPruneIsTheFirstPairsTime() {
+    val own = listOf(
+      pair("w1", "2026-11-12T10:05:00.000Z"),
+      pair("w2", "2026-11-12T10:03:00.000Z"),
+      pair("w3", null),
+      Item(WearPaths.book("w1", "k"), message("book", "path" to "A/B", "expires_at" to "2026-11-12T10:01:00.000Z")),
+    )
+    assertEquals(WearRules.epochMs("2026-11-12T10:03:00.000Z"), WearRules.nextPairExpiry(own))
+    assertNull("no pair held: no alarm", WearRules.nextPairExpiry(own.drop(2)))
+    assertNull(WearRules.nextPairExpiry(emptyList()))
+    // What is left once the stale ones go: the alarm moves on to the next.
+    val left = own.filter { it.path !in WearRules.stalePairs(own, WearRules.epochMs("2026-11-12T10:03:00.000Z")!!) }
+    assertEquals(WearRules.epochMs("2026-11-12T10:05:00.000Z"), WearRules.nextPairExpiry(left))
   }
 
   @Test
