@@ -436,15 +436,12 @@ describe('the ledger', () => {
 
   describe('asked again, with the watch still listing the book', () => {
     const target = { library_id: 3, path: 'A/B', title: 'B' };
+    const copy = { library_id: 3, path: 'A/B', title: 'B', state: 'ready', bytes: 5 };
+    const listing = (books: object[]) => ({ ...here, state: { ...here.state, books } });
 
     beforeEach(async () => {
-      mockRead.mockResolvedValue({
-        ...here,
-        state: {
-          ...here.state,
-          books: [{ library_id: 3, path: 'A/B', title: 'B', state: 'ready', bytes: 5 }],
-        },
-      });
+      // An Apple Watch from 2.7.0 says when the copy was added: at this Send.
+      mockRead.mockResolvedValue(listing([{ ...copy, added_at: NOW }]));
       await sendBookToWatch(api, connection, 3, book);
       await removeFromWatch(connection, target);
     });
@@ -462,6 +459,21 @@ describe('the ledger', () => {
       ]);
       expect(mockSendRemove.mock.calls[1][0].asked_at).toBe(new Date(NOW).toISOString());
       expect(rows()).toEqual([{ ...first, remove_at: NOW + 60_000, remove_asked_at: NOW }]);
+    });
+
+    it('is a new Remove over a copy that does not say when it was added (Wear OS)', async () => {
+      // A copy back on the watch since the first Remove reads the same as the one it was for, so
+      // the first one's `asked_at` would never take it and the row would say "removing" for good.
+      mockRead.mockResolvedValue(listing([copy]));
+      await refreshWatch();
+      jest.setSystemTime(NOW + 60_000);
+      await removeFromWatch(connection, target);
+      expect(mockSendRemove.mock.calls[1][0]).toMatchObject({
+        asked_at: new Date(NOW + 60_000).toISOString(),
+        sent_at: new Date(NOW + 60_000).toISOString(),
+      });
+      expect(rows()).toMatchObject([{ path: 'A/B', remove_at: NOW + 60_000 }]);
+      expect(rows()[0].remove_asked_at).toBeUndefined();
     });
 
     it('leaves the row as it was when the link refuses', async () => {

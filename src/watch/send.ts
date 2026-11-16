@@ -14,6 +14,7 @@ import {
   useWatchLedger,
 } from './watch-ledger';
 import {
+  accountOnWatch,
   bookPairStep,
   buildBookMessage,
   buildPairMessage,
@@ -188,7 +189,8 @@ export function sendBookToWatch(
  * it sends the same message, with the first one's `asked_at`, and starts the row's hold limit over:
  * the first may not have reached the watch app. If it did, the repeat finds the book gone and does
  * nothing; a copy back on the watch since (its own Download button) was added after that `asked_at`,
- * so it stays (fe#219).
+ * so it stays (fe#219). Over a copy the watch lists without saying when it was added (Wear OS), it
+ * is a new Remove, asked now (`removeAskedAt`).
  */
 export function removeFromWatch(
   connection: Connection,
@@ -199,10 +201,13 @@ export function removeFromWatch(
     const account = watchAccountOf(connection);
     const now = Date.now();
     const { ledger } = useWatchLedger.getState();
-    const row = ledgerRows(ledger, useWatchStore.getState().status.watchId, account).find((r) =>
-      sameBook(r, book),
-    );
-    const askedAt = removeAskedAt(row, now);
+    const { status } = useWatchStore.getState();
+    const row = ledgerRows(ledger, status.watchId, account).find((r) => sameBook(r, book));
+    const copy =
+      accountOnWatch(status.state) === account
+        ? status.state?.books.find((b) => sameBook(b, book))
+        : undefined;
+    const askedAt = removeAskedAt(row, copy, now);
     const message = buildRemoveMessage(connection, book.library_id, book.path, now, askedAt);
     await watchLink.sendRemove(message).catch(refused);
     const { watchId } = useWatchStore.getState().status;

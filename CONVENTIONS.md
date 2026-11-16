@@ -2865,7 +2865,10 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     `remove` takes only a copy added no later than it was asked (`RemoveMessage.covers`, the held
     row too), so asking again never takes a copy that came back since. Wear OS orders by `asked_at`
     in place of `sent_at` where present (`removeApplies`; Try again counts as queued then,
-    `DownloadIndex.enqueue`), and sends no `added_at`. `watch-state`
+    `DownloadIndex.enqueue`), and sends no `added_at`: the phone can't learn there that a copy came
+    back, so a Remove asked again over a listed copy with no `added_at` carries the time of that
+    tap, never the first one's (which would not take a copy queued since, with the row left saying
+    "removing"). `watch-state`
     books carry `added_at`: a Remove whose book was added after it is over, and a listed copy from
     before the row's last Send (by over a second: the round trip can lose a millisecond; never on a
     row the watch has listed since that Send, which took its copy as the one sent), or with a

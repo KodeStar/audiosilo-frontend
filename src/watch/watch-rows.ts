@@ -95,9 +95,18 @@ const removing = (row: LedgerRow, now: number) =>
 const firstRemoveAt = (row: LedgerRow) => row.remove_asked_at ?? row.remove_at;
 
 /** What a Remove tapped now carries as `asked_at`: the first one's time while that one is under
- * way, so asking again never takes a copy the watch added since; else now. */
-export function removeAskedAt(row: LedgerRow | undefined, now: number): number {
-  return row && removing(row, now) ? (firstRemoveAt(row) ?? now) : now;
+ * way, so asking again never takes a copy the watch added since; else now. Now too over a listed
+ * `copy` that does not say when it was added (a Wear OS watch): the phone can't learn that one came
+ * back (`addedSinceRemove`), the row would go on saying "removing", and the first one's time would
+ * never take it. */
+export function removeAskedAt(
+  row: LedgerRow | undefined,
+  copy: WatchBook | undefined,
+  now: number,
+): number {
+  if (!row || !removing(row, now)) return now;
+  if (copy && copy.added_at === undefined) return now;
+  return firstRemoveAt(row) ?? now;
 }
 
 /** A listed copy added before the row's last Send: an earlier one, not the copy sent. Only from a

@@ -509,14 +509,23 @@ describe('a copy added since a Remove, and a Remove asked again (fe#219)', () =>
   });
 
   it('asks again with the first time while the Remove is under way, else now', () => {
-    expect(removeAskedAt(undefined, NOW)).toBe(NOW);
-    expect(removeAskedAt(sent(), NOW)).toBe(NOW);
-    expect(removeAskedAt(removing, NOW)).toBe(NOW - 500);
-    expect(removeAskedAt(sent({ remove_at: NOW - 500, remove_asked_at: NOW - 900 }), NOW)).toBe(
-      NOW - 900,
-    );
+    const copy = { ...listed, added_at: NOW - 5000 };
+    expect(removeAskedAt(undefined, copy, NOW)).toBe(NOW);
+    expect(removeAskedAt(sent(), copy, NOW)).toBe(NOW);
+    expect(removeAskedAt(removing, copy, NOW)).toBe(NOW - 500);
+    expect(removeAskedAt(removing, undefined, NOW)).toBe(NOW - 500);
+    const again = sent({ remove_at: NOW - 500, remove_asked_at: NOW - 900 });
+    expect(removeAskedAt(again, copy, NOW)).toBe(NOW - 900);
     // Past the hold limit the row is the watch's again: a Remove then is a new one.
-    expect(removeAskedAt(sent({ remove_at: NOW - WATCH_HOLD_MS }), NOW)).toBe(NOW);
+    expect(removeAskedAt(sent({ remove_at: NOW - WATCH_HOLD_MS }), copy, NOW)).toBe(NOW);
+  });
+
+  it('asks again as a new Remove over a copy that does not say when it was added', () => {
+    // A Wear OS watch: a copy back since the first Remove can't be told from the one it was for,
+    // and the first one's time would never take it.
+    expect(removeAskedAt(removing, listed, NOW)).toBe(NOW);
+    const again = sent({ remove_at: NOW - 500, remove_asked_at: NOW - 900 });
+    expect(removeAskedAt(again, listed, NOW)).toBe(NOW);
   });
 });
 
