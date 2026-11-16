@@ -1412,6 +1412,7 @@
       "community": "Chapitres issus de la base de données communautaire d’AudioSilo",
       "generated": "Chapitres trouvés dans la narration sur ce serveur",
       "id3Chap": "Chapitres du fichier de l'épisode",
+      "edited": "Chapitres modifiés sur ce serveur",
       "wholeEpisode": "L'épisode entier",
       "partsTitleEpisode": "Cet épisode n’a pas de marques de chapitre"
     },

@@ -229,9 +229,10 @@ describe('chapterList', () => {
 
 describe('knownChaptersSource', () => {
   it('reads the sources this build knows, and nothing else (no inherited keys)', () => {
-    expect(knownChaptersSource('community')).toBe('community');
-    expect(knownChaptersSource('generated')).toBe('generated');
-    for (const source of [undefined, '', 'edited', 'constructor', 'toString', '__proto__']) {
+    for (const source of ['community', 'generated', 'id3_chap', 'edited'] as const) {
+      expect(knownChaptersSource(source)).toBe(source);
+    }
+    for (const source of [undefined, '', 'retimed', 'constructor', 'toString', '__proto__']) {
       expect(knownChaptersSource(source)).toBeUndefined();
     }
   });

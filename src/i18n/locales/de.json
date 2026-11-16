@@ -1412,6 +1412,7 @@
       "community": "Kapitel aus der Community-Datenbank von AudioSilo",
       "generated": "Kapitel in der Erzählung auf diesem Server gefunden",
       "id3Chap": "Kapitel aus der Episodendatei",
+      "edited": "Kapitel auf diesem Server bearbeitet",
       "wholeEpisode": "Die ganze Folge",
       "partsTitleEpisode": "Diese Folge hat keine Kapitelmarken"
     },
