@@ -176,8 +176,9 @@ object WearLink {
   }
 
   /**
-   * At start: drop the pairs past their time, and act on every receipt waiting (one put while no
-   * process ran and the service was not started, or one the last process died on).
+   * At start and at the prune's alarm: drop the pairs past their time, and act on every receipt
+   * waiting (one put while no process ran and the service was not started, or one the last process
+   * died on).
    */
   private suspend fun sweep(context: Context) {
     quietly("sweep") {
@@ -201,7 +202,11 @@ object WearLink {
   /** Delete the phone's items these receipts name, where it still holds those very sends. Under `lock`. */
   private suspend fun settle(context: Context, me: String, taken: List<Taken>, own: List<Item>) {
     val held = own.associateBy { it.path }
-    drop(context, me, taken.mapNotNull { WearRules.deletable(it.path, it.node, it.receipt, held[it.receipt.path]) })
+    val gone = taken.mapNotNull { WearRules.deletable(it.path, it.node, it.receipt, held[it.receipt.path]) }
+    if (gone.isEmpty()) return
+    drop(context, me, gone)
+    // A pair the watch took needs no alarm at its expiry.
+    armPrune(context, own.filter { it.path !in gone })
   }
 
   /**
@@ -210,8 +215,8 @@ object WearLink {
    */
   private suspend fun prune(context: Context, me: String, own: List<Item>, now: Long): List<Item> {
     val stale = WearRules.stalePairs(own, now)
-    val left = if (stale.isEmpty()) own else own.filter { it.path !in stale }
     if (stale.isNotEmpty()) drop(context, me, stale)
+    val left = own.filter { it.path !in stale }
     armPrune(context, left)
     return left
   }
@@ -238,14 +243,7 @@ object WearLink {
   suspend fun pruneDue(context: Context) {
     // Set again whatever is found: an alarm a moment early must not leave the pair to the next start.
     pruneArmedAt = null
-    quietly("prune") {
-      if (!available(context)) return@quietly
-      lock.withLock {
-        val me = me(context) ?: return@withLock
-        prune(context, me, ownItems(context, me), System.currentTimeMillis())
-      }
-    }
-    notifyChanged()
+    sweep(context)
   }
 
   /**

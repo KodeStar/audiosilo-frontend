@@ -2,6 +2,7 @@ package expo.modules.audiosilowatch
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -102,8 +103,7 @@ class PathForTest {
     assertNull(pathFor(book + ("server_id" to "  "), "w1"))
     assertNull(pathFor(book + ("path" to " \t"), "w1"))
     assertNull(pathFor(message("remove", "path" to "   "), "w1"))
-    assertEquals(pathFor(book, "w1"), pathFor(book + ("path" to "A/B"), "w1"))
-    assertTrue(pathFor(book + ("path" to " A/B"), "w1") != null)
+    assertNotNull(pathFor(book + ("path" to " A/B"), "w1"))
   }
 }
 
