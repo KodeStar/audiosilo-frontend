@@ -282,8 +282,9 @@ describe('SeriesMode', () => {
   it('counts in progress and finished per recording, the unit of its "N books"', async () => {
     // Four works, the first held in two recordings (server#241): the shelf shows the work
     // once, but the five recordings /series counts are each finished.
+    let id = 0;
     const book = (title: string, index: number): Book => ({
-      id: index,
+      id: ++id,
       library_id: 1,
       rel_path: `Corey/Expanse/${title}`,
       is_folder: true,
