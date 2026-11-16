@@ -1862,7 +1862,14 @@ media GETs only.
   the book is still the store's and its download complete (each needs a real move of the
   stream: the listener's, the stream's own advance to its next file or a transcoded
   early-end reload, or a one-off move the store makes; never the swap's own, so it ends); a
-  `'refused'` copy is never retried.
+  `'refused'` copy is never retried. A stream in `error` refuses a gapless swap, so **Retry
+  takes a download that landed meanwhile** (fe#278, `retry`): its reload moves the store
+  onto the download's queue first (`localSwapOf`, `commitLocalSwap`, the swap's own plan and
+  commit), at the same file and place in it, in whatever order the download plays (nothing
+  is playing for a new order to cut into). It stays the reload it was, never a fresh
+  `playBook`: no place is saved or looked up first (this device's old place, dated now, would
+  be the newest one), and the resume floor, the place another tab left and the pick-up check
+  of a long stop all stand.
 - **Native counts go through `nativeNumber`** (`src/lib/native-number.ts`): since SDK 58 the iOS
   bridge sends a Swift `Int64`/`UInt64` as a JS `bigint` (typed `number`), and a bigint throws
   where it meets a number. expo-file-system's `File.size`, `Paths.totalDiskSpace` /

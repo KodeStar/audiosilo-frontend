@@ -1816,6 +1816,24 @@ describe('the download hot-swap across file orders', () => {
     expect(downloadOrder()).toEqual(oldOrder);
   });
 
+  it("Retry reloads a dead stream from a download in the download's own order (fe#278)", async () => {
+    // As above: the download can't take the stream's order, so it was not swapped in.
+    const listed = { ...book, files: chaptersIn(newOrder).files };
+    await usePlayer.getState().playBook('c1', 2, listed, undefined, 0);
+    pushSnapshot(snap('playing', 20, { trackIndex: 0, duration: 70 }));
+    pushSnapshot(snap('error', 20, { trackIndex: 0, duration: 70 }));
+    await flushMicrotasks();
+    downloadLands(oldOrder);
+    await flushMicrotasks();
+    (mockSvc.load as jest.Mock).mockClear();
+    await usePlayer.getState().retry();
+    // Nothing plays for the new order to cut into: the same file, 20 s in, where the
+    // download plays it (after 10.mp3's 30 s).
+    expect(queueUrls()).toEqual(oldOrder.map(urlOf));
+    expect(swapLoad()).toEqual({ url: urlOf('A/Folder/2.mp3'), index: 1, position: 20 });
+    expect(selectBookPosition(usePlayer.getState())).toBe(50);
+  });
+
   it('gives the download no chapters that would make it play another order', async () => {
     // Started from chapters with no file list: the item's own list (the new order) streams.
     const listed = { ...book, files: chaptersIn(newOrder).files };
@@ -2259,9 +2277,39 @@ describe('the download hot-swap across file orders', () => {
       } finally {
         useReachability.setState({ online: {} });
       }
-      // Started again from the device, at the place it was at.
+      // Reloaded from the device, at the place it was at.
       expect(queueUrls()).toEqual(newOrder.map(urlOf));
       expect(swapLoad()).toEqual({ url: urlOf('A/Folder/2.mp3'), index: 0, position: 20 });
+    });
+
+    it('a Retry onto the download is a reload, not a fresh start (fe#278)', async () => {
+      web.swapTo = jest.fn(async () => 'refused');
+      let pickedUp = 0;
+      const stop = onPickedUpAgain(() => pickedUp++);
+      try {
+        // 20 s into 10.mp3: whole-book 70 + 20.
+        await streamIn(newOrder, { file: 'A/Folder/10.mp3' });
+        pushSnapshot(snap('error', 20, { trackIndex: 1, duration: 30 }));
+        await flushMicrotasks();
+        downloadLands(newOrder);
+        // Left in its error for long: another device may have played on meanwhile.
+        jest.advanceTimersByTime(LONG_PAUSE_MS);
+        await flushMicrotasks();
+        mockLoadInitialProgress.mockClear();
+        mockSaveProgress.mockClear();
+        (mockSvc.load as jest.Mock).mockClear();
+        await usePlayer.getState().retry();
+        expect(swapLoad()).toEqual({ url: urlOf('A/Folder/10.mp3'), index: 1, position: 20 });
+        // No place looked up, and none saved first: this device's old place, dated now,
+        // would be the newest one there.
+        expect(mockLoadInitialProgress).not.toHaveBeenCalled();
+        expect(mockSaveProgress).not.toHaveBeenCalled();
+        // The play asks where the book is now, as a play after any long stop does.
+        pushSnapshot(snap('playing', 20, { trackIndex: 1, duration: 30 }));
+        expect(pickedUp).toBe(1);
+      } finally {
+        stop();
+      }
     });
 
     it('keeps the stream, and holds nothing, when the swap is refused', async () => {
@@ -3034,6 +3082,48 @@ describe('a book whose files have no known length', () => {
     await usePlayer.getState().retry();
     const [, index, position] = (mockSvc.load as jest.Mock).mock.lastCall as unknown[];
     expect([index, position]).toEqual([1, 30]);
+  });
+
+  it('retries from a download that landed meanwhile in the file that failed (fe#278)', async () => {
+    const web = mockSvc as unknown as { swapTo?: jest.Mock };
+    web.swapTo = jest.fn(async () => 'refused');
+    try {
+      await usePlayer.getState().playBook('c1', 2, book, chapters, 0);
+      pushSnapshot(snap('error', 30, { trackIndex: 1 }));
+      await flushMicrotasks();
+      useDownloads.setState({
+        entries: {
+          'c1:2:A/Unknown': {
+            connectionId: 'c1',
+            libraryId: 2,
+            path: 'A/Unknown',
+            title: book.title,
+            status: 'downloaded',
+            progress: 1,
+            bytes: 0,
+            totalBytes: 0,
+            manifest: {
+              book,
+              chapters,
+              files: files.map((relPath) => ({ relPath, localUri: `file:///dl/${relPath}` })),
+              coverUri: null,
+              savedAt: '2026-01-01T00:00:00Z',
+            },
+          },
+        },
+      });
+      await flushMicrotasks();
+      (mockSvc.load as jest.Mock).mockClear();
+      await usePlayer.getState().retry();
+      const [tracks, index, position] = (mockSvc.load as jest.Mock).mock.lastCall as [
+        { url: string }[],
+        number,
+        number,
+      ];
+      expect([tracks[index].url, index, position]).toEqual([`file:///dl/${files[1]}`, 1, 30]);
+    } finally {
+      delete web.swapTo;
+    }
   });
 });
 
