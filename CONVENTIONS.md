@@ -2667,7 +2667,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   unlock does not take its place, `AccountRules.endsWait`), a `remove` waits with its ticket, a
   book is held, the open span is not recovered, `HeldBooks` writes nothing over its file (and
   writes again, once it can, what no file could take), and `Files.deviceId` is not read (the outbox
-  asks for it only to send; an id there but unreadable is never written over). Once the keychain
+  asks for it only to send; an id there but unreadable is never written over, and the stand-in such
+  an ask gets is not kept for the launch: `DeviceIdFile`, fe#323). Once the keychain
   reads (`AppModel.catchUp`: `becameActive`, a phone message, a sign-in, the refresh task, a
   background upload's answer) the account, server, acks, places, Continue listening, held books
   (what came meanwhile joins, every `remove` left over, with or without a file to read again, about
@@ -2675,7 +2676,9 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   (the copy a locked launch set aside joins in the same launch) and the download index are read
   again, the span recovered, then the books released and the state published. A background
   download event reads the index itself first (`DownloadManager.handle`); before the first unlock
-  it is dropped. A download index that does not decode is moved aside
+  it is dropped. Every book removed while the index is unread (an account left, `removeAll`), what
+  it holds is that account's: dropped with its files once it reads, never joined under the account
+  signed in now (`DownloadIndexJoin`, fe#323). A download index that does not decode is moved aside
   (`downloads-unread-*.json`, never written over) and the watch starts with no books; until the
   index has been read the phone is told nothing and nothing is written over it. A move aside can
   fail: the file is then still in the way and never written over. The index stays unread and
@@ -2694,8 +2697,14 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   starts again), and a transfer in flight is cancelled and asked for again when the app sees it
   would go on with another token, or at the home address after the pick left home
   (`RenditionPlan.keepsTransfer`; a run re-reads the client per request). A suspended watch's
-  live task at home can't be reached until then. A rendition list that does not hold the book's
-  files fails the book (the book changed; Try again reads the item afresh), and a refused
+  live task at home can't be reached until then: its request, token and all, went out on the home
+  network when it began, and a retry the system makes on a foreign network with the same private
+  address would send it there. Accepted (fe#216, owner decision): cancelling home transfers on
+  going to the background would lose downloads from a server only reachable at home. A rendition list that does not hold the book's
+  files fails the book (the book changed; Try again reads the item afresh), so does an answer the
+  watch can't decode ("Your server sent something this watch can't read.", `RenditionPlan.trouble`
+  `.unreadable`, fe#320: the server answered, so it is no wait on the connection asking again every
+  minute), and a refused
   download waits the server's `Retry-After` before asking again. The server's place is kept when
   a download starts; a passing failure of `/chapters` retries, only a real refusal is "no
   chapters". The token lives in the keychain
@@ -2736,10 +2745,13 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   moved says so only after `StartRefusal.INTERRUPTION_SLACK` (2 s, `Core/StartRefusal.swift`):
   an interruption's `began` (Siri, a call) or headphones gone within it make it the system's pause,
   and nothing shows. The engine's timer is that wait, matched to its refusal by the stamp, so a
-  clock set back meanwhile cannot drop the message. Headphones gone (`oldDeviceUnavailable`, one
+  clock set back meanwhile cannot drop the message, and the stamps (`refusedAt`, the system's pause)
+  are a monotonic clock's (`StartRefusal.Stamp`, fe#320), so a clock step within the slack can't
+  read Siri's pause as a failed start. Headphones gone (`oldDeviceUnavailable`, one
   route-change observer) pause a play, also one whose queue still settles (it would start on
   whatever route is left when it lands), and nothing resumes it, in either order of the route
-  change and the system's pause (`systemPausedAt` is cleared). An interruption resumes
+  change and the system's pause (`systemPausedAt` is cleared), also while an interruption holds
+  the book paused: its end does not play it (`InterruptionResume.held`, fe#320). An interruption resumes
   in either order of `began` and the system's pause. Pausing
   while a play still asks for the session ends that play. A file that fails stops the book at the
   last known place, its span ending where the audio last moved, the one further on when its turn
@@ -2768,9 +2780,11 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   `jump` while the flag is off (`Outbox.takesStay`, read as each body is built, the background
   upload's too). Wear OS ports them all (`SpanRecorder.kt`, `Outbox.kt`, `PlayerEngine.stay`).
   Only the watches store the span at open, so only they recover a move a kill cut short (within
-  the 5 s keep): the launch's first span, when it is that book's and a resume from this watch's
+  the 5 s keep): the next span, when it is that book's and a resume from this watch's
   own place, takes its reason (`recoveredMove`; not when `Resume.plan` took the server's row,
-  `loadsFromRow`). Play pulls the
+  `loadsFromRow`). The move is stored too until a span opens (`open-span-move.json`,
+  `OpenSpanStore.saveMove`, fe#321), so a launch that ends before the book plays (a background
+  wake) leaves it to the next; leaving the account forgets it. Play pulls the
   book's row first (5 s at most) and
   resumes by `Resume.plan`; with no answer the server's place kept for the book stands in (the
   last Continue listening refresh's, or the one read when its download started: the phone's
@@ -2811,7 +2825,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   with the pair's own user (`AccountRules.keepsToken`), so a Send again no longer leaves another
   session on the server each time (D6, fe#219). A 401, any other refusal or no answer at all
   exchanges the pair's token as a first sign-in does (with no answer the watch may only be at an
-  address it can't reach, and the exchange tries the pair's `base_url`, away and home). Kept, the
+  address it can't reach, and the exchange tries the pair's `base_url`, away and home; the token
+  kept is then ended there, best effort: on the Apple Watch, `AccountRules.endsKeptToken`, fe#322). Kept, the
   pair's label, user name and addresses are taken (`keepSignIn`) and its token runs out unused;
   the server gate is asked again unless it stands, so a server that was too old can take the book
   behind the pair.
@@ -2885,12 +2900,16 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     again; a book sent while a pair has over a minute left follows it rather than minting another.
     `pairUntil` holds only that last pair: one for another account replaces it, as it does on the
     native side, and the watch saying it signed in ends it (its token is used, so nothing may
-    follow it later). A password change forgets it (`forgetPair`: the server ends the account's
-    open pairing tokens with its other sessions), and so does removing its connection. While
+    follow it later; matched by account, `pairAfterSignIn`, so a legacy-id connection's pair ends
+    too). A password change forgets it (`forgetPair`: the server ends the account's
+    open pairing tokens with its other sessions), also one still being minted or sent (`pairEpoch`:
+    it is not noted when it lands), and so does removing its connection. While
     another account's pair has time left, a book is refused with "Your watch is being set up for
     {user} on {server}" (`bookPairStep` `busy`, `WatchBusyError`, D5; one still being minted, in
     `inFlight` and not yet in `pairUntil`, counts too): the watch would sign in to that account first
-    and only hold the book. Two sends at once for a connection share one pair (`setUpWatch`).
+    and only hold the book. Two sends at once for a connection share one pair (`setUpWatch`), and a
+    set up for another account waits for a pair still being minted or sent (a book's own), so the one
+    asked last is the one the watch keeps (fe#322).
   - **Who sees what** (`watch-model.ts`): the card for a paired watch and an account that can use
     one (not a kid's, 403 `kid_account`; not a demo's), with Install in place of its button until
     the app is on the watch; the book action `'watch'` needs the app installed and `watch` in the
