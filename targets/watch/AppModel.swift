@@ -456,13 +456,14 @@ final class AppModel: ObservableObject {
     publishState()
   }
 
-  /// The `remove`s a kill left on disk, each in its turn, once an account is there to finish them
-  /// (before the first unlock none is read yet, and refused they would be lost).
+  /// The `remove`s a kill left on disk, once an account is there to finish them (before the first
+  /// unlock none is read yet, and refused they would be lost). Now, not through the inbox: they
+  /// arrived before anything this run, so a `pair` queued since must not switch the account under
+  /// them, and a book sent again behind one must find its old copy gone when `releaseHeld` queues
+  /// it (left behind them, `enqueue` would take that copy for the book and leave it alone).
   private func finishLeftoverRemoves() {
     guard account != nil else { return }
-    for ticket in held.takeLeftoverRemoves() {
-      serially { self.remove(ticket) }
-    }
+    for ticket in held.takeLeftoverRemoves() { remove(ticket) }
   }
 
   /// Queue what waits for the account, if it is ready, and age the rest. Through the Download
@@ -470,7 +471,7 @@ final class AppModel: ObservableObject {
   /// the server's own word: a sign-in sets `.ready` before `checkServer` has asked, and a server
   /// too old for the watch would turn a held book into a failed download ("no longer on the
   /// server", its 404). `checkServer` releases them once it has answered. The `remove`s a kill left
-  /// are queued first (`finishLeftoverRemoves`).
+  /// are finished first (`finishLeftoverRemoves`).
   private func releaseHeld() {
     finishLeftoverRemoves()
     guard !held.books.isEmpty else { return }
