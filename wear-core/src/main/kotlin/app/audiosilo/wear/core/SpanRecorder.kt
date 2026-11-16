@@ -158,11 +158,7 @@ object Spans {
 }
 
 /** A move a kill cut short (`SpanRecorder.recover`): its book and the reason its next span takes. */
-@Serializable
-data class RecoveredMove(val libraryId: Int, val path: String, val start: ListeningStart) {
-  val ref: BookRef
-    get() = BookRef(libraryId, path)
-}
+@Serializable data class RecoveredMove(val ref: BookRef, val start: ListeningStart)
 
 /**
  * Where the open span is kept between launches (Files' `open-span.json`; a memory copy in tests),
@@ -230,9 +226,7 @@ class SpanRecorder(
     // A kill within `OPEN_SPAN_KEEP` of a move left the span the move opened, nothing heard: a
     // bare move, so the book's next span carries it, as after a pause (`close`). Any span left is
     // newer than a move kept from an earlier launch: it opened after it, and took it or dropped it.
-    val move =
-      if (Spans.isBareMove(left)) RecoveredMove(left.libraryId, left.path, Spans.carried(left.start)) else null
-    keepMove(move)
+    keepMove(if (Spans.isBareMove(left)) RecoveredMove(left.ref, Spans.carried(left.start)) else null)
     store.save(null)
   }
 
@@ -283,8 +277,13 @@ class SpanRecorder(
   /** Playing began (or goes on after a cut) at `at`. */
   fun open(book: PlayingBook, at: SpanEnd, speed: Double) = open(book, at, speed, fromHeard = false)
 
-  /** `fromHeard`: `at` is where the span closed just now ended (`OpenSpan.fromHeard`). */
-  private fun open(book: PlayingBook, at: SpanEnd, speed: Double, fromHeard: Boolean) {
+  /**
+   * `fromHeard`: `at` is where the span closed just now ended (`OpenSpan.fromHeard`). `heardAt`
+   * (a cut on the engine's tick): when the audio last moved, so a cut while buffering opens a span
+   * that ends then, as `keep` would, and a kill before its first keep recovers the place stamped
+   * when it was heard.
+   */
+  private fun open(book: PlayingBook, at: SpanEnd, speed: Double, fromHeard: Boolean, heardAt: Instant? = null) {
     recover()
     if (span?.ref == book.ref) return
     // Taken first: closing another book's span may leave that book's move in `nextStart`.
@@ -309,7 +308,7 @@ class SpanRecorder(
         duration = book.audioDuration,
         speed = speed,
         startedAt = now,
-        endedAt = now,
+        endedAt = minOf(heardAt ?: now, now),
         start = start,
         baseVersion = base,
         id = newId(),
@@ -353,13 +352,17 @@ class SpanRecorder(
     return closing
   }
 
-  /** Cut the span (close it, a span opening where it ended for `start`) while playing. */
+  /**
+   * Cut the span (close it, a span opening where it ended for `start`) while playing. `heardAt`:
+   * when the audio last moved (the engine's tick), where the next span ends until a keep.
+   */
   fun cut(
     book: PlayingBook,
     at: SpanEnd?,
     playing: Boolean,
     speed: Double,
     start: ListeningStart = ListeningStart.CONTINUE,
+    heardAt: Instant? = null,
   ) {
     // None open: nothing to cut, and a Stay waiting for its span goes on waiting (`close`).
     if (span == null) return
@@ -367,21 +370,29 @@ class SpanRecorder(
     if (!playing) return
     // A bare move's reason is already there (`close`); a reason asked for (Stay) still wins.
     if (start != ListeningStart.CONTINUE || !Spans.isBareMove(closed)) nextStart = start
-    open(book, closed.to, speed, fromHeard = true)
+    open(book, closed.to, speed, fromHeard = true, heardAt = heardAt)
   }
 
   /**
    * The 15 s tick: cut while reachable, else only once the span has run `MAX_SPAN`. Playing with
-   * none open (the play's own could not open one), one opens here. True when it cut.
+   * none open (the play's own could not open one), one opens here. True when it cut. `heardAt`:
+   * when the audio last moved (`cut`).
    */
-  fun tick(book: PlayingBook, at: SpanEnd?, playing: Boolean, reachable: Boolean, speed: Double): Boolean {
+  fun tick(
+    book: PlayingBook,
+    at: SpanEnd?,
+    playing: Boolean,
+    reachable: Boolean,
+    speed: Double,
+    heardAt: Instant? = null,
+  ): Boolean {
     val s = span
     if (s == null) {
       if (playing && at != null) open(book, at, speed)
       return false
     }
     if (reachable || clock().secondsSince(s.startedAt) >= Spans.MAX_SPAN) {
-      cut(book, at, playing, speed)
+      cut(book, at, playing, speed, heardAt = heardAt)
       return true
     }
     return false
@@ -391,7 +402,7 @@ class SpanRecorder(
    * One playing tick of the engine (Wear's PlayerEngine): the 15 s `tick` when `cutDue`, then the
    * 5 s `keep` when `keepDue`, unless the tick already stored the span (a cut or an open): the open
    * span is written once a tick. True when it cut (a span closed: the place is kept durably then).
-   * `heardAt`: when the audio last moved (`keep`).
+   * `heardAt`: when the audio last moved (`keep`, and the span a cut opens).
    */
   fun playingTick(
     book: PlayingBook,
@@ -403,7 +414,7 @@ class SpanRecorder(
     heardAt: Instant? = null,
   ): Boolean {
     val before = span
-    val cut = cutDue && tick(book, at, true, reachable, speed)
+    val cut = cutDue && tick(book, at, true, reachable, speed, heardAt)
     if (keepDue && span === before) keep(at, heardAt)
     return cut
   }

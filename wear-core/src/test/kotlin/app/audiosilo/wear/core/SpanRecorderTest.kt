@@ -668,7 +668,7 @@ class SpanRecorderTest {
     val wake = recorder()
     wake.recover()
     assertNull(store.stored)
-    assertEquals(RecoveredMove(2, "A/Folder", ListeningStart.MOVED_BACK), store.move)
+    assertEquals(RecoveredMove(BookRef(2, "A/Folder"), ListeningStart.MOVED_BACK), store.move)
     // The launch after that.
     val next = recorder()
     next.recover()
@@ -686,12 +686,12 @@ class SpanRecorderTest {
 
   @Test
   fun aKeptMoveGoesWithARowTakenOrTheAccount() {
-    store.move = RecoveredMove(2, "A/Folder", ListeningStart.JUMP)
+    store.move = RecoveredMove(BookRef(2, "A/Folder"), ListeningStart.JUMP)
     val r = recorder()
     r.loadsFromRow(book.ref)
     assertNull("the place came from the server's row", store.move)
 
-    store.move = RecoveredMove(2, "A/Folder", ListeningStart.JUMP)
+    store.move = RecoveredMove(BookRef(2, "A/Folder"), ListeningStart.JUMP)
     val s = recorder()
     s.recover()
     s.forgetMove()
@@ -705,7 +705,7 @@ class SpanRecorderTest {
   fun aSpanHeardAfterTheMoveReplacesAKeptMove() {
     // A kept move whose launch then played and was killed after listening: that span says nothing
     // of a move, so the kept one (stale) does not reach the next play.
-    store.move = RecoveredMove(2, "A/Folder", ListeningStart.JUMP)
+    store.move = RecoveredMove(BookRef(2, "A/Folder"), ListeningStart.JUMP)
     store.stored =
       OpenSpan(2, "A/Folder", at(5.0), at(15.0), 100.0, 1.0, clock.now, clock.now.addingSeconds(10.0),
         ListeningStart.RESUME, 0, "left")
@@ -720,9 +720,9 @@ class SpanRecorderTest {
   // Wear: a row for another book leaves the kept move to its own book.
   @Test
   fun anotherBooksRowLeavesAKeptMove() {
-    store.move = RecoveredMove(2, "A/Folder", ListeningStart.JUMP)
+    store.move = RecoveredMove(BookRef(2, "A/Folder"), ListeningStart.JUMP)
     recorder().loadsFromRow(BookRef(2, "A/Other"))
-    assertEquals(RecoveredMove(2, "A/Folder", ListeningStart.JUMP), store.move)
+    assertEquals(RecoveredMove(BookRef(2, "A/Folder"), ListeningStart.JUMP), store.move)
   }
 
   // fe#285: buffering, the keep ends the span when the audio last moved, never later than now.

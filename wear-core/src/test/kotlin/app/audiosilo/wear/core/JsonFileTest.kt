@@ -99,7 +99,7 @@ class JsonFileTest {
     assertEquals(listOf("open-span.json"), synced)
     assertEquals(span, store.load())
     synced.clear()
-    val move = RecoveredMove(2, "A/Folder", ListeningStart.MOVED_BACK)
+    val move = RecoveredMove(BookRef(2, "A/Folder"), ListeningStart.MOVED_BACK)
     store.saveMove(move)
     assertEquals(listOf("open-span-move.json"), synced)
     assertEquals(move, store.loadMove())
@@ -235,10 +235,20 @@ class DurableRateTest {
         },
       )
 
-    /** What the engine's tick stores, as PlayerEngine.tick does it (`heardAt`: its `lastAdvance`). */
-    fun tick(pos: Double, keepDue: Boolean, cutDue: Boolean, reachable: Boolean = true, heardAt: java.time.Instant? = null) {
+    /**
+     * What the engine's tick stores, as PlayerEngine.tick does it (`heardAt`: its `lastAdvance`):
+     * the place stamped now, and only while the audio plays (`buffering`: no place at all).
+     */
+    fun tick(
+      pos: Double,
+      keepDue: Boolean,
+      cutDue: Boolean,
+      reachable: Boolean = true,
+      heardAt: java.time.Instant? = null,
+      buffering: Boolean = false,
+    ) {
       val cut = spans.playingTick(book, at(pos), 1.0, keepDue, cutDue, reachable, heardAt)
-      places.set(ref, LocalPlace.of(at(pos), heardAt ?: clock.now, 1.0), save = cut)
+      if (!buffering) places.set(ref, LocalPlace.of(at(pos), clock.now, 1.0), save = cut)
     }
 
     /** The launch's recovery, as AppModel runs it. */
@@ -334,6 +344,10 @@ class DurableRateTest {
     places.recover(OpenSpan(2, "A/Folder", at(90.0), at(90.0), 3600.0, 1.0, clock.now.addingSeconds(5.0),
       clock.now.addingSeconds(5.0), ListeningStart.JUMP, 0, "c"))
     assertEquals(saved, places.place(ref))
+    // The player settled a hair off the place it was given: no second of it heard.
+    places.recover(OpenSpan(2, "A/Folder", at(10.0), at(10.3), 3600.0, 1.0, clock.now.addingSeconds(5.0),
+      clock.now.addingSeconds(15.0), ListeningStart.RESUME, 0, "d"))
+    assertEquals(saved, places.place(ref))
   }
 
   // fe#285: the place is saved only as a span opens, so the span a kill left is the newer by the
@@ -418,15 +432,36 @@ class DurableRateTest {
     first.tick(5.0, keepDue = true, cutDue = false, heardAt = heard)
     // Buffering: no movement for 8 s, the keeps still run.
     clock.advance(5.0)
-    first.tick(5.0, keepDue = true, cutDue = false, heardAt = heard)
+    first.tick(5.0, keepDue = true, cutDue = false, heardAt = heard, buffering = true)
     assertEquals(heard, fileSpanStore(dir).load()!!.endedAt)
     clock.advance(3.0)
-    first.tick(5.0, keepDue = true, cutDue = false, heardAt = heard)
+    first.tick(5.0, keepDue = true, cutDue = false, heardAt = heard, buffering = true)
     clock.advance(30.0)
     val next = Launch()
     next.recover()
     val place = next.places.place(ref)!!
     assertEquals(5.0, place.position, 0.0)
+    assertEquals(heard, place.at)
+  }
+
+  // fe#285: a cut while buffering opens the next span where the audio stands, ended when it was
+  // last heard (no place is saved then: the audio is not playing), so a kill before that span's
+  // first keep recovers the place stamped when it was heard, not at the cut.
+  @Test
+  fun aKillAfterACutWhileBufferingStampsThePlaceWhenItWasHeard() {
+    val first = Launch()
+    first.spans.open(book, at(0.0), 1.0)
+    clock.advance(10.0)
+    val heard = clock.now
+    first.tick(10.0, keepDue = true, cutDue = false, heardAt = heard)
+    clock.advance(5.0)
+    first.tick(10.0, keepDue = false, cutDue = true, heardAt = heard, buffering = true)
+    assertEquals(heard, fileSpanStore(dir).load()!!.endedAt)
+    clock.advance(2.0)
+    val next = Launch()
+    next.recover()
+    val place = next.places.place(ref)!!
+    assertEquals(10.0, place.position, 0.0)
     assertEquals(heard, place.at)
   }
 
@@ -452,7 +487,7 @@ class DurableRateTest {
     // A kill; a background launch recovers the span and ends without a play.
     Launch().recover()
     assertNull(fileSpanStore(dir).load())
-    assertEquals(RecoveredMove(2, "A/Folder", ListeningStart.MOVED_BACK), fileSpanStore(dir).loadMove())
+    assertEquals(RecoveredMove(BookRef(2, "A/Folder"), ListeningStart.MOVED_BACK), fileSpanStore(dir).loadMove())
     // The next launch plays the book from this watch's own place: its first span is the move's.
     val third = Launch()
     third.recover()

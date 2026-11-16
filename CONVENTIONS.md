@@ -3037,7 +3037,7 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   run), `SystemPause` (a pause the system made, from Media3's reasons), `PhoneInbox` (PhoneLink's
   sweep and event plans), `FileSpanStore` and `Labels`. Wear-only additions to ported files, for
   the sync rate below (the Apple Watch writes `places.json` every 5 s, unsynced, so it needs none):
-  `SpanRecorder.playingTick`, `recover(carry)`, `keep(heardAt)`,
+  `SpanRecorder.playingTick`, `recover(carry)`, `keep(heardAt)` and the cut's (`tick`, `cut`),
   `OpenSpan.fromHeard`, `PlaceStore.set(save:)` and `PlaceStore.recover`, and the outbox removing
   its file when empty. `JsonFile(durable = true)`
   syncs the bytes before its rename and the folder after (a battery death never empties the file): only
@@ -3052,17 +3052,19 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   on that tick carries it: at launch `SpanRecorder.recover(carry)` hands the span a kill left to
   `PlaceStore.recover` before it leaves its file, which takes its newest end: its own event's when
   the outbox already holds it (a kill between a close's append and the span file's change), else
-  its last keep's `to` and `endedAt`. Only a place heard: one the span moved to, or its start when
+  its last keep's `to` and `endedAt`. Only a place heard: one the span moved to (a second or more,
+  `Spans.EMPTY_SPAN`), or its start when
   a cut or a playing Stay opened it where the closed span ended (`fromHeard`); a play's span that
   never moved carries the loaded place, a move's its target (saved by the seek). Never by the
   clock: a book's place is saved only as its span opens, so the span a kill left is the newer, and
-  a wall clock set back would hide it. The keep ends the span when the audio last moved
-  (`heardAt` = the engine's `lastAdvance`), so buffering never stamps the place later than it was
-  heard. A move a kill cut short (`recoveredMove`) is kept in `open-span-move.json` until a span
+  a wall clock set back would hide it. The keep, and the span a tick's cut opens, end when the
+  audio last moved (`heardAt` = the engine's `lastAdvance`), so buffering never stamps the place
+  later than it was heard. A move a kill cut short (`recoveredMove`) is kept in `open-span-move.json` until a span
   opens (it takes it or drops it), `loadsFromRow` drops it, and so does sign-out
   (`SpanRecorder.forgetMove`): a background launch that never plays keeps it. A
   next span that can't be written (a full disk) leaves the closed one in the file: recovered, its
-  event goes again under its one id (`duplicate`), and its place is the newest the disk holds. An
+  event goes again under its one id (`duplicate`), and its place is taken over the saved one (the
+  write order above, which a place saved while the span's own writes failed would break). An
   outbox with nothing waiting removes `outbox.json` (a folder sync) rather than syncing `[]`; a
   missing file is an empty outbox at launch. Moving these writes off the main looper is a follow-up.
 - **Downloads (decision 8)**: one WorkManager `BookWorker` per book (unique `book:<safe name>`,
