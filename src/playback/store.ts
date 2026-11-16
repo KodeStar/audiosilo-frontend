@@ -1000,10 +1000,16 @@ function takeSpan(at?: SpanEnd, endedAt?: number): OpenSpan | null {
   const ended = endedAt !== undefined && Number.isFinite(endedAt) ? Math.min(now, endedAt) : now;
   // Never before it began (a span cut since the other tab's claim was made).
   closing.endedAt = new Date(Math.max(ended, Date.parse(closing.startedAt) || 0)).toISOString();
-  // Like a paused move: the loaded book's next play begins with the same reason
-  // (`spanIsBareMove`). Another book's move is not carried to this one.
-  if (loaded && spanIsBareMove(closing)) nextStart = closing.start;
+  // Like a paused move: the loaded book's next play begins with the same reason.
+  if (carriesMove(closing)) nextStart = closing.start;
   return closing;
+}
+
+/** Whether a span closing is a bare move of the loaded book (`spanIsBareMove`), whose
+ * reason the book's next span takes too. Another book's move is not carried to this one. */
+function carriesMove(closing: OpenSpan): boolean {
+  const np = usePlayer.getState().nowPlaying;
+  return np !== null && sameBook(closing, np) && spanIsBareMove(closing);
 }
 
 /** Cut the span (close it, a span opening where it ended, for `start`) while playing. */
@@ -1011,7 +1017,7 @@ function cutListeningSpan(start: ListeningStart = 'continue') {
   const closed = closeListeningSpan();
   if (!closed || !isPlayingState(usePlayer.getState().snapshot.state)) return;
   // A bare move's reason is already there (`takeSpan`); a reason asked for (Stay) still wins.
-  if (start !== 'continue' || !spanIsBareMove(closed)) nextStart = start;
+  if (start !== 'continue' || !carriesMove(closed)) nextStart = start;
   openListeningSpan(closed.to);
 }
 
