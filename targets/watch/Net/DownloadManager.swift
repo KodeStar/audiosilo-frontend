@@ -53,6 +53,13 @@ struct DownloadRecord: Codable, Equatable, Identifiable {
   mutating func endWait() {
     if DownloadWait(message: message) != nil { message = nil }
   }
+
+  /// Every file has landed: the book is ready.
+  mutating func readyIfDone() {
+    guard !files.isEmpty, files.allSatisfy(\.done) else { return }
+    state = .ready
+    message = nil
+  }
 }
 
 @MainActor
@@ -379,12 +386,7 @@ final class DownloadManager: ObservableObject {
   }
 
   private func markIfDone(_ key: String) {
-    update(key) { r in
-      if !r.files.isEmpty && r.files.allSatisfy(\.done) {
-        r.state = .ready
-        r.message = nil
-      }
-    }
+    update(key) { $0.readyIfDone() }
   }
 
   // MARK: - The background session's events
@@ -406,12 +408,14 @@ final class DownloadManager: ObservableObject {
         try FileManager.default.moveItem(at: staged, to: dest)
         let size = Files.size(of: dest)
         fractions[tag.book]?[tag.path] = nil
+        // Ready in the same change when it was the last: the phone is never told of a book still
+        // downloading with every file here.
         update(tag.book) {
           $0.files[i].done = true
           $0.files[i].bytes = size
           $0.endWait()
+          $0.readyIfDone()
         }
-        markIfDone(tag.book)
       } catch {
         try? FileManager.default.removeItem(at: staged)
         fail(tag.book, "The watch could not keep a file of this book.")
