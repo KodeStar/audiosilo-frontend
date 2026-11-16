@@ -425,6 +425,18 @@ describe('other recordings of a work (server#241)', () => {
       ['w:lw', [undefined]],
       ['w:cw', [matched.rel_path]],
     ]);
+    // Nor does the title fallback: a book titled like the earlier work, with no work id,
+    // placed by the server at the later one.
+    const titled = book('Leviathan Wakes', 2, { rel_path: 'Corey/Expanse/LW (placed at 2)' });
+    const byTitle = seriesViews({
+      ...view,
+      id: 's',
+      works: [work('lw', 'Leviathan Wakes', '1'), work('cw', "Caliban's War", '2', titled)],
+    })[0];
+    expect(paths(railEntries(byTitle, [titled], src))).toEqual([
+      ['w:lw', [undefined]],
+      ['w:cw', [titled.rel_path]],
+    ]);
   });
 
   it("is one entry per work on a local shelf (the Library's cards), started one shown", () => {
