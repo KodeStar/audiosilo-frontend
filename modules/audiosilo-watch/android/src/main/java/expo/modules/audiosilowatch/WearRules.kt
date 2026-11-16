@@ -179,10 +179,16 @@ object WearRules {
   /** A blank id is no id, as on the watch (PhoneMessages' `nonEmpty`): never sent, never matched. */
   private fun id(v: Any?): String? = (v as? String)?.takeIf { it.isNotBlank() }
 
+  /**
+   * A user or library id as the watch reads it (PhoneMessages' `int`, 32 bits): one past that is
+   * never taken there, so it is never sent, never matched.
+   */
+  private fun watchInt(v: Any?): Long? = integer(v)?.takeIf { it in Int.MIN_VALUE..Int.MAX_VALUE }
+
   private fun bookOf(m: Map<String, Any?>): NamedBook? {
     val serverId = id(m["server_id"]) ?: return null
-    val userId = integer(m["user_id"]) ?: return null
-    val libraryId = integer(m["library_id"]) ?: return null
+    val userId = watchInt(m["user_id"]) ?: return null
+    val libraryId = watchInt(m["library_id"]) ?: return null
     val path = id(m["path"]) ?: return null
     return NamedBook(serverId, userId, libraryId, path)
   }
@@ -197,8 +203,15 @@ object WearRules {
     if (integer(message["v"]) != VERSION.toLong()) return null
     if ((message["sent_at"] as? String).isNullOrEmpty()) return null
     return when (message["type"]) {
-      // Its ids as the watch's `decodePair` reads them: a blank one is never taken.
-      "pair" -> WearPaths.PAIR.takeIf { id(message["server_id"]) != null && id(message["pairing_token"]) != null }
+      // Its ids and its time as the watch's `decodePair` reads them: a pair with a blank id, a user
+      // id past 32 bits or no readable `expires_at` is never taken (and would be put with no alarm).
+      "pair" ->
+        WearPaths.PAIR.takeIf {
+          id(message["server_id"]) != null &&
+            id(message["pairing_token"]) != null &&
+            watchInt(message["user_id"]) != null &&
+            expiresAt(message) != null
+        }
       "book", "remove" ->
         bookOf(message)?.let { WearPaths.BOOKS + BookKey.of(it.serverId, it.userId, it.libraryId, it.path) }
       else -> null
@@ -238,7 +251,7 @@ object WearRules {
       .filter { item ->
         val node = pairNode(item) ?: return@filter false
         if (sendingTo != null && node != sendingTo) return@filter true
-        val expires = expiresAt(item) ?: return@filter true
+        val expires = item.payload?.let(::expiresAt) ?: return@filter true
         now >= expires
       }
       .map { it.path }
@@ -248,12 +261,14 @@ object WearRules {
    * drops it with the app idle (WearLink's alarm), so a pairing token never sits in the Data Layer
    * past its life. A pair with no readable time is not counted: `stalePairs` drops it at once.
    */
-  fun nextPairExpiry(own: List<Item>): Long? = own.filter { pairNode(it) != null }.mapNotNull(::expiresAt).minOrNull()
+  fun nextPairExpiry(own: List<Item>): Long? =
+    own.filter { pairNode(it) != null }.mapNotNull { it.payload?.let(::expiresAt) }.minOrNull()
 
   /** The watch a `pair` item is for, null for any other item. */
   private fun pairNode(item: Item): String? = WearPaths.addressee(item.path)?.takeIf { item.path == WearPaths.pair(it) }
 
-  private fun expiresAt(item: Item): Long? = (item.payload?.get("expires_at") as? String)?.let(::epochMs)
+  /** A `pair` message's `expires_at` in epoch ms, null when it has none this phone can read. */
+  private fun expiresAt(pair: Map<String, Any?>): Long? = (pair["expires_at"] as? String)?.let(::epochMs)
 
   /** An RFC 3339 time (as JavaScript's `toISOString` writes it, or without the milliseconds) in epoch ms. */
   fun epochMs(text: String): Long? {

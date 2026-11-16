@@ -79,9 +79,11 @@ private fun message(type: String, vararg extra: Pair<String, Any?>): Map<String,
   ) + extra
 
 class PathForTest {
+  private val pair = message("pair", "pairing_token" to "t", "expires_at" to "2026-11-12T10:10:00.000Z")
+
   @Test
   fun putsThePairAtItsOnePath() {
-    assertEquals("/audiosilo/v1/to/w1/pair", pathFor(message("pair", "pairing_token" to "t"), "w1"))
+    assertEquals("/audiosilo/v1/to/w1/pair", pathFor(pair, "w1"))
   }
 
   @Test
@@ -104,10 +106,24 @@ class PathForTest {
     assertNull(pathFor(book + ("path" to " \t"), "w1"))
     assertNull(pathFor(message("remove", "path" to "   "), "w1"))
     assertNotNull(pathFor(book + ("path" to " A/B"), "w1"))
-    val pair = message("pair", "pairing_token" to "t")
     assertNull(pathFor(pair + ("server_id" to " "), "w1"))
     assertNull(pathFor(pair + ("pairing_token" to "\t"), "w1"))
     assertNull(pathFor(pair - "pairing_token", "w1"))
+  }
+
+  // The watch reads a user or library id as 32 bits (PhoneMessages' `int`) and takes no pair
+  // without a time it can read, so the phone sends neither: the item would wait there untaken.
+  @Test
+  fun refusesAnIdOrAPairTheWatchCannotRead() {
+    val book = message("book", "path" to "A/B")
+    assertNotNull(pathFor(book + ("user_id" to 2147483647.0), "w1"))
+    assertNull(pathFor(book + ("user_id" to 2147483648.0), "w1"))
+    assertNull(pathFor(book + ("library_id" to 4294967296.0), "w1"))
+    assertNull(pathFor(message("remove", "path" to "A/B", "library_id" to -2147483649.0), "w1"))
+    assertNull(pathFor(pair + ("user_id" to 2147483648.0), "w1"))
+    assertNull(pathFor(pair - "user_id", "w1"))
+    assertNull(pathFor(pair - "expires_at", "w1"))
+    assertNull(pathFor(pair + ("expires_at" to "soon"), "w1"))
   }
 }
 
