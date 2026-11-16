@@ -34,8 +34,6 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   /// A play after this long paused is a book picked up again: another device may have moved its
   /// place on (the phone's `LONG_PAUSE_MS`).
   static let PICKED_UP_AFTER: TimeInterval = 60
-  /// An interruption's `began` can arrive just after the system paused the player for it.
-  private static let INTERRUPTION_SLACK: TimeInterval = 2
   /// A downloaded file not ready to play after this long while playing is not coming (`watchSettling`).
   private static let SETTLE_LIMIT: TimeInterval = 30
   /// How long after a queue lands its player's status is read again (`landed`).
@@ -96,6 +94,8 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   private var playbackAttempt = PlaybackAttempt()
   /// Cleared when audio first moves, so a refused start says to retry without calling a file damaged.
   private var awaitingAudio = false
+  /// A refused start's message, held for an interruption's slack (`showRefusal`).
+  private var startRefusal = StartRefusal()
   /// When the place last moved while playing (where a late-noticed stop ends its span).
   private var lastAdvance = Date()
   /// The book played to its end: the next play starts it again. Only then: a queue emptied by a
@@ -127,6 +127,9 @@ final class WatchAudioEngine: NSObject, ObservableObject {
       nc.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] n in
         MainActor.assumeIsolated { self?.interrupted(n) }
       },
+      nc.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] n in
+        MainActor.assumeIsolated { self?.routeChanged(n) }
+      },
     ]
     // The system can pause the player itself (the app suspended, headphones gone): a pause
     // like any other, so the span closes where the audio stopped.
@@ -138,14 +141,31 @@ final class WatchAudioEngine: NSObject, ObservableObject {
 
   /// Read here, not as observed: a rebuild pauses the player and starts it again in one go, and
   /// only a player still paused now was stopped. Not while a rebuilt queue settles: it is held
-  /// paused on purpose then, and `landed` reads it again.
+  /// paused on purpose then, and `landed` reads it again. Stopped before its audio moved, the start
+  /// was refused; the system may have paused it for an interruption it has not told of yet, so the
+  /// message waits (`StartRefusal`).
   private func controlChanged() {
     guard playing, !settling, player.currentItem != nil, player.timeControlStatus == .paused, player.rate == 0
     else { return }
-    systemPausedAt = Date()
+    let now = Date()
+    systemPausedAt = now
     let refusedStart = awaitingAudio
     pause(stoppedAt: lastAdvance)
-    if refusedStart { problem = PlaybackFailure.audioStart.message }
+    if refusedStart {
+      startRefusal.refused(at: now)
+      showRefusal()
+    }
+  }
+
+  /// The refused start's message once the slack has passed with no interruption or lost
+  /// headphones to explain it (a play, a load or a stop meanwhile drops it).
+  private func showRefusal() {
+    DispatchQueue.main.asyncAfter(deadline: .now() + StartRefusal.INTERRUPTION_SLACK) { [weak self] in
+      MainActor.assumeIsolated {
+        guard let self, let message = self.startRefusal.message(at: Date()) else { return }
+        self.problem = message
+      }
+    }
   }
 
   var loadedBook: BookRef? { book?.ref }
@@ -183,6 +203,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     if book != nil { stop() }
     book = next
     problem = nil
+    startRefusal.reset()
     rate = PlaybackSpeed.book(saved: savedSpeed, defaultRate: UserDefaults.standard.double(forKey: Self.speedKey))
     player.defaultRate = Float(rate)
     spans.prepareStart(plan.start, unfinish: plan.unfinish)
@@ -289,6 +310,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   func play() {
     guard let b = book, !playing, !starting else { return }
     problem = nil
+    startRefusal.reset()
     if ended {
       // Played to the end: start again (an `unfinish`, then a `restart` span).
       spans.prepareStart(.restart, unfinish: true)
@@ -410,6 +432,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     book = nil
     times = nil
     sleep = nil
+    startRefusal.reset()
     MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
   }
@@ -570,9 +593,11 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   }
 
   /// The queue goes first: the place then comes from the last tick, not from wherever the player
-  /// skipped to, and a play tries the file again from there (`play`).
+  /// skipped to, and a play tries the file again from there (`play`). Its message says more than a
+  /// refused start's still waiting, which it replaces.
   private func fail(_ failure: PlaybackFailure) {
     cancelStart()
+    startRefusal.reset()
     statusObservations = []
     player.removeAllItems()
     items = []
@@ -590,8 +615,11 @@ final class WatchAudioEngine: NSObject, ObservableObject {
       .map { AVAudioSession.InterruptionOptions(rawValue: $0).contains(.shouldResume) } ?? false
     switch type {
     case .began:
-      // Either order: the system may have paused the player just before this arrives.
-      let justPaused = systemPausedAt.map { Date().timeIntervalSince($0) < Self.INTERRUPTION_SLACK } ?? false
+      // Either order: the system may have paused the player just before this arrives, and then a
+      // start it refused was this pause, not a failure.
+      let now = Date()
+      startRefusal.explained(at: now)
+      let justPaused = systemPausedAt.map { now.timeIntervalSince($0) < StartRefusal.INTERRUPTION_SLACK } ?? false
       resumeAfterInterruption = playing || justPaused
       pause(stoppedAt: nil)
     case .ended:
@@ -600,6 +628,20 @@ final class WatchAudioEngine: NSObject, ObservableObject {
       if again { play() }
     @unknown default: break
     }
+  }
+
+  /// Headphones gone pause the play, also one whose queue still settles (`landed` would start it
+  /// on whatever route is left), and explain a start refused just before. Not an interruption:
+  /// nothing plays on by itself afterwards.
+  private func routeChanged(_ note: Notification) {
+    let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+    let change: RouteChange =
+      raw.flatMap(AVAudioSession.RouteChangeReason.init(rawValue:)) == .oldDeviceUnavailable ? .deviceGone : .other
+    if change.explainsRefusal { startRefusal.explained(at: Date()) }
+    guard change.pauses(playing: playing) else { return }
+    resumeAfterInterruption = false
+    systemPausedAt = nil
+    pause(stoppedAt: lastAdvance)
   }
 
   // MARK: - The session

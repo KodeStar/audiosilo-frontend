@@ -2646,7 +2646,12 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   status recheck carry a playback generation (`Core/PlaybackAttempt.swift`): a pause, resume or
   rebuilt queue invalidates them, and each resumed play gets its own full settling interval.
   Audio-session and start refusals also ask for another Play; only confirmed file-format or parse
-  failures suggest removing the download and fetching it again. An interruption resumes
+  failures suggest removing the download and fetching it again. A start refused before the audio
+  moved says so only after `StartRefusal.INTERRUPTION_SLACK` (2 s, `Core/StartRefusal.swift`):
+  an interruption's `began` (Siri, a call) or headphones gone within it make it the system's pause,
+  and nothing shows. Headphones gone (`oldDeviceUnavailable`, one route-change observer) pause a
+  play, also one whose queue still settles (it would start on whatever route is left when it
+  lands), and nothing resumes it. An interruption resumes
   in either order of `began` and the system's pause. Pausing
   while a play still asks for the session ends that play. A file that fails stops the book at the
   last known place, the one further on when its turn comes (`AVQueuePlayer` would skip it
