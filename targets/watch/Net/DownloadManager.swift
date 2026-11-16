@@ -43,6 +43,9 @@ struct DownloadRecord: Codable, Equatable, Identifiable {
   var files: [DownloadedFile] = []
   /// Why it failed, or what it waits for.
   var message: String?
+  /// When this copy was last asked for: the phone's `asked_at` for a book it sent (a `remove` asked
+  /// before it leaves it alone, `RemoveMessage.covers`), else the watch's clock. `watch-state`'s
+  /// `added_at`.
   var addedAt: Date
   /// The furthest its percent has got while downloading (0...99), kept so the row never says less
   /// than it did: a launch has lost the bytes in flight, and a transfer begun again has fewer.
@@ -150,21 +153,31 @@ final class DownloadManager: ObservableObject {
 
   // MARK: - Queueing
 
-  /// Queue a book (the Download button, the phone's `book`). A failed one is tried again; one
-  /// already here or on its way is left alone.
-  func enqueue(_ ref: BookRef, title: String, author: String?) {
+  /// Queue a book (the Download button, the phone's `book`, asked for at `askedAt`, else now). A
+  /// failed one is tried again, as asked for now; one already here or on its way is left alone.
+  func enqueue(_ ref: BookRef, title: String, author: String?, askedAt: Date? = nil) {
     if let r = record(ref) {
       guard r.state == .failed else { return }
       update(r.id) {
         $0.state = .queued
         $0.message = nil
+        $0.addedAt = askedAt ?? Date()
       }
     } else {
       records.append(DownloadRecord(ref: ref, title: title, author: author, folder: UUID().uuidString, state: .queued,
-                                    addedAt: Date()))
+                                    addedAt: askedAt ?? Date()))
       save()
     }
     process(ref.key)
+  }
+
+  /// The phone asked for a book already here (`HeldBooks.settle`): its copy counts as added then, so
+  /// a `remove` asked before this Send leaves it, and the phone sees the copy it sent. Never earlier.
+  /// Saved without `onChange`: the caller is publishing.
+  func noteAsked(_ ref: BookRef, at askedAt: Date) {
+    guard let i = records.firstIndex(where: { $0.ref == ref }), records[i].addedAt < askedAt else { return }
+    records[i].addedAt = askedAt
+    indexSaved = index.write(records)
   }
 
   /// The app came to the foreground (or signed in): carry on with every book not done.
@@ -553,7 +566,8 @@ final class DownloadManager: ObservableObject {
   /// What `watch-state` says of a book: its stage, its size once ready, and while on its way how
   /// far it has come (fe#241: the phone's Downloads row).
   func stateBook(_ r: DownloadRecord) -> WatchStateBook {
-    var b = WatchStateBook(ref: r.ref, title: r.title, state: r.state, bytes: r.state == .ready ? r.bytes : nil)
+    var b = WatchStateBook(ref: r.ref, title: r.title, state: r.state, bytes: r.state == .ready ? r.bytes : nil,
+                           addedAt: r.addedAt)
     guard r.state == .preparing || r.state == .downloading else { return b }
     b.waiting = DownloadWait(message: r.message)
     guard !r.files.isEmpty else { return b }

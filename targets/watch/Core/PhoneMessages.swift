@@ -2,7 +2,11 @@
 // receives `pair`, `book` and `remove` from the phone and sends `watch-state`. Every
 // message carries `v: 1`; an unknown type or a newer version is ignored. WatchConnectivity hands
 // over property-list dictionaries, so decoding works on `[String: Any]`. The phone also stamps each
-// message with `sent_at` (src/watch/watch-model.ts) for Wear OS; this watch does not read it.
+// message with `sent_at` (src/watch/watch-model.ts) for Wear OS; this watch does not read it. A
+// `book` and a `remove` carry `asked_at` too (fe#219, optional): when the listener asked. A book's
+// is kept as when its copy was added (`added_at` in `watch-state`), and a `remove` takes only a copy
+// added no later than it was asked (`RemoveMessage.covers`), so a Remove asked again, which keeps
+// the first one's time, never takes a copy that came back since.
 import Foundation
 
 /// `<server_id>.<user_id>`: the account a message names and the watch is signed in to (the
@@ -41,18 +45,29 @@ struct BookMessage: Codable, Equatable, Sendable {
   var ref: BookRef
   var title: String
   var author: String?
+  /// When the listener asked for it (the phone's clock); nil from a phone before 2.7.0.
+  var askedAt: Date? = nil
 
   var accountId: String { accountIdOf(serverId: serverId, userId: userId) }
 }
 
 /// `remove`: take a book off the watch, as removing it by hand does. Only for the account the
-/// watch is signed in to (`HeldBooks.finishRemove`).
-struct RemoveMessage: Equatable, Sendable {
+/// watch is signed in to (`HeldBooks.finishRemove`). Codable only for `HeldBooks`'s file.
+struct RemoveMessage: Codable, Equatable, Sendable {
   var serverId: String
   var userId: Int
   var ref: BookRef
+  /// When the listener first asked for it (the phone's clock); nil from a phone before 2.7.0.
+  var askedAt: Date? = nil
 
   var accountId: String { accountIdOf(serverId: serverId, userId: userId) }
+
+  /// Whether it takes a copy added at `addedAt`: one added no later than it was asked. With either
+  /// time unknown (an older phone, a copy from before 2.7.0) it does, as before.
+  func covers(addedAt: Date?) -> Bool {
+    guard let askedAt, let addedAt else { return true }
+    return addedAt <= askedAt
+  }
 }
 
 enum PhoneMessage: Equatable, Sendable {
@@ -80,6 +95,8 @@ struct WatchStateBook: Equatable, Sendable {
   var filesTotal: Int? = nil
   /// While preparing or downloading: what it waits for, if anything.
   var waiting: DownloadWait? = nil
+  /// When this copy was added: the phone's `asked_at` for a book it sent, else the watch's clock.
+  var addedAt: Date? = nil
 }
 
 /// `watch-state`: the latest only (`updateApplicationContext`).
@@ -136,11 +153,11 @@ enum PhoneMessages {
     else { return nil }
     return BookMessage(
       serverId: serverId, userId: userId, ref: BookRef(libraryId: lib, path: path),
-      title: m["title"] as? String ?? path, author: nonEmpty(m["author"]))
+      title: m["title"] as? String ?? path, author: nonEmpty(m["author"]), askedAt: date(m["asked_at"]))
   }
 
   private static func decodeRemove(_ m: [String: Any]) -> RemoveMessage? {
-    decodeBook(m).map { RemoveMessage(serverId: $0.serverId, userId: $0.userId, ref: $0.ref) }
+    decodeBook(m).map { RemoveMessage(serverId: $0.serverId, userId: $0.userId, ref: $0.ref, askedAt: $0.askedAt) }
   }
 
   /// `watch-state` as a property list (no nils: WatchConnectivity takes plist types only).
@@ -158,6 +175,8 @@ enum PhoneMessages {
         if let n = b.filesReady { d["files_ready"] = n }
         if let n = b.filesTotal { d["files_total"] = n }
         if let w = b.waiting { d["waiting"] = w.rawValue }
+        // Optional (fe#219): an older watch, and a Wear OS one, sends none.
+        if let t = b.addedAt { d["added_at"] = ISOTime.string(t) }
         return d
       },
     ]

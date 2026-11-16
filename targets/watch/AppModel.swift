@@ -414,7 +414,8 @@ final class AppModel: ObservableObject {
       // Queued now if its account is ready, else it waits for that.
       serially { self.releaseHeld() }
     case .remove(let r):
-      let ticket = held.noteRemove(r)
+      // On disk now, like a book: a kill before its turn must not lose it.
+      let ticket = held.noteRemove(r, now: Date())
       serially { self.remove(ticket) }
     }
   }
@@ -439,24 +440,38 @@ final class AppModel: ObservableObject {
   }
 
   /// A `remove`'s turn: the same path as removing by hand, so the playing book stops and its span
-  /// closes first (`downloads.willRemove`). Refused for any account but this one (`finishRemove`).
+  /// closes first (`downloads.willRemove`). Refused for any account but this one (`finishRemove`),
+  /// and a copy added after the listener asked (by the watch's own Download button, or sent again)
+  /// stays (`covers`).
   private func remove(_ ticket: RemoveTicket) {
     held.finishRemove(ticket, accountId: account?.accountId, now: Date()) {
-      downloads.remove(ticket.message.ref)
+      let ref = ticket.message.ref
+      if let r = downloads.record(ref), ticket.message.covers(addedAt: r.addedAt) { downloads.remove(ref) }
     }
     publishState()
+  }
+
+  /// The `remove`s a kill left on disk, each in its turn, once an account is there to finish them
+  /// (before the first unlock none is read yet, and refused they would be lost).
+  private func finishLeftoverRemoves() {
+    guard account != nil else { return }
+    for ticket in held.takeLeftoverRemoves() {
+      serially { self.remove(ticket) }
+    }
   }
 
   /// Queue what waits for the account, if it is ready, and age the rest. Through the Download
   /// button's path; `publishState` then settles what is on the watch out of the list. Ready needs
   /// the server's own word: a sign-in sets `.ready` before `checkServer` has asked, and a server
   /// too old for the watch would turn a held book into a failed download ("no longer on the
-  /// server", its 404). `checkServer` releases them once it has answered.
+  /// server", its 404). `checkServer` releases them once it has answered. The `remove`s a kill left
+  /// are queued first (`finishLeftoverRemoves`).
   private func releaseHeld() {
+    finishLeftoverRemoves()
     guard !held.books.isEmpty else { return }
     let ready = phase == .ready && server?.supportsWatch == true
     for b in held.due(accountId: account?.accountId, ready: ready, now: Date()) {
-      downloads.enqueue(b.ref, title: b.title, author: b.author)
+      downloads.enqueue(b.ref, title: b.title, author: b.author, askedAt: b.askedAt)
     }
     publishState()
   }
@@ -658,7 +673,10 @@ final class AppModel: ObservableObject {
     // A row goes only for a record a kill can't lose (a full disk keeps it in memory alone), and
     // not for a failed one: sent again, that book still wants the retry `enqueue` gives it.
     let onWatch = downloads.indexSaved ? downloads.records.filter { $0.state != .failed }.map(\.ref) : []
-    held.settle(accountId: who, onWatch: onWatch, now: Date())
+    // A book sent again for a copy already here: that copy is the one asked for now.
+    for b in held.settle(accountId: who, onWatch: onWatch, now: Date()) {
+      if let at = b.askedAt { downloads.noteAsked(b.ref, at: at) }
+    }
     if heldBooks != held.books { heldBooks = held.books }
     let rows = held.stateRows(accountId: who)
     // One entry per book: a row kept beside its record speaks for it until it settles.

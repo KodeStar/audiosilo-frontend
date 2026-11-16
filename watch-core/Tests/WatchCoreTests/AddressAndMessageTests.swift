@@ -399,6 +399,47 @@ final class PhoneMessagesTests: XCTestCase {
     }
   }
 
+  // fe#219: when the listener asked, optional on both (an older phone sends neither).
+  func testReadsWhenABookAndARemoveWereAskedFor() {
+    let book: [String: Any] = ["v": 1, "type": "book", "server_id": "srv", "user_id": 7, "library_id": 2, "path": "A/Book",
+                               "title": "Book", "asked_at": "2026-11-12T10:00:00.250Z"]
+    guard case .book(let b) = PhoneMessages.decode(book) else { return XCTFail("not a book") }
+    XCTAssertEqual(b.askedAt, ISOTime.parse("2026-11-12T10:00:00.250Z"))
+    var remove = book
+    remove["type"] = "remove"
+    guard case .remove(let r) = PhoneMessages.decode(remove) else { return XCTFail("not a remove") }
+    XCTAssertEqual(r.askedAt, b.askedAt)
+    var unreadable = book
+    unreadable["asked_at"] = "yesterday"
+    guard case .book(let u) = PhoneMessages.decode(unreadable) else { return XCTFail("the book still reads") }
+    XCTAssertNil(u.askedAt)
+  }
+
+  func testARemoveTakesOnlyACopyAddedNoLaterThanItWasAsked() {
+    let t = Date(timeIntervalSince1970: 1_800_000_000)
+    var remove = RemoveMessage(serverId: "srv", userId: 7, ref: BookRef(libraryId: 1, path: "A"), askedAt: t)
+    XCTAssertTrue(remove.covers(addedAt: t.addingTimeInterval(-60)))
+    XCTAssertTrue(remove.covers(addedAt: t))
+    XCTAssertFalse(remove.covers(addedAt: t.addingTimeInterval(0.001)), "a copy that came back since stays")
+    XCTAssertTrue(remove.covers(addedAt: nil))
+    remove.askedAt = nil
+    XCTAssertTrue(remove.covers(addedAt: t.addingTimeInterval(60)), "an older phone's remove: as before")
+  }
+
+  func testEncodesWhenEachCopyWasAdded() throws {
+    let added = try XCTUnwrap(ISOTime.parse("2026-11-12T10:00:00.250Z"))
+    let s = WatchState(signedIn: true, serverId: "srv", userId: 7, appVersion: "2.7.0",
+                       books: [WatchStateBook(ref: BookRef(libraryId: 2, path: "A/Book"), title: "Book", state: .ready,
+                                              addedAt: added),
+                               WatchStateBook(ref: BookRef(libraryId: 2, path: "A/Other"), title: "Other", state: .ready)],
+                       unsentEvents: 0, couldntSync: 0)
+    let d = PhoneMessages.encode(s)
+    XCTAssertTrue(PropertyListSerialization.propertyList(d, isValidFor: .binary))
+    let books = try XCTUnwrap(d["books"] as? [[String: Any]])
+    XCTAssertEqual(books[0]["added_at"] as? String, "2026-11-12T10:00:00.250Z")
+    XCTAssertNil(books[1]["added_at"])
+  }
+
   func testEncodesWatchStateAsAPropertyList() throws {
     let s = WatchState(signedIn: true, serverId: "srv", userId: 7, appVersion: "2.6.0",
                        books: [WatchStateBook(ref: BookRef(libraryId: 2, path: "A/Book"), title: "Book", state: .downloading, bytes: 10)],

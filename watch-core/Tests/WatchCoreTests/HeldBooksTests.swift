@@ -208,10 +208,10 @@ final class HeldBooksTests: XCTestCase {
     let held = HeldBooks(url: nil)
     held.hold(bookA(), now: t0)
     XCTAssertEqual(held.stateRows(accountId: A),
-                   [WatchStateBook(ref: bookA().ref, title: "One", state: .queued, bytes: nil)])
+                   [WatchStateBook(ref: bookA().ref, title: "One", state: .queued, bytes: nil, addedAt: t0)])
     held.giveUp(accountId: A, now: t0)
     XCTAssertEqual(held.stateRows(accountId: A),
-                   [WatchStateBook(ref: bookA().ref, title: "One", state: .failed, bytes: nil)])
+                   [WatchStateBook(ref: bookA().ref, title: "One", state: .failed, bytes: nil, addedAt: t0)])
   }
 
   // Its books read as the account the state names, so another's would be listed under the wrong one.
@@ -231,7 +231,28 @@ final class HeldBooksTests: XCTestCase {
                            books: held.stateRows(accountId: A), unsentEvents: 0, couldntSync: 0, lastSyncAt: nil)
     let books = try XCTUnwrap(PhoneMessages.encode(state)["books"] as? [[String: Any]])
     XCTAssertEqual(books[0]["state"] as? String, "failed")
-    XCTAssertEqual(Set(books[0].keys), ["library_id", "path", "title", "state"])
+    XCTAssertEqual(Set(books[0].keys), ["library_id", "path", "title", "state", "added_at"])
+  }
+
+  // fe#219: the phone tells a copy from before its last Send by this.
+  func testARowSaysItWasAddedWhenTheListenerAskedElseWhenItArrived() {
+    let held = HeldBooks(url: nil)
+    var asked = bookA()
+    asked.askedAt = t0.addingTimeInterval(-30)
+    held.hold(asked, now: t0)
+    held.hold(bookA("A/Old"), now: t0.addingTimeInterval(5))
+    XCTAssertEqual(held.stateRows(accountId: A).map(\.addedAt), [t0.addingTimeInterval(-30), t0.addingTimeInterval(5)])
+  }
+
+  func testSettlingHandsBackTheBooksAskedForAgainForACopyAlreadyHere() {
+    let held = HeldBooks(url: nil)
+    held.hold(bookA(), now: t0)
+    held.hold(bookA("A/GivenUp"), now: t0)
+    held.giveUp(accountId: A, now: t0)
+    held.hold(bookA(), now: t0)
+    let settled = held.settle(accountId: A, onWatch: [bookA().ref, bookA("A/GivenUp").ref], now: t0)
+    XCTAssertEqual(settled, [bookA()], "only one still waiting: a book given up on was not asked for now")
+    XCTAssertEqual(held.books, [])
   }
 
   // MARK: - Across a kill
@@ -292,7 +313,7 @@ final class HeldBooksTests: XCTestCase {
   func testRemoveForTheSignedInAccountGoesAndClearsItsRow() {
     let held = HeldBooks(url: nil)
     held.hold(bookA(), now: t0)
-    let ticket = held.noteRemove(removeA())
+    let ticket = held.noteRemove(removeA(), now: t0)
     XCTAssertTrue(held.finishRemove(ticket, accountId: A, now: t0))
     XCTAssertEqual(held.books, [])
     XCTAssertEqual(held.due(accountId: A, ready: true, now: t0), [], "it never starts")
@@ -303,31 +324,31 @@ final class HeldBooksTests: XCTestCase {
     held.hold(bookA(), now: t0)
     held.giveUp(accountId: A, now: t0)
     XCTAssertEqual(held.stateRows(accountId: A).map(\.state), [.failed])
-    XCTAssertTrue(held.finishRemove(held.noteRemove(removeA()), accountId: A, now: t0))
+    XCTAssertTrue(held.finishRemove(held.noteRemove(removeA(), now: t0), accountId: A, now: t0))
     XCTAssertEqual(held.stateRows(accountId: A), [])
   }
 
   func testRemoveWithNoRowStillTakesTheBook() {
     let held = HeldBooks(url: nil)
-    XCTAssertTrue(held.finishRemove(held.noteRemove(removeA()), accountId: A, now: t0))
+    XCTAssertTrue(held.finishRemove(held.noteRemove(removeA(), now: t0), accountId: A, now: t0))
   }
 
   func testARepeatedRemoveChangesNothingMore() {
     let held = HeldBooks(url: nil)
     held.hold(bookA(), now: t0)
     held.hold(bookA("A/Two"), now: t0)
-    XCTAssertTrue(held.finishRemove(held.noteRemove(removeA()), accountId: A, now: t0))
+    XCTAssertTrue(held.finishRemove(held.noteRemove(removeA(), now: t0), accountId: A, now: t0))
     let left = held.books
     // The phone's Remove again, when the first did get here. `downloads.remove` then finds no record.
-    XCTAssertTrue(held.finishRemove(held.noteRemove(removeA()), accountId: A, now: t0))
+    XCTAssertTrue(held.finishRemove(held.noteRemove(removeA(), now: t0), accountId: A, now: t0))
     XCTAssertEqual(held.books, left)
   }
 
   func testABookSentBehindARepeatedRemoveStands() {
     let held = HeldBooks(url: nil)
     held.hold(bookA(), now: t0)
-    let first = held.noteRemove(removeA())
-    let repeated = held.noteRemove(removeA())
+    let first = held.noteRemove(removeA(), now: t0)
+    let repeated = held.noteRemove(removeA(), now: t0)
     let later = t0.addingTimeInterval(1)
     held.hold(bookA(), now: later)
     XCTAssertTrue(held.finishRemove(first, accountId: A, now: later))
@@ -342,8 +363,8 @@ final class HeldBooksTests: XCTestCase {
   func testRemoveIsRefusedSignedOutOrOnAnotherAccountAndChangesNothing() {
     let held = HeldBooks(url: nil)
     held.hold(bookA(), now: t0)
-    XCTAssertFalse(held.finishRemove(held.noteRemove(removeA()), accountId: nil, now: t0), "signed out")
-    XCTAssertFalse(held.finishRemove(held.noteRemove(removeA()), accountId: B, now: t0), "another account")
+    XCTAssertFalse(held.finishRemove(held.noteRemove(removeA(), now: t0), accountId: nil, now: t0), "signed out")
+    XCTAssertFalse(held.finishRemove(held.noteRemove(removeA(), now: t0), accountId: B, now: t0), "another account")
     XCTAssertEqual(held.books.count, 1, "still held")
     XCTAssertEqual(held.due(accountId: A, ready: true, now: t0), [bookA()])
   }
@@ -353,14 +374,14 @@ final class HeldBooksTests: XCTestCase {
     let same = BookMessage(serverId: "srv-b", userId: 2, ref: bookA().ref, title: "One", author: nil)
     held.hold(same, now: t0)
     held.hold(bookA(), now: t0)
-    XCTAssertTrue(held.finishRemove(held.noteRemove(removeA()), accountId: A, now: t0))
+    XCTAssertTrue(held.finishRemove(held.noteRemove(removeA(), now: t0), accountId: A, now: t0))
     XCTAssertEqual(held.books.map(\.book.accountId), [B])
   }
 
   func testABookSentAgainAfterARemoveSurvivesItsTurn() {
     let held = HeldBooks(url: nil)
     held.hold(bookA(), now: t0)
-    let ticket = held.noteRemove(removeA())
+    let ticket = held.noteRemove(removeA(), now: t0)
     // Held the moment it arrives, ahead of the remove's turn.
     held.hold(bookA(), now: t0.addingTimeInterval(1))
     XCTAssertTrue(held.finishRemove(ticket, accountId: A, now: t0.addingTimeInterval(1)))
@@ -369,7 +390,7 @@ final class HeldBooksTests: XCTestCase {
 
   func testABookFirstSentAfterARemoveSurvivesItsTurn() {
     let held = HeldBooks(url: nil)
-    let ticket = held.noteRemove(removeA())
+    let ticket = held.noteRemove(removeA(), now: t0)
     held.hold(bookA(), now: t0)
     XCTAssertTrue(held.finishRemove(ticket, accountId: A, now: t0))
     XCTAssertEqual(held.books.count, 1)
@@ -377,7 +398,7 @@ final class HeldBooksTests: XCTestCase {
 
   func testARecordAboutToGoSettlesNoRow() {
     let held = HeldBooks(url: nil)
-    let ticket = held.noteRemove(removeA())
+    let ticket = held.noteRemove(removeA(), now: t0)
     held.hold(bookA(), now: t0)
     // The old record is still in the index: settled against it, the book sent again would be lost.
     held.settle(accountId: A, onWatch: [bookA().ref], now: t0)
@@ -389,7 +410,7 @@ final class HeldBooksTests: XCTestCase {
 
   func testStoppingThePlayingBookOnItsTurnSettlesNoRow() {
     let held = HeldBooks(url: nil)
-    let ticket = held.noteRemove(removeA())
+    let ticket = held.noteRemove(removeA(), now: t0)
     held.hold(bookA(), now: t0)
     var taken = false
     // Stopping it closes its span, which publishes with its record still in the index.
@@ -401,9 +422,76 @@ final class HeldBooksTests: XCTestCase {
     XCTAssertEqual(held.books.count, 1, "the book sent again stands")
   }
 
+  // fe#219: a `remove` asked before the book was (a Remove asked again keeps the first one's time).
+  func testARemoveAskedBeforeTheBookLeavesItsRow() {
+    let held = HeldBooks(url: nil)
+    var book = bookA()
+    book.askedAt = t0.addingTimeInterval(10)
+    held.hold(book, now: t0)
+    var earlier = removeA()
+    earlier.askedAt = t0
+    XCTAssertTrue(held.finishRemove(held.noteRemove(earlier, now: t0), accountId: A, now: t0))
+    XCTAssertEqual(held.books.map(\.book), [book])
+    var later = removeA()
+    later.askedAt = t0.addingTimeInterval(10)
+    XCTAssertTrue(held.finishRemove(held.noteRemove(later, now: t0), accountId: A, now: t0))
+    XCTAssertEqual(held.books, [], "asked at the same moment or after, it goes")
+  }
+
+  // MARK: - remove, across a kill (fe#219)
+
+  func testARemoveNotHandledYetSurvivesAKillAndIsHandedOutOnce() throws {
+    let url = try tempURL()
+    let held = HeldBooks(url: url)
+    held.hold(bookA(), now: t0)
+    let ticket = held.noteRemove(removeA(), now: t0)
+    XCTAssertEqual(held.takeLeftoverRemoves(), [], "this run's own are in their turn already")
+    let again = HeldBooks(url: url)
+    XCTAssertEqual(again.removes, [ticket])
+    let leftovers = again.takeLeftoverRemoves()
+    XCTAssertEqual(leftovers, [ticket])
+    XCTAssertEqual(again.takeLeftoverRemoves(), [], "once")
+    // Still in its turn, its book's record settles no row.
+    again.settle(accountId: A, onWatch: [bookA().ref], now: t0)
+    XCTAssertEqual(again.books.count, 1)
+    XCTAssertTrue(again.finishRemove(leftovers[0], accountId: A, now: t0))
+    XCTAssertEqual(again.books, [], "the row it found goes with it")
+    XCTAssertFalse(FileManager.default.fileExists(atPath: url.path), "nothing left to keep")
+  }
+
+  func testARefusedLeftoverRemoveIsDoneWith() throws {
+    let url = try tempURL()
+    _ = HeldBooks(url: url).noteRemove(removeA(), now: t0)
+    let again = HeldBooks(url: url)
+    XCTAssertFalse(again.finishRemove(again.takeLeftoverRemoves()[0], accountId: B, now: t0))
+    XCTAssertEqual(HeldBooks(url: url).removes, [])
+  }
+
+  func testARemoveNeverHandledAgesOut() {
+    let held = HeldBooks(url: nil)
+    _ = held.noteRemove(removeA(), now: t0)
+    held.settle(accountId: A, onWatch: [], now: t0.addingTimeInterval(HeldBooks.MAX_AGE - 1))
+    XCTAssertEqual(held.removes.count, 1)
+    held.settle(accountId: A, onWatch: [], now: t0.addingTimeInterval(HeldBooks.MAX_AGE))
+    XCTAssertEqual(held.removes, [])
+  }
+
+  func testTheFileFromBefore27StillReads() throws {
+    let url = try tempURL()
+    let row = HeldBook(book: bookA(), heldAt: t0)
+    XCTAssertTrue(JSONFile<[HeldBook]>(url: url).write([row]))
+    let held = HeldBooks(url: url)
+    XCTAssertEqual(held.books, [row])
+    XCTAssertEqual(held.removes, [])
+    // Written again in the new shape, the books with the removes.
+    _ = held.noteRemove(removeA(), now: t0)
+    XCTAssertEqual(HeldBooks(url: url).books, [row])
+    XCTAssertEqual(HeldBooks(url: url).removes.count, 1)
+  }
+
   func testARefusedRemoveTakesNoBook() {
     let held = HeldBooks(url: nil)
-    XCTAssertFalse(held.finishRemove(held.noteRemove(removeA()), accountId: B, now: t0) {
+    XCTAssertFalse(held.finishRemove(held.noteRemove(removeA(), now: t0), accountId: B, now: t0) {
       XCTFail("another account's book stays")
     })
   }
