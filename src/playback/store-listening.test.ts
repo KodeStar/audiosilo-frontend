@@ -806,7 +806,16 @@ describe('with listening_sync', () => {
       jest.advanceTimersByTime(4_000);
       pushSnapshot(snap('playing', 0, 34));
       mockReadMirror.mockResolvedValue({ ack_version: 57 });
+      // The span closing ahead of it still on its way into the outbox: the Stay goes after it.
+      let closed = () => {};
+      (closeSpan as jest.Mock).mockImplementationOnce(async (span: OpenSpan) => {
+        await new Promise<void>((resolve) => (closed = resolve));
+        mockClosed.push(structuredClone(span));
+      });
       standByPlace();
+      await settle();
+      expect(mockAppended).toEqual([]);
+      closed();
       await settle();
       expect(mockAppended).toHaveLength(1);
       expect(mockAppended[0]).toMatchObject({

@@ -1143,7 +1143,11 @@ function moveListeningSpan(target: SpanEnd | null, opts: { from?: SpanEnd | null
  * reason (a Stay's as a `jump`: `carriedStart`). */
 function sendStill(np: NowPlaying, at: SpanEnd, start: ListeningStart) {
   const now = new Date().toISOString();
-  void baseVersionOf(np).then((base) =>
+  // After the span a close just ended (still on its way into the outbox, `closeSpan` waits
+  // its turn): the outbox's order is the order a sync sends, and both go in one batch.
+  const earlier = closesInFlight.get(contentKeyOf(np));
+  if (earlier) earlier.flush = false;
+  void Promise.all([baseVersionOf(np), earlier?.done]).then(([base]) =>
     emit(np.connectionId, [spanToEvent(spanAt(np, at, start, now, base))]),
   );
   nextStart = carriedStart(start);
