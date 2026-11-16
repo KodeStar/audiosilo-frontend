@@ -191,14 +191,12 @@ export type WatchRow = {
  * something else (a Remove on its way), or from a watch that tells none of it. */
 function howFar(book: WatchBook, phase: WatchRowPhase): Pick<WatchRow, 'detail' | 'waiting'> {
   if (phase !== 'preparing' && phase !== 'downloading') return {};
-  const detail: WatchRowDetail | undefined =
-    phase === 'downloading'
-      ? book.progress !== undefined
-        ? { kind: 'percent', percent: book.progress }
-        : undefined
-      : book.files_total !== undefined
-        ? { kind: 'files', ready: book.files_ready ?? 0, total: book.files_total }
-        : undefined;
+  let detail: WatchRowDetail | undefined;
+  if (phase === 'downloading') {
+    if (book.progress !== undefined) detail = { kind: 'percent', percent: book.progress };
+  } else if (book.files_total !== undefined) {
+    detail = { kind: 'files', ready: book.files_ready ?? 0, total: book.files_total };
+  }
   return {
     ...(detail ? { detail } : {}),
     ...(book.waiting ? { waiting: book.waiting } : {}),
