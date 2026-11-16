@@ -936,18 +936,14 @@ function openListeningSpan(at?: SpanEnd) {
   if (!np || !usesListeningSync(np.connectionId)) return;
   // Not from a place on its way to another tab's (`catchUpPlaying` opens it there).
   if (catchingUp) return;
-  // Taken first: closing another book's span may leave that book's move in `nextStart`.
-  const start = nextStart;
   if (span) {
     if (sameBook(span, np)) return;
     closeListeningSpan();
   }
   const here = at ?? engineEnd();
-  if (!here) {
-    nextStart = start;
-    return;
-  }
+  if (!here) return;
   const now = new Date().toISOString();
+  const start = nextStart;
   nextStart = 'resume';
   const opened = spanAt(np, here, start, now);
   span = opened;
@@ -998,13 +994,15 @@ function takeSpan(at?: SpanEnd, endedAt?: number): OpenSpan | null {
   span = null;
   if (!closing) return null;
   const np = usePlayer.getState().nowPlaying;
-  closing.to = at ?? (np && sameBook(closing, np) ? engineEnd() : null) ?? closing.to;
+  const loaded = np !== null && sameBook(closing, np);
+  closing.to = at ?? (loaded ? engineEnd() : null) ?? closing.to;
   const now = Date.now();
   const ended = endedAt !== undefined && Number.isFinite(endedAt) ? Math.min(now, endedAt) : now;
   // Never before it began (a span cut since the other tab's claim was made).
   closing.endedAt = new Date(Math.max(ended, Date.parse(closing.startedAt) || 0)).toISOString();
-  // Like a paused move: the next play begins with the same reason (`spanIsBareMove`).
-  if (spanIsBareMove(closing)) nextStart = closing.start;
+  // Like a paused move: the loaded book's next play begins with the same reason
+  // (`spanIsBareMove`). Another book's move is not carried to this one.
+  if (loaded && spanIsBareMove(closing)) nextStart = closing.start;
   return closing;
 }
 
