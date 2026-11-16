@@ -778,6 +778,9 @@ class AppModel private constructor(private val context: Context) {
         addresses = AddressPicker.merge(current.addresses, p.addresses),
       )
     keep(a, old = current)
+    // The gate is asked again, as a sign-in asks it, unless it stands: a server that was too old
+    // may serve the watch now, and a book behind this pair waits for that word (`releaseHeld`).
+    if (_phase.value != Phase.Ready || _server.value?.supportsWatch != true) checkServer()
     publishState()
   }
 

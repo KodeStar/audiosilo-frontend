@@ -2743,7 +2743,9 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   session on the server each time (D6, fe#219). A 401, any other refusal or no answer at all
   exchanges the pair's token as a first sign-in does (with no answer the watch may only be at an
   address it can't reach, and the exchange tries the pair's `base_url`, away and home). Kept, the
-  pair's label, user name and addresses are taken (`keepSignIn`) and its token runs out unused.
+  pair's label, user name and addresses are taken (`keepSignIn`) and its token runs out unused;
+  the server gate is asked again unless it stands, so a server that was too old can take the book
+  behind the pair.
   Wear OS does the same. A sign-in with no token kept but another account's files
   left behind forgets them first, so they are never sent under the new token. The phone's messages
   are handled one at a time, in order, so a `book` after its `pair` waits for that sign-in. A book

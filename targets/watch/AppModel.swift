@@ -600,6 +600,9 @@ final class AppModel: ObservableObject {
       userName: p.userName.isEmpty ? current.userName : p.userName, serverURL: p.serverURL,
       addresses: AddressPicker.merge(prior: current.addresses, fresh: p.addresses), signedInAt: current.signedInAt)
     await keep(a, over: current)
+    // The gate is asked again, as a sign-in asks it, unless it stands: a server that was too old
+    // may serve the watch now, and a book behind this pair waits for that word (`releaseHeld`).
+    if phase != .ready || server?.supportsWatch != true { await checkServer() }
     publishState()
   }
 
