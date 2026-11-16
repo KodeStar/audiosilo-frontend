@@ -7,7 +7,9 @@
 // Wear's additions: every item carries `sent_at` (RFC 3339, the phone's clock), which makes each
 // send a new DataItem, orders a `remove` against a later download (`removeApplies`) and names the
 // item in its receipt; the item paths below; the book key that names a book's item; and the
-// `taken` receipt.
+// `taken` receipt. A `book` and a `remove` also carry `asked_at` (fe#219, shared with the Apple
+// Watch): when the listener asked, which a Remove asked again keeps from the first. Where present it
+// orders them in place of `sent_at`, so a Remove asked again never takes a copy queued since.
 //
 // Who deletes what (ship-notes, "Data Layer contract changes from check 5"): the watch never
 // deletes the phone's `/to/<node>/` items, since a cross-device delete loses to the put by wall
@@ -75,7 +77,13 @@ data class BookMessage(
   val author: String? = null,
   /** When the phone sent it (Wear; absent from an Apple Watch's message). */
   val sentAt: StoredInstant? = null,
+  /** When the listener asked for it (a phone from 2.7.0). */
+  val askedAt: StoredInstant? = null,
 ) {
+  /** What orders it against a `remove`: when it was asked for, else when it was sent. */
+  val orderedAt: Instant?
+    get() = askedAt ?: sentAt
+
   val accountId: String
     get() = accountIdOf(serverId, userId)
 }
@@ -90,6 +98,8 @@ data class RemoveMessage(
   val ref: BookRef,
   /** When the phone sent it (Wear): an older remove than the download it would remove is ignored. */
   val sentAt: Instant? = null,
+  /** When the listener first asked for it (a phone from 2.7.0): in `sentAt`'s place where present. */
+  val askedAt: Instant? = null,
 ) {
   val accountId: String
     get() = accountIdOf(serverId, userId)
@@ -310,19 +320,22 @@ object PhoneMessages {
       title = string(m["title"]) ?: path,
       author = nonEmpty(m["author"]),
       sentAt = date(m["sent_at"]),
+      askedAt = date(m["asked_at"]),
     )
   }
 
   private fun decodeRemove(m: JsonObject): RemoveMessage? =
-    decodeBook(m)?.let { RemoveMessage(it.serverId, it.userId, it.ref, it.sentAt) }
+    decodeBook(m)?.let { RemoveMessage(it.serverId, it.userId, it.ref, it.sentAt, it.askedAt) }
 
   /**
-   * Whether a `remove` takes a download queued at `downloadAt` (the book message's `sent_at`, else
-   * when the watch queued it): not when the remove is older (W3c's follow-up, solved for Wear). A
-   * remove or a download with no time (an older phone) applies, as on the Apple Watch.
+   * Whether a `remove` takes a download queued at `downloadAt` (the book message's `asked_at` or
+   * `sent_at`, else when the watch queued it): not when the remove is older (W3c's follow-up). The
+   * remove's own time is its `asked_at`, else its `sent_at`: a Remove asked again keeps the first
+   * one's, so it never takes a copy queued since (fe#219). A remove or a download with no time (an
+   * older phone) applies, as on the Apple Watch.
    */
   fun removeApplies(remove: RemoveMessage, downloadAt: Instant?): Boolean {
-    val sent = remove.sentAt ?: return true
+    val sent = remove.askedAt ?: remove.sentAt ?: return true
     val queued = downloadAt ?: return true
     return !sent.isBefore(queued)
   }

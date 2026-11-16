@@ -558,6 +558,33 @@ class PhoneMessagesTest {
     assertTrue("an older phone's remove", PhoneMessages.removeApplies(older.copy(sentAt = null), queued))
     assertTrue("a download with no time", PhoneMessages.removeApplies(older, null))
   }
+
+  // fe#219, shared with the Apple Watch (`RemoveMessage.covers`, the same vectors): `asked_at` orders
+  // in `sent_at`'s place, so a Remove asked again (the first one's `asked_at`, a new `sent_at`) never
+  // takes a copy queued since.
+  @Test
+  fun aRemoveAskedAgainKeepsTheFirstAskAndLeavesACopyQueuedSince() {
+    val t = iso("2026-11-12T10:00:00Z")
+    val again = RemoveMessage("srv", 7, BookRef(2, "A/Book"), sentAt = t.addingSeconds(600.0), askedAt = t)
+    assertTrue(PhoneMessages.removeApplies(again, t.addingSeconds(-60.0)))
+    assertTrue(PhoneMessages.removeApplies(again, t))
+    assertFalse("a copy that came back since stays", PhoneMessages.removeApplies(again, t.addingSeconds(0.001)))
+    assertTrue(PhoneMessages.removeApplies(again, null))
+    assertTrue("an older phone's remove: by its sent_at", PhoneMessages.removeApplies(again.copy(askedAt = null), t.addingSeconds(60.0)))
+  }
+
+  @Test
+  fun readsWhenABookAndARemoveWereAskedFor() {
+    val b = (PhoneMessages.decodeJSON(book.with("asked_at", "2026-11-12T10:00:00.250Z").with("sent_at", "2026-11-12T10:00:04Z").toString()) as PhoneMessage.Book).message
+    assertEquals(iso("2026-11-12T10:00:00.250Z"), b.askedAt)
+    assertEquals("asked for, it orders by that", iso("2026-11-12T10:00:00.250Z"), b.orderedAt)
+    val r = (PhoneMessages.decodeJSON(remove.with("asked_at", "2026-11-12T10:00:00.250Z").toString()) as PhoneMessage.Remove).message
+    assertEquals(iso("2026-11-12T10:00:00.250Z"), r.askedAt)
+    val plain = (PhoneMessages.decodeJSON(book.with("sent_at", "2026-11-12T10:00:04Z").toString()) as PhoneMessage.Book).message
+    assertNull(plain.askedAt)
+    assertEquals("an older phone's: by when it was sent", iso("2026-11-12T10:00:04Z"), plain.orderedAt)
+    assertNull((PhoneMessages.decodeJSON(book.with("asked_at", "soon").toString()) as PhoneMessage.Book).message.askedAt)
+  }
 }
 
 class DataLayerTest {

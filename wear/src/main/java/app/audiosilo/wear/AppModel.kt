@@ -626,7 +626,7 @@ class AppModel private constructor(private val context: Context) {
   private fun releaseHeld() {
     if (held.books.isEmpty()) return
     val ready = _phase.value == Phase.Ready && _server.value?.supportsWatch == true
-    for (b in held.due(_account.value?.accountId, ready, Instant.now())) queue(b.ref, b.title, b.author, b.sentAt)
+    for (b in held.due(_account.value?.accountId, ready, Instant.now())) queue(b.ref, b.title, b.author, b.orderedAt)
     publishState()
   }
 
