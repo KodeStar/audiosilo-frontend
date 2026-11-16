@@ -3,8 +3,11 @@ import type { ReactNode } from 'react';
 
 let mockParams: Record<string, unknown> = {};
 jest.mock('expo-router', () => ({ useLocalSearchParams: () => mockParams }));
+// The active connection is a signed-in one (a.1), so a bare link leaving proves the route
+// reads the connection the link names, never the active one.
 jest.mock('@/api/provider', () => ({
   ConnectionScope: ({ children }: { children: ReactNode }) => children,
+  useCid: (id?: string) => id ?? 'a.1',
 }));
 jest.mock('@/components/connect/ready-screen', () => {
   const { Text } = jest.requireActual('react-native');

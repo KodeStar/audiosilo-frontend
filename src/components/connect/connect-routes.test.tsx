@@ -64,6 +64,7 @@ jest.mock('@/lib/base-url', () => ({
 }));
 jest.mock('@/api/provider', () => ({
   ConnectionScope: ({ children }: { children: unknown }) => children,
+  useCid: (id?: string) => id ?? '',
 }));
 
 /* eslint-disable import/first */

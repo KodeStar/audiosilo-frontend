@@ -6,7 +6,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { isNotInLibraryError } from '@/api/client';
 import { useBook, useCapability, useChapters } from '@/api/hooks';
-import { useCid } from '@/api/provider';
 import { useRouteConnection } from '@/components/layout/content-scope';
 import { NotInLibraryState } from '@/components/layout/not-in-library';
 import { LoadFailedNote } from '@/components/layout/sign-in-again';
@@ -48,26 +47,23 @@ export default function PlayerScreen() {
   }>();
   // The route-connection rule (`useRouteConnection`): an old id (a widget's or Live
   // Activity's link) resolves; an unknown connection or another person's (Phase 8: switch
-  // first, never start their book silently) shows its gate instead of the player.
-  const { cid: param, gate } = useRouteConnection(connection);
+  // first, never start their book silently) shows its gate instead of the player. The
+  // player is a root modal (outside any route scope), so the connection it plays rides in
+  // as a param; opened bare (the mini-player just re-shows nowPlaying) it is the active one.
+  const { cid, gate } = useRouteConnection(connection);
   const gated = gate !== null;
-  const connectionId = param || undefined;
   const libraryId = Number(libParam);
   const path = segmentsToPath(pathParam);
   // A route that names a book it can't (`?libraryId=abc`, no path) asks the server nothing
   // and shows the not-in-library state (CONNECT-03, frontend#129).
   const routeNamesBook = idParam(libParam) !== null && path.length > 0;
-  // The player is a root modal (outside any route scope), so the connection it plays
-  // rides in as a param; fall back to the active connection when opened bare (the
-  // mini-player just re-shows nowPlaying).
-  const cid = useCid(connectionId);
   const insets = useSafeAreaInsets();
 
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const seekBook = usePlayer((s) => s.seekBook);
   const goToTrack = usePlayer((s) => s.goToTrack);
 
-  const bookQuery = useBook(libraryId, path, connectionId, { enabled: routeNamesBook });
+  const bookQuery = useBook(libraryId, path, cid, { enabled: routeNamesBook });
   const book = bookQuery.data;
   // Opened bare (the mini player, the docked bar, the palette) there is no route book:
   // the book on screen is the one loaded.
@@ -78,7 +74,7 @@ export default function PlayerScreen() {
         ? bookTitle(nowPlaying.title, nowPlaying.path)
         : undefined,
   );
-  const chaptersQuery = useChapters(libraryId, path, connectionId, { enabled: routeNamesBook });
+  const chaptersQuery = useChapters(libraryId, path, cid, { enabled: routeNamesBook });
   const chapterData = chaptersQuery.data;
   const podcastFetch = useCapability('podcast_fetch', cid);
   // An episode on this device plays from it, whatever its server holds (fe#166).

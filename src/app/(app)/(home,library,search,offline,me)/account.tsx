@@ -3,12 +3,13 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { useScopedCid } from '@/api/provider';
 import { accountParentKey, routeUnderAccount } from '@/components/account/account-model';
 import { AccountSection } from '@/components/account/account-section';
 import { ContentScope } from '@/components/layout/content-scope';
 import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
+import { connectionParam } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
 import { useSession } from '@/stores/session';
 
@@ -20,9 +21,9 @@ import { useSession } from '@/stores/session';
  * opened from when that is Settings or a You hub section (`accountParentKey`).
  *
  * The `?connection=` scope comes from this route's OWN local param (reliable on a cold
- * deep link; `ContentScope` redirects home for a server that isn't signed in), read via
- * `useScopedCid()`, so the body is a child of `<ContentScope>`. Without the param the
- * section shows the default server with a server switcher.
+ * deep link; `ContentScope` shows a not-found state for a server that isn't signed in).
+ * Without the param (the scope is then the active connection) the section shows the
+ * default server with a server switcher, so the body reads the param itself.
  */
 export default function AccountScreen() {
   return (
@@ -34,7 +35,8 @@ export default function AccountScreen() {
 
 function AccountContent() {
   const { t } = useTranslation();
-  const cid = useScopedCid();
+  const { connection } = useRouteParams<{ connection?: string | string[] }>();
+  const cid = connectionParam(connection);
   const name = useSession((s) => s.connections.find((c) => c.id === cid)?.name);
   const label = name || t('settings.account.label');
   usePageTitle(label);
