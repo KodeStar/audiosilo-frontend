@@ -2657,8 +2657,9 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   in either order of `began` and the system's pause. Pausing
   while a play still asks for the session ends that play. A file that fails stops the book at the
   last known place, its span ending where the audio last moved, the one further on when its turn
-  comes (`AVQueuePlayer` would skip it silently), and Play tries it again. A place is kept only as the book plays or moves, stamped
-  when that happened (`stoppedAt` for a late-noticed stop): a later stamp would read as newer than
+  comes (`AVQueuePlayer` would skip it silently), and Play tries it again. A place is kept only as
+  the book plays or moves, stamped when that happened (`stoppedAt` for a late-noticed stop): a
+  later stamp would read as newer than
   another device's real place. A book starts again (an `unfinish`, then a
   `restart` span) only after it played to its end: a queue a failed file emptied plays on from
   the place, since the server applies a `restart` as a move to 0. Moved back after its end, the
@@ -2880,9 +2881,10 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   vectors as JUnit tests: a rule changed on one watch changes on both, tests included. Swift's
   `rounded()` is `roundHalfAway` (Kotlin's `round` is half-even). Not ported (Apple-only, W4
   decision 9): `Outbox.backgroundBody`/`applyBackground`, `ClockSkew.clockOffset`,
-  `BackgroundSync`, `AddressPicker.unattended`, `RenditionPlan.keepsTransfer`; Wear's
-  `SyncSchedule` says when a send runs instead. `PlaybackAttempt` is ported with its tests, its
-  `PlaybackFailure` read from Media3's error codes (mirrored as constants; `:wear`'s
+  `BackgroundSync`, `AddressPicker.unattended`, `RenditionPlan.keepsTransfer`, `StartRefusal`
+  (AVFoundation's interruption and route-change timing; Wear reads Media3's reasons, `SystemPause`);
+  Wear's `SyncSchedule` says when a send runs instead. `PlaybackAttempt` is ported with its tests,
+  its `PlaybackFailure` read from Media3's error codes (mirrored as constants; `:wear`'s
   PlaybackTest checks them against Media3). Wear's own, also pure: `Downloads.kt` (the account,
   the item cache, the downloads index, Continue listening's rows), `BookDownload` (one book's
   run), `SystemPause` (a pause the system made, from Media3's reasons), `PhoneInbox` (PhoneLink's
