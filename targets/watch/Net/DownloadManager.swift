@@ -458,6 +458,9 @@ final class DownloadManager: ObservableObject {
   // MARK: - The background session's events
 
   private func handle(_ e: DownloadEvent) {
+    // After the first unlock the index reads, whether or not the app has caught up yet; before it
+    // the event finds no record and is dropped.
+    if !loaded { reload() }
     switch e {
     case .finished(let tag, let staged):
       handedOff.remove(tag.key)

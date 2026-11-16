@@ -72,6 +72,10 @@ final class AppModel: ObservableObject {
   /// False until the scene first becomes active: a launch for a background wake is not in front.
   @Published private(set) var inForeground = false
 
+  /// The account and server kept, read before any store below (declaration order is their
+  /// order): a first unlock between the two then finds the keychain unread and the stores read,
+  /// which `catchUp` reads again, never the stores unread with `loaded` true.
+  private let launchKept = AppModel.readKept()
   let router = AddressRouter()
   let library = ContinueListening()
   let downloads = DownloadManager()
@@ -110,7 +114,7 @@ final class AppModel: ObservableObject {
     })
     self.spans = spans
     engine = WatchAudioEngine(spans: spans, places: places)
-    let kept = Self.readKept()
+    let kept = launchKept
     loaded = kept != nil
     account = kept?.account
     server = kept?.server
@@ -327,6 +331,8 @@ final class AppModel: ObservableObject {
 
   /// A background upload's answer (a later wake, or while running): applied like a foreground one.
   private func applyUpload(_ answer: SyncUploadAnswer) {
+    // After the first unlock it finds the account and the outbox, whatever else has woken.
+    catchUp()
     guard BackgroundSync.applies(answer.tag, accountId: account?.accountId),
       case .answered(let response) = answer.outcome
     else { return }

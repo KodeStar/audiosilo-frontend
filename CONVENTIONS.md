@@ -2657,18 +2657,23 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   context returns success and sends nothing (seen in the watchOS 26.5 framework), so it is no error.
 - **Before the first unlock** (fe#216, fe#219): every file is
   `completeFileProtectionUntilFirstUserAuthentication` and the token `AfterFirstUnlock`, so a
-  launch for a background wake after a reboot reads nothing kept (`Keychain.readable` false).
-  `JSONFile.load` tells a missing file, a value, an unreadable one (read again later, written over
-  never) and a corrupt one apart. Such a launch decides and reports nothing: no `watch-state`, a
+  launch for a background wake after a reboot reads nothing kept (`Keychain.hasToken()` nil; it is
+  read before any store, so an unlock mid-launch never leaves the stores unread with the account
+  read). `JSONFile.load` tells a missing file, a value, an unreadable one (read again later, written
+  over never) and a corrupt one apart. Such a launch decides and reports nothing: no `watch-state`, a
   `pair` waits in memory (`AccountRules.change` says `.wait` while nothing reads, never a sign-in
-  that would forget the account and discard its listening) and signs in at `becameActive`, a
-  `remove` waits with its ticket, a book is held, the open span is not recovered, `HeldBooks`
-  writes nothing over its file, and `Files.deviceId` is not read (the outbox asks for it only to
-  send). Once the keychain reads (`AppModel.catchUp`: `becameActive`, a phone message, a sign-in,
-  the refresh task) the account, server, acks, places, Continue listening, held books (what came
-  meanwhile joins, every `remove` left over), the outbox (the copy a locked launch set aside joins
-  in the same launch) and the download index are read again, the span recovered, then the books
-  released and the state published. A download index that does not decode is moved aside
+  that would forget the account and discard its listening) and signs in at `becameActive` (read in
+  its inbox turn, so a newer pair queued ahead of it stands), a `remove` waits with its ticket, a
+  book is held, the open span is not recovered, `HeldBooks` writes nothing over its file (and
+  writes again, once it can, what no file could take), and `Files.deviceId` is not read (the outbox
+  asks for it only to send; an id there but unreadable is never written over). Once the keychain
+  reads (`AppModel.catchUp`: `becameActive`, a phone message, a sign-in, the refresh task, a
+  background upload's answer) the account, server, acks, places, Continue listening, held books
+  (what came meanwhile joins, every `remove` left over, about the row the file kept), the outbox
+  (the copy a locked launch set aside joins in the same launch) and the download index are read
+  again, the span recovered, then the books released and the state published. A background
+  download event reads the index itself first (`DownloadManager.handle`); before the first unlock
+  it is dropped. A download index that does not decode is moved aside
   (`downloads-unread-*.json`, never written over) and the watch starts with no books; until the
   index has been read the phone is told nothing and nothing is written over it. Wear OS is not
   direct-boot aware (no process before the first unlock), reads `watch-state` as a Data Layer item
