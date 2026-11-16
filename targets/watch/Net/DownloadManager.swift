@@ -453,7 +453,9 @@ final class DownloadManager: ObservableObject {
         // Not ready after all (`rendition_pending`): poll again, after the server's wait (the
         // next answer can say ready at once, and refuse again). Until then it is not one of the
         // files ready, nor with the session (its bytes are noted again when it is handed over).
+        // The server answered: the next wait on the connection starts from the shortest delay.
         stopWork(tag.book)
+        retryAttempts[tag.book] = nil
         serverReady[tag.book]?.remove(tag.path)
         update(tag.book) { r in
           r.state = .preparing
