@@ -652,6 +652,32 @@ describe('book page aside', () => {
     await mountAt('desktop');
     expect(screen.getByText('In the house: 1/Author/Book')).toBeTruthy();
   });
+
+  // server#241: the item's other recordings of the work, each opening its own page.
+  it('lists the other recordings the item names, and none for an older server', async () => {
+    await mountAt('desktop');
+    expect(screen.queryByText('Other recordings in your library')).toBeNull();
+    mockBook = {
+      ...BOOK,
+      work_id: 'w_wok',
+      other_recordings: [
+        {
+          ...BOOK,
+          rel_path: 'Author/Book (Graphic Audio)',
+          narrator: 'A Full Cast',
+          duration: 7200,
+        },
+      ],
+    };
+    await mountAt('desktop');
+    expect(screen.getByText('Other recordings in your library')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Read by A Full Cast, 2h' }));
+    expect(mockPush).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({ libraryId: '1', path: 'Author/Book (Graphic Audio)' }),
+      }),
+    );
+  });
 });
 
 describe('book page hero', () => {

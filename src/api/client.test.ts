@@ -405,6 +405,36 @@ describe('ApiClient', () => {
     await expect(new ApiClient('https://h', 'tok').bookMeta(1, 'x')).resolves.toEqual(envelope);
   });
 
+  // server#241: the item's work id and its other recordings.
+  it('passes through work_id and other_recordings on the item', async () => {
+    const recording = {
+      id: 8,
+      library_id: 2,
+      rel_path: 'Kids/Leviathan Wakes',
+      is_folder: true,
+      title: 'Leviathan Wakes',
+      author: 'James S. A. Corey',
+      series: 'The Expanse',
+      series_index: 1,
+      narrator: 'A Full Cast',
+      duration: 40_000,
+      format: 'm4b',
+      size: 1,
+      work_id: 'w_lw',
+    };
+    const item = {
+      ...recording,
+      id: 7,
+      library_id: 1,
+      rel_path: 'Corey/LW',
+      other_recordings: [recording],
+    };
+    installFetch(() => ({ status: 200, body: item }));
+    const got = await new ApiClient('https://h', 'tok').item(1, 'Corey/LW');
+    expect(got.work_id).toBe('w_lw');
+    expect(got.other_recordings).toEqual([recording]);
+  });
+
   it('passes through a matched:false result (no ids / no upstream match)', async () => {
     installFetch(() => ({ status: 200, body: { matched: false } }));
     await expect(new ApiClient('https://h', 'tok').bookMeta(1, 'x')).resolves.toEqual({

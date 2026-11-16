@@ -125,8 +125,12 @@ export function SeriesPage({
   const pickOrder = useSeriesOrderings((s) => s.pick);
   const views = rail ? seriesViews(rail) : [];
   const view = rail ? selectedView(rail, picks, views) : undefined;
+  // The rows of what the rail places outside the series' own books: its pick and every
+  // other recording of the work (server#241).
   const placedRefs: BookRef[] = (view?.works ?? []).flatMap((w) =>
-    w.local && !ownedKeys.has(contentKey(cid, w.local.library_id, w.local.path)) ? [w.local] : [],
+    [...(w.local ? [w.local] : []), ...(w.local_others ?? [])].filter(
+      (r) => !ownedKeys.has(contentKey(cid, r.library_id, r.path)),
+    ),
   );
   const placed = usePlacedBooks(cid, placedRefs);
   const elsewhere = useElsewhereBooks(cid, rail ? familyName(rail, views) : name);
@@ -281,6 +285,7 @@ export function SeriesPage({
                 current={selected.key === current?.key}
                 here={here}
                 resumeChapter={resumeChapter}
+                pageLibraryId={libraryId}
               />
             ) : null}
             <ShelfLegend entries={entries} hasCurrent={!!current} />
@@ -296,7 +301,7 @@ export function SeriesPage({
             />
             <Text variant="caption">{t('series.stats.entries', { count: entries.length })}</Text>
           </View>
-          <EntryList entries={entries} currentKey={current?.key} />
+          <EntryList entries={entries} currentKey={current?.key} pageLibraryId={libraryId} />
           <KeepAheadCard />
           {rail ? <SourceLine label={t('series.source')} className="mt-3" /> : null}
         </View>

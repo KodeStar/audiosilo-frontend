@@ -223,9 +223,9 @@ function useRefreshPendingListing(
 /**
  * The Stacks book page (the prototype's `Book()`): a cover-tinted hero (`BookHero`) with
  * the listener's place and the actions, then the tabs (Chapters, the community tabs,
- * Bookmarks, History, Notes, Series, Details) and the aside (About, Other versions, Your
- * listening), laid out by the page's MEASURED width (`bookPageLayout`): the Up next
- * drawer can leave a desktop page phone-narrow.
+ * Bookmarks, History, Notes, Series, Details) and the aside (About, Other versions, Other
+ * recordings, Your listening), laid out by the page's MEASURED width (`bookPageLayout`):
+ * the Up next drawer can leave a desktop page phone-narrow.
  */
 function BookPage() {
   const { t } = useTranslation();

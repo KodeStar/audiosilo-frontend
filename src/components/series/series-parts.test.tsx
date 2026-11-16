@@ -34,7 +34,7 @@ const ghost = (over: Partial<SeriesEntry>): SeriesEntry =>
 
 describe('a ghost with a release date', () => {
   it('says "Out <date>" in the list while its release is ahead', async () => {
-    await render(<EntryList entries={[ghost({ outDate: '2026-11-12' })]} />);
+    await render(<EntryList entries={[ghost({ outDate: '2026-11-12' })]} pageLibraryId={1} />);
     // In the device's own date order ("12 Nov 2026", "Nov 12, 2026").
     expect(screen.getByText(`Out ${formatReleaseDate('2026-11-12')}`)).toBeTruthy();
     expect(screen.queryByText('Not in your library')).toBeNull();
@@ -42,13 +42,18 @@ describe('a ghost with a release date', () => {
 
   it('says it under the bookcase too', async () => {
     await render(
-      <ShelfCaption entry={ghost({ outDate: '2026-11' })} current={false} here="Home" />,
+      <ShelfCaption
+        entry={ghost({ outDate: '2026-11' })}
+        current={false}
+        here="Home"
+        pageLibraryId={1}
+      />,
     );
     expect(screen.getByText('Out Nov 2026. Not on your servers yet.')).toBeTruthy();
   });
 
   it('is only its year once out', async () => {
-    await render(<EntryList entries={[ghost({ year: '2014' })]} />);
+    await render(<EntryList entries={[ghost({ year: '2014' })]} pageLibraryId={1} />);
     expect(screen.getByText('2014 · Not in your library')).toBeTruthy();
     expect(screen.queryByText(/^Out /)).toBeNull();
   });

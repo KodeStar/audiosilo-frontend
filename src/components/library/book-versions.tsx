@@ -1,15 +1,14 @@
 import { useTranslation } from 'react-i18next';
-import { Platform, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useBookCopies, useSourceLabeller } from '@/api/hooks';
 import type { Book } from '@/api/types';
-import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
-import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
+import { InsetRow } from '@/components/ui/row-surface';
+import { Text } from '@/components/ui/text';
 import { formatBytes } from '@/lib/format';
 import { useOpen } from '@/lib/open';
-import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 // Reuse the shared, locale-aware byte formatter (so a GB-sized copy reads "2 GB",
@@ -51,31 +50,23 @@ export function BookVersions({ book, connectionId }: { book: Book; connectionId:
             .filter(Boolean)
             .join(' · ');
           return (
-            // A list item around each button (a list holds items).
-            <View key={`${c.connectionId}:${c.libraryId}:${c.path}`} role="listitem">
-              <AnimatedPressable
-                onPress={() => void openBook(c.connectionId, c.libraryId, c.path)}
-                accessibilityRole="button"
-                accessibilityLabel={[src, quality].filter(Boolean).join(', ')}
-                className={cn(
-                  'min-h-[48px] flex-row items-center gap-3 rounded-control px-2 py-2 active:bg-accent',
-                  Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}` }),
-                )}
-              >
-                <Icon name="server" size={16} color={themed.mutedForeground} />
-                <View className="min-w-0 flex-1">
-                  <Text variant="label" numberOfLines={1}>
-                    {src}
+            <InsetRow
+              key={`${c.connectionId}:${c.libraryId}:${c.path}`}
+              onPress={() => void openBook(c.connectionId, c.libraryId, c.path)}
+              accessibilityLabel={[src, quality].filter(Boolean).join(', ')}
+            >
+              <Icon name="server" size={16} color={themed.mutedForeground} />
+              <View className="min-w-0 flex-1">
+                <Text variant="label" numberOfLines={1}>
+                  {src}
+                </Text>
+                {quality ? (
+                  <Text variant="caption" numberOfLines={1}>
+                    {quality}
                   </Text>
-                  {quality ? (
-                    <Text variant="caption" numberOfLines={1}>
-                      {quality}
-                    </Text>
-                  ) : null}
-                </View>
-                <Icon name="chevron-right" size={14} color={themed.mutedForeground} />
-              </AnimatedPressable>
-            </View>
+                ) : null}
+              </View>
+            </InsetRow>
           );
         })}
       </View>

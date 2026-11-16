@@ -1451,6 +1451,9 @@
     "versions": {
       "title": "Other versions"
     },
+    "otherRecordings": {
+      "title": "Other recordings in your library"
+    },
     "listening": {
       "title": "Your listening",
       "listened": "Listened",
@@ -2166,6 +2169,12 @@
       "errorTitle": "Couldn't load the series"
     },
     "keepAhead": "Keep ahead offline",
+    "recordings": {
+      "count_one": "{{count}} recording",
+      "count_other": "{{count}} recordings",
+      "choose": "choose a recording of {{title}}",
+      "title": "Recordings of {{title}}"
+    },
     "out": "Out {{date}}",
     "ghostOutNote": "Out {{date}}. Not on your servers yet."
   },

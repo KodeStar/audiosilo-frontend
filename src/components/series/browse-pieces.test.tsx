@@ -36,6 +36,8 @@ jest.mock('@/stores/session', () => ({
   useConnectionName: (id: string) => (id === 'home' ? 'Home Library' : ''),
 }));
 let mockCaps: Record<string, boolean | undefined> = {};
+let mockProgressOf: (cid: string, libraryId: number, path: string) => object | undefined = () =>
+  undefined;
 let mockSeries: {
   isPending: boolean;
   isPaused?: boolean;
@@ -58,7 +60,7 @@ jest.mock('@/api/hooks', () => ({
   useLibraryBooks: () => ({ data: undefined }),
   useSeriesList: () => ({ isPaused: false, error: null, ...mockSeries }),
   useAllLibraryBooks: () => mockBooks,
-  useProgressLookup: () => ({ progressOf: () => undefined, isLoading: false }),
+  useProgressLookup: () => ({ progressOf: mockProgressOf, isLoading: false }),
 }));
 
 /* eslint-disable import/first */
@@ -74,6 +76,7 @@ import { Spine } from './spine';
 const layoutEvent = { nativeEvent: { layout: { width: 1200, height: 800 } } };
 
 beforeEach(() => {
+  mockProgressOf = () => undefined;
   mockPush.mockClear();
   mockSetParams.mockClear();
   mockCaps = { browse_people: true };
@@ -274,6 +277,62 @@ describe('SeriesMode', () => {
       pathname: '/series',
       params: { connection: 'home', library: '1', name: 'Codex Alera' },
     });
+  });
+
+  it('counts in progress and finished per recording, the unit of its "N books"', async () => {
+    // Four works, the first held in two recordings (server#241): the shelf shows the work
+    // once, but the five recordings /series counts are each finished.
+    let id = 0;
+    const book = (title: string, index: number): Book => ({
+      id: ++id,
+      library_id: 1,
+      rel_path: `Corey/Expanse/${title}`,
+      is_folder: true,
+      title,
+      author: 'James S. A. Corey',
+      series: 'The Expanse',
+      series_index: index,
+      narrator: 'Jefferson Mays',
+      duration: 36_000,
+      format: 'm4b',
+      size: 1,
+      work_id: `w${index}`,
+    });
+    const books = [
+      book('Leviathan Wakes', 1),
+      book('Leviathan Wakes (full cast)', 1),
+      book("Caliban's War", 2),
+      book("Abaddon's Gate", 3),
+      book('Cibola Burn', 4),
+    ];
+    mockBooks = { books, isLoading: false, isIdle: false, error: null, retry: jest.fn() };
+    mockProgressOf = () => ({
+      position: 36_000,
+      duration: 36_000,
+      finished: true,
+      updated_at: '2026-10-01T00:00:00Z',
+    });
+    mockSeries = {
+      isPending: false,
+      data: [
+        {
+          name: 'The Expanse',
+          author: 'James S. A. Corey',
+          books: 5,
+          duration: 180_000,
+          positions: [1, 1, 2, 3, 4],
+        },
+      ],
+      refetch: jest.fn(),
+    };
+    await show(<SeriesMode connectionId="home" libraryId={1} />);
+    await fireEvent(screen.getByTestId('card-grid'), 'layout', layoutEvent);
+    await settleFlashList();
+    expect(
+      screen.getByRole('button', {
+        name: /^The Expanse, James S\. A\. Corey · .+, 5 books · 5 finished$/,
+      }),
+    ).toBeTruthy();
   });
 
   it('has an empty state', async () => {

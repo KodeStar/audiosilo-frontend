@@ -1183,7 +1183,8 @@ book's library, `openLabelBooks`; the publisher rule is `bookPublisher`, shared 
 other links out, a LibriVox recording's quiet "Also free on LibriVox" link, `librivoxUrl`: the matched recording's
 `librivox.url`, only an absolute http(s) URL, its scheme lower-cased, LibriVox L5),
 Other versions
-(`BookVersions`), Your listening (`listeningFigures`: started, finished, speed, and the time
+(`BookVersions`), Other recordings in your library (`OtherRecordings`, server#241: the item's
+`other_recordings`, only when present, each a `RecordingRow` with its own saved progress), Your listening (`listeningFigures`: started, finished, speed, and the time
 listened summed from this book's history spans, `listeningSummary`). The panels render inside the page's own ScrollView (never a nested
 vertical scroller). Which tabs exist: chapters when there's a list, the three metadata
 tabs only when that data is non-empty (so nothing regresses on an older server; an unmatched
@@ -3494,6 +3495,14 @@ A ghost reads its work's `release_date` (Track U2) in the model: while that is a
 (`releaseIsFuture`) it carries it as `EntryFields.outDate` and the list line and the bookcase
 caption say "Out <date>" in place of "Not in your library"; once out, the date's year fills the
 ghost's `year`.
+A work held in several recordings (server#241: books of one `Book.work_id`, a rail work's `local`
+plus `local_others`) is ONE entry (`workEntry`, `groupByWork` on the local shelf and the Series mode
+card's `MiniShelf`): `copy` is the recording the listener is on, else the latest finished one, else
+the server's pick (`local`; the first in series order without a rail), and `recordings` lists every
+one with its own progress. A "2 recordings" picker chip (`RecordingsChip`, `recordings-picker.tsx`)
+beside the caption's badge and the list row's action opens its own dialog (a sheet on a phone) of them.
+Without the fields (an older server, metadata off) every book is its own entry, as before; Home's
+Next keeps the server's pick and `/series` counts are unchanged.
 Series mode cards (`series-card.tsx`) show a `MiniShelf` of the owned spines and fetch their books
 only once on screen, the cards on screen together in one request on `series_books`
 (`useSeriesBooks(..., { batch: true })`; the series page asks plainly and reuses the cache); Search reuses

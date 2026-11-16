@@ -14,6 +14,8 @@ import {
   pickRail,
   type ProgressLike,
   railEntries,
+  recordingCounts,
+  type SeriesEntry,
   seriesOf,
   seriesStats,
   trackSegments,
@@ -249,6 +251,223 @@ describe('railEntries', () => {
   });
 });
 
+describe('other recordings of a work (server#241)', () => {
+  // Two recordings of Leviathan Wakes: the server's pick (Mays) and a full cast one.
+  const lw = book('Leviathan Wakes', 1, { work_id: 'lw' });
+  const lwCast = book('Leviathan Wakes', 1, {
+    rel_path: 'Corey/Expanse/Leviathan Wakes (full cast)',
+    narrator: 'A Full Cast',
+    duration: 40_000,
+    work_id: 'lw',
+  });
+  const cw = book("Caliban's War", 2, { work_id: 'cw' });
+  // A third, in another library: only the server's `local_others` names it.
+  const lwKids = book('Leviathan Wakes', 1, {
+    library_id: 2,
+    rel_path: 'Kids/Leviathan Wakes',
+    narrator: 'Someone Else',
+    work_id: 'lw',
+  });
+  const ref = (b: Book) => ({ library_id: b.library_id, path: b.rel_path });
+  const view = seriesViews({
+    id: 'the-expanse',
+    name: 'The Expanse',
+    position: '1',
+    works: [
+      { ...work('lw', 'Leviathan Wakes', '1', lw), local_others: [ref(lwCast), ref(lwKids)] },
+      work('cw', "Caliban's War", '2', cw),
+    ],
+  })[0];
+
+  it("stands one spine per work on a rail, the server's pick shown until one is started", () => {
+    const entries = railEntries(view, [lw, lwCast, cw], { ...src, extraBooks: [lwKids] });
+    expect(entries.map((e) => [e.key, e.position, e.title])).toEqual([
+      ['w:lw', '1', 'Leviathan Wakes'],
+      ['w:cw', '2', "Caliban's War"],
+    ]);
+    const [first, second] = entries;
+    expect(first.copy?.path).toBe(lw.rel_path);
+    expect(first.recordings?.map((r) => [r.copy.path, r.copy.book?.narrator])).toEqual([
+      [lw.rel_path, 'Jefferson Mays'],
+      [lwCast.rel_path, 'A Full Cast'],
+      [lwKids.rel_path, 'Someone Else'],
+    ]);
+    // One recording: no picker.
+    expect(second.recordings).toBeUndefined();
+    expect(seriesStats(entries)).toMatchObject({ entries: 2, owned: 2 });
+  });
+
+  it('counts in progress and finished per recording, a work held twice as two', () => {
+    setProgress(lw, { position: 36_000, finished: true });
+    setProgress(lwCast, { position: 10_000, duration: 40_000 });
+    setProgress(cw, { position: 1_000 });
+    const entries = localEntries([lw, lwCast, cw], src);
+    expect(entries).toHaveLength(2);
+    expect(recordingCounts(entries)).toEqual({ inProgress: 2, finished: 1 });
+    // A copy on another server is not one of this library's recordings.
+    const [, owned] = entries;
+    if (owned.kind !== 'owned') throw new Error('expected an owned entry');
+    const elsewhere = {
+      ...owned,
+      kind: 'elsewhere',
+      recordings: undefined,
+      finished: true,
+    } as const;
+    expect(recordingCounts([...entries, elsewhere])).toEqual({ inProgress: 2, finished: 1 });
+  });
+
+  it("shows the recording the listener is on, and keeps each one's own progress", () => {
+    setProgress(lwCast, { position: 10_000, duration: 40_000 });
+    const [e] = railEntries(view, [lw, lwCast, cw], { ...src, extraBooks: [lwKids] });
+    expect(e.copy?.path).toBe(lwCast.rel_path);
+    expect(e).toMatchObject({ narrator: 'A Full Cast', seconds: 40_000, started: true });
+    expect(e.fraction).toBeCloseTo(0.25);
+    expect(e.recordings?.map((r) => [r.started, r.fraction])).toEqual([
+      [false, 0],
+      [true, 0.25],
+      [false, 0],
+    ]);
+  });
+
+  it('prefers the one in progress over a finished one, and the latest of several', () => {
+    const recs = [lw, lwCast, lwKids];
+    setProgress(lw, { finished: true, position: 36_000, updated_at: '2026-10-09T00:00:00Z' });
+    expect(railEntries(view, recs, src)[0].copy?.path).toBe(lw.rel_path);
+    setProgress(lwKids, { position: 100, updated_at: '2026-10-02T00:00:00Z' });
+    setProgress(lwCast, { position: 100, updated_at: '2026-10-03T00:00:00Z' });
+    expect(railEntries(view, recs, src)[0].copy?.path).toBe(lwCast.rel_path);
+  });
+
+  it("groups the series' own books of one work the server did not place", () => {
+    // An older answer without `local_others`, or a recording outside the rail's placement.
+    const plain = seriesViews({
+      ...view,
+      id: 'x',
+      position: '1',
+      works: [work('cw', "Caliban's War", '2', cw)],
+    })[0];
+    const entries = railEntries(plain, [lw, lwCast, cw], src);
+    expect(entries.map((e) => [e.key, e.position, e.recordings?.length])).toEqual([
+      ['r:lw', '1', 2],
+      ['w:cw', '2', undefined],
+    ]);
+  });
+
+  it('places a book by its work id when the server did not', () => {
+    const renamed = { ...lw, title: 'Leviathan Wakes (Unabridged)' };
+    const unplaced = seriesViews({
+      ...view,
+      id: 'y',
+      position: '1',
+      works: [work('lw', 'Leviathan Wakes', '1')],
+    })[0];
+    const [e] = railEntries(unplaced, [renamed], src);
+    expect(e).toMatchObject({ kind: 'owned', key: 'w:lw', title: 'Leviathan Wakes (Unabridged)' });
+  });
+
+  it("never places a book by title on a work when it is another of the rail's works", () => {
+    // Two works share a title (the novel and its adaptation); only the adaptation is owned.
+    const adaptation = book('Leviathan Wakes', 1, { work_id: 'lw-cast' });
+    const both = seriesViews({
+      ...view,
+      id: 'z',
+      position: '1',
+      works: [
+        work('lw', 'Leviathan Wakes', '1'),
+        work('lw-cast', 'Leviathan Wakes', '1.5'),
+        work('cw', "Caliban's War", '2'),
+      ],
+    })[0];
+    expect(railEntries(both, [adaptation], src).map((e) => [e.key, e.kind])).toEqual([
+      ['w:lw', 'ghost'],
+      ['w:lw-cast', 'owned'],
+      ['w:cw', 'ghost'],
+    ]);
+  });
+
+  it("keeps a book where the server placed it, never also on its work id's entry", () => {
+    // Console-matched to Leviathan Wakes (its work id), placed by the server at Caliban's
+    // War (its ASIN's work): that entry's alone, whether placed as `local` or an other.
+    const matched = book("Caliban's War", 2, {
+      rel_path: "Corey/Expanse/Caliban's War (matched)",
+      work_id: 'lw',
+    });
+    const asLocal = seriesViews({
+      ...view,
+      id: 'p',
+      works: [work('lw', 'Leviathan Wakes', '1', lw), work('cw', "Caliban's War", '2', matched)],
+    })[0];
+    const asOther = seriesViews({
+      ...view,
+      id: 'q',
+      works: [
+        work('lw', 'Leviathan Wakes', '1', lw),
+        { ...work('cw', "Caliban's War", '2', cw), local_others: [ref(matched)] },
+      ],
+    })[0];
+    // And with no `local` on the earlier work: its work id match skips a placed book too.
+    const unplaced = seriesViews({
+      ...view,
+      id: 'r',
+      works: [work('lw', 'Leviathan Wakes', '1'), work('cw', "Caliban's War", '2', matched)],
+    })[0];
+    const paths = (es: SeriesEntry[]) =>
+      es.map((e) => [e.key, (e.recordings?.map((r) => r.copy) ?? [e.copy]).map((c) => c?.path)]);
+    expect(paths(railEntries(asLocal, [lw, matched], src))).toEqual([
+      ['w:lw', [lw.rel_path]],
+      ['w:cw', [matched.rel_path]],
+    ]);
+    expect(paths(railEntries(asOther, [lw, cw, matched], src))).toEqual([
+      ['w:lw', [lw.rel_path]],
+      ['w:cw', [cw.rel_path, matched.rel_path]],
+    ]);
+    expect(paths(railEntries(unplaced, [matched], src))).toEqual([
+      ['w:lw', [undefined]],
+      ['w:cw', [matched.rel_path]],
+    ]);
+    // Nor does the title fallback: a book titled like the earlier work, with no work id,
+    // placed by the server at the later one.
+    const titled = book('Leviathan Wakes', 2, { rel_path: 'Corey/Expanse/LW (placed at 2)' });
+    const byTitle = seriesViews({
+      ...view,
+      id: 's',
+      works: [work('lw', 'Leviathan Wakes', '1'), work('cw', "Caliban's War", '2', titled)],
+    })[0];
+    expect(paths(railEntries(byTitle, [titled], src))).toEqual([
+      ['w:lw', [undefined]],
+      ['w:cw', [titled.rel_path]],
+    ]);
+  });
+
+  it("is one entry per work on a local shelf (the Library's cards), started one shown", () => {
+    setProgress(lwCast, { position: 5000 });
+    const entries = localEntries([cw, lwCast, lw], src);
+    expect(entries.map((e) => [e.key, e.position, e.copy?.path])).toEqual([
+      ['r:lw', '1', lwCast.rel_path],
+      [`b:${contentKey(CID, 1, cw.rel_path)}`, '2', cw.rel_path],
+    ]);
+    expect(entries[0].recordings).toHaveLength(2);
+    expect(entries.filter((e) => e.started)).toHaveLength(1);
+  });
+
+  it("is exactly today's shelf when the server sends no work ids", () => {
+    const old = [lw, lwCast, cw].map(({ work_id: _, ...b }) => b);
+    const entries = localEntries(old, src);
+    expect(entries).toHaveLength(3);
+    expect(entries.every((e) => e.recordings === undefined && e.key.startsWith('b:'))).toBe(true);
+    const plainView = seriesViews({
+      ...view,
+      works: [work('lw', 'Leviathan Wakes', '1', lw), work('cw', "Caliban's War", '2', cw)],
+    })[0];
+    expect(railEntries(plainView, old, src).map((e) => [e.key, e.recordings])).toEqual([
+      ['w:lw', undefined],
+      // Its own spine, at its own number, as before.
+      [`b:${contentKey(CID, 1, lwCast.rel_path)}`, undefined],
+      ['w:cw', undefined],
+    ]);
+  });
+});
+
 describe('defaultSelection', () => {
   it('falls back to the first unfinished owned book, then the first entry', () => {
     const a = book('A', 1);
@@ -284,6 +503,22 @@ describe('pickRail', () => {
     expect(pickRail([main, fry], { ...opts, name: 'Something else' })).toBe(fry);
     expect(pickRail([main], { ...opts, ownedKeys: new Set() })).toBeUndefined();
     expect(pickRail(undefined, opts)).toBeUndefined();
+  });
+
+  it("counts a work whose pick is elsewhere when the series' own book is another recording", () => {
+    // server#241: the pick is the recording in another library, this one rides beside it.
+    const elsewhere = { library_id: 2, path: 'Kids/Stone' };
+    const others: BookMetaSeries = {
+      ...fry,
+      works: [
+        {
+          ...work('ps', 'Stone', '1'),
+          local: elsewhere,
+          local_others: [{ library_id: lw.library_id, path: lw.rel_path }],
+        },
+      ],
+    };
+    expect(pickRail([main, others], { connectionId: CID, ownedKeys: keys })).toBe(others);
   });
 });
 

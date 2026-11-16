@@ -1,6 +1,7 @@
 import type {
   Book,
   BookMetaSeries,
+  BookRef,
   BookMetaSeriesWork,
   CoverColor,
   Progress,
@@ -9,7 +10,7 @@ import type {
 import { contentKey } from '@/lib/content-key';
 import { foldAccents } from '@/lib/names';
 import { bookTitle } from '@/lib/paths';
-import { isInProgress, progressFractionRemaining } from '@/lib/progress-view';
+import { isInProgress, type SavedProgressView, savedProgressView } from '@/lib/progress-view';
 import { yearOf } from '@/lib/published';
 import { releaseIsFuture } from '@/lib/release-date';
 import {
@@ -83,11 +84,17 @@ type EntryFields = {
   coverVersion?: string;
 };
 
+/** One recording of a work the listener owns, with the listener's progress in it. */
+export type SeriesRecording = { copy: SeriesCopy } & SavedProgressView;
+
 /** One entry of the series: a book with a copy to play or open (`owned` here,
- * `elsewhere` on another server), or a `ghost` nobody has. */
+ * `elsewhere` on another server), or a `ghost` nobody has. An owned work held in more than
+ * one recording (server#241) is ONE entry: `copy` is the recording it shows (`pickShown`)
+ * and `recordings` lists them all, that one included, each with its own progress. */
 export type SeriesEntry =
-  | (EntryFields & { kind: 'owned' | 'elsewhere'; copy: SeriesCopy })
-  | (EntryFields & { kind: 'ghost'; copy?: undefined });
+  | (EntryFields & { kind: 'owned'; copy: SeriesCopy; recordings?: SeriesRecording[] })
+  | (EntryFields & { kind: 'elsewhere'; copy: SeriesCopy; recordings?: undefined })
+  | (EntryFields & { kind: 'ghost'; copy?: undefined; recordings?: undefined });
 
 /** The saved progress the model reads (the server rows of `useAllProgressAll`). */
 export type ProgressLike = Pick<Progress, 'position' | 'duration' | 'finished' | 'updated_at'>;
@@ -107,15 +114,11 @@ export function looseKey(s: string | undefined): string {
     .replace(/[^\p{L}\p{N}]+/gu, '');
 }
 
-function progressFields(
-  copy: SeriesCopy,
-  progressOf: ProgressLookup,
-): Pick<EntryFields, 'fraction' | 'started' | 'finished' | 'updatedAt'> {
-  const p = progressOf(copy.connectionId, copy.libraryId, copy.path);
-  if (!p) return { fraction: 0, started: false, finished: false };
-  const total = p.duration > 0 ? p.duration : (copy.book?.duration ?? 0);
-  const fraction = p.finished ? 1 : progressFractionRemaining(p.position, total).fraction;
-  return { fraction, started: p.position > 0, finished: p.finished, updatedAt: p.updated_at };
+function progressFields(copy: SeriesCopy, progressOf: ProgressLookup): SavedProgressView {
+  return savedProgressView(
+    progressOf(copy.connectionId, copy.libraryId, copy.path),
+    copy.book?.duration ?? 0,
+  );
 }
 
 function copyFields(copy: SeriesCopy): Partial<EntryFields> {
@@ -223,14 +226,69 @@ type Source = {
   now?: Date;
 };
 
-/** An entry with a copy: its facts and the listener's progress in it. */
-function copyEntry(
-  kind: 'owned' | 'elsewhere',
-  fields: Pick<EntryFields, 'key' | 'position' | 'title' | 'workId' | 'webUrl'>,
-  copy: SeriesCopy,
+/** What places an entry with a copy; its title and facts come from the copy. */
+type PlaceFields = Pick<EntryFields, 'key' | 'position' | 'workId' | 'webUrl'>;
+
+/**
+ * The recording a work's entry shows (server#241): the one the listener is on (started,
+ * not finished; the latest played of several), else the latest finished one (the work is
+ * read), else the first, which the caller puts first: the server's pick (`local`), or the
+ * first in series order.
+ */
+function pickShown(recordings: readonly SeriesRecording[]): SeriesRecording {
+  const latest = (pick: (r: SeriesRecording) => boolean) =>
+    recordings
+      .filter(pick)
+      .reduce<SeriesRecording | undefined>(
+        (best, r) => (!best || (r.updatedAt ?? '') > (best.updatedAt ?? '') ? r : best),
+        undefined,
+      );
+  return latest((r) => r.started && !r.finished) ?? latest((r) => r.finished) ?? recordings[0];
+}
+
+/**
+ * An owned entry for a work held in `copies` (one or more recordings, the server's pick or
+ * the first in series order first): one spine, showing `pickShown`'s copy, with every
+ * recording listed when there is more than one. `title` names a copy by its book.
+ */
+function workEntry(
+  fields: PlaceFields,
+  copies: readonly SeriesCopy[],
   progressOf: ProgressLookup,
+  title: (copy: SeriesCopy) => string,
 ): SeriesEntry {
-  return { ...fields, kind, copy, ...copyFields(copy), ...progressFields(copy, progressOf) };
+  const recordings: SeriesRecording[] = copies.map((copy) => ({
+    copy,
+    ...progressFields(copy, progressOf),
+  }));
+  const shown = pickShown(recordings);
+  return {
+    ...fields,
+    title: title(shown.copy),
+    kind: 'owned',
+    ...copyFields(shown.copy),
+    ...shown,
+    ...(recordings.length > 1 ? { recordings } : {}),
+  };
+}
+
+/** The series' own books in series order, those of one work together (server#241): each
+ * group is one work, in the place of its first book. A book without a `work_id` (an older
+ * server, community metadata off, an unmatched book) is a group of its own. */
+function groupByWork(books: readonly Book[]): Book[][] {
+  const groups: Book[][] = [];
+  const byWork = new Map<string, Book[]>();
+  for (const b of books) {
+    const group = b.work_id ? byWork.get(b.work_id) : undefined;
+    if (group) {
+      group.push(b);
+      continue;
+    }
+    const fresh = [b];
+    groups.push(fresh);
+    if (b.work_id) byWork.set(b.work_id, fresh);
+  }
+  return groups;
 }
 
 /** Puts `entry` before the first entry numbered past `n` (an unnumbered one counts as
@@ -241,43 +299,51 @@ function insertByPosition(out: SeriesEntry[], entry: SeriesEntry, n: number, unn
   else out.splice(at, 0, entry);
 }
 
+/** A copy on another server: its facts and the listener's progress in it. */
 function elsewhereEntry(
-  fields: Pick<EntryFields, 'key' | 'position' | 'workId' | 'webUrl'>,
+  fields: PlaceFields,
   match: ElsewhereBook,
   progressOf: ProgressLookup,
 ): SeriesEntry {
   const copy = bookCopy(match, match.connectionId, match.connectionName);
-  return copyEntry(
-    'elsewhere',
-    { ...fields, title: bookTitle(match.title, match.rel_path) },
+  return {
+    ...fields,
+    title: bookTitle(match.title, match.rel_path),
+    kind: 'elsewhere',
     copy,
-    progressOf,
-  );
+    ...copyFields(copy),
+    ...progressFields(copy, progressOf),
+  };
 }
 
-/** An owned book by its own `series_index` (and `series_index_end`). */
-function ownedBookEntry(b: Book, src: Source): SeriesEntry {
-  const copy = bookCopy(b, src.connectionId, src.connectionName);
-  return copyEntry(
-    'owned',
+/** A `groupByWork` group (one book, or every recording of its work): one entry at its first
+ * book's place, by that book's own `series_index` (and `series_index_end`). A work's is keyed
+ * `r:` (never a rail entry's `w:`, which a rail work it was not placed on keeps). */
+function ownedBookEntry(group: readonly Book[], src: Source): SeriesEntry {
+  const b = group[0];
+  return workEntry(
     {
-      key: `b:${contentKey(src.connectionId, b.library_id, b.rel_path)}`,
+      key:
+        group.length > 1
+          ? `r:${b.work_id}`
+          : `b:${contentKey(src.connectionId, b.library_id, b.rel_path)}`,
       position: bookSeriesNumber(b),
-      title: bookTitle(b.title, b.rel_path),
     },
-    copy,
+    group.map((x) => bookCopy(x, src.connectionId, src.connectionName)),
     src.progressOf,
+    (c) => bookTitle(c.book?.title, c.path),
   );
 }
 
 /**
- * The page with no community rail: the owned books by `series_index`, with a dashed
- * "Book N" ghost for each whole-number gap (or, when another server has a book of the
- * same series starting at that number, its copy there: a range there fills every gap
+ * The page with no community rail (and a Library series card's mini shelf): the owned
+ * books by `series_index`, the recordings of one work as one entry (`groupByWork`), with a
+ * dashed "Book N" ghost for each whole-number gap (or, when another server has a book of
+ * the same series starting at that number, its copy there: a range there fills every gap
  * it covers, once).
  */
 export function localEntries(books: readonly Book[], src: Source): SeriesEntry[] {
-  const out = sortSeriesBooks(books).map((b) => ownedBookEntry(b, src));
+  const out = groupByWork(sortSeriesBooks(books)).map((g) => ownedBookEntry(g, src));
   let filled: SeriesSpan | undefined;
   for (const n of localGaps(books.map(bookSeriesSpan))) {
     if (filled && spanCovers(filled, n)) continue;
@@ -321,12 +387,16 @@ function sameAuthor(work: BookMetaSeriesWork, book: Book): boolean {
 
 /**
  * The page with a community rail: the shown reading order's works, each matched to the
- * listener's copy - by the server's placement (`local`) first, else by title among the
- * series' own books (a series named unlike the rail is not placed by the server) - then
- * to a copy on another server by title and author, else a ghost. Owned books the rail
- * doesn't list keep their place by `series_index` among the numbered entries (unnumbered
- * ones go last), so nothing the listener owns ever disappears from the page. An omnibus
- * the server placed at the single entry it starts at shows its range there
+ * listener's copy - by the server's placement (`local`) first, else by the work id a book
+ * carries (`work_id`), else by title among the series' own books (a series named unlike
+ * the rail is not placed by the server; never a book whose `work_id` is another of the
+ * rail's works), neither fallback taking a book the server placed at another entry - then
+ * to a copy on another server by title and author, else a ghost. A work the listener holds
+ * in several recordings (server#241: the server's `local_others`, and the series' own
+ * books of the same `work_id`) is one entry (`workEntry`). Owned books the rail doesn't list keep their
+ * place by `series_index` among the numbered entries (unnumbered ones go last), those of
+ * one work together, so nothing the listener owns ever disappears from the page. An
+ * omnibus the server placed at the single entry it starts at shows its range there
  * (`placedPositionLabel`), and is one entry when the rail also lists its range. A ghost
  * inside a range a copy holds (`heldByRange`) is left out: the omnibus is that book.
  * `extraBooks` are the rows of placed books from OTHER libraries.
@@ -343,6 +413,13 @@ export function railEntries(
   const own = new Map(books.map((b) => [bookKey(b), b]));
   const byKey = new Map(own);
   for (const b of src.extraBooks ?? []) byKey.set(bookKey(b), b);
+  const refCopy = (r: BookRef): SeriesCopy => ({
+    connectionId: src.connectionId,
+    connectionName: src.connectionName,
+    libraryId: r.library_id,
+    path: r.path,
+    book: byKey.get(keyOf(r.library_id, r.path)),
+  });
   const isRange = (w: BookMetaSeriesWork) => parseSeriesPosition(w.position)?.end !== undefined;
   // The server places an omnibus at its range entry ("1-3") AND at the single entry it
   // starts at ("1"): one entry, the range's (the single one is then a ghost it holds).
@@ -351,38 +428,60 @@ export function railEntries(
       w.local && isRange(w) ? [keyOf(w.local.library_id, w.local.path)] : [],
     ),
   );
+  // Every book the server placed anywhere on the rail (a `local` or one of `local_others`):
+  // that entry's alone. The work id and title fallbacks never take one for another entry, so
+  // a book console-matched to one work but placed by the server at another (its ASIN's) is
+  // never on two entries: the server's placement wins.
+  const placed = new Set(
+    view.works.flatMap((w) =>
+      [...(w.local ? [w.local] : []), ...(w.local_others ?? [])].map((r) =>
+        keyOf(r.library_id, r.path),
+      ),
+    ),
+  );
   const used = new Set<string>();
+  const free = (b: Book) => !used.has(bookKey(b)) && !placed.has(bookKey(b));
   const out: SeriesEntry[] = [];
   const now = src.now ?? new Date();
+  const sorted = sortSeriesBooks(books);
+  const railWorks = new Set(view.works.map((w) => w.id));
   for (const w of view.works) {
-    let copy: SeriesCopy | undefined;
+    // The work's recordings, the one to fall back on first.
+    const copies: SeriesCopy[] = [];
+    const take = (copy: SeriesCopy) => {
+      used.add(keyOf(copy.libraryId, copy.path));
+      copies.push(copy);
+    };
     let position = railPositionLabel(w.position);
     if (w.local) {
       const k = keyOf(w.local.library_id, w.local.path);
       if (isRange(w) || !atRange.has(k)) {
-        copy = {
-          connectionId: src.connectionId,
-          connectionName: src.connectionName,
-          libraryId: w.local.library_id,
-          path: w.local.path,
-          book: byKey.get(k),
-        };
-        used.add(k);
+        take(refCopy(w.local));
         position = placedPositionLabel(w.position, own.get(k));
       }
     } else {
       const title = looseKey(w.title);
-      const b = books.find((x) => !used.has(bookKey(x)) && looseKey(x.title) === title);
-      if (b) {
-        copy = bookCopy(b, src.connectionId, src.connectionName);
-        used.add(bookKey(b));
-      }
+      // By title, never a book known to be another of the rail's works (two works can
+      // share a title: an adaptation): that one waits for its own entry.
+      const b =
+        sorted.find((x) => x.work_id === w.id && free(x)) ??
+        books.find(
+          (x) => free(x) && !(x.work_id && railWorks.has(x.work_id)) && looseKey(x.title) === title,
+        );
+      if (b) take(bookCopy(b, src.connectionId, src.connectionName));
     }
     const base = { key: `w:${w.id}`, position, workId: w.id, webUrl: w.web_url };
-    if (copy) {
-      out.push(
-        copyEntry('owned', { ...base, title: copy.book?.title || w.title }, copy, src.progressOf),
-      );
+    if (copies.length > 0) {
+      // Its other recordings: the server's, then any of the series' own books of the work.
+      for (const r of w.local_others ?? []) {
+        if (!used.has(keyOf(r.library_id, r.path))) take(refCopy(r));
+      }
+      for (const b of sorted) {
+        if (b.work_id === w.id && free(b)) {
+          take(bookCopy(b, src.connectionId, src.connectionName));
+        }
+      }
+      out.push(workEntry(base, copies, src.progressOf, (c) => c.book?.title || w.title));
       continue;
     }
     const title = looseKey(w.title);
@@ -399,9 +498,9 @@ export function railEntries(
       });
     }
   }
-  for (const b of sortSeriesBooks(books)) {
-    if (used.has(bookKey(b))) continue;
-    const entry = ownedBookEntry(b, src);
+  for (const group of groupByWork(sorted.filter((b) => !used.has(bookKey(b))))) {
+    const b = group[0];
+    const entry = ownedBookEntry(group, src);
     if (b.series_index > 0) insertByPosition(out, entry, b.series_index, -Infinity);
     else out.push(entry);
   }
@@ -463,6 +562,26 @@ export function seriesStats(entries: readonly SeriesEntry[]): SeriesStats {
     }
   }
   return s;
+}
+
+/** How many of the listener's own recordings they are in and have finished, each recording
+ * of a work held twice counted on its own (an owned entry without `recordings` counts as one;
+ * a copy elsewhere or a ghost not at all): a Library series card's counts, in the unit of its
+ * "N books" (the server's `/series` counts this library's recordings). */
+export function recordingCounts(entries: readonly SeriesEntry[]): {
+  inProgress: number;
+  finished: number;
+} {
+  let inProgress = 0;
+  let finished = 0;
+  for (const e of entries) {
+    if (e.kind !== 'owned') continue;
+    for (const r of e.recordings ?? [e]) {
+      if (r.finished) finished++;
+      else if (r.started) inProgress++;
+    }
+  }
+  return { inProgress, finished };
 }
 
 /** The median known length, the stand-in width for entries of unknown length. */
@@ -527,12 +646,14 @@ export function pickRail(
     const named = rails.find((s) => views(s).some((v) => looseKey(v.name) === name));
     if (named) return named;
   }
+  // The pick (`local`) can be a recording in another library, the series' own one among
+  // the others (server#241).
+  const owns = (r: BookRef) =>
+    opts.ownedKeys.has(contentKey(opts.connectionId, r.library_id, r.path));
   let best: { rail: BookMetaSeries; placed: number } | undefined;
   for (const s of rails) {
     const placed = s.works.filter(
-      (w) =>
-        w.local &&
-        opts.ownedKeys.has(contentKey(opts.connectionId, w.local.library_id, w.local.path)),
+      (w) => (w.local && owns(w.local)) || w.local_others?.some(owns),
     ).length;
     if (placed > 0 && (!best || placed > best.placed)) best = { rail: s, placed };
   }
