@@ -262,7 +262,7 @@ const wholeUpTo = (v: unknown, max: number): number | undefined =>
 function parseHowFar(b: Record<string, unknown>): Partial<WatchBook> {
   const total = wholeUpTo(b.files_total, Number.MAX_SAFE_INTEGER);
   const ready = total !== undefined && total > 0 ? wholeUpTo(b.files_ready, total) : undefined;
-  const progress = wholeUpTo(b.progress, 100);
+  const progress = wholeUpTo(b.progress, 99);
   const waiting = (WATCH_WAITS as readonly unknown[]).includes(b.waiting)
     ? (b.waiting as WatchWait)
     : undefined;

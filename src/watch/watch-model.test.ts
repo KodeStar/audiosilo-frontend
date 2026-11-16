@@ -268,12 +268,17 @@ describe('parseWatchState', () => {
         },
         { library_id: 1, path: 'A/D', state: 'downloading', progress: 4.5, files_ready: 2 },
         { library_id: 1, path: 'A/E', state: 'preparing', progress: '45', files_total: 0 },
+        // A book still downloading is never all here, and a count is never part of a file.
+        { library_id: 1, path: 'A/F', state: 'downloading', progress: 100, files_ready: -1 },
+        { library_id: 1, path: 'A/G', state: 'downloading', progress: NaN, files_total: 2.5 },
       ],
     });
     expect(state?.books).toEqual([
       { library_id: 1, path: 'A/C', title: 'A/C', state: 'downloading' },
       { library_id: 1, path: 'A/D', title: 'A/D', state: 'downloading' },
       { library_id: 1, path: 'A/E', title: 'A/E', state: 'preparing' },
+      { library_id: 1, path: 'A/F', title: 'A/F', state: 'downloading' },
+      { library_id: 1, path: 'A/G', title: 'A/G', state: 'downloading' },
     ]);
     for (const b of state?.books ?? []) {
       expect(b).not.toHaveProperty('progress');
