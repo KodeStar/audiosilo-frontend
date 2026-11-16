@@ -366,6 +366,7 @@ final class DownloadManager: ObservableObject {
       task.cancel()
       handedOff.remove(tag.key)
       resumeData[tag.key] = nil
+      fractions[key]?[file.path] = nil
     } else if handedOff.contains(tag.key) {
       return
     }
