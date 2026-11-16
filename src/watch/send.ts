@@ -144,6 +144,10 @@ async function sendBook(
       watchId = status.watchId;
       before = watchId ? noteSending(watchId, account, row, asked) : undefined;
     }
+    // Another account's pair still being minted or sent is on its way too (D5): `pairUntil` has it
+    // only once the link has taken it, and this book's own pair would then replace it.
+    const minting = [...inFlight.keys()].find((id) => id !== connection.id);
+    if (minting !== undefined) throw busyFor(minting);
     const pair = bookPairStep(status.state, connection, pairUntil, Date.now());
     if (pair.step === 'busy') throw busyFor(pair.connectionId);
     if (pair.step === 'pair') await setUpWatch(api, connection);

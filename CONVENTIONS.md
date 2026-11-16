@@ -2815,8 +2815,9 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     follow it later). A password change forgets it (`forgetPair`: the server ends the account's
     open pairing tokens with its other sessions), and so does removing its connection. While
     another account's pair has time left, a book is refused with "Your watch is being set up for
-    {user} on {server}" (`bookPairStep` `busy`, `WatchBusyError`, D5): the watch would sign in to
-    that account first and only hold the book. Two sends at once for a connection share one pair (`setUpWatch`).
+    {user} on {server}" (`bookPairStep` `busy`, `WatchBusyError`, D5; one still being minted, in
+    `inFlight` and not yet in `pairUntil`, counts too): the watch would sign in to that account first
+    and only hold the book. Two sends at once for a connection share one pair (`setUpWatch`).
   - **Who sees what** (`watch-model.ts`): the card for a paired watch and an account that can use
     one (not a kid's, 403 `kid_account`; not a demo's), with Install in place of its button until
     the app is on the watch; the book action `'watch'` needs the app installed and `watch` in the

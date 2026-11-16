@@ -223,6 +223,19 @@ describe('sendBookToWatch', () => {
       );
     });
 
+    it('refuses it while that pair is still being minted, before the link has it', async () => {
+      let answer = (_p: PairingPayload) => {};
+      api.pair.mockReturnValueOnce(new Promise<PairingPayload>((r) => (answer = r)));
+      const pairing = setUpWatch(api, other);
+      await expect(sendBookToWatch(api, connection, 3, book)).rejects.toMatchObject({
+        user: 'bo',
+      });
+      expect(api.pair).toHaveBeenCalledTimes(1);
+      answer(payload);
+      await pairing;
+      expect(Object.keys(useWatchStore.getState().pairUntil)).toEqual(['srv.8']);
+    });
+
     it('mints for this account once that pair has run out, in its place', async () => {
       await setUpWatch(api, other);
       jest.setSystemTime(NOW + 601_000);
@@ -383,25 +396,32 @@ describe('the ledger', () => {
   it('reads what is kept before it writes a row, on a cold start (fe#219)', async () => {
     const kept = { library_id: 1, path: 'Kept', title: 'Kept', sent_at: 1, handed_over: true };
     await AsyncStorage.setItem(WATCH_LEDGER_KEY, JSON.stringify({ [W]: { 'srv.7': [kept] } }));
-    let fresh!: { send: typeof import('./send'); ledger: typeof import('./watch-ledger') };
-    jest.isolateModules(() => {
-      fresh = { send: jest.requireActual('./send'), ledger: jest.requireActual('./watch-ledger') };
-      jest.requireActual<typeof import('./watch-store')>('./watch-store').useWatchStore.setState({
-        status: here,
-        pairUntil: {},
+    try {
+      let fresh!: { send: typeof import('./send'); ledger: typeof import('./watch-ledger') };
+      jest.isolateModules(() => {
+        fresh = {
+          send: jest.requireActual('./send'),
+          ledger: jest.requireActual('./watch-ledger'),
+        };
+        jest.requireActual<typeof import('./watch-store')>('./watch-store').useWatchStore.setState({
+          status: here,
+          pairUntil: {},
+        });
       });
-    });
-    await fresh.send.sendBookToWatch(api, connection, 3, book);
-    const paths = (doc: Record<string, Record<string, { path: string }[]>>) =>
-      doc[W]['srv.7'].map((r) => r.path);
-    expect(paths(fresh.ledger.useWatchLedger.getState().ledger)).toEqual(['Kept', 'A/B']);
-    // What a write kept: both, never the one row written before the read.
-    await jest.advanceTimersByTimeAsync(0);
-    expect(paths(JSON.parse((await AsyncStorage.getItem(WATCH_LEDGER_KEY)) ?? '{}'))).toEqual([
-      'Kept',
-      'A/B',
-    ]);
-    await AsyncStorage.clear();
+      await fresh.send.sendBookToWatch(api, connection, 3, book);
+      const paths = (doc: Record<string, Record<string, { path: string }[]>>) =>
+        doc[W]['srv.7'].map((r) => r.path);
+      expect(paths(fresh.ledger.useWatchLedger.getState().ledger)).toEqual(['Kept', 'A/B']);
+      // What a write kept: both, never the one row written before the read.
+      await jest.advanceTimersByTimeAsync(0);
+      expect(paths(JSON.parse((await AsyncStorage.getItem(WATCH_LEDGER_KEY)) ?? '{}'))).toEqual([
+        'Kept',
+        'A/B',
+      ]);
+    } finally {
+      // Never left for the tests after this one, passed or not.
+      await AsyncStorage.clear();
+    }
   });
 
   it('notes nothing when the link refuses a remove', async () => {
