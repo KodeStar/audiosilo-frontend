@@ -9,9 +9,7 @@ enum DownloadIndexJoin {
   /// account was left): the index's books are the account that left's, so they are dropped (their
   /// files go too), never joined under the account signed in now (fe#323). `dropped` is what the
   /// index held that is not kept.
-  static func join<R: Identifiable>(kept: [R], since: [R], forgotten: Bool) -> (records: [R], dropped: [R])
-    where R.ID: Hashable
-  {
+  static func join<R: Identifiable>(kept: [R], since: [R], forgotten: Bool) -> (records: [R], dropped: [R]) {
     if forgotten { return (since, kept) }
     let have = Set(kept.map(\.id))
     return (kept + since.filter { !have.contains($0.id) }, [])

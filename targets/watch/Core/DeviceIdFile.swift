@@ -30,9 +30,14 @@ final class DeviceIdFile: @unchecked Sendable {
       // There, but it can't be read now: the id kept stays this watch's, read at the next ask.
       return standIn
     }
-    let id = UUID().uuidString
-    try? Data(id.utf8).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-    known = id
+    // The stand-in becomes the id, kept only once written: one this launch used but never wrote
+    // would leave the next launch to make another, and this watch's own writes would then read as
+    // another device's. Until the write takes, each ask gets the same one and tries it again.
+    let id = standIn
+    try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    if (try? Data(id.utf8).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])) != nil {
+      known = id
+    }
     return id
   }
 }
