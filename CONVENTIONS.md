@@ -2620,8 +2620,13 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   1%, a refusal's body left out), only while the app runs: a suspended app hears of a file when it
   lands. The percent never goes back: the record keeps the furthest it got (`reached`, saved with
   the index at each step, `DownloadProgress.shown`), so a launch, which has lost the bytes in
-  flight, or a transfer begun again starts from there. A wait ends when bytes come or the server
-  answers. Content identical to the session's last
+  flight, or a transfer begun again starts from there. A wait ends only when the server answers
+  the renditions request, or (a connection wait) a file lands, never on bytes in flight
+  (`DownloadWait.ends`): a transfer the server dropped still delivers what was on the wire, and one
+  file's bytes say nothing of another's broken transfer. While the app is in front, a book waiting
+  on the connection asks again after 10 s, doubling to every 60 s (`DownloadWait.retryDelay`),
+  which keeps the wait while the server is away and hands over the remaining files when it is
+  back. Content identical to the session's last
   context returns success and sends nothing (seen in the watchOS 26.5 framework), so it is no error.
 - **Downloads are the watch rendition**, prepared and polled in the foreground
   (`Core/RenditionPlan.swift`), each ready file fetched by the background `URLSession`

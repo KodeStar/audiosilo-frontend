@@ -84,4 +84,33 @@ enum DownloadWait: String, CaseIterable, Equatable, Sendable {
     guard let wait = Self.allCases.first(where: { $0.message == message }) else { return nil }
     self = wait
   }
+
+  /// What the server did that might end a book's wait. Bytes in flight are no sign: a transfer
+  /// the server has dropped still delivers what was on the wire for a moment, and one file's bytes
+  /// say nothing of another file's broken transfer (fe#241).
+  enum Sign: Equatable, Sendable {
+    /// It answered the book's renditions request.
+    case answered
+    /// A file came whole (a 200 or 206).
+    case landed
+  }
+
+  /// Whether `sign` ends this wait: a connection wait ends with an answer or a file that came
+  /// whole, a server wait (it asked for time) only with its next answer.
+  func ends(by sign: Sign) -> Bool {
+    switch (self, sign) {
+    case (_, .answered), (.connection, .landed): return true
+    case (.server, .landed): return false
+    }
+  }
+
+  /// How long a book waiting on the connection waits before it asks the server again while the
+  /// app is in front: 10 s, doubled at each try (`attempt` from 0), at most 60 s.
+  static func retryDelay(attempt: Int) -> TimeInterval {
+    let first: TimeInterval = 10
+    let most: TimeInterval = 60
+    guard attempt > 0 else { return first }
+    // Capped before the shift can overflow.
+    return min(most, first * Double(1 << min(attempt, 8)))
+  }
 }

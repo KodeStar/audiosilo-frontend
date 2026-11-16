@@ -72,4 +72,19 @@ final class DownloadProgressTests: XCTestCase {
     XCTAssertNil(DownloadWait(message: "This book is no longer on the server."))
     XCTAssertNil(DownloadWait(message: nil))
   }
+
+  func testWhatEndsAWait() {
+    // The server answered: any wait is over.
+    XCTAssertTrue(DownloadWait.connection.ends(by: .answered))
+    XCTAssertTrue(DownloadWait.server.ends(by: .answered))
+    // A file came whole: the connection is back, but the server has not said it is done waiting.
+    XCTAssertTrue(DownloadWait.connection.ends(by: .landed))
+    XCTAssertFalse(DownloadWait.server.ends(by: .landed))
+  }
+
+  func testAsksAgainSoonerFirstThenEveryMinute() {
+    XCTAssertEqual((0...5).map { DownloadWait.retryDelay(attempt: $0) }, [10, 20, 40, 60, 60, 60])
+    XCTAssertEqual(DownloadWait.retryDelay(attempt: -1), 10)
+    XCTAssertEqual(DownloadWait.retryDelay(attempt: 1000), 60)
+  }
 }

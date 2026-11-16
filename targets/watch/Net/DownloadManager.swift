@@ -2,8 +2,9 @@
 // listening's Download button or the phone's `book` message is queued, its item and chapters
 // are read and kept (offline playback needs the timeline), its watch rendition is prepared and
 // polled in the FOREGROUND until each file is ready (RenditionPlan), and each ready file goes to
-// the background session. Free space is checked first: the rendition's bytes plus 200 MB
-// (decision 8). Books are removed by hand.
+// the background session. With no answer, or a transfer broken, the book waits on the connection
+// and asks again on a backoff while the app is in front (`DownloadWait.retryDelay`). Free space
+// is checked first: the rendition's bytes plus 200 MB (decision 8). Books are removed by hand.
 import Foundation
 
 /// A book's item and chapters, kept for offline playback (items/).
@@ -53,9 +54,10 @@ struct DownloadRecord: Codable, Equatable, Identifiable {
   /// The bytes on the watch (each file's size, set when it lands).
   var bytes: Int64 { files.compactMap(\.bytes).reduce(0, +) }
 
-  /// Bytes came or the server answered: a wait the message named is over (a failure stays).
-  mutating func endWait() {
-    if DownloadWait(message: message) != nil { message = nil }
+  /// The server answered or a file landed: a wait the message named is over when `sign` ends it
+  /// (`DownloadWait.ends`; a failure stays).
+  mutating func endWait(_ sign: DownloadWait.Sign) {
+    if let wait = DownloadWait(message: message), wait.ends(by: sign) { message = nil }
   }
 
   /// Every file has landed: the book is ready.
@@ -104,6 +106,10 @@ final class DownloadManager: ObservableObject {
   private var fractions: [String: [String: Double]] = [:]
   /// The files the server last said were ready, by book key (the phone's "n of m files").
   private var serverReady: [String: Set<String>] = [:]
+  /// A book's next try while it waits on the connection, by book key (`retryLater`).
+  private var retries: [String: Task<Void, Never>] = [:]
+  /// How many tries in a row found no answer, by book key: the next one waits longer.
+  private var retryAttempts: [String: Int] = [:]
 
   init() {
     records = index.read() ?? []
@@ -171,6 +177,9 @@ final class DownloadManager: ObservableObject {
     for t in working.values { t.cancel() }
     working = [:]
     runs = [:]
+    for t in retries.values { t.cancel() }
+    retries = [:]
+    retryAttempts = [:]
   }
 
   /// Remove a book from the watch (its files, its record, its tasks).
@@ -178,6 +187,8 @@ final class DownloadManager: ObservableObject {
     guard let r = record(ref) else { return }
     willRemove?(ref)
     stopWork(r.id)
+    retries.removeValue(forKey: r.id)?.cancel()
+    retryAttempts[r.id] = nil
     BackgroundDownloads.shared.cancel(book: r.id)
     // A cancelled task brings no event: forget its hand-off and resume data here, or the same
     // book downloaded again would skip those files (and resume with this sign-in's request).
@@ -289,9 +300,9 @@ final class DownloadManager: ObservableObject {
         }
       }
       var answer = try await current().prepareRenditions(ref)
-      stopWaiting(key)
       guard checkSpace(key, answer) else { return }
       while !Task.isCancelled {
+        serverAnswered(key)
         guard answerCovers(key, answer) else { return }
         let step = RenditionPlan.step(answer)
         noteServerReady(key, step.ready)
@@ -334,8 +345,9 @@ final class DownloadManager: ObservableObject {
         fail(key, message)
       }
     } catch {
-      // No answer: it waits for the next foreground.
+      // No answer: it asks again in a while (in the background, at the next foreground).
       update(key) { $0.message = DownloadWait.connection.message }
+      retryLater(key)
     }
   }
 
@@ -420,9 +432,10 @@ final class DownloadManager: ObservableObject {
         update(tag.book) {
           $0.files[i].done = true
           $0.files[i].bytes = size
-          $0.endWait()
+          $0.endWait(.landed)
           $0.readyIfDone()
         }
+        retryAttempts[tag.book] = nil
       } catch {
         try? FileManager.default.removeItem(at: staged)
         fail(tag.book, "The watch could not keep a file of this book.")
@@ -447,14 +460,18 @@ final class DownloadManager: ObservableObject {
       }
     case .failed(let tag, let data):
       handedOff.remove(tag.key)
-      guard records.contains(where: { $0.id == tag.book }) else { return }  // removed meanwhile
+      guard let r = records.first(where: { $0.id == tag.book }) else { return }  // removed meanwhile
       // With no resume data the file starts again from nothing.
       if let data { resumeData[tag.key] = data } else { fractions[tag.book]?[tag.path] = nil }
+      // A failed book keeps saying why.
+      guard r.state != .failed else { return }
       update(tag.book) { $0.message = DownloadWait.connection.message }
+      // The next run (or the one polling now) hands the file over again.
+      retryLater(tag.book)
     case .progress(let tag, let fraction):
+      // No sign the server answers (`DownloadWait.ends`): a wait stays.
       guard records.contains(where: { $0.id == tag.book }) else { return }  // removed meanwhile
       fractions[tag.book, default: [:]][tag.path] = fraction
-      stopWaiting(tag.book)
       // Kept with the index at each step, so the next launch starts from it.
       if refreshPercent(tag.book) { save() }
     }
@@ -462,10 +479,32 @@ final class DownloadManager: ObservableObject {
 
   // MARK: - How far a book has come (watch-state, Home)
 
-  /// Bytes are coming or the server answered: a wait the row named is over.
-  private func stopWaiting(_ key: String) {
+  /// The server answered the book's renditions request: a wait the row named is over, and the
+  /// next wait on the connection starts again from the shortest delay.
+  private func serverAnswered(_ key: String) {
+    retryAttempts[key] = nil
     guard let r = records.first(where: { $0.id == key }), DownloadWait(message: r.message) != nil else { return }
-    update(key) { $0.endWait() }
+    update(key) { $0.endWait(.answered) }
+  }
+
+  /// Ask the server again in a while: a book waiting on the connection, only while the app is in
+  /// front (each try that finds no answer waits longer, `DownloadWait.retryDelay`). Its run puts
+  /// the wait back while there is still no answer, and once there is one hands over the files not
+  /// handed yet and those whose transfer broke. One try per book at a time.
+  private func retryLater(_ key: String) {
+    guard active, retries[key] == nil else { return }
+    let attempt = retryAttempts[key, default: 0]
+    retryAttempts[key] = attempt + 1
+    retries[key] = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(DownloadWait.retryDelay(attempt: attempt)))
+      // Cancelled while it waited: whoever cancelled it has cleared its entry.
+      guard !Task.isCancelled, let self else { return }
+      retries[key] = nil
+      // Ready, or failed (Try again starts it), meanwhile: nothing to ask.
+      guard let r = records.first(where: { $0.id == key }), r.state != .ready, r.state != .failed else { return }
+      // A run already going asks the server itself.
+      process(key)
+    }
   }
 
   /// The files the server has ready now; told to the phone when they change.
