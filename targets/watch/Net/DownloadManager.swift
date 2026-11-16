@@ -422,9 +422,14 @@ final class DownloadManager: ObservableObject {
       let refusal = RenditionPlan.refusal(error)
       if case .retry(let after) = refusal {
         // Not ready after all (`rendition_pending`): poll again, after the server's wait (the
-        // next answer can say ready at once, and refuse again).
+        // next answer can say ready at once, and refuse again). Until then it is not one of the
+        // files ready, nor with the session (its bytes are noted again when it is handed over).
         stopWork(tag.book)
-        update(tag.book) { $0.state = .preparing }
+        serverReady[tag.book]?.remove(tag.path)
+        update(tag.book) { r in
+          r.state = .preparing
+          if let i = r.files.firstIndex(where: { $0.path == tag.path && !$0.done }) { r.files[i].bytes = nil }
+        }
         process(tag.book, after: after)
       } else if let message = RenditionPlan.message(refusal) {
         fail(tag.book, message)
@@ -451,12 +456,12 @@ final class DownloadManager: ObservableObject {
     update(key) { $0.endWait() }
   }
 
-  /// The files the server has ready now; told to the phone when their number moves.
+  /// The files the server has ready now; told to the phone when they change.
   private func noteServerReady(_ key: String, _ ready: [RenditionFile]) {
     let paths = Set(ready.map(\.path))
-    let was = serverReady[key]
+    guard serverReady[key] != paths else { return }
     serverReady[key] = paths
-    if was?.count != paths.count { onChange?() }
+    onChange?()
   }
 
   /// Work the book's percent out again (every change of its record, every chunk told); true when
