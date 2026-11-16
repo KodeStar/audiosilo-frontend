@@ -69,8 +69,9 @@ final class Outbox {
 
   /// Whether the server takes a `stay` span now (`listening_stay`); asked as each body is built.
   var takesStay: () -> Bool = { false }
-  /// Told of every answer's progress rows (the offer check).
-  var onAnswer: (([ProgressRow]) -> Void)?
+  /// Told of every answer's progress rows (the offer check), and of the books whose `stay` it
+  /// held (`AckRules.staysHeld`).
+  var onAnswer: (([ProgressRow], Set<BookRef>) -> Void)?
   /// Told whenever the events or the state change (watch-state, Sync status).
   var onChange: (() -> Void)?
 
@@ -339,7 +340,7 @@ final class Outbox {
     for row in rows where AckRules.keptMine(row, deviceId: deviceId, sent: sent, results: results) {
       acks.ack(row.ref, version: row.version)
     }
-    onAnswer?(rows)
+    onAnswer?(rows, AckRules.staysHeld(sent: sent, results: results))
   }
 
   // MARK: - The background upload (decision 10; SyncUploader sends it)

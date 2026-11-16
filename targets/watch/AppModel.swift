@@ -129,7 +129,7 @@ final class AppModel: ObservableObject {
       self?.syncRevision += 1
       self?.publishState()
     }
-    outbox.onAnswer = { [weak self] rows in self?.checkOffer(rows) }
+    outbox.onAnswer = { [weak self] rows, staysHeld in self?.checkOffer(rows, staysHeld: staysHeld) }
     outbox.takesStay = { [weak self] in self?.takesStay ?? false }
     SyncUploader.shared.handler = { [weak self] answer in
       MainActor.assumeIsolated { self?.applyUpload(answer) }
@@ -365,15 +365,16 @@ final class AppModel: ObservableObject {
     checkOffer([row])
   }
 
-  /// Offer another device's place for the loaded book (Offers.offerOf + the throttles). Not over
-  /// the speaker question: it comes again with the next answer.
-  private func checkOffer(_ rows: [ProgressRow]) {
+  /// Offer another device's place for the loaded book (Offers.offerOf + the throttles; at once
+  /// when the answer held this watch's Stay on it, `staysHeld`). Not over the speaker question: it
+  /// comes again with the next answer.
+  private func checkOffer(_ rows: [ProgressRow], staysHeld: Set<BookRef> = []) {
     guard let ref = engine.loadedBook, offerPrompt == nil, !engine.speakerPrompt,
       let row = rows.first(where: { $0.ref == ref })
     else { return }
     guard let offer = Offers.offerOf(row, deviceId: Files.deviceId, ackVersion: acks.ackVersion(ref),
                                      enginePosition: engine.position, answered: acks.answered(ref)),
-      offers.shouldShow(offer, for: ref, now: Date())
+      offers.shouldShow(offer, for: ref, now: Date(), stayHeld: staysHeld.contains(ref))
     else { return }
     offerPrompt = OfferPrompt(ref: ref, offer: offer, row: row)
   }
@@ -385,8 +386,8 @@ final class AppModel: ObservableObject {
     if engine.loadedBook == p.ref { engine.seek(to: p.offer.position, reason: .jump) }
   }
 
-  /// Stay: this place stands (acknowledged), and the next span is a Stay (`stay` on a
-  /// `listening_stay` server, else `jump`), sent at once when paused.
+  /// Stay: this place stands (acknowledged), sent at once as a Stay span (`stay` on a
+  /// `listening_stay` server, else `jump`).
   func stay(_ p: OfferPrompt) {
     acks.answerOffer(p.ref, row: p.row, key: p.offer.key)
     offerPrompt = nil

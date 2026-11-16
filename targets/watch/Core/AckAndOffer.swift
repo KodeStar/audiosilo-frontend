@@ -82,6 +82,19 @@ enum AckRules {
       return r.status == "applied" || (r.status == "diverged" && r.kept == "event")
     }
   }
+
+  /// The books whose `stay` this answer held: the server kept the stored row over it (`diverged`,
+  /// `kept: stored`), another device's Stay holding it (CROSS-REPO section 25 "Stay wins", S2).
+  /// Their kept place is offered again at once (`OfferThrottle.shouldShow`'s `stayHeld`; the
+  /// phone's `staysHeld`).
+  static func staysHeld(sent: [ListeningEvent], results: [String: SyncResult]) -> Set<BookRef> {
+    var held = Set<BookRef>()
+    for case .listen(let e) in sent where e.start == .stay {
+      guard let r = results[e.id], r.status == "diverged", r.kept == "stored" else { continue }
+      held.insert(BookRef(libraryId: e.libraryId, path: e.path))
+    }
+    return held
+  }
 }
 
 /// Another device's place to offer (never to move to by itself).
@@ -122,7 +135,8 @@ enum Offers {
   }
 }
 
-/// Each offer once per launch, each device at most once per book in `OFFER_REPEAT`.
+/// Each offer once per launch, each device at most once per book in `OFFER_REPEAT`, except right
+/// after this watch's Stay came back held (`stayHeld`).
 @MainActor
 final class OfferThrottle {
   private var shown = Set<String>()
@@ -130,13 +144,15 @@ final class OfferThrottle {
 
   init() {}
 
-  /// Whether to show `offer` for `ref` now; records it when so.
-  func shouldShow(_ offer: PlaceOffer, for ref: BookRef, now: Date) -> Bool {
+  /// Whether to show `offer` for `ref` now; records it when so. `stayHeld`: this watch's Stay
+  /// came back held by another device's (`AckRules.staysHeld`), so the place kept is offered now,
+  /// not `OFFER_REPEAT` after that device's last offer (still once per launch).
+  func shouldShow(_ offer: PlaceOffer, for ref: BookRef, now: Date, stayHeld: Bool = false) -> Bool {
     let shownKey = "\(ref.key)|\(offer.key)"
     if shown.contains(shownKey) { return false }
     let device = offer.key.lastIndex(of: "|").map { String(offer.key[..<$0]) } ?? offer.key
     let deviceKey = "\(ref.key)|\(device)"
-    if let last = offeredAt[deviceKey], now.timeIntervalSince(last) < Offers.OFFER_REPEAT { return false }
+    if !stayHeld, let last = offeredAt[deviceKey], now.timeIntervalSince(last) < Offers.OFFER_REPEAT { return false }
     shown.insert(shownKey)
     offeredAt[deviceKey] = now
     return true
