@@ -623,12 +623,14 @@ export function pickRail(
     const named = rails.find((s) => views(s).some((v) => looseKey(v.name) === name));
     if (named) return named;
   }
+  // The pick (`local`) can be a recording in another library, the series' own one among
+  // the others (server#241).
+  const owns = (r: BookRef) =>
+    opts.ownedKeys.has(contentKey(opts.connectionId, r.library_id, r.path));
   let best: { rail: BookMetaSeries; placed: number } | undefined;
   for (const s of rails) {
     const placed = s.works.filter(
-      (w) =>
-        w.local &&
-        opts.ownedKeys.has(contentKey(opts.connectionId, w.local.library_id, w.local.path)),
+      (w) => (w.local && owns(w.local)) || w.local_others?.some(owns),
     ).length;
     if (placed > 0 && (!best || placed > best.placed)) best = { rail: s, placed };
   }

@@ -429,6 +429,22 @@ describe('pickRail', () => {
     expect(pickRail([main], { ...opts, ownedKeys: new Set() })).toBeUndefined();
     expect(pickRail(undefined, opts)).toBeUndefined();
   });
+
+  it("counts a work whose pick is elsewhere when the series' own book is another recording", () => {
+    // server#241: the pick is the recording in another library, this one rides beside it.
+    const elsewhere = { library_id: 2, path: 'Kids/Stone' };
+    const others: BookMetaSeries = {
+      ...fry,
+      works: [
+        {
+          ...work('ps', 'Stone', '1'),
+          local: elsewhere,
+          local_others: [{ library_id: lw.library_id, path: lw.rel_path }],
+        },
+      ],
+    };
+    expect(pickRail([main, others], { connectionId: CID, ownedKeys: keys })).toBe(others);
+  });
 });
 
 describe('metadataAnchor', () => {
