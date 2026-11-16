@@ -45,12 +45,10 @@ import {
   metadataAnchor,
   pickRail,
   railEntries,
-  type SeriesEntry,
   seriesStats,
   trackSegments,
   typicalSeconds,
 } from './series-model';
-import { RecordingsSheet } from './recordings-sheet';
 import { EntryList, ProgressTrack, ShelfCaption, ShelfLegend, statsLine } from './series-parts';
 import { spineDims } from './spine-fit';
 import { useResumeChapter } from './use-resume-chapter';
@@ -146,13 +144,6 @@ export function SeriesPage({
       });
 
   const [picked, setPicked] = useState<string>();
-  // The work whose recordings the picker lists (kept while it closes) and whether it is open.
-  const [recordingsKey, setRecordingsKey] = useState<string>();
-  const [recordingsOpen, setRecordingsOpen] = useState(false);
-  const openRecordings = (e: SeriesEntry) => {
-    setRecordingsKey(e.key);
-    setRecordingsOpen(true);
-  };
   // Set in the same render as a new reading order, so the bookcase slides its spines.
   const [sliding, setSliding] = useState(false);
   useEffect(() => {
@@ -223,107 +214,99 @@ export function SeriesPage({
   const gutter = 'px-4 lg:px-8';
 
   return (
-    <View className="flex-1">
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom }}>
-        <View className="relative overflow-hidden border-b border-border">
-          <CoverWash color={wash} variant="hero" />
-          <View className={cn(CONTENT_WIDTH, 'self-center pt-5 lg:pt-7')}>
-            <View className={cn(gutter, 'gap-2.5')}>
-              <SeriesEyebrow libraryId={libraryId} author={author} />
-              <Text
-                variant="display-xl"
-                accessibilityRole="header"
-                className={
-                  layout === 'desktop' ? 'text-5xl leading-[52px] web:leading-[3.25rem]' : undefined
-                }
-              >
-                {name}
-              </Text>
-              <View className="flex-row flex-wrap gap-x-[18px] gap-y-1">
-                {statsLine(stats, t).map((s) => (
-                  <Text key={s} variant="muted">
-                    {s}
+    <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom }}>
+      <View className="relative overflow-hidden border-b border-border">
+        <CoverWash color={wash} variant="hero" />
+        <View className={cn(CONTENT_WIDTH, 'self-center pt-5 lg:pt-7')}>
+          <View className={cn(gutter, 'gap-2.5')}>
+            <SeriesEyebrow libraryId={libraryId} author={author} />
+            <Text
+              variant="display-xl"
+              accessibilityRole="header"
+              className={
+                layout === 'desktop' ? 'text-5xl leading-[52px] web:leading-[3.25rem]' : undefined
+              }
+            >
+              {name}
+            </Text>
+            <View className="flex-row flex-wrap gap-x-[18px] gap-y-1">
+              {statsLine(stats, t).map((s) => (
+                <Text key={s} variant="muted">
+                  {s}
+                </Text>
+              ))}
+            </View>
+            <View className="mt-2">
+              <ProgressTrack segments={trackSegments(entries)} label={progressLabel} />
+            </View>
+            {rail && view ? (
+              <View className="mt-2 flex-row flex-wrap items-center justify-between gap-2.5">
+                {views.length > 1 ? (
+                  <SegmentedControl
+                    scrollable
+                    options={views.map((v) => {
+                      const key = orderingLabelKey(v.ordering);
+                      return { value: v.id, label: key ? t(key) : v.name };
+                    })}
+                    value={view.id}
+                    onChange={(id) => {
+                      setSliding(true);
+                      pickOrder(familyKey(rail), id);
+                    }}
+                    accessibilityLabel={t('series.readingOrder')}
+                    className="max-w-full self-start"
+                  />
+                ) : null}
+                {orderKey ? (
+                  <Text variant="muted" className="shrink">
+                    {t(ORDER_NOTE_KEY[orderKey])}
                   </Text>
-                ))}
+                ) : null}
               </View>
-              <View className="mt-2">
-                <ProgressTrack segments={trackSegments(entries)} label={progressLabel} />
-              </View>
-              {rail && view ? (
-                <View className="mt-2 flex-row flex-wrap items-center justify-between gap-2.5">
-                  {views.length > 1 ? (
-                    <SegmentedControl
-                      scrollable
-                      options={views.map((v) => {
-                        const key = orderingLabelKey(v.ordering);
-                        return { value: v.id, label: key ? t(key) : v.name };
-                      })}
-                      value={view.id}
-                      onChange={(id) => {
-                        setSliding(true);
-                        pickOrder(familyKey(rail), id);
-                      }}
-                      accessibilityLabel={t('series.readingOrder')}
-                      className="max-w-full self-start"
-                    />
-                  ) : null}
-                  {orderKey ? (
-                    <Text variant="muted" className="shrink">
-                      {t(ORDER_NOTE_KEY[orderKey])}
-                    </Text>
-                  ) : null}
-                </View>
-              ) : null}
-            </View>
-            <View className="mt-3">
-              <Bookcase
-                entries={entries}
-                selectedKey={selected?.key}
-                currentKey={current?.key}
-                onSelect={setPicked}
-                layout={layout}
-                typicalSeconds={typical}
-                slide={sliding}
-                accessibilityLabel={t('series.shelfLabel', { series: name })}
+            ) : null}
+          </View>
+          <View className="mt-3">
+            <Bookcase
+              entries={entries}
+              selectedKey={selected?.key}
+              currentKey={current?.key}
+              onSelect={setPicked}
+              layout={layout}
+              typicalSeconds={typical}
+              slide={sliding}
+              accessibilityLabel={t('series.shelfLabel', { series: name })}
+            />
+          </View>
+          <View className={gutter}>
+            {selected ? (
+              <ShelfCaption
+                key={selected.key}
+                entry={selected}
+                current={selected.key === current?.key}
+                here={here}
+                resumeChapter={resumeChapter}
+                pageLibraryId={libraryId}
               />
-            </View>
-            <View className={gutter}>
-              {selected ? (
-                <ShelfCaption
-                  key={selected.key}
-                  entry={selected}
-                  current={selected.key === current?.key}
-                  here={here}
-                  resumeChapter={resumeChapter}
-                  onRecordings={() => openRecordings(selected)}
-                />
-              ) : null}
-              <ShelfLegend entries={entries} hasCurrent={!!current} />
-            </View>
+            ) : null}
+            <ShelfLegend entries={entries} hasCurrent={!!current} />
           </View>
         </View>
-        <View className={cn(CONTENT_WIDTH, gutter, 'self-center pt-7')}>
-          <View className="w-full max-w-[880px] gap-2">
-            <View className="flex-row items-baseline gap-2.5">
-              <SectionHeader
-                title={t(listTitleKey ?? 'series.listTitle.default')}
-                className="shrink"
-              />
-              <Text variant="caption">{t('series.stats.entries', { count: entries.length })}</Text>
-            </View>
-            <EntryList entries={entries} currentKey={current?.key} onRecordings={openRecordings} />
-            <KeepAheadCard />
-            {rail ? <SourceLine label={t('series.source')} className="mt-3" /> : null}
+      </View>
+      <View className={cn(CONTENT_WIDTH, gutter, 'self-center pt-7')}>
+        <View className="w-full max-w-[880px] gap-2">
+          <View className="flex-row items-baseline gap-2.5">
+            <SectionHeader
+              title={t(listTitleKey ?? 'series.listTitle.default')}
+              className="shrink"
+            />
+            <Text variant="caption">{t('series.stats.entries', { count: entries.length })}</Text>
           </View>
+          <EntryList entries={entries} currentKey={current?.key} pageLibraryId={libraryId} />
+          <KeepAheadCard />
+          {rail ? <SourceLine label={t('series.source')} className="mt-3" /> : null}
         </View>
-      </ScrollView>
-      <RecordingsSheet
-        entry={entries.find((e) => e.key === recordingsKey)}
-        visible={recordingsOpen}
-        onClose={() => setRecordingsOpen(false)}
-        pageLibraryId={libraryId}
-      />
-    </View>
+      </View>
+    </ScrollView>
   );
 }
 

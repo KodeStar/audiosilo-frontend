@@ -3499,8 +3499,8 @@ A work held in several recordings (server#241: books of one `Book.work_id`, a ra
 plus `local_others`) is ONE entry (`workEntry`, `groupByWork` on the local shelf and the Series mode
 card's `MiniShelf`): `copy` is the recording the listener is on, else the latest finished one, else
 the server's pick (`local`; the first in series order without a rail), and `recordings` lists every
-one with its own progress. A "2 recordings" picker chip (`RecordingsChip`) beside the caption's badge
-and the list row's action opens `RecordingsSheet` (a `PlayerSheet`, mounted at the page's root).
+one with its own progress. A "2 recordings" picker chip (`RecordingsChip`, `recordings-picker.tsx`)
+beside the caption's badge and the list row's action opens its own dialog (a sheet on a phone) of them.
 Without the fields (an older server, metadata off) every book is its own entry, as before; Home's
 Next keeps the server's pick and `/series` counts are unchanged.
 Series mode cards (`series-card.tsx`) show a `MiniShelf` of the owned spines and fetch their books

@@ -5,7 +5,6 @@ import Svg, { Line } from 'react-native-svg';
 
 import { BookCover } from '@/components/library/book-cover';
 import { GhostCover } from '@/components/library/ghost-cover';
-import { FilterChip } from '@/components/ui/filter-chip';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import type { NamedChapter } from '@/lib/chapter-label';
@@ -18,6 +17,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { EntryActionButton, EntryBadge } from './entry-actions';
+import { RecordingsChip } from './recordings-picker';
 import type { SeriesEntry, SeriesStats, TrackSegment } from './series-model';
 import { RIBBON_WIDTH } from './spine';
 
@@ -125,30 +125,9 @@ function entryNote(entry: SeriesEntry, here: string, t: TFunction) {
 }
 
 /**
- * "2 recordings", for a work the listener holds in more than one (server#241): a picker
- * chip opening the recordings to choose from (`onPress`). Nothing for a single recording.
- */
-export function RecordingsChip({ entry, onPress }: { entry: SeriesEntry; onPress?: () => void }) {
-  const { t } = useTranslation();
-  const count = entry.recordings?.length ?? 0;
-  if (count < 2 || !onPress) return null;
-  const label = t('series.recordings.count', { count });
-  return (
-    <FilterChip
-      label={label}
-      selected={false}
-      picker
-      icon="microphone"
-      onPress={onPress}
-      accessibilityLabel={`${label}, ${t('series.recordings.choose', { title: entry.title })}`}
-    />
-  );
-}
-
-/**
  * The caption under the bookcase's plank for the face-out book: book number, year and
  * length, its title and status (and how many recordings of it the listener has, a chip
- * opening them: `onRecordings`), a line about who reads it or where it is, and its ONE
+ * opening them: `RecordingsChip`), a line about who reads it or where it is, and its ONE
  * action (`EntryActionButton`).
  */
 export function ShelfCaption({
@@ -156,15 +135,15 @@ export function ShelfCaption({
   current,
   here,
   resumeChapter,
-  onRecordings,
+  pageLibraryId,
 }: {
   entry: SeriesEntry;
   current: boolean;
   /** This connection's name ("Not on Home Library, but ..."). */
   here: string;
   resumeChapter?: NamedChapter;
-  /** Opens the picker of the entry's recordings (server#241). */
-  onRecordings?: () => void;
+  /** The page's library (the recordings picker names any other). */
+  pageLibraryId: number;
 }) {
   const { t } = useTranslation();
   const wide = useLayout() !== 'phone';
@@ -190,7 +169,7 @@ export function ShelfCaption({
             {entry.title ?? t('covers.bookNumber', { position: entry.position })}
           </Text>
           <EntryBadge entry={entry} current={current} />
-          <RecordingsChip entry={entry} onPress={onRecordings} />
+          <RecordingsChip entry={entry} pageLibraryId={pageLibraryId} />
         </View>
         {note ? <Text variant="muted">{note}</Text> : null}
       </View>
@@ -280,24 +259,23 @@ function entryLine(entry: SeriesEntry, t: TFunction): string {
 /**
  * The series as a list, in the shown reading order (the prototype's entry list): the
  * number, the cover (or a ghost), the title, year, length and where you are, and the
- * entry's action (beside it, a work's "2 recordings" chip: `onRecordings`). A row with a
+ * entry's action (beside it, a work's "2 recordings" chip: `RecordingsChip`). A row with a
  * copy opens it (a work's shown recording).
  */
 export function EntryList({
   entries,
   currentKey,
-  onRecordings,
+  pageLibraryId,
 }: {
   entries: readonly SeriesEntry[];
   currentKey?: string;
-  /** Opens the picker of an entry's recordings (server#241). */
-  onRecordings?: (entry: SeriesEntry) => void;
+  /** The page's library (the recordings picker names any other). */
+  pageLibraryId: number;
 }) {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
   const { openBook } = useOpen();
   const cover = phone ? 56 : 72;
-  const pickRecording = (e: SeriesEntry) => (onRecordings ? () => onRecordings(e) : undefined);
   return (
     <View>
       {entries.map((e, i) => {
@@ -376,14 +354,14 @@ export function EntryList({
               )}
               {phone ? null : (
                 <>
-                  <RecordingsChip entry={e} onPress={pickRecording(e)} />
+                  <RecordingsChip entry={e} pageLibraryId={pageLibraryId} />
                   <EntryActionButton entry={e} compact />
                 </>
               )}
             </View>
             {phone ? (
               <View className="flex-row flex-wrap items-center justify-end gap-2">
-                <RecordingsChip entry={e} onPress={pickRecording(e)} />
+                <RecordingsChip entry={e} pageLibraryId={pageLibraryId} />
                 <EntryActionButton entry={e} compact />
               </View>
             ) : null}
