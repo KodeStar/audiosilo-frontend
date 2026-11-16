@@ -5,10 +5,9 @@ import { View } from 'react-native';
 
 import { accountParentKey, routeUnderAccount } from '@/components/account/account-model';
 import { AccountSection } from '@/components/account/account-section';
-import { ContentScope } from '@/components/layout/content-scope';
+import { ContentScope, useRouteConnection } from '@/components/layout/content-scope';
 import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
-import { connectionParam } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
 import { useSession } from '@/stores/session';
@@ -23,7 +22,8 @@ import { useSession } from '@/stores/session';
  * The `?connection=` scope comes from this route's OWN local param (reliable on a cold
  * deep link; `ContentScope` shows a not-found state for a server that isn't signed in).
  * Without the param (the scope is then the active connection) the section shows the
- * default server with a server switcher, so the body reads the param itself.
+ * default server with a server switcher, so the body takes the named connection
+ * (`useRouteConnection`'s `named`), not the scope.
  */
 export default function AccountScreen() {
   return (
@@ -36,7 +36,7 @@ export default function AccountScreen() {
 function AccountContent() {
   const { t } = useTranslation();
   const { connection } = useRouteParams<{ connection?: string | string[] }>();
-  const cid = connectionParam(connection);
+  const { named: cid } = useRouteConnection(connection);
   const name = useSession((s) => s.connections.find((c) => c.id === cid)?.name);
   const label = name || t('settings.account.label');
   usePageTitle(label);

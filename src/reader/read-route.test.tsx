@@ -9,7 +9,6 @@ let mockGate: unknown = null;
 jest.mock('@/components/layout/content-scope', () => ({
   useRouteConnection: (connection: string | undefined) => ({
     cid: connection ?? 'active',
-    named: connection ?? '',
     gate: mockGate,
   }),
 }));

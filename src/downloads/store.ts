@@ -801,7 +801,7 @@ export function reviveEntry(
     error:
       e.status === 'error' ? e.error : e.status === 'downloaded' ? 'Files missing' : 'Interrupted',
     failure,
-    manifest: files.length === listed.length ? e.manifest : { ...e.manifest, files },
+    manifest: allPresent ? e.manifest : { ...e.manifest, files },
   };
 }
 
