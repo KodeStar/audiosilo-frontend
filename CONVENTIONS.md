@@ -2866,7 +2866,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     (the 7-day hold ends one the watch never takes), and "delivered" means the watch app took it.
     Pairs are pruned past `expires_at` at every snapshot, send and start, and at an alarm set for the
     first pair's `expires_at` (`PairPruneReceiver`, inexact and allowed while idle; a reboot drops it
-    and the next start sets it again), so an idle phone never holds one past its life; a new pair drops any
+    and the next start sets it again), so an idle phone holds one past its life only after a reboot,
+    until the app next starts; a new pair drops any
     held for another watch. One watch at a time: of the nodes with the app (capability
     `audiosilo_wear_app`, or a `watch-state`), the one whose `watch-state` this phone saw last
     (kept in prefs), else one nearby; `watch_id` is its node id. The phone advertises

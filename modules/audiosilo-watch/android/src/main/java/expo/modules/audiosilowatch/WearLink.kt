@@ -69,6 +69,9 @@ object WearLink {
    */
   private const val HOLD_LIMIT_MS = 30_000L
 
+  /** `pruneArmedAt` before this process has set or cancelled the alarm. */
+  private const val PRUNE_UNKNOWN = Long.MIN_VALUE
+
   /** One change, copied out of the event buffer before Play services releases it. */
   class Event(val deleted: Boolean, val node: String, val path: String, val bytes: ByteArray?)
 
@@ -101,8 +104,12 @@ object WearLink {
 
   @Volatile private var localNode: String? = null
 
-  /** The time the pair prune's alarm is set for (epoch ms), so a snapshot that changes nothing sets none. */
-  @Volatile private var pruneArmedAt: Long? = null
+  /**
+   * The time the pair prune's alarm is set for (epoch ms, null for none), so a snapshot that
+   * changes nothing sets none. `PRUNE_UNKNOWN` in a new process: an alarm an earlier one set
+   * outlives it, so the first answer is applied whatever it is (a pair taken meanwhile cancels it).
+   */
+  @Volatile private var pruneArmedAt: Long? = PRUNE_UNKNOWN
   private var started = false
   private lateinit var app: Context
 
