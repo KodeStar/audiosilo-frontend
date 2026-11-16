@@ -192,6 +192,13 @@ export type Capabilities = {
    * cookie the server set, so only a page on the server's own origin can. The button's name
    * is `ServerInfo.auth.oidc.name`. Absent on older servers: treat missing as false. */
   oidc?: boolean;
+  /** Whether the server knows which of the caller's books are recordings of the same work
+   * (server#241): a book's `work_id` ({@link Book.work_id}), the other recordings on
+   * `GET /libraries/{id}/item` ({@link Book.other_recordings}) and a `/meta` series work's
+   * `local_others` ({@link BookMetaSeriesWork.local_others}). True while community metadata
+   * is on, false otherwise. Absent on older servers. The player reads the fields themselves
+   * (absent means one recording per work, as before), so nothing waits on the flag. */
+  other_recordings?: boolean;
 };
 
 /** A server's two addresses (capability `addresses`). Either may be absent. `home` is
@@ -525,6 +532,19 @@ export type Book = {
    * only GET /libraries/{id}/item sends it (never a list row). Absent when the book has no
    * ebook or no valid map, and on older servers. */
   readalong?: BookReadalong;
+  /** The community work this book is a recording of (server#241, capability
+   * `other_recordings`): its match's work, else the work the upcoming-releases job found for
+   * it. Two books with the same `work_id` are two recordings of one work (another narrator,
+   * an abridged one); the series shelf shows them as one book. A display-grouping hint, never
+   * an identity for durable state. Sent on every book response; absent when unknown, while
+   * community metadata is off and on older servers. */
+  work_id?: string;
+  /** The caller's OTHER recordings of this book's work (server#241): list-shaped books, at
+   * most 20, the same library first, then by title and narrator. Never itself, a copy of
+   * the same ASIN or ISBN (that is a duplicate, not another recording), a podcast or a book
+   * outside the caller's libraries. Only GET /libraries/{id}/item sends it; absent when
+   * there are none, while community metadata is off and on older servers. */
+  other_recordings?: Book[];
 };
 
 /** A book's ebook ({@link Book.ebook}): its library path and size in bytes. */
@@ -870,6 +890,11 @@ export type BookMetaSeriesWork = {
    * named like the rail (or the book to be the one the envelope is for), and on older
    * servers. */
   local?: BookRef;
+  /** Every OTHER recording of this work the caller can open (server#241), resolved per
+   * request like `local`, which stays the server's pick (the Next rule: the narrator of the
+   * book just finished, then one started, then the same library, then unabridged). Absent
+   * when `local` is the only one, and on older servers. */
+  local_others?: BookRef[];
   /** The work's first release (the earliest across its recordings and marketplaces, Track
    * U1) at the precision the metadata knows: `"2027"`, `"2026-11"` or `"2026-11-12"`
    * (`formatReleaseDate`, `releaseIsFuture`). Absent when unknown, and on older servers. */
