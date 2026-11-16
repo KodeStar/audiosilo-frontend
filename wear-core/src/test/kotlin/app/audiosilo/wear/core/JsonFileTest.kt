@@ -106,6 +106,48 @@ class JsonFileTest {
     assertEquals(listOf("places.json"), synced)
     assertEquals(42.0, PlaceStore(File(dir, "places.json")).place(ref)!!.position, 0.0)
   }
+
+  // The vectors of watch-core's JSONFileTests (fe#219): each case told apart.
+  @Test
+  fun loadTellsMissingValueUnreadableAndCorruptApart() {
+    val file = JsonFile(File(dir, "doc.json"), ListSerializer(String.serializer()))
+    assertEquals(JsonLoad.Missing, file.load())
+    assertTrue(file.write(listOf("one")))
+    assertEquals(JsonLoad.Value(listOf("one")), file.load())
+    file.file.setReadable(false)
+    if (!file.file.canRead()) {
+      // Where permissions hold (not as root).
+      assertEquals(JsonLoad.Unreadable, file.load())
+      assertNull(file.read())
+    }
+    file.file.setReadable(true)
+    file.file.writeText("not json")
+    assertEquals(JsonLoad.Corrupt, file.load())
+    assertNull(file.read())
+  }
+
+  @Test
+  fun moveAsideKeepsTheFileBesideIt() {
+    val file = JsonFile(File(dir, "downloads.json"), ListSerializer(String.serializer()))
+    file.file.writeText("damaged")
+    assertTrue(file.moveAside("downloads-unread-"))
+    assertEquals(JsonLoad.Missing, file.load())
+    val aside = dir.listFiles()!!.single { it.name.startsWith("downloads-unread-") && it.name.endsWith(".json") }
+    assertEquals("damaged", aside.readText())
+    assertFalse(file.moveAside("downloads-unread-"))
+  }
+
+  // An index that does not decode was read as no books, and the next save wrote over it.
+  @Test
+  fun aDownloadIndexThatDoesNotDecodeIsSetAsideNeverWrittenOver() {
+    val main = File(dir, "downloads.json").apply { writeText("not this build's format") }
+    val index = DownloadIndex(main) { "folder-1" }
+    assertEquals(emptyList<DownloadRecord>(), index.records.value)
+    index.enqueue(BookRef(1, "A/Book"), "Book", null, iso("2026-11-16T10:00:00Z"))
+    val aside = dir.listFiles()!!.single { it.name.startsWith("downloads-unread-") }
+    assertEquals("not this build's format", aside.readText())
+    assertEquals(listOf("A/Book"), DownloadIndex(main).records.value.map { it.ref.path })
+  }
 }
 
 /**

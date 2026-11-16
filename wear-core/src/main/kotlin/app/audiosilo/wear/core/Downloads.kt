@@ -176,7 +176,7 @@ object ContinueRows {
 class DownloadIndex(file: File?, private val newFolder: () -> String = { java.util.UUID.randomUUID().toString() }) {
   private val file = file?.let { JsonFile(it, ListSerializer(DownloadRecord.serializer())) }
   private val lock = Any()
-  private val flow = MutableStateFlow(this.file?.read() ?: emptyList())
+  private val flow = MutableStateFlow(this.file?.let(::restored) ?: emptyList())
 
   val records: StateFlow<List<DownloadRecord>> = flow.asStateFlow()
 
@@ -251,10 +251,31 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
       all
     }
 
+  /**
+   * The index kept. One that exists but can't be read or decoded is moved aside
+   * (`downloads-unread-*.json`, as the outbox does), never written over, and the watch starts with
+   * no books (fe#219).
+   */
+  private fun restored(file: JsonFile<List<DownloadRecord>>): List<DownloadRecord> =
+    when (val kept = file.load()) {
+      is JsonLoad.Value -> kept.value
+      JsonLoad.Missing -> emptyList()
+      JsonLoad.Unreadable,
+      JsonLoad.Corrupt -> {
+        file.moveAside(ASIDE_PREFIX)
+        emptyList()
+      }
+    }
+
   private fun commit(next: List<DownloadRecord>) {
     // Saved before the flow moves: the `stages` collector (AppModel's publish) reads `saved`, and it
     // can run inside the assignment below (on the main thread) or while a worker's write is still on.
     saved = file?.write(next.ifEmpty { null }) ?: true
     flow.value = next
+  }
+
+  private companion object {
+    /** An index that could not be read, kept beside it (wear's storage/Files.kt). */
+    const val ASIDE_PREFIX = "downloads-unread-"
   }
 }

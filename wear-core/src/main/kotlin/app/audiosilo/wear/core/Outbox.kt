@@ -20,7 +20,6 @@ package app.audiosilo.wear.core
 
 import java.io.File
 import java.time.Instant
-import java.util.UUID
 import kotlin.math.max
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.serialization.Serializable
@@ -106,9 +105,7 @@ class Outbox(
   private fun restoredEvents(main: JsonFile<List<ListeningEvent>>): List<ListeningEvent> {
     val directory = checkNotNull(main.file.parentFile)
     val current = main.read()
-    if (current == null && main.file.exists()) {
-      main.file.renameTo(File(directory, ASIDE_PREFIX + UUID.randomUUID() + ".json"))
-    }
+    if (current == null && main.file.exists()) main.moveAside(ASIDE_PREFIX)
     val have = (current ?: emptyList()).map { it.id }.toMutableSet()
     val older = ArrayList<ListeningEvent>()
     val joined = ArrayList<File>()
