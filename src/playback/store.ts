@@ -324,6 +324,14 @@ let lastPlayRequest: {
   chapterData?: ChaptersResponse;
 } | null = null;
 
+/** `lastPlayRequest` when it was a start of `np`'s book, else null. */
+function lastPlayRequestFor(np: NowPlaying): NonNullable<typeof lastPlayRequest> | null {
+  const r = lastPlayRequest;
+  return r && contentKey(r.connectionId, r.libraryId, r.book.rel_path) === contentKeyOf(np)
+    ? r
+    : null;
+}
+
 const MIN_HISTORY_MS = 20_000; // ignore listening spans shorter than this
 const STALL_GRACE_MS = 3_000; // a 'loading' that outlasts this is treated as a dead stream
 
@@ -2731,13 +2739,8 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     // A download of this book that landed while it failed, one the hot-swap could not take
     // (a dead stream refuses a gapless swap): the book starts again from the device, as a
     // fresh start picks its source, at the place the listener chose, else resumed (fe#278).
-    const request = lastPlayRequest;
-    if (
-      request &&
-      contentKey(request.connectionId, request.libraryId, request.book.rel_path) ===
-        contentKeyOf(np) &&
-      streamsDownloadedFile(np)
-    ) {
+    const request = lastPlayRequestFor(np);
+    if (request && streamsDownloadedFile(np)) {
       const at = placeChosen ? Math.max(resumeFloor, selectBookPosition(get())) : undefined;
       await get()
         .playBook(np.connectionId, np.libraryId, request.book, request.chapterData, at)
@@ -3069,8 +3072,7 @@ async function switchCurrentBookToLocal() {
     : [];
   if (
     started?.chapterData &&
-    contentKey(started.connectionId, started.libraryId, started.book.rel_path) ===
-      contentKeyOf(nowPlaying) &&
+    lastPlayRequestFor(nowPlaying) === started &&
     sameIds(specIds(takenOrder, nowPlaying.libraryId), idsOf(nowPlaying.queue))
   ) {
     adoptStartedChapters(nowPlaying, started.chapterData);
@@ -3743,8 +3745,12 @@ export const selectBookPosition = (s: PlayerState): number =>
 export const selectCurrentChapter = (s: PlayerState): Chapter | null => {
   const np = s.nowPlaying;
   if (!np) return null;
-  const file = fileOf(np, s.snapshot.trackIndex);
-  return chapterAt(np.queue.chapters, selectBookPosition(s), (filePath) => filePath === file);
+  // The playing file is read only for tied chapters: this runs on every position tick.
+  return chapterAt(
+    np.queue.chapters,
+    selectBookPosition(s),
+    (filePath) => filePath === fileOf(np, s.snapshot.trackIndex),
+  );
 };
 
 /** Memo for `selectBookKey`, keyed on the `nowPlaying` OBJECT. */
