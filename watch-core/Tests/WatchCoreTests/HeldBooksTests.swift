@@ -361,6 +361,16 @@ final class HeldBooksTests: XCTestCase {
     XCTAssertEqual(HeldBooks(url: url).books, [], "gone on disk too")
   }
 
+  // With no file at all (none is kept while nothing is held) a `remove` that came before the first
+  // unlock is left over too: its turn came while no account was read.
+  func testARemoveBeforeTheFirstUnlockIsLeftOverWithNoFileToRead() throws {
+    let held = HeldBooks(url: try tempURL())
+    let ticket = held.noteRemove(removeA(), now: t0)
+    XCTAssertEqual(held.takeLeftoverRemoves(), [], "not a kill's: it has its own turn")
+    held.reload()
+    XCTAssertEqual(held.takeLeftoverRemoves().map(\.id), [ticket.id])
+  }
+
   // MARK: - remove
 
   private func removeA(_ path: String = "A/One") -> RemoveMessage {

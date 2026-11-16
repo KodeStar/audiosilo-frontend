@@ -2670,7 +2670,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   asks for it only to send; an id there but unreadable is never written over). Once the keychain
   reads (`AppModel.catchUp`: `becameActive`, a phone message, a sign-in, the refresh task, a
   background upload's answer) the account, server, acks, places, Continue listening, held books
-  (what came meanwhile joins, every `remove` left over, about the row the file kept), the outbox
+  (what came meanwhile joins, every `remove` left over, with or without a file to read again, about
+  the row the file kept), the outbox
   (the copy a locked launch set aside joins in the same launch) and the download index are read
   again, the span recovered, then the books released and the state published. A background
   download event reads the index itself first (`DownloadManager.handle`); before the first unlock

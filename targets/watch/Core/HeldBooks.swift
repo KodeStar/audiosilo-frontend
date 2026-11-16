@@ -104,6 +104,9 @@ final class HeldBooks {
     } else if unsaved {
       save()
     }
+    // Also with no file to read again: a `remove` that came before the first unlock had its turn
+    // while no account was read, and is in no file a launch read.
+    if !unread { leftover = Set(removes.map(\.id)) }
   }
 
   private func read() {
