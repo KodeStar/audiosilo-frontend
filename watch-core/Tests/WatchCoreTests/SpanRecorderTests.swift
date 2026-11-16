@@ -331,6 +331,31 @@ final class SpanRecorderTests: XCTestCase {
     XCTAssertEqual(next.span?.start, .jump)
   }
 
+  // Playing with no span open: the Stay waits for the one that opens, a cut with none open
+  // (a rate change, the background) leaving it waiting.
+  func testAStayWithNoSpanOpenWaitsForTheOneThatOpens() {
+    let r = recorder()
+    r.standBy(book, at: at(9), playing: true, speed: 1, stay: true)
+    r.cut(book, at: at(9), playing: true, speed: 1)
+    XCTAssertTrue(listens.isEmpty)
+    XCTAssertEqual(r.nextStart, .stay)
+    r.tick(book, at: at(9), playing: true, reachable: true, speed: 1)
+    XCTAssertEqual(r.span?.start, .stay)
+  }
+
+  // Only while that play goes on: one that ends first leaves the next a jump (a `stay` at a
+  // play that may come much later would beat what another device chose since).
+  func testAStayStillWaitingWhenThePlayEndsGivesTheNextPlayAJump() {
+    let r = recorder()
+    r.standBy(book, at: at(9), playing: true, speed: 1, stay: true)
+    r.close(at: at(9))
+    XCTAssertTrue(listens.isEmpty)
+    XCTAssertEqual(r.nextStart, .jump)
+    clock.advance(3600)
+    r.open(book, at: at(9), speed: 1)
+    XCTAssertEqual(r.span?.start, .jump)
+  }
+
   func testARateChangeCutsTheSpanAndTheNextRunsAtTheNewSpeed() {
     let r = recorder()
     r.open(book, at: at(5), speed: 1)

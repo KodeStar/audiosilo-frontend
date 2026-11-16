@@ -858,6 +858,42 @@ describe('with listening_sync', () => {
       await settle();
       expect(mockClosed.map((s) => s.start)).toEqual(['resume', 'stay', 'jump']);
     });
+
+    // Playing with no span open (the load held the place): the Stay waits for the one the
+    // keep opens, but only while this play goes on.
+    const playingWithNoneOpen = async () => {
+      (mockSvc.load as jest.Mock).mockImplementationOnce(async () => {
+        pushSnapshot(snap('playing', 0, 5)); // Android keeps playWhenReady through a load
+      });
+      await start();
+      pushSnapshot(snap('playing', 0, 8));
+    };
+
+    it('playing with none open, the span that opens is the stay', async () => {
+      await playingWithNoneOpen();
+      standByPlace();
+      await usePlayer.getState().setRate(1.5); // a cut with none open leaves it waiting
+      jest.advanceTimersByTime(5_000);
+      await settle();
+      pushSnapshot(snap('paused', 0, 25));
+      await settle();
+      expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['stay', 8, 25]]);
+      expect(mockAppended).toEqual([]);
+    });
+
+    it('a play that ends before that span opened leaves the next play a jump', async () => {
+      await playingWithNoneOpen();
+      standByPlace();
+      pushSnapshot(snap('paused', 0, 9));
+      await settle();
+      // Much later: a `stay` now would beat what another device chose since.
+      jest.advanceTimersByTime(60 * 60_000);
+      pushSnapshot(snap('playing', 0, 9));
+      jest.advanceTimersByTime(2_000);
+      pushSnapshot(snap('paused', 0, 11));
+      await settle();
+      expect(mockClosed.map((s) => s.start)).toEqual(['jump']);
+    });
   });
 
   it('without listening_stay a paused Stay is sent at once as a jump', async () => {

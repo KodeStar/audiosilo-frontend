@@ -291,7 +291,13 @@ class SpanRecorder(
    * one write (still after the event is kept), rather than a removal and a write.
    */
   private fun close(at: SpanEnd?, stoppedAt: Instant?, clearStore: Boolean): OpenSpan? {
-    var closing = span ?: return null
+    var closing = span
+    if (closing == null) {
+      // A Stay still waiting for its span (`standBy`, playing with none open) does not outlive the
+      // play: one that ends first leaves the next a `jump` (`carried`).
+      nextStart = Spans.carried(nextStart)
+      return null
+    }
     span = null
     if (at != null) closing = closing.copy(to = at)
     val now = clock()
@@ -313,6 +319,8 @@ class SpanRecorder(
     speed: Double,
     start: ListeningStart = ListeningStart.CONTINUE,
   ) {
+    // None open: nothing to cut, and a Stay waiting for its span goes on waiting (`close`).
+    if (span == null) return
     val closed = close(at, null, clearStore = !playing) ?: return
     if (!playing) return
     // A bare move's reason is already there (`close`); a reason asked for (Stay) still wins.
@@ -439,7 +447,7 @@ class SpanRecorder(
   fun standBy(book: PlayingBook, at: SpanEnd?, playing: Boolean, speed: Double, stay: Boolean) {
     val start = if (stay) ListeningStart.STAY else ListeningStart.JUMP
     if (playing) {
-      // With none open yet, the one that opens takes it.
+      // With none open yet, the one that opens takes it, while this play goes on (`close`).
       if (span != null) cut(book, at, true, speed, start) else nextStart = start
       return
     }

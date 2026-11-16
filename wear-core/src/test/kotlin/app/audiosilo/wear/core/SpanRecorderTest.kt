@@ -351,6 +351,33 @@ class SpanRecorderTest {
     assertEquals(ListeningStart.JUMP, next.span?.start)
   }
 
+  // Playing with no span open (a call or an alert holds the audio): the Stay waits for the one
+  // that opens, a cut with none open (a rate change, the background) leaving it waiting.
+  @Test
+  fun aStayWithNoSpanOpenWaitsForTheOneThatOpens() {
+    val r = recorder()
+    r.standBy(book, at(9.0), playing = true, speed = 1.0, stay = true)
+    r.cut(book, at(9.0), playing = true, speed = 1.0)
+    assertTrue(listens.isEmpty())
+    assertEquals(ListeningStart.STAY, r.nextStart)
+    r.tick(book, at(9.0), playing = true, reachable = true, speed = 1.0)
+    assertEquals(ListeningStart.STAY, r.span?.start)
+  }
+
+  // Only while that play goes on: one that ends first leaves the next a jump (a `stay` at a play
+  // that may come much later would beat what another device chose since).
+  @Test
+  fun aStayStillWaitingWhenThePlayEndsGivesTheNextPlayAJump() {
+    val r = recorder()
+    r.standBy(book, at(9.0), playing = true, speed = 1.0, stay = true)
+    r.close(at(9.0))
+    assertTrue(listens.isEmpty())
+    assertEquals(ListeningStart.JUMP, r.nextStart)
+    clock.advance(3600.0)
+    r.open(book, at(9.0), 1.0)
+    assertEquals(ListeningStart.JUMP, r.span?.start)
+  }
+
   @Test
   fun aRateChangeCutsTheSpanAndTheNextRunsAtTheNewSpeed() {
     val r = recorder()

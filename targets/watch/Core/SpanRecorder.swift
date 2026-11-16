@@ -249,7 +249,12 @@ final class SpanRecorder {
   /// player while the app was suspended); never after now, never before the span's start.
   @discardableResult
   func close(at: SpanEnd?, stoppedAt: Date? = nil) -> OpenSpan? {
-    guard var closing = span else { return nil }
+    guard var closing = span else {
+      // A Stay still waiting for its span (`standBy`, playing with none open) does not outlive
+      // the play: one that ends first leaves the next a `jump` (`carried`).
+      nextStart = Spans.carried(nextStart)
+      return nil
+    }
     span = nil
     if let at { closing.to = at }
     let now = clock()
@@ -263,7 +268,8 @@ final class SpanRecorder {
 
   /// Cut the span (close it, a span opening where it ended for `start`) while playing.
   func cut(_ book: PlayingBook, at: SpanEnd?, playing: Bool, speed: Double, start: ListeningStart = .continue) {
-    guard let closed = close(at: at), playing else { return }
+    // None open: nothing to cut, and a Stay waiting for its span goes on waiting (`close`).
+    guard span != nil, let closed = close(at: at), playing else { return }
     // A bare move's reason is already there (`close`); a reason asked for (Stay) still wins.
     if start != .continue || !Spans.isBareMove(closed) { nextStart = start }
     open(book, at: closed.to, speed: speed)
@@ -340,7 +346,7 @@ final class SpanRecorder {
   func standBy(_ book: PlayingBook, at: SpanEnd?, playing: Bool, speed: Double, stay: Bool) {
     let start: ListeningStart = stay ? .stay : .jump
     if playing {
-      // With none open yet, the one that opens takes it.
+      // With none open yet, the one that opens takes it, while this play goes on (`close`).
       if span != nil { cut(book, at: at, playing: true, speed: speed, start: start) } else { nextStart = start }
       return
     }

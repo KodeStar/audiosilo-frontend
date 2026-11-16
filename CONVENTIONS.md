@@ -2043,7 +2043,11 @@ media GETs only.
     not a second `stay` (`carriedStart`, the watches' `Spans.carried`), as does a paused Stay
     with no place to send: that play may come hours later, and the server measures a Stay's
     slack from its span's end (`staysWin`), so a `stay` then would beat what another device
-    chose since the first (Jump on its offer, then listening on). The outbox sends a queued `stay` as a `jump` when the flag is gone by then
+    chose since the first (Jump on its offer, then listening on). For the same reason a Stay
+    made while the book plays with no span open (the load held the place) waits for the span
+    that opens (`openMissingSpan`) only while that play goes on: a close with none open
+    (`takeSpan`: the pause, the end) leaves the next play a `jump`, and a cut with none open
+    leaves it waiting. The outbox sends a queued `stay` as a `jump` when the flag is gone by then
     (`eventsForServer`, every send path: the batch, one by one, the page's keepalive); the
     stored event keeps its `stay` and id. The open span is stored every 5 s online or offline (`OPEN_SPAN_KEEP_MS`),
     so a kill loses at most that, and takes its event id when it opens (`OpenSpan.id`): closed
@@ -2693,9 +2697,12 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   Stay is the phone's too (row 9c-2): `SpanRecorder.standBy(..., stay:)` with `stay` = the
   cached `/server`'s `listening_stay` (`AppModel.takesStay`), a paused Stay sent at once as a
   bare `stay` (or `jump`) span, a bare `stay` carried (a close, a kill's recovery) as a `jump`
-  (`Spans.carried`), and the outbox's `asServerTakes` sending a queued `stay` as a
+  (`Spans.carried`), a Stay made while playing with no span open (Wear OS: a call or an alert
+  holds the audio) waiting for the span that opens only while that play goes on (`close` with
+  none open leaves the next play a `jump`; `cut` with none open leaves it waiting), and the
+  outbox's `asServerTakes` sending a queued `stay` as a
   `jump` while the flag is off (`Outbox.takesStay`, read as each body is built, the background
-  upload's too). Wear OS ports all three (`SpanRecorder.kt`, `Outbox.kt`, `PlayerEngine.stay`).
+  upload's too). Wear OS ports them all (`SpanRecorder.kt`, `Outbox.kt`, `PlayerEngine.stay`).
   Only the watches store the span at open, so only they recover a move a kill cut short (within
   the 5 s keep): the launch's first span, when it is that book's and a resume from this watch's
   own place, takes its reason (`recoveredMove`; not when `Resume.plan` took the server's row,

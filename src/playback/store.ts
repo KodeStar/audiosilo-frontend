@@ -994,7 +994,12 @@ const closesInFlight = new Map<string, PendingClose>();
 function takeSpan(at?: SpanEnd, endedAt?: number): OpenSpan | null {
   const closing = span;
   span = null;
-  if (!closing) return null;
+  if (!closing) {
+    // A Stay still waiting for its span (`standByPlace`, playing with none open) does not
+    // outlive the play: one that ends first leaves the next a `jump` (`carriedStart`).
+    nextStart = carriedStart(nextStart);
+    return null;
+  }
   const np = usePlayer.getState().nowPlaying;
   const loaded = np !== null && sameBook(closing, np);
   closing.to = at ?? (loaded ? engineEnd() : null) ?? closing.to;
@@ -1024,6 +1029,8 @@ function carriedStart(start: ListeningStart): ListeningStart {
 
 /** Cut the span (close it, a span opening where it ended, for `start`) while playing. */
 function cutListeningSpan(start: ListeningStart = 'continue') {
+  // None open: nothing to cut, and a Stay waiting for its span goes on waiting (`takeSpan`).
+  if (!span) return;
   const closed = closeListeningSpan();
   if (!closed || !isPlayingState(usePlayer.getState().snapshot.state)) return;
   // A bare move's reason is already there (`takeSpan`); a reason asked for (Stay) still wins.
@@ -1283,7 +1290,8 @@ export function standByPlace(): void {
   const np = usePlayer.getState().nowPlaying;
   const start: ListeningStart = np && usesListeningStay(np.connectionId) ? 'stay' : 'jump';
   if (isPlayingState(usePlayer.getState().snapshot.state)) {
-    // With none open yet, the one that opens takes it (`openMissingSpan`).
+    // With none open yet, the one that opens takes it (`openMissingSpan`), while this play
+    // goes on (`takeSpan`).
     if (span) cutListeningSpan(start);
     else nextStart = start;
     return;
