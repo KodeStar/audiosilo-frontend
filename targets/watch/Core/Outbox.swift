@@ -106,8 +106,12 @@ final class Outbox {
   private static func restoredEvents(in directory: URL) -> [ListeningEvent] {
     let fm = FileManager.default
     let main = JSONFile<[ListeningEvent]>(url: directory.appendingPathComponent("outbox.json"))
-    let current = main.read()
-    if current == nil, fm.fileExists(atPath: main.url.path) { main.moveAside(prefix: ASIDE_PREFIX) }
+    var current: [ListeningEvent]?
+    switch main.load() {
+    case .value(let v): current = v
+    case .missing: break
+    case .unreadable, .corrupt: main.moveAside(prefix: ASIDE_PREFIX)
+    }
     var have = Set((current ?? []).map(\.id))
     var older: [ListeningEvent] = []
     var joined: [URL] = []

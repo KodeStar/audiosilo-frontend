@@ -104,8 +104,16 @@ class Outbox(
    */
   private fun restoredEvents(main: JsonFile<List<ListeningEvent>>): List<ListeningEvent> {
     val directory = checkNotNull(main.file.parentFile)
-    val current = main.read()
-    if (current == null && main.file.exists()) main.moveAside(ASIDE_PREFIX)
+    val current =
+      when (val kept = main.load()) {
+        is JsonLoad.Value -> kept.value
+        JsonLoad.Missing -> null
+        JsonLoad.Unreadable,
+        JsonLoad.Corrupt -> {
+          main.moveAside(ASIDE_PREFIX)
+          null
+        }
+      }
     val have = (current ?: emptyList()).map { it.id }.toMutableSet()
     val older = ArrayList<ListeningEvent>()
     val joined = ArrayList<File>()

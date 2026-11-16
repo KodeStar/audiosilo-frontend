@@ -18,16 +18,16 @@ final class AckStore {
   static let MAX_ANSWERED = 20
 
   private let file: JSONFile<[String: BookAck]>?
-  private var books: [String: BookAck]
+  private var books: [String: BookAck] = [:]
 
   /// `url` nil keeps it in memory only (tests).
   init(url: URL?) {
     file = url.map { JSONFile(url: $0) }
-    books = file?.read() ?? [:]
+    reload()
   }
 
-  /// Read the file again: a launch before the watch's first unlock read none, and nothing has
-  /// changed it since (no book plays until then).
+  /// Read the file: at launch, and again after a launch before the watch's first unlock read none
+  /// (nothing has changed it since: no book plays until then).
   func reload() {
     if let kept = file?.read() { books = kept }
   }

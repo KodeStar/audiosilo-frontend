@@ -26,7 +26,7 @@ struct ContinueRow: Codable, Equatable, Identifiable {
 final class ContinueListening: ObservableObject {
   static let LIMIT = 10
 
-  @Published private(set) var rows: [ContinueRow]
+  @Published private(set) var rows: [ContinueRow] = []
   @Published private(set) var loading = false
   /// Why the last refresh failed ("" when it did not).
   @Published private(set) var problem = ""
@@ -36,10 +36,10 @@ final class ContinueListening: ObservableObject {
   /// since signed out or replaced, or just an older read) is dropped.
   private var generation = 0
 
-  init() { rows = file.read() ?? [] }
+  init() { reload() }
 
-  /// Read the file again: a launch before the watch's first unlock read none (nothing refreshes
-  /// before then: no account is read).
+  /// Read the file: at launch, and again after a launch before the watch's first unlock read none
+  /// (nothing refreshes before then: no account is read).
   func reload() {
     if let kept = file.read() { rows = kept }
   }

@@ -94,8 +94,9 @@ final class HeldBooks {
   /// handled yet is left over, finished once an account is there (`takeLeftoverRemoves`).
   func reload() {
     guard unread else { return }
+    let arrived = !books.isEmpty || !removes.isEmpty
     read()
-    save()
+    if arrived { save() }
   }
 
   private func read() {
