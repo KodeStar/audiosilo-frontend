@@ -1138,9 +1138,9 @@ function moveListeningSpan(target: SpanEnd | null, opts: { from?: SpanEnd | null
   sendStill(np, target, reason);
 }
 
-/** A move made while paused (`start`, to `at`): sent at once as a span of its own that moved
- * nowhere (the place syncs as a PUT did), and the next play begins with the same reason (a
- * Stay's as a `jump`: `carriedStart`). */
+/** A move made while paused, or a Stay (`start`, to `at`): sent at once as a span of its own
+ * that moved nowhere (the place syncs as a PUT did), and the next span begins with the same
+ * reason (a Stay's as a `jump`: `carriedStart`). */
 function sendStill(np: NowPlaying, at: SpanEnd, start: ListeningStart) {
   const now = new Date().toISOString();
   void baseVersionOf(np).then((base) =>
@@ -1278,29 +1278,37 @@ setFinishRecorder({
 
 /**
  * After the listener answered an offer of another device's place with Stay: this device's
- * place stands, so its next span begins as a `stay` on a `listening_stay` server
+ * place stands, sent at once as a span that moved nowhere (a paused move's, `sendStill`, on
+ * the version the answer acknowledged): a `stay` on a `listening_stay` server
  * (`usesListeningStay`), which the server applies over the other device's writes since the
- * offer, else as a `jump`, which it applies over the other place under its usual rule.
- * Playing, the span is cut so that begins now; paused, the Stay is sent at once as a span
- * that moved nowhere (a paused move's), and the next play begins as a `jump`
- * (`carriedStart`), as it does when there is no place to send now: a `stay` sent at a play
- * that may come much later would beat what another device chose since.
+ * offer, else a `jump`, which it applies over the other place under its usual rule. Sent at
+ * once while playing too: a Stay that waited for the next cut would let the other device's
+ * sync answers offer this device's place from before it meanwhile. Playing, the span ends
+ * here and the next one begins here as a `jump` (`carriedStart`), so nothing is heard twice;
+ * paused, the next play begins as a `jump`: a `stay` sent at a play that may come much later
+ * would beat what another device chose since. With no place to send now (a load holds it),
+ * the next span is the Stay: the one cut now while playing, else the one that opens
+ * (`openMissingSpan`) while this play goes on (`takeSpan`); paused, the next play is a `jump`.
  */
 export function standByPlace(): void {
   const np = usePlayer.getState().nowPlaying;
   const start: ListeningStart = np && usesListeningStay(np.connectionId) ? 'stay' : 'jump';
-  if (isPlayingState(usePlayer.getState().snapshot.state)) {
-    // With none open yet, the one that opens takes it (`openMissingSpan`), while this play
-    // goes on (`takeSpan`).
+  const playing = isPlayingState(usePlayer.getState().snapshot.state);
+  const here = np && usesListeningSync(np.connectionId) ? engineEnd() : null;
+  if (np && here) {
+    // The open span (a playing one, or one a stall left open) ends where the Stay is.
+    const closed = closeListeningSpan({ at: here });
+    sendStill(np, here, start);
+    if (playing && closed) openListeningSpan(here);
+    return;
+  }
+  if (playing) {
     if (span) cutListeningSpan(start);
     else nextStart = start;
     return;
   }
-  const here = np && usesListeningSync(np.connectionId) ? engineEnd() : null;
-  // One still open while not playing (a stall) ends where the Stay is, as a paused move's does.
-  closeListeningSpan(here ? { at: here } : {});
-  if (np && here) sendStill(np, here, start);
-  else nextStart = carriedStart(start);
+  closeListeningSpan();
+  nextStart = carriedStart(start);
 }
 
 /** Cut the playing span now (the server came back, the app went to the background); a

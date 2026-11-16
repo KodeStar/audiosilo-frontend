@@ -1243,8 +1243,13 @@ async function sendOneByOne(
   return 'more';
 }
 
-/** Told of every sync answer's progress rows (the place reconcile's offer check). */
-type AnswerListener = (connectionId: string, rows: Progress[]) => void;
+/** Told of every sync answer's progress rows (the place reconcile's offer check), and of
+ * this device's Stays the answer held (`staysHeld`). */
+type AnswerListener = (
+  connectionId: string,
+  rows: Progress[],
+  staysHeld: readonly ListeningEvent[],
+) => void;
 const answerListeners = new Set<AnswerListener>();
 
 /** Be told of each sync answer's rows; returns the unsubscribe. */
@@ -1268,6 +1273,22 @@ export function keptMine(
     if (e.library_id !== row.library_id || e.path !== row.path) return false;
     const r = results.get(e.id);
     return r?.status === 'applied' || (r?.status === 'diverged' && r.kept === 'event');
+  });
+}
+
+/**
+ * This device's Stays the answer held (pure): a `stay` the server kept the stored row over
+ * (`diverged`, `kept: stored`), another device's Stay holding it (CROSS-REPO section 25 "Stay
+ * wins", S2). Their books' kept place is offered again at once (`offerLoadedPlace`).
+ */
+export function staysHeld(
+  sent: ListeningEvent[],
+  results: Map<string, ListeningSyncResult>,
+): ListeningEvent[] {
+  return sent.filter((e) => {
+    if (e.kind !== 'listen' || e.start !== 'stay') return false;
+    const r = results.get(e.id);
+    return r?.status === 'diverged' && r.kept === 'stored';
   });
 }
 
@@ -1327,7 +1348,8 @@ async function applyAnswer(
   if (events.some((e) => e.kind === 'listen')) {
     void queryClient.invalidateQueries({ queryKey: qk.historyAll(connectionId) });
   }
-  for (const listener of answerListeners) listener(connectionId, rows);
+  const held = staysHeld(events, results);
+  for (const listener of answerListeners) listener(connectionId, rows, held);
 }
 
 // --- The rollback ----------------------------------------------------------------------

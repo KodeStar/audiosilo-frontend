@@ -1,7 +1,7 @@
 import type { AppStateStatus } from 'react-native';
 
 import { beginNetworkCheck, endNetworkCheck } from '@/api/address-route';
-import type { Book, Progress } from '@/api/types';
+import type { Book, ListeningSyncResponse, Progress } from '@/api/types';
 
 import type { ProgressSave, ResumeLookup } from './progress-sync';
 import type { PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
@@ -58,6 +58,8 @@ jest.mock('./progress-sync', () => ({
     await mockMarkAnswered(cid, lib, path, key, row);
   },
   ignoreOffer: (...a: unknown[]) => mockIgnoreOffer(...a),
+  // A sync answer's rows go to the query cache as they are.
+  bookPlace: async () => null,
   cachedDeviceId: () => 'this-device',
   writeMirror: jest.fn(async () => {}),
   guardSettled: () => false,
@@ -101,11 +103,13 @@ const mockClient = {
   addHistory: jest.fn(async () => {}),
   // Every event applied: an outbox that empties ends its flush (one answering none goes
   // round again and again, into the next tests).
-  syncListening: jest.fn(async (body: { events: { id: string }[] }) => ({
-    server_time: '',
-    results: body.events.map((e) => ({ id: e.id, status: 'applied' })),
-    progress: [],
-  })),
+  syncListening: jest.fn(
+    async (body: { events: { id: string }[] }): Promise<ListeningSyncResponse> => ({
+      server_time: '',
+      results: body.events.map((e) => ({ id: e.id, status: 'applied' })),
+      progress: [],
+    }),
+  ),
   getProgress: jest.fn((_lib: number, _path: string, signal?: AbortSignal) =>
     signal
       ? new Promise<Progress | null>((resolve, reject) => {
@@ -726,6 +730,75 @@ describe('on a server with listening_sync', () => {
     mockServer = playingOn('2026-10-08T12:00:15Z', 900);
     await backInFront();
     expect(mockToast).toHaveBeenCalledTimes(2);
+  });
+
+  // Stay wins (row 9c-2): this device's Stay came back held (`diverged`, `kept: stored`: the
+  // other device's own Stay holds the row), so the place kept is offered at once, not
+  // OFFER_REPEAT_MS after that device's first offer; a span held otherwise waits for it.
+  describe('a Stay the server held', () => {
+    const stayServer = (stay: boolean) =>
+      (queryClient.getQueryData as jest.Mock).mockImplementation((key: readonly unknown[]) =>
+        key[0] === 'server'
+          ? { capabilities: { listening_sync: true, listening_stay: stay } }
+          : undefined,
+      );
+    // Every batch held: the paused play's span may go in one of its own first.
+    const applied = mockClient.syncListening.getMockImplementation();
+    afterEach(() => mockClient.syncListening.mockImplementation(applied));
+    const heldAnswer = (device: string) =>
+      mockClient.syncListening.mockImplementation(async (body: { events: { id: string }[] }) => ({
+        server_time: '',
+        results: body.events.map((e) => ({ id: e.id, status: 'diverged', kept: 'stored' })),
+        progress: [
+          record({
+            device_id: device,
+            device_name: 'Phone B',
+            position: 720,
+            version: 9,
+            updated_at: '2026-10-08T11:59:50Z',
+          }),
+        ],
+      }));
+    const stayOnOffer = async (device: string) => {
+      await loadedAndPaused();
+      mockServer = async () =>
+        record({
+          device_id: 'this-device',
+          position: 105,
+          version: 8,
+          other_place: {
+            position: 700,
+            device_id: device,
+            device_name: 'Phone B',
+            updated_at: '2026-10-08T11:45:00Z',
+          },
+        });
+      await backInFront();
+      expect(mockToast).toHaveBeenCalledTimes(1);
+      // The Stay acknowledged the row it answered.
+      mockMirror = { ...mockMirror!, ack_version: 8 };
+      heldAnswer(device);
+      lastToast().onClose();
+      for (let i = 0; i < 10; i++) await settle();
+      const sent = mockClient.syncListening.mock.calls.flatMap(
+        (c) => (c[0] as { events: { start?: string }[] }).events,
+      );
+      return sent.map((e) => e.start);
+    };
+
+    it('offers the place the other Stay kept at once', async () => {
+      stayServer(true);
+      // With the paused play's span still waiting before it.
+      expect(await stayOnOffer('phone-b')).toEqual(['resume', 'stay']);
+      expect(mockToast).toHaveBeenCalledTimes(2);
+      expect(lastToast().title).toBe('On Phone B you were at 12:00. Jump there?');
+    });
+
+    it('a jump held the same way waits OFFER_REPEAT_MS for its offer', async () => {
+      stayServer(false);
+      expect(await stayOnOffer('phone-c')).toEqual(['resume', 'jump']);
+      expect(mockToast).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("another device's newer row still moves the book with Undo (placeToMoveTo unchanged)", async () => {

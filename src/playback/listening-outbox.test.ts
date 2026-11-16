@@ -71,6 +71,7 @@ import {
   spanIsBareMove,
   spanSaysSomething,
   spanToEvent,
+  staysHeld,
   storedOpenSpan,
   storeOpenSpan,
   onOutboxChange,
@@ -1359,6 +1360,26 @@ describe('keptMine (the ack rule)', () => {
     expect(keptMine(row, 'me', events, results({ status: 'not_applied' }))).toBe(false);
     expect(keptMine({ ...row, device_id: 'other' }, 'me', events, results({}))).toBe(false);
     expect(keptMine({ ...row, path: 'Else' }, 'me', events, results({}))).toBe(false);
+  });
+});
+
+// Stay wins (row 9c-2): a `stay` the server kept the stored row over (another device's Stay
+// holds it) is named, so the player offers the kept place at once.
+describe('staysHeld', () => {
+  it('names only a stay the server answered diverged, kept: stored', () => {
+    const sent = [
+      listen('a', { start: 'stay' }),
+      listen('b', { start: 'jump' }),
+      listen('c', { start: 'stay' }),
+      listen('d', { start: 'stay' }),
+    ];
+    const results = new Map<string, ListeningSyncResult>([
+      ['a', { id: 'a', status: 'diverged', kept: 'stored' }],
+      ['b', { id: 'b', status: 'diverged', kept: 'stored' }],
+      ['c', { id: 'c', status: 'diverged', kept: 'event' }],
+      ['d', { id: 'd', status: 'applied' }],
+    ]);
+    expect(staysHeld(sent, results).map((e) => e.id)).toEqual(['a']);
   });
 });
 

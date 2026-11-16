@@ -2037,15 +2037,18 @@ media GETs only.
     CROSS-REPO section 25 "Stay wins") makes the next span a `stay` when the connection's
     `/server` said `listening_stay` (`usesListeningStay`; unknown is no, unlike
     `usesListeningSync`: a server without it refuses the start as `invalid`), else a `jump`:
-    playing, the span is cut so it begins now; paused, it is sent at once as a span that moved
-    nowhere (a paused move's, `sendStill`, on the version the answer acknowledged). A bare
+    sent at once, playing or paused, as a span that moved nowhere (a paused move's,
+    `sendStill`, on the version the answer acknowledged), so the other device's sync answers
+    stop offering this device's place from before it; playing, the span ends there and the
+    next begins there as a `jump`. A bare
     `stay` (`spanSaysSomething` counts it as a deliberate move) gives the next play a `jump`,
     not a second `stay` (`carriedStart`, the watches' `Spans.carried`), as does a paused Stay
     with no place to send: that play may come hours later, and the server measures a Stay's
     slack from its span's end (`staysWin`), so a `stay` then would beat what another device
     chose since the first (Jump on its offer, then listening on). For the same reason a Stay
-    made while the book plays with no span open (the load held the place) waits for the span
-    that opens (`openMissingSpan`) only while that play goes on: a close with none open
+    made while the book plays with no place to send (a load holds it) goes in the span cut
+    then, else, with none open, waits for the span that opens (`openMissingSpan`) only while
+    that play goes on: a close with none open
     (`takeSpan`: the pause, the end) leaves the next play a `jump`, and a cut with none open
     leaves it waiting. The outbox sends a queued `stay` as a `jump` when the flag is gone by then
     (`eventsForServer`, every send path: the batch, one by one, the page's keepalive); the
@@ -2151,7 +2154,10 @@ media GETs only.
     answer, `onSyncAnswer`) and the book page's line (`listening-offer.tsx`). Throttles: a key is
     shown once a launch (`shownOffers`), a device's places at most once in 10 minutes per book
     (`OFFER_REPEAT_MS`: a device that plays on sends a new key every span), and an answered key
-    never again.
+    never again. One exception to the 10 minutes: this device's `stay` coming back `diverged`
+    `kept: stored` (`staysHeld`: another device's Stay holds the row) offers the kept place at
+    once (`offerLoadedPlace`'s `stayHeld`; still once a launch per key). The watches do the same
+    (`OfferThrottle.shouldShow(..., stayHeld:)`, `AckRules.staysHeld`).
   - *Resume.* `resumeLookupOf` takes a file place only when it is not older than the record it
     is for (5 s slack, plus how far the connection's server clock is known to be ahead,
     `holdsFilePlace`; the mirror merge reads the stored skew before a launch's first merge,
@@ -2695,11 +2701,13 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   5 s; a kill's open span is recovered at launch. A bare move and a move to nowhere go as on the
   phone (`Spans.isBareMove`, `Spans.movesNowhere`; the phone's `spanIsBareMove`, `movesNowhere`).
   Stay is the phone's too (row 9c-2): `SpanRecorder.standBy(..., stay:)` with `stay` = the
-  cached `/server`'s `listening_stay` (`AppModel.takesStay`), a paused Stay sent at once as a
-  bare `stay` (or `jump`) span, a bare `stay` carried (a close, a kill's recovery) as a `jump`
-  (`Spans.carried`), a Stay made while playing with no span open (Wear OS: a call or an alert
-  holds the audio) waiting for the span that opens only while that play goes on (`close` with
-  none open leaves the next play a `jump`; `cut` with none open leaves it waiting), and the
+  cached `/server`'s `listening_stay` (`AppModel.takesStay`), a Stay sent at once, playing or
+  paused, as a bare `stay` (or `jump`) span (playing, the next span begins there as a `jump`),
+  a bare `stay` carried (a close, a kill's recovery) as a `jump` (`Spans.carried`), a Stay made
+  while playing with no place to send waiting for the span cut then or, with none open, the one
+  that opens only while that play goes on (`close` with none open leaves the next play a `jump`;
+  `cut` with none open leaves it waiting), the place a held Stay's answer kept offered at once
+  (`AckRules.staysHeld`, `OfferThrottle.shouldShow(..., stayHeld:)`), and the
   outbox's `asServerTakes` sending a queued `stay` as a
   `jump` while the flag is off (`Outbox.takesStay`, read as each body is built, the background
   upload's too). Wear OS ports them all (`SpanRecorder.kt`, `Outbox.kt`, `PlayerEngine.stay`).
