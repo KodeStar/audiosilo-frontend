@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
 import type { Book, BookMeta } from '@/api/types';
@@ -33,6 +33,7 @@ jest.mock('@/stores/session', () => ({
   useSession: (sel: (s: unknown) => unknown) =>
     sel({ connections: [{ id: 'home', name: 'Home Library' }] }),
   useConnectionName: (id: string) => (id === 'home' ? 'Home Library' : ''),
+  onConnectionRemoved: () => undefined,
 }));
 
 let mockCaps: Record<string, boolean | undefined> = {};
@@ -99,6 +100,7 @@ jest.mock('./use-series-data', () => ({
 
 /* eslint-disable import/first */
 import { useSeriesOrderings } from '@/stores/series-orderings';
+import { mountWithPortal } from '@/testing/render-overlay';
 
 import { SeriesPage } from './series-page';
 /* eslint-enable import/first */
@@ -390,5 +392,62 @@ describe('SeriesPage, community rail', () => {
     expect(useSeriesOrderings.getState().picks['the-expanse']).toBe('expanse-chrono');
     expect(screen.getByText('The order the story happens in.')).toBeTruthy();
     expect(screen.getByText('In story order')).toBeTruthy();
+  });
+
+  // server#241: a work held in two recordings is one spine, with a picker of both.
+  describe('a work in two recordings', () => {
+    const lwCast = book('Leviathan Wakes', 1, {
+      rel_path: 'Corey/Leviathan Wakes (full cast)',
+      narrator: 'A Full Cast',
+      duration: 40_000,
+      work_id: 'lw',
+    });
+
+    beforeEach(() => {
+      mockBooks = loaded([{ ...lw, work_id: 'lw' }, lwCast, { ...cw, work_id: 'cw' }]);
+      const series = (mockMeta as { series: { works: Record<string, unknown>[] }[] }).series[0];
+      series.works[0].local_others = [{ library_id: 1, path: lwCast.rel_path }];
+      mockProgress[contentKey('home', 1, lwCast.rel_path)] = {
+        position: 10_000,
+        duration: 40_000,
+        finished: false,
+        updated_at: '2026-10-01T00:00:00Z',
+      };
+    });
+
+    it('counts the work once and lists each recording with its own progress', async () => {
+      await mountWithPortal(<SeriesPage libraryId={1} name="The Expanse" />);
+      // Four works on the rail, not five spines.
+      expect(screen.getAllByText('4 entries').length).toBeGreaterThan(0);
+      expect(screen.queryByRole('dialog')).toBeNull();
+      await fireEvent.press(
+        screen.getAllByRole('button', {
+          name: '2 recordings, choose a recording of Leviathan Wakes',
+        })[0],
+      );
+      expect(screen.getByText('Recordings of Leviathan Wakes')).toBeTruthy();
+      const list = screen.getByTestId('series-recordings');
+      expect(
+        within(list).getByRole('button', { name: 'Read by Jefferson Mays, 10h' }),
+      ).toBeTruthy();
+      const cast = within(list).getByRole('button', {
+        name: 'Read by A Full Cast, 11h 6m · 25% listened',
+      });
+      await fireEvent.press(cast);
+      expect(mockPush).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: expect.objectContaining({ connection: 'home', path: lwCast.rel_path }),
+        }),
+      );
+    });
+
+    it('shows no chip when the server sends no work ids (an older server)', async () => {
+      mockBooks = loaded([lw, lwCast, cw].map(({ work_id: _, ...b }) => b));
+      const series = (mockMeta as { series: { works: Record<string, unknown>[] }[] }).series[0];
+      delete series.works[0].local_others;
+      await mountWithPortal(<SeriesPage libraryId={1} name="The Expanse" />);
+      expect(screen.queryByRole('button', { name: /recordings/ })).toBeNull();
+      expect(screen.getAllByText('5 entries').length).toBeGreaterThan(0);
+    });
   });
 });

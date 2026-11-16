@@ -1451,6 +1451,9 @@
     "versions": {
       "title": "Otras versiones"
     },
+    "otherRecordings": {
+      "title": "Otras grabaciones en tu biblioteca"
+    },
     "listening": {
       "title": "Tu escucha",
       "listened": "Escuchado",
@@ -2166,6 +2169,12 @@
       "errorTitle": "No se pudieron cargar las series"
     },
     "keepAhead": "Adelantarse sin conexión",
+    "recordings": {
+      "count_one": "{{count}} grabación",
+      "count_other": "{{count}} grabaciones",
+      "choose": "elige una grabación de {{title}}",
+      "title": "Grabaciones de {{title}}"
+    },
     "out": "Sale: {{date}}",
     "ghostOutNote": "Sale: {{date}}. Aún no está en tus servidores."
   },

@@ -12,11 +12,13 @@ import { tabularNums } from '@/theme/tabular-nums';
 
 import { BookAbout, openLabelBooks } from './book-about';
 import type { ListeningFigures } from './book-page-model';
+import { OtherRecordings } from './other-recordings';
 
 /**
  * The book page's aside (the prototype's right column; between the hero and the tabs on
- * a narrow page): About, Other versions (only when there are), Your listening (once
- * the book is started) and In the house (only when someone who shares is on this book).
+ * a narrow page): About, Other versions (only when there are), Other recordings in your
+ * library (only when the server lists some), Your listening (once the book is started) and
+ * In the house (only when someone who shares is on this book).
  */
 export function BookAside({
   book,
@@ -44,6 +46,7 @@ export function BookAside({
         onOpenLabel={(kind, name) => openLabelBooks(connectionId, book.library_id, kind, name)}
       />
       <BookVersions book={book} connectionId={connectionId} />
+      <OtherRecordings book={book} connectionId={connectionId} />
       {listening ? <YourListening figures={listening} /> : null}
       <InTheHouseCard
         connectionId={connectionId}

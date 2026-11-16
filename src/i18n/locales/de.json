@@ -1451,6 +1451,9 @@
     "versions": {
       "title": "Andere Fassungen"
     },
+    "otherRecordings": {
+      "title": "Weitere Aufnahmen in deiner Bibliothek"
+    },
     "listening": {
       "title": "Dein Hören",
       "listened": "Gehört",
@@ -2166,6 +2169,12 @@
       "errorTitle": "Die Reihen konnten nicht geladen werden"
     },
     "keepAhead": "Offline vorausladen",
+    "recordings": {
+      "count_one": "{{count}} Aufnahme",
+      "count_other": "{{count}} Aufnahmen",
+      "choose": "eine Aufnahme von {{title}} wählen",
+      "title": "Aufnahmen von {{title}}"
+    },
     "out": "Erscheint: {{date}}",
     "ghostOutNote": "Erscheint: {{date}}. Noch auf keinem deiner Server."
   },
