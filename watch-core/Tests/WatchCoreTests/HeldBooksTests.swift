@@ -328,6 +328,39 @@ final class HeldBooksTests: XCTestCase {
     XCTAssertEqual(HeldBooks(url: url).books.map(\.book.ref.path), ["A/Kept", "A/New"], "kept on disk")
   }
 
+  // Before the first unlock no file can be written, a missing one included: what arrived then is
+  // written once it can be, not left in memory for a kill to lose.
+  func testWhatCouldNotBeWrittenIsWrittenOnReload() throws {
+    let url = try tempURL()
+    let dir = url.deletingLastPathComponent()
+    let fm = FileManager.default
+    try fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dir.path)
+    defer { try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dir.path) }
+    let held = HeldBooks(url: url)
+    held.hold(bookA(), now: t0)
+    try XCTSkipIf(fm.fileExists(atPath: url.path), "permissions are not enforced here")
+    try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dir.path)
+    held.reload()
+    XCTAssertEqual(HeldBooks(url: url).books.map(\.book), [bookA()])
+  }
+
+  // A `remove` that came while the file could not be read is about the row kept in it: its turn
+  // clears that row, so the book never downloads.
+  func testARemoveWhileLockedClearsTheRowKeptInTheFile() throws {
+    let url = try tempURL()
+    HeldBooks(url: url).hold(bookA(), now: t0)
+    try lock(url)
+    let held = HeldBooks(url: url)
+    _ = held.noteRemove(removeA(), now: t0)
+    try unlock(url)
+    held.reload()
+    let tickets = held.takeLeftoverRemoves()
+    XCTAssertEqual(tickets.count, 1)
+    XCTAssertTrue(held.finishRemove(tickets[0], accountId: A, now: t0))
+    XCTAssertEqual(held.books, [])
+    XCTAssertEqual(HeldBooks(url: url).books, [], "gone on disk too")
+  }
+
   // MARK: - remove
 
   private func removeA(_ path: String = "A/One") -> RemoveMessage {

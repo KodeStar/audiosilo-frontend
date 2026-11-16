@@ -509,8 +509,9 @@ final class AppModel: ObservableObject {
   /// stays (`covers`).
   private func remove(_ ticket: RemoveTicket) {
     // Before the first unlock no account is read, and refused it would be lost: `catchUp` hands it
-    // out again with the rest (`takeLeftoverRemoves`). One finished already is not done twice.
-    guard loaded, held.removes.contains(where: { $0.id == ticket.id }) else { return }
+    // out again with the rest (`takeLeftoverRemoves`). One finished already is not done twice, and
+    // the ticket as kept now is the one used (reading the file may have found its row).
+    guard loaded, let ticket = held.removes.first(where: { $0.id == ticket.id }) else { return }
     held.finishRemove(ticket, accountId: account?.accountId, now: Date()) {
       let ref = ticket.message.ref
       if let r = downloads.record(ref), ticket.message.covers(addedAt: r.addedAt) { downloads.remove(ref) }

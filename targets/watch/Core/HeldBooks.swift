@@ -79,6 +79,9 @@ final class HeldBooks {
   /// The file could not be read (before the watch's first unlock): nothing is written over it
   /// until `reload` has read it.
   private var unread = false
+  /// The last write failed: before the first unlock no file can be written, a missing one
+  /// included, so what arrived then is in memory alone until `reload` writes it.
+  private var unsaved = false
 
   /// `url` nil keeps them in memory (tests).
   init(url: URL?) {
@@ -91,12 +94,16 @@ final class HeldBooks {
 
   /// Read the file again after a launch that could not (`AppModel.catchUp`): what it keeps joins
   /// what arrived meanwhile (which wins: a book sent again replaces its row), and every `remove` not
-  /// handled yet is left over, finished once an account is there (`takeLeftoverRemoves`).
+  /// handled yet is left over, finished once an account is there (`takeLeftoverRemoves`). What a
+  /// failed write left in memory alone is written again.
   func reload() {
-    guard unread else { return }
-    let arrived = !books.isEmpty || !removes.isEmpty
-    read()
-    if arrived { save() }
+    if unread {
+      let arrived = !books.isEmpty || !removes.isEmpty
+      read()
+      if arrived { save() }
+    } else if unsaved {
+      save()
+    }
   }
 
   private func read() {
@@ -109,10 +116,19 @@ final class HeldBooks {
     default: kept = nil  // none, or damaged: started afresh
     }
     unread = false
+    let keptBooks = kept?.books ?? []
     let mine = Set(books.map(\.id))
     let noted = Set(removes.map(\.id))
-    books = (kept?.books ?? []).filter { !mine.contains($0.id) } + books
-    removes = (kept?.removes ?? []).filter { !noted.contains($0.id) } + removes
+    // A `remove` that came while the file could not be read found none of its rows, but the row
+    // it is about was there when it came.
+    let came = removes.map { ticket in
+      guard ticket.row == nil else { return ticket }
+      var t = ticket
+      t.row = keptBooks.first { $0.book.accountId == t.message.accountId && $0.book.ref == t.message.ref }
+      return t
+    }
+    books = keptBooks.filter { !mine.contains($0.id) } + books
+    removes = (kept?.removes ?? []).filter { !noted.contains($0.id) } + came
     leftover = Set(removes.map(\.id))
   }
 
@@ -235,7 +251,7 @@ final class HeldBooks {
   }
 
   private func save() {
-    guard !unread else { return }
-    file?.write(books.isEmpty && removes.isEmpty ? nil : HeldFile(books: books, removes: removes))
+    guard !unread, let file else { return }
+    unsaved = !file.write(books.isEmpty && removes.isEmpty ? nil : HeldFile(books: books, removes: removes))
   }
 }
