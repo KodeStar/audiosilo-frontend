@@ -8,7 +8,8 @@
 // offline it stays open and is cut only after an hour (`MAX_SPAN`). It is CLOSED on a pause, a move
 // (the next span opens with the move's reason), a stop, a book switch and the end (then one
 // `finish`). The open span is stored every 5 s (`OPEN_SPAN_KEEP`) with its id fixed at open, and one
-// a kill left is closed into the outbox at the next launch.
+// a kill left is closed into the outbox at the next launch (one a move opened and a kill cut short
+// gives that book's next span the move's reason).
 package app.audiosilo.wear.core
 
 import java.time.Instant
@@ -173,6 +174,12 @@ class SpanRecorder(
   private var recovered = false
 
   /**
+   * The move a kill cut short (`recover`): the launch's first span, when it is that book's and
+   * nothing else was asked for (a resume), begins with the move's reason.
+   */
+  private var recoveredMove: Pair<BookRef, ListeningStart>? = null
+
+  /**
    * Close a span a kill left open (at its last stored values) into the outbox. Once per launch,
    * before the first span opens (every open runs it first). Returns that span (the place it
    * carries: `PlaceStore.recover`).
@@ -185,6 +192,9 @@ class SpanRecorder(
     // (`duplicate`), the other way round it would lose the span.
     append(left)
     store.save(null)
+    // A kill within `OPEN_SPAN_KEEP` of a move left the span the move opened, nothing heard: a
+    // bare move, so the book's next span carries it, as after a pause (`close`).
+    if (Spans.isBareMove(left)) recoveredMove = left.ref to left.start
     return left
   }
 
@@ -214,7 +224,11 @@ class SpanRecorder(
     recover()
     if (span?.ref == book.ref) return
     // Taken first: closing another book's span may leave that book's move in `nextStart`.
-    val start = nextStart
+    var start = nextStart
+    recoveredMove?.let { (ref, moved) ->
+      recoveredMove = null
+      if (ref == book.ref && start == ListeningStart.RESUME) start = moved
+    }
     close(null)
     val now = clock()
     nextStart = ListeningStart.RESUME

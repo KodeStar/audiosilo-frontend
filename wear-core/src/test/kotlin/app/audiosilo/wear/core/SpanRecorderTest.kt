@@ -414,6 +414,70 @@ class SpanRecorderTest {
     assertNull(store.stored)
   }
 
+  // #216: a kill within `OPEN_SPAN_KEEP` of a move leaves the span the move opened. Its event can
+  // lose to the span before it, so the book's next span (a resume) carries the move.
+  @Test
+  fun aKillRightBehindAMoveGivesTheBooksNextSpanTheMove() {
+    val r = recorder()
+    r.open(book, at(80.0), 1.0)
+    clock.advance(10.0)
+    r.move(book, to = at(10.0), from = at(90.0), playing = true, speed = 1.0)
+    // A kill: a new launch, the same store.
+    emitted.clear()
+    clock.advance(60.0)
+    val next = recorder()
+    next.recover()
+    assertEquals(listOf(ListeningStart.MOVED_BACK), listens.map { it.start })
+    next.prepareStart(ListeningStart.RESUME)
+    next.open(book, at(10.0), 1.0)
+    assertEquals(ListeningStart.MOVED_BACK, next.span?.start)
+    assertEquals(ListeningStart.RESUME, next.nextStart)
+    clock.advance(20.0)
+    next.close(at(30.0))
+    next.open(book, at(30.0), 1.0)
+    assertEquals("taken once", ListeningStart.RESUME, next.span?.start)
+  }
+
+  @Test
+  fun aKilledMoveGivesWayToAReasonAskedFor() {
+    val r = recorder()
+    r.open(book, at(80.0), 1.0)
+    r.move(book, to = at(10.0), from = at(80.0), playing = true, speed = 1.0)
+    val next = recorder()
+    next.prepareStart(ListeningStart.JUMP)
+    next.open(book, at(40.0), 1.0)
+    assertEquals(ListeningStart.JUMP, next.span?.start)
+  }
+
+  @Test
+  fun aKilledMoveIsNotCarriedToAnotherBookNorPastIt() {
+    val r = recorder()
+    r.open(book, at(80.0), 1.0)
+    r.move(book, to = at(10.0), from = at(80.0), playing = true, speed = 1.0)
+    val next = recorder()
+    val other = PlayingBook(BookRef(2, "A/Other"), 50.0)
+    next.open(other, at(1.0, "A/Other/1.mp3"), 1.0)
+    assertEquals(ListeningStart.RESUME, next.span?.start)
+    clock.advance(20.0)
+    next.close(at(21.0, "A/Other/1.mp3"))
+    next.prepareStart(ListeningStart.RESUME)
+    next.open(book, at(10.0), 1.0)
+    assertEquals(ListeningStart.RESUME, next.span?.start)
+  }
+
+  @Test
+  fun aSpanAKillLeftAfterItWasHeardGivesTheNextSpanNothing() {
+    val r = recorder()
+    r.prepareStart(ListeningStart.MOVED_BACK)
+    r.open(book, at(10.0), 1.0)
+    clock.advance(5.0)
+    r.keep(at(15.0))
+    val next = recorder()
+    next.prepareStart(ListeningStart.RESUME)
+    next.open(book, at(15.0), 1.0)
+    assertEquals(ListeningStart.RESUME, next.span?.start)
+  }
+
   @Test
   fun theFirstOpenRecoversFirst() {
     store.stored =

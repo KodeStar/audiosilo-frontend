@@ -388,6 +388,66 @@ final class SpanRecorderTests: XCTestCase {
     XCTAssertNil(store.stored)
   }
 
+  // #216: a kill within `OPEN_SPAN_KEEP` of a move leaves the span the move opened. Its event
+  // can lose to the span before it, so the book's next span (a resume) carries the move.
+  func testAKillRightBehindAMoveGivesTheBooksNextSpanTheMove() {
+    let r = recorder()
+    r.open(book, at: at(80), speed: 1)
+    clock.advance(10)
+    r.move(book, to: at(10), from: at(90), playing: true, speed: 1)
+    // A kill: a new launch, the same store.
+    emitted = []
+    clock.advance(60)
+    let next = recorder()
+    next.recover()
+    XCTAssertEqual(listens.map(\.start), [.movedBack])
+    next.prepareStart(.resume)
+    next.open(book, at: at(10), speed: 1)
+    XCTAssertEqual(next.span?.start, .movedBack)
+    XCTAssertEqual(next.nextStart, .resume)
+    clock.advance(20)
+    next.close(at: at(30))
+    next.open(book, at: at(30), speed: 1)
+    XCTAssertEqual(next.span?.start, .resume, "taken once")
+  }
+
+  func testAKilledMoveGivesWayToAReasonAskedFor() {
+    let r = recorder()
+    r.open(book, at: at(80), speed: 1)
+    r.move(book, to: at(10), from: at(80), playing: true, speed: 1)
+    let next = recorder()
+    next.prepareStart(.jump)
+    next.open(book, at: at(40), speed: 1)
+    XCTAssertEqual(next.span?.start, .jump)
+  }
+
+  func testAKilledMoveIsNotCarriedToAnotherBookNorPastIt() {
+    let r = recorder()
+    r.open(book, at: at(80), speed: 1)
+    r.move(book, to: at(10), from: at(80), playing: true, speed: 1)
+    let next = recorder()
+    let other = PlayingBook(ref: BookRef(libraryId: 2, path: "A/Other"), audioDuration: 50)
+    next.open(other, at: at(1, "A/Other/1.mp3"), speed: 1)
+    XCTAssertEqual(next.span?.start, .resume)
+    clock.advance(20)
+    next.close(at: at(21, "A/Other/1.mp3"))
+    next.prepareStart(.resume)
+    next.open(book, at: at(10), speed: 1)
+    XCTAssertEqual(next.span?.start, .resume)
+  }
+
+  func testASpanAKillLeftAfterItWasHeardGivesTheNextSpanNothing() {
+    let r = recorder()
+    r.prepareStart(.movedBack)
+    r.open(book, at: at(10), speed: 1)
+    clock.advance(5)
+    r.keep(at: at(15))
+    let next = recorder()
+    next.prepareStart(.resume)
+    next.open(book, at: at(15), speed: 1)
+    XCTAssertEqual(next.span?.start, .resume)
+  }
+
   func testTheFirstOpenRecoversFirst() {
     store.stored = OpenSpan(libraryId: 2, path: "A/Folder", from: at(1), to: at(20), duration: 100, speed: 1,
                             startedAt: clock.now.addingTimeInterval(-60), endedAt: clock.now.addingTimeInterval(-40),

@@ -8,7 +8,8 @@
 // background; offline it stays open and is cut only after an hour (`MAX_SPAN`). It is
 // CLOSED on a pause, a move (the next span opens with the move's reason), a stop, a book switch
 // and the end (then one `finish`). The open span is stored every 5 s (`OPEN_SPAN_KEEP`) with its
-// id fixed at open, and one a kill left is closed into the outbox at the next launch.
+// id fixed at open, and one a kill left is closed into the outbox at the next launch (one a
+// move opened and a kill cut short gives that book's next span the move's reason).
 import Foundation
 
 /// One end of a span: whole-book seconds, and the audio file (rel path) and seconds in it.
@@ -143,6 +144,9 @@ final class SpanRecorder {
   /// The book whose `finish` was sent: one per end, until it plays again.
   private var finishSent: BookRef?
   private var recovered = false
+  /// The move a kill cut short (`recover`): the launch's first span, when it is that book's
+  /// and nothing else was asked for (a resume), begins with the move's reason.
+  private var recoveredMove: (ref: BookRef, start: ListeningStart)?
 
   init(store: OpenSpanStore, acks: AckStore, clock: @escaping () -> Date = Date.init,
        newId: @escaping () -> String = { UUID().uuidString },
@@ -165,6 +169,9 @@ final class SpanRecorder {
       // id (`duplicate`), the other way round it would lose the span.
       append(left)
       store.save(nil)
+      // A kill within `OPEN_SPAN_KEEP` of a move left the span the move opened, nothing heard:
+      // a bare move, so the book's next span carries it, as after a pause (`close`).
+      if Spans.isBareMove(left) { recoveredMove = (left.ref, left.start) }
     }
   }
 
@@ -196,7 +203,11 @@ final class SpanRecorder {
     recover()
     if span?.ref == book.ref { return }
     // Taken first: closing another book's span may leave that book's move in `nextStart`.
-    let start = nextStart
+    var start = nextStart
+    if let m = recoveredMove {
+      recoveredMove = nil
+      if m.ref == book.ref && start == .resume { start = m.start }
+    }
     close(at: nil)
     let now = clock()
     nextStart = .resume
