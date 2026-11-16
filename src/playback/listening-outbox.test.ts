@@ -236,6 +236,9 @@ describe('spanToEvent', () => {
     expect(movesNowhere(undefined, { pos: 0 })).toBe(false);
     expect(movesNowhere({ pos: 0 }, null)).toBe(false);
     expect(movesNowhere({ pos: NaN }, { pos: 0 })).toBe(false);
+    // Another file is another place (unknown file lengths start every file at 0).
+    expect(movesNowhere({ pos: 0, file: 'a.mp3' }, { pos: 0, file: 'b.mp3' })).toBe(false);
+    expect(movesNowhere({ pos: 0 }, { pos: 0, file: 'a.mp3' })).toBe(true);
   });
 });
 

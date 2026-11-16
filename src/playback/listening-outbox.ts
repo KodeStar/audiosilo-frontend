@@ -215,10 +215,13 @@ const SAME_PLACE = 0.01;
 /**
  * A move to where the place already is moves nothing (Previous at the book's start; pure):
  * no span is closed for it and no event says it. Either end unknown, or a place that is not
- * a number (NaN compares false), is not this. The watch's `Spans.movesNowhere`.
+ * a number (NaN compares false), is not this; nor is a move to another file, whatever the
+ * timeline says (a book whose file lengths are unknown starts every file at 0). The watch's
+ * `Spans.movesNowhere`.
  */
 export function movesNowhere(from: SpanEnd | null | undefined, to: SpanEnd | null): boolean {
   if (!from || !to) return false;
+  if (from.file !== undefined && to.file !== undefined && from.file !== to.file) return false;
   return Math.abs(to.pos - from.pos) < SAME_PLACE;
 }
 

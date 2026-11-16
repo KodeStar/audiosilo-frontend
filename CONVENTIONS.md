@@ -2026,8 +2026,9 @@ media GETs only.
     deliberate move nothing was heard after (`spanIsBareMove`, a pause or a cut under a second
     behind a seek) gives the next span its reason, as a paused move does: its event can come back
     `not_applied`/`older` when sent apart from the span before it (a reason asked for, Stay's
-    `jump`, still wins). A move to where the place already is (`movesNowhere`, Previous at the
-    book's start) is no move: the span goes on and no event says it, unless the last move went
+    `jump`, still wins). A move to where the place already is, in the same file (`movesNowhere`,
+    Previous at the book's start; a book with unknown file lengths starts every file at 0) is no
+    move: the span goes on and no event says it, unless the last move went
     elsewhere (a seek still on its way reads as where it left) or the engine moved first with
     nothing to compare (a paused lock-screen move: `from: null`). The watches share both rules
     (`Spans`). A

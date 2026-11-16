@@ -350,6 +350,8 @@ final class SpanRecorderTests: XCTestCase {
     XCTAssertFalse(Spans.movesNowhere(from: nil, to: at(0)))
     XCTAssertFalse(Spans.movesNowhere(from: at(0), to: nil))
     XCTAssertFalse(Spans.movesNowhere(from: at(.nan), to: at(0)))
+    XCTAssertFalse(Spans.movesNowhere(from: at(0), to: at(0, "A/Folder/2.mp3")), "another file")
+    XCTAssertTrue(Spans.movesNowhere(from: at(0, nil), to: at(0)), "a file on one end only")
   }
 
   // The open span is kept every 5 s.

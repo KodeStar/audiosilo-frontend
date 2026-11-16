@@ -608,6 +608,41 @@ describe('with listening_sync', () => {
     ]);
   });
 
+  describe('a book whose file lengths are unknown (every file starts at 0)', () => {
+    const unknown: ChaptersResponse = {
+      ...chapters,
+      duration: 0,
+      files: chapters.files.map((f) => ({ ...f, duration: 0 })),
+      chapters: [],
+    };
+    const startUnknown = async () => {
+      await usePlayer.getState().playBook('c1', 2, { ...book, duration: 0 }, unknown);
+      await settle();
+    };
+
+    it('paused, a move to the next file is a move', async () => {
+      await startUnknown();
+      pushSnapshot(snap('paused', 0, 0));
+      await settle();
+      await usePlayer.getState().goToTrack(1);
+      await settle();
+      expect(mockAppended.map((e) => e.kind === 'listen' && [e.start, e.to_file])).toEqual([
+        ['jump', order[1]],
+      ]);
+    });
+
+    it('playing, a move to the next file closes the span in the file it left', async () => {
+      await startUnknown();
+      pushSnapshot(snap('playing', 0, 0));
+      await settle();
+      await usePlayer.getState().goToTrack(1);
+      await settle();
+      expect(mockClosed.map((s) => [s.start, s.from.file, s.to.file])).toEqual([
+        ['resume', order[0], order[0]],
+      ]);
+    });
+  });
+
   it('paused, a lock-screen move the engine already made is sent', async () => {
     await start();
     pushSnapshot(snap('paused', 0, 20));

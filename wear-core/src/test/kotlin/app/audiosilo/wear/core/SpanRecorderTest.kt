@@ -373,6 +373,8 @@ class SpanRecorderTest {
     assertFalse(Spans.movesNowhere(null, at(0.0)))
     assertFalse(Spans.movesNowhere(at(0.0), null))
     assertFalse(Spans.movesNowhere(at(Double.NaN), at(0.0)))
+    assertFalse("another file", Spans.movesNowhere(at(0.0), at(0.0, "A/Folder/2.mp3")))
+    assertTrue("a file on one end only", Spans.movesNowhere(at(0.0, null), at(0.0)))
   }
 
   // The open span is kept every 5 s.

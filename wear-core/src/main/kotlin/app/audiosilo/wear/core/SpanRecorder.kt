@@ -132,10 +132,12 @@ object Spans {
 
   /**
    * A move to where the place already is moves nothing (Previous at the book's start). A place that
-   * is not one is not this: a NaN difference compares false.
+   * is not one is not this: a NaN difference compares false; nor is a move to another file, whatever
+   * the timeline says (the phone's book with unknown file lengths starts each at 0).
    */
   fun movesNowhere(from: SpanEnd?, to: SpanEnd?): Boolean {
     if (from == null || to == null) return false
+    if (from.file != null && to.file != null && from.file != to.file) return false
     return abs(to.pos - from.pos) < ChapterNav.AT_START
   }
 }

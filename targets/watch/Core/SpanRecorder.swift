@@ -112,9 +112,11 @@ enum Spans {
   static func isBareMove(_ span: OpenSpan) -> Bool { saysSomething(span) && !heard(span) }
 
   /// A move to where the place already is moves nothing (Previous at the book's start). A place
-  /// that is not one is not this: `abs(.nan)` compares false.
+  /// that is not one is not this: `abs(.nan)` compares false; nor is a move to another file,
+  /// whatever the timeline says (the phone's book with unknown file lengths starts each at 0).
   static func movesNowhere(from: SpanEnd?, to: SpanEnd?) -> Bool {
     guard let from, let to else { return false }
+    if let a = from.file, let b = to.file, a != b { return false }
     return abs(to.pos - from.pos) < ChapterNav.AT_START
   }
 }
