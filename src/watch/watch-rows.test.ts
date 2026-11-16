@@ -318,6 +318,9 @@ describe('reconcileRows', () => {
       const [row] = settle([sent({ remove_at: NOW })], s);
       expect(row.remove_refused).toBe(true);
       expect(row.remove_at).toBeUndefined();
+      // One asked again leaves nothing of its first time behind.
+      const [again] = settle([sent({ remove_at: NOW, remove_asked_at: NOW - 900 })], s);
+      expect(again).toEqual(sent({ remove_refused: true }));
     }
   });
 

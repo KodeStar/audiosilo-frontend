@@ -230,7 +230,7 @@ function settleRow(
   // `remove` that never got there was not refused.
   if (row.seen && !bookSent && !row.send_failed) return null;
   if (row.remove_at !== undefined && !removeSent && !row.remove_failed) {
-    const { remove_at: _at, ...rest } = row;
+    const { remove_at: _at, remove_asked_at: _asked, ...rest } = row;
     return { ...rest, remove_refused: true };
   }
   return row;
