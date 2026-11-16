@@ -85,9 +85,33 @@ describe('buildPairMessage', () => {
     });
   });
 
+  it('names the server as the phone does after a rename on the server (fe#233)', () => {
+    // The token's payload carries the server's new name; the phone's card still shows the saved
+    // one, so the watch is told that, and they agree.
+    const renamed = { ...payload, server_name: 'Hearthside Library' };
+    expect(buildPairMessage(renamed, connection, 'iPhone', 0, [connection]).server_name).toBe(
+      'Hearthside',
+    );
+    // With another saved server of the same name, both add the address.
+    const other = {
+      ...connection,
+      id: 'other.7',
+      serverId: 'other',
+      serverUrl: 'https://o.example',
+    };
+    expect(
+      buildPairMessage(renamed, connection, 'iPhone', 0, [connection, other]).server_name,
+    ).toBe('Hearthside (paired.example)');
+    // A new name that matches another saved server is no collision: the card never shows it.
+    const second = { ...other, name: 'Hearthside Library' };
+    expect(
+      buildPairMessage(renamed, connection, 'iPhone', 0, [connection, second]).server_name,
+    ).toBe('Hearthside');
+  });
+
   it('sends no nulls or undefined values with no address to tell', () => {
     const message = buildPairMessage(
-      { ...payload, addresses: undefined, server_name: '' },
+      { ...payload, addresses: undefined },
       { ...connection, addresses: undefined },
       'iPhone',
       0,

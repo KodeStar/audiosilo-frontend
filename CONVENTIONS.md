@@ -10,7 +10,9 @@ profile menus and the phone's Apple Watch card append the paired host and port o
 saved server has the same name. Multiple accounts on one server do not create a collision. Servers
 sharing a host use their full address. Stable connection and server ids never change. The phone
 sends this same label in the existing `pair.server_name`, so the watch's account text agrees after
-Set up or Send again. A label change on an already paired watch takes Send again; no token is
+Set up or Send again: built from the saved connection name (`buildPairMessage`), never the pairing
+payload's fresh `server_name`, which after a rename on the server would disagree with the card
+(fe#233). A label change on an already paired watch takes Send again; no token is
 minted silently just to refresh a label.
 
 **Path is identity, scoped by connection.** All content is addressed by

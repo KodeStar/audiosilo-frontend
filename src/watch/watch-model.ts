@@ -170,9 +170,11 @@ export type WatchableBook = Pick<Book, 'rel_path' | 'title' | 'author'>;
 const rfc3339 = (ms: number) => new Date(ms).toISOString();
 
 /** The `pair` message for `connection`, from a token just minted (`POST /auth/pair`).
- * `expiresAt` and `now` are epoch ms. */
+ * `expiresAt` and `now` are epoch ms. `server_name` is the label the phone shows for this
+ * connection (`serverDisplayName` over the saved names, as the watch card), never the payload's
+ * fresh name: after a rename on the server the two would disagree (fe#233). */
 export function buildPairMessage(
-  payload: Pick<PairingPayload, 'server_name' | 'base_url' | 'pairing_token' | 'addresses'>,
+  payload: Pick<PairingPayload, 'base_url' | 'pairing_token' | 'addresses'>,
   connection: WatchConnection,
   phoneName: string,
   expiresAt: number,
@@ -183,10 +185,7 @@ export function buildPairMessage(
     v: WATCH_MESSAGE_VERSION,
     type: 'pair',
     server_id: serverIdOf(connection),
-    server_name: serverDisplayName(
-      { ...connection, name: payload.server_name || connection.name },
-      connections,
-    ),
+    server_name: serverDisplayName(connection, connections),
     user_id: connection.user.id,
     user_name: connection.user.username,
     base_url: payload.base_url,
