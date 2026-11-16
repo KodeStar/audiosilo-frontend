@@ -29,11 +29,13 @@ enum AccountRules {
   }
 
   /// A `pair` for the account signed in here (`.sameAccount`, D6, fe#219): whether the token kept
-  /// here stays, by what `GET /me` with it answered (`meStatus`, nil for no answer). Exchanged every
-  /// time, each Send again left another session on the server that nothing ever ended. Only a 401
-  /// says the token no longer signs in; with no answer the exchange would fail too.
-  static func keepsToken(meStatus: Int?) -> Bool {
-    meStatus != 401
+  /// here stays. Exchanged every time, each Send again left another session on the server that
+  /// nothing ever ended. It stays only on the server's own word that it signs in as the pair's
+  /// user: `meUserId` is the id a 2xx `GET /me` with it answered, nil for anything else (a 401,
+  /// any other refusal, a body with no id, no answer). With no answer the watch may only be at an
+  /// address it can't reach from here, and the exchange tries the pair's own.
+  static func keepsToken(meUserId: Int?, userId: Int) -> Bool {
+    meUserId == userId
   }
 
   /// Whether signing out may go ahead now.

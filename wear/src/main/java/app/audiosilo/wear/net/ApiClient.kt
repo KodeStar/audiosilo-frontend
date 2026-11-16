@@ -16,6 +16,7 @@ import app.audiosilo.wear.core.ChaptersResponse
 import app.audiosilo.wear.core.ClientHeader
 import app.audiosilo.wear.core.Fetched
 import app.audiosilo.wear.core.ListeningSyncTransport
+import app.audiosilo.wear.core.PhoneMessages
 import app.audiosilo.wear.core.ProgressList
 import app.audiosilo.wear.core.ProgressRow
 import app.audiosilo.wear.core.QueryString
@@ -103,10 +104,11 @@ class ApiClient(base: String, private val token: String?, private val http: OkHt
     return send(request("POST", "/auth/exchange", body = body.toString()), AuthSession.serializer())
   }
 
-  /** `GET /me`, read only for its status: whether this token still signs in (an `APIError` 401 when not). */
-  suspend fun me() {
-    execute(request("GET", "/me"), TIMEOUT)
-  }
+  /**
+   * `GET /me`: the id of the user this token signs in as (an `APIError` 401 once it no longer does),
+   * null from a body with no id.
+   */
+  suspend fun me(): Int? = PhoneMessages.int(send(request("GET", "/me"), JsonObject.serializer())["id"])
 
   /** `GET /addresses`: the server's addresses as seen from here (capability `addresses`). */
   suspend fun addresses(): ServerAddresses = send(request("GET", "/addresses"), ServerAddresses.serializer())

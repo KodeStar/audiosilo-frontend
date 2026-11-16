@@ -34,11 +34,13 @@ object AccountRules {
 
   /**
    * A `pair` for the account signed in here (`SameAccount`, D6, fe#219): whether the token kept here
-   * stays, by what `GET /me` with it answered (`meStatus`, null for no answer). Exchanged every time,
-   * each Send again left another session on the server that nothing ever ended. Only a 401 says the
-   * token no longer signs in; with no answer the exchange would fail too.
+   * stays. Exchanged every time, each Send again left another session on the server that nothing
+   * ever ended. It stays only on the server's own word that it signs in as the pair's user:
+   * `meUserId` is the id a 2xx `GET /me` with it answered, null for anything else (a 401, any other
+   * refusal, a body with no id, no answer). With no answer the watch may only be at an address it
+   * can't reach from here, and the exchange tries the pair's own.
    */
-  fun keepsToken(meStatus: Int?): Boolean = meStatus != 401
+  fun keepsToken(meUserId: Int?, userId: Int): Boolean = meUserId == userId
 
   /** Whether signing out may go ahead now. */
   fun signOut(unsent: Int, discard: Boolean): SignOutGate =

@@ -445,14 +445,16 @@ class AccountRulesTest {
     assertEquals(SignOutGate.Allowed, AccountRules.signOut(0, discard = false))
   }
 
-  /** D6 (fe#219): a pair for the account signed in exchanges only when the token kept no longer signs in. */
+  /**
+   * D6 (fe#219): a pair for the account signed in keeps the token only on the server's word that it
+   * signs in as the pair's user.
+   */
   @Test
-  fun aSameAccountPairKeepsTheTokenUnlessTheServerRefusesIt() {
-    assertTrue(AccountRules.keepsToken(200))
-    assertTrue("no answer: the exchange would fail too", AccountRules.keepsToken(null))
-    assertTrue(AccountRules.keepsToken(500))
-    assertTrue(AccountRules.keepsToken(403))
-    assertFalse(AccountRules.keepsToken(401))
+  fun aSameAccountPairKeepsTheTokenOnlyWhenTheServerNamesItsUser() {
+    assertTrue(AccountRules.keepsToken(meUserId = 7, userId = 7))
+    assertFalse("the token signs in as someone else", AccountRules.keepsToken(meUserId = 8, userId = 7))
+    // A 401, any other refusal, a body with no id, no answer at all: the exchange decides.
+    assertFalse(AccountRules.keepsToken(meUserId = null, userId = 7))
   }
 }
 

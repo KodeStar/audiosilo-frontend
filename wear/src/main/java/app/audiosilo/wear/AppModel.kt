@@ -668,14 +668,12 @@ class AppModel private constructor(private val context: Context) {
     _pendingReplace.value = if (change == AccountChange.Replace) PendingReplace.Switching else null
     val api = if (change == AccountChange.SameAccount) client() else null
     if (current != null && api != null) {
-      val status =
+      // Anything but its answer (a refusal, an unreadable body, no answer) is no word on the token.
+      val meUserId =
         try {
           api.me()
-          200
         } catch (e: CancellationException) {
           throw e
-        } catch (e: APIError) {
-          e.status
         } catch (_: Exception) {
           null
         }
@@ -683,7 +681,7 @@ class AppModel private constructor(private val context: Context) {
       // The account as it is now, not as it was: an address refresh may have landed meanwhile.
       val now = _account.value
       if (now == null || now.accountId != current.accountId) return
-      if (AccountRules.keepsToken(status)) {
+      if (AccountRules.keepsToken(meUserId, p.userId)) {
         keepSignIn(now, p)
         return
       }
@@ -728,7 +726,8 @@ class AppModel private constructor(private val context: Context) {
     val session = exchanged.answer
     if (change == AccountChange.Replace) {
       // Its token ends on its server too (as Sign out does): this watch forgets it now. A sign-in
-      // again for the same account exchanges only once its token no longer signs in (D6, above).
+      // again for the same account exchanges only without the server's word for its token (D6,
+      // above).
       leaveAccount()
     } else if (change == AccountChange.SignIn && accountFile.read()?.accountId != p.accountId) {
       // The token was lost, and what is here is another account's: never sent under this one.
@@ -766,9 +765,9 @@ class AppModel private constructor(private val context: Context) {
   }
 
   /**
-   * A `pair` for this account while its token still signs in (D6): no exchange, so no new session on
-   * the server, and the phone's pairing token runs out unused. What the phone now says of the
-   * account (its label, the user's name, the addresses) is taken, as a sign-in would.
+   * A `pair` for this account while its token still signs in as that user (D6): no exchange, so no
+   * new session on the server, and the phone's pairing token runs out unused. What the phone now
+   * says of the account (its label, the user's name, the addresses) is taken, as a sign-in would.
    */
   private suspend fun keepSignIn(current: Account, p: PairMessage) {
     val a =

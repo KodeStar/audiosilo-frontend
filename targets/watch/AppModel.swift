@@ -511,19 +511,12 @@ final class AppModel: ObservableObject {
     pendingPair = nil
     pendingReplace = change == .replace ? .switching : nil
     if change == .sameAccount, let current = account, let api = client() {
-      let status: Int?
-      do {
-        try await api.me()
-        status = 200
-      } catch let e as APIError {
-        status = e.status
-      } catch {
-        status = nil
-      }
+      // Anything but its answer (a refusal, an unreadable body, no answer) is no word on the token.
+      let meUserId = try? await api.me()
       // Signed out or switched while it was asked: this pair is not for the watch as it is now.
       // The account as it is now, not as it was: an address refresh may have landed meanwhile.
       guard let now = account, now.accountId == current.accountId else { return }
-      if AccountRules.keepsToken(meStatus: status) {
+      if AccountRules.keepsToken(meUserId: meUserId, userId: p.userId) {
         await keepSignIn(now, p)
         return
       }
@@ -551,7 +544,8 @@ final class AppModel: ObservableObject {
         isTimeout: APIClient.isTimeout, probe: APIClient.probeServerId)
       if change == .replace {
         // Its token ends on its server too (as Sign out does): this watch forgets it now. A sign-in
-        // again for the same account exchanges only once its token no longer signs in (D6, above).
+        // again for the same account exchanges only without the server's word for its token (D6,
+        // above).
         let leaving = client()
         forgetAccount()
         if let leaving { Task { try? await leaving.logout() } }
@@ -597,9 +591,9 @@ final class AppModel: ObservableObject {
     }
   }
 
-  /// A `pair` for this account while its token still signs in (D6): no exchange, so no new session
-  /// on the server, and the phone's pairing token runs out unused. What the phone now says of the
-  /// account (its label, the user's name, the addresses) is taken, as a sign-in would.
+  /// A `pair` for this account while its token still signs in as that user (D6): no exchange, so no
+  /// new session on the server, and the phone's pairing token runs out unused. What the phone now
+  /// says of the account (its label, the user's name, the addresses) is taken, as a sign-in would.
   private func keepSignIn(_ current: Account, _ p: PairMessage) async {
     let a = Account(
       serverId: current.serverId, serverName: p.serverName, userId: current.userId,

@@ -2738,9 +2738,11 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   stays on Home (or the too-old screen) with the live count and becomes a plain Switch once nothing
   waits; nothing plays while the switch signs in, and an expired or failed switch says why there.
   A replace ends the old token on its server, as Sign out does. A `pair` for the account signed in
-  (Send again) first asks `GET /me` with the token kept: it stays unless the server answers 401
-  (`AccountRules.keepsToken`; no answer keeps it too), and only then is the pair's token exchanged,
-  so a Send again no longer leaves another session on the server each time (D6, fe#219). Kept, the
+  (Send again) first asks `GET /me` with the token kept: it stays only when the server answers
+  with the pair's own user (`AccountRules.keepsToken`), so a Send again no longer leaves another
+  session on the server each time (D6, fe#219). A 401, any other refusal or no answer at all
+  exchanges the pair's token as a first sign-in does (with no answer the watch may only be at an
+  address it can't reach, and the exchange tries the pair's `base_url`, away and home). Kept, the
   pair's label, user name and addresses are taken (`keepSignIn`) and its token runs out unused.
   Wear OS does the same. A sign-in with no token kept but another account's files
   left behind forgets them first, so they are never sent under the new token. The phone's messages
