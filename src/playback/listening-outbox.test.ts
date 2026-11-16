@@ -1187,7 +1187,7 @@ describe('usesListeningStay (row 9c-2)', () => {
 });
 
 describe('a queued stay to a server without listening_stay (row 9c-2)', () => {
-  const stay = () => listen('s', { start: 'stay' } as Partial<ListeningEvent>);
+  const stay = (id = 's') => listen(id, { start: 'stay' } as Partial<ListeningEvent>);
   const starts = (body: ListeningSyncRequest) =>
     body.events.map((e) => (e.kind === 'listen' ? e.start : e.kind));
 
@@ -1223,10 +1223,7 @@ describe('a queued stay to a server without listening_stay (row 9c-2)', () => {
     await flushOutbox('c1');
     expect(sent(c).map(starts)).toEqual([['jump', 'resume'], ['jump'], ['resume']]);
 
-    await appendEvents(
-      'c1',
-      [stay()].map((e) => ({ ...e, id: 's2' }) as ListeningEvent),
-    );
+    await appendEvents('c1', [stay('s2')]);
     const waiting = await outboxEvents('c1');
     expect(waiting.map((e) => e.event.kind === 'listen' && e.event.start)).toEqual(['stay']);
     const h = client(() => new Promise(() => {}));

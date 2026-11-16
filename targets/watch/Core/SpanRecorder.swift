@@ -332,17 +332,12 @@ final class SpanRecorder {
     let start: ListeningStart = stay ? .stay : .jump
     if playing {
       // With none open yet, the one that opens takes it.
-      if span != nil {
-        cut(book, at: at, playing: true, speed: speed, start: start)
-      } else {
-        nextStart = start
-      }
+      if span != nil { cut(book, at: at, playing: true, speed: speed, start: start) } else { nextStart = start }
       return
     }
     // One still open while not playing (a stop noticed late) ends here, as a paused move's does.
     close(at: at)
-    nextStart = start
-    if let at { sendStill(book, at: at, start: start, speed: speed) }
+    if let at { sendStill(book, at: at, start: start, speed: speed) } else { nextStart = start }
   }
 
   private func finishEvent(_ kind: String, _ ref: BookRef, at: Date, base: Int) -> FinishEvent {

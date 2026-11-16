@@ -9,6 +9,7 @@ import { keepServerAnswer } from '@/api/server-snapshots';
 import type {
   ListeningEvent,
   ListeningFinishEvent,
+  ListeningStart,
   ListeningSpanEvent,
   ListeningSyncResponse,
   ListeningSyncResult,
@@ -191,15 +192,12 @@ function spanHeard(span: OpenSpan): boolean {
   return ms >= EMPTY_SPAN_MS || Math.abs(span.to.pos - span.from.pos) >= 1;
 }
 
+/** The starts that say a deliberate move. */
+const MOVE_STARTS: ReadonlySet<ListeningStart> = new Set(['jump', 'moved_back', 'restart', 'stay']);
+
 /** Whether a span carries anything: listening, or a deliberate move (pure). */
 export function spanSaysSomething(span: OpenSpan): boolean {
-  if (spanHeard(span)) return true;
-  return (
-    span.start === 'jump' ||
-    span.start === 'moved_back' ||
-    span.start === 'restart' ||
-    span.start === 'stay'
-  );
+  return spanHeard(span) || MOVE_STARTS.has(span.start);
 }
 
 /**

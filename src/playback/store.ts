@@ -1279,8 +1279,8 @@ export function standByPlace(): void {
   const here = np && usesListeningSync(np.connectionId) ? engineEnd() : null;
   // One still open while not playing (a stall) ends where the Stay is, as a paused move's does.
   closeListeningSpan(here ? { at: here } : {});
-  nextStart = start;
   if (np && here) sendStill(np, here, start);
+  else nextStart = start;
 }
 
 /** Cut the playing span now (the server came back, the app went to the background); a

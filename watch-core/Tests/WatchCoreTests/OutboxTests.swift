@@ -88,17 +88,16 @@ final class OutboxTests: XCTestCase {
     await o.flush(via: t)
     takes = true
     await o.flush(via: t)
-    let starts = t.bodies.map { b in b.events.compactMap { e -> ListeningStart? in
+    func start(_ e: ListeningEvent) -> ListeningStart? {
       if case .listen(let l) = e { return l.start } else { return nil }
-    } }
+    }
+    let starts = t.bodies.map { $0.events.compactMap(start) }
     XCTAssertEqual(starts, [[.jump, .resume], [.stay, .resume]])
     XCTAssertEqual(t.bodies[0].events.map(\.id), ["a", "b"])
     guard case .listen(let kept) = o.events[0] else { return XCTFail() }
     XCTAssertEqual(kept.start, .stay)
     takes = false
-    XCTAssertEqual(o.backgroundBody()?.events.first.flatMap { e -> ListeningStart? in
-      if case .listen(let l) = e { return l.start } else { return nil }
-    }, .jump)
+    XCTAssertEqual(o.backgroundBody()?.events.first.flatMap(start), .jump)
   }
 
   func testSendsAFreshSentAtPerAttemptAndTheDeviceId() async {

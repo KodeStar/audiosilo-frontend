@@ -117,13 +117,12 @@ object Spans {
   private fun heard(span: OpenSpan): Boolean =
     span.endedAt.secondsSince(span.startedAt) >= EMPTY_SPAN || abs(span.to.pos - span.from.pos) >= 1
 
+  /** The starts that say a deliberate move. */
+  private val MOVE_STARTS =
+    setOf(ListeningStart.JUMP, ListeningStart.MOVED_BACK, ListeningStart.RESTART, ListeningStart.STAY)
+
   /** Whether a span carries anything: listening, or a deliberate move. */
-  fun saysSomething(span: OpenSpan): Boolean =
-    heard(span) ||
-      span.start == ListeningStart.JUMP ||
-      span.start == ListeningStart.MOVED_BACK ||
-      span.start == ListeningStart.RESTART ||
-      span.start == ListeningStart.STAY
+  fun saysSomething(span: OpenSpan): Boolean = heard(span) || span.start in MOVE_STARTS
 
   /**
    * A deliberate move nothing was heard after (a stop right behind a seek): all it says is the move,
@@ -436,10 +435,8 @@ class SpanRecorder(
     }
     // One still open while not playing (a stop noticed late) ends here, as a paused move's does.
     close(at)
-    nextStart = start
-    if (at != null) sendStill(book, at, start, speed)
+    if (at != null) sendStill(book, at, start, speed) else nextStart = start
   }
-
 
   private fun finishEvent(kind: String, ref: BookRef, at: Instant, base: Int) =
     FinishEvent(newId(), kind, ref.libraryId, ref.path, ISOTime.string(at), base)
