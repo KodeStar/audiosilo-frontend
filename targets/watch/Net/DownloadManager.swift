@@ -87,8 +87,8 @@ final class DownloadManager: ObservableObject {
   private var runs: [String: UUID] = [:]
   /// Resume data for a file whose transfer broke (`book|path`).
   private var resumeData: [String: Data] = [:]
-  /// The share of each file in flight that has come (`book|path`, 0...1).
-  private var fractions: [String: Double] = [:]
+  /// The share of each file in flight that has come (0...1), by book key, then by the file's path.
+  private var fractions: [String: [String: Double]] = [:]
   /// The files the server last said were ready, by book key (the phone's "n of m files").
   private var serverReady: [String: Set<String>] = [:]
 
@@ -103,6 +103,11 @@ final class DownloadManager: ObservableObject {
   private func update(_ key: String, _ change: (inout DownloadRecord) -> Void) {
     guard let i = records.firstIndex(where: { $0.id == key }) else { return }
     change(&records[i])
+    if records[i].state == .ready {
+      // Nothing of it is on its way any more.
+      fractions[key] = nil
+      serverReady[key] = nil
+    }
     refreshPercent(key)
     save()
   }
@@ -167,8 +172,8 @@ final class DownloadManager: ObservableObject {
       let k = DownloadTaskTag(book: r.id, path: f.path).key
       handedOff.remove(k)
       resumeData[k] = nil
-      fractions[k] = nil
     }
+    fractions[r.id] = nil
     serverReady[r.id] = nil
     percents[r.id] = nil
     try? FileManager.default.removeItem(at: folder(of: r))
@@ -399,7 +404,7 @@ final class DownloadManager: ObservableObject {
       do {
         try FileManager.default.moveItem(at: staged, to: dest)
         let size = Files.size(of: dest)
-        fractions[tag.key] = nil
+        fractions[tag.book]?[tag.path] = nil
         update(tag.book) {
           $0.files[i].done = true
           $0.files[i].bytes = size
@@ -412,7 +417,7 @@ final class DownloadManager: ObservableObject {
       }
     case .refused(let tag, let error):
       handedOff.remove(tag.key)
-      fractions[tag.key] = nil
+      fractions[tag.book]?[tag.path] = nil
       let refusal = RenditionPlan.refusal(error)
       if case .retry(let after) = refusal {
         // Not ready after all (`rendition_pending`): poll again, after the server's wait (the
@@ -427,11 +432,11 @@ final class DownloadManager: ObservableObject {
       handedOff.remove(tag.key)
       guard records.contains(where: { $0.id == tag.book }) else { return }  // removed meanwhile
       // With no resume data the file starts again from nothing.
-      if let data { resumeData[tag.key] = data } else { fractions[tag.key] = nil }
+      if let data { resumeData[tag.key] = data } else { fractions[tag.book]?[tag.path] = nil }
       update(tag.book) { $0.message = DownloadWait.connection.message }
     case .progress(let tag, let fraction):
       guard records.contains(where: { $0.id == tag.book }) else { return }  // removed meanwhile
-      fractions[tag.key] = fraction
+      fractions[tag.book, default: [:]][tag.path] = fraction
       stopWaiting(tag.book)
       if refreshPercent(tag.book) { onChange?() }
     }
@@ -466,9 +471,9 @@ final class DownloadManager: ObservableObject {
   /// A downloading book's share of its audio on the watch, nil for any other.
   private func percent(_ r: DownloadRecord) -> Int? {
     guard r.state == .downloading, !r.files.isEmpty else { return nil }
+    let coming = fractions[r.id] ?? [:]
     return DownloadProgress.percent(r.files.map { f in
-      DownloadProgress.File(duration: f.duration ?? 0, done: f.done,
-                            fraction: fractions[DownloadTaskTag(book: r.id, path: f.path).key] ?? 0)
+      DownloadProgress.File(duration: f.duration ?? 0, done: f.done, fraction: coming[f.path] ?? 0)
     })
   }
 
