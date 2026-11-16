@@ -33,6 +33,16 @@ final class DownloadProgressTests: XCTestCase {
     XCTAssertEqual(DownloadProgress.percent([file(60, -1), file(60, .infinity)]), 0)
   }
 
+  func testNeverSaysLessThanItReachedNor100WhileDownloading() {
+    // A launch: the bytes in flight are gone, the files landed are a quarter.
+    XCTAssertEqual(DownloadProgress.shown(25, reached: 60), 60)
+    XCTAssertEqual(DownloadProgress.shown(62, reached: 60), 62)
+    XCTAssertEqual(DownloadProgress.shown(30, reached: nil), 30)
+    // Every file landed, the record not yet ready.
+    XCTAssertEqual(DownloadProgress.shown(100, reached: nil), 99)
+    XCTAssertEqual(DownloadProgress.shown(-4, reached: 140), 99)
+  }
+
   func testPublishesInFivePercentSteps() {
     XCTAssertEqual([0, 4, 5, 44, 45, 99, 100].map(DownloadProgress.published), [0, 0, 5, 40, 45, 95, 100])
     XCTAssertEqual(DownloadProgress.published(-3), 0)

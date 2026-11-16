@@ -36,6 +36,13 @@ enum DownloadProgress {
     return min(99, max(0, Int((have / whole * 100).rounded(.down))))
   }
 
+  /// What a book still downloading says: never behind what it `reached` before (a launch has lost
+  /// the bytes in flight, a transfer begun again has fewer), and under 100 whatever has landed (its
+  /// last file makes it ready, never "100%" and still downloading).
+  static func shown(_ percent: Int, reached: Int?) -> Int {
+    min(99, max(0, percent, reached ?? 0))
+  }
+
   /// The percent as `watch-state` carries it: down to the step below.
   static func published(_ percent: Int) -> Int {
     let p = min(100, max(0, percent))

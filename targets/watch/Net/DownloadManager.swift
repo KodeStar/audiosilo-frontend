@@ -43,6 +43,10 @@ struct DownloadRecord: Codable, Equatable, Identifiable {
   /// Why it failed, or what it waits for.
   var message: String?
   var addedAt: Date
+  /// The furthest its percent has got while downloading (0...99), kept so the row never says less
+  /// than it did: a launch has lost the bytes in flight, and a transfer begun again has fewer.
+  /// Nil until it downloads, and on a record written before 2.7.0.
+  var reached: Int? = nil
 
   var id: String { ref.key }
   var doneCount: Int { files.filter(\.done).count }
@@ -59,6 +63,7 @@ struct DownloadRecord: Codable, Equatable, Identifiable {
     guard !files.isEmpty, files.allSatisfy(\.done) else { return }
     state = .ready
     message = nil
+    reached = nil
   }
 }
 
@@ -69,7 +74,8 @@ final class DownloadManager: ObservableObject {
 
   @Published private(set) var records: [DownloadRecord]
   /// How far each book downloading has come, 0...99 by audio time (`DownloadProgress.percent`),
-  /// by book key. In memory: a suspended app hears of a file only when it lands.
+  /// by book key, never behind the record's `reached`. The bytes in flight are in memory: a
+  /// suspended app hears of a file only when it lands.
   @Published private(set) var percents: [String: Int] = [:]
   /// False when the last write of the index failed (a full disk): `records` would not survive a kill.
   private(set) var indexSaved = true
@@ -279,6 +285,7 @@ final class DownloadManager: ObservableObject {
             DownloadedFile(path: f.path, local: String(format: "%03d.m4a", i), bytes: nil, done: false,
                            duration: f.duration)
           }
+          rec.reached = nil
         }
       }
       var answer = try await current().prepareRenditions(ref)
@@ -448,7 +455,8 @@ final class DownloadManager: ObservableObject {
       guard records.contains(where: { $0.id == tag.book }) else { return }  // removed meanwhile
       fractions[tag.book, default: [:]][tag.path] = fraction
       stopWaiting(tag.book)
-      if refreshPercent(tag.book) { onChange?() }
+      // Kept with the index at each step, so the next launch starts from it.
+      if refreshPercent(tag.book) { save() }
     }
   }
 
@@ -473,18 +481,24 @@ final class DownloadManager: ObservableObject {
   @discardableResult
   private func refreshPercent(_ key: String) -> Bool {
     let was = percents[key]
-    let now = records.first(where: { $0.id == key }).flatMap(percent)
+    var now: Int?
+    if let i = records.firstIndex(where: { $0.id == key }) {
+      now = percent(records[i])
+      if let now, records[i].reached != now { records[i].reached = now }
+    }
     if now != was { percents[key] = now }
     return now.map(DownloadProgress.published) != was.map(DownloadProgress.published)
   }
 
-  /// A downloading book's share of its audio on the watch, nil for any other.
+  /// A downloading book's share of its audio on the watch, nil for any other: under 100 and never
+  /// behind what it reached before (`DownloadProgress.shown`).
   private func percent(_ r: DownloadRecord) -> Int? {
     guard r.state == .downloading, !r.files.isEmpty else { return nil }
     let coming = fractions[r.id] ?? [:]
-    return DownloadProgress.percent(r.files.map { f in
+    let now = DownloadProgress.percent(r.files.map { f in
       DownloadProgress.File(duration: f.duration ?? 0, done: f.done, fraction: coming[f.path] ?? 0)
     })
+    return DownloadProgress.shown(now, reached: r.reached)
   }
 
   /// What `watch-state` says of a book: its stage, its size once ready, and while on its way how

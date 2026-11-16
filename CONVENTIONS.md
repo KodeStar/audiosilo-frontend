@@ -2614,10 +2614,14 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   downloading `files_ready` / `files_total` (files the server has ready: landed, handed to the
   session, or ready in the last renditions answer) and `waiting` (`connection` | `server`,
   `DownloadWait`, the record's message), and while downloading `progress`, the share of its
-  audio on the watch (`Core/DownloadProgress.swift`: by duration, under 100 until every file has
-  landed) in 5% steps, so the phone hears of a download about 20 times. The bytes in flight come
-  from the session's `didWriteData` (told per 1%), only while the app runs: a suspended app hears
-  of a file when it lands. A wait ends when bytes come or the server answers. Content identical to the session's last
+  audio on the watch (`Core/DownloadProgress.swift`: by duration, each file the same unless every
+  file has one, under 100 until every file has landed) in 5% steps, so the phone hears of a
+  download about 20 times. The bytes in flight come from the session's `didWriteData` (told per
+  1%, a refusal's body left out), only while the app runs: a suspended app hears of a file when it
+  lands. The percent never goes back: the record keeps the furthest it got (`reached`, saved with
+  the index at each step, `DownloadProgress.shown`), so a launch, which has lost the bytes in
+  flight, or a transfer begun again starts from there. A wait ends when bytes come or the server
+  answers. Content identical to the session's last
   context returns success and sends nothing (seen in the watchOS 26.5 framework), so it is no error.
 - **Downloads are the watch rendition**, prepared and polled in the foreground
   (`Core/RenditionPlan.swift`), each ready file fetched by the background `URLSession`
