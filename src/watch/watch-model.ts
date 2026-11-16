@@ -302,6 +302,7 @@ export function parseWatchState(raw: unknown): WatchState | null {
   const books: WatchBook[] = [];
   for (const b of Array.isArray(raw.books) ? raw.books : []) {
     if (!isRecord(b) || typeof b.library_id !== 'number' || typeof b.path !== 'string') continue;
+    const added = time(b.added_at);
     books.push({
       library_id: b.library_id,
       path: b.path,
@@ -311,7 +312,7 @@ export function parseWatchState(raw: unknown): WatchState | null {
         : 'queued',
       bytes: num(b.bytes),
       ...parseHowFar(b),
-      ...(time(b.added_at) !== undefined ? { added_at: time(b.added_at) } : {}),
+      ...(added !== undefined ? { added_at: added } : {}),
     });
   }
   return {

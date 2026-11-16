@@ -91,10 +91,13 @@ export function parseLedgerRow(raw: unknown): LedgerRow | null {
 const removing = (row: LedgerRow, now: number) =>
   row.remove_at !== undefined && now - row.remove_at < WATCH_HOLD_MS;
 
+/** When the row's Remove was first asked (`remove_asked_at` is kept only for one asked again). */
+const firstRemoveAt = (row: LedgerRow) => row.remove_asked_at ?? row.remove_at;
+
 /** What a Remove tapped now carries as `asked_at`: the first one's time while that one is under
  * way, so asking again never takes a copy the watch added since; else now. */
 export function removeAskedAt(row: LedgerRow | undefined, now: number): number {
-  return row && removing(row, now) ? (row.remove_asked_at ?? row.remove_at ?? now) : now;
+  return row && removing(row, now) ? (firstRemoveAt(row) ?? now) : now;
 }
 
 /** A listed copy added before the row's last Send: an earlier one, not the copy sent. Only from a
@@ -107,14 +110,25 @@ function olderThanSend(copy: WatchBook, row: LedgerRow): boolean {
   );
 }
 
+/** A listed copy the row's last Send has yet to replace, or with a `remove` on its way since: the
+ * row says where it stands. */
+function aboutToGo(
+  copy: WatchBook,
+  row: LedgerRow,
+  account: string,
+  transfers: readonly WatchTransfer[],
+): boolean {
+  return (
+    olderThanSend(copy, row) ||
+    (row.remove_at === undefined && transferOf(transfers, 'remove', account, row)?.failed === false)
+  );
+}
+
 /** A copy added after the row's Remove was asked, which the watch keeps (`asked_at`): that Remove
  * is over. */
 function addedSinceRemove(copy: WatchBook, row: LedgerRow): boolean {
-  return (
-    row.remove_at !== undefined &&
-    copy.added_at !== undefined &&
-    copy.added_at > (row.remove_asked_at ?? row.remove_at)
-  );
+  const asked = firstRemoveAt(row);
+  return asked !== undefined && copy.added_at !== undefined && copy.added_at > asked;
 }
 
 /** The rows with `row` in the place of the same book's. */
@@ -338,14 +352,11 @@ export function watchRows(
   const listed = here ? (status.state?.books ?? []) : [];
   const out: WatchRow[] = listed.map((book) => {
     const row = rows.find((r) => sameBook(r, book));
-    const going =
-      !!row &&
-      (olderThanSend(book, row) ||
-        (row.remove_at === undefined &&
-          transferOf(status.transfers, 'remove', account, row)?.failed === false));
     const phase =
       removePhase(row, account, status.transfers, now) ??
-      (going && row ? unlistedPhase(row, account, status, now) : book.state);
+      (row && aboutToGo(book, row, account, status.transfers)
+        ? unlistedPhase(row, account, status, now)
+        : book.state);
     return {
       library_id: book.library_id,
       path: book.path,

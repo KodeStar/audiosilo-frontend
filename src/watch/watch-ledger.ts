@@ -181,15 +181,12 @@ export function applyWatchStatus(
     changeRows(watchId, account, (rows) => reconcileRows(rows, account, status));
   }
   const { ledger } = useWatchLedger.getState();
-  const dead = Object.keys(ledger).filter(
-    (id) =>
-      id !== watchId &&
-      Object.values(ledger[id]).every((rows) =>
-        rows.every((r) => now - lastAsked(r) > DEAD_WATCH_MS),
-      ),
-  );
-  if (dead.length === 0) return;
-  const kept = Object.fromEntries(Object.entries(ledger).filter(([id]) => !dead.includes(id)));
+  const dead = (accounts: Ledger[string]) =>
+    Object.values(accounts).every((rows) => rows.every((r) => now - lastAsked(r) > DEAD_WATCH_MS));
+  const entries = Object.entries(ledger);
+  const live = entries.filter(([id, accounts]) => id === watchId || !dead(accounts));
+  if (live.length === entries.length) return;
+  const kept = Object.fromEntries(live);
   useWatchLedger.setState({ ledger: kept });
   stored.write({}, kept);
 }
