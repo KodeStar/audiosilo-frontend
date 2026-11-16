@@ -432,6 +432,10 @@ final class ClientHeaderAndWireTests: XCTestCase {
     XCTAssertFalse(off.supportsWatch)
     let noSync = try Wire.decoder.decode(ServerInfo.self, from: Data(#"{"capabilities":{},"renditions":["watch"]}"#.utf8))
     XCTAssertFalse(noSync.supportsWatch)
+    // Stay wins (row 9c-2): the flag a Stay is sent as `stay` on; absent on an older server.
+    XCTAssertNil(new.capabilities?.listeningStay)
+    let stay = try Wire.decoder.decode(ServerInfo.self, from: Data(#"{"capabilities":{"listening_stay":true}}"#.utf8))
+    XCTAssertEqual(stay.capabilities?.listeningStay, true)
   }
 
   func testDecodesASyncAnswerAndAProgressRowWithOtherPlace() throws {

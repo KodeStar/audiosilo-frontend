@@ -751,7 +751,17 @@ class SpanEventTest {
     assertFalse(Spans.saysSomething(span { still(it).copy(start = ListeningStart.CONTINUE) }))
     assertTrue(Spans.saysSomething(span { still(it).copy(start = ListeningStart.JUMP) }))
     assertTrue(Spans.saysSomething(span { still(it).copy(start = ListeningStart.RESTART) }))
+    assertTrue(Spans.saysSomething(span { still(it).copy(start = ListeningStart.STAY) }))
     assertTrue(Spans.saysSomething(span()))
+    assertTrue(Spans.isBareMove(span { still(it).copy(start = ListeningStart.STAY) }))
+    assertFalse(Spans.isBareMove(span { it.copy(start = ListeningStart.STAY) }))
+  }
+
+  // Stay wins (row 9c-2): the start's wire name, which a server without `listening_stay` refuses.
+  @Test
+  fun aStayGoesAsStay() {
+    val json = json(Spans.event(span { it.copy(start = ListeningStart.STAY) }))
+    assertEquals("stay", plain(json.getValue("start")))
   }
 
   @Test

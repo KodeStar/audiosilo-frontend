@@ -692,6 +692,12 @@ class ClientHeaderAndWireTest {
         .supportsWatch
     )
     assertFalse(decode("""{"capabilities":{},"renditions":["watch"]}""", ServerInfo.serializer()).supportsWatch)
+    // Stay wins (row 9c-2): the flag a Stay is sent as `stay` on; absent on an older server.
+    assertNull(decode("""{"capabilities":{"listening_sync":true}}""", ServerInfo.serializer()).capabilities?.listeningStay)
+    assertEquals(
+      true,
+      decode("""{"capabilities":{"listening_stay":true}}""", ServerInfo.serializer()).capabilities?.listeningStay,
+    )
     assertEquals("srv", decode("""{"server_id":"srv"}""", ServerInfo.serializer()).serverId)
   }
 

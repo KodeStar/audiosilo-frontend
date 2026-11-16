@@ -656,7 +656,17 @@ final class SpanEventTests: XCTestCase {
     XCTAssertFalse(Spans.saysSomething(span { still(&$0); $0.start = .continue }))
     XCTAssertTrue(Spans.saysSomething(span { still(&$0); $0.start = .jump }))
     XCTAssertTrue(Spans.saysSomething(span { still(&$0); $0.start = .restart }))
+    XCTAssertTrue(Spans.saysSomething(span { still(&$0); $0.start = .stay }))
     XCTAssertTrue(Spans.saysSomething(span()))
+    XCTAssertTrue(Spans.isBareMove(span { still(&$0); $0.start = .stay }))
+    XCTAssertFalse(Spans.isBareMove(span { $0.start = .stay }))
+  }
+
+  // Stay wins (row 9c-2): the start's wire name, which a server without `listening_stay` refuses.
+  func testAStayGoesAsStay() throws {
+    let e = ListeningEvent.listen(Spans.event(span { $0.start = .stay }))
+    let json = try JSONSerialization.jsonObject(with: Wire.encoder.encode(e)) as! [String: Any]
+    XCTAssertEqual(json["start"] as? String, "stay")
   }
 
   func testNeverClaimsMoreThanTheMaximumWallClock() {

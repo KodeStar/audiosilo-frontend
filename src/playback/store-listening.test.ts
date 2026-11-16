@@ -859,6 +859,20 @@ describe('with listening_sync', () => {
       expect(mockClosed.map((s) => s.start)).toEqual(['resume', 'stay', 'jump']);
     });
 
+    it('paused with no place to send, nothing goes and the next play is a jump', async () => {
+      await start();
+      pushSnapshot(snap('paused', 0, NaN));
+      await settle();
+      standByPlace();
+      await settle();
+      expect(mockAppended).toEqual([]);
+      pushSnapshot(snap('playing', 0, 5));
+      jest.advanceTimersByTime(2_000);
+      pushSnapshot(snap('paused', 0, 7));
+      await settle();
+      expect(mockClosed.map((s) => s.start)).toEqual(['jump']);
+    });
+
     // Playing with no span open (the load held the place): the Stay waits for the one the
     // keep opens, but only while this play goes on.
     const playingWithNoneOpen = async () => {
