@@ -390,8 +390,8 @@ function sameAuthor(work: BookMetaSeriesWork, book: Book): boolean {
  * listener's copy - by the server's placement (`local`) first, else by the work id a book
  * carries (`work_id`), else by title among the series' own books (a series named unlike
  * the rail is not placed by the server; never a book whose `work_id` is another of the
- * rail's works) - then to a copy on another server by title and
- * author, else a ghost. A work the listener holds in several recordings (server#241: the
+ * rail's works, nor one the server placed at another entry) - then to a copy on another
+ * server by title and author, else a ghost. A work the listener holds in several recordings (server#241: the
  * server's `local_others`, and the series' own books of the same `work_id`) is one entry
  * (`workEntry`). Owned books the rail doesn't list keep their place by `series_index` among
  * the numbered entries (unnumbered ones go last), those of one work together, so nothing
@@ -428,7 +428,19 @@ export function railEntries(
       w.local && isRange(w) ? [keyOf(w.local.library_id, w.local.path)] : [],
     ),
   );
+  // Every book the server placed anywhere on the rail (a `local` or one of `local_others`):
+  // that entry's alone. The work id and title fallbacks never take one for another entry, so
+  // a book console-matched to one work but placed by the server at another (its ASIN's) is
+  // never on two entries: the server's placement wins.
+  const placed = new Set(
+    view.works.flatMap((w) =>
+      [...(w.local ? [w.local] : []), ...(w.local_others ?? [])].map((r) =>
+        keyOf(r.library_id, r.path),
+      ),
+    ),
+  );
   const used = new Set<string>();
+  const free = (b: Book) => !used.has(bookKey(b)) && !placed.has(bookKey(b));
   const out: SeriesEntry[] = [];
   const now = src.now ?? new Date();
   const sorted = sortSeriesBooks(books);
@@ -452,12 +464,9 @@ export function railEntries(
       // By title, never a book known to be another of the rail's works (two works can
       // share a title: an adaptation): that one waits for its own entry.
       const b =
-        sorted.find((x) => x.work_id === w.id && !used.has(bookKey(x))) ??
+        sorted.find((x) => x.work_id === w.id && free(x)) ??
         books.find(
-          (x) =>
-            !used.has(bookKey(x)) &&
-            !(x.work_id && railWorks.has(x.work_id)) &&
-            looseKey(x.title) === title,
+          (x) => free(x) && !(x.work_id && railWorks.has(x.work_id)) && looseKey(x.title) === title,
         );
       if (b) take(bookCopy(b, src.connectionId, src.connectionName));
     }
@@ -468,7 +477,7 @@ export function railEntries(
         if (!used.has(keyOf(r.library_id, r.path))) take(refCopy(r));
       }
       for (const b of sorted) {
-        if (b.work_id === w.id && !used.has(bookKey(b))) {
+        if (b.work_id === w.id && free(b)) {
           take(bookCopy(b, src.connectionId, src.connectionName));
         }
       }

@@ -15,6 +15,7 @@ import {
   type ProgressLike,
   railEntries,
   recordingCounts,
+  type SeriesEntry,
   seriesOf,
   seriesStats,
   trackSegments,
@@ -381,6 +382,48 @@ describe('other recordings of a work (server#241)', () => {
       ['w:lw', 'ghost'],
       ['w:lw-cast', 'owned'],
       ['w:cw', 'ghost'],
+    ]);
+  });
+
+  it("keeps a book where the server placed it, never also on its work id's entry", () => {
+    // Console-matched to Leviathan Wakes (its work id), placed by the server at Caliban's
+    // War (its ASIN's work): that entry's alone, whether placed as `local` or an other.
+    const matched = book("Caliban's War", 2, {
+      rel_path: "Corey/Expanse/Caliban's War (matched)",
+      work_id: 'lw',
+    });
+    const asLocal = seriesViews({
+      ...view,
+      id: 'p',
+      works: [work('lw', 'Leviathan Wakes', '1', lw), work('cw', "Caliban's War", '2', matched)],
+    })[0];
+    const asOther = seriesViews({
+      ...view,
+      id: 'q',
+      works: [
+        work('lw', 'Leviathan Wakes', '1', lw),
+        { ...work('cw', "Caliban's War", '2', cw), local_others: [ref(matched)] },
+      ],
+    })[0];
+    // And with no `local` on the earlier work: its work id match skips a placed book too.
+    const unplaced = seriesViews({
+      ...view,
+      id: 'r',
+      works: [work('lw', 'Leviathan Wakes', '1'), work('cw', "Caliban's War", '2', matched)],
+    })[0];
+    const paths = (es: SeriesEntry[]) =>
+      es.map((e) => [e.key, (e.recordings?.map((r) => r.copy) ?? [e.copy]).map((c) => c?.path)]);
+    expect(paths(railEntries(asLocal, [lw, matched], src))).toEqual([
+      ['w:lw', [lw.rel_path]],
+      ['w:cw', [matched.rel_path]],
+    ]);
+    expect(paths(railEntries(asOther, [lw, cw, matched], src))).toEqual([
+      ['w:lw', [lw.rel_path]],
+      ['w:cw', [cw.rel_path, matched.rel_path]],
+    ]);
+    expect(paths(railEntries(unplaced, [matched], src))).toEqual([
+      ['w:lw', [undefined]],
+      ['w:cw', [matched.rel_path]],
     ]);
   });
 
