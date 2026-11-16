@@ -162,15 +162,14 @@ class FileSpanStoreTest {
     val dir = tempDir()
     try {
       val file = File(dir, "open-span.json")
-      val moveFile = File(dir, "open-span-move.json")
-      FileSpanStore(file, moveFile).save(span("A"))
+      fileSpanStore(dir).save(span("A"))
       // A new process reads what the last one kept, and a recorder closes it into the outbox.
-      assertEquals(span("A"), FileSpanStore(file, moveFile).load())
+      assertEquals(span("A"), fileSpanStore(dir).load())
       val emitted = ArrayList<ListeningEvent>()
-      val rec = SpanRecorder(FileSpanStore(file, moveFile), AckStore(null), emit = { emitted += it })
+      val rec = SpanRecorder(fileSpanStore(dir), AckStore(null), emit = { emitted += it })
       rec.recover()
       assertEquals(listOf("A"), emitted.map { it.id })
-      assertNull(FileSpanStore(file, moveFile).load())
+      assertNull(fileSpanStore(dir).load())
       assertFalse(file.exists())
     } finally {
       dir.deleteRecursively()
@@ -189,7 +188,7 @@ class FileSpanStoreTest {
           """"started_at":"2026-11-12T10:00:00.000Z","ended_at":"2026-11-12T10:00:12.000Z",""" +
           """"start":"jump","base_version":7,"id":"A"}"""
       )
-      val store = FileSpanStore(file, File(dir, "open-span-move.json"))
+      val store = fileSpanStore(dir)
       assertEquals(span("A"), store.load())
       assertNull(store.loadMove())
     } finally {
@@ -203,7 +202,7 @@ class FileSpanStoreTest {
     try {
       val file = File(dir, "open-span.json")
       file.writeText("{not json")
-      assertNull(FileSpanStore(file, File(dir, "open-span-move.json")).load())
+      assertNull(fileSpanStore(dir).load())
     } finally {
       dir.deleteRecursively()
     }

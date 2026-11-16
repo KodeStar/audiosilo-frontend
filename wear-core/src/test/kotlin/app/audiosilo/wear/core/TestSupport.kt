@@ -39,6 +39,9 @@ class MemorySpanStore : OpenSpanStore {
 /** A fresh temp directory, removed by the caller. */
 fun tempDir(): File = Files.createTempDirectory("wear-core").toFile()
 
+/** The open span's files in `dir`, as the app names them (Files' `open-span.json`, `open-span-move.json`). */
+fun fileSpanStore(dir: File) = FileSpanStore(File(dir, "open-span.json"), File(dir, "open-span-move.json"))
+
 fun iso(s: String): Instant = ISOTime.parse(s)!!
 
 fun listen(

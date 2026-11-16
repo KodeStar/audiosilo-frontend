@@ -90,7 +90,7 @@ class JsonFileTest {
 
   @Test
   fun theOpenSpanIsSynced() {
-    val store = FileSpanStore(File(dir, "open-span.json"), File(dir, "open-span-move.json"))
+    val store = fileSpanStore(dir)
     val end = SpanEnd(10.0, "A/Folder/1.mp3", 10.0)
     val span =
       OpenSpan(2, "A/Folder", end, end, 100.0, 1.0, iso("2026-10-25T07:00:00.000Z"),
@@ -210,8 +210,6 @@ class DurableRateTest {
 
   private fun at(pos: Double) = SpanEnd(pos, "A/Folder/1.mp3", pos)
 
-  private fun spanFile() = FileSpanStore(File(dir, "open-span.json"), File(dir, "open-span-move.json"))
-
   /** A kill: what the process was writing stops here. */
   private class Kill : RuntimeException("killed")
 
@@ -224,7 +222,7 @@ class DurableRateTest {
     var killAfterAppend = false
     val spans =
       SpanRecorder(
-        spanFile(),
+        fileSpanStore(dir),
         AckStore(null),
         clock = { clock.now },
         newId = {
@@ -259,7 +257,7 @@ class DurableRateTest {
     l.spans.open(book, at(0.0), 1.0)
     clock.advance(5.0)
     assertEquals(listOf("open-span.json"), syncedBy { l.tick(5.0, keepDue = true, cutDue = false) })
-    assertEquals(5.0, spanFile().load()!!.to.pos, 0.0)
+    assertEquals(5.0, fileSpanStore(dir).load()!!.to.pos, 0.0)
     // The place moved in memory, not on the disk.
     assertEquals(5.0, l.places.place(ref)!!.position, 0.0)
     assertNull(PlaceStore(File(dir, "places.json")).place(ref))
@@ -276,7 +274,7 @@ class DurableRateTest {
       syncedBy { l.tick(15.0, keepDue = true, cutDue = true) },
     )
     assertEquals(listOf("e1"), l.outbox.events.map { it.id })
-    val stored = spanFile().load()!!
+    val stored = fileSpanStore(dir).load()!!
     assertEquals("e2", stored.id)
     assertEquals(ListeningStart.CONTINUE, stored.start)
     assertEquals(15.0, PlaceStore(File(dir, "places.json")).place(ref)!!.position, 0.0)
@@ -373,7 +371,7 @@ class DurableRateTest {
     val cutAt = clock.now
     first.killAfterAppend = true
     assertThrows(Kill::class.java) { first.tick(15.0, keepDue = true, cutDue = true) }
-    assertEquals("the span file still holds the last keep", 10.0, spanFile().load()!!.to.pos, 0.0)
+    assertEquals("the span file still holds the last keep", 10.0, fileSpanStore(dir).load()!!.to.pos, 0.0)
     clock.advance(30.0)
     val next = Launch()
     assertEquals(listOf("e1"), next.outbox.events.map { it.id })
@@ -383,7 +381,7 @@ class DurableRateTest {
     assertEquals(cutAt, place.at)
     assertEquals(15.0, PlaceStore(File(dir, "places.json")).place(ref)!!.position, 0.0)
     assertEquals("the event goes once", listOf("e1"), next.outbox.events.map { it.id })
-    assertNull(spanFile().load())
+    assertNull(fileSpanStore(dir).load())
   }
 
   // fe#285: a cut right behind a bare move opens the next span with the move's reason, not
@@ -398,7 +396,7 @@ class DurableRateTest {
     // The cut, with nothing heard since the move: the next span is a `jump`. Killed before the place.
     first.spans.playingTick(book, at(100.2), 1.0, keepDue = true, cutDue = true, reachable = true)
     val cutAt = clock.now
-    val left = spanFile().load()!!
+    val left = fileSpanStore(dir).load()!!
     assertEquals(ListeningStart.JUMP, left.start)
     assertTrue(left.fromHeard)
     clock.advance(30.0)
@@ -421,7 +419,7 @@ class DurableRateTest {
     // Buffering: no movement for 8 s, the keeps still run.
     clock.advance(5.0)
     first.tick(5.0, keepDue = true, cutDue = false, heardAt = heard)
-    assertEquals(heard, spanFile().load()!!.endedAt)
+    assertEquals(heard, fileSpanStore(dir).load()!!.endedAt)
     clock.advance(3.0)
     first.tick(5.0, keepDue = true, cutDue = false, heardAt = heard)
     clock.advance(30.0)
@@ -441,10 +439,7 @@ class DurableRateTest {
     clock.advance(5.0)
     first.tick(5.0, keepDue = true, cutDue = false)
     val next = Launch()
-    val order = ArrayList<String>()
-    JsonFile.onSynced = { order += it.name }
-    next.recover()
-    assertEquals(listOf("places.json", "outbox.json", "open-span.json"), order)
+    assertEquals(listOf("places.json", "outbox.json", "open-span.json"), syncedBy { next.recover() })
   }
 
   // fe#321: the move a kill cut short outlives a launch that never plays (a background one).
@@ -456,15 +451,15 @@ class DurableRateTest {
     first.spans.move(book, to = at(10.0), from = at(90.0), playing = true, speed = 1.0)
     // A kill; a background launch recovers the span and ends without a play.
     Launch().recover()
-    assertNull(spanFile().load())
-    assertEquals(RecoveredMove(2, "A/Folder", ListeningStart.MOVED_BACK), spanFile().loadMove())
+    assertNull(fileSpanStore(dir).load())
+    assertEquals(RecoveredMove(2, "A/Folder", ListeningStart.MOVED_BACK), fileSpanStore(dir).loadMove())
     // The next launch plays the book from this watch's own place: its first span is the move's.
     val third = Launch()
     third.recover()
     third.spans.prepareStart(ListeningStart.RESUME)
     third.spans.open(book, at(10.0), 1.0)
     assertEquals(ListeningStart.MOVED_BACK, third.spans.span?.start)
-    assertNull("taken once", spanFile().loadMove())
+    assertNull("taken once", fileSpanStore(dir).loadMove())
   }
 
   @Test

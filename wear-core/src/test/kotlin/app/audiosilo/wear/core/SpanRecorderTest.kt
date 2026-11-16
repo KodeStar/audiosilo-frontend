@@ -736,6 +736,7 @@ class SpanRecorderTest {
     clock.advance(5.0)
     r.keep(at(6.0), heardAt = heard)
     assertEquals(heard, store.stored?.endedAt)
+    assertEquals("held there, nothing new to write: the open and one keep", 2, store.saves.size)
     r.keep(at(6.0), heardAt = clock.now.addingSeconds(3.0))
     assertEquals("never after now", clock.now, store.stored?.endedAt)
     r.keep(at(6.0))

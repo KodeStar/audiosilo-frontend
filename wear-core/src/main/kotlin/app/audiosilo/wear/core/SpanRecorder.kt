@@ -214,15 +214,15 @@ class SpanRecorder(
 
   /**
    * Close a span a kill left open (at its last stored values) into the outbox. Once per launch,
-   * before the first span opens (every open runs it first). Returns that span. `carry` is given it
+   * before the first span opens (every open runs it first). `carry` is given that span
    * first (the place it carries: `PlaceStore.recover`, which reads the outbox as the last process
    * left it), so a kill before the span leaves the store finds it there again.
    */
-  fun recover(carry: (OpenSpan) -> Unit = {}): OpenSpan? {
-    if (recovered) return null
+  fun recover(carry: (OpenSpan) -> Unit = {}) {
+    if (recovered) return
     recovered = true
     recoveredMove = store.loadMove()
-    val left = store.load() ?: return null
+    val left = store.load() ?: return
     carry(left)
     // In this order, as in `close`: a kill between the two sends the span twice under its one id
     // (`duplicate`), the other way round it would lose the span.
@@ -234,7 +234,6 @@ class SpanRecorder(
       if (Spans.isBareMove(left)) RecoveredMove(left.libraryId, left.path, Spans.carried(left.start)) else null
     keepMove(move)
     store.save(null)
-    return left
   }
 
   /** The recovered move, in memory and in the store (written only when it changes). */
@@ -419,7 +418,9 @@ class SpanRecorder(
     var s = span ?: return
     if (at != null && at.pos >= s.to.pos - 1) s = s.copy(to = at)
     val now = clock()
-    s = s.copy(endedAt = if (heardAt != null && heardAt < now) heardAt else now)
+    s = s.copy(endedAt = minOf(heardAt ?: now, now))
+    // Held by buffering nothing changed: no write to the disk for it.
+    if (s == span) return
     span = s
     store.save(s)
   }
