@@ -1083,8 +1083,7 @@ function keepOpenSpan() {
   });
 }
 
-/** Where the last move sent the loaded book (`moveListeningSpan`), null until one does: a
- * seek still on its way leaves the engine reporting the place it left. */
+/** Where the last move sent the loaded book (`moveListeningSpan`), null until one does. */
 let movedTo: SpanEnd | null = null;
 
 /**
@@ -1093,28 +1092,21 @@ let movedTo: SpanEnd | null = null;
  * was last seen; `from: null`, the engine has moved already and where it was is not known)
  * and the next one begins at the target with the move's reason. Paused, the move is sent at
  * once as a span of its own that moved nowhere (the place syncs as a PUT did), and the next
- * play begins with the same reason. A move to where the place already is (`movesNowhere`)
- * is none: the span goes on and no event says it.
+ * play begins with the same reason.
  */
-function moveListeningSpan(
-  target: SpanEnd | null,
-  opts: { from?: SpanEnd | null; reason?: ListeningStart } = {},
-) {
+function moveListeningSpan(target: SpanEnd | null, opts: { from?: SpanEnd | null } = {}) {
   const np = usePlayer.getState().nowPlaying;
   if (!np || !usesListeningSync(np.connectionId)) return;
-  const before =
-    opts.from !== undefined ? opts.from : span ? (engineEnd() ?? span.to) : engineEnd();
-  // No move (Previous at the book's start). The engine's place alone is not enough: a seek
-  // still on its way reads as where it left, so the last move must have gone there too.
-  if (!opts.reason && movesNowhere(before, target) && (!movedTo || movesNowhere(movedTo, target))) {
-    return;
-  }
+  const before = opts.from !== undefined ? opts.from : (engineEnd() ?? span?.to ?? null);
+  // A move to where the place already is (Previous at the book's start) is none: the span
+  // goes on and no event says it. The engine's place alone is not enough: a seek still on
+  // its way reads as where it left, so the last move must have gone there too.
+  if (movesNowhere(before, target) && (!movedTo || movesNowhere(movedTo, target))) return;
   const closed = closeListeningSpan(before ? { at: before } : {});
   // A place that is not one (NaN) moves nothing: the span just ends where it was.
   if (!target) return;
   movedTo = target;
-  const reason: ListeningStart =
-    opts.reason ?? (before && target.pos < before.pos - 1 ? 'moved_back' : 'jump');
+  const reason: ListeningStart = before && target.pos < before.pos - 1 ? 'moved_back' : 'jump';
   if (closed && isPlayingState(usePlayer.getState().snapshot.state)) {
     nextStart = reason;
     openListeningSpan(target);

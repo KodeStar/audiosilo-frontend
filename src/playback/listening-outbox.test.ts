@@ -204,8 +204,10 @@ describe('spanToEvent', () => {
     expect(spanToEvent(span()).id).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
   });
 
+  // A span nothing was heard in: no time passed and the place stayed.
+  const still = { endedAt: span().startedAt, to: span().from };
+
   it('a span that moved nowhere says nothing unless it is a deliberate move', () => {
-    const still = { endedAt: span().startedAt, to: span().from };
     expect(spanSaysSomething(span(still))).toBe(false);
     expect(spanSaysSomething(span({ ...still, start: 'continue' }))).toBe(false);
     expect(spanSaysSomething(span({ ...still, start: 'jump' }))).toBe(true);
@@ -214,7 +216,6 @@ describe('spanToEvent', () => {
   });
 
   it('a bare move is a deliberate move nothing was heard after', () => {
-    const still = { endedAt: span().startedAt, to: span().from };
     expect(spanIsBareMove(span({ ...still, start: 'moved_back' }))).toBe(true);
     expect(spanIsBareMove(span({ ...still, start: 'jump' }))).toBe(true);
     expect(spanIsBareMove(span({ ...still, start: 'restart' }))).toBe(true);

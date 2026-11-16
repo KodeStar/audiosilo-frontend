@@ -2668,11 +2668,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   close on pause / move / stop / end (then one `finish`) / sleep, cut every 15 s (the watch
   keeps that pace throughout: the phone's 60 s one is the phone's) while the last
   sync answered (else after an hour), on a rate change and on going to the background; kept every
-  5 s; a kill's open span is recovered at launch. As on the phone (`spanIsBareMove`,
-  `movesNowhere`): a deliberate move nothing was heard after (`Spans.isBareMove`, a stop under a
-  second behind a seek) gives the next span its reason, as a paused move does, since its event can
-  come back `not_applied/older` when sent apart from the span before it; a move to where the
-  place already is (`Spans.movesNowhere`, Previous at the book's start) is no move, so no event.
+  5 s; a kill's open span is recovered at launch. A bare move and a move to nowhere go as on the
+  phone (`Spans.isBareMove`, `Spans.movesNowhere`; the phone's `spanIsBareMove`, `movesNowhere`).
   Only the watches store the span at open, so only they recover a move a kill cut short (within
   the 5 s keep): the book's next span, a resume, takes its reason (`recoveredMove`). Play pulls the
   book's row first (5 s at most) and
