@@ -2609,9 +2609,9 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   when the service's 10 s wait for the load runs out or another play takes its place: a media
   button start's foreground service is released by then, and a start a frozen server held
   played on in the background with no notification or controls; `cancelledPlays` makes
-  `StartHow.wanted` false, so the start stops before its load, or `playBook` loads it paused;
-  an episode's fetch it was handed to ends with it, starting nothing (`requestEpisodeFetch`'s
-  `wanted`);
+  `StartHow.wanted` false, so the start stops before its load, or `playBook` loads it paused,
+  or loads nothing once another start took the player (`replaced`); an episode's fetch it
+  was handed to ends with it, starting nothing (`requestEpisodeFetch`'s `wanted`);
   a new request for the item takes the mark off) and **bookmarks**: `carNative.onBookmark` (the module's
   `onRemoteBookmark`, carrying the engine's own book) adds one through the framework-free
   `addBookmark` (no label, so the `annotations` gate has nothing to hold back) at the engine's

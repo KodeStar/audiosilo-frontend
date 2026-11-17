@@ -198,6 +198,43 @@ describe('a start that is no longer wanted', () => {
     }
   });
 
+  // Called off for another play (a tap on another book in the car) while its place was still
+  // looked up: loaded then, it replaced the book that play had started, paused.
+  it('loads nothing over a start made since', async () => {
+    const { loadInitialProgress } = jest.requireMock('./progress-sync') as {
+      loadInitialProgress: jest.Mock;
+    };
+    let answer!: (v: unknown) => void;
+    loadInitialProgress.mockImplementationOnce(() => new Promise((r) => (answer = r)));
+    let wanted = true;
+    const late = usePlayer
+      .getState()
+      .playBook(
+        'c1',
+        2,
+        book('CalledOff'),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        () => wanted,
+      );
+    await flush(30);
+    finishSetup(); // the bridge's setup, when this test runs on its own
+    await flush(30);
+    await usePlayer.getState().playBook('c1', 2, book('Instead'), undefined, 10);
+    (mockSvc.load as jest.Mock).mockClear();
+    (mockSvc.pause as jest.Mock).mockClear();
+    wanted = false;
+    answer({ kind: 'empty' });
+    await late;
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying?.path).toBe('Instead');
+    // Stopped, so no watchdog or save loop outlives the test.
+    await usePlayer.getState().stop();
+  });
+
   it('plays as before while it is wanted', async () => {
     (mockSvc.play as jest.Mock).mockClear();
     (mockSvc.pause as jest.Mock).mockClear();

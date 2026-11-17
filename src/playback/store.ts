@@ -2634,7 +2634,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // holds the previous book (an adoption's engine already plays another, so its snapshot
       // is not that book's).
       void persist();
-      switchBook(api, { connectionId, libraryId, book, chapterData });
+      const request = { connectionId, libraryId, book, chapterData };
+      switchBook(api, request);
+      // Called off (a car play its native side gave up on) with another start made since
+      // (the play that took its place, the listener's own tap): that one owns the player, so
+      // this one loads nothing over it. Called off with the player still its own, it goes on
+      // to load, paused (below): the previous book's saves and span already ended above.
+      const replaced = () => !!wanted && !wanted() && lastPlayRequest !== request;
       pausedAt = null; // a book (re)started here just had its place looked up
       pickUpDue = null;
       deviceId = await getDeviceId();
@@ -2700,7 +2706,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       let unchecked = false;
       if (startBookPosition === undefined && startTrack === undefined) {
         const r = await loadInitialProgress(api, connectionId, libraryId, book.rel_path);
-        if (!current()) return;
+        if (!current() || replaced()) return;
         // Not reached (a downloaded book's 'failed' starts at 0), or resumed behind it.
         unchecked = r.kind === 'failed' || (r.kind === 'progress' && !!r.unchecked);
         if (r.kind === 'progress') {
@@ -2777,7 +2783,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         }
       }
 
-      if (!current()) return;
+      if (!current() || replaced()) return;
       const { index, positionInTrack } =
         startTrack !== undefined
           ? {
