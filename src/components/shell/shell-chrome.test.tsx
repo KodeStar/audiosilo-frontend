@@ -12,10 +12,10 @@ const mockRouter = {
   back: jest.fn(),
   canGoBack: () => true,
 };
-const mockPopTabToRoot = jest.fn();
+const mockPressActiveTab = jest.fn();
 jest.mock('@/lib/root-stack', () => ({
   ...jest.requireActual('@/lib/root-stack'),
-  popTabToRoot: (tab: string) => mockPopTabToRoot(tab),
+  pressActiveTab: (tab: string) => mockPressActiveTab(tab),
 }));
 jest.mock('expo-router', () => ({
   useSegments: () => mockSegments,
@@ -163,7 +163,7 @@ describe('PhoneTabBar', () => {
     });
     // Home is the active tab: pressing it pops its stack to the root.
     await fireEvent.press(screen.getByLabelText('Home'));
-    expect(mockPopTabToRoot).toHaveBeenCalledWith('(home)');
+    expect(mockPressActiveTab).toHaveBeenCalledWith('(home)');
     expect(mockRouter.navigate).not.toHaveBeenCalled();
   });
 });

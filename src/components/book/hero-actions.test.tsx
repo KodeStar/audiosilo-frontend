@@ -194,7 +194,9 @@ describe('HeroActions generate', () => {
   it('shows Generate as a button when the page offers it', async () => {
     const onPress = jest.fn();
     await mount(false, { offer: 'generate', onPress });
-    await fireEvent.press(screen.getByRole('button', { name: 'Generate characters and recaps' }));
+    await fireEvent.press(
+      screen.getByRole('button', { name: 'Generate characters, recaps and a description' }),
+    );
     expect(onPress).toHaveBeenCalled();
     expect(mockExtra).toEqual([]);
   });
@@ -203,7 +205,9 @@ describe('HeroActions generate', () => {
     const onPress = jest.fn();
     await mount(true, { offer: 'regenerate', onPress });
     expect(screen.queryByTestId('generate-action')).toBeNull();
-    expect(mockExtra.map((a) => a.label)).toEqual(['Regenerate characters and recaps']);
+    expect(mockExtra.map((a) => a.label)).toEqual([
+      'Regenerate characters, recaps and the description',
+    ]);
     mockExtra[0].onPress();
     expect(onPress).toHaveBeenCalled();
   });
@@ -258,7 +262,7 @@ describe('HeroActions module actions', () => {
     await mountWith({ offer: 'regenerate', onPress: jest.fn() });
     expect(mockUseModulesOn).toHaveBeenCalledWith('home');
     expect(mockExtra.map((a) => a.label)).toEqual([
-      'Regenerate characters and recaps',
+      'Regenerate characters, recaps and the description',
       'Contribute The Book on home',
     ]);
     // Keyed by the module, so its keys never meet the menu's own.

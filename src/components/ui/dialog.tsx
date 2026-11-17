@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon, type IconName } from './icon';
-import { FullWindowOverlay, NativeOnlyAnimatedView, useRootInsets, withFlatStyle } from './overlay';
+import { ModalOverlay, NativeOnlyAnimatedView, useRootInsets, withFlatStyle } from './overlay';
 
 /**
  * Stacks dialogs (STYLEGUIDE.md section 8): react-native-reusables' Dialog, restyled.
@@ -160,7 +160,7 @@ export function DialogOverlay({ className, children }: { className: string; chil
     if (event.target === event.currentTarget && !event.isDefaultPrevented()) onOpenChange(false);
   };
   return (
-    <FullWindowOverlay>
+    <ModalOverlay>
       <DialogPrimitive.Overlay
         className={className}
         onPress={Platform.select({ web: onOverlayPress })}
@@ -179,7 +179,7 @@ export function DialogOverlay({ className, children }: { className: string; chil
           </NativeOnlyAnimatedView>
         </NativeOnlyAnimatedView>
       </DialogPrimitive.Overlay>
-    </FullWindowOverlay>
+    </ModalOverlay>
   );
 }
 

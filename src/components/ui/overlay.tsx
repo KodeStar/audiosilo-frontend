@@ -16,6 +16,8 @@ import {
 } from 'react-native-safe-area-context';
 import { FullWindowOverlay as RNFullWindowOverlay } from 'react-native-screens';
 
+import { ModalLayerMark } from './modal-layer';
+
 /**
  * Shared plumbing for the portal-based overlays (Dialog, AlertDialog, Select, Popover,
  * DropdownMenu, Tooltip), from react-native-reusables.
@@ -31,6 +33,21 @@ import { FullWindowOverlay as RNFullWindowOverlay } from 'react-native-screens';
  * (player redesign Phase 0a spike). A plain Fragment elsewhere.
  */
 export const FullWindowOverlay = Platform.OS === 'ios' ? RNFullWindowOverlay : Fragment;
+
+/**
+ * `FullWindowOverlay` for a MODAL overlay (Dialog, AlertDialog, Select, the menu): it
+ * mounts only while its overlay is open, and counts as a modal layer for that time, so
+ * VoiceOver and TalkBack lose the page behind (fe#305, `modal-layer.ts`). Tooltip, Toast
+ * and Popover are not modal and use `FullWindowOverlay`.
+ */
+export function ModalOverlay({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <ModalLayerMark />
+      <FullWindowOverlay>{children}</FullWindowOverlay>
+    </>
+  );
+}
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 

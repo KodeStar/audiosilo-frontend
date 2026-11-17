@@ -264,13 +264,14 @@ const THIS_BOOK = {
   queue: { chapters: CHAPTERS.chapters, total: 3000 },
 };
 
+/** A query client for one render. gcTime Infinity: an entry left behind holds no
+ * five-minute collection timer, which kept the suite from exiting (fe#160). */
+const testClient = () =>
+  new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+
 /** Renders the page and, for a measured width, lays it out at that width (the page
  * starts at 0, "not measured", which trusts the layout class). */
-async function mountAt(
-  layout: LayoutClass,
-  width?: number,
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-) {
+async function mountAt(layout: LayoutClass, width?: number, client = testClient()) {
   mockLayout = layout;
   await mountWithPortal(
     <QueryClientProvider client={client}>
@@ -508,7 +509,7 @@ describe('book page, a track file path', () => {
     // The route now names the book: the page, with the book's place.
     mockParams = { libraryId: '1', path: 'Author/Book' };
     await screen.rerender(
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={testClient()}>
         <BookScreen />
       </QueryClientProvider>,
     );
@@ -537,9 +538,6 @@ describe('book page, a track file path', () => {
 // server#193: the browse row opened a folder the scan had not reached (`pending_book`),
 // and this page's read indexed it, so the listing that flagged it is read again.
 describe('book page, a folder the scan had not reached', () => {
-  // gcTime Infinity: a seeded entry holds no collection timer past the test.
-  const cacheClient = () =>
-    new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   const listing = (pending: boolean): InfiniteData<Listing> => ({
     pageParams: [0],
     pages: [
@@ -563,14 +561,14 @@ describe('book page, a folder the scan had not reached', () => {
   });
 
   it('marks the listing that flagged it stale, so going back shows its title', async () => {
-    const client = cacheClient();
+    const client = testClient();
     client.setQueryData(qk.browse('home', 1, 'Author'), listing(true));
     await mountAt('desktop', undefined, client);
     expect(client.getQueryState(qk.browse('home', 1, 'Author'))?.isInvalidated).toBe(true);
   });
 
   it('leaves a listing alone that already held the book', async () => {
-    const client = cacheClient();
+    const client = testClient();
     client.setQueryData(qk.browse('home', 1, 'Author'), listing(false));
     await mountAt('desktop', undefined, client);
     expect(client.getQueryState(qk.browse('home', 1, 'Author'))?.isInvalidated).toBe(false);
@@ -1049,7 +1047,7 @@ describe('book page Bridge (generated characters and recaps)', () => {
     expect(mockMetaArgs).not.toHaveBeenCalled();
     mockParams = { libraryId: '1', path: 'Author/Book' };
     await screen.rerender(
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={testClient()}>
         <BookScreen />
       </QueryClientProvider>,
     );
@@ -1114,7 +1112,7 @@ describe('book page Bridge (generated characters and recaps)', () => {
     expect(screen.queryByTestId('book-tab-recaps')).toBeNull();
   });
 
-  it('offers an admin "Generate characters and recaps" for a book with neither', async () => {
+  it('offers an admin "Generate characters, recaps and a description" for a book with neither', async () => {
     signIn(ADMIN);
     bridgeOn();
     mockMeta = { matched: false };

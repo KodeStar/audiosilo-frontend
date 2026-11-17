@@ -106,7 +106,7 @@ export function PasswordDialog({ editor }: { editor: PasswordEditor }) {
           <DialogDescription>
             {change
               ? t('account.password.dialogChange')
-              : t('account.password.dialogSet', { count: PW_MIN })}
+              : t('account.password.dialogSet', { min: PW_MIN })}
           </DialogDescription>
         </DialogHeader>
         <View className="gap-1">
@@ -125,7 +125,7 @@ export function PasswordDialog({ editor }: { editor: PasswordEditor }) {
           ) : null}
           <Input
             label={t('settings.account.password.new')}
-            placeholder={t('settings.account.password.newPlaceholder', { count: PW_MIN })}
+            placeholder={t('settings.account.password.newPlaceholder', { min: PW_MIN })}
             secureTextEntry
             autoCapitalize="none"
             autoComplete="new-password"

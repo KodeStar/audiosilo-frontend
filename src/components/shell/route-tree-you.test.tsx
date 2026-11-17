@@ -2,7 +2,7 @@ import { renderRouter } from 'expo-router/testing-library';
 
 import { openDownloads, openJournal, openSettings, openYou } from '@/lib/open';
 import { playerHref } from '@/lib/paths';
-import { popTabToRoot } from '@/lib/root-stack';
+import { popTabToRoot, pressActiveTab } from '@/lib/root-stack';
 import {
   nav,
   navigationRef,
@@ -63,6 +63,45 @@ it("pops the hub's stack to the root on a second press of its tab, keeping the s
   await nav(() => popTabToRoot('(me)'));
   expect(tabStack('(me)')).toEqual(['you']);
   expect(routeInfo().params).toEqual({ section: 'year' });
+});
+
+// fe#252: a router.* call is queued and lands after the next render, so a press read the
+// stack before a push made just before it and found nothing to pop. The press's pop joins
+// the same queue behind the push, so the page never lands.
+it('pops a page pushed just before the press of its tab, before it shows', async () => {
+  await mount('/you?section=year');
+  const seen: string[][] = [];
+  const stop = navigationRef.addListener('state', () => seen.push(tabStack('(me)')));
+  await nav(() => {
+    router.push('/account?connection=c');
+    pressActiveTab('(me)');
+  });
+  stop();
+  expect(tabStack('(me)')).toEqual(['you']);
+  expect(seen).not.toContainEqual(['you', 'account']);
+  expect(routeInfo().params).toEqual({ section: 'year' });
+});
+
+// What `pressActiveTab` leans on: at a root, a POP_TO_TOP addressed to the stack's own key
+// changes nothing and warns of nothing (an expo-router upgrade that stops handling it as a
+// no-op fails here).
+it('does nothing on a press at the root, and leaves a page pushed right after it', async () => {
+  await mount('/you?section=year');
+  const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    const before = navigationRef.getRootState();
+    await nav(() => pressActiveTab('(me)'));
+    expect(navigationRef.getRootState()).toBe(before);
+    expect(error).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+    // No window after the press in which a push is taken back.
+    await nav(() => router.push('/account?connection=c'));
+    expect(tabStack('(me)')).toEqual(['you', 'account']);
+  } finally {
+    error.mockRestore();
+    warn.mockRestore();
+  }
 });
 
 it('opens the hub from over the full player in the one shell underneath', async () => {

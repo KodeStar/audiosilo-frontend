@@ -126,10 +126,13 @@ function StatsBody({ cid, server, width }: { cid: string; server: string; width:
     );
   }
   const today = listening.data ? serverToday(listening.data) : null;
-  if (offline || failed || (listening.data && !today)) {
+  const unreadAnswer = !!listening.data && !today;
+  if (offline || failed || unreadAnswer) {
     // Signed out first, then offline (before the skeleton: a held read stays pending, and
-    // no Retry can work), then the error.
-    if (signedOut) return <SignInAgainState connection={signedOut} />;
+    // no Retry can work), then the error. An answer that came but can't be read is that
+    // error even signed out: no read was refused for it (fe#147).
+    const unreadable = unreadAnswer && !offline && !listening.isError && !stats.isError;
+    if (signedOut && !unreadable) return <SignInAgainState connection={signedOut} />;
     if (offline) return <OfflineState variant="card" hint={t('common.offlinePage')} />;
     return (
       <Card className="gap-3 p-6">

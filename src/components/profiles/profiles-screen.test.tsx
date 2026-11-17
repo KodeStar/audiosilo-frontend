@@ -104,6 +104,11 @@ describe("Who's listening?", () => {
     await fireEvent.press(screen.getByLabelText('Sam, Hearthside, asks for a PIN'));
     expect(await screen.findByText("Enter Sam's PIN")).toBeTruthy();
     expect(useProfiles.getState().activeProfileId).toBe('chris');
+    // The picker behind the PIN dialog is out of a screen reader's reach (fe#305).
+    expect(
+      screen.getByTestId('profiles-screen', { includeHiddenElements: true }).props
+        .accessibilityElementsHidden,
+    ).toBe(true);
     // The number pad goes before the switch and Home (Android kept a QWERTY keyboard up
     // over Home when the focused field was simply removed).
     const dismiss = jest.spyOn(Keyboard, 'dismiss');

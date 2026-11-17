@@ -97,3 +97,19 @@ export function popTabToRoot(
   navigationRef.dispatch({ type: 'POP_TO_TOP', target: stack.key });
   return true;
 }
+
+/**
+ * A press of the active tab: pop its stack to the root, a page pushed just before the press
+ * included. Since expo-router 58 `router.*` only queues the move, which lands after React's
+ * next render, so a press in that window reads the stack before the push: `popTabToRoot`
+ * found the root alone there and popped nothing (fe#252). So this does not read the stack's
+ * depth. The container's `dispatch` joins the same queue as `router.*`, behind the push, and
+ * the two are reduced in order: the page is popped whenever it lands (in the same render when
+ * both were still queued, so it never shows). With nothing to pop, a `POP_TO_TOP` addressed
+ * to the stack's own key is a handled no-op in expo-router 58 (`findActionHandler`: no state
+ * change, no warning, nothing passed up to another navigator). The route-tree tests pin both.
+ */
+export function pressActiveTab(tab: string): void {
+  const key = tabStackState(currentNavState(), tab)?.key;
+  if (key) navigationRef.dispatch({ type: 'POP_TO_TOP', target: key });
+}

@@ -7,7 +7,7 @@ import { Figtree_700Bold } from '@expo-google-fonts/figtree/700Bold';
 import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono/500Medium';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 import { Uniwind, useUniwind } from 'uniwind';
 
@@ -96,6 +96,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [highContrastPref, setHighContrastPrefState] = useState(false);
   const [osHighContrast, setOsHighContrast] = useState(false);
   const highContrast = highContrastActive(osHighContrast, highContrastPref);
+  // The OS setting as the watcher last reported it (null: not since launch). A change in
+  // the moments before the launch read lands is newer than that read, so it wins (fe#305).
+  const watchedOs = useRef<boolean | null>(null);
   const [fontsLoaded, fontError] = useFonts(FONTS);
   const fontsReady = fontsLoaded || !!fontError;
   useFonts(DEFERRED_FONTS);
@@ -122,9 +125,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         // Before first paint, so a high-contrast launch never shows the normal colours;
         // and before the states, so a failed write leaves plain normal contrast (with the
         // states set, the effect below would repeat the write outside the catch).
-        applyHighContrast(highContrastActive(os, pref));
+        const osNow = watchedOs.current ?? os;
+        applyHighContrast(highContrastActive(osNow, pref));
         setHighContrastPrefState(pref);
-        setOsHighContrast(os);
+        setOsHighContrast(osNow);
       })
       .catch(() => undefined)
       .finally(() => {
@@ -139,7 +143,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (fontsReady && hydrated) void SplashScreen.hideAsync();
   }, [fontsReady, hydrated]);
 
-  useEffect(() => watchOsHighContrast(setOsHighContrast), []);
+  useEffect(
+    () =>
+      watchOsHighContrast((on) => {
+        watchedOs.current = on;
+        setOsHighContrast(on);
+      }),
+    [],
+  );
 
   useEffect(() => {
     if (hydrated) applyHighContrast(highContrast);

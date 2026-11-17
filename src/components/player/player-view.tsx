@@ -108,8 +108,8 @@ function PlayerTitles({ phone, onChapters }: { phone: boolean; onChapters: () =>
   const titleClass = cn(
     'text-center',
     phone
-      ? 'text-[23px] web:text-[1.4375rem] leading-[27px] web:leading-[1.6875rem]'
-      : 'text-[30px] web:text-[1.875rem] leading-[34px] web:leading-[2.125rem]',
+      ? 'text-[23px] web:text-[length:min(1.4375rem,46px)] leading-[27px] web:leading-[length:min(1.6875rem,54px)]'
+      : 'text-[30px] web:text-[length:min(1.875rem,60px)] leading-[34px] web:leading-[length:min(2.125rem,68px)]',
   );
   return (
     <View className="w-full items-center gap-1">

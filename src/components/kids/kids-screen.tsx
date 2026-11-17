@@ -139,11 +139,9 @@ export function KidsScreen() {
       {signedOut ? <SignedOutNotice name={name} /> : null}
       <View className="flex-row flex-wrap items-center justify-between gap-3">
         <Text
+          variant="display"
           accessibilityRole="header"
-          className={cn(
-            'shrink font-display tracking-tight text-foreground',
-            phone ? 'text-3xl' : 'text-5xl',
-          )}
+          className={cn('shrink', !phone && 'text-5xl web:text-[length:min(3rem,96px)]')}
         >
           {name ? t('kids.greeting', { name }) : t('kids.greetingNoName')}
         </Text>

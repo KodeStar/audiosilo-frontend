@@ -3474,7 +3474,10 @@ tokens, type and components; its section 17 maps them onto these files.
   Android's font size) but boxes sized in rem or px do not; on the web rem grows with the
   browser's font size and px does not. The rules:
   - **One helper, one threshold** (`src/lib/text-scale.ts`): `useFontScale()` (the system
-    scale on native, root font / 16 on the web), `useLargeText()` (at or past
+    scale on native, root font / 16 on the web: one cached value while anything listens,
+    kept live by a ResizeObserver on a hidden 1rem probe, so a browser font change
+    mid-session reaches every screen without a reload; page zoom moves nothing),
+    `useLargeText()` (at or past
     `LARGE_TEXT_SCALE` = 1.3; re-renders only on crossing it), `scaleCapped(base, scale,
     max)` for a px-drawn control that grows with the words, and `linesFor(n, large)` (a
     `numberOfLines` cap that lifts under large text). Never read `fontScale` per screen.
@@ -3490,7 +3493,10 @@ tokens, type and components; its section 17 maps them onto these files.
     (the skip number) sets `allowFontScaling={false}` and sizes itself with `scaleCapped`
     so the scale is not applied twice; its box takes a min width, never a fixed one.
   - **Text that stops growing**: `display` and `display-xl` titles stop at 2x
-    (`DISPLAY_MAX_FONT_SCALE`, `text.tsx`; at iOS's AX5 one word broke mid-word), and the
+    (`DISPLAY_MAX_FONT_SCALE`, `text.tsx`; at iOS's AX5 one word broke mid-word; the web
+    ignores `maxFontSizeMultiplier`, so there the variants cap in CSS,
+    `web:text-[length:min(1.875rem,60px)]`, and a caller sizing a display title twins its
+    size and leading the same capped way), and the
     Android tab bar's labels at 1.3x (`tab-label-size.ts`: the Material bar's labels are sp
     with no limit). Elsewhere prefer a row that stacks or a min width over capping: a value
     in a fixed width ("15 / s") is a bug.
@@ -3514,15 +3520,19 @@ tokens, type and components; its section 17 maps them onto these files.
     `hN`): `level` when given, else `headingLevelFor(variant)` (display 1, heading/stat 2,
     others 3). A page's title is level 1 (`PhoneHeader`, `SubNav`), a sheet's title and a
     `SectionHeader` level 2.
-  - **Sheets are modal** (`sheet.tsx` + `src/components/ui/modal-layer.ts`): a sheet
-    renders in place, not in a portal, so it registers as a modal layer
-    (`useModalLayer`) and the page roots behind it spread `useBehindModalProps()` (the
-    native shell's frame, the full player, the reader): hidden from VoiceOver and
-    TalkBack while a layer is open. The sheet itself is `accessibilityViewIsModal`
+  - **Sheets and the portaled overlays are modal** (`sheet.tsx` +
+    `src/components/ui/modal-layer.ts`): a sheet renders in place, not in a portal, and a
+    Dialog, AlertDialog, Select or menu portals to the root `PortalHost`; each registers
+    as a modal layer while open (`useModalLayer`; a portaled one wraps its content in
+    `ModalOverlay` (overlay.tsx), never the bare `FullWindowOverlay`) and
+    the page roots behind spread `useBehindModalProps()` (the native shell's frame, the
+    full player, the reader, the profile picker, the credits): hidden from VoiceOver and
+    TalkBack while a layer is open
+    (Radix hides the rest of the page on the web). The sheet itself is `accessibilityViewIsModal`
     (iOS), escapes on the two-finger Z, and moves focus in on open (web: the panel,
     restored on close; native: an accessibility focus event on the title, else the panel). On the web
     it is a named `role="dialog"` with `aria-modal`. A new full-page root that can sit
-    behind a sheet spreads the props too.
+    behind a sheet, or that opens a Dialog, Select or menu of its own, spreads the props too.
   - **Toasts** (`toast.tsx`, `toastDuration`): with a screen reader on
     (`src/lib/screen-reader.ts`), a toast with an action stays until dismissed and a
     plain one stays three times as long; on the web pointer hover and focus pause it.
@@ -3611,12 +3621,19 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   `tabStackListeners` strips the link params React Navigation copies onto that root and its
   ancestors (else back landed on `/?libraryId=1`). Since expo-router 58 the tab navigator's
   history also keeps the first tab under a cold link into another tab, so `canGoBack()` is
-  true at a tab root: tests read the tab's stack (`tabStack` in `src/testing/route-tree.tsx`).
+  true at a tab root, and Back there lands on Home (intended; `route-tree-you-cold.test.tsx`
+  pins it): tests read the tab's stack (`tabStack` in `src/testing/route-tree.tsx`).
 - **Tab presses from our chrome dispatch `JUMP_TO`** (`useTabPress`): another tab -
   `navigationRef.dispatch({ type: 'JUMP_TO', payload: { name: '(library)' } })`, which restores
   its stack; a href can't (`router.navigate('/(home)')` resolves to `/` and pops Home). The
-  active tab again: `popTabToRoot(tab)` (`src/lib/root-stack.ts`, `POP_TO_TOP` on that tab
-  stack's key), which keeps the root's own params; never a navigate to the root's href (a
+  active tab again: `pressActiveTab(tab)` (`src/lib/root-stack.ts`): a `POP_TO_TOP` on that
+  tab stack's key, which keeps the root's own params, dispatched without reading the stack's
+  depth. `router.*` only queues a move, which lands after the next render, so a push just
+  before the press is not in the state yet (fe#252); `navigationRef.dispatch` joins the same
+  queue behind it, so the pop is reduced after the push, and at a root an action addressed to
+  the stack's own key is a handled no-op (no timer, no state listener; `route-tree-you.test.tsx`
+  pins both). `popTabToRoot(tab)` is the same pop for any tab when the state read now shows
+  pages over the root (it says whether it popped). Never a navigate to the root's href (a
   navigate is a push in this router, so it stacked a second root over the pages).
 - **The navigation container is read through `src/lib/router-ref.ts`.** expo-router 58 removed
   its global store (`store.navigationRef`, `store.state`), and its only public read is a hook.
@@ -3625,9 +3642,13 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   `expo-router/build/global-state/navigationRef` path (the route-tree tests pin it). An
   expo-router upgrade checks that path first.
 - **Navigation at mount uses `useRouter()`.** Since expo-router 58 the module-level `router`
-  throws until the router has rendered once, so an effect or guard that navigates on mount
-  (`kids-route-guard.tsx`, the connect layout) takes the hook's router. The module-level one
-  stays fine in press handlers and later code. `setParams` is the exception: both routers hand it
+  throws until the navigation container has bound it (`The imperative router is unavailable
+  before the first render has finished`; `ImperativeRoutingQueueBridge`, a layout effect of the
+  container). In the app that layout effect runs in the container's first commit, ahead of any
+  screen's effect, so only a screen rendered on its own, as a Jest
+  test does, meets it; an effect or guard that navigates on mount (`kids-route-guard.tsx`, the connect layout,
+  `LeaveOnboarding`) still takes the hook's router, which is right in both. The module-level
+  one stays fine in press handlers and later code. `setParams` is the exception: both routers hand it
   to the navigation container, which drops it (`NOT_INITIALIZED_ERROR`) until a navigator has
   registered as focused, so in a page load's first effects it is lost. A param taken off as the
   screen mounts goes through the screen's own `useNavigation().setParams` (queued like `push`),

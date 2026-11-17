@@ -1,4 +1,4 @@
-import { renderHook } from '@testing-library/react-native';
+import { act, renderHook } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
 import { setFontScale } from '@/testing/font-scale';
@@ -70,6 +70,101 @@ describe('text scale', () => {
       Object.defineProperty(Platform, 'OS', { value: os, configurable: true });
       (globalThis as { document?: unknown }).document = doc;
       (globalThis as { getComputedStyle?: unknown }).getComputedStyle = gcs;
+    }
+  });
+
+  it('keeps one probe on the web while anything listens, and follows a font change live (fe#305)', async () => {
+    const os = Platform.OS;
+    const g = globalThis as {
+      document?: unknown;
+      getComputedStyle?: unknown;
+      ResizeObserver?: unknown;
+    };
+    const saved = { doc: g.document, gcs: g.getComputedStyle, ro: g.ResizeObserver };
+    let rootPx = '16px';
+    const gcs = jest.fn(() => ({ fontSize: rootPx }));
+    const probes: { remove: jest.Mock }[] = [];
+    const appended = jest.fn();
+    let resized: (() => void) | undefined;
+    const disconnect = jest.fn();
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+    try {
+      g.document = {
+        documentElement: {},
+        body: { appendChild: appended },
+        createElement: () => {
+          const probe = { style: {}, setAttribute: jest.fn(), remove: jest.fn() };
+          probes.push(probe);
+          return probe;
+        },
+      };
+      g.getComputedStyle = gcs;
+      g.ResizeObserver = class {
+        constructor(cb: () => void) {
+          resized = cb;
+        }
+        observe() {}
+        disconnect = disconnect;
+      };
+      const a = await renderHook(() => useFontScale());
+      const b = await renderHook(() => useLargeText());
+      expect(a.result.current).toBe(1);
+      expect(b.result.current).toBe(false);
+      // Two hooks, one probe.
+      expect(probes).toHaveLength(1);
+      expect(appended).toHaveBeenCalledTimes(1);
+      // A read while listened to is the cached value, not a getComputedStyle.
+      gcs.mockClear();
+      expect(readFontScale()).toBe(1);
+      expect(gcs).not.toHaveBeenCalled();
+
+      // The browser's font size changes mid-session: the rem-wide probe resizes.
+      rootPx = '24px';
+      await act(async () => resized?.());
+      expect(a.result.current).toBe(1.5);
+      expect(b.result.current).toBe(true);
+
+      // The last listener gone, the probe goes too, and a read measures again.
+      await a.unmount();
+      expect(disconnect).not.toHaveBeenCalled();
+      await b.unmount();
+      expect(disconnect).toHaveBeenCalledTimes(1);
+      expect(probes[0].remove).toHaveBeenCalledTimes(1);
+      rootPx = '32px';
+      expect(readFontScale()).toBe(2);
+    } finally {
+      Object.defineProperty(Platform, 'OS', { value: os, configurable: true });
+      g.document = saved.doc;
+      g.getComputedStyle = saved.gcs;
+      g.ResizeObserver = saved.ro;
+    }
+  });
+
+  it('keeps measuring on the web where no probe can run (no ResizeObserver)', async () => {
+    const os = Platform.OS;
+    const g = globalThis as {
+      document?: unknown;
+      getComputedStyle?: unknown;
+      ResizeObserver?: unknown;
+    };
+    const saved = { doc: g.document, gcs: g.getComputedStyle, ro: g.ResizeObserver };
+    let rootPx = '16px';
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+    try {
+      g.document = { documentElement: {}, body: {} };
+      g.getComputedStyle = () => ({ fontSize: rootPx });
+      delete g.ResizeObserver;
+      const hook = await renderHook(() => useFontScale());
+      expect(hook.result.current).toBe(1);
+      // Nothing would refresh a cached value, so a listened-to read is not one.
+      rootPx = '24px';
+      expect(readFontScale()).toBe(1.5);
+      await hook.unmount();
+    } finally {
+      Object.defineProperty(Platform, 'OS', { value: os, configurable: true });
+      g.document = saved.doc;
+      g.getComputedStyle = saved.gcs;
+      g.ResizeObserver = saved.ro;
     }
   });
 });

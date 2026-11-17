@@ -6,12 +6,7 @@ import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon, type IconName } from './icon';
-import {
-  FullWindowOverlay,
-  NativeOnlyAnimatedView,
-  useOverlayInsets,
-  withFlatStyle,
-} from './overlay';
+import { ModalOverlay, NativeOnlyAnimatedView, useOverlayInsets, withFlatStyle } from './overlay';
 import { EYEBROW_CLASS, TextClassContext } from './text';
 
 /**
@@ -39,7 +34,7 @@ export function DropdownMenuContent({
   const insets = useOverlayInsets();
   return (
     <DropdownMenuPrimitive.Portal>
-      <FullWindowOverlay>
+      <ModalOverlay>
         <DropdownMenuPrimitive.Overlay
           style={Platform.select({ native: StyleSheet.absoluteFill })}
           asChild={Platform.OS !== 'web'}
@@ -65,7 +60,7 @@ export function DropdownMenuContent({
             />
           </NativeOnlyAnimatedView>
         </DropdownMenuPrimitive.Overlay>
-      </FullWindowOverlay>
+      </ModalOverlay>
     </DropdownMenuPrimitive.Portal>
   );
 }

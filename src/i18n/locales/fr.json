@@ -132,10 +132,10 @@
         "current": "Mot de passe actuel",
         "currentPlaceholder": "Votre mot de passe actuel",
         "new": "Nouveau mot de passe",
-        "newPlaceholder": "Au moins {{count}} caractères",
+        "newPlaceholder": "Au moins {{min}} caractères",
         "change": "Modifier le mot de passe",
         "setNew": "Définir un mot de passe",
-        "minError": "Le mot de passe doit comporter au moins {{count}} caractères.",
+        "minError": "Le mot de passe doit comporter au moins {{min}} caractères.",
         "updateError": "Impossible de mettre à jour le mot de passe."
       },
       "signOut": "Se déconnecter"
@@ -247,7 +247,7 @@
     "password": {
       "bodySet": "Utilisez-le pour vous connecter sur un nouvel appareil ou dans un navigateur.",
       "bodyNotSet": "Vous n'avez pas encore de mot de passe. Définissez-en un pour pouvoir vous connecter sur un nouvel appareil.",
-      "dialogSet": "Au moins {{count}} caractères. Vos autres appareils restent connectés.",
+      "dialogSet": "Au moins {{min}} caractères. Vos autres appareils restent connectés.",
       "dialogChange": "Saisissez votre mot de passe actuel, puis le nouveau. Cet appareil reste connecté. Vos autres appareils peuvent être déconnectés.",
       "doneSet": "Mot de passe défini",
       "doneChanged": "Mot de passe modifié",
@@ -1479,14 +1479,14 @@
   },
   "bridge": {
     "generate": {
-      "action": "Générer les personnages et les résumés",
-      "regenerate": "Régénérer les personnages et les résumés",
+      "action": "Générer les personnages, les résumés et une description",
+      "regenerate": "Régénérer les personnages, les résumés et la description",
       "mark": "Généré sur ce serveur",
       "covered": "La communauté a déjà les personnages et les résumés de ce livre",
       "seeCharacters": "Voir les personnages",
-      "title": "Générer les personnages et les résumés",
-      "lead": "Le Bridge lit {{title}} et écrit ses personnages et ses résumés pour ce serveur. Cela peut prendre quelques heures, et vous pouvez quitter la page entre-temps.",
-      "leadUntitled": "Le Bridge lit le livre et écrit ses personnages et ses résumés pour ce serveur. Cela peut prendre quelques heures, et vous pouvez quitter la page entre-temps.",
+      "title": "Générer les personnages, les résumés et une description",
+      "lead": "Le Bridge lit {{title}} et écrit ses personnages, ses résumés et une description pour ce serveur. Cela peut prendre quelques heures, et vous pouvez quitter la page entre-temps.",
+      "leadUntitled": "Le Bridge lit le livre et écrit ses personnages, ses résumés et une description pour ce serveur. Cela peut prendre quelques heures, et vous pouvez quitter la page entre-temps.",
       "source": "Lit",
       "sourceAudio": "L'audio, transcrit d'abord",
       "sourceEbook": "Le livre numérique, {{file}}",
@@ -1512,7 +1512,7 @@
       "confirmMany_other": "Générer {{count}} livres",
       "forBooks_one": "{{value}} pour {{count}} livre",
       "forBooks_other": "{{value}} pour {{count}} livres",
-      "queued": "En file d'attente. Les personnages et les résumés apparaîtront ici une fois terminé.",
+      "queued": "En file d'attente. Les personnages, les résumés et la description apparaîtront ici une fois terminé.",
       "queuedMany_one": "{{count}} livre en file d'attente, le plus ancien d'abord.",
       "queuedMany_other": "{{count}} livres en file d'attente, le plus ancien d'abord.",
       "queuedSome_one": "{{count}} livre sur {{total}} en file d'attente. Les autres n'ont pas pu l'être.",
@@ -1536,12 +1536,12 @@
       "parkedTitle": "La création de la lecture synchronisée est en pause",
       "failedTitle": "La création de la lecture synchronisée a échoué",
       "noEbook": "Ce livre n'a pas d'ebook à aligner sur sa narration.",
-      "generateOpen": "Les personnages et résumés de ce livre sont en cours de génération. Créez la lecture synchronisée une fois terminé : elle réutilise la transcription.",
+      "generateOpen": "Les personnages, les résumés et la description de ce livre sont en cours de génération. Créez la lecture synchronisée une fois terminé : elle réutilise la transcription.",
       "detectOpen": "Les chapitres du livre sont encore en cours de recherche. Créez la lecture synchronisée une fois terminé : elle réutilise la transcription.",
       "readalongOpen": "La lecture synchronisée de ce livre est déjà en cours de création."
     },
     "status": {
-      "title": "Génération des personnages et des résumés",
+      "title": "Génération des personnages, des résumés et d'une description",
       "waiting": "En attente du Bridge",
       "stopping": "Arrêt en cours",
       "count": "{{done}} sur {{total}}",
@@ -1879,7 +1879,7 @@
   "reconnect": {
     "banner": {
       "auth": "Se reconnecter à {{name}}",
-      "serverReset": "{{name}} a été réinitialisé - réappairez pour continuer",
+      "serverReset": "{{name}} a été réinitialisé. Réappairez pour continuer.",
       "more": "+{{count}} autre(s)",
       "hint": "Ouvre la connexion à ce serveur"
     },
@@ -1890,7 +1890,9 @@
     },
     "state": {
       "title": "Reconnecte-toi à {{name}}",
-      "hint": "Ta connexion à {{name}} a pris fin, il ne peut donc pas afficher tes livres ici. Rien n’est perdu."
+      "hint": "Ta connexion à {{name}} a pris fin, il ne peut donc pas afficher tes livres ici. Rien n’est perdu.",
+      "titleReset": "{{name}} a été réinitialisé",
+      "hintReset": "Réappaire cet appareil avec {{name}} pour afficher tes livres ici."
     }
   },
   "nav": {
@@ -2685,6 +2687,7 @@
     "connect": {
       "title": "Ajouter quelqu'un sur cet appareil.",
       "lead": "La personne se connecte avec son propre compte, sur votre serveur ou le sien. Chacun garde sa place dans chaque livre.",
+      "leadServed": "La personne se connecte avec son propre compte sur ce serveur. Chacun garde sa place dans chaque livre.",
       "knownHeading": "Serveurs de cet appareil"
     },
     "menu": {

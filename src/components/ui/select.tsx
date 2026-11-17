@@ -7,12 +7,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon } from './icon';
 import type { IconName } from './icon-data';
-import {
-  FullWindowOverlay,
-  NativeOnlyAnimatedView,
-  useOverlayInsets,
-  withFlatStyle,
-} from './overlay';
+import { ModalOverlay, NativeOnlyAnimatedView, useOverlayInsets, withFlatStyle } from './overlay';
 import { EYEBROW_CLASS } from './text';
 
 /**
@@ -90,7 +85,7 @@ export function SelectContent({
   const insets = useOverlayInsets();
   return (
     <SelectPrimitive.Portal>
-      <FullWindowOverlay>
+      <ModalOverlay>
         <SelectPrimitive.Overlay
           style={Platform.select({ native: StyleSheet.absoluteFill })}
           asChild={Platform.OS !== 'web'}
@@ -131,7 +126,7 @@ export function SelectContent({
             </Content>
           </NativeOnlyAnimatedView>
         </SelectPrimitive.Overlay>
-      </FullWindowOverlay>
+      </ModalOverlay>
     </SelectPrimitive.Portal>
   );
 }

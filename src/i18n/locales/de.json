@@ -132,10 +132,10 @@
         "current": "Aktuelles Passwort",
         "currentPlaceholder": "Dein aktuelles Passwort",
         "new": "Neues Passwort",
-        "newPlaceholder": "Mindestens {{count}} Zeichen",
+        "newPlaceholder": "Mindestens {{min}} Zeichen",
         "change": "Passwort ändern",
         "setNew": "Passwort festlegen",
-        "minError": "Das Passwort muss mindestens {{count}} Zeichen lang sein.",
+        "minError": "Das Passwort muss mindestens {{min}} Zeichen lang sein.",
         "updateError": "Passwort konnte nicht aktualisiert werden."
       },
       "signOut": "Abmelden"
@@ -247,7 +247,7 @@
     "password": {
       "bodySet": "Damit meldest du dich auf einem neuen Gerät oder im Browser an.",
       "bodyNotSet": "Du hast noch kein Passwort festgelegt. Leg eines fest, damit du dich auf einem neuen Gerät anmelden kannst.",
-      "dialogSet": "Mindestens {{count}} Zeichen. Deine anderen Geräte bleiben angemeldet.",
+      "dialogSet": "Mindestens {{min}} Zeichen. Deine anderen Geräte bleiben angemeldet.",
       "dialogChange": "Gib dein aktuelles Passwort und dann das neue ein. Dieses Gerät bleibt angemeldet; deine anderen Geräte werden eventuell abgemeldet.",
       "doneSet": "Passwort festgelegt",
       "doneChanged": "Passwort geändert",
@@ -1479,14 +1479,14 @@
   },
   "bridge": {
     "generate": {
-      "action": "Figuren und Rückblicke erstellen",
-      "regenerate": "Figuren und Rückblicke neu erstellen",
+      "action": "Figuren, Rückblicke und eine Beschreibung erstellen",
+      "regenerate": "Figuren, Rückblicke und Beschreibung neu erstellen",
       "mark": "Auf diesem Server erstellt",
       "covered": "Die Community hat bereits Figuren und Rückblicke für dieses Buch",
       "seeCharacters": "Figuren ansehen",
-      "title": "Figuren und Rückblicke erstellen",
-      "lead": "Die Bridge liest {{title}} und schreibt die Figuren und Rückblicke für diesen Server. Das kann einige Stunden dauern, du kannst die Seite inzwischen verlassen.",
-      "leadUntitled": "Die Bridge liest das Buch und schreibt die Figuren und Rückblicke für diesen Server. Das kann einige Stunden dauern, du kannst die Seite inzwischen verlassen.",
+      "title": "Figuren, Rückblicke und eine Beschreibung erstellen",
+      "lead": "Die Bridge liest {{title}} und schreibt die Figuren, Rückblicke und eine Beschreibung für diesen Server. Das kann einige Stunden dauern, du kannst die Seite inzwischen verlassen.",
+      "leadUntitled": "Die Bridge liest das Buch und schreibt die Figuren, Rückblicke und eine Beschreibung für diesen Server. Das kann einige Stunden dauern, du kannst die Seite inzwischen verlassen.",
       "source": "Liest",
       "sourceAudio": "Das Hörbuch, zuerst transkribiert",
       "sourceEbook": "Das E-Book, {{file}}",
@@ -1512,7 +1512,7 @@
       "confirmMany_other": "{{count}} Bücher erstellen",
       "forBooks_one": "{{value}} für {{count}} Buch",
       "forBooks_other": "{{value}} für {{count}} Bücher",
-      "queued": "Eingereiht. Figuren und Rückblicke erscheinen hier, wenn es fertig ist.",
+      "queued": "Eingereiht. Figuren, Rückblicke und eine Beschreibung erscheinen hier, wenn es fertig ist.",
       "queuedMany_one": "{{count}} Buch eingereiht, das früheste zuerst.",
       "queuedMany_other": "{{count}} Bücher eingereiht, das früheste zuerst.",
       "queuedSome_one": "{{count}} von {{total}} Büchern eingereiht. Der Rest ließ sich nicht einreihen.",
@@ -1536,12 +1536,12 @@
       "parkedTitle": "Erstellen des Mitlesens ist pausiert",
       "failedTitle": "Erstellen des Mitlesens fehlgeschlagen",
       "noEbook": "Dieses Buch hat kein E-Book, das mit der Erzählung abgeglichen werden kann.",
-      "generateOpen": "Für dieses Buch werden gerade Figuren und Zusammenfassungen erstellt. Erstelle das Mitlesen, wenn das fertig ist: Es verwendet die Transkription wieder.",
+      "generateOpen": "Für dieses Buch werden gerade Figuren, Rückblicke und eine Beschreibung erstellt. Erstelle das Mitlesen, wenn das fertig ist: Es verwendet die Transkription wieder.",
       "detectOpen": "Die Kapitel des Buchs werden noch gesucht. Erstelle das Mitlesen, wenn das fertig ist: Es verwendet die Transkription wieder.",
       "readalongOpen": "Das Mitlesen für dieses Buch wird bereits erstellt."
     },
     "status": {
-      "title": "Figuren und Rückblicke werden erstellt",
+      "title": "Figuren, Rückblicke und eine Beschreibung werden erstellt",
       "waiting": "Wartet auf die Bridge",
       "stopping": "Wird angehalten",
       "count": "{{done}} von {{total}}",
@@ -1879,7 +1879,7 @@
   "reconnect": {
     "banner": {
       "auth": "Erneut mit {{name}} verbinden",
-      "serverReset": "{{name}} wurde zurückgesetzt - erneut koppeln, um fortzufahren",
+      "serverReset": "{{name}} wurde zurückgesetzt. Erneut koppeln, um fortzufahren.",
       "more": "+{{count}} weitere",
       "hint": "Öffnet die Anmeldung für diesen Server"
     },
@@ -1890,7 +1890,9 @@
     },
     "state": {
       "title": "Erneut bei {{name}} anmelden",
-      "hint": "Deine Anmeldung bei {{name}} ist beendet, darum kann es deine Bücher hier nicht zeigen. Nichts ist verloren."
+      "hint": "Deine Anmeldung bei {{name}} ist beendet, darum kann es deine Bücher hier nicht zeigen. Nichts ist verloren.",
+      "titleReset": "{{name}} wurde zurückgesetzt",
+      "hintReset": "Kopple dieses Gerät erneut mit {{name}}, um deine Bücher hier zu sehen."
     }
   },
   "nav": {
@@ -2685,6 +2687,7 @@
     "connect": {
       "title": "Eine Person zu diesem Gerät hinzufügen.",
       "lead": "Sie meldet sich mit ihrem eigenen Konto an, auf deinem Server oder ihrem. Alle behalten ihre eigene Stelle in jedem Buch.",
+      "leadServed": "Sie meldet sich mit ihrem eigenen Konto auf diesem Server an. Alle behalten ihre eigene Stelle in jedem Buch.",
       "knownHeading": "Server auf diesem Gerät"
     },
     "menu": {

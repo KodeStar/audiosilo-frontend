@@ -21,6 +21,7 @@ import { CoverWash } from '@/components/library/cover-wash';
 import { metaEnabledFor } from '@/components/library/meta-gating';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
 import { Button } from '@/components/ui/button';
+import { useBehindModalProps } from '@/components/ui/modal-layer';
 import { Text } from '@/components/ui/text';
 import { contentKey } from '@/lib/content-key';
 import { formatDuration, formatSpeed } from '@/lib/format';
@@ -248,6 +249,9 @@ function EndCreditsBody({
 
   // --- What the credits show -------------------------------------------------------
   const [creditsOpen, setCreditsOpen] = useState(false);
+  // A root route outside the shell, so it hides itself behind its own Credits dialog
+  // (fe#305, `modal-layer.ts`).
+  const behind = useBehindModalProps();
   const metaEnabled = metaEnabledFor(useCapability('metadata', cid), book) && creditsOpen;
   const { data: meta } = useBookMeta(libraryId, path, metaEnabled);
   const matched = matchedMeta(meta, metaEnabled);
@@ -349,6 +353,8 @@ function EndCreditsBody({
     <View
       style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
       className="flex-1 bg-background"
+      testID="end-credits-page"
+      {...behind}
     >
       {/* The finished book's colours behind everything (text stays on the page tokens);
           the blurred art where the server sends no colour. */}
@@ -407,8 +413,8 @@ function EndCreditsBody({
             className={cn(
               'text-center',
               phone
-                ? 'text-[34px] web:text-[2.125rem] leading-[38px] web:leading-[2.375rem]'
-                : 'text-[50px] web:text-[3.125rem] leading-[54px] web:leading-[3.375rem]',
+                ? 'text-[34px] web:text-[length:min(2.125rem,68px)] leading-[38px] web:leading-[length:min(2.375rem,76px)]'
+                : 'text-[50px] web:text-[length:min(3.125rem,100px)] leading-[54px] web:leading-[length:min(3.375rem,108px)]',
             )}
             numberOfLines={3}
           >

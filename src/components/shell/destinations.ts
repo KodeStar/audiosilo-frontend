@@ -5,7 +5,7 @@ import { useCallback } from 'react';
 import { LIBRARY_ROOT_PARAMS } from '@/components/library/library-modes';
 import type { IconName } from '@/components/ui/icon';
 import { engine } from '@/downloads/engine';
-import { popTabToRoot } from '@/lib/root-stack';
+import { pressActiveTab } from '@/lib/root-stack';
 
 /**
  * The app's destinations, in ONE table every piece of chrome reads: the native tab bar
@@ -181,14 +181,15 @@ export function useActiveTab(): TabName | null {
  * Tab presses from OUR chrome (the web tab bar, the tablet/desktop top bar - all outside
  * the tab navigator). Another tab: dispatch JUMP_TO, which restores that tab's stack. A
  * href can't do it: `router.navigate('/(home)')` resolves to `/` and pops Home to its
- * root. The active tab again: pop its stack to the root (`popTabToRoot`).
+ * root. The active tab again: pop its stack to the root (`pressActiveTab`, which also pops a
+ * page whose push was still queued at the press).
  */
 export function useTabPress() {
   const ref = useNavigationContainerRef();
   const active = useActiveTab();
   const press = useCallback(
     (name: TabName) => {
-      if (active === name) popTabToRoot(name);
+      if (active === name) pressActiveTab(name);
       else ref.dispatch({ type: 'JUMP_TO', payload: { name } });
     },
     [active, ref],

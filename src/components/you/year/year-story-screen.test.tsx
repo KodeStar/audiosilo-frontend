@@ -45,8 +45,12 @@ const mockShare = jest.fn(async (..._a: unknown[]) => undefined);
 jest.mock('./use-share-card', () => ({
   useShareCard: () => ({ busy: false, coversOff: false, share: mockShare }),
 }));
+let mockSignedOut: { id: string; name: string } | undefined;
+jest.mock('@/components/layout/sign-in-again', () => ({
+  useSignedOutConnection: () => mockSignedOut,
+}));
 let mockSupported: boolean | undefined = true;
-let mockStats: Record<string, { data?: UserStats; isPaused?: boolean }> = {};
+let mockStats: Record<string, { data?: UserStats; isPaused?: boolean; isError?: boolean }> = {};
 // This year's streak and goal: failed, unless a test holds them for the network.
 let mockExtras: { data: undefined; isError: boolean; isPaused?: boolean };
 jest.mock('@/api/hooks', () => ({
@@ -64,6 +68,7 @@ import { YearStoryScreen } from './year-story-screen';
 const os = Platform.OS;
 beforeEach(() => {
   jest.clearAllMocks();
+  mockSignedOut = undefined;
   mockSupported = true;
   mockExtras = { data: undefined, isError: true };
   mockStats = { year: { data: yearStats() }, '2025': { data: yearStats({ range: '2025' }) } };
@@ -124,6 +129,24 @@ describe('YearStoryScreen', () => {
     expect(screen.getByText('This page shows once its server answers.')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Close the story' }));
     expect(mockRouter.back).toHaveBeenCalled();
+  });
+
+  // fe#147: a session that ended is not a server that "didn't answer".
+  it('says the sign-in ended, not that the server did not answer, when signed out', async () => {
+    mockSignedOut = { id: 'a', name: 'Hearthside' };
+    mockStats = { year: { isError: true } };
+    await render(<YearStoryScreen />);
+    expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.getByText(/Your sign-in to Hearthside ended/)).toBeTruthy();
+    expect(screen.queryByText(/didn't answer/)).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Close the story' }));
+    expect(mockRouter.back).toHaveBeenCalled();
+  });
+
+  it('says the server did not answer when it is still signed in', async () => {
+    mockStats = { year: { isError: true } };
+    await render(<YearStoryScreen />);
+    expect(screen.getByText(/didn't answer/)).toBeTruthy();
   });
 
   it('tells the story from the stats it has while the streak and the goal are held', async () => {

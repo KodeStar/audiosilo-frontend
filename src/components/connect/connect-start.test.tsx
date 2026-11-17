@@ -556,6 +556,8 @@ describe('remembered servers', () => {
     mockApi.serverInfo.mockResolvedValue(info());
     mockParams = { add: '1', profile: 'new' };
     await render(<ConnectStart />);
+    // Off the served player another person may sign in on a server of their own.
+    expect(screen.getByText(/on your server or theirs/)).toBeTruthy();
     await fireEvent.press(await screen.findByLabelText('Sign in to Hearthside'));
     expect(screen.getByText('Servers on this device')).toBeTruthy();
     expect(screen.queryByText('Reconnect')).toBeNull();
@@ -733,6 +735,16 @@ describe('the player the server serves', () => {
       pathname: '/connect/sign-in',
       params: { serverName: 'Hearthside' },
     });
+  });
+
+  // fe#160: it can reach only its own server, so "Add someone" offers no server of theirs.
+  it('words "Add someone" for this server alone', async () => {
+    mockApi.serverInfo.mockResolvedValue(info());
+    mockParams = { add: '1', profile: 'new' };
+    await render(<ConnectStart />);
+    await waitFor(() => expect(screen.getByText('Found Hearthside')).toBeTruthy());
+    expect(screen.getByText(/their own account on this server\./)).toBeTruthy();
+    expect(screen.queryByText(/or theirs/)).toBeNull();
   });
 
   it('offers the demo when the server runs one, without going on by itself', async () => {

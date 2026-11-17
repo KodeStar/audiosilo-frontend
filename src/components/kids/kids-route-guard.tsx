@@ -19,9 +19,9 @@ import { useKidsActive } from './use-kids';
  * `dismissTo`, not `replace`: when `/kids` is already in the root stack (the end credits
  * or the player pushed over it) it pops back to it rather than stacking a second one;
  * when it is not, it replaces the current route. Waits for the root navigator (a
- * navigation before it mounts throws), and navigates through `useRouter()`: since
- * expo-router 58 the module-level `router` throws until the router's own first commit has
- * bound it, which a mount effect here can run ahead of.
+ * navigation before it mounts throws), and navigates through `useRouter()`, as every
+ * mount-time navigation does (CONVENTIONS.md, "Navigation at mount": the module-level
+ * `router` throws with no navigation container mounted, which only a test's lone render meets).
  *
  * And the other way: `/kids` is a kids profile's only. Leaving kids mode through "Who's
  * listening?" puts the shell over it (the guard replaced the shell's anchor with it), so

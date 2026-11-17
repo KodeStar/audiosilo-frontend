@@ -227,7 +227,9 @@ export function SeriesPage({
               variant="display-xl"
               accessibilityRole="header"
               className={
-                layout === 'desktop' ? 'text-5xl leading-[52px] web:leading-[3.25rem]' : undefined
+                layout === 'desktop'
+                  ? 'text-5xl web:text-[length:min(3rem,96px)] leading-[52px] web:leading-[length:min(3.25rem,104px)]'
+                  : undefined
               }
             >
               {name}

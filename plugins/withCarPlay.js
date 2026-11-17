@@ -71,7 +71,8 @@ function applySceneManifest(infoPlist) {
 const TEMPLATE_IMPORT = /^import ReactAppDependencyProvider$/m;
 const TEMPLATE_CLASS = /^class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider \{$/m;
 const TEMPLATE_FACTORY = /^\s*reactNativeFactory = factory\n/m;
-// The template's note that its SceneDelegate starts React Native: not true once patched.
+// The template's note that its SceneDelegate starts React Native: not true once patched, so it
+// is an anchor too (a reworded note would otherwise stay behind, saying the wrong thing).
 const TEMPLATE_SCENE_NOTE =
   /^\s*\/\/ The window is created and React Native is started by `SceneDelegate`[^\n]*\n(\s*\/\/[^\n]*\n)?/m;
 
@@ -108,6 +109,9 @@ function patchAppDelegate(contents) {
     throw mismatch('no `class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider`');
   }
   if (!TEMPLATE_FACTORY.test(contents)) throw mismatch('no `reactNativeFactory = factory`');
+  if (!TEMPLATE_SCENE_NOTE.test(contents)) {
+    throw mismatch('no note that `SceneDelegate` starts React Native');
+  }
   return contents
     .replace(
       TEMPLATE_IMPORT,

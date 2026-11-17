@@ -21,8 +21,10 @@ jest.mock('expo-splash-screen', () => ({
 // The OS contrast signal (per platform in ./os-contrast), driven by the tests.
 let mockOsContrast = false;
 let mockOsListener: ((on: boolean) => void) | undefined;
+// A launch read still on its way (a test resolves it), else the setting above at once.
+let mockOsRead: Promise<boolean> | undefined;
 jest.mock('./os-contrast', () => ({
-  readOsHighContrast: () => Promise.resolve(mockOsContrast),
+  readOsHighContrast: () => mockOsRead ?? Promise.resolve(mockOsContrast),
   watchOsHighContrast: (onChange: (on: boolean) => void) => {
     mockOsListener = onChange;
     return () => {
@@ -89,6 +91,7 @@ describe('ThemeProvider (Uniwind)', () => {
     mockFontLoaded.mockImplementation(() => true);
     mockOsContrast = false;
     mockOsListener = undefined;
+    mockOsRead = undefined;
     // A fresh launch starts on the normal colours.
     applyHighContrast(false);
     updateVars.mockClear();
@@ -246,6 +249,19 @@ describe('ThemeProvider (Uniwind)', () => {
       expect(lastMuted('dark')).toBe(colors.dark.mutedForeground);
 
       await act(async () => mockOsListener?.(true));
+      expect(screen.getByTestId('contrast')).toHaveTextContent('true:false:true');
+      expect(lastMuted('dark')).toBe(colors.highContrast.dark.mutedForeground);
+    });
+
+    it('keeps an OS change that lands before the launch read (fe#305)', async () => {
+      let answer!: (on: boolean) => void;
+      mockOsRead = new Promise((resolve) => {
+        answer = resolve;
+      });
+      await mount();
+      // The reader turns contrast on while the launch read (taken before) is on its way.
+      await act(async () => mockOsListener?.(true));
+      await act(async () => answer(false));
       expect(screen.getByTestId('contrast')).toHaveTextContent('true:false:true');
       expect(lastMuted('dark')).toBe(colors.highContrast.dark.mutedForeground);
     });

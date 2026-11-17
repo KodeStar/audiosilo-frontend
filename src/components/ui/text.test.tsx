@@ -60,6 +60,25 @@ describe('display titles stop growing at 2x (fe#267)', () => {
     expect(screen.getByText('Body').props.maxFontSizeMultiplier).toBeUndefined();
     expect(screen.getByText('Own').props.maxFontSizeMultiplier).toBe(1.3);
   });
+
+  it('caps a display title on the web in CSS, where the prop does nothing (fe#305)', async () => {
+    await render(
+      <>
+        <Text variant="display">Settings</Text>
+        <Text variant="display-xl">Hero</Text>
+        <Text variant="display" className="text-[38px] web:text-[length:min(2.375rem,76px)]">
+          Greeting
+        </Text>
+      </>,
+    );
+    const cls = (text: string) => String(screen.getByText(text).props.className);
+    // 2x of the size at the browser's default 16 px, as `DISPLAY_MAX_FONT_SCALE`.
+    expect(cls('Settings')).toContain('text-3xl web:text-[length:min(1.875rem,60px)]');
+    expect(cls('Hero')).toContain('text-4xl web:text-[length:min(2.25rem,72px)]');
+    // A caller's own capped size replaces the role's on the web too.
+    expect(cls('Greeting')).toContain('web:text-[length:min(2.375rem,76px)]');
+    expect(cls('Greeting')).not.toContain('min(1.875rem,60px)');
+  });
 });
 
 describe('heading levels (fe#267: every heading was an h1 on the web)', () => {

@@ -207,7 +207,7 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
             </View>
             <Text
               variant="display"
-              className="text-[22px] web:text-[1.375rem] leading-[26px] web:leading-[1.625rem] md:text-[24px] web:md:text-[1.5rem]"
+              className="text-[22px] web:text-[length:min(1.375rem,44px)] leading-[26px] web:leading-[length:min(1.625rem,52px)] md:text-[24px] web:md:text-[length:min(1.5rem,48px)]"
             >
               {left}
             </Text>

@@ -12,7 +12,7 @@ import {
   dialogHeaderClass,
   dialogTitleClass,
 } from './dialog';
-import { FullWindowOverlay, NativeOnlyAnimatedView, withFlatStyle } from './overlay';
+import { ModalOverlay, NativeOnlyAnimatedView, withFlatStyle } from './overlay';
 
 /**
  * A confirmation that needs an answer (STYLEGUIDE.md section 8): react-native-reusables'
@@ -26,7 +26,7 @@ export const AlertDialog = AlertDialogPrimitive.Root;
 
 function AlertDialogOverlay({ className, children }: { className: string; children: ReactNode }) {
   return (
-    <FullWindowOverlay>
+    <ModalOverlay>
       <AlertDialogPrimitive.Overlay className={className} asChild={Platform.OS !== 'web'}>
         <NativeOnlyAnimatedView
           entering={FadeIn.duration(200).delay(50).reduceMotion(ReduceMotion.System)}
@@ -36,7 +36,7 @@ function AlertDialogOverlay({ className, children }: { className: string; childr
           <>{children}</>
         </NativeOnlyAnimatedView>
       </AlertDialogPrimitive.Overlay>
-    </FullWindowOverlay>
+    </ModalOverlay>
   );
 }
 

@@ -73,6 +73,13 @@ describe('withCarPlay: AppDelegate', () => {
     );
   });
 
+  // fe#252: the note was the one anchor that missed silently.
+  it("fails loudly when the template's SceneDelegate note is reworded", () => {
+    const changed = template.replace('React Native is started by', 'React Native starts in');
+    expect(changed).not.toBe(template);
+    expect(() => patchAppDelegate(changed)).toThrow(/no note that `SceneDelegate` starts/);
+  });
+
   it('fails loudly on an older template (no factory provider conformance, its own window)', () => {
     const older = template.replace(
       'class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider {',
