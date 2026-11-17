@@ -26,7 +26,7 @@ import type { Connection } from '@/stores/session';
 import { backOrHome } from '@/lib/back-or-home';
 import { type ShortcutKey, useGlobalShortcut } from '@/lib/keyboard';
 import { bookTitle } from '@/lib/paths';
-import { useLatest } from '@/lib/use-latest';
+import { useLatest, useLatestRef } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -650,6 +650,9 @@ const TocList = memo(function TocList({
   const list = useRef<FlatList<TocEntry>>(null);
   // Per opening (the sheet mounts the list each time it opens).
   const tries = useRef(0);
+  // How many entries the list holds now: a retry due after the contents went (the reader
+  // made again) must not ask for a row it no longer has (`scrollToIndex` throws).
+  const count = useLatestRef(entries.length);
   const start = current > TOC_LEAD ? current - TOC_LEAD : undefined;
   return (
     <FlatList
@@ -664,7 +667,9 @@ const TocList = memo(function TocList({
         if (tries.current >= TOC_SCROLL_TRIES) return;
         tries.current += 1;
         list.current?.scrollToOffset({ offset: index * averageItemLength, animated: false });
-        setTimeout(() => list.current?.scrollToIndex({ index, animated: false }), 50);
+        setTimeout(() => {
+          if (index < count.current) list.current?.scrollToIndex({ index, animated: false });
+        }, 50);
       }}
       renderItem={({ item: entry, index: i }) => {
         const here = i === current;
