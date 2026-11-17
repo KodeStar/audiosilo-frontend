@@ -237,7 +237,10 @@ listening, nobody's for "Add someone"): its dead token and scoped state go throu
 `onConnectionRemoved` registry, and the new connection takes its place in that person's profile
 (`onConnectionReplaced`, so their PIN and kids settings stay). Every other person's stale
 identity stays, flagged `server-reset`, for them to sign in again: never delete another person
-from the device. A kids profile never runs the connect flow (`connect/_layout.tsx` is the only
+from the device. At a home-network address (`looksLikeHomeAddress`, `src/lib/url-host.ts`) only
+the reconnect's own connection is a stale identity (`staleIdentities`' `named`, fe#298): another
+box answers at the same private address on another network, so a sign-in there to another server
+is a new connection that flags and retires nobody. A kids profile never runs the connect flow (`connect/_layout.tsx` is the only
 gate, Phase 8b-1): a grown-up signs it in again. It surfaces as a slim accent bar (`src/components/layout/reconnect-banner.tsx`,
 rendered by the shell beside the offline banner - under the phone header, or under the top bar
 on tablet/desktop); tapping it pre-fills `pendingServerUrl`

@@ -926,12 +926,22 @@ describe('session store (multi-connection)', () => {
       unsubs.push(onConnectionRemoved(cleanup), onConnectionReplaced(replaced));
       await useSession
         .getState()
-        .setSession({ serverUrl: 'https://a', serverId: 'old', token: 't1', user: user(3, 'sam') });
+        .setSession({
+          serverUrl: 'https://a.example',
+          serverId: 'old',
+          token: 't1',
+          user: user(3, 'sam'),
+        });
       await useSession
         .getState()
-        .setSession({ serverUrl: 'https://a', serverId: 'old', token: 't2', user: user(5, 'kit') });
+        .setSession({
+          serverUrl: 'https://a.example',
+          serverId: 'old',
+          token: 't2',
+          user: user(5, 'kit'),
+        });
       await useSession.getState().setSession({
-        serverUrl: 'https://a',
+        serverUrl: 'https://a.example',
         serverId: 'new',
         token: 't3',
         user: user(3, 'sam'),
@@ -952,15 +962,53 @@ describe('session store (multi-connection)', () => {
       unsubs.push(onConnectionRemoved(cleanup));
       await useSession
         .getState()
-        .setSession({ serverUrl: 'https://a', serverId: 'old', token: 't1', user: user(3, 'sam') });
+        .setSession({
+          serverUrl: 'https://a.example',
+          serverId: 'old',
+          token: 't1',
+          user: user(3, 'sam'),
+        });
       await useSession
         .getState()
-        .setSession({ serverUrl: 'https://a', serverId: 'new', token: 't3', user: user(3, 'sam') });
+        .setSession({
+          serverUrl: 'https://a.example',
+          serverId: 'new',
+          token: 't3',
+          user: user(3, 'sam'),
+        });
       expect(useSession.getState().connections.map((c) => [c.id, c.needsReconnect])).toEqual([
         ['old.3', 'server-reset'],
         ['new.3', undefined],
       ]);
       expect(cleanup).not.toHaveBeenCalled();
+    });
+
+    // fe#298: at a private address another server_id can be another box on another network.
+    it("a home-network address: another server there flags and retires nobody it wasn't told to", async () => {
+      const cleanup = jest.fn();
+      unsubs.push(onConnectionRemoved(cleanup));
+      const home = 'http://192.168.1.20:8080';
+      await useSession
+        .getState()
+        .setSession({ serverUrl: home, serverId: 'mine', token: 't1', user: user(3, 'sam') });
+      await useSession
+        .getState()
+        .setSession({ serverUrl: home, serverId: 'mine', token: 't2', user: user(5, 'kit') });
+      // A friend's server at the same private address on their network: a new connection.
+      await useSession.getState().setSession({
+        serverUrl: home,
+        serverId: 'friend',
+        token: 't3',
+        user: user(3, 'sam'),
+        retire: ['mine.5'],
+      });
+      // Sam's own stays, unflagged; Kit's, named (a reconnect of it), is retired as anywhere.
+      expect(useSession.getState().connections.map((c) => [c.id, c.needsReconnect])).toEqual([
+        ['mine.3', undefined],
+        ['friend.3', undefined],
+      ]);
+      expect(cleanup.mock.calls.map(([id]) => id)).toEqual(['mine.5']);
+      expect(await SecureStore.getItemAsync('audiosilo.token.mine.3')).toBe('t1');
     });
 
     it('learnAddresses keeps the remembered server keyed by its server_id', async () => {

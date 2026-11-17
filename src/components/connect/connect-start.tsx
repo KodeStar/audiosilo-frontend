@@ -34,6 +34,7 @@ import { connectBookParams, firstParam, idParam, parseConnectBook } from '@/lib/
 import { originOf, proxyOriginOf } from '@/lib/proxy-headers';
 import { useRouteParams } from '@/lib/route-params';
 import { sameOrigin } from '@/lib/same-origin';
+import { looksLikeHomeAddress } from '@/lib/url-host';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
@@ -41,7 +42,6 @@ import { BrandLockup, ConnectFrame, ConnectInput, ConnectReveal, StepDots } from
 import {
   httpFallback,
   knownToOffer,
-  looksLikeHomeAddress,
   reconnectAddress,
   scanReconnect,
   selfSignedMayBeWhy,

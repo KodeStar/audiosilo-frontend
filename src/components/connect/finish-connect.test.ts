@@ -192,6 +192,28 @@ it('a reset server reached through its away address retires the dead identity', 
   });
 });
 
+it("another box at a connection's private address is a new server, not that one reset (fe#298)", async () => {
+  /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+  const { resetProfilesForTests, useProfiles } = require('@/stores/profiles');
+  resetProfilesForTests();
+  await useProfiles.getState().hydrate();
+  await finishConnect({ serverUrl: HOME, session: session('mine') });
+  // On a friend's network, signing in to their server at the same private address.
+  await finishConnect({ serverUrl: HOME, session: session('friend') });
+  expect(useSession.getState().connections.map((c) => [c.id, c.needsReconnect])).toEqual([
+    ['mine.1', undefined],
+    ['friend.1', undefined],
+  ]);
+  // The same at a public address is that server reset: the signer's own is retired.
+  await finishConnect({ serverUrl: AWAY, session: session('old') });
+  await finishConnect({ serverUrl: AWAY, session: session('new') });
+  expect(useSession.getState().connections.map((c) => c.id)).toEqual([
+    'mine.1',
+    'friend.1',
+    'new.1',
+  ]);
+});
+
 describe('proxy headers the sign-in came through (fe#167)', () => {
   const SET = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'proxy-secret' }] };
   afterEach(() => useSession.setState({ pendingProxyHeaders: null }));
