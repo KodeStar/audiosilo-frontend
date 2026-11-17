@@ -130,8 +130,7 @@ object AuthHolder {
   /** The book's auth headers and the URL of a track they are for (its origin scopes them). */
   fun set(headers: Map<String, String>?, url: String?) {
     val origin = url?.let { originOf(Uri.parse(it)) }
-    val kept = origin?.let { AuthScope.headersFor(it, headers) }
-    auth = if (origin == null || kept == null) null else origin to kept
+    auth = origin?.let { o -> AuthScope.headersFor(o, headers)?.let { o to it } }
   }
 
   fun clear() {

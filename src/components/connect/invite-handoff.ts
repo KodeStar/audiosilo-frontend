@@ -26,7 +26,7 @@ export function beginInviteSignIn(invite: InviteScan, go: () => void): void {
 /** The held invite code for `server` (the sign-in step's server), taken once: a later
  * visit to the sign-in step starts with an empty field. */
 export function takeInviteCode(server: string): string | undefined {
-  const code = held?.base === server ? held.code : undefined;
+  const code = held && sameUrl(held.base, server) ? held.code : undefined;
   held = null;
   return code;
 }

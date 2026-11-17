@@ -86,7 +86,7 @@ export function oidcFinishText(e: unknown, t: TFunction): string {
 export async function finishOidcSignIn(
   origin: string,
   t: TFunction,
-  live: () => boolean = () => true,
+  live: () => boolean,
 ): Promise<string | null> {
   const { client, proxy: carried } = connectClientFor(origin);
   const book = takeOidcBook();
