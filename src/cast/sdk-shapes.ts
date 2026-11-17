@@ -61,8 +61,8 @@ export function mediaInfoOf(item: CastItem, book: BookRef): Json {
 
 /** The load request for react-native-google-cast's `RemoteMediaClient.loadMedia`: the whole
  * book as an audiobook queue starting at `(startIndex, startTime)`. The place goes in the
- * request too (its `currentTime`), as the web sender's does: a receiver given it only in the
- * queue data started a queue sent paused at 0. */
+ * request too (`startTime`, the SDKs' `currentTime` / `startTime`), as the web sender's does: a
+ * receiver given it only in the queue data started a queue sent paused at 0. */
 export function nativeLoadRequest(load: CastQueueLoad): Json {
   const items = load.items.map((item) =>
     defined({

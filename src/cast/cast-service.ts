@@ -536,11 +536,18 @@ export class CastPlaybackService implements PlaybackService {
   }
 
   /** Whether a status on file `index` says the receiver went past the file this phone means
-   * (`intended`) before it ever played or paused there: a later file, not idle. The Default
-   * Media Receiver goes on to the next file it can play when it is refused one. */
-  private skippedPast(status: CastMediaStatus, index: number): boolean {
+   * (`intended`) before it ever played or paused there: a later file, not idle (`within`: and
+   * less than that long after the move). The Default Media Receiver goes on to the next file it
+   * can play when it is refused one. */
+  private skippedPast(status: CastMediaStatus, index: number, within = Infinity): boolean {
     const want = this.intended;
-    return !!want && !want.landed && index > want.trackIndex && status.playerState !== 'idle';
+    return (
+      !!want &&
+      !want.landed &&
+      index > want.trackIndex &&
+      status.playerState !== 'idle' &&
+      this.now() - want.at < within
+    );
   }
 
   /** A status while a load of ours is in flight that names the meant file playing or paused
@@ -551,7 +558,8 @@ export class CastPlaybackService implements PlaybackService {
     if (!want || want.landed || index !== want.trackIndex) return;
     if (status.playerState !== 'playing' && status.playerState !== 'paused') return;
     want.landed = true;
-    if (status.position > 0) want.position = status.position + (loaded.offsets[index] ?? 0);
+    const at = Number.isFinite(status.position) ? status.position + loaded.offsets[index] : 0;
+    if (at > 0) want.position = at;
     if (status.playerState === 'playing') this.notePlayed(status, loaded, index);
   }
 
@@ -666,12 +674,9 @@ export class CastPlaybackService implements PlaybackService {
       return await this.sendQueueOnce(index, position, autoplay);
     } catch (err) {
       if (!(await this.freshToken())) throw this.onRefused(err);
-      // By the play intent as it is now: a play or pause may have come during the mint.
-      return this.sendQueueOnce(index, position, this.playIntent ?? autoplay).catch(
-        (again: unknown) => {
-          throw this.onRefused(again);
-        },
-      );
+      return this.sendQueueOnce(index, position, autoplay).catch((again: unknown) => {
+        throw this.onRefused(again);
+      });
     }
   }
 
@@ -702,6 +707,9 @@ export class CastPlaybackService implements PlaybackService {
     loaded.offsets = items.map((_, n) => (n === i ? start.offset : 0));
     this.askMove();
     this.intend(i, position);
+    // By the play intent as it is now (`autoplay` for a session no word came for): a play or
+    // pause may have come while the caller minted a token.
+    const play = this.playIntent ?? autoplay;
     this.loadsInFlight++;
     try {
       try {
@@ -710,7 +718,7 @@ export class CastPlaybackService implements PlaybackService {
           startIndex: i,
           startTime: start.offset > 0 ? 0 : Math.max(0, position),
           rate: this.snapshot.rate,
-          autoplay,
+          autoplay: play,
           book: loaded.book,
           title: loaded.tracks[0]?.album || loaded.tracks[0]?.title || '',
         });
@@ -724,7 +732,7 @@ export class CastPlaybackService implements PlaybackService {
       if (this.refusedQueue?.seq === q) throw new ReceiverRefused(q);
       this.needsReload = false;
       // A play or pause asked for while the queue was on its way went to the media it replaced.
-      if (this.playIntent !== null && this.playIntent !== autoplay) {
+      if (this.playIntent !== null && this.playIntent !== play) {
         void (this.playIntent ? this.remote.play() : this.remote.pause()).catch(() => undefined);
       }
       return true;
@@ -814,13 +822,7 @@ export class CastPlaybackService implements PlaybackService {
     if (loaded && index !== null && this.loadsInFlight === 0) {
       // As in flight (`skippedPast`), once the load answered: only just after the move, as a
       // file the receiver played unseen may have run on into the next by now.
-      const want = this.intended;
-      if (
-        want &&
-        this.now() - want.at < ASKED_MOVE_MS &&
-        this.skippedPast(status, index) &&
-        this.remintDue()
-      ) {
+      if (this.skippedPast(status, index, ASKED_MOVE_MS) && this.remintDue()) {
         this.reloadFresh(index, position);
         return;
       }
@@ -909,9 +911,9 @@ export class CastPlaybackService implements PlaybackService {
     };
     void (async () => {
       if (!(await this.freshToken())) return fail();
-      // By the play intent as it is now: the store's play of a book whose load answered before
-      // the receiver erred comes while the token is minted.
-      if (!(await this.sendQueueOnce(trackIndex, place, this.playIntent ?? playing))) return;
+      // The store's play of a book whose load answered before the receiver erred comes while
+      // the token is minted: `sendQueueOnce` sends by the play intent as it is then.
+      if (!(await this.sendQueueOnce(trackIndex, place, playing))) return;
       if (!(this.playIntent ?? playing) && seq === this.loadSeq) this.update({ state: 'paused' });
     })().catch((err: unknown) => {
       fail();
