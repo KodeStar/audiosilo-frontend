@@ -4286,7 +4286,7 @@ under their empty state).
   `/server` check of their own (fe#270). A section that keeps a list checks `isError` with
   `!data` too: a failed re-read keeps what it holds. Favourites (its page and the Folders
   row), Home's See all and Home's Recently added, with no row to show, ask
-  `useUnreadAll({ data, offline, error })` of their fan-out (`offline`: a server's list held
+  `useUnreadAll({ rows, offline, error })` of their fan-out (`offline`: a server's list held
   with nothing kept, `anyHeld`), so one server's empty answer is not "none" while another's
   is held (nor is its progress with no finished book "none finished"), and a held list wins
   over another server's failure, a refusal included (fe#271). Home says it is offline once:

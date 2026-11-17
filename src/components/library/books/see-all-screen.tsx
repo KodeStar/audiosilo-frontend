@@ -63,7 +63,7 @@ export function SeeAllScreen() {
   // with none finished says nothing about a held one's.
   const rows = type === 'recent' ? recent.books : finished;
   const unread = useUnreadAll({
-    data: rows.length > 0 ? rows : undefined,
+    rows,
     offline: state.offline,
     error: state.error,
   });

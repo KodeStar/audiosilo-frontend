@@ -41,7 +41,7 @@ export function FavouritesScreen() {
   // is not "no favourites": every list read with nothing in them is. A held list wins
   // over another server's failure (`useUnreadAll`).
   const unread = useUnreadAll({
-    data: favourites.length > 0 ? favourites : undefined,
+    rows: favourites,
     offline,
     error,
   });

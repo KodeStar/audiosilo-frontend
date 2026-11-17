@@ -49,13 +49,9 @@ export function useQueuedLine(
   const { t } = useTranslation();
   const several = useProfileConnections().length > 1;
   const name = useConnectionName(cid);
+  if (count === undefined) return several && name ? name : '';
   const amount =
-    count === undefined
-      ? null
-      : count === 0
-        ? t('upnext.nothingQueued')
-        : t('upnext.queued', { time: formatDuration(seconds) });
-  if (!amount) return several && name ? name : '';
+    count === 0 ? t('upnext.nothingQueued') : t('upnext.queued', { time: formatDuration(seconds) });
   return several && name ? `${name} · ${amount}` : amount;
 }
 

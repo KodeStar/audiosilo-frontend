@@ -57,18 +57,17 @@ export function useUnreadQuery(query: {
 /**
  * `useUnreadQuery` of ONE list read from every server (`useFavouritesAll`, `useRecentAll`,
  * `useAllProgressAll`: `offline` when a server's list waits for the network, `error` the
- * first one that failed), with nothing to show. A list that waits wins over another
+ * first one that failed), with no row in. A list that waits wins over another
  * server's failure, a refusal included, as Home's own rule does: the waiting one may hold
  * what the page shows, and it is asked again by itself once the network is back (fe#271).
  */
 export function useUnreadAll(list: {
-  /** `undefined`: nothing to show. */
-  data: unknown;
+  rows: readonly unknown[];
   offline: boolean;
   error: unknown;
 }): UnreadState {
   return useUnreadQuery({
-    data: list.data,
+    data: list.rows.length > 0 ? list.rows : undefined,
     isPaused: list.offline,
     error: list.offline ? null : list.error,
   });

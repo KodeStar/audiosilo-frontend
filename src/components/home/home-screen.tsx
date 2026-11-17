@@ -206,7 +206,7 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   // Recently added offline is no error with a Retry: the shelf waits with the rest of the
   // page, which says it is offline once (fe#271).
   const recentUnread = useUnreadAll({
-    data: recent.books.length > 0 ? recent.books : undefined,
+    rows: recent.books,
     offline: recent.offline,
     error: recent.error,
   });

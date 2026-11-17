@@ -31,22 +31,22 @@ function FavouritesShelfRow() {
   const { t } = useTranslation();
   const { favourites, offline, error } = useFavouritesAll();
   const count = favourites.length;
-  const unread = useUnreadAll({ data: count > 0 ? favourites : undefined, offline, error });
+  const unread = useUnreadAll({ rows: favourites, offline, error });
+  const hint =
+    unread === 'offline'
+      ? t('common.offlineList')
+      : unread === 'failed'
+        ? t('library.favourites.error')
+        : count === 0
+          ? t('library.favourites.emptyHint')
+          : t('library.favourites.itemCount', { count });
   return (
     <Link href="/library/favourites" asChild>
       <PressableRow accessibilityRole="link" className={ROW}>
         <GlyphTile icon="heart-solid" />
         <View className="flex-1">
           <Text variant="label">{t('library.favourites.title')}</Text>
-          <Text variant="muted">
-            {unread === 'offline'
-              ? t('common.offlineList')
-              : unread === 'failed'
-                ? t('library.favourites.error')
-                : count === 0
-                  ? t('library.favourites.emptyHint')
-                  : t('library.favourites.itemCount', { count })}
-          </Text>
+          <Text variant="muted">{hint}</Text>
         </View>
         <Icon name="chevron-right" size={16} />
       </PressableRow>
