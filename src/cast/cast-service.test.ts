@@ -504,6 +504,7 @@ describe('CastPlaybackService', () => {
       const m = minting();
       const t = setup({ prepare: m.prepare });
       await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      await t.svc.play();
       t.status({ playerState: 'playing', contentId: t.url(1), position: 42 });
       // The next request for the file is refused: the receiver stops on an error, at 0.
       t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(1), position: 0 });
@@ -528,6 +529,60 @@ describe('CastPlaybackService', () => {
         autoplay: false,
       });
       expect(t.svc.getSnapshot()).toMatchObject({ state: 'paused', position: 10 });
+    });
+
+    it('a paused book whose seek is refused reloads paused, though the receiver was buffering', async () => {
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      await t.svc.play();
+      t.status({ playerState: 'playing', contentId: t.url(0), position: 10 });
+      await t.svc.pause();
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 10 });
+      await t.svc.seekTo(300);
+      // The receiver buffers the seek, and its request is refused with the ended token.
+      t.status({ playerState: 'buffering', contentId: t.url(0), position: 300 });
+      expect(t.svc.getSnapshot().state).toBe('loading');
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      expect(m.asks).toEqual([undefined, true]);
+      expect(t.remote.loads.at(-1)).toMatchObject({
+        startIndex: 0,
+        startTime: 300,
+        autoplay: false,
+      });
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'paused', position: 300 });
+    });
+
+    it('a playing book refused while it buffers plays on', async () => {
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      await t.svc.play();
+      t.status({ playerState: 'buffering', contentId: t.url(0), position: 10 });
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      expect(t.remote.loads.at(-1)).toMatchObject({ startTime: 10, autoplay: true });
+    });
+
+    it('an adopted session reloads in the play state it was taken over in', async () => {
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      const status: CastMediaStatus = {
+        playerState: 'paused',
+        customIndex: 0,
+        position: 20,
+        rate: 1,
+        book: BOOK,
+        contentId: 'https://h/stream?path=A/B/00.mp3&token=CAST0',
+      };
+      t.svc.adoptPlace({ state: 'paused', trackIndex: 0, position: 20, duration: 600, rate: 1 });
+      await t.svc.adoptQueue(TRACKS, BOOK, status);
+      t.status({ ...status, playerState: 'buffering', position: 200 });
+      t.status({ ...status, playerState: 'idle', idleReason: 'error', position: 0 });
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      expect(t.remote.loads.at(-1)).toMatchObject({ startTime: 200, autoplay: false });
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'paused', position: 200 });
     });
 
     it('a second error soon after is the error: no token minted on every try', async () => {
