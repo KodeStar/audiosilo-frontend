@@ -14,6 +14,7 @@ import { Text } from '@/components/ui/text';
 import { scanParams, scanReconnect } from '@/components/connect/connect-model';
 import {
   beginInviteSignIn,
+  holdReconnect,
   holdScanReconnect,
   takeScanFor,
 } from '@/components/connect/invite-handoff';
@@ -92,13 +93,11 @@ export default function ScanScreen() {
     if (invite) {
       setError(null);
       const reconnectId = again(invite.base);
-      beginInviteSignIn(invite, () =>
-        router.replace(
-          reconnectId
-            ? { pathname: '/connect/sign-in', params: { reconnect: reconnectId } }
-            : '/connect/sign-in',
-        ),
-      );
+      // The reconnect goes with it in memory (`holdReconnect`), never in the params.
+      beginInviteSignIn(invite, () => {
+        if (reconnectId) holdReconnect(invite.base, reconnectId);
+        router.replace('/connect/sign-in');
+      });
       return;
     }
     if (!parsed) {

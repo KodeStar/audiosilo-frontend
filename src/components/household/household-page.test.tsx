@@ -56,6 +56,7 @@ jest.mock('@/components/house/house-sharing-row', () => {
 });
 
 /* eslint-disable import/first */
+import { takeReconnect } from '@/components/connect/invite-handoff';
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { formatTimeOfDay } from '@/lib/format';
@@ -578,9 +579,10 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
       await waitFor(() =>
         expect(mockRouter.push).toHaveBeenCalledWith({
           pathname: '/connect/sign-in',
-          params: { serverName: 'Hearthside', reconnect: 'a.3' },
+          params: { serverName: 'Hearthside' },
         }),
       );
+      expect(takeReconnect('https://hearthside.example')).toBe('a.3');
       expect(useSession.getState().pendingServerUrl).toBe('https://hearthside.example');
       expect(mockMemberSession.mutateAsync).not.toHaveBeenCalled();
     });

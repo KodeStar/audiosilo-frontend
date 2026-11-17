@@ -390,15 +390,18 @@ iOS does NOT allow arbitrary loads: Expo's ATS default is `NSAllowsArbitraryLoad
 `NSAllowsLocalNetworking: true`, so plain http works there for IP addresses, `.local` and
 single-label names, but not for a `.lan`, `.home.arpa` or `.internal` home. `repairPlan`: a
 re-pair through one of a connection's own addresses keeps its paired `serverUrl`; the reconnect
-banner signs in through `effectiveUrl` and passes `reconnect=<cid>`, so a reset server reached
-through its away address still retires its dead identity. The sign-in step's "Scan a QR code
-instead" (fe#264) hands that `reconnect` to the scanner in memory (`openScanner` / `takeScanFor`,
+banner signs in through `effectiveUrl` and hands the sign-in step the connection it re-pairs in
+memory, by that address (`holdReconnect` / `takeReconnect`, taken once as the step opens; never a
+`/connect/sign-in` param, fe#298: a link opens that route and must not name the connection a
+sign-in replaces), so a reset server reached through its away address still retires its dead
+identity. The sign-in step's "Scan a QR code
+instead" (fe#264) hands that reconnect to the scanner in memory (`openScanner` / `takeScanFor`,
 never a `/connect/scan` param: a link opens that route too, and every way into the scanner goes
 through `openScanner`, so one without a reconnect clears what was held; the flow's layout drops
-what nothing took as it is left, `dropScanHandoffs`), which keeps it only for a code of the
+what nothing took as it is left, `dropConnectHandoffs`), which keeps it only for a code of the
 connection's paired or away address (`scanReconnect`: any other server is a new connection, and
 so is a home address it was not paired at, where another box can answer on another network and
-would read as this server reset): an invite code's sign-in step gets it as its own `reconnect`,
+would read as this server reset): an invite code's sign-in step gets it in memory (`holdReconnect`),
 a pairing code's `/connect` takes it from memory by the code's token (`holdScanReconnect` /
 `takeScanReconnect`, never a `/connect` param: a link opens that route; checked against the
 code's address again as it pairs) and `useLinkPairing` pairs with it (the connection's own proxy

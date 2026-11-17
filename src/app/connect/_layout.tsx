@@ -2,7 +2,7 @@ import { Stack, useRootNavigationState, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { dropScanHandoffs } from '@/components/connect/invite-handoff';
+import { dropConnectHandoffs } from '@/components/connect/invite-handoff';
 import { KIDS_PATH } from '@/components/kids/kids-model';
 import { useKidsActive } from '@/components/kids/use-kids';
 import { endConnectFlow, kidsConnectAllowed } from '@/components/profiles/connect-intent';
@@ -20,8 +20,8 @@ import { useSession } from '@/stores/session';
  * through (`kidsConnectAllowed`).
  *
  * A flow opened while kids mode was already on is a link (`audiosilo://connect?token=`, a
- * QR scanned elsewhere, `/web/connect`, the old reconnect banner's sign-in): a toast asks a
- * grown-up to open it (the grown-up holds Grown-ups, chooses themselves with their PIN,
+ * QR scanned elsewhere, `/web/connect`, an old sign-in step from the web history): a toast
+ * asks a grown-up to open it (the grown-up holds Grown-ups, chooses themselves with their PIN,
  * then opens the link again). Kids mode turning on while the flow is up is a kid's first
  * sign-in (`finishConnect` takes them to `/kids` itself): no toast, no "Your library is
  * ready." for a kid's account.
@@ -52,12 +52,12 @@ export default function ConnectLayout() {
   const [openedInKids, setOpenedInKids] = useState<boolean | null>(null);
   if (known && openedInKids === null) setOpenedInKids(refused);
   // Leaving the flow also drops the proxy headers held for it (fe#167): in memory only, and
-  // only until a sign-in keeps them with its connection. And a reconnect the scanner was
-  // handed that nothing took (`dropScanHandoffs`).
+  // only until a sign-in keeps them with its connection. And a reconnect the scanner or the
+  // sign-in step was handed that nothing took (`dropConnectHandoffs`).
   useEffect(
     () => () => {
       endConnectFlow();
-      dropScanHandoffs();
+      dropConnectHandoffs();
       useSession.getState().setPendingProxyHeaders(null);
     },
     [],

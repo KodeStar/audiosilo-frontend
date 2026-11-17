@@ -70,7 +70,7 @@ jest.mock('@/api/provider', () => ({
 import ConnectRoute from '@/app/connect/index';
 import ReadyRoute from '@/app/connect/ready';
 import SignInRoute from '@/app/connect/sign-in';
-import { holdInvite } from '@/components/connect/invite-handoff';
+import { holdInvite, holdReconnect } from '@/components/connect/invite-handoff';
 /* eslint-enable import/first */
 
 const user = { id: 1, username: 'u', role: 'user' } as User;
@@ -180,11 +180,36 @@ describe('/connect', () => {
 describe('/connect/sign-in', () => {
   it('reads the pending address once: signing in clears it without a bounce', async () => {
     signedOut('https://a');
-    mockParams = { reconnect: 'c1' };
+    holdReconnect('https://a', 'c1');
     await render(<SignInRoute />);
     expect(screen.getByText('sign in https://a c1')).toBeTruthy();
     await act(async () => signedIn(null));
     expect(screen.getByText('sign in https://a c1')).toBeTruthy();
+  });
+
+  it('re-pairs the reconnect held in memory for its server, once (fe#298)', async () => {
+    signedOut('https://a');
+    holdReconnect('https://a', 'c1');
+    const first = await render(<SignInRoute />);
+    expect(screen.getByText('sign in https://a c1')).toBeTruthy();
+    await first.unmount();
+    // Taken once: the step opened again (a link, Back and forward) re-pairs nothing.
+    await render(<SignInRoute />);
+    expect(screen.getByText('sign in https://a')).toBeTruthy();
+  });
+
+  it('never re-pairs from the route: a `?reconnect=` link names no connection (fe#298)', async () => {
+    signedOut('https://a');
+    mockParams = { reconnect: 'c1' };
+    await render(<SignInRoute />);
+    expect(screen.getByText('sign in https://a')).toBeTruthy();
+  });
+
+  it("never hands a reconnect held for another server to this one's sign-in", async () => {
+    signedOut('https://b');
+    holdReconnect('https://a', 'c1');
+    await render(<SignInRoute />);
+    expect(screen.getByText('sign in https://b')).toBeTruthy();
   });
 
   it("hands a held invite's code to the step for its server (#98)", async () => {
