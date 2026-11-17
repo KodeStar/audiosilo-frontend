@@ -125,9 +125,10 @@ can never log anyone out (`{ authReset, cacheReset }`):
   `requires` so the HTML names them in order (whatever required the whole requires the last
   part): several parts compile on several threads at once. Every part compiles on its own: a
   boundary that would leave one that doesn't (a `__d(` line inside a template literal) is
-  dropped and its part joined to the next, so the other boundaries stay. This is what makes a start fast where no service worker can help (a
-  page on plain http, a private window: no code cache), about 60-80 ms off both cold and warm
-  starts. An async chunk is never cut (the runtime loads it by its name).
+  dropped and its part joined to the next, so the other boundaries stay. This is what makes
+  a start fast where no service worker can help (a page on plain http, a private window: no
+  code cache), about 60-80 ms off both cold and warm starts. An async chunk is never cut (the
+  runtime loads it by its name).
 
 **The launch steps are ONE memoised run, `bootstrapPlayback()` (`src/lib/bootstrap.ts`)**: the
 storage migration, then the downloads-root wipe (`engine.clearAll()`) when **either** axis reset,

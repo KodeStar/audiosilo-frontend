@@ -72,6 +72,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockDevices = loaded([laptop, key, here]);
   Platform.OS = OS;
+  useSession.setState({ connections: [] });
 });
 afterAll(() => {
   Platform.OS = OS;
@@ -210,7 +211,6 @@ describe('DevicesSection', () => {
     await mount();
     expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
-    useSession.setState({ connections: [] });
   });
 
   // server#285: a read again that fails (after a password change) keeps the list it held.
