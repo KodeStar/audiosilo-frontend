@@ -181,6 +181,22 @@ describe('pickSuggestions', () => {
     expect(out).toEqual([{ kind: 'progress', ref: { library_id: 1, path: 'Other' }, percent: 30 }]);
   });
 
+  // A book nested in the loaded (or shown) book's folder is a book of its own when the
+  // server says so (`book`); a path the server sent without one may be a part.
+  it('offers a next book nested in the loaded book, never one that names the loaded book', () => {
+    const nested = { library_id: 1, path: 'Series/1/Bonus' };
+    const pick = (over: Partial<NextBook>, at = current) =>
+      pickSuggestions({ next: next(over), current: at, queued: [], inProgress: [] });
+    expect(pick({ next: nested, book: { series: 'Saga' } as Book })).toEqual([
+      { kind: 'next', ref: nested, series: 'Saga' },
+    ]);
+    expect(pick({ next: nested })).toEqual([]);
+    // The loaded book under a part path of the next one is that book.
+    expect(
+      pick({ next: current, book: {} as Book }, { library_id: 1, path: 'Series/1/Disc 2' }),
+    ).toEqual([]);
+  });
+
   it("skips a next book that is already queued, and ghosts a work this server can't place", () => {
     const out = pickSuggestions({
       next: next({

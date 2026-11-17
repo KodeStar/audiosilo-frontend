@@ -184,7 +184,9 @@ function sameBook(a: BookRef, b: BookRef): boolean {
  * the server's `next_book` answer), then books in progress on this server, newest first,
  * then the community rail's next work when this server couldn't place it (a ghost). Never
  * the loaded book or the one whose page is on screen (`shown`), under a part path either
- * (fe#197), nor one already queued, nor the same book twice; at most `limit` rows.
+ * (fe#197), nor one already queued, nor the same book twice; at most `limit` rows. A row of
+ * saved progress carries no book, so one under the loaded or shown book's path counts as a
+ * part of it; the server's next, sent with its book, does not.
  */
 export function pickSuggestions({
   next,
@@ -211,12 +213,16 @@ export function pickSuggestions({
   const seen = new Set<string>();
   const own = [current, shown].filter((b): b is BookRef => !!b);
   // A queued entry holds a part path under it, as `findQueued` compares.
-  const taken = (ref: BookRef) =>
-    seen.has(entryKey(ref)) ||
-    own.some((b) => sameBook(b, ref)) ||
-    queued.some((q) => entryHolds(q, ref.library_id, ref.path));
+  const listed = (ref: BookRef) =>
+    seen.has(entryKey(ref)) || queued.some((q) => entryHolds(q, ref.library_id, ref.path));
+  const taken = (ref: BookRef) => listed(ref) || own.some((b) => sameBook(b, ref));
+  // The server's next sent with its `book` is a book of its own: inside the loaded or shown
+  // book's folder (a book nested in another's) it is no part of that one, as `loadedHolding`
+  // reads `book` too. Only its own path, or a part path under it, names it.
+  const nextTaken = (ref: BookRef) =>
+    next?.book ? listed(ref) || own.some((b) => entryHolds(ref, b.library_id, b.path)) : taken(ref);
 
-  if (next?.next && !taken(next.next)) {
+  if (next?.next && !nextTaken(next.next)) {
     out.push({ kind: 'next', ref: next.next, series: next.book?.series ?? '' });
     seen.add(entryKey(next.next));
   }
