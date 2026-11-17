@@ -50,6 +50,7 @@ const entry = (path: string): QueueEntry => ({
 const data = (over: Partial<Data> = {}): Data => ({
   entries: [],
   unread: null,
+  keptOffline: false,
   isLoading: false,
   error: null,
   refetch: jest.fn(),
@@ -121,6 +122,20 @@ describe('UpNextPanel', () => {
     );
     expect(screen.getByText('Kept')).toBeTruthy();
     expect(screen.getByText(/Couldn't refresh Up next/)).toBeTruthy();
+  });
+
+  // fe#271: offline, a kept list said "Couldn't refresh" with a Retry that cannot work.
+  it('keeps the list with the offline line, no Retry, when its refresh cannot reach offline', async () => {
+    await render(
+      <UpNextPanel
+        cid="c"
+        data={data({ entries: [entry('Kept')], keptOffline: true, error: new Error('x') })}
+      />,
+    );
+    expect(screen.getByText('Kept')).toBeTruthy();
+    expect(screen.getByText("You're offline. This is the last list we had.")).toBeTruthy();
+    expect(screen.queryByText(/Couldn't refresh Up next/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   it('has an empty state (no drop zone off the web desktop)', async () => {

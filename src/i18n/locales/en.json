@@ -2065,6 +2065,7 @@
     "cleared": "Up next cleared",
     "loadFailed": "Couldn't load Up next.",
     "refreshFailed": "Couldn't refresh Up next. This is the last list we had.",
+    "offlineKept": "You're offline. This is the last list we had.",
     "empty": {
       "title": "Nothing queued yet",
       "hint": "Use Queue it on any book to line it up here.",

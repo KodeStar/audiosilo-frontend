@@ -2065,6 +2065,7 @@
     "cleared": "Prossimo svuotato",
     "loadFailed": "Impossibile caricare Prossimo.",
     "refreshFailed": "Impossibile aggiornare Prossimo. Questo è l'ultimo elenco disponibile.",
+    "offlineKept": "Sei offline. Questo è l'ultimo elenco disponibile.",
     "empty": {
       "title": "Ancora niente in coda",
       "hint": "Usa Metti in coda su un libro per aggiungerlo qui.",

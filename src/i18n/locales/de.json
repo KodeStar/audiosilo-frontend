@@ -2065,6 +2065,7 @@
     "cleared": "„Als Nächstes“ geleert",
     "loadFailed": "„Als Nächstes“ konnte nicht geladen werden.",
     "refreshFailed": "„Als Nächstes“ konnte nicht aktualisiert werden. Das ist der zuletzt geladene Stand.",
+    "offlineKept": "Du bist offline. Das ist der zuletzt geladene Stand.",
     "empty": {
       "title": "Noch nichts eingereiht",
       "hint": "Tippe bei einem Buch auf „Einreihen“, um es hier anzustellen.",

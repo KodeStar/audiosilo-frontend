@@ -2065,6 +2065,7 @@
     "cleared": "À suivre vidé",
     "loadFailed": "Impossible de charger À suivre.",
     "refreshFailed": "Impossible d'actualiser À suivre. Voici la dernière liste connue.",
+    "offlineKept": "Vous êtes hors ligne. Voici la dernière liste connue.",
     "empty": {
       "title": "Rien en file pour l'instant",
       "hint": "Utilisez Mettre en file sur un livre pour l'ajouter ici.",

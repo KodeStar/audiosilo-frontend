@@ -2065,6 +2065,7 @@
     "cleared": "A continuación vaciado",
     "loadFailed": "No se pudo cargar A continuación.",
     "refreshFailed": "No se pudo actualizar A continuación. Esta es la última lista que teníamos.",
+    "offlineKept": "Estás sin conexión. Esta es la última lista que teníamos.",
     "empty": {
       "title": "Aún no hay nada en cola",
       "hint": "Usa Añadir a la cola en cualquier libro para ponerlo aquí.",

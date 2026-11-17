@@ -9,7 +9,7 @@ import { usePlayBook } from '@/components/player/use-play-book';
 import { toast } from '@/components/ui/toast';
 import { playFailedToast } from '@/components/player/play-failed';
 import { useLayout } from '@/lib/layout';
-import { useUnreadQuery } from '@/lib/offline-state';
+import { useKeptOffline, useUnreadQuery } from '@/lib/offline-state';
 import { usePlayer } from '@/playback/store';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -54,6 +54,9 @@ export function useUpNextData(cid: string | undefined) {
   // Not read and waiting for the network (or failed without one): the panel says so,
   // not "Nothing queued" over books that are queued (fe#271).
   const unread = useUnreadQuery(queue);
+  // A kept list whose read again cannot reach the server offline: shown with the offline
+  // line, no Retry (fe#271).
+  const keptOffline = useKeptOffline(queue);
   // The panel's own writes (Remove, a dropped book, a suggestion) go through the same
   // mutations, so one `busy` covers them all.
   const actions = useQueueActions(cid);
@@ -124,6 +127,7 @@ export function useUpNextData(cid: string | undefined) {
   return {
     entries,
     unread,
+    keptOffline,
     isLoading: queue.isLoading,
     error: queue.error,
     refetch: queue.refetch,

@@ -106,6 +106,13 @@ export function UpNextPanel({
         // Before the error: no Retry can work without a network, and the list is asked
         // again by itself once it is back.
         <OfflineState className="mb-2" hint={t('common.offlineList')} />
+      ) : data.keptOffline ? (
+        // Offline, the list kept from before: no Retry can work without a network.
+        <View className="mx-1.5 mb-2 flex-row items-center gap-2 rounded-xl bg-muted px-3 py-2.5">
+          <Text variant="caption" className="flex-1">
+            {t('upnext.offlineKept')}
+          </Text>
+        </View>
       ) : data.error ? (
         signedOut ? (
           <SignInAgainState connection={signedOut} compact className="mx-1.5 mb-2" />

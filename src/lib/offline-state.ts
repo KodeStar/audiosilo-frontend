@@ -55,6 +55,19 @@ export function useUnreadQuery(query: {
 }
 
 /**
+ * The other side of `useUnreadQuery`: a KEPT answer whose read again waits for the network
+ * or failed without one. The screen shows what it keeps with an offline line, never a
+ * Retry, which cannot work until the network is back (fe#271). A refusal (an `ApiError`)
+ * is the server's answer, not the network's, so it is never this.
+ */
+export function useKeptOffline(query: { data: unknown; isPaused: boolean; error: unknown }) {
+  const deviceOnline = useDeviceOnline();
+  if (query.data === undefined || query.error instanceof ApiError) return false;
+  const failed = !!query.error;
+  return offlineState({ waiting: query.isPaused, failed, deviceOnline }) === 'offline';
+}
+
+/**
  * `useUnreadQuery` of ONE list read from every server (`useFavouritesAll`, `useRecentAll`,
  * `useAllProgressAll`: `offline` when a server's list waits for the network, `error` their
  * `unreadError`, the first one that failed with nothing kept), with no row in. A list that
