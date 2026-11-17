@@ -425,7 +425,9 @@ would read as this server reset): an invite code's sign-in step gets it in memor
 a pairing code's `/connect` takes it from memory by the code's token (`holdScanReconnect` /
 `takeScanReconnect`, never a `/connect` param: a link opens that route; checked against the
 code's address again as it pairs) and `useLinkPairing` pairs with it (the connection's own proxy
-headers, `finishConnect`'s `reconnectId`). `/connect` decides its "nothing to add"
+headers, `finishConnect`'s `reconnectId`). The book the sign-in step was heading to goes to the
+scanner as `/connect/scan`'s book params (`openScanner(reconnectId, book)`), and a scanned code
+that names no book of its own carries it on. `/connect` decides its "nothing to add"
 bounce when it opens and when it is back on top, never while the flow is over it; `sign-in` reads
 `pendingServerUrl` once. The connect screens are full screens: `ConnectFrame` shrinks its column by
 the keyboard overlap and `ConnectInput` scrolls the focused field into view (use both for any new

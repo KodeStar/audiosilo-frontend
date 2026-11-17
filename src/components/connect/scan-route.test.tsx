@@ -63,6 +63,37 @@ it('hands a pairing QR to the connect screen as before', async () => {
   });
 });
 
+// fe#299: opened from a sign-in step that was heading to a book, the scan still ends on it.
+describe('opened with the book its sign-in step was heading to', () => {
+  beforeEach(() => {
+    mockParams = { book: '2', path: 'A/Book' };
+  });
+
+  it("takes it to an invite's sign-in step", async () => {
+    await render(<ScanScreen />);
+    await scan('https://books.example.com/connect#code=ABCD-EFGH-JKMN-PQRS');
+    expect(mockReplace).toHaveBeenCalledWith({
+      pathname: '/connect/sign-in',
+      params: { book: '2', path: 'A/Book' },
+    });
+  });
+
+  it("takes it to a pairing code's exchange, unless the code names its own", async () => {
+    await render(<ScanScreen />);
+    await scan('https://books.example.com/web/connect?token=abc');
+    expect(mockReplace).toHaveBeenLastCalledWith({
+      pathname: '/connect',
+      params: expect.objectContaining({ token: 'abc', book: '2', path: 'A/Book' }),
+    });
+    await render(<ScanScreen />);
+    await scan('https://books.example.com/web/connect?token=def&book=7&path=B%2FOther');
+    expect(mockReplace).toHaveBeenLastCalledWith({
+      pathname: '/connect',
+      params: expect.objectContaining({ token: 'def', book: '7', path: 'B/Other' }),
+    });
+  });
+});
+
 it('says a code is neither a pairing nor an invite code, then lets the camera aim again', async () => {
   jest.useFakeTimers();
   try {

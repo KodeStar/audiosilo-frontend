@@ -300,7 +300,7 @@ export function SignInStep({
           variant="link"
           icon="qrcode"
           title={t('connect.signIn.scanInstead')}
-          onPress={() => openScanner(reconnectId)}
+          onPress={() => openScanner(reconnectId, book)}
           // Not while a sign-in is on its way (an invite's code signs in as the step opens):
           // a code scanned then would start a second one under it.
           disabled={loading}

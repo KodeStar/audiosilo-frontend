@@ -36,6 +36,15 @@ it('opens the scanner with its reconnect in memory, taken once, never in the rou
   expect(takeScanFor()).toBeUndefined();
 });
 
+// fe#299: the book the sign-in step was heading to goes with the scanner, as a link's does.
+it('opens the scanner with the book its sign-in step was heading to', () => {
+  openScanner(undefined, { libraryId: 2, path: 'A/Book' });
+  expect(mockPush).toHaveBeenLastCalledWith({
+    pathname: '/connect/scan',
+    params: { book: '2', path: 'A/Book' },
+  });
+});
+
 it('hands a reconnect to the sign-in step for its own server only, once (fe#298)', () => {
   holdReconnect('https://a.example/', 'srv.1');
   expect(takeReconnect('https://a.example')).toBe('srv.1');

@@ -385,6 +385,17 @@ describe('no password (fe#264)', () => {
     expect(takeScanFor()).toBe('srv.1');
   });
 
+  // fe#299: a sign-in heading to a book still ends on it after a scan.
+  it('hands the scanner the book the sign-in was heading to', async () => {
+    Platform.OS = 'ios';
+    await render(<SignInStep server={AWAY} book={{ libraryId: 2, path: 'A/Book' }} />);
+    await fireEvent.press(screen.getByTestId('sign-in-scan'));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/connect/scan',
+      params: { book: '2', path: 'A/Book' },
+    });
+  });
+
   it('holds the scanner back while a sign-in is on its way', async () => {
     Platform.OS = 'ios';
     let answer: (v: unknown) => void = () => {};

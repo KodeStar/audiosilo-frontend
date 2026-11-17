@@ -19,6 +19,8 @@ import {
   takeScanFor,
 } from '@/components/connect/invite-handoff';
 import { parseInviteScan, parsePairingScan } from '@/lib/pairing';
+import { connectBookParams, parseConnectBook } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { useSession } from '@/stores/session';
 import { colors } from '@/theme/tokens';
 import { SafeAreaView } from '@/components/ui/safe-area-view';
@@ -53,12 +55,16 @@ function CloseControl() {
  * opened from re-pairs (the reconnect banner's), handed over in memory (`openScanner`),
  * never a route param: a link opens this route, and a link must not name a connection to
  * re-pair. A code for that connection's server keeps it (`scanReconnect`), so the scan ends
- * as a sign-in typed on that step would: a server that was reset keeps its person.
+ * as a sign-in typed on that step would: a server that was reset keeps its person. `book`
+ * and `path`: the book that step was heading to (`openScanner`), which the scan's sign-in
+ * ends on too, unless the code names its own (fe#299).
  */
 export default function ScanScreen() {
   const { t } = useTranslation();
   // Taken once, as the scanner opens.
   const [reconnect] = useState(takeScanFor);
+  const routeParams = useRouteParams<{ book?: string; path?: string }>();
+  const heading = parseConnectBook(routeParams);
   const [permission, requestPermission] = useCameraPermissions();
   const [error, setError] = useState<string | null>(null);
   // Guards against the camera firing onBarcodeScanned repeatedly for the same frame.
@@ -96,7 +102,11 @@ export default function ScanScreen() {
       // The reconnect goes with it in memory (`holdReconnect`), never in the params.
       beginInviteSignIn(invite, () => {
         if (reconnectId) holdReconnect(invite.base, reconnectId);
-        router.replace('/connect/sign-in');
+        router.replace(
+          heading
+            ? { pathname: '/connect/sign-in', params: connectBookParams(heading) }
+            : '/connect/sign-in',
+        );
       });
       return;
     }
@@ -114,7 +124,10 @@ export default function ScanScreen() {
     // reconnect goes beside it in memory (`holdScanReconnect`), never in the params.
     const reconnectId = again(parsed.base);
     if (reconnectId) holdScanReconnect(parsed.token, reconnectId);
-    router.replace({ pathname: '/connect', params: scanParams(parsed) });
+    router.replace({
+      pathname: '/connect',
+      params: scanParams(parsed.book || !heading ? parsed : { ...parsed, book: heading }),
+    });
   };
 
   // Still loading the status, or the system prompt is on screen (status stays
