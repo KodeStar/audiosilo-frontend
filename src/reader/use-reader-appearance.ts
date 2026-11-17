@@ -32,6 +32,11 @@ export function readerThemeOf(
   };
 }
 
+/** The reader surfaces mounted now: a theme chosen on one (the reader's menu) shows on the
+ * other too (the companion's Text tab, mounted under the reader on a tablet or desktop),
+ * which would otherwise keep the colours it read when it mounted. */
+const themeWatchers = new Set<(choice: ReaderThemeChoice) => void>();
+
 /**
  * How a reader surface (the full-screen reader, the companion's Text tab) draws the book:
  * the device's reader theme (`readerThemeOf`) and its saved text size (null until both are
@@ -59,12 +64,15 @@ export function useReaderAppearance(): {
       setThemeChoice(choice);
       setFontScale(scale);
     });
+    themeWatchers.add(setThemeChoice);
     return () => {
       live = false;
+      themeWatchers.delete(setThemeChoice);
     };
   }, []);
   const chooseTheme = (choice: ReaderThemeChoice) => {
     setThemeChoice(choice);
+    for (const show of themeWatchers) show(choice);
     void saveReaderTheme(choice);
   };
   return { theme, themeChoice, chooseTheme, fontScale, setFontScale };
