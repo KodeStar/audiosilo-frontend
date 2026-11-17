@@ -452,7 +452,8 @@ function MemberDevices({
   if (!signedIn) {
     return <Text variant="caption">{t('household.card.noDevices', { name: member.name })}</Text>;
   }
-  if (devices.isError) {
+  // A failed re-read keeps the list it holds (fe#271).
+  if (devices.isError && !devices.data) {
     return (
       <View className="gap-2" testID={`member-devices-error-${member.id}`}>
         <Text variant="caption">{t('household.card.devicesFailed', { name: member.name })}</Text>

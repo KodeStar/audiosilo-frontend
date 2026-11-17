@@ -478,6 +478,14 @@ describe('MemberCard', () => {
     expect(mockDevices.refetch).toHaveBeenCalled();
   });
 
+  // fe#271: a failed re-read hid the devices it holds behind the error and its Retry.
+  it('keeps the devices it holds when a re-read fails', async () => {
+    mockDevices = { data: [device()], isPending: false, isError: true, refetch: jest.fn() };
+    await mount();
+    expect(screen.getByText('Kitchen iPad')).toBeTruthy();
+    expect(screen.queryByTestId('member-devices-error-12')).toBeNull();
+  });
+
   it("shows their own device's pairing code", async () => {
     await mount();
     await fireEvent.press(
