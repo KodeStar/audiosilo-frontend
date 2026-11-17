@@ -6,6 +6,7 @@ package app.audiosilo.wear.core
 
 import java.io.File
 import java.time.Instant
+import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
@@ -311,18 +312,25 @@ class PlaceStore(file: File?) {
   }
 
   /**
-   * The place an open span a kill left carries (`SpanRecorder.recover`), when it is newer than the
-   * one saved. Only a span kept at least once (it ended after it began), or one a cut opened (its
-   * start is where the closed span ended, at that time: a kill between the cut's span write and its
-   * place write): a play's span still at its open carries the loaded place stamped with the play's
-   * time, later than it was heard.
+   * The place an open span a kill left carries (`SpanRecorder.recover`), over the saved one. Its
+   * newest end is its own event's when `events` (the outbox) holds it: the kill came after the close
+   * kept the event and before the span file changed (a cut's next span, a pause's removal); else
+   * its last keep. Taken only when that is a place heard: it moved a second or more from where the
+   * span opened (`Spans.EMPTY_SPAN`, so a player settling a hair off the place it was given is no
+   * listening), or the span opened where the one before it ended (`fromHeard`: a cut's, a kill
+   * between the cut's span write and its place write). A play's span that never moved carries the
+   * loaded place, stamped later than it was heard; a move's carries its target, which the move
+   * saved itself.
+   * Never by the clock: while a span is open its book's place is saved only as it opens (a cut, a
+   * seek), so the span the kill left is the newer, and a wall clock set back since would hide it.
    */
   @Synchronized
-  fun recover(span: OpenSpan) {
-    if (span.endedAt <= span.startedAt && span.start != ListeningStart.CONTINUE) return
-    val saved = place(span.ref)
-    if (saved != null && saved.at >= span.endedAt) return
-    set(span.ref, LocalPlace.of(span.to, span.endedAt, span.speed))
+  fun recover(span: OpenSpan, events: List<ListeningEvent> = emptyList()) {
+    val closed = events.firstOrNull { it.id == span.id } as? SpanEvent
+    val to = closed?.let { SpanEnd(it.toPos, it.toFile, it.toFilePos) } ?: span.to
+    val at = closed?.let { ISOTime.parse(it.endedAt) } ?: span.endedAt
+    if (!span.fromHeard && abs(to.pos - span.from.pos) < Spans.EMPTY_SPAN) return
+    set(span.ref, LocalPlace.of(to, at, span.speed))
   }
 
   @Synchronized

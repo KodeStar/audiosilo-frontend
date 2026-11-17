@@ -2,6 +2,7 @@ package expo.modules.audiosilowatch
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -78,9 +79,11 @@ private fun message(type: String, vararg extra: Pair<String, Any?>): Map<String,
   ) + extra
 
 class PathForTest {
+  private val pair = message("pair", "pairing_token" to "t", "expires_at" to "2026-11-12T10:10:00.000Z")
+
   @Test
   fun putsThePairAtItsOnePath() {
-    assertEquals("/audiosilo/v1/to/w1/pair", pathFor(message("pair", "pairing_token" to "t"), "w1"))
+    assertEquals("/audiosilo/v1/to/w1/pair", pathFor(pair, "w1"))
   }
 
   @Test
@@ -93,6 +96,34 @@ class PathForTest {
     assertNull(pathFor(book + ("user_id" to 1.5), "w1"))
     assertNull(pathFor(book + ("server_id" to ""), "w1"))
     assertNull(pathFor(book + ("type" to "watch-state"), "w1"))
+  }
+
+  // fe#286: the watch takes no blank id (PhoneMessages' `nonEmpty`), so the phone sends none.
+  @Test
+  fun refusesABlankIdAsTheWatchDoes() {
+    val book = message("book", "path" to "A/B")
+    assertNull(pathFor(book + ("server_id" to "  "), "w1"))
+    assertNull(pathFor(book + ("path" to " \t"), "w1"))
+    assertNull(pathFor(message("remove", "path" to "   "), "w1"))
+    assertNotNull(pathFor(book + ("path" to " A/B"), "w1"))
+    assertNull(pathFor(pair + ("server_id" to " "), "w1"))
+    assertNull(pathFor(pair + ("pairing_token" to "\t"), "w1"))
+    assertNull(pathFor(pair - "pairing_token", "w1"))
+  }
+
+  // The watch reads a user or library id as 32 bits (PhoneMessages' `int`) and takes no pair
+  // without a time it can read, so the phone sends neither: the item would wait there untaken.
+  @Test
+  fun refusesAnIdOrAPairTheWatchCannotRead() {
+    val book = message("book", "path" to "A/B")
+    assertNotNull(pathFor(book + ("user_id" to 2147483647.0), "w1"))
+    assertNull(pathFor(book + ("user_id" to 2147483648.0), "w1"))
+    assertNull(pathFor(book + ("library_id" to 4294967296.0), "w1"))
+    assertNull(pathFor(message("remove", "path" to "A/B", "library_id" to -2147483649.0), "w1"))
+    assertNull(pathFor(pair + ("user_id" to 2147483648.0), "w1"))
+    assertNull(pathFor(pair - "user_id", "w1"))
+    assertNull(pathFor(pair - "expires_at", "w1"))
+    assertNull(pathFor(pair + ("expires_at" to "soon"), "w1"))
   }
 }
 
@@ -207,6 +238,7 @@ class ReceiptTest {
     assertNull(WearRules.receipt(mapOf("v" to 2L, "type" to "taken", "path" to bookPath)))
     assertNull(WearRules.receipt(mapOf("v" to 1L, "type" to "watch-state", "path" to bookPath)))
     assertNull(WearRules.receipt(mapOf("v" to 1L, "type" to "taken", "path" to "")))
+    assertNull(WearRules.receipt(mapOf("v" to 1L, "type" to "taken", "path" to "  ")))
     assertNull(WearRules.receipt(null))
   }
 
@@ -272,6 +304,23 @@ class StalePairsTest {
       listOf(WearPaths.pair("w1"), WearPaths.pair("w3"), WearPaths.pair("w4"), WearPaths.pair("w5")),
       WearRules.stalePairs(own, now),
     )
+  }
+
+  // fe#286: the alarm that drops a pair with the app idle goes off at the first one's time.
+  @Test
+  fun theNextPruneIsTheFirstPairsTime() {
+    val own = listOf(
+      pair("w1", "2026-11-12T10:05:00.000Z"),
+      pair("w2", "2026-11-12T10:03:00.000Z"),
+      pair("w3", null),
+      Item(WearPaths.book("w1", "k"), message("book", "path" to "A/B", "expires_at" to "2026-11-12T10:01:00.000Z")),
+    )
+    assertEquals(WearRules.epochMs("2026-11-12T10:03:00.000Z"), WearRules.nextPairExpiry(own))
+    assertNull("no pair held: no alarm", WearRules.nextPairExpiry(own.drop(2)))
+    assertNull(WearRules.nextPairExpiry(emptyList()))
+    // What is left once the stale ones go: the alarm moves on to the next.
+    val left = own.filter { it.path !in WearRules.stalePairs(own, WearRules.epochMs("2026-11-12T10:03:00.000Z")!!) }
+    assertEquals(WearRules.epochMs("2026-11-12T10:05:00.000Z"), WearRules.nextPairExpiry(left))
   }
 
   @Test

@@ -137,7 +137,7 @@ class AppModel private constructor(private val context: Context) {
   /** Closed spans go into the outbox, then a send is scheduled (SyncSchedule's SPAN_CLOSED). */
   val spans =
     SpanRecorder(
-      FileSpanStore(files.openSpan),
+      FileSpanStore(files.openSpan, files.openSpanMove),
       acks,
       emit = { events ->
         outbox.append(events)
@@ -224,8 +224,9 @@ class AppModel private constructor(private val context: Context) {
     scope.launch { for (work in inbox) work() }
     // A span a kill left open goes into the outbox before anything else (sent at launch, or by the
     // worker when this start is a background one), and its place, newer than the saved one when the
-    // kill came between two saves (the 5 s tick keeps the place in memory only), becomes the book's.
-    spans.recover()?.let(places::recover)
+    // kill came between two saves (the 5 s tick keeps the place in memory only), becomes the book's
+    // before the span leaves its file. Its own event, when the last process kept it, ends it.
+    spans.recover { left -> places.recover(left, outbox.events) }
     // Held across a kill: aged, and queued if a sign-in finished just before it.
     releaseHeld()
     // The launch's publish (the flow's first value), then each move of a book's stage: news for the
@@ -853,6 +854,7 @@ class AppModel private constructor(private val context: Context) {
     files.items.deleteRecursively()
     acks.clear()
     places.clear()
+    spans.forgetMove()
     outbox.discardAll()
     SyncWorker.cancelAll(context)
     backstopOn = false

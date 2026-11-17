@@ -18,6 +18,7 @@ import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.serialization.SerializationException
 
 /** A download's answer: 200 (the whole file) or 206 (from `from`), its ETag and its bytes. */
 class Fetched(val status: Int, val etag: String?, val body: InputStream) : Closeable {
@@ -94,6 +95,11 @@ class BookDownload(
       throw e
     } catch (e: APIError) {
       refused(e)
+    } catch (_: SerializationException) {
+      // A success the watch can't decode (another build's format, a proxy's page): the server
+      // answered, so this is no wait on the connection, and asked again it says the same (fe#320).
+      // Try again asks afresh.
+      fail(RenditionPlan.UNREADABLE)
     } catch (_: IOException) {
       // No answer: the worker tries again (its backoff, its network constraint).
       index.update(ref) { it.copy(message = WAITING_FOR_CONNECTION) }

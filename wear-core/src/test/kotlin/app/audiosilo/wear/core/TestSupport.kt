@@ -20,6 +20,7 @@ class TestClock(iso: String = "2026-10-25T07:00:00.000Z") {
 class MemorySpanStore : OpenSpanStore {
   var stored: OpenSpan? = null
   val saves = ArrayList<OpenSpan?>()
+  var move: RecoveredMove? = null
 
   override fun load(): OpenSpan? = stored
 
@@ -27,10 +28,19 @@ class MemorySpanStore : OpenSpanStore {
     stored = span
     saves += span
   }
+
+  override fun loadMove(): RecoveredMove? = move
+
+  override fun saveMove(move: RecoveredMove?) {
+    this.move = move
+  }
 }
 
 /** A fresh temp directory, removed by the caller. */
 fun tempDir(): File = Files.createTempDirectory("wear-core").toFile()
+
+/** The open span's files in `dir`, as the app names them (Files' `open-span.json`, `open-span-move.json`). */
+fun fileSpanStore(dir: File) = FileSpanStore(File(dir, "open-span.json"), File(dir, "open-span-move.json"))
 
 fun iso(s: String): Instant = ISOTime.parse(s)!!
 

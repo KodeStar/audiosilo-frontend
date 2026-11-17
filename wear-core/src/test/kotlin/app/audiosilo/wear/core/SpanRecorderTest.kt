@@ -656,6 +656,114 @@ class SpanRecorderTest {
     assertEquals(ListeningStart.RESUME, next.span?.start)
   }
 
+  // fe#321: a launch that recovered the move but ended before the book played (a background wake)
+  // leaves it to the next launch: it is kept in the store, not in memory alone.
+  @Test
+  fun aKilledMoveOutlivesALaunchThatNeverPlays() {
+    val r = recorder()
+    r.open(book, at(80.0), 1.0)
+    clock.advance(10.0)
+    r.move(book, to = at(10.0), from = at(90.0), playing = true, speed = 1.0)
+    // A kill, then a background wake that recovers the span and ends without playing.
+    val wake = recorder()
+    wake.recover()
+    assertNull(store.stored)
+    assertEquals(RecoveredMove(BookRef(2, "A/Folder"), ListeningStart.MOVED_BACK), store.move)
+    // The launch after that.
+    val next = recorder()
+    next.recover()
+    next.prepareStart(ListeningStart.RESUME)
+    next.open(book, at(10.0), 1.0)
+    assertEquals(ListeningStart.MOVED_BACK, next.span?.start)
+    assertNull("taken once, off the store too", store.move)
+    // And not again at the launch after.
+    next.close(at(10.0))
+    val later = recorder()
+    later.prepareStart(ListeningStart.RESUME)
+    later.open(book, at(10.0), 1.0)
+    assertEquals(ListeningStart.RESUME, later.span?.start)
+  }
+
+  @Test
+  fun aKeptMoveGoesWithARowTakenOrTheAccount() {
+    store.move = RecoveredMove(BookRef(2, "A/Folder"), ListeningStart.JUMP)
+    val r = recorder()
+    r.loadsFromRow(book.ref)
+    assertNull("the place came from the server's row", store.move)
+
+    store.move = RecoveredMove(BookRef(2, "A/Folder"), ListeningStart.JUMP)
+    val s = recorder()
+    s.recover()
+    s.forgetMove()
+    assertNull("the account left", store.move)
+    s.prepareStart(ListeningStart.RESUME)
+    s.open(book, at(10.0), 1.0)
+    assertEquals(ListeningStart.RESUME, s.span?.start)
+  }
+
+  @Test
+  fun aSpanHeardAfterTheMoveReplacesAKeptMove() {
+    // A kept move whose launch then played and was killed after listening: that span says nothing
+    // of a move, so the kept one (stale) does not reach the next play.
+    store.move = RecoveredMove(BookRef(2, "A/Folder"), ListeningStart.JUMP)
+    store.stored =
+      OpenSpan(2, "A/Folder", at(5.0), at(15.0), 100.0, 1.0, clock.now, clock.now.addingSeconds(10.0),
+        ListeningStart.RESUME, 0, "left")
+    val r = recorder()
+    r.recover()
+    assertNull(store.move)
+    r.prepareStart(ListeningStart.RESUME)
+    r.open(book, at(15.0), 1.0)
+    assertEquals(ListeningStart.RESUME, r.span?.start)
+  }
+
+  // Wear: a row for another book leaves the kept move to its own book.
+  @Test
+  fun anotherBooksRowLeavesAKeptMove() {
+    store.move = RecoveredMove(BookRef(2, "A/Folder"), ListeningStart.JUMP)
+    recorder().loadsFromRow(BookRef(2, "A/Other"))
+    assertEquals(RecoveredMove(BookRef(2, "A/Folder"), ListeningStart.JUMP), store.move)
+  }
+
+  // fe#285: buffering, the keep ends the span when the audio last moved, never later than now.
+  @Test
+  fun theKeepEndsTheSpanWhenTheAudioLastMoved() {
+    val r = recorder()
+    r.open(book, at(1.0), 1.0)
+    clock.advance(5.0)
+    val heard = clock.now
+    r.keep(at(6.0), heardAt = heard)
+    clock.advance(5.0)
+    r.keep(at(6.0), heardAt = heard)
+    assertEquals(heard, store.stored?.endedAt)
+    assertEquals("held there, nothing new to write: the open and one keep", 2, store.saves.size)
+    r.keep(at(6.0), heardAt = clock.now.addingSeconds(3.0))
+    assertEquals("never after now", clock.now, store.stored?.endedAt)
+    r.keep(at(6.0))
+    assertEquals(clock.now, store.stored?.endedAt)
+  }
+
+  // fe#285: a span that opens where the closed one ended (a cut, a playing Stay) starts at a place
+  // heard; a move's starts at its target, and a play's at the loaded place.
+  @Test
+  fun aCutOrAPlayingStayOpensFromAPlaceHeard() {
+    val r = recorder()
+    r.open(book, at(1.0), 1.0)
+    assertFalse(store.stored!!.fromHeard)
+    clock.advance(15.0)
+    r.tick(book, at(16.0), playing = true, reachable = true, speed = 1.0)
+    assertTrue(store.stored!!.fromHeard)
+    clock.advance(1.0)
+    r.move(book, to = at(40.0), from = at(17.0), playing = true, speed = 1.0)
+    assertFalse(store.stored!!.fromHeard)
+    clock.advance(5.0)
+    r.standBy(book, at(45.0), playing = true, speed = 1.0, stay = true)
+    assertTrue(store.stored!!.fromHeard)
+    clock.advance(5.0)
+    r.standBy(book, null, playing = true, speed = 1.0, stay = true)
+    assertTrue(store.stored!!.fromHeard)
+  }
+
   @Test
   fun theFirstOpenRecoversFirst() {
     store.stored =
