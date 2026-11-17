@@ -1,11 +1,11 @@
 import { Redirect } from 'expo-router';
-import { useEffect, useState } from 'react';
 
 import {
   peekInviteCode,
   peekReconnect,
   takeInviteCode,
   takeReconnect,
+  useHandoff,
 } from '@/components/connect/invite-handoff';
 import { SignInStep } from '@/components/connect/sign-in-step';
 import { parseConnectBook } from '@/lib/paths';
@@ -32,18 +32,20 @@ export default function SignInRoute() {
     book?: string;
     path?: string;
   }>();
-  const [{ server, code, reconnect }] = useState(() => {
-    const pending = useSession.getState().pendingServerUrl;
-    return {
-      server: pending,
-      code: pending ? peekInviteCode(pending) : undefined,
-      reconnect: peekReconnect(pending),
-    };
-  });
-  useEffect(() => {
-    takeInviteCode(server);
-    takeReconnect(server);
-  }, [server]);
+  const { server, code, reconnect } = useHandoff(
+    () => {
+      const pending = useSession.getState().pendingServerUrl;
+      return {
+        server: pending,
+        code: pending ? peekInviteCode(pending) : undefined,
+        reconnect: peekReconnect(pending),
+      };
+    },
+    (read) => {
+      takeInviteCode(read.server);
+      takeReconnect(read.server);
+    },
+  );
   if (!server) return <Redirect href="/connect" />;
   return (
     <SignInStep

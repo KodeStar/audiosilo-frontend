@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 
 import type { InviteScan } from '@/lib/pairing';
 import { type ConnectBook, connectBookParams } from '@/lib/paths';
@@ -24,9 +25,23 @@ export function beginInviteSignIn(invite: InviteScan, go: () => void): void {
   void useSession.getState().setPendingServerUrl(invite.base).then(go);
 }
 
-/** The held invite code for `server` (the sign-in step's server), left held: the step reads
- * it as it renders and takes it (`takeInviteCode`) only once it is on screen, since a render
- * can be thrown away and run again before it shows (the web's route chunk still loading). */
+/**
+ * A hand-off a screen reads as it renders (`peek`) and takes (`take`, given what was read)
+ * only once it is on screen: a render can be thrown away and run again before it shows (the
+ * web's route chunk still loading), and a take in that render would leave the screen that
+ * shows without it. Every screen that takes a hand-off comes through here.
+ */
+export function useHandoff<T>(peek: () => T, take: (read: T) => void): T {
+  const [read] = useState(peek);
+  useEffect(() => {
+    take(read);
+    // Once, as the screen opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return read;
+}
+
+/** The held invite code for `server` (the sign-in step's server), left held (`useHandoff`). */
 export function peekInviteCode(server: string): string | undefined {
   return held && sameUrl(held.base, server) ? held.code : undefined;
 }
@@ -58,8 +73,7 @@ export function openScanner(reconnectId?: string, book?: ConnectBook): void {
   );
 }
 
-/** The reconnect the scanner was opened for, left held (`peekInviteCode` says why a screen
- * reads before it takes). */
+/** The reconnect the scanner was opened for, left held (`useHandoff`). */
 export function peekScanFor(): string | undefined {
   return scanFor;
 }
@@ -86,7 +100,7 @@ export function holdScanReconnect(token: string, reconnectId: string): void {
   scanned = { token, reconnectId };
 }
 
-/** The reconnect held for the pairing code `token`, left held (`peekInviteCode`). */
+/** The reconnect held for the pairing code `token`, left held (`useHandoff`). */
 export function peekScanReconnect(token: string): string | undefined {
   return scanned?.token === token ? scanned.reconnectId : undefined;
 }
@@ -121,8 +135,7 @@ export function takeReconnect(server: string | null): string | undefined {
   return id;
 }
 
-/** The reconnect held for the sign-in step at `server`, left held (`peekInviteCode` says
- * why the step reads before it takes). */
+/** The reconnect held for the sign-in step at `server`, left held (`useHandoff`). */
 export function peekReconnect(server: string | null): string | undefined {
   return reconnecting && server && sameUrl(reconnecting.server, server)
     ? reconnecting.reconnectId

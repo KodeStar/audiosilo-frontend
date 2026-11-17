@@ -55,6 +55,7 @@ import {
   openScanner,
   peekScanReconnect,
   takeScanReconnect,
+  useHandoff,
 } from './invite-handoff';
 import { finishOidcSignIn, oidcReturnOrigin } from './oidc-sign-in';
 import { ProxyHeadersEditor } from './proxy-headers-editor';
@@ -155,17 +156,16 @@ export function ConnectStart() {
   const [retryLink, setRetryLink] = useState<PairingScan | null>(null);
   // The reconnect the code that opened this screen continues (scanned from a reconnect's
   // sign-in step, `holdScanReconnect`): taken once, and only that code's (Try again too),
-  // never a link pasted or opened later. Read as the screen renders, taken once it is on
-  // screen: a render can be thrown away and run again.
-  const [scanned] = useState(() => {
-    const reconnectId = token ? peekScanReconnect(token) : undefined;
-    return reconnectId ? { token, reconnectId } : null;
-  });
-  useEffect(() => {
-    if (token) takeScanReconnect(token);
-    // Once, as the screen opens.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // never a link pasted or opened later (`useHandoff`).
+  const scanned = useHandoff(
+    () => {
+      const reconnectId = token ? peekScanReconnect(token) : undefined;
+      return reconnectId ? { token, reconnectId } : null;
+    },
+    () => {
+      if (token) takeScanReconnect(token);
+    },
+  );
   // Custom headers for an auth proxy in front of the server (fe#167), for the address in
   // the field: held by the session for the connect flow's clients (`connectProxyHeaders`)
   // while the section is open, and kept with the connection the sign-in makes. The flow's

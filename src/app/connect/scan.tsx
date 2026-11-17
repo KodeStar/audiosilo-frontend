@@ -18,6 +18,7 @@ import {
   holdScanReconnect,
   peekScanFor,
   takeScanFor,
+  useHandoff,
 } from '@/components/connect/invite-handoff';
 import { type PairingScan, parseInviteScan, parsePairingScan } from '@/lib/pairing';
 import { sameUrl } from '@/lib/server-address';
@@ -63,11 +64,7 @@ function CloseControl() {
  */
 export default function ScanScreen() {
   const { t } = useTranslation();
-  // Read as it renders, taken once it is on screen (a render can be run again).
-  const [reconnect] = useState(peekScanFor);
-  useEffect(() => {
-    takeScanFor();
-  }, []);
+  const reconnect = useHandoff(peekScanFor, takeScanFor);
   const routeParams = useRouteParams<{ book?: string; path?: string }>();
   const heading = parseConnectBook(routeParams);
   const [permission, requestPermission] = useCameraPermissions();
