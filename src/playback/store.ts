@@ -66,6 +66,7 @@ import {
   sendOnPageHide,
   type SpanEnd,
   spanIsBareMove,
+  spanSaysSomething,
   spanToEvent,
   storeOpenSpan,
   usesListeningStay,
@@ -951,6 +952,10 @@ function openListeningSpan(at?: SpanEnd) {
   nextStart = 'resume';
   const opened = spanAt(np, here, start, now);
   span = opened;
+  // A move's span (a seek, a Stay, starting again) is stored now, not at the next keep
+  // (`OPEN_SPAN_KEEP_MS`): a kill in between would lose the move itself (fe#321). Behind the
+  // close of the span before it (`spanOps` keeps the order), so the stored one is this.
+  if (spanSaysSomething(opened)) void storeOpenSpan({ ...opened });
   if (finishSent === contentKeyOf(np)) finishSent = null;
   void baseVersionOf(np).then((base) => {
     opened.baseVersion = base;

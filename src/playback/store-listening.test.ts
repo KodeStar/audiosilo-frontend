@@ -80,6 +80,7 @@ jest.mock('./listening-outbox', () => {
   return {
     spanToEvent: actual.spanToEvent,
     spanIsBareMove: actual.spanIsBareMove,
+    spanSaysSomething: actual.spanSaysSomething,
     movesNowhere: actual.movesNowhere,
     finishEvent: actual.finishEvent,
     newEventId: actual.newEventId,
@@ -1552,7 +1553,11 @@ describe('the open span is kept every 5 s', () => {
     pushSnapshot(snap('playing', 0, 2)); // landed 4 s back: the keep runs on this snapshot
     remoteMove(0, 2);
     await settle();
-    expect(stored().at(-1)).toEqual(['resume', 1, 6]);
+    // The keep, then the move's own span stored as it opens (fe#321).
+    expect(stored().slice(-2)).toEqual([
+      ['resume', 1, 6],
+      ['moved_back', 2, 2],
+    ]);
     expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 1, 6]]);
     pushSnapshot(snap('paused', 0, 3));
     await settle();
@@ -1577,6 +1582,37 @@ describe('the open span is kept every 5 s', () => {
       ['moved_back', 10, 22],
       ['continue', 22, 24],
     ]);
+  });
+
+  // fe#321: a kill within 5 s of a move lost the move, which lived only in memory.
+  it('a seek while playing stores the span it opens at once, before any keep', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 30));
+    await settle();
+    mockStoreOpenSpan.mockClear();
+    await usePlayer.getState().seekBook(70);
+    await settle();
+    expect(stored()).toEqual([['jump', 70, 70]]);
+  });
+
+  it('a playing Stay stores the span it opens at once', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 30));
+    await settle();
+    mockStoreOpenSpan.mockClear();
+    standByPlace();
+    await settle();
+    expect(stored()).toEqual([['jump', 30, 30]]);
+  });
+
+  it('a cut stores nothing at once: the keep does', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 30));
+    await settle();
+    mockStoreOpenSpan.mockClear();
+    cutListeningSpanNow();
+    await settle();
+    expect(mockStoreOpenSpan).not.toHaveBeenCalled();
   });
 
   it('stops with the playing: a pause stores nothing more', async () => {

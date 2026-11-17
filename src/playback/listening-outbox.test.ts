@@ -275,6 +275,27 @@ describe('the outbox', () => {
     expect(await outboxEvents('c1')).toHaveLength(1);
   });
 
+  // fe#321: the store keeps a move's span as it opens, right behind the close before it.
+  it("a move's span stored right behind the close before it is the one a kill leaves", async () => {
+    await storeOpenSpan(span({ id: 'a' }));
+    const at = { pos: 30000, file: 'Author/Book/09.mp3', filePos: 12 };
+    const jump = span({
+      id: 'b',
+      from: at,
+      to: at,
+      start: 'jump',
+      startedAt: '2026-10-25T07:33:30.000Z',
+      endedAt: '2026-10-25T07:33:30.000Z',
+    });
+    // Neither awaited before the other starts, as the store calls them.
+    await Promise.all([closeSpan(span({ id: 'a' })), storeOpenSpan(jump)]);
+    resetOutboxForTests();
+    await recoverOpenSpan();
+    const events = (await outboxEvents('c1')).map((e) => e.event);
+    expect(events.map((e) => e.id)).toEqual(['a', 'b']);
+    expect(events[1]).toMatchObject({ start: 'jump', from_pos: 30000, to_pos: 30000 });
+  });
+
   it('a span goes on the base acknowledged when it closes, never below the one it opened on', async () => {
     const row = {
       library_id: 3,
