@@ -53,13 +53,17 @@ export const FINISHED_TOLERANCE = 5;
 /** A queue's files' lengths as the server measured them (`PlaybackTrack.duration`). */
 type FileLengths = { tracks: readonly { duration?: number }[] };
 
+/** File `trackIndex`'s server length, 0 when unknown. */
+const serverLength = (queue: FileLengths, trackIndex: number) =>
+  queue.tracks[trackIndex]?.duration ?? 0;
+
 /** A file's length as the player reads it: the engine's, unless the server measured the file
  * and the engine's is unknown or more than `FINISHED_TOLERANCE` shorter, then the server's. An
  * engine can measure a file far short: Android's Media3 took a VBR MP3 with no seek header for a
  * fifth of its length, from its first frame, and the server's length is the one the whole-book
  * timeline (`offsets`), the chapters and the finish are built on. */
 export function fileDurationOf(queue: FileLengths, trackIndex: number, engine: number): number {
-  const server = queue.tracks[trackIndex]?.duration ?? 0;
+  const server = serverLength(queue, trackIndex);
   if (!(server > 0)) return engine;
   return engine > server - FINISHED_TOLERANCE ? engine : server;
 }
@@ -67,7 +71,7 @@ export function fileDurationOf(queue: FileLengths, trackIndex: number, engine: n
 /** Is `position` in file `trackIndex` short of that file's end, as the server measured it, by
  * more than `FINISHED_TOLERANCE`? False when the server has no length for the file. */
 export function shortOfFileEnd(queue: FileLengths, trackIndex: number, position: number): boolean {
-  const length = queue.tracks[trackIndex]?.duration ?? 0;
+  const length = serverLength(queue, trackIndex);
   return length > 0 && Number.isFinite(position) && position < length - FINISHED_TOLERANCE;
 }
 

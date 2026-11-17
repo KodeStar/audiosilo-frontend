@@ -1616,6 +1616,8 @@ const PLAYED_ON = 3;
 /** The book whose engine faulted (`engineFault`): its reports are dropped, and a play the
  * engine makes by itself is paused again, until the store asks it for a place again. */
 let faultedBook: NowPlaying | null = null;
+/** Has the loaded book's engine faulted (`faultedBook`)? */
+const loadedFaulted = () => faultedBook !== null && faultedBook === usePlayer.getState().nowPlaying;
 
 /** The store asks the engine for `(trackIndex, position)` of `np`'s queue (`askedPlace`). */
 function askEngineTo(np: NowPlaying, trackIndex: number, position: number) {
@@ -1631,8 +1633,8 @@ function askEngineTo(np: NowPlaying, trackIndex: number, position: number) {
  * `finishBook`'s `finished: true` and Sync v2's `finish`). Else null.
  */
 function engineFault(np: NowPlaying, s: PlaybackSnapshot): PlaybackSnapshot | null {
-  const asked = askedPlace?.np === np ? askedPlace : null;
-  if (!asked) return null;
+  const asked = askedPlace;
+  if (asked?.np !== np) return null;
   if (s.trackIndex === asked.trackIndex && s.position >= asked.position + PLAYED_ON) {
     askedPlace = null;
     return null;
@@ -2077,7 +2079,7 @@ function clearPlaybackIntent() {
  * start goes on as one that played (true), so the error is what the listener sees. */
 async function startEngine(svc: PlaybackService): Promise<boolean> {
   if (yieldedAttempt === playAttempts) return false;
-  if (faultedBook && faultedBook === usePlayer.getState().nowPlaying) return true;
+  if (loadedFaulted()) return true;
   try {
     await svc.play();
   } catch (err) {
@@ -2311,7 +2313,7 @@ async function createService(): Promise<PlaybackService> {
     // A faulted engine (`engineFault`) is not heard from until the store asks it for a place
     // again (`askEngineTo`: a Retry, or a press, which reloads), and a play it starts by
     // itself (the lock screen) is stopped again.
-    if (faultedBook && faultedBook === usePlayer.getState().nowPlaying) {
+    if (loadedFaulted()) {
       if (raw.state === 'playing') void svc.pause();
       return;
     }
@@ -2352,11 +2354,13 @@ async function createService(): Promise<PlaybackService> {
     const { nowPlaying: np, loadingBook } = usePlayer.getState();
     if (np && !loadingBook) {
       const fault = engineFault(np, snapshot);
-      if (fault) void svc.pause();
-      snapshot = fault ?? {
-        ...snapshot,
-        duration: fileDurationOf(np.queue, snapshot.trackIndex, snapshot.duration),
-      };
+      if (fault) {
+        void svc.pause();
+        snapshot = fault;
+      } else {
+        const duration = fileDurationOf(np.queue, snapshot.trackIndex, snapshot.duration);
+        if (duration !== snapshot.duration) snapshot = { ...snapshot, duration };
+      }
     }
     usePlayer.setState({ snapshot });
     // Reached online (the network came back while it played): it plays on, streaming the
@@ -2794,7 +2798,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       }
       // A faulted engine is never just resumed (it sits where the book is not): the press
       // reloads the book at its place, as Retry does.
-      if (faultedBook && faultedBook === get().nowPlaying) {
+      if (loadedFaulted()) {
         await get().retry();
         return;
       }
