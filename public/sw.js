@@ -193,24 +193,43 @@ async function staleWhileRevalidate(request) {
 
 // --- the build's chunks ------------------------------------------------------
 
-// The cache entry recording the build last precached, as JSON: the shell's own scripts and
-// styles (`build`), every file of it (`files`) and the build's before it (`previous`).
+// The cache entry recording the build last precached, as JSON: the shell's own scripts,
+// styles and fonts (`build`), every file of it (`files`) and the build's before it
+// (`previous`).
 const PRECACHED_BUILD = '__precached-build';
 // A build asset named in the HTML or a chunk: `<base>/_expo/static/js/web/<name>-<hash>.js`
 // (the chunk map Expo writes into the entry and into chunks that load others) or a
 // stylesheet under `_expo/static/css/`.
 const ASSET_REF = /["'](\/(?:[^"'\s]*?\/)?_expo\/static\/(?:js|css)\/[^"'\s]+?\.(?:js|css))["']/g;
 
+// A font file the shell's HTML names: the preload links and `@font-face` rules of the fonts
+// that gate first paint (`StaticFonts`, src/theme/static-fonts.web.tsx), under
+// `<base>/assets/`, not `_expo/static/`. Read from the shell only: a chunk naming a path that
+// is not a file would stop the precache.
+const FONT_REF = /["'](\/[^"'\s]+?\.(?:ttf|otf|woff2?))["']/g;
+
 /** The same-origin build assets `text` names, as absolute URLs. */
 function assetRefs(text) {
+  return refsOf(text, ASSET_REF);
+}
+
+/** The same-origin font files `text` (the shell) names, as absolute URLs (fe#177). */
+function fontRefs(text) {
+  return refsOf(text, FONT_REF);
+}
+
+function refsOf(text, pattern) {
   const urls = new Set();
-  for (const m of text.matchAll(ASSET_REF)) urls.add(new URL(m[1], self.location.origin).href);
+  for (const m of text.matchAll(pattern)) {
+    const url = new URL(m[1], self.location.origin);
+    if (url.origin === self.location.origin) urls.add(url.href);
+  }
   return [...urls];
 }
 
 /**
- * Precache every chunk of the build the shell (the scope's index.html) boots: its scripts
- * and stylesheets, then every chunk they name, transitively. A route opened for the first
+ * Precache every chunk of the build the shell (the scope's index.html) boots: its scripts,
+ * stylesheets and fonts, then every chunk they name, transitively. A route opened for the first
  * time offline then still finds its chunk, and a deep link still boots. The shell is
  * cached once its own files are in, so offline it always boots. Once this build is
  * complete, the build before it stays one deploy longer (a tab still running it, its
@@ -232,8 +251,11 @@ async function precacheBuild(fresh = false) {
     const shell = self.registration.scope;
     const res = await fetch(new Request(shell, { cache: 'no-cache' }));
     if (!res.ok) return;
-    const roots = assetRefs(await res.clone().text());
-    if (!roots.length) return;
+    const html = await res.clone().text();
+    const scripts = assetRefs(html);
+    if (!scripts.length) return;
+    // The shell's fonts with its own files: offline, a cold start draws its text in them.
+    const roots = [...scripts, ...fontRefs(html)];
     const build = roots.slice().sort().join('\n');
     const marker = new URL(PRECACHED_BUILD, shell).href;
     const last = await readRecord(cache, marker);
@@ -255,10 +277,12 @@ async function precacheBuild(fresh = false) {
 
     const previous = !last ? [] : last.build !== build ? last.files : last.previous;
     const keep = new Set([...seen, ...previous]);
+    // A font an earlier build precached sits outside `_expo/static/`: dropped by its record.
+    const precachedBefore = new Set(last ? [...last.files, ...last.previous] : []);
     for (const request of await cache.keys()) {
       const { url } = request;
       if (url === shell || url === marker) continue;
-      if (url.includes(BUILD_ASSETS)) {
+      if (url.includes(BUILD_ASSETS) || precachedBefore.has(url)) {
         if (!keep.has(url)) await cache.delete(request);
         continue;
       }

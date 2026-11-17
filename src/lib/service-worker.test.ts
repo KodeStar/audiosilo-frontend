@@ -58,6 +58,7 @@ function load(site: Record<string, string>) {
   const sw = ctx as unknown as {
     precacheBuild: (fresh?: boolean) => Promise<void>;
     cacheFirst: (r: Request) => Promise<Response>;
+    staleWhileRevalidate: (r: Request) => Promise<Response>;
   };
   const cached = () => [...(caches.get('audiosilo-shell-v1') ?? new Map()).keys()].sort();
   /** A page `handleNavigation` cached while online. */
@@ -155,6 +156,32 @@ describe('service worker: precacheBuild', () => {
     await t.cachePage('https://box.test/web/library', page('b'));
     await t.sw.precacheBuild(true);
     expect(t.cached()).toContain('https://box.test/web/library');
+  });
+
+  it("precaches the shell's fonts, so an offline cold start draws its text (fe#177)", async () => {
+    const font = (id: string) => `https://box.test/web/assets/fonts/Figtree_400.${id}.ttf`;
+    const withFont = (id: string) => {
+      const site = build(id);
+      site[SCOPE] += `<link rel="preload" href="/web/assets/fonts/Figtree_400.${id}.ttf" as="font" crossorigin="">
+        <style>@font-face{font-family:"Figtree";src:url("/web/assets/fonts/Figtree_400.${id}.ttf")}
+        @font-face{font-family:"Other";src:url("//cdn.test/other.woff2")}</style>`;
+      return { ...site, [font(id)]: 'font-bytes' };
+    };
+    const t = load(withFont('a'));
+    await t.sw.precacheBuild(true);
+    expect(t.cached()).toContain(font('a'));
+    expect(t.fetched).not.toContain('https://cdn.test/other.woff2');
+    t.offline.add(font('a'));
+    const served = await t.sw.staleWhileRevalidate(new Request(font('a')));
+    expect(await served.text()).toBe('font-bytes');
+    // A font two builds old goes, like the build's chunks.
+    Object.assign(t.site, withFont('b'));
+    await t.sw.precacheBuild();
+    Object.assign(t.site, withFont('c'));
+    await t.sw.precacheBuild();
+    expect(t.cached()).not.toContain(font('a'));
+    expect(t.cached()).toContain(font('b'));
+    expect(t.cached()).toContain(font('c'));
   });
 
   it('caches the shell only once its own files are in', async () => {
