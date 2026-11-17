@@ -158,7 +158,11 @@ export function useBookActions(
   };
 
   const onFinish = async () => {
-    const before = progress?.position ?? 0;
+    // The loaded book stops first, its place saved before the finish (fe#258). That place is
+    // the one Undo goes back to: the page's progress was read before that listening, and with
+    // the book unloaded no later save moves an Undo there.
+    const left = await leaveFinishedBook({ connectionId, libraryId, path });
+    const before = left ?? progress?.position ?? 0;
     // Undo is a progress edit (`progress_edit`): the only way to mark a book not finished
     // at the place it had.
     const canUndo = progressEdit === true;
@@ -177,8 +181,6 @@ export function useBookActions(
             }
           : undefined,
       });
-    // The loaded book stops first, its place saved before the finish (fe#258).
-    await leaveFinishedBook({ connectionId, libraryId, path });
     if (canUndo && !finishTakesEvent(connectionId)) {
       if (await setFinished(true)) done();
       return;

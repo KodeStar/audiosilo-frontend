@@ -2078,7 +2078,9 @@ media GETs only.
     book stops and unloads first on every route, as its own end does (`leaveFinishedBook`,
     fe#258: its place saved and its span closed ahead of the finish; left loaded it went on
     recording past the finish, a later save of its place put the device record back in progress,
-    and its page read "Resume"), the mirror records it finished, offline it waits in the outbox,
+    and its page read "Resume"; the place it saved is the one the Undo goes back to, since the
+    page's progress was read before that listening), the mirror records it finished, offline it
+    waits in the outbox,
     so `useMarkFinished` runs whatever the online flag says, `networkMode: 'always'`;
     Undo is a progress edit, sent only after `undoFinish` took the book's waiting finish
     back out of the outbox (`withdrawFinish`; one whose request is out is waited for, and a

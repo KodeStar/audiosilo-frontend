@@ -1052,9 +1052,14 @@ describe('Mark as finished outside the player (finish-route)', () => {
     pushSnapshot(snap('playing', 0, 9));
     mockSaveProgress.mockClear();
     let saved = () => {};
-    mockSaveProgress.mockImplementationOnce(() => new Promise<void>((r) => (saved = r)));
+    mockSaveProgress.mockImplementationOnce(
+      () => new Promise<void>((r) => (saved = () => r('saved' as never))),
+    );
     let left = false;
-    const leaving = leaveFinishedBook(ref).then(() => (left = true));
+    const leaving = leaveFinishedBook(ref).then((at) => {
+      left = true;
+      return at;
+    });
     await settle();
     expect(usePlayer.getState().nowPlaying).toBeNull();
     expect(mockSaveProgress).toHaveBeenCalledTimes(1);
@@ -1062,7 +1067,8 @@ describe('Mark as finished outside the player (finish-route)', () => {
     // The caller records the finish once that save is over: after it, a PUT included.
     expect(left).toBe(false);
     saved();
-    await leaving;
+    // With the place saved: where an Undo goes back to.
+    await expect(leaving).resolves.toBe(9);
     expect(left).toBe(true);
   });
 

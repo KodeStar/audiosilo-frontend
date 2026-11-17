@@ -59,10 +59,13 @@ let mockTakesEvent = false;
 const mockUndoRefs: unknown[] = [];
 // The loaded book stops before the finish is recorded (fe#258); `steps` gives the order.
 const mockSteps: string[] = [];
+// The place the loaded book's leave saved (undefined: not the loaded book).
+let mockLeftAt: number | undefined;
 jest.mock('@/playback/finish-route', () => ({
   finishTakesEvent: () => mockTakesEvent,
   leaveFinishedBook: async (ref: { path: string }) => {
     mockSteps.push(`leave ${ref.path}`);
+    return mockLeftAt;
   },
   undoFinish: (ref: unknown, edit: () => Promise<boolean>) => {
     mockUndoRefs.push(ref);
@@ -140,6 +143,7 @@ describe('useBookActions', () => {
   beforeEach(() => {
     mockCaps = { ...ALL };
     mockTakesEvent = false;
+    mockLeftAt = undefined;
     mockQueueSupported = true;
     mockDownloadsSupported = true;
     [
@@ -189,6 +193,22 @@ describe('useBookActions', () => {
       libraryId: 1,
       path: 'Author/Series/01 - Book',
       edit: { finished: false, position: 900 },
+    });
+  });
+
+  // The page's progress was read before the loaded book played on; unloaded, no later save
+  // of the player moves the place on after the Undo.
+  it("the loaded book's Undo goes back to the place its leave saved", async () => {
+    mockLeftAt = 1234;
+    mockEdit.mockResolvedValue(progress({ finished: true }));
+    const { find } = await actions(book(), progress({ position: 900 }));
+    await act(async () => find('finish')!.onPress());
+    const t = mockToast.mock.calls.at(-1)![0];
+    await act(async () => t.action.onPress());
+    expect(mockEdit).toHaveBeenLastCalledWith({
+      libraryId: 1,
+      path: 'Author/Series/01 - Book',
+      edit: { finished: false, position: 1234 },
     });
   });
 

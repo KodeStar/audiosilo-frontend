@@ -501,8 +501,13 @@ type PlayerState = {
  * natural end AND for a manual "mark as finished" mid-book. A forced finish bypasses the
  * position/slip guards (they exist to protect an in-progress place, not a deliberate
  * completion) and records the whole-book duration so the book reads as 100% done.
- * `local`: only this device's own record of the place, with no request (`placeLoop`). */
-async function persist(opts?: { forceFinished?: boolean; local?: boolean }) {
+ * `local`: only this device's own record of the place, with no request (`placeLoop`).
+ * Resolves the whole-book place saved (this device's record of it, and its server's save
+ * when one goes), else undefined: none saved, or the server held it back or refused it. */
+async function persist(opts?: {
+  forceFinished?: boolean;
+  local?: boolean;
+}): Promise<number | undefined> {
   const { nowPlaying, snapshot, rate, loadingBook } = usePlayer.getState();
   if (!nowPlaying) return;
   // A book whose load has not landed has no place here yet: the snapshot is still the
@@ -591,7 +596,7 @@ async function persist(opts?: { forceFinished?: boolean; local?: boolean }) {
   if (usesListeningSync(nowPlaying.connectionId)) {
     await writeMirror(save);
     if (span && sameBook(span, nowPlaying) && !forceFinished && end) span.to = end;
-    return;
+    return position;
   }
   // The legacy PUT path's own record alone (`placeLoop`): the mirror, and no request. A
   // server known to be away is sent nothing either way (`saveProgress` writes the mirror
@@ -600,12 +605,13 @@ async function persist(opts?: { forceFinished?: boolean; local?: boolean }) {
   // not stand still while the download plays (fe#265).
   if (!api || (opts?.local && isReachable(nowPlaying.connectionId))) {
     await writeMirror(save);
-    return;
+    return position;
   }
   const outcome = await saveProgress(api, save);
   // Once a guarded save is PUT, the server had nothing further on: the session's saves go
   // straight on from here.
   if (guarded && outcome === 'saved' && placeGuard === guard) placeGuard = null;
+  return outcome === 'saved' || outcome === 'queued' ? position : undefined;
 }
 
 /** Save the loaded book's place now: the listener answered Stay to a place its server held
@@ -1250,13 +1256,14 @@ async function recordFinish(ref: FinishRef): Promise<void> {
  * later save of the engine's place stamped after the finish put the book back in progress
  * (the device record after an offline finish was delivered, a PUT over the finish), and its
  * page went on reading "Resume". Its place is saved first, as a stop saves it (resolves once
- * that save is over, so the finish the caller records next comes after it, a PUT included),
- * and its span closes there (a finish waits for that close: `finishAfter`). Nothing for
- * another book.
+ * that save is over, so the finish the caller records next comes after it, a PUT included,
+ * with the place saved: the one an Undo goes back to, which the page's progress, read before
+ * that listening, can be behind), and its span closes there (a finish waits for that close:
+ * `finishAfter`). Nothing for another book.
  */
-function leaveFinishedBook(ref: ContentRef): Promise<void> {
+function leaveFinishedBook(ref: ContentRef): Promise<number | undefined> {
   const { nowPlaying: np, rate } = usePlayer.getState();
-  if (!np || !sameBook(np, ref)) return Promise.resolve();
+  if (!np || !sameBook(np, ref)) return Promise.resolve(undefined);
   clearPlaybackIntent();
   stopSaveLoop();
   closeListeningSpan();

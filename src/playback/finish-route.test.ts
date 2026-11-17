@@ -12,7 +12,7 @@ describe('undoFinish', () => {
   const recorder = (over: Partial<Parameters<typeof setFinishRecorder>[0] & object> = {}) =>
     setFinishRecorder({
       takesEvent: () => true,
-      leave: async () => {},
+      leave: async () => undefined,
       record: async () => {},
       withdraw: async (...args) => {
         steps.push(`withdraw ${args.join(' ')}`);

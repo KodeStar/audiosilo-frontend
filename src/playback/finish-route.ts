@@ -43,8 +43,8 @@ type FinishRecorder = {
   /** Whether `connectionId`'s server takes the finish as an event. */
   takesEvent: (connectionId: string) => boolean;
   /** The book is being marked finished: when it is the loaded one, it stops and unloads;
-   * resolves once its place is saved. */
-  leave: (ref: FinishBook) => Promise<void>;
+   * resolves once its place is saved, with that place (else undefined). */
+  leave: (ref: FinishBook) => Promise<number | undefined>;
   /** Record the finish as an event; resolves once it waits in the outbox. */
   record: (ref: FinishRef) => Promise<void>;
   /** Take the book's not-yet-sent finish events back (one being sent is waited for). */
@@ -71,9 +71,10 @@ export function finishTakesEvent(connectionId: string): boolean {
 
 /** A Mark as finished outside the player, before it is recorded by any route: the loaded
  * book stops and unloads when it is this one (fe#258), its span closed ahead of the finish.
- * Resolves once its place is saved, so the finish is recorded after it. */
-export async function leaveFinishedBook(ref: FinishBook): Promise<void> {
-  await recorder?.leave(ref);
+ * Resolves once its place is saved, so the finish is recorded after it, with that place
+ * (whole-book seconds: where an Undo goes back to); undefined when none was saved. */
+export async function leaveFinishedBook(ref: FinishBook): Promise<number | undefined> {
+  return recorder?.leave(ref);
 }
 
 /** Record a finish as a `finish` event when its server takes one; false when it does not
