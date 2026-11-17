@@ -289,7 +289,12 @@ function throughSwap(s: PlaybackSnapshot, prev: PlaybackSnapshot): PlaybackSnaps
  * another device may have moved its place on (`onPickedUpAgain`). */
 let pausedAt: number | null = null;
 export const LONG_PAUSE_MS = 60_000;
-let pickedUpAgainListener: (() => void) | null = null;
+/** How long a Play press of a book picked up again waits for the pick-up check before the
+ * engine starts (`toggle`, fe#158): a check that answers by then moves the book before a
+ * sound of the old place; a slower one goes on while the book plays, as a lock-screen play's
+ * does. */
+export const PICK_UP_WAIT_MS = 1_500;
+let pickedUpAgainListener: (() => unknown) | null = null;
 /** A pick-up check due while a load held the store (`loadingBook`, by its content key): the
  * place reconcile skips while that hold is set, so the check waits for its release (the
  * subscription beside the download hot-swap's) instead of being used up by a `playing`
@@ -304,11 +309,36 @@ let pickUpDue: string | null = null;
  * placed nothing (a failed load releases the hold too). */
 let swapDue: string | null = null;
 
+/**
+ * A Play press of a book picked up again (paused `LONG_PAUSE_MS` or more) in the foreground:
+ * the pick-up check runs before the engine starts, for up to `PICK_UP_WAIT_MS`, so a newer
+ * place another device left is moved to before any of the old place sounds (fe#158). The play
+ * is then no pick-up of its own (`pausedAt` cleared): a check still out goes on while it
+ * plays. The stall watchdog's grace starts again once the engine is asked. In the background
+ * (a press from the car or a headset reaching the store, where Android may hold the JS timers)
+ * nothing waits: the check runs once the engine plays, as before. Resolves true when the
+ * press no longer stands (paused, or pressed again, while it waited).
+ */
+async function pickUpBeforePlay(): Promise<boolean> {
+  const listener = pickedUpAgainListener;
+  if (!listener || pausedAt === null || Date.now() - pausedAt < LONG_PAUSE_MS) return false;
+  if (isAway() || usePlayer.getState().loadingBook) return false;
+  pausedAt = null;
+  const attempt = playAttempts;
+  await withTimeout(Promise.resolve(listener()), PICK_UP_WAIT_MS, 'pick-up check').catch(
+    () => undefined,
+  );
+  if (attempt !== playAttempts || !wantsPlayback) return true;
+  cancelStallWatchdog();
+  armStallWatchdog();
+  return false;
+}
+
 /** Tell the pick-up listener now, or once the load holding the store lands (`pickUpDue`). */
 function pickUp() {
   const { loadingBook } = usePlayer.getState();
   if (loadingBook) pickUpDue = loadingBook;
-  else pickedUpAgainListener?.();
+  else void pickedUpAgainListener?.();
 }
 /** Counts the listener's own moves in the loaded book (seeks, track jumps, a book
  * started): a reconcile that sees it change while its check was out stands back. */
@@ -2909,6 +2939,8 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         await catchUpWithOtherTab(svc, behind.since);
         // Paused, or pressed again, while that was read: the later press stands.
         if (attempt !== playAttempts || !wantsPlayback) return;
+      } else if (await pickUpBeforePlay()) {
+        return;
       }
       await startLoadedEngine(svc);
     }
@@ -3203,8 +3235,10 @@ export const localMoveCount = (): number => localMoves;
 
 /** Be told when the loaded book is played again after `LONG_PAUSE_MS` or more of pause
  * (one listener: `place-reconcile.ts`). Called synchronously from the engine
- * subscription, before the play's save loop starts. Returns the unsubscribe. */
-export function onPickedUpAgain(listener: () => void): () => void {
+ * subscription, before the play's save loop starts; or, for a Play press in the foreground,
+ * before the engine starts, which waits up to `PICK_UP_WAIT_MS` for the promise it returns
+ * (`pickUpBeforePlay`). Returns the unsubscribe. */
+export function onPickedUpAgain(listener: () => unknown): () => void {
   pickedUpAgainListener = listener;
   return () => {
     if (pickedUpAgainListener === listener) pickedUpAgainListener = null;
@@ -3696,7 +3730,7 @@ async function adoptLoadedBook(
     wantsPlayback = true;
     // Before the first save: the place reconcile holds the saves while it asks the server,
     // so this place can't overwrite another device's newer one (last-write-wins).
-    pickedUpAgainListener?.();
+    void pickedUpAgainListener?.();
     startSaveLoop();
     beginHistory();
     // The store set this `playing` itself, so no engine transition opens its span.
@@ -3961,7 +3995,7 @@ usePlayer.subscribe((state, prev) => {
   const due = pickUpDue;
   pickUpDue = null;
   if (!state.nowPlaying || contentKeyOf(state.nowPlaying) !== due) return;
-  if (state.snapshot.state === 'playing') pickedUpAgainListener?.();
+  if (state.snapshot.state === 'playing') void pickedUpAgainListener?.();
   else pausedAt = 0;
 });
 

@@ -157,7 +157,13 @@ import { queryClient } from '@/api/provider';
 
 import { resetOutboxForTests } from './listening-outbox';
 import { OFFER_REPEAT_MS, offerOf, placeToMoveTo, startPlaceReconcile } from './place-reconcile';
-import { LONG_PAUSE_MS, selectBookPosition, selectIsPlaying, usePlayer } from './store';
+import {
+  LONG_PAUSE_MS,
+  PICK_UP_WAIT_MS,
+  selectBookPosition,
+  selectIsPlaying,
+  usePlayer,
+} from './store';
 /* eslint-enable import/first */
 
 const BOOK: Book = {
@@ -316,7 +322,7 @@ describe('a loaded book another device has moved on', () => {
   it("the stale engine place never overwrites the other device's save", async () => {
     await loadedAndPaused();
     jest.advanceTimersByTime(LONG_PAUSE_MS);
-    await usePlayer.getState().toggle();
+    // A lock-screen play: the engine plays before the check can answer.
     pushSnapshot(snap('playing', 106)); // auto-rewind and a second at the old place
     await usePlayer.getState().setRate(1.2); // a save while the check is out
     await settle();
@@ -325,6 +331,73 @@ describe('a loaded book another device has moved on', () => {
     await settle();
     expect(saved().length).toBeGreaterThan(0);
     expect(saved().every((p) => p >= 400)).toBe(true);
+  });
+
+  describe('a Play press waits for the check before the engine starts (fe#158)', () => {
+    const order = (fn: unknown) => (fn as jest.Mock).mock.invocationCallOrder[0];
+
+    it('moves to the newer place before any of the old place sounds', async () => {
+      await loadedAndPaused();
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      await usePlayer.getState().toggle();
+      expect(seeks()).toEqual([400]);
+      expect(mockSvc.play).toHaveBeenCalledTimes(1);
+      expect(order(mockSvc.seekTo)).toBeLessThan(order(mockSvc.play));
+      // The play that follows is no second pick-up.
+      pushSnapshot(snap('playing', 400));
+      await settle();
+      expect(mockClient.getProgress).toHaveBeenCalledTimes(1);
+    });
+
+    it('a slow check waits no longer than PICK_UP_WAIT_MS, then moves once it answers', async () => {
+      await loadedAndPaused();
+      let answer: (p: Progress) => void = () => {};
+      mockServer = () => new Promise((resolve) => (answer = resolve));
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      const press = usePlayer.getState().toggle();
+      await settle();
+      expect(mockSvc.play).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(PICK_UP_WAIT_MS);
+      await press;
+      expect(mockSvc.play).toHaveBeenCalledTimes(1);
+      expect(seeks()).toEqual([]);
+      pushSnapshot(snap('playing', 106));
+      answer(record());
+      await settle();
+      expect(seeks()).toEqual([400]);
+    });
+
+    it('a pause while it waits stands: the engine never starts', async () => {
+      await loadedAndPaused();
+      let answer: (p: Progress) => void = () => {};
+      mockServer = () => new Promise((resolve) => (answer = resolve));
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      const press = usePlayer.getState().toggle();
+      await settle();
+      await usePlayer.getState().pause();
+      answer(record({ device_id: 'this-device' }));
+      await press;
+      expect(mockSvc.play).not.toHaveBeenCalled();
+    });
+
+    it('in the background nothing waits: the check runs once the engine plays', async () => {
+      await loadedAndPaused();
+      Object.defineProperty(AppState, 'currentState', {
+        get: () => 'background',
+        configurable: true,
+      });
+      mockServer = () => new Promise(() => {});
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      await usePlayer.getState().toggle();
+      expect(mockSvc.play).toHaveBeenCalledTimes(1);
+      expect(mockClient.getProgress).not.toHaveBeenCalled();
+      pushSnapshot(snap('playing', 105));
+      await settle();
+      expect(mockClient.getProgress).toHaveBeenCalledTimes(1);
+      // The check gives up, so the next test starts with none out.
+      jest.advanceTimersByTime(5_000);
+      await settle();
+    });
   });
 
   it("on the app coming back, asks the server only after the address runner's network check", async () => {

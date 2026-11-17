@@ -2152,8 +2152,10 @@ media GETs only.
   started from the root layout). When the app comes back to the front, the book's server comes
   back, or the book plays again after `LONG_PAUSE_MS` (60 s) of pause from any source (the
   store's `onPickedUpAgain`, called before that play's first save; a play reported while a load
-  holds the store, `loadingBook`, is told once that hold is released, `pickUpDue`), the loaded
-  book asks its server for its progress, and meanwhile the store holds its saves (`holdSaves`: 5 s at most,
+  holds the store, `loadingBook`, is told once that hold is released, `pickUpDue`; a Play press
+  in the foreground tells it before the engine starts and waits up to `PICK_UP_WAIT_MS`, 1.5 s,
+  for the answer, so a move lands before any of the old place sounds: `pickUpBeforePlay`,
+  fe#158), the loaded book asks its server for its progress, and meanwhile the store holds its saves (`holdSaves`: 5 s at most,
   then it saves the held place). It moves only when the record is from another `device_id`,
   newer than this device's own last save in its mirror (a newer unsynced save here wins; a record
   it only read, which a downloaded book's page and its download keep there, does not), not
@@ -2164,7 +2166,8 @@ media GETs only.
   a row of another device at a version this device has not acknowledged, or the row's
   `other_place`; a toast with Jump and Stay, see Listening sync below), and an auto-move
   acknowledges the row it moved to. This module is the only place that reconciles a
-  loaded book: never call `toggle()` expecting it to look anything up.
+  loaded book: `toggle()` only tells it, through `onPickedUpAgain`, and never looks anything up
+  itself.
 - **Listening sync** (Sync v2, Track W1, capability `listening_sync`; CROSS-REPO section 25).
   - *The path.* `usesListeningSync(cid)` (`listening-outbox.ts`): the cached `/server`'s flag
     (`cachedCapability`; an offline cold launch knows it from the kept answer seeded at launch,

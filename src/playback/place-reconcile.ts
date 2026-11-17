@@ -46,8 +46,10 @@ import {
  * - the app comes to the foreground, or the book's server comes back, while the book is
  *   loaded and settled (`paused`/`ready`): never while it has been playing on;
  * - the book plays again after `LONG_PAUSE_MS` of pause, from anywhere (`onPickedUpAgain`,
- *   called before the play's first save): the engine is already playing, so the move comes
- *   as early as the answer does.
+ *   called before the play's first save). A Play press in the app waits up to
+ *   `PICK_UP_WAIT_MS` for the check before the engine starts (fe#158), so no sound of the
+ *   old place comes first; from the lock screen, a headset or the car the engine is already
+ *   playing, so the move comes as early as the answer does.
  * While the check is out the store holds its saves (`holdSaves`), so the stale place is
  * never written; the hold ends with the check, or by itself after 5 seconds.
  *
@@ -276,10 +278,11 @@ export async function reconcileLoadedPlace(reason: ReconcileReason): Promise<voi
   const bookKey = selectBookKey(player);
   if (!np || !bookKey || player.loadingBook || np.queue.total <= 0) return;
   const { state } = player.snapshot;
-  // Only a book being picked up again: never one that has been playing on.
-  if (reason === 'picked-up' ? state !== 'playing' : state !== 'paused' && state !== 'ready') {
-    return;
-  }
+  // Only a book being picked up again: never one that has been playing on. The store says
+  // when a play is a pick-up (`onPickedUpAgain`), as the engine plays or, for a Play press,
+  // just before it is asked to.
+  const settled = state === 'paused' || state === 'ready';
+  if (reason === 'picked-up' ? state !== 'playing' && !settled : !settled) return;
   const client = resolveClient(np.connectionId);
   // Offline (a downloaded book with its server away): nothing to ask; saves go on.
   if (!client || !isReachable(np.connectionId)) return;
@@ -406,7 +409,7 @@ export function startPlaceReconcile(): () => void {
 
 function runPlaceReconcile(): () => void {
   const stops: (() => void)[] = [];
-  stops.push(onPickedUpAgain(() => void reconcileLoadedPlace('picked-up')));
+  stops.push(onPickedUpAgain(() => reconcileLoadedPlace('picked-up')));
   // On the foreground, once the address runner has checked the network: a home address
   // checked on the network the device was on before it was suspended goes first.
   stops.push(
