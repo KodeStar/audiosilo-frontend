@@ -3507,12 +3507,16 @@ on first need). NOT device-verified (no Cast device yet).
   place a load, seek or file jump asked for, or the next file's start once one ended, until the
   receiver plays or pauses there; `refusedPlace`; not once the receiver played or paused on
   another file and the error came `ASKED_MOVE_MS` or more after the move, as it sends no status
-  while it simply plays), and an error while a load of ours is in flight makes that load a
-  refused one (`ReceiverRefused`, sent again with a new token; the files the receiver skips on to
-  meanwhile, the mint included, are not the book's place, for at most `ASKED_MOVE_MS` after the
-  error, so a load never answered hides nothing for good). A book's load refused so to the end
-  still stands (the receiver holds the book, and a failed load would hand it back to the phone
-  while the receiver plays on); a seek, file jump or play refused so fails. One mint per token:
+  while it simply plays; a move that old whose landing went unseen, its `playing` said while the
+  load was in flight, is reloaded where the ticks since put it), and an error while a load of
+  ours is in flight makes that load a refused one (`ReceiverRefused`, sent again with a new
+  token; the files the receiver skips on to meanwhile, the mint included, are not the book's
+  place, for at most `ASKED_MOVE_MS` after the error, so a load never answered hides nothing for
+  good). Not an error of the queue that load replaces: one naming a URL with the token before
+  the mint, or one read (`refresh`) before the queue was sent, which is dropped. A book's load
+  refused so to the end still stands, at the place it asked for until a status says where (the
+  receiver holds the book, and a failed load would hand it back to the phone while the receiver
+  plays on); a seek, file jump or play refused so fails. One mint per token:
   another only once the receiver played with the last one minted at the place the phone meant
   (not a later file it went on to), never more than two per `REMINT_EVERY_MS` (a minute) per book
   loaded, and one when the last never played, so a failure with another cause never mints on
@@ -4203,7 +4207,8 @@ are asked, at most 10,000 rows.
   `relocateEntry`). A retry reads the book's item and chapters afresh first (`download`,
   `fetchFailFast` with `staleTime: 0`: the caller's come from the query cache or the failed
   download's saved copy, which can still list a file the server removed; offline the read fails at
-  once and the retry goes on the caller's), then takes a kept file by its path wherever the server's list now puts it
+  once and the retry goes on the caller's), then takes a kept file by its path wherever the
+  server's list now puts it
   (`retryPlan`, fe#158: a list that gained, lost or reordered a file fetches only the new ones),
   fetches each other file under a name no kept file holds (its index when free, else the next
   free number past the list), and keeps the kept files of the paths it never reached listed when
