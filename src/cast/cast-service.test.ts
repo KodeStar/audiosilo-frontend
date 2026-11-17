@@ -601,6 +601,24 @@ describe('CastPlaybackService', () => {
       expect(t.remote.loads).toHaveLength(sent);
     });
 
+    it('an error already shown is not reloaded when the receiver says it again later', async () => {
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'playing', contentId: t.url(0), position: 5 });
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+      expect(t.svc.getSnapshot().state).toBe('error');
+      // A minute on the app comes back and reads the receiver's status: still the error.
+      t.tick(REMINT_EVERY_MS);
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      expect(t.svc.getSnapshot().state).toBe('error');
+      expect(m.asks).toEqual([undefined, true]);
+      expect(t.remote.loads).toHaveLength(2);
+    });
+
     it('a book loaded again (a Retry) mints no sooner than a minute on; another book may', async () => {
       const m = minting();
       const t = setup({ prepare: m.prepare });

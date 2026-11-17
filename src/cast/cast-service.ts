@@ -528,7 +528,15 @@ export class CastPlaybackService implements PlaybackService {
       ? status.position + offset
       : this.snapshot.position;
     if (state === 'ended' && loaded && this.endedEarly(trackIndex, position, duration)) return;
-    if (state === 'error' && loaded && this.loadsInFlight === 0 && this.remintDue()) {
+    // Only as the error arrives: one already shown is the listener's to retry (the receiver
+    // says it again on every status read, as when the app comes back, and each would mint).
+    if (
+      state === 'error' &&
+      this.snapshot.state !== 'error' &&
+      loaded &&
+      this.loadsInFlight === 0 &&
+      this.remintDue()
+    ) {
       this.reloadFresh(trackIndex, position, duration);
       return;
     }
