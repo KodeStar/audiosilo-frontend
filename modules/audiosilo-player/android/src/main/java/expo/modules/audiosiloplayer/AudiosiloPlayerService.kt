@@ -225,7 +225,13 @@ class AudiosiloPlayerService : MediaLibraryService() {
       .setUpstreamDataSourceFactory(upstream)
       .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     val dataSourceFactory = DefaultDataSource.Factory(this, cacheFactory)
-    val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+    // An MP3 with no seek header is held to the length the server measured (KnownDurations.kt):
+    // Media3's first-frame guess read a VBR file as a fifth of its length.
+    val knownDurations = KnownDurations()
+    val mediaSourceFactory = KnownDurationMediaSourceFactory(
+      DefaultMediaSourceFactory(dataSourceFactory, KnownDurationExtractorsFactory(knownDurations)),
+      knownDurations,
+    )
 
     val audioAttributes = AudioAttributes.Builder()
       .setUsage(C.USAGE_MEDIA)
