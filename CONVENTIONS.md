@@ -165,6 +165,17 @@ returns the user directly; lists are wrapped (`{ libraries }`, `{ books, next_cu
 `{ progress }`, `{ bookmarks }`, `{ notes }`); errors are `{ error }`. Pairing deep
 link is `audiosilo://connect?server=<base>&token=<pairing_token>`.
 
+**Cache reads at render (the React Compiler).** The app builds with the React Compiler
+(`app.json` `experiments.reactCompiler`), which memoises what a component or hook computes
+against its inputs: a `queryClient.getQueryData(...)` in a render body is read again only when
+the key's parts change, never because the cache did or because something else rendered the
+component again (fe#280: a row's menu kept offering Download after the episode page found the
+episode not available). Read the cache at render through a subscription: a query hook, or
+`useCachedQueryData(key, enabled)` (`src/api/use-cached-query-data.ts`: cache only, no fetch,
+no observer, one listener per entry while `enabled`). `getQueryData` stays fine in callbacks,
+effects and framework-free code. Jest leaves the compiler off, so a test of code that depends
+on it renders through `withReactCompiler(require, './module')` (`src/testing/react-compiler.ts`).
+
 **Client identification.** `ApiClient.request()` sends
 `X-AudioSilo-Client: AudioSilo/<APP_VERSION or dev> (<Platform.OS>)` on every API call
 so the server can record which app owns each session token (`src/lib/client-id.ts`).

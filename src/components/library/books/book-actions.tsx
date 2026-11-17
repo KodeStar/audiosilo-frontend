@@ -12,8 +12,8 @@ import {
   useMarkFinished,
   qk,
 } from '@/api/hooks';
-import { queryClient } from '@/api/provider';
 import type { Book, PodcastFetchStatus, Progress } from '@/api/types';
+import { useCachedQueryData } from '@/api/use-cached-query-data';
 import { RemoveDownloadConfirm } from '@/components/downloads/remove-download-confirm';
 import { usePlayBook } from '@/components/player/use-play-book';
 import { episodeRowState, offersEpisodeDownload } from '@/components/podcasts/podcast-model';
@@ -140,13 +140,12 @@ export function useBookActions(
   const full = useBook(libraryId, unknown && opened ? path : '', connectionId);
   const known = unknown ? full.data : book;
   // A list row's `episode.fetch` is as old as the list; the episode page and the player's
-  // fetch keep the live status in the cache. Read there at render once the menu opened (no
-  // observer per row; the menu renders again at each opening), so the menu offers what the
-  // page does (fe#280).
-  const live =
-    opened && known?.episode && !known.episode.downloaded
-      ? queryClient.getQueryData<PodcastFetchStatus>(qk.podcastFetch(connectionId, libraryId, path))
-      : undefined;
+  // fetch keep the live status in the cache. Followed there once the menu opened (no
+  // observer per row, never asked from here), so the menu offers what the page does (fe#280).
+  const live = useCachedQueryData<PodcastFetchStatus>(
+    qk.podcastFetch(connectionId, libraryId, path),
+    opened && !!known?.episode && !known.episode.downloaded,
+  );
   const current =
     live && known?.episode ? { ...known, episode: { ...known.episode, fetch: live } } : known;
   const download = useDownloadControls(libraryId, path, known ?? book, undefined, connectionId);
@@ -344,10 +343,7 @@ export function BookActionsMenu({
   const [removing, setRemoving] = useState(false);
   // Shown once (the sheet, or the menu): what the actions look up waits for it.
   const [opened, setOpened] = useState(false);
-  // The menu is the primitive's own state: kept here too so each opening renders the actions
-  // again, reading what they read at render (an episode's live fetch status, fe#280) anew.
-  const [menuOpen, setMenuOpen] = useState(false);
-  if ((sheetOpen || menuOpen) && !opened) setOpened(true);
+  if (sheetOpen && !opened) setOpened(true);
   const actions = [
     ...useBookActions(
       { connectionId, libraryId, book, progress },
@@ -362,7 +358,7 @@ export function BookActionsMenu({
       {phone ? (
         trigger
       ) : (
-        <DropdownMenu onOpenChange={setMenuOpen}>
+        <DropdownMenu onOpenChange={(open) => open && setOpened(true)}>
           <DropdownMenuTrigger ref={triggerRef} asChild>
             {trigger}
           </DropdownMenuTrigger>
