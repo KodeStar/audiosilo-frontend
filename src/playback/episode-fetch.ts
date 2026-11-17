@@ -400,8 +400,9 @@ async function start(r: Run, client: NonNullable<ReturnType<typeof resolveClient
   });
   if (run !== r) return;
   const book = queryClient.getQueryData<Book>(qk.item(cid, libraryId, path));
-  const show = book?.episode?.show_path;
-  if (show !== undefined) markEpisodeOnServer(queryClient, cid, libraryId, show, path, book!.size);
+  if (book?.episode) {
+    markEpisodeOnServer(queryClient, cid, libraryId, book.episode.show_path, path, book);
+  }
   const started = await startBookInPlace(target, opts, { fetched: true }).catch(() => false);
   if (run !== r) return;
   if (started) {

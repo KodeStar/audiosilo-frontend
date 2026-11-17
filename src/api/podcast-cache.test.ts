@@ -1,6 +1,6 @@
 import { type InfiniteData, QueryClient } from '@tanstack/react-query';
 
-import { fetchStatus, podcastEpisode } from '@/testing/podcast-fixtures';
+import { episodeBook, fetchStatus, podcastEpisode } from '@/testing/podcast-fixtures';
 
 import { qk } from './hooks';
 import { markEpisodeOnServer } from './podcast-cache';
@@ -8,7 +8,13 @@ import type { PodcastEpisodePage } from './types';
 
 describe('markEpisodeOnServer (fe#280)', () => {
   const path = 'Daily News/2026-10-21 Monday.mp3';
-  const absent = podcastEpisode({ downloaded: false, size: 0, fetch: fetchStatus() });
+  const absent = podcastEpisode({
+    downloaded: false,
+    size: 0,
+    duration: 0,
+    duration_source: 'none',
+    fetch: fetchStatus(),
+  });
   const other = podcastEpisode({ path: 'Daily News/Tuesday.mp3', downloaded: false, size: 0 });
   const page = (episodes = [absent, other]): PodcastEpisodePage => ({
     episodes,
@@ -28,7 +34,12 @@ describe('markEpisodeOnServer (fe#280)', () => {
     qc.setQueryData(elsewhere, page());
     const invalidate = jest.spyOn(qc, 'invalidateQueries');
 
-    markEpisodeOnServer(qc, 'c1', 5, 'Daily News', path, 16493);
+    // Its item, read once it was there: the file's own size and length.
+    const item = episodeBook(
+      { size: 16493, duration: 1800 },
+      { downloaded: true, duration_source: 'file' },
+    );
+    markEpisodeOnServer(qc, 'c1', 5, 'Daily News', path, item);
 
     const pages = qc.getQueryData<InfiniteData<PodcastEpisodePage>>(newest)!.pages;
     expect(pages[0].episodes).toEqual([other]);
@@ -47,7 +58,7 @@ describe('markEpisodeOnServer (fe#280)', () => {
     const key = qk.latestEpisodes('c1', 5, 'Daily News', 6);
     const list = page([other]);
     qc.setQueryData(key, list);
-    markEpisodeOnServer(qc, 'c1', 5, 'Daily News', path, 1);
+    markEpisodeOnServer(qc, 'c1', 5, 'Daily News', path, episodeBook());
     expect(qc.getQueryData(key)).toBe(list);
   });
 });
