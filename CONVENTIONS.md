@@ -2574,8 +2574,9 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   `ForegroundServiceDidNotStartInTimeException`); a media button start that does go ahead goes
   into the foreground AT ONCE with a placeholder under Media3's notification id (Media3's own
   replaces it when the book plays; a JS-routed resumption can take 10 s), and a failed
-  resumption removes it and stops the service (`onStartCommand`, `watchResumption`; a car
-  play that superseded the resumption and then timed out ends it too, fe#252).
+  resumption removes it and stops the service (`onStartCommand`, `watchResumption`; every
+  play `playFromCar` leaves pending is watched, so a car play that superseded the resumption
+  and then failed, by its timeout or a load that left nothing loaded, ends it too, fe#252).
   **Remote buttons are logged on demand** (`MediaKeyLog`, fe#301): `adb shell setprop
   log.tag.AudiosiloKeys DEBUG`, then `adb logcat -s AudiosiloKeys` shows each media key (the
   receiver, the service start, `onMediaButtonEvent` with the sender, the notification

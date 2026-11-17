@@ -176,13 +176,9 @@ class AudiosiloPlayerService : MediaLibraryService() {
 
   /** A car play JS must start, waiting for the module's next `load` (see [playFromCar]). */
   private var pendingPlay: SettableFuture<MediaItemsWithStartPosition>? = null
-  /** A car play that timed out also ends a media button start it was waiting on: a car tap
-   * that superseded the resumption is not watched ([watchResumption]), and its failure used to
-   * leave the placeholder until [buttonStartTimeout] (fe#252). */
-  private val pendingTimeout = Runnable {
-    failPendingPlay()
-    endButtonStart(failed = true)
-  }
+  /** A car play that timed out. One made during a media button start ends that start too
+   * ([playFromCar] watches every pending play, fe#252). */
+  private val pendingTimeout = Runnable { failPendingPlay() }
 
   /** The snapshot the car was last told about ([onSnapshotChanged]); null before the first. */
   private var shownSnapshot: CarSnapshot? = null
@@ -588,6 +584,9 @@ class AudiosiloPlayerService : MediaLibraryService() {
    * A play resumption's [future], watched: when it fails after a media button start and nothing
    * else loaded meanwhile, the placeholder goes and the started service stops ([endButtonStart]),
    * so a press with nothing to resume never leaves a foreground start the system kills the app for.
+   * [playFromCar] watches every play it leaves pending too, so a car tap that replaced the
+   * resumption ends the start as well, whichever way it fails (its timeout, a load that left
+   * nothing loaded): the placeholder never waits for [buttonStartTimeout] then (fe#252).
    */
   internal fun watchResumption(
     future: ListenableFuture<MediaItemsWithStartPosition>,
@@ -648,6 +647,8 @@ class AudiosiloPlayerService : MediaLibraryService() {
     failPendingPlay(notify = false)
     val future = SettableFuture.create<MediaItemsWithStartPosition>()
     pendingPlay = future
+    // Whoever asked: this play is now the one a media button start waits on.
+    watchResumption(future)
     handler.postDelayed(pendingTimeout, CAR_PLAY_TIMEOUT_MS)
     PlayerBridge.requestCarPlay(id)
     needJs()
