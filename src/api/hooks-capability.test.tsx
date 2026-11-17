@@ -944,6 +944,24 @@ describe('a gated read while /server is held', () => {
   });
 
   it('stays an ordinary pending read while /server is on its way, or for a disabled hook', async () => {
+    let answer: (info: unknown) => void = () => undefined;
+    const coming = await mount(
+      { c1: { collections: true } },
+      () => useCollections(),
+      () =>
+        mockClients.c1.serverInfo.mockReturnValueOnce(
+          new Promise((resolve) => {
+            answer = resolve;
+          }) as never,
+        ),
+    );
+    await waitFor(() => expect(mockClients.c1.serverInfo).toHaveBeenCalled());
+    expect(coming.result.current.isPending).toBe(true);
+    expect(coming.result.current.isPaused).toBe(false);
+    expect(coming.result.current.isError).toBe(false);
+    await act(async () => answer(serverWith('c1', { collections: true })));
+    await waitFor(() => expect(coming.result.current.isSuccess).toBe(true));
+
     onlineManager.setOnline(false);
     try {
       const { result } = await mount({ c1: { collections: true } }, () => ({

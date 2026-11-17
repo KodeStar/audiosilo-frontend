@@ -835,7 +835,8 @@ function useCapabilityQuery<T, S = T>(
 ) {
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
-  const info = useServerInfo(connectionId);
+  // `useServerInfo`, with the connection resolved once.
+  const info = useQuery(serverInfoQuery(cid, api));
   const caps = info.data?.capabilities;
   const supported = caps?.[flag] === true;
   const query = useQuery<T, Error, S, readonly unknown[]>({
@@ -849,8 +850,8 @@ function useCapabilityQuery<T, S = T>(
     ...(opts.select !== undefined ? { select: opts.select } : {}),
   });
   // Only a read that would run once the flag is known, and holds nothing of its own. The
-  // query's own fields are read last: reading one subscribes this render to it, and a
-  // caller that reads none of them must still be told of every change (tracked props).
+  // query's own fields are read last, and only then: reading one subscribes the caller to
+  // its changes (tracked props), which a caller that reads none of them never asked for.
   const held =
     !caps &&
     !!api &&
@@ -863,21 +864,25 @@ function useCapabilityQuery<T, S = T>(
     await info.refetch();
     return query;
   };
-  return (
-    info.isPaused
-      ? { ...query, isPaused: true, fetchStatus: 'paused', refetch }
-      : {
-          ...query,
-          error: info.error,
-          isError: true,
-          isPending: false,
-          isLoading: false,
-          isLoadingError: true,
-          status: 'error',
-          fetchStatus: 'idle',
-          refetch,
-        }
-  ) as typeof query;
+  const state: Record<string, unknown> = info.isPaused
+    ? { isPaused: true, fetchStatus: 'paused', refetch }
+    : {
+        error: info.error,
+        isError: true,
+        isPending: false,
+        isLoading: false,
+        isLoadingError: true,
+        status: 'error',
+        fetchStatus: 'idle',
+        refetch,
+      };
+  // Laid over the query's own result, not spread from it: that result tracks the props a
+  // caller reads, and a spread would read every one of them, subscribing the caller to
+  // every change of this query for good.
+  return new Proxy(query, {
+    get: (target, key) =>
+      typeof key === 'string' && key in state ? state[key] : Reflect.get(target, key),
+  });
 }
 
 /** A capability-gated mutation: `request` runs against the connection's client only
