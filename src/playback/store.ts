@@ -2737,8 +2737,8 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         .catch((err: unknown) => console.warn('[player] could not start playback', err));
       return;
     }
-    const np = get().nowPlaying;
-    if (!np) return;
+    const asked = get().nowPlaying;
+    if (!asked) return;
     // Rebuild the engine's items from the known-good book position so a failed/
     // unreachable stream is re-requested (a dead AVPlayerItem can't recover via
     // play() alone), then resume. Never reload below the resume floor, so a transient
@@ -2750,9 +2750,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     // Reloaded where another tab left the book, when one played it on meanwhile.
     const behind = otherTabPlayed;
     const place =
-      behind && behind.connectionId === np.connectionId
+      behind && behind.connectionId === asked.connectionId
         ? await otherTabsPlace(behind.since).catch(() => null)
         : null;
+    // The book as it stands after those awaits: a hot-swap that landed meanwhile replaced it
+    // (its queue is the one to reload), and a stop or another book leaves nothing to retry.
+    const np = get().nowPlaying;
+    if (!np || !sameBook(np, asked)) return;
     if (place) adoptTabPlace(np, place);
     const bookPos = Math.max(resumeFloor, selectBookPosition(get()));
     // The playing file, when files share its start (`locate`).

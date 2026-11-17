@@ -890,6 +890,18 @@ describe('retry rebuilds the engine from the current spot', () => {
     await usePlayer.getState().retry();
     expect(mockSvc.load).not.toHaveBeenCalled();
   });
+
+  it('loads nothing when the book was stopped while the Retry was out', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('error', 42));
+    await Promise.resolve();
+    (mockSvc.load as jest.Mock).mockClear();
+    const retrying = usePlayer.getState().retry();
+    // The stop's last step, landing while the Retry waits on the engine.
+    usePlayer.setState({ nowPlaying: null });
+    await retrying;
+    expect(mockSvc.load).not.toHaveBeenCalled();
+  });
 });
 
 // --- resume safety: never silently restart an in-progress book from 0 ---------
