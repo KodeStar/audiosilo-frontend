@@ -28,7 +28,8 @@ const ENVELOPES: Record<string, string> = {
   libraries: '{ libraries: T.Library[] }',
   fs: 'T.Listing',
   books: 'T.BookPage',
-  authors: '{ authors?: T.PersonCount[] | null; unknown: number }',
+  authors:
+    '{ authors?: T.PersonCount[] | null; narrators?: T.PersonCount[] | null; unknown?: number }',
   series: '{ series: T.SeriesCount[] | null }',
   search: '{ books: T.Book[] }',
   item: 'T.Book',
@@ -42,12 +43,14 @@ const ENVELOPES: Record<string, string> = {
   'household-listening': 'T.HouseListening',
 };
 
-// Fields the server sends that types.ts leaves out on purpose, per golden, by
-// path (as the report prints it), each with why.
-const AUDIBLE = 'console-only module flag: no player surface yet (CROSS-REPO.md, Capability flags)';
+// Fields the server sends that types.ts leaves out on purpose, per ENVELOPES
+// type (so goldens sharing a type share the entry), by path (as the report
+// prints it), each with why.
 const UNMIRRORED: Record<string, Record<string, string>> = {
-  server: { '$.capabilities.audible': AUDIBLE },
-  'server-anonymous': { '$.capabilities.audible': AUDIBLE },
+  'T.ServerInfo': {
+    '$.capabilities.audible':
+      'console-only module flag: no player surface yet (CROSS-REPO.md, Capability flags)',
+  },
 };
 
 type Shape = string | Shape[] | { [k: string]: Shape };
@@ -80,14 +83,17 @@ function probeTypes(
   host.fileExists = (f) => f === PROBE || fileExists.call(host, f);
   host.readFile = (f) => (f === PROBE ? source : readFile.call(host, f));
   const program = ts.createProgram([PROBE], options, host);
-  const errors = ts.getPreEmitDiagnostics(program).filter((d) => d.file?.fileName === PROBE);
+  const file = program.getSourceFile(PROBE)!;
+  const errors = [
+    ...program.getSyntacticDiagnostics(file),
+    ...program.getSemanticDiagnostics(file),
+  ];
   if (errors.length > 0) {
     throw new Error(
       errors.map((d) => ts.flattenDiagnosticMessageText(d.messageText, '\n')).join('\n'),
     );
   }
   const checker = program.getTypeChecker();
-  const file = program.getSourceFile(PROBE)!;
   const aliases = new Map<string, ts.TypeAliasDeclaration>();
   file.forEachChild((n) => {
     if (ts.isTypeAliasDeclaration(n)) aliases.set(n.name.text, n);
@@ -106,6 +112,8 @@ function compare(checker: ts.TypeChecker, shape: Shape, type: ts.Type): Problems
   out.unknown.sort();
   return out;
 }
+
+const score = (p: Problems) => p.errors.length + p.unknown.length;
 
 function members(type: ts.Type): ts.Type[] {
   return type.isUnion() ? type.types : [type];
@@ -156,10 +164,8 @@ function walk(checker: ts.TypeChecker, shape: Shape, type: ts.Type, at: string, 
   for (const obj of objects) {
     const p: Problems = { errors: [], unknown: [] };
     walkObject(checker, shape, obj, at, p);
-    if (!best || p.errors.length + p.unknown.length < best.errors.length + best.unknown.length) {
-      best = p;
-    }
-    if (best.errors.length + best.unknown.length === 0) break;
+    if (!best || score(p) < score(best)) best = p;
+    if (score(best) === 0) break;
   }
   out.errors.push(...best!.errors);
   out.unknown.push(...best!.unknown);
@@ -181,9 +187,11 @@ function walkObject(
     else out.unknown.push(`${at}.${key}`);
   }
   for (const [key, prop] of props) {
-    if (key in shape || prop.flags & ts.SymbolFlags.Optional) continue;
-    if (members(checker.getTypeOfSymbol(prop)).some((m) => m.flags & ts.TypeFlags.Undefined))
+    // An optional field's type includes undefined (strict, no exactOptionalPropertyTypes).
+    if (key in shape) continue;
+    if (members(checker.getTypeOfSymbol(prop)).some((m) => m.flags & ts.TypeFlags.Undefined)) {
       continue;
+    }
     out.errors.push(`${at}.${key}: required in the type, the server does not send it`);
   }
 }
@@ -212,7 +220,7 @@ describe('wire parity with the server goldens', () => {
   it.each(names.map((n, i) => [n, i] as const))('%s matches types.ts', (name, i) => {
     const golden = goldens[name];
     const { errors, unknown } = compare(checker, golden.shape, types[i]);
-    const allowed = UNMIRRORED[name] ?? {};
+    const allowed = UNMIRRORED[ENVELOPES[name]] ?? {};
     const report = {
       route: golden.route,
       errors,
@@ -242,6 +250,7 @@ describe('the parity check itself', () => {
       e: { kind: 'on'; on: boolean } | { kind: 'off' };
       f: Record<string, number>;
       g: string | undefined;
+      h?: (string | number)[];
     };`;
   const { checker, types } = probeTypes(['Probe'], extra);
   const good: Shape = {
@@ -250,6 +259,7 @@ describe('the parity check itself', () => {
     d: [{ x: 'number' }],
     e: { kind: 'string' },
     f: { anything: 'number' },
+    h: [{ $or: ['string', 'number'] }],
   };
 
   it('accepts a shape the type covers (optional and undefined fields may be absent)', () => {
@@ -262,12 +272,13 @@ describe('the parity check itself', () => {
     });
   });
 
-  it('reports a missing required field, a retype and an unknown field', () => {
+  it('reports a missing required field, a retype (in an $or too) and an unknown field', () => {
     const bad: Shape = {
       a: 'number',
       d: [{ x: 'number', y: 'string' }],
       e: { kind: 'string' },
       f: { anything: 'string' },
+      h: [{ $or: ['string', 'boolean'] }],
       z: 'boolean',
     };
     expect(compare(checker, bad, types[0])).toEqual({
@@ -275,6 +286,7 @@ describe('the parity check itself', () => {
         '$.a: the server sends number, the type is string',
         '$.c: required in the type, the server does not send it',
         '$.f.anything: the server sends string, the type is number',
+        '$.h[]: the server sends boolean, the type is string | number',
       ],
       unknown: ['$.d[].y', '$.z'],
     });
