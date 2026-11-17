@@ -454,6 +454,22 @@ describe('buildCarSnapshot', () => {
     ]);
   });
 
+  it('names the book a resumption starts by its item id (Android), or none, and only when asked', () => {
+    const input = {
+      generatedAt: 'x',
+      labels,
+      signedIn: true,
+      books: { continue: [book('a'), book('b')], upnext: null, downloads: [], library: [] },
+    };
+    const b = { connectionId: 'c1', libraryId: 2, path: 'b' };
+    expect(buildCarSnapshot({ ...input, resume: b }, ctx()).resume).toBe(carItemId(b));
+    // A stopped or finished book: none, never the first Continue listening row.
+    expect(buildCarSnapshot({ ...input, resume: null }, ctx()).resume).toBeNull();
+    expect(buildCarSnapshot({ ...input, signedIn: false, resume: b }, ctx()).resume).toBeNull();
+    // iOS asks for none: no such key.
+    expect(buildCarSnapshot(input, ctx())).not.toHaveProperty('resume');
+  });
+
   it('leaves Up next out where the server keeps no queue', () => {
     const snap = buildCarSnapshot(
       {

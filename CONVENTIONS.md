@@ -2514,9 +2514,15 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   on those same changes, and when the person, their servers or the downloads change: the
   loaded book at its live place and the downloaded books, no server read, no cover fetched or
   pruned, and no timer, so Bluetooth or a headset's play after a kill resumes the book with no
-  car ever met. Until a book is loaded in this runtime it offers the book it offered last
-  (`audiosilo.carResumable`), so opening the app after a kill without playing keeps it; once
-  one was stopped or finished here, none. It waits for the start's read of the car-seen mark.
+  car ever met. **The book a resumption starts is the one the snapshot names** (`resume`, an
+  item id; `resumableBook`, the full snapshot's too), never just the first Continue listening
+  row, which after a stop is the newest book in progress: the loaded book while it is neither
+  stopped nor finished; until a book is loaded in this runtime, the book offered last
+  (`audiosilo.carResumable`, kept with whether kids mode was on, and dropped when that
+  changed), so opening the app after a kill without playing keeps it; once one was stopped or
+  finished here, none. Native reads it in `CarSnapshot.resumable` (a snapshot kept from before
+  the field still answers with its first Continue row). The minimal snapshot waits for the
+  start's read of the car-seen mark.
   Both writes go through one queue (`snapshotWrites`), and the minimal one never lands once a
   car was seen. It is not the snapshot an unreadable build leaves alone (it sets no
   `audiosilo.carSnapshotWritten`), so the first car's build replaces it away from every

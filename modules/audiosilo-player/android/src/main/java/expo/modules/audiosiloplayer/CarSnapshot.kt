@@ -58,6 +58,12 @@ class CarSnapshot(
   val labels: CarLabels,
   val signedIn: Boolean,
   val tabs: List<CarTab>,
+  /** The id of the item a playback resumption starts, null for none (JS: the loaded book while
+   * it is neither stopped nor finished). Read only when [namesResume]. */
+  val resume: String? = null,
+  /** JS wrote `resume`. A snapshot kept from before it did has no such key: [resumable] then
+   * answers as it did, with the first Continue listening book. */
+  val namesResume: Boolean = false,
 ) {
   /** Artwork files this snapshot names, by the opaque key the artwork provider serves them
    * under (a hash of the path, so the URI changes when the file does). */
@@ -83,8 +89,11 @@ class CarSnapshot(
   /** The first Continue listening book. */
   fun firstContinue(): CarItem? = tabs.firstOrNull { it.id == "continue" }?.items?.firstOrNull()
 
-  /** Playback resumption: the first Continue listening book with a play spec (downloaded). */
-  fun resumable(): CarItem? = tabs.firstOrNull { it.id == "continue" }?.items?.firstOrNull()?.takeIf { it.play != null }
+  /** Playback resumption: the book JS named for it ([resume]), when it is listed with a play
+   * spec (downloaded). Never just the first Continue listening book, which after a stop is the
+   * newest book in progress: a stopped or finished book stays stopped at a headset's play. */
+  fun resumable(): CarItem? =
+    (if (namesResume) resume?.let(::find) else firstContinue())?.takeIf { it.play != null }
 
   companion object {
     fun artworkFile(uri: String?): File? {
@@ -130,7 +139,13 @@ class CarSnapshot(
         }
         tabs.add(CarTab(t.optString("id"), t.optString("title"), items))
       }
-      return CarSnapshot(labels, root.optBoolean("signedIn", false), tabs)
+      return CarSnapshot(
+        labels,
+        root.optBoolean("signedIn", false),
+        tabs,
+        resume = if (root.isNull("resume")) null else root.optString("resume").ifEmpty { null },
+        namesResume = root.has("resume"),
+      )
     }
 
     private fun parseItem(o: JSONObject): CarItem? {

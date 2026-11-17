@@ -203,9 +203,10 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
 
   /**
    * A play with an empty player (Bluetooth, the car's play button, the system's resumption
-   * card): the snapshot's first Continue listening book, when it is downloaded (has a play
-   * spec). Media3 asks with [isForPlayback] true only for a play command, so merely connecting
-   * Auto never plays. With false (System UI's resumption card after a reboot) it only wants the
+   * card): the book the snapshot names for it ([CarSnapshot.resumable]: the one left loaded,
+   * never a stopped or finished one), when it is downloaded (has a play spec). Media3 asks
+   * with [isForPlayback] true only for a play command, so merely connecting Auto never plays.
+   * With false (System UI's resumption card after a reboot) it only wants the
    * item to show: answered from the spec with no side effect (no JS boot, no car request).
    * A failed play resumption releases a foreground start ([AudiosiloPlayerService.watchResumption]).
    */

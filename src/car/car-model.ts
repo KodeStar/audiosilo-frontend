@@ -84,6 +84,10 @@ export type CarSnapshot = {
   labels: CarLabels;
   signedIn: boolean;
   tabs: CarTab[];
+  /** Android: the id of the item a playback resumption starts (a headset's or Bluetooth's
+   * play with nothing loaded, `CarSnapshot.resumable`), null when there is none. Absent on
+   * iOS (CarPlay has no resumption). */
+  resume?: string | null;
 };
 
 /** The most items each tab carries (Android Auto doesn't page; CarPlay trims further to its
@@ -322,6 +326,10 @@ export type CarSnapshotInput = {
   /** A tab's title in place of its usual one (the kids shelf's Library tab is "Your
    * stories"). */
   titles?: Partial<Record<CarTabId, string>>;
+  /** Android: the book a playback resumption starts, null for none (`CarSnapshot.resume`).
+   * Never the newest Continue listening row: a book stopped or finished stays stopped at a
+   * headset's play. */
+  resume?: BookRef | null;
 };
 
 /** Each tab's title (namespace `car`). */
@@ -359,6 +367,9 @@ export function buildCarSnapshot(input: CarSnapshotInput, ctx: CarItemContext): 
     labels: input.labels,
     signedIn: input.signedIn,
     tabs,
+    ...(input.resume === undefined
+      ? {}
+      : { resume: input.signedIn && input.resume ? carItemId(input.resume) : null }),
   };
 }
 

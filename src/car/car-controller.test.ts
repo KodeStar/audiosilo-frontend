@@ -1152,6 +1152,7 @@ describe('the resumable snapshot (Android, fe#251)', () => {
     // What a resumption plays (`CarSnapshot.resumable`): the paused book, from where it paused.
     const first = tab(snap, 'continue')!.items[0];
     expect(first.book).toEqual({ connectionId: 'c1', libraryId: 2, path: 'D' });
+    expect(snap.resume).toBe(first.id);
     expect(first.play).toMatchObject({ startIndex: 1, positionInTrack: 30, rate: 1.5 });
     expect(first.artwork).toBe('file:///d/cover.jpg');
     expect(
@@ -1181,6 +1182,7 @@ describe('the resumable snapshot (Android, fe#251)', () => {
     });
     await flushPromises();
     expect(tab(lastSnapshot(), 'continue')!.items).toEqual([]);
+    expect(lastSnapshot().resume).toBeNull();
   });
 
   it('is written again for another person, so their book is never resumed', async () => {
@@ -1377,6 +1379,98 @@ describe('the resumable snapshot (Android, fe#251)', () => {
     mockNative.connection?.(true);
     await settle();
     expect(mockClients.c1.allProgress.mock.calls.length).toBeGreaterThan(reads);
+  });
+
+  describe('the book a resumption starts, on a phone that met a car', () => {
+    const D = carItemId({ connectionId: 'c1', libraryId: 2, path: 'D' });
+    const stopped = {
+      nowPlaying: null,
+      snapshot: { state: 'idle', trackIndex: 0, position: 0, duration: 0, rate: 1 },
+    };
+
+    beforeEach(async () => {
+      await setItem('audiosilo.carSeen', true);
+      // D is the newest book in progress, and downloaded: the first Continue listening row
+      // has a play spec whether or not it is loaded.
+      mockClients.c1 = fakeClient({
+        progress: [
+          makeProgress({ path: 'D', position: 130, duration: 200, updated_at: '2026-01-15' }),
+        ],
+      });
+    });
+
+    it('is the paused book, and none once it is stopped: the newest book in progress stays stopped', async () => {
+      usePlayer.setState(loaded('playing', 1, 20));
+      stop = startCarSync();
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      usePlayer.setState(loaded('paused', 1, 50));
+      await flushPromises();
+      expect(lastSnapshot().resume).toBe(D);
+
+      usePlayer.setState(stopped);
+      await flushPromises();
+      const snap = lastSnapshot();
+      // Still listed first, still startable from the car, but not what a headset's play starts.
+      expect(tab(snap, 'continue')!.items[0]).toMatchObject({ id: D, play: expect.anything() });
+      expect(snap.resume).toBeNull();
+      expect(await getItem('audiosilo.carResumable')).toBeNull();
+    });
+
+    it('is none once the book finished', async () => {
+      usePlayer.setState(loaded('playing', 1, 20));
+      stop = startCarSync();
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      usePlayer.setState(loaded('ended', 1, 100));
+      await flushPromises();
+      expect(lastSnapshot().resume).toBeNull();
+    });
+
+    it('is the book a pause offered before on a launch that loads none (after a kill)', async () => {
+      await setItem('audiosilo.carResumable', { connectionId: 'c1', libraryId: 2, path: 'E' });
+      stop = startCarSync();
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      const snap = lastSnapshot();
+      // Not the newest book in progress (D): the one that was paused (E, among the downloads).
+      expect(tab(snap, 'continue')!.items[0].id).toBe(D);
+      expect(snap.resume).toBe(carItemId({ connectionId: 'c1', libraryId: 2, path: 'E' }));
+    });
+
+    it('is not named on iOS (CarPlay has no resumption)', async () => {
+      Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
+      usePlayer.setState(loaded('paused', 1, 50));
+      stop = startCarSync();
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      expect(lastSnapshot()).not.toHaveProperty('resume');
+    });
+  });
+
+  it('never offers a kids profile the book offered before kids mode was turned on', async () => {
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [{ id: 'p', name: 'P', connectionIds: ['c1'] }],
+      activeProfileId: 'p',
+    });
+    await setItem('audiosilo.carResumable', {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'D',
+      kids: false,
+    });
+    stop = startCarSync();
+    await settle();
+    useDownloads.setState({ entries: { 'c1:2:D': downloaded('c1', 'D') } });
+    await flushPromises();
+    expect(tab(lastSnapshot(), 'continue')!.items).toHaveLength(1);
+
+    // Kids mode on, no book loaded since the launch: that book may not be on the kids shelf.
+    useProfiles.setState({
+      profiles: [{ id: 'p', name: 'P', connectionIds: ['c1'], kids: { bedtime: '19:30' } }],
+    });
+    await flushPromises();
+    const snap = lastSnapshot();
+    expect(tab(snap, 'continue')!.items).toEqual([]);
+    expect(snap.resume).toBeNull();
+    expect(await getItem('audiosilo.carResumable')).toBeNull();
   });
 });
 

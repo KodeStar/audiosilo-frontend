@@ -654,21 +654,55 @@ function uniqueBooks(books: CarSnapshotInput['books']): Map<string, CarBook> {
   return all;
 }
 
-/** The book the resumable snapshot offers, kept across launches (`RESUMABLE_KEY`; undefined
- * until read): a launch that loads no book offers it again, so opening the app after a kill
- * without playing never takes away what a headset's play resumes. */
+/** The book a resumption is offered, kept across launches (`RESUMABLE_KEY`; undefined until
+ * read) with whether it was offered to a kids profile: a launch that loads no book offers it
+ * again, so opening the app after a kill without playing never takes away what a headset's
+ * play resumes. */
 const RESUMABLE_KEY = 'audiosilo.carResumable';
-let resumableRef: BookRef | null | undefined;
+type KeptBook = BookRef & { kids?: boolean };
+let resumableRef: KeptBook | null | undefined;
 /** The player has held a book in this runtime: from then on only the loaded book is offered,
  * and none once it was stopped or finished. */
 let loadedHere = false;
 
-const sameBook = (a: BookRef | null | undefined, b: BookRef | null | undefined) =>
-  (a ? contentKeyOf(a) : null) === (b ? contentKeyOf(b) : null);
+/**
+ * The book a playback resumption starts (Android; the snapshot's `resume`, both the full and
+ * the minimal one's): the loaded book while it is neither stopped nor finished (`live`); with
+ * none loaded yet in this runtime, the book offered before (`RESUMABLE_KEY`) while it is still
+ * the person listening's, and kids mode is as it was (a book offered before kids mode was
+ * turned on may not be on the kids shelf). Never the newest Continue listening row: a book
+ * stopped or finished here stays stopped at a headset's play.
+ */
+async function resumableBook(player: PlayerState, live: LivePlace | null): Promise<BookRef | null> {
+  if (player.nowPlaying) loadedHere = true;
+  if (resumableRef === undefined) {
+    const stored = await getItem<KeptBook>(RESUMABLE_KEY);
+    resumableRef = stored
+      ? { ...stored, connectionId: resolveConnectionId(stored.connectionId) }
+      : null;
+  }
+  if (live) return live.ref;
+  const kept = loadedHere ? null : resumableRef;
+  return kept && !!kept.kids === !!activeProfile()?.kids && mayActFor(kept.connectionId)
+    ? bookRefOf(kept)
+    : null;
+}
+
+/** Keeps the book a written snapshot offers (`resumableBook`) for the next launch. */
+async function keepResumable(offered: BookRef | null): Promise<void> {
+  const kids = !!activeProfile()?.kids;
+  const kept = resumableRef;
+  const same = offered
+    ? !!kept && contentKeyOf(kept) === contentKeyOf(offered) && !!kept.kids === kids
+    : kept === null;
+  if (same) return;
+  resumableRef = offered ? { ...offered, kids } : null;
+  await setItem(RESUMABLE_KEY, resumableRef);
+}
 
 /**
  * Android, on a phone no car has met (fe#251): Bluetooth or a headset's play after the app was
- * killed resumes the car snapshot's first Continue listening book when it has a play spec
+ * killed resumes the book the car snapshot names for it (`resume`) when it has a play spec
  * (`ResumptionReceiver`), so a snapshot that holds the book being listened to is written on
  * every pause, stop and book change all the same. Minimal: the loaded book at its live place
  * (paused, its spec starts there; with none loaded yet in this runtime, the book offered
@@ -686,15 +720,7 @@ async function buildResumable(): Promise<void> {
   const conns = profileConnections();
   const player = usePlayer.getState();
   const live = livePlaceOf(player);
-  if (player.nowPlaying) loadedHere = true;
-  if (resumableRef === undefined) {
-    const stored = await getItem<BookRef>(RESUMABLE_KEY);
-    resumableRef = stored
-      ? { ...stored, connectionId: resolveConnectionId(stored.connectionId) }
-      : null;
-  }
-  const kept = loadedHere ? null : resumableRef;
-  const offered = live?.ref ?? (kept && mayActFor(kept.connectionId) ? kept : null);
+  const offered = await resumableBook(player, live);
   const kids = !!activeProfile()?.kids;
   const { rows, known } = await progressRows(conns, true);
   const progressOf = progressLookup(rows);
@@ -718,7 +744,7 @@ async function buildResumable(): Promise<void> {
   if (carSeen) return;
   const handed = await handOver(
     owner,
-    { signedIn: conns.length > 0, books },
+    { signedIn: conns.length > 0, books, resume: offered },
     {
       live,
       artworkFor: (ref) => downloadedEntryOf(ref)?.manifest.coverUri ?? null,
@@ -726,10 +752,7 @@ async function buildResumable(): Promise<void> {
     },
     false,
   );
-  if (handed && !sameBook(offered, resumableRef)) {
-    resumableRef = offered;
-    await setItem(RESUMABLE_KEY, offered);
-  }
+  if (handed) await keepResumable(offered);
 }
 
 async function buildAndWrite(): Promise<void> {
@@ -780,11 +803,13 @@ async function buildAndWrite(): Promise<void> {
   // Every book any tab lists, once: its play spec (downloaded only) and its cover.
   const all = uniqueBooks(books);
 
-  // iOS never starts a book without JS (CarPlay asks JS for every book): no play specs.
-  const plays =
-    Platform.OS === 'android'
-      ? await playSpecs(all, known, progressOf, pausedPlaceOf(player, live))
-      : null;
+  // iOS never starts a book without JS (CarPlay asks JS for every book): no play specs, and
+  // no book for a resumption.
+  const android = Platform.OS === 'android';
+  const plays = android
+    ? await playSpecs(all, known, progressOf, pausedPlaceOf(player, live))
+    : null;
+  const resume = android ? await resumableBook(player, live) : undefined;
 
   // Covers: a downloaded book's own cover file as it is (no network, no copy); any other's
   // a small JPEG written under the car artwork folder (one folder read per snapshot).
@@ -822,6 +847,7 @@ async function buildAndWrite(): Promise<void> {
     {
       signedIn,
       books,
+      ...(resume === undefined ? {} : { resume }),
       // The kids shelf is the Library tab, under kids mode's own heading.
       ...(kids ? { titles: { library: t('kids.stories.title') } } : {}),
     },
@@ -833,6 +859,7 @@ async function buildAndWrite(): Promise<void> {
     true,
   );
   if (!handed) return;
+  if (resume !== undefined) await keepResumable(resume);
   pruneArtwork(names, onDisk);
   missingArtwork = missing;
 }
