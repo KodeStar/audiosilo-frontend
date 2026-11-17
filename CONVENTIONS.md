@@ -982,7 +982,8 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   length (a downloaded `book.epub` included, never checked against `ebook.size`); the reader
   document says the same (`tooLarge`) for a buffer it could not allocate. No room for the
   server's size (`engine.storageEstimate`), a fetch the disk refused (`storage`), or a cache
-  folder or move that failed is `EbookStorageError`, leaving no part. The reader screen says
+  folder or move that failed is `EbookStorageError`, leaving no part (short of room, the reader's
+  own copies fetched longest ago are dropped first, as many as make it). The reader screen says
   each in its own words (`tooLarge`, no Try again; `storage`, with Try again), never the
   `fetch` notice. After each fetch the whole cache, every connection's, is held to
   `MAX_EBOOK_BYTES` (512 MB): the copies fetched longest ago (`modificationTime`) go

@@ -32,9 +32,9 @@ import type { OpenedEbook } from './ebook-identity';
  * after each fetch the copies fetched longest ago go first.
  *
  * A book over `MAX_EBOOK_BYTES` (the server's size, the copy's own length) is refused as too
- * large before any fetch or transfer, and a fetch that finds no room, or a copy the cache
- * could not take, is a storage failure (`EbookStorageError`) that leaves no partial file
- * (fe#172).
+ * large before any fetch or transfer, and a fetch that finds no room (once the cache's own
+ * copies fetched longest ago have made what room they can), or a copy the cache could not
+ * take, is a storage failure (`EbookStorageError`) that leaves no partial file (fe#172).
  */
 
 const ROOT = 'reader';
@@ -149,10 +149,14 @@ export async function localEbook({
     assertReadable(here.size);
     return here;
   }
-  // Too large for the reader, or for the room left: said before a byte is fetched.
+  // Too large for the reader, or for the room left: said before a byte is fetched. The
+  // reader's own older copies make room first, when they can.
   assertReadable(size);
-  const free = (await engine.storageEstimate())?.free;
-  if (free !== undefined && free < size) throw new EbookStorageError(NO_ROOM);
+  const short = await shortOf(size);
+  if (short > 0) {
+    trimCache(undefined, short);
+    if ((await shortOf(size)) > 0) throw new EbookStorageError(NO_ROOM);
+  }
   onFetch?.();
 
   const dir = cacheDir(connectionId, libraryId, path);
@@ -233,20 +237,28 @@ function cachedCopies(dir: Directory, into: CachedCopy[] = []): CachedCopy[] {
   return into;
 }
 
+/** How many bytes the device lacks for `size` more (0 when it has room, or can't say). */
+async function shortOf(size: number): Promise<number> {
+  const free = (await engine.storageEstimate().catch(() => null))?.free;
+  return free === undefined ? 0 : Math.max(0, size - free);
+}
+
 /**
- * Holds the reader's cache, every connection's copies together, to `MAX_EBOOK_BYTES`:
- * the copies fetched longest ago go first, never `keep` (the copy this open fetched) or a
- * part a fetch is writing. Best effort: a copy dropped is fetched again on its next open.
+ * Holds the reader's cache, every connection's copies together, to `MAX_EBOOK_BYTES`, and
+ * `room` bytes below what it holds (a fetch the device has no room for): the copies fetched
+ * longest ago go first, never `keep` (the copy this open fetched) or a part a fetch is
+ * writing. Best effort: a copy dropped is fetched again on its next open.
  */
-function trimCache(keep: string): void {
+function trimCache(keep?: string, room = 0): void {
   try {
     const root = new Directory(Paths.cache, ROOT);
     if (!root.exists) return;
     const copies = cachedCopies(root);
     let total = copies.reduce((sum, c) => sum + c.size, 0);
+    const limit = Math.min(MAX_EBOOK_BYTES, total - room);
     copies.sort((a, b) => a.at - b.at);
     for (const copy of copies) {
-      if (total <= MAX_EBOOK_BYTES) break;
+      if (total <= limit) break;
       if (copy.file.uri === keep) continue;
       drop(copy.file);
       total -= copy.size;
