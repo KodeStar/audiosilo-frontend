@@ -162,6 +162,7 @@ import {
   PICK_UP_WAIT_MS,
   selectBookPosition,
   selectIsPlaying,
+  selectIsTransportLive,
   usePlayer,
 } from './store';
 /* eslint-enable import/first */
@@ -418,6 +419,67 @@ describe('a loaded book another device has moved on', () => {
       expect(mockClient.getProgress).toHaveBeenCalledTimes(2);
       expect(seeks()).toEqual([400]);
       expect(mockSvc.play).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows the loading state while it waits, and a second tap there pauses: the old place never plays', async () => {
+      await loadedAndPaused();
+      let answer: (p: Progress) => void = () => {};
+      mockServer = () => new Promise((resolve) => (answer = resolve));
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      const press = usePlayer.getState().toggle();
+      await settle();
+      expect(usePlayer.getState().snapshot.state).toBe('loading');
+      // The control is a spinner now: callers that play only a book not live leave it be.
+      expect(selectIsTransportLive(usePlayer.getState())).toBe(true);
+      // A second tap on the control is a tap on the spinner: the start is called off, and
+      // the control is Play again at once, before the check answers.
+      await usePlayer.getState().toggle();
+      expect(usePlayer.getState().snapshot.state).toBe('paused');
+      answer(record());
+      await press;
+      await settle();
+      expect(mockSvc.play).not.toHaveBeenCalled();
+      expect(usePlayer.getState().snapshot.state).toBe('paused');
+    });
+
+    it('a press while the wait is out waits for the same check, then plays the newer place', async () => {
+      await loadedAndPaused();
+      let answer: (p: Progress) => void = () => {};
+      mockServer = () => new Promise((resolve) => (answer = resolve));
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      const first = usePlayer.getState().toggle();
+      await settle();
+      await usePlayer.getState().pause();
+      // Play again before the check answers: it waits for that check, not past it.
+      const again = usePlayer.getState().toggle();
+      await settle();
+      expect(usePlayer.getState().snapshot.state).toBe('loading');
+      expect(mockSvc.play).not.toHaveBeenCalled();
+      answer(record());
+      await Promise.all([first, again]);
+      expect(mockClient.getProgress).toHaveBeenCalledTimes(1);
+      expect(seeks()).toEqual([400]);
+      expect(mockSvc.play).toHaveBeenCalledTimes(1);
+      expect(order(mockSvc.seekTo)).toBeLessThan(order(mockSvc.play));
+    });
+
+    it('a press reaching the store while it waits (a stale caller) starts nothing of its own', async () => {
+      await loadedAndPaused();
+      let answer: (p: Progress) => void = () => {};
+      mockServer = () => new Promise((resolve) => (answer = resolve));
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      const first = usePlayer.getState().toggle();
+      await settle();
+      // A caller that read the book as paused before the wait began.
+      usePlayer.setState({ snapshot: { ...usePlayer.getState().snapshot, state: 'paused' } });
+      const second = usePlayer.getState().toggle();
+      await settle();
+      expect(mockSvc.play).not.toHaveBeenCalled();
+      answer(record());
+      await Promise.all([first, second]);
+      expect(seeks()).toEqual([400]);
+      expect(mockSvc.play).toHaveBeenCalledTimes(1);
+      expect(order(mockSvc.seekTo)).toBeLessThan(order(mockSvc.play));
     });
 
     it('in the background nothing waits: the check runs once the engine plays', async () => {

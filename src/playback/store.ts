@@ -309,34 +309,59 @@ let pickUpDue: string | null = null;
  * placed nothing (a failed load releases the hold too). */
 let swapDue: string | null = null;
 
+/** The pick-up wait out now (`pickUpBeforePlay`): a press made while it is out waits for it
+ * too, never past it. */
+let pickUpWait: Promise<unknown> | null = null;
+
 /**
  * A Play press of a book picked up again (paused `LONG_PAUSE_MS` or more) in the foreground:
  * the pick-up check runs before the engine starts, for up to `PICK_UP_WAIT_MS`, so a newer
- * place another device left is moved to before any of the old place sounds (fe#158). The play
- * is then no pick-up of its own (`pausedAt` cleared): a check still out goes on while it
- * plays. The stall watchdog's grace starts again once the engine is asked. In the background
- * (a press from the car or a headset reaching the store, where Android may hold the JS timers)
- * nothing waits: the check runs once the engine plays, as before. Resolves true when the
- * press no longer stands (paused, or pressed again, while it waited). A book left paused by
- * that is paused from now (the engine never left `paused`, so no transition marks it), so a
- * play after another long pause is a pick-up again.
+ * place another device left is moved to before any of the old place sounds (fe#158). The
+ * player shows `loading` meanwhile, as for a book loading, so a second Play is not offered;
+ * a press that reaches the store anyway waits for the same check (`pickUpWait`), and the
+ * latest press is the one that starts the engine. The play is then no pick-up of its own
+ * (`pausedAt` cleared): a check still out goes on while it plays. The stall watchdog's grace
+ * starts again once the engine is asked. In the background (a press from the car or a headset
+ * reaching the store, where Android may hold the JS timers) nothing waits: the check runs once
+ * the engine plays, as before. Resolves true when the press no longer stands (paused, or
+ * pressed again, while it waited). A book left paused by that is paused from now (the engine
+ * never left `paused`, so no transition marks it), so a play after another long pause is a
+ * pick-up again.
  */
 async function pickUpBeforePlay(): Promise<boolean> {
-  const listener = pickedUpAgainListener;
-  if (!listener || pausedAt === null || Date.now() - pausedAt < LONG_PAUSE_MS) return false;
-  if (isAway() || usePlayer.getState().loadingBook) return false;
-  pausedAt = null;
   const attempt = playAttempts;
-  await withTimeout(Promise.resolve(listener()), PICK_UP_WAIT_MS, 'pick-up check').catch(
-    () => undefined,
-  );
+  if (!pickUpWait) {
+    const listener = pickedUpAgainListener;
+    if (!listener || pausedAt === null || Date.now() - pausedAt < LONG_PAUSE_MS) return false;
+    if (isAway() || usePlayer.getState().loadingBook) return false;
+    pausedAt = null;
+    const wait = withTimeout(Promise.resolve(listener()), PICK_UP_WAIT_MS, 'pick-up check')
+      .catch(() => undefined)
+      .finally(() => {
+        if (pickUpWait === wait) pickUpWait = null;
+      });
+    pickUpWait = wait;
+  }
+  const { snapshot } = usePlayer.getState();
+  usePlayer.setState({ snapshot: { ...snapshot, state: 'loading' } });
+  await pickUpWait;
   if (attempt !== playAttempts || !wantsPlayback) {
-    if (!isPlayingState(usePlayer.getState().snapshot.state)) pausedAt ??= Date.now();
+    if (!wantsPlayback) settlePickUpWaitPaused();
     return true;
   }
   cancelStallWatchdog();
   armStallWatchdog();
   return false;
+}
+
+/** A press paused while the pick-up wait was out: the `loading` it showed (no engine event
+ * follows: the engine never left `paused`) is `paused` again, and the book is paused from
+ * now, so a play after another long pause is a pick-up again. */
+function settlePickUpWaitPaused() {
+  const { snapshot } = usePlayer.getState();
+  if (snapshot.state === 'loading')
+    usePlayer.setState({ snapshot: { ...snapshot, state: 'paused' } });
+  if (!isPlayingState(usePlayer.getState().snapshot.state)) pausedAt ??= Date.now();
 }
 
 /** Tell the pick-up listener now, or once the load holding the store lands (`pickUpDue`). */
@@ -2920,6 +2945,8 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     if (st === 'playing' || st === 'loading') {
       clearPlaybackIntent();
       if (playingOn) playOnStopped = true;
+      // Before the engine is asked: its `paused` is then no transition (nothing to save).
+      if (pickUpWait) settlePickUpWaitPaused();
       await svc.pause();
     } else {
       // At the end of a partial download (D3, fe#185) nothing plays: the engine, ended,
@@ -2959,6 +2986,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     // to `playing` and silently defeat the pause (e.g. the sleep timer firing while
     // the stream is buffering). The engine pause is idempotent in either state.
     const st = get().snapshot.state;
+    if (pickUpWait) settlePickUpWaitPaused();
     if (st === 'playing' || st === 'loading') await svc.pause();
   },
 
