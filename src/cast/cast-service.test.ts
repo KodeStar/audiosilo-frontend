@@ -1089,6 +1089,47 @@ describe('CastPlaybackService', () => {
         expect(t.url(0)).toContain('token=CAST2');
       });
 
+      it('a book load refused after it answered is sent again at its place, playing once asked', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        // Resume chapter 3 at 0:20: the receiver takes the queue and answers at once.
+        await t.svc.load(TRACKS, 2, 20, [], BOOK);
+        // Refused Part 3 (and Part 4): the error comes before the store's play.
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(2), position: 0 });
+        // The store plays the loaded book while the new token is minted.
+        await t.svc.play();
+        await flush();
+        expect(m.asks).toEqual([undefined, true]);
+        expect(t.remote.loads.at(-1)).toMatchObject({
+          startIndex: 2,
+          startTime: 20,
+          autoplay: true,
+        });
+        expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 2, position: 20 });
+        expect(t.svc.getSnapshot().state).not.toBe('paused');
+      });
+
+      it('a play while a refused load is sent again paused plays it once it is taken', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 2, 20, [], BOOK);
+        const answer = holdLoad(t);
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(2), position: 0 });
+        await flush();
+        expect(t.remote.loads.at(-1)).toMatchObject({
+          startIndex: 2,
+          startTime: 20,
+          autoplay: false,
+        });
+        // The play goes to the receiver's old media, which the load replaces.
+        await t.svc.play();
+        expect(t.remote.play).toHaveBeenCalledTimes(1);
+        answer();
+        await flush();
+        expect(t.remote.play).toHaveBeenCalledTimes(2);
+        expect(t.svc.getSnapshot().state).not.toBe('paused');
+      });
+
       it('a token refused before it ever played mints no more within the minute', async () => {
         const m = minting();
         const t = setup({ prepare: m.prepare });

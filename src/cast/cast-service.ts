@@ -666,9 +666,12 @@ export class CastPlaybackService implements PlaybackService {
       return await this.sendQueueOnce(index, position, autoplay);
     } catch (err) {
       if (!(await this.freshToken())) throw this.onRefused(err);
-      return this.sendQueueOnce(index, position, autoplay).catch((again: unknown) => {
-        throw this.onRefused(again);
-      });
+      // By the play intent as it is now: a play or pause may have come during the mint.
+      return this.sendQueueOnce(index, position, this.playIntent ?? autoplay).catch(
+        (again: unknown) => {
+          throw this.onRefused(again);
+        },
+      );
     }
   }
 
@@ -720,6 +723,10 @@ export class CastPlaybackService implements PlaybackService {
       // trip, while the receiver plays on into later files): `onRefused` lifts it on a failure.
       if (this.refusedQueue?.seq === q) throw new ReceiverRefused(q);
       this.needsReload = false;
+      // A play or pause asked for while the queue was on its way went to the media it replaced.
+      if (this.playIntent !== null && this.playIntent !== autoplay) {
+        void (this.playIntent ? this.remote.play() : this.remote.pause()).catch(() => undefined);
+      }
       return true;
     } finally {
       this.loadsInFlight--;
@@ -893,7 +900,8 @@ export class CastPlaybackService implements PlaybackService {
     const { trackIndex, position } = this.refusedPlace(index, reported);
     const duration = this.loaded?.tracks[trackIndex]?.duration ?? 0;
     const place = Math.min(position, duration || Infinity);
-    const autoplay = this.playOn();
+    // For a session no word came for yet (`playOn`), as it was before the error.
+    const playing = this.playOn();
     const seq = this.loadSeq;
     this.place({ state: 'loading', trackIndex, position: place, duration }, false);
     const fail = () => {
@@ -901,8 +909,10 @@ export class CastPlaybackService implements PlaybackService {
     };
     void (async () => {
       if (!(await this.freshToken())) return fail();
-      if (!(await this.sendQueueOnce(trackIndex, place, autoplay))) return;
-      if (!autoplay && seq === this.loadSeq) this.update({ state: 'paused' });
+      // By the play intent as it is now: the store's play of a book whose load answered before
+      // the receiver erred comes while the token is minted.
+      if (!(await this.sendQueueOnce(trackIndex, place, this.playIntent ?? playing))) return;
+      if (!(this.playIntent ?? playing) && seq === this.loadSeq) this.update({ state: 'paused' });
     })().catch((err: unknown) => {
       fail();
       this.onRefused(err);
