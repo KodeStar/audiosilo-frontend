@@ -518,21 +518,18 @@ export class CastPlaybackService implements PlaybackService {
     position: number,
     opts: { landed?: boolean; fresh?: boolean; queued?: boolean } = {},
   ) {
-    const last = this.intended;
-    const now = this.now();
-    const chained = !!last && !last.landed && now - last.at < ASKED_MOVE_MS;
+    const chained = this.pendingIntent();
     this.intended = {
       trackIndex,
       position: Math.max(0, position),
-      at: now,
+      at: this.now(),
       landed: opts.landed ?? false,
-      from:
-        last && chained
-          ? last.from
-          : opts.fresh
-            ? null
-            : { trackIndex: this.snapshot.trackIndex, position: this.snapshot.position },
-      replacedGone: last && chained ? last.replacedGone : false,
+      from: chained
+        ? chained.from
+        : opts.fresh
+          ? null
+          : { trackIndex: this.snapshot.trackIndex, position: this.snapshot.position },
+      replacedGone: chained?.replacedGone ?? false,
       queued: opts.queued,
     };
   }
@@ -614,8 +611,15 @@ export class CastPlaybackService implements PlaybackService {
   /** Whether file `index` is a later one than the file this phone means (`intended`) while that
    * has not landed, less than `within` after the move. */
   private laterUnlanded(index: number, within: number): boolean {
+    const want = this.pendingIntent(within);
+    return !!want && index > want.trackIndex;
+  }
+
+  /** The move this phone means (`intended`) while it has not landed, less than `within` after
+   * it was asked; null otherwise. */
+  private pendingIntent(within = ASKED_MOVE_MS): Intent | null {
     const want = this.intended;
-    return !!want && !want.landed && index > want.trackIndex && this.now() - want.at < within;
+    return want && !want.landed && this.now() - want.at < within ? want : null;
   }
 
   /**
@@ -640,14 +644,8 @@ export class CastPlaybackService implements PlaybackService {
   /** Whether file `index` is another file than the one this phone means (`intended`) while
    * that has not landed, less than `ASKED_MOVE_MS` after the move. */
   private unlandedOther(index: number | null): boolean {
-    const want = this.intended;
-    return (
-      index !== null &&
-      !!want &&
-      !want.landed &&
-      index !== want.trackIndex &&
-      this.now() - want.at < ASKED_MOVE_MS
-    );
+    const want = this.pendingIntent();
+    return index !== null && !!want && index !== want.trackIndex;
   }
 
   /** Whether a stop naming file `index` is the media a queue of ours replaced (`onStatus`): a
@@ -723,8 +721,7 @@ export class CastPlaybackService implements PlaybackService {
    * to, or name no file, and are never the book's place. For at most `ASKED_MOVE_MS` after the
    * move: a load the receiver never answers must not hide them for good. */
   private holdingAsked(): boolean {
-    const want = this.intended;
-    return this.loadsInFlight > 0 && !!want && !want.landed && this.now() - want.at < ASKED_MOVE_MS;
+    return this.loadsInFlight > 0 && !!this.pendingIntent();
   }
 
   /** Whether the phone has been following the receiver just now (a status or a progress tick
@@ -989,8 +986,9 @@ export class CastPlaybackService implements PlaybackService {
     if (!read && this.holdingAsked()) return;
     // A queue of ours landing paused while a play stands: the queue's own state, no word on
     // the play intent (`settleLanding`, from `followIntent` below).
+    const ownPausedLanding = !read && this.pausedLanding(status, index);
     if (
-      !(!read && this.pausedLanding(status, index)) &&
+      !ownPausedLanding &&
       this.loadsInFlight === 0 &&
       (status.playerState === 'playing' ||
         status.playerState === 'paused' ||
