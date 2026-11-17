@@ -3505,13 +3505,19 @@ on first need). NOT device-verified (no Cast device yet).
   read). The Default Media Receiver skips a file it is refused and tries the next, so its error
   names the last file it tried: the reload goes to the place the phone means (`intended`: the
   place a load, seek or file jump asked for, or the next file's start once one ended, until the
-  receiver plays or pauses there; `refusedPlace`), and an error while a load of ours is in flight
-  makes that load a refused one (`ReceiverRefused`, sent again with a new token; the files the
-  receiver skips on to meanwhile are not the book's place). One mint per token: another only once
-  the receiver played with the last one minted, else at most one per `REMINT_EVERY_MS` (a minute)
-  per book loaded, so a failure with another cause never mints on every try (each mint can end
-  another receiver's token); a queue refused while a mint is on its way waits on that mint and is
-  sent again after it.
+  receiver plays or pauses there; `refusedPlace`; not once the receiver played or paused on
+  another file and the error came `ASKED_MOVE_MS` or more after the move, as it sends no status
+  while it simply plays), and an error while a load of ours is in flight makes that load a
+  refused one (`ReceiverRefused`, sent again with a new token; the files the receiver skips on to
+  meanwhile, the mint included, are not the book's place, for at most `ASKED_MOVE_MS` after the
+  error, so a load never answered hides nothing for good). A book's load refused so to the end
+  still stands (the receiver holds the book, and a failed load would hand it back to the phone
+  while the receiver plays on); a seek, file jump or play refused so fails. One mint per token:
+  another only once the receiver played with the last one minted at the place the phone meant
+  (not a later file it went on to), never more than two per `REMINT_EVERY_MS` (a minute) per book
+  loaded, and one when the last never played, so a failure with another cause never mints on
+  every try (each mint can end another receiver's token); a queue refused while a mint is on its
+  way waits on that mint and is sent again after it.
 - **Generations**: the cast service numbers loads (`loadSeq`) and queues (`queueSeq`), the router
   its switches (`generation`): a load, queue or handover that a newer one (or a reset) overtook
   stands back, and the receiver's rejection of a replaced queue is not a failure. The native

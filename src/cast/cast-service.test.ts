@@ -1004,6 +1004,133 @@ describe('CastPlaybackService', () => {
         expect(t.remote.readStatus).toHaveBeenCalled();
         expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 2 });
       });
+
+      it('a book load refused twice still stands: the receiver holds the book', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        const first = holdLoad(t);
+        const second = holdLoad(t);
+        const loading = t.svc.load(TRACKS, 0, 0, [], BOOK);
+        await flush();
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+        first();
+        await flush();
+        expect(m.asks).toEqual([undefined, true]);
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+        (t.remote.readStatus as jest.Mock).mockResolvedValueOnce({
+          playerState: 'playing',
+          contentId: t.url(1),
+          position: 2,
+          rate: 1,
+        });
+        second();
+        // Rejected, the route would hand the book back to the phone while the receiver plays it.
+        await expect(loading).resolves.toBeUndefined();
+        await flush();
+        expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 1 });
+      });
+
+      it('a later file played after a refusal is no proof the new token plays', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 0, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 5 });
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+        await flush();
+        expect(m.asks).toEqual([undefined, true]);
+        // Part 1 is refused again (not for its token); the receiver plays Part 2, then errs.
+        t.status({ playerState: 'playing', contentId: t.url(1), position: 1 });
+        t.tick(5_000);
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(1), position: 0 });
+        await flush();
+        expect(m.asks).toEqual([undefined, true]);
+        expect(t.svc.getSnapshot().state).toBe('error');
+      });
+
+      it('mints at most twice a minute, though each new token played', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 0, 0, [], BOOK);
+        await t.svc.play();
+        for (const at of [5, 6, 7]) {
+          t.status({ playerState: 'playing', contentId: t.url(0), position: at });
+          t.tick(10_000);
+          t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+          await flush();
+        }
+        expect(m.asks).toEqual([undefined, true, true]);
+        expect(t.svc.getSnapshot().state).toBe('error');
+        // A minute after the first mint, a token that played may be replaced again.
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 8 });
+        t.tick(41_000);
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+        await flush();
+        expect(m.asks).toEqual([undefined, true, true, true]);
+      });
+
+      it('a move the receiver went past and played on from long ago is not reloaded', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 0, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 5 });
+        await t.svc.skipToTrack(1, 100);
+        // Part 2 can't be played (not its token): the receiver plays Part 3 from there on.
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 1 });
+        t.tick(300_000);
+        t.progress(301);
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(2), position: 0 });
+        await flush();
+        expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 2, startTime: 301 });
+      });
+
+      it('ignores the files skipped on to for a bounded time, never for good', async () => {
+        const t = setup();
+        await t.svc.load(TRACKS, 2, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 10 });
+        const answer = holdLoad(t);
+        const jump = t.svc.skipToTrack(0, 0);
+        await flush();
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+        t.status({ playerState: 'playing', contentId: t.url(1), position: 1 });
+        // Nor its ticks, each of which would read the status again.
+        t.progress(2);
+        expect(t.remote.readStatus).not.toHaveBeenCalled();
+        expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 2, position: 10 });
+        // The load never answers: the receiver's statuses count again.
+        t.tick(9_000);
+        t.status({ playerState: 'playing', contentId: t.url(1), position: 9 });
+        expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 9 });
+        answer();
+        await jump;
+      });
+
+      it('keeps ignoring the files skipped on to while the new token is minted', async () => {
+        let release = () => {};
+        const prepare: PrepareCast = async (tracks, book, opts) => {
+          if (opts?.freshToken) await new Promise<void>((r) => (release = r));
+          return { items: buildCastItems(tracks, book, urls, false) };
+        };
+        const t = setup({ prepare });
+        await t.svc.load(TRACKS, 2, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 10 });
+        const answer = holdLoad(t);
+        const jump = t.svc.skipToTrack(0, 0);
+        await flush();
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+        answer();
+        await flush();
+        const from = t.snaps.length;
+        t.status({ playerState: 'playing', contentId: t.url(1), position: 1 });
+        expect(t.snaps.slice(from).some((s) => s.trackIndex === 1)).toBe(false);
+        release();
+        await jump;
+        expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 0, startTime: 0 });
+        expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 0, position: 0 });
+      });
     });
 
     it('a book loaded again (a Retry) mints no sooner than a minute on; another book may', async () => {
