@@ -7,6 +7,7 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
+import { useBehindModalProps } from '@/components/ui/modal-layer';
 import { SafeAreaView } from '@/components/ui/safe-area-view';
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
@@ -47,6 +48,9 @@ export function ProfilesScreen() {
   const size = phone ? 76 : 96;
   const canAdd = useProfiles(mayAddPerson);
   const kids = !!useActiveProfile()?.kids;
+  // A root route outside the shell, so it hides itself behind its own dialogs (the PIN, a
+  // rename, a removal: fe#305, `modal-layer.ts`).
+  const behind = useBehindModalProps();
 
   // On screen, it IS this launch's "Who's listening?" (a cold load of /profiles, a reload
   // while it was open): the auth gate must not ask again once it is closed.
@@ -71,7 +75,7 @@ export function ProfilesScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-background" testID="profiles-screen">
+    <SafeAreaView className="flex-1 bg-background" testID="profiles-screen" {...behind}>
       <View className="min-h-[44px] flex-row justify-end px-2 pt-1">
         {required ? null : (
           <Button

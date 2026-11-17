@@ -714,8 +714,13 @@ describe('EndCredits', () => {
 
   it('opens the credits with the path on the server', async () => {
     await mount();
+    const page = () => screen.getByTestId('end-credits-page', { includeHiddenElements: true });
+    expect(page().props.accessibilityElementsHidden).toBe(false);
     await fireEvent.press(screen.getByText('Credits'));
     expect(screen.getByText('Written by')).toBeTruthy();
+    // The page behind the dialog is out of a screen reader's reach (fe#305).
+    expect(page().props.accessibilityElementsHidden).toBe(true);
+    expect(page().props.importantForAccessibility).toBe('no-hide-descendants');
     expect(screen.getByText('Read by')).toBeTruthy();
     expect(screen.getByText('Released')).toBeTruthy();
     expect(screen.getByText('2010')).toBeTruthy();

@@ -17,7 +17,8 @@ import { Platform } from 'react-native';
  * Open sheets register here (`useModalLayer`), and so do the portaled overlays while open
  * (`ModalOverlay` in overlay.tsx renders `ModalLayerMark` inside the portal, which mounts
  * only while open on native). The page roots read `useBehindModalProps`: the
- * shell's frame (native), the full player's page and the reader's. The web needs no count
+ * shell's frame (native), the full player's page, the reader's, the profile picker's and the
+ * credits' (root routes outside the shell with dialogs of their own). The web needs no count
  * for the overlays either: Radix hides everything outside an open one (`aria-hidden`).
  */
 

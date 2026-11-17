@@ -3526,12 +3526,13 @@ tokens, type and components; its section 17 maps them onto these files.
     as a modal layer while open (`useModalLayer`; a portaled one wraps its content in
     `ModalOverlay` (overlay.tsx), never the bare `FullWindowOverlay`) and
     the page roots behind spread `useBehindModalProps()` (the native shell's frame, the
-    full player, the reader): hidden from VoiceOver and TalkBack while a layer is open
+    full player, the reader, the profile picker, the credits): hidden from VoiceOver and
+    TalkBack while a layer is open
     (Radix hides the rest of the page on the web). The sheet itself is `accessibilityViewIsModal`
     (iOS), escapes on the two-finger Z, and moves focus in on open (web: the panel,
     restored on close; native: an accessibility focus event on the title, else the panel). On the web
     it is a named `role="dialog"` with `aria-modal`. A new full-page root that can sit
-    behind a sheet spreads the props too.
+    behind a sheet, or that opens a Dialog, Select or menu of its own, spreads the props too.
   - **Toasts** (`toast.tsx`, `toastDuration`): with a screen reader on
     (`src/lib/screen-reader.ts`), a toast with an action stays until dismissed and a
     plain one stays three times as long; on the web pointer hover and focus pause it.
