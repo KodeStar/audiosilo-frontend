@@ -4036,8 +4036,10 @@ are asked, at most 10,000 rows.
   once when none is kept). The launch restore runs after first paint
   (`afterLaunch`), reads three files at a time, seeds the books before the server answers (so a
   gate it opens finds the data), then backfills downloads that kept none and refreshes copies
-  older than a week (only servers with `metadata`; a failure keeps what the book had). The spoiler
-  gate is unchanged: it still runs on the device.
+  older than a week (only servers with `metadata`; a failure keeps what the book had). A finished
+  Bridge job has its book's copy kept again at once (`refreshKeptMeta` from `refreshAfterFinish`,
+  fe#158). Keeps run one at a time per download (`keepOfflineMeta`), so the answer read last is
+  the one written last. The spoiler gate is unchanged: it still runs on the device.
 
 Content routes are **flat** - `library/[libraryId].tsx` (re-exports
 `src/components/library/browse-screen.tsx`), `book/[libraryId].tsx`, `account.tsx` -

@@ -3182,6 +3182,26 @@ describe('the offline companion (community metadata kept with a download)', () =
     expect(mockCapture).toHaveBeenCalledTimes(2);
   });
 
+  // A forced keep beside one still reading could land first, the older answer written last.
+  it('waits for a keep under way, so the newer answer is the one written last', async () => {
+    const path = nextPath();
+    const old = payload();
+    const fresh = payload(Date.parse('2026-06-01T10:00:00Z'));
+    let landOld: (v: unknown) => void = () => {};
+    mockCapture.mockImplementationOnce(() => new Promise((r) => (landOld = r)));
+    await downloadOne(path); // the download's own keep, its read still out
+    mockCapture.mockResolvedValue(fresh);
+    const refreshed = refreshKeptMeta('c1', 2, path);
+    await settle();
+    expect(mockCapture).toHaveBeenCalledTimes(1); // not read beside it
+    landOld(old);
+    await refreshed;
+    expect(mockWriteMeta.mock.calls.map(([, p]) => p)).toEqual([old, fresh]);
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, path)]?.manifest.meta).toEqual({
+      savedAt: '2026-06-01T10:00:00.000Z',
+    });
+  });
+
   it('a removed book stops keeping its cache entries for good', async () => {
     const path = nextPath();
     mockCapture.mockResolvedValue(payload());

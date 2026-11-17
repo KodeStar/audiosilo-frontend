@@ -1132,9 +1132,28 @@ function stillDownloaded(key: string, entry: DownloadEntry): boolean {
   return now?.status === 'downloaded' && now.manifest.savedAt === entry.manifest.savedAt;
 }
 
+/** The keep under way for each download (`keepOfflineMeta`). */
+const metaKeeps = new Map<string, Promise<void>>();
+
 /** Keep a downloaded book's community metadata beside its files (best effort, once per
- * launch unless `force`): read it, save it, mark the manifest and seed the cache. */
-async function keepOfflineMeta(key: string, { force = false } = {}): Promise<void> {
+ * launch unless `force`): read it, save it, mark the manifest and seed the cache. One at a
+ * time per download: a keep asked for while another is under way (a forced one after a
+ * Bridge job, beside the launch's fill-in or the download's own) starts once that one has
+ * ended, so the answer read last is the one written last. */
+function keepOfflineMeta(key: string, opts: { force?: boolean } = {}): Promise<void> {
+  const before = metaKeeps.get(key);
+  const run = before
+    ? before.then(() => keepOfflineMetaNow(key, opts))
+    : keepOfflineMetaNow(key, opts);
+  const ended = run.catch(() => {});
+  metaKeeps.set(key, ended);
+  void ended.then(() => {
+    if (metaKeeps.get(key) === ended) metaKeeps.delete(key);
+  });
+  return run;
+}
+
+async function keepOfflineMetaNow(key: string, { force = false } = {}): Promise<void> {
   const entry = useDownloads.getState().entries[key];
   if (!entry || entry.status !== 'downloaded' || !engine.writeText) return;
   const attempt = `${key}@${entry.manifest.savedAt}`;
