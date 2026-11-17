@@ -97,3 +97,25 @@ export function popTabToRoot(
   navigationRef.dispatch({ type: 'POP_TO_TOP', target: stack.key });
   return true;
 }
+
+/** How long a press of the active tab waits for a navigation queued just before it. Under
+ * any two taps a person can make, and over the render or two the queue takes to drain. */
+export const QUEUED_NAVIGATION_MS = 100;
+
+/**
+ * A press of the active tab: `popTabToRoot`, also for a page pushed just before it. Since
+ * expo-router 58 `router.*` only queues the move, which lands after React's next render, so
+ * a press in that window read the stack before the push, found its root alone and popped
+ * nothing (fe#252). Then the first state change within `QUEUED_NAVIGATION_MS` (the queued
+ * move landing) pops again; a press with nothing queued meets none and lets go.
+ */
+export function pressActiveTab(tab: string): void {
+  if (popTabToRoot(tab)) return;
+  let unsubscribe = () => {};
+  const timer = setTimeout(() => unsubscribe(), QUEUED_NAVIGATION_MS);
+  unsubscribe = navigationRef.addListener('state', () => {
+    unsubscribe();
+    clearTimeout(timer);
+    popTabToRoot(tab);
+  });
+}

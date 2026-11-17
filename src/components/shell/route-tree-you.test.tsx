@@ -2,7 +2,7 @@ import { renderRouter } from 'expo-router/testing-library';
 
 import { openDownloads, openJournal, openSettings, openYou } from '@/lib/open';
 import { playerHref } from '@/lib/paths';
-import { popTabToRoot } from '@/lib/root-stack';
+import { popTabToRoot, pressActiveTab, QUEUED_NAVIGATION_MS } from '@/lib/root-stack';
 import {
   nav,
   navigationRef,
@@ -63,6 +63,27 @@ it("pops the hub's stack to the root on a second press of its tab, keeping the s
   await nav(() => popTabToRoot('(me)'));
   expect(tabStack('(me)')).toEqual(['you']);
   expect(routeInfo().params).toEqual({ section: 'year' });
+});
+
+// fe#252: a router.* call is queued and lands after the next render, so a press read the
+// stack before a push made just before it and found nothing to pop.
+it('pops a page pushed just before the press of its tab, once it lands', async () => {
+  await mount('/you?section=year');
+  await nav(() => {
+    router.push('/account?connection=c');
+    pressActiveTab('(me)');
+  });
+  expect(tabStack('(me)')).toEqual(['you']);
+  expect(routeInfo().params).toEqual({ section: 'year' });
+});
+
+it('leaves a page pushed well after a press at the root alone', async () => {
+  await mount('/you');
+  await nav(() => pressActiveTab('(me)'));
+  // renderRouter runs on jest's fake timers.
+  await nav(() => jest.advanceTimersByTime(QUEUED_NAVIGATION_MS + 1));
+  await nav(() => router.push('/account?connection=c'));
+  expect(tabStack('(me)')).toEqual(['you', 'account']);
 });
 
 it('opens the hub from over the full player in the one shell underneath', async () => {
