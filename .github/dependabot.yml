@@ -81,6 +81,10 @@ updates:
       # targets (patch-package only warns on a version mismatch), so ignored outright:
       # a bump regenerates the patch by hand (CONVENTIONS.md, Dependency patches).
       - dependency-name: react-native-web
+      # Pinned exactly (4.9.1) to the version patches/react-native-google-cast+<ver>.patch
+      # targets (its Android options provider stops the receiver when a session ends), so
+      # ignored outright for the same reason: a bump regenerates the patch by hand.
+      - dependency-name: react-native-google-cast
       - dependency-name: react-native-worklets
       # @shopify/flash-list is another EXACT SDK pin (2.3.2): 2.3.3 arrived in a
       # minor-and-patch group and failed jest on its ESM build (#212).
