@@ -42,6 +42,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Unused files, exports and dependencies (knip, knip.json), reported for a reviewer to
+      # read: not a gate yet, today's findings are not all cleared (fe#161).
+      - name: Unused code (report only)
+        run: npm run knip -- --no-exit-code
+
       - name: Format
         run: npm run format
 
