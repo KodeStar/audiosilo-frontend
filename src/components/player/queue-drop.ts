@@ -47,10 +47,8 @@ export async function dropFromQueue(
   // A failed read must not keep the book queued (fe#155): the cached queue still knows the
   // stored entries, and with no read at all each book goes by its own path (removes are
   // exact and idempotent, so a book that was never queued costs one quiet request).
-  const known =
-    entries ??
-    queryClient.getQueryData<QueueEntry[]>(qk.queue(connectionId)) ??
-    books.map((b) => ({ library_id: b.library_id, path: b.path, added_at: '' }));
+  const known: readonly BookRef[] =
+    entries ?? queryClient.getQueryData<QueueEntry[]>(qk.queue(connectionId)) ?? books;
   const held = known.filter(
     (e) =>
       books.some((b) => entryHolds(e, b.library_id, b.path)) &&

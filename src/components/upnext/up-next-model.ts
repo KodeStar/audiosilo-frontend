@@ -207,13 +207,14 @@ export function pickSuggestions({
   limit?: number;
 }): Suggestion[] {
   const out: Suggestion[] = [];
-  const seen = new Set(queued.map(entryKey));
+  // The suggestions already picked.
+  const seen = new Set<string>();
   const own = [current, shown].filter((b): b is BookRef => !!b);
-  // A queued part path names its book: compare the way `findQueued` does.
+  // A queued entry holds a part path under it, as `findQueued` compares.
   const taken = (ref: BookRef) =>
     seen.has(entryKey(ref)) ||
     own.some((b) => sameBook(b, ref)) ||
-    queued.some((q) => q.library_id === ref.library_id && ref.path.startsWith(`${q.path}/`));
+    queued.some((q) => entryHolds(q, ref.library_id, ref.path));
 
   if (next?.next && !taken(next.next)) {
     out.push({ kind: 'next', ref: next.next, series: next.book?.series ?? '' });
