@@ -1297,15 +1297,12 @@ async function unrecordFinish(ref: UndoRef): Promise<void> {
     // Sync v2 fields stay the mirror's own (`writeMirror` keeps them): an ack since is newer.
     const stamp = Date.parse(now.updated_at);
     const at = Number.isFinite(stamp) ? new Date(stamp + 1).toISOString() : now.updated_at;
-    const { server_clock: _clock, ...base } =
-      prior && !prior.finished
-        ? { ...prior, ack_version: undefined, answered: undefined }
-        : { ...now, finished: false, position: ref.position };
-    // By the clock of the stamp it took (`localTimeOf`).
+    // By the clock of the stamp it took (`localTimeOf`): `now`'s `server_clock`.
     const back: ProgressSave = {
-      ...base,
+      ...(prior && !prior.finished
+        ? { ...prior, ack_version: undefined, answered: undefined, server_clock: now.server_clock }
+        : { ...now, finished: false, position: ref.position }),
       updated_at: at,
-      ...(now.server_clock ? { server_clock: true as const } : {}),
     };
     await writeMirror(back).catch(() => undefined);
   }

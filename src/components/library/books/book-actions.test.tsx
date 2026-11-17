@@ -139,6 +139,7 @@ async function actions(b: Book, p?: Progress, opened?: boolean) {
 describe('useBookActions', () => {
   beforeEach(() => {
     mockCaps = { ...ALL };
+    mockTakesEvent = false;
     mockQueueSupported = true;
     mockDownloadsSupported = true;
     [
@@ -191,22 +192,21 @@ describe('useBookActions', () => {
     });
   });
 
-  it('stops the loaded book before either route records the finish (fe#258)', async () => {
-    mockSteps.length = 0;
-    mockEdit.mockImplementation(async () => mockSteps.push('edit'));
-    mockMarkFinished.mockImplementation(() => mockSteps.push('mark'));
-    const first = await actions(book(), progress());
-    await act(async () => first.find('finish')!.onPress());
-    mockTakesEvent = true;
-    try {
-      const second = await actions(book(), progress());
-      await act(async () => second.find('finish')!.onPress());
-    } finally {
-      mockTakesEvent = false;
-    }
-    const leave = 'leave Author/Series/01 - Book';
-    expect(mockSteps).toEqual([leave, 'edit', leave, 'mark']);
-  });
+  it.each([
+    [false, 'edit'],
+    [true, 'mark'],
+  ])(
+    'stops the loaded book before the finish is recorded (finish event: %s) (fe#258)',
+    async (takesEvent, route) => {
+      mockSteps.length = 0;
+      mockTakesEvent = takesEvent;
+      mockEdit.mockImplementation(async () => mockSteps.push('edit'));
+      mockMarkFinished.mockImplementation(() => mockSteps.push('mark'));
+      const { find } = await actions(book(), progress());
+      await act(async () => find('finish')!.onPress());
+      expect(mockSteps).toEqual(['leave Author/Series/01 - Book', route]);
+    },
+  );
 
   it('marks finished on an older server through the save at the end, without an Undo', async () => {
     mockCaps = { collections: true, progress_edit: false };

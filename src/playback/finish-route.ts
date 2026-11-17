@@ -36,12 +36,15 @@ export function finishedSave(ref: FinishRef, deviceId: string, at: string): Prog
   };
 }
 
+/** The book a Mark as finished is for. */
+type FinishBook = Pick<FinishRef, 'connectionId' | 'libraryId' | 'path'>;
+
 type FinishRecorder = {
   /** Whether `connectionId`'s server takes the finish as an event. */
   takesEvent: (connectionId: string) => boolean;
   /** The book is being marked finished: when it is the loaded one, it stops and unloads;
    * resolves once its place is saved. */
-  leave: (ref: Pick<FinishRef, 'connectionId' | 'libraryId' | 'path'>) => Promise<void>;
+  leave: (ref: FinishBook) => Promise<void>;
   /** Record the finish as an event; resolves once it waits in the outbox. */
   record: (ref: FinishRef) => Promise<void>;
   /** Take the book's not-yet-sent finish events back (one being sent is waited for). */
@@ -69,9 +72,7 @@ export function finishTakesEvent(connectionId: string): boolean {
 /** A Mark as finished outside the player, before it is recorded by any route: the loaded
  * book stops and unloads when it is this one (fe#258), its span closed ahead of the finish.
  * Resolves once its place is saved, so the finish is recorded after it. */
-export async function leaveFinishedBook(
-  ref: Pick<FinishRef, 'connectionId' | 'libraryId' | 'path'>,
-): Promise<void> {
+export async function leaveFinishedBook(ref: FinishBook): Promise<void> {
   await recorder?.leave(ref);
 }
 

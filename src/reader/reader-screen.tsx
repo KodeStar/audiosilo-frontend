@@ -211,6 +211,12 @@ export function ReaderScreen({
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
   };
+  /** Drop the save waiting for its debounce, if any. */
+  const cancelSave = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    pending.current = null;
+  };
   // The reader follows the narration (`onFollowing`): no place is saved meanwhile (the
   // narration turns the pages; a save would carry another device's reading along with
   // it). Once the listener turns away, where they are is saved, and every move after.
@@ -218,18 +224,14 @@ export function ReaderScreen({
     following.current = value;
     setFollowingShown(value);
     if (value) {
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = null;
-      pending.current = null;
+      cancelSave();
     } else if (atNow.current) {
       scheduleSave(atNow.current);
     }
   };
   const flushSave = useLatest(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
     const next = pending.current;
-    pending.current = null;
+    cancelSave();
     if (!next || next.cfi === lastSaved.current) return;
     lastSaved.current = next.cfi;
     void saveReaderPlace(api, connectionId, libraryId, path, next);
@@ -398,9 +400,7 @@ export function ReaderScreen({
     const adopted = acknowledge();
     const at = atNow.current;
     if (!at || following.current) return;
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-    pending.current = null;
+    cancelSave();
     lastSaved.current = at.cfi;
     void adopted
       .catch(() => undefined)
