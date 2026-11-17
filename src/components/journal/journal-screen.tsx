@@ -61,10 +61,11 @@ export function JournalScreen({ embedded = false }: { embedded?: boolean }) {
   const tab = parseJournalTab(params.tab);
   const [query, setQuery] = useState('');
   const [width, setWidth] = useState(0);
-  // The notes are asked for once the Diary and the bookmarks are in, or at once when the
-  // Notes tab opens first: the Diary shows none of them, so they never hold up its first
-  // lists, and the Notes tab still shows its count up front (PLAYER-10). The export reads
-  // them on its own.
+  // The notes are asked for once a Diary or bookmarks list is in (`overallStatus`: one
+  // server's is enough, or every one failed or can't list them), or at once when the Notes
+  // tab opens first: the Diary shows none of them, so they never hold up its first list,
+  // and the Notes tab still shows its count up front (PLAYER-10). The export reads them on
+  // its own.
   const [notesWanted, setNotesWanted] = useState(tab === 'notes');
   const sources = useJournalSources({ notes: notesWanted });
   if (

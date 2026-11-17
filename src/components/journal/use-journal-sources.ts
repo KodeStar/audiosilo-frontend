@@ -106,7 +106,8 @@ function toSource<T>(
 
 /**
  * `notes` false holds the notes back (the cache is read, nothing is fetched): the Diary
- * shows none of them, so the screen asks only once its Notes tab is opened.
+ * shows none of them, so the screen asks once its first Diary or bookmarks list is in, or at
+ * once on its Notes tab (PLAYER-10).
  */
 export function useJournalSources({ notes: wantNotes = true } = {}): JournalSources {
   const apis = useApis();
