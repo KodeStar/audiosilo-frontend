@@ -232,6 +232,9 @@ class KnownDurationsTest {
     assertEquals(C.TIME_UNSET, k.durationUs("a"))
     k.note("a", 139.42)
     assertEquals(139_420_000L, k.durationUs("a"))
+    k.note("a", 0.0) // the server no longer knows it: the old length is not kept
+    assertEquals(C.TIME_UNSET, k.durationUs("a"))
+    k.note("a", 139.42)
     k.note("c", 1.0)
     k.note("d", 1.0)
     assertEquals(C.TIME_UNSET, k.durationUs("a")) // the oldest gave way

@@ -56,9 +56,11 @@ class KnownDurations(private val capacity: Int = 1024) {
     },
   )
 
-  /** Records [seconds] for [uri]; an unknown length (0, not finite) records nothing. */
+  /** Records [seconds] for [uri]; an unknown length (0, not finite) forgets an earlier one, so
+   * a length the server no longer has never stretches the uri's next item. */
   fun note(uri: String, seconds: Double) {
     if (seconds > 0 && seconds.isFinite()) byUri[uri] = (seconds * 1_000_000).roundToLong()
+    else byUri.remove(uri)
   }
 
   /** The server's length for [uri] in microseconds, else [C.TIME_UNSET]. */
@@ -180,7 +182,11 @@ class Retimer(private val knownUs: Long) {
 class ScaledSeekMap(private val inner: SeekMap, private val scale: Double) : SeekMap {
   override fun isSeekable(): Boolean = inner.isSeekable
 
-  override fun getDurationUs(): Long = (inner.durationUs * scale).roundToLong()
+  /** An unknown length stays unknown: C.TIME_UNSET scaled would read as a huge negative one. */
+  override fun getDurationUs(): Long {
+    val us = inner.durationUs
+    return if (us == C.TIME_UNSET) us else (us * scale).roundToLong()
+  }
 
   override fun getSeekPoints(timeUs: Long): SeekMap.SeekPoints {
     val points = inner.getSeekPoints((timeUs / scale).roundToLong())
