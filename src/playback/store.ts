@@ -2812,8 +2812,9 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       askEngineTo(nowPlaying, index, positionInTrack);
       // Called off already (a car play its native side gave up on while its place was looked
       // up): the engine is set not to play before the load, so the book is never heard for a
-      // moment. One called off during the load is paused after it (below).
-      if (wanted && !wanted()) await svc.pause();
+      // moment. One called off during the load is paused after it (below). A failed pause
+      // never skips the load: its `finally` is what releases `loadingBook`.
+      if (wanted && !wanted()) await svc.pause().catch(() => undefined);
       try {
         await svc.load(
           queue.tracks,
