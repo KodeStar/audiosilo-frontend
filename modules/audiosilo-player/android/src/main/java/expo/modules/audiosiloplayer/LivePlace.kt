@@ -53,14 +53,17 @@ fun CarSnapshot.resumable(live: LivePlace?): CarItem? {
   return resumable()
 }
 
-/** The live place on disk, in the player's prefs ([AudiosiloPlayerService.PREFS]). */
+/** The live place on disk, in a prefs file of its own: it is rewritten every
+ * [LivePlaceRecorder.INTERVAL_MS] while a book plays, and the player's shared prefs
+ * ([AudiosiloPlayerService.PREFS], with the pending bookmarks) would be rewritten whole each time. */
 object LivePlaceStore {
-  private const val KEY_CONNECTION = "live.connectionId"
-  private const val KEY_LIBRARY = "live.libraryId"
-  private const val KEY_PATH = "live.path"
-  private const val KEY_FILE_PATH = "live.relPath"
-  private const val KEY_FILE_INDEX = "live.fileIndex"
-  private const val KEY_POSITION_MS = "live.positionMs"
+  private const val PREFS = "audiosilo.liveplace"
+  private const val KEY_CONNECTION = "connectionId"
+  private const val KEY_LIBRARY = "libraryId"
+  private const val KEY_PATH = "path"
+  private const val KEY_FILE_PATH = "relPath"
+  private const val KEY_FILE_INDEX = "fileIndex"
+  private const val KEY_POSITION_MS = "positionMs"
 
   fun get(context: Context): LivePlace? {
     val prefs = prefs(context)
@@ -87,18 +90,11 @@ object LivePlaceStore {
   }
 
   fun clear(context: Context) {
-    prefs(context).edit()
-      .remove(KEY_CONNECTION)
-      .remove(KEY_LIBRARY)
-      .remove(KEY_PATH)
-      .remove(KEY_FILE_PATH)
-      .remove(KEY_FILE_INDEX)
-      .remove(KEY_POSITION_MS)
-      .apply()
+    prefs(context).edit().clear().apply()
   }
 
   private fun prefs(context: Context) =
-    context.getSharedPreferences(AudiosiloPlayerService.PREFS, Context.MODE_PRIVATE)
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }
 
 /**

@@ -2658,7 +2658,7 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   play `playFromCar` leaves pending is watched, so a car play that superseded the resumption
   and then failed, by its timeout or a load that left nothing loaded, ends it too, fe#252).
   **The engine's live place** (`LivePlace.kt`, FE-13): the service keeps where the engine is
-  (the book, the file by path and index, the seconds in it) in the player's prefs, every 10 s
+  (the book, the file by path and index, the seconds in it) in a prefs file of its own (`audiosilo.liveplace`), every 10 s
   while it plays and at once on a play, a pause and a seek (`LivePlaceRecorder`); the end of
   the book, an emptied player (JS's `reset`: a stop, a finish) and the app's own `load` drop
   it. A resumption (`CarSnapshot.resumable(live)`, read by `ResumptionReceiver`,
