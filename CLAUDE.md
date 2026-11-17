@@ -115,13 +115,15 @@ npm run format              # prettier --check . (CI-gated; fails on unformatted
 npx prettier --write .      # auto-fix formatting locally before committing
 npx expo export -p web      # bundle smoke test (run after meaningful changes)
 npm run gen:tokens          # regenerate colour tokens after editing src/theme/tokens.json
+npm run wire:sync           # copy the server's wire goldens into src/api/__wire__ (then the parity test checks types.ts)
+npm run wire:check          # the copy still matches the server commit it pins (CI-gated; -- --server <dir> reads a checkout, not GitHub)
 ```
 
 **Before a change is done, run `npx tsc --noEmit && npm run lint && npm run format && npm test`**
 (after a dependency change also `npx expo install --check && node scripts/check-native-dupes.mjs`)
 - CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) gates all of them (the Expo SDK
 pins, one copy of each native module, typecheck, lint, **prettier `--check`** via the `format`
-script, test) on every PR/push.
+script, `wire:check`, test) on every PR/push.
 `.nvmrc` pins Node `24.16.0`,
 which CI reads via `node-version-file`; keep the lockfile committed in sync (regenerate
 with `npm install` after changing deps).
@@ -152,6 +154,7 @@ keep this index in step (one line per topic).
 
 - **Architecture & conventions**
   - Server display names
+  - Wire parity (the server's goldens)
   - `AUTH_STORAGE_VERSION`
   - `CACHE_STORAGE_VERSION`
   - Startup cache (web)

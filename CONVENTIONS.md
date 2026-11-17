@@ -15,6 +15,22 @@ payload's fresh `server_name`, which after a rename on the server would disagree
 (fe#233). A label change on an already paired watch takes Send again; no token is
 minted silently just to refresh a label.
 
+**Wire parity (the server's goldens)** (`src/api/wire-parity.test.ts`, `src/api/__wire__/`,
+`scripts/wire-sync.mjs`; audiosilo#96, server#347): the server records the shape of each important
+player envelope (each field's JSON type, never a value) in `internal/api/testdata/wire/`, and this
+repo keeps a byte copy in `src/api/__wire__/`, pinned to a server commit by `source.json`. The parity
+test reads each golden and checks it against its type in `types.ts` with the TypeScript compiler
+(`ENVELOPES` names the type, as `client.ts` reads the answer): a field the type requires that the
+server does not send, a field sent with a JSON type the type does not allow (`null` included), and a
+field the server sends that the type does not know all fail. A field the player leaves out on purpose
+goes in `UNMIRRORED` with why; an entry that no longer applies fails too. The copy is committed, not
+fetched, so the test runs offline and the same everywhere: `npm run wire:sync` copies the goldens at
+the server checkout's `origin/main` (`-- --server <dir> --ref <rev>` for another) and re-pins, and
+`npm run wire:check` (CI) fails when the copy differs from the pinned commit's goldens on GitHub
+(one request: it compares git blob ids; `-- --server <dir>` reads a checkout instead). A
+wire change: the server's goldens first (`-update`), then `wire:sync`, then `types.ts`. A new
+golden on the server fails `maps every golden to a type` until it has an `ENVELOPES` entry.
+
 **Path is identity, scoped by connection.** All content is addressed by
 `(library_id, rel_path)`, never a DB id, and every content call passes
 `?path=<rel_path>`. But the app is **multi-connection** (signed in to several
