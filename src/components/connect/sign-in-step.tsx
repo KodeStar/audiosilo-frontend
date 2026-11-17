@@ -52,7 +52,7 @@ export function emptyField(
  * never kept, and a kept one refused so is dropped and the code redeemed.
  * `onStage` hears which request is on its way (`signInErrorText`'s words).
  */
-export async function signInWithCode(
+async function signInWithCode(
   client: Pick<ApiClient, 'redeemCode' | 'exchange'>,
   code: string,
   kept: PairingPayload | null,

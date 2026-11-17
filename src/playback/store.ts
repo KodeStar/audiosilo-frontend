@@ -1109,9 +1109,9 @@ function keepOpenSpan() {
   if (!np || !sameBook(kept, np)) return;
   const here = engineEnd();
   // Never back: a native lock-screen move's landed place could reach the store before the
-  // move (`onRemoteMove`), which ends the span at its last place, `span.to`; the native
-  // service now holds such a tick back for the move (fe#211), and this stays for a binary or
-  // route that does not.
+  // move (`onRemoteMove`), which ends the span at its last place, `span.to`. The native
+  // service holds a tick that jumped for its move (fe#211); this stays for what that misses
+  // (a jump under its thresholds, a move told after the hold).
   if (here && here.pos >= kept.to.pos - 1) kept.to = here;
   kept.endedAt = new Date().toISOString();
   void storeOpenSpan({ ...kept }).then((stored) => {
@@ -2368,8 +2368,8 @@ async function createService(): Promise<PlaybackService> {
   svc.onRemoteSeek?.((positionInTrack) => void usePlayer.getState().seekInTrack(positionInTrack));
   // Native: the engine already moved for the lock screen, a headset or the car (its
   // snapshot holds the landed place once this returns: `service.native.ts`). That is the
-  // listener's own move: it lowers the floor (a scrub back past the slip tolerance would otherwise never save) and counts
-  // for the place reconcile, which then stands back.
+  // listener's own move: it lowers the floor (a scrub back past the slip tolerance would
+  // otherwise never save) and counts for the place reconcile, which then stands back.
   svc.onRemoteMove?.((trackIndex, positionInTrack) => {
     const { nowPlaying: np, loadingBook } = usePlayer.getState();
     // A move reported while a book loads is the PREVIOUS queue's (a native move reported a
