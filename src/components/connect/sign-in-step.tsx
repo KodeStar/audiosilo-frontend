@@ -3,7 +3,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
+import { type ApiClient, isRefusedForGood } from '@/api/client';
 import { connectClient, connectClientFor } from '@/api/connect-client';
+import type { AuthSession, PairingPayload } from '@/api/types';
 import { AddressesCard } from '@/components/layout/addresses-card';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -39,6 +41,42 @@ export function emptyField(
   if (mode === 'code') return v.code.trim() ? null : 'code';
   if (!v.username.trim()) return 'username';
   return v.password ? null : 'password';
+}
+
+/**
+ * Sign in with an invite code: redeem it, then exchange its pairing token. A redeem can spend
+ * one of the invite's uses, so a token whose exchange got no answer (the network, a 5xx) is
+ * handed to `keep`, and the next try of the same code exchanges `kept` instead of redeeming
+ * again (fe#159: a second redeem spent another use, and refused a single-use invite as used).
+ * A token the server refuses for good (`isRefusedForGood`: spent, or expired meanwhile) is
+ * never kept, and a kept one refused so is dropped and the code redeemed.
+ * `onStage` hears which request is on its way (`signInErrorText`'s words).
+ */
+async function signInWithCode(
+  client: Pick<ApiClient, 'redeemCode' | 'exchange'>,
+  code: string,
+  kept: PairingPayload | null,
+  keep: (payload: PairingPayload) => void,
+  onStage: (stage: SignInStage) => void,
+): Promise<{ payload: PairingPayload; session: AuthSession }> {
+  const exchange = async (payload: PairingPayload) => {
+    onStage('exchange');
+    try {
+      return { payload, session: await client.exchange(payload.pairing_token, getDeviceName()) };
+    } catch (e) {
+      if (!isRefusedForGood(e)) keep(payload);
+      throw e;
+    }
+  };
+  if (kept) {
+    try {
+      return await exchange(kept);
+    } catch (e) {
+      if (!isRefusedForGood(e)) throw e;
+    }
+  }
+  onStage('redeem');
+  return exchange(await client.redeemCode(code));
 }
 
 /**
@@ -131,6 +169,9 @@ export function SignInStep({
   // must not redeem the code a second time while one is on its way, which could spend
   // another of the invite's uses.
   const submitting = useRef(false);
+  // The code redeemed last whose exchange got no answer, the server it was redeemed at, and
+  // its pairing token (`signInWithCode`).
+  const redeemed = useRef<{ server: string; code: string; payload: PairingPayload } | null>(null);
   const onSubmit = async () => {
     if (submitting.current) return;
     setError(null);
@@ -147,9 +188,17 @@ export function SignInStep({
     const { client, proxy: carried } = connectClientFor(server, undefined, reconnectId);
     try {
       if (mode === 'code') {
-        const payload = await client.redeemCode(code.trim());
-        stage = 'exchange';
-        const session = await client.exchange(payload.pairing_token, getDeviceName());
+        const typed = code.trim();
+        const last = redeemed.current;
+        const kept = last?.server === server && last.code === typed ? last.payload : null;
+        redeemed.current = null;
+        const { payload, session } = await signInWithCode(
+          client,
+          typed,
+          kept,
+          (p) => (redeemed.current = { server, code: typed, payload: p }),
+          (next) => (stage = next),
+        );
         await finishConnect({
           serverUrl: server,
           session,

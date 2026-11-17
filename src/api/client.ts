@@ -131,6 +131,18 @@ export class ApiError extends Error {
   }
 }
 
+/** Whether `e` is a 4xx the same request can never get past: not a 408 or a 429 (the
+ * server's rate limit), which say "not now". */
+export function isRefusedForGood(e: unknown): e is ApiError {
+  return (
+    e instanceof ApiError &&
+    e.status >= 400 &&
+    e.status < 500 &&
+    e.status !== 408 &&
+    e.status !== 429
+  );
+}
+
 /** Whether `e` is the server refusing the session token (a 401): the connection needs
  * signing in again, not another try (frontend#124). */
 export function isSignedOutError(e: unknown): boolean {

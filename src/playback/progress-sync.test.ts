@@ -182,6 +182,27 @@ describe('progress-sync', () => {
     expect(await readQueue()).toHaveLength(0);
   });
 
+  // A 408 or a 429 (the server's rate limit) says "not now": the save was dropped, so the
+  // place a listener paused at never reached the server.
+  it.each([408, 429])(
+    'queues a save answered %i, and keeps it through a replay',
+    async (status) => {
+      const limited = fakeApi(() => Promise.reject(new ApiError(status, 'not now')));
+      await expect(saveProgress(limited, save)).resolves.toBe('queued');
+      expect(await readQueue()).toHaveLength(1);
+
+      routeClients({ c1: limited });
+      await flushQueue();
+      expect(await readQueue()).toHaveLength(1);
+
+      const ok = fakeApi(() => Promise.resolve());
+      routeClients({ c1: ok });
+      await flushQueue();
+      expect(ok.saveProgress).toHaveBeenCalledTimes(1);
+      expect(await readQueue()).toHaveLength(0);
+    },
+  );
+
   it('enqueues on a connection error, then replays it on the next flush', async () => {
     const failing = fakeApi(() => Promise.reject(new Error('network down')));
     await saveProgress(failing, save);

@@ -313,6 +313,40 @@ describe('CastPlaybackService', () => {
     expect(seenAtMove).toMatchObject({ trackIndex: 0, position: 20 });
   });
 
+  // fe#211: told after its landed place, the store's save, cut or keep could end the
+  // listening span at the landed place first, and the move then read as one to nowhere.
+  it('tells the store of a move before its listeners take the landed place', async () => {
+    const t = setup();
+    await t.svc.load(TRACKS, 0, 100, [], BOOK);
+    t.tick(10_000);
+    t.status({ playerState: 'playing', contentId: t.url(0), position: 100 });
+    t.tick(1_000);
+    const from = t.snaps.length;
+    const heard = () => t.snaps.slice(from).map((s) => [s.trackIndex, s.position]);
+    let heardWhenMoved: number[][] | null = null;
+    t.svc.onRemoteMove(() => {
+      heardWhenMoved = heard();
+    });
+    t.status({ playerState: 'playing', contentId: t.url(1), position: 42 }); // the next chapter
+    expect(heardWhenMoved).toEqual([]);
+    expect(heard()).toEqual([[1, 42]]);
+  });
+
+  it('gives its listeners the landed place even when the move’s handler throws', async () => {
+    const t = setup();
+    await t.svc.load(TRACKS, 0, 100, [], BOOK);
+    t.tick(10_000);
+    t.status({ playerState: 'playing', contentId: t.url(0), position: 100 });
+    t.tick(1_000);
+    t.svc.onRemoteMove(() => {
+      throw new Error('handler failed');
+    });
+    expect(() => t.status({ playerState: 'playing', contentId: t.url(0), position: 20 })).toThrow(
+      'handler failed',
+    );
+    expect(t.snaps.at(-1)).toMatchObject({ trackIndex: 0, position: 20 });
+  });
+
   it('does not report its own seeks, natural play or running on into the next file', async () => {
     const t = setup();
     await t.svc.load(TRACKS, 0, 100, [], BOOK);

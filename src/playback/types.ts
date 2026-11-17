@@ -245,11 +245,14 @@ export interface PlaybackService {
    * Native: the engine ALREADY moved because of something outside the JS API (the lock
    * screen or notification scrubber, its skip and chapter buttons, a headset, CarPlay,
    * Android Auto and their chapter lists), and landed at `(trackIndex, positionInTrack)`.
-   * The engine updates its snapshot BEFORE calling `handler`, so a save inside it saves the
-   * new place. The store treats it as the listener's own move (it lowers the resume
-   * floor). Not called for moves the JS asked for, auto-rewind, Smart speed's skips, or a
-   * file running on into the next. Optional: the web routes its OS seeks through
-   * `onRemoteSeek` instead (its engine has not moved yet when the OS asks).
+   * The landed place reaches the snapshot's listeners right AFTER `handler`, on the native
+   * engine and the Cast route alike (fe#211: the handler ends the listening span where the
+   * engine was, before any save, cut or keep sees the landed place), so a save for the move
+   * waits a microtask, never runs inside `handler`. The store treats it as
+   * the listener's own move (it lowers the resume floor). Not called for moves the JS asked
+   * for, auto-rewind, Smart speed's skips, or a file running on into the next. Optional: the
+   * web routes its OS seeks through `onRemoteSeek` instead (its engine has not moved yet when
+   * the OS asks).
    */
   onRemoteMove?(handler: ((trackIndex: number, positionInTrack: number) => void) | null): void;
   /** Native: the OS changed the speed (CarPlay's rate button, iOS's rate command, an
@@ -261,6 +264,13 @@ export interface PlaybackService {
    * engine's progress ticks. Not playback state, so not in the snapshot. Optional, and never
    * called by a binary that predates Smart speed, nor on iOS (no Smart speed there). */
   onSilenceSaved?(handler: ((totalSeconds: number) => void) | null): void;
+  /**
+   * Native: a place the engine held back for its move (`service.native.ts`, fe#211) reached
+   * the snapshot with no move told, after playing stopped (a pause or the book's end inside
+   * the wait). The save made as playing stopped has the place before it, so the store saves
+   * again. Optional.
+   */
+  onLanded?(handler: (() => void) | null): void;
   /**
    * For the store's `adoptLoaded`: where an engine this bridge did NOT load is now (a
    * queue the Android playback service loaded itself, for the car or before the app's JS

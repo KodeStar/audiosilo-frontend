@@ -1,5 +1,3 @@
-import type { PlaybackSnapshot } from './types';
-
 // The native module, faked: its events are captured by name so a test can send them, and
 // `getLoadedBook` is present or absent to stand for a Phase 6 binary or an older one.
 type Handler = (event: Record<string, unknown>) => void;
@@ -28,6 +26,8 @@ jest.mock('../../modules/audiosilo-player', () => ({
 }));
 
 /* eslint-disable import/first */
+import { Platform } from 'react-native';
+
 import { createPlaybackService } from './service.native';
 /* eslint-enable import/first */
 
@@ -46,16 +46,23 @@ async function setUp(phase6 = true) {
 }
 
 describe('the native engine, Phase 6 events', () => {
-  it('takes a remote move into its snapshot BEFORE telling the store', async () => {
+  // fe#211: told after its landed place, the store's save, cut or keep could end the
+  // listening span at the landed place first, and the move then read as one to nowhere.
+  it('tells the store of a remote move before its listeners take the landed place', async () => {
     const svc = await setUp();
-    let seen: PlaybackSnapshot | null = null;
+    const heard: number[] = [];
+    svc.subscribe((s) => heard.push(s.position));
+    let heardWhenMoved: number[] = [];
     const handler = jest.fn(() => {
-      seen = svc.getSnapshot();
+      heardWhenMoved = [...heard];
     });
     svc.onRemoteMove!(handler);
+    send('onProgress', { position: 10, duration: 100 });
     send('onRemoteMove', { trackIndex: 1, position: 42 });
     expect(handler).toHaveBeenCalledWith(1, 42);
-    expect(seen).toMatchObject({ trackIndex: 1, position: 42 });
+    expect(heardWhenMoved).toEqual([10]);
+    expect(heard).toEqual([10, 42]);
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 42 });
   });
 
   it('passes the OS speed on, in the snapshot too', async () => {
@@ -103,5 +110,292 @@ describe("the native engine's load", () => {
     };
     await svc.configure(config);
     expect(mockModule.setConfig).toHaveBeenCalledWith(config);
+  });
+});
+
+// fe#211: a lock-screen, headset or car move lands in a progress tick before its onRemoteMove
+// (iOS sends both together, Android the move up to 300 ms later).
+describe('a progress tick that jumped while playing', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  /** Playing file 0 (100 s long): ticks at `from` and a second on. */
+  async function playing(from = 10) {
+    const svc = await setUp();
+    const heard: number[] = [];
+    svc.subscribe((s) => heard.push(s.position));
+    send('onState', { state: 'playing' });
+    send('onProgress', { position: from, duration: 100 });
+    jest.advanceTimersByTime(1_000);
+    send('onProgress', { position: from + 1, duration: 100 });
+    return { svc, heard: () => heard.slice(2) };
+  }
+
+  /** `playing`, its listeners heard from then on as [file, place]. */
+  async function heardPlaces(from?: number) {
+    const { svc } = await playing(from);
+    const places: [number, number][] = [];
+    svc.subscribe((s) => places.push([s.trackIndex, s.position]));
+    return { svc, places };
+  }
+
+  /** Playing up to file 0's end: its last tick at 99.8, then 300 ms on. */
+  async function nearTheEnd() {
+    const heard = await heardPlaces(98.8);
+    jest.advanceTimersByTime(300);
+    return heard;
+  }
+
+  it('waits for its move, which the store hears before the landed place', async () => {
+    const { svc, heard } = await playing();
+    let heardWhenMoved: number[] = [];
+    svc.onRemoteMove!(() => {
+      heardWhenMoved = heard();
+    });
+    jest.advanceTimersByTime(200);
+    send('onProgress', { position: 70, duration: 100 }); // a 60 s skip landed
+    expect(heard()).toEqual([11]);
+    expect(svc.getSnapshot().position).toBe(11);
+    jest.advanceTimersByTime(300);
+    send('onRemoteMove', { trackIndex: 0, position: 70 });
+    expect(heardWhenMoved).toEqual([11]);
+    expect(heard()).toEqual([11, 70]);
+    // Its wait is over: nothing more comes of the held tick.
+    jest.advanceTimersByTime(1_000);
+    expect(heard()).toEqual([11, 70]);
+  });
+
+  it('holds a move back too', async () => {
+    const { heard } = await playing();
+    jest.advanceTimersByTime(1_000);
+    send('onProgress', { position: 2, duration: 100 });
+    expect(heard()).toEqual([11]);
+    send('onRemoteMove', { trackIndex: 0, position: 2 });
+    expect(heard()).toEqual([11, 2]);
+  });
+
+  // A move into another file lands in a tick with that file's length, held for the move.
+  it('keeps the held tick’s length for the move that replaces it', async () => {
+    const { svc } = await playing();
+    send('onProgress', { position: 3, duration: 250 });
+    expect(svc.getSnapshot()).toMatchObject({ position: 11, duration: 100 });
+    send('onRemoteMove', { trackIndex: 1, position: 3 });
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 3, duration: 250 });
+  });
+
+  it('gives its listeners the landed place even when the move’s handler throws', async () => {
+    const { svc, heard } = await playing();
+    svc.onRemoteMove!(() => {
+      throw new Error('handler failed');
+    });
+    expect(() => send('onRemoteMove', { trackIndex: 0, position: 70 })).toThrow('handler failed');
+    expect(heard()).toEqual([11, 70]);
+  });
+
+  it('takes a move the engine made by itself once the wait is over, the newest tick', async () => {
+    const { heard } = await playing();
+    send('onProgress', { position: 70, duration: 100 });
+    jest.advanceTimersByTime(250);
+    send('onProgress', { position: 70.25, duration: 100 });
+    expect(heard()).toEqual([11]);
+    jest.advanceTimersByTime(350);
+    expect(heard()).toEqual([11, 70.25]);
+    // Playing on from there is taken at once.
+    jest.advanceTimersByTime(1_000);
+    send('onProgress', { position: 71.3, duration: 100 });
+    expect(heard()).toEqual([11, 70.25, 71.3]);
+  });
+
+  // A pause inside the wait: the tick stays held (taken as playing stops, its place would end
+  // the span there), so the store's save at the pause has the place before the jump.
+  it('tells a held tick no move replaced, taken after playing stopped', async () => {
+    const { svc, heard } = await playing();
+    const landed = jest.fn(() => expect(svc.getSnapshot().position).toBe(70));
+    svc.onLanded!(landed);
+    send('onProgress', { position: 70, duration: 100 });
+    jest.advanceTimersByTime(200);
+    send('onState', { state: 'paused' });
+    expect(svc.getSnapshot()).toMatchObject({ state: 'paused', position: 11 });
+    expect(landed).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(400);
+    expect(heard()).toEqual([11, 11, 70]);
+    expect(landed).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells nothing of a held tick taken while playing, nor of one its move replaced', async () => {
+    const { svc } = await playing();
+    const landed = jest.fn();
+    svc.onLanded!(landed);
+    send('onProgress', { position: 70, duration: 100 });
+    jest.advanceTimersByTime(600);
+    expect(svc.getSnapshot().position).toBe(70);
+    jest.advanceTimersByTime(1_000);
+    send('onProgress', { position: 20, duration: 100 });
+    send('onState', { state: 'paused' });
+    send('onRemoteMove', { trackIndex: 0, position: 20 });
+    jest.advanceTimersByTime(1_000);
+    expect(svc.getSnapshot()).toMatchObject({ state: 'paused', position: 20 });
+    expect(landed).not.toHaveBeenCalled();
+  });
+
+  it('ends a hold whose timer never fired at the next tick (Android pauses JS timers)', async () => {
+    const { heard } = await playing();
+    send('onProgress', { position: 70, duration: 100 });
+    expect(heard()).toEqual([11]);
+    // The clock moves on, but no timer runs.
+    jest.setSystemTime(Date.now() + 1_000);
+    send('onProgress', { position: 71, duration: 100 });
+    expect(heard()).toEqual([11, 70, 71]);
+  });
+
+  it('takes ticks that play on at the speed at once', async () => {
+    const { svc, heard } = await playing();
+    (mockModule as Record<string, unknown>).setRate = jest.fn(async () => {});
+    await svc.setRate(3);
+    jest.advanceTimersByTime(2_000);
+    send('onProgress', { position: 17, duration: 100 }); // 6 s in 2 s at 3x
+    expect(heard().at(-1)).toBe(17);
+  });
+
+  it('never holds the first tick of a play (a resume’s auto-rewind)', async () => {
+    const { heard } = await playing();
+    send('onState', { state: 'paused' });
+    jest.advanceTimersByTime(60_000);
+    send('onState', { state: 'playing' });
+    send('onProgress', { position: 1, duration: 100 });
+    expect(heard().at(-1)).toBe(1);
+  });
+
+  it('drops a held tick for a place the store set (its own seek)', async () => {
+    const { svc, heard } = await playing();
+    (mockModule as Record<string, unknown>).seekTo = jest.fn(async () => {});
+    send('onProgress', { position: 40, duration: 100 });
+    await svc.seekTo(40.5);
+    jest.advanceTimersByTime(1_000);
+    expect(heard()).toEqual([11, 40.5]);
+  });
+
+  it('takes the tick after its own seek at once, never held for a jump', async () => {
+    const { svc, heard } = await playing();
+    (mockModule as Record<string, unknown>).seekTo = jest.fn(async () => {});
+    await svc.seekTo(80);
+    send('onProgress', { position: 80.2, duration: 100 });
+    expect(heard()).toEqual([11, 80, 80.2]);
+  });
+
+  it('takes a held tick before the file changes (iOS: the change comes first)', async () => {
+    const { svc, heard } = await playing();
+    send('onProgress', { position: 70, duration: 100 });
+    send('onTrackChange', { index: 1 });
+    expect(heard()).toEqual([11, 70, 0]);
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 0 });
+  });
+
+  it('starts the new file at 0 on iOS, where its first tick comes after the change', async () => {
+    const { svc, places } = await nearTheEnd();
+    send('onTrackChange', { index: 1 });
+    send('onState', { state: 'paused' }); // before the new file's first tick
+    expect(places).toEqual([
+      [1, 0],
+      [1, 0],
+    ]);
+    jest.advanceTimersByTime(600);
+    send('onProgress', { position: 0.3, duration: 200 });
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 0.3, duration: 200 });
+  });
+
+  it('keeps the place on iOS when a rebuild tells the file it is already in', async () => {
+    const { places } = await heardPlaces();
+    send('onTrackChange', { index: 0 });
+    expect(places).toEqual([[0, 11]]);
+  });
+
+  describe('on Android, where the new file’s tick comes before its change', () => {
+    beforeEach(() => {
+      Platform.OS = 'android';
+    });
+    afterEach(() => {
+      Platform.OS = 'ios';
+    });
+
+    /** The new file's tick, then its change: a move into file 1, its report still to come. */
+    function moveIntoFile1(position: number) {
+      send('onProgress', { position, duration: 250 });
+      send('onTrackChange', { index: 1 });
+    }
+    /** File 1's first tick (held, a jump back), then its change: a run-on from `nearTheEnd`. */
+    function runOnIntoFile1() {
+      send('onProgress', { position: 0.05, duration: 200 });
+      send('onTrackChange', { index: 1 });
+    }
+
+    it('tells the held tick under the new file, with its move', async () => {
+      const { svc, places } = await heardPlaces();
+      let heardWhenMoved: [number, number][] | null = null;
+      svc.onRemoteMove!(() => {
+        heardWhenMoved = [...places];
+      });
+      moveIntoFile1(3);
+      expect(places).toEqual([]);
+      send('onRemoteMove', { trackIndex: 1, position: 3 });
+      expect(heardWhenMoved).toEqual([]);
+      expect(places).toEqual([[1, 3]]);
+      expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 3, duration: 250 });
+    });
+
+    it('tells the held tick under the new file once the wait is over', async () => {
+      const { places } = await heardPlaces();
+      moveIntoFile1(0.2);
+      jest.advanceTimersByTime(600);
+      expect(places).toEqual([[1, 0.2]]);
+    });
+
+    it('keeps the place before a move with its own file when playing stops first', async () => {
+      const { svc, places } = await heardPlaces();
+      const landed = jest.fn();
+      svc.onLanded!(landed);
+      moveIntoFile1(3);
+      send('onState', { state: 'paused' });
+      expect(places).toEqual([[0, 11]]);
+      jest.advanceTimersByTime(600);
+      expect(places).toEqual([
+        [0, 11],
+        [1, 3],
+      ]);
+      expect(landed).toHaveBeenCalledTimes(1);
+    });
+
+    it('seeks in the snapshot’s file, back from the one a held move went to', async () => {
+      const { svc, places } = await heardPlaces();
+      const seekTo = jest.fn(async () => {});
+      const skipToTrack = jest.fn(async () => {});
+      Object.assign(mockModule, { seekTo, skipToTrack });
+      moveIntoFile1(3);
+      await svc.seekTo(40);
+      expect(seekTo).not.toHaveBeenCalled();
+      expect(skipToTrack).toHaveBeenCalledWith(0, 40);
+      expect(places).toEqual([[0, 40]]);
+      jest.advanceTimersByTime(600);
+      expect(places).toEqual([[0, 40]]);
+    });
+
+    it('tells a run-on into the next file at once, its place the new file’s', async () => {
+      const { svc, places } = await nearTheEnd();
+      runOnIntoFile1();
+      expect(places).toEqual([[1, 0.05]]);
+      expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 0.05, duration: 200 });
+    });
+
+    it('saves a pause right after a run-on in the new file, never at the old one’s end', async () => {
+      const { svc, places } = await nearTheEnd();
+      runOnIntoFile1();
+      send('onState', { state: 'paused' }); // within the hold's 600 ms
+      jest.advanceTimersByTime(600);
+      expect(places).toEqual([
+        [1, 0.05],
+        [1, 0.05],
+      ]);
+      expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 0.05 });
+    });
   });
 });

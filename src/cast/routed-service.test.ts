@@ -25,6 +25,7 @@ type Fake = PlaybackService & {
   calls: string[];
   emit(patch: Partial<PlaybackSnapshot>): void;
   move?: (t: number, p: number) => void;
+  landed?: () => void;
 };
 
 /** An engine that records what it is asked and emits what a test tells it to. */
@@ -76,6 +77,9 @@ function fakeEngine(name: string, extra: Partial<PlaybackService> = {}): Fake {
       engine.move = h ?? undefined;
     },
     onRateChange() {},
+    onLanded(h) {
+      engine.landed = h ?? undefined;
+    },
     getSnapshot: () => snap,
     subscribe(l) {
       listeners.add(l);
@@ -196,6 +200,18 @@ describe('RoutedPlaybackService', () => {
     expect(t.seen.at(-1)?.position).toBe(11);
     cast.move?.(0, 40);
     expect(t.moves).toEqual([[0, 40]]);
+  });
+
+  it('passes on a place the phone engine landed at late, never while casting', async () => {
+    const t = setup();
+    const landed = jest.fn();
+    t.router.onLanded(landed);
+    await playingLocally(t);
+    t.local.landed?.();
+    expect(landed).toHaveBeenCalledTimes(1);
+    await t.router.beginCast(fakeCast() as unknown as CastPlaybackService);
+    t.local.landed?.();
+    expect(landed).toHaveBeenCalledTimes(1);
   });
 
   it('loads a new book on the receiver while casting', async () => {

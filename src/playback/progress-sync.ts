@@ -1,4 +1,4 @@
-import { ApiError, type ApiClient } from '@/api/client';
+import { ApiError, type ApiClient, isRefusedForGood } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { Progress } from '@/api/types';
@@ -842,10 +842,6 @@ export async function readMirror(
   return map[contentKey(connectionId, libraryId, path)] ?? null;
 }
 
-function isUnrecoverable(e: unknown): boolean {
-  return e instanceof ApiError && e.status >= 400 && e.status < 500;
-}
-
 // --- The replay guard (fe#198) ----------------------------------------------------------
 //
 // The legacy PUT is last-write-wins by `updated_at`, so a save from a session that began at
@@ -938,7 +934,7 @@ function notePut(save: ProgressSave): void {
 }
 
 /** What became of a save: PUT (`saved`), kept for a later replay (`queued`), held back by
- * the replay guard (`held`), or refused for good (`dropped`, a 4xx). */
+ * the replay guard (`held`), or refused for good (`dropped`, a 4xx but a 408 or a 429). */
 export type SaveOutcome = 'saved' | 'queued' | 'held' | 'dropped';
 
 /** Save progress now; if the network fails, queue it for later replay. version
@@ -968,7 +964,9 @@ export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<
     void flushQueue();
     return 'saved';
   } catch (e) {
-    if (isUnrecoverable(e)) return 'dropped'; // auth/forbidden - don't retry forever
+    // Auth/forbidden: don't retry forever. A 408 or a 429 (the rate limit) says "not now":
+    // queued like a failed request.
+    if (isRefusedForGood(e)) return 'dropped';
     // No answer only asks for a check of the server (`noteFailure`): one slow save never
     // marks a healthy server down; the check does when it gets no answer either.
     noteFailure(save.connectionId, e);
@@ -1039,7 +1037,7 @@ async function flushGroup(
       }
       noteSuccess(cid);
     } catch (e) {
-      if (isUnrecoverable(e)) continue; // 4xx: drop, can't ever succeed
+      if (isRefusedForGood(e)) continue; // 4xx: drop, can't ever succeed (not a 408 or a 429)
       noteFailure(cid, e); // only a check marks the server down
       remaining.push(save); // keep it to retry next time
       // An `ApiError` means the server ANSWERED (even a 500), so the failure is specific

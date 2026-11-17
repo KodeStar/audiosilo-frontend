@@ -2,9 +2,9 @@ import { render } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-/** Tests only: render a connect screen inside a safe area (the frame reads the insets). */
-export function renderConnect(ui: ReactElement) {
-  return render(
+/** Tests only: `ui` inside a safe area (the frame reads the insets), for a rerender too. */
+export function inConnectFrame(ui: ReactElement) {
+  return (
     <SafeAreaProvider
       initialMetrics={{
         frame: { x: 0, y: 0, width: 400, height: 800 },
@@ -12,6 +12,11 @@ export function renderConnect(ui: ReactElement) {
       }}
     >
       {ui}
-    </SafeAreaProvider>,
+    </SafeAreaProvider>
   );
+}
+
+/** Tests only: render a connect screen inside a safe area. */
+export function renderConnect(ui: ReactElement) {
+  return render(inConnectFrame(ui));
 }

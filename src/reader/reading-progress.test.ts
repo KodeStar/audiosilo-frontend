@@ -136,6 +136,20 @@ function ruleServer(deviceName: string) {
   return { api, row: () => kept };
 }
 
+/** The tablet saves `progression` on `base`, now. */
+const tabletSaves = (
+  server: ReturnType<typeof ruleServer>,
+  progression: number,
+  base = 0,
+): Promise<unknown> =>
+  server.api.saveReadingProgress(1, 'A/Book', {
+    cfi: CFI_C,
+    progression,
+    device_id: 'tablet',
+    updated_at: new Date(Date.now() - 60_000).toISOString(),
+    base_version: base,
+  });
+
 async function stored<T>(key: string, fallback: T): Promise<T> {
   const raw = await AsyncStorage.getItem(key);
   return raw ? (JSON.parse(raw) as T) : fallback;
@@ -385,6 +399,7 @@ describe('reading-progress', () => {
       await expect(lookupReadingPlace(fakeApi(), 'c1', 1, 'A/Book')).resolves.toEqual({
         place: null,
         fromServer: null,
+        unseen: null,
       });
     });
 
@@ -412,7 +427,7 @@ describe('reading-progress', () => {
       ]) {
         await expect(
           lookupReadingPlace(api, 'c1', 1, 'A/Book', undefined, { hasLocalCopy }),
-        ).resolves.toEqual({ place: null, fromServer: null });
+        ).resolves.toEqual({ place: null, fromServer: null, unseen: null });
       }
       expect(hasLocalCopy).toHaveBeenCalled();
     });
@@ -458,7 +473,7 @@ describe('reading-progress', () => {
           undefined,
           { hasLocalCopy },
         ),
-      ).resolves.toEqual({ place: null, fromServer: null });
+      ).resolves.toEqual({ place: null, fromServer: null, unseen: null });
       expect(hasLocalCopy).toHaveBeenCalled();
     });
 
@@ -673,7 +688,7 @@ describe('reading-progress', () => {
         lookupReadingPlace(offline, 'c1', 1, 'A/Book', undefined, {
           hasLocalCopy: async () => true,
         }),
-      ).resolves.toEqual({ place: null, fromServer: null });
+      ).resolves.toEqual({ place: null, fromServer: null, unseen: null });
       reachable.mockReturnValue(false);
       const start = await at(START, 0.01);
       expect(start.base_version).toBe(0);
@@ -783,6 +798,183 @@ describe('reading-progress', () => {
       expect(heard[0].seen).toBe(true);
       expect(jumpOffer(heard[0], { cfi: CFI_A, progression: 0.2 })).toBeNull();
       expect((await at(CFI_A, 0.2)).base_version).toBe(6);
+    });
+  });
+
+  describe('one queue for every send (fe#173)', () => {
+    const nextMacrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    /** `server`'s api with its first PUT held until `release()`, counting the PUTs in flight. */
+    function heldFirst(server: ReturnType<typeof ruleServer>) {
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      let calls = 0;
+      let inFlight = 0;
+      let mostInFlight = 0;
+      const api = {
+        readingProgress: server.api.readingProgress,
+        saveReadingProgress: jest.fn(async (lib: number, path: string, input: unknown) => {
+          inFlight += 1;
+          mostInFlight = Math.max(mostInFlight, inFlight);
+          try {
+            if (calls++ === 0) await gate;
+            return await server.api.saveReadingProgress(lib, path, input);
+          } finally {
+            inFlight -= 1;
+          }
+        }),
+      } as unknown as ApiClient & { saveReadingProgress: jest.Mock };
+      return { api, release, mostInFlight: () => mostInFlight };
+    }
+
+    it('sends a page captured on 0 before a Jump on 0, never on the place jumped to', async () => {
+      const server = ruleServer('Tablet');
+      await tabletSaves(server, 0.8);
+      const tablet = server.row()!;
+      const held = heldFirst(server);
+      const heard: ReadingSaved[] = [];
+      const off = onReadingSaved((a) => heard.push(a));
+      // This device never saw the tablet's place: its first page is answered late.
+      const first = saveReaderPlace(held.api, 'c1', 1, 'A/Book', { cfi: CFI_A, progression: 0.1 });
+      // A second page, captured on 0 while the first is out.
+      const second = saveReaderPlace(held.api, 'c1', 1, 'A/Book', {
+        cfi: CFI_B,
+        progression: 0.12,
+      });
+      await nextMacrotask();
+      // Jump: the tablet's place is shown here before the second page is sent.
+      await adoptServerPlace('c1', 1, 'A/Book', tablet);
+      held.release();
+      await Promise.all([first, second]);
+      off();
+      expect(held.api.saveReadingProgress.mock.calls.map(([, , b]) => b.base_version)).toEqual([
+        0, 0,
+      ]);
+      // The tablet's place stands; both answers are the row Jump showed (seen: no offer again).
+      expect(server.row()).toMatchObject({ progression: 0.8, version: tablet.version });
+      expect(heard.map((a) => a.seen)).toEqual([true, true]);
+      // A page after the Jump is made on its version, and applies.
+      await saveReaderPlace(held.api, 'c1', 1, 'A/Book', { cfi: CFI_C, progression: 0.81 });
+      expect(server.row()).toMatchObject({ progression: 0.81, version: tablet.version + 1 });
+    });
+
+    it('still makes a page captured on 0 on the version its own earlier page was answered with', async () => {
+      const server = ruleServer('This phone');
+      const held = heldFirst(server);
+      const first = saveReaderPlace(held.api, 'c1', 1, 'A/Book', { cfi: CFI_B, progression: 0.5 });
+      const back = saveReaderPlace(held.api, 'c1', 1, 'A/Book', { cfi: CFI_A, progression: 0.3 });
+      await nextMacrotask();
+      held.release();
+      await Promise.all([first, back]);
+      expect(held.api.saveReadingProgress.mock.calls.map(([, , b]) => b.base_version)).toEqual([
+        0, 1,
+      ]);
+      expect(server.row()).toMatchObject({ progression: 0.3, version: 2 });
+    });
+
+    it('sends the reader’s page after a replay in flight, so a move back applies', async () => {
+      const server = ruleServer('This phone');
+      // Read to 60% offline: queued on 0.
+      reachable.mockReturnValue(false);
+      await saveReaderPlace(null, 'c1', 1, 'A/Book', { cfi: CFI_C, progression: 0.6 });
+      expect(await readQueue()).toHaveLength(1);
+      reachable.mockReturnValue(true);
+      const held = heldFirst(server);
+      mockResolveClient.mockReturnValue(held.api);
+      // The reader opens (its replay goes out), and the listener pages back at once.
+      const replay = flushReadingQueue();
+      await nextMacrotask();
+      const back = saveReaderPlace(held.api, 'c1', 1, 'A/Book', { cfi: CFI_A, progression: 0.3 });
+      await nextMacrotask();
+      held.release();
+      await Promise.all([replay, back]);
+      expect(held.mostInFlight()).toBe(1);
+      expect(held.api.saveReadingProgress.mock.calls.map(([, , b]) => b.progression)).toEqual([
+        0.6, 0.3,
+      ]);
+      expect(server.row()).toMatchObject({ progression: 0.3, version: 2 });
+    });
+
+    it('never replays a queued save after a newer save of the book was sent', async () => {
+      const server = ruleServer('This phone');
+      mockResolveClient.mockReturnValue(server.api);
+      reachable.mockReturnValue(false);
+      await saveReadingPlace(
+        null,
+        save({ cfi: CFI_C, progression: 0.6, updated_at: '2026-10-01T10:00:00.000Z' }),
+      );
+      // Another book's queued save stays.
+      await saveReadingPlace(
+        null,
+        save({ path: 'B/Other', updated_at: '2026-10-01T10:00:00.000Z' }),
+      );
+      reachable.mockReturnValue(true);
+      await saveReadingPlace(
+        server.api,
+        save({ cfi: CFI_A, progression: 0.3, updated_at: '2026-10-01T11:00:00.000Z' }),
+      );
+      await flushReadingQueue();
+      const sent = server.api.saveReadingProgress.mock.calls.filter(
+        ([, path]) => path === 'A/Book',
+      );
+      expect(sent.map(([, , b]) => b.progression)).toEqual([0.3]);
+      expect(server.api.saveReadingProgress.mock.calls.map(([, path]) => path)).toContain(
+        'B/Other',
+      );
+      expect(await readQueue()).toEqual([]);
+    });
+  });
+
+  describe('the place after a replay (fe#173)', () => {
+    it('opens at the newer local place with the row it never saw, to offer Jump at once', async () => {
+      const server = ruleServer('Tablet');
+      mockResolveClient.mockReturnValue(server.api);
+      await tabletSaves(server, 0.8);
+      // An offline session on 0, replayed from Home: the server keeps the tablet's place.
+      reachable.mockReturnValue(false);
+      await saveReadingPlace(
+        null,
+        save({ cfi: CFI_A, progression: 0.3, updated_at: new Date().toISOString() }),
+      );
+      reachable.mockReturnValue(true);
+      await flushReadingQueue();
+      expect(server.row()).toMatchObject({ device_id: 'tablet', progression: 0.8 });
+      const found = await lookupReadingPlace(server.api, 'c1', 1, 'A/Book');
+      expect(found).toEqual({
+        place: expect.objectContaining({ cfi: CFI_A }),
+        fromServer: null,
+        unseen: server.row(),
+      });
+      // Shown (Stay): seen, so nothing is offered again.
+      await adoptServerPlace('c1', 1, 'A/Book', server.row()!);
+      expect((await lookupReadingPlace(server.api, 'c1', 1, 'A/Book')).unseen).toBeNull();
+    });
+
+    it('offers no row from the lookup while a save of the book is queued (its replay answers)', async () => {
+      const server = ruleServer('Tablet');
+      await tabletSaves(server, 0.8);
+      reachable.mockReturnValue(false);
+      await saveReadingPlace(
+        null,
+        save({ cfi: CFI_A, progression: 0.3, updated_at: new Date().toISOString() }),
+      );
+      reachable.mockReturnValue(true);
+      const found = await lookupReadingPlace(server.api, 'c1', 1, 'A/Book');
+      expect(found.place?.cfi).toBe(CFI_A);
+      expect(found.unseen).toBeNull();
+    });
+
+    it('offers no row from the lookup that is this device’s own, at a version it acknowledged', async () => {
+      const server = ruleServer('This phone');
+      await saveReaderPlace(server.api, 'c1', 1, 'A/Book', { cfi: CFI_A, progression: 0.3 });
+      // A newer local place not yet sent (the mirror only).
+      await captureReadingSave('c1', 1, 'A/Book', { cfi: CFI_B, progression: 0.31 }).then((s) =>
+        saveReadingPlace(null, { ...s, updated_at: new Date(Date.now() + 60_000).toISOString() }),
+      );
+      await flushReadingQueue();
+      const found = await lookupReadingPlace(server.api, 'c1', 1, 'A/Book');
+      expect(found.fromServer).toBeNull();
+      expect(found.unseen).toBeNull();
     });
   });
 

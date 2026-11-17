@@ -978,10 +978,15 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   fetches it, so a retry fetches it once. Optional: a failure keeps the audio, a cancel cancels
   the book.
 - **The place** (`reading-progress.ts`) is `progress-sync`'s pattern (offline queue, latest per
-  book, durable mirror, 4xx dropped, replay through each save's connection) plus `base_version`:
-  the last version this device acknowledged, always sent (0 only when no row was ever seen). The
-  open reader's saves go one at a time (`saveReaderPlace`): one captured on 0 is sent on the
-  version the previous answer acknowledged, since two on 0 would diverge from each other. An
+  book, durable mirror, 4xx dropped but a 408 or a 429, which is queued (`isRefusedForGood`),
+  replay through each save's connection) plus `base_version`:
+  the last version this device acknowledged, always sent (0 only when no row was ever seen).
+  Every send, the queue's replays and the open reader's saves alike, and every queue change go
+  through one lock (`withQueueLock`, fe#173), and a sent save drops a queued one of the book made
+  before it. The open reader's saves go one at a time (`saveReaderPlace`): one captured on 0 is
+  sent on the version an answer to this device's own save acknowledged meanwhile, since two on 0
+  would diverge from each other; never on one adopted meanwhile (the mirror's `own`), so a page
+  captured before a Jump never applies on the place jumped to. An
   answer that kept this very save (this device, the same cfi and progression; not its time,
   which the server may replace) is acknowledged at once; one that kept a place this device
   never saw (another device's, or its own at a version it never acknowledged: the device id
@@ -997,9 +1002,13 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   while the acknowledgement was still being written. The answer's
   `seen` says which;
   the offer "Jump there?" (`jumpOffer`) is judged against the page on screen. The lookup opens at
-  the newest place, or at a queued save the server will keep (diverged and further on), and
-  with no answer from the server and no place on this device it fails (the fetch notice; Try
-  again looks again): never a guessed start, whose save would replace a place read elsewhere.
+  the newest place, or at a queued save the server will keep (diverged and further on);
+  opening at a local place, a server row this device never saw comes back as `unseen` (no save
+  of the book queued), which the screen takes as the first answer, so Jump shows at the open
+  after a replay from Home (fe#173). The answer's `seen` also counts the very version this
+  device acknowledged (one version is one write), so a late answer with an adopted row never
+  offers it again. With no answer from the server and no place on this device it fails (the
+  fetch notice; Try again looks again): never a guessed start, whose save would replace a place read elsewhere.
   Except offline with the EPUB on this device (the download's copy or the app's cache file,
   `hasLocalEbook`): a request that never reached the server opens at the start, its saves on
   `base_version: 0`, which the server takes as diverged from any row, this device's own too
@@ -1651,10 +1660,19 @@ media GETs only.
 - **Remote moves vs the resume floor.** The `resumeFloor` save guard (below) lowers only for a
   deliberate move, and the lock screen, a headset, CarPlay and Android Auto (their chapter lists
   too) move the engine without the JS asking. The module reports those as `onRemoteMove
-  {trackIndex, position}`, in file coordinates, **once the move has landed**;
-  `service.native.ts` updates its snapshot first (so a save inside the handler saves the landed
-  place), and the store's handler (`userMoved`) lowers the floor to it, counts it in
-  `localMoves` (a place reconcile in flight stands back) and persists. Without it a lock-screen
+  {trackIndex, position}`, in file coordinates, **once the move has landed**; the landed place
+  comes in an `onProgress` just before it (iOS sends both together, Android the move with the
+  next position change or 300 ms later). `service.native.ts` tells the store of the move before
+  its listeners take the landed place (fe#211): a tick that jumped while playing (in one file,
+  past what playing explains, or a second back; never a play's first tick, a resume's
+  auto-rewind) is held up to 600 ms for its move, which replaces it, and is taken after that
+  when none comes (the engine's own move). So no save, 15 s cut or 5 s keep ends the listening
+  span at the landed place before the move is heard. A pause or the book's end leaves a held
+  tick held (taken then, it would end the span at the landed place): the save made as playing
+  stops has the place before the jump, the move's own save follows, and a held tick no move
+  replaces is told once taken (`onLanded`), which saves again. The store's handler (`userMoved`) lowers
+  the floor to it, counts it in `localMoves` (a place reconcile in flight stands back) and
+  persists once the landed place is in the snapshot (a microtask later). Without it a lock-screen
   scrub back past the 60 s tolerance never saved. Never sent for JS-asked moves (`seekTo`,
   `skipToTrack`, `load`), auto-rewind, Smart speed's skips or a file running on into the next.
   `onRateChange` (iOS's rate command, CarPlay's rate button, an Android controller; already
@@ -2199,10 +2217,10 @@ media GETs only.
     twice it is one event. A book playing with none open (its play's own could not open: a
     load, the hot-swap or an adoption's reload held the place) gets one at that same 5 s keep
     (`openMissingSpan`), not only at the save loop's tick, which may be a minute away: what
-    plays before a span opens is in no listening event. The keep never moves the span's end back (a native lock-screen
-    move's landed place reaches the store before the move, which ends the span at its last
-    place); a save and the loop's cut take where the engine is (applying that rule there froze
-    the span after a seek back or a hot-swap to another file order, fe#211). The end's `finish` goes into the outbox only after the last span's close has landed
+    plays before a span opens is in no listening event. The keep never moves the span's end back (a
+    native move's landed place reached the store before the move; the native service now holds
+    it back, fe#211); a save and the loop's cut take where the engine is (applying that rule
+    there froze the span after a seek back or a hot-swap to another file order). The end's `finish` goes into the outbox only after the last span's close has landed
     there, then one send (`finishAfter`, server#359: a 12 s book's finish went first and found
     no session to mark); a close already on its way (the web's `paused` before `ended`) is
     waited for too and leaves its send to the finish (`closesInFlight`). The book page's Mark as finished is a `finish` event too on such a

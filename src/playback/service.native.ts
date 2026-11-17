@@ -1,4 +1,5 @@
 import type { EventSubscription } from 'expo-modules-core';
+import { Platform } from 'react-native';
 
 import { routed } from '@/cast/routed-service';
 
@@ -14,6 +15,26 @@ import {
   type PlaybackTrack,
   toNativeTrack,
 } from './types';
+
+/** How long a progress tick whose place jumped waits for its move's `onRemoteMove`
+ * (`NativePlaybackService.progress`): Android sends it at most 300 ms after the tick. */
+const LANDING_HOLD_MS = 600;
+/** How far a tick must move past what playing explains to have jumped: ahead, beyond the
+ * time since the last tick at the speed; back, a second. */
+const LANDING_AHEAD_S = 5;
+const LANDING_BACK_S = 1;
+
+/** A progress tick whose place jumped while playing, held back (`LANDING_HOLD_MS`) since
+ * `since`, from the last tick taken before it (`from`). `trackIndex`: the file it is in, when
+ * Android changed the file while it was held (`NativePlaybackService.fileChanged`). */
+type HeldTick = {
+  position: number;
+  duration: number;
+  since: number;
+  from: { position: number; at: number };
+  trackIndex?: number;
+  timer: ReturnType<typeof setTimeout>;
+};
 
 /** Does the installed binary know the car-era module surface (`load`'s 5th `book` argument
  * among it)? The JS bundle can be newer than the binary (a shipped store build lags), and
@@ -45,13 +66,137 @@ class NativePlaybackService implements PlaybackService {
   private remoteMove: ((trackIndex: number, positionInTrack: number) => void) | null = null;
   private rateChange: ((rate: number) => void) | null = null;
   private silenceSaved: ((totalSeconds: number) => void) | null = null;
+  private landed: (() => void) | null = null;
+  private held: HeldTick | null = null;
+  /** The last progress tick the snapshot took in this stretch of playing, and when. Always
+   * of the snapshot's file: a new file starts the measure afresh (`update`). */
+  private lastTick: { position: number; at: number } | null = null;
 
   private emit() {
     for (const listener of this.listeners) listener(this.snapshot);
   }
   private update(patch: Partial<PlaybackSnapshot>) {
+    // A place set by anything else (the app's own seek, a new file) replaces a held tick's,
+    // and the next tick starts the measure afresh (taken at once, never for a jump).
+    if (patch.position !== undefined || patch.trackIndex !== undefined) {
+      this.dropHeld();
+      this.lastTick = null;
+    }
     this.snapshot = { ...this.snapshot, ...patch };
+    if (patch.state !== undefined && patch.state !== 'playing') this.lastTick = null;
     this.emit();
+  }
+  private dropHeld() {
+    if (this.held) clearTimeout(this.held.timer);
+    this.held = null;
+  }
+
+  /**
+   * A progress tick (fe#211). A lock-screen, headset or car move lands in a tick (`onProgress`)
+   * before its `onRemoteMove`: iOS sends the two together, Android the move with the next
+   * position change or 300 ms later. Taken at once, the store's save, its 15 s cut or its 5 s
+   * keep could end the listening span at the landed place before it heard of the move, so the
+   * move read as listening up to there. So a tick whose place jumped while playing (in the
+   * same file, past what the time since the last tick plays at the speed, or back) waits up to
+   * `LANDING_HOLD_MS` for that move, which then replaces it; a move the engine made by itself
+   * (never reported) is taken once the wait is over. The first tick of a play is never held
+   * (a resume's auto-rewind is the engine's own move).
+   *
+   * A pause or the book's end leaves a held tick held: taken as playing stops, its place
+   * would end the span there, the very thing the hold prevents. So the store's save as playing
+   * stops has the place before the jump; the move's own save follows it, and a held tick no
+   * move replaces is told once it is taken (`onLanded`), to be saved again.
+   */
+  private progress(position: number, duration: number) {
+    const now = Date.now();
+    // A hold past its time ends at the next tick even when its timer never fired: Android
+    // pauses the JS timers in the background, and every tick would otherwise fold into the
+    // hold, the store hearing none (no save, cut or keep) until the next state change.
+    if (this.held && now - this.held.since >= LANDING_HOLD_MS) this.releaseHeld();
+    const last = this.lastTick;
+    const playing = this.snapshot.state === 'playing';
+    if (this.held) {
+      // A later tick while one is held: the newest place waits, on the first one's clock.
+      this.held = { ...this.held, position, duration };
+      return;
+    }
+    const jumped =
+      playing &&
+      last !== null &&
+      (!this.plays(position - last.position, now - last.at) ||
+        position < last.position - LANDING_BACK_S);
+    if (jumped) {
+      const timer = setTimeout(() => this.releaseHeld(), LANDING_HOLD_MS);
+      this.held = { position, duration, since: now, from: last, timer };
+      return;
+    }
+    this.takeTick({ position, duration }, now);
+  }
+  /** Does playing explain covering `seconds` of audio in `ms`, at the speed? */
+  private plays(seconds: number, ms: number) {
+    return seconds <= (ms / 1000) * (this.snapshot.rate || 1) + LANDING_AHEAD_S;
+  }
+  private releaseHeld() {
+    const held = this.held;
+    if (!held) return;
+    this.dropHeld();
+    const { position, duration, trackIndex } = held;
+    this.takeTick(
+      trackIndex === undefined ? { position, duration } : { trackIndex, position, duration },
+      Date.now(),
+    );
+    if (this.snapshot.state !== 'playing') this.landed?.();
+  }
+  /**
+   * The engine's file changed. The snapshot never pairs the new file with a place in the old
+   * one: a pause right after would save that place under the new file (the old file's end,
+   * so the book's end, after a run-on).
+   *
+   * Android (Media3) reports the new file's tick before the item change, so the snapshot's
+   * place, or a tick held for its jump, is already the new file's. A held tick that playing
+   * explains (on from the old file's end) is a run-on, told at once with the new file. Any
+   * other is a move whose report may still come (`onRemoteMove`, up to 300 ms on): the file
+   * joins the hold and is told with its place, the move's or at the wait's end; until then
+   * the snapshot keeps the place before the jump, with its own file.
+   *
+   * iOS tells the change before the new file's first tick: a held tick was the file it
+   * leaves, taken first, and a new file starts at 0 until its tick.
+   */
+  private fileChanged(index: number) {
+    const held = this.held;
+    if (Platform.OS !== 'android') {
+      this.releaseHeld();
+      // A rebuild in the same file (a remote move, a skip) tells it too: its place stands
+      // until the tick that follows.
+      this.update(
+        index === this.snapshot.trackIndex
+          ? { trackIndex: index }
+          : { trackIndex: index, position: 0 },
+      );
+    } else if (!held) {
+      this.update({ trackIndex: index });
+    } else if (this.ranOn(index, held)) {
+      this.update({ trackIndex: index, position: held.position, duration: held.duration });
+    } else {
+      this.held = { ...held, trackIndex: index };
+    }
+  }
+  /** Did playing carry a held tick from the snapshot's file's end into the next one? */
+  private ranOn(index: number, held: HeldTick) {
+    const { trackIndex, duration } = this.snapshot;
+    if (index !== trackIndex + 1 || !(duration > 0)) return false;
+    return this.plays(duration - held.from.position + held.position, held.since - held.from.at);
+  }
+  private takeTick(place: Partial<PlaybackSnapshot>, at: number) {
+    this.setPlace(place, at);
+    this.emit();
+  }
+  /** Set the snapshot's place without telling the listeners; while playing, it is the
+   * last tick the next one is measured from (`progress`). */
+  private setPlace(patch: Partial<PlaybackSnapshot>, at: number) {
+    this.snapshot = { ...this.snapshot, ...patch };
+    const { state, position } = this.snapshot;
+    this.lastTick = state === 'playing' ? { position, at } : null;
   }
 
   async setup() {
@@ -59,21 +204,29 @@ class NativePlaybackService implements PlaybackService {
     this.subscriptions.push(
       AudiosiloPlayer.addListener('onState', ({ state }) => this.update({ state })),
       AudiosiloPlayer.addListener('onProgress', ({ position, duration, silenceSaved }) => {
-        this.update({ position, duration });
+        this.progress(position, duration);
         // Absent on binaries older than Smart Speed.
         if (typeof silenceSaved === 'number' && Number.isFinite(silenceSaved)) {
           this.silenceSaved?.(silenceSaved);
         }
       }),
-      AudiosiloPlayer.addListener('onTrackChange', ({ index }) =>
-        this.update({ trackIndex: index }),
-      ),
-      // The engine already moved (the lock screen, a headset, the car): take the landed
-      // place into the snapshot FIRST, so the store's save inside the handler saves it.
+      AudiosiloPlayer.addListener('onTrackChange', ({ index }) => this.fileChanged(index)),
+      // The engine already moved (the lock screen, a headset, the car): the store hears of
+      // the move first, its landed place (this snapshot's, `getSnapshot`) right after, so its
+      // listening span ends where the engine was, never at the landed place (fe#211). A tick
+      // held for it (`progress`) is replaced, its length kept: a move into another file lands
+      // in a tick with that file's length. The listeners take the place whatever the handler
+      // does.
       AudiosiloPlayer.addListener('onRemoteMove', ({ trackIndex, position }) => {
         if (!Number.isFinite(trackIndex) || !Number.isFinite(position)) return;
-        this.update({ trackIndex, position });
-        this.remoteMove?.(trackIndex, position);
+        const duration = this.held?.duration ?? this.snapshot.duration;
+        this.dropHeld();
+        this.setPlace({ trackIndex, position, duration }, Date.now());
+        try {
+          this.remoteMove?.(trackIndex, position);
+        } finally {
+          this.emit();
+        }
       }),
       AudiosiloPlayer.addListener('onRateChange', ({ rate }) => {
         if (!Number.isFinite(rate) || rate <= 0) return;
@@ -123,6 +276,12 @@ class NativePlaybackService implements PlaybackService {
     await AudiosiloPlayer.pause();
   }
   async seekTo(positionInTrack: number) {
+    // The callers chose a seek for a place in the snapshot's file. Android may already be in
+    // another one, a move held for its report (`fileChanged`): back to the snapshot's file.
+    const moved = this.held?.trackIndex;
+    if (moved !== undefined && moved !== this.snapshot.trackIndex) {
+      return this.skipToTrack(this.snapshot.trackIndex, positionInTrack);
+    }
     await AudiosiloPlayer.seekTo(positionInTrack);
     this.update({ position: positionInTrack });
   }
@@ -170,9 +329,14 @@ class NativePlaybackService implements PlaybackService {
   onSilenceSaved(handler: ((totalSeconds: number) => void) | null) {
     this.silenceSaved = handler;
   }
+  onLanded(handler: (() => void) | null) {
+    this.landed = handler;
+  }
   adoptPlace(snapshot: PlaybackSnapshot) {
     // No emit: the store sets its own snapshot when it adopts; this only makes the next
     // engine event (a progress tick carries no track or state) re-emit the right ones.
+    this.dropHeld();
+    this.lastTick = null;
     this.snapshot = { ...snapshot };
   }
   getSnapshot() {

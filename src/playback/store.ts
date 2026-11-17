@@ -1122,8 +1122,10 @@ function keepOpenSpan() {
   const np = usePlayer.getState().nowPlaying;
   if (!np || !sameBook(kept, np)) return;
   const here = engineEnd();
-  // Never back: the native lock screen's landed place reaches the store before its move
-  // does (`onRemoteMove`), which then ends the span at its last place, `span.to`.
+  // Never back: a native lock-screen move's landed place could reach the store before the
+  // move (`onRemoteMove`), which ends the span at its last place, `span.to`. The native
+  // service holds a tick that jumped for its move (fe#211); this stays for what that misses
+  // (a jump under its thresholds, a move told after the hold).
   if (here && here.pos >= kept.to.pos - 1) kept.to = here;
   kept.endedAt = new Date().toISOString();
   void storeOpenSpan({ ...kept }).then((stored) => {
@@ -2536,9 +2538,10 @@ async function createService(): Promise<PlaybackService> {
   // so a lock-screen scrub back lowers the resume floor and saves like any other seek.
   svc.onRemoteSeek?.((positionInTrack) => void usePlayer.getState().seekInTrack(positionInTrack));
   // Native: the engine already moved for the lock screen, a headset or the car (its
-  // snapshot already holds the landed place). That is the listener's own move: it lowers
-  // the floor (a scrub back past the slip tolerance would otherwise never save) and counts
-  // for the place reconcile, which then stands back.
+  // snapshot holds the landed place once this returns: `service.native.ts`; the Cast
+  // receiver's moves come the same way, `cast-service.ts`). That is the
+  // listener's own move: it lowers the floor (a scrub back past the slip tolerance would
+  // otherwise never save) and counts for the place reconcile, which then stands back.
   svc.onRemoteMove?.((trackIndex, positionInTrack) => {
     const { nowPlaying: np, loadingBook } = usePlayer.getState();
     // A move reported while a book loads is the PREVIOUS queue's (a native move reported a
@@ -2552,8 +2555,14 @@ async function createService(): Promise<PlaybackService> {
     // The engine has moved already: the span ends where it was last seen (paused, where it
     // was is not known, so no move is taken for one that moves nowhere).
     if (np) moveListeningSpan(endAt(np, trackIndex, positionInTrack), { from: span?.to ?? null });
-    void persist();
+    // The engine tells the move before its landed place reaches the snapshot (so no
+    // save, cut or keep in between ends the span there, fe#211): the save waits for it.
+    void Promise.resolve().then(() => persist());
   });
+  // Native: a place the engine held back for its move landed with none told, after playing
+  // stopped (fe#211). The save made as it stopped (`haltAndPersist`) has the place before
+  // the jump, so the place is saved again, once the engine's event is over.
+  svc.onLanded?.(() => void Promise.resolve().then(() => persist()));
   // Native: the OS changed the speed and the engine already runs at it. Only a speed
   // outside the app's range goes back to the engine, clamped.
   svc.onRateChange?.((raw) => {
