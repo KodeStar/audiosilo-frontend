@@ -38,15 +38,12 @@ export function regionalLocale(
   device: readonly { languageTag: string; languageCode: string | null }[],
 ): string {
   if (language.includes('-')) return language;
-  for (const d of device) {
-    if (d.languageCode !== language || !d.languageTag.includes('-')) continue;
-    try {
-      const [tag] = Intl.DateTimeFormat.supportedLocalesOf(d.languageTag);
-      if (tag) return tag;
-    } catch {
-      // No usable Intl here: the bare language, as before.
-    }
+  const mine = device.find((d) => d.languageCode === language && d.languageTag.includes('-'));
+  if (!mine) return language;
+  try {
+    return Intl.DateTimeFormat.supportedLocalesOf(mine.languageTag)[0] ?? language;
+  } catch {
+    // No usable Intl here: the bare language, as before.
     return language;
   }
-  return language;
 }
