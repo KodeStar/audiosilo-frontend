@@ -3728,11 +3728,11 @@ tokens, type and components; its section 17 maps them onto these files.
   guards it. RNW is pinned exactly to the patch's version (0.21.4, the patch file named for it)
   and ignored by Dependabot: an RNW upgrade renames and regenerates the patch
   (`npx patch-package react-native-web`) or drops it once upstream fixes it; a patch that no
-  longer applies fails the install. `react-native-google-cast+<ver>.patch` makes the library's
-  Android options provider stop the receiver's app when a session ends (Stop casting from the
-  Cast dialog or the notification); the library is pinned exactly (4.9.1) and ignored by
-  Dependabot the same way, and `plugins/withCast.test.ts` fails when the installed provider
-  lacks the line.
+  longer applies fails the install. `react-native-google-cast+<ver>.patch` gives the library's
+  Android Cast buttons (its `CastButton` and the expanded controller's) a dialog whose Stop
+  casting also stops the receiver's app (`RNGCStopCastingDialogFactory`, the Cast section
+  above); the library is pinned exactly (4.9.1) and ignored by Dependabot the same way, and
+  `plugins/withCast.test.ts` fails when the installed library lacks the factory or its wiring.
 - **Expo SDK pins, and one copy of each native module.** The SDK decides the versions of its
   native modules, react and react-native (`node_modules/expo/bundledNativeModules.json`). CI
   runs `npx expo install --check`, which fails on any drift; move them only with

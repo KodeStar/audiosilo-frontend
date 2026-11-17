@@ -70,9 +70,10 @@ function addExpandedController(manifest) {
 }
 
 /** The plugin's options block, written into `didFinishLaunching` by react-native-google-cast's
- * own mod: one more option after its last, so the Cast dialog's Stop casting stops the
- * receiver's app. Throws when the block is not there, rather than shipping a build whose Stop
- * casting leaves the TV playing. */
+ * own mod: one more option after its last, so a session's end stops the receiver's app (the
+ * Cast dialog's Stop casting included; iOS suspends, not ends, on a Wi-Fi drop). Throws when
+ * the block is not there, rather than shipping a build whose Stop casting leaves the TV
+ * playing. */
 function addStopReceiverOnEnd(src) {
   if (src.includes('options.stopReceiverApplicationWhenEndingSession')) return src;
   const anchor = /^([ \t]*)options\.suspendSessionsWhenBackgrounded = .*$/m;
