@@ -6,7 +6,8 @@ import { contentKey, isKeyOf } from '@/lib/content-key';
  * token. The server mints a short-lived (24 h), book-scoped, media-only token instead, and
  * the receiver's stream and cover URLs carry that. One is reused for its book until an hour
  * before it expires (a receiver still has to fetch the later files and seeks of a long book
- * with it), then a fresh one is minted. In memory only: a relaunch mints again, which is
+ * with it), or until the receiver is refused with it (`fresh`), then a fresh one is minted.
+ * In memory only: a relaunch mints again, which is
  * cheap, and nothing durable ever holds a token.
  */
 
@@ -18,12 +19,15 @@ export type CastTokenSource = { castToken(libraryId: number, path: string): Prom
 
 export type CastTokenCache = {
   /** A token for the book, cached or freshly minted. Concurrent asks for one book share one
-   * request. Rejects when the server refuses or can't be reached. */
+   * request. Rejects when the server refuses or can't be reached. `fresh`: the cached token
+   * is not used (the receiver was refused with it: the server caps a person's cast tokens and
+   * ends the oldest, fe#158), and a new one is minted in its place. */
   get(
     source: CastTokenSource,
     connectionId: string,
     libraryId: number,
     path: string,
+    opts?: { fresh?: boolean },
   ): Promise<string>;
   /** Forget every token of a connection (it was removed: `onConnectionRemoved`, in
    * `startCastSync`) or all of them, and any on its way for it (handed to its caller, never
@@ -37,11 +41,12 @@ export function createCastTokenCache(now: () => number = Date.now): CastTokenCac
   const tokens = new Map<string, { token: string; expiresAt: number }>();
   const inFlight = new Map<string, Promise<string>>();
   return {
-    get(source, connectionId, libraryId, path) {
+    get(source, connectionId, libraryId, path, opts) {
       const key = contentKey(connectionId, libraryId, path);
       // Expired tokens go (a long session casts many books; nothing else would drop them).
       const at = now();
       for (const [k, v] of tokens) if (v.expiresAt <= at) tokens.delete(k);
+      if (opts?.fresh) tokens.delete(key);
       const known = tokens.get(key);
       if (known && known.expiresAt - now() > CAST_TOKEN_MARGIN_MS) {
         return Promise.resolve(known.token);

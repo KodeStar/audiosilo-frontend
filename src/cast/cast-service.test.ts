@@ -2,7 +2,7 @@ import type { PlaybackSnapshot, PlaybackTrack } from '@/playback/types';
 
 import { buildCastItems } from './cast-media';
 import type { PrepareCast } from './cast-prepare';
-import { CastPlaybackService, castState } from './cast-service';
+import { CastPlaybackService, castState, REMINT_EVERY_MS } from './cast-service';
 import type { CastMediaStatus, CastQueueLoad, CastRemote } from './types';
 
 const BOOK = { connectionId: 'srv.3', libraryId: 2, path: 'A/B' };
@@ -60,10 +60,14 @@ const prepareWith =
   (transcode = false): PrepareCast =>
   async (tracks, book) => ({ items: buildCastItems(tracks, book, urls, transcode) });
 
-function setup(opts: { transcode?: boolean } = {}) {
+function setup(opts: { transcode?: boolean; prepare?: PrepareCast } = {}) {
   const fake = fakeRemote();
   let clock = 1_000_000;
-  const svc = new CastPlaybackService(fake.remote, prepareWith(opts.transcode), () => clock);
+  const svc = new CastPlaybackService(
+    fake.remote,
+    opts.prepare ?? prepareWith(opts.transcode),
+    () => clock,
+  );
   const snaps: PlaybackSnapshot[] = [];
   svc.subscribe((s) => snaps.push(s));
   const moves: [number, number][] = [];
@@ -447,6 +451,112 @@ describe('CastPlaybackService', () => {
       await t.svc.play();
       expect(t.remote.loads).toHaveLength(2);
       expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 2, autoplay: true });
+    });
+  });
+
+  describe('a cast token the server ended (its per-person cap, fe#158)', () => {
+    /** A prepare whose URLs carry the token it was given: `CAST0` cached, then one more per
+     * fresh mint. */
+    function minting() {
+      let minted = 0;
+      const asks: (boolean | undefined)[] = [];
+      const prepare: PrepareCast = async (tracks, book, opts) => {
+        asks.push(opts?.freshToken);
+        if (opts?.freshToken) minted++;
+        const token = `CAST${minted}`;
+        return {
+          items: buildCastItems(
+            tracks,
+            book,
+            {
+              streamUrl: (_l: number, path: string) =>
+                `https://h/stream?path=${path}&token=${token}`,
+              coverUrl: () => `https://h/cover?token=${token}`,
+            },
+            false,
+          ),
+        };
+      };
+      return { prepare, asks };
+    }
+
+    it('a load the receiver refuses is sent again with a newly minted token', async () => {
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      (t.remote.load as jest.Mock).mockRejectedValueOnce(new Error('LOAD_FAILED'));
+      await t.svc.load(TRACKS, 1, 30, [], BOOK);
+      expect(m.asks).toEqual([undefined, true]);
+      expect(t.remote.load).toHaveBeenCalledTimes(2);
+      expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 1, startTime: 30 });
+      expect(t.url(0)).toContain('token=CAST1');
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'ready', trackIndex: 1, position: 30 });
+    });
+
+    it('a load refused again with the new token fails', async () => {
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      (t.remote.load as jest.Mock).mockRejectedValue(new Error('LOAD_FAILED'));
+      await expect(t.svc.load(TRACKS, 0, 0, [], BOOK)).rejects.toThrow('LOAD_FAILED');
+      expect(m.asks).toEqual([undefined, true]);
+    });
+
+    it('a receiver error mid-book reloads there with a new token and plays on', async () => {
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'playing', contentId: t.url(1), position: 42 });
+      // The next request for the file is refused: the receiver stops on an error, at 0.
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(1), position: 0 });
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      expect(t.snaps.some((s) => s.state === 'error')).toBe(false);
+      expect(m.asks).toEqual([undefined, true]);
+      expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 1, startTime: 42, autoplay: true });
+      expect(t.url(1)).toContain('token=CAST1');
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'loading', trackIndex: 1, position: 42 });
+    });
+
+    it('a paused receiver reloaded after an error stays paused', async () => {
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 10 });
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      expect(t.remote.loads.at(-1)).toMatchObject({
+        startIndex: 0,
+        startTime: 10,
+        autoplay: false,
+      });
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'paused', position: 10 });
+    });
+
+    it('a second error soon after is the error: no token minted on every try', async () => {
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'playing', contentId: t.url(0), position: 5 });
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      t.tick(REMINT_EVERY_MS - 1);
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+      expect(t.svc.getSnapshot().state).toBe('error');
+      expect(m.asks).toEqual([undefined, true]);
+      expect(t.remote.loads).toHaveLength(2);
+    });
+
+    it('a mint that fails leaves the error', async () => {
+      const t = setup({
+        prepare: async (tracks, book, opts) => {
+          if (opts?.freshToken) throw new Error('offline');
+          return { items: buildCastItems(tracks, book, urls, false) };
+        },
+      });
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'playing', contentId: t.url(0), position: 5 });
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      expect(t.svc.getSnapshot().state).toBe('error');
+      expect(t.remote.loads).toHaveLength(1);
     });
   });
 

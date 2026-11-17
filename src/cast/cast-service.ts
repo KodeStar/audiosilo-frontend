@@ -32,6 +32,12 @@ const ASKED_MOVE_MS = 8_000;
  * place the listener may long have passed, so the book comes back paused there instead. */
 const EARLY_END_FRESH_MS = 15_000;
 
+/** How often (ms) at most the receiver's queue is loaded again with a newly minted cast token
+ * after the receiver was refused (`freshToken`): a load that fails for another reason (a codec
+ * the receiver can't play) must not mint a token on every try, since each one minted can end
+ * another receiver's (the server keeps 20 per person). */
+export const REMINT_EVERY_MS = 60_000;
+
 /** The book loaded on the receiver: what was sent, so a seek into a transcoded file or a
  * jump to another file can reload it, and a status can be mapped back. */
 type Loaded = {
@@ -150,6 +156,9 @@ export class CastPlaybackService implements PlaybackService {
   /** When the JS last set the speed: a status still carrying the old one is not the
    * receiver changing it. */
   private rateAskedAt = 0;
+  /** When a cast token was last minted again for a refused receiver (`freshToken`); a new
+   * book (`load`) or a reset may mint again at once. */
+  private remintedAt: number | null = null;
 
   constructor(
     private readonly remote: CastRemote,
@@ -216,6 +225,7 @@ export class CastPlaybackService implements PlaybackService {
     if (!book) throw new Error('A cast needs the book it is loading');
     const seq = ++this.loadSeq;
     this.earlyEndRetryAt = null;
+    this.remintedAt = null;
     this.loadsInFlight++;
     try {
       const loaded = await this.prepareLoaded(tracks, book);
@@ -318,6 +328,7 @@ export class CastPlaybackService implements PlaybackService {
     this.loaded = null;
     this.seen = null;
     this.earlyEndRetryAt = null;
+    this.remintedAt = null;
     this.needsReload = false;
     // Another sender's book on the receiver is theirs: only ours is ever stopped (and
     // theirs stays ignored until this phone loads a book again, `sendQueue`).
@@ -360,15 +371,61 @@ export class CastPlaybackService implements PlaybackService {
   }
 
   /** The receiver's queue for a book, as sent from its start (no item requested mid-file). */
-  private async prepareLoaded(tracks: PlaybackTrack[], book: BookRef): Promise<Loaded> {
-    const { items } = await this.prepare(tracks, book);
+  private async prepareLoaded(
+    tracks: PlaybackTrack[],
+    book: BookRef,
+    freshToken = false,
+  ): Promise<Loaded> {
+    const { items } = await this.prepare(tracks, book, freshToken ? { freshToken } : undefined);
     return { tracks, book, items, urls: items.map((i) => i.url), offsets: items.map(() => 0) };
   }
 
-  /** Load the queue on the receiver starting at `(index, position)`. Resolves whether this
-   * is still the latest queue sent (false: a newer one replaced it, and the receiver's
-   * rejection of this one was that one's doing). */
+  /** Whether a refused receiver may be given a newly minted token now (`REMINT_EVERY_MS`). */
+  private remintDue(): boolean {
+    return this.remintedAt === null || this.now() - this.remintedAt >= REMINT_EVERY_MS;
+  }
+
+  /**
+   * The loaded queue again, its URLs carrying a newly minted cast token (fe#158): the server
+   * caps a person's cast tokens and ends the oldest, which a receiver may still be playing
+   * with, so its next file, seek or load is refused while the cache still holds that token.
+   * Resolves whether the queue was swapped (false: not due, the mint failed, or another book
+   * or a reset took the receiver meanwhile).
+   */
+  private async freshToken(): Promise<boolean> {
+    const loaded = this.loaded;
+    if (!loaded || !this.remintDue()) return false;
+    this.remintedAt = this.now();
+    const seq = this.loadSeq;
+    this.loadsInFlight++;
+    try {
+      const fresh = await this.prepareLoaded(loaded.tracks, loaded.book, true).catch(() => null);
+      if (!fresh || seq !== this.loadSeq || this.loaded !== loaded) return false;
+      this.loaded = fresh;
+      return true;
+    } finally {
+      this.loadsInFlight--;
+    }
+  }
+
+  /** Load the queue on the receiver starting at `(index, position)`; a load the receiver
+   * refuses is sent once more with a newly minted token (`freshToken`) before it fails.
+   * Resolves whether this is still the latest queue sent (false: a newer one replaced it,
+   * and the receiver's rejection of this one was that one's doing). */
   private async sendQueue(index: number, position: number, autoplay: boolean): Promise<boolean> {
+    try {
+      return await this.sendQueueOnce(index, position, autoplay);
+    } catch (err) {
+      if (!(await this.freshToken())) throw err;
+      return this.sendQueueOnce(index, position, autoplay);
+    }
+  }
+
+  private async sendQueueOnce(
+    index: number,
+    position: number,
+    autoplay: boolean,
+  ): Promise<boolean> {
     const loaded = this.loaded;
     if (!loaded) return false;
     const q = ++this.queueSeq;
@@ -444,6 +501,10 @@ export class CastPlaybackService implements PlaybackService {
       ? status.position + offset
       : this.snapshot.position;
     if (state === 'ended' && loaded && this.endedEarly(trackIndex, position, duration)) return;
+    if (state === 'error' && loaded && this.loadsInFlight === 0 && this.remintDue()) {
+      this.reloadFresh(trackIndex, position, duration);
+      return;
+    }
     if (state === 'ended' && duration > 0) position = duration; // the book's end reads as finished
     const patch: Partial<PlaybackSnapshot> = { state, trackIndex, position, duration };
     // The receiver's speed, when it changed by itself (not one we just set).
@@ -492,6 +553,28 @@ export class CastPlaybackService implements PlaybackService {
       this.update({ state: 'paused' });
     });
     return true;
+  }
+
+  /**
+   * The receiver stopped on an error while our book played (a later file, a seek or a reload
+   * it was refused): the queue is loaded again there with a newly minted cast token
+   * (`freshToken`), playing on when it was, before the error reaches the store. The place is
+   * where it was last seen on that file when the receiver reports less (it reports 0 once
+   * idle). A reload that fails is the error after all.
+   */
+  private reloadFresh(trackIndex: number, reported: number, duration: number) {
+    const seen = this.seen?.trackIndex === trackIndex ? this.seen : null;
+    const place = Math.min(Math.max(reported, seen?.position ?? 0), duration || Infinity);
+    const autoplay = this.isLive();
+    const seq = this.loadSeq;
+    this.place({ state: 'loading', trackIndex, position: place, duration }, false);
+    void (async () => {
+      if (!(await this.freshToken())) throw new Error('No new cast token');
+      if (!(await this.sendQueueOnce(trackIndex, place, autoplay))) return;
+      if (!autoplay && seq === this.loadSeq) this.update({ state: 'paused' });
+    })().catch(() => {
+      if (seq === this.loadSeq) this.update({ state: 'error' });
+    });
   }
 
   /** A progress tick names no item, so it can't tell a move from the receiver running on

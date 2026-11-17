@@ -32,6 +32,16 @@ describe('cast token cache', () => {
     expect(CAST_TOKEN_MARGIN_MS).toBe(HOUR);
   });
 
+  it('a fresh ask mints a new token in place of the cached one (fe#158)', async () => {
+    const cache = createCastTokenCache(now);
+    const src = source(24 * HOUR, now);
+    expect(await cache.get(src, 'srv.1', 1, 'A/B')).toBe('tok1');
+    expect(await cache.get(src, 'srv.1', 1, 'A/B', { fresh: true })).toBe('tok2');
+    // The new one is kept: later asks reuse it.
+    expect(await cache.get(src, 'srv.1', 1, 'A/B')).toBe('tok2');
+    expect(src.castToken).toHaveBeenCalledTimes(2);
+  });
+
   it('keys on the connection and the book (path is identity, scoped by connection)', async () => {
     const cache = createCastTokenCache(now);
     const src = source(24 * HOUR, now);

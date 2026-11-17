@@ -3459,7 +3459,13 @@ on first need). NOT device-verified (no Cast device yet).
   in use (`effectiveUrl`), and refuses with `CastBlockedError` (no `cast`, an address another
   device can't reach, a codec neither the receiver nor the server's transcoder handles). A
   downloaded book casts from its server. The web's Remote Playback prompt is NOT used (it would
-  hand over the element's URL, token included).
+  hand over the element's URL, token included). The server keeps 20 cast tokens per person and
+  ends the oldest, which a receiver may still be playing with (fe#158), so a queue load the
+  receiver refuses is sent once more with a newly minted token (`freshToken`,
+  `prepareCast(..., { freshToken })`, the cache's `fresh`), and a receiver that stops on an error
+  mid-book is loaded again there with one, playing on when it was. At most one mint per
+  `REMINT_EVERY_MS` (a minute) per book loaded, so a failure with another cause never mints on
+  every try (each mint can end another receiver's token).
 - **Generations**: the cast service numbers loads (`loadSeq`) and queues (`queueSeq`), the router
   its switches (`generation`): a load, queue or handover that a newer one (or a reset) overtook
   stands back, and the receiver's rejection of a replaced queue is not a failure. The native
