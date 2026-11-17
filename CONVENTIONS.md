@@ -3565,13 +3565,17 @@ on first need). NOT device-verified (no Cast device yet).
   landed, keeps where that one left from). A session's first book (a cast started or recast,
   `Intent.from` null) does not know where the receiver was: its media from before can be on any
   file, playing or paused, and its first status can reach the phone once the queue is on its way,
-  so anything before the receiver says that media is gone (any idle, its `interrupted` stop
-  included, or a status naming the asked file: `replacedGone`) is no refusal; once the load
-  answered, that media's settled statuses and late stop (`replacedStop`) are no place, and the
-  stop no reload. A status in flight naming the asked file's URL as sent,
+  so anything before the receiver says that media is gone (any idle but a file's `finished`, its
+  `interrupted` stop included, or a status naming the asked file: `replacedGone`) is no refusal;
+  once the load answered, that media's settled statuses on another file are no place and no word
+  on the play state, and its late stop (`replacedStop`: an `interrupted` on any file, or another
+  file's stop) is no place, and no reload. A status in flight naming the asked file's URL as sent,
   playing or paused, lands it, and its token counts as played. A play asked for while a queue of
-  ours (or its mint) is on its way is not sent to the receiver: the queue goes out playing, or is
-  played once it answers, and a queue that lands paused while a play stands is played then
+  ours (or its mint) is on its way is not sent to the receiver, nor does it send a second queue
+  (for at most `PLAY_HOLD_MS`, 25 s, so a load never answered holds no play for good):
+  the queue goes out playing, or is played once it answers (a load refused with no mint due
+  included), and a queue that lands paused while a play stands (a seek made before it landed
+  included, sent or read) is played then
   (`settleLanding`; that landing is no word from the receiver on the play state): a play that
   reached the receiver while it still took the queue is lost, which left a resume after a mint
   paused at its place with the stall watchdog's "Playback stopped". Not a status or error of the queue that load replaces
@@ -3707,7 +3711,11 @@ tokens, type and components; its section 17 maps them onto these files.
   guards it. RNW is pinned exactly to the patch's version (0.21.4, the patch file named for it)
   and ignored by Dependabot: an RNW upgrade renames and regenerates the patch
   (`npx patch-package react-native-web`) or drops it once upstream fixes it; a patch that no
-  longer applies fails the install.
+  longer applies fails the install. `react-native-google-cast+<ver>.patch` makes the library's
+  Android options provider stop the receiver's app when a session ends (Stop casting from the
+  Cast dialog or the notification); the library is pinned exactly (4.9.1) and ignored by
+  Dependabot the same way, and `plugins/withCast.test.ts` fails when the installed provider
+  lacks the line.
 - **Expo SDK pins, and one copy of each native module.** The SDK decides the versions of its
   native modules, react and react-native (`node_modules/expo/bundledNativeModules.json`). CI
   runs `npx expo install --check`, which fails on any drift; move them only with
