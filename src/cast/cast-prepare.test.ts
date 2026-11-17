@@ -64,6 +64,8 @@ describe('prepareCast', () => {
     expect((await prepareCast(TRACKS, BOOK)).items[0].url).toContain('token=OLD');
     const fresh = await prepareCast(TRACKS, BOOK, { freshToken: true });
     expect(fresh.items[0].url).toContain('token=NEW');
+    // The refused token is gone from the cache: the next cast of the book takes the new one.
+    expect((await prepareCast(TRACKS, BOOK)).items[0].url).toContain('token=NEW');
     expect(castToken).toHaveBeenCalledTimes(2);
   });
 

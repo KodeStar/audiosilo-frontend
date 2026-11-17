@@ -42,6 +42,17 @@ describe('cast token cache', () => {
     expect(src.castToken).toHaveBeenCalledTimes(2);
   });
 
+  it('a fresh ask drops the refused token even when no new one can be minted', async () => {
+    const cache = createCastTokenCache(now);
+    const src = source(24 * HOUR, now);
+    expect(await cache.get(src, 'srv.1', 1, 'A/B')).toBe('tok1');
+    src.castToken.mockRejectedValueOnce(new Error('offline'));
+    await expect(cache.get(src, 'srv.1', 1, 'A/B', { fresh: true })).rejects.toThrow('offline');
+    expect(cache.size()).toBe(0);
+    // The next cast of the book mints again, never reusing the token the receiver was refused.
+    expect(await cache.get(src, 'srv.1', 1, 'A/B')).toBe('tok2');
+  });
+
   it('keys on the connection and the book (path is identity, scoped by connection)', async () => {
     const cache = createCastTokenCache(now);
     const src = source(24 * HOUR, now);
