@@ -1057,12 +1057,16 @@ describe.each([
       [0, true],
       [60_000, false],
     ])(
-      "a server row stamped after the claim by a clock %i ms ahead moves it: %s",
+      'a server row stamped after the claim by a clock %i ms ahead moves it: %s',
       async (skew, moves) => {
         await playedPast(a, b);
         mockSkewMs = skew;
         const key = mirrorKey('c1', long.book.library_id, long.book.rel_path);
-        const { file: _file, file_pos: _pos, ...saved } = mockMirror.records.get(key) as MirrorRecord & {
+        const {
+          file: _file,
+          file_pos: _pos,
+          ...saved
+        } = mockMirror.records.get(key) as MirrorRecord & {
           file?: string;
           file_pos?: number;
         };

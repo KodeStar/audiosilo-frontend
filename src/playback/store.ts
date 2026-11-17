@@ -830,7 +830,8 @@ function haltAndPersist() {
 // out of `playing`), a move (the new place opens the next span with the move's reason), a stop,
 // a book switch and the end. Offline, a tick leaves the span open (cut only after an hour,
 // `MAX_SPAN_MS`), so a day offline is a handful of events. Online or offline, the open span is
-// stored every 5 s (`OPEN_SPAN_KEEP_MS`), so a kill loses at most that. The persist guards
+// stored every 5 s (`OPEN_SPAN_KEEP_MS`), so a kill loses at most that, and a move's span as it
+// opens, so a kill never loses the move. The persist guards
 // above (the load, the hot-swap, an adoption's reload, the resume floor) keep a suspicious
 // place out of a span too: a span then ends where it was last seen.
 

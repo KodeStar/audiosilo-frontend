@@ -699,8 +699,7 @@ export async function mirrorSpanEnd(span: OpenSpan): Promise<void> {
     (endsBefore) => ({ endsBefore }),
     () => null,
   );
-  const shortEnd =
-    !download || (download.endsBefore !== undefined && file !== download.endsBefore);
+  const shortEnd = !download || (download.endsBefore !== undefined && file !== download.endsBefore);
   const skew = await knownSkew(span.connectionId);
   await updateMirror(span.connectionId, span.libraryId, span.path, (record) => {
     if (record.finished || !(pos > record.position)) return record;

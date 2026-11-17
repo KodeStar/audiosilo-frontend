@@ -475,9 +475,9 @@ describe('ReaderScreen', () => {
   // stood meanwhile; and it is saved only once the acknowledgement has landed.
   it('Stay saves the page on screen at once, after the acknowledgement', async () => {
     let adopted = () => {};
-    jest.mocked(adoptServerPlace).mockImplementationOnce(
-      () => new Promise<void>((resolve) => (adopted = resolve)),
-    );
+    jest
+      .mocked(adoptServerPlace)
+      .mockImplementationOnce(() => new Promise<void>((resolve) => (adopted = resolve)));
     await mount();
     await opened();
     await answered(row());
