@@ -521,7 +521,10 @@ export function ConnectStart() {
           variant="muted"
           className="text-[15px] web:text-[0.9375rem] leading-[22px] web:leading-[1.375rem]"
         >
-          {newPerson ? t('profiles.connect.lead') : t(lead)}
+          {newPerson
+            ? // The served player reaches only its own server: no "or theirs" (fe#160).
+              t(isServed ? 'profiles.connect.leadServed' : 'profiles.connect.lead')
+            : t(lead)}
         </Text>
       </View>
       {pairError ? (

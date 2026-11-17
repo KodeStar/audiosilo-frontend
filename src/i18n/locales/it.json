@@ -132,10 +132,10 @@
         "current": "Password attuale",
         "currentPlaceholder": "La tua password attuale",
         "new": "Nuova password",
-        "newPlaceholder": "Almeno {{count}} caratteri",
+        "newPlaceholder": "Almeno {{min}} caratteri",
         "change": "Cambia password",
         "setNew": "Imposta una password",
-        "minError": "La password deve contenere almeno {{count}} caratteri.",
+        "minError": "La password deve contenere almeno {{min}} caratteri.",
         "updateError": "Impossibile aggiornare la password."
       },
       "signOut": "Esci"
@@ -247,7 +247,7 @@
     "password": {
       "bodySet": "Usala per accedere da un nuovo dispositivo o da un browser.",
       "bodyNotSet": "Non hai ancora una password. Impostane una per poter accedere da un nuovo dispositivo.",
-      "dialogSet": "Almeno {{count}} caratteri. Gli altri tuoi dispositivi restano connessi.",
+      "dialogSet": "Almeno {{min}} caratteri. Gli altri tuoi dispositivi restano connessi.",
       "dialogChange": "Inserisci la password attuale, poi quella nuova. Questo dispositivo resta connesso; gli altri tuoi dispositivi potrebbero essere disconnessi.",
       "doneSet": "Password impostata",
       "doneChanged": "Password cambiata",
@@ -1479,14 +1479,14 @@
   },
   "bridge": {
     "generate": {
-      "action": "Genera personaggi e riassunti",
-      "regenerate": "Rigenera personaggi e riassunti",
+      "action": "Genera personaggi, riassunti e una descrizione",
+      "regenerate": "Rigenera personaggi, riassunti e descrizione",
       "mark": "Generato su questo server",
       "covered": "La community ha già personaggi e riassunti per questo libro",
       "seeCharacters": "Vedi i personaggi",
-      "title": "Genera personaggi e riassunti",
-      "lead": "Il Bridge legge {{title}} e scrive i suoi personaggi e riassunti per questo server. Può richiedere qualche ora, e intanto puoi lasciare la pagina.",
-      "leadUntitled": "Il Bridge legge il libro e scrive i suoi personaggi e riassunti per questo server. Può richiedere qualche ora, e intanto puoi lasciare la pagina.",
+      "title": "Genera personaggi, riassunti e una descrizione",
+      "lead": "Il Bridge legge {{title}} e scrive i suoi personaggi, i riassunti e una descrizione per questo server. Può richiedere qualche ora, e intanto puoi lasciare la pagina.",
+      "leadUntitled": "Il Bridge legge il libro e scrive i suoi personaggi, i riassunti e una descrizione per questo server. Può richiedere qualche ora, e intanto puoi lasciare la pagina.",
       "source": "Legge",
       "sourceAudio": "L'audio, trascritto prima",
       "sourceEbook": "L'ebook, {{file}}",
@@ -1512,7 +1512,7 @@
       "confirmMany_other": "Genera {{count}} libri",
       "forBooks_one": "{{value}} per {{count}} libro",
       "forBooks_other": "{{value}} per {{count}} libri",
-      "queued": "In coda. Personaggi e riassunti compariranno qui quando avrà finito.",
+      "queued": "In coda. Personaggi, riassunti e descrizione compariranno qui quando avrà finito.",
       "queuedMany_one": "{{count}} libro in coda, dal primo.",
       "queuedMany_other": "{{count}} libri in coda, dal primo.",
       "queuedSome_one": "{{count}} libro su {{total}} in coda. Gli altri non è stato possibile metterli in coda.",
@@ -1536,12 +1536,12 @@
       "parkedTitle": "La creazione della lettura sincronizzata è in pausa",
       "failedTitle": "La creazione della lettura sincronizzata non è riuscita",
       "noEbook": "Questo libro non ha un ebook da allineare alla narrazione.",
-      "generateOpen": "Si stanno generando i personaggi e i riassunti di questo libro. Crea la lettura sincronizzata quando avrà finito: riutilizza la trascrizione.",
+      "generateOpen": "Si stanno generando i personaggi, i riassunti e la descrizione di questo libro. Crea la lettura sincronizzata quando avrà finito: riutilizza la trascrizione.",
       "detectOpen": "I capitoli del libro sono ancora in ricerca. Crea la lettura sincronizzata quando avrà finito: riutilizza la trascrizione.",
       "readalongOpen": "La lettura sincronizzata di questo libro è già in creazione."
     },
     "status": {
-      "title": "Generazione di personaggi e riassunti",
+      "title": "Generazione di personaggi, riassunti e descrizione",
       "waiting": "In attesa del Bridge",
       "stopping": "Interruzione in corso",
       "count": "{{done}} di {{total}}",
@@ -2685,6 +2685,7 @@
     "connect": {
       "title": "Aggiungi qualcuno a questo dispositivo.",
       "lead": "Accede con il proprio account, sul tuo server o sul suo. Ognuno mantiene il proprio punto in ogni libro.",
+      "leadServed": "Accede con il proprio account su questo server. Ognuno mantiene il proprio punto in ogni libro.",
       "knownHeading": "Server di questo dispositivo"
     },
     "menu": {

@@ -62,7 +62,7 @@ export function usePasswordEditor(connectionId: string) {
   const save = async () => {
     if (!api || busy) return;
     if (password.length < PW_MIN) {
-      setError(t('settings.account.password.minError', { count: PW_MIN }));
+      setError(t('settings.account.password.minError', { min: PW_MIN }));
       return;
     }
     if (hasPassword && current.length === 0) return;

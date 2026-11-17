@@ -48,6 +48,37 @@ describe('locales', () => {
     );
   });
 
+  // A Bridge run writes a description too (fe#160): the Generate action, its dialog and its
+  // queued and running lines name it, in every language.
+  it.each(Object.entries(LOCALES))('%s names the description Generate writes', (_, l) => {
+    const g = l.bridge.generate;
+    for (const text of [g.action, g.regenerate, g.title, g.lead, g.queued, l.bridge.status.title])
+      expect(text).toMatch(/description|Beschreibung|descripción|descrizione|descrição/);
+  });
+
+  // The password length is a plain value, not a plural count (fe#160: `{{count}}` keys with
+  // no `_one` form read right only while PW_MIN is above 1).
+  it.each(Object.entries(LOCALES))('%s words the password minimum with {{min}}', (_, l) => {
+    for (const text of [
+      l.settings.account.password.newPlaceholder,
+      l.settings.account.password.minError,
+      l.account.password.dialogSet,
+    ]) {
+      expect(text).toContain('{{min}}');
+      expect(text).not.toContain('{{count}}');
+    }
+  });
+
+  // The player a server serves reaches only that server (fe#160): its Add someone lead
+  // offers no other server.
+  it.each(Object.entries(LOCALES))('%s has an Add someone lead for the served player', (_, l) => {
+    expect(l.profiles.connect.leadServed).toBeTruthy();
+    expect(l.profiles.connect.leadServed).not.toBe(l.profiles.connect.lead);
+  });
+  it('says nothing of "their" server in the served lead', () => {
+    expect(en.profiles.connect.leadServed).not.toMatch(/theirs/);
+  });
+
   // Relative times where Hermes has no Intl.RelativeTimeFormat (#132): every language has
   // every form `formatRelative` asks for.
   it.each(Object.entries(LOCALES))('%s has every relative time string', (_, l) => {

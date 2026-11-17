@@ -132,10 +132,10 @@
         "current": "Contraseña actual",
         "currentPlaceholder": "Tu contraseña actual",
         "new": "Nueva contraseña",
-        "newPlaceholder": "Al menos {{count}} caracteres",
+        "newPlaceholder": "Al menos {{min}} caracteres",
         "change": "Cambiar contraseña",
         "setNew": "Establecer una contraseña",
-        "minError": "La contraseña debe tener al menos {{count}} caracteres.",
+        "minError": "La contraseña debe tener al menos {{min}} caracteres.",
         "updateError": "No se pudo actualizar la contraseña."
       },
       "signOut": "Cerrar sesión"
@@ -247,7 +247,7 @@
     "password": {
       "bodySet": "Úsala para iniciar sesión en un dispositivo nuevo o en un navegador.",
       "bodyNotSet": "Aún no tienes contraseña. Crea una para poder iniciar sesión en un dispositivo nuevo.",
-      "dialogSet": "Al menos {{count}} caracteres. Tus otros dispositivos siguen con la sesión iniciada.",
+      "dialogSet": "Al menos {{min}} caracteres. Tus otros dispositivos siguen con la sesión iniciada.",
       "dialogChange": "Escribe tu contraseña actual y luego la nueva. Este dispositivo sigue con la sesión iniciada; puede que se cierre la sesión en tus otros dispositivos.",
       "doneSet": "Contraseña creada",
       "doneChanged": "Contraseña cambiada",
@@ -1479,14 +1479,14 @@
   },
   "bridge": {
     "generate": {
-      "action": "Generar personajes y resúmenes",
-      "regenerate": "Volver a generar personajes y resúmenes",
+      "action": "Generar personajes, resúmenes y una descripción",
+      "regenerate": "Volver a generar personajes, resúmenes y la descripción",
       "mark": "Generado en este servidor",
       "covered": "La comunidad ya tiene personajes y resúmenes de este libro",
       "seeCharacters": "Ver personajes",
-      "title": "Generar personajes y resúmenes",
-      "lead": "El Bridge lee {{title}} y escribe sus personajes y resúmenes para este servidor. Puede tardar unas horas, y puedes salir de la página mientras tanto.",
-      "leadUntitled": "El Bridge lee el libro y escribe sus personajes y resúmenes para este servidor. Puede tardar unas horas, y puedes salir de la página mientras tanto.",
+      "title": "Generar personajes, resúmenes y una descripción",
+      "lead": "El Bridge lee {{title}} y escribe sus personajes, resúmenes y una descripción para este servidor. Puede tardar unas horas, y puedes salir de la página mientras tanto.",
+      "leadUntitled": "El Bridge lee el libro y escribe sus personajes, resúmenes y una descripción para este servidor. Puede tardar unas horas, y puedes salir de la página mientras tanto.",
       "source": "Lee",
       "sourceAudio": "El audio, transcrito primero",
       "sourceEbook": "El libro electrónico, {{file}}",
@@ -1512,7 +1512,7 @@
       "confirmMany_other": "Generar {{count}} libros",
       "forBooks_one": "{{value}} para {{count}} libro",
       "forBooks_other": "{{value}} para {{count}} libros",
-      "queued": "En cola. Los personajes y resúmenes aparecerán aquí cuando termine.",
+      "queued": "En cola. Los personajes, los resúmenes y la descripción aparecerán aquí cuando termine.",
       "queuedMany_one": "{{count}} libro en cola, el más antiguo primero.",
       "queuedMany_other": "{{count}} libros en cola, el más antiguo primero.",
       "queuedSome_one": "{{count}} de {{total}} libros en cola. El resto no se pudo poner en cola.",
@@ -1536,12 +1536,12 @@
       "parkedTitle": "La creación de la lectura sincronizada está en pausa",
       "failedTitle": "La creación de la lectura sincronizada falló",
       "noEbook": "Este libro no tiene ningún ebook que alinear con su narración.",
-      "generateOpen": "Se están generando los personajes y resúmenes de este libro. Crea la lectura sincronizada cuando termine: reutiliza la transcripción.",
+      "generateOpen": "Se están generando los personajes, los resúmenes y la descripción de este libro. Crea la lectura sincronizada cuando termine: reutiliza la transcripción.",
       "detectOpen": "Todavía se están buscando los capítulos del libro. Crea la lectura sincronizada cuando termine: reutiliza la transcripción.",
       "readalongOpen": "La lectura sincronizada de este libro ya se está creando."
     },
     "status": {
-      "title": "Generando personajes y resúmenes",
+      "title": "Generando personajes, resúmenes y una descripción",
       "waiting": "Esperando al Bridge",
       "stopping": "Deteniendo",
       "count": "{{done}} de {{total}}",
@@ -2685,6 +2685,7 @@
     "connect": {
       "title": "Añadir a alguien a este dispositivo.",
       "lead": "Inicia sesión con su propia cuenta, en tu servidor o en el suyo. Cada persona conserva su punto en cada libro.",
+      "leadServed": "Inicia sesión con su propia cuenta en este servidor. Cada persona conserva su punto en cada libro.",
       "knownHeading": "Servidores de este dispositivo"
     },
     "menu": {

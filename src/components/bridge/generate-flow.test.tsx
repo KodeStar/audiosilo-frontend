@@ -115,7 +115,7 @@ beforeEach(() => {
   );
 });
 
-describe('who sees "Generate characters and recaps"', () => {
+describe('who sees "Generate characters, recaps and a description"', () => {
   it('offers it to an admin for a book with no characters or recaps', async () => {
     await mount();
     expect(await screen.findByTestId('generate-action')).toBeTruthy();

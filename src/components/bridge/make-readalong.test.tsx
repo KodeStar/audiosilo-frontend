@@ -181,7 +181,7 @@ describe('the confirmation', () => {
     [{ writable: false }, /can't write to this library/],
     [
       { open_job: bridgeJob({ kind: 'sidecars.generate', state: 'queued' }) },
-      /characters and recaps are being generated/,
+      /characters, recaps and description are being generated/,
     ],
     [
       { open_job: bridgeJob({ kind: 'chapters.detect', state: 'running' }) },
