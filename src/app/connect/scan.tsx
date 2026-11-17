@@ -18,7 +18,7 @@ import {
   holdScanReconnect,
   takeScanFor,
 } from '@/components/connect/invite-handoff';
-import { parseInviteScan, parsePairingScan } from '@/lib/pairing';
+import { type PairingScan, parseInviteScan, parsePairingScan } from '@/lib/pairing';
 import { sameUrl } from '@/lib/server-address';
 import { connectBookParams, parseConnectBook } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
@@ -98,17 +98,27 @@ export default function ScanScreen() {
     const again = (base: string) =>
       scanReconnect(reconnect, base, useSession.getState().connections);
     // The book the sign-in step was heading to goes on only with a code for that step's
-    // server (`pendingServerUrl`, read before an invite's sign-in replaces it): another
-    // server's library ids name other books.
+    // server: another server's library ids name other books. The code is for it when it
+    // continues the step's reconnect (`again`), or when its address, or another one it
+    // gives for its server (`home`, `away`), is the step's own (`pendingServerUrl`, read
+    // before an invite's sign-in replaces it): a server's code often names its away
+    // address while the step was reached at home.
     const step = useSession.getState().pendingServerUrl;
-    const bookFor = (base: string) => (heading && step && sameUrl(base, step) ? heading : null);
+    const bookFor = (code: Pick<PairingScan, 'base' | 'addresses'>, reconnectId?: string) =>
+      heading &&
+      (reconnectId !== undefined ||
+        [code.base, code.addresses?.home, code.addresses?.away].some(
+          (url) => !!url && !!step && sameUrl(url, step),
+        ))
+        ? heading
+        : null;
     if (invite) {
       setError(null);
       const reconnectId = again(invite.base);
       // The reconnect goes with it in memory (`holdReconnect`), never in the params.
       beginInviteSignIn(invite, () => {
         if (reconnectId) holdReconnect(invite.base, reconnectId);
-        const book = bookFor(invite.base);
+        const book = bookFor(invite, reconnectId);
         router.replace(
           book
             ? { pathname: '/connect/sign-in', params: connectBookParams(book) }
@@ -133,7 +143,10 @@ export default function ScanScreen() {
     if (reconnectId) holdScanReconnect(parsed.token, reconnectId);
     router.replace({
       pathname: '/connect',
-      params: scanParams({ ...parsed, book: parsed.book ?? bookFor(parsed.base) ?? undefined }),
+      params: scanParams({
+        ...parsed,
+        book: parsed.book ?? bookFor(parsed, reconnectId) ?? undefined,
+      }),
     });
   };
 

@@ -94,6 +94,20 @@ describe('opened with the book its sign-in step was heading to', () => {
     });
   });
 
+  // A home and away install: the step was reached at home, the console's code names the
+  // away address and gives the home one beside it.
+  it("goes on with a code that gives the step's address as another of its server's", async () => {
+    useSession.setState({ pendingServerUrl: 'http://192.168.1.20:8080' });
+    await render(<ScanScreen />);
+    await scan(
+      'https://books.example.com/web/connect?token=abc&home=http%3A%2F%2F192.168.1.20%3A8080',
+    );
+    expect(mockReplace).toHaveBeenCalledWith({
+      pathname: '/connect',
+      params: expect.objectContaining({ token: 'abc', book: '2', path: 'A/Book' }),
+    });
+  });
+
   // Another server's library ids name other books: a code for it ends on its Home.
   it("leaves it behind with another server's code", async () => {
     await render(<ScanScreen />);
@@ -179,6 +193,30 @@ describe("opened from a reconnect's sign-in step (`openScanner`)", () => {
     await scan('https://books.example.com/connect#code=ABCD-EFGH-JKMN-PQRS');
     expect(mockReplace).toHaveBeenCalledWith('/connect/sign-in');
     expect(takeReconnect('https://books.example.com')).toBe('srv-1.1');
+  });
+
+  // fe#299: the step was at the address the connection uses at home, the code names its
+  // away address. The reconnect it continues says it is the step's server.
+  it('keeps the book the step was heading to with a code that continues the reconnect', async () => {
+    reconnecting();
+    useSession.setState({ pendingServerUrl: 'http://192.168.1.20:8080' });
+    mockParams = { book: '2', path: 'A/Book' };
+    openScanner('srv-1.1');
+    const first = await render(<ScanScreen />);
+    await scan('https://books.example.com/web/connect?token=abc');
+    expect(mockReplace).toHaveBeenCalledWith({
+      pathname: '/connect',
+      params: expect.objectContaining({ token: 'abc', book: '2', path: 'A/Book' }),
+    });
+    expect(takeScanReconnect('abc')).toBe('srv-1.1');
+    await first.unmount();
+    openScanner('srv-1.1');
+    await render(<ScanScreen />);
+    await scan('https://books.example.com/connect#code=ABCD-EFGH-JKMN-PQRS');
+    expect(mockReplace).toHaveBeenLastCalledWith({
+      pathname: '/connect/sign-in',
+      params: { book: '2', path: 'A/Book' },
+    });
   });
 
   it('drops it for a code of any other server, or a connection that is gone: a new connection', async () => {
