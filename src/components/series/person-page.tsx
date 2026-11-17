@@ -186,7 +186,7 @@ function PersonHeader({
             className={
               phone
                 ? undefined
-                : 'text-[44px] web:text-[2.75rem] leading-[46px] web:leading-[2.875rem]'
+                : 'text-[44px] web:text-[length:min(2.75rem,88px)] leading-[46px] web:leading-[length:min(2.875rem,92px)]'
             }
           >
             {name}

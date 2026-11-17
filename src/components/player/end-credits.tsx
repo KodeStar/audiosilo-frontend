@@ -407,8 +407,8 @@ function EndCreditsBody({
             className={cn(
               'text-center',
               phone
-                ? 'text-[34px] web:text-[2.125rem] leading-[38px] web:leading-[2.375rem]'
-                : 'text-[50px] web:text-[3.125rem] leading-[54px] web:leading-[3.375rem]',
+                ? 'text-[34px] web:text-[length:min(2.125rem,68px)] leading-[38px] web:leading-[length:min(2.375rem,76px)]'
+                : 'text-[50px] web:text-[length:min(3.125rem,100px)] leading-[54px] web:leading-[length:min(3.375rem,108px)]',
             )}
             numberOfLines={3}
           >

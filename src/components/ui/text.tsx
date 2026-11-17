@@ -27,10 +27,13 @@ export const FOCUS_RING_CLASS = 'outline-none focus-visible:ring-2 focus-visible
 export const FOCUS_RING_OFFSET_CLASS = `${FOCUS_RING_CLASS} focus-visible:ring-offset-2 focus-visible:ring-offset-background`;
 
 const variants = {
-  /** Bricolage 750, set bold (static weights): book and series heroes. */
-  'display-xl': 'font-display text-4xl tracking-tighter text-foreground',
-  /** Bricolage 700: page greetings, onboarding titles. */
-  display: 'font-display text-3xl tracking-tight text-foreground',
+  /** Bricolage 750, set bold (static weights): book and series heroes. The web's size stops
+   * at 2x (`DISPLAY_MAX_FONT_SCALE`), which the browser has no `maxFontSizeMultiplier` for. */
+  'display-xl':
+    'font-display text-4xl web:text-[length:min(2.25rem,72px)] tracking-tighter text-foreground',
+  /** Bricolage 700: page greetings, onboarding titles. Capped at 2x on the web too. */
+  display:
+    'font-display text-3xl web:text-[length:min(1.875rem,60px)] tracking-tight text-foreground',
   /** Bricolage 680 (bold): section and page headings. */
   heading: 'font-display text-xl tracking-tight text-foreground',
   /** Bricolage 650 (semibold): card and sheet titles, book titles in lists. */
@@ -96,7 +99,10 @@ export function headingLevelFor(variant: TextVariant): HeadingLevel {
  * How far a display title follows the system text size (fe#267). A page title is already the
  * largest text on screen; at iOS's AX5 (3.1x) one word ("Settings") no longer fits the
  * phone's width and breaks mid-word. Past 2x it stops growing, as iOS's own large titles
- * do; a caller's `maxFontSizeMultiplier` wins.
+ * do; a caller's `maxFontSizeMultiplier` wins. The web ignores the prop: there the display
+ * variants cap their size in CSS (`min(<rem>, <2x of it in px>)`, fe#305), and a caller that
+ * sets its own size on a display title caps it the same way (a twinned size, so the cap is
+ * not lost on the web: `web:text-[length:min(2.375rem,76px)]`).
  */
 export const DISPLAY_MAX_FONT_SCALE = 2;
 

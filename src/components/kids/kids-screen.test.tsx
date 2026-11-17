@@ -61,6 +61,7 @@ jest.mock('@/lib/layout', () => ({
 }));
 
 /* eslint-disable import/first */
+import { DISPLAY_MAX_FONT_SCALE } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { contentKey } from '@/lib/content-key';
 import { formatTimeOfDay } from '@/lib/format';
@@ -91,6 +92,10 @@ afterEach(() => {
 it('greets the child and says when bedtime is', async () => {
   await render(<KidsScreen />);
   expect(screen.getByText('Hi Leo')).toBeTruthy();
+  // A page title: the display role, so it stops growing at 2x like every other (fe#305).
+  expect(screen.getByRole('header', { name: 'Hi Leo' }).props.maxFontSizeMultiplier).toBe(
+    DISPLAY_MAX_FONT_SCALE,
+  );
   const moon = screen.getByTestId('kids-moon-card');
   // In the reader's clock convention (`formatTimeOfDay`).
   expect(within(moon).getByText(`Bedtime is at ${formatTimeOfDay('19:30')}`)).toBeTruthy();

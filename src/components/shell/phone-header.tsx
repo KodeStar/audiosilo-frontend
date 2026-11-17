@@ -75,7 +75,7 @@ export function PhoneHeader({
           <Text
             variant="display"
             accessibilityRole="header"
-            className="flex-1 text-[30px] web:text-[1.875rem] leading-[36px] web:leading-[2.25rem]"
+            className="flex-1 text-[30px] web:text-[length:min(1.875rem,60px)] leading-[36px] web:leading-[length:min(2.25rem,72px)]"
             numberOfLines={1}
           >
             {title}
