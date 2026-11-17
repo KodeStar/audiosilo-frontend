@@ -2418,7 +2418,9 @@ media GETs only.
   image from a server is a `CoverImage` (`components/ui/cover-image.tsx`: expo-image on native,
   unchanged; `cover-image.web.tsx` a plain `<img>`, since expo-image's web image takes no
   `crossOrigin`), and the `<audio>` element sets `crossOrigin` before every `src`
-  (`service.web.ts`, a load, a skip, the download swap). Both ask `corsModeFor`
+  (`service.web.ts`, a load, a skip, the download swap); the Media Session artwork from another
+  origin is fetched in CORS mode and handed over as an object URL, revoked when the cover
+  changes (`artworkFor`, fe#155). All ask `corsModeFor`
   (`src/lib/cors-mode.ts`): `'anonymous'` for an http(s) URL on another origin than the page,
   nothing for the page's own origin (the player at `/web`), the service worker's `_offline/`
   copies, `blob:` and `data:`, and always nothing on native. The server answers CORS for its
