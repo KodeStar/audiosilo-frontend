@@ -135,11 +135,9 @@ export function FoldersMode() {
               className={ROW}
             >
               <GlyphTile icon="folder" />
-              {/* The name alone: the library's default view ("hybrid") is the admin's
-                  setting, which says nothing to a listener (CONNECT-17, fe#144). */}
-              <View className="flex-1">
-                <Text variant="label">{lib.name}</Text>
-              </View>
+              <Text variant="label" className="flex-1">
+                {lib.name}
+              </Text>
               <Icon name="chevron-right" size={16} />
             </PressableRow>
           ))}

@@ -291,11 +291,10 @@ export function jobStatusView(job: BridgeJob): JobStatusView {
   if (job.state === 'needs_attention') {
     const retry = p?.park?.retry_at ? new Date(p.park.retry_at) : undefined;
     const reason = parkReason(p?.park?.code);
-    const hint = reason === 'other' ? p?.park?.hint?.trim() : undefined;
     return {
       phase: 'parked',
       reason,
-      ...(hint ? { hint } : {}),
+      hint: reason === 'other' ? p?.park?.hint?.trim() || undefined : undefined,
       retryAt: retry && Number.isFinite(retry.getTime()) ? retry : undefined,
     };
   }
