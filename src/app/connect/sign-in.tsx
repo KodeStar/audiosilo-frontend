@@ -1,7 +1,12 @@
 import { Redirect } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-import { takeInviteCode, takeReconnect } from '@/components/connect/invite-handoff';
+import {
+  peekInviteCode,
+  peekReconnect,
+  takeInviteCode,
+  takeReconnect,
+} from '@/components/connect/invite-handoff';
 import { SignInStep } from '@/components/connect/sign-in-step';
 import { parseConnectBook } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
@@ -15,8 +20,11 @@ import { useSession } from '@/stores/session';
  * reconnect are read once, when the screen opens: signing in clears the address, and the
  * screen must not bounce back to the first step while the flow moves on to "Your library is
  * ready.". A scanned or pasted invite link hands its code along (`holdInvite`), and the step
- * signs in with it at once. `book` and `path`: the book a signed-out visit was opening,
- * which the sign-in ends on (frontend#129).
+ * signs in with it at once. Both are read as the screen renders and taken once it is on
+ * screen, never in the render: on the web the first render of this route can be thrown away
+ * and run again while its chunk loads, and a take there left the step that showed with an
+ * empty code field. `book` and `path`: the book a signed-out visit was opening, which the
+ * sign-in ends on (frontend#129).
  */
 export default function SignInRoute() {
   const { serverName, book, path } = useRouteParams<{
@@ -28,10 +36,14 @@ export default function SignInRoute() {
     const pending = useSession.getState().pendingServerUrl;
     return {
       server: pending,
-      code: pending ? takeInviteCode(pending) : undefined,
-      reconnect: takeReconnect(pending),
+      code: pending ? peekInviteCode(pending) : undefined,
+      reconnect: peekReconnect(pending),
     };
   });
+  useEffect(() => {
+    takeInviteCode(server);
+    takeReconnect(server);
+  }, [server]);
   if (!server) return <Redirect href="/connect" />;
   return (
     <SignInStep

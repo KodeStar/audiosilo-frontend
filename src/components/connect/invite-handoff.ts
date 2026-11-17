@@ -24,10 +24,17 @@ export function beginInviteSignIn(invite: InviteScan, go: () => void): void {
   void useSession.getState().setPendingServerUrl(invite.base).then(go);
 }
 
-/** The held invite code for `server` (the sign-in step's server), taken once: a later
- * visit to the sign-in step starts with an empty field. */
-export function takeInviteCode(server: string): string | undefined {
-  const code = held && sameUrl(held.base, server) ? held.code : undefined;
+/** The held invite code for `server` (the sign-in step's server), left held: the step reads
+ * it as it renders and takes it (`takeInviteCode`) only once it is on screen, since a render
+ * can be thrown away and run again before it shows (the web's route chunk still loading). */
+export function peekInviteCode(server: string): string | undefined {
+  return held && sameUrl(held.base, server) ? held.code : undefined;
+}
+
+/** The held invite code for `server`, taken once: a later visit to the sign-in step starts
+ * with an empty field. `null`: a step with no server, which drops it. */
+export function takeInviteCode(server: string | null): string | undefined {
+  const code = server ? peekInviteCode(server) : undefined;
   held = null;
   return code;
 }
@@ -49,6 +56,12 @@ export function openScanner(reconnectId?: string, book?: ConnectBook): void {
   router.push(
     book ? { pathname: '/connect/scan', params: connectBookParams(book) } : '/connect/scan',
   );
+}
+
+/** The reconnect the scanner was opened for, left held (`peekInviteCode` says why a screen
+ * reads before it takes). */
+export function peekScanFor(): string | undefined {
+  return scanFor;
 }
 
 /** The reconnect the scanner was opened for (`openScanner`), taken once as it opens: a
@@ -73,9 +86,14 @@ export function holdScanReconnect(token: string, reconnectId: string): void {
   scanned = { token, reconnectId };
 }
 
+/** The reconnect held for the pairing code `token`, left held (`peekInviteCode`). */
+export function peekScanReconnect(token: string): string | undefined {
+  return scanned?.token === token ? scanned.reconnectId : undefined;
+}
+
 /** The reconnect held for the pairing code `token`, taken once. */
 export function takeScanReconnect(token: string): string | undefined {
-  const id = scanned?.token === token ? scanned.reconnectId : undefined;
+  const id = peekScanReconnect(token);
   scanned = null;
   return id;
 }
@@ -98,18 +116,25 @@ export function holdReconnect(server: string, reconnectId: string): void {
  * with no server too, which goes back to the first step): a sign-in step a link opened, or
  * one for another server, finds none, and a later one in the same flow finds none either. */
 export function takeReconnect(server: string | null): string | undefined {
-  const id =
-    reconnecting && server && sameUrl(reconnecting.server, server)
-      ? reconnecting.reconnectId
-      : undefined;
+  const id = peekReconnect(server);
   reconnecting = null;
   return id;
 }
 
+/** The reconnect held for the sign-in step at `server`, left held (`peekInviteCode` says
+ * why the step reads before it takes). */
+export function peekReconnect(server: string | null): string | undefined {
+  return reconnecting && server && sameUrl(reconnecting.server, server)
+    ? reconnecting.reconnectId
+    : undefined;
+}
+
 /** The connect flow was left (its layout's cleanup): a reconnect a scanner or the sign-in
- * step was opened for, or a scanned code held, and nothing took, goes with it, so none
- * waits for a later flow (a scanner or a sign-in step a link opens, the same code again). */
+ * step was opened for, a scanned code or an invite's code held, and nothing took, goes with
+ * it, so none waits for a later flow (a scanner or a sign-in step a link opens, the same
+ * code again). */
 export function dropConnectHandoffs(): void {
+  held = null;
   scanFor = undefined;
   scanned = null;
   reconnecting = null;
