@@ -367,6 +367,25 @@ describe('a loaded book another device has moved on', () => {
       expect(seeks()).toEqual([400]);
     });
 
+    it('waits for a check already out (the app just came to the front), not past it', async () => {
+      await loadedAndPaused();
+      let answer: (p: Progress) => void = () => {};
+      mockServer = () => new Promise((resolve) => (answer = resolve));
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      await backInFront();
+      expect(mockClient.getProgress).toHaveBeenCalledTimes(1);
+      const press = usePlayer.getState().toggle();
+      await settle();
+      expect(mockSvc.play).not.toHaveBeenCalled();
+      answer(record());
+      await press;
+      // One check, and the move it made came before the engine was asked to play.
+      expect(mockClient.getProgress).toHaveBeenCalledTimes(1);
+      expect(seeks()).toEqual([400]);
+      expect(mockSvc.play).toHaveBeenCalledTimes(1);
+      expect(order(mockSvc.seekTo)).toBeLessThan(order(mockSvc.play));
+    });
+
     it('a pause while it waits stands: the engine never starts', async () => {
       await loadedAndPaused();
       let answer: (p: Progress) => void = () => {};

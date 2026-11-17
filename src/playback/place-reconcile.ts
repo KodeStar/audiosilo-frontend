@@ -1,6 +1,7 @@
 import { t } from 'i18next';
 
 import { networkChecked } from '@/api/address-route';
+import type { ApiClient } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
 import { isReachable, onReconnect } from '@/api/reachability';
 import type { Chapter, Progress } from '@/api/types';
@@ -28,6 +29,7 @@ import {
 import {
   holdSaves,
   localMoveCount,
+  type NowPlaying,
   onPickedUpAgain,
   saveLoadedPlace,
   selectBookKey,
@@ -265,15 +267,18 @@ function offerHeldSave(save: ProgressSave, row: Progress, mirror: ProgressSave |
   );
 }
 
-let checking = false;
+/** The check that is out, if any: one at a time. */
+let checking: Promise<void> | null = null;
 
 /** The checks' triggers, by name (tests). */
 export type ReconcileReason = 'foreground' | 'reconnect' | 'picked-up';
 
 /** Ask the server about the loaded book and move it if another device moved on. Never
- * throws; resolves once the check is over (moved, stayed, or gave up). */
+ * throws; resolves once the check is over (moved, stayed, or gave up). With a check already
+ * out it resolves with that one: a Play press that waits for its check (`pickUpBeforePlay`)
+ * waits for the one the app coming to the front started just before it. */
 export async function reconcileLoadedPlace(reason: ReconcileReason): Promise<void> {
-  if (checking) return;
+  if (checking) return checking;
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   const bookKey = selectBookKey(player);
@@ -288,7 +293,17 @@ export async function reconcileLoadedPlace(reason: ReconcileReason): Promise<voi
   // Offline (a downloaded book with its server away): nothing to ask; saves go on.
   if (!client || !isReachable(np.connectionId)) return;
 
-  checking = true;
+  const check = checkLoadedPlace(np, bookKey, client);
+  checking = check;
+  try {
+    await check;
+  } finally {
+    if (checking === check) checking = null;
+  }
+}
+
+/** The check itself (`reconcileLoadedPlace`): never throws. */
+async function checkLoadedPlace(np: NowPlaying, bookKey: string, client: ApiClient): Promise<void> {
   const release = holdSaves();
   const moves = localMoveCount();
   const abort = new AbortController();
@@ -325,7 +340,6 @@ export async function reconcileLoadedPlace(reason: ReconcileReason): Promise<voi
     // Unreachable, refused or too slow: stay where the engine is; the saves go on.
   } finally {
     clearTimeout(timer);
-    checking = false;
     // After a move the other device's place is already saved, and the engine may not
     // have reported the move yet: the next save comes from the engine itself.
     release({ flush: !moved });

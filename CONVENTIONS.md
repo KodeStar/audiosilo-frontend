@@ -2166,7 +2166,8 @@ media GETs only.
   holds the store, `loadingBook`, is told once that hold is released, `pickUpDue`; a Play press
   in the foreground tells it before the engine starts and waits up to `PICK_UP_WAIT_MS`, 1.5 s,
   for the answer, so a move lands before any of the old place sounds: `pickUpBeforePlay`,
-  fe#158), the loaded book asks its server for its progress, and meanwhile the store holds its saves (`holdSaves`: 5 s at most,
+  fe#158; one check is out at a time, and a press waits for the one already out, as when the
+  app coming to the front started it), the loaded book asks its server for its progress, and meanwhile the store holds its saves (`holdSaves`: 5 s at most,
   then it saves the held place). It moves only when the record is from another `device_id`,
   newer than this device's own last save in its mirror (a newer unsynced save here wins; a record
   it only read, which a downloaded book's page and its download keep there, does not), not
