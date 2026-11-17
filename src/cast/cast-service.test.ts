@@ -410,6 +410,29 @@ describe('CastPlaybackService', () => {
     expect(t.svc.getSnapshot().position).toBe(51);
   });
 
+  it('a second seek while a paused book buffers the first stays paused', async () => {
+    const t = setup({ transcode: true });
+    await t.svc.load(TRACKS, 0, 0, [], BOOK);
+    t.status({ playerState: 'paused', contentId: t.url(0), position: 10 });
+    await t.svc.seekTo(100);
+    t.status({ playerState: 'buffering', contentId: t.url(0), position: 0 });
+    expect(t.svc.getSnapshot().state).toBe('loading');
+    await t.svc.seekTo(200);
+    await t.svc.skipToTrack(1, 30);
+    expect(t.remote.loads.map((l) => l.autoplay)).toEqual([false, false, false, false]);
+  });
+
+  it("a playing book's seek keeps playing", async () => {
+    const t = setup({ transcode: true });
+    await t.svc.load(TRACKS, 0, 0, [], BOOK);
+    await t.svc.play();
+    t.status({ playerState: 'playing', contentId: t.url(0), position: 10 });
+    await t.svc.seekTo(100);
+    t.status({ playerState: 'buffering', contentId: t.url(0), position: 0 });
+    await t.svc.seekTo(200);
+    expect(t.remote.loads.map((l) => l.autoplay)).toEqual([false, true, true]);
+  });
+
   it('ends the book only on the last file, at its end', async () => {
     const t = setup();
     await t.svc.load(TRACKS, 2, 590, [], BOOK);
@@ -609,6 +632,61 @@ describe('CastPlaybackService', () => {
       t.status({ ...status, playerState: 'idle', idleReason: 'error', position: 0 });
       await flush();
       expect(t.remote.loads.at(-1)).toMatchObject({ startTime: 30, autoplay: false });
+    });
+
+    it('a play from the TV remote after this phone paused reloads playing', async () => {
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      await t.svc.play();
+      t.status({ playerState: 'playing', contentId: t.url(0), position: 10 });
+      await t.svc.pause();
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 10 });
+      // The remote plays it, then a seek of the receiver's own is refused while it buffers.
+      t.status({ playerState: 'playing', contentId: t.url(0), position: 20 });
+      t.status({ playerState: 'buffering', contentId: t.url(0), position: 200 });
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+      await flush();
+      expect(t.remote.loads.at(-1)).toMatchObject({ startTime: 200, autoplay: true });
+    });
+
+    it('a pause from the TV remote after this phone played reloads paused', async () => {
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      await t.svc.play();
+      t.status({ playerState: 'playing', contentId: t.url(0), position: 10 });
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 20 });
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+      await flush();
+      expect(t.remote.loads.at(-1)).toMatchObject({ startTime: 20, autoplay: false });
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'paused', position: 20 });
+    });
+
+    it('a paused status while our play reload loads leaves the play standing', async () => {
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 10 });
+      t.status({ playerState: 'idle', idleReason: 'cancelled', position: NaN });
+      let loaded: () => void = () => {};
+      (t.remote.load as jest.Mock).mockImplementationOnce(
+        (req) =>
+          new Promise<void>((resolve) => {
+            t.remote.loads.push(req);
+            loaded = resolve;
+          }),
+      );
+      const playing = t.svc.play();
+      await flush();
+      // The receiver still reports the queue it replaces, paused, before it takes ours.
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 10 });
+      loaded();
+      await playing;
+      t.status({ playerState: 'buffering', contentId: t.url(0), position: 10 });
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+      await flush();
+      expect(t.remote.loads.at(-1)).toMatchObject({ startTime: 10, autoplay: true });
     });
 
     it('a second error soon after is the error: no token minted on every try', async () => {
