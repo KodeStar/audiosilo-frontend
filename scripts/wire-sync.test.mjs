@@ -3,13 +3,12 @@
 // the server's.
 
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-import { compareCopy, fromCheckout, pinnedRef, sync } from './wire-sync.mjs';
+import { compareCopy, fromCheckout, git as gitIn, pinnedRef, sync } from './wire-sync.mjs';
 
 function commit(git, message) {
   git(
@@ -27,7 +26,7 @@ function commit(git, message) {
 
 function serverRepo() {
   const dir = mkdtempSync(path.join(tmpdir(), 'wire-server-'));
-  const git = (...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' });
+  const git = (...args) => gitIn(dir, ...args);
   git('init', '-q');
   const wire = path.join(dir, 'internal', 'api', 'testdata', 'wire');
   mkdirSync(wire, { recursive: true });
@@ -83,4 +82,26 @@ test('the check reports a hand edit to the copy', (t) => {
     'differs a.json',
     'not on the server extra.json',
   ]);
+});
+
+test('git runs in the directory given, not the repository a hook names', (t) => {
+  // A git hook and `git rebase --exec` export these for the repository they run in.
+  const other = mkdtempSync(path.join(tmpdir(), 'wire-other-'));
+  const saved = { GIT_DIR: process.env.GIT_DIR, GIT_INDEX_FILE: process.env.GIT_INDEX_FILE };
+  process.env.GIT_DIR = path.join(other, '.git');
+  process.env.GIT_INDEX_FILE = path.join(other, '.git', 'index');
+  let dir;
+  t.after(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    rmSync(other, { recursive: true, force: true });
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+  const repo = serverRepo();
+  dir = repo.dir;
+  assert.equal(realpathSync(repo.git('rev-parse', '--show-toplevel').trim()), realpathSync(dir));
+  assert.equal(Object.keys(fromCheckout(dir, 'HEAD')).length, 2);
+  assert.equal(existsSync(path.join(other, '.git')), false);
 });

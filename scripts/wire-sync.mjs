@@ -24,8 +24,25 @@ const OUT = path.join(ROOT, 'src', 'api', '__wire__');
 const GOLDENS = 'internal/api/testdata/wire';
 const REPO = 'KodeStar/audiosilo-server';
 
-function git(dir, ...args) {
-  return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', maxBuffer: 16 << 20 });
+// Inside a git hook or `git rebase --exec`, git's own variables name the caller's
+// repository and win over -C. They are dropped, or every call here would read
+// (and the test's throwaway commits would land in) that repository, not dir.
+const GIT_LOCAL = [
+  'GIT_DIR',
+  'GIT_WORK_TREE',
+  'GIT_INDEX_FILE',
+  'GIT_COMMON_DIR',
+  'GIT_OBJECT_DIRECTORY',
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  'GIT_PREFIX',
+];
+
+/** Runs git in dir and returns its output. */
+export function git(dir, ...args) {
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([k]) => !GIT_LOCAL.includes(k)),
+  );
+  return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', maxBuffer: 16 << 20, env });
 }
 
 /** The goldens at ref in a server checkout: { 'name.json': text }. */
