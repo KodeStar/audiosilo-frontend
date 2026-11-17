@@ -802,6 +802,8 @@ describe('reading-progress', () => {
   });
 
   describe('one queue for every send (fe#173)', () => {
+    const nextMacrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
+
     /** `server`'s api with its first PUT held until `release()`, counting the PUTs in flight. */
     function heldFirst(server: ReturnType<typeof ruleServer>) {
       let release = () => {};
@@ -839,7 +841,7 @@ describe('reading-progress', () => {
         cfi: CFI_B,
         progression: 0.12,
       });
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await nextMacrotask();
       // Jump: the tablet's place is shown here before the second page is sent.
       await adoptServerPlace('c1', 1, 'A/Book', tablet);
       held.release();
@@ -861,7 +863,7 @@ describe('reading-progress', () => {
       const held = heldFirst(server);
       const first = saveReaderPlace(held.api, 'c1', 1, 'A/Book', { cfi: CFI_B, progression: 0.5 });
       const back = saveReaderPlace(held.api, 'c1', 1, 'A/Book', { cfi: CFI_A, progression: 0.3 });
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await nextMacrotask();
       held.release();
       await Promise.all([first, back]);
       expect(held.api.saveReadingProgress.mock.calls.map(([, , b]) => b.base_version)).toEqual([
@@ -881,9 +883,9 @@ describe('reading-progress', () => {
       mockResolveClient.mockReturnValue(held.api);
       // The reader opens (its replay goes out), and the listener pages back at once.
       const replay = flushReadingQueue();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await nextMacrotask();
       const back = saveReaderPlace(held.api, 'c1', 1, 'A/Book', { cfi: CFI_A, progression: 0.3 });
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await nextMacrotask();
       held.release();
       await Promise.all([replay, back]);
       expect(held.mostInFlight()).toBe(1);

@@ -326,16 +326,14 @@ export async function saveReaderPlace(
     await updateMirror(save, withNewerPlace(save));
     return save;
   });
-  const saved = await withQueueLock(async () => {
+  return sendThenFlush(api, async () => {
     let version = captured.base_version;
     if (!version) {
       const entry = await readMirror(connectionId, libraryId, path);
       if (entry?.own) version = entry.version;
     }
-    return sendOrQueue(api, { ...captured, base_version: version });
+    return { ...captured, base_version: version };
   });
-  if (saved) void flushReadingQueue();
-  return saved;
 }
 
 type SavedListener = (saved: ReadingSaved) => void;
@@ -427,37 +425,39 @@ export async function saveReadingPlace(
   save: ReadingSave,
 ): Promise<ReadingProgressSaved | null> {
   await updateMirror(save, withNewerPlace(save));
-  const saved = await withQueueLock(() => sendOrQueue(api, save));
-  if (saved) void flushReadingQueue();
-  return saved;
+  return sendThenFlush(api, async () => save);
 }
 
-/** `saveReadingPlace`'s send, holding `withQueueLock`. A save sent supersedes a queued save
- * of the same book made before it: the latest save per book wins, sent or queued, so a
- * replay never follows it with an older place (one made on 0 that is further on would be
- * kept, a place the reader had left). */
-async function sendOrQueue(
+/** Send the save `make` builds once it holds `withQueueLock`, or queue it; after a sent
+ * save, replay what is still queued. A save sent supersedes a queued save of the same book
+ * made before it: the latest save per book wins, sent or queued, so a replay never follows
+ * it with an older place (one made on 0 that is further on would be kept, a place the
+ * reader had left). */
+async function sendThenFlush(
   api: ApiClient | null,
-  save: ReadingSave,
+  make: () => Promise<ReadingSave>,
 ): Promise<ReadingProgressSaved | null> {
-  if (!api || !isReachable(save.connectionId)) {
-    await queueSave(save);
-    return null;
-  }
-  try {
-    const saved = await put(api, save);
-    noteSuccess(save.connectionId);
-    await dropQueuedBefore(save);
-    return saved;
-  } catch (e) {
-    if (isRefusedForGood(e)) {
-      refused(save, e);
-      return null;
+  const { saved, more } = await withQueueLock(async () => {
+    const save = await make();
+    if (!api || !isReachable(save.connectionId)) {
+      await queueSave(save);
+      return { saved: null, more: false };
     }
-    noteFailure(save.connectionId, e);
-    await queueSave(save);
-    return null;
-  }
+    try {
+      const answer = await put(api, save);
+      noteSuccess(save.connectionId);
+      return { saved: answer, more: await dropQueuedBefore(save) };
+    } catch (e) {
+      if (isRefusedForGood(e)) refused(save, e);
+      else {
+        noteFailure(save.connectionId, e);
+        await queueSave(save);
+      }
+      return { saved: null, more: false };
+    }
+  });
+  if (more) void flushReadingQueue();
+  return saved;
 }
 
 // --- the offline queue -----------------------------------------------------------------------
@@ -480,11 +480,13 @@ async function queueSave(save: ReadingSave): Promise<void> {
   await setItem(READING_QUEUE_KEY, next);
 }
 
-/** Drop a queued save of `sent`'s book made no later than it. Holding `withQueueLock`. */
-async function dropQueuedBefore(sent: ReadingSave): Promise<void> {
+/** Drop a queued save of `sent`'s book made no later than it; whether any save is still
+ * queued. Holding `withQueueLock`. */
+async function dropQueuedBefore(sent: ReadingSave): Promise<boolean> {
   const queue = await readQueue();
   const next = queue.filter((s) => !sameBook(s, sent) || timeOf(s) > timeOf(sent));
   if (next.length !== queue.length) await setItem(READING_QUEUE_KEY, next);
+  return next.length > 0;
 }
 
 /** Replay one connection's saves through its client; returns those to keep. */
