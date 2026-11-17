@@ -101,17 +101,41 @@ describe('withCast: Stop casting stops the receiver', () => {
     expect(() => addStopReceiverOnEnd('let delegate = ReactNativeDelegate()')).toThrow();
   });
 
-  it("Android: the library's options provider, as patched at install, sets it", () => {
-    // `patches/react-native-google-cast+4.9.1.patch` (postinstall): a library upgrade that
-    // drops the patch fails here instead of leaving the TV playing after Stop casting.
-    const provider = readFileSync(
+  const library = (file: string) =>
+    readFileSync(
       join(
         __dirname,
-        '../node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/GoogleCastOptionsProvider.java',
+        '../node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast',
+        file,
       ),
       'utf8',
     );
-    expect(provider).toContain('.setStopReceiverApplicationWhenEndingSession(true)');
+
+  it("Android: the Cast dialog's Stop casting, as patched at install, stops the receiver", () => {
+    // `patches/react-native-google-cast+4.9.1.patch` (postinstall): a library upgrade that
+    // drops the patch fails here instead of leaving the TV playing after Stop casting.
+    const factory = library('components/RNGCStopCastingDialogFactory.java');
+    expect(factory).toContain('findViewById(android.R.id.button1)');
+    expect(factory).toContain('endCurrentSession(true)');
+    // Both Cast buttons open it: the app's and the expanded controller's.
+    expect(library('components/RNGoogleCastButtonManager.java')).toContain(
+      'button.setDialogFactory(new RNGCStopCastingDialogFactory())',
+    );
+    expect(library('RNGCExpandedControllerActivity.java')).toContain(
+      'setDialogFactory(new RNGCStopCastingDialogFactory())',
+    );
+    // The notification's stop is the SDK's own end with the receiver stopped.
+    expect(library('GoogleCastOptionsProvider.java')).toContain(
+      'MediaIntentReceiver.ACTION_STOP_CASTING',
+    );
+  });
+
+  it('Android: no session end stops the receiver by itself (a Wi-Fi drop must not)', () => {
+    // The SDK ends the session when MediaRouter loses the route (the phone's Wi-Fi went), and
+    // the global option would make that end stop the TV.
+    expect(library('GoogleCastOptionsProvider.java')).not.toContain(
+      'setStopReceiverApplicationWhenEndingSession',
+    );
   });
 });
 
