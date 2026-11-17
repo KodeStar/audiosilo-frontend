@@ -3558,8 +3558,19 @@ on first need). NOT device-verified (no Cast device yet).
   `ASKED_MOVE_MS` of the move once it answered (later, a file it played unseen may have run on). Not
   the file the receiver was on when the move was asked, at or past where it was then (`Intent.from`:
   the replaced media playing on; a move asked within `ASKED_MOVE_MS` of the last one, before it
-  landed, keeps where that one left from). A status in flight naming the asked file's URL as sent,
-  playing or paused, lands it, and its token counts as played. Not a status or error of the queue that load replaces
+  landed, keeps where that one left from). A session's first book (a cast started or recast,
+  `Intent.from` null) does not know where the receiver was: its media from before can be on any
+  file, playing or paused, and its first status can reach the phone once the queue is on its way,
+  so anything before the receiver says that media is gone (any idle, its `interrupted` stop
+  included, or a status naming the asked file: `replacedGone`) is no refusal; once the load
+  answered, that media's settled statuses and late stop (`replacedStop`) are no place, and the
+  stop no reload. A status in flight naming the asked file's URL as sent,
+  playing or paused, lands it, and its token counts as played. A play asked for while a queue of
+  ours (or its mint) is on its way is not sent to the receiver: the queue goes out playing, or is
+  played once it answers, and a queue that lands paused while a play stands is played then
+  (`settleLanding`; that landing is no word from the receiver on the play state): a play that
+  reached the receiver while it still took the queue is lost, which left a resume after a mint
+  paused at its place with the stall watchdog's "Playback stopped". Not a status or error of the queue that load replaces
   (`ofReplacedQueue`: one naming a URL with the token before the mint), nor one read (`refresh`):
   read before the queue was sent it is dropped, and an error read while it is on its way refuses
   nothing. A queue sent puts the snapshot at the place it asks for at once, as a

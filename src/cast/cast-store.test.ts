@@ -44,12 +44,15 @@ jest.mock('@/playback/service', () => ({
 }));
 
 const mockSaveProgress = jest.fn(async (..._args: unknown[]) => {});
+const mockLoadInitial = jest.fn(async (..._args: unknown[]): Promise<unknown> => ({
+  kind: 'empty',
+}));
 jest.mock('@/playback/progress-sync', () => ({
   saveProgress: (...args: unknown[]) => mockSaveProgress(...args),
   flushQueue: jest.fn(async () => {}),
   flushConnection: jest.fn(async () => {}),
   getDeviceId: jest.fn(async () => 'dev-1'),
-  loadInitialProgress: jest.fn(async () => ({ kind: 'empty' })),
+  loadInitialProgress: (...args: unknown[]) => mockLoadInitial(...args),
   readMirror: jest.fn(async () => null),
 }));
 jest.mock('@/api/provider', () => ({
@@ -76,7 +79,7 @@ jest.mock('@/api/connection-clients', () => ({
 }));
 
 /* eslint-disable import/first */
-import { usePlayer } from '@/playback/store';
+import { initializePlayback, usePlayer } from '@/playback/store';
 
 import { buildCastItems } from './cast-media';
 import { CastPlaybackService } from './cast-service';
@@ -218,5 +221,100 @@ describe('the store, casting through the route switch', () => {
     );
     expect(usePlayer.getState().snapshot.state).toBe('paused');
     expect(mockLocal.play).toHaveBeenCalledTimes(1); // only the original start
+  });
+
+  it('a resume whose token was ended ends playing at the asked place, never "Playback stopped"', async () => {
+    // Device log 20:38:48 and 20:40:01 (Pixel 6a, Default Media Receiver): the book finished on
+    // the TV and the store let it go; another device left it at file 2, 0:20; the cached cast
+    // token was ended. Resume: the receiver takes the load (Android answers it then), is
+    // refused both files, the queue goes again with a new token, and the receiver lands it
+    // PAUSED. A play that reaches it before it has loaded the file is lost.
+    await usePlayer.getState().stop();
+    await flush();
+    let onStatus: ((s: CastMediaStatus | null) => void) | null = null;
+    const loads: CastQueueLoad[] = [];
+    const answers: (() => void)[] = [];
+    const rateAnswers: (() => void)[] = [];
+    let landed = false;
+    const remote: CastRemote = {
+      load: jest.fn(
+        (r: CastQueueLoad) =>
+          new Promise<void>((resolve) => {
+            loads.push(r);
+            landed = false;
+            answers.push(resolve);
+          }),
+      ),
+      // Taken only once the receiver has loaded the file; its status comes a moment later.
+      play: jest.fn(async () => {
+        if (!landed) return;
+        await Promise.resolve();
+        status({ playerState: 'playing', contentId: url(1), position: 19.9 });
+      }),
+      pause: jest.fn(async () => {}),
+      seek: jest.fn(async () => {}),
+      // The speed's round trip: the store plays once it is answered.
+      setRate: jest.fn(() => new Promise<void>((resolve) => rateAnswers.push(resolve))),
+      stop: jest.fn(async () => {}),
+      readStatus: jest.fn(async () => null),
+      onStatus: (h) => {
+        onStatus = h;
+        return () => {};
+      },
+      onProgress: () => () => {},
+    };
+    let minted = 0;
+    const cast = new CastPlaybackService(remote, async (tracks, b, opts) => {
+      if (opts?.freshToken) minted++;
+      const token = `CAST${minted}`;
+      return {
+        items: buildCastItems(
+          tracks,
+          b,
+          {
+            streamUrl: (lib: number, path: string) => `https://h/${lib}/${path}?token=${token}`,
+            coverUrl: () => 'https://h/cover',
+          },
+          false,
+        ),
+      };
+    });
+    const url = (i: number) => loads.at(-1)!.items[i].url;
+    const status = (s: Partial<CastMediaStatus>) =>
+      onStatus?.({ playerState: 'playing', position: 0, rate: 1, ...s });
+    await initializePlayback();
+    await currentRouter()!.beginCast(cast);
+
+    mockLoadInitial.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: { position: 120, finished: false, version: 0, playback_speed: 1 },
+    });
+    const resume = usePlayer.getState().playBook('c1', 2, book, chapters);
+    await flush();
+    expect(loads[0]).toMatchObject({ startIndex: 1, startTime: 20 });
+    const old = loads[0].items.map((i) => i.url);
+    status({ playerState: 'idle', idleReason: null, contentId: old[1] });
+    answers.shift()!();
+    await flush();
+    status({ playerState: 'idle', idleReason: 'error', contentId: old[1] });
+    await flush();
+    expect(minted).toBe(1);
+    status({ playerState: 'idle', idleReason: 'error', contentId: old[1] });
+    // The reload goes out paused; the store's play comes as the receiver takes it.
+    expect(loads[1]).toMatchObject({ startIndex: 1, startTime: 20, autoplay: false });
+    status({ playerState: 'idle', idleReason: null, contentId: url(1) });
+    for (const answer of rateAnswers.splice(0)) answer();
+    await flush();
+    status({ playerState: 'buffering', contentId: url(1) });
+    answers.shift()!();
+    await flush();
+    await resume;
+    // The reload lands paused, as sent.
+    landed = true;
+    status({ playerState: 'paused', contentId: url(1), position: 19.9 });
+    await flush();
+    jest.advanceTimersByTime(4_000);
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'playing', trackIndex: 1 });
+    expect(minted).toBe(1);
   });
 });
