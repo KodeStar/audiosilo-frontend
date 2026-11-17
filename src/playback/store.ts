@@ -39,8 +39,11 @@ import {
   bookFileSpecs,
   buildBookQueue,
   chapterAt,
+  endsShortOfBook,
+  fileDurationOf,
   FINISHED_TOLERANCE,
   locate,
+  shortOfFileEnd,
   toBookPosition,
   trackIdOf,
   trackIndexById,
@@ -1599,6 +1602,59 @@ function serverLengthOf(
  * back, another book). */
 let atPartialEnd = false;
 
+/** Where the store last asked the engine to be (a load, a seek, a track jump), in file
+ * coordinates, until the engine has played on from there (`SETTLED_AFTER` seconds into that
+ * file) or another move: a later ask, the listener's own from the lock screen or the car
+ * (`onRemoteMove`). An engine that reports a later file meanwhile, from a place clearly inside
+ * the asked one (`shortOfFileEnd`), ran off the end of a file it measured short (a resume past
+ * Media3's first-frame guess at a header-less VBR MP3 landed in the next file): a fault of the
+ * engine's (`engineFault`), never the listener's place. */
+let askedPlace: { np: NowPlaying; trackIndex: number; position: number } | null = null;
+const SETTLED_AFTER = 1;
+/** The book whose engine faulted (`engineFault`): its reports are dropped, and a play the
+ * engine makes by itself is paused again, until the store asks it for a place again. */
+let faultedBook: NowPlaying | null = null;
+
+/** The store asks the engine for `(trackIndex, position)` of `np`'s queue (`askedPlace`). */
+function askEngineTo(np: NowPlaying, trackIndex: number, position: number) {
+  askedPlace = { np, trackIndex, position };
+  faultedBook = null;
+}
+
+/**
+ * The engine report `s` as an `error` at the place the listener is at, when the engine went
+ * where the book is not: on to a later file before it played on from an asked place inside its
+ * file, or to the end of the media short of the book's end (`endsShortOfBook`), which would
+ * otherwise read as the book finished (the credits, `finishBook`'s `finished: true` and Sync v2's
+ * `finish`). Else null. The place is the asked one while the ask stands, else the engine's.
+ */
+function engineFault(np: NowPlaying, s: PlaybackSnapshot): PlaybackSnapshot | null {
+  const asked = askedPlace?.np === np ? askedPlace : null;
+  if (asked && s.trackIndex === asked.trackIndex && s.position >= asked.position + SETTLED_AFTER) {
+    askedPlace = null;
+  }
+  // From a file's start an engine can't run past its end (it measured the file at least that
+  // long): only an ask inside a file can land past a short measure.
+  const rolled =
+    !!asked &&
+    asked.position > 0 &&
+    s.trackIndex > asked.trackIndex &&
+    (wantsPlayback || startingPlayback) &&
+    shortOfFileEnd(np.queue, asked.trackIndex, asked.position);
+  const short = s.state === 'ended' && endsShortOfBook(np.queue, s.trackIndex, s.position);
+  if (!rolled && !short) return null;
+  faultedBook = np;
+  askedPlace = null;
+  const at = asked ?? s;
+  return {
+    ...s,
+    state: 'error',
+    trackIndex: at.trackIndex,
+    position: at.position,
+    duration: fileDurationOf(np.queue, at.trackIndex, at === s ? s.duration : 0),
+  };
+}
+
 /** "The rest of this book isn't downloaded": the player stopped at the end of a download
  * that lacks the rest of its book. */
 const partialEndNotice = lateListener();
@@ -1764,6 +1820,7 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
   adoptTabPlace(np, place);
   const moves = localMoves;
   let seek: Promise<void> | undefined;
+  askEngineTo(np, place.index, place.positionInTrack);
   try {
     seek = Promise.resolve(
       place.index === snapshot.trackIndex
@@ -2004,9 +2061,13 @@ function clearPlaybackIntent() {
  * Not started at all (false) when this tab gave way to another tab's play since the play
  * was asked for (`giveWayTo`, while a start or a Retry was loading): loaded here, played
  * there. Played regardless, the engine's `playing` would read as a new play nobody asked
- * for and take the connection back from the newer tab. */
+ * for and take the connection back from the newer tab.
+ *
+ * Nor played when its engine faulted while it loaded (`engineFault`): the error stands, and the
+ * start goes on as one that played (true), so the error is what the listener sees. */
 async function startEngine(svc: PlaybackService): Promise<boolean> {
   if (yieldedAttempt === playAttempts) return false;
+  if (faultedBook && faultedBook === usePlayer.getState().nowPlaying) return true;
   try {
     await svc.play();
   } catch (err) {
@@ -2237,6 +2298,13 @@ async function createService(): Promise<PlaybackService> {
     // intent and strand the spinner). A genuine user/lock-screen pause arrives AFTER
     // `playing` (startingPlayback already false), so it stays `paused`. Outside a fresh
     // start, a `ready` while intending to play is also a spinner.
+    // A faulted engine (`engineFault`) is not heard from until the store asks it for a place
+    // again (`askEngineTo`: a Retry, or a press, which reloads), and a play it starts by
+    // itself (the lock screen) is stopped again.
+    if (faultedBook && faultedBook === usePlayer.getState().nowPlaying) {
+      if (raw.state === 'playing') void svc.pause();
+      return;
+    }
     let state = raw.state;
     // The end of a download that lacks the rest of its book (an adoption offline, D3, fe#185)
     // is a pause there with a notice, never the book's end: no credits, no finish.
@@ -2267,7 +2335,19 @@ async function createService(): Promise<PlaybackService> {
     if (prev.state === 'error' && !wantsPlayback && reported.state !== 'playing') {
       return;
     }
-    const snapshot = throughSwap(reported, prev);
+    let snapshot = throughSwap(reported, prev);
+    // The file's length is the server's where the engine measured it short, and an engine that
+    // went where the book is not stops there as an error (`engineFault`). Not for a report
+    // while a load holds the store: that is still the previous book's.
+    const { nowPlaying: np, loadingBook } = usePlayer.getState();
+    if (np && !loadingBook) {
+      const fault = engineFault(np, snapshot);
+      if (fault) void svc.pause();
+      snapshot = fault ?? {
+        ...snapshot,
+        duration: fileDurationOf(np.queue, snapshot.trackIndex, snapshot.duration),
+      };
+    }
     usePlayer.setState({ snapshot });
     // Reached online (the network came back while it played): it plays on, streaming the
     // rest, when its server answers; else the listener is told.
@@ -2386,6 +2466,8 @@ async function createService(): Promise<PlaybackService> {
     // save, a place that book never had. So is one at the download's index while the
     // hot-swap moves the playing file (`swapHold`).
     if (loadingBook || (np && heldBySwap(np, trackIndex))) return;
+    // The listener's own move: no ask of the store's stands (`askedPlace`).
+    askedPlace = null;
     userMoved(np ? toBookPosition(np.queue.offsets, trackIndex, positionInTrack) : undefined);
     // The engine has moved already: the span ends where it was last seen (paused, where it
     // was is not known, so no move is taken for one that moves nowhere).
@@ -2630,6 +2712,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       finishSent = null;
       restoreOutputGain(svc); // only now can the old book's fade no longer write over it
       beginPlaybackAttempt(); // intent + start window + watchdog armed from here
+      askEngineTo(nowPlaying, index, positionInTrack);
       try {
         await svc.load(
           queue.tracks,
@@ -2697,6 +2780,12 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // Online again since the queue was built offline, it plays on, streaming the rest.
       if (atPartialEnd && endsPartial(get().nowPlaying)) {
         if (!(await playOnPastPart(true))) tellPartialEnd();
+        return;
+      }
+      // A faulted engine is never just resumed (it sits where the book is not): the press
+      // reloads the book at its place, as Retry does.
+      if (faultedBook && faultedBook === get().nowPlaying) {
+        await get().retry();
         return;
       }
       beginPlaybackAttempt();
@@ -2782,6 +2871,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       loaded = moved;
       at = local;
     }
+    askEngineTo(loaded, at.index, at.positionInTrack);
     await svc.load(
       loaded.queue.tracks,
       at.index,
@@ -2804,6 +2894,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     const target = locate(np.queue.offsets, clamped, track ?? get().snapshot.trackIndex);
     moveListeningSpan(endAt(np, target.index, target.positionInTrack));
     userMoved(clamped); // a deliberate user seek may legitimately move backward
+    askEngineTo(np, target.index, target.positionInTrack);
     if (target.index === get().snapshot.trackIndex) {
       await svc.seekTo(target.positionInTrack);
     } else {
@@ -2820,6 +2911,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     const np = get().nowPlaying;
     if (np) moveListeningSpan(endAt(np, get().snapshot.trackIndex, pos));
     userMoved(np ? toBookPosition(np.queue.offsets, get().snapshot.trackIndex, pos) : undefined);
+    if (np) askEngineTo(np, get().snapshot.trackIndex, pos);
     await svc.seekTo(pos);
     void persist();
   },
@@ -2831,6 +2923,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     const svc = await ensureService();
     moveListeningSpan(endAt(np, i, 0));
     userMoved(toBookPosition(np.queue.offsets, i, 0));
+    askEngineTo(np, i, 0);
     await svc.skipToTrack(i, 0);
     void persist();
   },
@@ -3686,6 +3779,7 @@ async function reloadAdopted(
   quietAdopted = key;
   if (playing) beginPlaybackAttempt();
   const attempts = playAttempts;
+  askEngineTo(nowPlaying, landing.index, landing.positionInTrack);
   try {
     await svc.load(
       nowPlaying.queue.tracks,

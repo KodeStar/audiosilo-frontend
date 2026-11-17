@@ -1753,6 +1753,18 @@ media GETs only.
     files that both play whole (each over half the budget) still hold both tables where they
     meet, since Media3 prepares the next item before the current ends; only a queue of one
     file at a time would avoid it.
+  - **An MP3 with no seek header is held to the server's length** (`KnownDurations.kt`): with
+    no Xing, VBRI or MLLT header Media3 1.9.0's `Mp3Extractor` guesses a constant bitrate from
+    the FIRST frame, so a VBR file read as a fraction of its length (a 139 s file as 29.9 s).
+    `KnownDurationMediaSourceFactory` notes each item's server length (its
+    `KEY_FILE_DURATION` extra) by uri, and `KnownDurationExtractorsFactory` wraps the MP3
+    extractor so a disagreeing constant-bitrate seek map is stretched onto that length and the
+    sample times after a seek follow (`Retimer`; played from the start the times are the frame
+    count, exact). Seeks are then as close as the file's average bitrate, as in a browser.
+    `FLAG_ENABLE_INDEX_SEEKING` is no fix: in 1.9.0 it replaces only an unseekable seeker, and
+    the guess is seekable whenever the length is known; where it applies (no length) a seek
+    reads every byte from the last indexed frame on. Tested on synthetic frames
+    (`KnownDurationsTest`).
   - **The JS store + iOS stay file-based**: the Android module translates between its chapter
     clips and the file-relative `(trackIndex, position)` the bridge reports through
     `TimelineMap` (in `MediaItems.kt`: `fileToItem`/`itemToFile`), built from each item's own
@@ -1911,6 +1923,19 @@ media GETs only.
 - **Whole-book timeline.** The engine works per-track; `store.ts` maps
   `(trackIndex, position)` ↔ whole-book position via cumulative `offsets`, and
   overlays chapters by `book_offset`. The full player's seek bar is **chapter-relative**.
+- **An engine's file length is not the book's** (`fileDurationOf`, `engineFault` in
+  `store.ts`). The snapshot's `duration` is the server's for a file whose engine length is
+  unknown or more than `FINISHED_TOLERANCE` shorter (the seek clamp, "left in the file"). An
+  engine that goes where the book is not stops as an `error` at the listener's place, its
+  later reports dropped and a play it starts by itself paused until a press (a press reloads,
+  as Retry does): a move on to a later file before it played on `SETTLED_AFTER` from a place
+  the store asked for inside its file (`askedPlace`; a resume past a short measure ran into
+  the next file), and an `ended` short of the book's end (`endsShortOfBook`: on a file before
+  the last, or short of the last file's server length), which otherwise read as the book
+  finished (the credits, `finishBook`'s `finished: true`, Sync v2's `finish`). Every engine
+  move the store asks for (a load, a seek, a track jump, a tab's place; not the download
+  hot-swap, which keeps the place) goes through `askEngineTo`; the listener's own
+  (`onRemoteMove`) clears the ask.
 - **Start playback only after chapters/files have loaded** (the player gates on
   `useChapters` settling) - starting early made multi-file books stream the folder
   path (MediaToolbox `-12864`) and lose chapter info.

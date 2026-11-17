@@ -200,6 +200,7 @@ keep this index in step (one line per topic).
   - Downloads store absolute file URIs
   - Stream the file, not the book
   - Whole-book timeline
+  - An engine's file length is not the book's
   - Start playback only after chapters/files have loaded
   - Never navigate while the app is in the background
   - The periodic save's pace

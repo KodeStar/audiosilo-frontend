@@ -162,6 +162,7 @@ import {
   selectBookPosition,
   selectCurrentChapter,
   selectEndsPartial,
+  selectIsEnded,
   selectIsPlaying,
   selectIsTransportLive,
   stopPlaybackForConnection,
@@ -3136,6 +3137,146 @@ describe('a book whose files have no known length', () => {
     } finally {
       delete web.swapTo;
     }
+  });
+});
+
+// An engine that measured a file short: Android's Media3 read a VBR MP3 with no seek header
+// (139.42 s on the server) as 29.889 s from its first frame. A resume past that landed in the
+// next file, and a Retry there ended, and finished, the book.
+describe('an engine that measured a file short (a VBR MP3 with no seek header)', () => {
+  const files = ['A/Vbr/01.mp3', 'A/Vbr/02.mp3'];
+  const lengths = [139.42, 138.69];
+  const chapters: ChaptersResponse = {
+    library_id: 2,
+    path: 'A/Vbr',
+    duration: 278.11,
+    is_folder: true,
+    files: files.map((rel_path, seq) => ({
+      rel_path,
+      seq,
+      duration: lengths[seq],
+      format: 'mp3',
+      size: 1,
+    })),
+    chapters: files.map((file_path, index) => ({
+      index,
+      title: `Part ${index + 1}`,
+      file_index: index,
+      file_path,
+      start: 0,
+      end: lengths[index],
+      book_offset: index === 0 ? 0 : lengths[0],
+    })),
+  };
+  const book = makeBook({ rel_path: 'A/Vbr', is_folder: true, format: 'mp3', duration: 278.11 });
+  const short = 29.889;
+  const resume = (at: number) => usePlayer.getState().playBook('c1', 2, book, chapters, at);
+  const savedFinished = () =>
+    mockSaveProgress.mock.calls.some((c) => (c[1] as { finished: boolean }).finished);
+
+  it("reads a file's length as the server's where the engine measured it short", async () => {
+    await resume(30);
+    pushSnapshot(snap('playing', 31.5, { trackIndex: 0, duration: short }));
+    expect(usePlayer.getState().snapshot.duration).toBe(139.42);
+    // Within the tolerance the engine's own stands.
+    pushSnapshot(snap('playing', 32.5, { trackIndex: 0, duration: 138 }));
+    expect(usePlayer.getState().snapshot.duration).toBe(138);
+    // So a seek past the short measure is not clamped to it.
+    pushSnapshot(snap('playing', 33.5, { trackIndex: 0, duration: short }));
+    await usePlayer.getState().seekInTrack(100);
+    expect(mockSvc.seekTo).toHaveBeenLastCalledWith(100);
+  });
+
+  it('a resume that lands in the next file stops there as an error, at the resumed place', async () => {
+    await resume(30);
+    const [, index, position] = (mockSvc.load as jest.Mock).mock.lastCall as unknown[];
+    expect([index, position]).toEqual([0, 30]);
+    // The engine ran off its 29.9 s of file 1 into file 2.
+    pushSnapshot(snap('playing', 0.4, { trackIndex: 1, duration: short }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'error',
+      trackIndex: 0,
+      position: 30,
+      duration: 139.42,
+    });
+    expect(mockSvc.pause).toHaveBeenCalled();
+    // A play the engine makes by itself is not taken, and is stopped again.
+    (mockSvc.pause as jest.Mock).mockClear();
+    pushSnapshot(snap('playing', 1.4, { trackIndex: 1, duration: short }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', trackIndex: 0 });
+    expect(mockSvc.pause).toHaveBeenCalled();
+    // Nothing past the resumed place is ever saved.
+    expect(savedPositions().every((p) => p <= 30)).toBe(true);
+  });
+
+  it('a press on the stopped book reloads it at its place, never resumes the engine', async () => {
+    await resume(30);
+    pushSnapshot(snap('playing', 0.4, { trackIndex: 1, duration: short }));
+    await flushMicrotasks();
+    (mockSvc.load as jest.Mock).mockClear();
+    (mockSvc.play as jest.Mock).mockClear();
+    await usePlayer.getState().toggle();
+    const [, index, position] = (mockSvc.load as jest.Mock).mock.lastCall as unknown[];
+    expect([index, position]).toEqual([0, 30]);
+  });
+
+  it('a file played on from the resumed place goes on into the next one', async () => {
+    await resume(30);
+    pushSnapshot(snap('playing', 31.5, { trackIndex: 0 }));
+    pushSnapshot(snap('playing', 139, { trackIndex: 0 }));
+    pushSnapshot(snap('playing', 0.4, { trackIndex: 1 }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'playing', trackIndex: 1 });
+  });
+
+  it("the listener's own move to the next file from the lock screen is no fault", async () => {
+    await resume(30);
+    await usePlayer.getState().pause();
+    pushSnapshot(snap('paused', 30, { trackIndex: 0 }));
+    // Paused, the lock screen's next chapter: the file changes first, then the move lands.
+    pushSnapshot(snap('paused', 0, { trackIndex: 1 }));
+    remoteMove!(1, 0);
+    pushSnapshot(snap('playing', 0.5, { trackIndex: 1 }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'playing', trackIndex: 1 });
+  });
+
+  it("an end of the media short of the book's end never finishes it", async () => {
+    // Resumed 89.9 s into file 2, which the engine measured at 29.9 s: it ends at once.
+    await resume(lengths[0] + 89.898);
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('playing', 89.9, { trackIndex: 1, duration: short }));
+    pushSnapshot(snap('ended', short, { trackIndex: 1, duration: short }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'error',
+      trackIndex: 1,
+      position: 89.898,
+    });
+    expect(selectIsEnded(usePlayer.getState())).toBe(false);
+    expect(savedFinished()).toBe(false);
+  });
+
+  it('an end mid-file after playing on stops where the engine is, unfinished', async () => {
+    await resume(lengths[0] + 60);
+    pushSnapshot(snap('playing', 62, { trackIndex: 1 }));
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('ended', 100, { trackIndex: 1 }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', position: 100 });
+    expect(savedFinished()).toBe(false);
+  });
+
+  it("the end at the server's end of the last file finishes the book", async () => {
+    await resume(lengths[0] + 120);
+    pushSnapshot(snap('playing', 125, { trackIndex: 1 }));
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('ended', 136, { trackIndex: 1 }));
+    await flushMicrotasks();
+    expect(selectIsEnded(usePlayer.getState())).toBe(true);
+    expect(savedFinished()).toBe(true);
   });
 });
 

@@ -8,9 +8,12 @@ import {
   chapterAt,
   chapterCountdowns,
   chapterEndPosition,
+  endsShortOfBook,
+  fileDurationOf,
   type FileSpec,
   locate,
   nextChapterEnd,
+  shortOfFileEnd,
   synthesizeChapters,
   toBookPosition,
 } from '@/playback/book-queue';
@@ -706,5 +709,38 @@ describe('buildBookQueue transcode (web negotiation)', () => {
     };
     const q = buildBookQueue(null, 2, book, undefined, local, undefined, true);
     expect(q.tracks.some((t) => t.transcoded)).toBe(false);
+  });
+});
+
+// Android's Media3 read a VBR MP3 with no seek header (139.42 s on the server) as 29.889 s.
+describe('file lengths the engine measured short', () => {
+  const queue = { tracks: [{ duration: 139.42 }, { duration: 138.69 }, {}] };
+
+  it("takes the server's length when the engine's is unknown or far short", () => {
+    expect(fileDurationOf(queue, 0, 29.889)).toBe(139.42);
+    expect(fileDurationOf(queue, 0, 0)).toBe(139.42);
+    expect(fileDurationOf(queue, 0, NaN)).toBe(139.42);
+  });
+
+  it("keeps the engine's within the tolerance, longer, or with no server length", () => {
+    expect(fileDurationOf(queue, 0, 135)).toBe(135);
+    expect(fileDurationOf(queue, 0, 150.05)).toBe(150.05);
+    expect(fileDurationOf(queue, 2, 42)).toBe(42);
+    expect(fileDurationOf(queue, 7, 42)).toBe(42);
+  });
+
+  it('a place is short of its file end only by more than the tolerance', () => {
+    expect(shortOfFileEnd(queue, 0, 30)).toBe(true);
+    expect(shortOfFileEnd(queue, 0, 135)).toBe(false);
+    expect(shortOfFileEnd(queue, 2, 0)).toBe(false); // no server length
+    expect(shortOfFileEnd(queue, 0, NaN)).toBe(false);
+  });
+
+  it("an end before the last file, or short of the last file's end, is not the book's", () => {
+    const two = { tracks: queue.tracks.slice(0, 2) };
+    expect(endsShortOfBook(two, 0, 139.42)).toBe(true);
+    expect(endsShortOfBook(two, 1, 29.889)).toBe(true);
+    expect(endsShortOfBook(two, 1, 134)).toBe(false);
+    expect(endsShortOfBook({ tracks: [{}] }, 0, 3)).toBe(false); // unknown length: the engine's
   });
 });

@@ -5,7 +5,7 @@ import { tabChannel } from '@/lib/tab-channel';
 import { fakeBrowser, type FakeTab, sleep, until } from '@/testing/fake-browser';
 
 import { PLAYING_CHANNEL } from './playing-claim';
-import type { PlaybackService, PlaybackSnapshot } from './types';
+import type { PlaybackService, PlaybackSnapshot, PlaybackTrack } from './types';
 
 // One tab plays at a time (fe#123), with two tabs that are each the real store and the real
 // listening outbox: two module instances (`jest.isolateModules`) over one browser's shared
@@ -158,6 +158,8 @@ function makeEngine() {
   /** A pause the test holds open (`holdPause`): asked of the engine, not reported yet. */
   let heldPause: Promise<void> | null = null;
   let pauses = 0;
+  /** The tracks of the last load: where each file ends. */
+  let loaded: PlaybackTrack[] = [];
   const svc = {
     onRemoteSeek: jest.fn(),
     onRemoteMove: jest.fn(),
@@ -165,7 +167,8 @@ function makeEngine() {
     onSilenceSaved: jest.fn(),
     setup: jest.fn(async () => {}),
     configure: jest.fn(async () => {}),
-    load: jest.fn(async (_tracks: unknown, trackIndex: number, position: number) => {
+    load: jest.fn(async (tracks: PlaybackTrack[], trackIndex: number, position: number) => {
+      loaded = tracks;
       push({ state: 'loading', trackIndex, position, duration: 50 });
       await held;
     }),
@@ -197,9 +200,10 @@ function makeEngine() {
     svc: svc as typeof svc & PlaybackService,
     /** The engine plays on to `position` (seconds into the file). */
     at: (position: number) => push({ position }),
-    /** The playing file ends and the next one (`trackIndex`) loads and plays on, as the web
-     * engine does it: `loading`, then `playing`, with nothing pressed. */
+    /** The playing file plays to its end and the next one (`trackIndex`) loads and plays on, as
+     * the web engine does it: `loading`, then `playing`, with nothing pressed. */
     advance: (trackIndex: number) => {
+      push({ position: loaded[snapshot.trackIndex]?.duration ?? snapshot.position });
       push({ state: 'loading', trackIndex, position: 0 });
       push({ state: 'playing' });
     },
