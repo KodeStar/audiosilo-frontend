@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
-import { servedOrigin, webOrigin } from '@/lib/base-url';
+import { onlyOwnServer, servedOrigin, webOrigin } from '@/lib/base-url';
 import { serverIdOf } from '@/lib/connection-id';
 import { getDeviceName } from '@/lib/device';
 import {
@@ -367,8 +367,7 @@ export function ConnectStart() {
       else setProbe(found);
       // The served player can reach only its own server: found by a Continue after its own
       // ask failed, it is that server's card, with no address field beside it (fe#159).
-      const own = servedOrigin();
-      if (tag === 'manual' && own && sameOrigin(base, { origin: own })) setServed('found');
+      if (tag === 'manual' && onlyOwnServer(servedOrigin(), [base])) setServed('found');
       return true;
     } catch (e) {
       if (gone()) return false;
@@ -517,13 +516,7 @@ export function ConnectStart() {
           variant="muted"
           className="text-[15px] web:text-[0.9375rem] leading-[22px] web:leading-[1.375rem]"
         >
-          {newPerson
-            ? t('profiles.connect.lead')
-            : // The web has no camera, so its lead names a pairing link: where to find one too,
-              // as the app's says where its QR is (fe#299).
-              isWeb
-              ? `${t(lead)} ${t('onboarding.start.whereLink')}`
-              : t(lead)}
+          {newPerson ? t('profiles.connect.lead') : t(lead)}
         </Text>
       </View>
       {pairError ? (

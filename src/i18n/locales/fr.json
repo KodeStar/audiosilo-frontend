@@ -539,9 +539,8 @@
     "start": {
       "title": "Vos livres audio, depuis votre propre serveur.",
       "lead": "Scannez un code QR pour vous connecter sans rien saisir. Si vous gérez le serveur, le vôtre se trouve dans la console d'administration, sous Personnes > votre nom > Associer un appareil. Si vous avez été invité, il est sur votre page d'invitation.",
-      "leadWeb": "Saisissez l'adresse que votre administrateur vous a donnée, ou collez le lien d'appairage qu'il vous a envoyé.",
-      "leadServed": "Connectez-vous avec le code ou le mot de passe que votre administrateur vous a donné, ou collez le lien d'appairage qu'il vous a envoyé.",
-      "whereLink": "Si vous gérez le serveur, le vôtre se trouve dans la console d'administration, sous Personnes > votre nom > Associer un appareil. Si vous avez été invité, il est sur votre page d'invitation.",
+      "leadWeb": "Saisissez l'adresse que votre administrateur vous a donnée, ou collez le lien d'appairage qu'il vous a envoyé. Si vous gérez le serveur, le vôtre se trouve dans la console d'administration, sous Personnes > votre nom > Associer un appareil. Si vous avez été invité, il est sur votre page d'invitation.",
+      "leadServed": "Connectez-vous avec le code ou le mot de passe que votre administrateur vous a donné, ou collez le lien d'appairage qu'il vous a envoyé. Si vous gérez le serveur, le vôtre se trouve dans la console d'administration, sous Personnes > votre nom > Associer un appareil. Si vous avez été invité, il est sur votre page d'invitation.",
       "finding": "Recherche de votre serveur…",
       "continue": "Continuer"
     },

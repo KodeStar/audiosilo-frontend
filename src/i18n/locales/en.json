@@ -539,9 +539,8 @@
     "start": {
       "title": "Your audiobooks, from your own server.",
       "lead": "Scan a QR code to sign in with nothing to type. If you run the server, yours is in the admin console under People > your name > Pair a device. If you were invited, it's on your invite page.",
-      "leadWeb": "Enter the address your admin gave you, or paste the pairing link they sent.",
-      "leadServed": "Sign in with the code or password your admin gave you, or paste the pairing link they sent.",
-      "whereLink": "If you run the server, yours is in the admin console under People > your name > Pair a device. If you were invited, it's on your invite page.",
+      "leadWeb": "Enter the address your admin gave you, or paste the pairing link they sent. If you run the server, yours is in the admin console under People > your name > Pair a device. If you were invited, it's on your invite page.",
+      "leadServed": "Sign in with the code or password your admin gave you, or paste the pairing link they sent. If you run the server, yours is in the admin console under People > your name > Pair a device. If you were invited, it's on your invite page.",
       "finding": "Finding your server…",
       "continue": "Continue"
     },
