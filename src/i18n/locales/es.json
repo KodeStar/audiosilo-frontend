@@ -541,6 +541,7 @@
       "lead": "Escanea un código QR para iniciar sesión sin escribir nada. Si administras el servidor, el tuyo está en la consola de administración, en Personas > tu nombre > Vincular un dispositivo. Si te invitaron, está en tu página de invitación.",
       "leadWeb": "Introduce la dirección que te dio tu administrador, o pega el enlace de emparejamiento que te envió.",
       "leadServed": "Inicia sesión con el código o la contraseña que te dio tu administrador, o pega el enlace de emparejamiento que te envió.",
+      "whereLink": "Si administras el servidor, el tuyo está en la consola de administración, en Personas > tu nombre > Vincular un dispositivo. Si te invitaron, está en tu página de invitación.",
       "finding": "Buscando tu servidor…",
       "continue": "Continuar"
     },

@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
@@ -74,6 +74,8 @@ export type LinkPairing = {
   error: string | null;
   /** Say why a link can't pair (a link with no server address). */
   fail: (message: string) => void;
+  /** Put away why the last pairing failed (the listener moved on to another address). */
+  clear: () => void;
   /** Exchange a pairing link's token on its server and finish the connect flow (on the
    * link's book, when it names one). Resolves how it ended (`PairOutcome`). `reconnectId`:
    * the connection a code scanned from a reconnect's sign-in step re-pairs
@@ -220,5 +222,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
     setPairing(false);
   });
 
-  return { pairing, error, fail, pair };
+  const clear = useCallback(() => setError(null), []);
+
+  return { pairing, error, fail, pair, clear };
 }

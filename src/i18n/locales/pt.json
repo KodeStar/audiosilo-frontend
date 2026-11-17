@@ -541,6 +541,7 @@
       "lead": "Lê um código QR para iniciares sessão sem escrever nada. Se geres o servidor, o teu está na consola de administração, em Pessoas > o teu nome > Emparelhar um dispositivo. Se foste convidado, está na tua página de convite.",
       "leadWeb": "Introduz o endereço que o teu administrador te deu, ou cola a ligação de emparelhamento que te enviou.",
       "leadServed": "Inicia sessão com o código ou a palavra-passe que o teu administrador te deu, ou cola a ligação de emparelhamento que te enviou.",
+      "whereLink": "Se geres o servidor, a tua está na consola de administração, em Pessoas > o teu nome > Emparelhar um dispositivo. Se foste convidado, está na tua página de convite.",
       "finding": "A procurar o teu servidor…",
       "continue": "Continuar"
     },

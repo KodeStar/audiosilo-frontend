@@ -541,6 +541,7 @@
       "lead": "Scansiona un codice QR per accedere senza digitare nulla. Se gestisci il server, il tuo è nella console di amministrazione, in Persone > il tuo nome > Associa un dispositivo. Se sei stato invitato, è nella tua pagina d'invito.",
       "leadWeb": "Inserisci l'indirizzo che ti ha dato il tuo amministratore, o incolla il link di associazione che ti ha inviato.",
       "leadServed": "Accedi con il codice o la password che ti ha dato il tuo amministratore, o incolla il link di associazione che ti ha inviato.",
+      "whereLink": "Se gestisci il server, il tuo è nella console di amministrazione, in Persone > il tuo nome > Associa un dispositivo. Se sei stato invitato, è nella tua pagina d'invito.",
       "finding": "Ricerca del tuo server…",
       "continue": "Continua"
     },

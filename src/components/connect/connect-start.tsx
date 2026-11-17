@@ -77,8 +77,8 @@ import { useLinkPairing } from './use-pairing';
  *
  * The player the server serves at `/web` (`servedOrigin`) asks nothing: it asks its own origin
  * who it is on open and shows what it found, with Sign in, and no address field or remembered
- * servers (the server's CSP lets it reach no other). Only when that fails does the field show,
- * filled in with the origin.
+ * servers (the server's CSP lets it reach no other). Only when that fails (or Cancel is
+ * pressed while it asks) does the field show, filled in with the origin.
  *
  * The served player opened as `?oidc=1` is the server's return from a single sign-on
  * (server#235, started on the sign-in step): the sign-in is finished at once
@@ -145,7 +145,7 @@ export function ConnectStart() {
   const [linkError, setLinkError] = useState<string | null>(null);
   // A pasted link for another server, on a server's own player (`onPasteLink`).
   const [foreignLink, setForeignLink] = useState<string | null>(null);
-  const { pairing, error: pairError, fail, pair } = useLinkPairing(linkFlow);
+  const { pairing, error: pairError, fail, pair, clear: clearPairError } = useLinkPairing(linkFlow);
   // A pairing link that failed for a reason that can pass (`PairOutcome` `temporary`).
   const [retryLink, setRetryLink] = useState<PairingScan | null>(null);
   // The reconnect the code that opened this screen continues (scanned from a reconnect's
@@ -292,16 +292,39 @@ export function ConnectStart() {
     });
 
   // The served player's own server's card: ask it who it is, as typed (the card shows,
-  // nothing goes on by itself; an origin has its scheme, so there is no http retry).
+  // nothing goes on by itself; an origin has its scheme, so there is no http retry). The ask
+  // ends with the screen, or with Cancel on "Finding your server" (`cancelServed`), and then
+  // records nothing (fe#159).
+  const servedAsk = useRef<AbortController | null>(null);
+  useEffect(() => () => servedAsk.current?.abort(), []);
   const showServedCard = (origin: string) => {
+    servedAsk.current?.abort();
+    const ask = new AbortController();
+    servedAsk.current = ask;
     setServed('pending');
-    void connect(origin, 'manual').then((found) => setServed(found ? 'found' : null));
+    void connect(origin, 'manual', ask.signal).then((found) => {
+      if (!ask.signal.aborted) setServed(found ? 'found' : null);
+    });
+  };
+  // Cancel on "Finding your server": the address field, filled in with the origin.
+  const cancelServed = () => {
+    servedAsk.current?.abort();
+    servedAsk.current = null;
+    setServed(null);
+  };
+
+  // Moving on to another address (Continue, a remembered server): a pairing link's error and
+  // its Try again are about the link, not this address, and go (fe#159).
+  const moveOn = () => {
+    setRetryLink(null);
+    clearPairError();
   };
 
   // Ask the server who it is. The typed address and the served player's own server show what
   // was found (or why not); a remembered server goes straight on to sign-in unless it runs a
-  // demo. True when the server answered.
-  const connect = async (target: string, tag: string): Promise<boolean> => {
+  // demo. True when the server answered. Nothing is recorded once the screen is gone or the
+  // ask was cancelled (`signal`): not the pending address, nor what was found.
+  const connect = async (target: string, tag: string, signal?: AbortSignal): Promise<boolean> => {
     setFieldError(null);
     setDemoError(null);
     setProbe(null);
@@ -311,6 +334,7 @@ export function ConnectStart() {
       return false;
     }
     setBusy(tag);
+    const gone = () => !mounted.current || !!signal?.aborted;
     // Typed without a scheme: plain http, tried once when https could not connect (not a
     // server's error), as a server at home often serves only that.
     const http = tag === 'manual' ? httpFallback(target) : null;
@@ -318,17 +342,18 @@ export function ConnectStart() {
       let base = normalized;
       let info: ServerInfo;
       try {
-        info = await connectClient(base).serverInfo();
+        info = await connectClient(base).serverInfo(signal);
       } catch (e) {
-        if (!http || e instanceof ApiError) throw e;
+        if (!http || e instanceof ApiError || signal?.aborted) throw e;
         info = await connectClient(http)
-          .serverInfo()
+          .serverInfo(signal)
           .catch((e2: unknown) => {
             throw e2 instanceof ApiError ? e2 : e;
           });
         base = http;
         setUrl(http);
       }
+      if (gone()) return false;
       await setPendingServerUrl(base);
       const found: Probe = {
         kind: 'found',
@@ -340,8 +365,13 @@ export function ConnectStart() {
       };
       if (tag !== 'manual' && !found.demo) goSignIn(info.name);
       else setProbe(found);
+      // The served player can reach only its own server: found by a Continue after its own
+      // ask failed, it is that server's card, with no address field beside it (fe#159).
+      const own = servedOrigin();
+      if (tag === 'manual' && own && sameOrigin(base, { origin: own })) setServed('found');
       return true;
     } catch (e) {
+      if (gone()) return false;
       setProbe(
         e instanceof ApiError
           ? { kind: 'error', message: e.message }
@@ -363,10 +393,17 @@ export function ConnectStart() {
   // A remembered server with a home address: ask it there first (native), then go on with
   // whichever address answered as its own.
   const onReconnect = async (entry: KnownServer) => {
+    moveOn();
     setBusy(entry.serverId);
     const target = await reconnectAddress(entry, probeServerId, Platform.OS === 'web');
     setUrl(target);
     await connect(target, entry.serverId);
+  };
+
+  // Continue with the typed address.
+  const onContinue = () => {
+    moveOn();
+    void connect(url, 'manual');
   };
 
   const onForget = async (serverId: string) => {
@@ -430,6 +467,14 @@ export function ConnectStart() {
           <Text variant="muted">
             {pairing ? t('connect.server.connecting') : t('onboarding.start.finding')}
           </Text>
+          {pairing ? null : (
+            <Button
+              variant="ghost"
+              title={t('common.cancel')}
+              onPress={cancelServed}
+              testID="connect-finding-cancel"
+            />
+          )}
         </View>
       </ConnectFrame>
     );
@@ -472,7 +517,13 @@ export function ConnectStart() {
           variant="muted"
           className="text-[15px] web:text-[0.9375rem] leading-[22px] web:leading-[1.375rem]"
         >
-          {newPerson ? t('profiles.connect.lead') : t(lead)}
+          {newPerson
+            ? t('profiles.connect.lead')
+            : // The web has no camera, so its lead names a pairing link: where to find one too,
+              // as the app's says where its QR is (fe#299).
+              isWeb
+              ? `${t(lead)} ${t('onboarding.start.whereLink')}`
+              : t(lead)}
         </Text>
       </View>
       {pairError ? (
@@ -495,6 +546,8 @@ export function ConnectStart() {
       {isWeb ? null : (
         <Button
           size="lg"
+          // One primary at a time: once an address is found, its Sign in is the next step.
+          variant={probe?.kind === 'found' ? 'secondary' : 'default'}
           icon="qrcode"
           title={t('connect.server.scanQr')}
           // No reconnect from here: it also drops one an earlier scanner never took.
@@ -533,7 +586,7 @@ export function ConnectStart() {
                   textContentType="URL"
                   error={fieldError ?? undefined}
                   returnKeyType="go"
-                  onSubmitEditing={() => connect(url, 'manual')}
+                  onSubmitEditing={onContinue}
                 />
               </View>
               <Button
@@ -544,7 +597,7 @@ export function ConnectStart() {
                 title={t('onboarding.start.continue')}
                 loading={busy === 'manual'}
                 disabled={busy !== null}
-                onPress={() => connect(url, 'manual')}
+                onPress={onContinue}
               />
             </View>
           </View>
