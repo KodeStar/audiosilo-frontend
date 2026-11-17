@@ -53,6 +53,7 @@ class NativePlaybackService implements PlaybackService {
   private remoteMove: ((trackIndex: number, positionInTrack: number) => void) | null = null;
   private rateChange: ((rate: number) => void) | null = null;
   private silenceSaved: ((totalSeconds: number) => void) | null = null;
+  private landed: (() => void) | null = null;
   /** A progress tick whose place jumped while playing, held back (`LANDING_HOLD_MS`) since
    * `since`. */
   private held: {
@@ -94,6 +95,11 @@ class NativePlaybackService implements PlaybackService {
    * `LANDING_HOLD_MS` for that move, which then replaces it; a move the engine made by itself
    * (never reported) is taken once the wait is over. The first tick of a play is never held
    * (a resume's auto-rewind is the engine's own move).
+   *
+   * A pause or the book's end leaves a held tick held: taken as playing stops, its place
+   * would end the span there, the very thing the hold prevents. So the store's save as playing
+   * stops has the place before the jump; the move's own save follows it, and a held tick no
+   * move replaces is told once it is taken (`onLanded`), to be saved again.
    */
   private progress(position: number, duration: number) {
     const now = Date.now();
@@ -123,6 +129,7 @@ class NativePlaybackService implements PlaybackService {
     if (!held) return;
     this.dropHeld();
     this.takeTick(held.position, held.duration, Date.now());
+    if (this.snapshot.state !== 'playing') this.landed?.();
   }
   private takeTick(position: number, duration: number, at: number) {
     this.setPlace({ position, duration }, at);
@@ -160,6 +167,7 @@ class NativePlaybackService implements PlaybackService {
       // does.
       AudiosiloPlayer.addListener('onRemoteMove', ({ trackIndex, position }) => {
         if (!Number.isFinite(trackIndex) || !Number.isFinite(position)) return;
+        const duration = this.held?.duration ?? this.snapshot.duration;
         this.dropHeld();
         this.setPlace({ trackIndex, position, duration }, Date.now());
         try {
@@ -170,7 +178,6 @@ class NativePlaybackService implements PlaybackService {
       }),
       AudiosiloPlayer.addListener('onRateChange', ({ rate }) => {
         if (!Number.isFinite(rate) || rate <= 0) return;
-        const duration = this.held?.duration ?? this.snapshot.duration;
         this.update({ rate });
         this.rateChange?.(rate);
       }),
@@ -263,6 +270,9 @@ class NativePlaybackService implements PlaybackService {
   }
   onSilenceSaved(handler: ((totalSeconds: number) => void) | null) {
     this.silenceSaved = handler;
+  }
+  onLanded(handler: (() => void) | null) {
+    this.landed = handler;
   }
   adoptPlace(snapshot: PlaybackSnapshot) {
     // No emit: the store sets its own snapshot when it adopts; this only makes the next

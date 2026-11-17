@@ -1666,7 +1666,10 @@ media GETs only.
   past what playing explains, or a second back; never a play's first tick, a resume's
   auto-rewind) is held up to 600 ms for its move, which replaces it, and is taken after that
   when none comes (the engine's own move). So no save, 15 s cut or 5 s keep ends the listening
-  span at the landed place before the move is heard. The store's handler (`userMoved`) lowers
+  span at the landed place before the move is heard. A pause or the book's end leaves a held
+  tick held (taken then, it would end the span at the landed place): the save made as playing
+  stops has the place before the jump, the move's own save follows, and a held tick no move
+  replaces is told once taken (`onLanded`), which saves again. The store's handler (`userMoved`) lowers
   the floor to it, counts it in `localMoves` (a place reconcile in flight stands back) and
   persists once the landed place is in the snapshot (a microtask later). Without it a lock-screen
   scrub back past the 60 s tolerance never saved. Never sent for JS-asked moves (`seekTo`,

@@ -2385,6 +2385,10 @@ async function createService(): Promise<PlaybackService> {
     // save, cut or keep in between ends the span there, fe#211): the save waits for it.
     void Promise.resolve().then(() => persist());
   });
+  // Native: a place the engine held back for its move landed with none told, after playing
+  // stopped (fe#211). The save made as it stopped (`haltAndPersist`) has the place before
+  // the jump, so the place is saved again, once the engine's event is over.
+  svc.onLanded?.(() => void Promise.resolve().then(() => persist()));
   // Native: the OS changed the speed and the engine already runs at it. Only a speed
   // outside the app's range goes back to the engine, clamped.
   svc.onRateChange?.((raw) => {

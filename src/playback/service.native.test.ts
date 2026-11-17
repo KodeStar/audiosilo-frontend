@@ -188,6 +188,38 @@ describe('a progress tick that jumped while playing', () => {
     expect(heard()).toEqual([11, 70.25, 71.3]);
   });
 
+  // A pause inside the wait: the tick stays held (taken as playing stops, its place would end
+  // the span there), so the store's save at the pause has the place before the jump.
+  it('tells a held tick no move replaced, taken after playing stopped', async () => {
+    const { svc, heard } = await playing();
+    const landed = jest.fn(() => expect(svc.getSnapshot().position).toBe(70));
+    svc.onLanded!(landed);
+    send('onProgress', { position: 70, duration: 100 });
+    jest.advanceTimersByTime(200);
+    send('onState', { state: 'paused' });
+    expect(svc.getSnapshot()).toMatchObject({ state: 'paused', position: 11 });
+    expect(landed).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(400);
+    expect(heard()).toEqual([11, 11, 70]);
+    expect(landed).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells nothing of a held tick taken while playing, nor of one its move replaced', async () => {
+    const { svc } = await playing();
+    const landed = jest.fn();
+    svc.onLanded!(landed);
+    send('onProgress', { position: 70, duration: 100 });
+    jest.advanceTimersByTime(600);
+    expect(svc.getSnapshot().position).toBe(70);
+    jest.advanceTimersByTime(1_000);
+    send('onProgress', { position: 20, duration: 100 });
+    send('onState', { state: 'paused' });
+    send('onRemoteMove', { trackIndex: 0, position: 20 });
+    jest.advanceTimersByTime(1_000);
+    expect(svc.getSnapshot()).toMatchObject({ state: 'paused', position: 20 });
+    expect(landed).not.toHaveBeenCalled();
+  });
+
   it('ends a hold whose timer never fired at the next tick (Android pauses JS timers)', async () => {
     const { heard } = await playing();
     send('onProgress', { position: 70, duration: 100 });

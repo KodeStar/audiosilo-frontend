@@ -11,6 +11,7 @@ import type { PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
 
 let pushSnapshot: (s: PlaybackSnapshot) => void = () => {};
 let remoteMove: (trackIndex: number, position: number) => void = () => {};
+let landed: () => void = () => {};
 const mockSvc = {
   onRemoteSeek: jest.fn(),
   onRemoteMove: jest.fn((cb: (trackIndex: number, position: number) => void) => {
@@ -18,6 +19,9 @@ const mockSvc = {
   }),
   onRateChange: jest.fn(),
   onSilenceSaved: jest.fn(),
+  onLanded: jest.fn((cb: () => void) => {
+    landed = cb;
+  }),
   setup: jest.fn(async () => {}),
   configure: jest.fn(async () => {}),
   load: jest.fn(async () => {}),
@@ -664,6 +668,26 @@ describe('with listening_sync', () => {
     await settle();
     expect(mockSaveProgress.mock.calls.map((c) => (c[1] as { position: number }).position)).toEqual(
       [40],
+    );
+  });
+
+  // A pause inside the native engine's wait for a jump's move: the pause saves the place
+  // before the jump, and the place the engine then lands at with no move told is saved too.
+  it('saves a place that lands after the pause, with no move told', async () => {
+    mockSync = false;
+    await start();
+    pushSnapshot(snap('playing', 0, 10));
+    pushSnapshot(snap('paused', 0, 10));
+    await settle();
+    expect(mockSaveProgress.mock.calls.map((c) => (c[1] as { position: number }).position)).toEqual(
+      [10],
+    );
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('paused', 0, 70));
+    landed();
+    await settle();
+    expect(mockSaveProgress.mock.calls.map((c) => (c[1] as { position: number }).position)).toEqual(
+      [70],
     );
   });
 

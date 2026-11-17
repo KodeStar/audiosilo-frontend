@@ -265,6 +265,13 @@ export interface PlaybackService {
    * called by a binary that predates Smart speed, nor on iOS (no Smart speed there). */
   onSilenceSaved?(handler: ((totalSeconds: number) => void) | null): void;
   /**
+   * Native: a place the engine held back for its move (`service.native.ts`, fe#211) reached
+   * the snapshot with no move told, after playing stopped (a pause or the book's end inside
+   * the wait). The save made as playing stopped has the place before it, so the store saves
+   * again. Optional.
+   */
+  onLanded?(handler: (() => void) | null): void;
+  /**
    * For the store's `adoptLoaded`: where an engine this bridge did NOT load is now (a
    * queue the Android playback service loaded itself, for the car or before the app's JS
    * restarted). Seeds the bridge's merged snapshot WITHOUT emitting, so the next event it
