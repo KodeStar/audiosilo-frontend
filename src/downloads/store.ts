@@ -307,12 +307,11 @@ setDownloadLengthCheck(async (connectionId, libraryId, path) => {
 
 // A finished Bridge job made the book's characters, recaps or description: its kept copy
 // is read again now (`refreshAfterFinish`, which can't import this store), not at the
-// launch a week on (fe#158). This launch's earlier attempt does not hold it back.
-setKeptMetaRefresh(async (connectionId, libraryId, path) => {
-  const entry = downloadedEntryOf({ connectionId, libraryId, path });
-  if (!entry) return;
-  await keepOfflineMeta(downloadKey(connectionId, libraryId, path), { force: true });
-});
+// launch a week on (fe#158). This launch's earlier attempt does not hold it back; a book not
+// downloaded is nothing (`keepOfflineMeta`'s own check).
+setKeptMetaRefresh((connectionId, libraryId, path) =>
+  keepOfflineMeta(downloadKey(connectionId, libraryId, path), { force: true }),
+);
 
 // --- helpers ---------------------------------------------------------------
 
