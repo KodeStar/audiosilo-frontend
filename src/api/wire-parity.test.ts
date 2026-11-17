@@ -232,10 +232,24 @@ describe('wire parity with the server goldens', () => {
       errors,
       // A server field types.ts does not know: mirror it, or list it in UNMIRRORED.
       unknown: unknown.filter((p) => !(p in allowed)),
-      // An UNMIRRORED entry the server no longer sends, or types.ts now has.
-      staleAllowances: Object.keys(allowed).filter((p) => !unknown.includes(p)),
     };
-    expect(report).toEqual({ route: golden.route, errors: [], unknown: [], staleAllowances: [] });
+    expect(report).toEqual({ route: golden.route, errors: [], unknown: [] });
+  });
+
+  // An UNMIRRORED entry no golden of its type needs any more: the server no longer
+  // sends the field, types.ts now has it, or no ENVELOPES entry names the type.
+  // Goldens sharing a type need not all send the field (GET /server signed in
+  // sends more than the anonymous one), so one of them needing it is enough.
+  it('has no stale UNMIRRORED entry', () => {
+    const needed = new Set(
+      names.flatMap((n, i) =>
+        compare(checker, goldens[n].shape, types[i]).unknown.map((p) => `${ENVELOPES[n]} ${p}`),
+      ),
+    );
+    const listed = Object.entries(UNMIRRORED).flatMap(([type, allowed]) =>
+      Object.keys(allowed).map((p) => `${type} ${p}`),
+    );
+    expect(listed.filter((entry) => !needed.has(entry))).toEqual([]);
   });
 
   it('pins the server commit the copy came from', () => {
