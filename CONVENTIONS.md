@@ -978,7 +978,8 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   fetches it, so a retry fetches it once. Optional: a failure keeps the audio, a cancel cancels
   the book.
 - **The place** (`reading-progress.ts`) is `progress-sync`'s pattern (offline queue, latest per
-  book, durable mirror, 4xx dropped, replay through each save's connection) plus `base_version`:
+  book, durable mirror, 4xx dropped but a 408 or a 429, which is queued (`isRefusedForGood`),
+  replay through each save's connection) plus `base_version`:
   the last version this device acknowledged, always sent (0 only when no row was ever seen).
   Every send, the queue's replays and the open reader's saves alike, and every queue change go
   through one lock (`withQueueLock`, fe#173), and a sent save drops a queued one of the book made
