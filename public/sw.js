@@ -338,7 +338,9 @@ async function readRecord(cache, marker) {
  * which stops the precache.
  */
 async function precacheAsset(cache, url, fresh) {
-  let asset = fresh ? undefined : await cache.match(url);
+  // Any copy will do, Vary aside: a font the page fetched (`staleWhileRevalidate`) is stored
+  // under the page's request, Origin and all, and a build file is the same bytes whoever asked.
+  let asset = fresh ? undefined : await cache.match(url, { ignoreVary: true });
   if (!asset) {
     asset = await fetch(url);
     if (!asset.ok) throw new Error(`precache: ${url} ${asset.status}`);

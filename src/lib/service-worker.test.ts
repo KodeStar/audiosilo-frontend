@@ -227,6 +227,23 @@ describe('service worker: precacheBuild', () => {
     expect((await t.sw.staleWhileRevalidate(page('image'))).status).toBe(504);
   });
 
+  it('never fetches again at the precache a font the page cached under its own request (fe#177)', async () => {
+    const font = 'https://box.test/web/assets/fonts/Figtree_400.p1.ttf';
+    const site = build('a');
+    site[SCOPE] += `<link rel="preload" href="/web/assets/fonts/Figtree_400.p1.ttf" as="font">`;
+    const t = load({ ...site, [font]: 'font-bytes' }, { [font]: { Vary: 'Origin' } });
+    // The page drew its text in it before the worker's precache ran.
+    await t.sw.staleWhileRevalidate({
+      url: font,
+      destination: 'font',
+      headers: new Headers({ Origin: 'https://box.test' }),
+    });
+    t.fetched.length = 0;
+    await t.sw.precacheBuild(true);
+    expect(t.fetched).not.toContain(font);
+    expect(t.cached()).toContain(font);
+  });
+
   it('keeps a cached font at the next install, never fetching it again', async () => {
     const font = 'https://box.test/web/assets/fonts/Figtree_400.f1.ttf';
     const site = build('a');
