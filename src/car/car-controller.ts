@@ -511,6 +511,9 @@ type ArtworkJob = { name: string; url: string; headers?: Record<string, string> 
 let missingArtwork = new Map<string, ArtworkJob>();
 /** Whether native keeps a snapshot from before (`WRITTEN_KEY`), read once; null until then. */
 let wroteBefore: boolean | null = null;
+/** The owner last stored under `SNAPSHOT_OWNER_KEY` by this runtime (a write per pause stores
+ * it only when it changed). */
+let ownerStored: string | null = null;
 
 const SNAPSHOT_OWNER_KEY = 'audiosilo.carSnapshotOwner';
 const snapshotOwner = () =>
@@ -549,13 +552,12 @@ function pausedPlaceOf(player: PlayerState, live: LivePlace | null): PausedPlace
 /**
  * Builds the snapshot of `input` (the date and the labels added) and hands it to native when
  * its body changed. False when the person listening changed while it was built (nothing is
- * written then). `beforeWrite` is asked last, right before the write: false skips it.
+ * written then).
  */
 async function handOver(
   owner: string,
   input: Omit<CarSnapshotInput, 'generatedAt' | 'labels'>,
   ctx: Pick<CarItemContext, 'live' | 'artworkFor' | 'playFor'>,
-  beforeWrite: () => boolean = () => true,
 ): Promise<boolean> {
   const t = i18n.t.bind(i18n);
   const { generatedAt, ...body } = buildCarSnapshot(
@@ -568,7 +570,7 @@ async function handOver(
     },
   );
   // Serialized once: the body is what is compared, and the date goes in front of it.
-  if (snapshotOwner() !== owner || !beforeWrite()) return false;
+  if (snapshotOwner() !== owner) return false;
   const bodyJson = JSON.stringify(body);
   if (
     bodyJson !== lastBody &&
@@ -577,13 +579,41 @@ async function handOver(
     ))
   ) {
     lastBody = bodyJson;
-    await setItem(SNAPSHOT_OWNER_KEY, owner);
+    if (ownerStored !== owner) {
+      await setItem(SNAPSHOT_OWNER_KEY, owner);
+      ownerStored = owner;
+    }
     if (wroteBefore !== true) {
       wroteBefore = true;
       void setItem(WRITTEN_KEY, true);
     }
   }
   return true;
+}
+
+/** The downloaded books of `conns` (the person listening's servers), as the car lists them. */
+function downloadBooks(
+  conns: readonly Connection[],
+  progressOf: (ref: BookRef) => Progress | null,
+): CarBook[] {
+  return downloadedEntries(
+    useDownloads.getState().entries,
+    conns.map((c) => c.id),
+  ).map((e): CarBook => {
+    const ref = bookRefOf(e);
+    return { ref, book: e.manifest.book, progress: progressOf(ref) };
+  });
+}
+
+/** Every book the tabs list, once by content key (the entry that has its `Book` wins). */
+function uniqueBooks(books: CarSnapshotInput['books']): Map<string, CarBook> {
+  const all = new Map<string, CarBook>();
+  for (const b of Object.values(books).flatMap((list) => list ?? [])) {
+    const key = contentKeyOf(b.ref);
+    const had = all.get(key);
+    if (!had || (!had.book && b.book)) all.set(key, b);
+  }
+  return all;
 }
 
 /**
@@ -607,36 +637,32 @@ async function buildResumable(): Promise<void> {
   const kids = !!activeProfile()?.kids;
   const { rows, known } = await progressRows(conns, true);
   const progressOf = progressLookup(rows);
-  const carBook = (ref: BookRef, book: Book | null): CarBook => ({
-    ref,
-    book,
-    progress: progressOf(ref),
-  });
-  const listed = live
-    ? [carBook(live.ref, downloadedEntryOf(live.ref)?.manifest.book ?? null)]
+  const listed: CarBook[] = live
+    ? [
+        {
+          ref: live.ref,
+          book: downloadedEntryOf(live.ref)?.manifest.book ?? null,
+          progress: progressOf(live.ref),
+        },
+      ]
     : [];
-  const downloads = kids
-    ? null
-    : downloadedEntries(
-        useDownloads.getState().entries,
-        conns.map((c) => c.id),
-      ).map((e) => carBook(bookRefOf(e), e.manifest.book));
-  const all = new Map<string, CarBook>();
-  for (const b of [...listed, ...(downloads ?? [])]) all.set(contentKeyOf(b.ref), b);
-  const plays = await playSpecs(all, known, progressOf, pausedPlaceOf(player, live));
+  const books: CarSnapshotInput['books'] = {
+    continue: listed,
+    upnext: null,
+    downloads: kids ? null : downloadBooks(conns, progressOf),
+    library: null,
+  };
+  const plays = await playSpecs(uniqueBooks(books), known, progressOf, pausedPlaceOf(player, live));
+  // A car met meanwhile: its full snapshot is due, never this one over it.
+  if (carSeen) return;
   await handOver(
     owner,
-    {
-      signedIn: conns.length > 0,
-      books: { continue: listed, upnext: null, downloads, library: null },
-    },
+    { signedIn: conns.length > 0, books },
     {
       live,
       artworkFor: (ref) => downloadedEntryOf(ref)?.manifest.coverUri ?? null,
       playFor: (ref) => plays.get(contentKeyOf(ref)),
     },
-    // A car met meanwhile: its full snapshot is due, never this one over it.
-    () => !carSeen,
   );
 }
 
@@ -686,12 +712,7 @@ async function buildAndWrite(): Promise<void> {
     : await everyoneBooks(rows, live, queue, library, conns, progressOf);
 
   // Every book any tab lists, once: its play spec (downloaded only) and its cover.
-  const all = new Map<string, CarBook>();
-  for (const b of Object.values(books).flatMap((list) => list ?? [])) {
-    const key = contentKeyOf(b.ref);
-    const had = all.get(key);
-    if (!had || (!had.book && b.book)) all.set(key, b);
-  }
+  const all = uniqueBooks(books);
 
   // iOS never starts a book without JS (CarPlay asks JS for every book): no play specs.
   const plays =
@@ -771,13 +792,7 @@ async function everyoneBooks(
         return { ref, book: e.book ?? null, progress: progressOf(ref) };
       })
     : null;
-  const downloads = downloadedEntries(
-    useDownloads.getState().entries,
-    conns.map((c) => c.id),
-  ).map((e): CarBook => {
-    const ref = bookRefOf(e);
-    return { ref, book: e.manifest.book, progress: progressOf(ref) };
-  });
+  const downloads = downloadBooks(conns, progressOf);
   const libraryList: CarBook[] = library
     ? library.books.map((b) => {
         const ref = { connectionId: library.cid, libraryId: b.library_id, path: b.rel_path };
@@ -861,15 +876,20 @@ function placeChanged(): void {
   else resumableChanged();
 }
 
-/** Android, no car met yet: what the resumable snapshot holds changed (the person listening,
- * their servers, the downloads). A car met before: the full snapshot's own requests cover it. */
-function resumableChanged(): void {
-  if (active && Platform.OS === 'android' && !carSeen) void writeResumable();
-}
+/** A resumable write is queued and has not started: a burst of changes joins it. */
+let resumableQueued = false;
 
-/** The resumable snapshot (`buildResumable`), queued behind any write under way. */
-function writeResumable(): Promise<void> {
-  return snapshotWrites(buildResumable).catch((err) => {
+/** Android, no car met yet: what the resumable snapshot holds changed (the person listening,
+ * their servers, the downloads, the place). Queued behind any write under way; a request
+ * while one waits joins it, since the build reads the stores when it runs. A car met before:
+ * the full snapshot's own requests cover it. */
+function resumableChanged(): void {
+  if (!active || Platform.OS !== 'android' || carSeen || resumableQueued) return;
+  resumableQueued = true;
+  void snapshotWrites(() => {
+    resumableQueued = false;
+    return buildResumable();
+  }).catch((err) => {
     console.warn('[car] resumable snapshot failed', err);
   });
 }
@@ -1377,4 +1397,6 @@ export function forgetCarSync() {
   carSeen = false;
   checking = null;
   wroteBefore = null;
+  ownerStored = null;
+  resumableQueued = false;
 }
