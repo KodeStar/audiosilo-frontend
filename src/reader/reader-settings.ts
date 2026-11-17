@@ -24,3 +24,22 @@ export async function loadFontScale(): Promise<number> {
 export async function saveFontScale(scale: number): Promise<void> {
   await setItem(FONT_SCALE_KEY, scale);
 }
+
+/** The reader's colours on this device (fe#246; per device, not synced): the app's own
+ * (`follow`), light, dark, or black, a pure black page for an OLED screen. */
+const THEME_KEY = 'audiosilo.readerTheme';
+
+export const READER_THEMES = ['follow', 'light', 'dark', 'black'] as const;
+export type ReaderThemeChoice = (typeof READER_THEMES)[number];
+
+/** The saved reader theme, `follow` when none (or an unknown one) is saved. */
+export async function loadReaderTheme(): Promise<ReaderThemeChoice> {
+  const saved = await getItem<unknown>(THEME_KEY);
+  return (READER_THEMES as readonly unknown[]).includes(saved)
+    ? (saved as ReaderThemeChoice)
+    : 'follow';
+}
+
+export async function saveReaderTheme(choice: ReaderThemeChoice): Promise<void> {
+  await setItem(THEME_KEY, choice);
+}

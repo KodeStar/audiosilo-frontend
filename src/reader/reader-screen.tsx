@@ -2,6 +2,8 @@ import { memo, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AppState,
+  FlatList,
+  type LayoutChangeEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -15,6 +17,14 @@ import { useBook, useCapability, useReadingPlace } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Icon } from '@/components/ui/icon';
 import { Notice } from '@/components/ui/notice';
 import { useBehindModalProps } from '@/components/ui/modal-layer';
 import { Sheet } from '@/components/ui/sheet';
@@ -25,10 +35,12 @@ import type { Connection } from '@/stores/session';
 import { backOrHome } from '@/lib/back-or-home';
 import { type ShortcutKey, useGlobalShortcut } from '@/lib/keyboard';
 import { bookTitle } from '@/lib/paths';
+import { scaleCapped, useFontScale } from '@/lib/text-scale';
 import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { canRead } from './can-read';
 import { hasLocalEbook } from './ebook-file';
@@ -37,7 +49,13 @@ import { FollowPill, followPillRoom, PageEdges, turnPage, usePageEdges } from '.
 import type { ReaderPlace, TocEntry } from './protocol';
 import { ReaderHost } from './reader-host';
 import { type ReaderHostEvent, type ReaderHostHandle, ReaderStartError } from './reader-host-types';
-import { FONT_SCALES, saveFontScale, stepFontScale } from './reader-settings';
+import {
+  FONT_SCALES,
+  READER_THEMES,
+  type ReaderThemeChoice,
+  saveFontScale,
+  stepFontScale,
+} from './reader-settings';
 import { useBookReadalong } from './use-book-readalong';
 import { useReaderAppearance } from './use-reader-appearance';
 import {
@@ -159,7 +177,7 @@ export function ReaderScreen({
     if (!readalongMap) following.current = false;
   }, [readalongMap]);
 
-  const { theme, fontScale, setFontScale } = useReaderAppearance();
+  const { theme, themeChoice, chooseTheme, fontScale, setFontScale } = useReaderAppearance();
   const changeFontScale = (direction: -1 | 1) => {
     const next = stepFontScale(fontScale ?? 1, direction);
     setFontScale(next);
@@ -508,6 +526,11 @@ export function ReaderScreen({
                 disabled={fontScale === FONT_SCALES.at(-1)}
                 onPress={() => changeFontScale(1)}
               />
+              <ThemeMenu
+                value={themeChoice}
+                dark={theme.scheme === 'dark'}
+                onChange={chooseTheme}
+              />
             </>
           ) : null}
         </View>
@@ -613,11 +636,26 @@ function useDelayed(value: boolean, ms: number): boolean {
 
 /** How far above the current entry the contents open, so the entries before it show too. */
 const TOC_LEAD = 96;
+/** From this many entries the contents are a virtual list (`LongToc`). */
+const TOC_VIRTUAL_FROM = 200;
+/** A virtual contents' row height at the default text size (it follows the text scale, as
+ * the player's Chapters list does), and how many rows above the current one it opens at. */
+const TOC_ROW_H = 44;
+const TOC_ROW_MAX_SCALE = 3.2;
+const TOC_LEAD_ROWS = 2;
+
+type TocProps = {
+  entries: TocEntry[];
+  /** The current entry's index, -1 when none is. */
+  current: number;
+  onSelect: (href: string) => void;
+};
 
 /** The contents, one row per entry: the current chapter (the first entry named as the
- * section on screen) marked, and scrolled into view when the list opens. Memoized: the
- * screen re-renders on every page turn, and a long contents list need not be rebuilt for
- * it. Its own scroller (the sheet caps its height), so it can open at the current entry. */
+ * section on screen) marked, and the list opened at it. Memoized: the screen re-renders on
+ * every page turn, and a long contents list need not be rebuilt for it. Its own scroller
+ * (the sheet caps its height), so it can open at the current entry. A book's contents can
+ * run to thousands of entries (fe#165): from `TOC_VIRTUAL_FROM` they are a virtual list. */
 const TocList = memo(function TocList({
   toc,
   section,
@@ -629,42 +667,137 @@ const TocList = memo(function TocList({
 }) {
   const entries = toc ?? [];
   const current = section ? entries.findIndex((entry) => entry.label === section) : -1;
+  const Toc = entries.length >= TOC_VIRTUAL_FROM ? LongToc : ShortToc;
+  return <Toc entries={entries} current={current} onSelect={onSelect} />;
+});
+
+/** Every entry drawn, its label on up to two lines, scrolled to the current one once it is
+ * laid out. */
+function ShortToc({ entries, current, onSelect }: TocProps) {
   const scroller = useRef<ScrollViewInstance>(null);
   // Once per opening (the sheet mounts the list each time it opens).
   const scrolled = useRef(false);
   return (
     <ScrollView ref={scroller} style={{ flexShrink: 1 }} contentContainerClassName="px-2 pb-4">
-      {entries.map((entry, i) => {
-        const here = i === current;
-        return (
-          <Pressable
-            key={`${i}:${entry.href}`}
-            role="button"
-            aria-current={here ? 'location' : undefined}
-            accessibilityState={{ selected: here }}
-            className={`rounded-lg py-2.5 pr-2 active:bg-muted web:hover:bg-muted ${here ? 'bg-muted' : ''}`}
-            style={{ paddingLeft: 8 + entry.depth * 16 }}
-            onLayout={
-              here
-                ? (e) => {
-                    if (scrolled.current) return;
-                    scrolled.current = true;
-                    const y = Math.max(0, e.nativeEvent.layout.y - TOC_LEAD);
-                    scroller.current?.scrollTo({ y, animated: false });
-                  }
-                : undefined
-            }
-            onPress={() => onSelect(entry.href)}
-          >
-            <Text variant={here ? 'label' : 'body'} numberOfLines={2}>
-              {entry.label}
-            </Text>
-          </Pressable>
-        );
-      })}
+      {entries.map((entry, i) => (
+        <TocRow
+          key={`${i}:${entry.href}`}
+          entry={entry}
+          here={i === current}
+          onLayout={
+            i === current
+              ? (e) => {
+                  if (scrolled.current) return;
+                  scrolled.current = true;
+                  const y = Math.max(0, e.nativeEvent.layout.y - TOC_LEAD);
+                  scroller.current?.scrollTo({ y, animated: false });
+                }
+              : undefined
+          }
+          onSelect={onSelect}
+        />
+      ))}
     </ScrollView>
   );
-});
+}
+
+/** A long contents: only the rows near the screen are drawn. A virtual list can open in its
+ * middle, and keep its place once scrolled, only where it knows every row's offset
+ * (`getItemLayout`), so these rows are one height and their labels one line. Opened on
+ * rows not measured, with no known offsets, it drew the rows it opened on at offset 0 and
+ * went back to the first entries at the first scroll. */
+function LongToc({ entries, current, onSelect }: TocProps) {
+  const rowHeight = scaleCapped(TOC_ROW_H, useFontScale(), TOC_ROW_MAX_SCALE);
+  return (
+    <FlatList
+      testID="reader-toc"
+      data={entries}
+      style={{ flexShrink: 1 }}
+      contentContainerClassName="px-2 pb-4"
+      keyExtractor={(entry, i) => `${i}:${entry.href}`}
+      initialScrollIndex={Math.max(0, current - TOC_LEAD_ROWS)}
+      getItemLayout={(_, index) => ({ length: rowHeight, offset: rowHeight * index, index })}
+      renderItem={({ item, index }) => (
+        <TocRow entry={item} here={index === current} height={rowHeight} onSelect={onSelect} />
+      )}
+    />
+  );
+}
+
+/** One entry of the contents. With a `height` (the virtual list's) its label is one line. */
+function TocRow({
+  entry,
+  here,
+  height,
+  onLayout,
+  onSelect,
+}: {
+  entry: TocEntry;
+  here: boolean;
+  height?: number;
+  onLayout?: (e: LayoutChangeEvent) => void;
+  onSelect: (href: string) => void;
+}) {
+  return (
+    <Pressable
+      role="button"
+      aria-current={here ? 'location' : undefined}
+      accessibilityState={{ selected: here }}
+      className={cn(
+        'rounded-lg pr-2 active:bg-muted web:hover:bg-muted',
+        height === undefined ? 'py-2.5' : 'justify-center',
+        here && 'bg-muted',
+      )}
+      style={{ paddingLeft: 8 + entry.depth * 16, height }}
+      onLayout={onLayout}
+      onPress={() => onSelect(entry.href)}
+    >
+      <Text variant={here ? 'label' : 'body'} numberOfLines={height === undefined ? 2 : 1}>
+        {entry.label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** The page colours (fe#246): like the app, light, dark or black, saved on this device for
+ * the reader and the companion's Text tab. Its glyph is the colours' scheme. */
+function ThemeMenu({
+  value,
+  dark,
+  onChange,
+}: {
+  value: ReaderThemeChoice;
+  dark: boolean;
+  onChange: (choice: ReaderThemeChoice) => void;
+}) {
+  const { t } = useTranslation();
+  const themed = useThemeColors();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          icon={dark ? 'moon' : 'sun'}
+          accessibilityLabel={t('reader.theme.label', { theme: t(`reader.theme.${value}`) })}
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>{t('reader.theme.heading')}</DropdownMenuLabel>
+        {READER_THEMES.map((choice) => (
+          <DropdownMenuItem
+            key={choice}
+            onPress={() => onChange(choice)}
+            accessibilityState={{ checked: choice === value }}
+          >
+            <Text className="flex-1">{t(`reader.theme.${choice}`)}</Text>
+            {choice === value ? <Icon name="check" size={16} color={themed.foreground} /> : null}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 /** Whether a save's answer is about this book. */
 function sameBook(

@@ -181,7 +181,13 @@ async function cacheFirst(request) {
 
 async function staleWhileRevalidate(request) {
   const cache = await caches.open(SHELL_CACHE);
-  const cached = await cache.match(request);
+  // A font is precached under the worker's own request, which has no Origin, and the server
+  // answers fonts with `Vary: Origin`; the page's font request is CORS mode, so it carries
+  // one, and a strict match would miss offline (fe#177). A font file is the same bytes
+  // whatever asks, so it ignores Vary. Only fonts are precached under a request unlike the
+  // page's; everything else keeps to Vary, which costs nothing and serves no varied answer
+  // to a request it was not given for.
+  const cached = await cache.match(request, { ignoreVary: request.destination === 'font' });
   const network = fetch(request)
     .then((res) => {
       if (res && cacheable(res)) cache.put(request, res.clone());
@@ -193,24 +199,43 @@ async function staleWhileRevalidate(request) {
 
 // --- the build's chunks ------------------------------------------------------
 
-// The cache entry recording the build last precached, as JSON: the shell's own scripts and
-// styles (`build`), every file of it (`files`) and the build's before it (`previous`).
+// The cache entry recording the build last precached, as JSON: the shell's own scripts,
+// styles and fonts (`build`), every file of it (`files`) and the build's before it
+// (`previous`).
 const PRECACHED_BUILD = '__precached-build';
 // A build asset named in the HTML or a chunk: `<base>/_expo/static/js/web/<name>-<hash>.js`
 // (the chunk map Expo writes into the entry and into chunks that load others) or a
 // stylesheet under `_expo/static/css/`.
 const ASSET_REF = /["'](\/(?:[^"'\s]*?\/)?_expo\/static\/(?:js|css)\/[^"'\s]+?\.(?:js|css))["']/g;
 
+// A font file the shell's HTML names: the preload links and `@font-face` rules of the fonts
+// that gate first paint (`StaticFonts`, src/theme/static-fonts.web.tsx), under
+// `<base>/assets/`, not `_expo/static/`. Read from the shell only: a chunk naming a path that
+// is not a file would stop the precache.
+const FONT_REF = /["'](\/[^"'\s]+?\.(?:ttf|otf|woff2?))["']/g;
+
 /** The same-origin build assets `text` names, as absolute URLs. */
 function assetRefs(text) {
+  return refsOf(text, ASSET_REF);
+}
+
+/** The same-origin font files `text` (the shell) names, as absolute URLs (fe#177). */
+function fontRefs(text) {
+  return refsOf(text, FONT_REF);
+}
+
+function refsOf(text, pattern) {
   const urls = new Set();
-  for (const m of text.matchAll(ASSET_REF)) urls.add(new URL(m[1], self.location.origin).href);
+  for (const m of text.matchAll(pattern)) {
+    const url = new URL(m[1], self.location.origin);
+    if (url.origin === self.location.origin) urls.add(url.href);
+  }
   return [...urls];
 }
 
 /**
- * Precache every chunk of the build the shell (the scope's index.html) boots: its scripts
- * and stylesheets, then every chunk they name, transitively. A route opened for the first
+ * Precache every chunk of the build the shell (the scope's index.html) boots: its scripts,
+ * stylesheets and fonts, then every chunk they name, transitively. A route opened for the first
  * time offline then still finds its chunk, and a deep link still boots. The shell is
  * cached once its own files are in, so offline it always boots. Once this build is
  * complete, the build before it stays one deploy longer (a tab still running it, its
@@ -223,8 +248,9 @@ function assetRefs(text) {
  * At install (`fresh`) every file is written again, even one already cached: Chrome
  * compiles a script a worker caches while installing and keeps the code with it, so the
  * next start skips most of its compiling (the app registers the worker under its build's
- * name, so each deploy installs one). Otherwise (the app's ask) a hashed file already
- * cached is not fetched again, and a shell naming the same files as last time is done.
+ * name, so each deploy installs one). A font has no such code, and is never fetched again.
+ * Otherwise (the app's ask) a hashed file already cached is not fetched again, and a shell
+ * naming the same files as last time is done.
  */
 async function precacheBuild(fresh = false) {
   try {
@@ -232,8 +258,12 @@ async function precacheBuild(fresh = false) {
     const shell = self.registration.scope;
     const res = await fetch(new Request(shell, { cache: 'no-cache' }));
     if (!res.ok) return;
-    const roots = assetRefs(await res.clone().text());
-    if (!roots.length) return;
+    const html = await res.clone().text();
+    const scripts = assetRefs(html);
+    if (!scripts.length) return;
+    // The shell's fonts with its own files: offline, a cold start draws its text in them.
+    const fonts = new Set(fontRefs(html));
+    const roots = [...scripts, ...fonts];
     const build = roots.slice().sort().join('\n');
     const marker = new URL(PRECACHED_BUILD, shell).href;
     const last = await readRecord(cache, marker);
@@ -248,17 +278,31 @@ async function precacheBuild(fresh = false) {
     let level = roots;
     while (level.length) {
       for (const url of level) seen.add(url);
-      const texts = await Promise.all(level.map((url) => precacheAsset(cache, url, fresh)));
+      const texts = await Promise.all(
+        level.map((url) => {
+          if (!fonts.has(url)) return precacheAsset(cache, url, fresh);
+          // A font is the look, not the boot: one the server won't give (a proxy refusing
+          // its path) never stops the precache, or the shell would never be cached for
+          // offline. It is left out of the record. Never fetched again once cached (`fresh`
+          // is for scripts, whose compiled code Chrome keeps): its name is its content.
+          return precacheAsset(cache, url, false).catch(() => {
+            seen.delete(url);
+            return '';
+          });
+        }),
+      );
       if (level === roots) await cache.put(shell, res);
       level = [...new Set(texts.flatMap(assetRefs))].filter((url) => !seen.has(url));
     }
 
     const previous = !last ? [] : last.build !== build ? last.files : last.previous;
     const keep = new Set([...seen, ...previous]);
+    // A font an earlier build precached sits outside `_expo/static/`: dropped by its record.
+    const precachedBefore = new Set(last ? [...last.files, ...last.previous] : []);
     for (const request of await cache.keys()) {
       const { url } = request;
       if (url === shell || url === marker) continue;
-      if (url.includes(BUILD_ASSETS)) {
+      if (url.includes(BUILD_ASSETS) || precachedBefore.has(url)) {
         if (!keep.has(url)) await cache.delete(request);
         continue;
       }
@@ -294,7 +338,9 @@ async function readRecord(cache, marker) {
  * which stops the precache.
  */
 async function precacheAsset(cache, url, fresh) {
-  let asset = fresh ? undefined : await cache.match(url);
+  // Any copy will do, Vary aside: a font the page fetched (`staleWhileRevalidate`) is stored
+  // under the page's request, Origin and all, and a build file is the same bytes whoever asked.
+  let asset = fresh ? undefined : await cache.match(url, { ignoreVary: true });
   if (!asset) {
     asset = await fetch(url);
     if (!asset.ok) throw new Error(`precache: ${url} ${asset.status}`);

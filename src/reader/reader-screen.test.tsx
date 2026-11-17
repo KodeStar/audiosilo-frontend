@@ -5,6 +5,7 @@ import { ApiError } from '@/api/client';
 import type { ReadingProgress } from '@/api/types';
 import { backOrHome } from '@/lib/back-or-home';
 import type { ShortcutKey } from '@/lib/keyboard';
+import { readFontScale, scaleCapped } from '@/lib/text-scale';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 import {
@@ -136,6 +137,7 @@ jest.mock('./reading-progress', () => ({
 /* eslint-disable import/first */
 import { FOLLOW_PILL_ROOM } from './page-edge';
 import { ReaderScreen } from './reader-screen';
+import { loadReaderTheme, saveReaderTheme } from './reader-settings';
 /* eslint-enable import/first */
 
 const CFI_A = 'epubcfi(/6/4!/4/2/1:0)';
@@ -398,6 +400,75 @@ describe('ReaderScreen', () => {
       await fireEvent(current, 'layout', { nativeEvent: { layout: { y: 900 } } });
       expect(scrollTo).toHaveBeenCalledTimes(1);
     });
+
+    it('draws only the rows near the current entry of a long contents (fe#165)', async () => {
+      const long = Array.from({ length: 2000 }, (_, i) => ({
+        label: `Entry ${i}`,
+        href: `e${i}.xhtml`,
+        depth: 0,
+      }));
+      const shown = () => screen.getAllByRole('button', { name: /^Entry / }).length;
+      const scrollTo = jest.mocked(ScrollView.prototype.scrollTo);
+      scrollTo.mockClear();
+      await mount();
+      await waitFor(() => expect(mockHost).not.toBeNull());
+      await say({ type: 'opened', title: 'Alice', toc: long, rtl: false });
+      await say({ type: 'progress', cfi: CFI_A, fraction: 0.5, sectionLabel: 'Entry 1500' });
+      await fireEvent.press(screen.getByLabelText('Contents'));
+
+      expect(screen.getByRole('button', { name: 'Entry 1500' })).toHaveProp(
+        'aria-current',
+        'location',
+      );
+      expect(screen.getByRole('button', { name: 'Entry 1498' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Entry 0' })).toBeNull();
+      expect(shown()).toBeLessThan(50);
+      // Rows of one height: the list opens two rows above the current one, at their offset.
+      const list = screen.getByTestId('reader-toc');
+      const rowHeight = scaleCapped(44, readFontScale(), 3.2);
+      const offset = 1498 * rowHeight;
+      await fireEvent(list, 'layout', { nativeEvent: { layout: { width: 320, height: 600 } } });
+      await fireEvent(list, 'contentSizeChange', 320, 2000 * rowHeight);
+      expect(scrollTo).toHaveBeenCalledWith({ y: offset, animated: false });
+      // And stays there once scrolled: a list opened with no known offsets went back to
+      // the first entries at the first scroll.
+      await fireEvent.scroll(list, {
+        nativeEvent: {
+          contentOffset: { x: 0, y: offset + 20 },
+          contentSize: { width: 320, height: 2000 * rowHeight },
+          layoutMeasurement: { width: 320, height: 600 },
+        },
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 100));
+      });
+      expect(screen.getByRole('button', { name: 'Entry 1500' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Entry 0' })).toBeNull();
+      expect(shown()).toBeLessThan(100);
+    });
+  });
+
+  it('draws the page black once Black is chosen, and keeps it on this device (fe#246)', async () => {
+    await mount();
+    await waitFor(() => expect(mockHost).not.toBeNull());
+    expect(mockHost!.theme).toEqual({
+      scheme: 'light',
+      background: '#ffffff',
+      foreground: '#121c36',
+    });
+    await say({ type: 'opened', title: 'Alice', toc: [], rtl: false });
+    await fireEvent.press(screen.getByLabelText('Page colours: Like the app'));
+    await fireEvent.press(await screen.findByText('Black'));
+    await waitFor(() =>
+      expect(mockHost!.theme).toEqual({
+        scheme: 'dark',
+        background: '#000000',
+        foreground: '#e7ebf4',
+      }),
+    );
+    expect(screen.getByLabelText('Page colours: Black')).toBeTruthy();
+    await expect(loadReaderTheme()).resolves.toBe('black');
+    await saveReaderTheme('follow');
   });
 
   it('reads a download holding the EPUB offline, the capability unknown', async () => {

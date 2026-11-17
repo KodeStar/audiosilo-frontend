@@ -235,9 +235,11 @@ export function useBookReadalong(
             ? qk.readalongLocal(connectionId, libraryId, path, kept ?? '')
             : qk.readalong(connectionId, libraryId, path, generatedAt),
         );
+  // Per answer too: a query removed and read again under the same hash (its connection
+  // removed and added back while a surface shows it) is pinned in its turn.
   useEffect(() => {
     if (readHash) pinMap(client, readHash);
-  }, [client, readHash]);
+  }, [client, readHash, data]);
   // The server's map with no network on the device and no copy here (`offlineState`): held
   // back for the connection (TanStack's `paused`), or its read failed for want of one (a
   // reload offline, where the request went out before anything knew). Not a failure with
@@ -303,11 +305,14 @@ const pins = new WeakMap<QueryClient, { hash: string; release: () => void }>();
  * surface (the phone Text chip mounts with each full-player open, after the default cache
  * time a fresh read). One map at a time per client: pinning another book's (or a map made
  * again) releases the last one, which then leaves the cache as any unwatched query does.
+ * The query taken out of the cache (its connection removed, `removeQueries`) releases it
+ * too, or the observer would hold the removed map, up to 16 MiB, until the next pin (fe#202).
  */
 function pinMap(client: QueryClient, hash: string): void {
   const pin = pins.get(client);
   if (pin?.hash === hash) return;
-  const query = client.getQueryCache().get(hash);
+  const cache = client.getQueryCache();
+  const query = cache.get(hash);
   if (!query) return;
   pin?.release();
   // The query's own options (its function, `meta`...), so the pin changes nothing of it.
@@ -316,5 +321,14 @@ function pinMap(client: QueryClient, hash: string): void {
     queryKey: query.queryKey,
     enabled: false,
   });
-  pins.set(client, { hash, release: observer.subscribe(() => {}) });
+  const unobserve = observer.subscribe(() => {});
+  const stopWatching = cache.subscribe((event) => {
+    if (event.type === 'removed' && event.query === query) release();
+  });
+  const release = () => {
+    unobserve();
+    stopWatching();
+    if (pins.get(client)?.release === release) pins.delete(client);
+  };
+  pins.set(client, { hash, release });
 }

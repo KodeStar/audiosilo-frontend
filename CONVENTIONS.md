@@ -101,8 +101,8 @@ can never log anyone out (`{ authReset, cacheReset }`):
   one, so never `i18n.changeLanguage` directly (tests included: the catalog would not be in). A new module for the first screen keeps a static import; one
   for an overlay or a listener goes behind `deferred` in a web file, never in a shared one
   (native must not change). `public/sw.js` precaches the whole build (`precacheBuild`: the
-  shell's scripts and every chunk they name, transitively; the shell cached once its own files
-  are in), at install and when the app asks (`askPrecache`, 5 s after load), so a page never
+  shell's scripts, its fonts (the `StaticFonts` preloads, read from the shell only, fe#177; one already cached is never fetched again) and
+  every chunk they name, transitively; the shell cached once its own files are in), at install and when the app asks (`askPrecache`, 5 s after load), so a page never
   opened online still boots offline. Once a build is complete, the one before it stays one
   deploy longer (a tab still running it opens its pages from those files), older files go, and
   so does every page an earlier build cached (offline it falls back to the shell). The worker
@@ -164,6 +164,21 @@ can't rename, so `engine.web.ts` keeps a moved connection's files under its lega
 returns the user directly; lists are wrapped (`{ libraries }`, `{ books, next_cursor }`,
 `{ progress }`, `{ bookmarks }`, `{ notes }`); errors are `{ error }`. Pairing deep
 link is `audiosilo://connect?server=<base>&token=<pairing_token>`.
+
+**Cache reads at render (the React Compiler).** The app builds with the React Compiler
+(`app.json` `experiments.reactCompiler`), which memoises what a component or hook computes
+against its inputs: a `queryClient.getQueryData(...)` in a render body is read again only when
+the key's parts change, never because the cache did or because something else rendered the
+component again (fe#280: a row's menu kept offering Download after the episode page found the
+episode not available). Read the cache at render through a subscription: a query hook, or
+`useCachedQueryData(key)` (`src/api/use-cached-query-data.ts`: cache only, no fetch, no
+observer, one cache listener per reader, notified in React Query's batches; `false` for no key
+reads nothing; a test of it sets `notifyQueriesSynchronously()`). `getQueryData` stays fine in
+callbacks, effects and framework-free code. One render read is held on purpose: the Cast
+button's item and chapters (`use-cast-button.ts`), which a subscription would lose when the
+cache collects them with only the docked player showing. Jest leaves the compiler off, so a
+test of code that depends on it renders through `withReactCompiler(require, './module')`
+(`src/testing/react-compiler.ts`).
 
 **Client identification.** `ApiClient.request()` sends
 `X-AudioSilo-Client: AudioSilo/<APP_VERSION or dev> (<Platform.OS>)` on every API call
@@ -811,21 +826,29 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
 - **Episodes download (v2.7.0, fe#166)**: Download / Remove download on the episode page
   (`DownloadControl`, disabled while nothing can fetch it) and in the row's ... menu
   (`offersDownload`: an episode on its server, or one `podcast_fetch` is not `false` for; a list
-  shape is looked up once the menu opens). The downloads store downloads an episode like a book (its
+  shape is looked up once the menu opens, and the live fetch status the episode page and the
+  player's fetch keep in the cache, `qk.podcastFetch`, read over the row's own then). The downloads store downloads an episode like a book (its
   item and chapters read first when the caller held a list shape of one on its server, the show's
   title kept in `manifest.showTitle`). One not on its server (`isAbsentEpisode`, or a last failure
   `serverFetch` or a server 503) first waits in `downloads/episode-ready.ts`, OUTSIDE the
   one-at-a-time queue (D2): the entry stays `queued` with `serverFetch: {percent}`, the waiter
   probes the stream once (the listener's Retry POSTs; an automatic download's own retry never does),
-  follows the status every max(2, Retry-After) s in the foreground only, at most three asking at
-  once (the rest wait their turn, leaving room under the server's five), and on `ready` reads the
-  item and chapters (again, when it had them; `fetchFailFast`) and joins the queue. The wait can be
+  follows the status every max(2, Retry-After) s in the foreground only, at most three asking each
+  server at once (counted by `serverIdOf`, so two profiles on one server share them; the rest
+  wait their turn, leaving room under the server's five), and on `ready` reads the
+  item and chapters (again, when it had them; `fetchFailFast`; none is read before the wait, on web either),
+  marks it on its server in the show's cached episode lists with its item's size and length
+  (`markEpisodeOnServer`, no list read again and each list keeping its date; an item whose read failed marks nothing, the lists are read again; the player's fetch does the same) and joins the queue. The wait can be
   long, so `episodeWaitEnded` decides again what `queueBook` decided before it: an `auto` download
   the network rule no longer lets start is dropped with no decline mark (`canAutoDownload`), and so
   is one this browser turns out to play transcoded. The fetch limit, 429 and blips ask again
   (`blipDelay`); a failed or impossible fetch ends as a `serverFetch` failure with the server's code
   (`failureText` reads it through `fetchReasonKey`; `identity_changed` also reads the item and the
-  library's episode lists again). A cancel or remove stops the wait (`stopWaiting`); the server's
+  library's episode lists again). A refusal of the listener (`accessRefusal`: a 401, or a 403
+  naming no code) is its own failure, `signedOut` or `noAccess`, and the player's fetch says it as
+  the reasons `signed_out` / `no_access`. A wait outlives a reload or restart: `reviveEntry` keeps
+  the waiting entry and `resumeEpisodeWaits` asks again once the session has read its connections
+  (one with no client then, or in a browser the launch's check finds can't play a download offline, is a download cut short). A cancel or remove stops the wait (`stopWaiting`); the server's
   fetch carries on. The fetch rules the player and the waiter share live in
   `playback/episode-fetch-rules.ts` (import-light: the downloads store must not pull in the start
   path). The row says "On this device" (`episode-on-device`) and the download's state; an episode on
@@ -993,6 +1016,19 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   pressed in the book stays in the frame: the reader turns pages itself and sends Escape back
   (`escape`). An RTL book (`opened.rtl`) turns forward from the left edge and ArrowLeft. Only a
   bare arrow turns a page: with Cmd, Ctrl or Alt it is the browser's (Back, Forward).
+- **Contents** (`TocList` in `reader-screen.tsx`): every entry is drawn, its label on up to
+  two lines, and the list scrolls to the current one once it is laid out. From
+  `TOC_VIRTUAL_FROM` entries (fe#165) it is a virtual `FlatList` of rows of one height
+  (`getItemLayout`, the height following the text scale, labels one line) opened with
+  `initialScrollIndex`. Never a virtual list without `getItemLayout` here: opened in its
+  middle on rows of unknown height it draws them at offset 0 and goes back to the first
+  entries at the first scroll.
+- **Appearance** (`use-reader-appearance.ts`, `reader-settings.ts`): the text size and the page
+  colours (fe#246: like the app, light, dark, black) are per device, never synced, and both
+  surfaces (the reader, the companion's Text tab) read them before the host opens; a theme
+  chosen shows at once on every surface mounted (`themeWatchers`). The host
+  only ever gets hex colours and a scheme (`ReaderTheme`, `readerThemeOf`): black is the dark
+  scheme on `#000000`, so the reader's dark rules and read-along highlight apply unchanged.
 - **One session setup** (fe#172, `reader-session.ts`): both hosts start each document's
   session with `startReaderSession` (the channel, the `READER_START_MS` timeout, and where each
   message goes: `ready` runs the host's `onReady`, sends what waited, then the read-along side's
@@ -3874,8 +3910,10 @@ screen reader, a press, hover or keyboard focus, and reduced motion makes it sti
 next, the book page and the jumps (bookmark and note rows, history spans and drift strips, all
 through `useJumpTo`) start a book or move into one. A `toggle` on the loaded book pauses or plays
 it in place on every layout. Otherwise a phone opens the full player (`playerHref(cid, lib, path,
-place)`, which the route applies once) - **also for the playing book, so a jump there opens the
-player on the place** - first pushing the book page under it with `viaBookPage` unless that page
+place)`, which the route applies once) - **also for the loaded book, so a jump there opens the
+player on the place**: that one jumps (`seekBook`) and plays on before the player opens on it with
+no place to apply, a paused one too (fe#280: playing first sounded the old place until the route's
+jump landed) - first pushing the book page under it with `viaBookPage` unless that page
 is already the one on screen. A tablet or desktop, and every layout while the full player is
 already on top (Up next's sheet over it; pushing `/player` over the open one stacked a second
 player), plays the loaded book on (`seekBook` to `at`, so the Undo chip offers the way back,

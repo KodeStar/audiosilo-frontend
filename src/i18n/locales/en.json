@@ -1174,6 +1174,8 @@
       "removed": "You're no longer signed in to this server.",
       "interrupted": "The app closed before it finished.",
       "serverFetch": "{{server}} couldn't get this episode.",
+      "signedOut": "{{server}} signed you out. Sign in again, then retry.",
+      "noAccess": "This account can't get this episode from {{server}}.",
       "unknown": "The download stopped.",
       "notInBrowser": "This browser can't play this book offline. Remove it to free the space.",
       "kept": "Your {{percent}}% is kept.",
@@ -3026,6 +3028,8 @@
         "demo_account": "The demo can only play episodes already on the server.",
         "too_large": "This episode is too large for your server to keep.",
         "identity_changed": "This episode changed in its feed. Open the show to find it again.",
+        "signed_out": "You're signed out of this server. Sign in again, then try again.",
+        "no_access": "This account doesn't have access to this episode.",
         "other": "Something went wrong getting it. Try again in a while."
       }
     },
@@ -3216,6 +3220,14 @@
     "contents": "Contents",
     "smaller": "Smaller text",
     "larger": "Larger text",
+    "theme": {
+      "label": "Page colours: {{theme}}",
+      "heading": "Page colours",
+      "follow": "Like the app",
+      "light": "Light",
+      "dark": "Dark",
+      "black": "Black"
+    },
     "previous": "Previous page",
     "next": "Next page",
     "where": "{{percent}}% through the book",

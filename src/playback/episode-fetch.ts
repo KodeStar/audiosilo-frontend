@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { ApiError, PodcastFetchPendingError } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
 import { cachedShowTitle, chaptersQuery, fetchFailFast, itemQuery, qk } from '@/api/hooks';
+import { markEpisodeOnServer } from '@/api/podcast-cache';
 import { queryClient } from '@/api/provider';
 import type { Book, PodcastFetchStatus } from '@/api/types';
 import type { PlayTarget } from '@/components/player/play-route';
@@ -13,7 +14,7 @@ import { onForeground } from '@/lib/when-active';
 import { mayActFor, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
-import { blipDelay, isAbsentEpisode, pollDelay } from './episode-fetch-rules';
+import { accessRefusal, blipDelay, isAbsentEpisode, pollDelay } from './episode-fetch-rules';
 
 /**
  * Playing an episode that is not on the server yet (Bridge Phase 2d-1). The server fetches
@@ -348,10 +349,16 @@ function schedule(r: Run, seconds: number) {
   }, wait * 1000);
 }
 
-/** A refusal of the probe or of Try again, by the server's code. */
+/** A refusal of the probe or of Try again, by the server's code; one of the listener
+ * (signed out, no access: `accessRefusal`) by this app's own code for it. */
 function refused(r: Run, e: unknown) {
   const pending = pendingOf(r);
   if (!pending) return;
+  const refusal = e instanceof ApiError ? accessRefusal(e) : null;
+  if (refusal) {
+    patch(r, { phase: 'failed', code: refusal === 'signedOut' ? 'signed_out' : 'no_access' });
+    return;
+  }
   const code = e instanceof ApiError ? (e.code ?? null) : null;
   switch (code) {
     case 'fetch_limit':
@@ -376,9 +383,9 @@ function refused(r: Run, e: unknown) {
   }
 }
 
-/** Ready: read the item and chapters again (the file's own), read the show's episode
- * lists again (a show page or Home's rail on screen shows it on the server), then start it
- * in place. */
+/** Ready: read the item and chapters again (the file's own), mark it on its server in the
+ * show's cached episode lists (a show page or Home's rail on screen shows it there,
+ * `markEpisodeOnServer`), then start it in place. */
 async function start(r: Run, client: NonNullable<ReturnType<typeof resolveClient>>) {
   const pending = pendingOf(r);
   if (!pending) return;
@@ -393,11 +400,8 @@ async function start(r: Run, client: NonNullable<ReturnType<typeof resolveClient
   });
   if (run !== r) return;
   const book = queryClient.getQueryData<Book>(qk.item(cid, libraryId, path));
-  const show = book?.episode?.show_path;
-  if (show !== undefined) {
-    void queryClient.invalidateQueries({
-      queryKey: qk.podcastEpisodesOfShow(cid, libraryId, show),
-    });
+  if (book?.episode) {
+    markEpisodeOnServer(queryClient, cid, libraryId, book.episode.show_path, path, book);
   }
   const started = await startBookInPlace(target, opts, { fetched: true }).catch(() => false);
   if (run !== r) return;

@@ -17,6 +17,7 @@ jest.mock('@/api/hooks', () => {
   const { CapabilityError } = jest.requireActual('@/api/hooks');
   return {
     CapabilityError,
+    qk: jest.requireActual('@/api/hooks').qk,
     useBook: (_lib: number, path: string) => {
       mockUseBook(path);
       return { data: path ? mockFull : undefined };
@@ -82,13 +83,19 @@ let mockSendToWatch: jest.Mock | null = null;
 jest.mock('@/watch/use-watch', () => ({ useSendToWatch: () => mockSendToWatch }));
 
 /* eslint-disable import/first */
-import { CapabilityError } from '@/api/hooks';
+import { CapabilityError, qk } from '@/api/hooks';
+import { queryClient } from '@/api/provider';
 import { fetchStatus } from '@/testing/podcast-fixtures';
+import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
 import { mountWithPortal } from '@/testing/render-overlay';
+import { withReactCompiler } from '@/testing/react-compiler';
 
 import { BookActionsButton, BookActionsMenu, useBookActions } from './book-actions';
 /* eslint-enable import/first */
+
+// The live fetch status reaches a row through the cache's batched notifications.
+notifyQueriesSynchronously();
 
 const H = 3600;
 const book = (over: Partial<Book> = {}): Book => ({
@@ -436,6 +443,70 @@ describe('useBookActions, a podcast episode', () => {
     // One on its server needs no fetch: a stopped fetch of it from before never hides it.
     mockPending = { key: 'c:1:Author/Series/01 - Book', phase: 'unavailable', code: 'module_off' };
     expect((await actions(book({ episode: info(true) }))).find('download')).toBeDefined();
+  });
+
+  const notAvailable = () =>
+    fetchStatus({
+      state: 'unavailable',
+      error: { code: 'library_not_writable', message: 'read-only' },
+    });
+
+  it('reads the live fetch status once opened, as the episode page does (fe#280)', async () => {
+    mockCaps = { ...ALL, podcast_fetch: true };
+    const b = book({ episode: info(false) });
+    const key = qk.podcastFetch('c', 1, b.rel_path);
+    queryClient.setQueryData(key, notAvailable());
+    try {
+      // Closed, the row's own (older) status; open, the live one.
+      expect((await actions(b)).find('download')).toBeDefined();
+      expect((await actions(b, undefined, true)).find('download')).toBeUndefined();
+    } finally {
+      queryClient.removeQueries({ queryKey: key });
+    }
+  });
+
+  it('follows the live fetch status while the menu is open (fe#280)', async () => {
+    mockCaps = { ...ALL, podcast_fetch: true };
+    const b = book({ episode: info(false) });
+    const key = qk.podcastFetch('c', 1, b.rel_path);
+    try {
+      await mountWithPortal(<BookActionsButton connectionId="c" libraryId={1} book={b} />);
+      await fireEvent.press(screen.getByLabelText('More for Book'));
+      expect(screen.getByText('Download for offline')).toBeTruthy();
+      // The player's fetch, meanwhile, found it not available: nothing else renders the row.
+      await act(async () => void queryClient.setQueryData(key, notAvailable()));
+      expect(screen.getByText('Play')).toBeTruthy();
+      expect(screen.queryByText('Download for offline')).toBeNull();
+    } finally {
+      queryClient.removeQueries({ queryKey: key });
+    }
+  });
+
+  // As the app builds it: the React Compiler memoised a read at render against the row's
+  // props, so a menu opened again offered what it read the first time (Jest leaves it off).
+  it("reads the live fetch status again at each opening of a row's menu, compiled (fe#280)", async () => {
+    const { BookActionsButton: Button } = withReactCompiler<typeof import('./book-actions')>(
+      require,
+      './book-actions',
+    );
+    mockCaps = { ...ALL, podcast_fetch: true };
+    const b = book({ episode: info(false) });
+    const key = qk.podcastFetch('c', 1, b.rel_path);
+    try {
+      await mountWithPortal(<Button connectionId="c" libraryId={1} book={b} />);
+      const more = screen.getByLabelText('More for Book');
+      await fireEvent.press(more);
+      expect(screen.getByText('Download for offline')).toBeTruthy();
+      await fireEvent.press(more);
+      expect(screen.queryByText('Download for offline')).toBeNull();
+      // The episode page, visited since, read it as not available.
+      queryClient.setQueryData(key, notAvailable());
+      await fireEvent.press(more);
+      expect(screen.getByText('Play')).toBeTruthy();
+      expect(screen.queryByText('Download for offline')).toBeNull();
+    } finally {
+      queryClient.removeQueries({ queryKey: key });
+    }
   });
 
   it('looks a list-shape item of a podcast library up once opened, then offers Download', async () => {

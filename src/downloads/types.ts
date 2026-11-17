@@ -26,6 +26,10 @@ export type DownloadFailure = {
     | 'removed'
     | 'interrupted'
     | 'serverFetch'
+    /** An episode's wait its server ended by refusing the listener: signed out (a 401) or
+     * no access (`accessRefusal`). Nothing of it was downloaded. */
+    | 'signedOut'
+    | 'noAccess'
     | 'unknown';
   status?: number;
   /** With `serverFetch`: the server's code for why (absent when it said none). */
@@ -142,7 +146,8 @@ export type DownloadEntry = {
   /** Set while a podcast episode not on its server yet waits there before it downloads
    * (`episode-ready.ts`, status `queued`, off the one-at-a-time queue): how far the server's
    * fetch is (`percent` once it knows the size). Gone once it goes on the queue or fails;
-   * a launch turns a saved one into an interrupted download (`reviveEntry`). */
+   * a launch keeps a saved one and waits again (`reviveEntry`, the store's
+   * `resumeEpisodeWaits`). */
   serverFetch?: { percent: number | null };
   manifest: DownloadManifest;
 };

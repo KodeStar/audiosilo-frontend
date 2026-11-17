@@ -27,6 +27,15 @@ export function classifyDownloadError(error: unknown): DownloadFailure {
   return { kind: 'unknown' };
 }
 
+/** Failures whose words say it all: no share kept to tell, no "Retry starts it again". */
+const NOTHING_KEPT: ReadonlySet<DownloadFailure['kind']> = new Set([
+  'unservable',
+  'removed',
+  'serverFetch',
+  'signedOut',
+  'noAccess',
+]);
+
 /** What went wrong with a failed download, and whether anything was lost (STYLEGUIDE
  * section 12), as the Downloads page and the book page say it: the cause from
  * `entry.failure`, then the share kept on the device or that a retry starts over. Entries
@@ -53,11 +62,13 @@ export function failureText(
     // A podcast episode its server could not fetch: why, in the episode views' words.
     serverFetch: () =>
       `${t('downloads.failure.serverFetch', { server })} ${t(fetchReasonKey(f.code))}`,
+    signedOut: () => t('downloads.failure.signedOut', { server }),
+    noAccess: () => t('downloads.failure.noAccess', { server }),
     unknown: () => t('downloads.failure.unknown'),
   }[f.kind]();
   // An unservable download is fully saved: the cause already says what to do. Nothing of
-  // an episode its server could not fetch was downloaded.
-  if (f.kind === 'unservable' || f.kind === 'removed' || f.kind === 'serverFetch') return cause;
+  // an episode its server could not fetch, or that refused the listener, was downloaded.
+  if (NOTHING_KEPT.has(f.kind)) return cause;
   const kept = f.kept ?? 0;
   const tail =
     kept > 0

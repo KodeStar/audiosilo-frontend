@@ -29,6 +29,8 @@ describe('fetchReasonKey', () => {
       'demo_account',
       'too_large',
       'identity_changed',
+      'signed_out',
+      'no_access',
     ]) {
       expect(fetchReasonKey(code)).toBe(`podcasts.fetch.reason.${code}`);
     }

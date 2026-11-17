@@ -12,21 +12,37 @@ import vm from 'node:vm';
 const SCOPE = 'https://box.test/web/';
 const SW_SOURCE = fs.readFileSync(path.join(__dirname, '../../public/sw.js'), 'utf8');
 
-type Store = Map<string, { body: string; headers: [string, string][] }>;
+type Store = Map<string, { body: string; headers: [string, string][]; asked: Headers }>;
+type Req = string | { url: string; headers?: Headers };
 
 function makeCaches() {
   const caches = new Map<string, Store>();
-  const urlOf = (r: string | { url: string }) => (typeof r === 'string' ? r : r.url);
+  const urlOf = (r: Req) => (typeof r === 'string' ? r : r.url);
+  const headersOf = (r: Req) =>
+    typeof r === 'string' ? new Headers() : (r.headers ?? new Headers());
   const open = async (name: string) => {
     if (!caches.has(name)) caches.set(name, new Map());
     const store = caches.get(name)!;
     return {
-      match: async (r: string | { url: string }) => {
+      // Like Cache Storage: a response stored with `Vary` matches only a request whose named
+      // headers equal those of the request it was stored for, unless `ignoreVary`.
+      match: async (r: Req, opts: { ignoreVary?: boolean } = {}) => {
         const hit = store.get(urlOf(r));
-        return hit ? new Response(hit.body, { headers: hit.headers }) : undefined;
+        if (!hit) return undefined;
+        const vary = new Headers(hit.headers).get('vary');
+        if (vary && !opts.ignoreVary) {
+          const asked = headersOf(r);
+          const names = vary.split(',').map((n) => n.trim());
+          if (names.some((n) => n === '*' || asked.get(n) !== hit.asked.get(n))) return undefined;
+        }
+        return new Response(hit.body, { headers: hit.headers });
       },
-      put: async (r: string | { url: string }, res: Response) => {
-        store.set(urlOf(r), { body: await res.text(), headers: [...res.headers] });
+      put: async (r: Req, res: Response) => {
+        store.set(urlOf(r), {
+          body: await res.text(),
+          headers: [...res.headers],
+          asked: headersOf(r),
+        });
       },
       keys: async () => [...store.keys()].map((url) => ({ url })),
       delete: async (r: { url: string }) => store.delete(r.url),
@@ -35,7 +51,8 @@ function makeCaches() {
   return { api: { open, keys: async () => [...caches.keys()] }, caches };
 }
 
-function load(site: Record<string, string>) {
+/** `site`: what the server answers per url; `headers`: the headers it adds to some. */
+function load(site: Record<string, string>, headers: Record<string, Record<string, string>> = {}) {
   const fetched: string[] = [];
   const offline = new Set<string>();
   const fetch = jest.fn(async (r: string | Request) => {
@@ -43,7 +60,9 @@ function load(site: Record<string, string>) {
     fetched.push(url);
     if (offline.has(url)) throw new TypeError('offline');
     const body = site[url];
-    return body === undefined ? new Response('', { status: 404 }) : new Response(body);
+    return body === undefined
+      ? new Response('', { status: 404 })
+      : new Response(body, { headers: headers[url] });
   });
   const { api, caches } = makeCaches();
   const self = {
@@ -58,6 +77,7 @@ function load(site: Record<string, string>) {
   const sw = ctx as unknown as {
     precacheBuild: (fresh?: boolean) => Promise<void>;
     cacheFirst: (r: Request) => Promise<Response>;
+    staleWhileRevalidate: (r: Request | FetchedAs) => Promise<Response>;
   };
   const cached = () => [...(caches.get('audiosilo-shell-v1') ?? new Map()).keys()].sort();
   /** A page `handleNavigation` cached while online. */
@@ -68,6 +88,9 @@ function load(site: Record<string, string>) {
     );
   return { sw, fetched, offline, cached, cachePage, site };
 }
+
+/** A request as the page sends it: Node's `Request` has no destination and no Origin. */
+type FetchedAs = { url: string; destination: string; headers: Headers };
 
 const js = (p: string) => `https://box.test/web/_expo/static/js/web/${p}.js`;
 const css = 'https://box.test/web/_expo/static/css/global-c1.css';
@@ -155,6 +178,96 @@ describe('service worker: precacheBuild', () => {
     await t.cachePage('https://box.test/web/library', page('b'));
     await t.sw.precacheBuild(true);
     expect(t.cached()).toContain('https://box.test/web/library');
+  });
+
+  it("precaches the shell's fonts, so an offline cold start draws its text (fe#177)", async () => {
+    const font = (id: string) => `https://box.test/web/assets/fonts/Figtree_400.${id}.ttf`;
+    const withFont = (id: string) => {
+      const site = build(id);
+      site[SCOPE] +=
+        `<link rel="preload" href="/web/assets/fonts/Figtree_400.${id}.ttf" as="font" crossorigin="">
+        <style>@font-face{font-family:"Figtree";src:url("/web/assets/fonts/Figtree_400.${id}.ttf")}
+        @font-face{font-family:"Other";src:url("//cdn.test/other.woff2")}</style>`;
+      return { ...site, [font(id)]: 'font-bytes' };
+    };
+    const t = load(withFont('a'));
+    await t.sw.precacheBuild(true);
+    expect(t.cached()).toContain(font('a'));
+    expect(t.fetched).not.toContain('https://cdn.test/other.woff2');
+    t.offline.add(font('a'));
+    const served = await t.sw.staleWhileRevalidate(new Request(font('a')));
+    expect(await served.text()).toBe('font-bytes');
+    // A font two builds old goes, like the build's chunks.
+    Object.assign(t.site, withFont('b'));
+    await t.sw.precacheBuild();
+    Object.assign(t.site, withFont('c'));
+    await t.sw.precacheBuild();
+    expect(t.cached()).not.toContain(font('a'));
+    expect(t.cached()).toContain(font('b'));
+    expect(t.cached()).toContain(font('c'));
+  });
+
+  it('serves a precached font offline to the page, though the server varies it by Origin (fe#177)', async () => {
+    const font = 'https://box.test/web/assets/fonts/Figtree_400.v1.ttf';
+    const site = build('a');
+    site[SCOPE] += `<link rel="preload" href="/web/assets/fonts/Figtree_400.v1.ttf" as="font">`;
+    const t = load({ ...site, [font]: 'font-bytes' }, { [font]: { Vary: 'Origin' } });
+    await t.sw.precacheBuild(true);
+    t.offline.add(font);
+    // Cached under the worker's request, which has no Origin; the page's font request has one.
+    const page = (destination: string): FetchedAs => ({
+      url: font,
+      destination,
+      headers: new Headers({ Origin: 'https://box.test' }),
+    });
+    const served = await t.sw.staleWhileRevalidate(page('font'));
+    expect(served.status).toBe(200);
+    expect(await served.text()).toBe('font-bytes');
+    // Anything else keeps to Vary: an Origin-varied answer is never served to another origin.
+    expect((await t.sw.staleWhileRevalidate(page('image'))).status).toBe(504);
+  });
+
+  it('never fetches again at the precache a font the page cached under its own request (fe#177)', async () => {
+    const font = 'https://box.test/web/assets/fonts/Figtree_400.p1.ttf';
+    const site = build('a');
+    site[SCOPE] += `<link rel="preload" href="/web/assets/fonts/Figtree_400.p1.ttf" as="font">`;
+    const t = load({ ...site, [font]: 'font-bytes' }, { [font]: { Vary: 'Origin' } });
+    // The page drew its text in it before the worker's precache ran.
+    await t.sw.staleWhileRevalidate({
+      url: font,
+      destination: 'font',
+      headers: new Headers({ Origin: 'https://box.test' }),
+    });
+    t.fetched.length = 0;
+    await t.sw.precacheBuild(true);
+    expect(t.fetched).not.toContain(font);
+    expect(t.cached()).toContain(font);
+  });
+
+  it('keeps a cached font at the next install, never fetching it again', async () => {
+    const font = 'https://box.test/web/assets/fonts/Figtree_400.f1.ttf';
+    const site = build('a');
+    site[SCOPE] += `<link rel="preload" href="/web/assets/fonts/Figtree_400.f1.ttf" as="font">`;
+    const t = load({ ...site, [font]: 'font-bytes' });
+    await t.sw.precacheBuild(true);
+    // The next install (each deploy's) writes the scripts again, not the font: a fetch of it
+    // that failed then would have dropped the copy the last build cached.
+    t.fetched.length = 0;
+    t.offline.add(font);
+    await t.sw.precacheBuild(true);
+    expect(t.fetched).not.toContain(font);
+    expect(t.fetched).toContain(js('index-a'));
+    expect(t.cached()).toContain(font);
+  });
+
+  it('caches the shell for offline when a font of it is refused, the font left out', async () => {
+    const site = build('a');
+    site[SCOPE] += `<link rel="preload" href="/web/assets/fonts/Missing.ttf" as="font">`;
+    const t = load(site);
+    await t.sw.precacheBuild(true);
+    expect(t.cached()).toContain(SCOPE);
+    expect(t.cached()).toContain(`${SCOPE}__precached-build`);
+    expect(t.cached()).not.toContain('https://box.test/web/assets/fonts/Missing.ttf');
   });
 
   it('caches the shell only once its own files are in', async () => {

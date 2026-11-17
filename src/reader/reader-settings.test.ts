@@ -1,4 +1,13 @@
-import { FONT_SCALES, loadFontScale, saveFontScale, stepFontScale } from './reader-settings';
+import { setItem } from '@/lib/storage';
+
+import {
+  FONT_SCALES,
+  loadFontScale,
+  loadReaderTheme,
+  saveFontScale,
+  saveReaderTheme,
+  stepFontScale,
+} from './reader-settings';
 
 describe('stepFontScale', () => {
   it('steps one size up and down', () => {
@@ -17,5 +26,15 @@ describe('the saved text size', () => {
     expect(await loadFontScale()).toBe(1);
     await saveFontScale(1.25);
     expect(await loadFontScale()).toBe(1.25);
+  });
+});
+
+describe('the saved reader theme (fe#246)', () => {
+  it('follows the app when none (or an unknown one) is saved, and is what was saved after', async () => {
+    expect(await loadReaderTheme()).toBe('follow');
+    await setItem('audiosilo.readerTheme', 'sepia');
+    expect(await loadReaderTheme()).toBe('follow');
+    await saveReaderTheme('black');
+    expect(await loadReaderTheme()).toBe('black');
   });
 });

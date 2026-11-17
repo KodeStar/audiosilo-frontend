@@ -175,18 +175,21 @@ export function EpisodeRow({
             ) : null}
           </View>
         ) : null}
-        <View className="flex-row items-center gap-2">
+        <View className="flex-row flex-wrap items-center gap-x-2">
           {finished ? (
             <View testID="episode-finished" className="flex-row items-center gap-1">
               <Icon name="circle-check" size={12} color={themed.success} />
               <Text variant="caption">{t('podcasts.episode.finished')}</Text>
             </View>
-          ) : onDevice ? (
+          ) : null}
+          {/* Where its file is: on this device, on its way, or its server's state. A finished
+            one says only that it is on this device (fe#280). */}
+          {onDevice ? (
             <View testID="episode-on-device" className="flex-row items-center gap-1">
               <Icon name="download" size={12} color={themed.mutedForeground} />
               <Text variant="caption">{t('podcasts.episode.onDevice')}</Text>
             </View>
-          ) : toDevice ? (
+          ) : finished ? null : toDevice ? (
             <DeviceDownloadLine
               connectionId={connectionId}
               libraryId={libraryId}

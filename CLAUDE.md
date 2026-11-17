@@ -158,6 +158,7 @@ keep this index in step (one line per topic).
   - Startup queries (web)
   - Web start (the split build)
   - Web start scripts compiled off the main thread
+  - Cache reads at render (the React Compiler)
   - Proxy headers (fe#167)
   - `mayActFor(cid)`
   - Routes carrying `?connection=`
