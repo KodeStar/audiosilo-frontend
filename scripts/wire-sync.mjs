@@ -15,7 +15,15 @@
 // npm run wire:sync / npm run wire:check run them.
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -132,15 +140,18 @@ export function sync(server, rev, out) {
 async function main() {
   const arg = (name) => {
     const i = process.argv.indexOf(name);
-    return i === -1 ? undefined : process.argv[i + 1];
+    if (i === -1) return undefined;
+    const value = process.argv[i + 1];
+    if (!value || value.startsWith('--')) throw new Error(`${name} needs a value`);
+    return value;
   };
   const server = arg('--server');
   if (!process.argv.includes('--check')) {
-    const { sha, count } = sync(
-      server ?? path.resolve(ROOT, '..', 'audiosilo-server'),
-      arg('--ref') ?? 'origin/main',
-      OUT,
-    );
+    const dir = server ?? path.resolve(ROOT, '..', 'audiosilo-server');
+    if (!existsSync(dir)) {
+      throw new Error(`no server checkout at ${dir}: pass --server <dir>`);
+    }
+    const { sha, count } = sync(dir, arg('--ref') ?? 'origin/main', OUT);
     console.log(`copied ${count} goldens from ${REPO}@${sha}`);
     return;
   }
