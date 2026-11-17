@@ -1952,27 +1952,26 @@ export function useToggleFavourite(connectionId?: string) {
     },
     onError: (_e, { libraryId, path, on }, ctx) => {
       if (!ctx) return;
-      if (qc.isMutating({ mutationKey }) > 1) {
-        // Another toggle is in flight (fe#154): a scoped mutation's onMutate runs before it
-        // waits its turn, so either snapshot can hold the other's optimistic edit. Take back
-        // only this toggle's own; the last one to settle reads the list.
-        const same = (f: Favourite) => f.library_id === libraryId && f.path === path;
-        const before = ctx.prev?.find(same);
-        qc.setQueryData<Favourite[]>(qk.favourites(cid), (cur) => {
-          if (!cur) return cur;
-          if (on) return before ? cur : cur.filter((f) => !same(f));
-          return before && !cur.some(same) ? [before, ...cur] : cur;
-        });
+      if (!ctx.prev && qc.isMutating({ mutationKey }) === 1) {
+        // Nothing was read before the toggle (the list waits for the network, or failed):
+        // the optimistic list is no answer, and kept it would show the heart as saved
+        // until the list is next read. Back to unread.
+        void qc.resetQueries({ queryKey: qk.favourites(cid), exact: true });
         return;
       }
-      if (ctx.prev) {
-        qc.setQueryData(qk.favourites(cid), ctx.prev);
-        return;
-      }
-      // Nothing was read before the toggle (the list waits for the network, or failed):
-      // the optimistic list is no answer, and kept it would show the heart as saved
-      // until the list is next read. Back to unread.
-      void qc.resetQueries({ queryKey: qk.favourites(cid), exact: true });
+      // Take back only this toggle's own edit (fe#154), never the whole snapshot: a scoped
+      // mutation's onMutate runs before it waits its turn, so its snapshot can hold another
+      // toggle's optimistic edit, one that has failed since too. The last one to settle
+      // reads the list.
+      const same = (f: Favourite) => f.library_id === libraryId && f.path === path;
+      const at = ctx.prev?.findIndex(same) ?? -1;
+      const before = at >= 0 ? ctx.prev?.[at] : undefined;
+      qc.setQueryData<Favourite[]>(qk.favourites(cid), (cur) => {
+        if (!cur) return cur;
+        if (on) return before ? cur : cur.filter((f) => !same(f));
+        if (!before || cur.some(same)) return cur;
+        return [...cur.slice(0, at), before, ...cur.slice(at)];
+      });
     },
     // This mutation still counts itself here; a later toggle queued behind it reads
     // the list when it settles.

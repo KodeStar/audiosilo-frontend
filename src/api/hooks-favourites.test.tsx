@@ -192,6 +192,52 @@ describe('useToggleFavourite', () => {
       expect(mockList).toHaveBeenCalledTimes(1);
       expect(paths()).toEqual(['B', 'Kept']);
     });
+
+    // The second toggle's snapshot holds the first's heart: when both fail, the second
+    // (settling alone) must not bring the first's failed heart back.
+    it('with both overlapping toggles failing, brings neither heart back', async () => {
+      const kept = { library_id: 1, path: 'Kept' } as Favourite;
+      // No list mounted: the last settle's read refetches nothing, so what is left is the
+      // toggles' own work.
+      qc.setQueryData(qk.favourites('c'), [kept]);
+      let failFirst!: () => void;
+      let failSecond!: () => void;
+      mockAdd
+        .mockImplementationOnce(
+          () => new Promise((_, reject) => (failFirst = () => reject(new Error('down')))),
+        )
+        .mockImplementationOnce(
+          () => new Promise((_, reject) => (failSecond = () => reject(new Error('down')))),
+        );
+      const { result } = await renderHook(() => useToggleFavourite(), { wrapper });
+      let first!: Promise<unknown>;
+      let second!: Promise<unknown>;
+      await act(async () => {
+        first = result.current.mutateAsync({ libraryId: 1, path: 'A', on: true });
+        second = result.current.mutateAsync({ libraryId: 1, path: 'B', on: true });
+      });
+      await act(async () => {
+        failFirst();
+        await first.catch(() => undefined);
+      });
+      await act(async () => {
+        failSecond();
+        await second.catch(() => undefined);
+      });
+      const paths = () => qc.getQueryData<Favourite[]>(qk.favourites('c'))?.map((f) => f.path);
+      expect(paths()).toEqual(['Kept']);
+    });
+
+    it('puts an unheart that fails back in its place', async () => {
+      const list = ['X', 'Y', 'Z'].map((path) => ({ library_id: 1, path }) as Favourite);
+      qc.setQueryData(qk.favourites('c'), list);
+      mockRemove.mockRejectedValueOnce(new TypeError('Network request failed'));
+      const { result } = await renderHook(() => useToggleFavourite(), { wrapper });
+      await act(async () => {
+        await result.current.mutateAsync({ libraryId: 1, path: 'Y', on: false }).catch(() => {});
+      });
+      expect(qc.getQueryData(qk.favourites('c'))).toEqual(list);
+    });
   });
 
   it('never reads the book when removing a pending favourite', async () => {
