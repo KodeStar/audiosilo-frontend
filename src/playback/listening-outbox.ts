@@ -1214,34 +1214,56 @@ async function sendChunk(
   }
 }
 
-/** A 400 on a batch: each event alone, once; one still refused alone can never be sent. */
+/** A 400 on a batch: each event alone, once; one still refused alone can never be sent,
+ * but a `stay` (a server rolled back under a stale cached `listening_stay`, whose decoder
+ * refuses the start) goes once more as the `jump` every server takes (fe#321). */
 async function sendOneByOne(
   connectionId: string,
   client: ApiClient,
   chunk: OutboxEntry[],
 ): Promise<Next> {
-  if (chunk.length === 1) {
-    await moveToFailed(connectionId, [{ event: chunk[0].event, reason: 'invalid' }]);
-    return 'more';
-  }
   for (const entry of chunk) {
-    try {
-      const deviceId = await getDeviceId();
-      await sending([entry], async (live) => {
-        if (live.length === 0) return;
-        const answer = await client.syncListening(syncBody(connectionId, [entry.event], deviceId));
-        await applyAnswer(connectionId, [entry], answer);
-      });
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 400) {
-        await moveToFailed(connectionId, [{ event: entry.event, reason: 'invalid' }]);
-        continue;
-      }
-      if (!(e instanceof ApiError)) noteFailure(connectionId, e);
-      return 'stop';
+    // A batch of one was that event alone already.
+    let sent = chunk.length === 1 ? 'refused' : await sendAlone(connectionId, client, entry);
+    const jump = sent === 'refused' ? stayAsJump(entry.event) : null;
+    if (jump) {
+      // The cached flag said yes: it is asked again, so the next Stay goes as a `jump`.
+      void queryClient.invalidateQueries({ queryKey: qk.server(connectionId) });
+      sent = await sendAlone(connectionId, client, { ...entry, event: jump });
+    }
+    if (sent === 'stop') return 'stop';
+    if (sent === 'refused') {
+      await moveToFailed(connectionId, [{ event: entry.event, reason: 'invalid' }]);
     }
   }
   return 'more';
+}
+
+/** A `stay` as a `jump` (the same id, so the answer still matches the stored event), else
+ * null. */
+function stayAsJump(event: ListeningEvent): ListeningEvent | null {
+  return event.kind === 'listen' && event.start === 'stay' ? { ...event, start: 'jump' } : null;
+}
+
+/** Send one entry alone: `refused` on a 400, `stop` on no answer or another error. */
+async function sendAlone(
+  connectionId: string,
+  client: ApiClient,
+  entry: OutboxEntry,
+): Promise<'sent' | 'refused' | 'stop'> {
+  try {
+    const deviceId = await getDeviceId();
+    await sending([entry], async (live) => {
+      if (live.length === 0) return;
+      const answer = await client.syncListening(syncBody(connectionId, [entry.event], deviceId));
+      await applyAnswer(connectionId, [entry], answer);
+    });
+    return 'sent';
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 400) return 'refused';
+    if (!(e instanceof ApiError)) noteFailure(connectionId, e);
+    return 'stop';
+  }
 }
 
 /** Told of every sync answer's progress rows (the place reconcile's offer check), and of

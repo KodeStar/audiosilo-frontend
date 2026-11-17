@@ -1254,6 +1254,40 @@ describe('a queued stay to a server without listening_stay (row 9c-2)', () => {
     expect(sent(h).map(starts)).toEqual([['jump']]);
   });
 
+  // fe#321: the cached flag was stale (the server rolled back to a build without it), so the
+  // stay went as a stay and the old decoder refused it.
+  it('a stay refused alone under a stale flag goes once more as a jump', async () => {
+    mockCaps = { listening_sync: true, listening_stay: true };
+    await appendEvents('c1', [listen('a'), stay()]);
+    const c = client(async (body) => {
+      if (body.events.some((e) => e.kind === 'listen' && e.start === 'stay')) {
+        throw new ApiError(400, 'invalid request');
+      }
+      return answer(body);
+    });
+    await flushOutbox('c1');
+    expect(sent(c).map(starts)).toEqual([['resume', 'stay'], ['resume'], ['stay'], ['jump']]);
+    expect(sent(c)[3].events[0].id).toBe('s');
+    expect(await outboxEvents('c1')).toEqual([]);
+    expect((await syncStateOf('c1')).failed ?? []).toEqual([]);
+    // The flag is asked again, so the next Stay goes as a jump from the start.
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['server', 'c1'] });
+  });
+
+  it('a stay alone refused as a jump too goes to the list as invalid', async () => {
+    mockCaps = { listening_sync: true, listening_stay: true };
+    await appendEvents('c1', [stay()]);
+    const c = client(async () => {
+      throw new ApiError(400, 'invalid request');
+    });
+    await flushOutbox('c1');
+    expect(sent(c).map(starts)).toEqual([['stay'], ['jump']]);
+    const state = await syncStateOf('c1');
+    expect(state.failed?.map((f) => [f.event.id, f.reason])).toEqual([['s', 'invalid']]);
+    // The list keeps the event as it was stored.
+    expect(state.failed?.[0].event).toMatchObject({ start: 'stay' });
+  });
+
   it('held as the jump it went as, it is no held Stay (the usual 10 minutes apply)', async () => {
     const told: string[][] = [];
     const stop = onSyncAnswer((_cid, _rows, held) => told.push([...held]));
