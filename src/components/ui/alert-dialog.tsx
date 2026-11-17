@@ -12,8 +12,7 @@ import {
   dialogHeaderClass,
   dialogTitleClass,
 } from './dialog';
-import { useModalLayer } from './modal-layer';
-import { FullWindowOverlay, NativeOnlyAnimatedView, withFlatStyle } from './overlay';
+import { ModalOverlay, NativeOnlyAnimatedView, withFlatStyle } from './overlay';
 
 /**
  * A confirmation that needs an answer (STYLEGUIDE.md section 8): react-native-reusables'
@@ -25,12 +24,9 @@ import { FullWindowOverlay, NativeOnlyAnimatedView, withFlatStyle } from './over
  */
 export const AlertDialog = AlertDialogPrimitive.Root;
 
-/** Mounted only while open: a modal layer, so the page behind leaves the screen reader's
- * tree (fe#305, as `DialogOverlay`). */
 function AlertDialogOverlay({ className, children }: { className: string; children: ReactNode }) {
-  useModalLayer(true);
   return (
-    <FullWindowOverlay>
+    <ModalOverlay>
       <AlertDialogPrimitive.Overlay className={className} asChild={Platform.OS !== 'web'}>
         <NativeOnlyAnimatedView
           entering={FadeIn.duration(200).delay(50).reduceMotion(ReduceMotion.System)}
@@ -40,7 +36,7 @@ function AlertDialogOverlay({ className, children }: { className: string; childr
           <>{children}</>
         </NativeOnlyAnimatedView>
       </AlertDialogPrimitive.Overlay>
-    </FullWindowOverlay>
+    </ModalOverlay>
   );
 }
 

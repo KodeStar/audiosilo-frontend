@@ -19,8 +19,7 @@ import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon, type IconName } from './icon';
-import { useModalLayer } from './modal-layer';
-import { FullWindowOverlay, NativeOnlyAnimatedView, useRootInsets, withFlatStyle } from './overlay';
+import { ModalOverlay, NativeOnlyAnimatedView, useRootInsets, withFlatStyle } from './overlay';
 
 /**
  * Stacks dialogs (STYLEGUIDE.md section 8): react-native-reusables' Dialog, restyled.
@@ -152,18 +151,16 @@ export function Dialog({
 export const DialogTrigger = DialogPrimitive.Trigger;
 
 /** The scrim + dismiss-on-backdrop wrapper every dialog frame sits in (the command
- * palette composes its own frame inside it). Mounted only while the dialog is open, it
- * counts as a modal layer, so VoiceOver and TalkBack lose the page behind (fe#305). */
+ * palette composes its own frame inside it). */
 export function DialogOverlay({ className, children }: { className: string; children: ReactNode }) {
   const { onOpenChange } = DialogPrimitive.useRootContext();
-  useModalLayer(true);
   // Web: a click on the backdrop itself (not on the card) dismisses; native wires the
   // same through the primitive's own overlay press.
   const onOverlayPress = (event: GestureResponderEvent) => {
     if (event.target === event.currentTarget && !event.isDefaultPrevented()) onOpenChange(false);
   };
   return (
-    <FullWindowOverlay>
+    <ModalOverlay>
       <DialogPrimitive.Overlay
         className={className}
         onPress={Platform.select({ web: onOverlayPress })}
@@ -182,7 +179,7 @@ export function DialogOverlay({ className, children }: { className: string; chil
           </NativeOnlyAnimatedView>
         </NativeOnlyAnimatedView>
       </DialogPrimitive.Overlay>
-    </FullWindowOverlay>
+    </ModalOverlay>
   );
 }
 

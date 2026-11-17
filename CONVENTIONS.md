@@ -3523,7 +3523,8 @@ tokens, type and components; its section 17 maps them onto these files.
   - **Sheets and the portaled overlays are modal** (`sheet.tsx` +
     `src/components/ui/modal-layer.ts`): a sheet renders in place, not in a portal, and a
     Dialog, AlertDialog, Select or menu portals to the root `PortalHost`; each registers
-    as a modal layer while open (`useModalLayer`; inside a portal, `ModalLayerMark`) and
+    as a modal layer while open (`useModalLayer`; a portaled one wraps its content in
+    `ModalOverlay` (overlay.tsx), never the bare `FullWindowOverlay`) and
     the page roots behind spread `useBehindModalProps()` (the native shell's frame, the
     full player, the reader): hidden from VoiceOver and TalkBack while a layer is open
     (Radix hides the rest of the page on the web). The sheet itself is `accessibilityViewIsModal`
