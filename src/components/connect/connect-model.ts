@@ -260,7 +260,9 @@ export function reconnectAddress(
       serverUrl: entry.serverUrl,
       addresses: entry.addresses,
     },
-    probe,
+    // A remembered server is no connection (`id` is its server_id, never a connection id):
+    // its home probe carries what the connect flow's other probes do (`connectProxyHeaders`).
+    (url) => probe(url),
   );
 }
 

@@ -183,7 +183,10 @@ describe('reconnectAddress', () => {
 
   it('uses the home address only when the server answers there as itself', async () => {
     const home = { ...entry, addresses: { home: HOME, away: AWAY } };
-    await expect(reconnectAddress(home, at({ [HOME]: 'srv-1' }), false)).resolves.toBe(HOME);
+    const probe = at({ [HOME]: 'srv-1' });
+    await expect(reconnectAddress(home, probe, false)).resolves.toBe(HOME);
+    // A remembered server is no connection: its server_id is never passed as one (fe#295).
+    expect(probe).toHaveBeenCalledWith(HOME);
     // Another box at the same private IP: away.
     await expect(reconnectAddress(home, at({ [HOME]: 'other' }), false)).resolves.toBe(AWAY);
     await expect(reconnectAddress(home, at({}), false)).resolves.toBe(AWAY);
