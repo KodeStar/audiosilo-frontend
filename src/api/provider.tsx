@@ -150,15 +150,18 @@ export const queryClient = new QueryClient({
   },
 });
 
-// The app: React Query's online flag follows the system's network state, the signal
-// `useDeviceOnline` shows (fe#179). With no network a query waits (`paused`) and is asked
-// as soon as the network is back, where it used to fail at once and stay failed; a read
-// that must settle either way asks with `networkMode: 'always'` (`fetchFailFast`, the
-// reads of this device). Only reads wait: a write is never held (the `mutations` default
-// above). "A network" is the system's `isConnected`, so a server on the
-// same Wi-Fi is still asked with the internet down. The web keeps TanStack's own listener:
-// the browser's `online` / `offline` events, which `useDeviceOnline` follows there too.
-if (Platform.OS !== 'web') onlineManager.setEventListener(watchDeviceOnline);
+// React Query's online flag follows the signal `useDeviceOnline` shows (fe#179). With no
+// network a query waits (`paused`) and is asked as soon as the network is back, where it
+// used to fail at once and stay failed; a read that must settle either way asks with
+// `networkMode: 'always'` (`fetchFailFast`, the reads of this device).
+// - The app: the system's network state. Only reads wait: a write is never held (the
+//   `mutations` default above). "A network" is the system's `isConnected`, so a server on
+//   the same Wi-Fi is still asked with the internet down.
+// - The web: the browser's `navigator.onLine`, read at start and then on its `online` /
+//   `offline` events. TanStack's own listener hears only the events and starts online, so
+//   a cold launch with no network asked every read and failed it, and a screen that mounts
+//   a reader of a failed read asked it again, over and over (fe#271).
+onlineManager.setEventListener(watchDeviceOnline);
 
 // Web: paint the first screens from the last visit's answers while they are asked again
 // (`startup-cache.ts`); before anything renders, so the first render already has them. A
