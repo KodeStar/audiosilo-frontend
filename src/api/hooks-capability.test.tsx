@@ -1049,9 +1049,8 @@ describe('useReadMyDevicesAgain', () => {
       read = await result.current.m();
     });
     expect(read).toBeUndefined();
-    // server#285: the list keeps its devices, never the read's error in their place.
+    // server#285: the list keeps its devices (the devices list shows them over the error).
     expect(qc.getQueryData(qk.myDevices('c1'))).toEqual(kept);
-    expect(qc.getQueryState(qk.myDevices('c1'))?.status).toBe('success');
   });
 });
 

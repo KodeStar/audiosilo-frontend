@@ -179,6 +179,14 @@ describe('DevicesSection', () => {
     expect(mockDevices.refetch).toHaveBeenCalled();
   });
 
+  // server#285: a read again that fails (after a password change) keeps the list it held.
+  it('keeps the list it holds when a later read fails', async () => {
+    mockDevices = { ...loaded([laptop, here]), isError: true, error: new Error('offline') };
+    await mount();
+    expect(screen.getByText('Work laptop')).toBeTruthy();
+    expect(screen.queryByText("Couldn't load your devices from Hearthside.")).toBeNull();
+  });
+
   // A list held for the network stays pending: the skeleton drawn for that never ended.
   it('says offline, with no skeleton and no Retry, while the list waits for the network', async () => {
     mockDevices = {
