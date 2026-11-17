@@ -98,7 +98,8 @@ function NowCardBody({ at, saved, playable }: NowCardProps) {
   const episode = !!book?.episode || podcastLibrary;
   const { data: chapterData } = useChapters(libraryId, path);
   const { data: bookmarks } = useBookmarks(libraryId, path);
-  const metaEnabled = metaEnabledFor(useCapability('metadata'), book);
+  // `book` can be a cached list's copy, which carries no `episode`: the library says so.
+  const metaEnabled = metaEnabledFor(useCapability('metadata'), book) && !episode;
   const { data: meta } = useBookMeta(libraryId, path, metaEnabled);
   const { data: stats } = useMyStats('30d');
 
