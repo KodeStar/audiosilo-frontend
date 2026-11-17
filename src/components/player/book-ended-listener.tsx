@@ -90,31 +90,27 @@ function bookEnded(): void {
   // `ended` and the mini-player would remain docked showing the just-finished book.
   const info = player.finishBook();
   if (!info) return;
-  handleBookEnded(info, () => route, sleptThrough);
+  handleBookEnded(info, sleptThrough);
 }
 
 /** Decide what to do once the current book has ended, given the route we're on and
  * whether it ended under the sleep timer (`sleptThrough`: then nothing starts by itself;
  * the credits hold their countdown through `useAutoPlayHold`). */
-function handleBookEnded(
-  info: FinishedBook,
-  pathname: () => string | null,
-  sleptThrough: boolean,
-): void {
+function handleBookEnded(info: FinishedBook, sleptThrough: boolean): void {
   // A finished book is no longer "up next". The credits opened by the end (`auto=1`)
   // take it off the queue themselves (so does "Mark as finished", which opens them the
   // same way); the two paths that don't open them right away do it here, at once.
   const finished: BookRef = { library_id: info.libraryId, path: info.path };
 
   if (info.episode) {
-    endEpisode(info, finished, pathname, sleptThrough);
+    endEpisode(info, finished, sleptThrough);
     return;
   }
 
   // Already showing the end-credits screen: it drives its own countdown + Play now from
   // here (the countdown held after an end under the sleep timer), so don't navigate again
   // (that would stack a duplicate /finished).
-  if (pathname() === '/finished') {
+  if (route === '/finished') {
     void dropFromQueue(info.connectionId, [finished]);
     return;
   }
@@ -129,7 +125,7 @@ function handleBookEnded(
   // the app is back in the foreground. So they do after an end under the sleep timer: the
   // listener is asleep, and the next book would play to nobody all night. With no root
   // layout mounted (a car-only session) it goes the same way, and the credits wait for one.
-  if (AppState.currentState !== 'active' || pathname() === null) {
+  if (AppState.currentState !== 'active' || route === null) {
     // Now, not when the deferred credits open: they may never (something else is loaded
     // on return, or iOS ends the suspended app overnight), and the book is finished
     // whether or not the next one starts.
@@ -142,14 +138,14 @@ function handleBookEnded(
           // Something else started meanwhile (the lock screen, a widget, the car): the
           // credits would talk over it.
           if (usePlayer.getState().nowPlaying) return;
-          goToFinished(info, pathname());
+          goToFinished(info, route);
         }),
       );
     })();
     return;
   }
 
-  goToFinished(info, pathname());
+  goToFinished(info, route);
 }
 
 /**
@@ -158,18 +154,13 @@ function handleBookEnded(
  * under the sleep timer) the next item of Up next starts in place; else playback stops,
  * and a full player left open on it closes once the app is in the foreground.
  */
-function endEpisode(
-  info: FinishedBook,
-  finished: BookRef,
-  pathname: () => string | null,
-  sleptThrough: boolean,
-): void {
+function endEpisode(info: FinishedBook, finished: BookRef, sleptThrough: boolean): void {
   void dropFromQueue(info.connectionId, [finished]);
   void (async () => {
     if (!sleptThrough && useSettings.getState().autoPlayNext && (await playNextInPlace(info, true)))
       return;
     whenActive(() => {
-      if (usePlayer.getState().nowPlaying || pathname() !== '/player') return;
+      if (usePlayer.getState().nowPlaying || route !== '/player') return;
       if (router.canGoBack()) router.back();
     });
   })();
