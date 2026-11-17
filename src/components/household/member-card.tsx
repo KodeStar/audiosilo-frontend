@@ -35,6 +35,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { useNow } from '@/lib/use-now';
 import { type Profile, profileOf, renameProfile } from '@/stores/profiles';
@@ -431,8 +432,8 @@ function RemoveHereButton({ memberId, profile }: { memberId: number; profile: Pr
 
 /** A member's signed-in devices (their sessions and API keys, as the list's count has
  * them: the card is the only place the owner sees either), each with Sign out, their
- * session on this device marked; loading, error and none states. None is said from the
- * members list's count, without asking. */
+ * session on this device marked; loading, offline, error and none states. None is said from
+ * the members list's count, without asking. */
 function MemberDevices({
   connectionId,
   member,
@@ -448,12 +449,22 @@ function MemberDevices({
   const { t } = useTranslation();
   const signedIn = member.devices > 0;
   const devices = useMemberDevices(member.id, connectionId, { enabled: signedIn });
+  const unread = useUnreadQuery(devices);
   const rows = devices.data ?? [];
   if (!signedIn) {
     return <Text variant="caption">{t('household.card.noDevices', { name: member.name })}</Text>;
   }
+  // Before the error and the skeleton: a list held for the network stays pending
+  // (`useUnreadQuery`), and no Retry can work without one.
+  if (unread === 'offline') {
+    return (
+      <Text variant="caption" testID={`member-devices-offline-${member.id}`}>
+        {t('common.offlineList')}
+      </Text>
+    );
+  }
   // A failed re-read keeps the list it holds (fe#271).
-  if (devices.isError && !devices.data) {
+  if (unread === 'failed') {
     return (
       <View className="gap-2" testID={`member-devices-error-${member.id}`}>
         <Text variant="caption">{t('household.card.devicesFailed', { name: member.name })}</Text>
