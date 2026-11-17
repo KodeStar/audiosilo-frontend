@@ -15,9 +15,19 @@ import { type ConnectBook, connectBookParams, parseConnectBook } from '@/lib/pat
  * (`takeOidcIntent`), before kids mode is told. Only script on the player's own origin writes
  * there, never a link. The connection a reconnect re-pairs is not carried: the same user
  * signing in again re-pairs their connection by the server's id anyway.
+ *
+ * A trip abandoned at the provider leaves its intent in the tab, and a later page load of
+ * `/connect?oidc=1` (typed, from the history) would take it as its own: a grown-up's pass
+ * through kids mode left behind must not open the flow for a child. So it is stamped and
+ * lives only as long as the server lets a sign-in's trip take (`MAX_AGE_MS`, its
+ * `FlowMaxAge`), and the flow's layout drops it as the flow is left (`dropOidcIntent`).
  */
 
 const KEY = 'audiosilo.oidcIntent';
+
+/** How long a held intent stays good: the server's own limit on a trip to the provider
+ * (`oidc.FlowMaxAge`, ten minutes), with a minute's slack. A return after that can't sign in. */
+export const MAX_AGE_MS = 11 * 60_000;
 
 /** The flow's intent as it left for the provider. */
 export type OidcIntent = { newPerson: boolean; grownUpFromKids: boolean; book?: ConnectBook };
@@ -35,6 +45,7 @@ function storage(): Storage | null {
  * signed-out visit was opening (the sign-in step's own). */
 export function holdOidcIntent(book?: ConnectBook): void {
   const held = {
+    at: Date.now(),
     newPerson: connectForNewProfile(),
     grownUpFromKids: kidsConnectAllowed(),
     ...(book ? { book: connectBookParams(book) } : {}),
@@ -48,8 +59,9 @@ export function holdOidcIntent(book?: ConnectBook): void {
 
 /**
  * The intent held before the trip, taken (read and removed) as the connect flow opens on a
- * page load: what it was when this load is the provider's return (`returning`), else null.
- * Either way it is gone, so a trip abandoned at the provider leaves nothing for a later flow.
+ * page load: what it was when this load is the provider's return (`returning`) and it was
+ * held within `MAX_AGE_MS`, else null. Either way it is gone, so a trip abandoned at the
+ * provider leaves nothing for a later flow.
  */
 export function takeOidcIntent(returning: boolean): OidcIntent | null {
   const s = storage();
@@ -63,6 +75,8 @@ export function takeOidcIntent(returning: boolean): OidcIntent | null {
   if (!returning || !raw) return null;
   try {
     const v = JSON.parse(raw) as Record<string, unknown>;
+    const age = typeof v.at === 'number' ? Date.now() - v.at : NaN;
+    if (!(age >= 0 && age <= MAX_AGE_MS)) return null;
     const b = v.book as Record<string, unknown> | undefined;
     const book = b ? parseConnectBook({ book: b.book as string, path: b.path as string }) : null;
     return {
@@ -90,4 +104,16 @@ export function takeOidcBook(): ConnectBook | undefined {
   const book = resumedBook;
   resumedBook = undefined;
   return book;
+}
+
+/** The connect flow was left (its layout's cleanup): an intent still held in the tab (a trip
+ * abandoned at the provider, the page then restored from the browser's cache) and a book
+ * nothing took go with it. */
+export function dropOidcIntent(): void {
+  resumedBook = undefined;
+  try {
+    storage()?.removeItem(KEY);
+  } catch {
+    // Refused storage holds nothing.
+  }
 }

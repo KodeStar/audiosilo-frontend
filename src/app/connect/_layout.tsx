@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { dropConnectHandoffs } from '@/components/connect/invite-handoff';
-import { resumeOidcIntent, takeOidcIntent } from '@/components/connect/oidc-intent';
+import { dropOidcIntent, resumeOidcIntent, takeOidcIntent } from '@/components/connect/oidc-intent';
 import { oidcReturnOnLoad } from '@/components/connect/oidc-sign-in';
 import { KIDS_PATH } from '@/components/kids/kids-model';
 import { useKidsActive } from '@/components/kids/use-kids';
@@ -63,11 +63,13 @@ export default function ConnectLayout() {
   if (known && openedInKids === null) setOpenedInKids(refused);
   // Leaving the flow also drops the proxy headers held for it (fe#167): in memory only, and
   // only until a sign-in keeps them with its connection. And a reconnect the scanner or the
-  // sign-in step was handed that nothing took (`dropConnectHandoffs`).
+  // sign-in step was handed that nothing took (`dropConnectHandoffs`), and a single sign-on's
+  // intent still in the tab (`dropOidcIntent`: a trip abandoned at the provider).
   useEffect(
     () => () => {
       endConnectFlow();
       dropConnectHandoffs();
+      dropOidcIntent();
       useSession.getState().setPendingProxyHeaders(null);
     },
     [],

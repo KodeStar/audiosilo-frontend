@@ -494,6 +494,7 @@ describe('single sign-on', () => {
       await fireEvent.press(await screen.findByRole('button', { name: 'Sign in with Keycloak' }));
       expect(assign).toHaveBeenCalled();
       expect(JSON.parse(store.get('audiosilo.oidcIntent')!)).toEqual({
+        at: expect.any(Number),
         newPerson: true,
         grownUpFromKids: true,
         book: { book: '3', path: 'Austen/Emma' },

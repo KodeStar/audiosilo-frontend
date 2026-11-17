@@ -8,7 +8,14 @@ import {
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { seedProfile } from '@/testing/seed-profile';
 
-import { holdOidcIntent, resumeOidcIntent, takeOidcBook, takeOidcIntent } from './oidc-intent';
+import {
+  dropOidcIntent,
+  holdOidcIntent,
+  MAX_AGE_MS,
+  resumeOidcIntent,
+  takeOidcBook,
+  takeOidcIntent,
+} from './oidc-intent';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 
@@ -78,7 +85,36 @@ it('drops what was held when this load is not the return, and reads nothing it c
   // A book that is no book is left out; the rest stands.
   store.set(
     'audiosilo.oidcIntent',
-    JSON.stringify({ newPerson: true, book: { book: 'x', path: 'a' } }),
+    JSON.stringify({ at: Date.now(), newPerson: true, book: { book: 'x', path: 'a' } }),
   );
   expect(takeOidcIntent(true)).toEqual({ newPerson: true, grownUpFromKids: false });
+});
+
+it("gives back no pass left by a trip abandoned at the provider: too old, or the flow's gone", () => {
+  seedProfile({ kids: true });
+  openAddSomeone();
+  const now = Date.now();
+  const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+  try {
+    holdOidcIntent();
+    // Denied: a page load of `/connect?oidc=1` past the server's limit on a trip.
+    clock.mockReturnValue(now + MAX_AGE_MS + 1);
+    expect(takeOidcIntent(true)).toBeNull();
+    // Denied: one with no stamp (not written by this build).
+    store.set('audiosilo.oidcIntent', JSON.stringify({ grownUpFromKids: true }));
+    expect(takeOidcIntent(true)).toBeNull();
+    // Allowed: within the limit.
+    clock.mockReturnValue(now);
+    holdOidcIntent();
+    clock.mockReturnValue(now + MAX_AGE_MS);
+    expect(takeOidcIntent(true)?.grownUpFromKids).toBe(true);
+  } finally {
+    clock.mockRestore();
+  }
+  // Denied: the flow was left (the page restored from the cache, then left) before any return.
+  holdOidcIntent();
+  resumeOidcIntent({ newPerson: false, grownUpFromKids: false, book: BOOK });
+  dropOidcIntent();
+  expect(store.size).toBe(0);
+  expect(takeOidcBook()).toBeUndefined();
 });
