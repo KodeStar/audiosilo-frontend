@@ -175,11 +175,20 @@ class AudiosiloPlayerService : MediaLibraryService() {
   private val carControllers = HashSet<MediaSession.ControllerInfo>()
   private var carMonitor: CarConnectionMonitor? = null
 
-  /** A car play JS must start (its car item [id]), waiting for the module's next `load` (see
-   * [playFromCar]). */
-  private class PendingPlay(val id: String, val future: SettableFuture<MediaItemsWithStartPosition>)
+  /** A car play JS must start (its car item [id] and its [book], null from an older snapshot),
+   * waiting for the module's next `load` (see [playFromCar]). */
+  private class PendingPlay(
+    val id: String,
+    val book: BookRef?,
+    val future: SettableFuture<MediaItemsWithStartPosition>,
+  )
 
   private var pendingPlay: PendingPlay? = null
+
+  /** The book of the car play last given up on ([endPendingPlay]), until a play completes: its
+   * load, when JS was past stopping it, never completes the play that took its place
+   * ([PlayerBridge.completesCarPlay]). */
+  private var calledOff: BookRef? = null
   /** A car play that timed out. One made during a media button start ends that start too
    * ([playFromCar] watches every pending play, fe#252). */
   private val pendingTimeout = Runnable { failPendingPlay() }
@@ -731,7 +740,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     }
     failPendingPlay(notify = false)
     val future = SettableFuture.create<MediaItemsWithStartPosition>()
-    pendingPlay = PendingPlay(item.id, future)
+    pendingPlay = PendingPlay(item.id, item.book ?: spec?.book, future)
     // Whoever asked: this play is now the one a media button start waits on.
     watchResumption(future)
     handler.postDelayed(pendingTimeout, CAR_PLAY_TIMEOUT_MS)
@@ -781,7 +790,9 @@ class AudiosiloPlayerService : MediaLibraryService() {
   }
 
   /** The module's `load` arrived (the app's controller set a queue). Completes a pending car
-   * play with that queue; the identical re-set Media3 then makes is absorbed by the player. */
+   * play with that queue; the identical re-set Media3 then makes is absorbed by the player.
+   * Never with the late load of the play called off for it (JS loads that one paused): the
+   * pending play still waits for its own load, or its timeout. */
   internal fun onAppLoad() {
     // The book the app loads is the one the snapshot names, at the place JS gave it, until it
     // plays or moves: the place kept for the queue it replaces is not this one's.
@@ -789,9 +800,13 @@ class AudiosiloPlayerService : MediaLibraryService() {
     if (pendingPlay == null) return
     // Posted: the app's items are applied right after this callback returns.
     handler.post {
-      val future = pendingPlay?.future ?: return@post
+      val pending = pendingPlay ?: return@post
       val p = player ?: return@post
+      val loaded = MediaItems.bookOf(p.currentMediaItem)
+      if (!PlayerBridge.completesCarPlay(loaded, pending.book, calledOff)) return@post
+      val future = pending.future
       pendingPlay = null
+      calledOff = null
       handler.removeCallbacks(pendingTimeout)
       val items = p.mediaItems()
       if (items.isEmpty()) {
@@ -820,6 +835,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     handler.removeCallbacks(pendingTimeout)
     val pending = pendingPlay ?: return false
     pendingPlay = null
+    calledOff = pending.book
     PlayerBridge.cancelCarPlay(pending.id)
     pending.future.setException(IllegalStateException(error))
     return true

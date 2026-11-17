@@ -80,6 +80,17 @@ object PlayerBridge {
     if (delivered && s != null && s.observingCar) s.carPlayCancel(id)
   }
 
+  /**
+   * Whether the app's load of [loaded] completes the car play waiting for [pending]. Not when
+   * it is the book of the play called off before it ([calledOff]) and not the waiting one's:
+   * JS was already loading that book when it was told to drop it, and loads it paused. Filled
+   * with it, the waiting play would start the called-off book for a moment and lose its own
+   * timeout (and its "unavailable") while its real start is still on its way. A load or a
+   * snapshot item that names no book (an older JS, an older snapshot) completes it as before.
+   */
+  fun completesCarPlay(loaded: BookRef?, pending: BookRef?, calledOff: BookRef?): Boolean =
+    loaded == null || loaded != calledOff || loaded == pending
+
   fun requestCarPlay(id: String) {
     val s = sink
     if (s != null && s.observingCar) {

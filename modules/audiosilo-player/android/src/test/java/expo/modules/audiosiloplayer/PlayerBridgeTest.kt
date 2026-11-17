@@ -2,6 +2,7 @@ package expo.modules.audiosiloplayer
 
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -45,5 +46,22 @@ class PlayerBridgeTest {
     PlayerBridge.cancelCarPlay("book:A")
     assertNull(PlayerBridge.pendingCarPlayId)
     assertTrue(sink.cancels.isEmpty())
+  }
+
+  // A tap on A, then one on B while JS was past stopping A: A's late load (paused in JS) is not
+  // B's, which waits for its own.
+  @Test fun theLateLoadOfACalledOffPlayNeverCompletesTheOneThatReplacedIt() {
+    val a = BookRef("s.u", 2, "A")
+    val b = BookRef("s.u", 2, "B")
+    assertFalse(PlayerBridge.completesCarPlay(loaded = a, pending = b, calledOff = a))
+    assertTrue(PlayerBridge.completesCarPlay(loaded = b, pending = b, calledOff = a))
+    // The same book asked for again after its wait ran out: its load is the one waited for.
+    assertTrue(PlayerBridge.completesCarPlay(loaded = a, pending = a, calledOff = a))
+    // Any other load completes it as it always did (the app's own start of another book; a
+    // path the server resolved to its folder book), a book never named included.
+    assertTrue(PlayerBridge.completesCarPlay(loaded = BookRef("s.u", 2, "C"), pending = b, calledOff = a))
+    assertTrue(PlayerBridge.completesCarPlay(loaded = a, pending = b, calledOff = null))
+    assertTrue(PlayerBridge.completesCarPlay(loaded = null, pending = b, calledOff = a))
+    assertTrue(PlayerBridge.completesCarPlay(loaded = b, pending = null, calledOff = a))
   }
 }

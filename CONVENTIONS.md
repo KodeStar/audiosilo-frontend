@@ -2611,7 +2611,8 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   played on in the background with no notification or controls; `cancelledPlays` makes
   `StartHow.wanted` false, so the start stops before its load, or `playBook` loads it paused,
   or loads nothing once another start took the player (`replaced`); an episode's fetch it
-  was handed to ends with it, starting nothing (`requestEpisodeFetch`'s `wanted`);
+  was handed to ends with it, starting nothing (`requestEpisodeFetch`'s `wanted`); natively
+  its late load never completes the play that took its place (`PlayerBridge.completesCarPlay`);
   a new request for the item takes the mark off) and **bookmarks**: `carNative.onBookmark` (the module's
   `onRemoteBookmark`, carrying the engine's own book) adds one through the framework-free
   `addBookmark` (no label, so the `annotations` gate has nothing to hold back) at the engine's
