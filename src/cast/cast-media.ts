@@ -218,6 +218,13 @@ export function itemStartingAt(
   };
 }
 
+/** The place of the receiver's item URL `contentId` among the URLs sent (a transcoded item's
+ * `&t=` is ignored), or -1 when it is none of them (another queue's, or another token's). */
+export function castUrlIndex(contentId: string, sentUrls: string[]): number {
+  const want = transcodeUrlAt(contentId, 0);
+  return sentUrls.findIndex((u) => transcodeUrlAt(u, 0) === want);
+}
+
 /**
  * Which track the receiver is on, from its status: the current item's own `contentId` (its
  * URL, matched against what was sent: a transcoded item's `&t=` is ignored), else the
@@ -225,10 +232,8 @@ export function itemStartingAt(
  * item ids (the receiver keeps the order it was given). Null when none of these says.
  */
 export function castTrackIndex(status: CastMediaStatus, sentUrls: string[]): number | null {
-  const strip = (u: string) => transcodeUrlAt(u, 0);
   if (status.contentId) {
-    const want = strip(status.contentId);
-    const i = sentUrls.findIndex((u) => strip(u) === want);
+    const i = castUrlIndex(status.contentId, sentUrls);
     if (i >= 0) return i;
   }
   if (

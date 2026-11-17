@@ -1,6 +1,6 @@
 import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKeyOf } from '@/lib/content-key';
-import { isEarlyTranscodeEnd, transcodeUrlAt } from '@/playback/transcode';
+import { isEarlyTranscodeEnd } from '@/playback/transcode';
 import {
   type BookRef,
   INITIAL_SNAPSHOT,
@@ -15,6 +15,7 @@ import {
 import {
   castStreamOffset,
   castTrackIndex,
+  castUrlIndex,
   isUnaskedJump,
   itemStartingAt,
   type SeenPlace,
@@ -242,9 +243,9 @@ export class CastPlaybackService implements PlaybackService {
     // A transcoded item the receiver was given mid-file counts from its `&t=`: without that
     // offset every place read from the receiver would be that far early (and saved so).
     const index = status ? castTrackIndex(status, loaded.urls) : null;
-    if (status && index !== null) loaded.offsets[index] = castStreamOffset(status);
     this.intended = null;
     if (status && index !== null) {
+      loaded.offsets[index] = castStreamOffset(status);
       const position = Number.isFinite(status.position) ? status.position : 0;
       this.intend(index, position + loaded.offsets[index], true);
     }
@@ -565,16 +566,20 @@ export class CastPlaybackService implements PlaybackService {
    * and the receiver's rejection of this one was that one's doing). */
   private async sendQueue(index: number, position: number, autoplay: boolean): Promise<boolean> {
     try {
-      try {
-        return await this.sendQueueOnce(index, position, autoplay);
-      } catch (err) {
-        if (!(await this.freshToken())) throw err;
-        return await this.sendQueueOnce(index, position, autoplay);
-      }
+      return await this.sendQueueOnce(index, position, autoplay);
     } catch (err) {
-      if (err instanceof ReceiverRefused) void this.refresh();
-      throw err;
+      if (!(await this.freshToken())) throw this.onRefused(err);
+      return this.sendQueueOnce(index, position, autoplay).catch((again: unknown) => {
+        throw this.onRefused(again);
+      });
     }
+  }
+
+  /** A load that failed: when the receiver erred on it (`ReceiverRefused`) it may have gone on
+   * to a later file, so its status is read again for the place shown. Returns `err`. */
+  private onRefused(err: unknown): unknown {
+    if (err instanceof ReceiverRefused) void this.refresh();
+    return err;
   }
 
   private async sendQueueOnce(
@@ -766,10 +771,9 @@ export class CastPlaybackService implements PlaybackService {
       if (!(await this.freshToken())) return fail();
       if (!(await this.sendQueueOnce(trackIndex, place, autoplay))) return;
       if (!autoplay && seq === this.loadSeq) this.update({ state: 'paused' });
-    })().catch((err) => {
+    })().catch((err: unknown) => {
       fail();
-      // Refused again while it loaded: show the file the receiver went on to, if any.
-      if (err instanceof ReceiverRefused) void this.refresh();
+      this.onRefused(err);
     });
   }
 
@@ -779,8 +783,7 @@ export class CastPlaybackService implements PlaybackService {
     const last = this.reminted;
     if (!last || last.played || !status.contentId) return;
     if (last.book !== castBookKey(loaded.book)) return;
-    const id = transcodeUrlAt(status.contentId, 0);
-    if (loaded.urls.some((u) => transcodeUrlAt(u, 0) === id)) last.played = true;
+    if (castUrlIndex(status.contentId, loaded.urls) >= 0) last.played = true;
   }
 
   /** A progress tick names no item, so it can't tell a move from the receiver running on

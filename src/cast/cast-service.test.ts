@@ -92,6 +92,20 @@ function setup(opts: { transcode?: boolean; prepare?: PrepareCast } = {}) {
   };
 }
 
+/** Hold the receiver's answer to the next load: it is recorded at once, and resolves when the
+ * returned function is called. */
+function holdLoad(t: ReturnType<typeof setup>): () => void {
+  let answer: () => void = () => {};
+  (t.remote.load as jest.Mock).mockImplementationOnce(
+    (req) =>
+      new Promise<void>((resolve) => {
+        t.remote.loads.push(req);
+        answer = resolve;
+      }),
+  );
+  return () => answer();
+}
+
 describe('castState', () => {
   const ctx = { prev: 'paused' as const, lastTrack: false, loading: false };
   const s = (
@@ -727,14 +741,7 @@ describe('CastPlaybackService', () => {
       await t.svc.load(TRACKS, 0, 0, [], BOOK);
       t.status({ playerState: 'paused', contentId: t.url(0), position: 10 });
       t.status({ playerState: 'idle', idleReason: 'cancelled', position: NaN });
-      let loaded: () => void = () => {};
-      (t.remote.load as jest.Mock).mockImplementationOnce(
-        (req) =>
-          new Promise<void>((resolve) => {
-            t.remote.loads.push(req);
-            loaded = resolve;
-          }),
-      );
+      const loaded = holdLoad(t);
       const playing = t.svc.play();
       await flush();
       // The receiver still reports the queue it replaces, paused, before it takes ours.
@@ -945,14 +952,7 @@ describe('CastPlaybackService', () => {
         expect(m.asks).toEqual([undefined, true]);
         // Within the minute the server ends CAST1 too, and the listener picks Part 1.
         t.tick(20_000);
-        let answer: () => void = () => {};
-        (t.remote.load as jest.Mock).mockImplementationOnce(
-          (req) =>
-            new Promise<void>((resolve) => {
-              t.remote.loads.push(req);
-              answer = resolve;
-            }),
-        );
+        const answer = holdLoad(t);
         const jump = t.svc.skipToTrack(0, 0);
         await flush();
         const from = t.snaps.length;
@@ -986,14 +986,7 @@ describe('CastPlaybackService', () => {
         await flush();
         expect(m.asks).toEqual([undefined, true]);
         // The reload's own load is refused while in flight, before CAST1 ever played.
-        let answer: () => void = () => {};
-        (t.remote.load as jest.Mock).mockImplementationOnce(
-          (req) =>
-            new Promise<void>((resolve) => {
-              t.remote.loads.push(req);
-              answer = resolve;
-            }),
-        );
+        const answer = holdLoad(t);
         const jump = t.svc.skipToTrack(1, 0);
         await flush();
         t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(1), position: 0 });

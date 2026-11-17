@@ -3187,6 +3187,15 @@ describe('failures, retry and the session decline mark', () => {
     })),
   });
   const key = downloadKey('c1', 2, 'A/Book');
+  /** The book's chapters response listing `f`, a minute each. */
+  const chaptersOf = (f: BookFile[]): ChaptersResponse => ({
+    library_id: 2,
+    path: 'A/Book',
+    duration: 60 * f.length,
+    is_folder: true,
+    chapters: [],
+    files: f,
+  });
 
   beforeEach(() => {
     mockResolveClient.mockReturnValue(api);
@@ -3337,14 +3346,6 @@ describe('failures, retry and the session decline mark', () => {
     }));
     useDownloads.setState({ entries: { [key]: entry } });
     const files = book.files ?? [];
-    const chaptersOf = (f: BookFile[]): ChaptersResponse => ({
-      library_id: 2,
-      path: 'A/Book',
-      duration: 60 * f.length,
-      is_folder: true,
-      chapters: [],
-      files: f,
-    });
     const stale = chaptersOf(files);
     const fresh = chaptersOf([
       { rel_path: 'A/Book/prelude.mp3', seq: 0, duration: 60, format: 'mp3', size: 100 },
@@ -3378,14 +3379,7 @@ describe('failures, retry and the session decline mark', () => {
     mockEngine.downloadFile.mockImplementation(
       async (_c, _l, _p, name: string) => `file:///dl/${name}`,
     );
-    const given = {
-      library_id: 2,
-      path: 'A/Book',
-      duration: 180,
-      is_folder: true,
-      chapters: [],
-      files: book.files ?? [],
-    };
+    const given = chaptersOf(book.files ?? []);
     await useDownloads.getState().download('c1', 2, book, given);
     await settle();
     expect(useDownloads.getState().entries[key]?.status).toBe('downloaded');
