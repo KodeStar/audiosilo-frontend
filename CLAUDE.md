@@ -115,6 +115,7 @@ npm run format              # prettier --check . (CI-gated; fails on unformatted
 npx prettier --write .      # auto-fix formatting locally before committing
 npx expo export -p web      # bundle smoke test (run after meaningful changes)
 npm run gen:tokens          # regenerate colour tokens after editing src/theme/tokens.json
+npm run wire:sync           # copy the server's wire goldens into src/api/__wire__ (then the parity test checks types.ts)
 ```
 
 **Before a change is done, run `npx tsc --noEmit && npm run lint && npm run format && npm test`**
@@ -152,6 +153,7 @@ keep this index in step (one line per topic).
 
 - **Architecture & conventions**
   - Server display names
+  - Wire parity (the server's goldens)
   - `AUTH_STORAGE_VERSION`
   - `CACHE_STORAGE_VERSION`
   - Startup cache (web)
