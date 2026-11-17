@@ -463,6 +463,32 @@ describe('useBookReadalong', () => {
     });
   });
 
+  it('lets the held map go once its connection is removed (fe#202)', async () => {
+    client = new QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
+    mockServes = undefined;
+    mockKept = 'g1';
+    mockReadKept.mockResolvedValue(map());
+    const key = ['readalongLocal', 'c1', 1, 'A/Book', 'g1'];
+    const first = await renderHook(() => useBookReadalong(REF, { ebook: EBOOK }, true), {
+      wrapper,
+    });
+    await waitFor(() => expect(first.result.current.map).not.toBeNull());
+    await first.unmount();
+    const held = client.getQueryCache().find({ queryKey: key })!;
+    expect(held.getObserversCount()).toBe(1);
+    // What the provider does on removal (`onConnectionRemoved`).
+    client.removeQueries({ predicate: (q) => q.queryKey.includes('c1') });
+    expect(held.getObserversCount()).toBe(0);
+    // Read again (the server added back), the new copy is held in its turn.
+    const again = await renderHook(() => useBookReadalong(REF, { ebook: EBOOK }, true), {
+      wrapper,
+    });
+    await waitFor(() => expect(again.result.current.map).not.toBeNull());
+    await again.unmount();
+    expect(mockReadKept).toHaveBeenCalledTimes(2);
+    expect(client.getQueryCache().find({ queryKey: key })!.getObserversCount()).toBe(1);
+  });
+
   describe("a map of another ebook than the download's (fe#193)", () => {
     // The server's map, made from the ebook `sha-2` (one object, as the query keeps it).
     const REMADE = map([SPAN], 'sha-2');
