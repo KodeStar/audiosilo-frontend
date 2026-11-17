@@ -539,8 +539,8 @@
     "start": {
       "title": "Tus audiolibros, desde tu propio servidor.",
       "lead": "Escanea un código QR para iniciar sesión sin escribir nada. Si administras el servidor, el tuyo está en la consola de administración, en Personas > tu nombre > Vincular un dispositivo. Si te invitaron, está en tu página de invitación.",
-      "leadWeb": "Introduce la dirección que te dio tu administrador, o pega el enlace de emparejamiento que te envió.",
-      "leadServed": "Inicia sesión con el código o la contraseña que te dio tu administrador, o pega el enlace de emparejamiento que te envió.",
+      "leadWeb": "Introduce la dirección que te dio tu administrador, o pega el enlace de emparejamiento que te envió. Si administras el servidor, el tuyo está en la consola de administración, en Personas > tu nombre > Vincular un dispositivo. Si te invitaron, está en tu página de invitación.",
+      "leadServed": "Inicia sesión con el código o la contraseña que te dio tu administrador, o pega el enlace de emparejamiento que te envió. Si administras el servidor, el tuyo está en la consola de administración, en Personas > tu nombre > Vincular un dispositivo. Si te invitaron, está en tu página de invitación.",
       "finding": "Buscando tu servidor…",
       "continue": "Continuar"
     },
@@ -1499,8 +1499,8 @@
       "onThisServer": "En este servidor",
       "earlier_one": "Generar antes también para {{count}} libro anterior",
       "earlier_other": "Generar antes también para {{count}} libros anteriores",
-      "notWritable": "El Bridge no puede escribir en esta biblioteca. Revisa su asignación en la consola del Bridge.",
-      "agentNotReady": "El agente de IA del Bridge no está listo. Inicia su sesión desde la consola del Bridge.",
+      "notWritable": "El Bridge no puede escribir en esta biblioteca. Revisa su asignación en la página del Bridge.",
+      "agentNotReady": "El agente de IA del Bridge no está listo. Inicia su sesión desde la página del Bridge.",
       "estimateFailed": "No se pudo obtener una estimación del Bridge. Inténtalo de nuevo en un momento.",
       "unavailable": "El Bridge no ofrece esto ahora mismo.",
       "detectOpen": "Todavía se están buscando los capítulos del libro. Pulsa Generar cuando termine: se reutiliza la transcripción.",
@@ -3357,7 +3357,8 @@
       "noneHint": "Ningún libro de LibriVox coincide. Prueba otro título o el nombre del autor."
     },
     "library": {
-      "label": "Añadir a"
+      "label": "Añadir a",
+      "loadError": "No se pudieron leer tus bibliotecas, así que aún no hay dónde añadir una grabación."
     },
     "work": {
       "show": "Grabaciones de {{title}}",

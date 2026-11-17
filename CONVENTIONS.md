@@ -361,7 +361,9 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
 every way in (pairing link or QR, invite code, password, single sign-on, demo) ends in `finishConnect`, which
 stores the connection with the server's name and the addresses the link (`linkAddresses`) and the
 answer taught, merged there once, and shows `/connect/ready?connection=` ("Your library is
-ready.") only for the device's first connection; an added server goes back with `leaveOnboarding()`. A
+ready.") only for the device's first connection (over the flow's first screen: `endConnect` pops the
+connect stack to its root and pushes it, so Back from it never lands on the scanner or the sign-in
+step); an added server goes back with `leaveOnboarding()`. A
 link naming a book (`book=<library_id>&path=<rel_path>` + `uid`, the admin console's "Listen in
 player": `parseConnectBook`, carried on `PairingScan` as `book` + `userId` by the route and a pasted
 link alike) ends on that book instead (`endConnect`, the one ending `finishConnect` shares: a
@@ -425,7 +427,9 @@ would read as this server reset): an invite code's sign-in step gets it in memor
 a pairing code's `/connect` takes it from memory by the code's token (`holdScanReconnect` /
 `takeScanReconnect`, never a `/connect` param: a link opens that route; checked against the
 code's address again as it pairs) and `useLinkPairing` pairs with it (the connection's own proxy
-headers, `finishConnect`'s `reconnectId`). `/connect` decides its "nothing to add"
+headers, `finishConnect`'s `reconnectId`). The book the sign-in step was heading to goes to the
+scanner as `/connect/scan`'s book params (`openScanner(reconnectId, book)`), and a scanned code
+for that step's server (`pendingServerUrl`) that names no book of its own carries it on. `/connect` decides its "nothing to add"
 bounce when it opens and when it is back on top, never while the flow is over it; `sign-in` reads
 `pendingServerUrl` once. The connect screens are full screens: `ConnectFrame` shrinks its column by
 the keyboard overlap and `ConnectInput` scrolls the focused field into view (use both for any new
@@ -762,9 +766,10 @@ while it is on AND its Bridge requirement is met (`contributions` is the first,
 - **Slots** take an optional `modules` prop (default the registry; tests pass a fake) and
   read flags through `WithActiveModules` (`active-modules.tsx`), which asks nothing with an
   empty list, so a slot renders exactly as before: Home's `ModuleRails` (after Next in your
-  series), the You hub (`youSections` after Account on a phone, after Journal in the wide
+  series; each rail over only the connections whose server has its module on), the You hub (`youSections` after Account on a phone, after Journal in the wide
   sub-nav; `parseYouSection(raw, moduleKeys)` opens an active module's key, a key of the
-  hub's own is ignored, an off module's link opens Stats; a module section is a column the
+  hub's own is ignored, an off module's link opens Stats, once every server's flags answered (until then the hub
+  shows a spinner, so a module's link is not lost to Stats while they load); a module section is a column the
   hub scrolls; a section's `label` is a function of `t`, so it follows the language) and
   `HeroActions` (`bookActions` after Regenerate in the book menu, keyed `<id>:<key>` so they
   never meet the menu's own keys). A slot returns elements (its hooks live in the components
@@ -2971,8 +2976,9 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     `pairUntil` holds only that last pair: one for another account replaces it, as it does on the
     native side, and the watch saying it signed in ends it (its token is used, so nothing may
     follow it later; matched by account, `pairAfterSignIn`, so a legacy-id connection's pair ends
-    too). A password change forgets it (`forgetPair`: the server ends the account's
-    open pairing tokens with its other sessions), also one still being minted or sent (`pairEpoch`:
+    too). A password change forgets it (`forgetPair`: a server of 2.6.0 or later, server#281, ends
+    the account's open pairing tokens with its other sessions; an older one keeps them, so the pair
+    stays), also one still being minted or sent (`pairEpoch`:
     it is not noted when it lands), and so does removing its connection. While
     another account's pair has time left, a book is refused with "Your watch is being set up for
     {user} on {server}" (`bookPairStep` `busy`, `WatchBusyError`, D5; one still being minted, in
@@ -3837,7 +3843,11 @@ already on top (Up next's sheet over it; pushing `/player` over the open one sta
 player), plays the loaded book on (`seekBook` to `at`, so the Undo chip offers the way back,
 resuming a paused one) or starts another in place under the docked bar through its own connection
 once its chapters are in (`startBookInPlace`, at `at`). It rejects when the book can't be fetched,
-so the caller can say so (`useJumpTo` toasts).
+so the caller can say so (`useJumpTo` toasts). A path that is not the book's own (a stale Up next
+entry: a part path the server now resolves to the folder book holding it) whose book is the one
+loaded starts nothing: `startBookInPlace` plays the loaded book on and takes both paths off Up next
+(`playsOnLoaded`, fe#147; the player route's guard does the same on a phone), from Play now and the
+car alike.
 
 **Bookmarks and notes** (`src/components/annotations/`, the barrel exports only what outside
 callers use; rules in the pure `labels.ts`, `drift-marker.ts`, `editor-model.ts`). Adding a

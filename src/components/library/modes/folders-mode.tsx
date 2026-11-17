@@ -135,10 +135,9 @@ export function FoldersMode() {
               className={ROW}
             >
               <GlyphTile icon="folder" />
-              <View className="flex-1">
-                <Text variant="label">{lib.name}</Text>
-                <Text variant="muted">{lib.default_view}</Text>
-              </View>
+              <Text variant="label" className="flex-1">
+                {lib.name}
+              </Text>
               <Icon name="chevron-right" size={16} />
             </PressableRow>
           ))}

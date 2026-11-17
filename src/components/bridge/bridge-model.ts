@@ -272,7 +272,14 @@ export type JobStatusView =
       total?: number;
       etaSeconds?: number;
     }
-  | { phase: 'parked'; reason: ParkReason; retryAt?: Date }
+  | {
+      phase: 'parked';
+      reason: ParkReason;
+      /** The Bridge's own words for a park code the player doesn't know (`other`), so it
+       * says why rather than nothing (server#218); the console shows the same. */
+      hint?: string;
+      retryAt?: Date;
+    }
   | { phase: 'failed'; error: string };
 
 /** How `job` reads (see {@link JobStatusView}). Counts show only as a sane pair, an ETA
@@ -283,9 +290,11 @@ export function jobStatusView(job: BridgeJob): JobStatusView {
   if (job.cancel_requested) return { phase: 'stopping' };
   if (job.state === 'needs_attention') {
     const retry = p?.park?.retry_at ? new Date(p.park.retry_at) : undefined;
+    const reason = parkReason(p?.park?.code);
     return {
       phase: 'parked',
-      reason: parkReason(p?.park?.code),
+      reason,
+      hint: reason === 'other' ? p?.park?.hint?.trim() || undefined : undefined,
       retryAt: retry && Number.isFinite(retry.getTime()) ? retry : undefined,
     };
   }

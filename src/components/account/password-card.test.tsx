@@ -8,7 +8,14 @@ const mockApi = { setPassword: jest.fn(), me: jest.fn() };
 jest.mock('@/api/provider', () => ({ useOptionalApi: () => mockApi }));
 // The devices read again after a change (`undefined`: no list, or no answer).
 const mockReadDevices = jest.fn<Promise<MyDevice[] | undefined>, []>();
-jest.mock('@/api/hooks', () => ({ useReadMyDevicesAgain: () => mockReadDevices }));
+// The devices list as it was before the change, and the server's version.
+let mockDevicesBefore: MyDevice[] | undefined;
+let mockVersion: string | undefined;
+jest.mock('@/api/hooks', () => ({
+  useReadMyDevicesAgain: () => mockReadDevices,
+  useMyDevices: () => ({ data: mockDevicesBefore }),
+  useServerInfo: () => ({ data: mockVersion ? { version: mockVersion } : undefined }),
+}));
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
 
@@ -77,6 +84,8 @@ beforeEach(() => {
   mockApi.setPassword.mockResolvedValue(undefined);
   mockApi.me.mockResolvedValue(user({ has_password: true }));
   mockReadDevices.mockResolvedValue([device({ id: 9, current: true })]);
+  mockDevicesBefore = [device({ id: 9, current: true }), device({ id: 3 })];
+  mockVersion = '2.7.0';
 });
 
 describe('password card and dialog', () => {
@@ -144,6 +153,29 @@ describe('password card and dialog', () => {
       expect(mockToast).toHaveBeenCalledWith({ title: 'Password changed', description }),
     );
     expect(mockReadDevices).toHaveBeenCalledTimes(1);
+  });
+
+  // server#285: "signed out" only when the change ended some: never with no other device.
+  it.each<[string, MyDevice[] | undefined]>([
+    ['no other device was signed in', [device({ id: 9, current: true })]],
+    ['the list was not known', undefined],
+  ])('claims only this device when %s before the change', async (_, before) => {
+    mockDevicesBefore = before;
+    await changePassword();
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith({
+        title: 'Password changed',
+        description: 'This device stays signed in.',
+      }),
+    );
+  });
+
+  // server#285: a server before server#281 (2.6.0) ends no pairing code on a change.
+  it('keeps the pairing code on its way to a watch on a server before 2.6.0', async () => {
+    mockVersion = '2.5.1';
+    await changePassword();
+    await waitFor(() => expect(mockToast).toHaveBeenCalled());
+    expect(mockForgetPair).not.toHaveBeenCalled();
   });
 
   it('says why a short password from the keyboard is not saved', async () => {

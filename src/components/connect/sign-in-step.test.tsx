@@ -8,6 +8,7 @@ import {
   openAddSomeone,
   setConnectForNewProfile,
 } from '@/components/profiles/connect-intent';
+import { getSignInKey } from '@/lib/sign-in-key';
 import { resetProfilesForTests } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 import { seedProfile } from '@/testing/seed-profile';
@@ -171,7 +172,11 @@ it('a password: the login answer teaches the addresses', async () => {
   await fireEvent.changeText(screen.getByLabelText('Password'), 'pw');
   await fireEvent.press(screen.getByRole('button', { name: 'Sign in' }));
   await waitFor(() => expect(mockReplace).toHaveBeenCalled());
-  expect(mockApi.login).toHaveBeenCalledWith('chris', 'pw', 'Test device');
+  // With this install's key for that server (fe#159): a sign-in again is no new device to
+  // the admin, and no other server is sent it.
+  const key = await getSignInKey(AWAY);
+  expect(mockApi.login).toHaveBeenCalledWith('chris', 'pw', 'Test device', key);
+  expect(await getSignInKey(HOME)).not.toBe(key);
   expect(conn('srv-1')?.addresses).toEqual({ home: HOME, away: AWAY });
 });
 
@@ -382,6 +387,17 @@ describe('no password (fe#264)', () => {
     // Handed over in memory, never in the route: a link opens the scanner too.
     expect(mockPush).toHaveBeenCalledWith('/connect/scan');
     expect(takeScanFor()).toBe('srv.1');
+  });
+
+  // fe#299: a sign-in heading to a book still ends on it after a scan.
+  it('hands the scanner the book the sign-in was heading to', async () => {
+    Platform.OS = 'ios';
+    await render(<SignInStep server={AWAY} book={{ libraryId: 2, path: 'A/Book' }} />);
+    await fireEvent.press(screen.getByTestId('sign-in-scan'));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/connect/scan',
+      params: { book: '2', path: 'A/Book' },
+    });
   });
 
   it('holds the scanner back while a sign-in is on its way', async () => {

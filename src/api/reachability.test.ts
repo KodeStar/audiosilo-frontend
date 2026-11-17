@@ -235,6 +235,30 @@ describe('the offline probe', () => {
     expect(r.isReachable('c1')).toBe(true);
   });
 
+  // fe#147: a request sent before a home / away switch answers on the address the
+  // connection has left, which says nothing of the one it uses now.
+  it('takes no answer on an address the connection has left as keeping it up', async () => {
+    const r = fresh();
+    const { client, fail } = pendingClient('https://h');
+    r.setReachabilityClients(new Map([['c1', client]]));
+    const check = r.checkReachability('c1');
+    r.noteAnswer('c1', 'http://192.168.1.5:8080'); // the home address it left
+    fail(new TypeError('Network request failed'));
+    await check;
+    expect(r.isReachable('c1')).toBe(false);
+  });
+
+  it('counts an answer on the address the connection uses now', async () => {
+    const r = fresh();
+    const { client, fail } = pendingClient('https://h');
+    r.setReachabilityClients(new Map([['c1', client]]));
+    const check = r.checkReachability('c1');
+    r.noteAnswer('c1', 'https://h');
+    fail(new TypeError('Network request failed'));
+    await check;
+    expect(r.isReachable('c1')).toBe(true);
+  });
+
   it('counts an answer without marking a down server up', async () => {
     const r = fresh();
     await markDown('c1', r.checkReachability);

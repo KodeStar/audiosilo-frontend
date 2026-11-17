@@ -552,7 +552,7 @@ export class ApiClient {
   private readonly proxyOrigin: string | null;
   private readonly timeoutMs: number;
   private readonly onAuthError?: () => void;
-  private readonly onAnswer?: () => void;
+  private readonly onAnswer?: (at: string) => void;
   /** The batch loader behind `seriesBooksPage`, one per `libraryId:limit` (so bounded
    * by libraries x page sizes), created on first use. */
   private readonly seriesLoaders = new Map<string, (name: string) => Promise<BookPage>>();
@@ -583,9 +583,10 @@ export class ApiClient {
    * cleanly distinct from offline (the reachability layer relies on the same invariant).
    *
    * `onAnswer` is invoked whenever the server answers a request at all (the fetch
-   * resolved, any status), before the answer is read: reachability counts it, so a check
-   * of a slow but healthy server that timed out never marks it down while other requests
-   * were answered (FU-SLOWOK).
+   * resolved, any status), before the answer is read, with the address that answered (this
+   * client's `baseUrl`): reachability counts it, so a check of a slow but healthy server
+   * that timed out never marks it down while other requests were answered (FU-SLOWOK), and
+   * an answer on an address the connection has since left counts for nothing (fe#147).
    *
    * `proxy` is the connection's custom headers for an auth proxy (fe#167), or for a bare
    * client in the connect flow the set entered for that address. They go only when this
@@ -597,7 +598,7 @@ export class ApiClient {
     token: string | null = null,
     timeoutMs = 15000,
     onAuthError?: () => void,
-    onAnswer?: () => void,
+    onAnswer?: (at: string) => void,
     proxy?: ProxyHeaders | null,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
@@ -722,7 +723,7 @@ export class ApiClient {
         if (timedOut || opts.signal?.aborted) throw e;
         throw new NetworkError(e);
       }
-      this.onAnswer?.();
+      this.onAnswer?.(this.baseUrl);
       return await read(res, touch);
     } catch (e) {
       // Our timeout fired (not a caller cancel, and not a real server answer in
@@ -771,10 +772,26 @@ export class ApiClient {
       body: { device_name: deviceName },
     }).then(withCleanAddresses);
   }
-  login(username: string, password: string, deviceName: string) {
-    return this.request<AuthSession>('POST', '/auth/login', {
-      body: { username, password, device_name: deviceName },
-    }).then(withCleanAddresses);
+  /** Sign in with a password. `deviceId`: this install's own random sign-in key for this
+   * server (`getSignInKey`), so a sign-in again from this device is not announced to the
+   * admin as a new device (fe#159). A server before 1.17.0 refuses a field it doesn't know
+   * (400): the sign-in is sent again without it. */
+  async login(username: string, password: string, deviceName: string, deviceId?: string) {
+    const send = (withId: boolean) =>
+      this.request<AuthSession>('POST', '/auth/login', {
+        body: {
+          username,
+          password,
+          device_name: deviceName,
+          ...(withId && deviceId ? { device_id: deviceId } : {}),
+        },
+      }).then(withCleanAddresses);
+    try {
+      return await send(true);
+    } catch (e) {
+      if (deviceId && e instanceof ApiError && e.status === 400) return send(false);
+      throw e;
+    }
   }
   /** Mint a throwaway demo account (when the server runs in demo mode). Returns a
    * ready-to-use session plus a pairing payload so the same user can be opened on

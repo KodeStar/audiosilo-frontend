@@ -7,13 +7,15 @@ import { mountWithPortal } from '@/testing/render-overlay';
 let mockCaps: Record<string, Partial<Capabilities> | undefined>;
 let mockDevices: Record<string, MyDevice[]>;
 let mockAddresses: Record<string, ServerAddresses | undefined>;
+// Each server's version (`/server`): a password change ends the pairing codes since 2.6.0.
+let mockVersion = '2.6.0';
 const mockRevoke = jest.fn();
 jest.mock('@/api/hooks', () => {
   const { CapabilityError } = jest.requireActual('@/api/hooks');
   return {
     CapabilityError,
     useServerInfo: (cid: string) => ({
-      data: mockCaps[cid] ? { version: '1.17.0', capabilities: mockCaps[cid] } : undefined,
+      data: mockCaps[cid] ? { version: mockVersion, capabilities: mockCaps[cid] } : undefined,
     }),
     // The real hook never asks a server without the flag: its query stays pending.
     useMyDevices: (cid: string) =>
@@ -111,6 +113,7 @@ afterAll(() => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockVersion = '2.6.0';
   Platform.OS = 'ios';
   useAddressRoute.setState({ picks: {} });
   mockAddresses = {};
@@ -211,7 +214,7 @@ describe('AccountSection', () => {
     expect(screen.getByText('Personal API keys')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Create API key' })).toBeTruthy();
     expect(screen.getByText('Sign out of Hearthside')).toBeTruthy();
-    expect(screen.getByText('AudioSilo v1.17.0')).toBeTruthy();
+    expect(screen.getByText('AudioSilo v2.6.0')).toBeTruthy();
   });
 
   it('degrades quietly on an older server', async () => {
@@ -285,7 +288,8 @@ describe('AccountSection', () => {
     expect(screen.getByRole('button', { name: 'Show a pairing code' })).toBeTruthy();
   });
 
-  it('puts away a pairing code on screen once the password is changed (it ended the code)', async () => {
+  /** Shows a pairing code, then changes the password with the code on screen. */
+  const changePasswordWithCodeUp = async () => {
     mockPair.mockResolvedValue({
       server_name: 'Home',
       base_url: 'https://home.example',
@@ -306,8 +310,20 @@ describe('AccountSection', () => {
     await fireEvent.changeText(screen.getByLabelText('Current password'), 'oldpassword');
     await fireEvent.changeText(screen.getByLabelText('New password'), 'newpassword');
     await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+  };
+
+  it('puts away a pairing code on screen once the password is changed (it ended the code)', async () => {
+    await changePasswordWithCodeUp();
     await waitFor(() => expect(mockSetPassword).toHaveBeenCalled());
     expect(await screen.findByRole('button', { name: 'Show a pairing code' })).toBeTruthy();
+  });
+
+  // server#285: a server before 2.6.0 ends no pairing code on a change, so it stays up.
+  it('keeps a pairing code on screen after a change on a server before 2.6.0', async () => {
+    mockVersion = '2.5.1';
+    await changePasswordWithCodeUp();
+    await waitFor(() => expect(mockMe).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: 'Show a pairing code' })).toBeNull();
   });
 
   it('switches between signed-in servers when no server is given', async () => {

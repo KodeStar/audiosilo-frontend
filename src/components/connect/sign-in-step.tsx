@@ -13,6 +13,7 @@ import { getDeviceName } from '@/lib/device';
 import { useLayout } from '@/lib/layout';
 import { hostOf } from '@/lib/pairing';
 import type { ConnectBook } from '@/lib/paths';
+import { getSignInKey } from '@/lib/sign-in-key';
 import { useSession } from '@/stores/session';
 
 import { ConnectFrame, ConnectInput, StepDots } from './connect-frame';
@@ -159,7 +160,12 @@ export function SignInStep({
           carried,
         });
       } else {
-        const session = await client.login(username.trim(), password, getDeviceName());
+        const session = await client.login(
+          username.trim(),
+          password,
+          getDeviceName(),
+          await getSignInKey(server),
+        );
         await finishConnect({
           serverUrl: server,
           session,
@@ -294,7 +300,7 @@ export function SignInStep({
           variant="link"
           icon="qrcode"
           title={t('connect.signIn.scanInstead')}
-          onPress={() => openScanner(reconnectId)}
+          onPress={() => openScanner(reconnectId, book)}
           // Not while a sign-in is on its way (an invite's code signs in as the step opens):
           // a code scanned then would start a second one under it.
           disabled={loading}

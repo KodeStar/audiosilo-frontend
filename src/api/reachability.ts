@@ -90,9 +90,15 @@ export function onReconnect(cb: (connectionId: string) => void): () => void {
  * The server of `connectionId` answered a request (any status; the ApiClient's
  * `onAnswer`). Counted only, the state is left alone: a check that got no answer then
  * leaves this server up (it is slow, not gone; FU-SLOWOK), while marking a down server up
- * stays the probe's job.
+ * stays the probe's job. `at`: the address that answered. An answer on an address the
+ * connection no longer uses (a request sent before a home / away switch) says nothing of the
+ * one it uses now, so it is not counted (fe#147).
  */
-export function noteAnswer(connectionId: string): void {
+export function noteAnswer(connectionId: string, at?: string): void {
+  if (at !== undefined) {
+    const now = clientFor(connectionId);
+    if (now && now.baseUrl !== at) return;
+  }
   answers.set(connectionId, (answers.get(connectionId) ?? 0) + 1);
 }
 

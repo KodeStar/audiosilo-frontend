@@ -539,8 +539,8 @@
     "start": {
       "title": "Your audiobooks, from your own server.",
       "lead": "Scan a QR code to sign in with nothing to type. If you run the server, yours is in the admin console under People > your name > Pair a device. If you were invited, it's on your invite page.",
-      "leadWeb": "Enter the address your admin gave you, or paste the pairing link they sent.",
-      "leadServed": "Sign in with the code or password your admin gave you, or paste the pairing link they sent.",
+      "leadWeb": "Enter the address your admin gave you, or paste the pairing link they sent. If you run the server, yours is in the admin console under People > your name > Pair a device. If you were invited, it's on your invite page.",
+      "leadServed": "Sign in with the code or password your admin gave you, or paste the pairing link they sent. If you run the server, yours is in the admin console under People > your name > Pair a device. If you were invited, it's on your invite page.",
       "finding": "Finding your server…",
       "continue": "Continue"
     },
@@ -1499,8 +1499,8 @@
       "onThisServer": "On this server",
       "earlier_one": "Also generate for {{count}} earlier book first",
       "earlier_other": "Also generate for {{count}} earlier books first",
-      "notWritable": "The Bridge can't write to this library. Check the library's mapping in the Bridge console.",
-      "agentNotReady": "The Bridge's AI agent isn't ready. Sign it in from the Bridge console.",
+      "notWritable": "The Bridge can't write to this library. Check the library's mapping on the Bridge's page.",
+      "agentNotReady": "The Bridge's AI agent isn't ready. Sign it in on the Bridge's page.",
       "estimateFailed": "Couldn't get an estimate from the Bridge. Try again in a moment.",
       "unavailable": "The Bridge doesn't offer this right now.",
       "detectOpen": "The book's chapters are still being found. Generate once that has finished: it reuses the transcription.",
@@ -3357,7 +3357,8 @@
       "noneHint": "No LibriVox book matches that. Try another title or the author's name."
     },
     "library": {
-      "label": "Add to"
+      "label": "Add to",
+      "loadError": "Your libraries couldn't be read, so there's nowhere to add a recording yet."
     },
     "work": {
       "show": "Recordings of {{title}}",

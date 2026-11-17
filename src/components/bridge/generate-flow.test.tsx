@@ -478,6 +478,22 @@ describe('the status while a job runs', () => {
     expect(screen.getByText('Open the console to fix it.')).toBeTruthy();
   });
 
+  // A code this player doesn't know yet: the Bridge's own hint says why, not a generic line.
+  it("shows the Bridge's own hint for a park code it doesn't know", async () => {
+    mockBridgeJobs.mockResolvedValue([
+      bridgeJob({
+        state: 'needs_attention',
+        progress: {
+          step: 'asr',
+          park: { code: 'disk_full', hint: 'The library disk is full. Free some space.' },
+        },
+      }),
+    ]);
+    await mount();
+    expect(await screen.findByText('Generating is paused')).toBeTruthy();
+    expect(screen.getByText('The library disk is full. Free some space.')).toBeTruthy();
+  });
+
   // The Bridge takes a book waiting for a worker on once one connects: nothing to fix.
   it('says a job waiting for a worker carries on by itself', async () => {
     mockBridgeJobs.mockResolvedValue([

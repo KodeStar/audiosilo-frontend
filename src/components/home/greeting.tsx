@@ -116,6 +116,10 @@ export function Greeting({
   if (phone) {
     // A phone row has no room for both pills beside the date: the server that is down
     // gets a row of its own under it (the healthy "2 servers" count stays desktop-only).
+    // So does a save waiting to sync: its words are long, and beside the date they cut it
+    // (fe#147); the short "Synced 2 min ago" stays beside it.
+    const besideDate = sync?.kind !== 'local';
+    const downPill = down ? serversPill : null;
     return (
       <View className="gap-2">
         <View
@@ -126,9 +130,14 @@ export function Greeting({
           <Text variant="muted" className={large ? undefined : 'flex-1'} numberOfLines={lines}>
             {date}
           </Text>
-          {syncPill}
+          {besideDate ? syncPill : null}
         </View>
-        {down && serversPill ? <View className="flex-row">{serversPill}</View> : null}
+        {!besideDate || downPill ? (
+          <View className="flex-row flex-wrap gap-2">
+            {besideDate ? null : syncPill}
+            {downPill}
+          </View>
+        ) : null}
       </View>
     );
   }

@@ -952,6 +952,8 @@ describe('ApiClient', () => {
     installFetch(() => ({ status: 503, body: { error: 'busy' } }));
     await expect(c.me()).rejects.toMatchObject({ status: 503 });
     expect(onAnswer).toHaveBeenCalledTimes(2);
+    // With the address that answered (fe#147).
+    expect(onAnswer).toHaveBeenLastCalledWith('https://h');
   });
 
   it('does NOT fire onAnswer when nothing answered (a timeout or a fetch rejection)', async () => {
@@ -1662,6 +1664,48 @@ describe('ApiClient addresses', () => {
     expect((await new ApiClient('https://h').redeemCode('c')).addresses).toEqual(clean);
     installFetch(() => ({ status: 200, body: { home: 42 } }));
     await expect(new ApiClient('https://h', 'tok').addresses()).resolves.toEqual({});
+  });
+});
+
+describe('ApiClient.login and the device id (fe#159)', () => {
+  const bodies = (fetchMock: jest.Mock) =>
+    fetchMock.mock.calls.map((c) => JSON.parse(String((c[1] as RequestInit).body)));
+
+  it("sends this install's device id, so a sign-in again is no new device", async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: { token: 't', server_id: 's' } }));
+    await new ApiClient('https://h').login('u', 'pw', 'Phone', 'dev-1');
+    expect(bodies(fetchMock)).toEqual([
+      { username: 'u', password: 'pw', device_name: 'Phone', device_id: 'dev-1' },
+    ]);
+  });
+
+  // A server before 1.17.0 refuses a field it doesn't know.
+  it('signs in again without it when the server refuses the field (400)', async () => {
+    const fetchMock = installFetch((_url, init) =>
+      String(init.body).includes('device_id')
+        ? { status: 400, body: { error: 'invalid request' } }
+        : { status: 200, body: { token: 't', server_id: 's' } },
+    );
+    await expect(new ApiClient('https://h').login('u', 'pw', 'Phone', 'dev-1')).resolves.toEqual(
+      expect.objectContaining({ token: 't' }),
+    );
+    expect(bodies(fetchMock)).toEqual([
+      { username: 'u', password: 'pw', device_name: 'Phone', device_id: 'dev-1' },
+      { username: 'u', password: 'pw', device_name: 'Phone' },
+    ]);
+  });
+
+  it('asks once only for a refusal that is not about the field', async () => {
+    const fetchMock = installFetch(() => ({ status: 401, body: { error: 'invalid credentials' } }));
+    await expect(
+      new ApiClient('https://h').login('u', 'wrong', 'Phone', 'dev-1'),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const noId = installFetch(() => ({ status: 400, body: { error: 'invalid request' } }));
+    await expect(new ApiClient('https://h').login('u', 'pw', 'Phone')).rejects.toMatchObject({
+      status: 400,
+    });
+    expect(bodies(noId)).toEqual([{ username: 'u', password: 'pw', device_name: 'Phone' }]);
   });
 });
 

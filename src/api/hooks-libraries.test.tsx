@@ -9,9 +9,17 @@ import { notifyQueriesSynchronously } from '@/testing/query-notify';
 const mockApis = [
   {
     connection: { id: 'a', name: 'Home' },
-    client: { libraries: jest.fn(), listBooks: jest.fn(), serverInfo: jest.fn() },
+    client: {
+      libraries: jest.fn(),
+      listBooks: jest.fn(),
+      serverInfo: jest.fn(),
+      allProgress: jest.fn(),
+    },
   },
-  { connection: { id: 'b', name: "Maya's Shelf" }, client: { libraries: jest.fn() } },
+  {
+    connection: { id: 'b', name: "Maya's Shelf" },
+    client: { libraries: jest.fn(), allProgress: jest.fn() },
+  },
 ];
 jest.mock('@/api/provider', () => ({
   useApis: () => mockApis,
@@ -26,7 +34,8 @@ jest.mock('@/playback/progress-sync', () => ({
 }));
 
 /* eslint-disable import/first */
-import { useAllLibraryBooks, useLibrariesAll } from '@/api/hooks';
+import { ApiError } from '@/api/client';
+import { useAllLibraryBooks, useAllProgressAll, useLibrariesAll } from '@/api/hooks';
 /* eslint-enable import/first */
 
 notifyQueriesSynchronously();
@@ -112,6 +121,25 @@ it('says a whole-library read that waits for the network is offline, then loads 
     expect(result.current.books).toEqual([{ rel_path: 'Dune' }]);
   } finally {
     onlineManager.setOnline(true);
+    qc.clear();
+  }
+});
+
+// fe#147: a server's refusal (a 401) has its own sign-in state, so the fan-out's error is
+// another server's trouble when there is one, and the refusing server is named.
+it("names the server that refused the sign-in, and keeps another server's error", async () => {
+  const [a, b] = mockApis.map((x) => x.client.allProgress);
+  a.mockRejectedValue(new ApiError(401, 'unauthorized'));
+  b.mockRejectedValue(new ApiError(500, 'boom'));
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  );
+  try {
+    const { result } = await renderHook(() => useAllProgressAll(), { wrapper });
+    await waitFor(() => expect(result.current.error).toMatchObject({ status: 500 }));
+    expect(result.current.refused).toEqual(['a']);
+  } finally {
     qc.clear();
   }
 });

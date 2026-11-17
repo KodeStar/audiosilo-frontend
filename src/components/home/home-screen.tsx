@@ -98,7 +98,13 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   const profile = useActiveProfile();
   const defaultCid = useSession((s) => s.defaultConnectionId);
   const user = useSession((s) => s.user);
-  const { progress: listed, isLoading, offline: progressOffline, error } = useAllProgressAll();
+  const {
+    progress: listed,
+    isLoading,
+    offline: progressOffline,
+    error,
+    refused,
+  } = useAllProgressAll();
   // Each book where Resume plays it, as the player has it (fe#211): this device's own newer
   // place over the server's older row (an offline run the list has not heard of yet).
   const progress = useWithLocalPlaces(listed);
@@ -181,8 +187,9 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
 
   const retryProgress = () => void qc.refetchQueries({ queryKey: qk.allProgressAll() });
   // A refused sign-in (a 401) shows ONE sign-in state, in the Now card's place, with the
-  // Reconnect action; the shelves below show no Retry of their own for it (#124).
-  const signedOut = useSignedOutConnections()[0];
+  // Reconnect action; the shelves below show no Retry of their own for it (#124). It names
+  // the server whose progress read was refused, not the first signed out (fe#147).
+  const signedOut = useSignedOutConnections().find((c) => refused.includes(c.id));
   // A server of several that is not answering, named on the greeting's servers pill.
   const down = useReachability((s) => firstOffline(connections, s.online)?.name);
   const progressRefused = isSignedOutError(error) && !!signedOut;

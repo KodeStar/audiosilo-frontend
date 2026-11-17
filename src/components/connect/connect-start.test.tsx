@@ -306,6 +306,20 @@ describe('a pairing link', () => {
     expect(screen.queryByTestId('pairing-try-again')).toBeNull();
   });
 
+  // fe#159: the link's error and its Try again are about the link, not the next address.
+  it("puts the link's error and Try again away once another address is tried", async () => {
+    mockParams = { token: 'tok', server: AWAY };
+    mockApi.exchange.mockRejectedValueOnce(new ApiError(503, 'busy'));
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await screen.findByTestId('pairing-try-again');
+    await fireEvent.changeText(screen.getByLabelText('Server address'), HOME);
+    await fireEvent.press(screen.getByText('Continue'));
+    await waitFor(() => expect(screen.getByText('Found Hearthside')).toBeTruthy());
+    expect(screen.queryByTestId('pairing-try-again')).toBeNull();
+    expect(screen.queryByText(/busy/i)).toBeNull();
+  });
+
   it('a native link with no server address asks for one', async () => {
     mockParams = { token: 'tok' };
     await render(<ConnectStart />);
@@ -636,9 +650,11 @@ describe('the app leads with the QR (fe#264)', () => {
     expect(screen.queryByTestId('connect-scan')).toBeNull();
     expect(screen.getByText('Server address')).toBeTruthy();
     expect(screen.queryByText('Or enter the server address')).toBeNull();
+    // With where a pairing link is found, as the app's lead says where its QR is (fe#299).
     expect(
       screen.getByText(
-        'Enter the address your admin gave you, or paste the pairing link they sent.',
+        'Enter the address your admin gave you, or paste the pairing link they sent. ' +
+          "If you run the server, yours is in the admin console under People > your name > Pair a device. If you were invited, it's on your invite page.",
       ),
     ).toBeTruthy();
   });
@@ -735,6 +751,67 @@ describe('the player the server serves', () => {
     expect(screen.getByText("Couldn't reach books.example.com")).toBeTruthy();
     // It can reach no other server, so it offers none.
     expect(screen.queryByText(/Reconnect to/)).toBeNull();
+  });
+
+  // fe#159: a Continue that finds its own server after its first ask failed is that
+  // server's card, with no address field beside "Found".
+  it('shows its card with no address field once a Continue finds its own server', async () => {
+    mockApi.serverInfo.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await render(<ConnectStart />);
+    await waitFor(() => expect(screen.getByLabelText('Server address')).toBeTruthy());
+    mockApi.serverInfo.mockResolvedValue(info());
+    await fireEvent.press(screen.getByText('Continue'));
+    await waitFor(() => expect(screen.getByText('Found Hearthside')).toBeTruthy());
+    expect(screen.queryByLabelText('Server address')).toBeNull();
+  });
+
+  it('offers Cancel while it finds its server, then the field, and records no late answer', async () => {
+    let answer: (v: unknown) => void = () => {};
+    mockApi.serverInfo.mockImplementationOnce(
+      (signal?: AbortSignal) =>
+        new Promise((resolve, reject) => {
+          answer = resolve;
+          signal?.addEventListener('abort', () =>
+            reject(new DOMException('aborted', 'AbortError')),
+          );
+        }),
+    );
+    await render(<ConnectStart />);
+    await fireEvent.press(screen.getByTestId('connect-finding-cancel'));
+    expect(screen.getByLabelText('Server address').props.value).toBe(ORIGIN);
+    answer(info());
+    await act(async () => {});
+    expect(screen.queryByText('Found Hearthside')).toBeNull();
+    expect(screen.queryByText(/Couldn't reach/)).toBeNull();
+    expect(useSession.getState().pendingServerUrl).toBeNull();
+  });
+
+  it('keeps a Continue busy when the ask it cancelled ends after it', async () => {
+    let refuse: () => void = () => {};
+    mockApi.serverInfo
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            refuse = () => reject(new DOMException('aborted', 'AbortError'));
+          }),
+      )
+      .mockImplementationOnce(() => new Promise(() => {}));
+    await render(<ConnectStart />);
+    await fireEvent.press(screen.getByTestId('connect-finding-cancel'));
+    await fireEvent.press(screen.getByText('Continue'));
+    refuse();
+    await act(async () => {});
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+  });
+
+  it('records nothing once the screen is gone before its server answers', async () => {
+    let answer: (v: unknown) => void = () => {};
+    mockApi.serverInfo.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    await render(<ConnectStart />);
+    await screen.unmount();
+    answer(info());
+    await act(async () => {});
+    expect(useSession.getState().pendingServerUrl).toBeNull();
   });
 
   describe('a pasted link for another server (CONNECT-03: this page reaches only its own)', () => {

@@ -73,6 +73,8 @@ let mockProgress: {
   isLoading: boolean;
   error: Error | null;
   offline?: boolean;
+  /** The connections whose progress read was refused (a 401). */
+  refused?: string[];
 } = {
   progress: [],
   isLoading: false,
@@ -99,7 +101,7 @@ jest.mock('@/api/hooks', () => ({
   // Every server says the same flags.
   useCapabilitiesAll: () => Object.fromEntries(mockConnections.map((c) => [c.id, mockCaps])),
   useServerInfo: () => ({ data: { capabilities: {} } }),
-  useAllProgressAll: () => mockProgress,
+  useAllProgressAll: () => ({ refused: [], ...mockProgress }),
   useLibrariesAll: () => ({ groups: mockGroups }),
   useRecentAll: () => mockRecent,
   useFavouritesAll: () => ({ favourites: [] }),
@@ -336,7 +338,12 @@ describe('HomeScreen', () => {
   // frontend#124: a revoked session is one sign-in state, not load errors with Retry.
   it('shows one sign-in state with Reconnect, and no Retry, when the session was refused', async () => {
     mockConnections = [{ id: 'a', name: 'Home', needsReconnect: 'auth' }];
-    mockProgress = { progress: [], isLoading: false, error: new ApiError(401, 'unauthorized') };
+    mockProgress = {
+      progress: [],
+      isLoading: false,
+      error: new ApiError(401, 'unauthorized'),
+      refused: ['a'],
+    };
     mockRecent = { books: [], isLoading: false, error: new ApiError(401, 'unauthorized') };
     await mountHome();
     expect(screen.getByText('Sign in again to Home')).toBeTruthy();
@@ -344,6 +351,23 @@ describe('HomeScreen', () => {
     expect(screen.queryByText("Couldn't load your progress")).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(screen.queryByText('Recently added')).toBeNull();
+  });
+
+  // fe#147: the sign-in state names the server that refused, not the first signed out.
+  it('names the server whose progress read was refused', async () => {
+    mockConnections = [
+      { id: 'a', name: 'Home', needsReconnect: 'auth' },
+      { id: 'b', name: "Maya's Shelf", needsReconnect: 'auth' },
+    ];
+    mockProgress = {
+      progress: [],
+      isLoading: false,
+      error: new ApiError(401, 'unauthorized'),
+      refused: ['b'],
+    };
+    await mountHome();
+    expect(screen.getByText("Sign in again to Maya's Shelf")).toBeTruthy();
+    expect(screen.queryByText('Sign in again to Home')).toBeNull();
   });
 
   // frontend#131: never a green "2 servers" over a server that is down.
@@ -482,6 +506,7 @@ describe("HomeScreen's module rails (Bridge Phase 2a)", () => {
 
   it("places an active module's rails after Next in your series, with the person's servers", async () => {
     mockModulesOn = { contributions: true };
+    mockCaps = { contributions: true };
     mockNext = {
       supported: true,
       isLoading: true,
@@ -497,6 +522,7 @@ describe("HomeScreen's module rails (Bridge Phase 2a)", () => {
 
   it('places Coming up and New episodes between Next in your series and the module rails, skipping started ones', async () => {
     mockModulesOn = { contributions: true };
+    mockCaps = { contributions: true };
     mockNext = { supported: true, isLoading: true, answers: [] };
     mockProgress.progress = [
       started('Now', '2026-10-05T00:00:00Z'),

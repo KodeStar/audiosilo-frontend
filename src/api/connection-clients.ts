@@ -32,7 +32,7 @@ export function resolveClient(connectionId: string): ApiClient | null {
  * carries the token and the proxy headers (fe#167), and injects the dead-token callback, so a
  * 401 on ANY request through it (query or mutation, on screen or in the save loop) flags the
  * connection for reconnect: the client is the one choke point every request path shares. Every
- * answer it gets counts for reachability (`noteAnswer`, FU-SLOWOK).
+ * answer it gets counts for reachability (`noteAnswer`, FU-SLOWOK), by the address it came from.
  */
 export function connectionClient(conn: Connection, url: string): ApiClient {
   return new ApiClient(
@@ -40,7 +40,7 @@ export function connectionClient(conn: Connection, url: string): ApiClient {
     conn.token,
     undefined,
     () => useSession.getState().markNeedsReconnect(conn.id, 'auth'),
-    () => noteAnswer(conn.id),
+    (at) => noteAnswer(conn.id, at),
     conn.proxyHeaders,
   );
 }

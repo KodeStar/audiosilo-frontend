@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 
 import type { InviteScan } from '@/lib/pairing';
+import { type ConnectBook, connectBookParams } from '@/lib/paths';
 import { sameUrl } from '@/lib/server-address';
 import { useSession } from '@/stores/session';
 
@@ -40,11 +41,14 @@ let scanFor: string | undefined;
  * the reason `holdScanReconnect` gives: a link opens that route too
  * (`audiosilo://connect/scan`), and a link must not name a connection to re-pair. Every way
  * into the scanner comes through here, so one that names no reconnect clears what an
- * earlier one left.
+ * earlier one left. `book`: the book the sign-in step was heading to (a signed-out visit's),
+ * in the scanner's params as a link carries it, so the scan still ends on it (fe#299).
  */
-export function openScanner(reconnectId?: string): void {
+export function openScanner(reconnectId?: string, book?: ConnectBook): void {
   scanFor = reconnectId;
-  router.push('/connect/scan');
+  router.push(
+    book ? { pathname: '/connect/scan', params: connectBookParams(book) } : '/connect/scan',
+  );
 }
 
 /** The reconnect the scanner was opened for (`openScanner`), taken once as it opens: a

@@ -18,7 +18,10 @@ import {
   holdScanReconnect,
   takeScanFor,
 } from '@/components/connect/invite-handoff';
-import { parseInviteScan, parsePairingScan } from '@/lib/pairing';
+import { type PairingScan, parseInviteScan, parsePairingScan } from '@/lib/pairing';
+import { sameUrl } from '@/lib/server-address';
+import { connectBookParams, parseConnectBook } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { useSession } from '@/stores/session';
 import { colors } from '@/theme/tokens';
 import { SafeAreaView } from '@/components/ui/safe-area-view';
@@ -53,12 +56,16 @@ function CloseControl() {
  * opened from re-pairs (the reconnect banner's), handed over in memory (`openScanner`),
  * never a route param: a link opens this route, and a link must not name a connection to
  * re-pair. A code for that connection's server keeps it (`scanReconnect`), so the scan ends
- * as a sign-in typed on that step would: a server that was reset keeps its person.
+ * as a sign-in typed on that step would: a server that was reset keeps its person. `book`
+ * and `path`: the book that step was heading to (`openScanner`), which the scan's sign-in
+ * ends on too, unless the code names its own (fe#299).
  */
 export default function ScanScreen() {
   const { t } = useTranslation();
   // Taken once, as the scanner opens.
   const [reconnect] = useState(takeScanFor);
+  const routeParams = useRouteParams<{ book?: string; path?: string }>();
+  const heading = parseConnectBook(routeParams);
   const [permission, requestPermission] = useCameraPermissions();
   const [error, setError] = useState<string | null>(null);
   // Guards against the camera firing onBarcodeScanned repeatedly for the same frame.
@@ -90,13 +97,33 @@ export default function ScanScreen() {
     // The reconnect this scan continues, when the code is for that connection's server.
     const again = (base: string) =>
       scanReconnect(reconnect, base, useSession.getState().connections);
+    // The book the sign-in step was heading to goes on only with a code for that step's
+    // server: another server's library ids name other books. The code is for it when it
+    // continues the step's reconnect (`again`), or when its address, or another one it
+    // gives for its server (`home`, `away`), is the step's own (`pendingServerUrl`, read
+    // before an invite's sign-in replaces it): a server's code often names its away
+    // address while the step was reached at home.
+    const step = useSession.getState().pendingServerUrl;
+    const bookFor = (code: Pick<PairingScan, 'base' | 'addresses'>, reconnectId?: string) =>
+      heading &&
+      (reconnectId !== undefined ||
+        [code.base, code.addresses?.home, code.addresses?.away].some(
+          (url) => !!url && !!step && sameUrl(url, step),
+        ))
+        ? heading
+        : null;
     if (invite) {
       setError(null);
       const reconnectId = again(invite.base);
       // The reconnect goes with it in memory (`holdReconnect`), never in the params.
       beginInviteSignIn(invite, () => {
         if (reconnectId) holdReconnect(invite.base, reconnectId);
-        router.replace('/connect/sign-in');
+        const book = bookFor(invite, reconnectId);
+        router.replace(
+          book
+            ? { pathname: '/connect/sign-in', params: connectBookParams(book) }
+            : '/connect/sign-in',
+        );
       });
       return;
     }
@@ -114,7 +141,13 @@ export default function ScanScreen() {
     // reconnect goes beside it in memory (`holdScanReconnect`), never in the params.
     const reconnectId = again(parsed.base);
     if (reconnectId) holdScanReconnect(parsed.token, reconnectId);
-    router.replace({ pathname: '/connect', params: scanParams(parsed) });
+    router.replace({
+      pathname: '/connect',
+      params: scanParams({
+        ...parsed,
+        book: parsed.book ?? bookFor(parsed, reconnectId) ?? undefined,
+      }),
+    });
   };
 
   // Still loading the status, or the system prompt is on screen (status stays

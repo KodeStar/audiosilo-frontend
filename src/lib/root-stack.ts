@@ -82,14 +82,18 @@ function tabStackState(state: NavState | undefined, tab: string): NavState | nul
 
 /**
  * Pop tab `tab`'s stack back to its root, which keeps the root's own params (Library's
- * mode, the You hub's section). Any tab, by its stack's key, not only the focused one.
- * The way back to a tab root: a navigate to the root's href is a push in this router, so
- * it stacked a second copy of the root over the pages. Nothing when the stack holds only
- * its root (or the router isn't ready).
+ * mode, the You hub's section). Any tab, by its stack's key, not only the focused one, and
+ * any other stack route by its name too (`connect`, the connect flow's). The way back to a
+ * tab root: a navigate to the root's href is a push in this router, so it stacked a second
+ * copy of the root over the pages. Nothing when the stack holds only its root (or the
+ * router isn't ready). True when it popped.
  */
-export function popTabToRoot(tab: string, state: NavState | undefined = currentNavState()) {
+export function popTabToRoot(
+  tab: string,
+  state: NavState | undefined = currentNavState(),
+): boolean {
   const stack = tabStackState(state, tab);
-  if (stack?.key && stack.routes.length > 1) {
-    navigationRef.dispatch({ type: 'POP_TO_TOP', target: stack.key });
-  }
+  if (!stack?.key || stack.routes.length <= 1) return false;
+  navigationRef.dispatch({ type: 'POP_TO_TOP', target: stack.key });
+  return true;
 }

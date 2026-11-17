@@ -15,7 +15,7 @@ import {
   requestEpisodeFetch,
 } from '@/playback/episode-fetch';
 import { isAbsentEpisode } from '@/playback/episode-fetch-rules';
-import { usePlayer } from '@/playback/store';
+import { selectBookKey, selectIsTransportLive, usePlayer } from '@/playback/store';
 import { mayActFor } from '@/stores/profiles';
 import { withTimeout } from '@/lib/with-timeout';
 
@@ -82,6 +82,11 @@ async function startSourceOf(target: PlayTarget): Promise<BookSource | null> {
  * (`mayActFor`: refused before anything is fetched); rejects when the book could not be
  * fetched. A book that starts leaves Up next (`dropStartedBook`).
  *
+ * A path that is not the book's own (a stale Up next entry: a part path the server now
+ * resolves to the folder book holding it) whose book is the one already loaded starts
+ * nothing: the book plays on from where it is, as the loaded book does everywhere else, and
+ * the entry leaves Up next (fe#147, `playsOnLoaded`).
+ *
  * A start asked for again while the same one is on its way (the same book from the same
  * place: a second tap while its item, chapters and place are looked up, before the player
  * shows it; 8b-1, D2) joins it, never a second start. Only while it is the latest start: a
@@ -140,10 +145,32 @@ const starting = new Map<string, Promise<boolean>>();
 /** The key of the start asked for last (`startBookInPlace`). */
 let latestStart: string | null = null;
 
+/**
+ * The start was asked by a path that is not the book's own (the server resolved a part
+ * path to the folder book holding it) and that book is the one loaded: it plays on from
+ * where it is, never loaded a second time, and both paths leave Up next. Only a start from
+ * the saved place (one that names a place or a speed starts as asked), and never an ended
+ * or failed book, which starts again through the resume lookup like any other.
+ */
+async function playsOnLoaded(target: PlayTarget, book: Book, opts: StartOptions): Promise<boolean> {
+  if (book.rel_path === target.path) return false;
+  if (opts.position !== undefined || opts.track !== undefined || opts.speed !== undefined) {
+    return false;
+  }
+  const player = usePlayer.getState();
+  if (selectBookKey(player) !== contentKeyOf({ ...target, path: book.rel_path })) return false;
+  const state = player.snapshot.state;
+  if (state === 'ended' || state === 'error') return false;
+  if (!selectIsTransportLive(player)) await player.toggle();
+  dropStartedBook(target.connectionId, target.libraryId, book.rel_path, target.path);
+  return true;
+}
+
 async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): Promise<boolean> {
   if (!mayActFor(target.connectionId)) return false;
   const source = await startSourceOf(target);
   if (!source) return false;
+  if (!how.fetched && (await playsOnLoaded(target, source.book, opts))) return true;
   const key = contentKeyOf(target);
   if (how.fetched) {
     // The fetch's own start, only while it stands: a Cancel, or a start of something else,

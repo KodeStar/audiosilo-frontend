@@ -10,6 +10,7 @@ import { isKidAccount } from '@/lib/account';
 import { connectionIdOf, priorConnection } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
 import { bookHref, type ConnectBook } from '@/lib/paths';
+import { popTabToRoot } from '@/lib/root-stack';
 import type { ProxyHeaders } from '@/lib/proxy-headers';
 import { mergeAddresses } from '@/lib/server-address';
 import {
@@ -191,8 +192,13 @@ export async function finishConnect(input: {
 export function endConnect(connectionId: string, book?: ConnectBook, first = false): void {
   if (activeProfile()?.kids) router.dismissTo(KIDS_PATH);
   else if (book) router.dismissTo(bookHref(connectionId, book.libraryId, book.path));
-  else if (first) router.replace(readyHref(connectionId));
-  else leaveOnboarding();
+  else if (first) {
+    // Over the flow's first step only: the steps the sign-in took on the way (the sign-in
+    // step, and a scan's `/connect` over it) are spent, so Back never returns to one
+    // (fe#299). A flow a link opened on a later step has none under it: that step goes.
+    if (popTabToRoot('connect')) router.push(readyHref(connectionId));
+    else router.replace(readyHref(connectionId));
+  } else leaveOnboarding();
 }
 
 /**

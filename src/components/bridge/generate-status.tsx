@@ -31,7 +31,7 @@ function statusLine(t: TFunction, view: JobStatusView): string {
         .filter(Boolean)
         .join(' · ');
     case 'parked':
-      return t(`bridge.park.${view.reason}`);
+      return view.hint ?? t(`bridge.park.${view.reason}`);
     case 'failed':
       return view.error || t('bridge.status.failedGeneric');
   }

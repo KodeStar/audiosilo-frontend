@@ -91,9 +91,24 @@ function noteQueryReached(key: readonly unknown[]) {
   if (!anyOffline(online)) return;
   const cid = cidOfKey(key);
   if (!cid || online[cid] !== false) return;
-  if (isServerInfoKey(key)) noteSuccess(cid);
-  else recheckReachability(cid);
+  if (!isServerInfoKey(key)) {
+    recheckReachability(cid);
+    return;
+  }
+  // The reconnect it brings (`onReconnect`, below) reads the connection's queries again, all
+  // but this `/server` that has just answered (fe#147).
+  reconnectedBy = key;
+  try {
+    noteSuccess(cid);
+  } finally {
+    reconnectedBy = null;
+  }
 }
+
+/** The `/server` query whose answer is bringing its connection back, while the reconnect
+ * handlers run (they run at once, inside `noteSuccess`): read again it would only ask the
+ * same server the same thing a second time. */
+let reconnectedBy: readonly unknown[] | null = null;
 
 /**
  * The default query retry: once, except a 401 (frontend#124) or content that isn't there
@@ -172,10 +187,12 @@ function isHeldReadalongMap(q: Query): boolean {
 // screens that errored or emptied while it was offline repopulate on their own) and
 // replay its queued progress saves (and its queued ebook reading places). invalidateQueries only refetches currently-observed
 // queries, so this is cheap; every query key leads with its connection id, so the
-// predicate scopes the refetch to the recovered server. A read-along map held is kept.
+// predicate scopes the refetch to the recovered server. A read-along map held is kept, and
+// so is the `/server` answer that brought the server back (`reconnectedBy`).
 onReconnect((connectionId) => {
   void queryClient.invalidateQueries({
-    predicate: (q) => q.queryKey.includes(connectionId) && !isHeldReadalongMap(q),
+    predicate: (q) =>
+      q.queryKey.includes(connectionId) && !isHeldReadalongMap(q) && q.queryKey !== reconnectedBy,
   });
   void flushConnection(connectionId);
   void flushReadingConnection(connectionId);

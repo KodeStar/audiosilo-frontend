@@ -71,7 +71,12 @@ jest.mock('@/components/account/account-section', () => {
 // Whether a server offers Upcoming to the listener (Track U2): `useUpcomingAvailable` has
 // its own suite; the section's body is the Upcoming page's (its own suite too).
 let mockUpcomingAvailable: boolean | undefined;
-jest.mock('@/api/hooks', () => ({ useUpcomingAvailable: () => mockUpcomingAvailable }));
+// Whether a server's flags are still being read (fe#159): one connection, `c`, not known yet.
+let mockFlagsPending = false;
+jest.mock('@/api/hooks', () => ({
+  useUpcomingAvailable: () => mockUpcomingAvailable,
+  useCapabilitiesAllRead: () => ({ caps: { c: mockFlagsPending ? undefined : {} }, failed: [] }),
+}));
 jest.mock('@/components/upcoming/upcoming-screen', () => {
   const { Text } = jest.requireActual('react-native');
   return {
@@ -112,6 +117,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockModulesOn = {};
   mockUpcomingAvailable = false;
+  mockFlagsPending = false;
   mockLayout = 'phone';
   useSubNav.setState({ slots: {} });
 });
@@ -332,14 +338,35 @@ describe('YouHub Upcoming (Track U2)', () => {
     expect(screen.getByText('upcoming-section embedded=false')).toBeTruthy();
   });
 
-  it.each([
-    ['no server offers it, or the listener is a kid there', false],
-    ['the servers are still loading', undefined],
-  ])('is gone while %s, and a link to it opens Stats', async (_, available) => {
-    mockUpcomingAvailable = available;
+  it('is gone while no server offers it (or the listener is a kid there), and a link to it opens Stats', async () => {
     await mount({ section: 'upcoming' });
     expect(segments()).toEqual(SIX);
     expect(screen.getByTestId('you-hub-stats')).toBeTruthy();
     expect(screen.queryByText(/upcoming-section/)).toBeNull();
+  });
+
+  // fe#159: a cold link waits for the servers' flags rather than showing Stats meanwhile.
+  it('holds a link to it while the servers are still loading, then opens it', async () => {
+    mockUpcomingAvailable = undefined;
+    mockFlagsPending = true;
+    await mount({ section: 'upcoming' });
+    expect(screen.getByTestId('you-hub-waiting')).toBeTruthy();
+    expect(screen.queryByTestId('you-hub-stats')).toBeNull();
+    expect(screen.queryByText('stats-section')).toBeNull();
+    mockUpcomingAvailable = true;
+    mockFlagsPending = false;
+    await render(<YouHub />);
+    expect(screen.getByText('upcoming-section embedded=true')).toBeTruthy();
+  });
+
+  it('opens Stats for a link no server can offer once every server has answered', async () => {
+    mockUpcomingAvailable = undefined;
+    mockFlagsPending = true;
+    await mount({ section: 'stats' });
+    expect(screen.getByTestId('you-hub-stats')).toBeTruthy();
+    mockFlagsPending = false;
+    mockUpcomingAvailable = false;
+    await mount({ section: 'upcoming' });
+    expect(screen.getByTestId('you-hub-stats')).toBeTruthy();
   });
 });

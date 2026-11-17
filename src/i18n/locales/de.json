@@ -539,8 +539,8 @@
     "start": {
       "title": "Deine Hörbücher, von deinem eigenen Server.",
       "lead": "Scanne einen QR-Code, um dich ohne Tippen anzumelden. Betreibst du den Server, findest du deinen in der Admin-Konsole unter Personen > dein Name > Gerät koppeln. Wurdest du eingeladen, steht er auf deiner Einladungsseite.",
-      "leadWeb": "Gib die Adresse ein, die du von deinem Admin bekommen hast, oder füge den Kopplungslink ein, den du bekommen hast.",
-      "leadServed": "Melde dich mit dem Code oder Passwort von deinem Admin an, oder füge den Kopplungslink ein, den du bekommen hast.",
+      "leadWeb": "Gib die Adresse ein, die du von deinem Admin bekommen hast, oder füge den Kopplungslink ein, den du bekommen hast. Betreibst du den Server, findest du deinen in der Admin-Konsole unter Personen > dein Name > Gerät koppeln. Wurdest du eingeladen, steht er auf deiner Einladungsseite.",
+      "leadServed": "Melde dich mit dem Code oder Passwort von deinem Admin an, oder füge den Kopplungslink ein, den du bekommen hast. Betreibst du den Server, findest du deinen in der Admin-Konsole unter Personen > dein Name > Gerät koppeln. Wurdest du eingeladen, steht er auf deiner Einladungsseite.",
       "finding": "Dein Server wird gesucht…",
       "continue": "Weiter"
     },
@@ -1499,8 +1499,8 @@
       "onThisServer": "Auf diesem Server",
       "earlier_one": "Zuerst auch für {{count}} früheres Buch erstellen",
       "earlier_other": "Zuerst auch für {{count}} frühere Bücher erstellen",
-      "notWritable": "Die Bridge kann nicht in diese Bibliothek schreiben. Prüfe die Zuordnung der Bibliothek in der Bridge-Konsole.",
-      "agentNotReady": "Der KI-Agent der Bridge ist nicht bereit. Melde ihn in der Bridge-Konsole an.",
+      "notWritable": "Die Bridge kann nicht in diese Bibliothek schreiben. Prüfe die Zuordnung der Bibliothek auf der Seite der Bridge.",
+      "agentNotReady": "Der KI-Agent der Bridge ist nicht bereit. Melde ihn auf der Seite der Bridge an.",
       "estimateFailed": "Die Bridge konnte keine Schätzung liefern. Versuch es gleich noch einmal.",
       "unavailable": "Die Bridge bietet das gerade nicht an.",
       "detectOpen": "Die Kapitel des Buchs werden noch gesucht. Tippe auf Erstellen, sobald das fertig ist: Die Transkription wird wiederverwendet.",
@@ -3357,7 +3357,8 @@
       "noneHint": "Kein LibriVox-Buch passt dazu. Versuche einen anderen Titel oder den Namen des Autors."
     },
     "library": {
-      "label": "Hinzufügen zu"
+      "label": "Hinzufügen zu",
+      "loadError": "Deine Bibliotheken konnten nicht gelesen werden, daher gibt es noch keinen Ort, an dem eine Aufnahme hinzugefügt werden kann."
     },
     "work": {
       "show": "Aufnahmen von {{title}}",

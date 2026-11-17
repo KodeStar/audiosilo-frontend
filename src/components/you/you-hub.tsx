@@ -3,7 +3,7 @@ import { Fragment, type ReactNode, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { useUpcomingAvailable } from '@/api/hooks';
+import { useCapabilitiesAllRead, useUpcomingAvailable } from '@/api/hooks';
 import { AccountSection } from '@/components/account/account-section';
 import { HouseholdPage } from '@/components/household/household-page';
 import { JournalScreen } from '@/components/journal/journal-screen';
@@ -11,11 +11,12 @@ import { ListeningAsCard } from '@/components/profiles/listening-as-card';
 import { SettingsContent } from '@/components/settings/settings-content';
 import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { SubNavSections } from '@/components/shell/tab-root-nav';
+import { Spinner } from '@/components/ui/spinner';
 import { StatsSection } from '@/components/you/stats/stats-section';
 import { UpcomingContent } from '@/components/upcoming/upcoming-screen';
 import { YearSection } from '@/components/you/year/year-section';
 import { useLayout } from '@/lib/layout';
-import type { CoreYouSection } from '@/lib/paths';
+import { type CoreYouSection, firstParam } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
 import { WithActiveModules } from '@/modules/active-modules';
@@ -106,16 +107,22 @@ function Hub({ active }: { active: readonly PlayerModule[] }) {
   const layout = useLayout();
   const phone = layout === 'phone';
   const params = useRouteParams<{ section?: string }>();
-  // Upcoming only once a server is known to offer it (not a kid there): a link to it while
-  // that is still loading opens Stats.
+  // Upcoming only once a server is known to offer it (not a kid there).
   const upcoming = useUpcomingAvailable() === true;
   const moduleSections = useMemo(
     () => youExtraSections(upcoming ? UPCOMING : null, youModuleSections(active)),
     [active, upcoming],
   );
   const moduleKeys = useMemo(() => [...moduleSections.keys()], [moduleSections]);
+  // A link to a section the servers may yet offer (Upcoming, a module's) waits for their
+  // flags, rather than showing Stats until they answer (fe#159): only while one is still
+  // being read, so a section no server offers opens Stats.
+  const flagsPending = useFlagsPending();
+  const asked = firstParam(params.section);
   const section = parseYouSection(params.section, moduleKeys);
-  const ownSection = isCoreYouSection(section) ? section : null;
+  const waiting = flagsPending && asked !== '' && section !== asked;
+  const shown = waiting ? asked : section;
+  const ownSection = isCoreYouSection(section) && !waiting ? section : null;
   const moduleSection = ownSection ? undefined : moduleSections.get(section);
   const title = ownSection ? t(youTitleKey(ownSection)) : (moduleSection?.label(t) ?? '');
 
@@ -135,12 +142,12 @@ function Hub({ active }: { active: readonly PlayerModule[] }) {
   }));
 
   return (
-    <View className="flex-1" testID={`you-hub-${section}`}>
+    <View className="flex-1" testID={waiting ? 'you-hub-waiting' : `you-hub-${section}`}>
       <View className={phone ? 'px-4 pb-2' : undefined}>
         <SubNavSections
           tab="(me)"
           options={options}
-          value={section}
+          value={shown}
           onChange={(next) => router.setParams(youSectionParams(next))}
           accessibilityLabel={t('you.sections.label')}
           className="max-w-full"
@@ -148,15 +155,24 @@ function Hub({ active }: { active: readonly PlayerModule[] }) {
       </View>
       {/* Keyed: a new section starts at its top, not at the offset the last one was left
           at (one shared scroller would keep it). */}
-      <Fragment key={section}>
-        {ownSection
-          ? SECTIONS[ownSection]({ phone })
-          : moduleSection
-            ? column(<ModuleSectionBody section={moduleSection} phone={phone} />)
-            : null}
+      <Fragment key={shown}>
+        {waiting ? (
+          <Spinner center />
+        ) : ownSection ? (
+          SECTIONS[ownSection]({ phone })
+        ) : moduleSection ? (
+          column(<ModuleSectionBody section={moduleSection} phone={phone} />)
+        ) : null}
       </Fragment>
     </View>
   );
+}
+
+/** Whether a server's flags (`GET /server`) are still being read: one neither known nor
+ * failed. */
+function useFlagsPending(): boolean {
+  const { caps, failed } = useCapabilitiesAllRead();
+  return Object.entries(caps).some(([cid, c]) => c === undefined && !failed.includes(cid));
 }
 
 /** A module's section behind a component of its own, so a hook its `render` reaches stays
