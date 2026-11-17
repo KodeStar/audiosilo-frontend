@@ -33,7 +33,7 @@ import { progressToSave, writeMirror } from '@/playback/progress-sync';
 import { type BookRef, bookRefOf } from '@/playback/types';
 import { webTranscodeFromCache } from '@/playback/transcode-capability';
 import { cachedEbookUri } from '@/reader/ebook-file';
-import { onConnectionRemoved, useSession } from '@/stores/session';
+import { onConnectionRemoved } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 
 import { engine } from './engine';
@@ -201,7 +201,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     await persist();
     // The episodes that were waiting for their server when the app closed wait again, once
     // the session knows the connections to ask.
-    whenSessionRead(resumeEpisodeWaits);
+    void whenSessionReady().then(resumeEpisodeWaits);
     // The community metadata kept with each downloaded book, seeded for offline reading
     // (and filled in for a download made before it was kept). In the background, once the
     // launch's first screens are up: the registry is usable without it.
@@ -581,17 +581,6 @@ function watchEpisode(
     },
     { retry },
   );
-}
-
-/** Run `fn` once the session has read its connections (past `loading`), so a client can be
- * resolved for them. */
-function whenSessionRead(fn: () => void) {
-  if (useSession.getState().status !== 'loading') return fn();
-  const stop = useSession.subscribe((state) => {
-    if (state.status === 'loading') return;
-    stop();
-    fn();
-  });
 }
 
 /**

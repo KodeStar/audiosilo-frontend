@@ -51,6 +51,9 @@ const mockHasMetadata = jest.fn(async (_cid: string) => true);
 const mockCanMatch = jest.fn((_e: DownloadEntry) => true);
 const mockSaveSnapshot = jest.fn(async (..._a: unknown[]) => {});
 const mockRelease = jest.fn();
+// The session has read its connections unless a test says otherwise (`resumeEpisodeWaits`
+// waits for that).
+const mockSessionReady = jest.fn(async () => {});
 // Each connection's kept `/server` answer (server-snapshots.test.ts): the store only
 // carries over the one an old payload file holds.
 jest.mock('@/api/server-snapshots', () => ({
@@ -66,7 +69,7 @@ jest.mock('@/downloads/offline-meta', () => ({
   seedOfflineMeta: (...a: unknown[]) => mockSeedMeta(...a),
   seedQuery: (...a: unknown[]) => mockSeedQuery(...a),
   serverHasMetadata: (cid: string) => mockHasMetadata(cid),
-  whenSessionReady: async () => {},
+  whenSessionReady: () => mockSessionReady(),
   releaseOfflineBook: (...a: unknown[]) => mockRelease(...a),
 }));
 
@@ -121,19 +124,9 @@ jest.mock('@/api/connection-clients', () => ({
   resolveClient: jest.fn(() => null),
 }));
 
-// The store registers an onConnectionRemoved purge at import time. The session has read its
-// connections unless a test says otherwise (`resumeEpisodeWaits` waits for that).
-let mockSessionStatus = 'authenticated';
-const mockSessionListeners: ((s: { status: string }) => void)[] = [];
+// The store registers an onConnectionRemoved purge at import time.
 jest.mock('@/stores/session', () => ({
   onConnectionRemoved: jest.fn(() => () => {}),
-  useSession: {
-    getState: () => ({ status: mockSessionStatus }),
-    subscribe: (l: (s: { status: string }) => void) => {
-      mockSessionListeners.push(l);
-      return () => mockSessionListeners.splice(mockSessionListeners.indexOf(l), 1);
-    },
-  },
 }));
 
 // The network rule an automatic episode download is asked again once its wait ends.
@@ -2753,8 +2746,7 @@ describe('podcast episodes', () => {
       manifest: { ...downloadedEntry().manifest, book: episodeBook(false), files: [] },
     };
     afterEach(() => {
-      mockSessionStatus = 'authenticated';
-      mockSessionListeners.length = 0;
+      mockSessionReady.mockImplementation(async () => {});
     });
 
     it('keeps the wait', () => {
@@ -2782,12 +2774,13 @@ describe('podcast episodes', () => {
     });
 
     it('waits for the session to read its connections first', async () => {
-      mockSessionStatus = 'loading';
+      let ready = () => {};
+      mockSessionReady.mockImplementation(() => new Promise<void>((r) => (ready = r)));
       await seed({ [key]: waiting });
       await useDownloads.getState().hydrate();
       expect(mockWaits).toHaveLength(0);
-      mockSessionStatus = 'authenticated';
-      mockSessionListeners.forEach((l) => l({ status: 'authenticated' }));
+      ready();
+      await settle();
       expect(mockWaits).toHaveLength(1);
     });
 
