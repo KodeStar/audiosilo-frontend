@@ -100,7 +100,7 @@ jest.mock('@/api/hooks', () => {
         series_index: 1,
         duration: 36_000,
         asin: 'B003ZWFO7E',
-        published: '2010',
+        published: '2010-08-31',
       },
     }),
     useBookMeta: () => ({ data: undefined }),
@@ -128,6 +128,7 @@ jest.mock('@/playback/up-next-sources', () => ({ upNextSources: () => ({}) }));
 /* eslint-disable import/first */
 import { queryClient } from '@/api/provider';
 import { contentKey } from '@/lib/content-key';
+import { formatReleaseDate } from '@/lib/format';
 import { playerHref } from '@/lib/paths';
 import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
@@ -723,7 +724,9 @@ describe('EndCredits', () => {
     expect(page().props.importantForAccessibility).toBe('no-hide-descendants');
     expect(screen.getByText('Read by')).toBeTruthy();
     expect(screen.getByText('Released')).toBeTruthy();
-    expect(screen.getByText('2010')).toBeTruthy();
+    // The date the listener's way, never the stored `2010-08-31`.
+    expect(screen.getByText(formatReleaseDate('2010-08-31'))).toBeTruthy();
+    expect(screen.queryByText('2010-08-31')).toBeNull();
     expect(screen.getByText(PATH)).toBeTruthy();
   });
 });

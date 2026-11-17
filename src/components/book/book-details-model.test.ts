@@ -1,4 +1,5 @@
 import i18n from '@/i18n';
+import { formatReleaseDate } from '@/lib/format';
 
 import {
   aboutContent,
@@ -156,6 +157,22 @@ describe('aboutContent', () => {
       { label: 'Released', value: '2010' },
     ]);
     expect(aboutContent(book, undefined, undefined, t).details).toEqual([]);
+  });
+
+  it("formats a day or month date the listener's way, a year or free text as it came", () => {
+    const release = (release_date: string, first_published?: string) =>
+      aboutContent(book, { ...work, first_published }, { release_date }, t).details;
+    expect(release('2012-06-26', '1937-09-21')).toEqual([
+      { label: 'Released', value: formatReleaseDate('2012-06-26') },
+      { label: 'First published', value: formatReleaseDate('1937-09-21') },
+    ]);
+    expect(formatReleaseDate('2012-06-26')).not.toBe('2012-06-26');
+    expect(release('2012-06')).toEqual([
+      { label: 'Released', value: formatReleaseDate('2012-06') },
+    ]);
+    expect(release('Summer 2012')).toEqual([{ label: 'Released', value: 'Summer 2012' }]);
+    // Compared as stated: the same day twice is still one row.
+    expect(release('2012-06-26', '2012-06-26')).toHaveLength(1);
   });
 
   it('shows one date when first published is the release date (fe#291)', () => {

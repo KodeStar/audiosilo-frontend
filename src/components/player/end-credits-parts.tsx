@@ -29,7 +29,7 @@ import { ProgressRing } from '@/components/ui/progress-ring';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { useDownloadEntry } from '@/downloads/store';
-import { formatCountdown, formatDuration } from '@/lib/format';
+import { formatCountdown, formatDuration, formatReleaseDate } from '@/lib/format';
 import { openExternalUrl } from '@/lib/support';
 import { linesFor } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
@@ -199,6 +199,7 @@ export type CreditsData = {
   author?: string;
   narrator?: string;
   recording?: BookMetaRecording;
+  /** As stated (`2012-06-26`, `2012-06`, `2012`); shown at its own precision, the listener's way. */
   released?: string;
   attribution?: BookMetaAttribution;
   path: string;
@@ -229,7 +230,8 @@ export function CreditsDialog({
   if (narrator) rows.push([t('player.finished.readBy'), text(narrator)]);
   if (data.recording?.publisher)
     rows.push([t('player.finished.publisher'), text(data.recording.publisher)]);
-  if (data.released) rows.push([t('player.finished.released'), text(data.released)]);
+  if (data.released)
+    rows.push([t('player.finished.released'), text(formatReleaseDate(data.released))]);
   const credit = data.attribution;
   if (credit)
     rows.push([

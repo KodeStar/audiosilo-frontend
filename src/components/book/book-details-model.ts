@@ -8,7 +8,7 @@ import type {
   ChaptersResponse,
 } from '@/api/types';
 import { getLocale } from '@/i18n/locale';
-import { bitrateKbps } from '@/lib/format';
+import { bitrateKbps, formatReleaseDate } from '@/lib/format';
 import { bookLabels, LABEL_KINDS, type LabelKind } from '@/lib/labels';
 import { httpUrl, urlEndpoint } from '@/lib/url-host';
 import { codecLabel } from '@/playback/transcode';
@@ -204,11 +204,17 @@ export function aboutContent(
   const details: AboutContent['details'] = [];
   const publisher = bookPublisher(book, recording);
   if (publisher) details.push({ label: t('book.meta.publisher'), value: publisher });
+  // Dates read the listener's way (`formatReleaseDate`: "26 Jun 2012" in en-GB), at the
+  // precision given; a value that is no date shows as it came.
   const released = recording?.release_date || book.published;
-  if (released) details.push({ label: t('book.meta.released'), value: released });
+  if (released)
+    details.push({ label: t('book.meta.released'), value: formatReleaseDate(released) });
   // The same date twice says nothing more (fe#291): one row, "Released".
   if (work?.first_published && work.first_published !== released)
-    details.push({ label: t('book.meta.firstPublished'), value: work.first_published });
+    details.push({
+      label: t('book.meta.firstPublished'),
+      value: formatReleaseDate(work.first_published),
+    });
   const language = book.language?.trim();
   if (language) details.push({ label: t('book.meta.language'), value: languageName(language) });
   // Absent is unknown, never "No": only a value someone gave says either way. The

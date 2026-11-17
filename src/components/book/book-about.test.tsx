@@ -18,6 +18,7 @@ jest.mock('@/theme/theme-provider', () => ({
 }));
 
 /* eslint-disable import/first */
+import { formatReleaseDate } from '@/lib/format';
 import { useLibrarySelection } from '@/stores/library-selection';
 
 import { BookAbout, openLabelBooks } from './book-about';
@@ -124,7 +125,7 @@ describe('BookAbout', () => {
       />,
     );
     expect(screen.getByText(/^The Hobbit .*J\. R\. R\. Tolkien/)).toBeTruthy();
-    expect(screen.getByText('2010-08-31')).toBeTruthy();
+    expect(screen.getByText(formatReleaseDate('2010-08-31'))).toBeTruthy();
     expect(screen.queryByText('Publisher')).toBeNull();
   });
 
