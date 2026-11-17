@@ -50,6 +50,28 @@ beforeEach(() => {
 });
 
 describe('ConnectionsSection', () => {
+  // CONNECT-15: a server whose sign-in ended does not look like a healthy one.
+  it('marks a signed-out server and offers its way back', async () => {
+    const first = useSession.getState().connections[0];
+    useSession.setState({ connections: [{ ...first, needsReconnect: 'auth' }] });
+    await render(<ConnectionsSection onRemove={jest.fn()} />);
+    expect(screen.getByText('Signed out')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Reconnect to Hearthside'));
+    await waitFor(() =>
+      expect(mockRouter.push).toHaveBeenCalledWith({
+        pathname: '/connect/sign-in',
+        params: { serverName: 'Hearthside' },
+      }),
+    );
+    expect(useSession.getState().pendingServerUrl).toBe('https://books.example');
+  });
+
+  it('marks nothing on a server that is signed in', async () => {
+    await render(<ConnectionsSection onRemove={jest.fn()} />);
+    expect(screen.queryByText('Signed out')).toBeNull();
+    expect(screen.queryByLabelText('Reconnect to Hearthside')).toBeNull();
+  });
+
   it('distinguishes same-name account rows and their accessible actions', async () => {
     const first = useSession.getState().connections[0];
     useSession.setState({

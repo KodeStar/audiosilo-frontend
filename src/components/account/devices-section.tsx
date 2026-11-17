@@ -7,6 +7,7 @@ import { ApiError } from '@/api/client';
 import { CapabilityError, useMyDevices, useRevokeMyDevice } from '@/api/hooks';
 import type { MyDevice } from '@/api/types';
 import { OfflineState } from '@/components/layout/offline-state';
+import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -87,6 +88,7 @@ export function DevicesSection({
 }) {
   const { t } = useTranslation();
   const devices = useMyDevices(connectionId);
+  const signedOut = useSignedOutConnection(connectionId);
   const unread = useUnreadQuery(devices);
   const revoke = useRevokeMyDevice(connectionId);
   const [pending, setPending] = useState<MyDevice | null>(null);
@@ -140,6 +142,10 @@ export function DevicesSection({
           // Before the error and the skeleton: a list held for the network stays pending
           // (`useUnreadQuery`), and no Retry can work without one.
           <OfflineState className="py-6" />
+        ) : unread === 'failed' && signedOut ? (
+          // The server ended this sign-in: signing in again is the way, not a Retry
+          // (CONNECT-15).
+          <SignInAgainState connection={signedOut} compact className="m-4" />
         ) : unread === 'failed' ? (
           // Only with no list to show: a read again that fails (after a password change, a
           // revoke) keeps the list as it was, never its error in its place (server#285).
