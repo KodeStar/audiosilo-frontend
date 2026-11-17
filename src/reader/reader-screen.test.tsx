@@ -240,6 +240,21 @@ describe('ReaderScreen', () => {
       });
     });
 
+    it("shows a relayout's page but saves nothing for it, keeping the place it held (fe#172)", async () => {
+      const { unmount } = await mount();
+      await opened(CFI_A);
+      await say({ type: 'progress', cfi: CFI_B, fraction: 0.3, sectionLabel: '' });
+      // A rotation lands on a page that starts a little earlier: shown, not saved.
+      await say({ type: 'progress', cfi: CFI_A, fraction: 0.29, sectionLabel: '', relayout: true });
+      expect(screen.getByText('29% through the book')).toBeTruthy();
+      await unmount();
+      expect(saveReaderPlace).toHaveBeenCalledTimes(1);
+      expect(saveReaderPlace).toHaveBeenCalledWith({}, 'c1', 1, 'A/Book', {
+        cfi: CFI_B,
+        progression: 0.3,
+      });
+    });
+
     it('lands again without a save after Try again', async () => {
       const { unmount } = await mount();
       await opened(CFI_A);

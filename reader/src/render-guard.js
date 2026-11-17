@@ -33,3 +33,27 @@ export function guardRender(renderer) {
   };
   return true;
 }
+
+// A relayout (the frame resized or rotated, a new text size) and a section that grows as
+// its fonts load both put the paginator back on the place it holds (`#scrollToAnchor`,
+// relocate reason `anchor`): no move, though the page it lands on can start a little before
+// that place. Saved as a move, each one pulled the place back a little (fe#172). foliate's
+// view passes a relocate on without its reason, so the reason is read where the paginator
+// dispatches it, before the view hears of it.
+
+/**
+ * Watches the relocates `renderer` dispatches (an instance property, so its own
+ * `this.dispatchEvent` goes through it, as `guardRender`'s does). Returns whether the last
+ * one was a relayout: read from the view's `relocate`, which foliate sends from inside that
+ * dispatch.
+ */
+export function watchRelayouts(renderer) {
+  const dispatch = renderer?.dispatchEvent;
+  if (typeof dispatch !== 'function') return () => false;
+  let reason;
+  renderer.dispatchEvent = function watchedDispatch(event) {
+    if (event?.type === 'relocate') reason = event.detail?.reason;
+    return dispatch.call(this, event);
+  };
+  return () => reason === 'anchor';
+}

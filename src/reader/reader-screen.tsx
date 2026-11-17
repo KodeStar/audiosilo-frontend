@@ -349,6 +349,10 @@ export function ReaderScreen({
           fraction: message.fraction,
           sectionLabel: message.sectionLabel,
         });
+        // A relayout (a rotation, a resize, a new text size) is no move: the page it lands on
+        // can start a little before the place, and saving it pulled the place back with
+        // every one (fe#172). Shown, while where the reader is stays the place it held.
+        if (message.relayout) return;
         atNow.current = { cfi: message.cfi, progression: message.fraction };
         if (landing.current) {
           landing.current = false;

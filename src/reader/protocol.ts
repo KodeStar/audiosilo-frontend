@@ -22,9 +22,9 @@ import type { ReaderReadalongMap } from './readalong-map';
  * `follow` (back to the narration: turn to the sentence being read and keep following).
  *
  * Reader -> host: `ready`, `opened` (title, flattened TOC, whether the book reads right to
- * left), `progress` (on every move), `loading` (a section is being laid out), `error`,
- * `escape` (Escape pressed in the book, which the host's own keys never see), `csp` (a
- * blocked load, logged); read-along: `seek {t}` (a sentence was tapped: play from its
+ * left), `progress` (on every move; marked `relayout` after a relayout, which is no move),
+ * `loading` (a section is being laid out), `error`, `escape` (Escape pressed in the book,
+ * which the host's own keys never see), `csp` (a blocked load, logged); read-along: `seek {t}` (a sentence was tapped: play from its
  * start), `following {value}` (the reader follows the narration, or stopped because the
  * reader turned away) and `readalong {state, unresolved}` (`ok` once a map is in with a
  * sentence in this book's sections, else `none`; `unresolved` counts the spans skipped).
@@ -91,7 +91,15 @@ export type ReaderErrorCode = (typeof READER_ERROR_CODES)[number];
 export type ReaderMessage =
   | { type: 'ready' }
   | { type: 'opened'; title: string; toc: TocEntry[]; rtl: boolean }
-  | { type: 'progress'; cfi: string; fraction: number; sectionLabel: string }
+  | {
+      type: 'progress';
+      cfi: string;
+      fraction: number;
+      sectionLabel: string;
+      /** A relayout (a resize, a rotation, a new text size) put the reader back on its place,
+       * on a page that can start a little before it: shown, never saved (fe#172). */
+      relayout?: true;
+    }
   | { type: 'loading'; value: boolean }
   | { type: 'error'; code: ReaderErrorCode; message: string }
   | { type: 'escape' }
@@ -144,7 +152,13 @@ export function parseReaderMessage(data: unknown): ReaderMessage | null {
       const sectionLabel = str(data.sectionLabel) ?? '';
       // The server refuses a CFI over 2048 bytes: such a place is not worth a message.
       if (!cfi || !cfi.startsWith('epubcfi(') || cfi.length > MAX_CFI || f === null) return null;
-      return { type: 'progress', cfi, fraction: f, sectionLabel };
+      return {
+        type: 'progress',
+        cfi,
+        fraction: f,
+        sectionLabel,
+        ...(data.relayout === true ? { relayout: true as const } : {}),
+      };
     }
     case 'loading':
       return typeof data.value === 'boolean' ? { type: 'loading', value: data.value } : null;

@@ -30,7 +30,7 @@ import { View } from '../vendor/foliate-js/view.js';
 import { ChunkError, createAssembly, createTextAssembly, TooLargeError } from './chunks.js';
 import { BookError, openEpub } from './epub-open.js';
 import { createReadalong } from './readalong.js';
-import { guardRender } from './render-guard.js';
+import { guardRender, watchRelayouts } from './render-guard.js';
 
 void View; // registers <foliate-view>
 
@@ -41,6 +41,8 @@ const MAX_LABEL = 300;
 let view = null;
 let opened = false;
 let lastProgress = null;
+// Whether the relocate being handled is a relayout (`watchRelayouts`), for the open view.
+let isRelayout = () => false;
 let busy = false;
 let moves = 0;
 let theme = { dark: false, background: '#ffffff', foreground: '#000000' };
@@ -386,6 +388,7 @@ async function openBook(msg, bytes) {
   setBusy(true);
   opened = false;
   lastProgress = null;
+  isRelayout = () => false;
   let book;
   try {
     book = await openEpub(bytes);
@@ -415,6 +418,7 @@ async function openBook(msg, bytes) {
     await view.open(book);
     // No relayout of a section whose document is still loading (fe#239).
     guardRender(view.renderer);
+    isRelayout = watchRelayouts(view.renderer);
     view.renderer.setAttribute('flow', 'paginated');
     view.renderer.setAttribute('margin', '32px');
     view.renderer.setAttribute('gap', '6%');
@@ -456,7 +460,8 @@ function onRelocate(e) {
     fraction: typeof fraction === 'number' && Number.isFinite(fraction) ? fraction : 0,
     sectionLabel: text(tocItem?.label),
   };
-  if (opened) send(lastProgress);
+  // A relayout to a new page start is no move: the host shows it and saves nothing (fe#172).
+  if (opened) send(isRelayout() ? { ...lastProgress, relayout: true } : lastProgress);
 }
 
 function onSectionLoad(e) {

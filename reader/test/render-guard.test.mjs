@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { canLayout, guardRender } from '../src/render-guard.js';
+import { canLayout, guardRender, watchRelayouts } from '../src/render-guard.js';
 
 const loaded = { documentElement: {}, body: {} };
 
@@ -69,4 +69,39 @@ test("guards only foliate's paginator: a fixed-layout book's renderer is left as
   assert.equal(fxl.render, render);
   assert.equal(guardRender(null), false);
   assert.equal(guardRender({ localName: 'foliate-paginator' }), false);
+});
+
+/** A stand-in for foliate's paginator dispatching its relocates, and for its view, which
+ * hears each one inside the dispatch and passes it on without the reason. */
+function relocating() {
+  const heard = [];
+  const renderer = new EventTarget();
+  renderer.relocate = function (reason) {
+    this.dispatchEvent(new CustomEvent('relocate', { detail: { reason } }));
+  };
+  return { renderer, heard };
+}
+
+test('says whether the relocate being passed on is a relayout (fe#172)', () => {
+  const { renderer, heard } = relocating();
+  const isRelayout = watchRelayouts(renderer);
+  // The view's listener, as foliate's: it reads nothing of the reason.
+  renderer.addEventListener('relocate', () => heard.push(isRelayout()));
+  renderer.relocate('anchor'); // a resize, a rotation, a new text size, fonts loaded
+  renderer.relocate('page'); // a page turn
+  renderer.relocate('navigation'); // a contents entry, a follow
+  renderer.relocate('snap'); // a swipe
+  renderer.relocate('anchor');
+  assert.deepEqual(heard, [true, false, false, false, true]);
+});
+
+test('passes every event on as it was dispatched', () => {
+  const { renderer } = relocating();
+  watchRelayouts(renderer);
+  let got = null;
+  renderer.addEventListener('load', (e) => (got = e.detail));
+  assert.equal(renderer.dispatchEvent(new CustomEvent('load', { detail: 'doc' })), true);
+  assert.equal(got, 'doc');
+  // A renderer that dispatches nothing: never a relayout.
+  assert.equal(watchRelayouts(null)(), false);
 });
