@@ -172,6 +172,7 @@ describe('a start that is no longer wanted', () => {
           }),
       );
       (mockSvc.play as jest.Mock).mockClear();
+      (mockSvc.pause as jest.Mock).mockClear();
       const starting = usePlayer
         .getState()
         .playBook('c1', 2, book('Late'), undefined, 10, undefined, undefined, () => wanted);
@@ -183,6 +184,9 @@ describe('a start that is no longer wanted', () => {
       landed();
       await starting;
       expect(mockSvc.play).not.toHaveBeenCalled();
+      // Paused outright: an engine still set to play (the queue it replaced, or Media3's play
+      // after a failed resumption) would otherwise start it as it loads.
+      expect(mockSvc.pause).toHaveBeenCalled();
       expect(usePlayer.getState().nowPlaying?.path).toBe('Late');
       // The stall watchdog was disarmed with the intent: the engine's idle report stays a
       // paused book, never an error.
@@ -196,10 +200,12 @@ describe('a start that is no longer wanted', () => {
 
   it('plays as before while it is wanted', async () => {
     (mockSvc.play as jest.Mock).mockClear();
+    (mockSvc.pause as jest.Mock).mockClear();
     await usePlayer
       .getState()
       .playBook('c1', 2, book('Wanted'), undefined, 10, undefined, undefined, () => true);
     expect(mockSvc.play).toHaveBeenCalled();
+    expect(mockSvc.pause).not.toHaveBeenCalled();
     // Stopped, so no watchdog or save loop outlives the test.
     await usePlayer.getState().stop();
   });

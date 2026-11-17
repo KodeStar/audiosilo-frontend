@@ -2837,9 +2837,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       if (!current()) return;
       // Called off while it was looked up or loaded (a car play its native side gave up on):
       // loaded, never played. Android had released that start's foreground service, so a
-      // play now would be heard with no notification and no controls.
+      // play now would be heard with no notification and no controls. Paused outright: the
+      // engine may still be set to play, so the load alone would start it (the module's
+      // `stop` keeps playWhenReady from the queue it replaced, and Media3 presses play on the
+      // empty player when a resumption it waited on fails).
       if (wanted && !wanted()) {
         clearPlaybackIntent();
+        await svc.pause();
         return;
       }
       // False: gave way to another tab while it loaded (`giveWayTo`).
