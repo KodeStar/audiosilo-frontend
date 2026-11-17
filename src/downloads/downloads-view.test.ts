@@ -7,6 +7,9 @@ import {
   isEpisodeEntry,
   orphanDownloads,
   splitDownloads,
+  growingBytes,
+  grownSince,
+  heldByKey,
   storageBar,
   unsupportedReason,
   visibleDownloads,
@@ -14,6 +17,7 @@ import {
 import type { DownloadEntry, DownloadStatus } from './types';
 
 const GB = 1024 ** 3;
+const MB = 1024 ** 2;
 
 function entry(
   path: string,
@@ -145,6 +149,31 @@ describe('storageBar', () => {
     expect(bar.scale).toBe(7);
   });
 
+  // PLAYER-05: the figure grows while a download runs, not only once it lands.
+  it('counts what the downloads under way have written', () => {
+    expect(storageBar([g('a', 10 * MB)], null, 12 * MB, 5 * MB).used).toBe(15 * MB);
+    // A measure read mid-download that already holds those bytes is not counted twice.
+    expect(storageBar([g('a', 10 * MB)], null, 18 * MB, 5 * MB).used).toBe(18 * MB);
+    // A measure above the list (covers, another person's books) grows by what was written
+    // since it was read.
+    expect(storageBar([g('a', 10 * MB)], null, 900 * MB, 5 * MB, 3 * MB).used).toBe(903 * MB);
+    // No measure: another person's running download is not counted on this person's list.
+    expect(storageBar([g('a', 10 * MB)], null, null, 5 * MB, 30 * MB).used).toBe(15 * MB);
+  });
+
+  // `free` is as old as the measure: what was written since is ours, never taken off the
+  // other apps' share (it would shrink while a download runs and come back as it lands).
+  it("keeps other apps' share while a download grows", () => {
+    const disk = { scope: 'device' as const, capacity: 128 * GB, free: 100 * GB };
+    const other = (grown: number) =>
+      storageBar([g('a', 2 * GB)], disk, 3 * GB, 0, grown).segments.find(
+        (s) => s.kind === 'other-apps',
+      )?.bytes;
+    expect(other(0)).toBe(25 * GB);
+    expect(other(GB)).toBe(25 * GB);
+    expect(storageBar([g('a', 2 * GB)], disk, 3 * GB, 0, GB).used).toBe(4 * GB);
+  });
+
   it('prefers the measured total, and skips empty servers', () => {
     const bar = storageBar([g('a', 10), g('b', 0)], null, 25);
     expect(bar.used).toBe(25);
@@ -219,5 +248,74 @@ describe('episode downloads', () => {
       'The Daily',
     );
     expect(episodeShowTitle(withBook({ episode: { show_path: 'Pods/Daily' } }))).toBe('Daily');
+  });
+});
+
+describe('growingBytes', () => {
+  const entry = (connectionId: string, status: DownloadEntry['status'], bytes: number) =>
+    ({ connectionId, status, bytes }) as DownloadEntry;
+
+  it("sums the listener's running downloads, in whole megabytes", () => {
+    const entries = {
+      a: entry('c1', 'downloading', 3 * MB + 500),
+      b: entry('c1', 'queued', 0),
+      c: entry('c1', 'error', MB),
+      d: entry('c1', 'downloaded', 40 * MB),
+      e: entry('c2', 'downloading', 9 * MB),
+    };
+    expect(growingBytes(entries, ['c1'])).toBe(3 * MB);
+    expect(growingBytes(entries, [])).toBe(0);
+  });
+});
+
+describe('grownSince', () => {
+  const kept = (e: DownloadEntry, bytes: number): DownloadEntry => ({
+    ...e,
+    manifest: { ...e.manifest, files: [{ relPath: 'a.mp3', localUri: 'file:///a', bytes }] },
+  });
+
+  it("counts each download's own growth since the measure, every person's", () => {
+    const before = {
+      a: entry('a', 'downloading', { bytes: 10 * MB }),
+      b: entry('b', 'downloaded', { bytes: 40 * MB, totalBytes: 40 * MB }),
+      c: entry('c', 'downloading', { connectionId: 'other', bytes: 5 * MB }),
+    };
+    const held = heldByKey(before);
+    expect(grownSince(before, held)).toBe(0);
+    const after = {
+      ...before,
+      a: entry('a', 'downloading', { bytes: 30 * MB + 500 }),
+      c: entry('c', 'downloading', { connectionId: 'other', bytes: 7 * MB }),
+      // Began after the measure: all of it.
+      d: entry('d', 'downloading', { bytes: 3 * MB }),
+    };
+    expect(grownSince(after, held)).toBe(25 * MB);
+  });
+
+  it('keeps what a download added once it lands, until the measure is read again', () => {
+    const held = heldByKey({ a: entry('a', 'downloading', { bytes: 10 * MB }) });
+    const landed = { a: entry('a', 'downloaded', { bytes: 50 * MB, totalBytes: 50 * MB }) };
+    expect(grownSince(landed, held)).toBe(40 * MB);
+    expect(grownSince(landed, heldByKey(landed))).toBe(0);
+  });
+
+  // The files a failed attempt finished stay on the device, so the measure holds them: a
+  // retry counts from 0 and passes them at once, which is no growth.
+  it('counts a retry only past the files its failed attempt kept', () => {
+    const failed = kept(entry('a', 'error', { bytes: 310 * MB }), 300 * MB);
+    const held = heldByKey({ a: failed });
+    const queued = kept(entry('a', 'queued'), 300 * MB);
+    expect(grownSince({ a: queued }, held)).toBe(0);
+    const passing = kept(entry('a', 'downloading', { bytes: 300 * MB }), 300 * MB);
+    expect(grownSince({ a: passing }, held)).toBe(0);
+    // A measure read while it waited to run again holds the kept files too.
+    expect(grownSince({ a: passing }, heldByKey({ a: queued }))).toBe(0);
+    const further = kept(entry('a', 'downloading', { bytes: 350 * MB }), 300 * MB);
+    expect(grownSince({ a: further }, held)).toBe(40 * MB);
+  });
+
+  it('counts nothing for a download that went', () => {
+    const held = heldByKey({ a: entry('a', 'downloading', { bytes: 10 * MB }) });
+    expect(grownSince({}, held)).toBe(0);
   });
 });

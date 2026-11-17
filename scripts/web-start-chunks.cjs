@@ -33,11 +33,23 @@ const PART_CHARS = 450_000;
  * Only at the end: the same line inside a module (a template literal) is code. */
 const TRAILER = /(?:\n\/\/# (?:sourceMappingURL|debugId)=[^\n]*)+\n?$/;
 
+/** Whether `code` is a complete script on its own (compiled, never run). */
+function compiles(code) {
+  try {
+    new vm.Script(code);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * `code` cut into about `parts` pieces, each a run of whole module definitions (a line
  * starting `__d(` opens one; what comes before the first stays with it, the run statements
- * after the last stay with that one). Null when it can't be cut so that every piece is a
- * complete script (one is checked by compiling it, never run).
+ * after the last stay with that one). Every piece is a complete script: a boundary that is
+ * not one after all (a line inside a template literal that starts `__d(`) is dropped and
+ * its piece joined to the next, so the other boundaries keep the parallel compile. Null
+ * when no cut into two or more complete scripts is left.
  */
 function cutModules(code, parts) {
   // Where each module definition after the first line starts (just past its newline).
@@ -57,14 +69,21 @@ function cutModules(code, parts) {
     }
   }
   pieces.push(code.slice(from));
+  const whole = [];
+  let carried = '';
   for (const p of pieces) {
-    try {
-      new vm.Script(p);
-    } catch {
-      return null;
-    }
+    const piece = carried + p;
+    if (compiles(piece)) {
+      whole.push(piece);
+      carried = '';
+    } else carried = piece;
   }
-  return pieces;
+  // What is left over joins the last complete piece, which must still be one.
+  if (carried) {
+    if (whole.length === 0 || !compiles(whole[whole.length - 1] + carried)) return null;
+    whole[whole.length - 1] += carried;
+  }
+  return whole.length > 1 ? whole : null;
 }
 
 /**

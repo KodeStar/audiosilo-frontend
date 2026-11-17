@@ -2,8 +2,13 @@ import { Stack, useRootNavigationState, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { dropConnectHandoffs } from '@/components/connect/invite-handoff';
-import { dropOidcIntent, resumeOidcIntent, takeOidcIntent } from '@/components/connect/oidc-intent';
+import { dropConnectHandoffs, useHandoff } from '@/components/connect/invite-handoff';
+import {
+  dropOidcIntent,
+  peekOidcIntent,
+  resumeOidcIntent,
+  takeOidcIntent,
+} from '@/components/connect/oidc-intent';
 import { oidcReturnOnLoad } from '@/components/connect/oidc-sign-in';
 import { KIDS_PATH } from '@/components/kids/kids-model';
 import { useKidsActive } from '@/components/kids/use-kids';
@@ -54,8 +59,14 @@ export default function ConnectLayout() {
   // read. A grown-up's pass through kids mode is not: it waits on the sign-in's finish
   // (`passWaits`, until `settleOidcPass`), and meanwhile kids mode lets only the return's own
   // screen run, which finishes the sign-in and shows nothing else. No session, no pass: the
-  // address typed after a trip abandoned at the provider opens nothing for a child.
-  const [held, setHeld] = useState(() => takeOidcIntent(oidcReturnOnLoad()));
+  // address typed after a trip abandoned at the provider opens nothing for a child. Read as
+  // the layout renders and taken once it is on screen (`useHandoff`): the app's first render
+  // is a transition, and one thrown away and run again must still find it.
+  const intent = useHandoff(
+    () => peekOidcIntent(oidcReturnOnLoad()),
+    () => void takeOidcIntent(false),
+  );
+  const [held, setHeld] = useState(intent);
   const [passWaiting, setPassWaiting] = useState(false);
   // This render's own answer: the state it sets only shows in the next one.
   let passWaits = passWaiting;

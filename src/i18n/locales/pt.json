@@ -208,6 +208,7 @@
   "account": {
     "connections": {
       "manage": "Gerir {{name}}",
+      "signedOut": "Sessão terminada",
       "remove": "Remover {{name}}",
       "add": "Adicionar um servidor",
       "removeConfirm": {

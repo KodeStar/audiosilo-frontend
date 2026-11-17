@@ -23,11 +23,12 @@ export function resolveLanguage(pref: LanguagePref): SupportedCode {
   return pref === 'system' ? detectDeviceLanguage() : pref;
 }
 
+/** The preference only: the language in effect is i18next's own (`i18n.language`), which
+ * stays English past the first paint while a slow catalog loads, so a resolved language here
+ * could name one not yet showing (fe#177). */
 type LanguageContextValue = {
   /** User preference, including `'system'`. */
   pref: LanguagePref;
-  /** Concrete language actually in effect (never `'system'`). */
-  language: SupportedCode;
   setPref: (p: LanguagePref) => void;
 };
 
@@ -88,11 +89,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   if (!hydrated) return null;
 
-  return (
-    <LanguageContext.Provider value={{ pref, language: resolveLanguage(pref), setPref }}>
-      {children}
-    </LanguageContext.Provider>
-  );
+  return <LanguageContext.Provider value={{ pref, setPref }}>{children}</LanguageContext.Provider>;
 }
 
 /** The persisted language preference (default, and for anything unreadable: follow the

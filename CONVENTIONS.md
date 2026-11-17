@@ -123,10 +123,12 @@ can never log anyone out (`{ authReset, cacheReset }`):
   the part itself: the whole's name hashes its code, not the cut, and the build's files are
   cached as immutable, so a changed cut must never reuse a part's name), chained by
   `requires` so the HTML names them in order (whatever required the whole requires the last
-  part): several parts compile on several threads at once. A cut is kept only when every part
-  compiles on its own. This is what makes a start fast where no service worker can help (a
-  page on plain http, a private window: no code cache), about 60-80 ms off both cold and warm
-  starts. An async chunk is never cut (the runtime loads it by its name).
+  part): several parts compile on several threads at once. Every part compiles on its own: a
+  boundary that would leave one that doesn't (a `__d(` line inside a template literal) is
+  dropped and its part joined to the next, so the other boundaries stay. This is what makes
+  a start fast where no service worker can help (a page on plain http, a private window: no
+  code cache), about 60-80 ms off both cold and warm starts. An async chunk is never cut (the
+  runtime loads it by its name).
 
 **The launch steps are ONE memoised run, `bootstrapPlayback()` (`src/lib/bootstrap.ts`)**: the
 storage migration, then the downloads-root wipe (`engine.clearAll()`) when **either** axis reset,
@@ -428,7 +430,9 @@ iOS does NOT allow arbitrary loads: Expo's ATS default is `NSAllowsArbitraryLoad
 single-label names, but not for a `.lan`, `.home.arpa` or `.internal` home. `repairPlan`: a
 re-pair through one of a connection's own addresses keeps its paired `serverUrl`; the reconnect
 banner signs in through `effectiveUrl` and hands the sign-in step the connection it re-pairs in
-memory, by that address (`holdReconnect` / `takeReconnect`, taken once as the step opens; never a
+memory, by that address (`holdReconnect` / `takeReconnect`, taken once as the step opens: read as
+the screen renders and taken once it is on screen, `useHandoff`, as every hand-off of the flow is,
+the layout's `takeOidcIntent` too, since a first render can be thrown away and run again; never a
 `/connect/sign-in` param, fe#298: a link opens that route and must not name the connection a
 sign-in replaces), so a reset server reached through its away address still retires its dead
 identity. The sign-in step's "Scan a QR code
@@ -1509,7 +1513,7 @@ Retry when no server answered and a note when some did, never "Nothing coming up
 `statuses` carries each answered server's `ok|pending|stale` (its notes show over the list or the
 empty state). A note naming servers joins them with `joinNames` ("Home and Maya", `common.and`)
 and passes `count`, so its verb is plural (`_one`/`_other`). Dates show through
-`formatReleaseDate` (`src/lib/format.ts`: "2027", "Nov 2026", "Nov 12, 2026" (the UI language's own order: `getLocale()` is the bare language, so English reads month first), read in UTC; any
+`formatReleaseDate` (`src/lib/format.ts`: "2027", "Nov 2026", "12 Nov 2026" ("Nov 12, 2026" in en-US: `getLocale()` is the UI language with the device's region for it, fe#204), read in UTC; any
 other text as it came) and `upcomingDateLabel` by kind: "Out", "Released", "First released"
 (the metadata's one date is a work's FIRST release), no line without a date. Surfaces
 (`src/components/upcoming/`): Home's rail (without the works Home's Next in your series shows as

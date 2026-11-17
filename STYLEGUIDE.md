@@ -822,7 +822,7 @@ skeleton) and `kbd` (a key hint). Hand-built on primitives:
 `slider`, `toast` (`toast({ title, description, action })`; the root `ShellToastHost` renders `<ToastHost>`
 lifted clear of the measured bottom chrome: the tab bar and mini player on a phone, or the docked player bar), `notice`
 (`Notice`, `tone` info / success / warning: the book page's and the Downloads page's) and `row-surface`
-(`RowSurface` / `PressableRow`, the quiet list row; `InsetRow`, a tappable row inside a card's list, no surface of its own). `<Text>` is the one Text: a control hands its label classes to the `<Text>` inside it
+(`RowSurface` / `PressableRow`, the quiet list row; `InsetRow`, a tappable row inside a card's list, no surface of its own), `copy-button` (`CopyButton`, reads "Copied" once its text reached the clipboard, until the text changes; `CodeBox`, a link or secret in mono on the muted box). `<Text>` is the one Text: a control hands its label classes to the `<Text>` inside it
 through `TextClassContext`; a primitive that renders its own text node reuses `EYEBROW_CLASS`. Overlays portal into the root `<PortalHost />` (`src/app/_layout.tsx`) and wrap in
 `FullWindowOverlay` on iOS (`overlay.tsx`); they read the window's safe-area insets from `RootInsetsProvider`
 (`useRootInsets` / `useOverlayInsets`), wherever they are opened from, and every Content part goes through

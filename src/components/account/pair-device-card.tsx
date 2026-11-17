@@ -1,12 +1,11 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Image, Platform, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { CopyButton } from '@/components/ui/copy-button';
 import { FormError } from '@/components/ui/form-error';
 import { Text } from '@/components/ui/text';
-import { copyText } from '@/lib/clipboard';
 import { shareText } from '@/lib/share';
 import { formatClock } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -84,17 +83,8 @@ export function PairingCode({
   hideDone?: boolean;
 }) {
   const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
   const payload = pairing.payload;
   if (!payload) return null;
-
-  const copy = async () => {
-    if (await copyText(payload.web_url)) setCopied(true);
-  };
-  const renew = () => {
-    setCopied(false);
-    void pairing.create();
-  };
 
   return (
     <View className="flex-row flex-wrap items-center gap-4">
@@ -127,15 +117,10 @@ export function PairingCode({
               icon="rotate"
               title={t('account.pair.renew')}
               loading={pairing.loading}
-              onPress={renew}
+              onPress={() => void pairing.create()}
             />
           ) : Platform.OS === 'web' ? (
-            <Button
-              variant="outline"
-              icon={copied ? 'check' : 'copy'}
-              title={copied ? t('common.copied') : t('account.pair.copy')}
-              onPress={() => void copy()}
-            />
+            <CopyButton variant="outline" text={payload.web_url} title={t('account.pair.copy')} />
           ) : (
             <Button
               variant="outline"
@@ -145,14 +130,7 @@ export function PairingCode({
             />
           )}
           {hideDone ? null : (
-            <Button
-              variant="ghost"
-              title={t('settings.devices.done')}
-              onPress={() => {
-                setCopied(false);
-                pairing.dismiss();
-              }}
-            />
+            <Button variant="ghost" title={t('settings.devices.done')} onPress={pairing.dismiss} />
           )}
         </View>
         {!pairing.expired && Platform.OS === 'web' ? (

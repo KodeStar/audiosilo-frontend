@@ -61,12 +61,18 @@ export function JournalScreen({ embedded = false }: { embedded?: boolean }) {
   const tab = parseJournalTab(params.tab);
   const [query, setQuery] = useState('');
   const [width, setWidth] = useState(0);
-  // The notes are asked for once the Notes tab is first opened (the Diary shows none);
-  // the export reads them on its own. Until then the tab's count shows only what the
-  // cache already holds (an earlier visit), else none.
+  // The notes are asked for once a Diary or bookmarks list is in (`overallStatus`: one
+  // server's is enough, or every one failed or can't list them), or at once when the Notes
+  // tab opens first: the Diary shows none of them, so they never hold up its first list,
+  // and the Notes tab still shows its count up front (PLAYER-10). The export reads them on
+  // its own.
   const [notesWanted, setNotesWanted] = useState(tab === 'notes');
-  if (tab === 'notes' && !notesWanted) setNotesWanted(true);
   const sources = useJournalSources({ notes: notesWanted });
+  if (
+    !notesWanted &&
+    (tab === 'notes' || overallStatus([...sources.history, ...sources.bookmarks]) !== 'loading')
+  )
+    setNotesWanted(true);
   const exporter = useJournalExport(sources);
 
   const setTab = (next: JournalTab) =>

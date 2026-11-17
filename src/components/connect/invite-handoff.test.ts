@@ -4,6 +4,10 @@ import {
   holdReconnect,
   holdScanReconnect,
   openScanner,
+  peekInviteCode,
+  peekReconnect,
+  peekScanFor,
+  peekScanReconnect,
   takeInviteCode,
   takeReconnect,
   takeScanFor,
@@ -63,8 +67,30 @@ it('drops what no scanner or connect step took when the flow is left', () => {
   openScanner('srv.1');
   holdScanReconnect('tok', 'srv.1');
   holdReconnect('https://a.example', 'srv.1');
+  holdInvite({ base: 'https://a.example', code: 'ABCD-1234' });
   dropConnectHandoffs();
+  expect(takeInviteCode('https://a.example')).toBeUndefined();
   expect(takeScanFor()).toBeUndefined();
   expect(takeScanReconnect('tok')).toBeUndefined();
   expect(takeReconnect('https://a.example')).toBeUndefined();
+});
+
+// A screen reads what it was handed as it renders and takes it once it shows: a read leaves
+// it held, for a render that is run again.
+it('leaves a handoff held when it is only read', () => {
+  holdInvite({ base: 'https://a.example', code: 'ABCD-1234' });
+  holdReconnect('https://a.example', 'srv.1');
+  openScanner('srv.2');
+  holdScanReconnect('tok', 'srv.3');
+  expect(peekInviteCode('https://b.example')).toBeUndefined();
+  expect(peekInviteCode('https://a.example')).toBe('ABCD-1234');
+  expect(peekInviteCode('https://a.example')).toBe('ABCD-1234');
+  expect(peekReconnect('https://a.example')).toBe('srv.1');
+  expect(peekReconnect(null)).toBeUndefined();
+  expect(peekScanFor()).toBe('srv.2');
+  expect(peekScanReconnect('tok')).toBe('srv.3');
+  expect(takeInviteCode('https://a.example')).toBe('ABCD-1234');
+  expect(takeReconnect('https://a.example')).toBe('srv.1');
+  expect(takeScanFor()).toBe('srv.2');
+  expect(takeScanReconnect('tok')).toBe('srv.3');
 });
