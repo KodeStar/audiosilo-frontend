@@ -230,16 +230,27 @@ async function localCopy(check?: () => Promise<boolean>): Promise<boolean> {
   }
 }
 
+/** The open reader's acknowledgements (`adoptServerPlace`) and captures (`saveReaderPlace`),
+ * one after another in the order they were asked for: a save asked for after a place was
+ * acknowledged is made on that version. A capture reads the version before its own awaits
+ * are over, so one started while the acknowledgement was still being written (the save a
+ * Jump's move makes, flushed as the reader closes; a page turned as the reader finds itself
+ * already there) went on the old version, and the server kept it as the other place again. */
+const withReaderPlaceLock = serialQueue();
+
 /** The reader has shown the server's `row` (it opened there; or another device's kept place
  * was answered with Jump or Stay, or the reader is already there): this device has seen that
- * version, so its saves are made on it (and the mirror keeps the place). */
+ * version, so its saves are made on it (and the mirror keeps the place). Every reader save
+ * asked for from here on is (`withReaderPlaceLock`). */
 export async function adoptServerPlace(
   connectionId: string,
   libraryId: number,
   path: string,
   row: ReadingProgress,
 ): Promise<void> {
-  await updateMirror({ connectionId, libraryId, path }, acknowledged(row));
+  await withReaderPlaceLock(() =>
+    updateMirror({ connectionId, libraryId, path }, acknowledged(row)),
+  );
 }
 
 // --- saving ----------------------------------------------------------------------------------
@@ -278,8 +289,12 @@ export async function saveReaderPlace(
   path: string,
   place: { cfi: string; progression: number },
 ): Promise<ReadingProgressSaved | null> {
-  const captured = await captureReadingSave(connectionId, libraryId, path, place);
-  await updateMirror(captured, withNewerPlace(captured));
+  // Behind any acknowledgement asked for before it (`withReaderPlaceLock`).
+  const captured = await withReaderPlaceLock(async () => {
+    const save = await captureReadingSave(connectionId, libraryId, path, place);
+    await updateMirror(save, withNewerPlace(save));
+    return save;
+  });
   return withReaderSaveLock(async () => {
     const version = captured.base_version
       ? captured.base_version
