@@ -11,6 +11,7 @@ import {
   useFollowRequests,
   usePodcastDiscoveryProviders,
   usePodcastSearch,
+  usePodcastShows,
 } from '@/api/hooks';
 import type { PodcastDiscoveryProvider, PodcastDiscoveryResult } from '@/api/types';
 import { pageGutter } from '@/components/library/cover-layout';
@@ -48,8 +49,8 @@ const sameSearch = (a: PodcastSearchParams | null, b: PodcastSearchParams) =>
  * an unchanged repeat reuses the held results. Apple Podcasts unless the server has
  * Podcast Index too, when a picker chooses (never retried on the other one); the country
  * is the device's region, for Apple only. A result's Follow is a follow by its feed
- * address. The results are the page's one scroller, `header` above them and `footer`
- * (the follow requests) below.
+ * address; a show the listener already follows here reads Following. The results are the
+ * page's one scroller, `header` above them and `footer` (the follow requests) below.
  */
 export function DirectorySearch({
   connectionId,
@@ -83,15 +84,23 @@ export function DirectorySearch({
   // again once the list no longer holds it (its end unknown: following again answers).
   const focused = useIsFocused();
   const { data: requests } = useFollowRequests(libraryId, { active: focused }, connectionId);
+  // The shows the listener already follows in this library, by feed address (fe#126): their
+  // results read Following with Open show from the start, not Follow. A private feed lists
+  // no address, so it is never matched.
+  const { data: shows } = usePodcastShows(libraryId, connectionId);
   const liveOutcomes = useMemo(() => {
     const live: Record<string, ResultOutcome> = {};
+    for (const show of shows ?? [])
+      if (show.following && show.feed_url)
+        live[show.feed_url] = { kind: 'following', libraryId: show.library_id, path: show.path };
+    // What a Follow on this page did is newer than the list.
     for (const [feedUrl, outcome] of Object.entries(outcomes)) {
       const end = outcome.kind === 'adding' ? requestEnd(requests, outcome.requestId) : null;
       if (end?.kind === 'unknown') continue;
       live[feedUrl] = end ?? outcome;
     }
     return live;
-  }, [outcomes, requests]);
+  }, [outcomes, requests, shows]);
 
   const submit = (using: PodcastDiscoveryProvider = provider) => {
     const q = cleanSearchText(text);
