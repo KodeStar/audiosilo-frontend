@@ -2589,8 +2589,9 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   (`audiosilo.carResumable`, kept with whether kids mode was on, and dropped when that
   changed), so opening the app after a kill without playing keeps it; once one was stopped or
   finished here, none. Native reads it in `CarSnapshot.resumable` (a snapshot kept from before
-  the field still answers with its first Continue row). The minimal snapshot waits for the
-  start's read of the car-seen mark.
+  the field still answers with its first Continue row), after the engine's own live place
+  (Android Auto below), which wins when the snapshot lists its book. The minimal snapshot
+  waits for the start's read of the car-seen mark.
   Both writes go through one queue (`snapshotWrites`), and the minimal one never lands once a
   car was seen. It is not the snapshot an unreadable build leaves alone (it sets no
   `audiosilo.carSnapshotWritten`), so the first car's build replaces it away from every
@@ -2651,6 +2652,15 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   resumption removes it and stops the service (`onStartCommand`, `watchResumption`; every
   play `playFromCar` leaves pending is watched, so a car play that superseded the resumption
   and then failed, by its timeout or a load that left nothing loaded, ends it too, fe#252).
+  **The engine's live place** (`LivePlace.kt`, FE-13): the service keeps where the engine is
+  (the book, the file by path and index, the seconds in it) in the player's prefs, every 10 s
+  while it plays and at once on a play, a pause and a seek (`LivePlaceRecorder`); the end of
+  the book, an emptied player (JS's `reset`: a stop, a finish) and the app's own `load` drop
+  it. A resumption (`CarSnapshot.resumable(live)`, read by `ResumptionReceiver`,
+  `onPlaybackResumption` and the placeholder's title) starts that book at that place when
+  the snapshot lists it with a play spec, else the book `resume` names, so a crash or kill
+  mid-play, a pause in a cold runtime away from every server (which writes no snapshot) and a
+  resumption write still queued behind a build lose at most 10 s.
   **Remote buttons are logged on demand** (`MediaKeyLog`, fe#301): `adb shell setprop
   log.tag.AudiosiloKeys DEBUG`, then `adb logcat -s AudiosiloKeys` shows each media key (the
   receiver, the service start, `onMediaButtonEvent` with the sender, the notification

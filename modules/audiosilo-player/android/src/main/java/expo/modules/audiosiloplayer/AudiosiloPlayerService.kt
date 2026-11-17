@@ -181,6 +181,9 @@ class AudiosiloPlayerService : MediaLibraryService() {
    * ([playFromCar] watches every pending play, fe#252). */
   private val pendingTimeout = Runnable { failPendingPlay() }
 
+  /** Keeps where the engine is on disk, for a resumption after a crash or a kill ([LivePlace]). */
+  private var livePlaces: LivePlaceRecorder? = null
+
   /** The snapshot the car was last told about ([onSnapshotChanged]); null before the first. */
   private var shownSnapshot: CarSnapshot? = null
 
@@ -259,6 +262,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     })
     val audiobookPlayer = AudiobookPlayer(exo, PlayerHooks())
     player = audiobookPlayer
+    exo.addListener(LivePlaceListener(exo))
 
     // Authenticated artwork loader (uses the same headers as the stream). Retain the
     // executor so onDestroy can shut it down - an unmanaged newSingleThreadExecutor leaks
@@ -292,12 +296,59 @@ class AudiosiloPlayerService : MediaLibraryService() {
       .setCustomLayout(mediaButtons())
       .build()
 
+    livePlaces = LivePlaceRecorder(
+      place = ::livePlaceNow,
+      save = { LivePlaceStore.save(this, it) },
+      clear = { LivePlaceStore.clear(this) },
+      schedule = { r, ms -> handler.postDelayed(r, ms) },
+      unschedule = handler::removeCallbacks,
+    )
+
     carMonitor = CarConnectionMonitor(this) { updateCarConnection() }.also { it.start() }
     PlayerBridge.service = this
   }
 
   /** The car snapshot (null until JS wrote one). */
   internal fun snapshot(): CarSnapshot? = CarSnapshotStore.get(this)
+
+  /** What a playback resumption starts: the book the engine was last heard on, at that place,
+   * else the one the snapshot names ([CarSnapshot.resumable]). */
+  internal fun resumable(): CarItem? = snapshot()?.resumable(LivePlaceStore.get(this))
+
+  /** The player's events that keep the [LivePlace]. */
+  private inner class LivePlaceListener(private val exo: ExoPlayer) : Player.Listener {
+    override fun onIsPlayingChanged(isPlaying: Boolean) {
+      livePlaces?.onIsPlayingChanged(isPlaying)
+    }
+
+    override fun onPositionDiscontinuity(
+      oldPosition: Player.PositionInfo,
+      newPosition: Player.PositionInfo,
+      reason: Int,
+    ) {
+      if (reason == Player.DISCONTINUITY_REASON_SEEK) livePlaces?.onSeek()
+    }
+
+    override fun onPlaybackStateChanged(playbackState: Int) {
+      if (playbackState == Player.STATE_ENDED) livePlaces?.drop()
+    }
+
+    override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
+      if (exo.mediaItemCount == 0) livePlaces?.drop()
+    }
+  }
+
+  /** Where the engine is, as the [LivePlace] to keep: null with nothing loaded, at the end of
+   * the book, or when the items name no book (a load from an older JS). */
+  private fun livePlaceNow(): LivePlace? {
+    val p = player ?: return null
+    if (p.mediaItemCount == 0 || p.playbackState == Player.STATE_ENDED) return null
+    val item = p.currentMediaItem ?: return null
+    val book = MediaItems.bookOf(item) ?: return null
+    val (fileIndex, position) = currentFilePosition() ?: return null
+    val relPath = LoadedFiles.pathOf(item.mediaId, MediaItems.entryOf(item)?.clip ?: false)
+    return LivePlace(book, relPath, fileIndex, position)
+  }
 
   /**
    * The custom buttons. Media3's notification provider builds the action row as **standard
@@ -583,7 +634,8 @@ class AudiosiloPlayerService : MediaLibraryService() {
       ).setName(getString(DefaultMediaNotificationProvider.DEFAULT_CHANNEL_NAME_RESOURCE_ID)).build(),
     )
     // peek: the receiver that started us loaded the snapshot; never a disk read here.
-    val title = CarSnapshotStore.peek()?.resumable()?.title ?: applicationInfo.loadLabel(packageManager).toString()
+    val title = CarSnapshotStore.peek()?.resumable(LivePlaceStore.get(this))?.title
+      ?: applicationInfo.loadLabel(packageManager).toString()
     val notification = NotificationCompat.Builder(this, DefaultMediaNotificationProvider.DEFAULT_CHANNEL_ID)
       .setSmallIcon(R.drawable.ic_notification)
       .setContentTitle(title)
@@ -644,11 +696,17 @@ class AudiosiloPlayerService : MediaLibraryService() {
    *    While a JS runtime exists, even a downloaded book goes through JS: JS may hold another
    *    book as `nowPlaying`, and swapping the engine under it would save one book's place as
    *    another's.
+   * [start] is the spec to start from in place of the item's own (a resumption's, at the live
+   * place: [resumable]).
    */
-  internal fun playFromCar(id: String, requirePlaySpec: Boolean): ListenableFuture<MediaItemsWithStartPosition> {
+  internal fun playFromCar(
+    id: String,
+    requirePlaySpec: Boolean,
+    start: CarPlaySpec? = null,
+  ): ListenableFuture<MediaItemsWithStartPosition> {
     val snapshot = snapshot()
     val item = snapshot?.find(id)
-    val spec = item?.play
+    val spec = item?.play?.let { start ?: it }
     if (item == null || (requirePlaySpec && spec == null)) {
       sendUnavailable()
       return Futures.immediateFailedFuture(UnsupportedOperationException("Unknown car item"))
@@ -664,11 +722,11 @@ class AudiosiloPlayerService : MediaLibraryService() {
     // `nowPlaying` (even with its car sync not listening yet), and swapping the engine under
     // it would map this book's place onto that one.
     if (spec != null && PlayerBridge.sink == null) {
-      val start = MediaItems.startPositionOf(spec)
+      val queue = MediaItems.startPositionOf(spec)
       // Every track of a play spec is a local file: no auth headers.
       AuthHolder.clear()
       player?.internal { player?.setPlaybackParameters(PlaybackParameters(spec.rate.toFloat(), 1.0f)) }
-      return Futures.immediateFuture(start)
+      return Futures.immediateFuture(queue)
     }
     failPendingPlay(notify = false)
     val future = SettableFuture.create<MediaItemsWithStartPosition>()
@@ -724,6 +782,9 @@ class AudiosiloPlayerService : MediaLibraryService() {
   /** The module's `load` arrived (the app's controller set a queue). Completes a pending car
    * play with that queue; the identical re-set Media3 then makes is absorbed by the player. */
   internal fun onAppLoad() {
+    // The book the app loads is the one the snapshot names, at the place JS gave it, until it
+    // plays or moves: the place kept for the queue it replaces is not this one's.
+    livePlaces?.drop()
     if (pendingPlay == null) return
     // Posted: the app's items are applied right after this callback returns.
     handler.post {
