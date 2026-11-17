@@ -118,8 +118,13 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   const connection = connections.find((c) => c.id === cid) ?? null;
   const user = connection?.user ?? null;
   const serverName = connection ? serverDisplayName(connection, connections) : '';
-  const { data: server } = useServerInfo(cid);
+  const serverInfo = useServerInfo(cid);
+  const server = serverInfo.data;
   const caps = server?.capabilities;
+  // No `/server` answer kept and none coming offline: its flags are unknown, so the blocks
+  // the device can show without it stand with their offline state, not gone until the
+  // network is back (fe#271).
+  const capsOffline = useUnreadQuery(serverInfo) === 'offline';
   const demo = !!user?.is_demo;
   // A kid's account (8b-1) can't pair a device or have API keys (the server refuses both).
   const kid = isKidAccount(user);
@@ -134,9 +139,6 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   // Signed-in sessions for the identity line (the same query the devices list reads).
   const devices = useMyDevices(cid);
   const deviceCount = devices.data ? signedInSessions(devices.data).length : undefined;
-  // With no `/server` answer kept and none coming offline, the flag is unknown: the
-  // section stands with its offline line, not gone until the network is back (fe#271).
-  const devicesOffline = useUnreadQuery(devices) === 'offline';
 
   useFreshUser(cid);
   const password = usePasswordEditor(cid);
@@ -189,7 +191,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
 
       {watchLink.supported ? <WatchCard connectionId={cid} /> : null}
 
-      <AccountAddresses cid={cid} caps={caps} />
+      <AccountAddresses cid={cid} caps={caps} capsOffline={capsOffline} />
 
       {/* Not gated on the server's flags: needed most when a proxy turns every request
           away (fe#167). A demo account has no use for it, unless its sign-in came through
@@ -197,7 +199,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
           and removed here like anyone's. */}
       {!demo || connection?.proxyHeaders ? <ProxyHeadersCard connectionId={cid} /> : null}
 
-      {caps?.my_devices === true || (!caps && devicesOffline) ? (
+      {caps?.my_devices === true || capsOffline ? (
         <DevicesSection connectionId={cid} serverName={serverName} />
       ) : null}
 
@@ -280,14 +282,24 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
  * refreshes) merged with what the server says now (`useServerAddresses`; on the web it
  * is the only refresh), and on native which one this device is using now. Web never
  * switches (the served player stays on its own origin), so it shows no "in use" line.
- * Nothing for a server without the capability or with no address to show.
+ * Nothing for a server without the capability or with no address to show. Offline with
+ * no `/server` answer kept, the device's own copy shows (most useful away from home).
  */
-function AccountAddresses({ cid, caps }: { cid: string; caps: Capabilities | undefined }) {
+function AccountAddresses({
+  cid,
+  caps,
+  capsOffline,
+}: {
+  cid: string;
+  caps: Capabilities | undefined;
+  /** `/server` waits for the network with nothing kept: the kept addresses still show. */
+  capsOffline: boolean;
+}) {
   const { t } = useTranslation();
   const kept = useSession((s) => s.connections.find((c) => c.id === cid)?.addresses);
   const { data: fresh } = useServerAddresses(cid);
   const active = useActiveAddress(cid);
-  if (caps?.addresses !== true) return null;
+  if (caps?.addresses !== true && !capsOffline) return null;
   const addresses = mergeAddresses(kept, fresh);
   if (!addresses) return null;
   // Named against what the card shows (the server may have just told us an address the

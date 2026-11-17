@@ -18,6 +18,7 @@ jest.mock('@/api/hooks', () => {
     CapabilityError,
     useServerInfo: (cid: string) => ({
       data: mockCaps[cid] ? { version: mockVersion, capabilities: mockCaps[cid] } : undefined,
+      isPaused: !mockCaps[cid] && mockServerHeld,
     }),
     // The real hook never asks a server without the flag: its query stays pending.
     // While /server is held, it takes that read's state (`useCapabilityQuery`).
@@ -199,6 +200,16 @@ describe('AccountSection: at home and away', () => {
     expect(screen.getByLabelText(`Away address: ${AWAY}`)).toBeTruthy();
     expect(screen.queryByTestId('address-in-use')).toBeNull();
     expect(screen.queryByText('In use')).toBeNull();
+  });
+
+  // fe#271: offline with no /server answer kept, the device's own copy still shows.
+  it('shows the kept addresses while /server waits for the network', async () => {
+    mockSession.connections[0].addresses = { home: HOME, away: AWAY };
+    mockCaps.c1 = undefined;
+    mockServerHeld = true;
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.getByTestId('addresses-card')).toBeTruthy();
+    expect(screen.getByLabelText(`Home address: ${HOME}`)).toBeTruthy();
   });
 
   it('is hidden without the capability, or with nothing known', async () => {

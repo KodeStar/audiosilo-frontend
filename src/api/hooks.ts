@@ -415,8 +415,8 @@ export function addressesQuery(cid: string, client: MaybeClient) {
 }
 
 /** The caller's own signed-in devices (`GET /me/devices`). Ask only a server with
- * `my_devices` (pass no client otherwise). Read by `useMyDevices` and, after a password
- * change, by `useReadMyDevicesAgain`. */
+ * `my_devices` (pass no client otherwise). Read after a password change by
+ * `useReadMyDevicesAgain`; `useMyDevices` reads the same key through `useCapabilityQuery`. */
 export function myDevicesQuery(cid: string, client: MaybeClient) {
   return queryOptions({
     queryKey: qk.myDevices(cid),
