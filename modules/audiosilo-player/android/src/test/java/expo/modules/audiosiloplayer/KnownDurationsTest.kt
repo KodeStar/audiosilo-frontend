@@ -37,11 +37,13 @@ class KnownDurationsTest {
   }
 
   /** [frames] frames: the first at 160 kb/s (522 bytes), the rest at 32 kb/s (104 bytes). */
-  private fun vbr(frames: Int): ByteArray =
-    frame(10, 522) + (1 until frames).fold(ByteArray(0)) { acc, _ -> acc + frame(1, 104) }
+  private fun vbr(frames: Int): ByteArray = frame(10, 522) + cbr(frames - 1)
 
   /** Every frame at 32 kb/s: a real constant-bitrate file. */
-  private fun cbr(frames: Int): ByteArray = (0 until frames).fold(ByteArray(0)) { acc, _ -> acc + frame(1, 104) }
+  private fun cbr(frames: Int): ByteArray {
+    val f = frame(1, 104)
+    return ByteArray(f.size * frames) { f[it % f.size] }
+  }
 
   private class Reader(private val bytes: ByteArray, private var pos: Int) : DataReader {
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {

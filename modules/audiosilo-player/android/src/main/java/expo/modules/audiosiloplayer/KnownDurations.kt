@@ -72,7 +72,7 @@ class KnownDurationMediaSourceFactory(
 ) : MediaSource.Factory by inner {
   override fun createMediaSource(mediaItem: MediaItem): MediaSource {
     val uri = mediaItem.localConfiguration?.uri
-    val seconds = mediaItem.mediaMetadata.extras?.getDouble(MediaItems.KEY_FILE_DURATION) ?: 0.0
+    val seconds = MediaItems.entryOf(mediaItem)?.fileDuration ?: 0.0
     if (uri != null) known.note(uri.toString(), seconds)
     return inner.createMediaSource(mediaItem)
   }
@@ -100,7 +100,7 @@ class KnownDurationExtractorsFactory(
     /** [extractors] with each [Mp3Extractor] wrapped in a [KnownDurationExtractor], when the
      * length is known; the others (and all of them, unknown) as they are. */
     fun holdMp3To(extractors: Array<Extractor>, knownUs: Long): Array<Extractor> {
-      if (knownUs == C.TIME_UNSET || knownUs <= 0) return extractors
+      if (knownUs <= 0) return extractors // C.TIME_UNSET included
       return Array(extractors.size) { i ->
         val e = extractors[i]
         if (e is Mp3Extractor) KnownDurationExtractor(e, knownUs) else e
@@ -168,7 +168,7 @@ class Retimer(private val knownUs: Long) {
     fun scaleFor(map: SeekMap, knownUs: Long): Double? {
       if (map !is ConstantBitrateSeekMap || !map.isSeekable) return null
       val estimated = map.durationUs
-      if (estimated == C.TIME_UNSET || estimated <= 0 || knownUs <= 0) return null
+      if (estimated <= 0 || knownUs <= 0) return null // C.TIME_UNSET included
       val s = knownUs.toDouble() / estimated
       if (abs(s - 1) <= AGREES || s < MIN_SCALE || s > MAX_SCALE) return null
       return s
@@ -184,8 +184,7 @@ class ScaledSeekMap(private val inner: SeekMap, private val scale: Double) : See
 
   override fun getSeekPoints(timeUs: Long): SeekMap.SeekPoints {
     val points = inner.getSeekPoints((timeUs / scale).roundToLong())
-    val first = scaled(points.first)
-    return if (points.first == points.second) SeekMap.SeekPoints(first) else SeekMap.SeekPoints(first, scaled(points.second))
+    return SeekMap.SeekPoints(scaled(points.first), scaled(points.second))
   }
 
   private fun scaled(p: SeekPoint) = SeekPoint((p.timeUs * scale).roundToLong(), p.position)
