@@ -98,24 +98,18 @@ export function popTabToRoot(
   return true;
 }
 
-/** How long a press of the active tab waits for a navigation queued just before it. Under
- * any two taps a person can make, and over the render or two the queue takes to drain. */
-export const QUEUED_NAVIGATION_MS = 100;
-
 /**
- * A press of the active tab: `popTabToRoot`, also for a page pushed just before it. Since
- * expo-router 58 `router.*` only queues the move, which lands after React's next render, so
- * a press in that window read the stack before the push, found its root alone and popped
- * nothing (fe#252). Then the first state change within `QUEUED_NAVIGATION_MS` (the queued
- * move landing) pops again; a press with nothing queued meets none and lets go.
+ * A press of the active tab: pop its stack to the root, a page pushed just before the press
+ * included. Since expo-router 58 `router.*` only queues the move, which lands after React's
+ * next render, so a press in that window reads the stack before the push: `popTabToRoot`
+ * found the root alone there and popped nothing (fe#252). So this does not read the stack's
+ * depth. The container's `dispatch` joins the same queue as `router.*`, behind the push, and
+ * the two are reduced in order: the page is popped whenever it lands (in the same render when
+ * both were still queued, so it never shows). With nothing to pop, a `POP_TO_TOP` addressed
+ * to the stack's own key is a handled no-op in expo-router 58 (`findActionHandler`: no state
+ * change, no warning, nothing passed up to another navigator). The route-tree tests pin both.
  */
 export function pressActiveTab(tab: string): void {
-  if (popTabToRoot(tab)) return;
-  let unsubscribe = () => {};
-  const timer = setTimeout(() => unsubscribe(), QUEUED_NAVIGATION_MS);
-  unsubscribe = navigationRef.addListener('state', () => {
-    unsubscribe();
-    clearTimeout(timer);
-    popTabToRoot(tab);
-  });
+  const key = tabStackState(currentNavState(), tab)?.key;
+  if (key) navigationRef.dispatch({ type: 'POP_TO_TOP', target: key });
 }

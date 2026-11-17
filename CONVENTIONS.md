@@ -3625,11 +3625,14 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
 - **Tab presses from our chrome dispatch `JUMP_TO`** (`useTabPress`): another tab -
   `navigationRef.dispatch({ type: 'JUMP_TO', payload: { name: '(library)' } })`, which restores
   its stack; a href can't (`router.navigate('/(home)')` resolves to `/` and pops Home). The
-  active tab again: `pressActiveTab(tab)` (`src/lib/root-stack.ts`): `popTabToRoot(tab)`
-  (`POP_TO_TOP` on that tab stack's key), which keeps the root's own params, and when the
-  stack still reads as its root, once more on the first state change within 100 ms
-  (`QUEUED_NAVIGATION_MS`): `router.*` only queues a move, which lands after the next render,
-  so a push just before the press is not in the state yet (fe#252); never a navigate to the root's href (a
+  active tab again: `pressActiveTab(tab)` (`src/lib/root-stack.ts`): a `POP_TO_TOP` on that
+  tab stack's key, which keeps the root's own params, dispatched without reading the stack's
+  depth. `router.*` only queues a move, which lands after the next render, so a push just
+  before the press is not in the state yet (fe#252); `navigationRef.dispatch` joins the same
+  queue behind it, so the pop is reduced after the push, and at a root an action addressed to
+  the stack's own key is a handled no-op (no timer, no state listener; `route-tree-you.test.tsx`
+  pins both). `popTabToRoot(tab)` is the same pop for any tab when the state read now shows
+  pages over the root (it says whether it popped). Never a navigate to the root's href (a
   navigate is a push in this router, so it stacked a second root over the pages).
 - **The navigation container is read through `src/lib/router-ref.ts`.** expo-router 58 removed
   its global store (`store.navigationRef`, `store.state`), and its only public read is a hook.
