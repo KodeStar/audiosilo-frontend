@@ -1,7 +1,8 @@
+import { useQueryClient } from '@tanstack/react-query';
+
 import { useActiveAddress } from '@/api/address-route';
 import { qk, useCapability } from '@/api/hooks';
 import type { Book, ChaptersResponse } from '@/api/types';
-import { useCachedQueryData } from '@/api/use-cached-query-data';
 import { usePlayer } from '@/playback/store';
 import { useSession } from '@/stores/session';
 
@@ -21,11 +22,15 @@ export function useCastButton(): CastButtonModel {
     cid ? s.connections.find((c) => c.id === cid)?.proxyHeaders : undefined,
   );
   const { supported, status, deviceName } = useCast();
-  // Followed, not read once: the button turns on when either lands after the book loaded.
-  const book = useCachedQueryData<Book>(np && qk.item(np.connectionId, np.libraryId, np.path));
-  const chapters = useCachedQueryData<ChaptersResponse>(
-    np && qk.chapters(np.connectionId, np.libraryId, np.path),
-  );
+  const queryClient = useQueryClient();
+  const book = np
+    ? queryClient.getQueryData<Book>(qk.item(np.connectionId, np.libraryId, np.path))
+    : undefined;
+  const chapters = np
+    ? queryClient.getQueryData<ChaptersResponse>(
+        qk.chapters(np.connectionId, np.libraryId, np.path),
+      )
+    : undefined;
   return castButtonModel({
     loaded: !!np,
     episode: !!np?.episode,

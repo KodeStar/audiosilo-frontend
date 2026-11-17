@@ -174,8 +174,11 @@ episode not available). Read the cache at render through a subscription: a query
 `useCachedQueryData(key)` (`src/api/use-cached-query-data.ts`: cache only, no fetch, no
 observer, one cache listener per reader, notified in React Query's batches; `false` for no key
 reads nothing; a test of it sets `notifyQueriesSynchronously()`). `getQueryData` stays fine in
-callbacks, effects and framework-free code. Jest leaves the compiler off, so a test of code that depends
-on it renders through `withReactCompiler(require, './module')` (`src/testing/react-compiler.ts`).
+callbacks, effects and framework-free code. One render read is held on purpose: the Cast
+button's item and chapters (`use-cast-button.ts`), which a subscription would lose when the
+cache collects them with only the docked player showing. Jest leaves the compiler off, so a
+test of code that depends on it renders through `withReactCompiler(require, './module')`
+(`src/testing/react-compiler.ts`).
 
 **Client identification.** `ApiClient.request()` sends
 `X-AudioSilo-Client: AudioSilo/<APP_VERSION or dev> (<Platform.OS>)` on every API call
