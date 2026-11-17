@@ -72,8 +72,9 @@ export function shortOfFileEnd(queue: FileLengths, trackIndex: number, position:
 }
 
 /** Did the engine's end of the media come before the book's: on a file before the last, or
- * short of the last file's end (`shortOfFileEnd`)? An engine that measured its last file short
- * ends there, and that end is not the book's: it must not finish it. */
+ * short of the last file's end (`shortOfFileEnd`)? An engine put past the end of a last file it
+ * measured short ends there at once, and that end must not finish the book (the store's
+ * `engineFault`; an end after playing on is the book's all the same). */
 export function endsShortOfBook(queue: FileLengths, trackIndex: number, position: number): boolean {
   const last = queue.tracks.length - 1;
   return trackIndex < last || shortOfFileEnd(queue, last, position);

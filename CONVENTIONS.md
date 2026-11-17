@@ -1925,17 +1925,21 @@ media GETs only.
   overlays chapters by `book_offset`. The full player's seek bar is **chapter-relative**.
 - **An engine's file length is not the book's** (`fileDurationOf`, `engineFault` in
   `store.ts`). The snapshot's `duration` is the server's for a file whose engine length is
-  unknown or more than `FINISHED_TOLERANCE` shorter (the seek clamp, "left in the file"). An
-  engine that goes where the book is not stops as an `error` at the listener's place, its
-  later reports dropped and a play it starts by itself paused until a press (a press reloads,
-  as Retry does): a move on to a later file before it played on `SETTLED_AFTER` from a place
-  the store asked for inside its file (`askedPlace`; a resume past a short measure ran into
-  the next file), and an `ended` short of the book's end (`endsShortOfBook`: on a file before
-  the last, or short of the last file's server length), which otherwise read as the book
-  finished (the credits, `finishBook`'s `finished: true`, Sync v2's `finish`). Every engine
-  move the store asks for (a load, a seek, a track jump, a tab's place; not the download
-  hot-swap, which keeps the place) goes through `askEngineTo`; the listener's own
-  (`onRemoteMove`) clears the ask.
+  unknown or more than `FINISHED_TOLERANCE` shorter (the seek clamp, "left in the file").
+  Every engine move the store asks for (a load, a seek, a track jump, a tab's place; not the
+  download hot-swap, which keeps the place) goes through `askEngineTo`, and the ask
+  (`askedPlace`) stands until the engine has played on `PLAYED_ON` seconds from it in its
+  file, moved on into a later file from within the tolerance of the asked file's end, or the
+  listener moved (`onRemoteMove`). While it stands, an engine that goes where the book is not
+  stops as an `error` at the asked place, its later reports dropped and a play it starts by
+  itself paused until a press (a press reloads, as Retry does): a move on to a later file from
+  a place inside the asked one (a resume past a short measure ran into the next file), and an
+  `ended` short of the book's end (`endsShortOfBook`), which otherwise reads as the book
+  finished (the credits, `finishBook`'s `finished: true`, Sync v2's `finish`): a Retry or a
+  seek past the engine's end never finishes a book. Once it has played on, its moves and its
+  end are the book's, as for any book: a server length can overestimate the audio (ffprobe's
+  bitrate estimate for a header-less VBR file), and the listener who played to the real end
+  has finished.
 - **Start playback only after chapters/files have loaded** (the player gates on
   `useChapters` settling) - starting early made multi-file books stream the folder
   path (MediaToolbox `-12864`) and lose chapter info.

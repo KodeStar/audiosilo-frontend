@@ -3259,14 +3259,62 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     expect(savedFinished()).toBe(false);
   });
 
-  it('an end mid-file after playing on stops where the engine is, unfinished', async () => {
-    await resume(lengths[0] + 60);
-    pushSnapshot(snap('playing', 62, { trackIndex: 1 }));
-    mockSaveProgress.mockClear();
-    pushSnapshot(snap('ended', 100, { trackIndex: 1 }));
+  it("a Retry's end at once, short of the book's end, never finishes it", async () => {
+    await resume(lengths[0] + 89.898);
+    pushSnapshot(snap('playing', 89.9, { trackIndex: 1, duration: short }));
+    pushSnapshot(snap('ended', short, { trackIndex: 1, duration: short }));
     await flushMicrotasks();
-    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', position: 100 });
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    mockSaveProgress.mockClear();
+    await usePlayer.getState().retry();
+    pushSnapshot(snap('playing', 89.9, { trackIndex: 1, duration: short }));
+    pushSnapshot(snap('ended', short, { trackIndex: 1, duration: short }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', position: 89.898 });
+    expect(selectIsEnded(usePlayer.getState())).toBe(false);
     expect(savedFinished()).toBe(false);
+  });
+
+  it("an end after playing on is the book's, though short of the server's length", async () => {
+    // The server's ffprobe estimate overestimated the last file: the audio ends at 120 s.
+    await resume(lengths[0] + 60);
+    pushSnapshot(snap('playing', 61, { trackIndex: 1 }));
+    pushSnapshot(snap('playing', 64, { trackIndex: 1 }));
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('ended', 120, { trackIndex: 1 }));
+    await flushMicrotasks();
+    expect(selectIsEnded(usePlayer.getState())).toBe(true);
+  });
+
+  it("an end with no play since a seek past the engine's end never finishes the book", async () => {
+    await resume(lengths[0] + 60);
+    pushSnapshot(snap('playing', 64, { trackIndex: 1, duration: 100 }));
+    await usePlayer.getState().seekInTrack(130);
+    expect(mockSvc.seekTo).toHaveBeenLastCalledWith(130);
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('ended', 100, { trackIndex: 1, duration: 100 }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'error',
+      trackIndex: 1,
+      position: 130,
+    });
+    expect(selectIsEnded(usePlayer.getState())).toBe(false);
+    expect(savedFinished()).toBe(false);
+  });
+
+  it("a resume near a file's end plays on into the next file and to its end", async () => {
+    // Within the tolerance of file 1's end: the move on is no fault, and the play from there
+    // makes the end the book's.
+    await resume(137);
+    pushSnapshot(snap('playing', 139, { trackIndex: 0 }));
+    pushSnapshot(snap('playing', 0.5, { trackIndex: 1 }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'playing', trackIndex: 1 });
+    pushSnapshot(snap('playing', 120, { trackIndex: 1 }));
+    pushSnapshot(snap('ended', 125, { trackIndex: 1 }));
+    await flushMicrotasks();
+    expect(selectIsEnded(usePlayer.getState())).toBe(true);
   });
 
   it("the end at the server's end of the last file finishes the book", async () => {

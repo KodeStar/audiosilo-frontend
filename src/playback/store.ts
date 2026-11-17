@@ -1603,14 +1603,16 @@ function serverLengthOf(
 let atPartialEnd = false;
 
 /** Where the store last asked the engine to be (a load, a seek, a track jump), in file
- * coordinates, until the engine has played on from there (`SETTLED_AFTER` seconds into that
- * file) or another move: a later ask, the listener's own from the lock screen or the car
- * (`onRemoteMove`). An engine that reports a later file meanwhile, from a place clearly inside
- * the asked one (`shortOfFileEnd`), ran off the end of a file it measured short (a resume past
- * Media3's first-frame guess at a header-less VBR MP3 landed in the next file): a fault of the
- * engine's (`engineFault`), never the listener's place. */
+ * coordinates, until the engine has played on from there (`PLAYED_ON` seconds into that file)
+ * or another move: a later ask, the listener's own from the lock screen or the car
+ * (`onRemoteMove`). While the ask stands the engine has not played: a later file reported
+ * from a place clearly inside the asked one (`shortOfFileEnd`), or an end short of the book's
+ * (`endsShortOfBook`), is the engine running off the end of a file it measured short (a resume
+ * or a Retry past Media3's first-frame guess at a header-less VBR MP3), a fault of the
+ * engine's (`engineFault`), never the listener's place. Once it has played on, its moves and
+ * its end are the book's: a server length that overestimates the audio ends it early. */
 let askedPlace: { np: NowPlaying; trackIndex: number; position: number } | null = null;
-const SETTLED_AFTER = 1;
+const PLAYED_ON = 3;
 /** The book whose engine faulted (`engineFault`): its reports are dropped, and a play the
  * engine makes by itself is paused again, until the store asks it for a place again. */
 let faultedBook: NowPlaying | null = null;
@@ -1622,36 +1624,44 @@ function askEngineTo(np: NowPlaying, trackIndex: number, position: number) {
 }
 
 /**
- * The engine report `s` as an `error` at the place the listener is at, when the engine went
- * where the book is not: on to a later file before it played on from an asked place inside its
- * file, or to the end of the media short of the book's end (`endsShortOfBook`), which would
- * otherwise read as the book finished (the credits, `finishBook`'s `finished: true` and Sync v2's
- * `finish`). Else null. The place is the asked one while the ask stands, else the engine's.
+ * The engine report `s` as an `error` at the asked place, when the engine went where the book
+ * is not before it played on from the store's last ask (`askedPlace`): on to a later file from
+ * an asked place inside its file, or to the end of the media short of the book's end
+ * (`endsShortOfBook`), which would otherwise read as the book finished (the credits,
+ * `finishBook`'s `finished: true` and Sync v2's `finish`). Else null.
  */
 function engineFault(np: NowPlaying, s: PlaybackSnapshot): PlaybackSnapshot | null {
   const asked = askedPlace?.np === np ? askedPlace : null;
-  if (asked && s.trackIndex === asked.trackIndex && s.position >= asked.position + SETTLED_AFTER) {
+  if (!asked) return null;
+  if (s.trackIndex === asked.trackIndex && s.position >= asked.position + PLAYED_ON) {
     askedPlace = null;
+    return null;
   }
   // From a file's start an engine can't run past its end (it measured the file at least that
   // long): only an ask inside a file can land past a short measure.
   const rolled =
-    !!asked &&
     asked.position > 0 &&
     s.trackIndex > asked.trackIndex &&
     (wantsPlayback || startingPlayback) &&
     shortOfFileEnd(np.queue, asked.trackIndex, asked.position);
   const short = s.state === 'ended' && endsShortOfBook(np.queue, s.trackIndex, s.position);
-  if (!rolled && !short) return null;
+  if (!rolled && !short) {
+    // On into a later file from the end of the asked one: it played that out.
+    if (s.trackIndex > asked.trackIndex) askedPlace = null;
+    return null;
+  }
   faultedBook = np;
   askedPlace = null;
-  const at = asked ?? s;
   return {
     ...s,
     state: 'error',
-    trackIndex: at.trackIndex,
-    position: at.position,
-    duration: fileDurationOf(np.queue, at.trackIndex, at === s ? s.duration : 0),
+    trackIndex: asked.trackIndex,
+    position: asked.position,
+    duration: fileDurationOf(
+      np.queue,
+      asked.trackIndex,
+      s.trackIndex === asked.trackIndex ? s.duration : 0,
+    ),
   };
 }
 
