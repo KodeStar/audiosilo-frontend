@@ -108,6 +108,17 @@ describe('priorConnection', () => {
     // A legacy connection with no serverId is matched by what its id says.
     expect(priorConnection([{ id: 'srv', user: { id: 5 } }], 'srv', 5)?.id).toBe('srv');
   });
+
+  it('takes one without a user id to be the signer only under the name it kept (fe#298)', () => {
+    const legacy = { id: 'srv', serverId: 'srv', user: { username: 'sam' } };
+    // Allowed: Sam again, or a caller that does not say who.
+    expect(priorConnection([legacy], 'srv', 2, 'sam')).toBe(legacy);
+    expect(priorConnection([legacy], 'srv', 2)).toBe(legacy);
+    // Denied: anyone else signing in is new here, never Sam's connection.
+    expect(priorConnection([legacy], 'srv', 5, 'kit')).toBeUndefined();
+    // One that kept no name either can't tell: the server's one connection, as before.
+    expect(priorConnection([on('srv', 'srv', {})], 'srv', 5, 'kit')?.id).toBe('srv');
+  });
 });
 
 describe('aliases', () => {

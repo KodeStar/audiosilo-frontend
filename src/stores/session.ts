@@ -548,7 +548,7 @@ export const useSession = create<SessionState>()((set, get) => ({
     // until the key migration moves it, so its downloads and saves stay reachable; one saved
     // without a usable user id is taken to be this user (it was the server's one connection).
     const sameServer = existing.filter((c) => serverIdOf(c) === serverId);
-    const prior = priorConnection(existing, serverId, user.id);
+    const prior = priorConnection(existing, serverId, user.id, user.username);
     const id = prior?.id ?? connectionIdOf(serverId, user.id);
     // A rebuilt server mints a NEW server_id at the SAME URL, so a connection to this URL
     // whose server_id differs is a stale identity of the same physical server (its token is

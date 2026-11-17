@@ -903,6 +903,29 @@ describe('session store (multi-connection)', () => {
       expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv', 'srv.5']);
     });
 
+    it('one saved without a user id under a username is never taken over by another (fe#298)', async () => {
+      await AsyncStorage.setItem(
+        'audiosilo.connections',
+        JSON.stringify([
+          { id: 'srv', serverUrl: 'https://a', name: 'A', user: { username: 'sam' } },
+        ]),
+      );
+      await SecureStore.setItemAsync('audiosilo.token.srv', 'old');
+      await useSession.getState().hydrate();
+      // Denied: Kit signing in (the reconnect banner's sign-in included) is a new connection.
+      const kit = await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'srv', token: 'k', user: user(5, 'kit') });
+      expect(kit).toBe('srv.5');
+      expect(await SecureStore.getItemAsync('audiosilo.token.srv')).toBe('old');
+      // Allowed: Sam signing in again keeps it.
+      const sam = await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'srv', token: 's', user: user(3, 'sam') });
+      expect(sam).toBe('srv');
+      expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv', 'srv.5']);
+    });
+
     it('a legacy connection saved without a user id is taken as the one signing in', async () => {
       await AsyncStorage.setItem(
         'audiosilo.connections',
@@ -924,22 +947,18 @@ describe('session store (multi-connection)', () => {
       const cleanup = jest.fn();
       const replaced = jest.fn();
       unsubs.push(onConnectionRemoved(cleanup), onConnectionReplaced(replaced));
-      await useSession
-        .getState()
-        .setSession({
-          serverUrl: 'https://a.example',
-          serverId: 'old',
-          token: 't1',
-          user: user(3, 'sam'),
-        });
-      await useSession
-        .getState()
-        .setSession({
-          serverUrl: 'https://a.example',
-          serverId: 'old',
-          token: 't2',
-          user: user(5, 'kit'),
-        });
+      await useSession.getState().setSession({
+        serverUrl: 'https://a.example',
+        serverId: 'old',
+        token: 't1',
+        user: user(3, 'sam'),
+      });
+      await useSession.getState().setSession({
+        serverUrl: 'https://a.example',
+        serverId: 'old',
+        token: 't2',
+        user: user(5, 'kit'),
+      });
       await useSession.getState().setSession({
         serverUrl: 'https://a.example',
         serverId: 'new',
@@ -960,22 +979,18 @@ describe('session store (multi-connection)', () => {
     it('a rebuilt server: without `retire` nobody is dropped (the safe default)', async () => {
       const cleanup = jest.fn();
       unsubs.push(onConnectionRemoved(cleanup));
-      await useSession
-        .getState()
-        .setSession({
-          serverUrl: 'https://a.example',
-          serverId: 'old',
-          token: 't1',
-          user: user(3, 'sam'),
-        });
-      await useSession
-        .getState()
-        .setSession({
-          serverUrl: 'https://a.example',
-          serverId: 'new',
-          token: 't3',
-          user: user(3, 'sam'),
-        });
+      await useSession.getState().setSession({
+        serverUrl: 'https://a.example',
+        serverId: 'old',
+        token: 't1',
+        user: user(3, 'sam'),
+      });
+      await useSession.getState().setSession({
+        serverUrl: 'https://a.example',
+        serverId: 'new',
+        token: 't3',
+        user: user(3, 'sam'),
+      });
       expect(useSession.getState().connections.map((c) => [c.id, c.needsReconnect])).toEqual([
         ['old.3', 'server-reset'],
         ['new.3', undefined],

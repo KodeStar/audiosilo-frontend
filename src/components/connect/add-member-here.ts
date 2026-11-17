@@ -101,7 +101,7 @@ export async function addMemberHere(
   if (!mayAddPerson()) throw new AddMemberHereError('choose_adult');
   const serverId = session.server_id;
   const { connections, learnAddresses } = useSession.getState();
-  if (priorConnection(connections, serverId, session.user.id)) {
+  if (priorConnection(connections, serverId, session.user.id, session.user.username)) {
     throw new AddMemberHereError('already_here');
   }
   const owner = ownerConnection(connections, serverId);
@@ -151,7 +151,12 @@ export function memberOwnerHere(
 export async function renewMemberHere(session: AuthSession): Promise<string> {
   if (sessionHydrateFailed()) await useSession.getState().hydrate();
   const { connections } = useSession.getState();
-  const prior = priorConnection(connections, session.server_id, session.user.id);
+  const prior = priorConnection(
+    connections,
+    session.server_id,
+    session.user.id,
+    session.user.username,
+  );
   if (!prior) throw new AddMemberHereError('not_ready');
   return storeMemberSession(session, prior);
 }
