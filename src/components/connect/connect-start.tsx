@@ -1,7 +1,7 @@
 import { router, useNavigation } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Linking, Platform, View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { ApiError } from '@/api/client';
 import { connectClient, connectClientFor } from '@/api/connect-client';
@@ -34,6 +34,7 @@ import { connectBookParams, firstParam, idParam, parseConnectBook } from '@/lib/
 import { originOf, proxyOriginOf } from '@/lib/proxy-headers';
 import { useRouteParams } from '@/lib/route-params';
 import { sameOrigin } from '@/lib/same-origin';
+import { openExternalUrl } from '@/lib/support';
 import { looksLikeHomeAddress } from '@/lib/url-host';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -636,7 +637,7 @@ export function ConnectStart() {
                     variant="secondary"
                     icon="arrow-up-right"
                     title={t('connect.link.openLink')}
-                    onPress={() => void Linking.openURL(foreignLink)}
+                    onPress={() => void openExternalUrl(foreignLink)}
                   />
                 </>
               )}
