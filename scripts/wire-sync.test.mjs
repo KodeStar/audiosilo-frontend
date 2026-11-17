@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-import { compareCopy, fromCheckout, git as gitIn, pinnedRef, sync } from './wire-sync.mjs';
+import { compareCopy, git as gitIn, idsInCheckout, pinnedRef, sync } from './wire-sync.mjs';
 
 function commit(git, message) {
   git(
@@ -47,7 +47,7 @@ test('sync copies the goldens at a commit and pins it; the check then passes', (
   const first = git('rev-parse', 'HEAD').trim();
   assert.deepEqual(sync(dir, 'HEAD', out), { sha: first, count: 2 });
   assert.equal(pinnedRef(out), first);
-  assert.deepEqual(compareCopy(fromCheckout(dir, first), out), []);
+  assert.deepEqual(compareCopy(idsInCheckout(dir, first), out), []);
 
   // The server moves on: the copy still matches its pinned commit, not the new one.
   rmSync(path.join(wire, 'b.json'));
@@ -55,8 +55,8 @@ test('sync copies the goldens at a commit and pins it; the check then passes', (
   writeFileSync(path.join(wire, 'c.json'), '{"route":"GET /c","shape":{}}\n');
   git('add', '-A');
   commit(git, 'two');
-  assert.deepEqual(compareCopy(fromCheckout(dir, pinnedRef(out)), out), []);
-  assert.deepEqual(compareCopy(fromCheckout(dir, 'HEAD'), out), [
+  assert.deepEqual(compareCopy(idsInCheckout(dir, pinnedRef(out)), out), []);
+  assert.deepEqual(compareCopy(idsInCheckout(dir, 'HEAD'), out), [
     'differs a.json',
     'missing c.json',
     'not on the server b.json',
@@ -65,7 +65,7 @@ test('sync copies the goldens at a commit and pins it; the check then passes', (
   // A re-sync takes the new commit and drops the golden the server dropped.
   sync(dir, 'HEAD', out);
   assert.equal(pinnedRef(out), git('rev-parse', 'HEAD').trim());
-  assert.deepEqual(compareCopy(fromCheckout(dir, 'HEAD'), out), []);
+  assert.deepEqual(compareCopy(idsInCheckout(dir, 'HEAD'), out), []);
 });
 
 test('the check reports a hand edit to the copy', (t) => {
@@ -78,7 +78,7 @@ test('the check reports a hand edit to the copy', (t) => {
   sync(dir, 'HEAD', out);
   writeFileSync(path.join(out, 'a.json'), '{"route":"GET /a","shape":{"x":"boolean"}}\n');
   writeFileSync(path.join(out, 'extra.json'), '{}\n');
-  assert.deepEqual(compareCopy(fromCheckout(dir, pinnedRef(out)), out), [
+  assert.deepEqual(compareCopy(idsInCheckout(dir, pinnedRef(out)), out), [
     'differs a.json',
     'not on the server extra.json',
   ]);
@@ -102,6 +102,6 @@ test('git runs in the directory given, not the repository a hook names', (t) => 
   const repo = serverRepo();
   dir = repo.dir;
   assert.equal(realpathSync(repo.git('rev-parse', '--show-toplevel').trim()), realpathSync(dir));
-  assert.equal(Object.keys(fromCheckout(dir, 'HEAD')).length, 2);
+  assert.equal(Object.keys(idsInCheckout(dir, 'HEAD')).length, 2);
   assert.equal(existsSync(path.join(other, '.git')), false);
 });

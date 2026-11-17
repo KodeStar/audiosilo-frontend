@@ -26,7 +26,8 @@ field the server sends that the type does not know all fail. A field the player 
 goes in `UNMIRRORED` with why; an entry that no longer applies fails too. The copy is committed, not
 fetched, so the test runs offline and the same everywhere: `npm run wire:sync` copies the goldens at
 the server checkout's `origin/main` (`-- --server <dir> --ref <rev>` for another) and re-pins, and
-`npm run wire:check` (CI) fails when the copy differs from the pinned commit's goldens on GitHub. A
+`npm run wire:check` (CI) fails when the copy differs from the pinned commit's goldens on GitHub
+(one request: it compares git blob ids; `-- --server <dir>` reads a checkout instead). A
 wire change: the server's goldens first (`-update`), then `wire:sync`, then `types.ts`. A new
 golden on the server fails `maps every golden to a type` until it has an `ENVELOPES` entry.
 

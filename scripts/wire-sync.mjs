@@ -9,12 +9,14 @@
 //       copy the goldens at <rev> (default origin/main) of the server checkout
 //       <dir> (default ../audiosilo-server) and pin that commit
 //   node scripts/wire-sync.mjs --check [--server <dir>]
-//       fail when the copy differs from the pinned commit's goldens, read from
-//       the checkout when --server is given, else from GitHub (CI)
+//       fail when the copy differs from the pinned commit's goldens (compared
+//       by git blob id), read from the checkout when --server is given, else
+//       from GitHub in one request (CI)
 //
 // npm run wire:sync / npm run wire:check run them.
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -53,46 +55,60 @@ export function git(dir, ...args) {
   return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', maxBuffer: 16 << 20, env });
 }
 
+/** The goldens' git blob ids at ref in a server checkout: { 'name.json': id }. */
+export function idsInCheckout(dir, ref) {
+  // One `<mode> <type> <id>\t<name>` line per entry.
+  const ids = Object.fromEntries(
+    [
+      ...git(dir, 'ls-tree', `${ref}:${GOLDENS}`).matchAll(/^\d+ blob ([0-9a-f]+)\t(.+\.json)$/gm),
+    ].map(([, id, name]) => [name, id]),
+  );
+  if (Object.keys(ids).length === 0) throw new Error(`no goldens at ${ref}:${GOLDENS} in ${dir}`);
+  return ids;
+}
+
 /** The goldens at ref in a server checkout: { 'name.json': text }. */
-export function fromCheckout(dir, ref) {
-  const names = git(dir, 'ls-tree', '--name-only', `${ref}:${GOLDENS}`)
-    .split('\n')
-    .filter((n) => n.endsWith('.json'));
-  if (names.length === 0) throw new Error(`no goldens at ${ref}:${GOLDENS} in ${dir}`);
-  return Object.fromEntries(names.map((n) => [n, git(dir, 'show', `${ref}:${GOLDENS}/${n}`)]));
+function fromCheckout(dir, ref) {
+  return Object.fromEntries(
+    Object.keys(idsInCheckout(dir, ref)).map((n) => [
+      n,
+      git(dir, 'show', `${ref}:${GOLDENS}/${n}`),
+    ]),
+  );
 }
 
-/** GETs url, failing after 15 s; a 403 or 429 is named as GitHub's rate limit. */
-async function get(url, what, headers = {}) {
-  const r = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
-  if (r.ok) return r;
-  const limited =
-    r.status === 429 || (r.status === 403 && r.headers.get('x-ratelimit-remaining') === '0');
-  const hint = limited ? ' (GitHub rate limit: set GITHUB_TOKEN, or pass --server <checkout>)' : '';
-  throw new Error(`${what}: HTTP ${r.status}${hint}`);
-}
-
-/** The goldens at a commit on GitHub (the server repository is public). */
-async function fromGitHub(sha) {
+/**
+ * The goldens' git blob ids at a commit on GitHub (the server repository is
+ * public): the directory listing carries them, so the check is one request and
+ * downloads no file.
+ */
+async function idsOnGitHub(sha) {
+  const what = `listing ${GOLDENS} at ${sha}`;
   const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'audiosilo-wire-check' };
   if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
-  const list = await get(
-    `https://api.github.com/repos/${REPO}/contents/${GOLDENS}?ref=${sha}`,
-    `listing ${GOLDENS} at ${sha}`,
-    headers,
+  let r;
+  let list;
+  try {
+    r = await fetch(`https://api.github.com/repos/${REPO}/contents/${GOLDENS}?ref=${sha}`, {
+      headers,
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (r.ok) list = await r.json();
+  } catch (e) {
+    throw new Error(`${what}: ${e.message}`, { cause: e });
+  }
+  if (!r.ok) {
+    // A 403 or 429 with nothing left is GitHub's rate limit.
+    const limited =
+      r.status === 429 || (r.status === 403 && r.headers.get('x-ratelimit-remaining') === '0');
+    const hint = limited
+      ? ' (GitHub rate limit: set GITHUB_TOKEN, or pass --server <checkout>)'
+      : '';
+    throw new Error(`${what}: HTTP ${r.status}${hint}`);
+  }
+  return Object.fromEntries(
+    list.filter((e) => e.type === 'file' && e.name.endsWith('.json')).map((e) => [e.name, e.sha]),
   );
-  const names = (await list.json())
-    .filter((e) => e.type === 'file' && e.name.endsWith('.json'))
-    .map((e) => e.name);
-  const raw = async (n) =>
-    (
-      await get(
-        `https://raw.githubusercontent.com/${REPO}/${sha}/${GOLDENS}/${n}`,
-        `${n} at ${sha}`,
-      )
-    ).text();
-  const texts = await Promise.all(names.map(raw));
-  return Object.fromEntries(names.map((n, i) => [n, texts[i]]));
 }
 
 /** The golden file names in out (source.json is the pin, not a golden). */
@@ -100,19 +116,19 @@ function goldenNames(out) {
   return readdirSync(out).filter((n) => n.endsWith('.json') && n !== 'source.json');
 }
 
-function localCopy(out) {
-  return Object.fromEntries(
-    goldenNames(out).map((n) => [n, readFileSync(path.join(out, n), 'utf8')]),
-  );
+/** A file's git blob id, what `git hash-object` prints: equal ids are equal bytes. */
+function blobId(file) {
+  const bytes = readFileSync(file);
+  return createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
 }
 
-/** How the copy in out differs from want (the pinned commit's goldens). */
+/** How the copy in out differs from want (the pinned commit's goldens, by blob id). */
 export function compareCopy(want, out) {
-  const have = localCopy(out);
+  const have = Object.fromEntries(goldenNames(out).map((n) => [n, blobId(path.join(out, n))]));
   const problems = [];
-  for (const [n, text] of Object.entries(want)) {
+  for (const [n, id] of Object.entries(want)) {
     if (!(n in have)) problems.push(`missing ${n}`);
-    else if (have[n] !== text) problems.push(`differs ${n}`);
+    else if (have[n] !== id) problems.push(`differs ${n}`);
   }
   for (const n of Object.keys(have)) if (!(n in want)) problems.push(`not on the server ${n}`);
   return problems.sort();
@@ -156,7 +172,7 @@ async function main() {
     return;
   }
   const ref = pinnedRef(OUT);
-  const want = server ? fromCheckout(server, ref) : await fromGitHub(ref);
+  const want = server ? idsInCheckout(server, ref) : await idsOnGitHub(ref);
   const problems = compareCopy(want, OUT);
   if (problems.length > 0) {
     console.error(`src/api/__wire__ does not match ${REPO}@${ref}:\n  ${problems.join('\n  ')}`);
