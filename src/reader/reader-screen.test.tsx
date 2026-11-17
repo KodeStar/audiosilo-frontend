@@ -608,6 +608,21 @@ describe('ReaderScreen', () => {
     expect(adoptServerPlace).toHaveBeenCalledWith('c1', 1, 'A/Book', row());
   });
 
+  it('never lets the open’s unseen row replace a newer answer heard while it was looked up', async () => {
+    mockPlace = query(undefined);
+    await mount();
+    await waitFor(() => expect(mockHost).not.toBeNull());
+    // A close-save still on its way as the book reopened: its answer, this device's own row.
+    await answered(row({ cfi: CFI_A, progression: 0.2, device_id: 'dev', version: 10 }), true);
+    mockPlace = query({
+      place: { cfi: CFI_A, progression: 0.2, device_id: 'dev', updated_at: '2026-10-02' },
+      fromServer: null,
+      unseen: row(),
+    });
+    await opened(CFI_A);
+    expect(screen.queryByTestId('reader-jump-offer')).toBeNull();
+  });
+
   it('judges an answer heard before the first page against that page', async () => {
     await mount();
     await waitFor(() => expect(mockHost).not.toBeNull());

@@ -206,20 +206,19 @@ export function ReaderScreen({
   // rendering, React's pattern for state that follows a prop). Opening at the server's row
   // means this device has now seen that version, so its saves are made on it. A row it has
   // not seen, opening at a local place (`unseen`), is the open's answer: Jump there is
-  // offered at once, as a save's answer would (fe#173).
+  // offered at once, as a save's answer would (fe#173), unless a newer answer was heard
+  // while the place was looked up (a close-save still on its way as the book reopened).
   const [opening, setOpening] = useState<ReadingPlaceLookup | null>(null);
   const [answer, setAnswer] = useState<ReadingSaved | null>(null);
   if (!opening && place.data) {
     setOpening(place.data);
     const unseen = place.data.unseen;
     if (unseen) {
-      setAnswer({
-        connectionId,
-        libraryId,
-        path,
-        saved: { reading_progress: unseen },
-        seen: false,
-      });
+      setAnswer((prev) =>
+        prev && prev.saved.reading_progress.version >= unseen.version
+          ? prev
+          : { connectionId, libraryId, path, saved: { reading_progress: unseen }, seen: false },
+      );
     }
   }
   // Where Try again reopens: where the reader was, not where this screen first opened.
@@ -302,7 +301,7 @@ export function ReaderScreen({
 
   // --- "Jump there?" --------------------------------------------------------------------
   // The latest answered save of this book (by the server's version: an answer that lands
-  // late never replaces a newer one; the open's `unseen` row is the first, above). It is
+  // late never replaces a newer one; the open's `unseen` row keeps the same order, above). It is
   // judged against the page on screen once the book shows, below: the queue's replay can
   // answer before the first page.
   useEffect(
