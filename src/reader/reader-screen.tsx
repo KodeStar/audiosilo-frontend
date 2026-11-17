@@ -382,13 +382,33 @@ export function ReaderScreen({
   const here = show && current ? { cfi: current.cfi, progression: current.fraction } : null;
   const offer = answer && here ? jumpOffer(answer, here) : null;
   const notSaved = show && (unsaved === 'shown' || (unsaved !== null && signedOut !== undefined));
-  const acknowledge = useLatest(() => {
-    if (answer) void adoptServerPlace(connectionId, libraryId, path, answer.saved.reading_progress);
+  const acknowledge = useLatest((): Promise<void> => {
+    const adopted = answer
+      ? adoptServerPlace(connectionId, libraryId, path, answer.saved.reading_progress)
+      : Promise.resolve();
     setAnswer(null);
+    return adopted;
+  });
+  // Stay: the page on screen is saved at once, on the version just acknowledged, as a
+  // listening Stay is sent at once (fe#321). Left to the next page turn, the other device's
+  // place stood on the server meanwhile (and for good if the reader closed first), and a
+  // save captured before the acknowledgement landed went on the old version, kept as the
+  // other place again.
+  const stay = useLatest(() => {
+    const adopted = acknowledge();
+    const at = atNow.current;
+    if (!at || following.current) return;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    pending.current = null;
+    lastSaved.current = at.cfi;
+    void adopted
+      .catch(() => undefined)
+      .then(() => saveReaderPlace(api, connectionId, libraryId, path, at));
   });
   const alreadyThere = here !== null && answer !== null && offer === null && !answer.seen;
   useEffect(() => {
-    if (alreadyThere) acknowledge();
+    if (alreadyThere) void acknowledge();
   }, [alreadyThere, acknowledge]);
 
   // The host starts before the place is known (fe#164: the EPUB is fetched meanwhile), and
@@ -550,9 +570,9 @@ export function ReaderScreen({
                   offer={offer}
                   onJump={() => {
                     host.current?.goto({ cfi: offer.cfi });
-                    acknowledge();
+                    void acknowledge();
                   }}
-                  onStay={acknowledge}
+                  onStay={stay}
                 />
               ) : null}
             </View>

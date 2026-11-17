@@ -471,6 +471,25 @@ describe('ReaderScreen', () => {
     expect(screen.queryByTestId('reader-jump-offer')).toBeNull();
   });
 
+  // fe#321: the Stay waited for the next page turn to be saved, so the other device's place
+  // stood meanwhile; and it is saved only once the acknowledgement has landed.
+  it('Stay saves the page on screen at once, after the acknowledgement', async () => {
+    let adopted = () => {};
+    jest.mocked(adoptServerPlace).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (adopted = resolve)),
+    );
+    await mount();
+    await opened();
+    await answered(row());
+    await fireEvent.press(screen.getByText('Stay'));
+    expect(saveReaderPlace).not.toHaveBeenCalled();
+    await act(async () => adopted());
+    expect(saveReaderPlace).toHaveBeenCalledWith({}, 'c1', 1, 'A/Book', {
+      cfi: CFI_A,
+      progression: expect.any(Number),
+    });
+  });
+
   it('jumps there, and acknowledges it', async () => {
     await mount();
     await opened();
