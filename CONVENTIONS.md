@@ -332,11 +332,13 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   flow's bare clients are `connectClient(base)` (`src/api/connect-client.ts`) and `probeServerId`
   (built by it), through `connectProxyHeaders(url)`: the pending set for that origin, else a
   signed-in connection's (a second person on the same server). With `ownId` (a reconnect's
-  sign-in, `SignInStep`'s `reconnectId`, and what `finishConnect` keeps for a re-pair) it is
+  sign-in, `SignInStep`'s `reconnectId`, what `finishConnect` keeps for a re-pair, and the
+  address runner's home probe for a connection, `pickAddress` -> `probeServerId(home, id)`) it is
   only the pending set or that connection's OWN set for the address, never another
   connection's: a reconnect never signs in with another person's credentials. A sign-in or re-pair
   with no set of its own keeps the set that carried its successful sign-in or exchange:
-  `connectClientFor` names it (`proxy`) and `finishConnect` takes it as `carried`, so a link or QR
+  `connectClientFor` names it (`proxy`), read as the sign-in is sent (a lender that signed out
+  while the step was open lends nothing, fe#295), and `finishConnect` takes it as `carried`, so a link or QR
   re-pair (it can't name the connection before the exchange answers, so it borrows another
   connection's set for the address) stores the set that got it in, never none. A reconnect never
   keeps a borrowed set, and a re-pair whose own set is for another address keeps its own. A

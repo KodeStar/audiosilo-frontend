@@ -31,8 +31,9 @@ export type AddressedConnection = {
 
 /** Asks `GET <url>/api/v1/server` with no token and resolves the `server_id` it
  * answered, or null when nothing answered (unreachable, timed out, not a server). It
- * never rejects. */
-export type ServerIdProbe = (url: string) => Promise<string | null>;
+ * never rejects. `ownId`: the connection it asks for, whose own proxy headers are the only
+ * signed-in set it may carry (`connectProxyHeaders`). */
+export type ServerIdProbe = (url: string, ownId?: string) => Promise<string | null>;
 
 const trimSlashes = (url: string) => url.replace(/\/+$/, '');
 
@@ -100,10 +101,10 @@ export function chooseAddress(c: AddressedConnection, homeServerId: string | nul
 }
 
 /** Pick the address for a connection now: probes its home address (when it has one)
- * through `probe` (which never throws), then applies `chooseAddress`. */
+ * through `probe` (which never throws) for that connection, then applies `chooseAddress`. */
 export async function pickAddress(c: AddressedConnection, probe: ServerIdProbe): Promise<string> {
   const home = c.addresses?.home;
-  return home ? chooseAddress(c, await probe(home)) : c.serverUrl;
+  return home ? chooseAddress(c, await probe(home, c.id)) : c.serverUrl;
 }
 
 /** Which of `addresses` `url` is ('paired': neither). Home wins over away when the

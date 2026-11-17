@@ -285,6 +285,37 @@ it("a reconnect signs in with its own proxy headers only, never another person's
   expect(mockProxies[1]).toEqual(mine);
 });
 
+it("borrows another connection's set only while it is still here when the sign-in is sent (fe#295)", async () => {
+  const theirs = { origin: AWAY, headers: [{ name: 'X-Theirs', value: 'their-secret' }] };
+  const other = { ...user, id: 2, username: 'sam' };
+  const s = useSession.getState();
+  await s.setSession({
+    serverUrl: AWAY,
+    serverId: 'srv-1',
+    token: 't2',
+    user: other,
+    proxyHeaders: theirs,
+  });
+  mockApi.login.mockResolvedValue({ token: 'fresh', server_id: 'srv-1', user });
+  // Allowed: Sam is still signed in, so his set gets this sign-in through the proxy.
+  const view = await render(<SignInStep server={AWAY} />);
+  mockProxies.length = 0;
+  await signInWith('chris', 'pw');
+  await waitFor(() => expect(conn('srv-1')).toBeTruthy());
+  expect(mockProxies).toEqual([theirs]);
+  expect(conn('srv-1')?.proxyHeaders).toEqual(theirs);
+  view.unmount();
+  // Denied: Sam signs out while the step is open; the sign-in then neither sends nor keeps it.
+  await s.removeConnection('srv-1.1');
+  await render(<SignInStep server={AWAY} />);
+  await s.removeConnection('srv-1.2');
+  mockProxies.length = 0;
+  await signInWith('chris', 'pw');
+  await waitFor(() => expect(conn('srv-1')).toBeTruthy());
+  expect(mockProxies).toEqual([null]);
+  expect(conn('srv-1')?.proxyHeaders).toBeUndefined();
+});
+
 it('no "At home and away" card for a new server before anything is redeemed', async () => {
   await render(<SignInStep server={AWAY} />);
   expect(screen.queryByTestId('addresses-card')).toBeNull();

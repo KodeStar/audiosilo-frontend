@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
-import { connectClientFor } from '@/api/connect-client';
+import { connectClient, connectClientFor } from '@/api/connect-client';
 import { AddressesCard } from '@/components/layout/addresses-card';
 import { kidsConnectAllowed } from '@/components/profiles/connect-intent';
 import { Button } from '@/components/ui/button';
@@ -95,11 +95,10 @@ export function SignInStep({
     if (missing === field) setMissing(null);
   };
   // With the proxy headers entered for `server` on the step before (fe#167); a reconnect
-  // carries only those or its own connection's, never another person's.
-  const { client: api, proxy: carried } = useMemo(
-    () => connectClientFor(server, undefined, reconnectId),
-    [server, reconnectId],
-  );
+  // carries only those or its own connection's, never another person's. This one only asks
+  // whether single sign-on is on and names its start page: a sign-in builds its own client
+  // as it is sent (`onSubmit`).
+  const api = useMemo(() => connectClient(server, undefined, reconnectId), [server, reconnectId]);
 
   // Single sign-on: only the served player at its own server asks (`oidc-sign-in.ts`).
   // Never on a grown-up's pass through kids mode (`kidsConnectAllowed`): the pass is in
@@ -140,11 +139,15 @@ export function SignInStep({
     setLoading(true);
     // Which request failed decides the words (`signInErrorText`).
     let stage: SignInStage = mode === 'code' ? 'redeem' : 'login';
+    // The proxy set read as the sign-in is sent, not as the step opened (fe#295): another
+    // connection's that the sign-in would borrow (`carried`) and that signed out meanwhile
+    // is gone from the device, and must not be sent nor kept.
+    const { client, proxy: carried } = connectClientFor(server, undefined, reconnectId);
     try {
       if (mode === 'code') {
-        const payload = await api.redeemCode(code.trim());
+        const payload = await client.redeemCode(code.trim());
         stage = 'exchange';
-        const session = await api.exchange(payload.pairing_token, getDeviceName());
+        const session = await client.exchange(payload.pairing_token, getDeviceName());
         await finishConnect({
           serverUrl: server,
           session,
@@ -155,7 +158,7 @@ export function SignInStep({
           carried,
         });
       } else {
-        const session = await api.login(username.trim(), password, getDeviceName());
+        const session = await client.login(username.trim(), password, getDeviceName());
         await finishConnect({
           serverUrl: server,
           session,

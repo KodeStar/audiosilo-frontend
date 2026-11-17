@@ -110,6 +110,31 @@ describe('the connect flow carries proxy headers to their address only', () => {
     expect(sent['CF-Access-Client-Secret']).toBeUndefined();
   });
 
+  it("probes a connection's https home address with its own set only, never another's (fe#295)", async () => {
+    const HOME = 'https://nas.example.com';
+    const theirs = { origin: HOME, headers: [{ name: 'X-Theirs', value: 'their-secret' }] };
+    const mine = { origin: HOME, headers: [{ name: 'X-Mine', value: 'my-secret' }] };
+    const base = { serverUrl: SET.origin, serverId: 'srv', token: 't' };
+    useSession.setState({
+      pendingProxyHeaders: null,
+      connections: [
+        { ...base, id: 'srv.1', user: { id: 1 }, proxyHeaders: theirs },
+        { ...base, id: 'srv.2', user: { id: 2 } },
+        { ...base, id: 'srv.3', user: { id: 3 }, proxyHeaders: mine },
+      ] as never,
+    });
+    const fetchMock = installFetch();
+    const sent = (i: number) =>
+      (fetchMock.mock.calls[i][1] as { headers: Record<string, string> }).headers;
+    // Denied: srv.2's probe carries none, though srv.1 has a set for that address.
+    await probeServerId(HOME, 'srv.2');
+    expect(sent(0)['X-Theirs']).toBeUndefined();
+    // Allowed: srv.3's probe carries srv.3's own.
+    await probeServerId(HOME, 'srv.3');
+    expect(sent(1)['X-Mine']).toBe('my-secret');
+    expect(sent(1)['X-Theirs']).toBeUndefined();
+  });
+
   it('names the set its requests carry, none where none goes (finishConnect keeps it)', () => {
     expect(connectClientFor('https://books.example.com/').proxy).toEqual(SET);
     expect(connectClientFor('https://other.example.com').proxy).toBeUndefined();
