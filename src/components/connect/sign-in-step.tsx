@@ -164,7 +164,7 @@ export function SignInStep({
           username.trim(),
           password,
           getDeviceName(),
-          await getSignInKey(),
+          await getSignInKey(server),
         );
         await finishConnect({
           serverUrl: server,

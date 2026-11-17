@@ -8,6 +8,7 @@ import {
   openAddSomeone,
   setConnectForNewProfile,
 } from '@/components/profiles/connect-intent';
+import { getSignInKey } from '@/lib/sign-in-key';
 import { resetProfilesForTests } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 import { seedProfile } from '@/testing/seed-profile';
@@ -171,8 +172,11 @@ it('a password: the login answer teaches the addresses', async () => {
   await fireEvent.changeText(screen.getByLabelText('Password'), 'pw');
   await fireEvent.press(screen.getByRole('button', { name: 'Sign in' }));
   await waitFor(() => expect(mockReplace).toHaveBeenCalled());
-  // With this install's device id (fe#159): a sign-in again is no new device to the admin.
-  expect(mockApi.login).toHaveBeenCalledWith('chris', 'pw', 'Test device', expect.any(String));
+  // With this install's key for that server (fe#159): a sign-in again is no new device to
+  // the admin, and no other server is sent it.
+  const key = await getSignInKey(AWAY);
+  expect(mockApi.login).toHaveBeenCalledWith('chris', 'pw', 'Test device', key);
+  expect(await getSignInKey(HOME)).not.toBe(key);
   expect(conn('srv-1')?.addresses).toEqual({ home: HOME, away: AWAY });
 });
 
