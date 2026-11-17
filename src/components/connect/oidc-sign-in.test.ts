@@ -2,9 +2,63 @@ import { ApiError, NetworkError } from '@/api/client';
 import type { ServerInfo } from '@/api/types';
 import i18n from '@/i18n';
 
-import { oidcButtonName, oidcFinishText } from './oidc-sign-in';
+import { oidcButtonName, oidcFinishText, oidcReturnOnLoad } from './oidc-sign-in';
+
+// The player the server serves at /web: its own origin, else (native, Metro dev) none.
+let mockServed: string | null = null;
+jest.mock('@/lib/base-url', () => {
+  const actual = jest.requireActual('@/lib/base-url');
+  return {
+    ...actual,
+    servedOrigin: () => mockServed,
+    appPath: (pathname: string) => actual.appPath(pathname, '/web'),
+  };
+});
 
 const t = i18n.t.bind(i18n);
+
+describe('oidcReturnOnLoad', () => {
+  const at = (pathname: string, search: string) =>
+    Object.defineProperty(globalThis, 'location', {
+      value: { pathname, search },
+      configurable: true,
+    });
+  beforeEach(() => {
+    mockServed = 'https://books.example.com';
+  });
+  afterAll(() => {
+    delete (globalThis as { location?: unknown }).location;
+  });
+
+  it("is the served player's page load of /connect?oidc=1", () => {
+    at('/web/connect', '?oidc=1');
+    expect(oidcReturnOnLoad()).toBe(true);
+    at('/web/connect/', '?oidc=1');
+    expect(oidcReturnOnLoad()).toBe(true);
+  });
+
+  // Only the flow's first step finishes a return: a held intent (a grown-up's pass through
+  // kids mode) must not be taken up by a route that would never settle it.
+  it.each(['/web/connect/sign-in', '/web/connect/scan', '/web/connect/ready', '/web/kids', '/web'])(
+    'is not ?oidc=1 on %s',
+    (pathname) => {
+      at(pathname, '?oidc=1');
+      expect(oidcReturnOnLoad()).toBe(false);
+    },
+  );
+
+  it('is not another value, a pairing link, or a player the server does not serve', () => {
+    at('/web/connect', '');
+    expect(oidcReturnOnLoad()).toBe(false);
+    at('/web/connect', '?oidc=2');
+    expect(oidcReturnOnLoad()).toBe(false);
+    at('/web/connect', '?oidc=1&token=tok');
+    expect(oidcReturnOnLoad()).toBe(false);
+    mockServed = null;
+    at('/web/connect', '?oidc=1');
+    expect(oidcReturnOnLoad()).toBe(false);
+  });
+});
 
 const info = (oidc?: boolean, name?: string): ServerInfo =>
   ({

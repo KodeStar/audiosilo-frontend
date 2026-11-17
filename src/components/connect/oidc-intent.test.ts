@@ -13,6 +13,7 @@ import {
   holdOidcIntent,
   MAX_AGE_MS,
   resumeOidcIntent,
+  settleOidcPass,
   takeOidcBook,
   takeOidcIntent,
 } from './oidc-intent';
@@ -39,6 +40,7 @@ beforeEach(() => store.clear());
 afterEach(() => {
   resetProfilesForTests();
   endConnectFlow();
+  dropOidcIntent();
 });
 
 const BOOK = { libraryId: 3, path: 'Austen/Emma' };
@@ -52,28 +54,85 @@ it('carries "Add someone" and the book across the trip, taken once', () => {
   const held = takeOidcIntent(true);
   expect(held).toEqual({ newPerson: true, grownUpFromKids: false, book: BOOK });
   expect(takeOidcIntent(true)).toBeNull();
-  resumeOidcIntent(held!);
+  const settled = jest.fn();
+  // No pass left with the trip: none waits, and nothing is settled later.
+  expect(resumeOidcIntent(held!, settled)).toBe(false);
   expect(connectForNewProfile()).toBe(true);
   expect(takeOidcBook()).toEqual(BOOK);
   expect(takeOidcBook()).toBeUndefined();
+  expect(settleOidcPass(true)).toBe(false);
+  expect(settled).not.toHaveBeenCalled();
 });
 
-it("puts a grown-up's pass through kids mode back only while kids mode would let it through", () => {
-  seedProfile({ kids: true });
-  openAddSomeone();
-  expect(kidsConnectAllowed()).toBe(true);
-  holdOidcIntent();
-  endConnectFlow();
-  // Allowed: a kid-only device, as when the pass was given.
-  resumeOidcIntent(takeOidcIntent(true)!);
-  expect(kidsConnectAllowed()).toBe(true);
-  endConnectFlow();
-  // Denied: a grown-up is on the device now; the stored pass can't widen the rule.
-  useProfiles.setState((s) => ({
-    profiles: [...s.profiles, { id: 'g', name: 'Sam', connectionIds: ['srv.2'] }],
-  }));
-  resumeOidcIntent({ newPerson: true, grownUpFromKids: true });
-  expect(kidsConnectAllowed()).toBe(false);
+describe("a grown-up's pass through kids mode", () => {
+  const leaveWithPass = () => {
+    seedProfile({ kids: true });
+    openAddSomeone();
+    expect(kidsConnectAllowed()).toBe(true);
+    holdOidcIntent();
+    // The page load: memory is gone.
+    endConnectFlow();
+  };
+
+  it("waits on the returned sign-in's finish, and comes back only with a session", () => {
+    leaveWithPass();
+    const settled = jest.fn();
+    // Denied: the address alone (`/connect?oidc=1`) gives no pass back.
+    expect(resumeOidcIntent(takeOidcIntent(true)!, settled)).toBe(true);
+    expect(kidsConnectAllowed()).toBe(false);
+    expect(settled).not.toHaveBeenCalled();
+    // Allowed: the server answered with a session.
+    expect(settleOidcPass(true)).toBe(true);
+    expect(kidsConnectAllowed()).toBe(true);
+    expect(settled).toHaveBeenCalledTimes(1);
+    // Settled once.
+    expect(settleOidcPass(true)).toBe(false);
+    expect(settled).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not given when the finish fails (a trip abandoned at the provider, the address typed)', () => {
+    leaveWithPass();
+    const settled = jest.fn();
+    expect(resumeOidcIntent(takeOidcIntent(true)!, settled)).toBe(true);
+    expect(settleOidcPass(false)).toBe(true);
+    expect(kidsConnectAllowed()).toBe(false);
+    expect(settled).toHaveBeenCalledTimes(1);
+    // Nor by a later answer.
+    expect(settleOidcPass(true)).toBe(false);
+    expect(kidsConnectAllowed()).toBe(false);
+  });
+
+  it('does not wait while kids mode would not let it through now', () => {
+    leaveWithPass();
+    // Denied: a grown-up is on the device now; the stored pass can't widen the rule.
+    useProfiles.setState((s) => ({
+      profiles: [...s.profiles, { id: 'g', name: 'Sam', connectionIds: ['srv.2'] }],
+    }));
+    const settled = jest.fn();
+    expect(resumeOidcIntent(takeOidcIntent(true)!, settled)).toBe(false);
+    expect(settleOidcPass(true)).toBe(false);
+    expect(kidsConnectAllowed()).toBe(false);
+  });
+
+  it('is not given once a grown-up joined the device while the finish was on its way', () => {
+    leaveWithPass();
+    expect(resumeOidcIntent(takeOidcIntent(true)!, jest.fn())).toBe(true);
+    useProfiles.setState((s) => ({
+      profiles: [...s.profiles, { id: 'g', name: 'Sam', connectionIds: ['srv.2'] }],
+    }));
+    expect(settleOidcPass(true)).toBe(true);
+    expect(kidsConnectAllowed()).toBe(false);
+  });
+
+  it('stops waiting when the flow is left', () => {
+    leaveWithPass();
+    const settled = jest.fn();
+    expect(resumeOidcIntent(takeOidcIntent(true)!, settled)).toBe(true);
+    dropOidcIntent();
+    expect(settleOidcPass(true)).toBe(false);
+    expect(kidsConnectAllowed()).toBe(false);
+    expect(settled).not.toHaveBeenCalled();
+  });
 });
 
 it('drops what was held when this load is not the return, and reads nothing it cannot parse', () => {
@@ -113,7 +172,7 @@ it("gives back no pass left by a trip abandoned at the provider: too old, or the
   }
   // Denied: the flow was left (the page restored from the cache, then left) before any return.
   holdOidcIntent();
-  resumeOidcIntent({ newPerson: false, grownUpFromKids: false, book: BOOK });
+  resumeOidcIntent({ newPerson: false, grownUpFromKids: false, book: BOOK }, jest.fn());
   dropOidcIntent();
   expect(store.size).toBe(0);
   expect(takeOidcBook()).toBeUndefined();

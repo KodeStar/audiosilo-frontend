@@ -3,13 +3,14 @@ import type { TFunction } from 'i18next';
 import { ApiClient, ApiError, apiErrorKind } from '@/api/client';
 import { connectClientFor } from '@/api/connect-client';
 import type { AuthSession, ServerInfo } from '@/api/types';
-import { servedOrigin } from '@/lib/base-url';
+import { toast } from '@/components/ui/toast';
+import { appPath, servedOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
 import { firstParam } from '@/lib/paths';
 import { useSession } from '@/stores/session';
 
 import { finishConnect } from './finish-connect';
-import { takeOidcBook } from './oidc-intent';
+import { settleOidcPass, takeOidcBook } from './oidc-intent';
 import { sharedRefusalText } from './sign-in-error';
 
 /**
@@ -37,11 +38,15 @@ export function oidcReturnOrigin(
 }
 
 /** Whether this page load is the server's return from a single sign-on, read from the
- * address itself (`oidcReturnOrigin`'s rule): the connect flow's layout must know before any
- * route's params reach it, to put back what the flow was for (`takeOidcIntent`). */
+ * address itself (`oidcReturnOrigin`'s rule, on the flow's first step: the one route that
+ * finishes it, so `?oidc=1` on any other of the flow's routes is no return): the connect
+ * flow's layout must know before any route's params reach it, to put back what the flow was
+ * for (`takeOidcIntent`). */
 export function oidcReturnOnLoad(): boolean {
   if (!servedOrigin()) return false;
-  const q = new URLSearchParams(globalThis.location?.search ?? '');
+  const at = globalThis.location;
+  if (appPath(at?.pathname ?? '').replace(/\/+$/, '') !== '/connect') return false;
+  const q = new URLSearchParams(at?.search ?? '');
   return oidcReturnOrigin(q.get('oidc') ?? undefined, q.get('token') ?? undefined) !== null;
 }
 
@@ -84,6 +89,11 @@ export function oidcFinishText(e: unknown, t: TFunction): string {
  * still up. A session that answers once it has gone, or that `finishConnect` did not store,
  * is signed out again (best effort), never kept: nothing would use it, and it would stay on
  * the server as a device (fe#310).
+ *
+ * A grown-up's pass through kids mode that the trip left with waits on this answer
+ * (`settleOidcPass`): given back only with the session, before `finishConnect`. With no
+ * session it is not, kids mode takes the flow back (the connect layout), and the reason goes
+ * over it as a toast, since the screen that would say it is gone (null: the flow moved on).
  */
 export async function finishOidcSignIn(
   origin: string,
@@ -100,7 +110,10 @@ export async function finishOidcSignIn(
       client.serverInfo().catch(() => null),
     ]);
   } catch (e) {
-    return oidcFinishText(e, t);
+    const message = oidcFinishText(e, t);
+    if (!settleOidcPass(false)) return message;
+    toast({ title: message });
+    return null;
   }
   // A session nothing keeps is signed out again (best effort): it would stay on the server
   // as a device.
@@ -109,9 +122,11 @@ export async function finishOidcSignIn(
       .logout()
       .catch(() => {});
   if (!live()) {
+    settleOidcPass(false);
     signOut();
     return null;
   }
+  settleOidcPass(true);
   try {
     await finishConnect({ serverUrl: origin, session, name: info?.name, book, carried });
     return null;

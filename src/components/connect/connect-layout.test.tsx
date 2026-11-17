@@ -46,7 +46,7 @@ jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) 
 
 /* eslint-disable import/first */
 import ConnectLayout from '@/app/connect/_layout';
-import { holdOidcIntent, takeOidcBook } from '@/components/connect/oidc-intent';
+import { holdOidcIntent, settleOidcPass, takeOidcBook } from '@/components/connect/oidc-intent';
 import {
   connectForNewProfile,
   endConnectFlow,
@@ -169,15 +169,35 @@ describe("a single sign-on's return (a page load, fe#310)", () => {
     endConnectFlow();
   };
 
-  it("lets the grown-up's pass back through kids mode, for a new person, ending on the book", async () => {
+  it("runs the return's own step without the pass, which comes back once the sign-in finished", async () => {
+    leaveForProvider();
+    mockReturning = true;
+    await render(<ConnectLayout />);
+    // The step that finishes the sign-in runs; the pass waits on its answer.
+    expect(screen.getByText('connect flow')).toBeTruthy();
+    expect(mockDismissTo).not.toHaveBeenCalled();
+    expect(kidsConnectAllowed()).toBe(false);
+    expect(connectForNewProfile()).toBe(true);
+    expect(takeOidcBook()).toEqual({ libraryId: 3, path: 'Austen/Emma' });
+    // Allowed: the server answered with a session.
+    await act(async () => void settleOidcPass(true));
+    expect(kidsConnectAllowed()).toBe(true);
+    expect(screen.getByText('connect flow')).toBeTruthy();
+    expect(mockDismissTo).not.toHaveBeenCalled();
+  });
+
+  it('gives no pass when the sign-in does not finish (the address typed after a trip abandoned at the provider): kids mode takes the flow back', async () => {
     leaveForProvider();
     mockReturning = true;
     await render(<ConnectLayout />);
     expect(screen.getByText('connect flow')).toBeTruthy();
-    expect(mockDismissTo).not.toHaveBeenCalled();
-    expect(kidsConnectAllowed()).toBe(true);
-    expect(connectForNewProfile()).toBe(true);
-    expect(takeOidcBook()).toEqual({ libraryId: 3, path: 'Austen/Emma' });
+    // Denied: no session came back.
+    await act(async () => void settleOidcPass(false));
+    expect(kidsConnectAllowed()).toBe(false);
+    expect(screen.queryByText('connect flow')).toBeNull();
+    expect(mockDismissTo).toHaveBeenCalledWith('/kids');
+    // The finish says why itself (`finishOidcSignIn`): no "ask a grown-up to open this link".
+    expect(mockToast).not.toHaveBeenCalled();
   });
 
   it('puts it back only once the profiles are read', async () => {
@@ -186,10 +206,34 @@ describe("a single sign-on's return (a page load, fe#310)", () => {
     resetProfilesForTests();
     mockReturning = true;
     await render(<ConnectLayout />);
-    expect(kidsConnectAllowed()).toBe(false);
+    expect(screen.queryByText('connect flow')).toBeNull();
+    expect(connectForNewProfile()).toBe(false);
     await act(async () => useProfiles.setState(kidsProfiles));
     expect(screen.getByText('connect flow')).toBeTruthy();
-    expect(kidsConnectAllowed()).toBe(true);
+    expect(connectForNewProfile()).toBe(true);
+    expect(mockDismissTo).not.toHaveBeenCalled();
+    expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it('turns the return away as a link when a grown-up is on the device now', async () => {
+    leaveForProvider();
+    useProfiles.setState((s) => ({
+      profiles: [...s.profiles, { id: 'g', name: 'Sam', connectionIds: ['srv.2'] }],
+    }));
+    mockReturning = true;
+    await render(<ConnectLayout />);
+    expect(screen.queryByText('connect flow')).toBeNull();
+    expect(mockDismissTo).toHaveBeenCalledWith('/kids');
+    expect(mockToast).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops waiting when the flow is left', async () => {
+    leaveForProvider();
+    mockReturning = true;
+    const view = await render(<ConnectLayout />);
+    await view.unmount();
+    expect(settleOidcPass(true)).toBe(false);
+    expect(kidsConnectAllowed()).toBe(false);
   });
 
   it('gives no pass to a flow that is not the return: kids mode turns it away', async () => {

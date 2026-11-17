@@ -393,9 +393,14 @@ kept. Nothing in memory survives the page load, so what the flow is for (a grown
 kids mode, "Add someone", a signed-out visit's book) goes through the tab's `sessionStorage`
 (`oidc-intent.ts`, fe#310): the step writes it as it leaves (`holdOidcIntent`), and the connect
 layout takes it once as it opens (`takeOidcIntent`, only on the return: `oidcReturnOnLoad` reads
-the address itself) and puts it back once the profiles are read, before kids mode is told
-(`resumeConnectIntent`: the pass only while `openAddSomeone`'s rule would give it now). A
-reconnect id is not carried.
+the address itself, `/connect?oidc=1` and no other route of the flow) and puts "Add someone" and
+the book back once the profiles are read (`resumeConnectIntent`). The grown-up's pass is never
+put back by the address alone (typed within the stamp's 11 minutes of a trip abandoned at the
+provider, it would open the flow for a child): while `openAddSomeone`'s rule would give it now
+it waits on the finish, the layout holding kids mode back for the return's own screen only (it
+shows a spinner and finishes the sign-in), and `finishOidcSignIn` settles it (`settleOidcPass`):
+back with the server's session, before `finishConnect`; with none, kids mode takes the flow back
+and the reason is a toast. A reconnect id is not carried.
 iOS does NOT allow arbitrary loads: Expo's ATS default is `NSAllowsArbitraryLoads: false` with
 `NSAllowsLocalNetworking: true`, so plain http works there for IP addresses, `.local` and
 single-label names, but not for a `.lan`, `.home.arpa` or `.internal` home. `repairPlan`: a

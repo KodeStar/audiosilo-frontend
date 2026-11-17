@@ -1,6 +1,7 @@
 import {
   connectForNewProfile,
   kidsConnectAllowed,
+  restoreKidsConnectPass,
   resumeConnectIntent,
 } from '@/components/profiles/connect-intent';
 import { type ConnectBook, connectBookParams, parseConnectBook } from '@/lib/paths';
@@ -12,15 +13,19 @@ import { type ConnectBook, connectBookParams, parseConnectBook } from '@/lib/pat
  * the return would be turned away by kids mode, sign in as the person listening, or end on
  * the library. The sign-in step writes them to this tab's `sessionStorage` as it leaves
  * (`holdOidcIntent`); the connect flow's layout takes them once as it opens on the return
- * (`takeOidcIntent`), before kids mode is told. Only script on the player's own origin writes
+ * (`takeOidcIntent`). Only script on the player's own origin writes
  * there, never a link. The connection a reconnect re-pairs is not carried: the same user
  * signing in again re-pairs their connection by the server's id anyway.
  *
  * A trip abandoned at the provider leaves its intent in the tab, and a later page load of
  * `/connect?oidc=1` (typed, from the history) would take it as its own: a grown-up's pass
- * through kids mode left behind must not open the flow for a child. So it is stamped and
- * lives only as long as the server lets a sign-in's trip take (`MAX_AGE_MS`, its
- * `FlowMaxAge`), and the flow's layout drops it as the flow is left (`dropOidcIntent`).
+ * through kids mode left behind must not open the flow for a child. So the pass is never put
+ * back by the address alone: it waits on the sign-in's finish, and comes back only when the
+ * server answers with a session (`settleOidcPass`); until then the layout runs the flow's
+ * first step, which only finishes the sign-in, and kids mode takes the flow back when it
+ * fails. The intent is also stamped and lives only as long as the server lets a sign-in's
+ * trip take (`MAX_AGE_MS`, its `FlowMaxAge`), and the flow's layout drops it as the flow is
+ * left (`dropOidcIntent`).
  */
 
 const KEY = 'audiosilo.oidcIntent';
@@ -92,11 +97,38 @@ export function takeOidcIntent(returning: boolean): OidcIntent | null {
 /** The book the returned sign-in ends on (`resumeOidcIntent`), until the finish takes it. */
 let resumedBook: ConnectBook | undefined;
 
-/** Put the taken intent back (the layout, once the profiles are read): the flow's own
- * (`resumeConnectIntent`), and the book for the finish (`takeOidcBook`). */
-export function resumeOidcIntent(held: OidcIntent): void {
-  resumeConnectIntent(held);
+/** Tells the layout that the pass it holds kids mode back for is settled (`settleOidcPass`);
+ * null while none waits. */
+let passSettled: (() => void) | null = null;
+
+/**
+ * Put the taken intent back (the layout, once the profiles are read): who the flow signs in
+ * (`resumeConnectIntent`) and the book for the finish (`takeOidcBook`). A grown-up's pass
+ * through kids mode is not put back here: it waits on the sign-in's finish
+ * (`settleOidcPass`). True while one waits, and the layout then runs the flow's first step
+ * (which only finishes the sign-in) without it; `onSettled` is called once, when it is given
+ * or not.
+ */
+export function resumeOidcIntent(held: OidcIntent, onSettled: () => void): boolean {
   resumedBook = held.book;
+  const waits = resumeConnectIntent(held);
+  passSettled = waits ? onSettled : null;
+  return waits;
+}
+
+/**
+ * The returned sign-in's finish answered (`finishOidcSignIn`): the pass that waited on it is
+ * `granted` (the server gave a session: the grown-up did sign in) or not (no sign-in to
+ * finish, as when the address was typed after a trip abandoned at the provider), and the
+ * layout is told. Whether one waited.
+ */
+export function settleOidcPass(granted: boolean): boolean {
+  const settled = passSettled;
+  if (!settled) return false;
+  passSettled = null;
+  if (granted) restoreKidsConnectPass();
+  settled();
+  return true;
 }
 
 /** The book the returned sign-in ends on, taken once (`finishOidcSignIn`). */
@@ -107,10 +139,11 @@ export function takeOidcBook(): ConnectBook | undefined {
 }
 
 /** The connect flow was left (its layout's cleanup): an intent still held in the tab (a trip
- * abandoned at the provider, the page then restored from the browser's cache) and a book
- * nothing took go with it. */
+ * abandoned at the provider, the page then restored from the browser's cache), a book nothing
+ * took and a pass still waiting go with it. */
 export function dropOidcIntent(): void {
   resumedBook = undefined;
+  passSettled = null;
   try {
     storage()?.removeItem(KEY);
   } catch {

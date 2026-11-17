@@ -19,7 +19,8 @@ import { useSession } from '@/stores/session';
  * kids profile listens it runs none of the flow (not a step of it, so a pairing link's
  * token is never exchanged and no server can be reconnected or forgotten) and takes the
  * child back to `/kids`. Only a grown-up's "Add someone" on a device with no grown-up gets
- * through (`kidsConnectAllowed`).
+ * through (`kidsConnectAllowed`), and across a single sign-on's trip to the provider only
+ * once the returned sign-in has finished (`oidc-intent.ts`).
  *
  * A flow opened while kids mode was already on is a link (`audiosilo://connect?token=`, a
  * QR scanned elsewhere, `/web/connect`, an old sign-in step from the web history): a toast
@@ -50,13 +51,20 @@ export default function ConnectLayout() {
   const known = status !== 'loading' && profilesRead;
   // A single sign-on's return is a page load: what the flow was for before the trip comes
   // back from this tab's storage (`takeOidcIntent`, fe#310), put back once the profiles are
-  // read and before kids mode is told, so a grown-up's pass is not turned away.
+  // read. A grown-up's pass through kids mode is not: it waits on the sign-in's finish
+  // (`passWaits`, until `settleOidcPass`), and meanwhile kids mode lets only the return's own
+  // screen run, which finishes the sign-in and shows nothing else. No session, no pass: the
+  // address typed after a trip abandoned at the provider opens nothing for a child.
   const [held, setHeld] = useState(() => takeOidcIntent(oidcReturnOnLoad()));
+  const [passWaiting, setPassWaiting] = useState(false);
+  // This render's own answer: the state it sets only shows in the next one.
+  let passWaits = passWaiting;
   if (known && held) {
-    resumeOidcIntent(held);
+    passWaits = resumeOidcIntent(held, () => setPassWaiting(false));
+    setPassWaiting(passWaits);
     setHeld(null);
   }
-  const refused = known && kids && !kidsConnectAllowed();
+  const refused = known && kids && !kidsConnectAllowed() && !passWaits;
   // Kids mode was on as the flow opened (the first render that can tell): a link, not a
   // sign-in that turned it on. Follows the render (React's way to keep state in step).
   const [openedInKids, setOpenedInKids] = useState<boolean | null>(null);
