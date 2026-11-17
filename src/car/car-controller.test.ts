@@ -1648,26 +1648,7 @@ describe('play requests', () => {
 
   // FE-13: after a media button start timed out, the start JS was still making (a frozen
   // server) went on to play in the background with no notification and no controls.
-  it('a request native gave up on is called off: the start it made is no longer wanted', async () => {
-    stop = startCarSync();
-    let finish!: () => void;
-    mockStartBookInPlace.mockImplementationOnce(
-      () =>
-        new Promise<boolean>((resolve) => {
-          finish = () => resolve(true);
-        }),
-    );
-    mockNative.playRequest?.(carItemId(ref));
-    await settle();
-    const how = mockStartBookInPlace.mock.calls[0][2] as { wanted: () => boolean };
-    expect(how.wanted()).toBe(true);
-    mockNative.playCancel?.(carItemId(ref));
-    expect(how.wanted()).toBe(false);
-    finish();
-    await settle();
-  });
-
-  it('a cancel for another item leaves the start wanted, and a new request revives one', async () => {
+  it("a request native gave up on is no longer wanted, another item's cancel leaves it, a new request revives it", async () => {
     stop = startCarSync();
     mockNative.playRequest?.(carItemId(ref));
     await settle();

@@ -138,6 +138,7 @@ describe('startBookInPlace', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
     );
     // The resume lookup restores the saved speed itself.
     expect(mockSetRate).not.toHaveBeenCalled();
@@ -215,6 +216,7 @@ describe('startBookInPlace', () => {
       1234,
       undefined,
       1.25,
+      undefined,
     );
     // Not a second speed change once the book is already playing (an audible flip).
     expect(mockSetRate).not.toHaveBeenCalled();
@@ -229,6 +231,7 @@ describe('startBookInPlace', () => {
       expect.anything(),
       undefined,
       2,
+      undefined,
       undefined,
     );
   });
@@ -255,6 +258,7 @@ describe('startBookInPlace', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
     );
   });
 
@@ -270,6 +274,7 @@ describe('startBookInPlace', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
     );
   });
 
@@ -282,6 +287,7 @@ describe('startBookInPlace', () => {
       2,
       { rel_path: target.path, title: 'From the download' },
       { chapters: [], files: [], from: 'download' },
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -302,6 +308,7 @@ describe('startBookInPlace', () => {
         undefined,
         undefined,
         undefined,
+        undefined,
       );
     } finally {
       jest.useRealTimers();
@@ -316,6 +323,7 @@ describe('startBookInPlace', () => {
       2,
       { rel_path: target.path, title: 'From the download' },
       { chapters: [], files: [], from: 'download' },
+      undefined,
       undefined,
       undefined,
       undefined,

@@ -1040,10 +1040,6 @@ function resumableChanged(): void {
  */
 const cancelledPlays = new Set<string>();
 
-function cancelPlay(id: string): void {
-  cancelledPlays.add(id);
-}
-
 /** The car asked to play a book (its item id). */
 export async function handleCarPlayRequest(id: string): Promise<void> {
   cancelledPlays.delete(id);
@@ -1454,7 +1450,7 @@ export function startCarSync(): () => void {
   stops = [
     carNative.onConnection(onConnection),
     carNative.onPlayRequest((id) => void handleCarPlayRequest(id)),
-    carNative.onPlayCancel(cancelPlay),
+    carNative.onPlayCancel((id) => void cancelledPlays.add(id)),
     carNative.onBookmark(onBookmarkPressed),
     usePlayer.subscribe((s, prev) => {
       if (s.nowPlaying || prev.nowPlaying) loadedHere = true;

@@ -203,18 +203,18 @@ async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): 
     cancelEpisodeFetchOf(key);
   }
   // The speed goes in with the start: set after it, the book audibly began at another.
-  await usePlayer.getState().playBook(
-    target.connectionId,
-    target.libraryId,
-    source.book,
-    source.chapters,
-    opts.position,
-    opts.track,
-    opts.speed,
-    // Only a start that may be called off passes the check (every other start's call is
-    // as it was).
-    ...(how.wanted ? ([how.wanted] as const) : ([] as const)),
-  );
+  await usePlayer
+    .getState()
+    .playBook(
+      target.connectionId,
+      target.libraryId,
+      source.book,
+      source.chapters,
+      opts.position,
+      opts.track,
+      opts.speed,
+      how.wanted,
+    );
   // The book you're on is not up next any more (Up next's own Play now does the same):
   // a queued book started from its page, a browse row or the car leaves the queue, once it
   // is the book loaded (a start another one took over keeps its place). Quiet
