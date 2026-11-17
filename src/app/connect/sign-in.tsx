@@ -29,7 +29,7 @@ export default function SignInRoute() {
     return {
       server: pending,
       code: pending ? takeInviteCode(pending) : undefined,
-      reconnect: pending ? takeReconnect(pending) : undefined,
+      reconnect: takeReconnect(pending),
     };
   });
   if (!server) return <Redirect href="/connect" />;

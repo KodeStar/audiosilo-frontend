@@ -90,11 +90,14 @@ export function holdReconnect(server: string, reconnectId: string): void {
   reconnecting = { server, reconnectId };
 }
 
-/** The reconnect held for the sign-in step at `server`, taken once as the step opens: a
- * sign-in step a link opened, or one for another server, finds none. */
-export function takeReconnect(server: string): string | undefined {
+/** The reconnect held for the sign-in step at `server`, taken once as the step opens (one
+ * with no server too, which goes back to the first step): a sign-in step a link opened, or
+ * one for another server, finds none, and a later one in the same flow finds none either. */
+export function takeReconnect(server: string | null): string | undefined {
   const id =
-    reconnecting && sameUrl(reconnecting.server, server) ? reconnecting.reconnectId : undefined;
+    reconnecting && server && sameUrl(reconnecting.server, server)
+      ? reconnecting.reconnectId
+      : undefined;
   reconnecting = null;
   return id;
 }

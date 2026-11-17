@@ -44,6 +44,10 @@ it('hands a reconnect to the sign-in step for its own server only, once (fe#298)
   holdReconnect('https://a.example', 'srv.1');
   expect(takeReconnect('https://b.example')).toBeUndefined();
   expect(takeReconnect('https://a.example')).toBeUndefined();
+  // A sign-in step with no server (it goes back to the first step) drops it too.
+  holdReconnect('https://a.example', 'srv.1');
+  expect(takeReconnect(null)).toBeUndefined();
+  expect(takeReconnect('https://a.example')).toBeUndefined();
 });
 
 it('drops what no scanner or connect step took when the flow is left', () => {
