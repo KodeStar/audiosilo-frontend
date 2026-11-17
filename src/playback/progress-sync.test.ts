@@ -12,6 +12,7 @@ import {
   guardHolds,
   guardSettled,
   onHeldSave,
+  onQueueChange,
   flushQueue,
   loadInitialProgress,
   mirrorIsNewest,
@@ -388,6 +389,29 @@ describe('progress-sync', () => {
 
     expect(c2.saveProgress).toHaveBeenCalledTimes(1);
     expect(await readQueue()).toEqual([expect.objectContaining({ connectionId: 'c1' })]);
+  });
+
+  // fe#197: the sync pills read the queue again as it is written, so a drain takes them down.
+  it('tells onQueueChange when a save is queued and when a replay drains it', async () => {
+    const changes = jest.fn();
+    const stop = onQueueChange(changes);
+    reachable.mockReturnValue(false);
+    await saveProgress(
+      fakeApi(() => Promise.resolve()),
+      { ...save, connectionId: 'c2' },
+    );
+    expect(changes).toHaveBeenCalledTimes(1);
+    // A newer save of the same book replaces it in place: nothing to read again.
+    await saveProgress(
+      fakeApi(() => Promise.resolve()),
+      { ...save, connectionId: 'c2', position: save.position + 5 },
+    );
+    expect(changes).toHaveBeenCalledTimes(1);
+    routeClients({ c2: fakeApi(() => Promise.resolve()) });
+    await flushConnection('c2');
+    expect(changes).toHaveBeenCalledTimes(2);
+    expect(await readQueue()).toEqual([]);
+    stop();
   });
 
   it('flushConnection keeps the queue intact when the connection is already gone', async () => {

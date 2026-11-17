@@ -243,6 +243,10 @@ class WebPlaybackService implements PlaybackService {
   /** Whether we set an explicit Media Session position state (transcoded tracks), so a
    * later direct track can clear it back to the browser's own. */
   private positionStateSet = false;
+  /** The Media Session's cover from another origin, loaded in CORS mode as `CoverImage`
+   * loads covers and handed over as an object URL (`url`, null while it loads or after it
+   * failed), kept while the same cover plays on and revoked when it changes. */
+  private artwork: { src: string; url: string | null } | null = null;
   /** The store's seek, for the OS media controls (see `onRemoteSeek`). */
   private remoteSeek: ((positionInTrack: number) => void) | null = null;
   private snapshot: PlaybackSnapshot = { ...INITIAL_SNAPSHOT };
@@ -821,6 +825,7 @@ class WebPlaybackService implements PlaybackService {
     this.pendingAutoplay = false;
     this.earlyEndRetryAt = null;
     this.snapshot = { ...INITIAL_SNAPSHOT, rate: this.rate };
+    this.releaseArtwork();
     this.syncPositionState();
     this.emit();
   }
@@ -869,12 +874,7 @@ class WebPlaybackService implements PlaybackService {
   private setMediaSession(track: PlaybackTrack) {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
     try {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: track.title,
-        artist: track.artist,
-        album: track.album,
-        artwork: track.artwork ? [{ src: track.artwork }] : [],
-      });
+      this.writeMetadata(track, this.artworkFor(track));
       navigator.mediaSession.setActionHandler('play', () => void this.play());
       navigator.mediaSession.setActionHandler('pause', () => void this.pause());
       navigator.mediaSession.setActionHandler('seekbackward', () =>
@@ -894,6 +894,60 @@ class WebPlaybackService implements PlaybackService {
     } catch {
       // unsupported action handlers; ignore
     }
+  }
+
+  private writeMetadata(track: PlaybackTrack, artwork: MediaImage[]) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      artwork,
+    });
+  }
+
+  /**
+   * The Media Session artwork for `track`. A same-origin cover (the player at `/web`) is
+   * its plain URL; another origin's is fetched in CORS mode (server#201: the server's
+   * `cors_origins` grant it, so it never leans on the server's CORP) and given as an object
+   * URL once it lands, the metadata written again then if the same cover still plays. A
+   * failed fetch falls back to the plain URL.
+   */
+  private artworkFor(track: PlaybackTrack): MediaImage[] {
+    const src = track.artwork;
+    if (!src || !corsModeFor(src, pageLocation())) {
+      this.releaseArtwork();
+      return src ? [{ src }] : [];
+    }
+    if (this.artwork?.src === src) return this.artwork.url ? [{ src: this.artwork.url }] : [];
+    this.releaseArtwork();
+    const entry: { src: string; url: string | null } = { src, url: null };
+    this.artwork = entry;
+    const landed = (url: string) => {
+      if (this.artwork !== entry) return false; // another cover (or none) since
+      entry.url = url;
+      const current = this.current();
+      if (current?.artwork === src) {
+        try {
+          this.writeMetadata(current, [{ src: url }]);
+        } catch {
+          // no Media Session metadata here
+        }
+      }
+      return true;
+    };
+    void fetch(src, { mode: 'cors', credentials: 'omit' })
+      .then((res) => (res.ok ? res.blob() : Promise.reject(new Error(String(res.status)))))
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        if (!landed(url)) URL.revokeObjectURL(url);
+      })
+      .catch(() => landed(src));
+    return [];
+  }
+
+  private releaseArtwork() {
+    if (this.artwork?.url?.startsWith('blob:')) URL.revokeObjectURL(this.artwork.url);
+    this.artwork = null;
   }
 
   /**

@@ -51,7 +51,6 @@ import { BookScale } from './book-scale';
 import type { BookAt } from './home-model';
 import { dailyPace, estimatedFinish } from './listening';
 import { bookmarkPins, bookScale, chapterPlace, nowCardCompact } from './now-card-model';
-import { usePlayableHere } from './use-playable-here';
 
 /** The live position is read in steps this long, so the card redraws every few
  * seconds rather than on every engine tick (its figures are minutes). */
@@ -61,15 +60,23 @@ const LIVE_STEP_S = 10;
  * Home's hero (STYLEGUIDE section 8, "Now card"): the book the listener is on, on a card
  * washed with its cover colour. Its hooks run against the book's own server.
  */
-export function NowCard({ at, saved }: { at: BookAt; saved?: SourcedProgress & PlacedProgress }) {
+type NowCardProps = {
+  at: BookAt;
+  saved?: SourcedProgress & PlacedProgress;
+  /** Whether the book can start here now: Home's own `usePlayableHere` answer, passed
+   * down so the network, servers and downloads are subscribed to once (fe#197). */
+  playable: boolean;
+};
+
+export function NowCard(props: NowCardProps) {
   return (
-    <ConnectionScope connectionId={at.connectionId}>
-      <NowCardBody at={at} saved={saved} />
+    <ConnectionScope connectionId={props.at.connectionId}>
+      <NowCardBody {...props} />
     </ConnectionScope>
   );
 }
 
-function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress & PlacedProgress }) {
+function NowCardBody({ at, saved, playable }: NowCardProps) {
   const { t } = useTranslation();
   // The card's own width decides its shape, not the window's: beside This week, or on a
   // desktop with the Up next drawer open, a "desktop" card can be phone-narrow.
@@ -91,7 +98,8 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress & Plac
   const episode = !!book?.episode || podcastLibrary;
   const { data: chapterData } = useChapters(libraryId, path);
   const { data: bookmarks } = useBookmarks(libraryId, path);
-  const metaEnabled = metaEnabledFor(useCapability('metadata'), book);
+  // `book` can be a cached list's copy, which carries no `episode`: the library says so.
+  const metaEnabled = metaEnabledFor(useCapability('metadata'), book) && !episode;
   const { data: meta } = useBookMeta(libraryId, path, metaEnabled);
   const { data: stats } = useMyStats('30d');
 
@@ -102,8 +110,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress & Plac
   );
   const playing = usePlayer((s) => loaded && selectIsPlaying(s));
   // Offline, a book that isn't downloaded can't start: Resume says so instead of failing.
-  const playableHere = usePlayableHere();
-  const unplayable = !loaded && !playableHere(at);
+  const unplayable = !loaded && !playable;
   // Why, as the chrome says it (CONNECT-15): this device has no network, or it has one and
   // the book's server isn't answering (named). An episode says so in its own words (one on
   // this device is playable here).

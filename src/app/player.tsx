@@ -13,6 +13,7 @@ import { LoadFailedNote } from '@/components/layout/sign-in-again';
 import { PlayerView } from '@/components/player/player-view';
 import { dropStartedBook } from '@/components/player/drop-started';
 import { playFailedToast } from '@/components/player/play-failed';
+import { dismissBookmarkToast } from '@/components/player/player-shortcuts';
 import { EpisodeFetchPanel } from '@/components/podcasts/episode-fetch-panel';
 import { Spinner } from '@/components/ui/spinner';
 import { useIsDownloaded } from '@/downloads/store';
@@ -94,6 +95,8 @@ export default function PlayerScreen() {
   // target still starts. The end of a book is not such a target: the credits start the
   // next book in place (`advanceTo`) and only then show it here, already playing.
   const startedKeyRef = useRef<string | null>(null);
+  // Closing the player takes its "Bookmark added" toast along (fe#197 PLAYER-13).
+  useEffect(() => dismissBookmarkToast, []);
   // The route's jump (`?position=` / `?track=`: a chapter, file, bookmark or history tap)
   // is applied ONCE per book and params, remembered here as `${key}|position|track`. The
   // effect below re-runs whenever `nowPlaying` is replaced, and that happens for the

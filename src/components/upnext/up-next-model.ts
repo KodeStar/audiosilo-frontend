@@ -2,6 +2,7 @@ import type { BookRef, NextBook, Progress, QueueEntry } from '@/api/types';
 import type { ShortcutKey } from '@/lib/keyboard';
 import { percentHeard } from '@/lib/progress-view';
 import { railPositionLabel } from '@/lib/series-position';
+import { entryHolds } from '@/playback/up-next-resolver';
 
 /**
  * The pure rules behind Up next (the desktop drawer and the tablet/phone sheet): which
@@ -172,21 +173,33 @@ export type Suggestion =
   | { kind: 'progress'; ref: BookRef; percent: number }
   | { kind: 'ghost'; title: string; position: string; workId: string };
 
+/** Whether `a` and `b` name one book: the same path, or one a part path (a disc folder, a
+ * file) under the other. */
+function sameBook(a: BookRef, b: BookRef): boolean {
+  return entryHolds(a, b.library_id, b.path) || entryHolds(b, a.library_id, a.path);
+}
+
 /**
  * What to offer under the queue, in order: the book after the loaded one (`next`, from
  * the server's `next_book` answer), then books in progress on this server, newest first,
- * then the community rail's next work when this server couldn't place it (a ghost). Never the loaded book, nor one
- * already queued, nor the same book twice; at most `limit` rows.
+ * then the community rail's next work when this server couldn't place it (a ghost). Never
+ * the loaded book or the one whose page is on screen (`shown`), under a part path either
+ * (fe#197), nor one already queued, nor the same book twice; at most `limit` rows. A row of
+ * saved progress carries no book, so one under the loaded or shown book's path counts as a
+ * part of it; the server's next, sent with its book, does not.
  */
 export function pickSuggestions({
   next,
   current,
+  shown,
   queued,
   inProgress,
   limit = 4,
 }: {
   next: NextBook | undefined;
   current: BookRef | undefined;
+  /** The book whose page is on screen under the panel, on this server. */
+  shown?: BookRef;
   queued: readonly QueueEntry[];
   /** This server's saved progress, newest first. */
   inProgress: readonly Pick<
@@ -196,14 +209,20 @@ export function pickSuggestions({
   limit?: number;
 }): Suggestion[] {
   const out: Suggestion[] = [];
-  const seen = new Set(queued.map(entryKey));
-  if (current) seen.add(entryKey(current));
-  // A queued part path names its book: compare the way `findQueued` does.
-  const taken = (ref: BookRef) =>
-    seen.has(entryKey(ref)) ||
-    queued.some((q) => q.library_id === ref.library_id && ref.path.startsWith(`${q.path}/`));
+  // The suggestions already picked.
+  const seen = new Set<string>();
+  const own = [current, shown].filter((b): b is BookRef => !!b);
+  // A queued entry holds a part path under it, as `findQueued` compares.
+  const listed = (ref: BookRef) =>
+    seen.has(entryKey(ref)) || queued.some((q) => entryHolds(q, ref.library_id, ref.path));
+  const taken = (ref: BookRef) => listed(ref) || own.some((b) => sameBook(b, ref));
+  // The server's next sent with its `book` is a book of its own: inside the loaded or shown
+  // book's folder (a book nested in another's) it is no part of that one, as `loadedHolding`
+  // reads `book` too. Only its own path, or a part path under it, names it.
+  const nextTaken = (ref: BookRef) =>
+    next?.book ? listed(ref) || own.some((b) => entryHolds(ref, b.library_id, b.path)) : taken(ref);
 
-  if (next?.next && !taken(next.next)) {
+  if (next?.next && !nextTaken(next.next)) {
     out.push({ kind: 'next', ref: next.next, series: next.book?.series ?? '' });
     seen.add(entryKey(next.next));
   }

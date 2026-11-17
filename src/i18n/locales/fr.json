@@ -344,7 +344,6 @@
       "loadError": "Impossible de charger vos appareils depuis {{server}}.",
       "alsoSignOut": "Déconnecter aussi {{names}} sur cet appareil-là",
       "alsoSignOutBody": "Les personnes de votre foyer que vous y avez connectées",
-      "names": "{{first}} et {{second}}",
       "doneMembers_one": "Il devra se reconnecter pour accéder à {{server}}. {{count}} personne de votre foyer a été déconnectée avec lui.",
       "doneMembers_other": "Il devra se reconnecter pour accéder à {{server}}. {{count}} personnes de votre foyer ont été déconnectées avec lui."
     },
@@ -2187,7 +2186,6 @@
       "choose": "choisir un enregistrement de {{title}}",
       "title": "Enregistrements de {{title}}"
     },
-    "out": "Sortie : {{date}}",
     "ghostOutNote": "Sortie : {{date}}. Pas encore sur vos serveurs."
   },
   "people": {
@@ -2766,7 +2764,9 @@
       "switch": "Changer",
       "askAtLaunch": "Demander qui écoute à l'ouverture de l'app",
       "askAtLaunchBody": "Avec deux personnes ou plus sur cet appareil",
-      "noSharing": "Aucun de vos serveurs ne le propose encore."
+      "noSharing": "Aucun de vos serveurs ne le propose encore.",
+      "checkFailed_one": "Impossible de vérifier si {{server}} le propose.",
+      "checkFailed_other": "Impossible de vérifier si {{server}} le proposent."
     },
     "signIn": {
       "label": "Connexion terminée",

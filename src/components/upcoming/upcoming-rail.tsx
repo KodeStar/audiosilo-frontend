@@ -1,5 +1,4 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useUpcomingAll } from '@/api/hooks';
@@ -9,6 +8,7 @@ import { upcomingHref } from '@/lib/paths';
 import { isNewUpcoming, type SourcedUpcomingItem } from '@/lib/upcoming';
 
 import { UpcomingTile } from './upcoming-parts';
+import { useUpcomingClock } from './use-upcoming-clock';
 
 /** The most the rail shows; See all opens the rest. */
 export const UPCOMING_RAIL_LIMIT = 12;
@@ -20,13 +20,16 @@ const itemKey = (item: SourcedUpcomingItem) => item.work.id;
  * recent releases, then missing volumes in the series the listener holds, merged across
  * their servers (`useUpcomingAll`). Renders nothing while there is none, while loading and
  * where no server has `upcoming` (or the listener is a kid there): a rail that may never
- * show keeps no skeleton, so Home never jumps. See all opens `/upcoming`.
+ * show keeps no skeleton, so Home never jumps. See all opens `/upcoming`. `skipWorks`: the
+ * works Home's Next in your series already shows as a ghost, left out here so one work is
+ * not offered twice in a row (fe#204).
  */
-export function UpcomingRail() {
+export function UpcomingRail({ skipWorks }: { skipWorks?: ReadonlySet<string> }) {
   const { t } = useTranslation();
-  const { items } = useUpcomingAll();
-  // Counted from when Home opened (a long-open Home keeps its badges steady).
-  const [now] = useState(() => new Date());
+  const { items: all } = useUpcomingAll();
+  const items = skipWorks?.size ? all.filter((item) => !skipWorks.has(item.work.id)) : all;
+  // Counted from when Home was last in front (a Home in view keeps its badges steady).
+  const now = useUpcomingClock();
   if (items.length === 0) return null;
   return (
     <HomeSection

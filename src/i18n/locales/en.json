@@ -344,7 +344,6 @@
       "loadError": "Couldn't load your devices from {{server}}.",
       "alsoSignOut": "Also sign out {{names}} on that device",
       "alsoSignOutBody": "People in your household you signed in there",
-      "names": "{{first}} and {{second}}",
       "doneMembers_one": "It needs to sign in again to reach {{server}}. {{count}} person in your household was signed out with it.",
       "doneMembers_other": "It needs to sign in again to reach {{server}}. {{count}} people in your household were signed out with it."
     },
@@ -2187,7 +2186,6 @@
       "choose": "choose a recording of {{title}}",
       "title": "Recordings of {{title}}"
     },
-    "out": "Out {{date}}",
     "ghostOutNote": "Out {{date}}. Not on your servers yet."
   },
   "people": {
@@ -2766,7 +2764,9 @@
       "switch": "Switch",
       "askAtLaunch": "Ask who's listening when the app opens",
       "askAtLaunchBody": "With two or more people on this device",
-      "noSharing": "None of your servers offers this yet."
+      "noSharing": "None of your servers offers this yet.",
+      "checkFailed_one": "Couldn't check whether {{server}} offers this.",
+      "checkFailed_other": "Couldn't check whether {{server}} offer this."
     },
     "signIn": {
       "label": "Signed out",

@@ -546,6 +546,25 @@ describe('stall watchdog promotes a stuck loading to error', () => {
     expect(mockSaveProgress).not.toHaveBeenCalled();
   });
 
+  // fe#158: Android pauses JS timers with the screen off, but the engine's events still
+  // arrive; the deadline is checked on them.
+  it('fires from an engine event once the grace passed while the JS timer could not', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    pushSnapshot(snap('loading', 50));
+    await Promise.resolve();
+    // The clock moves, the timer does not run.
+    jest.setSystemTime(Date.now() + 2_000);
+    pushSnapshot(snap('loading', 50));
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('loading'); // inside the grace
+    jest.setSystemTime(Date.now() + 1_500);
+    pushSnapshot(snap('loading', 50));
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+  });
+
   it('does not error if playback recovers within the grace', async () => {
     await startBook(makeBook(), 0);
     pushSnapshot(snap('playing', 30));

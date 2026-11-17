@@ -36,48 +36,41 @@ export type ListeningProgress = { chapter: number; finished: boolean };
 export const LIVE_POSITION_BUCKET_S = 15;
 
 /**
- * Whether a book's `/meta` is worth asking for: its server advertises `metadata` (an
- * older server omits it, and is never asked) and the book carries an ASIN or ISBN (a
- * book with neither can never match the community) or is `generated` (characters, recaps
- * or a description a Bridge generated on this server, which `/meta` serves:
- * `matched:false` with a `work`, Bridge Phases 1a and 1c). Never for a podcast episode
- * (`episode`: the community holds books, and a feed's tags can carry an ISBN-like value).
- * The player's companion and reveal toast, Home's Now card and Previously on, the end
- * credits and the offline copy ask by it: they ask for a book in passing, or for every
- * download, so they keep to the books that can match by id. The book page asks wider
- * (`bookPageMetaEnabled`); the series page's anchor and Search's characters pick their
- * books by their own rules (`metadataAnchor`, `characterBooksToLoad`).
+ * Whether a surface asks for a book's `/meta`: its server advertises `metadata` (an older
+ * server omits it, and is never asked) and the book is loaded and not a podcast episode
+ * (`episode`: the community holds books, and a feed's tags can carry an ISBN-like value),
+ * ids or not. A server answers a book with no ASIN or ISBN from the match an admin saved in
+ * the console (a LibriVox download rarely carries either, LibriVox L5), or with what a Bridge
+ * generated on it (`matched:false` with a `work`, Bridge Phases 1a and 1c), and an older
+ * server answers `matched:false` for it without asking upstream, so the one request is cheap
+ * either way and an unmatched answer renders as the surface did without it. The book page,
+ * the player's companion and reveal toast, Home's Now card and Previously on and the end
+ * credits ask by it (fe#290); the offline copy, which runs for every download, keeps to the
+ * books that can match by id (`matchableById`). Never before the book is in: until then a
+ * route's path may be a file inside the book, and an episode is not yet known to be one. The
+ * series page's anchor and Search's characters pick their books by their own rules
+ * (`metadataAnchor`, `characterBooksToLoad`).
  */
 export function metaEnabledFor(
-  metadata: boolean | undefined,
-  book: Pick<Book, 'asin' | 'isbn' | 'generated' | 'episode'> | undefined,
-): boolean {
-  return bookPageMetaEnabled(metadata, book) && !!(book?.asin || book?.isbn || book?.generated);
-}
-
-/**
- * Whether the book page asks for its book's `/meta`: whenever its server advertises
- * `metadata` and the book is loaded and not a podcast episode, ids or not. A server
- * answers a book with no ASIN or ISBN from the match an admin saved in the console (a
- * LibriVox download rarely carries either, LibriVox L5), and an older server answers
- * `matched:false` for it without asking upstream, so the one request is cheap either way
- * and an unmatched answer renders as the page did without it. Only the one page a
- * listener opened asks like this; every other surface keeps `metaEnabledFor`. Never
- * before the book is in: until then the route's path may be a file inside the book, and
- * an episode is not yet known to be one.
- */
-export function bookPageMetaEnabled(
   metadata: boolean | undefined,
   book: Pick<Book, 'episode'> | undefined,
 ): boolean {
   return metadata === true && !!book && !book.episode;
 }
 
+/** Whether a book can have community metadata without a console match: an ASIN or ISBN,
+ * which the server matches by, or content `generated` on its server; never an episode. */
+export function matchableById(
+  book: Pick<Book, 'asin' | 'isbn' | 'generated' | 'episode'> | undefined,
+): boolean {
+  return !!book && !book.episode && !!(book.asin || book.isbn || book.generated);
+}
+
 /**
  * Whether what a book's `/meta` says is in hand, for a decision that depends on it (the
  * Generate offer): the book is known and either `/meta` isn't asked for it (`enabled`,
- * the caller's gate, `metaEnabledFor` or the book page's `bookPageMetaEnabled`, false:
- * nothing to wait for) or its answer has arrived. A failed lookup is no answer: the
+ * the caller's gate, `metaEnabledFor`, false: nothing to wait for) or its answer has
+ * arrived. A failed lookup is no answer: the
  * community may well have content the book just couldn't load.
  */
 export function metaAnswered(

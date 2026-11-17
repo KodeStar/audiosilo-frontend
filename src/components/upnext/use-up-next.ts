@@ -1,8 +1,9 @@
+import { useGlobalSearchParams, usePathname } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useAllProgressAll, useCapability, useNextBook, useQueue } from '@/api/hooks';
-import type { QueueEntry } from '@/api/types';
+import type { BookRef, QueueEntry } from '@/api/types';
 import { useQueueActions } from '@/components/library/use-queue-actions';
 import { dropStartedBook } from '@/components/player/drop-started';
 import { usePlayBook } from '@/components/player/use-play-book';
@@ -10,6 +11,7 @@ import { toast } from '@/components/ui/toast';
 import { playFailedToast } from '@/components/player/play-failed';
 import { useLayout } from '@/lib/layout';
 import { useKeptOffline, useUnreadQuery } from '@/lib/offline-state';
+import { connectionParam, idParam, segmentsToPath } from '@/lib/paths';
 import { usePlayer } from '@/playback/store';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -41,6 +43,25 @@ export function useUpNextBadge() {
   return { supported, count: data?.length ?? 0 };
 }
 
+/** The book whose page is on screen under the panel (the book route's params), when it is
+ * on `cid`'s server: a book page with no `?connection=` is the default server's. */
+function useShownBook(cid: string | undefined): BookRef | undefined {
+  const onBookPage = usePathname().startsWith('/book/');
+  const params = useGlobalSearchParams<{
+    libraryId?: string;
+    path?: string | string[];
+    connection?: string | string[];
+  }>();
+  const defaultId = useSession((s) => s.defaultConnectionId);
+  const libraryId = onBookPage ? idParam(params.libraryId) : null;
+  const path = onBookPage ? segmentsToPath(params.path) : '';
+  const onServer = (connectionParam(params.connection) || defaultId) === cid;
+  return useMemo(
+    () => (libraryId !== null && path && onServer ? { library_id: libraryId, path } : undefined),
+    [libraryId, path, onServer],
+  );
+}
+
 /**
  * Everything the Up next panel shows and does, for ONE connection's queue: the entries,
  * the listener's place in each (from the cached progress list), the time queued, the
@@ -64,6 +85,7 @@ export function useUpNextData(cid: string | undefined) {
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const loaded = nowPlaying && nowPlaying.connectionId === cid ? nowPlaying : null;
   const next = useNextBook(loaded?.libraryId ?? 0, loaded?.path ?? '', !!loaded, cid);
+  const shown = useShownBook(cid);
   // The same cached list Home and the palette read; a mount doesn't refetch it.
   const { progress: allProgress } = useAllProgressAll({ refetchOnMount: false });
 
@@ -75,10 +97,11 @@ export function useUpNextData(cid: string | undefined) {
       pickSuggestions({
         next: next.data,
         current: loaded ? { library_id: loaded.libraryId, path: loaded.path } : undefined,
+        shown,
         queued: entries ?? [],
         inProgress: mine,
       }),
-    [next.data, loaded, entries, mine],
+    [next.data, loaded, shown, entries, mine],
   );
 
   /** Moves an entry to `to`, its index in the visible list. */

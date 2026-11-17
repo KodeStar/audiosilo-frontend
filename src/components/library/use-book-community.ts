@@ -31,11 +31,11 @@ export type BookCommunity = {
 /**
  * The community-metadata chain every spoiler-gated surface beside the book page reads
  * (the player's companion, its reveal toast, Home's Previously on): the server's
- * `metadata` flag, then the book (for its ASIN or ISBN, or its `generated` flag), then
- * `/meta` and the chapters, then the corrected chapter starts and the work
- * (`bookMetaWork`: the matched one, or an unmatched book's generated one). Each step
- * waits on the one before, so nothing is asked of a server without `metadata` or for a
- * book that can have none. Call it inside a `ConnectionScope` for the book's own
+ * `metadata` flag, then the book (`metaEnabledFor`: any loaded book but an episode, since a
+ * console match needs no ASIN or ISBN), then `/meta` and the chapters, then the corrected
+ * chapter starts and the work (`bookMetaWork`: the matched one, or an unmatched book's
+ * generated one). Each step waits on the one before, so nothing is asked of a server
+ * without `metadata` or for an episode. Call it inside a `ConnectionScope` for the book's own
  * connection (the `/meta` query reads the route scope).
  */
 export function useBookCommunity(target: {

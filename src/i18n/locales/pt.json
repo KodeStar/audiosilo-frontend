@@ -344,7 +344,6 @@
       "loadError": "Não foi possível carregar os seus dispositivos de {{server}}.",
       "alsoSignOut": "Terminar também a sessão de {{names}} nesse dispositivo",
       "alsoSignOutBody": "Pessoas da sua casa cuja sessão iniciou lá",
-      "names": "{{first}} e {{second}}",
       "doneMembers_one": "Terá de iniciar sessão novamente para chegar a {{server}}. Também foi terminada a sessão de {{count}} pessoa da sua casa.",
       "doneMembers_other": "Terá de iniciar sessão novamente para chegar a {{server}}. Também foi terminada a sessão de {{count}} pessoas da sua casa."
     },
@@ -2187,7 +2186,6 @@
       "choose": "escolhe uma gravação de {{title}}",
       "title": "Gravações de {{title}}"
     },
-    "out": "Sai: {{date}}",
     "ghostOutNote": "Sai: {{date}}. Ainda não está nos teus servidores."
   },
   "people": {
@@ -2766,7 +2764,9 @@
       "switch": "Mudar",
       "askAtLaunch": "Perguntar quem está a ouvir ao abrir a app",
       "askAtLaunchBody": "Com duas ou mais pessoas neste dispositivo",
-      "noSharing": "Nenhum dos seus servidores oferece isto ainda."
+      "noSharing": "Nenhum dos seus servidores oferece isto ainda.",
+      "checkFailed_one": "Não foi possível verificar se {{server}} oferece isto.",
+      "checkFailed_other": "Não foi possível verificar se {{server}} oferecem isto."
     },
     "signIn": {
       "label": "Sessão terminada",

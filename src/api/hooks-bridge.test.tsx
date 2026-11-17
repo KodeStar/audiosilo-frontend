@@ -52,6 +52,7 @@ import {
   useReadalong,
   useReadalongEstimate,
 } from '@/api/hooks';
+import { setKeptMetaRefresh } from '@/downloads/kept-offline';
 import { bridgeJob, bridgeServer } from '@/testing/bridge-fixtures';
 /* eslint-enable import/first */
 
@@ -353,6 +354,23 @@ describe('useBridgeJobs after a finish', () => {
     });
     expect(result.current.meta.data).toEqual(generated);
     expect(result.current.jobs.data?.[0]?.state).toBe('done');
+  });
+
+  // fe#158: a downloaded book's kept copy follows the job, not the next week's launch.
+  it("has a downloaded book's kept metadata read again, once per finish", async () => {
+    const refresh = jest.fn(async () => {});
+    setKeptMetaRefresh(refresh);
+    const { qc } = await mount(bridgeServer(), () => null);
+    mockClients.c1.bridgeJobs.mockResolvedValue(finished());
+    const { result } = await renderHook(() => useJobsOf(), {
+      wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(refresh.mock.calls).toEqual([['c1', 1, 'Author/Book', finished()[0].id]]);
+    setKeptMetaRefresh(async () => {});
   });
 
   // Once per finish: every later read of the jobs still has the job done, and must not

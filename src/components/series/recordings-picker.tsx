@@ -7,13 +7,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { FilterChip } from '@/components/ui/filter-chip';
 import { useOpen } from '@/lib/open';
 
-import type { SeriesEntry } from './series-model';
+import type { SeriesEntry, SeriesRecording } from './series-model';
+import { usePlacedBooks } from './use-series-data';
 
 /**
  * "2 recordings", for a work the listener holds in more than one (server#241, the model's
  * `recordings`): a picker chip opening a dialog (a sheet on a phone) of every recording,
  * the shelf's shown one included, each with its cover, narrator, length and the listener's
- * own progress in it; a press opens that book. Nothing for a single recording.
+ * own progress in it; a press opens that book. Nothing for a single recording. A recording
+ * whose row the page did not read (one the listener never played) is read when the picker
+ * opens (fe#313).
  */
 export function RecordingsChip({
   entry,
@@ -50,21 +53,52 @@ export function RecordingsChip({
             accessibilityRole="list"
             testID="series-recordings"
           >
-            {recordings.map((r) => (
-              <RecordingRow
-                key={`${r.copy.libraryId}:${r.copy.path}`}
-                connectionId={r.copy.connectionId}
+            {open ? (
+              <RecordingRows
+                recordings={recordings}
                 pageLibraryId={pageLibraryId}
-                recording={{ ...r.copy, ...r }}
-                onPress={() => {
+                onOpen={(r) => {
                   setOpen(false);
                   void openBook(r.copy.connectionId, r.copy.libraryId, r.copy.path);
                 }}
               />
-            ))}
+            ) : null}
           </ScrollView>
         </DialogContent>
       </Dialog>
     </>
   );
+}
+
+/** The dialog's rows, mounted only while it is open: a recording whose row the page did not
+ * read is read here. */
+function RecordingRows({
+  recordings,
+  pageLibraryId,
+  onOpen,
+}: {
+  recordings: readonly SeriesRecording[];
+  pageLibraryId: number;
+  onOpen: (r: SeriesRecording) => void;
+}) {
+  const unread = recordings.filter((r) => !r.copy.book);
+  const read = usePlacedBooks(
+    recordings[0]?.copy.connectionId ?? '',
+    unread.map((r) => ({ library_id: r.copy.libraryId, path: r.copy.path })),
+  );
+  return recordings.map((r) => (
+    <RecordingRow
+      key={`${r.copy.libraryId}:${r.copy.path}`}
+      connectionId={r.copy.connectionId}
+      pageLibraryId={pageLibraryId}
+      recording={{
+        ...r.copy,
+        ...r,
+        book:
+          r.copy.book ??
+          read.find((b) => b.library_id === r.copy.libraryId && b.rel_path === r.copy.path),
+      }}
+      onPress={() => onOpen(r)}
+    />
+  ));
 }

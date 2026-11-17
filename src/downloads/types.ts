@@ -114,8 +114,10 @@ export type DownloadManifest = {
    * Only this marker lives here: the payload (an envelope with its characters and recaps
    * can run to hundreds of KB) sits in its own file beside the audio, so the registry,
    * saved every couple of seconds while a download runs, stays small. Absent on
-   * downloads made before it existed (they are filled in once, in the background). */
-  meta?: { savedAt: string };
+   * downloads made before it existed (they are filled in once, in the background). `job`:
+   * the finished Bridge job the copy was last kept again for (`refreshKeptMeta`), so a
+   * later launch that meets the same job does not keep it once more. */
+  meta?: { savedAt: string; job?: number };
 };
 
 export type DownloadEntry = {

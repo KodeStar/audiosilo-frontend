@@ -175,8 +175,9 @@ let playAskedAt = 0;
  * until a play is asked for again, a start still loading does not play once it has loaded
  * (`startEngine`). */
 let yieldedAttempt = -1;
-/** Pending stall→error timer (see armStallWatchdog). */
+/** Pending stall→error timer and its deadline (see armStallWatchdog). */
 let stallTimer: ReturnType<typeof setTimeout> | null = null;
+let stallDeadline: number | null = null;
 /** The whole-book position the current book resumed from, kept as a running high-water
  * mark. `persist` refuses to save a position far below this unless the user deliberately
  * seeked back (which lowers it) - so a slipped-through restart-at-0 can never overwrite
@@ -1922,25 +1923,36 @@ export function showOtherTabsPlace(): void {
  * event ordering can prevent it from firing. Idempotent: one fixed window per attempt;
  * only reaching `playing` (or a user pause/stop) cancels it. The fire test is simply
  * "not playing", so it doesn't matter what transient state the bridge left us in. Lives
- * in shared JS so iOS, Android and web behave identically. */
+ * in shared JS so iOS, Android and web behave identically. The timer is not enough on its
+ * own: Android pauses JS timers while the activity is paused (see `engineTicker`), so the
+ * deadline is also checked on every engine event (`checkStallDeadline`, fe#158). */
 function armStallWatchdog() {
   if (stallTimer) return;
-  stallTimer = setTimeout(() => {
-    stallTimer = null;
-    if (!wantsPlayback) return; // attempt abandoned (user paused/stopped)
-    const { snapshot } = usePlayer.getState();
-    if (snapshot.state === 'playing') {
-      // We made it. An attempt begun on a book already playing (the hot-swap's load) that
-      // never left `playing` (its load failed, the stream plays on) had no transition to
-      // end its start window: it ends here, or a later lock-screen pause would read as
-      // still connecting.
-      startingPlayback = false;
-      return;
-    }
-    clearPlaybackIntent();
-    usePlayer.setState({ snapshot: { ...snapshot, state: 'error' } });
-    haltAndPersist();
-  }, STALL_GRACE_MS);
+  stallDeadline = Date.now() + STALL_GRACE_MS;
+  stallTimer = setTimeout(fireStallWatchdog, STALL_GRACE_MS);
+}
+
+/** An engine event arrived: fire the watchdog if its deadline passed while the JS timer
+ * could not (Android with the screen off). */
+function checkStallDeadline() {
+  if (stallDeadline !== null && Date.now() >= stallDeadline) fireStallWatchdog();
+}
+
+function fireStallWatchdog() {
+  cancelStallWatchdog();
+  if (!wantsPlayback) return; // attempt abandoned (user paused/stopped)
+  const { snapshot } = usePlayer.getState();
+  if (snapshot.state === 'playing') {
+    // We made it. An attempt begun on a book already playing (the hot-swap's load) that
+    // never left `playing` (its load failed, the stream plays on) had no transition to
+    // end its start window: it ends here, or a later lock-screen pause would read as
+    // still connecting.
+    startingPlayback = false;
+    return;
+  }
+  clearPlaybackIntent();
+  usePlayer.setState({ snapshot: { ...snapshot, state: 'error' } });
+  haltAndPersist();
 }
 
 /** Begin a playback attempt: we intend to play, we're "connecting" until the engine
@@ -1959,6 +1971,7 @@ function cancelStallWatchdog() {
     clearTimeout(stallTimer);
     stallTimer = null;
   }
+  stallDeadline = null;
 }
 
 /** Abandon the playback attempt/intent - the inverse of `beginPlaybackAttempt`. Shared
@@ -2343,8 +2356,9 @@ async function createService(): Promise<PlaybackService> {
         haltAndPersist();
       }
     }
-    // The engine's events drive the periodic work (the save, the sleep timer) where
-    // Android has paused the JS timers: see `engineTicker`.
+    // The engine's events drive the periodic work (the save, the sleep timer, the stall
+    // watchdog) where Android has paused the JS timers: see `engineTicker`.
+    checkStallDeadline();
     engineTick();
   });
   // The OS media controls' seeks (web Media Session) go through the store's own seek,

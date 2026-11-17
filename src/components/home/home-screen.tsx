@@ -163,6 +163,8 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   const nextItems = nextInSeriesItems(next.answers, skipNext).filter(
     (item) => item.kind !== 'book' || isBook(item),
   );
+  // Its ghosts are not offered again by Coming up in your series, just below (fe#204).
+  const nextGhostWorks = new Set(nextItems.flatMap((i) => (i.kind === 'ghost' ? [i.work.id] : [])));
 
   const narrator = useNarratorShelf(defaultCid, bookInProgress);
   const shelves = smartShelves({
@@ -231,7 +233,7 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   const hero = nowAt ? (
     // The page's largest cover: it loads first.
     <FirstScreenCovers.Provider value>
-      <NowCard at={nowAt} saved={nowSaved} />
+      <NowCard at={nowAt} saved={nowSaved} playable={playable(nowAt)} />
     </FirstScreenCovers.Provider>
   ) : isLoading ? (
     <NowCardSkeleton />
@@ -338,7 +340,7 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
 
         {/* Preorders, recent releases and missing volumes in the series held (Track U2):
             nothing while there are none or no server offers it. */}
-        <UpcomingRail />
+        <UpcomingRail skipWorks={nextGhostWorks} />
 
         {/* The latest episodes of the shows followed, not yet started (Bridge 2d-1). */}
         <NewEpisodesRail connections={connections} skip={skipNext} limit={SHELF_LIMIT} />

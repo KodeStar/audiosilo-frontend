@@ -50,6 +50,8 @@ let mockBooks: {
   isLoading: boolean;
   isIdle: boolean;
   offline?: boolean;
+  /** Every page is in (`useAllLibraryBooks`). */
+  complete?: boolean;
   error: unknown;
   retry: jest.Mock;
 };
@@ -279,9 +281,9 @@ describe('SeriesMode', () => {
     });
   });
 
-  it('counts in progress and finished per recording, the unit of its "N books"', async () => {
-    // Four works, the first held in two recordings (server#241): the shelf shows the work
-    // once, but the five recordings /series counts are each finished.
+  it('counts works once its shelf is in, as the series page does (fe#313)', async () => {
+    // Four works, the first held in two recordings (server#241): /series counts five
+    // recordings, the card four books, each finished.
     let id = 0;
     const book = (title: string, index: number): Book => ({
       id: ++id,
@@ -305,7 +307,14 @@ describe('SeriesMode', () => {
       book("Abaddon's Gate", 3),
       book('Cibola Burn', 4),
     ];
-    mockBooks = { books, isLoading: false, isIdle: false, error: null, retry: jest.fn() };
+    mockBooks = {
+      books,
+      complete: true,
+      isLoading: false,
+      isIdle: false,
+      error: null,
+      retry: jest.fn(),
+    };
     mockProgressOf = () => ({
       position: 36_000,
       duration: 36_000,
@@ -330,8 +339,16 @@ describe('SeriesMode', () => {
     await settleFlashList();
     expect(
       screen.getByRole('button', {
-        name: /^The Expanse, James S\. A\. Corey · .+, 5 books · 5 finished$/,
+        name: /^The Expanse, James S\. A\. Corey · .+, 4 books · 4 finished$/,
       }),
+    ).toBeTruthy();
+    // A shelf still missing pages counts nothing short: the list's own figures until then.
+    mockBooks = { ...mockBooks, books: books.slice(0, 2), complete: false };
+    await show(<SeriesMode connectionId="home" libraryId={1} />);
+    await fireEvent(screen.getByTestId('card-grid'), 'layout', layoutEvent);
+    await settleFlashList();
+    expect(
+      screen.getByRole('button', { name: /^The Expanse, James S\. A\. Corey · .+, 5 books$/ }),
     ).toBeTruthy();
   });
 

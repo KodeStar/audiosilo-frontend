@@ -141,9 +141,9 @@ jest.mock('@/api/hooks', () => ({
   }),
 }));
 jest.mock('./now-card', () => ({
-  NowCard: ({ at }: { at: { path: string } }) => {
+  NowCard: ({ at, playable }: { at: { path: string }; playable: boolean }) => {
     const { Text } = jest.requireActual('react-native');
-    return <Text>{`Now card: ${at.path}`}</Text>;
+    return <Text>{`Now card: ${at.path}${playable ? '' : ' (not here)'}`}</Text>;
   },
   NowCardSkeleton: () => null,
 }));
@@ -244,6 +244,7 @@ beforeEach(() => {
   mockCaps = {};
   mockProgress = { progress: [], isLoading: false, error: null };
   mockDeviceOnline = true;
+  mockPlayable = () => true;
   mockRecent = { books: [], isLoading: false, error: null };
   mockConnections = [{ id: 'a', name: 'Home' }];
   mockNext = { answers: [], supported: undefined, isLoading: false };
@@ -278,6 +279,20 @@ describe('HomeScreen', () => {
     expect(screen.getByText('Now card: Newest')).toBeTruthy();
     expect(screen.getByText('1 more in progress')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Older, 30% · 11m left' })).toBeTruthy();
+  });
+
+  // fe#197: Home asks once whether a book can start here, and the Now card takes its answer.
+  it('leads with a book that can start here, and tells the Now card when none can', async () => {
+    mockProgress.progress = [
+      started('Downloaded', '2026-10-01T00:00:00Z'),
+      started('Newest', '2026-10-04T00:00:00Z'),
+    ];
+    mockPlayable = (at) => at.path === 'Downloaded';
+    await mountHome();
+    expect(screen.getByText('Now card: Downloaded')).toBeTruthy();
+    mockPlayable = () => false;
+    await mountHome();
+    expect(screen.getByText('Now card: Newest (not here)')).toBeTruthy();
   });
 
   it('places Listening in the house with the signed-in servers', async () => {

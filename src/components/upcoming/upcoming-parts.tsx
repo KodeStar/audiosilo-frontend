@@ -8,6 +8,7 @@ import { Text } from '@/components/ui/text';
 import { formatReleaseDate } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
+import { useLargeText } from '@/lib/text-scale';
 import { railPositionLabel } from '@/lib/series-position';
 import type { SourcedUpcomingItem } from '@/lib/upcoming';
 import { cn } from '@/lib/utils';
@@ -87,6 +88,9 @@ export function UpcomingTile({ width, ...props }: ItemProps & { width: number })
   const open = useOpenItem();
   const { item, isNew } = props;
   const { seriesLine, date, from, label } = useItemText(props);
+  // Under large text the badge outgrows the cover's corner and lies over the title (fe#204):
+  // it heads the words instead.
+  const large = useLargeText();
   return (
     <AnimatedPressable
       onPress={() => open(item)}
@@ -98,9 +102,10 @@ export function UpcomingTile({ width, ...props }: ItemProps & { width: number })
     >
       <View>
         <UpcomingCover item={item} width={width} />
-        {isNew ? <NewBadge className="absolute left-[7px] top-[7px]" /> : null}
+        {isNew && !large ? <NewBadge className="absolute left-[7px] top-[7px]" /> : null}
       </View>
       <View className="gap-0.5">
+        {isNew && large ? <NewBadge className="self-start" /> : null}
         <Text variant="label" numberOfLines={2}>
           {item.work.title}
         </Text>

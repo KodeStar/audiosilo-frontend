@@ -197,7 +197,12 @@ jest.mock('@/api/hooks', () => ({
 /* eslint-disable import/first */
 import { resolveClient } from '@/api/connection-clients';
 import { engine } from '@/downloads/engine';
-import { downloadBookLength, downloadEndsBefore, isKeptOffline } from '@/downloads/kept-offline';
+import {
+  downloadBookLength,
+  downloadEndsBefore,
+  isKeptOffline,
+  refreshKeptMeta,
+} from '@/downloads/kept-offline';
 import { bookFileSpecs } from '@/playback/book-queue';
 import { readMirror } from '@/playback/progress-sync';
 import {
@@ -3159,6 +3164,77 @@ describe('the offline companion (community metadata kept with a download)', () =
     expect(useDownloads.getState().entries[downloadKey('c1', 2, path)]?.status).toBe('downloaded');
   });
 
+  // fe#158: a finished Bridge job has the kept copy read again, past this launch's try.
+  it('keeps it again when a Bridge job for the book finished, and nothing for another book', async () => {
+    const path = nextPath();
+    mockCapture.mockResolvedValue(payload());
+    await downloadOne(path);
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+    const fresh = payload(Date.parse('2026-06-01T10:00:00Z'));
+    mockCapture.mockResolvedValue(fresh);
+    await refreshKeptMeta('c1', 2, path, 7);
+    expect(mockCapture).toHaveBeenCalledTimes(2);
+    expect(mockWriteMeta).toHaveBeenLastCalledWith(expect.objectContaining({ path }), fresh);
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, path)]?.manifest.meta).toEqual({
+      savedAt: '2026-06-01T10:00:00.000Z',
+      job: 7,
+    });
+    await refreshKeptMeta('c1', 2, 'Not/Downloaded', 7);
+    expect(mockCapture).toHaveBeenCalledTimes(2);
+  });
+
+  // A forced keep beside one still reading could land first, the older answer written last.
+  it('waits for a keep under way, so the newer answer is the one written last', async () => {
+    const path = nextPath();
+    const old = payload();
+    const fresh = payload(Date.parse('2026-06-01T10:00:00Z'));
+    let landOld: (v: unknown) => void = () => {};
+    mockCapture.mockImplementationOnce(() => new Promise((r) => (landOld = r)));
+    await downloadOne(path); // the download's own keep, its read still out
+    mockCapture.mockResolvedValue(fresh);
+    const refreshed = refreshKeptMeta('c1', 2, path, 7);
+    await settle();
+    expect(mockCapture).toHaveBeenCalledTimes(1); // not read beside it
+    landOld(old);
+    await refreshed;
+    expect(mockWriteMeta.mock.calls.map(([, p]) => p)).toEqual([old, fresh]);
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, path)]?.manifest.meta).toEqual({
+      savedAt: '2026-06-01T10:00:00.000Z',
+      job: 7,
+    });
+  });
+
+  // The job is read done at every launch (the jobs' cache starts empty): the copy kept
+  // again for it once is not read, written and saved again each time.
+  it('keeps it again once per finished job, a later job once more', async () => {
+    const path = nextPath();
+    mockCapture.mockResolvedValue(payload());
+    await downloadOne(path);
+    await refreshKeptMeta('c1', 2, path, 7);
+    expect(mockCapture).toHaveBeenCalledTimes(2);
+    await refreshKeptMeta('c1', 2, path, 7); // the next launch's read of the same job
+    expect(mockCapture).toHaveBeenCalledTimes(2);
+    expect(mockWriteMeta).toHaveBeenCalledTimes(2);
+    await refreshKeptMeta('c1', 2, path, 8);
+    expect(mockCapture).toHaveBeenCalledTimes(3);
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, path)]?.manifest.meta?.job).toBe(8);
+  });
+
+  // Not kept (the server could not be read): the job is not marked, so it is tried again.
+  it('does not mark a job whose keep failed', async () => {
+    const path = nextPath();
+    mockCapture.mockResolvedValue(payload());
+    await downloadOne(path);
+    mockCapture.mockResolvedValueOnce(null);
+    await refreshKeptMeta('c1', 2, path, 7);
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, path)]?.manifest.meta?.job).toBe(
+      undefined,
+    );
+    await refreshKeptMeta('c1', 2, path, 7);
+    expect(mockCapture).toHaveBeenCalledTimes(3);
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, path)]?.manifest.meta?.job).toBe(7);
+  });
+
   it('a removed book stops keeping its cache entries for good', async () => {
     const path = nextPath();
     mockCapture.mockResolvedValue(payload());
@@ -3284,6 +3360,51 @@ describe('the offline companion (community metadata kept with a download)', () =
     await useDownloads.getState().hydrate();
     await settle();
     expect(mockCapture).not.toHaveBeenCalled();
+  });
+
+  // The marker's job outlives the weekly keep and a relaunch: the same job, read done at
+  // this launch too, keeps nothing again.
+  it('carries the kept job over the weekly keep and a relaunch', async () => {
+    const path = nextPath();
+    const key = downloadKey('c1', 2, path);
+    await seed({
+      [key]: downloadedEntry({
+        path,
+        manifest: {
+          ...downloadedEntry().manifest,
+          meta: { savedAt: '2026-05-01T10:00:00Z', job: 7 },
+        },
+      }),
+    });
+    mockReadMeta.mockResolvedValue(payload(Date.now() - 8 * 24 * 60 * 60_000));
+    mockCapture.mockResolvedValue(payload(Date.parse('2026-06-01T10:00:00Z')));
+    await useDownloads.getState().hydrate();
+    await settle();
+    expect(useDownloads.getState().entries[key]?.manifest.meta).toEqual({
+      savedAt: '2026-06-01T10:00:00.000Z',
+      job: 7,
+    });
+    await refreshKeptMeta('c1', 2, path, 7);
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+  });
+
+  // A jobs read can land before the launch has read the registry (a deep link to the book).
+  it('waits for the registry before it looks for the download a job is for', async () => {
+    const path = nextPath();
+    const key = downloadKey('c1', 2, path);
+    await seed({
+      [key]: downloadedEntry({
+        path,
+        manifest: { ...downloadedEntry().manifest, meta: { savedAt: '2026-05-01T10:00:00Z' } },
+      }),
+    });
+    mockReadMeta.mockResolvedValue(payload(Date.now() - 60_000));
+    mockCapture.mockResolvedValue(payload(Date.parse('2026-06-01T10:00:00Z')));
+    const hydrated = useDownloads.getState().hydrate();
+    await refreshKeptMeta('c1', 2, path, 7);
+    await hydrated;
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+    expect(useDownloads.getState().entries[key]?.manifest.meta?.job).toBe(7);
   });
 
   it('fills in a download whose saved file is missing or unreadable', async () => {

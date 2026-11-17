@@ -1315,15 +1315,14 @@ keeps it. Every `sidecars.generate` run writes one as it saves (its progress ste
 included; the player has no description-only action (the console's "Write a description"
 queues `sidecars.describe`, whose finish `latestDone` also counts, so the book's `/meta` is
 read again). **The `/meta` gate is `metaEnabledFor(metadata, book)` (`meta-gating.ts`)**:
-the server's `metadata` flag and an ASIN, an ISBN **or `generated`**, never an episode; the
-companion and reveal toast, Home's Now card and Previously on, the end credits and the
-offline copy go through it. **The book page alone asks wider, `bookPageMetaEnabled`**: the
-flag and a loaded book that is not an episode, ids or not, since a newer server answers a
-book with neither from its console match (a LibriVox download, LibriVox L5) and an older one
-answers `matched:false` without asking upstream. The one page a listener opened asks; the
-surfaces that ask for a book in passing or for every download keep the id gate (so a
-console-matched book without ids shows its community content on its page and in Search's
-characters, not offline or in the player). The series page's anchor (`metadataAnchor`, an
+the server's `metadata` flag and a loaded book that is not an episode, ids or not, since a newer
+server answers a book with neither from its console match (a LibriVox download, LibriVox L5) or
+with what a Bridge generated, and an older one answers `matched:false` without asking upstream.
+The book page, the companion and reveal toast, Home's Now card and Previously on and the end
+credits go through it (fe#290: a console-matched book without ids shows its community content in
+the player too, and the companion offers no Generate for a book the community covers). **The
+offline copy alone keeps the id rule, `matchableById`** (an ASIN, an ISBN **or `generated`**,
+never an episode): it runs for every download, so such a book reads as unmatched offline. The series page's anchor (`metadataAnchor`, an
 ASIN or ISBN) and Search's characters (`characterBooksToLoad`, the started books, capped,
 ids or not) pick their books by their own rules. Two readers of the envelope, and each
 field is read through one of them, never both:
@@ -1446,7 +1445,10 @@ rules are `src/lib/upcoming.ts`: `upcomingEligibility` (who may be asked, and `a
 true / false / undefined while a server's flags load; a non-kid server whose `/server` read
 failed, from `useCapabilitiesAllRead` (`useCapabilitiesAll` plus `failed` ids and `retry`, the
 same shared reads), is `unreadable`, settled and not loading, so a cold link never waits on it
-forever; `useUpcomingAvailable` reads only `available`),
+forever; `useUpcomingAvailable` reads only `available`; a failed read asked again stays
+`failed` while it is, `failedRead`, since a fetch with no data clears the query's error and
+only its `errorUpdateCount` still says it failed, so a Retry stays on screen, busy, rather
+than the section vanishing or a skeleton taking its place),
 `mergeUpcoming` (tags each item with its connection, keeps the FIRST connection's row of a work
 id, then `compareUpcoming`, the server's order across servers: preorders soonest first, releases
 newest first, then missing by series name and numeric position) and `isNewUpcoming`
@@ -1456,16 +1458,20 @@ back-catalogue gaps); a date's own rules are `src/lib/release-date.ts`
 "2026" or "2026-10" is ahead only while the whole period is), so `format.ts` and the series model
 never import the feature. A failed server adds no items but is named in `failed` (no answer: it
 failed or waits for the network, or its flags could not be read; `retry` asks it again, flags
-included), so the page shows "Couldn't load" with a
+included, and `retrying` keeps the Retry busy while those reads are on their way; a server is
+named by `serverDisplayName`), so the page shows "Couldn't load" with a
 Retry when no server answered and a note when some did, never "Nothing coming up" for a failure;
 `statuses` carries each answered server's `ok|pending|stale` (its notes show over the list or the
-empty state). A note naming servers joins them with `joinList` ("Home and Maya", `common.and`)
+empty state). A note naming servers joins them with `joinNames` ("Home and Maya", `common.and`)
 and passes `count`, so its verb is plural (`_one`/`_other`). Dates show through
 `formatReleaseDate` (`src/lib/format.ts`: "2027", "Nov 2026", "Nov 12, 2026" (the UI language's own order: `getLocale()` is the bare language, so English reads month first), read in UTC; any
 other text as it came) and `upcomingDateLabel` by kind: "Out", "Released", "First released"
 (the metadata's one date is a work's FIRST release), no line without a date. Surfaces
-(`src/components/upcoming/`): Home's rail, the `/upcoming` page (`upcomingHref`) and the You
-hub's Upcoming section (below). Every item is `UpcomingCover` (`upcoming-cover.tsx`, Track U3): a
+(`src/components/upcoming/`): Home's rail (without the works Home's Next in your series shows as
+a ghost just above, `skipWorks`), the `/upcoming` page (`upcomingHref`) and the You
+hub's Upcoming section (below). Their "New" badges count from `useUpcomingClock`, read again
+on screen focus and when the app comes to the front (and the stale lists read again then: the
+app does not refetch on window focus), steady in between. Every item is `UpcomingCover` (`upcoming-cover.tsx`, Track U3): a
 `GhostCover` with the work's real cover drawn over it only when the item's OWN connection (the one
 whose row won the merge) advertises `upcoming_covers === true` (never while unknown) and the item
 has a `cover_url`; the absence note says "Not on <server>", only about that source server
@@ -2372,7 +2378,9 @@ media GETs only.
   (3s) timer; if the engine hasn't reached `playing` when it fires, the store synthesizes
   an `error` so the player can offer a retry. Only reaching `playing` (or a user
   pause/stop) cancels it; a mid-playback stall (`playing`→`loading`) re-arms it. The fire
-  test is simply "not playing", so no transient state can prevent it.
+  test is simply "not playing", so no transient state can prevent it. It keeps a deadline
+  too, checked on every engine event (`checkStallDeadline`), since Android pauses JS timers
+  with the screen off while the engine's events still arrive (see `engineTicker`).
 - **Why not interpret engine events:** `service.native.ts` keeps ONE merged snapshot and
   re-emits it on every event, and iOS delivers `timeControlStatus`/status KVO
   asynchronously - so on a resume/retry the store sees a jumble of `ready`, frozen
@@ -2418,7 +2426,9 @@ media GETs only.
   image from a server is a `CoverImage` (`components/ui/cover-image.tsx`: expo-image on native,
   unchanged; `cover-image.web.tsx` a plain `<img>`, since expo-image's web image takes no
   `crossOrigin`), and the `<audio>` element sets `crossOrigin` before every `src`
-  (`service.web.ts`, a load, a skip, the download swap). Both ask `corsModeFor`
+  (`service.web.ts`, a load, a skip, the download swap); the Media Session artwork from another
+  origin is fetched in CORS mode and handed over as an object URL, revoked when the cover
+  changes (`artworkFor`, fe#155). All ask `corsModeFor`
   (`src/lib/cors-mode.ts`): `'anonymous'` for an http(s) URL on another origin than the page,
   nothing for the page's own origin (the player at `/web`), the service worker's `_offline/`
   copies, `blob:` and `data:`, and always nothing on native. The server answers CORS for its
@@ -3772,6 +3782,11 @@ card's `MiniShelf`): `copy` is the recording the listener is on, else the latest
 the server's pick (`local`; the first in series order without a rail), and `recordings` lists every
 one with its own progress. A "2 recordings" picker chip (`RecordingsChip`, `recordings-picker.tsx`)
 beside the caption's badge and the list row's action opens its own dialog (a sheet on a phone) of them.
+The page reads the rows of a rail's `local_others` the listener has played; the picker reads the rest
+when it opens (fe#313). Counts are per work on both surfaces (`seriesStats`): the series page's, and
+a Series mode card's "N books", in progress and finished once its shelf is in (until then the list's
+recording count). A work's slot on the local shelf is its first recording's number, so another
+recording tagged elsewhere leaves that number a ghost.
 Without the fields (an older server, metadata off) every book is its own entry, as before; Home's
 Next keeps the server's pick and `/series` counts are unchanged.
 Series mode cards (`series-card.tsx`) show a `MiniShelf` of the owned spines and fetch their books
@@ -4004,7 +4019,7 @@ are asked, at most 10,000 rows.
   The Text tab reads it offline (`readDownloadedReadalong`, `qk.readalongLocal`, `networkMode:
   'always'`) with the EPUB on the device.
 - **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community
-  metadata (asked by `metaEnabledFor`, so a book with content generated on its server too; the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
+  metadata (asked by `matchableById`, so a book with content generated on its server too; the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
   `meta.json` beside its audio (`engine.writeText`: the book's folder on native, its Cache API
   prefix on web), so it is scoped by connection and deleted with the files. **Not in the registry**:
   that is ONE JSON document rewritten every couple of seconds while a download runs, an envelope
@@ -4021,8 +4036,12 @@ are asked, at most 10,000 rows.
   once when none is kept). The launch restore runs after first paint
   (`afterLaunch`), reads three files at a time, seeds the books before the server answers (so a
   gate it opens finds the data), then backfills downloads that kept none and refreshes copies
-  older than a week (only servers with `metadata`; a failure keeps what the book had). The spoiler
-  gate is unchanged: it still runs on the device.
+  older than a week (only servers with `metadata`; a failure keeps what the book had). A finished
+  Bridge job has its book's copy kept again at once (`refreshKeptMeta` from `refreshAfterFinish`,
+  fe#158), once per job: the manifest's marker records the job (`meta.job`), since every launch
+  reads the job done again. Keeps run one at a time per download (`keepOfflineMeta`), so the
+  answer read last is the one written last. The spoiler gate is unchanged: it still runs on the
+  device.
 
 Content routes are **flat** - `library/[libraryId].tsx` (re-exports
 `src/components/library/browse-screen.tsx`), `book/[libraryId].tsx`, `account.tsx` -
@@ -4278,7 +4297,9 @@ under their empty state).
   used to fail with a Retry. The Library's Series, Authors, Narrators, Collections and Shows
   modes, the series, author / narrator, book, episode, collection, show and folder pages, and
   a book's bookmarks, notes and history sections all do, and so do the Signed-in devices and
-  household members sections (a member card's devices too, as one line), Your listening
+  household members sections (a member card's devices too, as one line), Listening in the
+  house (a server's flags held or failed with no network: `useDeviceOnline`, since
+  `useCapabilitiesAllRead`'s `failed` names both), Your listening
   (both of its reads) and the Year story
   (`useYearStory`'s `offline` status: a held streak or goal is left out, like a failed one,
   and once told the story stays told while they are asked again, so it never restarts at its

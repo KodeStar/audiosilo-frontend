@@ -963,6 +963,114 @@ describe('WebPlaybackService Media Session (transcoded tracks)', () => {
   });
 });
 
+// fe#155 (server#201): the Media Session cover from another origin loads in CORS mode, as
+// the covers on screen do, and reaches the OS as an object URL.
+describe('WebPlaybackService Media Session artwork', () => {
+  const g = globalThis as Record<string, unknown>;
+  const saved = {
+    Audio: g.Audio,
+    MediaMetadata: g.MediaMetadata,
+    fetch: g.fetch,
+    location: Object.getOwnPropertyDescriptor(globalThis, 'location'),
+  };
+  const fetchMock = jest.fn();
+  const created: string[] = [];
+  const revoked: string[] = [];
+  let session: { metadata: { init: { artwork: { src: string }[] } } | null };
+  const artwork = () => session.metadata?.init.artwork.map((a) => a.src);
+  const COVER = 'https://s/api/v1/libraries/2/cover?path=C&token=k';
+  const withCover = (cover: string) => directTracks.map((t) => ({ ...t, artwork: cover }));
+  const settle = async () => {
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  };
+
+  beforeEach(() => {
+    FakeAudio.all = [];
+    created.length = 0;
+    revoked.length = 0;
+    g.Audio = FakeAudio;
+    g.MediaMetadata = class {
+      constructor(public init: unknown) {}
+    };
+    g.fetch = fetchMock.mockReset().mockResolvedValue({ ok: true, blob: async () => 'img' });
+    jest.spyOn(URL, 'createObjectURL').mockImplementation(() => {
+      const url = `blob:p/${created.length + 1}`;
+      created.push(url);
+      return url;
+    });
+    jest.spyOn(URL, 'revokeObjectURL').mockImplementation((url) => void revoked.push(url));
+    Object.defineProperty(globalThis, 'location', {
+      value: { href: 'https://player.example/web', origin: 'https://player.example' },
+      configurable: true,
+    });
+    session = { metadata: null };
+    Object.defineProperty(navigator, 'mediaSession', {
+      configurable: true,
+      value: Object.assign(session, { setActionHandler: () => {}, setPositionState: () => {} }),
+    });
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+    g.Audio = saved.Audio;
+    g.MediaMetadata = saved.MediaMetadata;
+    g.fetch = saved.fetch;
+    if (saved.location) Object.defineProperty(globalThis, 'location', saved.location);
+    else delete g.location;
+    delete (navigator as { mediaSession?: unknown }).mediaSession;
+  });
+
+  it("hands another origin's cover over as an object URL fetched in CORS mode", async () => {
+    const svc = createPlaybackService();
+    await svc.load(withCover(COVER), 0, 0);
+    expect(artwork()).toEqual([]); // not the plain URL while it loads
+    await settle();
+    expect(fetchMock).toHaveBeenCalledWith(COVER, { mode: 'cors', credentials: 'omit' });
+    expect(artwork()).toEqual(['blob:p/1']);
+    // The next file keeps the same cover: no second fetch.
+    await svc.skipToTrack(1);
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(artwork()).toEqual(['blob:p/1']);
+  });
+
+  it('revokes the object URL when the cover changes or playback ends', async () => {
+    const svc = createPlaybackService();
+    await svc.load(withCover(COVER), 0, 0);
+    await settle();
+    await svc.load(withCover(`${COVER}2`), 0, 0);
+    await settle();
+    expect(revoked).toEqual(['blob:p/1']);
+    expect(artwork()).toEqual(['blob:p/2']);
+    await svc.reset();
+    expect(revoked).toEqual(['blob:p/1', 'blob:p/2']);
+  });
+
+  it('drops a cover that lands after another book loaded', async () => {
+    let land: (v: unknown) => void = () => {};
+    fetchMock.mockReturnValueOnce(new Promise((r) => (land = r)));
+    const svc = createPlaybackService();
+    await svc.load(withCover(COVER), 0, 0);
+    await svc.load(withCover(`${COVER}2`), 0, 0);
+    await settle();
+    land({ ok: true, blob: async () => 'old' });
+    await settle();
+    expect(artwork()).toEqual(['blob:p/1']); // the second book's, created first
+    expect(created).toEqual(['blob:p/1', 'blob:p/2']);
+    expect(revoked).toEqual(['blob:p/2']); // the late first cover, never shown
+  });
+
+  it("keeps the page's own cover as its URL, and falls back to it when a fetch fails", async () => {
+    const svc = createPlaybackService();
+    await svc.load(withCover('https://player.example/api/v1/cover'), 0, 0);
+    expect(artwork()).toEqual(['https://player.example/api/v1/cover']);
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 403 });
+    await svc.load(withCover(COVER), 0, 0);
+    await settle();
+    expect(artwork()).toEqual([COVER]);
+  });
+});
+
 // --- Voice Boost over a fake Web Audio graph ------------------------------------------
 class FakeNode {
   targets: FakeNode[] = [];

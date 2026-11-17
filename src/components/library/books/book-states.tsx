@@ -7,19 +7,21 @@ import { Text } from '@/components/ui/text';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 /** A failed load: what went wrong and Retry. Inline (`compact`) when loaded data is
- * still on screen above or below it. */
+ * still on screen above or below it. `retrying`: the Retry is busy while it reads again. */
 export function LoadError({
   title,
   hint,
   retryLabel,
   onRetry,
   compact,
+  retrying,
 }: {
   title: string;
   hint?: string;
   retryLabel: string;
   onRetry: () => void;
   compact?: boolean;
+  retrying?: boolean;
 }) {
   const themed = useThemeColors();
   if (!compact) {
@@ -29,7 +31,7 @@ export function LoadError({
         art={<Icon name="circle-exclamation" size={28} color={themed.destructive} />}
         title={title}
         hint={hint}
-        action={{ label: retryLabel, onPress: onRetry }}
+        action={{ label: retryLabel, onPress: onRetry, loading: retrying }}
       />
     );
   }
@@ -43,7 +45,7 @@ export function LoadError({
         <Text variant="label">{title}</Text>
         {hint ? <Text variant="caption">{hint}</Text> : null}
       </View>
-      <Button title={retryLabel} variant="outline" size="sm" onPress={onRetry} />
+      <Button title={retryLabel} variant="outline" size="sm" onPress={onRetry} loading={retrying} />
     </View>
   );
 }

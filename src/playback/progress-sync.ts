@@ -145,6 +145,24 @@ async function readQueue(): Promise<ProgressSave[]> {
   return (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
 }
 
+const queueListeners = new Set<() => void>();
+
+/** Store the offline replay queue, read at `before` entries, and tell `onQueueChange`'s
+ * listeners when its length changed. A write only ever adds a save, replaces one in place
+ * or takes some out, so every count `pendingSaves` gives moves with the length. */
+async function writeQueue(next: ProgressSave[], before: number): Promise<void> {
+  await setItem(QUEUE_KEY, next);
+  if (next.length !== before) for (const fn of queueListeners) fn();
+}
+
+/** Be told when the offline replay queue grew or shrank (a save queued, a replay that
+ * drained it): the sync pills read `pendingSaves` again then, not up to 20 s later (fe#197).
+ * Returns the unsubscribe. */
+export function onQueueChange(listener: () => void): () => void {
+  queueListeners.add(listener);
+  return () => queueListeners.delete(listener);
+}
+
 /** Sync v2's stored backlog: the outbox's events and the open spans (one per web tab
  * playing), read from storage only (no outbox import: it imports this). Not an array: none. */
 async function readListeningBacklog(): Promise<{ outbox: OutboxEntry[]; spans: OpenSpan[] }> {
@@ -990,7 +1008,7 @@ async function enqueue(save: ProgressSave): Promise<void> {
         ),
     );
     next.push(save);
-    await setItem(QUEUE_KEY, next);
+    await writeQueue(next, queue.length);
   });
 }
 
@@ -1069,7 +1087,7 @@ export async function flushQueue(): Promise<void> {
         return flushGroup(cid, client, saves);
       }),
     );
-    await setItem(QUEUE_KEY, remainingByGroup.flat());
+    await writeQueue(remainingByGroup.flat(), queue.length);
   });
 }
 
@@ -1095,7 +1113,7 @@ export async function flushConnection(connectionId: string): Promise<void> {
     if (mine.length === 0) return;
     const others = queue.filter((s) => s.connectionId !== connectionId);
     const remaining = await flushGroup(connectionId, client, mine);
-    await setItem(QUEUE_KEY, [...others, ...remaining]);
+    await writeQueue([...others, ...remaining], queue.length);
   });
 }
 
@@ -1121,7 +1139,7 @@ onConnectionRemoved(async (id) => {
     withQueueLock(async () => {
       const queue = await readQueue();
       const next = queue.filter((s) => s.connectionId !== id);
-      if (next.length !== queue.length) await setItem(QUEUE_KEY, next);
+      if (next.length !== queue.length) await writeQueue(next, queue.length);
     }),
   ]);
 });

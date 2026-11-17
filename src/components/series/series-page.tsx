@@ -125,12 +125,15 @@ export function SeriesPage({
   const pickOrder = useSeriesOrderings((s) => s.pick);
   const views = rail ? seriesViews(rail) : [];
   const view = rail ? selectedView(rail, picks, views) : undefined;
-  // The rows of what the rail places outside the series' own books: its pick and every
-  // other recording of the work (server#241).
+  // The rows of what the rail places outside the series' own books: its pick, and any
+  // other recording of the work (server#241) the listener has played, which the shelf may
+  // show. The rest only the recordings picker lists, and it reads them when it opens
+  // (fe#313: up to 20 a work).
   const placedRefs: BookRef[] = (view?.works ?? []).flatMap((w) =>
-    [...(w.local ? [w.local] : []), ...(w.local_others ?? [])].filter(
-      (r) => !ownedKeys.has(contentKey(cid, r.library_id, r.path)),
-    ),
+    [
+      ...(w.local ? [w.local] : []),
+      ...(w.local_others ?? []).filter((r) => progressOf(cid, r.library_id, r.path)),
+    ].filter((r) => !ownedKeys.has(contentKey(cid, r.library_id, r.path))),
   );
   const placed = usePlacedBooks(cid, placedRefs);
   const elsewhere = useElsewhereBooks(cid, rail ? familyName(rail, views) : name);

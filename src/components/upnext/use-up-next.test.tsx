@@ -7,6 +7,7 @@ const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
 
 let mockQueue: QueueEntry[] | undefined;
+let mockProgress: object[] = [];
 const mockAdd = jest.fn();
 const mockRemove = jest.fn();
 jest.mock('@/api/hooks', () => {
@@ -22,7 +23,7 @@ jest.mock('@/api/hooks', () => {
     useAddToQueue: () => ({ mutateAsync: mockAdd, isPending: false }),
     useRemoveFromQueue: () => ({ mutateAsync: mockRemove, isPending: false }),
     useNextBook: () => ({ data: undefined }),
-    useAllProgressAll: () => ({ progress: [] }),
+    useAllProgressAll: () => ({ progress: mockProgress }),
   };
 });
 const mockItem = jest.fn();
@@ -53,7 +54,11 @@ jest.mock('expo-router', () => ({
   router: { push: (h: unknown) => mockPush(h) },
   // No full player on top (`usePlayerOnTop`, which `usePlayBook` reads).
   useSegments: () => [],
+  // The page under the panel (`useShownBook`).
+  usePathname: () => mockRoute.pathname,
+  useGlobalSearchParams: () => mockRoute.params,
 }));
+let mockRoute: { pathname: string; params: Record<string, string> } = { pathname: '/', params: {} };
 let mockLayout: 'phone' | 'tablet' | 'desktop' = 'desktop';
 jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
@@ -107,6 +112,8 @@ beforeEach(() => {
   mockItem.mockReset().mockResolvedValue({ rel_path: 'B' });
   mockChapters.mockReset().mockResolvedValue({ files: [] });
   mockLayout = 'desktop';
+  mockProgress = [];
+  mockRoute = { pathname: '/', params: {} };
 });
 
 describe('useUpNextConnection', () => {
@@ -139,6 +146,32 @@ describe('useUpNextConnection', () => {
 
 describe('useUpNextData', () => {
   const hook = async () => (await renderHook(() => useUpNextData('c'))).result;
+
+  // fe#197 FE196-UPNEXT: Up next over a book's own page never offers that book.
+  it("never suggests the book whose page is on screen, on this server's page only", async () => {
+    useSession.setState({ connections: [{ id: 'c' }, { id: 'd' }] as never });
+    const prog = (path: string) => ({
+      connectionId: 'c',
+      library_id: 1,
+      path,
+      position: 10,
+      duration: 100,
+      finished: false,
+    });
+    mockProgress = [prog('Shown'), prog('Other')];
+    const paths = async () =>
+      (await hook()).current.suggestions.map((s) => ('ref' in s ? s.ref.path : s.title));
+    mockRoute = { pathname: '/book/1', params: { libraryId: '1', path: 'Shown', connection: 'c' } };
+    expect(await paths()).toEqual(['Other']);
+    // A part path of it (a disc folder) is the same book.
+    mockRoute.params.path = 'Shown/Disc 1';
+    expect(await paths()).toEqual(['Other']);
+    // Another server's page, or no book page, leaves it in.
+    mockRoute.params.connection = 'd';
+    expect(await paths()).toEqual(['Shown', 'Other']);
+    mockRoute = { pathname: '/library', params: { libraryId: '1', path: 'Shown' } };
+    expect(await paths()).toEqual(['Shown', 'Other']);
+  });
 
   it('moves one entry with a positioned add, never a whole-list replace', async () => {
     const r = await hook();

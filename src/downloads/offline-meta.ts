@@ -6,7 +6,7 @@ import { bookMetaQuery, fetchCapabilities, fetchFailFast, metaWorkQuery, qk } fr
 import { queryClient } from '@/api/provider';
 import { parseServerSnapshot, type ServerSnapshot } from '@/api/server-snapshots';
 import type { Book, BookMeta, BookMetaWork } from '@/api/types';
-import { metaEnabledFor } from '@/components/library/meta-gating';
+import { matchableById } from '@/components/library/meta-gating';
 import { previousWorks, seriesRails } from '@/components/library/series-rails';
 import { isRecord } from '@/lib/storage-keys';
 import { useSeriesOrderings } from '@/stores/series-orderings';
@@ -181,16 +181,15 @@ export async function serverHasMetadata(connectionId: string): Promise<boolean> 
   }
 }
 
-/** Whether a downloaded book's metadata is kept (`metaEnabledFor`, the rule every reader
- * but the book page asks by: an ASIN or ISBN, which the server matches by, or content
- * generated on its server). The book page also asks for a book with neither (a console
- * match, `bookPageMetaEnabled`), but this runs for every download, so it keeps to the
- * books that can match by id: offline, such a book's page reads as unmatched. The
+/** Whether a downloaded book's metadata is kept (`matchableById`: an ASIN or ISBN, which the
+ * server matches by, or content generated on its server). The screens also ask for a book
+ * with neither (a console match, `metaEnabledFor`), but this runs for every download, so it
+ * keeps to the books that can match by id: offline, such a book reads as unmatched. The
  * download's book can be the list shape, so the full item is asked first. */
 export function canMatch(entry: DownloadEntry): boolean {
   const { connectionId, libraryId, path } = entry;
   const item = queryClient.getQueryData<Book>(qk.item(connectionId, libraryId, path));
-  return metaEnabledFor(true, item) || metaEnabledFor(true, entry.manifest.book);
+  return matchableById(item) || matchableById(entry.manifest.book);
 }
 
 /**

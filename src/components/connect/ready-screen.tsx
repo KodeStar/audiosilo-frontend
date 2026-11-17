@@ -14,7 +14,7 @@ import { Text } from '@/components/ui/text';
 import { contradictedTitle } from '@/lib/chapter-label';
 import { formatCount } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
-import { joinList } from '@/lib/names';
+import { joinNames } from '@/lib/names';
 import { openExternalUrl } from '@/lib/support';
 
 import type { ReadyLine } from './connect-model';
@@ -129,10 +129,6 @@ export function ReadyScreen({
 
 type T = TFunction;
 
-function names(list: string[], t: T): string {
-  return joinList(list, (rest, last) => String(t('common.and', { rest, last })));
-}
-
 /** The library sentence, in words. */
 function lineText(line: ReadyLine, server: string, t: T): string {
   switch (line.kind) {
@@ -142,7 +138,7 @@ function lineText(line: ReadyLine, server: string, t: T): string {
       return t('onboarding.ready.booksIn', {
         count: line.books,
         books: formatCount(line.books),
-        list: names(line.names, t),
+        list: joinNames(line.names, t),
       });
     case 'booksAcross':
       return t('onboarding.ready.booksAcross', {
@@ -153,7 +149,7 @@ function lineText(line: ReadyLine, server: string, t: T): string {
     case 'librariesIn':
       return t('onboarding.ready.librariesIn', {
         count: line.libraries,
-        list: names(line.names, t),
+        list: joinNames(line.names, t),
       });
     case 'librariesCount':
       return t('onboarding.ready.librariesCount', { count: line.libraries });

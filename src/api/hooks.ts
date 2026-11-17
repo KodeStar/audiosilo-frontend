@@ -34,6 +34,7 @@ import { contentKey } from '@/lib/content-key';
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { isPodcastLibrary } from '@/lib/library-kind';
 import { parentPath } from '@/lib/paths';
+import { serverDisplayName } from '@/lib/server-display-name';
 import {
   mergeUpcoming,
   type SourcedUpcomingItem,
@@ -55,7 +56,7 @@ import {
   libraryRequests,
   requestsDone,
 } from '@/lib/podcast-requests';
-import { isKeptOffline } from '@/downloads/kept-offline';
+import { isKeptOffline, refreshKeptMeta } from '@/downloads/kept-offline';
 import { finishedSave, recordFinishEvent } from '@/playback/finish-route';
 import {
   bookPlace,
@@ -751,12 +752,15 @@ export function useCapabilitiesAll(): Record<string, Capabilities | undefined> {
  * {@link useCapabilitiesAll} with what it can't tell: `failed` lists the connections whose
  * `/server` read has failed with nothing known (an error, or held for the network), which
  * `caps` keeps reading as `undefined` (not known yet), so a screen that waits on the flags
- * can settle; `retry` asks each of them again.
+ * can settle; `retry` asks each of them again, and `reading` is true while one of those is
+ * read again (a Retry's busy state). A failed read asked again stays in `failed` meanwhile
+ * (`failedRead`), so the screen keeps its Retry, busy, rather than reading as loading.
  */
 export function useCapabilitiesAllRead(): {
   caps: Record<string, Capabilities | undefined>;
   failed: string[];
   retry: () => void;
+  reading: boolean;
 } {
   const apis = useApis();
   return useQueries({
@@ -765,14 +769,25 @@ export function useCapabilitiesAllRead(): {
       caps: Object.fromEntries(
         results.map((r, i) => [apis[i].connection.id, r.data?.capabilities]),
       ),
-      failed: results.flatMap((r, i) =>
-        !r.data && (r.isError || r.isPaused) ? [apis[i].connection.id] : [],
-      ),
+      failed: results.flatMap((r, i) => (failedRead(r) ? [apis[i].connection.id] : [])),
       retry: () => {
         for (const r of results) if (!r.data && (r.isError || r.isPaused)) void r.refetch();
       },
+      reading: results.some((r) => failedRead(r) && r.isFetching),
     }),
   });
+}
+
+/** Whether a query failed with nothing known: an error, held for the network, or asked
+ * again after a failure (a fetch with no data puts the query back to pending and clears its
+ * error, so only the count of its failures still says it failed, as `useKnownBook` reads). */
+function failedRead(r: {
+  data?: unknown;
+  isError: boolean;
+  isPaused: boolean;
+  errorUpdateCount: number;
+}): boolean {
+  return r.data === undefined && (r.isError || r.isPaused || r.errorUpdateCount > 0);
 }
 
 /** Whether any server has a capability: true as soon as one does, false once every one
@@ -1935,16 +1950,28 @@ export function useToggleFavourite(connectionId?: string) {
       });
       return { prev };
     },
-    onError: (_e, _vars, ctx) => {
+    onError: (_e, { libraryId, path, on }, ctx) => {
       if (!ctx) return;
-      if (ctx.prev) {
-        qc.setQueryData(qk.favourites(cid), ctx.prev);
+      if (!ctx.prev && qc.isMutating({ mutationKey }) === 1) {
+        // Nothing was read before the toggle (the list waits for the network, or failed):
+        // the optimistic list is no answer, and kept it would show the heart as saved
+        // until the list is next read. Back to unread.
+        void qc.resetQueries({ queryKey: qk.favourites(cid), exact: true });
         return;
       }
-      // Nothing was read before the toggle (the list waits for the network, or failed):
-      // the optimistic list is no answer, and kept it would show the heart as saved
-      // until the list is next read. Back to unread.
-      void qc.resetQueries({ queryKey: qk.favourites(cid), exact: true });
+      // Take back only this toggle's own edit (fe#154), never the whole snapshot: a scoped
+      // mutation's onMutate runs before it waits its turn, so its snapshot can hold another
+      // toggle's optimistic edit, one that has failed since too. The last one to settle
+      // reads the list.
+      const same = (f: Favourite) => f.library_id === libraryId && f.path === path;
+      const at = ctx.prev?.findIndex(same) ?? -1;
+      const before = at >= 0 ? ctx.prev?.[at] : undefined;
+      qc.setQueryData<Favourite[]>(qk.favourites(cid), (cur) => {
+        if (!cur) return cur;
+        if (on) return before ? cur : cur.filter((f) => !same(f));
+        if (!before || cur.some(same)) return cur;
+        return [...cur.slice(0, at), before, ...cur.slice(at)];
+      });
     },
     // This mutation still counts itself here; a later toggle queued behind it reads
     // the list when it settles.
@@ -2651,6 +2678,8 @@ async function refreshAfterFinish(qc: QueryClient, cid: string, jobs: readonly B
     // a later launch's first read of the jobs costs the map it shows nothing.
     qc.invalidateQueries({ predicate: (q) => isBookAnswerOf(q, cid, libraryId, path) }),
   ]);
+  // A downloaded book's kept copy too, so offline it has what the job made. Not waited for.
+  void refreshKeptMeta(cid, libraryId, path, job.id);
 }
 
 /** While a generate run is past chapter detection (`midRunCheckpoint`): read the book's
@@ -3561,10 +3590,11 @@ const UPCOMING_STALE_MS = 15 * 60_000;
  * server whose flags could not be read counts as `unreadable`, never as still loading. */
 function useUpcomingEligibility() {
   const apis = useApis();
-  const { caps, failed, retry } = useCapabilitiesAllRead();
+  const { caps, failed, retry, reading } = useCapabilitiesAllRead();
   return {
     apis,
     retryFlags: retry,
+    readingFlags: reading,
     ...upcomingEligibility(
       apis.map((a) => a.connection),
       caps,
@@ -3591,9 +3621,11 @@ export function useUpcomingAvailable(): boolean | undefined {
  * `failed` (no answer: its request failed, or waits for the network), so a screen never
  * reads a failure as "nothing coming up"; a server whose `/server` flags could not be read
  * is named there too (it may have Upcoming), so a cold link settles instead of loading
- * forever. `retry` asks each failed one again, its flags included. `statuses`
+ * forever. `retry` asks each failed one again, its flags included, and `retrying` is true
+ * while one of those reads is on its way. `statuses`
  * holds each answered connection's job status (`pending` before its first run, `stale`
- * after 48 h).
+ * after 48 h). A server is named as the app names it elsewhere (`serverDisplayName`: two
+ * named alike carry their address, fe#232).
  */
 export function useUpcomingAll(): {
   items: SourcedUpcomingItem[];
@@ -3602,14 +3634,18 @@ export function useUpcomingAll(): {
   statuses: UpcomingServerStatus[];
   failed: string[];
   retry: () => void;
+  retrying: boolean;
 } {
-  const { apis, eligible, available, unreadable, retryFlags } = useUpcomingEligibility();
+  const { apis, eligible, available, unreadable, retryFlags, readingFlags } =
+    useUpcomingEligibility();
+  const saved = useSession((s) => s.connections);
   // `combine` re-runs whenever its identity changes, so it is keyed on what it reads (each
-  // connection, in order, whether it is asked, and whether its flags could not be read):
-  // the merge and sort run per answer, not per render.
+  // connection, in order, its name, whether it is asked, and whether its flags could not be
+  // read): the merge and sort run per answer, not per render.
   const sources = JSON.stringify(
     apis.map(
-      ({ connection: c }) => [c.id, c.name, eligible.has(c.id), unreadable.has(c.id)] as const,
+      ({ connection: c }) =>
+        [c.id, serverDisplayName(c, saved), eligible.has(c.id), unreadable.has(c.id)] as const,
     ),
   );
   const combine = useCallback(
@@ -3619,6 +3655,8 @@ export function useUpcomingAll(): {
         isLoading: boolean;
         isError: boolean;
         isPaused: boolean;
+        isFetching: boolean;
+        errorUpdateCount: number;
         refetch: () => Promise<unknown>;
       }[],
     ) => {
@@ -3630,17 +3668,17 @@ export function useUpcomingAll(): {
           : [];
       });
       // A server whose flags could not be read may have Upcoming too: it didn't answer
-      // either, named in its `useApis` place.
+      // either, named in its `useApis` place. One asked again after a failure stays named
+      // while it is (`failedRead`), its Retry busy.
       const failed = conns.flatMap(([, connectionName, asked, unread], i) => {
         const r = results[i];
-        return unread || (asked && r && !r.data && (r.isError || r.isPaused))
-          ? [connectionName]
-          : [];
+        return unread || (asked && r && failedRead(r)) ? [connectionName] : [];
       });
       return {
         items: mergeUpcoming(answered),
         available,
-        isLoading: results.some((r) => r.isLoading),
+        // A failed list read again is a busy Retry, not the page loading.
+        isLoading: results.some((r) => r.isLoading && r.errorUpdateCount === 0),
         statuses: answered.map(({ connectionId, connectionName, status }) => ({
           connectionId,
           connectionName,
@@ -3652,6 +3690,10 @@ export function useUpcomingAll(): {
             if (asked && results[i]?.isError) void results[i].refetch();
           });
         },
+        retrying: conns.some(([, , asked], i) => {
+          const r = results[i];
+          return asked && !!r && failedRead(r) && r.isFetching;
+        }),
       };
     },
     [sources, available],
@@ -3674,6 +3716,7 @@ export function useUpcomingAll(): {
       all.retry();
       retryFlags();
     },
+    retrying: all.retrying || readingFlags,
   };
 }
 

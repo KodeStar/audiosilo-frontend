@@ -4,7 +4,7 @@ jest.mock('@/playback/store', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('@/testing/player-store-mock').createPlayerStoreMock(),
 );
-jest.mock('@/components/ui/toast', () => ({ toast: jest.fn() }));
+jest.mock('@/components/ui/toast', () => ({ toast: jest.fn(), dismissToast: jest.fn() }));
 jest.mock('@/api/provider', () => ({
   queryClient: { invalidateQueries: jest.fn(), getQueryData: jest.fn() },
 }));
@@ -13,7 +13,7 @@ jest.mock('@/api/connection-clients', () => ({ resolveClient: jest.fn() }));
 /* eslint-disable import/first */
 import { resolveClient } from '@/api/connection-clients';
 import { queryClient } from '@/api/provider';
-import { toast } from '@/components/ui/toast';
+import { dismissToast, toast } from '@/components/ui/toast';
 import i18n from '@/i18n';
 import { ownsArrows, ownsSpace } from '@/lib/keyboard';
 import { lastInteraction, resetInteractions } from '@/playback/last-interaction';
@@ -23,6 +23,7 @@ import { playerStoreMock } from '@/testing/player-store-mock';
 import { usePlayerSheets } from './player-sheets';
 import {
   addBookmarkHere,
+  dismissBookmarkToast,
   type PlayerKey,
   type PlayerKeyContext,
   playerShortcutFor,
@@ -275,6 +276,28 @@ describe('addBookmarkHere', () => {
       queryKey: ['bookmarks', 'srv', 1, 'a/book'],
     });
     expect(toast).toHaveBeenCalledWith({ title: 'Bookmark added', description: '17:26:50' });
+  });
+
+  // fe#197 PLAYER-13: closing the full player takes the toast with it.
+  it('takes its toast down when asked, once', async () => {
+    (resolveClient as jest.Mock).mockReturnValue({ addBookmark: () => Promise.resolve({}) });
+    (toast as jest.Mock).mockReturnValueOnce(41);
+    await addBookmarkHere(t);
+    dismissBookmarkToast();
+    dismissBookmarkToast();
+    expect((dismissToast as jest.Mock).mock.calls).toEqual([[41]]);
+  });
+
+  it('raises no toast for a bookmark that lands after the player closed', async () => {
+    let land: (v: object) => void = () => {};
+    const addBookmark = jest.fn(() => new Promise<object>((resolve) => (land = resolve)));
+    (resolveClient as jest.Mock).mockReturnValue({ addBookmark });
+    const added = addBookmarkHere(t);
+    dismissBookmarkToast();
+    land({ id: 5, position: 62_810 });
+    await added;
+    expect(addBookmark).toHaveBeenCalledTimes(1);
+    expect(toast).not.toHaveBeenCalled();
   });
 
   it('adds one bookmark for a double tap while the first is on its way', async () => {

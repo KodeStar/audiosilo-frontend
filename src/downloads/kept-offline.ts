@@ -1,6 +1,7 @@
 /**
  * Facts of this device's downloads registry, for code the downloads store can't be
- * imported into (it imports the API hooks, which ask `isKeptOffline`: `fetchBookProgress`,
+ * imported into (it imports the API hooks, which ask `isKeptOffline` and, after a Bridge
+ * job, `refreshKeptMeta`: `fetchBookProgress`,
  * the progress mirror, which asks `downloadEndsBefore`: `mirrorSpanEnd`, and the listening
  * outbox, which asks `downloadBookLength`: `resendMismatched`). The store
  * registers its checks as it loads; until it has, no book is kept and none ends early.
@@ -64,4 +65,32 @@ export function downloadBookLength(
   path: string,
 ): Promise<number | undefined> {
   return lengthCheck(connectionId, libraryId, path);
+}
+
+type KeptMetaRefresh = (
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  job: number,
+) => Promise<void>;
+
+let keptMetaRefresh: KeptMetaRefresh = async () => {};
+
+/** The downloads store's refresh of a book's kept metadata (`src/downloads/store.ts`). */
+export function setKeptMetaRefresh(fn: KeptMetaRefresh): void {
+  keptMetaRefresh = fn;
+}
+
+/** Keep a downloaded book's community metadata again now (after a Bridge job that made its
+ * characters, recaps or description finished: `refreshAfterFinish`), rather than at the
+ * launch a week on. `job` is that job's id: the copy is kept again once for it, not at
+ * every launch that reads the job done. Nothing for a book not downloaded; best effort,
+ * never rejects. */
+export function refreshKeptMeta(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  job: number,
+) {
+  return keptMetaRefresh(connectionId, libraryId, path, job).catch(() => {});
 }

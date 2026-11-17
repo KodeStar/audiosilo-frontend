@@ -31,15 +31,30 @@ jest.mock('@/components/account/use-sign-out', () => ({
   signOutConnection: (id: string) => mockSignOut(id),
 }));
 const mockCaps: Record<string, { household?: boolean }> = {};
+// The connections whose /server read failed with nothing known, and their Retry.
+let mockCapsFailed: string[] = [];
+let mockCapsReading = false;
+const mockCapsRetry = jest.fn();
 const mockMemberSession = { mutateAsync: jest.fn(), isPending: false };
 const mockMemberSessionFor = jest.fn();
 jest.mock('@/api/hooks', () => ({
   ...jest.requireActual('@/api/hooks'),
   useCapabilitiesAll: () => mockCaps,
+  useCapabilitiesAllRead: () => ({
+    caps: mockCaps,
+    failed: mockCapsFailed,
+    retry: mockCapsRetry,
+    reading: mockCapsReading,
+  }),
   useMemberSession: (cid: string) => {
     mockMemberSessionFor(cid);
     return mockMemberSession;
   },
+}));
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
 }));
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({
@@ -97,6 +112,10 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   resetProfilesForTests();
   for (const k of Object.keys(mockCaps)) delete mockCaps[k];
+  mockCapsFailed = [];
+  mockCapsReading = false;
+  mockDeviceOnline = true;
+  mockCapsRetry.mockClear();
   useSession.setState({
     status: 'authenticated',
     connections: [
@@ -666,6 +685,43 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
     expect(screen.queryByText('sharing-b.1')).toBeNull();
     // Leo's server is Leo's to share.
     expect(screen.queryByText('sharing-a.3')).toBeNull();
+  });
+
+  // fe#236: a server whose flags could not be read never leaves the section waiting.
+  it("names a server whose flags couldn't be read, with a Retry, once the others answered", async () => {
+    mockCaps['a.1'] = {};
+    await mount();
+    expect(screen.queryByTestId('household-sharing')).toBeNull(); // b.1 still reading
+    mockCapsFailed = ['b.1'];
+    await mount();
+    const name = useSession.getState().connections.find((c) => c.id === 'b.1')?.name;
+    expect(screen.getByText(`Couldn't check whether ${name} offers this.`)).toBeTruthy();
+    expect(screen.queryByText('None of your servers offers this yet.')).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
+    expect(mockCapsRetry).toHaveBeenCalledTimes(1);
+    mockCapsReading = true;
+    await mount();
+    expect(screen.getAllByRole('button', { name: 'Retry' }).at(-1)).toBeBusy();
+  });
+
+  // With no network the read only waits for one: offline, and no Retry that can't work.
+  it('says offline, with no Retry, while the device has no network', async () => {
+    mockCaps['a.1'] = {};
+    mockCapsFailed = ['b.1'];
+    mockDeviceOnline = false;
+    await mount();
+    const section = within(screen.getByTestId('household-sharing'));
+    expect(section.getByText("You're offline")).toBeTruthy();
+    expect(section.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(section.queryByText(/Couldn't check/)).toBeNull();
+  });
+
+  it('shows the rows of a server that shares even while another could not be read', async () => {
+    mockCaps['a.1'] = { household: true };
+    mockCapsFailed = ['b.1'];
+    await mount();
+    expect(screen.getByText('sharing-a.1')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   it('says when none of the servers offers sharing', async () => {
