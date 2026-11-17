@@ -1935,8 +1935,21 @@ export function useToggleFavourite(connectionId?: string) {
       });
       return { prev };
     },
-    onError: (_e, _vars, ctx) => {
+    onError: (_e, { libraryId, path, on }, ctx) => {
       if (!ctx) return;
+      if (qc.isMutating({ mutationKey }) > 1) {
+        // Another toggle is in flight (fe#154): a scoped mutation's onMutate runs before it
+        // waits its turn, so either snapshot can hold the other's optimistic edit. Take back
+        // only this toggle's own; the last one to settle reads the list.
+        const same = (f: Favourite) => f.library_id === libraryId && f.path === path;
+        const before = ctx.prev?.find(same);
+        qc.setQueryData<Favourite[]>(qk.favourites(cid), (cur) => {
+          if (!cur) return cur;
+          if (on) return before ? cur : cur.filter((f) => !same(f));
+          return before && !cur.some(same) ? [before, ...cur] : cur;
+        });
+        return;
+      }
       if (ctx.prev) {
         qc.setQueryData(qk.favourites(cid), ctx.prev);
         return;

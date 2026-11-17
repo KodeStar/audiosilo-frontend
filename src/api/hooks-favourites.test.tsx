@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
 import type { Favourite } from '@/api/types';
@@ -19,6 +19,7 @@ const mockAdd = jest.fn(async (_lib: number, path: string) => {
   calls.push(`add ${path}`);
   listAtAdd = qc.getQueryData<Favourite[]>(qk.favourites('c'));
 });
+const mockList = jest.fn(async (): Promise<Favourite[]> => []);
 const mockRemove = jest.fn(async (_lib: number, path: string) => {
   calls.push(`remove ${path}`);
 });
@@ -30,13 +31,13 @@ jest.mock('@/api/provider', () =>
       item: (l: number, p: string) => mockItem(l, p),
       addFavourite: (l: number, p: string) => mockAdd(l, p),
       removeFavourite: (l: number, p: string) => mockRemove(l, p),
-      favourites: async () => [],
+      favourites: () => mockList(),
     },
   }),
 );
 
 /* eslint-disable import/first */
-import { qk, type ToggleFavouriteVars, useToggleFavourite } from '@/api/hooks';
+import { qk, type ToggleFavouriteVars, useFavourites, useToggleFavourite } from '@/api/hooks';
 /* eslint-enable import/first */
 
 let qc: QueryClient;
@@ -137,6 +138,59 @@ describe('useToggleFavourite', () => {
     it('leaves no list behind when none was read', async () => {
       await fail({ libraryId: 1, path: 'A', on: true });
       expect(qc.getQueryData(qk.favourites('c'))).toBeUndefined();
+    });
+
+    // fe#154: offline, a pending book's read and its add both fail; the folder list's heart
+    // must not stay on.
+    it('leaves no heart behind for a pending book hearted offline', async () => {
+      mockItem.mockRejectedValueOnce(new TypeError('Network request failed'));
+      await fail({ libraryId: 1, path: 'A/New Book', on: true, pendingBook: true });
+      expect(qc.getQueryData(qk.favourites('c'))).toBeUndefined();
+    });
+
+    // fe#154: the second toggle's onMutate ran before the first settled, so restoring the
+    // first's snapshot would drop the second's heart, and the second's would bring back the
+    // first's.
+    it('with toggles overlapping, takes back only its own edit and the list ends as read', async () => {
+      const kept = { library_id: 1, path: 'Kept' } as Favourite;
+      const b = { library_id: 1, path: 'B' } as Favourite;
+      qc.setQueryData(qk.favourites('c'), [kept]);
+      // Read already: mounting the list asks nothing, only the last toggle's settle does.
+      qc.setQueryDefaults(qk.favourites('c'), { staleTime: Infinity });
+      let failAdd!: () => void;
+      let saveAdd!: () => void;
+      mockAdd
+        .mockImplementationOnce(
+          () => new Promise((_, reject) => (failAdd = () => reject(new Error('offline')))),
+        )
+        .mockImplementationOnce(() => new Promise<void>((resolve) => (saveAdd = resolve)));
+      // The list as the server holds it once B is saved.
+      mockList.mockResolvedValue([b, kept]);
+      const { result } = await renderHook(
+        () => ({ list: useFavourites(), toggle: useToggleFavourite() }),
+        { wrapper },
+      );
+      let first!: Promise<unknown>;
+      let second!: Promise<unknown>;
+      await act(async () => {
+        first = result.current.toggle.mutateAsync({ libraryId: 1, path: 'A', on: true });
+        second = result.current.toggle.mutateAsync({ libraryId: 1, path: 'B', on: true });
+      });
+      await act(async () => {
+        failAdd();
+        await first.catch(() => undefined);
+      });
+      // A is taken back at once; B's heart stays while its add is on its way.
+      const paths = () => qc.getQueryData<Favourite[]>(qk.favourites('c'))?.map((f) => f.path);
+      expect(paths()).toEqual(['B', 'Kept']);
+      expect(mockList).not.toHaveBeenCalled();
+      await act(async () => {
+        saveAdd();
+        await second;
+      });
+      await waitFor(() => expect(result.current.list.isFetching).toBe(false));
+      expect(mockList).toHaveBeenCalledTimes(1);
+      expect(paths()).toEqual(['B', 'Kept']);
     });
   });
 
