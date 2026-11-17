@@ -1610,9 +1610,21 @@ let atPartialEnd = false;
  * (`endsShortOfBook`), is the engine running off the end of a file it measured short (a resume
  * or a Retry past Media3's first-frame guess at a header-less VBR MP3), a fault of the
  * engine's (`engineFault`), never the listener's place. Once it has played on, its moves and
- * its end are the book's: a server length that overestimates the audio ends it early. */
-let askedPlace: { np: NowPlaying; trackIndex: number; position: number } | null = null;
+ * its end are the book's: a server length that overestimates the audio ends it early.
+ *
+ * `playing`: the engine reported the asked file `PLAYING_PAST` beyond the asked place, so it
+ * holds that place in its measure (one run off a short measure reports at most its own end,
+ * short of the place) and a later file from then on is a move, not a run off its end: the
+ * listener's own next from the lock screen, a headset or the car, whose file change Android
+ * reports before `onRemoteMove`. */
+let askedPlace: {
+  np: NowPlaying;
+  trackIndex: number;
+  position: number;
+  playing: boolean;
+} | null = null;
 const PLAYED_ON = 3;
+const PLAYING_PAST = 0.5;
 /** The book whose engine faulted (`engineFault`): its reports are dropped, and a play the
  * engine makes by itself is paused again, until the store asks it for a place again. */
 let faultedBook: NowPlaying | null = null;
@@ -1621,7 +1633,7 @@ const loadedFaulted = () => faultedBook !== null && faultedBook === usePlayer.ge
 
 /** The store asks the engine for `(trackIndex, position)` of `np`'s queue (`askedPlace`). */
 function askEngineTo(np: NowPlaying, trackIndex: number, position: number) {
-  askedPlace = { np, trackIndex, position };
+  askedPlace = { np, trackIndex, position, playing: false };
   faultedBook = null;
 }
 
@@ -1631,22 +1643,41 @@ function askEngineTo(np: NowPlaying, trackIndex: number, position: number) {
  * an asked place inside its file, or to the end of the media short of the book's end
  * (`endsShortOfBook`), which would otherwise read as the book finished (the credits,
  * `finishBook`'s `finished: true` and Sync v2's `finish`). Else null.
+ *
+ * `prev` is the store's snapshot before `s`. A report still in the file it shows, when that is
+ * not the asked one, is from before the move landed (a native progress tick or a Cast status
+ * sent before the seek or the track jump took): the ask stands, and nothing ran off its file.
+ * And an `ended` the engine already showed is no new end: the native and web services keep
+ * their last state, so a seek or a track jump on a book that ended re-reports `ended` with the
+ * place it asked for.
  */
-function engineFault(np: NowPlaying, s: PlaybackSnapshot): PlaybackSnapshot | null {
+function engineFault(
+  np: NowPlaying,
+  s: PlaybackSnapshot,
+  prev: PlaybackSnapshot,
+): PlaybackSnapshot | null {
   const asked = askedPlace;
   if (asked?.np !== np) return null;
   if (s.trackIndex === asked.trackIndex && s.position >= asked.position + PLAYED_ON) {
     askedPlace = null;
     return null;
   }
+  if (s.trackIndex === asked.trackIndex && s.position > asked.position + PLAYING_PAST) {
+    asked.playing = true;
+  }
+  if (s.trackIndex !== asked.trackIndex && s.trackIndex === prev.trackIndex) return null;
   // From a file's start an engine can't run past its end (it measured the file at least that
   // long): only an ask inside a file can land past a short measure.
   const rolled =
+    !asked.playing &&
     asked.position > 0 &&
     s.trackIndex > asked.trackIndex &&
     (wantsPlayback || startingPlayback) &&
     shortOfFileEnd(np.queue, asked.trackIndex, asked.position);
-  const short = s.state === 'ended' && endsShortOfBook(np.queue, s.trackIndex, s.position);
+  const short =
+    s.state === 'ended' &&
+    prev.state !== 'ended' &&
+    endsShortOfBook(np.queue, s.trackIndex, s.position);
   if (!rolled && !short) {
     // On into a later file from the end of the asked one: it played that out.
     if (s.trackIndex > asked.trackIndex) askedPlace = null;
@@ -2353,7 +2384,7 @@ async function createService(): Promise<PlaybackService> {
     // while a load holds the store: that is still the previous book's.
     const { nowPlaying: np, loadingBook } = usePlayer.getState();
     if (np && !loadingBook) {
-      const fault = engineFault(np, snapshot);
+      const fault = engineFault(np, snapshot, prev);
       if (fault) {
         void svc.pause();
         snapshot = fault;
@@ -2908,8 +2939,11 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     const target = locate(np.queue.offsets, clamped, track ?? get().snapshot.trackIndex);
     moveListeningSpan(endAt(np, target.index, target.positionInTrack));
     userMoved(clamped); // a deliberate user seek may legitimately move backward
+    // A faulted engine sits in another file than the snapshot's (`engineFault`): it is put in
+    // the target's by its index, never sought within whatever file it is in.
+    const faulted = loadedFaulted();
     askEngineTo(np, target.index, target.positionInTrack);
-    if (target.index === get().snapshot.trackIndex) {
+    if (target.index === get().snapshot.trackIndex && !faulted) {
       await svc.seekTo(target.positionInTrack);
     } else {
       await svc.skipToTrack(target.index, target.positionInTrack);
@@ -2923,10 +2957,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     const pos = Math.max(0, dur > 0 ? Math.min(positionInTrack, dur) : positionInTrack);
     const svc = await ensureService();
     const np = get().nowPlaying;
-    if (np) moveListeningSpan(endAt(np, get().snapshot.trackIndex, pos));
-    userMoved(np ? toBookPosition(np.queue.offsets, get().snapshot.trackIndex, pos) : undefined);
-    if (np) askEngineTo(np, get().snapshot.trackIndex, pos);
-    await svc.seekTo(pos);
+    const { trackIndex } = get().snapshot;
+    if (np) moveListeningSpan(endAt(np, trackIndex, pos));
+    userMoved(np ? toBookPosition(np.queue.offsets, trackIndex, pos) : undefined);
+    // A faulted engine sits in another file than the snapshot's (`engineFault`): put in it.
+    const faulted = loadedFaulted();
+    if (np) askEngineTo(np, trackIndex, pos);
+    await (faulted ? svc.skipToTrack(trackIndex, pos) : svc.seekTo(pos));
     void persist();
   },
 

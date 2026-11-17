@@ -3326,6 +3326,69 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     expect(selectIsEnded(usePlayer.getState())).toBe(true);
     expect(savedFinished()).toBe(true);
   });
+
+  // The native and web services keep their last state: a move on a book that ended re-reports
+  // `ended` with the asked place, which is no new end.
+  it('a seek or a track jump on a book that ended is no fault', async () => {
+    await resume(lengths[0] + 120);
+    pushSnapshot(snap('playing', 125, { trackIndex: 1 }));
+    pushSnapshot(snap('ended', 138.6, { trackIndex: 1 }));
+    await flushMicrotasks();
+    expect(selectIsEnded(usePlayer.getState())).toBe(true);
+    await usePlayer.getState().seekBook(lengths[0] + 50);
+    pushSnapshot(snap('ended', 50, { trackIndex: 1 }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'ended', position: 50 });
+    await usePlayer.getState().goToTrack(0);
+    pushSnapshot(snap('ended', 0, { trackIndex: 0 }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'ended', trackIndex: 0 });
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+  });
+
+  it('a report from the file the store showed, before a move back landed, is no fault', async () => {
+    await resume(lengths[0] + 10);
+    pushSnapshot(snap('playing', 11, { trackIndex: 1 }));
+    pushSnapshot(snap('playing', 14, { trackIndex: 1 }));
+    // The engine's tick from file 2 arrives while the skip back into file 1 is still out.
+    (mockSvc.skipToTrack as jest.Mock).mockImplementationOnce(async () => {
+      pushSnapshot(snap('playing', 14.5, { trackIndex: 1 }));
+    });
+    await usePlayer.getState().skipSeconds(-30);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot.state).toBe('playing');
+    // The ask still stands once the move lands: a run off the end of file 1 is caught.
+    pushSnapshot(snap('playing', 123.5, { trackIndex: 0, duration: short }));
+    pushSnapshot(snap('playing', 0.4, { trackIndex: 1, duration: short }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', trackIndex: 0 });
+  });
+
+  it("the lock screen's next while playing, its file change ahead of the move, is no fault", async () => {
+    await resume(30);
+    pushSnapshot(snap('playing', 30.2, { trackIndex: 0 }));
+    pushSnapshot(snap('playing', 31, { trackIndex: 0 }));
+    // Android reports the file change before `onRemoteMove`, inside PLAYED_ON of the resume.
+    pushSnapshot(snap('playing', 0, { trackIndex: 1 }));
+    remoteMove!(1, 0);
+    pushSnapshot(snap('playing', 0.5, { trackIndex: 1 }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'playing', trackIndex: 1 });
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+  });
+
+  it('a seek on a faulted book puts the engine in the snapshot file by its index', async () => {
+    await resume(30);
+    pushSnapshot(snap('playing', 0.4, { trackIndex: 1, duration: short }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    (mockSvc.seekTo as jest.Mock).mockClear();
+    await usePlayer.getState().seekInTrack(60);
+    expect(mockSvc.skipToTrack).toHaveBeenLastCalledWith(0, 60);
+    expect(mockSvc.seekTo).not.toHaveBeenCalled();
+    await usePlayer.getState().seekInTrack(40); // no longer faulted: a plain seek
+    expect(mockSvc.seekTo).toHaveBeenLastCalledWith(40);
+  });
 });
 
 // --- the two readings of "the user is listening" ---------------------------

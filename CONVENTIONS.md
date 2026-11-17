@@ -1933,13 +1933,20 @@ media GETs only.
   listener moved (`onRemoteMove`). While it stands, an engine that goes where the book is not
   stops as an `error` at the asked place, its later reports dropped and a play it starts by
   itself paused until a press (a press reloads, as Retry does): a move on to a later file from
-  a place inside the asked one (a resume past a short measure ran into the next file), and an
+  a place inside the asked one before the engine reported that file `PLAYING_PAST` beyond it (a
+  resume past a short measure ran into the next file; once past, a later file is the
+  listener's next from the lock screen, whose file change Android reports before
+  `onRemoteMove`), and an
   `ended` short of the book's end (`endsShortOfBook`), which otherwise reads as the book
   finished (the credits, `finishBook`'s `finished: true`, Sync v2's `finish`): a Retry or a
-  seek past the engine's end never finishes a book. Once it has played on, its moves and its
-  end are the book's, as for any book: a server length can overestimate the audio (ffprobe's
-  bitrate estimate for a header-less VBR file), and the listener who played to the real end
-  has finished.
+  seek past the engine's end never finishes a book. Neither is a report still in the file the
+  store last showed (a progress tick or a Cast status from before a move back landed), nor an
+  `ended` the store already showed (a seek or a track jump on a book that ended re-reports it,
+  the services keeping their last state); a seek or a track jump on a faulted book puts the
+  engine in the target's file by its index (`skipToTrack`). Once it has played on, its moves
+  and its end are the book's, as for any book: a server length can overestimate the audio
+  (ffprobe's bitrate estimate for a header-less VBR file), and the listener who played to the
+  real end has finished.
 - **Start playback only after chapters/files have loaded** (the player gates on
   `useChapters` settling) - starting early made multi-file books stream the folder
   path (MediaToolbox `-12864`) and lose chapter info.
