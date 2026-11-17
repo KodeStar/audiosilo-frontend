@@ -137,7 +137,10 @@ export function useUpNextData(cid: string | undefined) {
  * closes the sheet and opens the full player; a tablet or desktop starts it under the
  * docked bar. The entry leaves the queue once the book has started (`dropStartedBook`, as
  * any start does: the one remove, never a second one beside the start's own), and stays
- * when the start failed.
+ * when the start failed. The book is played by its own path (`entry.book`, as the server
+ * resolves the entry): an entry that is no longer exactly a book (a part path the server
+ * now resolves to the book folder) is the loaded book, not another start of it, and it
+ * leaves the queue too.
  */
 export function usePlayNow(cid: string | undefined) {
   const { t } = useTranslation();
@@ -147,11 +150,12 @@ export function usePlayNow(cid: string | undefined) {
   return async (entry: QueueEntry, title: string) => {
     if (!cid) return;
     if (phone) closeUpNext();
+    const path = entry.book?.rel_path ?? entry.path;
     try {
-      await play({ connectionId: cid, libraryId: entry.library_id, path: entry.path });
+      await play({ connectionId: cid, libraryId: entry.library_id, path });
       // Already loaded (it played on): it leaves here. A start drops it itself once it
       // started (`startBookInPlace`, the player route), and one that failed keeps it.
-      dropStartedBook(cid, entry.library_id, entry.path);
+      dropStartedBook(cid, entry.library_id, path, entry.path);
     } catch (err) {
       playFailedToast(err, t('upnext.playFailed', { title }));
     }

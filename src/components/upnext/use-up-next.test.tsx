@@ -217,7 +217,21 @@ describe('usePlayNow', () => {
       undefined,
       undefined,
     );
-    expect(mockDrop).toHaveBeenCalledWith('c', 1, 'B');
+    expect(mockDrop).toHaveBeenCalledWith('c', 1, 'B', 'B');
+  });
+
+  // fe#147: an entry the server now resolves to its book's folder (a part path) is that
+  // book: started by its own path, and dropped by both.
+  it('plays a stale entry by its book path and drops the entry by both paths', async () => {
+    const { result } = await renderHook(() => usePlayNow('c'));
+    await act(async () => {
+      await result.current(
+        { ...entry('B/Part 1.mp3'), book: { rel_path: 'B' } as QueueEntry['book'] },
+        'Book B',
+      );
+    });
+    expect(mockItem).toHaveBeenCalledWith(1, 'B', expect.anything());
+    expect(mockDrop).toHaveBeenCalledWith('c', 1, 'B', 'B/Part 1.mp3');
   });
 
   it('opens the full player on a phone, closing the sheet first', async () => {
@@ -233,7 +247,7 @@ describe('usePlayNow', () => {
       params: { connection: 'c', libraryId: '1', path: 'B' },
     });
     expect(mockPlayBook).not.toHaveBeenCalled();
-    expect(mockDrop).toHaveBeenCalledWith('c', 1, 'B');
+    expect(mockDrop).toHaveBeenCalledWith('c', 1, 'B', 'B');
   });
 
   it('keeps the entry and says so when the book cannot start', async () => {
