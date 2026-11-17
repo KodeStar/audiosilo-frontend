@@ -1727,7 +1727,8 @@ function adoptTabPlace(np: NowPlaying, place: TabPlace) {
  * is offered. Resolves the place taken, else null; never rejects (a play that waits on it
  * goes on from where the engine is: what `adoptTabPlace` set for the place is put back, or a
  * floor at a place far ahead that the engine never reached would refuse every save and
- * span of the play that follows, `SLIP_TOLERANCE`).
+ * span of the play that follows, `SLIP_TOLERANCE`). A seek that has not settled within
+ * `TAB_MOVE_MAX_MS` is taken as refused.
  */
 async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<TabPlace | null> {
   const { nowPlaying: np, snapshot } = usePlayer.getState();
@@ -1737,9 +1738,16 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
   const playPos = play?.pos;
   adoptTabPlace(np, place);
   const moves = localMoves;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    if (place.index === snapshot.trackIndex) await svc.seekTo(place.positionInTrack);
-    else await svc.skipToTrack(place.index, place.positionInTrack);
+    await Promise.race([
+      place.index === snapshot.trackIndex
+        ? svc.seekTo(place.positionInTrack)
+        : svc.skipToTrack(place.index, place.positionInTrack),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('the move did not settle')), TAB_MOVE_MAX_MS);
+      }),
+    ]);
     return place;
   } catch (e) {
     console.warn('[player] could not take the place another tab left', e);
@@ -1751,8 +1759,15 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
       if (play && playPos !== undefined) play.pos = playPos;
     }
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
+
+/** How long a move to another tab's place is waited for (`moveToTabPlace`). A seek that
+ * never settled left `catchingUp` set, and with it no span, history or save until a book
+ * switch (fe#262); past this the move counts as refused. */
+const TAB_MOVE_MAX_MS = 5_000;
 
 /** Take the place the tabs share for the loaded book, when it is another one than the
  * engine's (`otherTabsPlace`, `moveToTabPlace`). Resolves the place taken, else null. */

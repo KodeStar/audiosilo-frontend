@@ -1162,6 +1162,42 @@ describe.each([
       expectNoSharedSeconds();
     });
 
+    // fe#262: a seek that never settled left the tab catching up for good: no span, no
+    // history and no save until another book.
+    it('a move there that never settles stops holding the play back after 5 s', async () => {
+      await playedPast(a, b);
+      b.engine.at(90);
+      await b.save();
+      const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      // The 5 s bound (`TAB_MOVE_MAX_MS`) runs out in a moment; every other timer is real.
+      const realTimeout = globalThis.setTimeout;
+      const shortened = jest
+        .spyOn(globalThis, 'setTimeout')
+        .mockImplementation(((fn: () => void, ms?: number) =>
+          realTimeout(fn, ms === 5_000 ? 20 : ms)) as typeof setTimeout);
+      try {
+        a.engine.svc.seekTo.mockImplementationOnce(() => new Promise<void>(() => {}));
+        await a.engine.svc.play(); // no press in the page: the engine plays from 30
+        await until(() => b.player().snapshot.state === 'paused', 'B to give way');
+        await until(() => a.engine.svc.seekTo.mock.calls.length === 1, 'A to move');
+        shortened.mockRestore();
+        // Over: B's answer (where it stopped) is taken now, and that move settles.
+        await until(() => a.engine.svc.seekTo.mock.calls.length === 2, 'A to move again');
+        await sleep(10);
+        a.engine.at(100);
+        await a.player().pause();
+        await until(() => listens().length === 3, 'the three spans on the server');
+        expect(heard()).toEqual([
+          [5, 30, 'jump'],
+          [30, 90, 'jump'],
+          [90, 100, 'resume'],
+        ]);
+      } finally {
+        shortened.mockRestore();
+        warned.mockRestore();
+      }
+    });
+
     it('a play that buffers during that move begins its history where the move lands', async () => {
       // A server that takes no listening events: the listening is its `POST /history`.
       mockServerCaps = { listening_sync: false };
