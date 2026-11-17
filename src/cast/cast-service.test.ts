@@ -441,6 +441,17 @@ describe('CastPlaybackService', () => {
     expect(t.svc.getSnapshot()).toMatchObject({ state: 'ended', trackIndex: 2, position: 600 });
   });
 
+  it('a seek in a book that played to its end loads the place again paused', async () => {
+    const t = setup({ transcode: true });
+    await t.svc.load(TRACKS, 2, 590, [], BOOK);
+    await t.svc.play();
+    t.status({ playerState: 'playing', contentId: t.url(2), position: 595 });
+    t.status({ playerState: 'idle', idleReason: 'finished', contentId: t.url(2), position: 0 });
+    expect(t.svc.getSnapshot().state).toBe('ended');
+    await t.svc.seekTo(100);
+    expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 2, autoplay: false });
+  });
+
   describe('finding 6: a stream that ends before the last file does', () => {
     it('is not the end of the book: the queue loads again at the place and plays on', async () => {
       const t = setup({ transcode: true });
@@ -683,6 +694,29 @@ describe('CastPlaybackService', () => {
       t.status({ ...status, playerState: 'idle', idleReason: 'error', position: 0 });
       await flush();
       expect(t.remote.loads.at(-1)).toMatchObject({ startTime: 200, autoplay: false });
+    });
+
+    it("a reset's own stop is no word on the session taken over next", async () => {
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      await t.svc.reset();
+      // The receiver reports the stop the reset sent, with nothing of ours loaded.
+      t.status({ playerState: 'idle', idleReason: 'cancelled', position: NaN });
+      const status: CastMediaStatus = {
+        playerState: 'playing',
+        customIndex: 0,
+        position: 20,
+        rate: 1,
+        book: BOOK,
+        contentId: 'https://h/stream?path=A/B/00.mp3&token=CAST0',
+      };
+      t.svc.adoptPlace({ state: 'playing', trackIndex: 0, position: 20, duration: 600, rate: 1 });
+      await t.svc.adoptQueue(TRACKS, BOOK, status);
+      t.status({ ...status, playerState: 'buffering', position: 200 });
+      t.status({ ...status, playerState: 'idle', idleReason: 'error', position: 0 });
+      await flush();
+      expect(t.remote.loads.at(-1)).toMatchObject({ startTime: 200, autoplay: true });
     });
 
     it('a paused status while our play reload loads leaves the play standing', async () => {

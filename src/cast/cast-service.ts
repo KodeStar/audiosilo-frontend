@@ -168,11 +168,12 @@ export class CastPlaybackService implements PlaybackService {
   private minting: { loaded: Loaded; done: Promise<boolean> } | null = null;
   /** Whether the book should be playing: the latest settled word from either side, this
    * phone's command (`play`; `pause` or a `load`, which is sent paused) or the receiver's
-   * own `playing`, `paused` or stop (the TV remote, Google Home), read when no load of ours
-   * is in flight (`onStatus`, `stopped`); for a session it did not load and no word came
-   * since, the play state it was taken over in (`adoptQueue`); null when none is known. A
-   * queue sent again plays by it (`playOn`): the receiver's status reads `buffering` or
-   * `loading` while it takes a seek or a load, whichever play state it ends in. */
+   * own `playing`, `paused` or stop (the TV remote, Google Home) or the book's end, read when
+   * no load of ours is in flight (`onStatus`, `stopped`); for a session it did not load and no
+   * word came since, the play state it was taken over in (`adoptQueue`); null when none is
+   * known. A queue sent again plays by it (`playOn`): the receiver's status reads
+   * `buffering` or `loading` while it takes a seek or a load, whichever play state it ends
+   * in. */
   private playIntent: boolean | null = null;
 
   constructor(
@@ -539,14 +540,17 @@ export class CastPlaybackService implements PlaybackService {
     // The receiver settled playing, paused or stopped, whoever asked: the play intent from
     // now on. A status while a load of ours is in flight (a `paused` before it takes a play's
     // queue, the replaced item's `interrupted`; as the foreign check above) is not a word on
-    // that load, though a stop still means the next play reloads.
+    // that load, though a stop still means the next play reloads. A stop with no book of ours
+    // loaded (a reset's own, `reset` cleared the intent) is no word on a book either.
     const stoppedElsewhere =
       status.playerState === 'idle' &&
       (status.idleReason === 'cancelled' || status.idleReason === 'interrupted');
     if (stoppedElsewhere) this.needsReload = true;
     if (
       this.loadsInFlight === 0 &&
-      (status.playerState === 'playing' || status.playerState === 'paused' || stoppedElsewhere)
+      (status.playerState === 'playing' ||
+        status.playerState === 'paused' ||
+        (stoppedElsewhere && loaded))
     ) {
       this.playIntent = status.playerState === 'playing';
     }
@@ -564,6 +568,9 @@ export class CastPlaybackService implements PlaybackService {
       ? status.position + offset
       : this.snapshot.position;
     if (state === 'ended' && loaded && this.endedEarly(trackIndex, position, duration)) return;
+    // The book's real end settles it as a pause does (the store reads it so): a seek or a file
+    // jump after it loads the place paused.
+    if (state === 'ended' && this.loadsInFlight === 0) this.playIntent = false;
     // Only as the error arrives: one already shown is the listener's to retry (the receiver
     // says it again on every status read, as when the app comes back, and each would mint).
     if (
