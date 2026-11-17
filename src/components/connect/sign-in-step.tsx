@@ -169,9 +169,9 @@ export function SignInStep({
   // must not redeem the code a second time while one is on its way, which could spend
   // another of the invite's uses.
   const submitting = useRef(false);
-  // The code redeemed last whose exchange got no answer, and its pairing token
-  // (`signInWithCode`).
-  const redeemed = useRef<{ code: string; payload: PairingPayload } | null>(null);
+  // The code redeemed last whose exchange got no answer, the server it was redeemed at, and
+  // its pairing token (`signInWithCode`).
+  const redeemed = useRef<{ server: string; code: string; payload: PairingPayload } | null>(null);
   const onSubmit = async () => {
     if (submitting.current) return;
     setError(null);
@@ -189,13 +189,14 @@ export function SignInStep({
     try {
       if (mode === 'code') {
         const typed = code.trim();
-        const kept = redeemed.current?.code === typed ? redeemed.current.payload : null;
+        const last = redeemed.current;
+        const kept = last?.server === server && last.code === typed ? last.payload : null;
         redeemed.current = null;
         const { payload, session } = await signInWithCode(
           client,
           typed,
           kept,
-          (p) => (redeemed.current = { code: typed, payload: p }),
+          (p) => (redeemed.current = { server, code: typed, payload: p }),
           (next) => (stage = next),
         );
         await finishConnect({

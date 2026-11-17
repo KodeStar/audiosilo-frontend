@@ -13,7 +13,7 @@ import { resetProfilesForTests } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 import { seedProfile } from '@/testing/seed-profile';
 
-import { renderConnect as render } from './connect-testing';
+import { inConnectFrame, renderConnect as render } from './connect-testing';
 import { takeScanFor } from './invite-handoff';
 import { SignInStep } from './sign-in-step';
 
@@ -257,6 +257,22 @@ describe('an invite whose exchange got no answer', () => {
     await submitCode('ABCD');
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     expect(mockApi.exchange.mock.calls.map((c) => c[0])).toEqual(['pt-1', 'pt-1', 'pt-2']);
+  });
+
+  it('never exchanges a kept token at another server', async () => {
+    mockApi.redeemCode
+      .mockResolvedValueOnce({ server_name: 'Hearthside', pairing_token: 'pt-away' })
+      .mockResolvedValueOnce({ server_name: 'Hearthside', pairing_token: 'pt-home' });
+    mockApi.exchange
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValueOnce({ token: 's', server_id: 'srv-1', user });
+    const view = await render(<SignInStep server={AWAY} />);
+    await submitCode('ABCD');
+    expect(await screen.findByText('Sign in failed. Please try again.')).toBeTruthy();
+    await view.rerender(inConnectFrame(<SignInStep server={HOME} />));
+    await submitCode('ABCD');
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockApi.exchange.mock.calls.map((c) => c[0])).toEqual(['pt-away', 'pt-home']);
   });
 
   it('redeems another code typed instead, and never keeps a token the server refused', async () => {
