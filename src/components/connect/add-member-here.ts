@@ -21,13 +21,15 @@ export class AddMemberHereError extends Error {
 }
 
 /**
- * Whether this device already holds a connection for user `userId` on the server
- * `serverId` (or one from before Phase 8 that can't tell its users apart,
- * `priorConnection`). Ask before minting a member's session (`memberSession`): a session
- * `addMemberHere` then refuses would stay signed in on the server with nothing using it.
+ * Whether this device already holds a connection for user `userId` (`username`) on the server
+ * `serverId` (or one from before Phase 8 that can't tell its users apart, kept under that name
+ * or none, `priorConnection`). Ask before minting a member's session (`memberSession`): a
+ * session `addMemberHere` then refuses would stay signed in on the server with nothing using
+ * it. The same rule `addMemberHere` applies, so neither refuses what the other lets through.
  */
-export function memberSignedInHere(serverId: string, userId: number): boolean {
-  return priorConnection(useSession.getState().connections, serverId, userId) !== undefined;
+export function memberSignedInHere(serverId: string, userId: number, username?: string): boolean {
+  const { connections } = useSession.getState();
+  return priorConnection(connections, serverId, userId, username) !== undefined;
 }
 
 /** The owner's connection to `serverId`: the person listening's (who added the member),
@@ -101,7 +103,7 @@ export async function addMemberHere(
   if (!mayAddPerson()) throw new AddMemberHereError('choose_adult');
   const serverId = session.server_id;
   const { connections, learnAddresses } = useSession.getState();
-  if (priorConnection(connections, serverId, session.user.id)) {
+  if (priorConnection(connections, serverId, session.user.id, session.user.username)) {
     throw new AddMemberHereError('already_here');
   }
   const owner = ownerConnection(connections, serverId);
@@ -151,7 +153,12 @@ export function memberOwnerHere(
 export async function renewMemberHere(session: AuthSession): Promise<string> {
   if (sessionHydrateFailed()) await useSession.getState().hydrate();
   const { connections } = useSession.getState();
-  const prior = priorConnection(connections, session.server_id, session.user.id);
+  const prior = priorConnection(
+    connections,
+    session.server_id,
+    session.user.id,
+    session.user.username,
+  );
   if (!prior) throw new AddMemberHereError('not_ready');
   return storeMemberSession(session, prior);
 }

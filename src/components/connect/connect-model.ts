@@ -13,7 +13,7 @@ import {
 } from '@/lib/server-address';
 import { connectBookParams } from '@/lib/paths';
 import { isInProgress } from '@/lib/progress-view';
-import { isLoopbackHost, urlEndpoint } from '@/lib/url-host';
+import { urlEndpoint } from '@/lib/url-host';
 
 /**
  * The connect flow's rules (onboarding: connect, sign in, "Your library is ready."),
@@ -29,7 +29,7 @@ export type ConnectStep = 0 | 1 | 2;
 /** The part of a connection a re-pair reads. */
 export type RepairConnection = AddressedConnection & {
   needsReconnect?: string;
-  user?: { id?: number };
+  user?: { id?: number; username?: string };
 };
 
 /**
@@ -69,12 +69,13 @@ export function repairPlan(input: {
   answer?: ServerAddresses;
   known?: KnownServer;
   userId?: number;
+  username?: string;
 }): { serverUrl: string; addresses: ServerAddresses | undefined } {
-  const { pending, serverId, connections, reconnectId, answer, known, userId } = input;
-  // The connection the session will update (`priorConnection`), else another user's on
-  // the same server (its address is the server's own all the same).
+  const { pending, serverId, connections, reconnectId, answer, known, userId, username } = input;
+  // The connection the session will update (`priorConnection`, by the same rule), else
+  // another user's on the same server (its address is the server's own all the same).
   const same =
-    (userId !== undefined ? priorConnection(connections, serverId, userId) : undefined) ??
+    (userId !== undefined ? priorConnection(connections, serverId, userId, username) : undefined) ??
     connections.find((c) => serverIdOf(c) === serverId);
   if (same && isOwnAddress(pending, same)) {
     return { serverUrl: same.serverUrl, addresses: answer };
@@ -149,48 +150,6 @@ export function signedInAs<
  * flow end on "Your library is ready."; an added server goes straight back. */
 export function isFirstConnection(connections: readonly unknown[]): boolean {
   return connections.length === 0;
-}
-
-/** RFC 1918 and link-local IPv4. */
-function isPrivateV4(host: string): boolean {
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
-  if (!m) return false;
-  const [a, b] = [Number(m[1]), Number(m[2])];
-  if ([a, b, Number(m[3]), Number(m[4])].some((n) => n > 255)) return false;
-  return (
-    a === 10 ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) ||
-    (a === 169 && b === 254)
-  );
-}
-
-/** Unique local and link-local IPv6. */
-function isPrivateV6(host: string): boolean {
-  const h = host.toLowerCase();
-  if (!h.includes(':')) return false;
-  // fc00::/7 (unique local) and fe80::/10 (link-local).
-  return /^f[cd][0-9a-f]{0,2}:/.test(h) || /^fe[89ab][0-9a-f]?:/.test(h);
-}
-
-/**
- * Whether an address is a home-network address: one that answers only on the server's
- * own network (a private or link-local IP, a `.local`, `.lan` or `.home.arpa` name, or a
- * single-label name). Loopback is not: no other device can reach it anyway. The same
- * rule the server uses to derive a home address. For the "Couldn't reach" hint.
- */
-export function looksLikeHomeAddress(url: string): boolean {
-  let host: string;
-  try {
-    host = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).hostname;
-  } catch {
-    return false;
-  }
-  host = host.replace(/^\[|\]$/g, '').toLowerCase();
-  if (!host || isLoopbackHost(host)) return false;
-  if (isPrivateV4(host) || isPrivateV6(host)) return true;
-  if (/^\d+(\.\d+){3}$/.test(host) || host.includes(':')) return false;
-  return /\.(local|lan|home\.arpa)$/.test(host) || !host.includes('.');
 }
 
 /**
@@ -302,7 +261,9 @@ export function reconnectAddress(
       serverUrl: entry.serverUrl,
       addresses: entry.addresses,
     },
-    probe,
+    // A remembered server is no connection (`id` is its server_id, never a connection id):
+    // its home probe carries what the connect flow's other probes do (`connectProxyHeaders`).
+    (url) => probe(url),
   );
 }
 

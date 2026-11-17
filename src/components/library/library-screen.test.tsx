@@ -111,6 +111,7 @@ jest.mock('./modes/series-mode', () => ({ SeriesMode: () => null }));
 jest.mock('./modes/narrators-mode', () => ({ NarratorsMode: () => null }));
 
 /* eslint-disable import/first */
+import { takeReconnect } from '@/components/connect/invite-handoff';
 import { useDownloads } from '@/downloads/store';
 import { type LibrarySelection, useLibrarySelection } from '@/stores/library-selection';
 import { resetProfilesForTests } from '@/stores/profiles';
@@ -421,8 +422,9 @@ describe('LibraryScreen', () => {
       await fireEvent.press(screen.getByRole('button', { name: 'Reconnect' }));
       expect(mockPush).toHaveBeenCalledWith({
         pathname: '/connect/sign-in',
-        params: { serverName: 'Hearthside', reconnect: 'a' },
+        params: { serverName: 'Hearthside' },
       });
+      expect(takeReconnect('https://h')).toBe('a');
     } finally {
       screen.unmount();
       useSession.setState({ connections: before });

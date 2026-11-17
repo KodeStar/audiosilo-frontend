@@ -38,6 +38,10 @@ export type SignInHereResult =
   | { status: 'already' }
   | { status: 'failed'; reason?: Exclude<AddMemberHereCode, 'already_here'> | SessionRefusal };
 
+/** The member to sign in here: their `username` tells them apart from a connection saved
+ * without a user id (`memberSignedInHere`). */
+type MemberToSignIn = Pick<HouseholdMember, 'id' | 'name'> & { username?: string };
+
 /** What a failed sign-in here (the session, or `addMemberHere` after it) comes to. */
 function signInHereFailure(e: unknown): SignInHereResult {
   if (e instanceof AddMemberHereError) {
@@ -59,10 +63,10 @@ function signInHereFailure(e: unknown): SignInHereResult {
  */
 export async function signInMemberHere(
   mint: () => Promise<AuthSession>,
-  member: Pick<HouseholdMember, 'id' | 'name'>,
+  member: MemberToSignIn,
   serverId: string,
 ): Promise<SignInHereResult> {
-  if (memberSignedInHere(serverId, member.id)) return { status: 'already' };
+  if (memberSignedInHere(serverId, member.id, member.username)) return { status: 'already' };
   try {
     await addMemberHere(await mint(), { name: member.name });
     return { status: 'done' };
@@ -105,7 +109,7 @@ export function sessionRefusalText(e: unknown, name: string, t: TFunction): stri
 export function useSignInHere(owner: { id: string; serverId?: string }) {
   const session = useMemberSession(owner.id);
   const [busy, setBusy] = useState(false);
-  const run = async (member: Pick<HouseholdMember, 'id' | 'name'>): Promise<SignInHereResult> => {
+  const run = async (member: MemberToSignIn): Promise<SignInHereResult> => {
     setBusy(true);
     try {
       return await signInMemberHere(

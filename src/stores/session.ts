@@ -16,6 +16,7 @@ import { hostOf } from '@/lib/pairing';
 import { originOf, type ProxyHeaders } from '@/lib/proxy-headers';
 import { forgetProxyHeaders, readProxyHeaders, saveProxyHeaders } from '@/lib/proxy-headers-store';
 import { mergeAddresses, sameAddresses, sameUrl } from '@/lib/server-address';
+import { looksLikeHomeAddress } from '@/lib/url-host';
 import { getItem, getItemStrict, removeItem, setItem } from '@/lib/storage';
 import {
   CONNECTIONS_KEY,
@@ -222,13 +223,25 @@ export function onConnectionReplaced(fn: (oldId: string, newId: string) => void)
  * same address under ANOTHER `server_id` (a rebuilt server mints a new id at the same URL,
  * so their tokens are dead). Never because the user differs: a second person on the same
  * server is not stale. Which of them the sign-in may retire is the caller's (`retire`).
+ *
+ * At a home-network address (`looksLikeHomeAddress`: a private IP, a `.local` name) another
+ * `server_id` is as likely another box at the same address on another network as this
+ * server reset (fe#298), so there only the connections the sign-in names (`named`: a
+ * reconnect's own) count; anyone else's stays as it was, unflagged and never retired.
  */
 export function staleIdentities<C extends { id: string; serverId?: string; serverUrl: string }>(
   connections: readonly C[],
   serverId: string,
   serverUrl: string,
+  named: readonly string[] = [],
 ): C[] {
-  return connections.filter((c) => serverIdOf(c) !== serverId && sameUrl(c.serverUrl, serverUrl));
+  const home = looksLikeHomeAddress(serverUrl);
+  return connections.filter(
+    (c) =>
+      serverIdOf(c) !== serverId &&
+      sameUrl(c.serverUrl, serverUrl) &&
+      (!home || named.includes(c.id)),
+  );
 }
 
 /** Why a connection needs the user to re-pair before it works again. `auth` = the
@@ -533,16 +546,19 @@ export const useSession = create<SessionState>()((set, get) => ({
     // adding a duplicate. Another user on the same server is another connection. A legacy
     // connection (its id still the bare server_id) is matched the same way and KEEPS its id
     // until the key migration moves it, so its downloads and saves stay reachable; one saved
-    // without a usable user id is taken to be this user (it was the server's one connection).
+    // without a usable user id is taken to be this user (it was the server's one connection)
+    // only under the username it kept, if any (`priorConnection`, fe#298).
     const sameServer = existing.filter((c) => serverIdOf(c) === serverId);
-    const prior = priorConnection(existing, serverId, user.id);
+    const prior = priorConnection(existing, serverId, user.id, user.username);
     const id = prior?.id ?? connectionIdOf(serverId, user.id);
     // A rebuilt server mints a NEW server_id at the SAME URL, so a connection to this URL
     // whose server_id differs is a stale identity of the same physical server (its token is
     // dead). The person signing in's own (`retire`) is dropped here, or re-pairing leaves a
     // zombie the reconnect banner keeps re-flagging on every /server hit. Anyone else's
     // stays, flagged 'server-reset' for them: never delete another person from the device.
-    const candidates = staleIdentities(existing, serverId, serverUrl).filter((c) => c !== prior);
+    const candidates = staleIdentities(existing, serverId, serverUrl, retire).filter(
+      (c) => c !== prior,
+    );
     const stale = candidates.filter((c) => retire?.includes(c.id));
     const kept = new Set(candidates.filter((c) => !stale.includes(c)));
     // What the device knew of this server's addresses: the connection's, else another

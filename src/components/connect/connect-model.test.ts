@@ -9,7 +9,6 @@ import {
   isFirstConnection,
   knownToOffer,
   latestPlace,
-  looksLikeHomeAddress,
   pairingFallback,
   readyLine,
   reconnectAddress,
@@ -184,7 +183,10 @@ describe('reconnectAddress', () => {
 
   it('uses the home address only when the server answers there as itself', async () => {
     const home = { ...entry, addresses: { home: HOME, away: AWAY } };
-    await expect(reconnectAddress(home, at({ [HOME]: 'srv-1' }), false)).resolves.toBe(HOME);
+    const probe = at({ [HOME]: 'srv-1' });
+    await expect(reconnectAddress(home, probe, false)).resolves.toBe(HOME);
+    // A remembered server is no connection: its server_id is never passed as one (fe#295).
+    expect(probe).toHaveBeenCalledWith(HOME);
     // Another box at the same private IP: away.
     await expect(reconnectAddress(home, at({ [HOME]: 'other' }), false)).resolves.toBe(AWAY);
     await expect(reconnectAddress(home, at({}), false)).resolves.toBe(AWAY);
@@ -382,33 +384,6 @@ describe('httpFallback', () => {
     expect(httpFallback('HTTP://books.example.com')).toBeNull();
     expect(httpFallback('')).toBeNull();
     expect(httpFallback('   ')).toBeNull();
-  });
-});
-
-describe('looksLikeHomeAddress', () => {
-  it.each([
-    ['192.168.1.20:8080', true],
-    ['http://10.0.0.5', true],
-    ['172.16.0.1', true],
-    ['172.31.255.1', true],
-    ['172.32.0.1', false],
-    ['169.254.10.1', true],
-    ['100.64.0.1', false],
-    ['8.8.8.8', false],
-    ['http://[fd12:3456::1]:8080', true],
-    ['http://[fe80::1]', true],
-    ['http://[2001:db8::1]', false],
-    ['nas.local', true],
-    ['books.lan:8080', true],
-    ['shelf.home.arpa', true],
-    ['nas', true],
-    ['localhost:8080', false],
-    ['127.0.0.1', false],
-    ['http://[::1]', false],
-    ['books.example.com', false],
-    ['', false],
-  ])('%s -> %s', (url, home) => {
-    expect(looksLikeHomeAddress(url)).toBe(home);
   });
 });
 

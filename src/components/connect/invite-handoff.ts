@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 
 import type { InviteScan } from '@/lib/pairing';
+import { sameUrl } from '@/lib/server-address';
 import { useSession } from '@/stores/session';
 
 /** The invite a scan or a pasted link is handing to the sign-in step (memory only). */
@@ -25,7 +26,7 @@ export function beginInviteSignIn(invite: InviteScan, go: () => void): void {
 /** The held invite code for `server` (the sign-in step's server), taken once: a later
  * visit to the sign-in step starts with an empty field. */
 export function takeInviteCode(server: string): string | undefined {
-  const code = held?.base === server ? held.code : undefined;
+  const code = held && sameUrl(held.base, server) ? held.code : undefined;
   held = null;
   return code;
 }
@@ -75,10 +76,37 @@ export function takeScanReconnect(token: string): string | undefined {
   return id;
 }
 
-/** The connect flow was left (its layout's cleanup): a reconnect a scanner was opened for
- * or a scanned code held, and nothing took, goes with it, so neither waits for a later flow
- * (a scanner a link opens, the same code again). */
-export function dropScanHandoffs(): void {
+/** The reconnect the sign-in step for `server` re-pairs (memory only). */
+let reconnecting: { server: string; reconnectId: string } | null = null;
+
+/**
+ * Open the sign-in step to re-pair the connection `reconnectId` through `server` (the
+ * reconnect banner, a scanned code that continues a reconnect: fe#298). In memory and by
+ * the server it signs in through, never in the sign-in step's params: a link opens that
+ * route (`audiosilo://connect/sign-in?reconnect=`), and a link must not name the connection
+ * a sign-in replaces. `server` must already be the pending one.
+ */
+export function holdReconnect(server: string, reconnectId: string): void {
+  reconnecting = { server, reconnectId };
+}
+
+/** The reconnect held for the sign-in step at `server`, taken once as the step opens (one
+ * with no server too, which goes back to the first step): a sign-in step a link opened, or
+ * one for another server, finds none, and a later one in the same flow finds none either. */
+export function takeReconnect(server: string | null): string | undefined {
+  const id =
+    reconnecting && server && sameUrl(reconnecting.server, server)
+      ? reconnecting.reconnectId
+      : undefined;
+  reconnecting = null;
+  return id;
+}
+
+/** The connect flow was left (its layout's cleanup): a reconnect a scanner or the sign-in
+ * step was opened for, or a scanned code held, and nothing took, goes with it, so none
+ * waits for a later flow (a scanner or a sign-in step a link opens, the same code again). */
+export function dropConnectHandoffs(): void {
   scanFor = undefined;
   scanned = null;
+  reconnecting = null;
 }

@@ -3,7 +3,11 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
 import type { User } from '@/api/types';
-import { endConnectFlow, openAddSomeone } from '@/components/profiles/connect-intent';
+import {
+  endConnectFlow,
+  openAddSomeone,
+  setConnectForNewProfile,
+} from '@/components/profiles/connect-intent';
 import { resetProfilesForTests } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 import { seedProfile } from '@/testing/seed-profile';
@@ -285,6 +289,37 @@ it("a reconnect signs in with its own proxy headers only, never another person's
   expect(mockProxies[1]).toEqual(mine);
 });
 
+it("borrows another connection's set only while it is still here when the sign-in is sent (fe#295)", async () => {
+  const theirs = { origin: AWAY, headers: [{ name: 'X-Theirs', value: 'their-secret' }] };
+  const other = { ...user, id: 2, username: 'sam' };
+  const s = useSession.getState();
+  await s.setSession({
+    serverUrl: AWAY,
+    serverId: 'srv-1',
+    token: 't2',
+    user: other,
+    proxyHeaders: theirs,
+  });
+  mockApi.login.mockResolvedValue({ token: 'fresh', server_id: 'srv-1', user });
+  // Allowed: Sam is still signed in, so his set gets this sign-in through the proxy.
+  const view = await render(<SignInStep server={AWAY} />);
+  mockProxies.length = 0;
+  await signInWith('chris', 'pw');
+  await waitFor(() => expect(conn('srv-1')).toBeTruthy());
+  expect(mockProxies).toEqual([theirs]);
+  expect(conn('srv-1')?.proxyHeaders).toEqual(theirs);
+  view.unmount();
+  // Denied: Sam signs out while the step is open; the sign-in then neither sends nor keeps it.
+  await s.removeConnection('srv-1.1');
+  await render(<SignInStep server={AWAY} />);
+  await s.removeConnection('srv-1.2');
+  mockProxies.length = 0;
+  await signInWith('chris', 'pw');
+  await waitFor(() => expect(conn('srv-1')).toBeTruthy());
+  expect(mockProxies).toEqual([null]);
+  expect(conn('srv-1')?.proxyHeaders).toBeUndefined();
+});
+
 it('no "At home and away" card for a new server before anything is redeemed', async () => {
   await render(<SignInStep server={AWAY} />);
   expect(screen.queryByTestId('addresses-card')).toBeNull();
@@ -437,19 +472,58 @@ describe('single sign-on', () => {
     expect(screen.queryByTestId('sign-in-oidc')).toBeNull();
   });
 
-  // The pass is in memory and the server's return is a page load: kids mode would turn the
-  // return away as a link, with the sign-in unspent.
-  it("is not offered, nor asked about, on a grown-up's pass through kids mode", async () => {
-    seedProfile({ kids: true });
-    openAddSomeone();
-    try {
+  // The return is a page load: what the flow is for goes with the page in this tab's
+  // storage (fe#310).
+  describe('what goes with the page', () => {
+    const store = new Map<string, string>();
+    const held = () => JSON.parse(store.get('audiosilo.oidcIntent')!);
+    beforeEach(() => {
+      store.clear();
+      Object.defineProperty(globalThis, 'sessionStorage', {
+        value: {
+          getItem: (k: string) => store.get(k) ?? null,
+          setItem: (k: string, v: string) => void store.set(k, v),
+          removeItem: (k: string) => void store.delete(k),
+        },
+        configurable: true,
+      });
       mockApi.serverInfo.mockResolvedValue(serverInfo(true, 'Keycloak'));
-      await render(<SignInStep server={AWAY} />);
-      expect(mockApi.serverInfo).not.toHaveBeenCalled();
-      expect(screen.queryByTestId('sign-in-oidc')).toBeNull();
-    } finally {
+    });
+    afterEach(() => {
+      delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
       endConnectFlow();
       resetProfilesForTests();
-    }
+    });
+    const leave = async () => {
+      await fireEvent.press(await screen.findByRole('button', { name: 'Sign in with Keycloak' }));
+      expect(assign).toHaveBeenCalled();
+    };
+
+    it("is a grown-up's pass through kids mode, offered there, and the book", async () => {
+      seedProfile({ kids: true });
+      openAddSomeone();
+      // What `/connect?add=1&profile=new` sets as the flow opens.
+      setConnectForNewProfile(true);
+      await render(<SignInStep server={AWAY} book={{ libraryId: 3, path: 'Austen/Emma' }} />);
+      await leave();
+      expect(held()).toEqual({
+        at: expect.any(Number),
+        newPerson: true,
+        grownUpFromKids: true,
+        book: { book: '3', path: 'Austen/Emma' },
+      });
+    });
+
+    // The in-memory hold (`holdReconnect`) is lost to the page load (fe#298).
+    it('is the connection a reconnect re-pairs, with the address it signs in through', async () => {
+      await render(<SignInStep server={AWAY} reconnectId="srv-old.1" />);
+      await leave();
+      expect(held()).toEqual({
+        at: expect.any(Number),
+        newPerson: false,
+        grownUpFromKids: false,
+        reconnect: { server: AWAY, reconnectId: 'srv-old.1' },
+      });
+    });
   });
 });

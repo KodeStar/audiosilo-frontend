@@ -89,18 +89,30 @@ export async function finishConnect(input: {
     answer: mergeAddresses(input.linkAddresses, input.session.addresses),
     known,
     userId: input.session.user.id,
+    username: input.session.user.username,
   });
   const newPerson = connectForNewProfile();
   // A connection the device already had (a re-pair) keeps its person; read before the
   // session adds a new one (the profiles reconcile places it at once).
-  const existing = priorConnection(connections, serverId, input.session.user.id);
+  const existing = priorConnection(
+    connections,
+    serverId,
+    input.session.user.id,
+    input.session.user.username,
+  );
   // A server that was reset (another server_id at this address): only the stale identity
   // of the person signing in is retired, and the new connection takes its place in their
-  // profile; anyone else's stays for them (`staleToRetire`).
+  // profile; anyone else's stays for them (`staleToRetire`). At a home-network address only
+  // the reconnect's own is (`staleIdentities`: another box can answer there).
   const retire = existing
     ? []
     : staleToRetire(
-        staleIdentities(connections, serverId, plan.serverUrl).map((c) => c.id),
+        staleIdentities(
+          connections,
+          serverId,
+          plan.serverUrl,
+          input.reconnectId !== undefined ? [input.reconnectId] : [],
+        ).map((c) => c.id),
         useProfiles.getState(),
         { reconnectId: input.reconnectId, newPerson },
       );

@@ -87,7 +87,8 @@ describe('pickAddress', () => {
   it('asks only the home address, and only when there is one', async () => {
     const probe = jest.fn(async () => 'srv-a');
     expect(await pickAddress(conn(), probe)).toBe(HOME);
-    expect(probe).toHaveBeenCalledWith(HOME);
+    // For that connection: only its own proxy headers go along (fe#295).
+    expect(probe).toHaveBeenCalledWith(HOME, 'srv-a');
     probe.mockClear();
     expect(await pickAddress(conn({ addresses: { away: AWAY } }), probe)).toBe(AWAY);
     expect(probe).not.toHaveBeenCalled();

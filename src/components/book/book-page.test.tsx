@@ -23,16 +23,21 @@ import { mountWithPortal } from '@/testing/render-overlay';
 // the Details tab, an unmatched book reading complete, and the load and error states.
 
 const mockPush = jest.fn();
+// The screen's own navigation's `setParams`: the one a move at mount must use, since a
+// router's is dropped on a page load (CONVENTIONS "Navigation at mount", fe#310).
 const mockSetParams = jest.fn();
+const mockRouterSetParams = jest.fn();
 let mockParams: Record<string, unknown> = { libraryId: '1', path: ['Author', 'Book'] };
 jest.mock('expo-router', () => {
   const router = {
     push: (h: unknown) => mockPush(h),
-    setParams: (p: unknown) => mockSetParams(p),
+    setParams: (p: unknown) => mockRouterSetParams(p),
   };
+  const navigation = { setParams: (p: unknown) => mockSetParams(p) };
   return {
     router,
     useRouter: () => router,
+    useNavigation: () => navigation,
     useIsFocused: () => true,
     useLocalSearchParams: () => mockParams,
   };
@@ -301,6 +306,7 @@ beforeEach(() => {
   mockFavouriteCid.mockClear();
   mockScope = 'home';
   mockSetParams.mockClear();
+  mockRouterSetParams.mockClear();
   mockBookmarks = [];
   mockPush.mockClear();
   mockStartBook.mockClear();
@@ -495,6 +501,7 @@ describe('book page, a track file path', () => {
     mockProgress = progressAt(1500);
     await mountAt('desktop');
     expect(mockSetParams).toHaveBeenCalledWith({ path: 'Author/Book' });
+    expect(mockRouterSetParams).not.toHaveBeenCalled();
     expect(screen.queryByTestId('book-page')).toBeNull();
     expect(mockProgressArgs).not.toHaveBeenCalled();
 

@@ -237,7 +237,10 @@ listening, nobody's for "Add someone"): its dead token and scoped state go throu
 `onConnectionRemoved` registry, and the new connection takes its place in that person's profile
 (`onConnectionReplaced`, so their PIN and kids settings stay). Every other person's stale
 identity stays, flagged `server-reset`, for them to sign in again: never delete another person
-from the device. A kids profile never runs the connect flow (`connect/_layout.tsx` is the only
+from the device. At a home-network address (`looksLikeHomeAddress`, `src/lib/url-host.ts`) only
+the reconnect's own connection is a stale identity (`staleIdentities`' `named`, fe#298): another
+box answers at the same private address on another network, so a sign-in there to another server
+is a new connection that flags and retires nobody. A kids profile never runs the connect flow (`connect/_layout.tsx` is the only
 gate, Phase 8b-1): a grown-up signs it in again. It surfaces as a slim accent bar (`src/components/layout/reconnect-banner.tsx`,
 rendered by the shell beside the offline banner - under the phone header, or under the top bar
 on tablet/desktop); tapping it pre-fills `pendingServerUrl`
@@ -329,11 +332,13 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   flow's bare clients are `connectClient(base)` (`src/api/connect-client.ts`) and `probeServerId`
   (built by it), through `connectProxyHeaders(url)`: the pending set for that origin, else a
   signed-in connection's (a second person on the same server). With `ownId` (a reconnect's
-  sign-in, `SignInStep`'s `reconnectId`, and what `finishConnect` keeps for a re-pair) it is
+  sign-in, `SignInStep`'s `reconnectId`, what `finishConnect` keeps for a re-pair, and the
+  address runner's home probe for a connection, `pickAddress` -> `probeServerId(home, id)`) it is
   only the pending set or that connection's OWN set for the address, never another
   connection's: a reconnect never signs in with another person's credentials. A sign-in or re-pair
   with no set of its own keeps the set that carried its successful sign-in or exchange:
-  `connectClientFor` names it (`proxy`) and `finishConnect` takes it as `carried`, so a link or QR
+  `connectClientFor` names it (`proxy`), read as the sign-in is sent (a lender that signed out
+  while the step was open lends nothing, fe#295), and `finishConnect` takes it as `carried`, so a link or QR
   re-pair (it can't name the connection before the exchange answers, so it borrows another
   connection's set for the address) stores the set that got it in, never none. A reconnect never
   keeps a borrowed set, and a re-pair whose own set is for another address keeps its own. A
@@ -383,22 +388,40 @@ at its own origin (`onlyOwnServer`) asks `GET /server` and offers "Sign in with 
 the route and the screen), and `ConnectStart` takes the param off first (the screen's own
 `useNavigation().setParams`: it runs at mount), then `POST /auth/oidc/finish`
 (`finishOidcSignIn`, the exchange's answer) and `finishConnect`; a failure is worded above the served card
-(`oidcFinishText`). Nothing in memory survives the page load (a reconnect id, "Add someone", a
-signed-out visit's book), so a grown-up's pass through kids mode (`kidsConnectAllowed`), which
-kids mode would turn the return away without, is offered no single sign-on.
+(`oidcFinishText`), and a session that answers once the screen has gone is signed out again, never
+kept. Nothing in memory survives the page load, so what the flow is for (a grown-up's pass through
+kids mode, "Add someone", a signed-out visit's book) goes through the tab's `sessionStorage`
+(`oidc-intent.ts`, fe#310): the step writes it as it leaves (`holdOidcIntent`), and the connect
+layout takes it once as it opens (`takeOidcIntent`, only on the return: `oidcReturnOnLoad` reads
+the address itself, `/connect?oidc=1` and no other route of the flow) and puts "Add someone" and
+the book back once the profiles are read (`resumeConnectIntent`). The grown-up's pass is never
+put back by the address alone (typed within the stamp's 11 minutes of a trip abandoned at the
+provider, it would open the flow for a child): while `openAddSomeone`'s rule would give it now
+it waits on the finish, the layout holding kids mode back for the return's own screen only (it
+shows a spinner and finishes the sign-in), and `finishOidcSignIn` settles it (`settleOidcPass`):
+back with the server's session, before `finishConnect`; with none, kids mode takes the flow back
+and the reason is a toast. A reconnect's sign-in carries the connection it re-pairs with the
+address the step signed in through (the in-memory hold's, fe#298): without it a server reset at a
+home address keeps the dead connection (`staleIdentities`' `named`) and the banner keeps asking.
+It shares the stamp and the drop as the flow is left, is taken once by `finishOidcSignIn`
+(`takeOidcResumed`) only for the origin the return is at, and goes to `finishConnect` only with
+the server's session; a `?reconnect=` in the return's address does nothing.
 iOS does NOT allow arbitrary loads: Expo's ATS default is `NSAllowsArbitraryLoads: false` with
 `NSAllowsLocalNetworking: true`, so plain http works there for IP addresses, `.local` and
 single-label names, but not for a `.lan`, `.home.arpa` or `.internal` home. `repairPlan`: a
 re-pair through one of a connection's own addresses keeps its paired `serverUrl`; the reconnect
-banner signs in through `effectiveUrl` and passes `reconnect=<cid>`, so a reset server reached
-through its away address still retires its dead identity. The sign-in step's "Scan a QR code
-instead" (fe#264) hands that `reconnect` to the scanner in memory (`openScanner` / `takeScanFor`,
+banner signs in through `effectiveUrl` and hands the sign-in step the connection it re-pairs in
+memory, by that address (`holdReconnect` / `takeReconnect`, taken once as the step opens; never a
+`/connect/sign-in` param, fe#298: a link opens that route and must not name the connection a
+sign-in replaces), so a reset server reached through its away address still retires its dead
+identity. The sign-in step's "Scan a QR code
+instead" (fe#264) hands that reconnect to the scanner in memory (`openScanner` / `takeScanFor`,
 never a `/connect/scan` param: a link opens that route too, and every way into the scanner goes
 through `openScanner`, so one without a reconnect clears what was held; the flow's layout drops
-what nothing took as it is left, `dropScanHandoffs`), which keeps it only for a code of the
+what nothing took as it is left, `dropConnectHandoffs`), which keeps it only for a code of the
 connection's paired or away address (`scanReconnect`: any other server is a new connection, and
 so is a home address it was not paired at, where another box can answer on another network and
-would read as this server reset): an invite code's sign-in step gets it as its own `reconnect`,
+would read as this server reset): an invite code's sign-in step gets it in memory (`holdReconnect`),
 a pairing code's `/connect` takes it from memory by the code's token (`holdScanReconnect` /
 `takeScanReconnect`, never a `/connect` param: a link opens that route; checked against the
 code's address again as it pairs) and `useLinkPairing` pairs with it (the connection's own proxy
@@ -1177,13 +1200,16 @@ description, else the description a Bridge generated on this server (`aboutConte
 field, the credit included; `BookAbout` takes it as a required prop; the order is picked once,
 into `source`, and a `generated` text wears `GeneratedChip` (`testID` `about-generated-mark`)
 under the eyebrow, never the credit or "Improve this"), else a sentence naming the author and
-narrator; then the production facts known, the server's own `publisher` / `language` (named via
+narrator; then the production facts known ("First published" only when it is not the
+"Released" date, fe#291), the server's own `publisher` / `language` (named via
 `Intl.DisplayNames` where the platform has it) /
 `abridged` (absent = unknown, no row; the community only ever says true) before the community's; then the book's `genres` and `tags`
 as chips (`chipClass`, the filter chips' pill), each opening the Library's Books mode on it in the
 book's library, `openLabelBooks`; the publisher rule is `bookPublisher`, shared with the hero's facts; under the
 other links out, a LibriVox recording's quiet "Also free on LibriVox" link, `librivoxUrl`: the matched recording's
-`librivox.url`, only an absolute http(s) URL, its scheme lower-cased, LibriVox L5),
+`librivox.url`, only an absolute http(s) URL, its scheme lower-cased, on `librivox.org` or
+`archive.org` (or a subdomain) with no user before the host, LibriVox L5 and fe#291; every link
+out goes through `openExternalUrl`, which opens only an absolute http(s) URL, `httpUrl`),
 Other versions
 (`BookVersions`), Other recordings in your library (`OtherRecordings`, server#241: the item's
 `other_recordings`, only when present, each a `RecordingRow` with its own saved progress), Your listening (`listeningFigures`: started, finished, speed, and the time

@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 
 import { setAddressPick, useAddressRoute } from '@/api/address-route';
 import type { User } from '@/api/types';
+import { takeReconnect } from '@/components/connect/invite-handoff';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
@@ -58,8 +59,10 @@ it('away from home, signs in again through the away address the connection uses 
   expect(useSession.getState().pendingServerUrl).toBe(AWAY);
   expect(mockPush).toHaveBeenCalledWith({
     pathname: '/connect/sign-in',
-    params: { serverName: 'Hearthside', reconnect: 'srv-1.1' },
+    params: { serverName: 'Hearthside' },
   });
+  // The connection it re-pairs goes in memory, for that address only (fe#298).
+  expect(takeReconnect(AWAY)).toBe('srv-1.1');
 });
 
 it('without a pick, signs in through the paired address', async () => {

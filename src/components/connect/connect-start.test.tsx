@@ -4,12 +4,16 @@ import { Linking, Platform } from 'react-native';
 
 import { effectiveUrl, useAddressRoute } from '@/api/address-route';
 import type { User } from '@/api/types';
+import { endConnectFlow, kidsConnectAllowed } from '@/components/profiles/connect-intent';
 import { remember } from '@/lib/known-servers';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
+import { seedProfile } from '@/testing/seed-profile';
 
 import { ConnectStart } from './connect-start';
 import { renderConnect as render } from './connect-testing';
 import { holdScanReconnect, openScanner, takeScanFor } from './invite-handoff';
+import { dropOidcIntent, resumeOidcIntent, takeOidcResumed } from './oidc-intent';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -39,6 +43,11 @@ jest.mock('@/lib/layout', () => ({
   useLayout: () => mockLayout,
 }));
 jest.mock('@/lib/device', () => ({ getDeviceName: () => 'Test device' }));
+const mockToast = jest.fn();
+jest.mock('@/components/ui/toast', () => ({
+  ...jest.requireActual('@/components/ui/toast'),
+  toast: (o: unknown) => mockToast(o),
+}));
 // The player the server serves at /web: its own origin, else (native, Metro dev) none.
 let mockServed: string | null = null;
 jest.mock('@/lib/base-url', () => {
@@ -57,6 +66,7 @@ const mockApi = {
   demoSession: jest.fn(),
   me: jest.fn(),
   oidcFinish: jest.fn(),
+  logout: jest.fn(),
 };
 const mockBases: string[] = [];
 // The proxy headers (fe#167) each bare client was built with.
@@ -1112,6 +1122,191 @@ describe("a single sign-on's return (?oidc=1)", () => {
       pathname: '/connect/ready',
       params: { connection: 'srv-1.1' },
     });
+    // Kept: the screen was up to take it.
+    expect(mockApi.logout).not.toHaveBeenCalled();
+  });
+
+  it('ends on the book the flow was opening before the trip (fe#310)', async () => {
+    // What the connect layout put back from this tab's storage as the page loaded.
+    resumeOidcIntent(
+      { newPerson: false, grownUpFromKids: false, book: { libraryId: 2, path: 'Austen/Emma' } },
+      jest.fn(),
+    );
+    mockApi.oidcFinish.mockResolvedValue({ token: 'session', server_id: 'srv-1', user });
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await waitFor(() =>
+      expect(mockDismissTo).toHaveBeenCalledWith({
+        pathname: '/book/[libraryId]',
+        params: { libraryId: '2', connection: 'srv-1.1', path: 'Austen/Emma' },
+      }),
+    );
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  // A grown-up's "Add someone" from kids mode that left for the provider: the pass waits on
+  // this finish (`oidc-intent.ts`), with kids mode held back by the connect layout meanwhile.
+  describe("with a grown-up's pass through kids mode waiting on it", () => {
+    const settled = jest.fn();
+    beforeEach(() => {
+      settled.mockClear();
+      seedProfile({ kids: true });
+      expect(resumeOidcIntent({ newPerson: true, grownUpFromKids: true }, settled)).toBe(true);
+    });
+    afterEach(async () => {
+      dropOidcIntent();
+      endConnectFlow();
+      // The screen is still up: it reads the profiles.
+      await act(async () => resetProfilesForTests());
+    });
+
+    it('gives the pass back once the server answered with a session', async () => {
+      let passAtStore: boolean | null = null;
+      const { setSession } = useSession.getState();
+      useSession.setState({
+        setSession: jest.fn(async () => {
+          passAtStore = kidsConnectAllowed();
+          throw new Error('stop here');
+        }),
+      });
+      mockApi.oidcFinish.mockResolvedValue({ token: 'session', server_id: 'srv-1', user });
+      mockApi.serverInfo.mockResolvedValue(info());
+      mockApi.logout.mockResolvedValue(undefined);
+      try {
+        expect(kidsConnectAllowed()).toBe(false);
+        await render(<ConnectStart />);
+        await waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
+        // Back before the sign-in is stored.
+        await waitFor(() => expect(passAtStore).toBe(true));
+        expect(kidsConnectAllowed()).toBe(true);
+        expect(mockToast).not.toHaveBeenCalled();
+      } finally {
+        useSession.setState({ setSession });
+      }
+    });
+
+    it('gives none when there is no sign-in to finish (the address typed after a trip abandoned at the provider), and shows nothing of the flow', async () => {
+      mockApi.oidcFinish.mockRejectedValue(new ApiError(401, 'x', 'oidc_no_sign_in'));
+      mockApi.serverInfo.mockResolvedValue(info());
+      await render(<ConnectStart />);
+      await waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
+      // Denied: no pass, so kids mode takes the flow back (the layout); the reason goes over it.
+      expect(kidsConnectAllowed()).toBe(false);
+      expect(mockToast).toHaveBeenCalledWith({
+        title: "There's no sign-in to finish in this browser. Sign in again.",
+      });
+      // Nothing of the flow for a child: no card, no Sign in, no address field.
+      expect(screen.queryByText('Found Hearthside')).toBeNull();
+      expect(screen.queryByText('Sign in')).toBeNull();
+      expect(screen.queryByLabelText('Server address')).toBeNull();
+      expect(mockSetParams).not.toHaveBeenCalled();
+      expect(mockApi.serverInfo).toHaveBeenCalledTimes(1);
+      expect(useSession.getState().connections).toEqual([]);
+    });
+  });
+
+  // A reconnect banner's sign-in through single sign-on, on a server reset at a home address
+  // (fe#298): only the sign-in that names the dead connection retires it there, and the name
+  // comes back from this tab's own intent, never from the address.
+  describe('re-pairing a connection to a server reset at a home address', () => {
+    const mine = { ...old('srv-old.1'), user };
+    const theirs = { ...old('srv-old.2'), user: { ...user, id: 2, username: 'sam' } };
+    function old(id: string) {
+      return { id, serverId: 'srv-old', name: 'Hearthside', serverUrl: HOME, token: 'dead' };
+    }
+    const ids = () => useSession.getState().connections.map((c) => c.id);
+    beforeEach(() => {
+      mockServed = HOME;
+      useSession.setState({ status: 'authenticated', connections: [mine, theirs] as never });
+      useProfiles.setState({
+        profiles: [
+          { id: 'p', name: 'Chris', connectionIds: ['srv-old.1'] },
+          { id: 'q', name: 'Sam', connectionIds: ['srv-old.2'] },
+        ],
+        activeProfileId: 'p',
+        hydrated: true,
+      });
+      mockApi.oidcFinish.mockResolvedValue({ token: 'session', server_id: 'srv-2', user });
+      mockApi.serverInfo.mockResolvedValue(info({ server_id: 'srv-2' }));
+      mockApi.logout.mockResolvedValue(undefined);
+    });
+    afterEach(async () => {
+      dropOidcIntent();
+      await act(async () => resetProfilesForTests());
+    });
+    const resume = (server: string) =>
+      resumeOidcIntent(
+        {
+          newPerson: false,
+          grownUpFromKids: false,
+          reconnect: { server, reconnectId: 'srv-old.1' },
+        },
+        jest.fn(),
+      );
+
+    it('replaces the dead connection it left with, and no one else', async () => {
+      resume(HOME);
+      await render(<ConnectStart />);
+      await waitFor(() => expect(ids()).toContain('srv-2.1'));
+      // No duplicate: the dead one is gone, the other person's stays.
+      expect(ids().sort()).toEqual(['srv-2.1', 'srv-old.2']);
+      expect(useSession.getState().connections.find((c) => c.id === 'srv-2.1')).toMatchObject({
+        token: 'session',
+        serverUrl: HOME,
+      });
+    });
+
+    it("finishes with the connection's own proxy headers, never another person's", async () => {
+      const set = { origin: HOME, headers: [{ name: 'X-Auth', value: 'sams-secret' }] };
+      useSession.setState({ connections: [mine, { ...theirs, proxyHeaders: set }] as never });
+      resume(HOME);
+      await render(<ConnectStart />);
+      await waitFor(() => expect(ids()).toContain('srv-2.1'));
+      // The finish's client, the first one built: the dead connection has no set.
+      expect(mockProxies[0]).toBeNull();
+      expect(
+        useSession.getState().connections.find((c) => c.id === 'srv-2.1')?.proxyHeaders,
+      ).toBeFalsy();
+    });
+
+    it.each([
+      // fe#298: only this tab's own intent names it.
+      ['a ?reconnect= in the address', () => (mockParams = { oidc: '1', reconnect: 'srv-old.1' })],
+      [
+        'a reconnect that signed in through another address',
+        () => resume('http://192.168.1.21:8080'),
+      ],
+    ])('replaces nothing for %s', async (_, arrange) => {
+      arrange();
+      await render(<ConnectStart />);
+      await waitFor(() => expect(ids()).toContain('srv-2.1'));
+      expect(ids().sort()).toEqual(['srv-2.1', 'srv-old.1', 'srv-old.2']);
+    });
+
+    it('replaces nothing when the finish fails, and the reconnect is spent', async () => {
+      resume(HOME);
+      mockApi.oidcFinish.mockRejectedValue(new ApiError(401, 'x', 'oidc_no_sign_in'));
+      await render(<ConnectStart />);
+      await waitFor(() =>
+        expect(
+          screen.getByText("There's no sign-in to finish in this browser. Sign in again."),
+        ).toBeTruthy(),
+      );
+      expect(ids()).toEqual(['srv-old.1', 'srv-old.2']);
+      expect(takeOidcResumed(HOME).reconnectId).toBeUndefined();
+    });
+  });
+
+  it('signs out, never keeps, a session that answers once the screen has gone (fe#310)', async () => {
+    let answer!: (v: unknown) => void;
+    mockApi.oidcFinish.mockReturnValue(new Promise((r) => (answer = r)));
+    mockApi.logout.mockResolvedValue(undefined);
+    const view = await render(<ConnectStart />);
+    await view.unmount();
+    await act(async () => answer({ token: 'session', server_id: 'srv-1', user }));
+    await waitFor(() => expect(mockApi.logout).toHaveBeenCalledTimes(1));
+    expect(useSession.getState().connections).toEqual([]);
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it('says "Connecting" while it finishes, never the address field', async () => {
@@ -1177,9 +1372,10 @@ describe("a single sign-on's return (?oidc=1)", () => {
     });
   });
 
-  it("says a session this device couldn't keep is spent", async () => {
+  it("says a session this device couldn't keep is spent, and signs it out", async () => {
     mockApi.oidcFinish.mockResolvedValue({ token: 'session', server_id: 'srv-1', user });
     mockApi.serverInfo.mockResolvedValue(info());
+    mockApi.logout.mockResolvedValue(undefined);
     const { setSession } = useSession.getState();
     useSession.setState({ setSession: jest.fn().mockRejectedValue(new Error('disk full')) });
     try {
@@ -1191,6 +1387,8 @@ describe("a single sign-on's return (?oidc=1)", () => {
           ),
         ).toBeTruthy(),
       );
+      // Nothing holds it: it would stay on the server as a device.
+      expect(mockApi.logout).toHaveBeenCalledTimes(1);
     } finally {
       useSession.setState({ setSession });
     }

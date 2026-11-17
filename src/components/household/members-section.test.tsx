@@ -392,7 +392,7 @@ describe('the add dialog', () => {
     await typeName('Ellis');
     await fireEvent.press(screen.getByTestId('add-member-submit'));
     await fireEvent.press(screen.getByRole('button', { name: "They'll also use this phone" }));
-    expect(mockSignedInHere).toHaveBeenCalledWith('a', 13);
+    expect(mockSignedInHere).toHaveBeenCalledWith('a', 13, 'evie');
     expect(mockSession).toHaveBeenCalledWith(13);
     expect(mockAddHere).toHaveBeenCalledWith(expect.objectContaining({ token: 'kid-token' }), {
       name: 'Ellis',

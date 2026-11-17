@@ -20,7 +20,9 @@ import { activeProfile, useProfiles } from '@/stores/profiles';
  *   the connect flow (a link, a banner, a typed URL all go back to `/kids`), with ONE
  *   exception, a grown-up's "Add someone" on "Who's listening?" (reached through the
  *   Grown-ups hold) on a device with no grown-up (`mayAddPerson`): how a kid-only device is
- *   signed in again. Set only by that button (`openAddSomeone`).
+ *   signed in again. Set only by that button (`openAddSomeone`), and given back after its
+ *   single sign-on's trip to the provider once that sign-in finished
+ *   (`restoreKidsConnectPass`).
  */
 type ConnectIntent = { newPerson: boolean; grownUpFromKids: boolean };
 
@@ -42,17 +44,43 @@ const ADD_SOMEONE_HREF = '/connect?add=1&profile=new';
  * on a device with no grown-up) it also lets kids mode through the flow
  * (`kidsConnectAllowed`). */
 export function openAddSomeone(): void {
-  const state = useProfiles.getState();
-  if (activeProfile(state)?.kids && mayAddPerson(state)) {
-    intent = { ...intent, grownUpFromKids: true };
-  }
+  if (kidsPassOpen()) intent = { ...intent, grownUpFromKids: true };
   router.push(ADD_SOMEONE_HREF);
+}
+
+/** Whether kids mode would let a grown-up's "Add someone" through the connect flow now: a
+ * kids profile is listening, on a device with no grown-up (`mayAddPerson`). */
+function kidsPassOpen(): boolean {
+  const state = useProfiles.getState();
+  return !!activeProfile(state)?.kids && mayAddPerson(state);
 }
 
 /** Whether the connect flow on screen was opened by a grown-up from kids mode
  * (`openAddSomeone`). */
 export function kidsConnectAllowed(): boolean {
   return intent.grownUpFromKids;
+}
+
+/**
+ * A single sign-on's return (a page load: memory is gone) puts back who the flow signs in
+ * (`oidc-intent.ts`, fe#310). Never the grown-up's pass through kids mode: the address alone
+ * (`/connect?oidc=1`, typed after a trip abandoned at the provider) is no proof of a sign-in,
+ * and a pass put back for it would open the flow for a child. True when the trip left with a
+ * pass that kids mode would still give now (`openAddSomeone`'s rule, so the stored copy can't
+ * widen it): it waits on the sign-in's finish (`restoreKidsConnectPass`).
+ */
+export function resumeConnectIntent(held: {
+  newPerson: boolean;
+  grownUpFromKids: boolean;
+}): boolean {
+  intent = { newPerson: held.newPerson, grownUpFromKids: false };
+  return held.grownUpFromKids && kidsPassOpen();
+}
+
+/** The returned single sign-on finished (the server answered with a session): the grown-up's
+ * pass the trip left with is back, while kids mode would still give it. */
+export function restoreKidsConnectPass(): void {
+  if (kidsPassOpen()) intent = { ...intent, grownUpFromKids: true };
 }
 
 /** The connect flow was left: the next one starts with no intent. */

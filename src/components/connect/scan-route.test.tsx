@@ -30,6 +30,7 @@ import ScanScreen from '@/app/connect/scan';
 import {
   openScanner,
   takeInviteCode,
+  takeReconnect,
   takeScanFor,
   takeScanReconnect,
 } from '@/components/connect/invite-handoff';
@@ -124,15 +125,13 @@ describe("opened from a reconnect's sign-in step (`openScanner`)", () => {
     expect(takeScanReconnect('abc')).toBeUndefined();
   });
 
-  it("keeps it for an invite QR of that server: the sign-in step's own `reconnect`", async () => {
+  it('keeps it for an invite QR of that server, in memory for the sign-in step (fe#298)', async () => {
     reconnecting();
     openScanner('srv-1.1');
     await render(<ScanScreen />);
     await scan('https://books.example.com/connect#code=ABCD-EFGH-JKMN-PQRS');
-    expect(mockReplace).toHaveBeenCalledWith({
-      pathname: '/connect/sign-in',
-      params: { reconnect: 'srv-1.1' },
-    });
+    expect(mockReplace).toHaveBeenCalledWith('/connect/sign-in');
+    expect(takeReconnect('https://books.example.com')).toBe('srv-1.1');
   });
 
   it('drops it for a code of any other server, or a connection that is gone: a new connection', async () => {

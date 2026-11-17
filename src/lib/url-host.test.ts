@@ -1,4 +1,4 @@
-import { isLoopbackHost, urlEndpoint, urlHost } from './url-host';
+import { httpUrl, isLoopbackHost, looksLikeHomeAddress, urlEndpoint, urlHost } from './url-host';
 
 describe('urlHost', () => {
   it('reads the host without URL.hostname (React Native does not implement it)', () => {
@@ -15,16 +15,19 @@ describe('urlEndpoint', () => {
       scheme: 'https',
       host: 'books.example.com',
       port: '8443',
+      userinfo: false,
     });
     expect(urlEndpoint('https://nas.local')).toEqual({
       scheme: 'https',
       host: 'nas.local',
       port: '443',
+      userinfo: false,
     });
     expect(urlEndpoint('http://user@[fd00::5]?x')).toEqual({
       scheme: 'http',
       host: 'fd00::5',
       port: '80',
+      userinfo: true,
     });
     expect(urlEndpoint('ftp://files.example')?.port).toBe('');
     // A scheme named like an Object.prototype member has no default port either.
@@ -48,5 +51,72 @@ describe('isLoopbackHost', () => {
     ['fd00::1', false],
   ])('%s -> %s', (host, loopback) => {
     expect(isLoopbackHost(host)).toBe(loopback);
+  });
+});
+
+describe('looksLikeHomeAddress', () => {
+  it.each([
+    ['192.168.1.20:8080', true],
+    ['http://10.0.0.5', true],
+    ['172.16.0.1', true],
+    ['172.31.255.1', true],
+    ['172.32.0.1', false],
+    ['169.254.10.1', true],
+    ['100.64.0.1', false],
+    ['8.8.8.8', false],
+    ['http://[fd12:3456::1]:8080', true],
+    ['http://[fe80::1]', true],
+    ['http://[2001:db8::1]', false],
+    ['nas.local', true],
+    ['books.lan:8080', true],
+    ['shelf.home.arpa', true],
+    ['nas', true],
+    ['localhost:8080', false],
+    ['127.0.0.1', false],
+    ['http://[::1]', false],
+    ['books.example.com', false],
+    ['', false],
+  ])('%s -> %s', (url, home) => {
+    expect(looksLikeHomeAddress(url)).toBe(home);
+  });
+});
+
+describe('httpUrl', () => {
+  it('keeps an absolute http(s) URL, trimmed, its scheme lower-cased', () => {
+    expect(httpUrl(' HTTPS://Books.example.com/X ')).toBe('https://Books.example.com/X');
+    expect(httpUrl('http://192.168.1.20:8080/')).toBe('http://192.168.1.20:8080/');
+  });
+
+  it('refuses any other scheme, a relative path or no host', () => {
+    for (const bad of ['javascript:alert(1)', 'file:///x', 'intent://x', '/x', 'https://', ''])
+      expect(httpUrl(bad)).toBeNull();
+  });
+});
+
+it('urlEndpoint userinfo: a user before the host, never an @ in the path', () => {
+  expect(urlEndpoint('https://librivox.org@evil.example/')?.userinfo).toBe(true);
+  expect(urlEndpoint('https://u:p@librivox.org/')?.userinfo).toBe(true);
+  expect(urlEndpoint('https://librivox.org/a@b')?.userinfo).toBe(false);
+  expect(urlEndpoint('https://librivox.org/?q=a@b')?.userinfo).toBe(false);
+  // The last @ before the path ends it, as a browser reads it: the host is what follows.
+  expect(urlEndpoint('https://a@librivox.org@evil.example/')).toMatchObject({
+    host: 'evil.example',
+    userinfo: true,
+  });
+  expect(urlEndpoint('https://u:p@w@[fd00::5]:8443/')).toMatchObject({
+    host: 'fd00::5',
+    port: '8443',
+    userinfo: true,
+  });
+  // No host after it is no URL.
+  expect(urlEndpoint('https://a@b@/')).toBeNull();
+  expect(urlEndpoint('https://librivox.org@:80/')).toBeNull();
+});
+
+it('urlEndpoint: a backslash ends the host, as a browser reads an http(s) URL', () => {
+  expect(urlEndpoint('https://evil.example\\.librivox.org/')?.host).toBe('evil.example');
+  expect(urlEndpoint('https://evil.example\\@librivox.org/')).toMatchObject({
+    host: 'evil.example',
+    userinfo: false,
   });
 });

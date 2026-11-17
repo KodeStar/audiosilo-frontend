@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Pressable } from 'react-native';
 
 import { effectiveUrl } from '@/api/address-route';
+import { holdReconnect } from '@/components/connect/invite-handoff';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
@@ -16,13 +17,14 @@ export const RECONNECT_STRIP_CLASS = 'border-l-4 border-l-brand bg-brand/10';
 /** Start the reconnect flow for `conn`: the sign-in step for its server, through the
  * address the connection uses NOW (`effectiveUrl`; away from home that is its away
  * address, not the home address it may have been paired with, which can't answer).
- * Signing in keeps the connection's own `serverUrl` (`repairPlan`). */
+ * Signing in keeps the connection's own `serverUrl` (`repairPlan`). The connection it
+ * re-pairs is handed over in memory (`holdReconnect`). */
 export async function reconnectConnection(conn: Connection): Promise<void> {
-  await useSession.getState().setPendingServerUrl(effectiveUrl(conn));
-  router.push({
-    pathname: '/connect/sign-in',
-    params: { serverName: conn.name, reconnect: conn.id },
-  });
+  const server = effectiveUrl(conn);
+  await useSession.getState().setPendingServerUrl(server);
+  // Which connection the sign-in re-pairs goes in memory, never in the route (fe#298).
+  holdReconnect(server, conn.id);
+  router.push({ pathname: '/connect/sign-in', params: { serverName: conn.name } });
 }
 
 /**

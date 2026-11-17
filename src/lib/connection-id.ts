@@ -72,15 +72,29 @@ export function serverIdOf(conn: { id: string; serverId?: string }): string {
  * user). Undefined for a user new to this device. The one rule the session's `setSession`
  * (which connection a sign-in updates), the connect flow (which person it keeps) and
  * `repairPlan` (which address it keeps) share.
+ *
+ * `username`: who is signing in. A connection without a user id that kept its username is
+ * taken to be this user only under that name (fe#298): anyone else signing in, a reconnect
+ * included, is a new connection and never takes over its downloads, places and person.
  */
 export function priorConnection<
-  C extends { id: string; serverId?: string; user?: { id?: unknown } | null },
->(connections: readonly C[], serverId: string, userId: number): C | undefined {
+  C extends {
+    id: string;
+    serverId?: string;
+    user?: { id?: unknown; username?: unknown } | null;
+  },
+>(connections: readonly C[], serverId: string, userId: number, username?: string): C | undefined {
   const onServer = connections.filter((c) => serverIdOf(c) === serverId);
   return (
     onServer.find((c) => c.user?.id === userId) ??
-    onServer.find((c) => typeof c.user?.id !== 'number')
+    onServer.find((c) => typeof c.user?.id !== 'number' && sameUser(c.user?.username, username))
   );
+}
+
+/** Whether a connection saved without a user id, under `kept` (its username, if any), may be
+ * `username`'s: always when either is unknown, else only under the same name. */
+function sameUser(kept: unknown, username: string | undefined): boolean {
+  return typeof kept !== 'string' || !kept || username === undefined || kept === username;
 }
 
 // --- Aliases ----------------------------------------------------------------------------
