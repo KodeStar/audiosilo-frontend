@@ -172,8 +172,9 @@ the key's parts change, never because the cache did or because something else re
 component again (fe#280: a row's menu kept offering Download after the episode page found the
 episode not available). Read the cache at render through a subscription: a query hook, or
 `useCachedQueryData(key)` (`src/api/use-cached-query-data.ts`: cache only, no fetch, no
-observer, one listener per entry; `false` for no key reads nothing). `getQueryData` stays fine in callbacks,
-effects and framework-free code. Jest leaves the compiler off, so a test of code that depends
+observer, one cache listener per reader, notified in React Query's batches; `false` for no key
+reads nothing; a test of it sets `notifyQueriesSynchronously()`). `getQueryData` stays fine in
+callbacks, effects and framework-free code. Jest leaves the compiler off, so a test of code that depends
 on it renders through `withReactCompiler(require, './module')` (`src/testing/react-compiler.ts`).
 
 **Client identification.** `ApiClient.request()` sends

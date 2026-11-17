@@ -24,10 +24,12 @@ jest.mock('./cast-button-model', () => ({
 /* eslint-disable import/first */
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
+import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
 import { useCastButton } from './use-cast-button';
 /* eslint-enable import/first */
 
+notifyQueriesSynchronously();
 afterEach(() => queryClient.clear());
 
 it("follows the playing book's item and chapters as they land in the cache", async () => {

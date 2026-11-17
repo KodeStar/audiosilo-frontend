@@ -1,9 +1,13 @@
 import { act, renderHook } from '@testing-library/react-native';
 
+import { notifyQueriesSynchronously } from '@/testing/query-notify';
+
 import { queryClient } from './provider';
 import { useCachedQueryData } from './use-cached-query-data';
 
 const KEY = ['cached-probe', 1] as const;
+
+notifyQueriesSynchronously();
 
 afterEach(() => queryClient.removeQueries({ queryKey: ['cached-probe'] }));
 

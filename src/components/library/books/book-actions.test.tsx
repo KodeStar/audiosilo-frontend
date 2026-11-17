@@ -86,12 +86,16 @@ jest.mock('@/watch/use-watch', () => ({ useSendToWatch: () => mockSendToWatch })
 import { CapabilityError, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { fetchStatus } from '@/testing/podcast-fixtures';
+import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
 import { mountWithPortal } from '@/testing/render-overlay';
 import { withReactCompiler } from '@/testing/react-compiler';
 
 import { BookActionsButton, BookActionsMenu, useBookActions } from './book-actions';
 /* eslint-enable import/first */
+
+// The live fetch status reaches a row through the cache's batched notifications.
+notifyQueriesSynchronously();
 
 const H = 3600;
 const book = (over: Partial<Book> = {}): Book => ({

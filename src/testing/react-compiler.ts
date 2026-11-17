@@ -1,4 +1,5 @@
 import { transformFileSync } from '@babel/core';
+import { dirname, resolve } from 'path';
 
 /**
  * A source module as the app runs it: built by the repo's Babel config with the React
@@ -14,11 +15,18 @@ export function withReactCompiler<T>(load: NodeJS.Require, path: string): T {
   const file = load.resolve(path);
   // `supportsReactCompiler` is babel-preset-expo's caller flag, which Babel's types don't name.
   const caller = { name: 'react-compiler-test', supportsReactCompiler: true };
-  const out = transformFileSync(file, { caller });
+  // The repo's Babel config, wherever Jest was started from (babel-jest roots it the same way).
+  const out = transformFileSync(file, { caller, root: resolve(__dirname, '../..') });
   if (!out?.code?.includes('react/compiler-runtime')) {
     throw new Error(`the React Compiler left ${file} as it was`);
   }
   const mod = { exports: {} as T };
-  new Function('require', 'module', 'exports', out.code)(load, mod, mod.exports);
+  new Function('require', 'module', 'exports', '__filename', '__dirname', out.code)(
+    load,
+    mod,
+    mod.exports,
+    file,
+    dirname(file),
+  );
   return mod.exports;
 }
