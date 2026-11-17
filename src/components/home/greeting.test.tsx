@@ -1,9 +1,10 @@
 import { act, render, screen } from '@testing-library/react-native';
 
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
+let mockLayout = 'desktop';
 jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
-  useLayout: () => 'desktop',
+  useLayout: () => mockLayout,
 }));
 
 /* eslint-disable import/first */
@@ -14,7 +15,10 @@ import { Greeting } from './greeting';
 
 const NOW = Date.parse('2026-10-27T12:00:00Z');
 
-beforeEach(() => jest.useFakeTimers({ now: NOW }));
+beforeEach(() => {
+  jest.useFakeTimers({ now: NOW });
+  mockLayout = 'desktop';
+});
 afterEach(() => jest.useRealTimers());
 
 describe('Greeting', () => {
@@ -44,5 +48,24 @@ describe('Greeting', () => {
     } finally {
       await setFontScale(1);
     }
+  });
+
+  // fe#147: on a phone the long "Saved on this device, will sync" goes under the date, which
+  // it cut beside it; the short "Synced ..." stays on the date's row.
+  it("puts a phone's waiting-save pill under the date, the synced one beside it", async () => {
+    mockLayout = 'phone';
+    const pillRow = () => screen.getByTestId('greeting-pill').parent;
+    const dateRow = () => screen.getByText(/October/).parent;
+    await render(<Greeting name="Sam" sync={{ kind: 'local' }} servers={1} />);
+    expect(screen.getByText('Saved on this device, will sync')).toBeTruthy();
+    expect(pillRow()).not.toBe(dateRow());
+    await render(
+      <Greeting
+        name="Sam"
+        sync={{ kind: 'synced', at: new Date(NOW).toISOString() }}
+        servers={1}
+      />,
+    );
+    expect(pillRow()).toBe(dateRow());
   });
 });
