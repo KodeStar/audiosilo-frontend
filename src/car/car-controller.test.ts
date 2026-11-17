@@ -1254,6 +1254,33 @@ describe("the car's Library tab with no pick (D9, fe#271)", () => {
     await settle(MIN_GAP_MS);
     expect(listed()).toEqual(['One']);
   });
+
+  it('forgets the library it listed when another person takes over mid-drive', async () => {
+    connect(['c1', 'c2']);
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'chris', name: 'Chris', connectionIds: ['c1', 'c2'] },
+        { id: 'sam', name: 'Sam', connectionIds: ['c1', 'c2'] },
+      ],
+      activeProfileId: 'chris',
+    });
+    mockClients.c1 = fakeClient({ books: [makeBook({ rel_path: 'One' })] });
+    (mockClients.c1.libraries as jest.Mock).mockRejectedValueOnce(
+      new TypeError('Network request failed'),
+    );
+    mockClients.c2 = fakeClient({ books: [makeBook({ rel_path: 'Two' })] });
+    stop = startCarSync();
+    mockNative.connection?.(true);
+    await settle(MIN_GAP_MS);
+    const listed = () => tab(lastSnapshot(), 'library')!.items.map((i) => i.book.path);
+    expect(listed()).toEqual(['Two']);
+
+    // Sam's lists start afresh: the first server, which answers now.
+    useProfiles.setState({ activeProfileId: 'sam' });
+    await settle(MIN_GAP_MS);
+    expect(listed()).toEqual(['One']);
+  });
 });
 
 describe('play requests', () => {

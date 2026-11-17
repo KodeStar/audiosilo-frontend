@@ -1324,6 +1324,8 @@ export function startCarSync(): () => void {
         s.activeProfileId !== prev.activeProfileId ||
         JSON.stringify(activeProfile(s)?.kids) !== JSON.stringify(activeProfile(prev)?.kids)
       ) {
+        // The library the car listed was the previous person's (D9 holds it for one).
+        carListed = null;
         request(true);
         resumableChanged();
       }

@@ -3783,7 +3783,7 @@ no state to show for a server, so it never waits on one (`resolveCarLibrary`): w
 would wait (no pick, or a pick whose server answered that it shares nothing), it lists the
 first server that IS read and has a library, and keeps it for the drive once the first server
 answers (the car passes the library it listed last while connected as `shown`, forgotten
-when the car goes: D9 of fe#271); a pick whose server has not answered, or still has a
+when the car goes or the person changes: D9 of fe#271); a pick whose server has not answered, or still has a
 library, is never replaced by another server's there either. `LibraryPicker` offers every server's libraries whatever is
 shown (the way out of a server that does not answer); among several servers its labels carry
 the server ("Books · Home"), and with nothing else to choose it is a plain label
