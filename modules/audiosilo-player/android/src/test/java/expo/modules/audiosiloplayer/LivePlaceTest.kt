@@ -74,12 +74,29 @@ class LivePlaceTest {
   }
 
   // A car-seen phone paused B in a cold runtime away from every server: JS wrote nothing, and
-  // the snapshot still names A. The engine's book and place win.
+  // the snapshot still names A, saved before the engine's place on B. The engine's book and
+  // place win.
   @Test fun theBookTheEngineWasOnResumesWhenTheSnapshotNamesAnOlderOne() {
-    val item = snapshot("book:A").resumable(live("B"))
+    val item = snapshot("book:A", savedAt = 1_000L).resumable(live("B", savedAt = 2_000L))
     assertEquals("book:B", item?.id)
     assertEquals(1, item?.play?.startIndex)
     assertEquals(81.5, item!!.play!!.positionInTrack, 0.0)
+  }
+
+  // A dead process left the engine on B; JS later played A and named it with a newer place.
+  // A resumes at JS's place, not the engine's older book.
+  @Test fun aNewerNamedBookBeatsAnOlderLivePlaceOnAnotherBook() {
+    val item = snapshot("book:A", savedAt = 2_000L).resumable(live("B", savedAt = 1_000L))
+    assertEquals("book:A", item?.id)
+    assertEquals(0, item?.play?.startIndex)
+    assertEquals(30.0, item!!.play!!.positionInTrack, 0.0)
+  }
+
+  // Either time missing (a snapshot from before the times, a live place never stamped): the
+  // engine's book wins, as before.
+  @Test fun aMissingTimeLeavesTheLiveBookWinning() {
+    assertEquals("book:B", snapshot("book:A", savedAt = null).resumable(live("B", savedAt = 2_000L))?.id)
+    assertEquals("book:B", snapshot("book:A", savedAt = 2_000L).resumable(live("B", savedAt = 0L))?.id)
   }
 
   // A stopped or finished book: JS names none and the live place was dropped with it.

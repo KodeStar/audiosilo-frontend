@@ -2671,7 +2671,9 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   each spec carries when JS saved its place (`placeSavedAt`: a paused book's when first
   written, else the resume lookup's row by this device's clock, `placeSavedAt` in
   `progress-sync.ts`), a spec with none counting as older; so a place a dead process left
-  never beats a newer one JS read since (another device's listen). A
+  never beats a newer one JS read since (another device's listen). Across books too: when
+  `resume` names another book whose `placeSavedAt` is later than the live place's `savedAt`,
+  that book resumes at its own place; with either time missing the live place's book wins. A
   `resume` of null (JS named none: kids mode changed, another person's book) resumes nothing,
   whatever the engine last held. A car tap that `playFromCar` starts natively starts at it too
   when it is that book's and newer (`CarPlaySpec.at`). So a crash or kill mid-play, a pause in a cold

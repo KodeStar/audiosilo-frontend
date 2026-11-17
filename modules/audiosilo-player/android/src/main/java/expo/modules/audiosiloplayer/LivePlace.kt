@@ -47,7 +47,11 @@ fun CarPlaySpec.at(live: LivePlace?): CarPlaySpec {
  * loaded): the book the engine was last heard on, at that place ([LivePlace]) unless the spec's
  * own place is newer ([at]), when the snapshot lists it with a play spec (downloaded; and listed
  * for the person and the kids mode the snapshot was built for); else the book JS named
- * ([CarSnapshot.resumable]). A live place exists
+ * ([CarSnapshot.resumable]). Across books the later place wins too: when JS named another book
+ * and saved its place after the live place was saved, that book resumes at its own place (a
+ * dead process's book is older than the one JS played since). When either time is missing the
+ * live place's book wins, as a pause in a cold runtime away from every server writes no
+ * snapshot. A live place exists
  * only for a book the engine still holds or held when the process died: a stop, the end of the
  * book and the app's own load of a queue drop it ([LivePlaceRecorder]), so a stopped or finished
  * book still never resumes. When JS named none (a book stopped or finished here, offered before
@@ -55,13 +59,19 @@ fun CarPlaySpec.at(live: LivePlace?): CarPlaySpec {
  * engine last held.
  */
 fun CarSnapshot.resumable(live: LivePlace?): CarItem? {
-  if (live != null && !(namesResume && resume == null)) {
-    for (tab in tabs) for (item in tab.items) {
-      val play = item.play ?: continue
-      if (play.book == live.book) return item.copy(play = play.at(live))
-    }
+  val named = resumable()
+  if (live == null || (namesResume && resume == null)) return named
+  val namedAt = named?.play?.placeSavedAt
+  if (named != null && named.play?.book != live.book && namedAt != null && live.savedAt > 0L &&
+    namedAt > live.savedAt
+  ) {
+    return named
   }
-  return resumable()
+  for (tab in tabs) for (item in tab.items) {
+    val play = item.play ?: continue
+    if (play.book == live.book) return item.copy(play = play.at(live))
+  }
+  return named
 }
 
 /** The live place on disk, in a prefs file of its own: it is rewritten every
