@@ -42,7 +42,7 @@ describe('useUpcomingClock', () => {
     return { ...hook, refetch };
   }
 
-  it('reads the clock again and the stale lists on focus and on coming to the front', async () => {
+  it('reads the clock again on focus and on coming to the front, the stale lists on focus', async () => {
     const { result, refetch, unmount } = await mount();
     expect(result.current).toEqual(T0);
     const later = new Date('2026-11-13T09:00:00Z');
@@ -51,11 +51,10 @@ describe('useUpcomingClock', () => {
     expect(result.current).toEqual(T0);
     await act(async () => mockFocus?.());
     expect(result.current).toEqual(later);
-    expect(refetch).toHaveBeenLastCalledWith({
-      queryKey: ['upcoming'],
-      type: 'active',
-      stale: true,
-    });
+    expect(refetch).toHaveBeenLastCalledWith(
+      { queryKey: ['upcoming'], type: 'active', stale: true },
+      { cancelRefetch: false },
+    );
     const calls = refetch.mock.calls.length;
     const next = new Date('2026-11-14T09:00:00Z');
     jest.setSystemTime(next);
@@ -63,7 +62,8 @@ describe('useUpcomingClock', () => {
     expect(refetch).toHaveBeenCalledTimes(calls);
     await act(async () => appState?.('active'));
     expect(result.current).toEqual(next);
-    expect(refetch).toHaveBeenCalledTimes(calls + 1);
+    // The app's resume refresh reads every active query then, so nothing more here.
+    expect(refetch).toHaveBeenCalledTimes(calls);
     await unmount();
     expect(appState).toBeNull();
   });
