@@ -245,7 +245,7 @@ export class CastPlaybackService implements PlaybackService {
   async refresh(): Promise<void> {
     const queue = this.queueSeq;
     const s = await this.remote.readStatus().catch(() => null);
-    if (s && queue === this.queueSeq) this.onStatus(s);
+    if (s && queue === this.queueSeq) this.onStatus(s, true);
   }
 
   /**
@@ -528,6 +528,33 @@ export class CastPlaybackService implements PlaybackService {
     );
   }
 
+  /** The queue being sent is a refused one (`ReceiverRefused`), from the first sign of it. */
+  private refuseQueue() {
+    if (this.refusedQueue?.seq !== this.queueSeq) {
+      this.refusedQueue = { seq: this.queueSeq, at: this.now() };
+    }
+  }
+
+  /** Whether a status on file `index` says the receiver went past the file this phone means
+   * (`intended`) before it ever played or paused there: a later file, not idle. The Default
+   * Media Receiver goes on to the next file it can play when it is refused one. */
+  private skippedPast(status: CastMediaStatus, index: number): boolean {
+    const want = this.intended;
+    return !!want && !want.landed && index > want.trackIndex && status.playerState !== 'idle';
+  }
+
+  /** A status while a load of ours is in flight that names the meant file playing or paused
+   * lands it (`followIntent` reads none in flight, and the receiver sends no more once it
+   * simply plays), and a token played so is a good one (`notePlayed`). */
+  private landInFlight(status: CastMediaStatus, index: number, loaded: Loaded) {
+    const want = this.intended;
+    if (!want || want.landed || index !== want.trackIndex) return;
+    if (status.playerState !== 'playing' && status.playerState !== 'paused') return;
+    want.landed = true;
+    if (status.position > 0) want.position = status.position + (loaded.offsets[index] ?? 0);
+    if (status.playerState === 'playing') this.notePlayed(status, loaded, index);
+  }
+
   /** Whether the phone has been following the receiver just now (a status or a progress tick
    * within `EARLY_END_FRESH_MS`): it would have seen the receiver play any file it did. */
   private watching(): boolean {
@@ -699,7 +726,9 @@ export class CastPlaybackService implements PlaybackService {
     }
   }
 
-  private onStatus(status: CastMediaStatus | null) {
+  /** A status the receiver sent, or one read (`read`, `refresh`): the SDK's last, which can be
+   * the media a queue in flight replaces, so it never makes that queue a refused one. */
+  private onStatus(status: CastMediaStatus | null, read = false) {
     if (!status) {
       // No media on the receiver: whatever was playing was stopped from elsewhere.
       if (this.loaded && this.loadsInFlight === 0) {
@@ -730,8 +759,20 @@ export class CastPlaybackService implements PlaybackService {
         !this.minting &&
         !!status.contentId &&
         castUrlIndex(status.contentId, loaded?.urls ?? []) < 0;
-      if (loaded && !replaced) this.refusedQueue = { seq: this.queueSeq, at: this.now() };
+      if (loaded && !replaced) this.refuseQueue();
       return;
+    }
+    const index = loaded ? castTrackIndex(status, loaded.urls) : null;
+    if (loaded && index !== null && this.loadsInFlight > 0 && !read) {
+      if (this.skippedPast(status, index)) {
+        // The receiver plays (or buffers) a later file than the one this load asked for, which
+        // it never played: it was refused that file and skipped on (to one in its cache too),
+        // whether or not its errors reached the phone. The load is a refused one, as an error
+        // makes it, and that later file is not the book's place.
+        this.refuseQueue();
+      } else {
+        this.landInFlight(status, index, loaded);
+      }
     }
     if (this.skippingRefused()) return;
     // The receiver settled playing, paused or stopped, whoever asked: the play intent from
@@ -751,7 +792,6 @@ export class CastPlaybackService implements PlaybackService {
     ) {
       this.playIntent = status.playerState === 'playing';
     }
-    const index = loaded ? castTrackIndex(status, loaded.urls) : null;
     const trackIndex = index ?? this.snapshot.trackIndex;
     const lastTrack = !loaded || trackIndex >= loaded.items.length - 1;
     const state = castState(status, {
@@ -765,6 +805,18 @@ export class CastPlaybackService implements PlaybackService {
       ? status.position + offset
       : this.snapshot.position;
     if (loaded && index !== null && this.loadsInFlight === 0) {
+      // As in flight (`skippedPast`), once the load answered: only just after the move, as a
+      // file the receiver played unseen may have run on into the next by now.
+      const want = this.intended;
+      if (
+        want &&
+        this.now() - want.at < ASKED_MOVE_MS &&
+        this.skippedPast(status, index) &&
+        this.remintDue()
+      ) {
+        this.reloadFresh(index, position);
+        return;
+      }
       this.followIntent(status, index, position, loaded.items.length - 1);
       if (status.playerState === 'playing') this.notePlayed(status, loaded, index);
     }
