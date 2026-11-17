@@ -31,8 +31,7 @@ data class LivePlace(
  * device's listen it read, say), and a spec with no time counts as older than any live place.
  */
 fun CarPlaySpec.at(live: LivePlace?): CarPlaySpec {
-  if (live == null || live.book != book) return this
-  if (placeSavedAt != null && placeSavedAt > live.savedAt) return this
+  if (live == null || live.book != book || savedAfter(live)) return this
   val index = if (live.relPath != null) {
     tracks.indexOfFirst { LoadedFiles.pathOf(it.id, clip = false) == live.relPath }
   } else {
@@ -41,6 +40,9 @@ fun CarPlaySpec.at(live: LivePlace?): CarPlaySpec {
   if (index !in tracks.indices) return this
   return copy(startIndex = index, positionInTrack = live.position.coerceAtLeast(0.0))
 }
+
+/** JS saved this spec's place after [live] was saved; a spec with no time never was. */
+private fun CarPlaySpec.savedAfter(live: LivePlace) = placeSavedAt != null && placeSavedAt > live.savedAt
 
 /**
  * What a playback resumption starts (a headset, Bluetooth or the car's play with nothing
@@ -51,22 +53,19 @@ fun CarPlaySpec.at(live: LivePlace?): CarPlaySpec {
  * and saved its place after the live place was saved, that book resumes at its own place (a
  * dead process's book is older than the one JS played since). When either time is missing the
  * live place's book wins, as a pause in a cold runtime away from every server writes no
- * snapshot. A live place exists
- * only for a book the engine still holds or held when the process died: a stop, the end of the
- * book and the app's own load of a queue drop it ([LivePlaceRecorder]), so a stopped or finished
- * book still never resumes. When JS named none (a book stopped or finished here, offered before
- * kids mode changed, or no longer the person listening's), nothing resumes, whatever the
- * engine last held.
+ * snapshot. A live place exists only for a book the engine still holds or held when the process
+ * died: a stop, the end of the book and the app's own load of a queue drop it
+ * ([LivePlaceRecorder]), so a stopped or finished book still never resumes. When JS named none
+ * (a book stopped or finished here, offered before kids mode changed, or no longer the person
+ * listening's), nothing resumes, whatever the engine last held.
  */
 fun CarSnapshot.resumable(live: LivePlace?): CarItem? {
   val named = resumable()
   if (live == null || (namesResume && resume == null)) return named
-  val namedAt = named?.play?.placeSavedAt
-  if (named != null && named.play?.book != live.book && namedAt != null && live.savedAt > 0L &&
-    namedAt > live.savedAt
-  ) {
-    return named
-  }
+  val namedPlay = named?.play
+  val namedIsNewer = namedPlay != null && namedPlay.book != live.book && live.savedAt > 0L &&
+    namedPlay.savedAfter(live)
+  if (namedIsNewer) return named
   for (tab in tabs) for (item in tab.items) {
     val play = item.play ?: continue
     if (play.book == live.book) return item.copy(play = play.at(live))
