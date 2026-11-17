@@ -99,3 +99,11 @@ it('urlEndpoint userinfo: a user before the host, never an @ in the path', () =>
   expect(urlEndpoint('https://librivox.org/a@b')?.userinfo).toBe(false);
   expect(urlEndpoint('https://librivox.org/?q=a@b')?.userinfo).toBe(false);
 });
+
+it('urlEndpoint: a backslash ends the host, as a browser reads an http(s) URL', () => {
+  expect(urlEndpoint('https://evil.example\\.librivox.org/')?.host).toBe('evil.example');
+  expect(urlEndpoint('https://evil.example\\@librivox.org/')).toMatchObject({
+    host: 'evil.example',
+    userinfo: false,
+  });
+});

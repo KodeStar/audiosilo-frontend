@@ -1,12 +1,14 @@
 /** An absolute URL's scheme, host and port, lower-cased: the host without brackets (IPv6),
  * the port the scheme's default (443 for https, 80 for http, else '') when it names none.
  * `userinfo`: whether it names a user before the host (`https://user:pass@host/`), which a
- * link can use to dress another host up as a trusted one. A regex rather than
- * `URL.hostname`/`port`: React Native's URL polyfill does not implement them. */
+ * link can use to dress another host up as a trusted one. A backslash ends the host as a
+ * slash does, as a browser reads an http(s) URL (`https://evil.example\.librivox.org/` goes
+ * to evil.example). A regex rather than `URL.hostname`/`port`: React Native's URL polyfill
+ * does not implement them. */
 export function urlEndpoint(
   url: string,
 ): { scheme: string; host: string; port: string; userinfo: boolean } | null {
-  const m = /^([a-z][a-z0-9+.-]*):\/\/([^@/?#]*@)?(\[[^\]]+\]|[^:/?#]+)(?::(\d+))?/i.exec(
+  const m = /^([a-z][a-z0-9+.-]*):\/\/([^@/\\?#]*@)?(\[[^\]]+\]|[^:/\\?#]+)(?::(\d+))?/i.exec(
     url.trim(),
   );
   if (!m) return null;

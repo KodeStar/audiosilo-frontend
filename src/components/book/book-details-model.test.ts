@@ -282,5 +282,8 @@ describe('librivoxUrl', () => {
     expect(librivoxUrl(rec('https://notlibrivox.org/x/'))).toBeUndefined();
     expect(librivoxUrl(rec('https://librivox.org@evil.example/x/'))).toBeUndefined();
     expect(librivoxUrl(rec('https://user:pw@librivox.org/x/'))).toBeUndefined();
+    // A browser reads a backslash as a slash: both go to evil.example.
+    expect(librivoxUrl(rec('https://evil.example\\.librivox.org/x/'))).toBeUndefined();
+    expect(librivoxUrl(rec('https://evil.example\\@librivox.org/x/'))).toBeUndefined();
   });
 });
