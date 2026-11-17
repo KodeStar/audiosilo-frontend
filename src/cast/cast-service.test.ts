@@ -1665,6 +1665,30 @@ describe('CastPlaybackService', () => {
         expect(since.filter((s) => s.position === 600 || s.state === 'error')).toEqual([]);
         expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 20 });
       });
+
+      it('a move that landed unseen long ago leaves no stale place for the next one', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 2, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 45 });
+        // A jump to Part 2 that no status ever says landed: the receiver simply plays it.
+        await t.svc.skipToTrack(1, 0);
+        t.tick(60_000);
+        t.progress(60);
+        expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 60 });
+        // A jump back to Part 1: Part 2 playing on before the receiver takes it is the media
+        // the queue replaces, not a later file it skipped on to.
+        const answer = holdLoad(t);
+        const back = t.svc.skipToTrack(0, 0);
+        await flush();
+        t.status({ playerState: 'playing', contentId: t.url(1), position: 61 });
+        answer();
+        await back;
+        await flush();
+        expect(m.asks).toEqual([undefined]);
+        expect(t.remote.loads).toHaveLength(3);
+      });
     });
 
     it('a book loaded again (a Retry) mints no sooner than a minute on; another book may', async () => {
