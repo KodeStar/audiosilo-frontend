@@ -29,9 +29,9 @@ const ROW = 'my-1 w-full flex-row items-center gap-3 px-3 py-2.5';
  * a list held for the network (or failed) is not "none yet" (fe#271). */
 function FavouritesShelfRow() {
   const { t } = useTranslation();
-  const { favourites, offline, error } = useFavouritesAll();
+  const { favourites, offline, unreadError } = useFavouritesAll();
   const count = favourites.length;
-  const unread = useUnreadAll({ rows: favourites, offline, error });
+  const unread = useUnreadAll({ rows: favourites, offline, error: unreadError });
   const hint =
     unread === 'offline'
       ? t('common.offlineList')

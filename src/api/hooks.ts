@@ -3521,6 +3521,15 @@ const fanOutError = (results: readonly { error: unknown }[]) =>
   (results.find((r) => r.error && !isSignedOutError(r.error)) ?? results.find((r) => r.error))
     ?.error ?? null;
 
+/**
+ * A fan-out's `unreadError`: `fanOutError` over the servers with nothing kept. A failed
+ * re-read of a list a server did answer (with nothing in it, too) is not one: the kept
+ * list is still that server's answer, so a screen with no row in says "none", not
+ * "couldn't load" (fe#271). `error` stays every failure, a failed re-read included.
+ */
+const firstUnread = (results: readonly { data: unknown; error: unknown }[]) =>
+  fanOutError(results.filter((r) => !r.data));
+
 export function useRecentAll(limit = RECENT_LIMIT) {
   const apis = useApis();
   const rank = (id: string) => {
@@ -3534,6 +3543,7 @@ export function useRecentAll(limit = RECENT_LIMIT) {
       isLoading: results.some((r) => r.isLoading),
       offline: anyHeld(results),
       error: fanOutError(results),
+      unreadError: firstUnread(results),
     }),
   });
 }
@@ -3811,6 +3821,7 @@ export function useFavouritesAll() {
       isLoading: results.some((r) => r.isLoading),
       offline: anyHeld(results),
       error: results.find((r) => r.error)?.error ?? null,
+      unreadError: firstUnread(results),
     }),
   });
 }
@@ -3845,6 +3856,7 @@ export function useAllProgressAll({
       isLoading: results.some((r) => r.isLoading),
       offline: anyHeld(results),
       error: fanOutError(results),
+      unreadError: firstUnread(results),
       /** The connections whose server refused the sign-in (a 401): Home names the one that
        * refused, not the first signed out. */
       refused: results.flatMap((r, i) =>

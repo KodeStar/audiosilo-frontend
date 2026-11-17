@@ -73,6 +73,8 @@ let mockProgress: {
   progress: Progress[];
   isLoading: boolean;
   error: Error | null;
+  /** A kept list's failed re-read: `null` beside an `error` (else the mock says `error`). */
+  unreadError?: Error | null;
   offline?: boolean;
   /** The connections whose progress read was refused (a 401). */
   refused?: string[];
@@ -87,7 +89,13 @@ jest.mock('@/lib/device-online', () => ({
   ...jest.requireActual('@/lib/device-online'),
   useDeviceOnline: () => mockDeviceOnline,
 }));
-let mockRecent: { books: unknown[]; isLoading: boolean; error: Error | null; offline?: boolean } = {
+let mockRecent: {
+  books: unknown[];
+  isLoading: boolean;
+  error: Error | null;
+  unreadError?: Error | null;
+  offline?: boolean;
+} = {
   books: [],
   isLoading: false,
   error: null,
@@ -103,9 +111,17 @@ jest.mock('@/api/hooks', () => ({
   // Every server says the same flags.
   useCapabilitiesAll: () => Object.fromEntries(mockConnections.map((c) => [c.id, mockCaps])),
   useServerInfo: () => ({ data: { capabilities: {} } }),
-  useAllProgressAll: () => ({ refused: [], failed: [], retry: mockRetryProgress, ...mockProgress }),
+  // A failure is of a server with nothing kept (`unreadError`) unless the test says a kept
+  // list's re-read failed.
+  useAllProgressAll: () => ({
+    refused: [],
+    failed: [],
+    retry: mockRetryProgress,
+    unreadError: mockProgress.error,
+    ...mockProgress,
+  }),
   useLibrariesAll: () => ({ groups: mockGroups }),
-  useRecentAll: () => mockRecent,
+  useRecentAll: () => ({ unreadError: mockRecent.error, ...mockRecent }),
   useFavouritesAll: () => ({ favourites: [] }),
   useBook: () => ({ data: undefined }),
   useKnownBook: () => undefined,
@@ -288,6 +304,35 @@ describe('HomeScreen', () => {
     await mountHome();
     expect(screen.getByText("Couldn't load your progress from Maya's Shelf")).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
+  // fe#271: a server whose progress is kept (with nothing in it, too) did answer: a failed
+  // re-read of it is no error on the card, as `failed` names no server for it.
+  it('shows the empty state, not an error, when only a re-read of kept progress failed', async () => {
+    mockProgress = { progress: [], isLoading: false, error: new Error('down'), unreadError: null };
+    mockRecent = {
+      books: [],
+      isLoading: false,
+      error: new TypeError('Failed to fetch'),
+      unreadError: null,
+    };
+    await mountHome();
+    expect(screen.getByText('Pick something to listen to')).toBeTruthy();
+    expect(screen.queryByText("Couldn't load your progress")).toBeNull();
+    expect(screen.queryByText('Could not load new books.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('keeps the Now card when a re-read of the progress it holds failed', async () => {
+    mockProgress = {
+      progress: [started('Kept', '2026-10-04T00:00:00Z')],
+      isLoading: false,
+      error: new Error('down'),
+      unreadError: null,
+    };
+    await mountHome();
+    expect(screen.getByText('Now card: Kept')).toBeTruthy();
+    expect(screen.queryByText("Couldn't load your progress")).toBeNull();
   });
 
   // fe#271: offline, Home said "Could not load new books. Retry" and named a server "not

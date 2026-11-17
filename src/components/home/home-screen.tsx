@@ -104,6 +104,7 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
     offline: progressOffline,
     error,
     refused,
+    unreadError,
     failed: progressFailed,
     retry: retryProgress,
   } = useAllProgressAll();
@@ -195,8 +196,15 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   const down = useReachability((s) => firstOffline(connections, s.online)?.name);
   const progressRefused = isSignedOutError(error) && !!signedOut;
   // The one offline rule (`offlineState`): the progress waits for the network or failed
-  // without one, else it failed with one (the server's trouble: Retry).
-  const unread = offlineState({ waiting: progressOffline, failed: !!error, deviceOnline });
+  // without one, else it failed with one (the server's trouble: Retry). Failed with nothing
+  // kept (`unreadError`, as `failed` below counts it): a server whose rows are kept and
+  // only their re-read failed did answer, so with no book to show the hero is the empty
+  // state, not an error.
+  const unread = offlineState({
+    waiting: progressOffline,
+    failed: !!unreadError,
+    deviceOnline,
+  });
   // One server of several failed while another answered: the error is that server's, not
   // the whole card's (fe#271).
   const failedServer =
@@ -208,9 +216,9 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   const recentUnread = useUnreadAll({
     rows: recent.books,
     offline: recent.offline,
-    error: recent.error,
+    error: recent.unreadError,
   });
-  const recentRefused = isSignedOutError(recent.error);
+  const recentRefused = isSignedOutError(recent.unreadError);
 
   // This week stands beside the Now card only where the page column is wide enough for
   // both: a desktop window with the Up next drawer open is narrower than its class says.

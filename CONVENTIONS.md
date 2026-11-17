@@ -4287,15 +4287,18 @@ under their empty state).
   `/server` check of their own (fe#270). A section that keeps a list checks `isError` with
   `!data` too: a failed re-read keeps what it holds. Favourites (its page and the Folders
   row), Home's See all and Home's Recently added, with no row to show, ask
-  `useUnreadAll({ rows, offline, error })` of their fan-out (`offline`: a server's list held
-  with nothing kept, `anyHeld`), so one server's empty answer is not "none" while another's
-  is held (nor is its progress with no finished book "none finished"), and a held list wins
-  over another server's failure, a refusal included (fe#271); the Collections mode's
-  Favourites card and the Favourites page's header say no count then. Home says it is
-  offline once:
-  the hero's `NowOffline`, no Recently added error with Retry, no servers pill
-  (`Greeting offline`); with one server of several failing while another answered, the
-  hero's error names it (`useAllProgressAll().failed`) and Retry asks only the failed. The
+  `useUnreadAll({ rows, offline, error: unreadError })` of their fan-out (`offline`: a
+  server's list held with nothing kept, `anyHeld`; `unreadError`: the first failure with
+  nothing kept, never the fan-out's `error`, which counts a failed re-read of a kept list
+  too, so a list kept with nothing in it stays "none"), so one server's empty answer is not
+  "none" while another's is held (nor is its progress with no finished book "none
+  finished"), and a held list wins over another server's failure, a refusal included
+  (fe#271); the Collections mode's Favourites card and the Favourites page's header say no
+  count then. Home says it is offline once: the hero's `NowOffline`, no Recently added
+  error with Retry, no servers pill (`Greeting offline`); the hero's error is of
+  `unreadError` as well, so it shows only when `useAllProgressAll().failed` names a
+  server: with one of several failing while another answered, the error names it and
+  Retry asks only the failed. The
   top bar's server line says plain "Offline" where downloads are unsupported
   (`shell.offlinePlain`), Up next shows `OfflineState` for a held queue and no "Nothing
   queued" subline for a queue it has not read, and the library picker names the server it

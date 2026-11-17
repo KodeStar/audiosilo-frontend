@@ -36,15 +36,12 @@ export function FavouritesScreen() {
   const gutter = pageGutter(layout);
   const paddingBottom = useMiniPlayerInset();
   const [booksLayout, setBooksLayout] = useBooksLayout();
-  const { favourites, isLoading, offline, error } = useFavouritesAll();
+  const { favourites, isLoading, offline, unreadError } = useFavouritesAll();
   // With no favourite in, a server's list held for the network (or failed without one)
-  // is not "no favourites": every list read with nothing in them is. A held list wins
-  // over another server's failure (`useUnreadAll`).
-  const unread = useUnreadAll({
-    rows: favourites,
-    offline,
-    error,
-  });
+  // is not "no favourites": every list read with nothing in them is, a kept one whose
+  // re-read failed included (`unreadError`). A held list wins over another server's
+  // failure (`useUnreadAll`).
+  const unread = useUnreadAll({ rows: favourites, offline, error: unreadError });
   const books = favourites.filter((f) => f.is_book);
   const folders = favourites.filter((f) => !f.is_book);
   const serverFlag = useServerFlag();
@@ -88,7 +85,7 @@ export function FavouritesScreen() {
     <CoverGridSkeleton rows={2} gutter={0} />
   ) : folders.length > 0 ? null : unread === 'offline' ? (
     <OfflineState variant="card" hint={t('common.offlineList')} />
-  ) : error ? (
+  ) : unread === 'failed' ? (
     <EmptyState
       variant="card"
       art={<Icon name="circle-exclamation" size={28} color={themed.destructive} />}

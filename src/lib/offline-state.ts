@@ -56,10 +56,12 @@ export function useUnreadQuery(query: {
 
 /**
  * `useUnreadQuery` of ONE list read from every server (`useFavouritesAll`, `useRecentAll`,
- * `useAllProgressAll`: `offline` when a server's list waits for the network, `error` the
- * first one that failed), with no row in. A list that waits wins over another
- * server's failure, a refusal included, as Home's own rule does: the waiting one may hold
- * what the page shows, and it is asked again by itself once the network is back (fe#271).
+ * `useAllProgressAll`: `offline` when a server's list waits for the network, `error` their
+ * `unreadError`, the first one that failed with nothing kept), with no row in. A list that
+ * waits wins over another server's failure, a refusal included, as Home's own rule does:
+ * the waiting one may hold what the page shows, and it is asked again by itself once the
+ * network is back (fe#271). Never the fan-out's own `error`: that one counts a failed
+ * re-read of a list a server did answer, and a kept empty list is "none", not a failure.
  */
 export function useUnreadAll(list: {
   rows: readonly unknown[];

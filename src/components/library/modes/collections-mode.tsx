@@ -41,13 +41,14 @@ export function CollectionsMode({ connectionId }: LibraryModeProps) {
   // The list waits for the network, or failed without one: no Retry can work, and
   // Favourites (every server's, as last read) still shows below.
   const unread = useUnreadQuery(collections);
-  const { favourites, offline: favouritesOffline, error: favouritesError } = useFavouritesAll();
-  // With none in, a list held for the network (or failed) is not "0 items" (fe#271): the
-  // card says nothing of the count then.
+  const favouritesAll = useFavouritesAll();
+  const { favourites } = favouritesAll;
+  // With none in, a list held for the network (or failed with nothing kept) is not
+  // "0 items" (fe#271): the card says nothing of the count then.
   const favouritesUnread = useUnreadAll({
     rows: favourites,
-    offline: favouritesOffline,
-    error: favouritesError,
+    offline: favouritesAll.offline,
+    error: favouritesAll.unreadError,
   });
   const [creating, setCreating] = useState(false);
   const [width, setWidth] = useState(0);

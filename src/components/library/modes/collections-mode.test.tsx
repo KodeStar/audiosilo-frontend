@@ -78,7 +78,12 @@ const unread = <T,>(state: Partial<Read<T>> = {}): Read<T> => ({
 let mockCollections: Read<Collection[]>;
 let mockCollection: Read<CollectionDetail>;
 let mockSupported: boolean | undefined = true;
-let mockFavourites: { favourites: object[]; offline?: boolean; error?: unknown } = {
+let mockFavourites: {
+  favourites: object[];
+  offline?: boolean;
+  error?: unknown;
+  unreadError?: unknown;
+} = {
   favourites: [],
 };
 jest.mock('@/api/hooks', () => ({
@@ -140,12 +145,17 @@ describe('CollectionsMode with no list read', () => {
     mockCollections = { ...unread(), data: [] };
     await mountMode();
     expect(screen.getByText('0 items')).toBeTruthy();
-    for (const held of [{ offline: true }, { error: new Error('down') }]) {
+    const down = new Error('down');
+    for (const held of [{ offline: true }, { error: down, unreadError: down }]) {
       mockFavourites = { favourites: [], ...held };
       await mountMode();
       expect(screen.getByText('Favourites')).toBeTruthy();
       expect(screen.queryByText('0 items')).toBeNull();
     }
+    // A list kept with nothing in it is still read when only its re-read failed.
+    mockFavourites = { favourites: [], error: down };
+    await mountMode();
+    expect(screen.getByText('0 items')).toBeTruthy();
   });
 
   it('says offline, with no Retry, when it failed with no network on the device', async () => {

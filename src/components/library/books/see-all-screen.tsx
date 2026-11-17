@@ -60,13 +60,15 @@ export function SeeAllScreen() {
   // With no row to show, a server's list held for the network (or failed without one) is
   // not "no books": every list read with nothing in them is, and a held list wins over
   // another server's failure (`useUnreadAll`). Finished books too: one server's progress
-  // with none finished says nothing about a held one's.
+  // with none finished says nothing about a held one's. A kept list whose re-read failed
+  // is still read (`unreadError`): with nothing in it, "no books", not a load error.
   const rows = type === 'recent' ? recent.books : finished;
   const unread = useUnreadAll({
     rows,
     offline: state.offline,
-    error: state.error,
+    error: state.unreadError,
   });
+  const failed = unread === 'failed';
 
   const header = (
     <View className="pb-5 pt-2">
@@ -92,12 +94,12 @@ export function SeeAllScreen() {
       variant="card"
       art={<GhostCovers />}
       title={
-        state.error
+        failed
           ? t('library.list.loadError')
           : t(type === 'recent' ? 'library.list.noBooks' : 'library.list.noFinished')
       }
       hint={
-        state.error
+        failed
           ? undefined
           : t(type === 'recent' ? 'library.list.noBooksHint' : 'library.list.noFinishedHint')
       }
