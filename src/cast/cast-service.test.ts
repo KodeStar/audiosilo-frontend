@@ -1130,6 +1130,90 @@ describe('CastPlaybackService', () => {
         expect(t.svc.getSnapshot().state).not.toBe('paused');
       });
 
+      it('a file jump back is no refusal for the replaced media playing on where it was', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 2, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 5 });
+        t.tick(40_000);
+        t.progress(45);
+        const answer = holdLoad(t);
+        const jump = t.svc.skipToTrack(0, 0);
+        await flush();
+        // A status of Part 3 still playing on, sent before the receiver took the new queue.
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 46 });
+        answer();
+        await jump;
+        expect(m.asks).toEqual([undefined]);
+        expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 0, position: 0 });
+      });
+
+      it('a reload after a mint is no refusal for the old queue skipping on', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 0, 0, [], BOOK);
+        await t.svc.play();
+        await t.svc.skipToTrack(1, 0);
+        t.status({ playerState: 'playing', contentId: t.url(1), position: 5 });
+        t.tick(20_000);
+        const old2 = t.url(2);
+        const answer = holdLoad(t);
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(1), position: 0 });
+        await flush();
+        expect(t.url(1)).toContain('token=CAST1');
+        // The old queue (the token before the mint) goes on to Part 3 meanwhile.
+        t.status({ playerState: 'buffering', contentId: old2, customIndex: 2, position: 0 });
+        answer();
+        await flush();
+        expect(m.asks).toEqual([undefined, true]);
+        expect(t.svc.getSnapshot().state).not.toBe('error');
+      });
+
+      it('a transcoded seek is not landed by the replaced stream of the same file', async () => {
+        const t = setup({ transcode: true });
+        await t.svc.load(TRACKS, 0, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 5 });
+        const before = t.url(0);
+        const answer = holdLoad(t);
+        const seek = t.svc.seekTo(300);
+        await flush();
+        // The stream it replaces, still playing from its own start.
+        t.status({ playerState: 'playing', contentId: before, position: 6 });
+        answer();
+        await seek;
+        const sent = t.remote.loads.length;
+        // Refused the new stream, the receiver plays Part 2 just after: sent again at the seek.
+        t.status({ playerState: 'playing', contentId: t.url(1), position: 0 });
+        await flush();
+        expect(t.remote.loads).toHaveLength(sent + 1);
+        expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 0 });
+        expect(t.url(0)).toContain('t=300');
+      });
+
+      it('a read in flight naming an error is no refusal of the queue on its way', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 0, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 5 });
+        const answer = holdLoad(t);
+        const jump = t.svc.skipToTrack(1, 0);
+        await flush();
+        (t.remote.readStatus as jest.Mock).mockResolvedValueOnce({
+          playerState: 'idle',
+          idleReason: 'error',
+          contentId: t.url(0),
+          position: 0,
+          rate: 1,
+        });
+        await t.svc.refresh();
+        answer();
+        await jump;
+        expect(m.asks).toEqual([undefined]);
+      });
+
       it('a token refused before it ever played mints no more within the minute', async () => {
         const m = minting();
         const t = setup({ prepare: m.prepare });

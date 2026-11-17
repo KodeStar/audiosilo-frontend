@@ -3515,17 +3515,20 @@ on first need). NOT device-verified (no Cast device yet).
   never answered hides nothing for good). So is one whose receiver plays, pauses or buffers a later
   file before it played the one asked for (`skippedPast`; its errors need not reach the phone, as on
   Android): while the load is in flight (never by a status read), or within `ASKED_MOVE_MS` of the
-  move once it answered (later, a file it played unseen may have run on). A status in flight naming
-  the asked file playing or paused lands it, and its token counts as played. Not an error of the
-  queue that load replaces: one naming a URL with the token before the mint, or one read (`refresh`)
-  before the queue was sent, which is dropped. A book's load refused so to the end still stands, at
-  the place it asked for until a status says where (the receiver holds the book, and a failed load
-  would hand it back to the phone while the receiver plays on); a seek, file jump or play refused so
-  fails. One mint per token: another only once the receiver played with the last one minted at the
-  place the phone meant (not a later file it went on to), never more than two per `REMINT_EVERY_MS`
-  (a minute) per book loaded, and one when the last never played, so a failure with another cause
-  never mints on every try (each mint can end another receiver's token); a queue refused while a
-  mint is on its way waits on that mint and is sent again after it.
+  move once it answered (later, a file it played unseen may have run on). Not the file the receiver
+  was on when the move was asked, at or past where it was then (`Intent.from`: the replaced media
+  playing on). A status in flight naming the asked file's URL as sent, playing or paused, lands it,
+  and its token counts as played. Not a status or error of the queue that load replaces
+  (`ofReplacedQueue`: one naming a URL with the token before the mint), nor one read (`refresh`):
+  read before the queue was sent it is dropped, and an error read while it is on its way refuses
+  nothing. A book's load refused so to the end still stands, at the place it asked for until a
+  status says where (the receiver holds the book, and a failed load would hand it back to the phone
+  while the receiver plays on); a seek, file jump or play refused so fails. One mint per token:
+  another only once the receiver played with the last one minted at the place the phone meant (not
+  a later file it went on to), never more than two per `REMINT_EVERY_MS` (a minute) per book
+  loaded, and one when the last never played, so a failure with another cause never mints on every
+  try (each mint can end another receiver's token); a queue refused while a mint is on its way waits
+  on that mint and is sent again after it.
 - **Generations**: the cast service numbers loads (`loadSeq`) and queues (`queueSeq`), the router
   its switches (`generation`): a load, queue or handover that a newer one (or a reset) overtook
   stands back, and the receiver's rejection of a replaced queue is not a failure. The native

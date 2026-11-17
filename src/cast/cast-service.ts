@@ -28,6 +28,10 @@ import type { CastItem, CastMediaStatus, CastRemote } from './types';
  * a different place counts as someone else's move again. */
 const ASKED_MOVE_MS = 8_000;
 
+/** How far (seconds) before where the receiver was when a move was asked a status on that file
+ * may be and still be the replaced media playing on there (`skippedPast`). */
+const JUMP_SLACK_S = 1;
+
 /** How recent (ms) the last sighting of the receiver playing must be for an early `finished`
  * to reload there and play on: an older one (an iPhone that suspended the sender) is a
  * place the listener may long have passed, so the book comes back paused there instead. Also
@@ -67,6 +71,9 @@ type Intent = {
   at: number;
   landed: boolean;
   elsewhere?: boolean;
+  /** Where the receiver was when the move was asked (the snapshot's place): the media a queue
+   * in flight replaces can still report playing on there (`skippedPast`). */
+  from: { trackIndex: number; position: number };
 };
 
 /** The book loaded on the receiver: what was sent, so a seek into a transcoded file or a
@@ -479,7 +486,13 @@ export class CastPlaybackService implements PlaybackService {
 
   /** Mean the receiver to be at `(trackIndex, position)` from now on (`landed`: it is). */
   private intend(trackIndex: number, position: number, landed = false) {
-    this.intended = { trackIndex, position: Math.max(0, position), at: this.now(), landed };
+    this.intended = {
+      trackIndex,
+      position: Math.max(0, position),
+      at: this.now(),
+      landed,
+      from: { trackIndex: this.snapshot.trackIndex, position: this.snapshot.position },
+    };
   }
 
   /**
@@ -538,16 +551,24 @@ export class CastPlaybackService implements PlaybackService {
   /** Whether a status on file `index` says the receiver went past the file this phone means
    * (`intended`) before it ever played or paused there: a later file, not idle (`within`: and
    * less than that long after the move). The Default Media Receiver goes on to the next file it
-   * can play when it is refused one. */
+   * can play when it is refused one, from that file's start: the file the receiver was on when
+   * the move was asked, at or past where it was then, is the replaced media playing on. */
   private skippedPast(status: CastMediaStatus, index: number, within = Infinity): boolean {
     const want = this.intended;
-    return (
-      !!want &&
-      !want.landed &&
-      index > want.trackIndex &&
-      status.playerState !== 'idle' &&
-      this.now() - want.at < within
-    );
+    if (!want || want.landed || index <= want.trackIndex || status.playerState === 'idle') {
+      return false;
+    }
+    const at = Number.isFinite(status.position) ? status.position : 0;
+    const runningOn =
+      index === want.from.trackIndex && at > 0 && at >= want.from.position - JUMP_SLACK_S;
+    return !runningOn && this.now() - want.at < within;
+  }
+
+  /** Whether a status in flight names a URL none of the loaded queue's: the queue it replaces,
+   * sent with the token before a mint, whose files the receiver can still be going through.
+   * Not while the mint is on its way (`loaded` is still that queue). */
+  private ofReplacedQueue(status: CastMediaStatus, loaded: Loaded): boolean {
+    return !this.minting && !!status.contentId && castUrlIndex(status.contentId, loaded.urls) < 0;
   }
 
   /** A status while a load of ours is in flight that names the meant file playing or paused
@@ -557,6 +578,8 @@ export class CastPlaybackService implements PlaybackService {
     const want = this.intended;
     if (!want || want.landed || index !== want.trackIndex) return;
     if (status.playerState !== 'playing' && status.playerState !== 'paused') return;
+    // The media it replaces on the same file (a transcoded item asked from another `&t=`).
+    if (status.contentId && status.contentId !== loaded.urls[index]) return;
     want.landed = true;
     const at = Number.isFinite(status.position) ? status.position + loaded.offsets[index] : 0;
     if (at > 0) want.position = at;
@@ -767,18 +790,22 @@ export class CastPlaybackService implements PlaybackService {
     if (status.playerState === 'idle' && status.idleReason === 'error' && this.loadsInFlight > 0) {
       // Refused while a load of ours is in flight (or a mint for one): that load is sent again
       // with a new token (`sendQueue`), whatever later file the receiver skips on to meanwhile.
-      // Not, once the mint is done, an error naming a URL that is none of the queue's: that is
-      // the queue it replaces, sent with the token before the mint, whose files the receiver
-      // can still be skipping through.
-      const replaced =
-        !this.minting &&
-        !!status.contentId &&
-        castUrlIndex(status.contentId, loaded?.urls ?? []) < 0;
-      if (loaded && !replaced) this.refuseQueue();
+      // Not, once the mint is done, an error of the queue it replaces (`ofReplacedQueue`), nor
+      // one read (the SDK's last, maybe that queue's). Each error while it skips on keeps its
+      // statuses hidden a while longer (`skippingRefused`).
+      if (loaded && !read && !this.ofReplacedQueue(status, loaded)) {
+        this.refusedQueue = { seq: this.queueSeq, at: this.now() };
+      }
       return;
     }
     const index = loaded ? castTrackIndex(status, loaded.urls) : null;
-    if (loaded && index !== null && this.loadsInFlight > 0 && !read) {
+    if (
+      loaded &&
+      index !== null &&
+      this.loadsInFlight > 0 &&
+      !read &&
+      !this.ofReplacedQueue(status, loaded)
+    ) {
       if (this.skippedPast(status, index)) {
         // The receiver plays (or buffers) a later file than the one this load asked for, which
         // it never played: it was refused that file and skipped on (to one in its cache too),
