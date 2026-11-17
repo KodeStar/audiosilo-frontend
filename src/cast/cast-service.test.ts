@@ -1131,6 +1131,35 @@ describe('CastPlaybackService', () => {
         expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 0, startTime: 0 });
         expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 0, position: 0 });
       });
+
+      it('a move that landed unseen reloads where the receiver played on to, not where it was asked', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 0, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 5 });
+        const answer = holdLoad(t);
+        const jump = t.svc.skipToTrack(1, 100);
+        await flush();
+        // The receiver says it plays the asked place before the load is answered, and no more
+        // after (it sends no status while it simply plays): only the ticks tell its place.
+        t.status({ playerState: 'playing', contentId: t.url(1), position: 100 });
+        answer();
+        await jump;
+        for (let s = 1; s <= 30; s++) {
+          t.tick(1_000);
+          t.progress(100 + s);
+        }
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(1), position: 0 });
+        await flush();
+        expect(m.asks).toEqual([undefined, true]);
+        expect(t.remote.loads.at(-1)).toMatchObject({
+          startIndex: 1,
+          startTime: 130,
+          autoplay: true,
+        });
+        expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 130 });
+      });
     });
 
     it('a book loaded again (a Retry) mints no sooner than a minute on; another book may', async () => {

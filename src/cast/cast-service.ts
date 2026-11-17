@@ -529,13 +529,17 @@ export class CastPlaybackService implements PlaybackService {
    * reports 0 once idle): so too when the meant place never landed but the receiver played
    * or paused on another file (`elsewhere`) and the error came `ASKED_MOVE_MS` or more after
    * the move, as `followIntent` would have followed it had another status come (the receiver
-   * sends none while it simply plays).
+   * sends none while it simply plays). For the same reason a move can land unseen (its
+   * `playing` came while the load that asked was in flight, and no status since): that long
+   * after the move, the meant file is reloaded where the ticks since last put it.
    */
   private refusedPlace(index: number, reported: number): { trackIndex: number; position: number } {
     const want = this.intended;
     if (want && !want.landed) {
-      if (!want.elsewhere || this.now() - want.at < ASKED_MOVE_MS) {
-        return { trackIndex: want.trackIndex, position: want.position };
+      const late = this.now() - want.at >= ASKED_MOVE_MS;
+      if (!want.elsewhere || !late) {
+        const seen = late && this.seen?.trackIndex === want.trackIndex ? this.seen.position : 0;
+        return { trackIndex: want.trackIndex, position: Math.max(want.position, seen) };
       }
     } else if (want && index > want.trackIndex && this.watching()) {
       return { trackIndex: want.trackIndex + 1, position: 0 };
