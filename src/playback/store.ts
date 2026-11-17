@@ -317,7 +317,9 @@ let swapDue: string | null = null;
  * plays. The stall watchdog's grace starts again once the engine is asked. In the background
  * (a press from the car or a headset reaching the store, where Android may hold the JS timers)
  * nothing waits: the check runs once the engine plays, as before. Resolves true when the
- * press no longer stands (paused, or pressed again, while it waited).
+ * press no longer stands (paused, or pressed again, while it waited). A book left paused by
+ * that is paused from now (the engine never left `paused`, so no transition marks it), so a
+ * play after another long pause is a pick-up again.
  */
 async function pickUpBeforePlay(): Promise<boolean> {
   const listener = pickedUpAgainListener;
@@ -328,7 +330,10 @@ async function pickUpBeforePlay(): Promise<boolean> {
   await withTimeout(Promise.resolve(listener()), PICK_UP_WAIT_MS, 'pick-up check').catch(
     () => undefined,
   );
-  if (attempt !== playAttempts || !wantsPlayback) return true;
+  if (attempt !== playAttempts || !wantsPlayback) {
+    if (!isPlayingState(usePlayer.getState().snapshot.state)) pausedAt ??= Date.now();
+    return true;
+  }
   cancelStallWatchdog();
   armStallWatchdog();
   return false;

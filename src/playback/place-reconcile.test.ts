@@ -380,6 +380,27 @@ describe('a loaded book another device has moved on', () => {
       expect(mockSvc.play).not.toHaveBeenCalled();
     });
 
+    it('a press paused while it waited leaves the book paused from then: the next long pause is a pick-up', async () => {
+      await loadedAndPaused();
+      let answer: (p: Progress) => void = () => {};
+      mockServer = () => new Promise((resolve) => (answer = resolve));
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      const press = usePlayer.getState().toggle();
+      await settle();
+      await usePlayer.getState().pause();
+      answer(record({ device_id: 'this-device' }));
+      await press;
+      await settle();
+      expect(mockClient.getProgress).toHaveBeenCalledTimes(1);
+      // Another long pause, then Play: the check runs again before the engine starts.
+      mockServer = async () => record();
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      await usePlayer.getState().toggle();
+      expect(mockClient.getProgress).toHaveBeenCalledTimes(2);
+      expect(seeks()).toEqual([400]);
+      expect(mockSvc.play).toHaveBeenCalledTimes(1);
+    });
+
     it('in the background nothing waits: the check runs once the engine plays', async () => {
       await loadedAndPaused();
       Object.defineProperty(AppState, 'currentState', {
