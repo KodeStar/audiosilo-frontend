@@ -685,7 +685,7 @@ export async function updateMirror(
  * - never finished at the end of a queue that ends before its book (D3): one the record
  *   was captured in (`partial`), or this device's download of the book when it lacks the
  *   book's last file (`downloadEndsBefore`), unless the span ended in that file (streamed:
- *   its end is the book's). The download is asked as well because a server row written
+ *   its end is the book's); nor while the downloads registry is not read (not known). The download is asked as well because a server row written
  *   into the mirror since the last capture carries no `partial`.
  * The record becomes this device's, with the span's file place (fe#188) or none.
  */
@@ -694,10 +694,13 @@ export async function mirrorSpanEnd(span: OpenSpan): Promise<void> {
   const endedAt = Date.parse(span.endedAt);
   if (!Number.isFinite(pos) || !Number.isFinite(endedAt)) return;
   const deviceId = await getDeviceId();
-  const endsBefore = await downloadEndsBefore(span.connectionId, span.libraryId, span.path).catch(
-    () => undefined,
+  // Not known (the downloads registry not read): never finished there either (fe#273).
+  const download = await downloadEndsBefore(span.connectionId, span.libraryId, span.path).then(
+    (endsBefore) => ({ endsBefore }),
+    () => null,
   );
-  const shortEnd = endsBefore !== undefined && file !== endsBefore;
+  const shortEnd =
+    !download || (download.endsBefore !== undefined && file !== download.endsBefore);
   const skew = await knownSkew(span.connectionId);
   await updateMirror(span.connectionId, span.libraryId, span.path, (record) => {
     if (record.finished || !(pos > record.position)) return record;

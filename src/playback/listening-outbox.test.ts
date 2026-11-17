@@ -531,6 +531,17 @@ describe("a recovered span brings this device's record of the place up to its en
       await relaunch(span({ to: { pos: 16800, file: 'Author/Book/06.mp3', filePos: 1203.9 } }));
       expect(await record()).toMatchObject({ position: 16800, finished: true });
     });
+
+    // fe#273: before the launch read the registry (or after a read that threw) the check
+    // answered "no early end", as if the download held the book's end.
+    it('never reads its end as finished while the downloads registry is not known', async () => {
+      setDownloadEndCheck(async () => {
+        throw new Error('the downloads registry is not read');
+      });
+      await writeMirror(capture({ duration: 16803 }));
+      await relaunch();
+      expect(await record()).toMatchObject({ position: 16800, finished: false });
+    });
   });
 
   it("brings the shared record up to a closed tab's span, dated when that tab kept it", async () => {

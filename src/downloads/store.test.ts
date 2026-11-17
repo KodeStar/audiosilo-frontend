@@ -197,7 +197,7 @@ jest.mock('@/api/hooks', () => ({
 /* eslint-disable import/first */
 import { resolveClient } from '@/api/connection-clients';
 import { engine } from '@/downloads/engine';
-import { downloadBookLength, isKeptOffline } from '@/downloads/kept-offline';
+import { downloadBookLength, downloadEndsBefore, isKeptOffline } from '@/downloads/kept-offline';
 import { bookFileSpecs } from '@/playback/book-queue';
 import { readMirror } from '@/playback/progress-sync';
 import {
@@ -2209,6 +2209,16 @@ describe('hydrate concurrency', () => {
 
 describe('hydrate holds off what needs the registry', () => {
   const savedKey = downloadKey('c1', 2, 'A/Book');
+
+  // fe#273: unread, it answered "no early end" for every book.
+  it("the download end check rejects until the registry is read, then answers the download's", async () => {
+    useDownloads.setState({ hydrated: false, entries: {} });
+    await expect(downloadEndsBefore('c1', 2, 'A/Book')).rejects.toThrow('not read');
+    const e = downloadedEntry();
+    await seed({ [savedKey]: { ...e, manifest: { ...e.manifest, endsBefore: 'A/Book/03.mp3' } } });
+    await useDownloads.getState().hydrate();
+    await expect(downloadEndsBefore('c1', 2, 'A/Book')).resolves.toBe('A/Book/03.mp3');
+  });
 
   it('a download() of a saved book during hydrate answers exists, never fetching over it', async () => {
     await seed({ [savedKey]: downloadedEntry() });

@@ -32,7 +32,8 @@ export function setDownloadEndCheck(fn: EndCheck): void {
 
 /** The book's last file (its rel path) when this device's download of it lacks it
  * (`DownloadManifest.endsBefore`, D3, fe#185), once the launch has read the registry; else
- * undefined (not downloaded, or the download holds the book's end). */
+ * undefined (not downloaded, or the download holds the book's end). Rejects while the
+ * registry is not read (not known). */
 export function downloadEndsBefore(
   connectionId: string,
   libraryId: number,

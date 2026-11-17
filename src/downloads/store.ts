@@ -283,9 +283,12 @@ setKeptOfflineCheck((connectionId, libraryId, path) => {
 });
 
 // A span recovered past a download's early end never finishes its book (`mirrorSpanEnd`,
-// which can't import this store): asked after the launch's read of the registry.
+// which can't import this store): asked after the launch's read of the registry. A registry
+// not read (before that read starts, or a read that threw) is not known, which is not "the
+// download holds the book's end": the check rejects (fe#273).
 setDownloadEndCheck(async (connectionId, libraryId, path) => {
   if (hydrating) await hydrating;
+  if (!useDownloads.getState().hydrated) throw new Error('the downloads registry is not read');
   return downloadedEntryOf({ connectionId, libraryId, path })?.manifest.endsBefore;
 });
 
