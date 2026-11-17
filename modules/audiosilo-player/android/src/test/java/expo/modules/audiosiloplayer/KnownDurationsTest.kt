@@ -8,6 +8,7 @@ import androidx.media3.extractor.ConstantBitrateSeekMap
 import androidx.media3.extractor.DefaultExtractorInput
 import androidx.media3.extractor.Extractor
 import androidx.media3.extractor.ExtractorOutput
+import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.extractor.PositionHolder
 import androidx.media3.extractor.SeekMap
 import androidx.media3.extractor.TrackOutput
@@ -268,5 +269,26 @@ class KnownDurationsTest {
     for (i in 0 until 3000) k.note("https://server/stream?path=$i.mp3", 60.0 + i)
     assertEquals(60_000_000L, k.durationUs("https://server/stream?path=0.mp3"))
     assertEquals(3_059_000_000L, k.durationUs("https://server/stream?path=2999.mp3"))
+  }
+
+  @Test fun theFactoryPassesThePlayersSettingsToTheOneItWraps() {
+    val heard = ArrayList<String>()
+    val inner = object : ExtractorsFactory {
+      override fun createExtractors(): Array<Extractor> = emptyArray()
+
+      @Deprecated("Media3's own deprecation")
+      override fun experimentalSetTextTrackTranscodingEnabled(enabled: Boolean): ExtractorsFactory = apply {
+        heard.add("text:$enabled")
+      }
+
+      override fun experimentalSetCodecsToParseWithinGopSampleDependencies(codecs: Int): ExtractorsFactory = apply {
+        heard.add("codecs:$codecs")
+      }
+    }
+    val factory = KnownDurationExtractorsFactory(KnownDurations(), inner)
+    @Suppress("DEPRECATION")
+    assertSame(factory, factory.experimentalSetTextTrackTranscodingEnabled(false))
+    assertSame(factory, factory.experimentalSetCodecsToParseWithinGopSampleDependencies(3))
+    assertEquals(listOf("text:false", "codecs:3"), heard)
   }
 }

@@ -101,6 +101,12 @@ class KnownDurationExtractorsFactory(
     inner.experimentalSetCodecsToParseWithinGopSampleDependencies(codecs)
   }
 
+  @Deprecated("Media3's own deprecation: DefaultMediaSourceFactory still calls it.")
+  @Suppress("DEPRECATION")
+  override fun experimentalSetTextTrackTranscodingEnabled(enabled: Boolean): ExtractorsFactory = apply {
+    inner.experimentalSetTextTrackTranscodingEnabled(enabled)
+  }
+
   companion object {
     /** [extractors] with each [Mp3Extractor] wrapped in a [KnownDurationExtractor], when the
      * length is known; the others (and all of them, unknown) as they are. */
