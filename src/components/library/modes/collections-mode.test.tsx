@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
+import { ApiError } from '@/api/client';
 import type { Collection, CollectionDetail } from '@/api/types';
 
 let mockParams: Record<string, string | undefined> = {};
@@ -69,8 +70,9 @@ const unread = <T,>(state: Partial<Read<T>> = {}): Read<T> => ({
 });
 let mockCollections: Read<Collection[]>;
 let mockCollection: Read<CollectionDetail>;
+let mockSupported: boolean | undefined = true;
 jest.mock('@/api/hooks', () => ({
-  useCapability: () => true,
+  useCapability: () => mockSupported,
   useCollections: () => mockCollections,
   useCollection: () => mockCollection,
   useFavouritesAll: () => ({ favourites: [] }),
@@ -90,6 +92,7 @@ const down = () => new TypeError('Network request failed');
 
 beforeEach(() => {
   mockDeviceOnline = true;
+  mockSupported = true;
   mockParams = { connection: 'home', id: '4' };
   mockCollections = unread();
   mockCollection = unread();
@@ -179,5 +182,15 @@ describe('CollectionScreen with the collection not read', () => {
     expect(screen.queryByText(OFFLINE)).toBeNull();
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
     expect(mockCollection.refetch).toHaveBeenCalled();
+  });
+
+  // fe#270: while the flag is unknown the read takes a failed `/server` read's error, whose
+  // 404 says nothing of this collection.
+  it("reads a 404 as gone only once the server's flag is known", async () => {
+    mockSupported = undefined;
+    mockCollection = unread({ error: new ApiError(404, 'not found') });
+    await render(<CollectionScreen />);
+    expect(screen.queryByText("This collection isn't here")).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 });

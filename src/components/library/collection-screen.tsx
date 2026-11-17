@@ -90,7 +90,9 @@ function CollectionContent() {
   usePageTitle(query.data?.collection.name);
   const unread = useUnreadQuery(query);
 
-  if (!params || supported === false || isGone(query.error)) {
+  // Its own 404 only once the read ran (the flag known): until then an error is the
+  // `/server` read's (`useCapabilityQuery`), which says nothing of this collection.
+  if (!params || supported === false || (supported === true && isGone(query.error))) {
     return (
       <Centered>
         <EmptyState
