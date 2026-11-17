@@ -1,6 +1,6 @@
 import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKeyOf } from '@/lib/content-key';
-import { isEarlyTranscodeEnd } from '@/playback/transcode';
+import { isEarlyTranscodeEnd, transcodeUrlAt } from '@/playback/transcode';
 import {
   type BookRef,
   INITIAL_SNAPSHOT,
@@ -29,15 +29,33 @@ const ASKED_MOVE_MS = 8_000;
 
 /** How recent (ms) the last sighting of the receiver playing must be for an early `finished`
  * to reload there and play on: an older one (an iPhone that suspended the sender) is a
- * place the listener may long have passed, so the book comes back paused there instead. */
+ * place the listener may long have passed, so the book comes back paused there instead. Also
+ * how recent one must be for the phone to count as watching the receiver (`watching`). */
 const EARLY_END_FRESH_MS = 15_000;
 
 /** How often (ms) at most the receiver's queue is loaded again with a newly minted cast token
- * after the receiver was refused (`freshToken`), for each book: a load that fails for another
- * reason (a codec the receiver can't play) must not mint a token on every try, a Retry that
- * loads the book again included, since each one minted can end another receiver's (the
- * server keeps 20 per person). */
+ * after the receiver was refused (`freshToken`), for each book, while the last token minted
+ * has not played yet: a load that fails for another reason (a codec the receiver can't play)
+ * must not mint a token on every try, a Retry that loads the book again included, since each
+ * one minted can end another receiver's (the server keeps 20 per person). A minted token the
+ * receiver went on to play is a good one, and its own refusal later (the server ended it in
+ * turn) mints at once. */
 export const REMINT_EVERY_MS = 60_000;
+
+/** The receiver took a queue but reported an error while its load was in flight: the Default
+ * Media Receiver skips an item it is refused and tries the next, so the load can still
+ * resolve, on a later file than the one asked for. Handled as a refused load (`sendQueue`). */
+class ReceiverRefused extends Error {
+  constructor() {
+    super('LOAD_REFUSED');
+  }
+}
+
+/** Where this phone means the receiver to be (`intended`): the place a load, seek or file
+ * jump it sent asked for, or the start of the next file once one ended. `landed` once the
+ * receiver reported playing or paused on that file; until then a refused file's reload goes
+ * back there, not to the later file the receiver skipped on to. */
+type Intent = { trackIndex: number; position: number; at: number; landed: boolean };
 
 /** The book loaded on the receiver: what was sent, so a seek into a transcoded file or a
  * jump to another file can reload it, and a status can be mapped back. */
@@ -159,10 +177,11 @@ export class CastPlaybackService implements PlaybackService {
   /** When the JS last set the speed: a status still carrying the old one is not the
    * receiver changing it. */
   private rateAskedAt = 0;
-  /** The book (`castBookKey`) a cast token was last minted again for a refused receiver, and
-   * when (`freshToken`): kept across loads and resets, so a book loaded again mints no sooner
-   * than `REMINT_EVERY_MS` later; another book may mint at once. */
-  private reminted: { book: string; at: number } | null = null;
+  /** The book (`castBookKey`) a cast token was last minted again for a refused receiver, when
+   * (`freshToken`), and whether the receiver has played with that token since: kept across
+   * loads and resets, so a book loaded again mints no sooner than `REMINT_EVERY_MS` later
+   * unless its token played; another book may mint at once. */
+  private reminted: { book: string; at: number; played: boolean } | null = null;
   /** The mint on its way (`freshToken`) and the queue it is for, which a second refused send
    * of that queue waits on too. */
   private minting: { loaded: Loaded; done: Promise<boolean> } | null = null;
@@ -175,6 +194,13 @@ export class CastPlaybackService implements PlaybackService {
    * `buffering` or `loading` while it takes a seek or a load, whichever play state it ends
    * in. */
   private playIntent: boolean | null = null;
+  /** Where this phone means the receiver to be (`Intent`); null when nothing was asked (an
+   * adopted session the receiver named no file for, or after a reset). */
+  private intended: Intent | null = null;
+  /** The queue (`queueSeq`) the receiver reported an error for while a load of ours was in
+   * flight: that load is a refused one (`ReceiverRefused`), and the receiver's statuses until
+   * it settles (the later files it skips on to) are not the book's place. */
+  private refusedQueue: number | null = null;
 
   constructor(
     private readonly remote: CastRemote,
@@ -217,6 +243,11 @@ export class CastPlaybackService implements PlaybackService {
     // offset every place read from the receiver would be that far early (and saved so).
     const index = status ? castTrackIndex(status, loaded.urls) : null;
     if (status && index !== null) loaded.offsets[index] = castStreamOffset(status);
+    this.intended = null;
+    if (status && index !== null) {
+      const position = Number.isFinite(status.position) ? status.position : 0;
+      this.intend(index, position + loaded.offsets[index], true);
+    }
     this.foreignMedia = false;
     this.earlyEndRetryAt = null;
     // Taken over playing or paused, as the store adopted it (`adoptReceiverBook`), unless a
@@ -300,6 +331,7 @@ export class CastPlaybackService implements PlaybackService {
         return;
       }
     } else {
+      this.intend(this.snapshot.trackIndex, positionInTrack);
       await this.remote.seek(positionInTrack);
     }
     this.update({ position: positionInTrack });
@@ -352,6 +384,8 @@ export class CastPlaybackService implements PlaybackService {
     this.seen = null;
     this.earlyEndRetryAt = null;
     this.needsReload = false;
+    this.intended = null;
+    this.refusedQueue = null;
     // The next book's play state is its own (`adoptQueue` takes the one it is taken over in).
     this.playIntent = null;
     // Another sender's book on the receiver is theirs: only ours is ever stopped (and
@@ -404,6 +438,62 @@ export class CastPlaybackService implements PlaybackService {
     this.askedMove = { until: this.now() + ASKED_MOVE_MS };
   }
 
+  /** Mean the receiver to be at `(trackIndex, position)` from now on (`landed`: it is). */
+  private intend(trackIndex: number, position: number, landed = false) {
+    this.intended = { trackIndex, position: Math.max(0, position), at: this.now(), landed };
+  }
+
+  /**
+   * Follow the receiver's own moves in `intended` (no load of ours in flight). A file that
+   * ended (`finished`), or a status already naming the next file after the one the receiver
+   * played, means the start of that next file. Playing or paused on the meant file lands it.
+   * Playing or paused on another file is followed (the TV remote, Google Home, a run-on) once
+   * the meant file landed or `ASKED_MOVE_MS` went by; before that it is a file the receiver
+   * skipped on to after being refused the meant one, which the error reloads from.
+   */
+  private followIntent(status: CastMediaStatus, index: number, position: number, last: number) {
+    const want = this.intended;
+    const settled = status.playerState === 'playing' || status.playerState === 'paused';
+    if (status.playerState === 'idle') {
+      if (status.idleReason === 'finished' && index < last) this.intend(index + 1, 0);
+      return;
+    }
+    if (want && index === want.trackIndex) {
+      // A buffering receiver can report 0 before it reaches the asked place.
+      if (position > 0) want.position = position;
+      if (settled) want.landed = true;
+    } else if (want?.landed && index === want.trackIndex + 1) {
+      this.intend(index, settled ? position : 0, settled);
+    } else if (settled && (!want || want.landed || this.now() - want.at >= ASKED_MOVE_MS)) {
+      this.intend(index, position, true);
+    }
+  }
+
+  /** Whether the phone has been following the receiver just now (a status or a progress tick
+   * within `EARLY_END_FRESH_MS`): it would have seen the receiver play any file it did. */
+  private watching(): boolean {
+    return !!this.seen && this.now() - this.seen.at <= EARLY_END_FRESH_MS;
+  }
+
+  /**
+   * Where to load the queue again after the receiver stopped on an error naming file `index`
+   * at `reported`. The meant place while it has not landed (a move, or the next file after
+   * one that ended: the receiver skips a file it is refused and errs on a later one). Past
+   * the meant file it landed on, while the phone was watching: the next file after it, from
+   * its start (the receiver could not have played one in between unseen). Otherwise the
+   * error's own file, where it was last seen on it when the receiver reports less (it
+   * reports 0 once idle).
+   */
+  private refusedPlace(index: number, reported: number): { trackIndex: number; position: number } {
+    const want = this.intended;
+    if (want && !want.landed) return { trackIndex: want.trackIndex, position: want.position };
+    if (want && index > want.trackIndex && this.watching()) {
+      return { trackIndex: want.trackIndex + 1, position: 0 };
+    }
+    const seen = this.seen?.trackIndex === index ? this.seen : null;
+    return { trackIndex: index, position: Math.max(reported, seen?.position ?? 0) };
+  }
+
   /** The receiver's queue for a book, as sent from its start (no item requested mid-file). */
   private async prepareLoaded(
     tracks: PlaybackTrack[],
@@ -414,14 +504,17 @@ export class CastPlaybackService implements PlaybackService {
     return { tracks, book, items, urls: items.map((i) => i.url), offsets: items.map(() => 0) };
   }
 
-  /** Whether a refused receiver may be given a newly minted token for the loaded book now
-   * (`REMINT_EVERY_MS`). */
+  /** Whether a refused receiver may be given a newly minted token for the loaded book now:
+   * once per token minted, and a token that never played once per `REMINT_EVERY_MS`. */
   private remintDue(): boolean {
     const loaded = this.loaded;
     if (!loaded) return false;
     const last = this.reminted;
     return (
-      !last || last.book !== castBookKey(loaded.book) || this.now() - last.at >= REMINT_EVERY_MS
+      !last ||
+      last.book !== castBookKey(loaded.book) ||
+      last.played ||
+      this.now() - last.at >= REMINT_EVERY_MS
     );
   }
 
@@ -449,7 +542,7 @@ export class CastPlaybackService implements PlaybackService {
   private async mintFresh(): Promise<boolean> {
     const loaded = this.loaded;
     if (!loaded || !this.remintDue()) return false;
-    this.reminted = { book: castBookKey(loaded.book), at: this.now() };
+    this.reminted = { book: castBookKey(loaded.book), at: this.now(), played: false };
     const seq = this.loadSeq;
     this.loadsInFlight++;
     try {
@@ -465,15 +558,22 @@ export class CastPlaybackService implements PlaybackService {
   }
 
   /** Load the queue on the receiver starting at `(index, position)`; a load the receiver
-   * refuses is sent once more with a newly minted token (`freshToken`) before it fails.
+   * refuses (it rejects the load, or errs while it is in flight: `ReceiverRefused`) is sent
+   * once more with a newly minted token (`freshToken`) before it fails. A refused load that
+   * fails reads the receiver's status, so the place shown is the file it went on to.
    * Resolves whether this is still the latest queue sent (false: a newer one replaced it,
    * and the receiver's rejection of this one was that one's doing). */
   private async sendQueue(index: number, position: number, autoplay: boolean): Promise<boolean> {
     try {
-      return await this.sendQueueOnce(index, position, autoplay);
+      try {
+        return await this.sendQueueOnce(index, position, autoplay);
+      } catch (err) {
+        if (!(await this.freshToken())) throw err;
+        return await this.sendQueueOnce(index, position, autoplay);
+      }
     } catch (err) {
-      if (!(await this.freshToken())) throw err;
-      return this.sendQueueOnce(index, position, autoplay);
+      if (err instanceof ReceiverRefused) void this.refresh();
+      throw err;
     }
   }
 
@@ -492,6 +592,7 @@ export class CastPlaybackService implements PlaybackService {
     loaded.urls = items.map((it) => it.url);
     loaded.offsets = items.map((_, n) => (n === i ? start.offset : 0));
     this.askMove();
+    this.intend(i, position);
     this.loadsInFlight++;
     try {
       try {
@@ -509,6 +610,10 @@ export class CastPlaybackService implements PlaybackService {
         throw err;
       }
       if (q !== this.queueSeq) return false;
+      if (this.refusedQueue === q) {
+        this.refusedQueue = null;
+        throw new ReceiverRefused();
+      }
       this.needsReload = false;
       return true;
     } finally {
@@ -537,6 +642,14 @@ export class CastPlaybackService implements PlaybackService {
       this.update({ state: 'paused' });
       return;
     }
+    if (status.playerState === 'idle' && status.idleReason === 'error' && this.loadsInFlight > 0) {
+      // Refused while a load of ours is in flight (or a mint for one): that load is sent again
+      // with a new token (`sendQueue`), whatever later file the receiver skips on to meanwhile.
+      if (loaded) this.refusedQueue = this.queueSeq;
+      return;
+    }
+    // The files the receiver skips on to after a refused one, until the refused load settles.
+    if (this.loadsInFlight > 0 && this.refusedQueue === this.queueSeq) return;
     // The receiver settled playing, paused or stopped, whoever asked: the play intent from
     // now on. A status while a load of ours is in flight (a `paused` before it takes a play's
     // queue, the replaced item's `interrupted`; as the foreign check above) is not a word on
@@ -567,20 +680,18 @@ export class CastPlaybackService implements PlaybackService {
     let position = Number.isFinite(status.position)
       ? status.position + offset
       : this.snapshot.position;
+    if (loaded && index !== null && this.loadsInFlight === 0) {
+      this.followIntent(status, index, position, loaded.items.length - 1);
+      if (status.playerState === 'playing') this.notePlayed(status, loaded);
+    }
     if (state === 'ended' && loaded && this.endedEarly(trackIndex, position, duration)) return;
     // The book's real end settles it as a pause does (the store reads it so): a seek or a file
     // jump after it loads the place paused.
     if (state === 'ended' && this.loadsInFlight === 0) this.playIntent = false;
     // Only as the error arrives: one already shown is the listener's to retry (the receiver
     // says it again on every status read, as when the app comes back, and each would mint).
-    if (
-      state === 'error' &&
-      this.snapshot.state !== 'error' &&
-      loaded &&
-      this.loadsInFlight === 0 &&
-      this.remintDue()
-    ) {
-      this.reloadFresh(trackIndex, position, duration);
+    if (state === 'error' && this.snapshot.state !== 'error' && loaded && this.remintDue()) {
+      this.reloadFresh(trackIndex, position);
       return;
     }
     if (state === 'ended' && duration > 0) position = duration; // the book's end reads as finished
@@ -635,14 +746,16 @@ export class CastPlaybackService implements PlaybackService {
 
   /**
    * The receiver stopped on an error with our book loaded (a later file, a seek or a reload
-   * it was refused): the queue is loaded again there with a newly minted cast token
-   * (`freshToken`), playing on by the play intent (`playOn`), else paused, before the error
-   * reaches the store. The place is where it was last seen on that file when the receiver
-   * reports less (it reports 0 once idle). A reload that fails is the error after all.
+   * it was refused): the queue is loaded again with a newly minted cast token (`freshToken`)
+   * at the place this phone means (`refusedPlace`: the file the receiver was refused, not a
+   * later one it skipped on to), playing on by the play intent (`playOn`), else paused,
+   * before the error reaches the store, which shows that place from now. A reload that fails
+   * is the error after all.
    */
-  private reloadFresh(trackIndex: number, reported: number, duration: number) {
-    const seen = this.seen?.trackIndex === trackIndex ? this.seen : null;
-    const place = Math.min(Math.max(reported, seen?.position ?? 0), duration || Infinity);
+  private reloadFresh(index: number, reported: number) {
+    const { trackIndex, position } = this.refusedPlace(index, reported);
+    const duration = this.loaded?.tracks[trackIndex]?.duration ?? 0;
+    const place = Math.min(position, duration || Infinity);
     const autoplay = this.playOn();
     const seq = this.loadSeq;
     this.place({ state: 'loading', trackIndex, position: place, duration }, false);
@@ -653,7 +766,21 @@ export class CastPlaybackService implements PlaybackService {
       if (!(await this.freshToken())) return fail();
       if (!(await this.sendQueueOnce(trackIndex, place, autoplay))) return;
       if (!autoplay && seq === this.loadSeq) this.update({ state: 'paused' });
-    })().catch(fail);
+    })().catch((err) => {
+      fail();
+      // Refused again while it loaded: show the file the receiver went on to, if any.
+      if (err instanceof ReceiverRefused) void this.refresh();
+    });
+  }
+
+  /** The receiver plays with the token last minted for this book (its URL is one of the
+   * loaded queue's, which carry it): that token is a good one (`remintDue`). */
+  private notePlayed(status: CastMediaStatus, loaded: Loaded) {
+    const last = this.reminted;
+    if (!last || last.played || !status.contentId) return;
+    if (last.book !== castBookKey(loaded.book)) return;
+    const id = transcodeUrlAt(status.contentId, 0);
+    if (loaded.urls.some((u) => transcodeUrlAt(u, 0) === id)) last.played = true;
   }
 
   /** A progress tick names no item, so it can't tell a move from the receiver running on

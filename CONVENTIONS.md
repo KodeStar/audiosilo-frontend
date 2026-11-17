@@ -3500,11 +3500,18 @@ on first need). NOT device-verified (no Cast device yet).
   ends the oldest, which a receiver may still be playing with (fe#158), so a queue load the
   receiver refuses is sent once more with a newly minted token (`freshToken`,
   `prepareCast(..., { freshToken })`, the cache's `fresh`), and a receiver that stops on an error
-  mid-book is loaded again there with one, playing on when it was (only as the error arrives:
-  one already shown is the listener's to retry, since the receiver says it again on every status
-  read). At most one mint per `REMINT_EVERY_MS` (a minute) per book loaded, so a failure with
-  another cause never mints on every try (each mint can end another receiver's token); a queue
-  refused while a mint is on its way waits on that mint and is sent again after it.
+  mid-book is loaded again with one, playing on when it was (only as the error arrives: one
+  already shown is the listener's to retry, since the receiver says it again on every status
+  read). The Default Media Receiver skips a file it is refused and tries the next, so its error
+  names the last file it tried: the reload goes to the place the phone means (`intended`: the
+  place a load, seek or file jump asked for, or the next file's start once one ended, until the
+  receiver plays or pauses there; `refusedPlace`), and an error while a load of ours is in flight
+  makes that load a refused one (`ReceiverRefused`, sent again with a new token; the files the
+  receiver skips on to meanwhile are not the book's place). One mint per token: another only once
+  the receiver played with the last one minted, else at most one per `REMINT_EVERY_MS` (a minute)
+  per book loaded, so a failure with another cause never mints on every try (each mint can end
+  another receiver's token); a queue refused while a mint is on its way waits on that mint and is
+  sent again after it.
 - **Generations**: the cast service numbers loads (`loadSeq`) and queues (`queueSeq`), the router
   its switches (`generation`): a load, queue or handover that a newer one (or a reset) overtook
   stands back, and the receiver's rejection of a replaced queue is not a failure. The native

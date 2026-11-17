@@ -544,6 +544,8 @@ describe('CastPlaybackService', () => {
       const t = setup({ prepare: m.prepare });
       await t.svc.load(TRACKS, 0, 0, [], BOOK);
       await t.svc.play();
+      t.status({ playerState: 'playing', contentId: t.url(0), position: 1 });
+      t.tick(1_000);
       t.status({ playerState: 'playing', contentId: t.url(1), position: 42 });
       // The next request for the file is refused: the receiver stops on an error, at 0.
       t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(1), position: 0 });
@@ -832,6 +834,183 @@ describe('CastPlaybackService', () => {
       expect(t.svc.getSnapshot().state).toBe('error');
       expect(m.asks).toEqual([undefined, true]);
       expect(t.remote.loads).toHaveLength(2);
+    });
+
+    // T3-FE-A3: the Default Media Receiver skips a file it is refused and tries the next, so
+    // its error names the last file it tried, not the one the phone means it to play.
+    describe('a receiver that skips the files it is refused', () => {
+      it('a file that ended reloads the next one from its start, not the file the error names', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 0, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 590 });
+        t.tick(10_000);
+        t.progress(600);
+        // Part 1 ends; Part 2 and Part 3 are both refused with the ended token.
+        t.status({ playerState: 'idle', idleReason: 'finished', contentId: t.url(0), position: 0 });
+        t.status({ playerState: 'buffering', contentId: t.url(1), position: 0 });
+        t.status({ playerState: 'buffering', contentId: t.url(2), position: 0 });
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(2), position: 0 });
+        await flush();
+        expect(m.asks).toEqual([undefined, true]);
+        expect(t.remote.loads.at(-1)).toMatchObject({
+          startIndex: 1,
+          startTime: 0,
+          autoplay: true,
+        });
+        expect(t.url(1)).toContain('token=CAST1');
+        expect(t.svc.getSnapshot()).toMatchObject({ state: 'loading', trackIndex: 1, position: 0 });
+        expect(t.snaps.some((s) => s.state === 'error')).toBe(false);
+      });
+
+      it('reloads the next file when the error is the first word after the one it played', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 0, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 595 });
+        t.tick(5_000);
+        t.progress(600);
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(2), position: 0 });
+        await flush();
+        expect(t.remote.loads.at(-1)).toMatchObject({
+          startIndex: 1,
+          startTime: 0,
+          autoplay: true,
+        });
+        expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 0 });
+      });
+
+      it('a phone that was not watching (suspended) reloads at the file the error names', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 0, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 10 });
+        t.tick(20 * 60_000); // the receiver played on, unseen
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(2), position: 0 });
+        await flush();
+        expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 2, autoplay: true });
+      });
+
+      it('a seek it is refused reloads at the asked place, though the error names a later file', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 0, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 10 });
+        await t.svc.seekTo(300);
+        t.status({ playerState: 'buffering', contentId: t.url(0), position: 0 });
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(1), position: 0 });
+        await flush();
+        expect(t.remote.loads.at(-1)).toMatchObject({
+          startIndex: 0,
+          startTime: 300,
+          autoplay: true,
+        });
+        expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 0, position: 300 });
+      });
+
+      it('a file jump refused after its load answered reloads at the asked place', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 2, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 10 });
+        await t.svc.skipToTrack(0, 31);
+        // Part 1 and 2 refused; it plays Part 3 from its own cache, then says the error.
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 1 });
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(1), position: 0 });
+        await flush();
+        expect(m.asks).toEqual([undefined, true]);
+        expect(t.remote.loads.at(-1)).toMatchObject({
+          startIndex: 0,
+          startTime: 31,
+          autoplay: true,
+        });
+        expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 0, position: 31 });
+      });
+
+      it('a file jump refused while its load is in flight mints once and is sent again there', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 2, 0, [], BOOK);
+        await t.svc.play();
+        // An earlier refusal minted CAST1, which the receiver then played with.
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 5 });
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(2), position: 0 });
+        await flush();
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 6 });
+        expect(m.asks).toEqual([undefined, true]);
+        // Within the minute the server ends CAST1 too, and the listener picks Part 1.
+        t.tick(20_000);
+        let answer: () => void = () => {};
+        (t.remote.load as jest.Mock).mockImplementationOnce(
+          (req) =>
+            new Promise<void>((resolve) => {
+              t.remote.loads.push(req);
+              answer = resolve;
+            }),
+        );
+        const jump = t.svc.skipToTrack(0, 0);
+        await flush();
+        const from = t.snaps.length;
+        const refused = t.url(2);
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(1), position: 0 });
+        t.status({ playerState: 'playing', contentId: refused, position: 9 });
+        answer();
+        await jump;
+        expect(m.asks).toEqual([undefined, true, true]);
+        expect(t.remote.loads.at(-1)).toMatchObject({
+          startIndex: 0,
+          startTime: 0,
+          autoplay: true,
+        });
+        expect(t.url(0)).toContain('token=CAST2');
+        // Never Part 3 or the error on the phone while the receiver was sent Part 1.
+        expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 0, position: 0 });
+        const since = t.snaps.slice(from);
+        expect(since.length).toBeGreaterThan(0);
+        expect(since.some((s) => s.trackIndex === 2 || s.state === 'error')).toBe(false);
+      });
+
+      it('a token refused before it ever played mints no more within the minute', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 0, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 5 });
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+        await flush();
+        expect(m.asks).toEqual([undefined, true]);
+        // The reload's own load is refused while in flight, before CAST1 ever played.
+        let answer: () => void = () => {};
+        (t.remote.load as jest.Mock).mockImplementationOnce(
+          (req) =>
+            new Promise<void>((resolve) => {
+              t.remote.loads.push(req);
+              answer = resolve;
+            }),
+        );
+        const jump = t.svc.skipToTrack(1, 0);
+        await flush();
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(1), position: 0 });
+        (t.remote.readStatus as jest.Mock).mockResolvedValueOnce({
+          playerState: 'playing',
+          contentId: t.url(2),
+          position: 3,
+          rate: 1,
+        });
+        answer();
+        await expect(jump).rejects.toThrow('LOAD_REFUSED');
+        await flush();
+        expect(m.asks).toEqual([undefined, true]);
+        // The phone shows the file the receiver went on to, not the one it was refused.
+        expect(t.remote.readStatus).toHaveBeenCalled();
+        expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 2 });
+      });
     });
 
     it('a book loaded again (a Retry) mints no sooner than a minute on; another book may', async () => {
