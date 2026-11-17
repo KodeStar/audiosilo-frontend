@@ -5,7 +5,6 @@ import { Platform, View } from 'react-native';
 
 import { connectClient, connectClientFor } from '@/api/connect-client';
 import { AddressesCard } from '@/components/layout/addresses-card';
-import { kidsConnectAllowed } from '@/components/profiles/connect-intent';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
@@ -20,6 +19,7 @@ import { ConnectFrame, ConnectInput, StepDots } from './connect-frame';
 import { addressesBody, BackToStart } from './connect-parts';
 import { finishConnect } from './finish-connect';
 import { openScanner } from './invite-handoff';
+import { holdOidcIntent } from './oidc-intent';
 import { oidcButtonName } from './oidc-sign-in';
 import { type SignInStage, signInErrorText } from './sign-in-error';
 
@@ -100,10 +100,10 @@ export function SignInStep({
   // as it is sent (`onSubmit`).
   const api = useMemo(() => connectClient(server, undefined, reconnectId), [server, reconnectId]);
 
-  // Single sign-on: only the served player at its own server asks (`oidc-sign-in.ts`).
-  // Never on a grown-up's pass through kids mode (`kidsConnectAllowed`): the pass is in
-  // memory, so the page the server returns to would be turned away as a link in kids mode.
-  const canSso = onlyOwnServer(servedOrigin(), [server]) && !kidsConnectAllowed();
+  // Single sign-on: only the served player at its own server asks (`oidc-sign-in.ts`). What
+  // the flow is for (a grown-up's pass through kids mode, "Add someone", `book`) goes with
+  // the page to the provider and back (`holdOidcIntent`, fe#310).
+  const canSso = onlyOwnServer(servedOrigin(), [server]);
   // The button's name once the server said single sign-on is on (`oidcButtonName`).
   const [ssoName, setSsoName] = useState<string | null>(null);
   useEffect(() => {
@@ -276,7 +276,10 @@ export function SignInStep({
           variant="outline"
           title={sso ? t('connect.oidc.signIn', { name: sso }) : t('connect.oidc.signInUnnamed')}
           disabled={loading}
-          onPress={() => window.location.assign(api.oidcStartUrl())}
+          onPress={() => {
+            holdOidcIntent(book);
+            window.location.assign(api.oidcStartUrl());
+          }}
           testID="sign-in-oidc"
         />
       ) : null}

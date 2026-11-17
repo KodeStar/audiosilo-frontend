@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { dropConnectHandoffs } from '@/components/connect/invite-handoff';
+import { resumeOidcIntent, takeOidcIntent } from '@/components/connect/oidc-intent';
+import { oidcReturnOnLoad } from '@/components/connect/oidc-sign-in';
 import { KIDS_PATH } from '@/components/kids/kids-model';
 import { useKidsActive } from '@/components/kids/use-kids';
 import { endConnectFlow, kidsConnectAllowed } from '@/components/profiles/connect-intent';
@@ -46,6 +48,14 @@ export default function ConnectLayout() {
   const router = useRouter();
   // Whether kids mode is on can only be told once both are read.
   const known = status !== 'loading' && profilesRead;
+  // A single sign-on's return is a page load: what the flow was for before the trip comes
+  // back from this tab's storage (`takeOidcIntent`, fe#310), put back once the profiles are
+  // read and before kids mode is told, so a grown-up's pass is not turned away.
+  const [held, setHeld] = useState(() => takeOidcIntent(oidcReturnOnLoad()));
+  if (known && held) {
+    resumeOidcIntent(held);
+    setHeld(null);
+  }
   const refused = known && kids && !kidsConnectAllowed();
   // Kids mode was on as the flow opened (the first render that can tell): a link, not a
   // sign-in that turned it on. Follows the render (React's way to keep state in step).

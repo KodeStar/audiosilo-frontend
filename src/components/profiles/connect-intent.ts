@@ -55,6 +55,17 @@ export function kidsConnectAllowed(): boolean {
   return intent.grownUpFromKids;
 }
 
+/** A single sign-on's return (a page load: memory is gone) puts back what the flow was for
+ * before the trip (`oidc-intent.ts`, fe#310). The grown-up's pass only while kids mode would
+ * let it through now (`openAddSomeone`'s rule), so the stored copy can't widen it. */
+export function resumeConnectIntent(held: { newPerson: boolean; grownUpFromKids: boolean }): void {
+  const state = useProfiles.getState();
+  intent = {
+    newPerson: held.newPerson,
+    grownUpFromKids: held.grownUpFromKids && !!activeProfile(state)?.kids && mayAddPerson(state),
+  };
+}
+
 /** The connect flow was left: the next one starts with no intent. */
 export function endConnectFlow(): void {
   intent = NO_INTENT;

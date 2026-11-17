@@ -81,8 +81,9 @@ import { useLinkPairing } from './use-pairing';
  *
  * The served player opened as `?oidc=1` is the server's return from a single sign-on
  * (server#235, started on the sign-in step): the sign-in is finished at once
- * (`finishOidcSignIn`), the param leaving the address first so a reload never tries it
- * again; a failure says why above its own server's card, as a dead pairing link does.
+ * (`finishOidcSignIn`), the param queued off the address before the finish is sent so a
+ * reload never tries it again; a failure says why above its own server's card, as a dead
+ * pairing link does.
  */
 export function ConnectStart() {
   const { t } = useTranslation();
@@ -230,9 +231,10 @@ export function ConnectStart() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, server, home, away, sid, book, path, uid, pair, fail]);
 
-  // A single sign-on's return: finish it once, with `?oidc=1` off the address first (the
-  // cookie goes with the first try, so a reload could only fail). A failure shows its own
-  // server's card under the reason, as a dead pairing link does.
+  // A single sign-on's return: finish it once, with `?oidc=1` queued off the address before
+  // the finish is sent (the cookie goes with the first try, so a reload could only fail). A
+  // failure shows its own server's card under the reason, as a dead pairing link does; a
+  // screen gone before the answer keeps no session (`finishOidcSignIn`'s `live`).
   const oidcStarted = useRef(false);
   // The screen's own navigation: this runs as the screen mounts, on a page load, where a
   // router's `setParams` reaches nothing yet (CONVENTIONS.md, "Navigation at mount").
@@ -241,7 +243,7 @@ export function ConnectStart() {
     if (!oidcOrigin || oidcStarted.current) return;
     oidcStarted.current = true;
     navigation.setParams({ oidc: undefined });
-    void finishOidcSignIn(oidcOrigin, t).then((message) => {
+    void finishOidcSignIn(oidcOrigin, t, () => mounted.current).then((message) => {
       if (message === null || !mounted.current) return;
       // A backstop once settled, when the navigators surely listen: the reason must not sit
       // under an address that would try the finish again.

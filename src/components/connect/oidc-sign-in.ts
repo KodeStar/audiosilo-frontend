@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next';
 
-import { ApiError, apiErrorKind } from '@/api/client';
+import { ApiClient, ApiError, apiErrorKind } from '@/api/client';
 import { connectClientFor } from '@/api/connect-client';
 import type { AuthSession, ServerInfo } from '@/api/types';
 import { servedOrigin } from '@/lib/base-url';
@@ -8,6 +8,7 @@ import { getDeviceName } from '@/lib/device';
 import { firstParam } from '@/lib/paths';
 
 import { finishConnect } from './finish-connect';
+import { takeOidcBook } from './oidc-intent';
 import { sharedRefusalText } from './sign-in-error';
 
 /**
@@ -19,9 +20,9 @@ import { sharedRefusalText } from './sign-in-error';
  * is the whole hand-over, so only the player the server serves signing in to its own
  * server (`onlyOwnServer(servedOrigin(), [server])`) can offer it: never the app, the
  * Metro dev server, or a player hosted on another origin. The return is a page load, so
- * nothing the flow held in memory comes back with it; a grown-up's pass through kids mode
- * (`kidsConnectAllowed`) is one, and kids mode would turn the return away, so the step
- * offers no single sign-on there.
+ * nothing the flow held in memory comes back with it: what the flow was for (a grown-up's
+ * pass through kids mode, "Add someone", a signed-out visit's book) goes through this tab's
+ * `sessionStorage` instead (`oidc-intent.ts`, fe#310).
  */
 
 /** The served player's return from a single sign-on (`/connect?oidc=1`): its own origin,
@@ -32,6 +33,15 @@ export function oidcReturnOrigin(
   token?: string,
 ): string | null {
   return !token && firstParam(oidc) === '1' ? servedOrigin() : null;
+}
+
+/** Whether this page load is the server's return from a single sign-on, read from the
+ * address itself (`oidcReturnOrigin`'s rule): the connect flow's layout must know before any
+ * route's params reach it, to put back what the flow was for (`takeOidcIntent`). */
+export function oidcReturnOnLoad(): boolean {
+  if (!servedOrigin()) return false;
+  const q = new URLSearchParams(globalThis.location?.search ?? '');
+  return oidcReturnOrigin(q.get('oidc') ?? undefined, q.get('token') ?? undefined) !== null;
 }
 
 /** The sign-in step's button while the server's `oidc` capability is on: the provider's
@@ -66,12 +76,20 @@ export function oidcFinishText(e: unknown, t: TFunction): string {
 /**
  * Finish a single sign-on on the served player's own server (`origin`): `POST
  * /auth/oidc/finish` (the server's cookie goes with it, same origin) with the server's
- * name read alongside, then `finishConnect` as for a pairing link's exchange. Resolves
- * null once the flow has moved on, else why it failed in words (`oidcFinishText`; a
- * session this device then couldn't keep, `notKept`, as the sign-in is spent).
+ * name read alongside, then `finishConnect` as for a pairing link's exchange, ending on the
+ * book the flow was opening before the trip (`takeOidcBook`). Resolves null once the flow
+ * has moved on, else why it failed in words (`oidcFinishText`; a session this device then
+ * couldn't keep, `notKept`, as the sign-in is spent). `live`: whether the connect screen is
+ * still up. A session that answers once it has gone is signed out again (best effort), never
+ * kept: nothing would use it, and it would stay on the server as a device (fe#310).
  */
-export async function finishOidcSignIn(origin: string, t: TFunction): Promise<string | null> {
+export async function finishOidcSignIn(
+  origin: string,
+  t: TFunction,
+  live: () => boolean = () => true,
+): Promise<string | null> {
   const { client, proxy: carried } = connectClientFor(origin);
+  const book = takeOidcBook();
   let session: AuthSession;
   let info: ServerInfo | null;
   try {
@@ -82,8 +100,14 @@ export async function finishOidcSignIn(origin: string, t: TFunction): Promise<st
   } catch (e) {
     return oidcFinishText(e, t);
   }
+  if (!live()) {
+    void new ApiClient(origin, session.token, undefined, undefined, undefined, carried)
+      .logout()
+      .catch(() => {});
+    return null;
+  }
   try {
-    await finishConnect({ serverUrl: origin, session, name: info?.name, carried });
+    await finishConnect({ serverUrl: origin, session, name: info?.name, book, carried });
     return null;
   } catch {
     return t('connect.oidc.errors.notKept');

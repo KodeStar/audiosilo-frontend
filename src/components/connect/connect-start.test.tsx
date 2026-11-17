@@ -10,6 +10,7 @@ import { useSession } from '@/stores/session';
 import { ConnectStart } from './connect-start';
 import { renderConnect as render } from './connect-testing';
 import { holdScanReconnect, openScanner, takeScanFor } from './invite-handoff';
+import { resumeOidcIntent } from './oidc-intent';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -57,6 +58,7 @@ const mockApi = {
   demoSession: jest.fn(),
   me: jest.fn(),
   oidcFinish: jest.fn(),
+  logout: jest.fn(),
 };
 const mockBases: string[] = [];
 // The proxy headers (fe#167) each bare client was built with.
@@ -1112,6 +1114,39 @@ describe("a single sign-on's return (?oidc=1)", () => {
       pathname: '/connect/ready',
       params: { connection: 'srv-1.1' },
     });
+    // Kept: the screen was up to take it.
+    expect(mockApi.logout).not.toHaveBeenCalled();
+  });
+
+  it('ends on the book the flow was opening before the trip (fe#310)', async () => {
+    // What the connect layout put back from this tab's storage as the page loaded.
+    resumeOidcIntent({
+      newPerson: false,
+      grownUpFromKids: false,
+      book: { libraryId: 2, path: 'Austen/Emma' },
+    });
+    mockApi.oidcFinish.mockResolvedValue({ token: 'session', server_id: 'srv-1', user });
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await waitFor(() =>
+      expect(mockDismissTo).toHaveBeenCalledWith({
+        pathname: '/book/[libraryId]',
+        params: { libraryId: '2', connection: 'srv-1.1', path: 'Austen/Emma' },
+      }),
+    );
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('signs out, never keeps, a session that answers once the screen has gone (fe#310)', async () => {
+    let answer!: (v: unknown) => void;
+    mockApi.oidcFinish.mockReturnValue(new Promise((r) => (answer = r)));
+    mockApi.logout.mockResolvedValue(undefined);
+    const view = await render(<ConnectStart />);
+    await view.unmount();
+    await act(async () => answer({ token: 'session', server_id: 'srv-1', user }));
+    await waitFor(() => expect(mockApi.logout).toHaveBeenCalledTimes(1));
+    expect(useSession.getState().connections).toEqual([]);
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it('says "Connecting" while it finishes, never the address field', async () => {

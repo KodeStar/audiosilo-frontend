@@ -3,7 +3,11 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
 import type { User } from '@/api/types';
-import { endConnectFlow, openAddSomeone } from '@/components/profiles/connect-intent';
+import {
+  endConnectFlow,
+  openAddSomeone,
+  setConnectForNewProfile,
+} from '@/components/profiles/connect-intent';
 import { resetProfilesForTests } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 import { seedProfile } from '@/testing/seed-profile';
@@ -468,17 +472,34 @@ describe('single sign-on', () => {
     expect(screen.queryByTestId('sign-in-oidc')).toBeNull();
   });
 
-  // The pass is in memory and the server's return is a page load: kids mode would turn the
-  // return away as a link, with the sign-in unspent.
-  it("is not offered, nor asked about, on a grown-up's pass through kids mode", async () => {
+  // The return is a page load: what the flow is for goes with the page (fe#310), so a
+  // grown-up's pass through kids mode, "Add someone" and the book come back with it.
+  it("is offered on a grown-up's pass through kids mode, and holds the pass and the book", async () => {
     seedProfile({ kids: true });
     openAddSomeone();
+    // What `/connect?add=1&profile=new` sets as the flow opens.
+    setConnectForNewProfile(true);
+    const store = new Map<string, string>();
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      value: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, v),
+        removeItem: (k: string) => void store.delete(k),
+      },
+      configurable: true,
+    });
     try {
       mockApi.serverInfo.mockResolvedValue(serverInfo(true, 'Keycloak'));
-      await render(<SignInStep server={AWAY} />);
-      expect(mockApi.serverInfo).not.toHaveBeenCalled();
-      expect(screen.queryByTestId('sign-in-oidc')).toBeNull();
+      await render(<SignInStep server={AWAY} book={{ libraryId: 3, path: 'Austen/Emma' }} />);
+      await fireEvent.press(await screen.findByRole('button', { name: 'Sign in with Keycloak' }));
+      expect(assign).toHaveBeenCalled();
+      expect(JSON.parse(store.get('audiosilo.oidcIntent')!)).toEqual({
+        newPerson: true,
+        grownUpFromKids: true,
+        book: { book: '3', path: 'Austen/Emma' },
+      });
     } finally {
+      delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
       endConnectFlow();
       resetProfilesForTests();
     }

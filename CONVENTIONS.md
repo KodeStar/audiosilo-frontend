@@ -388,9 +388,14 @@ at its own origin (`onlyOwnServer`) asks `GET /server` and offers "Sign in with 
 the route and the screen), and `ConnectStart` takes the param off first (the screen's own
 `useNavigation().setParams`: it runs at mount), then `POST /auth/oidc/finish`
 (`finishOidcSignIn`, the exchange's answer) and `finishConnect`; a failure is worded above the served card
-(`oidcFinishText`). Nothing in memory survives the page load (a reconnect id, "Add someone", a
-signed-out visit's book), so a grown-up's pass through kids mode (`kidsConnectAllowed`), which
-kids mode would turn the return away without, is offered no single sign-on.
+(`oidcFinishText`), and a session that answers once the screen has gone is signed out again, never
+kept. Nothing in memory survives the page load, so what the flow is for (a grown-up's pass through
+kids mode, "Add someone", a signed-out visit's book) goes through the tab's `sessionStorage`
+(`oidc-intent.ts`, fe#310): the step writes it as it leaves (`holdOidcIntent`), and the connect
+layout takes it once as it opens (`takeOidcIntent`, only on the return: `oidcReturnOnLoad` reads
+the address itself) and puts it back once the profiles are read, before kids mode is told
+(`resumeConnectIntent`: the pass only while `openAddSomeone`'s rule would give it now). A
+reconnect id is not carried.
 iOS does NOT allow arbitrary loads: Expo's ATS default is `NSAllowsArbitraryLoads: false` with
 `NSAllowsLocalNetworking: true`, so plain http works there for IP addresses, `.local` and
 single-label names, but not for a `.lan`, `.home.arpa` or `.internal` home. `repairPlan`: a
