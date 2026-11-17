@@ -101,8 +101,10 @@ export async function finishOidcSignIn(
   t: TFunction,
   live: () => boolean,
 ): Promise<string | null> {
-  const { client, proxy: carried } = connectClientFor(origin);
   const { book, reconnectId } = takeOidcResumed(origin);
+  // A reconnect's finish goes out with its own proxy headers, as its password sign-in
+  // would (`connectClientFor(server, _, reconnectId)`), never another person's.
+  const { client, proxy: carried } = connectClientFor(origin, undefined, reconnectId);
   let session: AuthSession;
   let info: ServerInfo | null;
   try {

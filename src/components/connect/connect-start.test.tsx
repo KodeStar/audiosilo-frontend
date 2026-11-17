@@ -1256,6 +1256,19 @@ describe("a single sign-on's return (?oidc=1)", () => {
       });
     });
 
+    it("finishes with the connection's own proxy headers, never another person's", async () => {
+      const set = { origin: HOME, headers: [{ name: 'X-Auth', value: 'sams-secret' }] };
+      useSession.setState({ connections: [mine, { ...theirs, proxyHeaders: set }] as never });
+      resume(HOME);
+      await render(<ConnectStart />);
+      await waitFor(() => expect(ids()).toContain('srv-2.1'));
+      // The finish's client, the first one built: the dead connection has no set.
+      expect(mockProxies[0]).toBeNull();
+      expect(
+        useSession.getState().connections.find((c) => c.id === 'srv-2.1')?.proxyHeaders,
+      ).toBeFalsy();
+    });
+
     it.each([
       // fe#298: only this tab's own intent names it.
       ['a ?reconnect= in the address', () => (mockParams = { oidc: '1', reconnect: 'srv-old.1' })],
