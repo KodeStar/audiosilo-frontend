@@ -3187,8 +3187,8 @@ async function switchCurrentBookToLocal() {
   const wasPlaying = wantsPlayback;
   const svc = await ensureService();
 
-  // Commit only once the engine has actually moved onto the local files.
-  const commit = () => commitLocalSwap(nowPlaying, swap);
+  // Committed (`commitLocalSwap`) only once the engine has actually moved onto the local
+  // files.
 
   if (svc.isCasting?.()) {
     // Casting: the receiver streams the book from the server whatever the phone holds (a
@@ -3202,7 +3202,7 @@ async function switchCurrentBookToLocal() {
       chapters: queue.chapterClips,
       book: bookRefOf(nowPlaying),
     });
-    commit();
+    commitLocalSwap(nowPlaying, swap);
     return;
   }
 
@@ -3229,7 +3229,7 @@ async function switchCurrentBookToLocal() {
           if (hold) hold.live = true;
         },
       );
-      if (outcome === 'swapped') commit();
+      if (outcome === 'swapped') commitLocalSwap(nowPlaying, swap);
     } else {
       // A play goes on through the load as a start's does: iOS's `load` pauses the player,
       // and that pause must read as the load's, not the listener's (`reloadAdopted`).
@@ -3243,7 +3243,7 @@ async function switchCurrentBookToLocal() {
       );
       // Committed before the rate and the play, so the play's `playing` (and the save loop
       // it starts) reads the engine's index through the download's queue.
-      const committed = commit();
+      const committed = commitLocalSwap(nowPlaying, swap);
       if (!committed) return;
       // The speed and the intent as they stand now: a speed set or a pause made while the
       // load was out reached the engine before it landed, and stands. So does a play asked
