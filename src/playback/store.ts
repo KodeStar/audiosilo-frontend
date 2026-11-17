@@ -348,6 +348,9 @@ async function pickUpBeforePlay(): Promise<boolean> {
   await pickUpWait;
   if (attempt !== playAttempts || !wantsPlayback) {
     if (!wantsPlayback) settlePickUpWaitPaused();
+    // Pressed again, or another start (a Retry) took over: until that one plays, the book
+    // is paused from now, so a play after another long pause is still a pick-up.
+    else if (!isPlayingState(usePlayer.getState().snapshot.state)) pausedAt ??= Date.now();
     return true;
   }
   cancelStallWatchdog();
