@@ -94,13 +94,18 @@ let adding: Promise<void> | null = null;
 
 /** The last "Bookmark added" toast, while it may still be up (`dismissBookmarkToast`). */
 let bookmarkToast: number | null = null;
+/** How many times the toast was taken down: a bookmark still on its way when the player
+ * closed raises none once it lands. */
+let bookmarkDismissals = 0;
 
-/** Take the last "Bookmark added" toast down: the full player closing calls it (fe#197
- * PLAYER-13), since its "Add note" opens a player sheet, and on the page below a phone's
- * toast covers the chapter list beside the mini player. */
+/** Take the last "Bookmark added" toast down, and the one of a bookmark still on its way:
+ * the full player closing calls it (fe#197 PLAYER-13), since its "Add note" opens a player
+ * sheet, and on the page below a phone's toast covers the chapter list beside the mini
+ * player. */
 export function dismissBookmarkToast(): void {
   if (bookmarkToast !== null) dismissToast(bookmarkToast);
   bookmarkToast = null;
+  bookmarkDismissals++;
 }
 
 /**
@@ -128,8 +133,11 @@ async function addNow(t: TFunction): Promise<void> {
   noteInteraction();
   const position = Math.round(selectBookPosition(player));
   const { connectionId, libraryId, path } = np;
+  const dismissals = bookmarkDismissals;
   try {
     const made = await addBookmark(connectionId, libraryId, path, position);
+    // The player closed while it was on its way: its toast went with it.
+    if (bookmarkDismissals !== dismissals) return;
     // An edit needs `annotations`; an older server can't add a note to a bookmark it has.
     const editable = !!made?.id && cachedCapability(connectionId, 'annotations') === true;
     bookmarkToast = toast({

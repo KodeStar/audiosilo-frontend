@@ -288,6 +288,18 @@ describe('addBookmarkHere', () => {
     expect((dismissToast as jest.Mock).mock.calls).toEqual([[41]]);
   });
 
+  it('raises no toast for a bookmark that lands after the player closed', async () => {
+    let land: (v: object) => void = () => {};
+    const addBookmark = jest.fn(() => new Promise<object>((resolve) => (land = resolve)));
+    (resolveClient as jest.Mock).mockReturnValue({ addBookmark });
+    const added = addBookmarkHere(t);
+    dismissBookmarkToast();
+    land({ id: 5, position: 62_810 });
+    await added;
+    expect(addBookmark).toHaveBeenCalledTimes(1);
+    expect(toast).not.toHaveBeenCalled();
+  });
+
   it('adds one bookmark for a double tap while the first is on its way', async () => {
     let land: (v: object) => void = () => {};
     const addBookmark = jest
