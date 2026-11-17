@@ -273,6 +273,9 @@ export type User = {
    * a new profile for this account is named after it. Absent for an ordinary account and
    * on older servers (the username stands in). */
   display_name?: string;
+  /** When the account was last seen (RFC 3339), omitted before its first sign-in.
+   * The player does not show it. */
+  last_seen_at?: string;
 };
 
 /** Response of /auth/exchange and /auth/login. The token is the session secret;
@@ -298,6 +301,9 @@ export type DemoSession = AuthSession & {
  * exchange it); /auth/pair and demo tokens are single-use. */
 export type PairingPayload = {
   server_name: string;
+  /** The server's stable id (`GET /server`'s `server_id`; also `sid=` on `uri` and
+   * `web_url`). Absent on older servers. */
+  server_id?: string;
   base_url: string;
   pairing_token: string;
   /** audiosilo://connect?server=<base>&token=<pairing_token> - custom-scheme "Open in app" link. */
@@ -305,7 +311,17 @@ export type PairingPayload = {
   /** https://<base>/web/connect?token=<pairing_token> - encoded in the QR. */
   web_url: string;
   qr_png_data_uri: string;
-  links: { web: string; admin: string; ios?: string; android?: string };
+  links: {
+    web: string;
+    admin: string;
+    ios?: string;
+    android?: string;
+    /** The player's GitHub releases page, for an Android phone without Play (newer servers). */
+    apk?: string;
+  };
+  /** True when the redeemed code pairs an admin's account (`/auth/redeem` only; the
+   * connect page offers the console then). Absent otherwise. */
+  admin?: boolean;
   /** Parent invite's expiry, when redeemed from one (advisory). */
   code_expires_at?: string;
   /** Devices the parent invite can still pair; absent = unlimited or not invite-derived (advisory). */
