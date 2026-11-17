@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon, type IconName } from './icon';
+import { useModalLayer } from './modal-layer';
 import { FullWindowOverlay, NativeOnlyAnimatedView, useRootInsets, withFlatStyle } from './overlay';
 
 /**
@@ -151,9 +152,11 @@ export function Dialog({
 export const DialogTrigger = DialogPrimitive.Trigger;
 
 /** The scrim + dismiss-on-backdrop wrapper every dialog frame sits in (the command
- * palette composes its own frame inside it). */
+ * palette composes its own frame inside it). Mounted only while the dialog is open, it
+ * counts as a modal layer, so VoiceOver and TalkBack lose the page behind (fe#305). */
 export function DialogOverlay({ className, children }: { className: string; children: ReactNode }) {
   const { onOpenChange } = DialogPrimitive.useRootContext();
+  useModalLayer(true);
   // Web: a click on the backdrop itself (not on the card) dismisses; native wires the
   // same through the primitive's own overlay press.
   const onOverlayPress = (event: GestureResponderEvent) => {

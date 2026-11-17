@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon, type IconName } from './icon';
+import { ModalLayerMark } from './modal-layer';
 import {
   FullWindowOverlay,
   NativeOnlyAnimatedView,
@@ -39,6 +40,8 @@ export function DropdownMenuContent({
   const insets = useOverlayInsets();
   return (
     <DropdownMenuPrimitive.Portal>
+      {/* The page behind leaves the screen reader's tree while the menu is open (fe#305). */}
+      <ModalLayerMark />
       <FullWindowOverlay>
         <DropdownMenuPrimitive.Overlay
           style={Platform.select({ native: StyleSheet.absoluteFill })}

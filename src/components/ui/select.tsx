@@ -7,6 +7,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon } from './icon';
 import type { IconName } from './icon-data';
+import { ModalLayerMark } from './modal-layer';
 import {
   FullWindowOverlay,
   NativeOnlyAnimatedView,
@@ -90,6 +91,8 @@ export function SelectContent({
   const insets = useOverlayInsets();
   return (
     <SelectPrimitive.Portal>
+      {/* The page behind leaves the screen reader's tree while the list is open (fe#305). */}
+      <ModalLayerMark />
       <FullWindowOverlay>
         <SelectPrimitive.Overlay
           style={Platform.select({ native: StyleSheet.absoluteFill })}

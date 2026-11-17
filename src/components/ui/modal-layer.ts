@@ -2,9 +2,10 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
 
 /**
- * Screen-reader modality for the in-place sheets (fe#267). A `Sheet` renders over the page
- * as its sibling (`OverlayHost`: no portal, no RN Modal), so the page behind it stays in
- * the accessibility tree unless it is told otherwise:
+ * Screen-reader modality for the in-place sheets (fe#267) and the portaled overlays
+ * (fe#305). A `Sheet` renders over the page as its sibling (`OverlayHost`: no portal, no
+ * RN Modal); a Dialog, AlertDialog, Select or menu renders into the root `PortalHost`. In
+ * both cases the page behind stays in the accessibility tree unless it is told otherwise:
  * - iOS: the sheet's layer is `accessibilityViewIsModal`, which hides its SIBLINGS from
  *   VoiceOver; the page roots also hide themselves (a sheet's layer is not always a
  *   direct sibling of everything behind it).
@@ -13,8 +14,11 @@ import { Platform } from 'react-native';
  * - The web: the layer is a named `role="dialog"` with `aria-modal`, which screen readers
  *   take as "nothing else is reachable", so the page needs nothing more.
  *
- * Open sheets register here (`useModalLayer`); the page roots read `useBehindModalProps`:
- * the shell's frame (native), the full player's page and the reader's.
+ * Open sheets register here (`useModalLayer`), and so do the portaled overlays while open
+ * (their overlay part calls it, or renders `ModalLayerMark` inside the portal, which
+ * mounts only while open on native). The page roots read `useBehindModalProps`: the
+ * shell's frame (native), the full player's page and the reader's. The web needs no count
+ * for the overlays either: Radix hides everything outside an open one (`aria-hidden`).
  */
 
 let open = 0;
@@ -37,6 +41,13 @@ export function useModalLayer(active: boolean): void {
     change(1);
     return () => change(-1);
   }, [active]);
+}
+
+/** `useModalLayer(true)` as a component, for a portal's children: a portal mounts them only
+ * while its overlay is open, so the layer counts exactly as long as the overlay shows. */
+export function ModalLayerMark(): null {
+  useModalLayer(true);
+  return null;
 }
 
 /** The accessibility props for a page root BEHIND the modal layers: hidden from VoiceOver

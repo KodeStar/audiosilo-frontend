@@ -12,6 +12,7 @@ import {
   dialogHeaderClass,
   dialogTitleClass,
 } from './dialog';
+import { useModalLayer } from './modal-layer';
 import { FullWindowOverlay, NativeOnlyAnimatedView, withFlatStyle } from './overlay';
 
 /**
@@ -24,7 +25,10 @@ import { FullWindowOverlay, NativeOnlyAnimatedView, withFlatStyle } from './over
  */
 export const AlertDialog = AlertDialogPrimitive.Root;
 
+/** Mounted only while open: a modal layer, so the page behind leaves the screen reader's
+ * tree (fe#305, as `DialogOverlay`). */
 function AlertDialogOverlay({ className, children }: { className: string; children: ReactNode }) {
+  useModalLayer(true);
   return (
     <FullWindowOverlay>
       <AlertDialogPrimitive.Overlay className={className} asChild={Platform.OS !== 'web'}>
