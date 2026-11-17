@@ -3323,9 +3323,10 @@ describe('failures, retry and the session decline mark', () => {
     expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg', '0.mp3']);
   });
 
-  it('a retry never takes a kept file for an index it was not saved under', async () => {
-    // The book's order changed since: 01, 02, then 00. Each kept file was saved under
-    // another index, which this order downloads over, so none is reused.
+  it('a retry takes a kept file by its path when the order changed (fe#158)', async () => {
+    // The book's order changed since: 01, 02, then 00. The kept files are taken where they
+    // now are, under the names they were saved by; the gone 00 is fetched under a name no
+    // kept file holds (its index, 2, is 02's).
     const reordered = makeBook({
       files: book.files?.map((f) => ({ ...f, seq: (f.seq + 2) % 3 })),
     });
@@ -3341,9 +3342,77 @@ describe('failures, retry and the session decline mark', () => {
     const done = useDownloads.getState().entries[key];
     expect(done?.status).toBe('downloaded');
     expect(done?.manifest.files.map((f) => [f.relPath, f.localUri])).toEqual([
-      ['A/Book/01.mp3', 'file:///dl/0.mp3'],
-      ['A/Book/02.mp3', 'file:///dl/1.mp3'],
-      ['A/Book/00.mp3', 'file:///dl/2.mp3'],
+      ['A/Book/01.mp3', 'file:///dl/1.mp3'],
+      ['A/Book/02.mp3', 'file:///dl/2.mp3'],
+      ['A/Book/00.mp3', 'file:///dl/3.mp3'],
+    ]);
+    expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg', '3.mp3']);
+  });
+
+  it('a retry fetches only the file the server added in front of the kept ones', async () => {
+    // A failed attempt kept all three files; the server's list since gained a file first.
+    const entry = downloadedEntry({ status: 'error', failure: { kind: 'network', kept: 1 } });
+    entry.manifest.book = book;
+    entry.manifest.files = [0, 1, 2].map((i) => ({
+      relPath: `A/Book/0${i}.mp3`,
+      localUri: `file:///dl/${i}.mp3`,
+    }));
+    useDownloads.setState({ entries: { [key]: entry } });
+    const grown = makeBook({
+      files: [
+        { rel_path: 'A/Book/intro.mp3', seq: 0, duration: 60, format: 'mp3', size: 100 },
+        ...(book.files ?? []).map((f) => ({ ...f, seq: f.seq + 1 })),
+      ],
+    });
+    mockEngine.fileExists.mockResolvedValue(true);
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `file:///dl/${name}`,
+    );
+
+    useDownloads.getState().download('c1', 2, grown);
+    await settle();
+
+    const done = useDownloads.getState().entries[key];
+    expect(done?.status).toBe('downloaded');
+    // The new first file never writes over 00's `0.mp3`: it takes the first free number.
+    expect(done?.manifest.files.map((f) => [f.relPath, f.localUri])).toEqual([
+      ['A/Book/intro.mp3', 'file:///dl/4.mp3'],
+      ['A/Book/00.mp3', 'file:///dl/0.mp3'],
+      ['A/Book/01.mp3', 'file:///dl/1.mp3'],
+      ['A/Book/02.mp3', 'file:///dl/2.mp3'],
+    ]);
+    expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg', '4.mp3']);
+  });
+
+  it('a retry that fails on a new file keeps the kept files of the paths it never reached', async () => {
+    const entry = downloadedEntry({ status: 'error', failure: { kind: 'network', kept: 1 } });
+    entry.manifest.book = book;
+    entry.manifest.files = [0, 1, 2].map((i) => ({
+      relPath: `A/Book/0${i}.mp3`,
+      localUri: `file:///dl/${i}.mp3`,
+    }));
+    useDownloads.setState({ entries: { [key]: entry } });
+    const grown = makeBook({
+      files: [
+        { rel_path: 'A/Book/intro.mp3', seq: 0, duration: 60, format: 'mp3', size: 100 },
+        ...(book.files ?? []).map((f) => ({ ...f, seq: f.seq + 1 })),
+      ],
+    });
+    mockEngine.fileExists.mockResolvedValue(true);
+    mockEngine.downloadFile.mockImplementation(async (_c, _l, _p, name: string) => {
+      if (name === '4.mp3') throw new TypeError('Failed to fetch');
+      return `file:///dl/${name}`;
+    });
+
+    useDownloads.getState().download('c1', 2, grown);
+    await settle();
+
+    const failed = useDownloads.getState().entries[key];
+    expect(failed).toMatchObject({ status: 'error', failure: { kind: 'network', kept: 3 / 4 } });
+    expect(failed?.manifest.files.map((f) => f.localUri)).toEqual([
+      'file:///dl/0.mp3',
+      'file:///dl/1.mp3',
+      'file:///dl/2.mp3',
     ]);
   });
 

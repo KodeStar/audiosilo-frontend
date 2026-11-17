@@ -30,7 +30,10 @@ jest.mock('@/api/address-runner', () => ({ startAddressRouting: service('address
 jest.mock('@/widgets/widget-sync', () => ({ startWidgetSync: service('widget') }));
 jest.mock('@/car/car-controller', () => ({ startCarSync: () => void mockCalls.push('start car') }));
 jest.mock('@/cast/cast-session', () => ({ startCastSync: service('cast') }));
-jest.mock('@/components/player/book-ended-listener', () => ({ BookEndedListener: () => null }));
+jest.mock('@/components/player/book-ended-listener', () => ({
+  BookEndedRoute: () => null,
+  startBookEndWatch: service('bookEnd'),
+}));
 jest.mock('@/components/player/companion/reveal-listener', () => ({
   CompanionRevealListener: () => null,
 }));
@@ -57,6 +60,7 @@ describe('startRootServices', () => {
     // Native's start, at the first commit: not a late one.
     expect(mockDriftOptions).toEqual([{ late: false }]);
     expect(mockCalls).toEqual([
+      'start bookEnd',
       'start autoSleep',
       'start drift',
       'start keepAhead',
@@ -75,6 +79,7 @@ describe('startRootServices', () => {
     mockCalls.length = 0;
     stop();
     expect(mockCalls).toEqual([
+      'stop bookEnd',
       'stop autoSleep',
       'stop drift',
       'stop keepAhead',

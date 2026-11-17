@@ -21,13 +21,15 @@ const mockPush = jest.fn();
 const mockReplace = jest.fn();
 let mockPathname = '/library';
 const mockBack = jest.fn();
+const mockRouter = {
+  push: (h: unknown) => mockPush(h),
+  replace: (h: unknown) => mockReplace(h),
+  back: () => mockBack(),
+  canGoBack: () => true,
+};
 jest.mock('expo-router', () => ({
-  router: {
-    push: (h: unknown) => mockPush(h),
-    replace: (h: unknown) => mockReplace(h),
-    back: () => mockBack(),
-    canGoBack: () => true,
-  },
+  router: mockRouter,
+  useRouter: () => mockRouter,
   usePathname: () => mockPathname,
 }));
 const mockResolve = jest.fn();
@@ -70,7 +72,7 @@ import { useSleepTimer } from '@/playback/sleep-timer';
 import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
-import { BookEndedListener } from './book-ended-listener';
+import { BookEndedRoute, startBookEndWatch } from './book-ended-listener';
 import { useAutoPlayHold } from './end-of-book';
 /* eslint-enable import/first */
 
@@ -101,8 +103,14 @@ const headAnswer: UpNextAnswer = {
   },
 };
 
-async function playThenEnd() {
-  await render(<BookEndedListener />);
+let stopWatch: () => void = () => {};
+afterEach(() => stopWatch());
+
+/** A book plays and reaches its end. `routed`: a root layout is mounted (else a car-only
+ * session: Android's headless task, a CarPlay-first launch). */
+async function playThenEnd({ routed = true }: { routed?: boolean } = {}) {
+  if (routed) await render(<BookEndedRoute />);
+  stopWatch = startBookEndWatch();
   await act(async () => {
     setPlayer({
       nowPlaying: { connectionId: 'c1', libraryId: 1, path: FINISHED.path },
@@ -167,7 +175,7 @@ beforeEach(() => {
 /** The finished book's identity, as the sleep timer and the hold key it. */
 const FINISHED_KEY = contentKey('c1', 1, FINISHED.path);
 
-describe('BookEndedListener', () => {
+describe('the end-of-book flow', () => {
   it('finishes the book and opens the end credits, which take it off Up next', async () => {
     await playThenEnd();
     expect(mockFinishBook).toHaveBeenCalledTimes(1);
@@ -230,6 +238,45 @@ describe('BookEndedListener', () => {
     await becomeActive();
     expect(mockPush).not.toHaveBeenCalled();
     expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('finishes a book already ended when the watch starts (the activity came back)', async () => {
+    await render(<BookEndedRoute />);
+    await act(async () => {
+      setPlayer({
+        nowPlaying: { connectionId: 'c1', libraryId: 1, path: FINISHED.path },
+        snapshot: { state: 'ended' },
+      });
+    });
+    expect(mockFinishBook).not.toHaveBeenCalled();
+    stopWatch = startBookEndWatch();
+    await act(async () => {});
+    expect(mockFinishBook).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith(finishedHref('c1', 1, FINISHED.path, true));
+  });
+
+  describe('a car-only session: no root layout mounted (fe#158)', () => {
+    it('finishes the book and starts the queue head in place, never navigating', async () => {
+      await playThenEnd({ routed: false });
+      expect(mockFinishBook).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(mockStart).toHaveBeenCalledWith(headAnswer.next));
+      expect(mockRemove).toHaveBeenCalledWith({ libraryId: 1, path: FINISHED.path });
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(mockReplace).not.toHaveBeenCalled();
+    });
+
+    it('with nothing next, the end credits wait for the phone app to open', async () => {
+      appState = 'background';
+      mockResolve.mockResolvedValue({ next: null });
+      await playThenEnd({ routed: false });
+      await waitFor(() => expect(appStateListeners).toHaveLength(1));
+      await becomeActive();
+      // In front, but no navigator yet: nothing opens until the root layout is there.
+      expect(mockPush).not.toHaveBeenCalled();
+      await render(<BookEndedRoute />);
+      expect(mockPush).toHaveBeenCalledWith(finishedHref('c1', 1, FINISHED.path, true));
+      expect(mockPush).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('in the background with nothing next opens the end credits only once back', async () => {
@@ -335,7 +382,7 @@ describe('BookEndedListener', () => {
 });
 
 // Bridge Phase 2d-1: an episode has no end credits.
-describe('BookEndedListener, a podcast episode', () => {
+describe('the end-of-book flow, a podcast episode', () => {
   beforeEach(() => {
     mockFinishBook.mockReturnValue({ ...FINISHED, episode: true });
   });

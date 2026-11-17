@@ -56,6 +56,19 @@ describe('prepareCast', () => {
     expect(items[0].contentType).toBe('audio/mp4');
   });
 
+  it('mints a new cast token in place of the cached one when asked (fe#158)', async () => {
+    castToken
+      .mockResolvedValueOnce({ token: 'OLD', expires_at: '2099-01-01T00:00:00.000Z' })
+      .mockResolvedValueOnce({ token: 'NEW', expires_at: '2099-01-01T00:00:00.000Z' });
+    expect((await prepareCast(TRACKS, BOOK)).items[0].url).toContain('token=OLD');
+    expect((await prepareCast(TRACKS, BOOK)).items[0].url).toContain('token=OLD');
+    const fresh = await prepareCast(TRACKS, BOOK, { freshToken: true });
+    expect(fresh.items[0].url).toContain('token=NEW');
+    // The refused token is gone from the cache: the next cast of the book takes the new one.
+    expect((await prepareCast(TRACKS, BOOK)).items[0].url).toContain('token=NEW');
+    expect(castToken).toHaveBeenCalledTimes(2);
+  });
+
   it('casts from an address the proxy headers are not for (the home address)', async () => {
     mockConnectionOf.mockReturnValue({
       proxyHeaders: { origin: 'https://away.example', headers: [{ name: 'X-Proxy', value: 'v' }] },

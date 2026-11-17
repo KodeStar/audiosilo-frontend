@@ -3245,6 +3245,14 @@
         "title": "This ebook can't be opened",
         "body": "The file isn't an EPUB AudioSilo can read, or it is damaged."
       },
+      "tooLarge": {
+        "title": "This ebook is too large",
+        "body": "The EPUB is too big for the reader to open on this device. It opens books of up to 512 MB."
+      },
+      "storage": {
+        "title": "Not enough space for the ebook",
+        "body": "This device has no room to save the ebook, so the reader can't open it. Your place in the book is kept. Free up some space, then try again."
+      },
       "missing": {
         "title": "This ebook isn't in the library",
         "body": "The book or its EPUB isn't on the server. It may have been moved or removed, or the link is wrong."

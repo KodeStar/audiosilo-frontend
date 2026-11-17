@@ -1,6 +1,7 @@
 import { t } from 'i18next';
 
 import { networkChecked } from '@/api/address-route';
+import type { ApiClient } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
 import { isReachable, onReconnect } from '@/api/reachability';
 import type { Chapter, Progress } from '@/api/types';
@@ -8,6 +9,7 @@ import { toast } from '@/components/ui/toast';
 import { contradictedTitle } from '@/lib/chapter-label';
 import { contentKeyOf } from '@/lib/content-key';
 import { formatClock } from '@/lib/format';
+import { sharedStart } from '@/lib/shared-start';
 import { onForeground, whenActive } from '@/lib/when-active';
 
 import { selectUndoFor, undoJump, useJumpUndo } from './jump-undo';
@@ -27,6 +29,7 @@ import {
 import {
   holdSaves,
   localMoveCount,
+  type NowPlaying,
   onPickedUpAgain,
   saveLoadedPlace,
   selectBookKey,
@@ -46,8 +49,10 @@ import {
  * - the app comes to the foreground, or the book's server comes back, while the book is
  *   loaded and settled (`paused`/`ready`): never while it has been playing on;
  * - the book plays again after `LONG_PAUSE_MS` of pause, from anywhere (`onPickedUpAgain`,
- *   called before the play's first save): the engine is already playing, so the move comes
- *   as early as the answer does.
+ *   called before the play's first save). A Play press in the app waits up to
+ *   `PICK_UP_WAIT_MS` for the check before the engine starts (fe#158), so no sound of the
+ *   old place comes first; from the lock screen, a headset or the car the engine is already
+ *   playing, so the move comes as early as the answer does.
  * While the check is out the store holds its saves (`holdSaves`), so the stale place is
  * never written; the hold ends with the check, or by itself after 5 seconds.
  *
@@ -262,29 +267,43 @@ function offerHeldSave(save: ProgressSave, row: Progress, mirror: ProgressSave |
   );
 }
 
-let checking = false;
+/** The check that is out, if any: one at a time. */
+let checking: Promise<void> | null = null;
 
 /** The checks' triggers, by name (tests). */
 export type ReconcileReason = 'foreground' | 'reconnect' | 'picked-up';
 
 /** Ask the server about the loaded book and move it if another device moved on. Never
- * throws; resolves once the check is over (moved, stayed, or gave up). */
+ * throws; resolves once the check is over (moved, stayed, or gave up). With a check already
+ * out it resolves with that one: a Play press that waits for its check (`pickUpBeforePlay`)
+ * waits for the one the app coming to the front started just before it. */
 export async function reconcileLoadedPlace(reason: ReconcileReason): Promise<void> {
-  if (checking) return;
+  if (checking) return checking;
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   const bookKey = selectBookKey(player);
   if (!np || !bookKey || player.loadingBook || np.queue.total <= 0) return;
   const { state } = player.snapshot;
-  // Only a book being picked up again: never one that has been playing on.
-  if (reason === 'picked-up' ? state !== 'playing' : state !== 'paused' && state !== 'ready') {
-    return;
-  }
+  // Only a book being picked up again: never one that has been playing on. The store says
+  // when a play is a pick-up (`onPickedUpAgain`), as the engine plays or, for a Play press,
+  // just before it is asked to.
+  const settled = state === 'paused' || state === 'ready';
+  if (reason === 'picked-up' ? state !== 'playing' && !settled : !settled) return;
   const client = resolveClient(np.connectionId);
   // Offline (a downloaded book with its server away): nothing to ask; saves go on.
   if (!client || !isReachable(np.connectionId)) return;
 
-  checking = true;
+  const check = checkLoadedPlace(np, bookKey, client);
+  checking = check;
+  try {
+    await check;
+  } finally {
+    if (checking === check) checking = null;
+  }
+}
+
+/** The check itself (`reconcileLoadedPlace`): never throws. */
+async function checkLoadedPlace(np: NowPlaying, bookKey: string, client: ApiClient): Promise<void> {
   const release = holdSaves();
   const moves = localMoveCount();
   const abort = new AbortController();
@@ -321,7 +340,6 @@ export async function reconcileLoadedPlace(reason: ReconcileReason): Promise<voi
     // Unreachable, refused or too slow: stay where the engine is; the saves go on.
   } finally {
     clearTimeout(timer);
-    checking = false;
     // After a move the other device's place is already saved, and the engine may not
     // have reported the move yet: the next save comes from the engine itself.
     release({ flush: !moved });
@@ -379,34 +397,17 @@ export function undoMove(bookKey: string, from: number): void {
   void player.seekBook(from);
 }
 
-/** How many callers hold the triggers, and their teardown while one does. */
-let holders = 0;
-let teardown: (() => void) | null = null;
-
 /**
  * Start the triggers for the life of the app; returns the release. Shared: the root layout
  * starts them, and so does the car's headless task (a book the car started is picked up from
  * another device's newer place there too). They run once until the last holder releases
  * them: two would race for `onPickedUpAgain`'s one slot, and either's teardown would clear it.
  */
-export function startPlaceReconcile(): () => void {
-  holders++;
-  teardown ??= runPlaceReconcile();
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    holders--;
-    if (holders > 0 || !teardown) return;
-    const stop = teardown;
-    teardown = null;
-    stop();
-  };
-}
+export const startPlaceReconcile = sharedStart(runPlaceReconcile);
 
 function runPlaceReconcile(): () => void {
   const stops: (() => void)[] = [];
-  stops.push(onPickedUpAgain(() => void reconcileLoadedPlace('picked-up')));
+  stops.push(onPickedUpAgain(() => reconcileLoadedPlace('picked-up')));
   // On the foreground, once the address runner has checked the network: a home address
   // checked on the network the device was on before it was suspended goes first.
   stops.push(

@@ -10,6 +10,12 @@ const mockTree = new Map<string, number | 'dir'>();
 type MockOptions = { headers?: Record<string, string>; signal?: AbortSignal; sessionType?: string };
 const mockDownload = jest.fn(async (_url: string, _dest: string, _opts: MockOptions) => 1000);
 const mockBytes = jest.fn(async (_uri: string) => new Uint8Array([97, 98, 99]));
+// When each file was written (its `modificationTime`), and the free space the device reports.
+const mockTimes = new Map<string, number>();
+let mockFree = 10 * 1024 ** 3;
+// The free space as a reading of the tree (a test whose deletions make room), else `mockFree`.
+let mockFreeOf: (() => number) | null = null;
+let mockMoveFails = false;
 jest.mock('expo-crypto', () => ({
   CryptoDigestAlgorithm: { SHA256: 'sha256' },
   digest: (algorithm: string, bytes: Uint8Array) =>
@@ -38,6 +44,9 @@ jest.mock('expo-file-system', () => {
       const v = mockTree.get(this.uri);
       return typeof v === 'number' ? BigInt(v) : null;
     }
+    get modificationTime() {
+      return mockTimes.get(this.uri) ?? null;
+    }
     bytes() {
       return mockBytes(this.uri);
     }
@@ -47,6 +56,7 @@ jest.mock('expo-file-system', () => {
     }
     // Like the native move: a file already at the destination is an error without `overwrite`.
     async move(to: MockFile, opts?: { overwrite?: boolean }) {
+      if (mockMoveFails) throw new Error('Unable to move the file');
       if (!this.exists) throw new Error(`nothing at ${this.uri}`);
       if (to.exists && !opts?.overwrite) throw new Error('Destination already exists');
       mockTree.set(to.uri, mockTree.get(this.uri) as number);
@@ -78,14 +88,31 @@ jest.mock('expo-file-system', () => {
         if (k === this.uri || k.startsWith(`${this.uri}/`)) mockTree.delete(k);
       }
     }
-    // The folder's own entries (a book's folder holds files only).
+    // The folder's own entries: its files, and a folder for each first step below it.
     list() {
-      return [...mockTree.keys()]
-        .filter((k) => k.startsWith(`${this.uri}/`) && !k.slice(this.uri.length + 1).includes('/'))
-        .map((k) => new MockFile(k));
+      const files: MockFile[] = [];
+      const dirs = new Set<string>();
+      for (const [k, v] of mockTree) {
+        if (!k.startsWith(`${this.uri}/`)) continue;
+        const rest = k.slice(this.uri.length + 1);
+        const step = rest.split('/')[0];
+        if (rest.includes('/') || v === 'dir') dirs.add(`${this.uri}/${step}`);
+        else files.push(new MockFile(k));
+      }
+      return [...[...dirs].map((d) => new MockDirectory(d)), ...files];
     }
   }
-  return { File: MockFile, Directory: MockDirectory, Paths: { cache: 'file:///cache' } };
+  return {
+    File: MockFile,
+    Directory: MockDirectory,
+    Paths: {
+      cache: 'file:///cache',
+      totalDiskSpace: 64e9,
+      get availableDiskSpace() {
+        return mockFreeOf ? mockFreeOf() : mockFree;
+      },
+    },
+  };
 });
 const mockRead = jest.fn(async (_uri: string, _o: unknown) => 'QUJD');
 jest.mock('expo-file-system/legacy', () => ({
@@ -95,6 +122,7 @@ jest.mock('expo-file-system/legacy', () => ({
 /* eslint-disable import/first */
 import { ApiError } from '@/api/client';
 
+import { EbookStorageError, EbookTooLargeError, MAX_EBOOK_BYTES } from './ebook-errors';
 import {
   cachedEbookUri,
   chunkReader,
@@ -123,6 +151,10 @@ const files = () => [...mockTree.entries()].filter(([, v]) => v !== 'dir').map((
 
 beforeEach(() => {
   mockTree.clear();
+  mockTimes.clear();
+  mockFree = 10 * 1024 ** 3;
+  mockFreeOf = null;
+  mockMoveFails = false;
   jest.clearAllMocks();
   mockDownload.mockImplementation(async () => 1000);
   mockBytes.mockResolvedValue(new Uint8Array([97, 98, 99]));
@@ -229,6 +261,7 @@ describe('localEbook', () => {
     );
     const first = localEbook(args);
     const second = localEbook(args);
+    await new Promise((r) => setImmediate(r)); // both past the free-space read
     const [[, a], [, b]] = mockDownload.mock.calls;
     expect(a).toMatch(PART);
     expect(b).toMatch(PART);
@@ -274,6 +307,112 @@ describe('localEbook', () => {
     mockDownload.mockImplementation(async () => 0);
     await expect(localEbook(args)).rejects.toThrow('empty');
     expect(files()).toEqual([]);
+  });
+});
+
+describe('localEbook: size, disk and cache (fe#172)', () => {
+  const MB = 1024 * 1024;
+
+  it('refuses a book the server says is over the reader’s size, fetching nothing', async () => {
+    const onFetch = jest.fn();
+    const big = MAX_EBOOK_BYTES + 1;
+    const err = await localEbook({ ...args, size: big, onFetch }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(EbookTooLargeError);
+    expect(mockDownload).not.toHaveBeenCalled();
+    expect(onFetch).not.toHaveBeenCalled();
+  });
+
+  it('refuses a downloaded copy over the reader’s size, by its own length', async () => {
+    mockTree.set(SAVED, MAX_EBOOK_BYTES + 1);
+    await expect(localEbook({ ...args, saved: SAVED })).rejects.toBeInstanceOf(EbookTooLargeError);
+    expect(mockDownload).not.toHaveBeenCalled();
+    // The server's size names nothing here: a copy at the reader's size still opens.
+    mockTree.set(SAVED, MAX_EBOOK_BYTES);
+    await expect(localEbook({ ...args, saved: SAVED })).resolves.toEqual({
+      uri: SAVED,
+      size: MAX_EBOOK_BYTES,
+    });
+  });
+
+  it('drops a fetched copy that came in over the reader’s size', async () => {
+    mockDownload.mockImplementation(async () => MAX_EBOOK_BYTES + 1);
+    await expect(localEbook(args)).rejects.toBeInstanceOf(EbookTooLargeError);
+    expect(files()).toEqual([]);
+  });
+
+  it('says a device with no room before fetching', async () => {
+    mockFree = 999;
+    await expect(localEbook(args)).rejects.toBeInstanceOf(EbookStorageError);
+    // A full disk reads as 0 free, not as unknown.
+    mockFree = 0;
+    await expect(localEbook(args)).rejects.toBeInstanceOf(EbookStorageError);
+    expect(mockDownload).not.toHaveBeenCalled();
+    // Room for it: fetched.
+    mockFree = 1000;
+    await expect(localEbook(args)).resolves.toEqual({ uri: BOOK, size: 1000 });
+  });
+
+  it('says a disk that filled up while fetching, leaving no part', async () => {
+    mockDownload.mockImplementation(async (_url, dest) => {
+      mockTree.set(dest, 500);
+      throw new Error('No space left on device');
+    });
+    await expect(localEbook(args)).rejects.toBeInstanceOf(EbookStorageError);
+    expect(files()).toEqual([]);
+  });
+
+  it('says a cache that could not take the copy, leaving no part', async () => {
+    mockMoveFails = true;
+    await expect(localEbook(args)).rejects.toBeInstanceOf(EbookStorageError);
+    expect(files()).toEqual([]);
+  });
+
+  it('holds the cache to its limit, dropping the copies fetched longest ago', async () => {
+    const other = (n: number) => `file:///cache/reader/c2/1/${pathSlug(`B/${n}`)}/book-1.epub`;
+    // Three other books, 200 MB each, fetched at 1, 2 and 3; this one adds 200 MB more.
+    for (const n of [1, 2, 3]) {
+      mockTree.set(other(n), 200 * MB);
+      mockTimes.set(other(n), n);
+    }
+    mockDownload.mockImplementation(async () => 200 * MB);
+    await localEbook({ ...args, size: 200 * MB });
+    const book = `${FOLDER}/book-${200 * MB}.epub`;
+    // 800 MB over a 512 MB limit: the two oldest go, the newest and this book stay.
+    expect(MAX_EBOOK_BYTES).toBe(512 * MB);
+    expect(files().sort()).toEqual([book, other(3)].sort());
+  });
+
+  it('makes room from its own oldest copies when the device has too little', async () => {
+    const other = (n: number) => `file:///cache/reader/c2/1/${pathSlug(`B/${n}`)}/book-1.epub`;
+    for (const n of [1, 2]) {
+      mockTree.set(other(n), 200 * MB);
+      mockTimes.set(other(n), n);
+    }
+    // 100 MB free while both copies are there; each copy dropped frees its 200 MB.
+    const held = () =>
+      [1, 2].reduce((sum, n) => sum + ((mockTree.get(other(n)) as number) ?? 0), 0);
+    mockFreeOf = () => 500 * MB - held();
+    mockDownload.mockImplementation(async () => 250 * MB);
+    await localEbook({ ...args, size: 250 * MB });
+    // Only the oldest went: 300 MB free was room enough.
+    expect(files().sort()).toEqual([`${FOLDER}/book-${250 * MB}.epub`, other(2)].sort());
+  });
+
+  it('says no room when even its own copies could not make enough', async () => {
+    const old = `file:///cache/reader/c2/1/${pathSlug('Old')}/book-1.epub`;
+    mockTree.set(old, 10 * MB);
+    mockFreeOf = () => (mockTree.has(old) ? 10 * MB : 20 * MB);
+    await expect(localEbook({ ...args, size: 100 * MB })).rejects.toBeInstanceOf(EbookStorageError);
+    expect(mockDownload).not.toHaveBeenCalled();
+  });
+
+  it('keeps the book just fetched even when it alone fills the cache', async () => {
+    const old = `file:///cache/reader/c1/2/${pathSlug('Old')}/book-1.epub`;
+    mockTree.set(old, MB);
+    mockTimes.set(old, 1);
+    mockDownload.mockImplementation(async () => MAX_EBOOK_BYTES);
+    await localEbook({ ...args, size: MAX_EBOOK_BYTES });
+    expect(files()).toEqual([`${FOLDER}/book-${MAX_EBOOK_BYTES}.epub`]);
   });
 });
 

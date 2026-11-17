@@ -25,6 +25,7 @@ import { identityMovePending } from '@/lib/connection-id';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { mapLimit } from '@/lib/map-limit';
 import { canAutoDownload } from '@/lib/network';
+import { sharedStart } from '@/lib/shared-start';
 import { getItem, setItem } from '@/lib/storage';
 import { DOWNLOADS_KEY } from '@/lib/storage-keys';
 import { bookFileSpecs } from '@/playback/book-queue';
@@ -870,8 +871,9 @@ function chaptersRefresh(
  * files take a new order (server v2.4.0 plays them in natural order, "2-" before "10-"):
  * the chapters carry the order every queue over the download plays them in
  * (`bookFileSpecs`, each file found by its path: `localFromManifest`), and `files` itself
- * never moves, since a file's name on disk is its index (`fileName`; `relocateEntry` keeps
- * a saved file's own name, `storedIndex`). A
+ * never moves, since a file's name on disk is the index it was saved under (`fileName`;
+ * `relocateEntry` keeps a saved file's own name, `storedIndex`, and so does a retry,
+ * `retryPlan`). A
  * background answer never does it (`refreshedChapters`): JS cannot see a book the Android
  * service or a Cast receiver holds before it is adopted. Chapters naming other files
  * change nothing.
@@ -967,14 +969,17 @@ function withServedChapters(manifest: DownloadManifest, fresh: ChaptersResponse)
  * server gives (any screen's fetch, the play and download paths) for a downloaded book
  * replaces its saved copy when `refreshedChapters` allows. The cache already holds that
  * answer, so there is nothing to seed. A queue already playing keeps its chapters until
- * the book is next started. Returns the unsubscribe (started once from the root layout).
+ * the book is next started. Returns the unsubscribe; shared (`sharedStart`) by the root
+ * layout and the car's stack (fe#158).
  *
  * The answers the cache already holds when it starts are taken too: the web starts it
  * after the first paint (`root-services.web.tsx`), when a screen's answer can have landed
  * already. Native starts it before any fetch, where the cache holds at most the store's
  * own seeds, which are the manifests' chapters and so change nothing.
  */
-export function startChapterRefresh(): () => void {
+export const startChapterRefresh = sharedStart(runChapterRefresh);
+
+function runChapterRefresh(): () => void {
   for (const entry of Object.values(useDownloads.getState().entries)) {
     if (entry.status !== 'downloaded') continue;
     const manifest = withCachedChapters(entry, entry.manifest);
@@ -1011,8 +1016,8 @@ const readalongTried = new Set<string>();
  * the map again when its `readalong.generated_at` is not the one the download keeps, and
  * drops the kept one when the server has no ready map any more, unless a stale one still fits
  * the download's EPUB (`readalongChange`; only from a server that serves maps, so an older one
- * never drops anything). Returns the unsubscribe
- * (started once from the root layout).
+ * never drops anything). Returns the unsubscribe; shared (`sharedStart`) by the root layout
+ * and the car's stack (fe#158).
  *
  * The answers the cache already holds when it starts, and when the launch's `hydrate` has
  * read the registry, are taken too (as `startChapterRefresh` and `withCachedChapters` do):
@@ -1020,7 +1025,9 @@ const readalongTried = new Set<string>();
  * The store's own seeds name the map the download keeps (`namingReadalong`), so they change
  * nothing but a map the download could not fetch, which is tried again (`readalongTried`).
  */
-export function startReadalongRefresh(): () => void {
+export const startReadalongRefresh = sharedStart(runReadalongRefresh);
+
+function runReadalongRefresh(): () => void {
   readalongRefreshOn = true;
   refreshCachedReadalongs(Object.values(useDownloads.getState().entries));
   const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
@@ -1447,9 +1454,47 @@ function savedIndex(f: DownloadedFile, k: number): number {
   return storedIndex(f.localUri) ?? k;
 }
 
-/** The files of `earlier` (a failed attempt's) saved under index `from` or later. */
-function savedFrom(earlier: readonly DownloadedFile[], from: number): DownloadedFile[] {
-  return earlier.filter((f, k) => savedIndex(f, k) >= from);
+/**
+ * How a retry reuses the files an earlier attempt saved (`earlier`), by path (fe#158): a file
+ * the book still lists is taken wherever it now is in the list, under the name it was saved
+ * by, so a server list that gained, lost or reordered a file fetches only the files that are
+ * new. Each file the retry still has to fetch gets a name no kept file holds: its index when
+ * that is free, else the next free number past the list (`storedIndex` reads either). `kept`
+ * is the earlier file for a path, `nameFor` the name to fetch a path into, and `notReached`
+ * the kept files of the paths not handled yet (listed while the retry runs, and kept by a
+ * failure).
+ */
+function retryPlan(
+  earlier: readonly DownloadedFile[],
+  paths: readonly string[],
+): {
+  kept: (path: string) => DownloadedFile | undefined;
+  nameFor: (index: number, path: string) => string;
+  notReached: (handled: ReadonlySet<string>) => DownloadedFile[];
+} {
+  const listed = new Set(paths);
+  const byPath = new Map<string, DownloadedFile>();
+  // The names a kept file holds, by the index its name says: never fetched over.
+  const held = new Map<number, string>();
+  earlier.forEach((f, k) => {
+    if (!listed.has(f.relPath) || byPath.has(f.relPath)) return;
+    byPath.set(f.relPath, f);
+    held.set(savedIndex(f, k), f.relPath);
+  });
+  let spare = Math.max(paths.length, ...[...held.keys()].map((i) => i + 1));
+  return {
+    kept: (path) => byPath.get(path),
+    nameFor: (index, path) => {
+      // Its own name is free to write over (the file is gone, or the fetch replaces it).
+      const owner = held.get(index);
+      if (owner === undefined || owner === path) return fileName(index, path);
+      while (held.has(spare)) spare++;
+      const name = fileName(spare, path);
+      held.set(spare++, path);
+      return name;
+    },
+    notReached: (handled) => [...byPath.values()].filter((f) => !handled.has(f.relPath)),
+  };
 }
 
 async function runQueue() {
@@ -1532,12 +1577,18 @@ async function runOne(key: string) {
   // The files that finished, so a failure can keep them, and how many there are.
   const files: DownloadedFile[] = [];
   let fileCount = 0;
-  // Files a failed attempt already finished, each counted only for the index it was saved
-  // under (`savedIndex`), since a download of the index writes over it.
+  // Files a failed attempt already finished, reused by path (`retryPlan`), and the paths this
+  // attempt has handled (kept, fetched, or being fetched).
   const earlier = entry.manifest.files;
+  let plan: ReturnType<typeof retryPlan> | null = null;
+  const handled = new Set<string>();
   try {
     const specs = bookFileSpecs(entry.manifest.book, entry.manifest.chapters ?? undefined);
     fileCount = specs.length;
+    plan = retryPlan(
+      earlier,
+      specs.map((s) => s.path),
+    );
     // The ebook (Bridge Phase 3b-2) is one more step after the audio, and its size counts in
     // the total: 100% is the whole download, and the bytes kept include it. So is the
     // read-along map the book will likely take (its size counts once it is in, fe#193).
@@ -1589,7 +1640,8 @@ async function runOne(key: string) {
     };
     for (let i = 0; i < specs.length; i++) {
       const s = specs[i];
-      const done = earlier.find((f, k) => f.relPath === s.path && savedIndex(f, k) === i);
+      handled.add(s.path);
+      const done = plan.kept(s.path);
       if (done && (await engine.fileExists(done.localUri))) {
         files.push(done);
         priorBytes += done.bytes ?? s.size;
@@ -1602,7 +1654,7 @@ async function runOne(key: string) {
         connectionId,
         libraryId,
         path,
-        fileName(i, s.path),
+        plan.nameFor(i, s.path),
         fileUrl,
         (bytesWritten, totalBytes) => {
           curBytes = bytesWritten;
@@ -1614,15 +1666,15 @@ async function runOne(key: string) {
       priorBytes += curBytes;
       files.push({ relPath: s.path, localUri, bytes: curBytes });
       // List each finished file as it lands, so a download the app is closed in the
-      // middle of keeps them across the restart (`reviveEntry`). Files a failed attempt
-      // saved under a later index stay listed (the name on disk is the index).
+      // middle of keeps them across the restart (`reviveEntry`). Kept files of the paths
+      // not reached yet stay listed (`retryPlan` never fetches over them).
       const cur = useDownloads.getState().entries[key];
       if (cur && live()) {
         patchEntry(key, {
           bytes: priorBytes,
           totalBytes: knownTotal,
           progress: (i + 1) / steps,
-          manifest: { ...cur.manifest, files: [...files, ...savedFrom(earlier, files.length)] },
+          manifest: { ...cur.manifest, files: [...files, ...plan.notReached(handled)] },
         });
         persistSoon();
       }
@@ -1729,10 +1781,10 @@ async function runOne(key: string) {
     } else if (live()) {
       // Keep the files that finished: a retry skips them, so a failure 41% through a
       // multi-file book doesn't throw that 41% away. (The one being written is partial,
-      // and is written over by the retry.) So are the files an earlier attempt saved
-      // further on, which this one never reached (a download with a file gone, fe#158: a
-      // retry that fails on the gone file must not unlist the rest).
-      const held = [...files, ...savedFrom(earlier, files.length + 1)];
+      // and is written over by the retry.) So are the files an earlier attempt saved for
+      // the paths this one never reached (a download with a file gone, fe#158: a retry that
+      // fails on the gone file must not unlist the rest).
+      const held = [...files, ...(plan ? plan.notReached(handled) : earlier)];
       const kept = fileCount > 0 ? Math.min(1, held.length / fileCount) : 0;
       const failure: DownloadFailure = { ...classifyDownloadError(e), kept };
       const cur = useDownloads.getState().entries[key];

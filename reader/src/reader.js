@@ -27,7 +27,7 @@ import * as CFI from '../vendor/foliate-js/epubcfi.js';
 import { Overlayer } from '../vendor/foliate-js/overlayer.js';
 import { View } from '../vendor/foliate-js/view.js';
 
-import { ChunkError, createAssembly, createTextAssembly } from './chunks.js';
+import { ChunkError, createAssembly, createTextAssembly, TooLargeError } from './chunks.js';
 import { BookError, openEpub } from './epub-open.js';
 import { createReadalong } from './readalong.js';
 import { guardRender } from './render-guard.js';
@@ -332,29 +332,41 @@ async function goToStart() {
 
 /** The book arriving in chunks (native), from its `open` until its last `chunk`. */
 let incoming = null;
+/** The transfer was refused (its `open`, or a chunk): the chunks still on their way are
+ * dropped unheard, so the refusal said once (`tooLarge`) is not followed by an
+ * `unreadable` for each of them, which the screen would show instead. */
+let refused = false;
 
 /** Native: `open` announces the book (size, chunk count) and the chunks follow. A transfer
- * that goes wrong in any way is the book being unreadable, never a half-open book. */
+ * that goes wrong in any way is the book being unreadable, never a half-open book; one over
+ * the size the reader takes, or whose buffer could not be allocated (a RangeError), is said
+ * as `tooLarge` (fe#172). */
 function beginTransfer(msg) {
   incoming = null;
+  refused = false;
   setAppearance(msg);
   setBusy(true);
   try {
     incoming = { msg, assembly: createAssembly(msg.size, msg.chunks) };
   } catch (err) {
+    refused = true;
     setBusy(false);
-    report('unreadable', err);
+    report(
+      err instanceof TooLargeError || err instanceof RangeError ? 'tooLarge' : 'unreadable',
+      err,
+    );
   }
 }
 
 function receiveChunk(msg) {
-  if (!incoming) return report('unreadable', 'no book was announced');
+  if (!incoming) return refused ? undefined : report('unreadable', 'no book was announced');
   const { msg: announced, assembly } = incoming;
   let bytes;
   try {
     bytes = assembly.add(msg.seq, msg.data);
   } catch (err) {
     incoming = null;
+    refused = true;
     setBusy(false);
     return report('unreadable', err);
   }

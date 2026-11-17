@@ -9,6 +9,7 @@ import { resolveClient } from '@/api/connection-clients';
 import { cachedCapability } from '@/api/hooks';
 import type { CoverSize } from '@/api/types';
 import { resolveConnectionId } from '@/lib/connection-id';
+import { sharedStart } from '@/lib/shared-start';
 import { onForeground } from '@/lib/when-active';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { type NowPlaying, selectCurrentChapter, usePlayer } from '@/playback/store';
@@ -422,12 +423,15 @@ export async function prepareCovers(dir: Directory, np: NowPlaying): Promise<Cov
 }
 
 /**
- * Start the sync (one call, from the root layout). A no-op on a binary built without
+ * Start the sync: shared (`sharedStart`) by the root layout and the car's stack, so a
+ * CarPlay-first launch keeps the widget current too (fe#158). A no-op on a binary built without
  * the ExpoWidgets module: the JS bundle can be newer than the installed app, and
  * importing expo-widgets there would throw at load, so it is required lazily behind the
  * native module check.
  */
-export function startWidgetSync(): () => void {
+export const startWidgetSync = sharedStart(runWidgetSyncNow);
+
+function runWidgetSyncNow(): () => void {
   if (!requireOptionalNativeModule('ExpoWidgets')) return () => {};
   try {
     /* eslint-disable @typescript-eslint/no-require-imports -- lazy: see above */

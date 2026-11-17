@@ -164,7 +164,7 @@ function EndCreditsBody({
   const [cancelled, setCancelled] = useState(false);
   // Play now (or the countdown) is starting the next book.
   const [starting, setStarting] = useState(false);
-  // The book ended under the listener's sleep timer (`BookEndedListener`): that end is
+  // The book ended under the listener's sleep timer (`startBookEndWatch`): that end is
   // where the timer stopped the night, so the countdown never starts the next book for a
   // listener who is asleep. Play now still does.
   const sleptThrough = useAutoPlayHold((s) => s.key === contentKey(cid, libraryId, path));

@@ -451,7 +451,7 @@ describe('EndCredits', () => {
     });
     await mount();
     expect(screen.getByText('Starting in 10s')).toBeTruthy();
-    // The end, as BookEndedListener handles it: the hold for this book, then finishBook.
+    // The end, as startBookEndWatch handles it: the hold for this book, then finishBook.
     await act(async () => {
       useAutoPlayHold.setState({ key: contentKey('c1', 1, PATH) });
       setPlayer({ nowPlaying: null, snapshot: { state: 'idle' } });

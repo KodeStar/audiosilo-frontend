@@ -1,6 +1,7 @@
 import { networkChecked } from '@/api/address-route';
 import { sessionReady } from '@/api/connection-clients';
 import { onReconnect } from '@/api/reachability';
+import { sharedStart } from '@/lib/shared-start';
 import { onForeground } from '@/lib/when-active';
 import { useSession } from '@/stores/session';
 
@@ -18,23 +19,7 @@ import { cutListeningSpanNow } from './store';
  * Shared like the place reconcile: the root layout starts it and so does the car's headless
  * task; it runs once until the last holder releases it.
  */
-let holders = 0;
-let teardown: (() => void) | null = null;
-
-export function startListeningSync(): () => void {
-  holders++;
-  teardown ??= runListeningSync();
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    holders--;
-    if (holders > 0 || !teardown) return;
-    const stop = teardown;
-    teardown = null;
-    stop();
-  };
-}
+export const startListeningSync = sharedStart(runListeningSync);
 
 function runListeningSync(): () => void {
   const stops: (() => void)[] = [];

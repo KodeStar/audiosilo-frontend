@@ -21,6 +21,24 @@ jest.mock('@/playback/place-reconcile', () => ({
 jest.mock('@/playback/listening-sync', () => ({
   startListeningSync: jest.fn(() => () => undefined),
 }));
+// The session's work the root layout would do (fe#158): recorded by name.
+function mockStarted(name: string) {
+  return jest.fn(() => {
+    calls.push(name);
+    return () => undefined;
+  });
+}
+jest.mock('@/components/player/book-ended-listener', () => ({
+  startBookEndWatch: mockStarted('bookEnd'),
+}));
+jest.mock('@/downloads/keep-ahead-controller', () => ({
+  startKeepAhead: mockStarted('keepAhead'),
+}));
+jest.mock('@/downloads/store', () => ({
+  startChapterRefresh: mockStarted('chapters'),
+  startReadalongRefresh: mockStarted('readalong'),
+}));
+jest.mock('@/widgets/widget-sync', () => ({ startWidgetSync: mockStarted('widget') }));
 jest.mock('./car-controller', () => ({
   startCarSync: jest.fn(() => {
     calls.push('start');
@@ -58,6 +76,9 @@ import { usePlayer } from '@/playback/store';
 import { CAR_TASK_IDLE_MS, runCarTask, untilIdle } from './car-task';
 /* eslint-enable import/first */
 
+/** The session's work a car-only session starts (fe#158), in order. */
+const SESSION = ['bookEnd', 'keepAhead', 'chapters', 'readalong', 'widget'];
+
 const setState = (state: string) =>
   (usePlayer as unknown as { setState: (s: object) => void }).setState({ snapshot: { state } });
 
@@ -78,14 +99,14 @@ afterEach(() => {
 });
 
 describe('runCarTask', () => {
-  it('boots (the language among the launch steps), starts the address pick, the place reconcile and the car sync, then ends once idle (never stopping them)', async () => {
+  it('boots (the language among the launch steps), starts the address pick, the place reconcile, the session work and the car sync, then ends once idle (never stopping them)', async () => {
     setState('playing');
     let done = false;
     const task = runCarTask().then(() => {
       done = true;
     });
     await flush();
-    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', 'start', 'ready']);
+    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', ...SESSION, 'start', 'ready']);
     await jest.advanceTimersByTimeAsync(CAR_TASK_IDLE_MS * 2);
     expect(done).toBe(false); // still playing
     setState('paused');
@@ -123,7 +144,7 @@ describe('startCarWork (iOS: the car start without the React tree)', () => {
   it('runs the launch steps, the address pick, the place reconcile and the car sync, never stopping them', async () => {
     const startCarWork = freshStart();
     await startCarWork();
-    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', 'start']);
+    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', ...SESSION, 'start']);
     expect(mockStop).not.toHaveBeenCalled();
   });
 
@@ -131,7 +152,7 @@ describe('startCarWork (iOS: the car start without the React tree)', () => {
     const startCarWork = freshStart();
     await Promise.all([startCarWork(), startCarWork()]);
     await startCarWork();
-    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', 'start']);
+    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', ...SESSION, 'start']);
   });
 
   it('tries again on the next connect after a start that failed', async () => {
@@ -149,7 +170,7 @@ describe('startCarWork (iOS: the car start without the React tree)', () => {
     });
     await expect(startCarWork()).rejects.toThrow('boom');
     await startCarWork();
-    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', 'bootstrap', 'start']);
+    expect(calls).toEqual(['bootstrap', 'routing', 'reconcile', ...SESSION, 'bootstrap', 'start']);
   });
 });
 

@@ -16,6 +16,7 @@ import { queryClient } from '@/api/provider';
 import { contentKeyOf } from '@/lib/content-key';
 import { canAutoDownload, onNetworkChange } from '@/lib/network';
 import { bookTitle } from '@/lib/paths';
+import { sharedStart } from '@/lib/shared-start';
 import { resolveNextBook } from '@/playback/next-book';
 import { usePlayer } from '@/playback/store';
 import { finishedKeys } from '@/playback/up-next-sources';
@@ -292,8 +293,12 @@ function settingsSignature(): string {
  * registry (a book finished downloading or was removed), the Up next queue (any read or
  * write of it), or the network (native: Wi-Fi coming back). Each change re-arms one
  * `SETTLE_MS` timer; a change during a run plans again once it ends. Returns a teardown.
+ * Shared (`sharedStart`): the root layout starts it, and so does the car's stack, so a book
+ * started only from the car still gets the next ones ready (fe#158).
  */
-export function startKeepAhead(): () => void {
+export const startKeepAhead = sharedStart(runKeepAheadController);
+
+function runKeepAheadController(): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let running = false;
   let again = false;

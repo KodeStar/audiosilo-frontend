@@ -43,6 +43,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { canRead } from './can-read';
+import { EbookStorageError, EbookTooLargeError } from './ebook-errors';
 import { hasLocalEbook } from './ebook-file';
 import { useNarration } from './narration';
 import { FollowPill, followPillRoom, PageEdges, turnPage, usePageEdges } from './page-edge';
@@ -77,18 +78,29 @@ const SPINNER_DELAY_MS = 300;
 
 /** Why the reader shows a message instead of the book. `signedOut`: the server refused the
  * session (a 401), shown as the sign-in state with Reconnect while the connection needs
- * signing in again; `section`: a part of the open book did not load. */
+ * signing in again; `section`: a part of the open book did not load; `tooLarge`: the EPUB is
+ * over the size the app's reader takes; `storage`: the device had no room for it, or its
+ * cache could not be written (fe#172). */
 type ReaderFailure =
-  'drm' | 'unreadable' | 'missing' | 'fetch' | 'start' | 'noEbook' | 'signedOut' | 'section';
+  | 'drm'
+  | 'unreadable'
+  | 'tooLarge'
+  | 'storage'
+  | 'missing'
+  | 'fetch'
+  | 'start'
+  | 'noEbook'
+  | 'signedOut'
+  | 'section';
 
-/** The failures Try again can mend. */
-const RETRYABLE: readonly ReaderFailure[] = ['fetch', 'start', 'section'];
+/** The failures Try again can mend (`storage` once there is room). */
+const RETRYABLE: readonly ReaderFailure[] = ['fetch', 'start', 'section', 'storage'];
 
 type Place = { cfi: string; fraction: number; sectionLabel: string };
 
 /** Why loading failed, as the reader says it: the reader document never started, the
- * sign-in ended, the book is gone, or the server gave no answer (for the book, or where it
- * opens). */
+ * sign-in ended, the book is gone, it is too large for the reader, the device could not keep
+ * it, or the server gave no answer (for the book, or where it opens). */
 const loadFailure = (e: unknown): ReaderFailure =>
   e instanceof ReaderStartError
     ? 'start'
@@ -96,7 +108,11 @@ const loadFailure = (e: unknown): ReaderFailure =>
       ? 'signedOut'
       : e instanceof ApiError && e.status === 404
         ? 'missing'
-        : 'fetch';
+        : e instanceof EbookTooLargeError
+          ? 'tooLarge'
+          : e instanceof EbookStorageError
+            ? 'storage'
+            : 'fetch';
 
 /**
  * The ebook reader (Bridge Phase 3b, the `/read` root modal): a top bar (close, the

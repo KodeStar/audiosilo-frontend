@@ -81,10 +81,11 @@ export type ReadalongState = { state: 'ok' | 'none'; unresolved: number };
 
 export type TocEntry = { label: string; href: string; depth: number };
 
-/** `drm`: the book is encrypted; `unreadable`: not an EPUB, or a damaged one (both shown);
- * `section`: a part of the open book failed to load (shown, with Try again); `runtime`:
- * anything else that went wrong after opening (logged). */
-const READER_ERROR_CODES = ['drm', 'unreadable', 'section', 'runtime'] as const;
+/** `drm`: the book is encrypted; `unreadable`: not an EPUB, or a damaged one; `tooLarge`:
+ * the app's transfer is over the reader's size, or its buffer could not be allocated (all
+ * three shown); `section`: a part of the open book failed to load (shown, with Try again);
+ * `runtime`: anything else that went wrong after opening (logged). */
+const READER_ERROR_CODES = ['drm', 'unreadable', 'tooLarge', 'section', 'runtime'] as const;
 export type ReaderErrorCode = (typeof READER_ERROR_CODES)[number];
 
 export type ReaderMessage =

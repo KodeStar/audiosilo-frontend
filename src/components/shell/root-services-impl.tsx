@@ -4,7 +4,7 @@ import { startAddressRouting } from '@/api/address-runner';
 import { startCarSync } from '@/car/car-controller';
 import { startCastSync } from '@/cast/cast-session';
 import { LibrivoxFetchWatcher } from '@/components/librivox/fetch-watcher';
-import { BookEndedListener } from '@/components/player/book-ended-listener';
+import { BookEndedRoute, startBookEndWatch } from '@/components/player/book-ended-listener';
 import { CompanionRevealListener } from '@/components/player/companion/reveal-listener';
 import { ShakeToExtendListener } from '@/components/player/shake-to-extend-listener';
 import { startKeepAhead } from '@/downloads/keep-ahead-controller';
@@ -26,6 +26,9 @@ import { startWidgetSync } from '@/widgets/widget-sync';
  */
 export function startRootServices({ late = false }: { late?: boolean } = {}): () => void {
   const stops = [
+    // The end-of-book flow when a book reaches its natural end: marked finished, off Up
+    // next, the next book or the end credits; see the module (the car's stack starts it too).
+    startBookEndWatch(),
     // The nightly auto sleep timer: it must arm for a book started from the mini player,
     // the library, or a lock-screen play.
     startAutoSleep(),
@@ -83,8 +86,8 @@ export function startRootServices({ late = false }: { late?: boolean } = {}): ()
 }
 
 /**
- * The root's listeners, which render nothing: the end-of-book flow when a book reaches its
- * natural end (root-level so it covers every layout); "New in Who's who" wherever the
+ * The root's listeners, which render nothing: the route the end-of-book flow opens the
+ * credits from (root-level so it covers every layout); "New in Who's who" wherever the
  * listener is when the playing book crosses into a chapter that introduces someone; and a
  * shake that keeps the listener going while the phone is locked and no player screen is
  * mounted; and the LibriVox fetches Find on LibriVox follows, whose end reads the Library
@@ -93,7 +96,7 @@ export function startRootServices({ late = false }: { late?: boolean } = {}): ()
 export function RootListeners() {
   return (
     <>
-      <BookEndedListener />
+      <BookEndedRoute />
       <CompanionRevealListener />
       <ShakeToExtendListener />
       <LibrivoxFetchWatcher />

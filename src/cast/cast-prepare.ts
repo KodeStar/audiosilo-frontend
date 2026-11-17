@@ -28,8 +28,13 @@ export class CastBlockedError extends Error {
 export type PreparedCast = { items: CastItem[] };
 
 /** Turns a book's tracks into the receiver's queue (see `prepareCast`). Injected into the
- * cast engine so its tests need no server. */
-export type PrepareCast = (tracks: PlaybackTrack[], book: BookRef) => Promise<PreparedCast>;
+ * cast engine so its tests need no server. `freshToken`: mint a new cast token instead of
+ * the cached one (the receiver was refused with it). */
+export type PrepareCast = (
+  tracks: PlaybackTrack[],
+  book: BookRef,
+  opts?: { freshToken?: boolean },
+) => Promise<PreparedCast>;
 
 /**
  * The receiver's queue for a book, built from the same tracks the store loads: the book's
@@ -42,7 +47,7 @@ export type PrepareCast = (tracks: PlaybackTrack[], book: BookRef) => Promise<Pr
  * Rejects with `CastBlockedError` when the book can't be cast, and with the server's error
  * when the token can't be minted.
  */
-export const prepareCast: PrepareCast = async (tracks, book) => {
+export const prepareCast: PrepareCast = async (tracks, book, opts) => {
   const client = resolveClient(book.connectionId);
   if (!client) throw new CastBlockedError('no-connection');
   let caps: Capabilities | undefined;
@@ -67,7 +72,7 @@ export const prepareCast: PrepareCast = async (tracks, book) => {
   const transcode =
     !!source && caps?.transcode === true && castNeedsTranscode(source.book, source.chapters);
   const token = await castTokens
-    .get(client, book.connectionId, book.libraryId, book.path)
+    .get(client, book.connectionId, book.libraryId, book.path, { fresh: opts?.freshToken })
     .catch((e: unknown) => {
       throw apiErrorKind(e) === 'not_a_book' ? new CastBlockedError('episode') : e;
     });

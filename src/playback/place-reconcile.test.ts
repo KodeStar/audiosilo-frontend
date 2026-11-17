@@ -157,7 +157,14 @@ import { queryClient } from '@/api/provider';
 
 import { resetOutboxForTests } from './listening-outbox';
 import { OFFER_REPEAT_MS, offerOf, placeToMoveTo, startPlaceReconcile } from './place-reconcile';
-import { LONG_PAUSE_MS, selectBookPosition, selectIsPlaying, usePlayer } from './store';
+import {
+  LONG_PAUSE_MS,
+  PICK_UP_WAIT_MS,
+  selectBookPosition,
+  selectIsPlaying,
+  selectIsTransportLive,
+  usePlayer,
+} from './store';
 /* eslint-enable import/first */
 
 const BOOK: Book = {
@@ -316,7 +323,7 @@ describe('a loaded book another device has moved on', () => {
   it("the stale engine place never overwrites the other device's save", async () => {
     await loadedAndPaused();
     jest.advanceTimersByTime(LONG_PAUSE_MS);
-    await usePlayer.getState().toggle();
+    // A lock-screen play: the engine plays before the check can answer.
     pushSnapshot(snap('playing', 106)); // auto-rewind and a second at the old place
     await usePlayer.getState().setRate(1.2); // a save while the check is out
     await settle();
@@ -325,6 +332,174 @@ describe('a loaded book another device has moved on', () => {
     await settle();
     expect(saved().length).toBeGreaterThan(0);
     expect(saved().every((p) => p >= 400)).toBe(true);
+  });
+
+  describe('a Play press waits for the check before the engine starts (fe#158)', () => {
+    const order = (fn: unknown) => (fn as jest.Mock).mock.invocationCallOrder[0];
+
+    it('moves to the newer place before any of the old place sounds', async () => {
+      await loadedAndPaused();
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      await usePlayer.getState().toggle();
+      expect(seeks()).toEqual([400]);
+      expect(mockSvc.play).toHaveBeenCalledTimes(1);
+      expect(order(mockSvc.seekTo)).toBeLessThan(order(mockSvc.play));
+      // The play that follows is no second pick-up.
+      pushSnapshot(snap('playing', 400));
+      await settle();
+      expect(mockClient.getProgress).toHaveBeenCalledTimes(1);
+    });
+
+    it('a slow check waits no longer than PICK_UP_WAIT_MS, then moves once it answers', async () => {
+      await loadedAndPaused();
+      let answer: (p: Progress) => void = () => {};
+      mockServer = () => new Promise((resolve) => (answer = resolve));
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      const press = usePlayer.getState().toggle();
+      await settle();
+      expect(mockSvc.play).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(PICK_UP_WAIT_MS);
+      await press;
+      expect(mockSvc.play).toHaveBeenCalledTimes(1);
+      expect(seeks()).toEqual([]);
+      pushSnapshot(snap('playing', 106));
+      answer(record());
+      await settle();
+      expect(seeks()).toEqual([400]);
+    });
+
+    it('waits for a check already out (the app just came to the front), not past it', async () => {
+      await loadedAndPaused();
+      let answer: (p: Progress) => void = () => {};
+      mockServer = () => new Promise((resolve) => (answer = resolve));
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      await backInFront();
+      expect(mockClient.getProgress).toHaveBeenCalledTimes(1);
+      const press = usePlayer.getState().toggle();
+      await settle();
+      expect(mockSvc.play).not.toHaveBeenCalled();
+      answer(record());
+      await press;
+      // One check, and the move it made came before the engine was asked to play.
+      expect(mockClient.getProgress).toHaveBeenCalledTimes(1);
+      expect(seeks()).toEqual([400]);
+      expect(mockSvc.play).toHaveBeenCalledTimes(1);
+      expect(order(mockSvc.seekTo)).toBeLessThan(order(mockSvc.play));
+    });
+
+    it('a pause while it waits stands: the engine never starts', async () => {
+      await loadedAndPaused();
+      let answer: (p: Progress) => void = () => {};
+      mockServer = () => new Promise((resolve) => (answer = resolve));
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      const press = usePlayer.getState().toggle();
+      await settle();
+      await usePlayer.getState().pause();
+      answer(record({ device_id: 'this-device' }));
+      await press;
+      expect(mockSvc.play).not.toHaveBeenCalled();
+    });
+
+    it('a press paused while it waited leaves the book paused from then: the next long pause is a pick-up', async () => {
+      await loadedAndPaused();
+      let answer: (p: Progress) => void = () => {};
+      mockServer = () => new Promise((resolve) => (answer = resolve));
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      const press = usePlayer.getState().toggle();
+      await settle();
+      await usePlayer.getState().pause();
+      answer(record({ device_id: 'this-device' }));
+      await press;
+      await settle();
+      expect(mockClient.getProgress).toHaveBeenCalledTimes(1);
+      // Another long pause, then Play: the check runs again before the engine starts.
+      mockServer = async () => record();
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      await usePlayer.getState().toggle();
+      expect(mockClient.getProgress).toHaveBeenCalledTimes(2);
+      expect(seeks()).toEqual([400]);
+      expect(mockSvc.play).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows the loading state while it waits, and a second tap there pauses: the old place never plays', async () => {
+      await loadedAndPaused();
+      let answer: (p: Progress) => void = () => {};
+      mockServer = () => new Promise((resolve) => (answer = resolve));
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      const press = usePlayer.getState().toggle();
+      await settle();
+      expect(usePlayer.getState().snapshot.state).toBe('loading');
+      // The control is a spinner now: callers that play only a book not live leave it be.
+      expect(selectIsTransportLive(usePlayer.getState())).toBe(true);
+      // A second tap on the control is a tap on the spinner: the start is called off, and
+      // the control is Play again at once, before the check answers.
+      await usePlayer.getState().toggle();
+      expect(usePlayer.getState().snapshot.state).toBe('paused');
+      answer(record());
+      await press;
+      await settle();
+      expect(mockSvc.play).not.toHaveBeenCalled();
+      expect(usePlayer.getState().snapshot.state).toBe('paused');
+    });
+
+    it('a press while the wait is out waits for the same check, then plays the newer place', async () => {
+      await loadedAndPaused();
+      let answer: (p: Progress) => void = () => {};
+      mockServer = () => new Promise((resolve) => (answer = resolve));
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      const first = usePlayer.getState().toggle();
+      await settle();
+      await usePlayer.getState().pause();
+      // Play again before the check answers: it waits for that check, not past it.
+      const again = usePlayer.getState().toggle();
+      await settle();
+      expect(usePlayer.getState().snapshot.state).toBe('loading');
+      expect(mockSvc.play).not.toHaveBeenCalled();
+      answer(record());
+      await Promise.all([first, again]);
+      expect(mockClient.getProgress).toHaveBeenCalledTimes(1);
+      expect(seeks()).toEqual([400]);
+      expect(mockSvc.play).toHaveBeenCalledTimes(1);
+      expect(order(mockSvc.seekTo)).toBeLessThan(order(mockSvc.play));
+    });
+
+    it('a press reaching the store while it waits (a stale caller) starts nothing of its own', async () => {
+      await loadedAndPaused();
+      let answer: (p: Progress) => void = () => {};
+      mockServer = () => new Promise((resolve) => (answer = resolve));
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      const first = usePlayer.getState().toggle();
+      await settle();
+      // A caller that read the book as paused before the wait began.
+      usePlayer.setState({ snapshot: { ...usePlayer.getState().snapshot, state: 'paused' } });
+      const second = usePlayer.getState().toggle();
+      await settle();
+      expect(mockSvc.play).not.toHaveBeenCalled();
+      answer(record());
+      await Promise.all([first, second]);
+      expect(seeks()).toEqual([400]);
+      expect(mockSvc.play).toHaveBeenCalledTimes(1);
+      expect(order(mockSvc.seekTo)).toBeLessThan(order(mockSvc.play));
+    });
+
+    it('in the background nothing waits: the check runs once the engine plays', async () => {
+      await loadedAndPaused();
+      Object.defineProperty(AppState, 'currentState', {
+        get: () => 'background',
+        configurable: true,
+      });
+      mockServer = () => new Promise(() => {});
+      jest.advanceTimersByTime(LONG_PAUSE_MS);
+      await usePlayer.getState().toggle();
+      expect(mockSvc.play).toHaveBeenCalledTimes(1);
+      expect(mockClient.getProgress).not.toHaveBeenCalled();
+      pushSnapshot(snap('playing', 105));
+      await settle();
+      expect(mockClient.getProgress).toHaveBeenCalledTimes(1);
+      // The check gives up, so the next test starts with none out.
+      jest.advanceTimersByTime(5_000);
+      await settle();
+    });
   });
 
   it("on the app coming back, asks the server only after the address runner's network check", async () => {

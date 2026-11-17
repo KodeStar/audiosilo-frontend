@@ -838,7 +838,7 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   while the fetch is still `starting` (`isEpisodeFetchStarting`: a Cancel or another start wins).
   While it is on its way the full player shows `EpisodeFetchPanel` and the dock / mini player an
   `EpisodeFetchStrip`; the book playing meanwhile plays on (decision 6.4).
-- **What episodes never do**: open the end credits (`BookEndedListener` leaves Up next and, with
+- **What episodes never do**: open the end credits (`startBookEndWatch` leaves Up next and, with
   auto-play, starts Up next's head only, never the series or folder), cast (`castButtonModel`'s
   `episode`), Send to watch (the tile menu leaves it out), or keep-ahead (it plans books only).
   Kids mode shows no podcast library (decision 6.2) and lists no downloaded episode
@@ -992,8 +992,19 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   waits days for a connection, so an offline open would spin), then moves it over the cache
   file (`overwrite: true`) and drops the folder's other files except live parts. A server
   refusal becomes its `ApiError` status (`classifyDownloadError`); a failed or aborted fetch
-  leaves no part. A removed connection drops its cache (`clearEbookCache`, from
-  `reading-progress`'s `onConnectionRemoved`). Downloads save the EPUB as `book.epub` beside
+  leaves no part. Sizes and storage have their own failures (fe#172, `ebook-errors.ts`): a book
+  over `MAX_EBOOK_BYTES` (512 MB, the reader document's `MAX_BOOK_BYTES`, which a test keeps in
+  step) is `EbookTooLargeError`, by the server's size before any fetch and by the copy's own
+  length (a downloaded `book.epub` included, never checked against `ebook.size`); the reader
+  document says the same (`tooLarge`) for a buffer it could not allocate. No room for the
+  server's size (`engine.storageEstimate`), a fetch the disk refused (`storage`), or a cache
+  folder or move that failed is `EbookStorageError`, leaving no part (short of room, the reader's
+  own copies fetched longest ago are dropped first, as many as make it). The reader screen says
+  each in its own words (`tooLarge`, no Try again; `storage`, with Try again), never the
+  `fetch` notice. After each fetch the whole cache, every connection's, is held to
+  `MAX_EBOOK_BYTES` (512 MB): the copies fetched longest ago (`modificationTime`) go
+  first, never the one just fetched or a live part. A removed connection drops its cache
+  (`clearEbookCache`, from `reading-progress`'s `onConnectionRemoved`). Downloads save the EPUB as `book.epub` beside
   the audio when the book has one, after the audio: an attempt that fails on the audio never
   fetches it, so a retry fetches it once. Optional: a failure keeps the audio, a cancel cancels
   the book.
@@ -1998,7 +2009,7 @@ media GETs only.
 - **Never navigate while the app is in the background.** `/player` and `/finished` are
   root `fullScreenModal`s and iOS cannot present one from the background (a book that
   ended locked with auto-play on came back to a black screen until a relaunch). Code
-  that playback drives (`BookEndedListener`, the end-credits Play now and countdown)
+  that playback drives (`startBookEndWatch`, the end-credits Play now and countdown)
   moves on with `advanceTo` (`src/components/player/end-of-book.ts`: start the next book
   in place with `startBookInPlace`, item + chapters through the query cache then
   `playBook`, and take it off Up next with `dropFromQueue`; the finished book leaves Up next
@@ -2105,7 +2116,7 @@ media GETs only.
     sleep timer's `remaining`. **Every other change is shown at once and whole**, the held
     field with it: a play, a pause, the end, the next file, another book, a load, an error,
     the timer's phase. That is what lets a component act in the background on what the hook
-    gives it (`BookEndedListener` starts the next book from `selectIsEnded`,
+    gives it (`startBookEndWatch` starts the next book from `selectIsEnded`,
     `useShakeToExtend` arms from the timer's phase, the hidden tab's title follows play and
     pause).
   - `getState()`, `setState()` and `subscribe()` on both stores are **live as ever**: the
@@ -2168,8 +2179,11 @@ media GETs only.
   started from the root layout). When the app comes back to the front, the book's server comes
   back, or the book plays again after `LONG_PAUSE_MS` (60 s) of pause from any source (the
   store's `onPickedUpAgain`, called before that play's first save; a play reported while a load
-  holds the store, `loadingBook`, is told once that hold is released, `pickUpDue`), the loaded
-  book asks its server for its progress, and meanwhile the store holds its saves (`holdSaves`: 5 s at most,
+  holds the store, `loadingBook`, is told once that hold is released, `pickUpDue`; a Play press
+  in the foreground tells it before the engine starts and waits up to `PICK_UP_WAIT_MS`, 1.5 s,
+  for the answer, so a move lands before any of the old place sounds: `pickUpBeforePlay`,
+  fe#158; one check is out at a time, and a press waits for the one already out, as when the
+  app coming to the front started it), the loaded book asks its server for its progress, and meanwhile the store holds its saves (`holdSaves`: 5 s at most,
   then it saves the held place). It moves only when the record is from another `device_id`,
   newer than this device's own last save in its mirror (a newer unsynced save here wins; a record
   it only read, which a downloaded book's page and its download keep there, does not), not
@@ -2180,7 +2194,8 @@ media GETs only.
   a row of another device at a version this device has not acknowledged, or the row's
   `other_place`; a toast with Jump and Stay, see Listening sync below), and an auto-move
   acknowledges the row it moved to. This module is the only place that reconciles a
-  loaded book: never call `toggle()` expecting it to look anything up.
+  loaded book: `toggle()` only tells it, through `onPickedUpAgain`, and never looks anything up
+  itself.
 - **Listening sync** (Sync v2, Track W1, capability `listening_sync`; CROSS-REPO section 25).
   - *The path.* `usesListeningSync(cid)` (`listening-outbox.ts`): the cached `/server`'s flag
     (`cachedCapability`; an offline cold launch knows it from the kept answer seeded at launch,
@@ -2835,8 +2850,10 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     `register-car-task.ios.ts` (imported first from `index.ts`) listens for the car connection
     and on a connect runs `startCarWork` (`car-task.ts`), which runs `startCarStack` (the
     same start as Android's `runCarTask`: `bootstrapPlayback`, the address pick, the place
-    reconcile and the car sync) once per runtime (the root layout's later starts are shared
-    ones). Its listener is the first, so it alone gets the connect native queued before JS
+    reconcile, the listening sync, the session's work the root layout would do (fe#158: the
+    end-of-book flow `startBookEndWatch`, keep-ahead, the chapter and read-along refreshes, the
+    iOS widget) and the car sync) once per runtime (the root layout's later starts are shared
+    ones, `sharedStart` in `src/lib/shared-start.ts`). Its listener is the first, so it alone gets the connect native queued before JS
     listened; it records it with `setCarConnected` (`car-connection.ts`), and the car sync,
     starting while `isCarConnected()` is true, runs its connect path once itself (the sync's
     own listener registers later and never sees that connect). Play requests and bookmarks are
@@ -2844,7 +2861,11 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     no `ApiProvider` mounted the reachability probe builds its client from the session
     (`resolveClient`), so a server that dropped out mid-drive comes back (and its queued saves
     flush). **Anything new a car needs must be started from `startCarStack`, never only from a
-    screen or the root layout.**
+    screen or the root layout**, as a framework-free controller made a shared start
+    (`sharedStart`). The end-of-book flow is one: `startBookEndWatch` watches the store, and the
+    root's `BookEndedRoute` only tells it the route on screen; with none (a car-only session)
+    an end goes the background way (the next book in place, else the credits once the phone app
+    is in front with a route, `whenRouted`).
   - **Covers survive a container move.** The snapshot names covers by absolute `file://` path
     and iOS moves the data container on an update or restore; when a cover can't be read
     where the snapshot names it, `CarArtworkPath` reads the same `Documents/`/`Library/` path in
@@ -3475,7 +3496,15 @@ on first need). NOT device-verified (no Cast device yet).
   in use (`effectiveUrl`), and refuses with `CastBlockedError` (no `cast`, an address another
   device can't reach, a codec neither the receiver nor the server's transcoder handles). A
   downloaded book casts from its server. The web's Remote Playback prompt is NOT used (it would
-  hand over the element's URL, token included).
+  hand over the element's URL, token included). The server keeps 20 cast tokens per person and
+  ends the oldest, which a receiver may still be playing with (fe#158), so a queue load the
+  receiver refuses is sent once more with a newly minted token (`freshToken`,
+  `prepareCast(..., { freshToken })`, the cache's `fresh`), and a receiver that stops on an error
+  mid-book is loaded again there with one, playing on when it was (only as the error arrives:
+  one already shown is the listener's to retry, since the receiver says it again on every status
+  read). At most one mint per `REMINT_EVERY_MS` (a minute) per book loaded, so a failure with
+  another cause never mints on every try (each mint can end another receiver's token); a queue
+  refused while a mint is on its way waits on that mint and is sent again after it.
 - **Generations**: the cast service numbers loads (`loadSeq`) and queues (`queueSeq`), the router
   its switches (`generation`): a load, queue or handover that a newer one (or a reset) overtook
   stands back, and the receiver's rejection of a replaced queue is not a failure. The native
@@ -4156,10 +4185,13 @@ are asked, at most 10,000 rows.
   every file saved that only the offline check was left, `unservable`). A downloaded book with
   some of its files gone is kept the same way, as a failure holding the rest (`missing`, fe#158),
   so Retry fetches only the gone ones (one keep-ahead started is dropped with its folder instead:
-  keep-ahead never retries a failure, and plans a dropped book again). A kept file is found by
-  the index its stored name says (`storedIndex`, else its place in the list): at launch
-  (`relocateEntry`) and by a retry, which reuses it only for that index, and which keeps the ones
-  saved further on listed when it fails before reaching them. One with no file left (most books
+  keep-ahead never retries a failure, and plans a dropped book again). At launch a kept file is
+  found by the index its stored name says (`storedIndex`, else its place in the list:
+  `relocateEntry`). A retry takes a kept file by its path wherever the server's list now puts it
+  (`retryPlan`, fe#158: a list that gained, lost or reordered a file fetches only the new ones),
+  fetches each other file under a name no kept file holds (its index when free, else the next
+  free number past the list), and keeps the kept files of the paths it never reached listed when
+  it fails. One with no file left (most books
   are one M4B) stays as a row to retry from the start, its folder emptied, unless keep-ahead
   started it (keep-ahead plans it again); a downloaded book with no file left is dropped with its
   folder. While an identity move is pending an entry is kept exactly as stored. No storage format
@@ -4202,7 +4234,7 @@ are asked, at most 10,000 rows.
   chapters only when they are exactly that order, else reloads the engine in the manifest's
   (fe#134; the Cast receiver adoption still maps its track index through the manifest). The
   chapters carry the order (every queue over a download orders its files by them and finds each by
-  path); `manifest.files` itself never moves, since a file's name on disk is its index
+  path); `manifest.files` itself never moves, since a file's name on disk is the index it was saved under
   (`fileName`; `relocateEntry` keeps each saved file's own name at every launch, `storedIndex`). A place saved on the old
   timeline reads as moved once the new order is taken (as the server's re-index moves any
   whole-book place: no remap). A downloaded book whose chapters change gets its Android car play

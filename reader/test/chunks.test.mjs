@@ -10,6 +10,7 @@ import {
   MAX_BOOK_BYTES,
   MAX_CHUNKS,
   MAX_MAP_LENGTH,
+  TooLargeError,
 } from '../src/chunks.js';
 
 const b64 = (bytes) => Buffer.from(bytes).toString('base64');
@@ -36,6 +37,14 @@ test('refuses a size or count that cannot be right, before allocating', () => {
   ]) {
     assert.throws(() => createAssembly(size, chunks), ChunkError, `${size}/${chunks}`);
   }
+});
+
+test('says a book over MAX_BOOK_BYTES is too large, apart from a wrong size (fe#172)', () => {
+  assert.throws(() => createAssembly(MAX_BOOK_BYTES + 1, 1), TooLargeError);
+  assert.throws(
+    () => createAssembly(0, 1),
+    (err) => err instanceof ChunkError && !(err instanceof TooLargeError),
+  );
 });
 
 test('refuses a chunk out of order, and anything after a refusal', () => {

@@ -10,6 +10,7 @@ import {
   type ServerIdProbe,
   streamBase,
 } from '@/lib/server-address';
+import { sharedStart } from '@/lib/shared-start';
 import { ticker } from '@/lib/ticker';
 import { onForeground } from '@/lib/when-active';
 import { type NowPlaying, selectBookPosition, usePlayer } from '@/playback/store';
@@ -278,9 +279,8 @@ export function followPlayingBook(): void {
     });
 }
 
-/** How many callers hold the runner, and its teardown while one does. */
-let holders = 0;
-let teardown: (() => void) | null = null;
+/** The runner, started once however many callers hold it (`sharedStart`). */
+const sharedAddressRouting = sharedStart(runAddressRouting);
 
 /**
  * Start the runner; returns its release. A no-op on web. Shared: the root layout starts it,
@@ -291,18 +291,7 @@ let teardown: (() => void) | null = null;
  */
 export function startAddressRouting(opts: { probe?: ServerIdProbe } = {}): () => void {
   if (Platform.OS === 'web') return () => undefined;
-  holders++;
-  teardown ??= runAddressRouting(opts);
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    holders--;
-    if (holders > 0 || !teardown) return;
-    const stop = teardown;
-    teardown = null;
-    stop();
-  };
+  return sharedAddressRouting(opts);
 }
 
 function runAddressRouting(opts: { probe?: ServerIdProbe }): () => void {
