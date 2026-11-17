@@ -23,15 +23,19 @@ export const LARGE_TEXT_SCALE = 1.3;
 /** The browser's default root font size, which a scale of 1 means. */
 const WEB_BASE_PX = 16;
 
+/** The web's root font size over 16 px, measured (1 where there is no document, the static
+ * export). */
+function measureWebScale(): number {
+  if (typeof document === 'undefined' || typeof getComputedStyle === 'undefined') return 1;
+  const px = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  return Number.isFinite(px) && px > 0 ? px / WEB_BASE_PX : 1;
+}
+
 /** The scale now: the system font scale on iOS and Android, the root font size over 16 px on
- * the web (1 where there is no document, the static export). Never below a sliver, so a
- * divisor stays sane. */
+ * the web (the probe's cached value while anything listens, `subscribeWeb`). Never below a
+ * sliver, so a divisor stays sane. */
 export function readFontScale(): number {
-  if (Platform.OS === 'web') {
-    if (typeof document === 'undefined' || typeof getComputedStyle === 'undefined') return 1;
-    const px = parseFloat(getComputedStyle(document.documentElement).fontSize);
-    return Number.isFinite(px) && px > 0 ? px / WEB_BASE_PX : 1;
-  }
+  if (Platform.OS === 'web') return webScale ?? measureWebScale();
   const scale = Dimensions.get('window').fontScale;
   return Number.isFinite(scale) && scale > 0 ? scale : 1;
 }
@@ -55,10 +59,55 @@ export function linesFor(lines: number, large: boolean): number | undefined {
   return large ? undefined : lines;
 }
 
-// Dimensions' `change` fires when the font scale changes on iOS and Android, and on any
-// window resize on the web. A browser's font size changed in its settings resizes nothing
-// and so fires nothing: the web reads it at the next render (or reload), not live.
+// The web's scale while anything listens, else null (a read measures). One hidden probe,
+// 1rem wide, under a ResizeObserver: a browser font size changed mid-session (in its
+// settings, or a root font size a stylesheet sets) resizes the probe, so the change is
+// picked up at once, and a read between changes costs no `getComputedStyle` (fe#305). Page
+// zoom leaves a rem the same number of CSS px, so it moves nothing, as intended.
+let webScale: number | null = null;
+const webListeners = new Set<() => void>();
+let stopProbe: (() => void) | null = null;
+
+function startProbe(): (() => void) | null {
+  if (typeof document === 'undefined' || !document.body || typeof ResizeObserver === 'undefined') {
+    return null;
+  }
+  const probe = document.createElement('div');
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.cssText =
+    'position:absolute;top:0;left:-9999px;width:1rem;height:0;visibility:hidden;pointer-events:none';
+  document.body.appendChild(probe);
+  const observer = new ResizeObserver(() => {
+    const next = measureWebScale();
+    if (next === webScale) return;
+    webScale = next;
+    for (const listener of webListeners) listener();
+  });
+  observer.observe(probe);
+  return () => {
+    observer.disconnect();
+    probe.remove();
+  };
+}
+
+function subscribeWeb(onChange: () => void): () => void {
+  webListeners.add(onChange);
+  if (webListeners.size === 1) {
+    webScale = measureWebScale();
+    stopProbe = startProbe();
+  }
+  return () => {
+    webListeners.delete(onChange);
+    if (webListeners.size > 0) return;
+    stopProbe?.();
+    stopProbe = null;
+    webScale = null;
+  };
+}
+
+// Dimensions' `change` fires when the font scale changes on iOS and Android.
 function subscribe(onChange: () => void): () => void {
+  if (Platform.OS === 'web') return subscribeWeb(onChange);
   const subscription = Dimensions.addEventListener('change', onChange);
   return () => subscription.remove();
 }
