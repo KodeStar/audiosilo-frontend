@@ -5,6 +5,7 @@ import { ApiError } from '@/api/client';
 import { useMyDevices, useReadMyDevicesAgain, useServerInfo } from '@/api/hooks';
 import type { MyDevice } from '@/api/types';
 import { useOptionalApi } from '@/api/provider';
+import { signedInSessions } from '@/components/account/account-model';
 import { toast } from '@/components/ui/toast';
 import { versionAtLeast } from '@/lib/server-version';
 import { useSession } from '@/stores/session';
@@ -13,10 +14,10 @@ import { forgetPair } from '@/watch/watch-store';
 /** The shortest password the server takes. */
 export const PW_MIN = 8;
 
-/** How many of the account's other devices are signed in (sessions, never API keys), or
- * undefined when the list is not known. */
+/** How many of the account's other devices are signed in (the devices list's sessions),
+ * or undefined when the list is not known. */
 const othersSignedIn = (devices: readonly MyDevice[] | undefined) =>
-  devices?.filter((d) => d.kind === 'session' && !d.current).length;
+  devices && signedInSessions(devices).filter((d) => !d.current).length;
 
 /**
  * Setting or changing one connection's password: the conventional way back in after a
@@ -90,10 +91,10 @@ export function usePasswordEditor(connectionId: string) {
       });
     // What the toast says of the other devices is what the server did: setting a first
     // password ends nothing; a change ends the other sessions on a server since
-    // server#281 and none before, with nothing on the wire telling them apart, so the
-    // devices read again (which also clears the ended ones from the list) answer, against
-    // the list as it was: "signed out" only when there were others and none is left
-    // (server#285). No answer, or none before: only this device is sure.
+    // server#281 and none before. The devices read again (which also clears the ended ones
+    // from the list) answer, against the list as it was, rather than the version: "signed
+    // out" only when there were others and none is left (server#285). No answer, or none
+    // before: only this device is sure.
     let body:
       | 'account.password.doneBody'
       | 'account.password.doneThisDevice'
@@ -105,9 +106,8 @@ export function usePasswordEditor(connectionId: string) {
         forgetPair(connectionId);
       }
       const others = othersSignedIn(await readDevicesAgain());
-      if (others === undefined) body = 'account.password.doneThisDevice';
-      else if (others === 0)
-        body = othersBefore ? 'account.password.doneSignedOut' : 'account.password.doneThisDevice';
+      if (others === 0 && othersBefore) body = 'account.password.doneSignedOut';
+      else if (!others) body = 'account.password.doneThisDevice';
     }
     toast({
       title: t(hasPassword ? 'account.password.doneChanged' : 'account.password.doneSet'),

@@ -288,7 +288,8 @@ describe('AccountSection', () => {
     expect(screen.getByRole('button', { name: 'Show a pairing code' })).toBeTruthy();
   });
 
-  it('puts away a pairing code on screen once the password is changed (it ended the code)', async () => {
+  /** Shows a pairing code, then changes the password with the code on screen. */
+  const changePasswordWithCodeUp = async () => {
     mockPair.mockResolvedValue({
       server_name: 'Home',
       base_url: 'https://home.example',
@@ -309,6 +310,10 @@ describe('AccountSection', () => {
     await fireEvent.changeText(screen.getByLabelText('Current password'), 'oldpassword');
     await fireEvent.changeText(screen.getByLabelText('New password'), 'newpassword');
     await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+  };
+
+  it('puts away a pairing code on screen once the password is changed (it ended the code)', async () => {
+    await changePasswordWithCodeUp();
     await waitFor(() => expect(mockSetPassword).toHaveBeenCalled());
     expect(await screen.findByRole('button', { name: 'Show a pairing code' })).toBeTruthy();
   });
@@ -316,25 +321,7 @@ describe('AccountSection', () => {
   // server#285: a server before 2.6.0 ends no pairing code on a change, so it stays up.
   it('keeps a pairing code on screen after a change on a server before 2.6.0', async () => {
     mockVersion = '2.5.1';
-    mockPair.mockResolvedValue({
-      server_name: 'Home',
-      base_url: 'https://home.example',
-      pairing_token: 'tok',
-      uri: 'audiosilo://connect?token=tok',
-      web_url: 'https://home.example/web/connect?token=tok',
-      qr_png_data_uri: 'data:image/png;base64,AA==',
-      links: { web: 'https://home.example/web', admin: 'https://home.example/admin' },
-    });
-    mockMe.mockResolvedValue(user());
-    await mountWithPortal(<AccountSection connectionId="c1" />);
-    await fireEvent.press(screen.getByRole('button', { name: 'Show a pairing code' }));
-    await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Show a pairing code' })).toBeNull(),
-    );
-    await fireEvent.press(screen.getByRole('button', { name: 'Change password' }));
-    await fireEvent.changeText(screen.getByLabelText('Current password'), 'oldpassword');
-    await fireEvent.changeText(screen.getByLabelText('New password'), 'newpassword');
-    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    await changePasswordWithCodeUp();
     await waitFor(() => expect(mockMe).toHaveBeenCalled());
     expect(screen.queryByRole('button', { name: 'Show a pairing code' })).toBeNull();
   });
