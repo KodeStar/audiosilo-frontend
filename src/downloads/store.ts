@@ -1363,10 +1363,7 @@ async function relocateEntry(e: DownloadEntry): Promise<DownloadEntry> {
   const at = (name: string) => resolve(connectionId, libraryId, path, name);
   const files = await Promise.all(
     e.manifest.files.map(async (f, i) => {
-      // The index its stored name says, else its place in the list: a launch that found a
-      // file gone lists only the ones still there (`reviveEntry`), so a file listed after
-      // a gone one is saved under a later index than its place (fe#158).
-      const index = storedIndex(f.localUri) ?? i;
+      const index = savedIndex(f, i);
       const name = storedName(index, f.localUri) ?? fileName(index, f.relPath);
       return { ...f, localUri: at(await playableName(index, name, at)) };
     }),
@@ -1442,11 +1439,17 @@ function storedIndex(localUri: string): number | undefined {
   return m ? Number(m[1]) : undefined;
 }
 
-/** The files of `earlier` (a failed attempt's) saved under index `from` or later: each at
- * the index its stored name says, else its place in the list (`storedIndex`; a launch that
- * found a file gone lists only the ones still there, `reviveEntry`). */
+/** The index the file listed `k`th was saved under: the one its stored name says, else its
+ * place in the list. A launch that found a file gone lists only the ones still there
+ * (`reviveEntry`), so a file listed after a gone one is saved under a later index than its
+ * place (fe#158). */
+function savedIndex(f: DownloadedFile, k: number): number {
+  return storedIndex(f.localUri) ?? k;
+}
+
+/** The files of `earlier` (a failed attempt's) saved under index `from` or later. */
 function savedFrom(earlier: readonly DownloadedFile[], from: number): DownloadedFile[] {
-  return earlier.filter((f, k) => (storedIndex(f.localUri) ?? k) >= from);
+  return earlier.filter((f, k) => savedIndex(f, k) >= from);
 }
 
 async function runQueue() {
@@ -1529,6 +1532,9 @@ async function runOne(key: string) {
   // The files that finished, so a failure can keep them, and how many there are.
   const files: DownloadedFile[] = [];
   let fileCount = 0;
+  // Files a failed attempt already finished, each counted only for the index it was saved
+  // under (`savedIndex`), since a download of the index writes over it.
+  const earlier = entry.manifest.files;
   try {
     const specs = bookFileSpecs(entry.manifest.book, entry.manifest.chapters ?? undefined);
     fileCount = specs.length;
@@ -1581,15 +1587,9 @@ async function runOne(key: string) {
       lastTick = now;
       patch({ bytes, totalBytes: knownTotal, progress: step / steps });
     };
-    // Files a failed attempt already finished, each at the index it was saved under: the
-    // one its stored name says, else its place in the list (`storedIndex`; a launch that
-    // found a file gone lists only the ones still there, `reviveEntry`). A file counts only
-    // for that index, since a download of the index writes over it.
-    const earlier = entry.manifest.files;
-    const savedAt = (f: DownloadedFile, k: number) => storedIndex(f.localUri) ?? k;
     for (let i = 0; i < specs.length; i++) {
       const s = specs[i];
-      const done = earlier.find((f, k) => f.relPath === s.path && savedAt(f, k) === i);
+      const done = earlier.find((f, k) => f.relPath === s.path && savedIndex(f, k) === i);
       if (done && (await engine.fileExists(done.localUri))) {
         files.push(done);
         priorBytes += done.bytes ?? s.size;
@@ -1732,7 +1732,7 @@ async function runOne(key: string) {
       // and is written over by the retry.) So are the files an earlier attempt saved
       // further on, which this one never reached (a download with a file gone, fe#158: a
       // retry that fails on the gone file must not unlist the rest).
-      const held = [...files, ...savedFrom(entry.manifest.files, files.length + 1)];
+      const held = [...files, ...savedFrom(earlier, files.length + 1)];
       const kept = fileCount > 0 ? Math.min(1, held.length / fileCount) : 0;
       const failure: DownloadFailure = { ...classifyDownloadError(e), kept };
       const cur = useDownloads.getState().entries[key];
