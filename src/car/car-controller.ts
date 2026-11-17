@@ -1052,6 +1052,8 @@ export async function handleCarPlayRequest(id: string): Promise<void> {
   // the root layout's path comes before the launch steps hydrated the session and the
   // downloads: started then, the book would find no connection and no download.
   await bootstrapPlayback();
+  // Called off while JS booted: nothing happens for it, the cast's end below included.
+  if (!wanted()) return;
   // Read again now the aliases are loaded: an item of a snapshot written before the identity
   // migration names the old connection id.
   const ref = parseCarItemId(id)!;

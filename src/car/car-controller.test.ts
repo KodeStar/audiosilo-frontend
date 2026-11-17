@@ -1674,6 +1674,7 @@ describe('play requests', () => {
     stop = startCarSync();
     await settle();
     try {
+      mockEndCastForCar.mockClear();
       hold();
       mockNative.playRequest?.(carItemId(ref));
       await settle();
@@ -1681,6 +1682,8 @@ describe('play requests', () => {
       release();
       await settle();
       expect(mockStartBookInPlace).not.toHaveBeenCalled();
+      // Nor is a cast ended for it.
+      expect(mockEndCastForCar).not.toHaveBeenCalled();
 
       usePlayer.setState({
         nowPlaying: { ...ref, queue: { offsets: [0], total: 100 } },
