@@ -952,6 +952,8 @@ describe('ApiClient', () => {
     installFetch(() => ({ status: 503, body: { error: 'busy' } }));
     await expect(c.me()).rejects.toMatchObject({ status: 503 });
     expect(onAnswer).toHaveBeenCalledTimes(2);
+    // With the address that answered (fe#147).
+    expect(onAnswer).toHaveBeenLastCalledWith('https://h');
   });
 
   it('does NOT fire onAnswer when nothing answered (a timeout or a fetch rejection)', async () => {

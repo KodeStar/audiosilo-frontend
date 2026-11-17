@@ -552,7 +552,7 @@ export class ApiClient {
   private readonly proxyOrigin: string | null;
   private readonly timeoutMs: number;
   private readonly onAuthError?: () => void;
-  private readonly onAnswer?: () => void;
+  private readonly onAnswer?: (at: string) => void;
   /** The batch loader behind `seriesBooksPage`, one per `libraryId:limit` (so bounded
    * by libraries x page sizes), created on first use. */
   private readonly seriesLoaders = new Map<string, (name: string) => Promise<BookPage>>();
@@ -583,9 +583,10 @@ export class ApiClient {
    * cleanly distinct from offline (the reachability layer relies on the same invariant).
    *
    * `onAnswer` is invoked whenever the server answers a request at all (the fetch
-   * resolved, any status), before the answer is read: reachability counts it, so a check
-   * of a slow but healthy server that timed out never marks it down while other requests
-   * were answered (FU-SLOWOK).
+   * resolved, any status), before the answer is read, with the address that answered (this
+   * client's `baseUrl`): reachability counts it, so a check of a slow but healthy server
+   * that timed out never marks it down while other requests were answered (FU-SLOWOK), and
+   * an answer on an address the connection has since left counts for nothing (fe#147).
    *
    * `proxy` is the connection's custom headers for an auth proxy (fe#167), or for a bare
    * client in the connect flow the set entered for that address. They go only when this
@@ -597,7 +598,7 @@ export class ApiClient {
     token: string | null = null,
     timeoutMs = 15000,
     onAuthError?: () => void,
-    onAnswer?: () => void,
+    onAnswer?: (at: string) => void,
     proxy?: ProxyHeaders | null,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
@@ -722,7 +723,7 @@ export class ApiClient {
         if (timedOut || opts.signal?.aborted) throw e;
         throw new NetworkError(e);
       }
-      this.onAnswer?.();
+      this.onAnswer?.(this.baseUrl);
       return await read(res, touch);
     } catch (e) {
       // Our timeout fired (not a caller cancel, and not a real server answer in

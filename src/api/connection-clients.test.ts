@@ -11,7 +11,9 @@ jest.mock('@/stores/session', () => ({
   sessionHydrateFailed: jest.fn(() => false),
 }));
 const mockNoteAnswer = jest.fn();
-jest.mock('@/api/reachability', () => ({ noteAnswer: (cid: string) => mockNoteAnswer(cid) }));
+jest.mock('@/api/reachability', () => ({
+  noteAnswer: (cid: string, at?: string) => mockNoteAnswer(cid, at),
+}));
 
 const getState = (useSession as unknown as { getState: jest.Mock }).getState;
 const hydrateFailed = sessionHydrateFailed as jest.Mock;
@@ -99,7 +101,8 @@ describe('connection-clients', () => {
     setStore([{ id: 'c1', serverUrl: 'https://h', token: 'tok' }]);
     installFetch(() => ({ status: 503, body: { error: 'busy' } }));
     await expect(resolveClient('c1')!.me()).rejects.toMatchObject({ status: 503 });
-    expect(mockNoteAnswer).toHaveBeenCalledWith('c1');
+    // With the address that answered, so one the connection has left counts for nothing.
+    expect(mockNoteAnswer).toHaveBeenCalledWith('c1', 'https://h');
     expect(mockNoteAnswer).toHaveBeenCalledTimes(1);
   });
 
