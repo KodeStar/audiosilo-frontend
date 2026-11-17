@@ -59,7 +59,6 @@ export function useYearStory(cid: string, range: YearRange): YearStory {
   const serverName = connection?.name || info.data?.name || '';
   const userName = connection?.user?.username;
 
-  const unreadInfo = useUnreadQuery(info);
   const unreadStats = useUnreadQuery(stats);
 
   // This year's streak and goal are part of the story: wait for them (unless they fail,
@@ -88,13 +87,9 @@ export function useYearStory(cid: string, range: YearRange): YearStory {
   }, [stats.data, extrasPending, current, listening.data, goal.data, userName, serverName, t]);
 
   if (supported === false) return { status: 'unsupported', serverName };
-  if (supported === undefined) {
-    if (unreadInfo === 'offline') return { status: 'offline', serverName };
-    return info.isError
-      ? { status: 'error', serverName, retry: () => void info.refetch() }
-      : { status: 'loading', serverName };
-  }
-  // Before the error and the loading state: no Retry can work without a network.
+  // Before the error and the loading state: no Retry can work without a network. A
+  // `/server` held or failed while the flag is unknown is the stats read's own state, and
+  // its Retry asks `/server` again (`useCapabilityQuery`).
   if (unreadStats === 'offline') return { status: 'offline', serverName };
   if (stats.isError && !stats.data) {
     return { status: 'error', serverName, retry: () => void stats.refetch() };

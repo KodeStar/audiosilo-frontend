@@ -45,12 +45,14 @@ type Q<T> = {
   isError?: boolean;
   isLoading?: boolean;
   isPaused?: boolean;
+  error?: unknown;
   refetch: jest.Mock;
 };
 const q = <T,>(data?: T, extra: Partial<Q<T>> = {}): Q<T> => ({
   data,
   isError: false,
   isLoading: false,
+  error: extra.isError ? new Error('down') : null,
   refetch: jest.fn(async () => undefined),
   ...extra,
 });

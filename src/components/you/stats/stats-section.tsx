@@ -114,7 +114,7 @@ function StatsBody({ cid, server, width }: { cid: string; server: string; width:
   const unreadStats = useUnreadQuery(stats);
   const offline = unreadListening === 'offline' || unreadStats === 'offline';
   // A failed re-read keeps what it holds (fe#271).
-  const failed = (listening.isError && !listening.data) || (stats.isError && !stats.data);
+  const failed = unreadListening === 'failed' || unreadStats === 'failed';
 
   if (supported === false) {
     return (

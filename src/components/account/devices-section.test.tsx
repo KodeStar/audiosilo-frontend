@@ -172,7 +172,13 @@ describe('DevicesSection', () => {
     const view = await mount();
     expect(screen.getByTestId('devices-loading')).toBeTruthy();
 
-    mockDevices = { ...loaded([]), data: undefined, isError: true, isSuccess: false };
+    mockDevices = {
+      ...loaded([]),
+      data: undefined,
+      isError: true,
+      isSuccess: false,
+      error: new Error('down'),
+    };
     await view.rerender(<DevicesSection connectionId="c" serverName="Hearthside" />);
     expect(screen.getByText("Couldn't load your devices from Hearthside.")).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));

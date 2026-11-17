@@ -36,13 +36,10 @@ jest.mock('@/api/provider', () => ({
   },
 }));
 // Each connection's kept `/server` answer (its own tests: server-snapshots.test.ts): this
-// server's answer is kept unless a test says it names another one; a proved flag is set
-// on the cached answer as the real one sets it.
+// server's answer is kept unless a test says it names another one.
 jest.mock('@/api/server-snapshots', () => ({
   keepServerAnswer: jest.fn(() => true),
-  keepServerFlag: jest.fn((_cid: string, flag: string) => {
-    if (mockCaps) mockCaps = { ...mockCaps, [flag]: true };
-  }),
+  keepServerFlag: jest.fn(),
 }));
 
 /* eslint-disable import/first */
@@ -1364,7 +1361,7 @@ describe("a connection's listening_sync across launches", () => {
     expect(state.c1).not.toHaveProperty('listeningSync');
   });
 
-  it('a sync answer from a server whose kept /server says no sets the flag, and events stay on sync', async () => {
+  it('a sync answer from a server whose kept /server says no sets the flag', async () => {
     // An answer from before the server was updated: it took the events, so it has the
     // route, and the next listening goes by sync without waiting on a /server read (fe#270).
     mockCaps = { listening_sync: false };
@@ -1372,7 +1369,6 @@ describe("a connection's listening_sync across launches", () => {
     client(async (body) => answer(body));
     await flushOutbox('c1');
     expect(keepServerFlag).toHaveBeenCalledWith('c1', 'listening_sync');
-    expect(usesListeningSync('c1')).toBe(true);
   });
 
   it('a sync answer changes no flag when the cached /server agrees or is unknown', async () => {

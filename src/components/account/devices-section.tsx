@@ -139,7 +139,7 @@ export function DevicesSection({
           // Before the error and the skeleton: a list held for the network stays pending
           // (`useUnreadQuery`), and no Retry can work without one.
           <OfflineState className="py-6" />
-        ) : devices.isError && devices.data === undefined ? (
+        ) : unread === 'failed' ? (
           // Only with no list to show: a read again that fails (after a password change, a
           // revoke) keeps the list as it was, never its error in its place (server#285).
           <View className="gap-3 p-5">
