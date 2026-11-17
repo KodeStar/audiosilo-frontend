@@ -142,6 +142,9 @@ const mockGetQueryData = jest.fn((..._a: unknown[]): unknown => undefined);
 const mockFetchQuery = jest.fn((_o: { queryKey: unknown[] }): Promise<unknown> =>
   Promise.reject(new Error('not mocked')),
 );
+// The read that always settles, offline included (hooks.test.ts covers it): the same fake
+// fetch, recorded on its own so a test can tell which read was asked.
+const mockFetchFailFast = jest.fn((o: { queryKey: unknown[] }) => mockFetchQuery(o));
 // The query cache's listeners (`startChapterRefresh` subscribes one).
 const mockCacheListeners = new Set<(event: unknown) => void>();
 jest.mock('@/api/provider', () => ({
@@ -189,8 +192,7 @@ jest.mock('@/api/hooks', () => ({
       show,
     ],
   },
-  // The read that always settles (hooks.test.ts covers it): here, the same fake fetch.
-  fetchFailFast: (o: { queryKey: unknown[] }) => mockFetchQuery(o),
+  fetchFailFast: (o: { queryKey: unknown[] }) => mockFetchFailFast(o),
   itemQuery: (cid: string, _c: unknown, lib: number, path: string) => ({
     queryKey: ['item', cid, lib, path],
   }),
@@ -3202,6 +3204,7 @@ describe('failures, retry and the session decline mark', () => {
     // A retry reads the book afresh first; unless a test answers, that read fails and the
     // retry goes on the book it was given.
     mockFetchQuery.mockReset().mockRejectedValue(new Error('offline'));
+    mockFetchFailFast.mockClear();
   });
 
   it('keeps the files that finished, classifies the cause, and a retry skips them', async () => {
@@ -3362,8 +3365,9 @@ describe('failures, retry and the session decline mark', () => {
     await useDownloads.getState().download('c1', 2, book, stale);
     await settle();
 
-    // Read from the server, never the cache's copy.
-    expect(mockFetchQuery).toHaveBeenCalledWith(
+    // Read from the server, never the cache's copy, by the read that fails at once offline
+    // (one held for the network would leave the Retry waiting unseen).
+    expect(mockFetchFailFast).toHaveBeenCalledWith(
       expect.objectContaining({ queryKey: ['chapters', 'c1', 2, 'A/Book'], staleTime: 0 }),
     );
     const done = useDownloads.getState().entries[key];

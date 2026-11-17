@@ -240,8 +240,10 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     // absent, on either platform: it waits on its server first, and both are read once the
     // file is there, where the transcode refusal is decided again (`episodeWaitEnded`).
     // A retry of a failed download reads both afresh on every platform: the caller's files
-    // come from the query cache (kept up to 30 minutes), which can still list a file the
-    // server has since removed, and the retry would fetch it again.
+    // (the query cache's, kept up to 30 minutes, or the failed download's own saved copy)
+    // can still list a file the server has since removed, and the retry would fetch it
+    // again. Asked whatever the online flag says (`fetchFailFast`): held for the network, a
+    // Retry tapped offline would wait unseen instead of going on the files it was given.
     const retrying = get().entries[key]?.status === 'error';
     const lookup =
       !isAbsentEpisode(book) &&
@@ -249,16 +251,18 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     const client = lookup ? resolveClient(connectionId) : null;
     if (!client) return queueBook(connectionId, libraryId, book, chapterData, origin);
     const staleTime = retrying ? 0 : 30_000;
+    const itemOptions = {
+      ...itemQuery(connectionId, client, libraryId, book.rel_path),
+      staleTime,
+    };
+    const chaptersOptions = {
+      ...chaptersQuery(connectionId, client, libraryId, book.rel_path),
+      staleTime,
+    };
     return (async () => {
       const [item, chapters] = await Promise.allSettled([
-        queryClient.fetchQuery({
-          ...itemQuery(connectionId, client, libraryId, book.rel_path),
-          staleTime,
-        }),
-        queryClient.fetchQuery({
-          ...chaptersQuery(connectionId, client, libraryId, book.rel_path),
-          staleTime,
-        }),
+        retrying ? fetchFailFast(itemOptions) : queryClient.fetchQuery(itemOptions),
+        retrying ? fetchFailFast(chaptersOptions) : queryClient.fetchQuery(chaptersOptions),
       ]);
       if (stopCount(key) !== stops) return 'declined';
       // A lookup that failed decides on what the caller gave, as before.
