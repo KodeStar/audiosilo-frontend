@@ -49,6 +49,17 @@ module.exports = [
     },
   },
   {
+    // Unused code fails the lint instead of warning (fe#161): `npm run lint` passes with
+    // warnings, so a warning never stopped one landing. Severity only, so Expo's options for
+    // the rule stay (an unused argument is allowed).
+    files: ['**/*.ts', '**/*.tsx'],
+    rules: { '@typescript-eslint/no-unused-vars': 'error' },
+  },
+  {
+    files: ['**/*.js', '**/*.jsx', '**/*.mjs', '**/*.cjs'],
+    rules: { 'no-unused-vars': 'error' },
+  },
+  {
     // Build output, native projects, generated types and root tooling configs
     // aren't app source - keep them out of linting.
     ignores: [
