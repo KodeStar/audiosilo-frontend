@@ -1176,6 +1176,33 @@ describe.each([
       }
     });
 
+    // Left standing, the ask for the 900 s the engine never went to read the engine's next
+    // file as a run off a file it measured short (`engineFault`): an error, and a pause.
+    it('a move the engine refuses leaves no ask standing: its next file is no fault', async () => {
+      mockMirror.on = true;
+      await a.start(5, 'c1', parts);
+      await sleep(10);
+      a.engine.at(30);
+      await b.start(30, 'c1', parts);
+      await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+      await sleep(10);
+      b.engine.at(900);
+      await b.player().pause();
+      const key = mirrorKey('c1', 2, parts.book.rel_path);
+      await until(() => mockMirror.records.get(key)?.position === 900, "B's place in the mirror");
+      const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        a.engine.svc.seekTo.mockRejectedValueOnce(new Error('no seek'));
+        await a.player().toggle();
+        expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 30 });
+        // The lock screen's next: the engine reports the second file.
+        await a.engine.svc.skipToTrack(1, 0);
+        expect(a.player().snapshot).toMatchObject({ state: 'playing', trackIndex: 1, position: 0 });
+      } finally {
+        warned.mockRestore();
+      }
+    });
+
     it('takes an earlier place too: the other tab is the latest listening', async () => {
       await playedPast(a, b);
       await b.player().seekBook(12); // the listener went back in B, which plays on

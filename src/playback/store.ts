@@ -1616,12 +1616,16 @@ let atPartialEnd = false;
  * holds that place in its measure (one run off a short measure reports at most its own end,
  * short of the place) and a later file from then on is a move, not a run off its end: the
  * listener's own next from the lock screen, a headset or the car, whose file change Android
- * reports before `onRemoteMove`. */
+ * reports before `onRemoteMove`.
+ *
+ * `elsewhere`: the engine's first report from another file since the ask, which bounds how
+ * long such a report reads as one from before the move landed (`engineFault`). */
 let askedPlace: {
   np: NowPlaying;
   trackIndex: number;
   position: number;
   playing: boolean;
+  elsewhere: { trackIndex: number; position: number } | null;
 } | null = null;
 const PLAYED_ON = 3;
 const PLAYING_PAST = 0.5;
@@ -1631,10 +1635,20 @@ let faultedBook: NowPlaying | null = null;
 /** Has the loaded book's engine faulted (`faultedBook`)? */
 const loadedFaulted = () => faultedBook !== null && faultedBook === usePlayer.getState().nowPlaying;
 
-/** The store asks the engine for `(trackIndex, position)` of `np`'s queue (`askedPlace`). */
+/** The store asks the engine for `(trackIndex, position)` of `np`'s queue (`askedPlace`).
+ * Returns the ask, for a caller whose move can be refused (`withdrawAsk`). */
 function askEngineTo(np: NowPlaying, trackIndex: number, position: number) {
-  askedPlace = { np, trackIndex, position, playing: false };
+  const ask = { np, trackIndex, position, playing: false, elsewhere: null };
+  askedPlace = ask;
   faultedBook = null;
+  return ask;
+}
+
+/** The engine took no such move (it refused, or the store gave up on it): `ask` no longer
+ * stands. Left standing, the engine's next file from where it stayed would read as a run off
+ * the asked one. A later ask is left alone. */
+function withdrawAsk(ask: NonNullable<typeof askedPlace>) {
+  if (askedPlace === ask) askedPlace = null;
 }
 
 /**
@@ -1647,6 +1661,10 @@ function askEngineTo(np: NowPlaying, trackIndex: number, position: number) {
  * `prev` is the store's snapshot before `s`. A report still in the file it shows, when that is
  * not the asked one, is from before the move landed (a native progress tick or a Cast status
  * sent before the seek or the track jump took): the ask stands, and nothing ran off its file.
+ * Only until the engine has moved `PLAYED_ON` seconds in that other file: it never took the
+ * move then (a seek it refused, or a run off the asked file straight back into the one it came
+ * from), and the ask stands no longer, or the engine's next file, minutes on, would read as a
+ * run off the asked one.
  * And an `ended` the engine already showed is no new end: the native and web services keep
  * their last state, so a seek or a track jump on a book that ended re-reports `ended` with the
  * place it asked for.
@@ -1665,7 +1683,15 @@ function engineFault(
   if (s.trackIndex === asked.trackIndex && s.position > asked.position + PLAYING_PAST) {
     asked.playing = true;
   }
-  if (s.trackIndex !== asked.trackIndex && s.trackIndex === prev.trackIndex) return null;
+  if (s.trackIndex !== asked.trackIndex && s.trackIndex === prev.trackIndex) {
+    const first = asked.elsewhere;
+    if (first?.trackIndex !== s.trackIndex) {
+      asked.elsewhere = { trackIndex: s.trackIndex, position: s.position };
+    } else if (Math.abs(s.position - first.position) >= PLAYED_ON) {
+      askedPlace = null;
+    }
+    return null;
+  }
   // From a file's start an engine can't run past its end (it measured the file at least that
   // long): only an ask inside a file can land past a short measure.
   const rolled =
@@ -1863,7 +1889,7 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
   adoptTabPlace(np, place);
   const moves = localMoves;
   let seek: Promise<void> | undefined;
-  askEngineTo(np, place.index, place.positionInTrack);
+  const ask = askEngineTo(np, place.index, place.positionInTrack);
   try {
     seek = Promise.resolve(
       place.index === snapshot.trackIndex
@@ -1874,6 +1900,7 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
     return place;
   } catch (e) {
     console.warn('[player] could not take the place another tab left', e);
+    withdrawAsk(ask);
     // Not once the listener moved or another book started meanwhile: the floor is theirs.
     if (localMoves === moves) {
       resumeFloor = before.resumeFloor;

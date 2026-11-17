@@ -3390,6 +3390,42 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     expect(mockSvc.seekTo).toHaveBeenLastCalledWith(40);
   });
 
+  it('a seek back the engine never took stands no longer once it plays on where it was', async () => {
+    // Three files: the engine stays in the second, and goes on into the third by itself.
+    const paths = [...files, 'A/Vbr/03.mp3'];
+    const secs = [...lengths, 120];
+    const three: ChaptersResponse = {
+      ...chapters,
+      duration: 398.11,
+      files: paths.map((rel_path, seq) => ({
+        rel_path,
+        seq,
+        duration: secs[seq],
+        format: 'mp3',
+        size: 1,
+      })),
+      chapters: paths.map((file_path, index) => ({
+        index,
+        title: `Part ${index + 1}`,
+        file_index: index,
+        file_path,
+        start: 0,
+        end: secs[index],
+        book_offset: secs.slice(0, index).reduce((a, b) => a + b, 0),
+      })),
+    };
+    await usePlayer.getState().playBook('c1', 2, book, three, lengths[0] + 10);
+    pushSnapshot(snap('playing', 11, { trackIndex: 1 }));
+    pushSnapshot(snap('playing', 14, { trackIndex: 1 }));
+    (mockSvc.skipToTrack as jest.Mock).mockRejectedValueOnce(new Error('refused'));
+    await expect(usePlayer.getState().seekBook(100)).rejects.toThrow('refused');
+    for (let at = 15; at < 138; at++) pushSnapshot(snap('playing', at, { trackIndex: 1 }));
+    pushSnapshot(snap('playing', 0.3, { trackIndex: 2 }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'playing', trackIndex: 2 });
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+  });
+
   it("a faulted book is still faulted on its download's files: a press reloads it", async () => {
     await resume(30);
     pushSnapshot(snap('playing', 0.4, { trackIndex: 1, duration: short }));
