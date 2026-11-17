@@ -318,16 +318,28 @@ function distinctFilesFromChapters(chapters: Chapter[]): { path: string; duratio
   return order.map((path) => ({ path, duration: durations.get(path) ?? 0 }));
 }
 
-/** Map a whole-book position to (trackIndex, positionInTrack). */
+/**
+ * Map a whole-book position to (trackIndex, positionInTrack).
+ *
+ * Tracks that share an offset (each one before the last of them has no known length: a
+ * server with no prober, or a VBR MP3 with no header, reports 0) resolve to the FIRST of
+ * them: its length is unknown, not zero, so the book's start is its first file, never the
+ * last (fe#324). A caller that knows which file the place is in (the playing one, a
+ * chapter's) names it as `prefer`: among the tracks sharing the offset it is that one.
+ */
 export function locate(
   offsets: number[],
   bookPosition: number,
+  prefer?: number,
 ): { index: number; positionInTrack: number } {
   let index = 0;
-  for (let i = 0; i < offsets.length; i++) {
-    if (bookPosition >= offsets[i]) index = i;
-    else break;
+  for (let i = 1; i < offsets.length; i++) {
+    // Not `<`: a NaN place stays in the first track, as it always did.
+    if (!(bookPosition >= offsets[i])) break;
+    if (offsets[i] !== offsets[index]) index = i;
   }
+  // Offsets never fall, so a later track at this offset is one of those sharing it.
+  if (prefer !== undefined && prefer > index && offsets[prefer] === offsets[index]) index = prefer;
   return { index, positionInTrack: Math.max(0, bookPosition - (offsets[index] ?? 0)) };
 }
 
@@ -347,14 +359,43 @@ export function chapterEndPosition(ch: Chapter): number {
   return ch.book_offset + Math.max(0, ch.end - ch.start);
 }
 
-/** The chapter active at a given whole-book position. */
-export function chapterAt(chapters: Chapter[], bookPosition: number): Chapter | null {
-  let current: Chapter | null = null;
-  for (const ch of chapters) {
-    if (bookPosition >= ch.book_offset) current = ch;
-    else break;
+/**
+ * The chapter active at a given whole-book position (the first chapter before any).
+ *
+ * Chapters that share a whole-book start in DIFFERENT files (their files' lengths are
+ * unknown, so every one of them starts at the same offset) resolve to the first file's, as
+ * `locate` does for the files. `playing`, when given, says whether a file is the one
+ * playing: among the tied chapters that file's wins, so the player names the chapter of
+ * the file it is in rather than the first file's (fe#324). Within one file a tie is a
+ * chapter of no length before another: the later one is the chapter playing.
+ */
+export function chapterAt(
+  chapters: Chapter[],
+  bookPosition: number,
+  playing?: (filePath: string) => boolean,
+): Chapter | null {
+  let current = -1;
+  for (let i = 0; i < chapters.length; i++) {
+    // Not `<`: a NaN place or start stops here, as it always did.
+    if (!(bookPosition >= chapters[i].book_offset)) break;
+    if (current < 0 || chapters[i].book_offset !== chapters[current].book_offset) current = i;
   }
-  return current ?? chapters[0] ?? null;
+  if (current < 0) return chapters[0] ?? null;
+  const tied = chapters[current].book_offset;
+  let file = chapters[current].file_path;
+  if (playing && !playing(file)) {
+    for (let i = current + 1; i < chapters.length && chapters[i].book_offset === tied; i++) {
+      if (playing(chapters[i].file_path)) {
+        file = chapters[i].file_path;
+        break;
+      }
+    }
+  }
+  let pick = current;
+  for (let i = current + 1; i < chapters.length && chapters[i].book_offset === tied; i++) {
+    if (chapters[i].file_path === file) pick = i;
+  }
+  return chapters[pick];
 }
 
 export type ChapterCountdown = {

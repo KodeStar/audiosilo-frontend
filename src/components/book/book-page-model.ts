@@ -244,17 +244,23 @@ export function chapterList(input: {
     }
   }
   if (chapters.length > 0) {
+    // From the first file of unknown length on, files share whole-book starts (an unknown
+    // length adds nothing), so a start can't say which file it means: a chapter opening
+    // such a file jumps to the file instead (fe#324).
+    const unknownFrom = files.findIndex((f) => !(f.duration > 0));
     return {
       kind: 'chapters',
       rows: chapters.map((c, i) => {
         const start = chapterStarts[i] ?? c.book_offset;
+        const file =
+          unknownFrom < 0 || c.start > 0 ? -1 : files.findIndex((f) => f.rel_path === c.file_path);
         return {
           key: `c${c.index}`,
           index: i,
           title: c.title,
           start,
           length: Math.max(0, c.end - c.start),
-          jump: { position: start },
+          jump: file >= 0 && file >= unknownFrom ? { track: file } : { position: start },
         };
       }),
     };

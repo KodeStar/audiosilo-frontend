@@ -4,14 +4,14 @@ import { render } from '@testing-library/react-native';
 let mockParams: Record<string, string | undefined> = {};
 jest.mock('expo-router', () => ({ useLocalSearchParams: () => mockParams }));
 let mockGate: unknown = null;
+// The route-connection rule: the link's connection, else the active one (its own test is
+// content-scope.test.tsx).
 jest.mock('@/components/layout/content-scope', () => ({
   useRouteConnection: (connection: string | undefined) => ({
-    cid: connection ?? '',
+    cid: connection ?? 'active',
     gate: mockGate,
   }),
 }));
-// The active connection, the player's own fallback (`useCid`).
-jest.mock('@/api/provider', () => ({ useCid: (id?: string) => id ?? 'active' }));
 const mockScreen = jest.fn((_props: Record<string, unknown>) => null);
 jest.mock('@/reader/reader-screen', () => ({
   ReaderScreen: (props: Record<string, unknown>) => mockScreen(props),

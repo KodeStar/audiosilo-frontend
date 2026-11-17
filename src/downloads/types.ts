@@ -14,6 +14,8 @@ export type DownloadedFile = { relPath: string; localUri: string; bytes?: number
  * - `unservable`: saved, but the web service worker can't play it offline yet;
  * - `removed`: the server's connection was removed while it waited;
  * - `interrupted`: the app closed (or was killed) before it finished;
+ * - `missing`: it had finished, but some of its files are gone from the device (a launch
+ *   found them missing, `reviveEntry`); the rest are kept and Retry fetches the gone ones;
  * - `serverFetch`: a podcast episode its server could not fetch (or can't now), `code` says
  *   why (the server's safe code, `fetchReasonKey`); Retry asks the server to fetch it again;
  * - `unknown`: anything else. */
@@ -25,6 +27,7 @@ export type DownloadFailure = {
     | 'unservable'
     | 'removed'
     | 'interrupted'
+    | 'missing'
     | 'serverFetch'
     /** An episode's wait its server ended by refusing the listener: signed out (a 401) or
      * no access (`accessRefusal`). Nothing of it was downloaded. */

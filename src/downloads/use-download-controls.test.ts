@@ -5,13 +5,16 @@ import type { Book } from '@/api/types';
 
 let mockCanTranscode: boolean | undefined = true;
 jest.mock('@/api/hooks', () => ({ useCapability: () => mockCanTranscode }));
-jest.mock('@/api/provider', () => ({ useScopedCid: () => 'c1' }));
+// `useCid`: the caller's id, else the page's connection (the route's, else the active one).
+let mockPageCid = 'c1';
+jest.mock('@/api/provider', () => ({ useCid: (id?: string) => id ?? mockPageCid }));
 let mockStatus: string | undefined;
+const mockDownload = jest.fn();
 jest.mock('./store', () => ({
   useDownloadState: () => ({ status: mockStatus, failure: undefined }),
   useDownloads: Object.assign(
     (select: (s: { supported: boolean }) => unknown) => select({ supported: true }),
-    { getState: () => ({ download: jest.fn(), cancel: jest.fn() }) },
+    { getState: () => ({ download: mockDownload, cancel: jest.fn() }) },
   ),
 }));
 
@@ -54,5 +57,28 @@ describe('useDownloadControls (web transcode)', () => {
     expect((await controls()).supported).toBe(true);
     Platform.OS = 'web';
     expect((await controls({ ...ac3, direct_playable: true })).supported).toBe(true);
+  });
+});
+
+describe('useDownloadControls (its connection)', () => {
+  afterEach(() => {
+    mockPageCid = 'c1';
+    mockDownload.mockClear();
+  });
+
+  it('downloads under the active connection on a page with no route connection (fe#296)', async () => {
+    mockPageCid = 'c2';
+    const book = { rel_path: 'A/B.m4b' } as Book;
+    const { result } = await renderHook(() => useDownloadControls(2, 'A/B.m4b', book));
+    expect(result.current.connectionId).toBe('c2');
+    result.current.start();
+    expect(mockDownload).toHaveBeenCalledWith('c2', 2, book, undefined);
+  });
+
+  it("keeps the caller's connection over the scope", async () => {
+    const { result } = await renderHook(() =>
+      useDownloadControls(2, 'A/B.m4b', undefined, undefined, 'c3'),
+    );
+    expect(result.current.connectionId).toBe('c3');
   });
 });

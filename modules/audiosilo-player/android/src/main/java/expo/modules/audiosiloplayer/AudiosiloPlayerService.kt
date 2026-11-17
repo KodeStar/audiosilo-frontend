@@ -1,5 +1,6 @@
 package expo.modules.audiosiloplayer
 
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -269,7 +270,11 @@ class AudiosiloPlayerService : MediaLibraryService() {
       NotificationProvider(this).apply { setSmallIcon(R.drawable.ic_notification) },
     )
 
-    mediaSession = MediaLibrarySession.Builder(this, audiobookPlayer, LibraryCallback(this))
+    val builder = MediaLibrarySession.Builder(this, audiobookPlayer, LibraryCallback(this))
+    // A tap on the notification (outside its buttons) opens the app, as every media app's
+    // does: the session activity is the notification's content intent (fe#300).
+    openAppIntent()?.let { builder.setSessionActivity(it) }
+    mediaSession = builder
       .setBitmapLoader(bitmapLoader)
       // Use setCustomLayout (NOT setMediaButtonPreferences): the slot-based preferences
       // capped the notification at 3 actions on 1.5.1 (it drops the secondary slots -
@@ -531,6 +536,20 @@ class AudiosiloPlayerService : MediaLibraryService() {
     stopSelf()
   }
 
+  /**
+   * Opens the app where it is: its launcher activity (`singleTask`, so the running one comes
+   * to the front rather than a second copy). Null when the package has no launcher activity.
+   */
+  private fun openAppIntent(): PendingIntent? {
+    val launch = packageManager.getLaunchIntentForPackage(packageName) ?: return null
+    return PendingIntent.getActivity(
+      this,
+      0,
+      launch,
+      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+  }
+
   /** The placeholder foreground notification ([onStartCommand]); false when not allowed. */
   private fun startPlaceholderForeground(): Boolean {
     // Media3's channel, as Media3 creates it (a no-op when it exists; ignored below API 26).
@@ -545,6 +564,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     val notification = NotificationCompat.Builder(this, DefaultMediaNotificationProvider.DEFAULT_CHANNEL_ID)
       .setSmallIcon(R.drawable.ic_notification)
       .setContentTitle(title)
+      .setContentIntent(openAppIntent())
       .setSilent(true)
       .setOngoing(true)
       .build()

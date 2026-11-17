@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useActiveAddress } from '@/api/address-route';
 import { qk, useCapability } from '@/api/hooks';
 import type { Book, ChaptersResponse } from '@/api/types';
+import { useDeviceOnline } from '@/lib/device-online';
 import { usePlayer } from '@/playback/store';
 import { useSession } from '@/stores/session';
 
@@ -11,7 +12,7 @@ import { behindProxy } from './cast-media';
 import { useCast } from './cast-state';
 
 /** The Cast button's state for the playing book (its connection's flags and address, its
- * item and chapters as the query cache holds them, the session). */
+ * item and chapters as the query cache holds them, the session, the device's network). */
 export function useCastButton(): CastButtonModel {
   const np = usePlayer((s) => s.nowPlaying);
   const cid = np?.connectionId;
@@ -22,6 +23,7 @@ export function useCastButton(): CastButtonModel {
     cid ? s.connections.find((c) => c.id === cid)?.proxyHeaders : undefined,
   );
   const { supported, status, deviceName } = useCast();
+  const online = useDeviceOnline();
   const queryClient = useQueryClient();
   const book = np
     ? queryClient.getQueryData<Book>(qk.item(np.connectionId, np.libraryId, np.path))
@@ -35,6 +37,7 @@ export function useCastButton(): CastButtonModel {
     loaded: !!np,
     episode: !!np?.episode,
     supported,
+    online,
     canCast: cid ? canCast : undefined,
     canTranscode,
     baseUrl: url || null,

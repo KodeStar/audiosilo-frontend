@@ -336,19 +336,25 @@ async function readRegistry(): Promise<Registry> {
     // files are still on disk. Without this the existence check below fails and
     // the book is dropped *and deleted* - the download vanishes after a rebuild.
     const e = await relocateEntry(raw);
-    // Every file the entry lists must still be on disk (`reviveEntry` has the rules).
-    const allPresent =
-      e.manifest.files.length > 0 &&
-      (await Promise.all(e.manifest.files.map((f) => engine.fileExists(f.localUri)))).every(
-        Boolean,
-      );
-    const revived = reviveEntry(e, allPresent);
-    // A row kept with no finished file: what its folder holds is partial.
-    if (revived && revived.manifest.files.length === 0)
-      void engine.removeBook(e.connectionId, e.libraryId, e.path);
     // Key on the entry's own connection-scoped id (stale un-scoped entries from before
     // scoping were already wiped by resetStaleStorage, so every entry here has a real id).
     const key = downloadKey(e.connectionId, e.libraryId, e.path);
+    // Which of the files the entry lists are still on disk (`reviveEntry` has the rules).
+    const present = await Promise.all(e.manifest.files.map((f) => engine.fileExists(f.localUri)));
+    const revived = reviveEntry(e, present);
+    if (
+      (!revived || revived.manifest.files.length !== e.manifest.files.length) &&
+      identityMovePending()
+    ) {
+      // The identity migration gave up mid-move this launch: the files can be under the
+      // new id while this entry names the old one (or the reverse). Kept as stored, never
+      // trimmed, dropped or deleted; the launch that finishes the move finds them.
+      cleaned[key] = raw;
+      continue;
+    }
+    // A row kept with no finished file: what its folder holds is partial.
+    if (revived && revived.manifest.files.length === 0)
+      void engine.removeBook(e.connectionId, e.libraryId, e.path);
     if (revived?.status === 'downloaded') {
       // A chapters answer can reach the cache before this read the registry.
       const manifest = withCachedChapters(e, revived.manifest);
@@ -356,11 +362,6 @@ async function readRegistry(): Promise<Registry> {
       seedQueryCache(e.connectionId, e.libraryId, e.path, manifest);
     } else if (revived) {
       cleaned[key] = revived;
-    } else if (identityMovePending()) {
-      // The identity migration gave up mid-move this launch: the files can be under the
-      // new id while this entry names the old one (or the reverse). Kept as stored,
-      // never dropped and deleted; the launch that finishes the move finds them.
-      cleaned[key] = raw;
     } else {
       void engine.removeBook(e.connectionId, e.libraryId, e.path);
     }
@@ -602,7 +603,10 @@ function resumeEpisodeWaits() {
     } else {
       // `reviveEntry` kept it only with every file it lists on disk. Dropped, or a row with no
       // finished file, its folder goes (as `readRegistry` does).
-      const revived = reviveEntry(withoutServerFetch(e), true);
+      const revived = reviveEntry(
+        withoutServerFetch(e),
+        e.manifest.files.map(() => true),
+      );
       if (!revived || revived.manifest.files.length === 0)
         void engine.removeBook(e.connectionId, e.libraryId, e.path);
       cut.set(key, revived);
@@ -723,32 +727,46 @@ function stepAside(key: string) {
 }
 
 /**
- * What a saved entry becomes on launch (`allPresent`: every file it lists is on disk):
- * - a downloaded book stays downloaded;
+ * What a saved entry becomes on launch (`present`: whether each file it lists, in order, is
+ * still on disk):
+ * - a downloaded book stays downloaded while every file is there;
+ * - a downloaded book with some of its files gone (the system or the listener deleted
+ *   them) stays as a failure keeping the files still there (`missing`), so Retry fetches
+ *   only the rest instead of the whole book being dropped (fe#158). A keep-ahead one is
+ *   dropped with its folder instead, as before: keep-ahead never retries a failure, and
+ *   plans a dropped book again;
  * - an episode waiting for its server stays waiting (`resumeEpisodeWaits` asks again), unless
  *   files a failed attempt finished are gone;
  * - a failed download, or one the app closed mid-way (still `queued` / `downloading`:
  *   the engines can't resume a transfer, but the files it FINISHED are listed as they
- *   land), stays as a failure keeping those files, so Retry fetches only the rest. One
- *   cut short by the app closing says so (`interrupted`), or, on web with every file
- *   saved and no EPUB to fetch, that only the check that it plays offline was left
- *   (`unservable`: the service worker that serves it may not control the page, v2.5.1
- *   PLAYER-03);
- * - a failed or cut-short download that finished no file yet (most books are ONE file)
- *   stays too, as a row to retry from the start (v2.5.1 PLAYER-04), its folder emptied by
- *   the caller; a keep-ahead one is dropped instead (keep-ahead plans it again, and never
- *   retries a failure);
- * - anything else is dropped (and its folder deleted by the caller): a downloaded entry
- *   with no files, or one whose files are no longer all there.
+ *   land), stays as a failure keeping those of its files still there, so Retry fetches
+ *   only the rest. One cut short by the app closing says so (`interrupted`), or, on web
+ *   with every file saved and no EPUB to fetch, that only the check that it plays offline
+ *   was left (`unservable`: the service worker that serves it may not control the page,
+ *   v2.5.1 PLAYER-03);
+ * - a failed or cut-short download with no file left (most books are ONE file) stays too,
+ *   as a row to retry from the start (v2.5.1 PLAYER-04), its folder emptied by the caller;
+ *   a keep-ahead one is dropped instead (keep-ahead plans it again, and never retries a
+ *   failure);
+ * - a downloaded entry with no file there at all is dropped (and its folder deleted by the
+ *   caller).
  * The kept share is recomputed from the files, so it is what is really on the device.
  */
-export function reviveEntry(saved: DownloadEntry, allPresent: boolean): DownloadEntry | null {
+export function reviveEntry(
+  saved: DownloadEntry,
+  present: readonly boolean[],
+): DownloadEntry | null {
+  const listed = saved.manifest.files;
+  const files = listed.filter((_, i) => present[i] === true);
+  const allPresent = listed.length > 0 && files.length === listed.length;
   // An episode that was waiting for its server waits again (`resumeEpisodeWaits`), with what
   // a failed attempt finished still there; one whose files went is a download cut short.
-  if (saved.serverFetch && (saved.manifest.files.length === 0 || allPresent)) return saved;
+  if (saved.serverFetch && (listed.length === 0 || allPresent)) return saved;
   const e = saved.serverFetch ? withoutServerFetch(saved) : saved;
-  const files = e.manifest.files;
-  if (e.status === 'downloaded') return files.length > 0 && allPresent ? e : null;
+  if (e.status === 'downloaded') {
+    if (allPresent) return e;
+    if (files.length === 0 || e.origin === 'keep-ahead') return null;
+  }
   if (files.length === 0) {
     if (e.origin === 'keep-ahead') return null;
     return {
@@ -763,26 +781,29 @@ export function reviveEntry(saved: DownloadEntry, allPresent: boolean): Download
           : { kind: 'interrupted', kept: 0 },
       // Its folder goes (a cut-short transfer's partial bytes, the cover): the retry
       // fetches them again.
-      manifest: { ...e.manifest, coverUri: null, ebookUri: undefined },
+      manifest: { ...e.manifest, files: [], coverUri: null, ebookUri: undefined },
     };
   }
-  if (!allPresent) return null;
   const of = bookFileSpecs(e.manifest.book, e.manifest.chapters ?? undefined).length;
-  const kept = Math.min(1, files.length / Math.max(of, files.length));
+  const kept = Math.min(1, files.length / Math.max(of, listed.length));
   // Only the check was left when every file is saved and no EPUB was still to come (it is
   // fetched after the audio, and listed only once the download ends).
-  const onlyCheckLeft = kept === 1 && !!engine.verify && !e.manifest.book.ebook;
+  const onlyCheckLeft = allPresent && kept === 1 && !!engine.verify && !e.manifest.book.ebook;
   const failure: DownloadFailure =
-    e.status === 'error' && e.failure
-      ? { ...e.failure, kept }
-      : { kind: onlyCheckLeft ? 'unservable' : 'interrupted', kept };
+    e.status === 'downloaded'
+      ? { kind: 'missing', kept }
+      : e.status === 'error' && e.failure
+        ? { ...e.failure, kept }
+        : { kind: onlyCheckLeft ? 'unservable' : 'interrupted', kept };
   return {
     ...e,
     status: 'error',
     progress: kept,
     bytes: files.reduce((sum, f) => sum + (f.bytes ?? 0), 0),
-    error: e.status === 'error' ? e.error : 'Interrupted',
+    error:
+      e.status === 'error' ? e.error : e.status === 'downloaded' ? 'Files missing' : 'Interrupted',
     failure,
+    manifest: allPresent ? e.manifest : { ...e.manifest, files },
   };
 }
 
@@ -849,8 +870,8 @@ function chaptersRefresh(
  * files take a new order (server v2.4.0 plays them in natural order, "2-" before "10-"):
  * the chapters carry the order every queue over the download plays them in
  * (`bookFileSpecs`, each file found by its path: `localFromManifest`), and `files` itself
- * never moves, since a file's index there is its name on disk (`fileName`;
- * `relocateEntry` keeps a saved file's own name, `storedName`). A
+ * never moves, since a file's name on disk is its index (`fileName`; `relocateEntry` keeps
+ * a saved file's own name, `storedIndex`). A
  * background answer never does it (`refreshedChapters`): JS cannot see a book the Android
  * service or a Cast receiver holds before it is adopted. Chapters naming other files
  * change nothing.
@@ -1342,8 +1363,9 @@ async function relocateEntry(e: DownloadEntry): Promise<DownloadEntry> {
   const at = (name: string) => resolve(connectionId, libraryId, path, name);
   const files = await Promise.all(
     e.manifest.files.map(async (f, i) => {
-      const name = storedName(i, f.localUri) ?? fileName(i, f.relPath);
-      return { ...f, localUri: at(await playableName(i, name, at)) };
+      const index = savedIndex(f, i);
+      const name = storedName(index, f.localUri) ?? fileName(index, f.relPath);
+      return { ...f, localUri: at(await playableName(index, name, at)) };
     }),
   );
   const coverUri = e.manifest.coverUri ? at(COVER_FILE) : e.manifest.coverUri;
@@ -1405,9 +1427,29 @@ function fileName(index: number, relPath: string): string {
  * `file://` uri carries, which is not the name on disk) falls back to `fileName`.
  */
 function storedName(index: number, localUri: string): string | undefined {
-  const name = localUri.slice(localUri.lastIndexOf('/') + 1);
-  const m = /^(\d+)(\.[^./:?#%]+)?$/.exec(name);
-  return m?.[1] === String(index) ? name : undefined;
+  return storedIndex(localUri) === index
+    ? localUri.slice(localUri.lastIndexOf('/') + 1)
+    : undefined;
+}
+
+/** The index a saved file's stored name says, when it is one `fileName` could have given
+ * (`<index>` plus an optional extension, as `storedName` reads it), else undefined. */
+function storedIndex(localUri: string): number | undefined {
+  const m = /^(\d+)(\.[^./:?#%]+)?$/.exec(localUri.slice(localUri.lastIndexOf('/') + 1));
+  return m ? Number(m[1]) : undefined;
+}
+
+/** The index the file listed `k`th was saved under: the one its stored name says, else its
+ * place in the list. A launch that found a file gone lists only the ones still there
+ * (`reviveEntry`), so a file listed after a gone one is saved under a later index than its
+ * place (fe#158). */
+function savedIndex(f: DownloadedFile, k: number): number {
+  return storedIndex(f.localUri) ?? k;
+}
+
+/** The files of `earlier` (a failed attempt's) saved under index `from` or later. */
+function savedFrom(earlier: readonly DownloadedFile[], from: number): DownloadedFile[] {
+  return earlier.filter((f, k) => savedIndex(f, k) >= from);
 }
 
 async function runQueue() {
@@ -1490,6 +1532,9 @@ async function runOne(key: string) {
   // The files that finished, so a failure can keep them, and how many there are.
   const files: DownloadedFile[] = [];
   let fileCount = 0;
+  // Files a failed attempt already finished, each counted only for the index it was saved
+  // under (`savedIndex`), since a download of the index writes over it.
+  const earlier = entry.manifest.files;
   try {
     const specs = bookFileSpecs(entry.manifest.book, entry.manifest.chapters ?? undefined);
     fileCount = specs.length;
@@ -1542,13 +1587,10 @@ async function runOne(key: string) {
       lastTick = now;
       patch({ bytes, totalBytes: knownTotal, progress: step / steps });
     };
-    // Files a failed attempt already finished, by position (the on-disk name is the
-    // index, so a file only counts where it was saved).
-    const earlier = entry.manifest.files;
     for (let i = 0; i < specs.length; i++) {
       const s = specs[i];
-      const done = earlier[i];
-      if (done?.relPath === s.path && (await engine.fileExists(done.localUri))) {
+      const done = earlier.find((f, k) => f.relPath === s.path && savedIndex(f, k) === i);
+      if (done && (await engine.fileExists(done.localUri))) {
         files.push(done);
         priorBytes += done.bytes ?? s.size;
         patch({ bytes: priorBytes, totalBytes: knownTotal, progress: (i + 1) / steps });
@@ -1573,14 +1615,14 @@ async function runOne(key: string) {
       files.push({ relPath: s.path, localUri, bytes: curBytes });
       // List each finished file as it lands, so a download the app is closed in the
       // middle of keeps them across the restart (`reviveEntry`). Files a failed attempt
-      // finished further on stay listed in their places (the name on disk is the index).
+      // saved under a later index stay listed (the name on disk is the index).
       const cur = useDownloads.getState().entries[key];
       if (cur && live()) {
         patchEntry(key, {
           bytes: priorBytes,
           totalBytes: knownTotal,
           progress: (i + 1) / steps,
-          manifest: { ...cur.manifest, files: [...files, ...earlier.slice(files.length)] },
+          manifest: { ...cur.manifest, files: [...files, ...savedFrom(earlier, files.length)] },
         });
         persistSoon();
       }
@@ -1687,15 +1729,18 @@ async function runOne(key: string) {
     } else if (live()) {
       // Keep the files that finished: a retry skips them, so a failure 41% through a
       // multi-file book doesn't throw that 41% away. (The one being written is partial,
-      // and is written over by the retry.)
-      const kept = fileCount > 0 ? files.length / fileCount : 0;
+      // and is written over by the retry.) So are the files an earlier attempt saved
+      // further on, which this one never reached (a download with a file gone, fe#158: a
+      // retry that fails on the gone file must not unlist the rest).
+      const held = [...files, ...savedFrom(earlier, files.length + 1)];
+      const kept = fileCount > 0 ? Math.min(1, held.length / fileCount) : 0;
       const failure: DownloadFailure = { ...classifyDownloadError(e), kept };
       const cur = useDownloads.getState().entries[key];
       patchEntry(key, {
         status: 'error',
         error: e instanceof Error ? e.message : 'Download failed',
         failure,
-        ...(cur ? { manifest: { ...cur.manifest, files } } : {}),
+        ...(cur ? { manifest: { ...cur.manifest, files: held } } : {}),
       });
       void persist();
     }

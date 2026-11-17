@@ -338,6 +338,7 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
   let outbox!: typeof import('./listening-outbox');
   let jumpUndo!: typeof import('./jump-undo');
   let types!: typeof import('./types');
+  let downloads!: typeof import('@/downloads/store');
   try {
     jest.isolateModules(() => {
       /* eslint-disable @typescript-eslint/no-require-imports */
@@ -345,6 +346,7 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
       outbox = require('./listening-outbox') as typeof import('./listening-outbox');
       jumpUndo = require('./jump-undo') as typeof import('./jump-undo');
       types = require('./types') as typeof import('./types');
+      downloads = require('@/downloads/store') as typeof import('@/downloads/store');
       /* eslint-enable @typescript-eslint/no-require-imports */
     });
     await store.initializePlayback();
@@ -373,6 +375,44 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
     /** The browser refuses the next play (no gesture in the page yet: a cold deep link):
      * the book it starts stays loaded and paused, and the tab claims nothing. */
     blockPlay: () => engine.svc.play.mockRejectedValueOnce(new types.AutoplayBlockedError()),
+    /** The tab's download of `which` lands, its files and chapters in `order`. */
+    downloadLands: (which: { book: Book; chapters: ChaptersResponse }, order: string[]) => {
+      const path = which.book.rel_path;
+      const byPath = new Map(which.chapters.files.map((f) => [f.rel_path, f]));
+      const files = order.map((rel, seq) => ({ ...byPath.get(rel)!, seq }));
+      downloads.useDownloads.setState({
+        entries: {
+          [`c1:2:${path}`]: {
+            connectionId: 'c1',
+            libraryId: 2,
+            path,
+            title: which.book.title,
+            status: 'downloaded',
+            progress: 1,
+            bytes: 0,
+            totalBytes: 0,
+            manifest: {
+              book: which.book,
+              chapters: {
+                ...which.chapters,
+                files,
+                chapters: order.map((rel, index) => ({
+                  ...which.chapters.chapters[0],
+                  index,
+                  file_index: index,
+                  file_path: rel,
+                  end: byPath.get(rel)!.duration,
+                  book_offset: index * byPath.get(rel)!.duration,
+                })),
+              },
+              files: order.map((relPath) => ({ relPath, localUri: `file:///dl/${relPath}` })),
+              coverUri: null,
+              savedAt: '2026-01-01T00:00:00Z',
+            },
+          },
+        },
+      });
+    },
     /** Save the place now, as the 15 s save does while it plays. */
     save: async () => {
       store.saveLoadedPlace();
@@ -1627,6 +1667,41 @@ describe.each([
         expect.anything(),
       );
       expect(a.player().snapshot.state).toBe('playing');
+    });
+
+    it('a Retry onto a download in another order starts a book the other tab finished from its start', async () => {
+      mockMirror.on = true;
+      // Started from its file list alone: a download in another order keeps that order.
+      const listed = { ...parts.book, files: parts.chapters.files };
+      await a.player().playBook('c1', 2, listed, undefined, 30);
+      a.engine.fail();
+      await sleep(5);
+      await b.start(30, 'c1', parts);
+      await until(() => a.engine.svc.pause.mock.calls.length === 1, "A's engine to stop");
+      // B finished the book and plays no more: the record its finish writes.
+      await b.player().pause();
+      mockMirror.records.set(mirrorKey('c1', 2, parts.book.rel_path), {
+        connectionId: 'c1',
+        libraryId: 2,
+        path: parts.book.rel_path,
+        position: 3600,
+        finished: true,
+        device_id: 'dev-1',
+        updated_at: new Date().toISOString(),
+      });
+      const [one, two, three] = parts.chapters.files.map((f) => f.rel_path);
+      a.downloadLands(parts, [three, one, two]);
+      await sleep(5);
+
+      await a.player().retry();
+      // From the download's start (its first file, 3.mp3), not from 1.mp3, which the
+      // download plays second.
+      const [tracks, index, position] = a.engine.svc.load.mock.lastCall as unknown as [
+        { url: string }[],
+        number,
+        number,
+      ];
+      expect([tracks[index].url, index, position]).toEqual([`file:///dl/${three}`, 0, 0]);
     });
   });
 });

@@ -3,6 +3,7 @@ import { castButtonModel, sdkButtonDraws } from './cast-button-model';
 const base = {
   loaded: true,
   supported: true,
+  online: true,
   canCast: true,
   canTranscode: true,
   baseUrl: 'http://192.168.1.5:8080',
@@ -57,6 +58,13 @@ describe('castButtonModel', () => {
   it('explains instead of casting when the address in use is behind an auth proxy (fe#167)', () => {
     expect(castButtonModel({ ...base, proxied: true }).blocked).toBe('proxy');
     expect(castButtonModel({ ...base, proxied: false }).blocked).toBeNull();
+  });
+
+  it('hides it while the device is offline, unless a session runs (fe#275)', () => {
+    expect(castButtonModel({ ...base, online: false }).show).toBe(false);
+    expect(
+      castButtonModel({ ...base, online: false, status: 'connected', deviceName: 'Den' }).show,
+    ).toBe(true);
   });
 
   // Bridge Phase 2d-1: a cast token never covers a podcast episode.

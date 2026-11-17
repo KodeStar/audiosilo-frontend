@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 
-import { useScopedCid } from '@/api/provider';
+import { useCid } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
 import { useNeedsWebTranscode } from '@/playback/transcode-capability';
 
@@ -33,10 +33,10 @@ export function useDownloadControls(
   chapterData?: ChaptersResponse,
   connectionId?: string,
 ): DownloadControls {
-  // The book screen's connection scope (from its `?connection=` query param) keys
-  // downloads, unless the caller names the connection (a list of several servers).
-  const scoped = useScopedCid();
-  const cid = connectionId ?? scoped;
+  // The caller's connection (a list of several servers), else the book screen's scope (its
+  // `?connection=` query param), else the active connection: a download is never keyed by
+  // '' (fe#296).
+  const cid = useCid(connectionId);
   const { status, failure } = useDownloadState(cid, libraryId, path);
   // Reflects the SW serveability probe (downgraded after hydrate if the worker can't
   // serve offline media), not just the static Cache-API capability.

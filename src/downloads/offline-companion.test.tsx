@@ -7,7 +7,7 @@
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { act, fireEvent, render, renderHook, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
 import type { BookMeta, BookMetaWork, ChaptersResponse, ServerInfo } from '@/api/types';
@@ -372,9 +372,12 @@ describe('a downloaded book opened offline', () => {
     expect(result.current.metadata).toBe(true);
     expect(result.current.work).toBeUndefined();
     await useDownloads.getState().hydrate();
-    await restored();
-    expect(result.current.work?.id).toBe('w3');
-    expect(result.current.loading).toBe(false);
+    // Waited for, not a fixed tick: under a loaded full run the restore can take longer
+    // than one (fe#288).
+    await waitFor(() => {
+      expect(result.current.work?.id).toBe('w3');
+      expect(result.current.loading).toBe(false);
+    });
   });
 
   it('the previous work answers by its id', async () => {

@@ -3,6 +3,7 @@ import type { TFunction } from 'i18next';
 import i18n from '@/i18n';
 
 import { classifyDownloadError, failureText } from './failure';
+import type { DownloadFailure } from './types';
 
 describe('classifyDownloadError', () => {
   it('reads the browsers fetch failures as the server not responding', () => {
@@ -79,5 +80,23 @@ describe('failureText', () => {
     expect(failureText(t, { failure: { kind: 'noAccess', kept: 0 } }, 'Home', 'device')).toBe(
       "This account can't get this episode from Home.",
     );
+  });
+
+  // fe#158: a finished download with a file gone keeps the rest.
+  it('says some files are gone, and what is kept', () => {
+    const t = i18n.t.bind(i18n) as TFunction;
+    expect(failureText(t, { failure: { kind: 'missing', kept: 0.5 } }, 'Home', 'device')).toBe(
+      'Some of its files are no longer on this device. Your 50% is kept.',
+    );
+  });
+
+  it('reads a kind this build does not know as stopped, with what is kept', () => {
+    const t = i18n.t.bind(i18n) as TFunction;
+    for (const kind of ['fromANewerBuild', 'constructor']) {
+      const failure = { kind, kept: 0.25 } as unknown as DownloadFailure;
+      expect(failureText(t, { failure }, 'Home', 'device')).toBe(
+        'The download stopped. Your 25% is kept.',
+      );
+    }
   });
 });

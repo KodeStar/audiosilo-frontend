@@ -1862,7 +1862,14 @@ media GETs only.
   the book is still the store's and its download complete (each needs a real move of the
   stream: the listener's, the stream's own advance to its next file or a transcoded
   early-end reload, or a one-off move the store makes; never the swap's own, so it ends); a
-  `'refused'` copy is never retried.
+  `'refused'` copy is never retried. A stream in `error` refuses a gapless swap, so **Retry
+  takes a download that landed meanwhile** (fe#278, `retry`): its reload moves the store
+  onto the download's queue first (`localSwapOf`, `commitLocalSwap`, the swap's own plan and
+  commit), at the same file and place in it, in whatever order the download plays (nothing
+  is playing for a new order to cut into). It stays the reload it was, never a fresh
+  `playBook`: no place is saved or looked up first (this device's old place, dated now, would
+  be the newest one), and the resume floor, the place another tab left and the pick-up check
+  of a long stop all stand.
 - **Native counts go through `nativeNumber`** (`src/lib/native-number.ts`): since SDK 58 the iOS
   bridge sends a Swift `Int64`/`UInt64` as a JS `bigint` (typed `number`), and a bigint throws
   where it meets a number. expo-file-system's `File.size`, `Paths.totalDiskSpace` /
@@ -4001,11 +4008,18 @@ are asked, at most 10,000 rows.
   never by the error's text: Android reports a dropped connection as "Software caused connection
   abort", a failure like any other. `runOne` lists each finished file
   in the saved entry as it lands, and launch (`reviveEntry`) keeps a failed or interrupted download
-  whose listed files are all still on disk (an interrupted one says the app closed, or on web with
-  every file saved that only the offline check was left, `unservable`). One that finished no file
-  yet (most books are one M4B) stays as a row to retry from the start, its folder emptied, unless
-  keep-ahead started it (keep-ahead plans it again); anything else is dropped with its folder. No
-  storage format change.
+  with the listed files still on disk (an interrupted one says the app closed, or on web with
+  every file saved that only the offline check was left, `unservable`). A downloaded book with
+  some of its files gone is kept the same way, as a failure holding the rest (`missing`, fe#158),
+  so Retry fetches only the gone ones (one keep-ahead started is dropped with its folder instead:
+  keep-ahead never retries a failure, and plans a dropped book again). A kept file is found by
+  the index its stored name says (`storedIndex`, else its place in the list): at launch
+  (`relocateEntry`) and by a retry, which reuses it only for that index, and which keeps the ones
+  saved further on listed when it fails before reaching them. One with no file left (most books
+  are one M4B) stays as a row to retry from the start, its folder emptied, unless keep-ahead
+  started it (keep-ahead plans it again); a downloaded book with no file left is dropped with its
+  folder. While an identity move is pending an entry is kept exactly as stored. No storage format
+  change.
 - **Web**: the service worker now registers in the exported player even when the root layout loads
   after the page's load event (before, offline web playback never worked), and the download-support
   probe waits at most 10 s for a worker (it used to hang, offering downloads that couldn't play).
@@ -4044,8 +4058,8 @@ are asked, at most 10,000 rows.
   chapters only when they are exactly that order, else reloads the engine in the manifest's
   (fe#134; the Cast receiver adoption still maps its track index through the manifest). The
   chapters carry the order (every queue over a download orders its files by them and finds each by
-  path); `manifest.files` itself never moves, since a file's index there is its name on disk
-  (`fileName`; `relocateEntry` keeps each saved file's own name at every launch). A place saved on the old
+  path); `manifest.files` itself never moves, since a file's name on disk is its index
+  (`fileName`; `relocateEntry` keeps each saved file's own name at every launch, `storedIndex`). A place saved on the old
   timeline reads as moved once the new order is taken (as the server's re-index moves any
   whole-book place: no remap). A downloaded book whose chapters change gets its Android car play
   spec rebuilt (`car-controller.ts`).

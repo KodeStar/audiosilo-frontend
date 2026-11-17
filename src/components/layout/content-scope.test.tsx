@@ -5,7 +5,10 @@ import { Text } from 'react-native';
 // fake ConnectionScope records the prop and renders its children (a probe) so we assert
 // the *resolved* scope without pulling in the real provider/query-client internals.
 let scopedTo: string | undefined;
+// The active connection: `useCid`'s fallback with no route param (and no outer scope).
+let mockDefaultCid = '';
 jest.mock('@/api/provider', () => ({
+  useCid: (id?: string) => id ?? mockDefaultCid,
   ConnectionScope: ({
     connectionId,
     children,
@@ -55,6 +58,7 @@ import { ContentScope, useRouteConnection } from './content-scope';
 beforeEach(() => {
   resetProfilesForTests();
   scopedTo = undefined;
+  mockDefaultCid = '';
   mockParams = {};
   mockConnections = [];
   mockRedirect.mockClear();
@@ -119,14 +123,17 @@ describe('ContentScope resolves the scope from the route local param (not the de
     expect(mockRouter.dismissTo).toHaveBeenCalledWith('/');
   });
 
-  it("defaults to '' when the route carries no connection (aggregated screens)", async () => {
+  it('scopes to the active connection when the route carries no connection (fe#296)', async () => {
     mockParams = {};
-    mockConnections = [{ id: 'c1' }];
+    mockConnections = [{ id: 'c1' }, { id: 'c2' }];
+    mockDefaultCid = 'c2';
 
     await mount();
 
-    // Empty scope -> useCid() falls back to the default connection; never redirects.
-    expect(scopedTo).toBe('');
+    // A book link with no `connection=`: the page's downloads and reads are keyed by the
+    // active connection, never by '' ("not signed in"); never redirects.
+    expect(scopedTo).toBe('c2');
+    expect(screen.getByText('content')).toBeTruthy();
     expect(mockRedirect).not.toHaveBeenCalled();
   });
 });
@@ -170,8 +177,8 @@ describe('ContentScope and the people on this device (Phase 8)', () => {
 // follow the same rule through the hook.
 describe('useRouteConnection (the root modals)', () => {
   function RootModal({ connection }: { connection?: string }) {
-    const { cid, gate } = useRouteConnection(connection);
-    return gate ?? <Text>{`modal-${cid}`}</Text>;
+    const { cid, named, gate } = useRouteConnection(connection);
+    return gate ?? <Text>{`modal-${cid}-${named}`}</Text>;
   }
   const show = async (connection?: string) => {
     await act(async () => {
@@ -179,12 +186,14 @@ describe('useRouteConnection (the root modals)', () => {
     });
   };
 
-  it('shows the screen for a signed-in connection, or for none (the fallback scope)', async () => {
-    mockConnections = [{ id: 'c1' }];
-    await show('c1');
-    expect(screen.getByText('modal-c1')).toBeTruthy();
+  it('shows the screen for a signed-in connection, or for none (the active one)', async () => {
+    mockConnections = [{ id: 'c1' }, { id: 'c2' }];
+    mockDefaultCid = 'c1';
+    await show('c2');
+    expect(screen.getByText('modal-c2-c2')).toBeTruthy();
+    // A bare link reads through the active connection; `named` says the link named none.
     await show(undefined);
-    expect(screen.getByText('modal-')).toBeTruthy();
+    expect(screen.getByText('modal-c1-')).toBeTruthy();
   });
 
   it("an unknown connection gets the not-found state; another person's, the gate", async () => {
@@ -202,6 +211,6 @@ describe('useRouteConnection (the root modals)', () => {
     await show('c2');
     expect(screen.getByText('gate-Sam')).toBeTruthy();
     await show('c1');
-    expect(screen.getByText('modal-c1')).toBeTruthy();
+    expect(screen.getByText('modal-c1-c1')).toBeTruthy();
   });
 });

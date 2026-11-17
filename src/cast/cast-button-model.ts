@@ -19,13 +19,17 @@ export type CastButtonModel = {
  * so it can always be stopped. Blocked (it explains instead of casting) when the address in
  * use is this device, or the book needs a transcoder the server lacks. Never offered for a
  * podcast episode (`episode`: a cast token never covers one, Bridge Phase 2d-1), unless a
- * session is connected (so it can be stopped).
+ * session is connected (so it can be stopped). Not offered while the device has no network
+ * (`online`: no Cast device can be found, and the SDK's button drew an empty pill, fe#275),
+ * unless a session is connected.
  */
 export function castButtonModel(input: {
   loaded: boolean;
   /** The loaded item is a podcast episode. */
   episode?: boolean;
   supported: boolean | null;
+  /** The device has a network (`useDeviceOnline`). */
+  online: boolean;
   canCast: boolean | undefined;
   canTranscode: boolean | undefined;
   baseUrl: string | null;
@@ -40,7 +44,7 @@ export function castButtonModel(input: {
   const connected = status !== 'off';
   const show =
     input.supported === true &&
-    (connected || (input.loaded && !input.episode && input.canCast === true));
+    (connected || (input.online && input.loaded && !input.episode && input.canCast === true));
   const blocked =
     show && !connected
       ? castBlockReason({

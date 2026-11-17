@@ -14,9 +14,10 @@ import { useSession } from '@/stores/session';
  */
 export default function ReadyRoute() {
   const { connection } = useRouteParams<{ connection?: string }>();
-  const { cid, gate } = useRouteConnection(connection);
-  const conn = useSession((s) => s.connections.find((c) => c.id === cid));
-  if (!cid || !conn) return <LeaveOnboarding />;
+  // The connection the link names, never the active one: a bare link has no sign-in to end.
+  const { named, gate } = useRouteConnection(connection);
+  const conn = useSession((s) => s.connections.find((c) => c.id === named));
+  if (!named || !conn) return <LeaveOnboarding />;
   if (gate) return gate;
   return (
     <ConnectionScope connectionId={conn.id}>

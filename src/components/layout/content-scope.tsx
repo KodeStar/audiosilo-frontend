@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { ConnectionScope } from '@/api/provider';
+import { ConnectionScope, useCid } from '@/api/provider';
 import { OtherPersonGate } from '@/components/profiles/other-person-gate';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Screen } from '@/components/ui/screen';
@@ -28,8 +28,9 @@ import { useSession } from '@/stores/session';
  * removed person's book) gets a not-found state with a way back, never the children, so
  * `useApi()` under the scope never throws. Never a `<Redirect>`: the page stays in its tab
  * stack, and a redirect there fires again on every focus of the tab (each tap on the tab
- * flashed a blank page and jumped Home). Aggregated screens (Home/Search) carry no
- * `connection`, so they don't wrap in this and default to `''`.
+ * flashed a blank page and jumped Home). A link with no `connection` scopes to the active
+ * connection (`useRouteConnection`). Aggregated screens (Home/Search) carry no
+ * `connection` and don't wrap in this: their scope is `''`.
  *
  * A connection of ANOTHER person on this device (Phase 8 profiles) is never shown
  * silently: `OtherPersonGate` offers to switch to them first (their PIN rules apply).
@@ -43,22 +44,27 @@ export function ContentScope({ children }: { children: ReactNode }) {
 /**
  * The rule every route that carries `?connection=` follows, in one place: the content
  * screens through `ContentScope`, and the root modals (the player, the end credits, the
- * Year in listening story), which sit outside any scope, directly. The param is read
- * through `connectionParam` (an old id a widget or a car snapshot carries resolves);
- * `gate` is what to show instead of the screen: a not-found state for a connection that
- * isn't signed in, `OtherPersonGate` for another person's (switch first, their PIN rules
- * apply). Null when the screen may show; `cid` is '' without a param (the caller's
- * fallback scope).
+ * reader, the Year in listening story), which sit outside any scope, directly. The param
+ * is read through `connectionParam` (an old id a widget or a car snapshot carries
+ * resolves); `named` is that id, '' when the link names none. `cid` is the connection the
+ * screen shows: the named one, else the active connection (`useCid`), so a link with no
+ * `connection=` (a hand-edited or old one) keys its downloads, places and requests by a
+ * real connection, never by '' (fe#296, fe#172). `gate` is what to show instead of the
+ * screen: a not-found state for a named connection that isn't signed in,
+ * `OtherPersonGate` for another person's (switch first, their PIN rules apply). Null when
+ * the screen may show.
  */
 export function useRouteConnection(connection: string | string[] | undefined): {
   cid: string;
+  named: string;
   gate: ReactElement | null;
 } {
-  const cid = connectionParam(connection);
-  const known = useSession((s) => !cid || s.connections.some((c) => c.id === cid));
-  const owner = useProfiles((s) => otherOwner(s, cid));
+  const named = connectionParam(connection);
+  const cid = useCid(named || undefined);
+  const known = useSession((s) => !named || s.connections.some((c) => c.id === named));
+  const owner = useProfiles((s) => otherOwner(s, named));
   const gate = !known ? <UnknownConnection /> : owner ? <OtherPersonGate profile={owner} /> : null;
-  return { cid, gate };
+  return { cid, named, gate };
 }
 
 function UnknownConnection() {

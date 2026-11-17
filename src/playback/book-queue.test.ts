@@ -453,6 +453,46 @@ describe('timeline math', () => {
     expect(toBookPosition(offsets, 1, 10)).toBe(70);
   });
 
+  it('locate starts the first of the tracks that share an offset (fe#324)', () => {
+    // Two files of unknown length: the book starts in the first, not the last.
+    expect(locate([0, 0], 0)).toEqual({ index: 0, positionInTrack: 0 });
+    expect(locate([0, 0], 30)).toEqual({ index: 0, positionInTrack: 30 });
+    expect(locate([0, 60, 60, 60], 60)).toEqual({ index: 1, positionInTrack: 0 });
+    expect(locate([0, 60, 60, 90], 95)).toEqual({ index: 3, positionInTrack: 5 });
+    // The file the place is known to be in, among those sharing its offset.
+    expect(locate([0, 60, 60, 60], 70, 2)).toEqual({ index: 2, positionInTrack: 10 });
+    expect(locate([0, 0, 0], 30, 2)).toEqual({ index: 2, positionInTrack: 30 });
+    // Not one of them: no say.
+    expect(locate([0, 60, 60, 90], 70, 0)).toEqual({ index: 1, positionInTrack: 10 });
+    expect(locate([0, 60, 60, 90], 70, 3)).toEqual({ index: 1, positionInTrack: 10 });
+    expect(locate([0, 60], NaN)).toMatchObject({ index: 0 });
+  });
+
+  it('chapterAt takes the first of tied chapters, or the one in the playing file', () => {
+    const tied = [
+      chapter({ index: 0, book_offset: 0, file_path: 'B/01.mp3' }),
+      chapter({ index: 1, book_offset: 0, file_path: 'B/02.mp3' }),
+      chapter({ index: 2, book_offset: 0, file_path: 'B/03.mp3' }),
+    ];
+    expect(chapterAt(tied, 0)?.index).toBe(0);
+    expect(chapterAt(tied, 40)?.index).toBe(0);
+    expect(chapterAt(tied, 0, (f) => f === 'B/02.mp3')?.index).toBe(1);
+    expect(chapterAt(tied, 40, (f) => f === 'B/03.mp3')?.index).toBe(2);
+    // A playing file with no tied chapter keeps the first.
+    expect(chapterAt(tied, 0, (f) => f === 'B/04.mp3')?.index).toBe(0);
+  });
+
+  it('chapterAt takes the later of two chapters starting together in one file', () => {
+    // A chapter of no length (a duplicated marker) before the real one: the real one plays.
+    const chapters = [
+      chapter({ index: 0, book_offset: 0, start: 0, end: 0, file_path: 'B/01.mp3' }),
+      chapter({ index: 1, book_offset: 0, start: 0, end: 600, file_path: 'B/01.mp3' }),
+      chapter({ index: 2, book_offset: 600, start: 600, end: 900, file_path: 'B/01.mp3' }),
+    ];
+    expect(chapterAt(chapters, 30)?.index).toBe(1);
+    expect(chapterAt(chapters, 30, (f) => f === 'B/01.mp3')?.index).toBe(1);
+  });
+
   it('chapterAt finds the active chapter and clamps below the first', () => {
     const chapters = [
       chapter({ index: 0, book_offset: 0 }),

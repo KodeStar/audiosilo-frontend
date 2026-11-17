@@ -3,7 +3,7 @@ import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
-import { useScopedCid } from '@/api/provider';
+import { useCid } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
 import { RemoveDownloadConfirm } from '@/components/downloads/remove-download-confirm';
 import { Button } from '@/components/ui/button';
@@ -255,7 +255,7 @@ function OnDeviceLabel({
 export function DownloadProgress({ libraryId, path }: { libraryId: number; path: string }) {
   const { t } = useTranslation();
   // It redraws with every tick anyway, so the whole entry is the one read it needs.
-  const entry = useDownloadEntry(useScopedCid(), libraryId, path);
+  const entry = useDownloadEntry(useCid(), libraryId, path);
   if (entry?.status !== 'downloading' && entry?.status !== 'queued') return null;
   const { status, progress, bytes, totalBytes, serverFetch } = entry;
   return (
