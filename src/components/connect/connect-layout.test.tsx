@@ -1,4 +1,5 @@
 import { act, render, screen } from '@testing-library/react-native';
+import { Suspense } from 'react';
 
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -201,6 +202,38 @@ describe("a single sign-on's return (a page load, fe#310)", () => {
     expect(mockDismissTo).toHaveBeenCalledWith('/kids');
     // The finish says why itself (`finishOidcSignIn`): no "ask a grown-up to open this link".
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  // The app's first render is a transition, and one thrown away runs the layout's first
+  // render again: that one still finds the intent, and only the layout on screen takes it.
+  it('keeps the intent through a first render that is run again', async () => {
+    leaveForProvider();
+    mockReturning = true;
+    let ready = false;
+    let open = () => {};
+    const loading = new Promise<void>((resolve) => {
+      open = () => {
+        ready = true;
+        resolve();
+      };
+    });
+    const Loading = () => {
+      if (!ready) throw loading;
+      return null;
+    };
+    await render(
+      <Suspense fallback={null}>
+        <ConnectLayout />
+        <Loading />
+      </Suspense>,
+    );
+    expect(screen.queryByText('connect flow')).toBeNull();
+    expect(store.size).toBe(1);
+    await act(async () => open());
+    // The pass still waits on the finish: the return's own step runs, not kids mode's.
+    expect(screen.getByText('connect flow')).toBeTruthy();
+    expect(mockDismissTo).not.toHaveBeenCalled();
+    expect(store.size).toBe(0);
   });
 
   it('puts it back only once the profiles are read', async () => {

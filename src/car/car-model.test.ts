@@ -419,6 +419,15 @@ describe('playSpec', () => {
     expect(playSpec(bookRef, twoFiles, { kind: 'failed' }, 1, 1800)?.rate).toBe(1);
   });
 
+  // FE-13: Android weighs the engine's live place against it by this time.
+  it('carries when its place was saved, and nothing when that is unknown', () => {
+    const lookup = { kind: 'progress' as const, progress: makeProgress({ path: 'A' }) };
+    expect(
+      playSpec(bookRef, twoFiles, lookup, 1, 1800, undefined, 1_700_000_000_000),
+    ).toMatchObject({ placeSavedAt: 1_700_000_000_000 });
+    expect(playSpec(bookRef, twoFiles, lookup, 1, 1800)).not.toHaveProperty('placeSavedAt');
+  });
+
   it('gives none when a file has no local copy', () => {
     const partial = { ...twoFiles, files: twoFiles.files.slice(0, 1) };
     expect(playSpec(bookRef, partial, { kind: 'empty' }, 1, 1800)).toBeUndefined();

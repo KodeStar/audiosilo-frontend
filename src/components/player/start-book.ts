@@ -111,6 +111,8 @@ export function startBookInPlace(
     opts.track,
     opts.speed,
     !!how.fetched,
+    // A start that may be called off (the car's) is never joined by one that may not.
+    !!how.wanted,
   ]);
   const running = starting.get(key);
   if (running && latestStart === key) return running;
@@ -128,6 +130,11 @@ export type StartHow = {
   /** The episode's fetch has just finished (`episode-fetch.ts`): start it, never hand it
    * back to the fetch. */
   fetched?: boolean;
+  /** Whether the start is still wanted, asked before the book loads and again before it
+   * plays (the store's `playBook`): the car's, which its native side can give up on while a
+   * slow server holds the start. Called off before the load, nothing starts (an episode
+   * handed to its fetch included, which ends); after it, the book stays loaded, paused. */
+  wanted?: () => boolean;
 };
 
 /** Whether `book` is an episode its server must fetch before it plays (`podcast_fetch`
@@ -170,6 +177,7 @@ async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): 
   if (!mayActFor(target.connectionId)) return false;
   const source = await startSourceOf(target);
   if (!source) return false;
+  if (how.wanted && !how.wanted()) return false;
   if (!how.fetched && (await playsOnLoaded(target, source.book, opts))) return true;
   const key = contentKeyOf(target);
   if (how.fetched) {
@@ -187,7 +195,9 @@ async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): 
     // this device (fe#166): it plays from its download, whatever its server holds (a
     // downloaded book's source is its server's own when it answers, with no `local`).
     if (!isLatestStart(key)) return false;
-    requestEpisodeFetch(target, source.book, opts);
+    // With its check, when it has one: the fetch ends, and nothing starts, once it says no.
+    if (how.wanted) requestEpisodeFetch(target, source.book, opts, { wanted: how.wanted });
+    else requestEpisodeFetch(target, source.book, opts);
     return true;
   } else {
     // Played here (on its server now, or a server that does not fetch): a fetch of it still
@@ -205,6 +215,7 @@ async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): 
       opts.position,
       opts.track,
       opts.speed,
+      how.wanted,
     );
   // The book you're on is not up next any more (Up next's own Play now does the same):
   // a queued book started from its page, a browse row or the car leaves the queue, once it

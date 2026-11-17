@@ -64,8 +64,13 @@ let mockWaiting: { connectionId: string; event: unknown }[] = [];
 jest.mock('@/playback/use-listening-sync', () => ({
   useWaitingListens: () => mockWaiting,
 }));
+// What the screen asked the sources for (`notes`: whether the notes are fetched).
+let mockSourcesAsked: { notes?: boolean }[] = [];
 jest.mock('./use-journal-sources', () => ({
-  useJournalSources: () => mockSources,
+  useJournalSources: (o: { notes?: boolean }) => {
+    mockSourcesAsked.push(o);
+    return mockSources;
+  },
 }));
 const mockRun = jest.fn();
 jest.mock('./use-journal-export', () => ({
@@ -146,6 +151,7 @@ beforeEach(() => {
   mockParams = {};
   mockDeviceOnline = true;
   mockWaiting = [];
+  mockSourcesAsked = [];
   mockSources = empty();
   useSession.setState({
     connections: [{ id: 'c1', name: 'Hearthside', serverUrl: 'u', token: 't', user: {} as never }],
@@ -454,6 +460,25 @@ describe('JournalScreen: bookmarks and notes', () => {
     mockSources = { ...mockSources, notes: [source('c1', [note(1, 'a'), note(2, 'b')])] };
     await mount();
     expect(screen.getByLabelText('Notes, 2')).toBeTruthy();
+  });
+
+  // PLAYER-10: the Notes tab's count shows up front, without holding up the Diary.
+  it('asks for the notes once the Diary and the bookmarks are in', async () => {
+    mockSources.history = [source<HistoryEntry>('c1', [], { status: 'loading' })];
+    mockSources.bookmarks = [source<MyBookmark>('c1', [], { status: 'loading' })];
+    const view = await mount();
+    expect(mockSourcesAsked.at(-1)).toEqual({ notes: false });
+    await view.unmount();
+    mockSources = { ...mockSources, history: [source<HistoryEntry>('c1', [])] };
+    await mount();
+    expect(mockSourcesAsked.at(-1)).toEqual({ notes: true });
+  });
+
+  it('asks for the notes at once on the Notes tab', async () => {
+    mockParams = { tab: 'notes' };
+    mockSources.history = [source<HistoryEntry>('c1', [], { status: 'loading' })];
+    await mount();
+    expect(mockSourcesAsked[0]).toEqual({ notes: true });
   });
 
   it('shows no count while more pages wait', async () => {

@@ -765,6 +765,26 @@ describe('the player the server serves', () => {
     expect(screen.queryByText(/Reconnect to/)).toBeNull();
   });
 
+  // CONNECT-11: a production build on a site of its own, beside the servers it reaches.
+  it.each([
+    ['a 404', new ApiError(404, 'Not Found')],
+    ['a page that is not JSON', new ApiError(200, 'OK')],
+  ])('starts with an empty field and no error when its origin is no server (%s)', async (_, e) => {
+    mockApi.serverInfo.mockRejectedValue(e);
+    await render(<ConnectStart />);
+    await waitFor(() => expect(screen.getByLabelText('Server address')).toBeTruthy());
+    expect(screen.getByLabelText('Server address').props.value).toBe('');
+    expect(screen.queryByText(/answered with an error/)).toBeNull();
+  });
+
+  it('still says what its own server answered when that is an error of its own', async () => {
+    mockApi.serverInfo.mockRejectedValue(new ApiError(502, 'Bad Gateway'));
+    await render(<ConnectStart />);
+    await waitFor(() => expect(screen.getByLabelText('Server address')).toBeTruthy());
+    expect(screen.getByLabelText('Server address').props.value).toBe(ORIGIN);
+    expect(screen.getByText(/Bad Gateway/)).toBeTruthy();
+  });
+
   // fe#159: a Continue that finds its own server after its first ask failed is that
   // server's card, with no address field beside "Found".
   it('shows its card with no address field once a Continue finds its own server', async () => {

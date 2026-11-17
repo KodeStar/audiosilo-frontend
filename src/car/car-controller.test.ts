@@ -26,6 +26,7 @@ const mockNative = {
   consumePendingBookmarks: jest.fn(async (): Promise<unknown[]> => []),
   connection: null as ((connected: boolean) => void) | null,
   playRequest: null as ((id: string) => void) | null,
+  playCancel: null as ((id: string) => void) | null,
   bookmark: null as MockBookmarkHandler | null,
   onConnection: jest.fn((h: (connected: boolean) => void) => {
     mockNative.connection = h;
@@ -37,6 +38,12 @@ const mockNative = {
     mockNative.playRequest = h;
     return () => {
       mockNative.playRequest = null;
+    };
+  }),
+  onPlayCancel: jest.fn((h: (id: string) => void) => {
+    mockNative.playCancel = h;
+    return () => {
+      mockNative.playCancel = null;
     };
   }),
   onBookmark: jest.fn((h: MockBookmarkHandler) => {
@@ -71,21 +78,28 @@ const mockEndCastForCar = jest.fn(async () => false);
 jest.mock('@/cast/cast-session', () => ({ endCastForCar: () => mockEndCastForCar() }));
 
 const mockStartBookInPlace = jest.fn(async (..._a: unknown[]) => true);
+/** How the car starts a book: one its native side can still call off (`StartHow.wanted`). */
+const carStart = { wanted: expect.any(Function) };
 jest.mock('@/components/player/start-book', () => ({
   startBookInPlace: (...a: unknown[]) => mockStartBookInPlace(...a),
 }));
 
 // The device's own places (the mirror, the offline queue): read once per build.
-const mockLocalPlaces: { mirror: Record<string, unknown>; queue: unknown[]; pending: Set<string> } =
-  {
-    mirror: {},
-    queue: [],
-    pending: new Set(),
-  };
+const mockLocalPlaces: {
+  mirror: Record<string, unknown>;
+  queue: unknown[];
+  pending: Set<string>;
+  skews?: Record<string, number>;
+} = {
+  mirror: {},
+  queue: [],
+  pending: new Set(),
+};
 const mockReadLocalPlaces = jest.fn(async () => mockLocalPlaces);
 jest.mock('@/playback/progress-sync', () => ({
   readLocalPlaces: () => mockReadLocalPlaces(),
   resumeLookupOf: jest.requireActual('@/playback/progress-sync').resumeLookupOf,
+  placeSavedAt: jest.requireActual('@/playback/progress-sync').placeSavedAt,
 }));
 
 // The real model, with its play spec builder counted (rebuilt only when its inputs change).
@@ -369,6 +383,7 @@ beforeEach(async () => {
   useLibrarySelection.setState({ selection: null, shown: null });
   mockLocalPlaces.mirror = {};
   mockLocalPlaces.queue = [];
+  delete mockLocalPlaces.skews;
   connect([]);
   resetProfilesForTests();
   // A car has met this phone before (the snapshot's gate); the gate's own tests clear it.
@@ -498,6 +513,9 @@ describe('startCarSync', () => {
     await settle();
     expect(mockReadLocalPlaces).toHaveBeenCalledTimes(1);
     expect(playSpec).toHaveBeenCalledTimes(2);
+    // Each spec says when its place was saved (FE-13): here the server row's.
+    const d = tab(lastSnapshot(), 'downloads')!.items.find((i) => i.book.path === 'D')!;
+    expect(d.play!.placeSavedAt).toBe(Date.parse('2026-01-15'));
 
     // E is played on this device: its newer save (the mirror) moves its spec; D's stands.
     mockReadLocalPlaces.mockClear();
@@ -521,6 +539,26 @@ describe('startCarSync', () => {
     expect(jest.mocked(playSpec).mock.calls.map((c) => c[0].path)).toEqual(['E']);
     const e = tab(lastSnapshot(), 'downloads')!.items.find((i) => i.book.path === 'E')!;
     expect(e.play).toMatchObject({ startIndex: 1, positionInTrack: 50, rate: 1.25 });
+    expect(e.play!.placeSavedAt).toBe(Date.parse('2026-02-01T00:00:00.000Z'));
+
+    // The server's clock skew, measured again at each sync answer: a jitter rebuilds nothing,
+    // a real move rebuilds the specs it dates (D's, read by its server's clock).
+    jest.mocked(playSpec).mockClear();
+    mockLocalPlaces.skews = { c1: 400 };
+    mockNative.connection?.(true);
+    await settle(MIN_GAP_MS);
+    expect(playSpec).not.toHaveBeenCalled();
+    mockLocalPlaces.skews = { c1: 60_000 };
+    mockNative.connection?.(true);
+    await settle(MIN_GAP_MS);
+    expect(
+      jest
+        .mocked(playSpec)
+        .mock.calls.map((c) => c[0].path)
+        .sort(),
+    ).toEqual(['D', 'E']);
+    const moved = tab(lastSnapshot(), 'downloads')!.items.find((i) => i.book.path === 'D')!;
+    expect(moved.play!.placeSavedAt).toBe(Date.parse('2026-01-15') - 60_000);
   });
 
   it("rebuilds a downloaded book's spec when its chapters change (its files in a new order)", async () => {
@@ -1311,6 +1349,7 @@ describe('the resumable snapshot (Android, fe#251)', () => {
     await settle(SETTLE_MS + MIN_GAP_MS);
     const writes = mockNative.setSnapshot.mock.calls.length;
 
+    const pausedAt = Date.now();
     usePlayer.setState(loaded('paused', 1, 50));
     await settle(MIN_GAP_MS);
     expect(mockNative.setSnapshot).toHaveBeenCalledTimes(writes + 1);
@@ -1321,6 +1360,8 @@ describe('the resumable snapshot (Android, fe#251)', () => {
       startIndex: 1,
       positionInTrack: 50,
     });
+    // Saved as it was written (FE-13): newer than the live place a dead process left.
+    expect(tab(snap, 'continue')!.items[0].play!.placeSavedAt).toBeGreaterThanOrEqual(pausedAt);
   });
 
   it("is not the snapshot an unreadable build keeps: the first car's is written offline too", async () => {
@@ -1537,7 +1578,7 @@ describe('play requests', () => {
     stop = startCarSync();
     mockNative.playRequest?.(carItemId(ref));
     await settle();
-    expect(mockStartBookInPlace).toHaveBeenCalledWith(ref);
+    expect(mockStartBookInPlace).toHaveBeenCalledWith(ref, {}, carStart);
   });
 
   it('plays the loaded book on instead of restarting it', async () => {
@@ -1564,7 +1605,7 @@ describe('play requests', () => {
       snapshot: { state: 'ended', trackIndex: 0, position: 100, duration: 100, rate: 1 },
     });
     await handleCarPlayRequest(carItemId(ref));
-    expect(mockStartBookInPlace).toHaveBeenCalledWith(ref);
+    expect(mockStartBookInPlace).toHaveBeenCalledWith(ref, {}, carStart);
   });
 
   it('an item of a snapshot from before the identity migration starts the book on its new connection', async () => {
@@ -1574,7 +1615,11 @@ describe('play requests', () => {
     });
     try {
       await handleCarPlayRequest(carItemId({ ...ref, connectionId: 'srv' }));
-      expect(mockStartBookInPlace).toHaveBeenCalledWith({ ...ref, connectionId: 'srv.3' });
+      expect(mockStartBookInPlace).toHaveBeenCalledWith(
+        { ...ref, connectionId: 'srv.3' },
+        {},
+        carStart,
+      );
     } finally {
       setConnectionAliases({});
     }
@@ -1593,7 +1638,7 @@ describe('play requests', () => {
     // `startBookInPlace` holds the rule (`mayActFor`, tested with it): the car keeps no copy.
     mockStartBookInPlace.mockResolvedValueOnce(false);
     await handleCarPlayRequest(carItemId(ref));
-    expect(mockStartBookInPlace).toHaveBeenCalledWith(ref);
+    expect(mockStartBookInPlace).toHaveBeenCalledWith(ref, {}, carStart);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("another person's"));
     warn.mockRestore();
   });
@@ -1631,6 +1676,74 @@ describe('play requests', () => {
     await handleCarPlayRequest(carItemId(ref));
     expect(mockEndCastForCar).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  // FE-13: after a media button start timed out, the start JS was still making (a frozen
+  // server) went on to play in the background with no notification and no controls.
+  it("a request native gave up on is no longer wanted, another item's cancel leaves it, a new request revives it", async () => {
+    stop = startCarSync();
+    mockNative.playRequest?.(carItemId(ref));
+    await settle();
+    const how = mockStartBookInPlace.mock.calls[0][2] as { wanted: () => boolean };
+    mockNative.playCancel?.(carItemId({ ...ref, path: 'Other' }));
+    expect(how.wanted()).toBe(true);
+    mockNative.playCancel?.(carItemId(ref));
+    expect(how.wanted()).toBe(false);
+    // Asked again (a second press): a start it joins plays.
+    mockNative.playRequest?.(carItemId(ref));
+    await settle();
+    expect(how.wanted()).toBe(true);
+  });
+
+  // The sync stopping (the root layout gone while the runtime lives on) forgot the mark, so a
+  // start a frozen server still held read as wanted again and played.
+  it('a request native gave up on stays unwanted once the sync stops', async () => {
+    stop = startCarSync();
+    mockNative.playRequest?.(carItemId(ref));
+    await settle();
+    const how = mockStartBookInPlace.mock.calls[0][2] as { wanted: () => boolean };
+    mockNative.playCancel?.(carItemId(ref));
+    stop();
+    stop = () => {};
+    expect(how.wanted()).toBe(false);
+  });
+
+  it('a request called off while JS booted starts nothing, the loaded book included', async () => {
+    let release = () => {};
+    const hold = () => {
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      jest.mocked(bootstrapPlayback).mockImplementation(() => held);
+    };
+    stop = startCarSync();
+    await settle();
+    try {
+      mockEndCastForCar.mockClear();
+      hold();
+      mockNative.playRequest?.(carItemId(ref));
+      await settle();
+      mockNative.playCancel?.(carItemId(ref));
+      release();
+      await settle();
+      expect(mockStartBookInPlace).not.toHaveBeenCalled();
+      // Nor is a cast ended for it.
+      expect(mockEndCastForCar).not.toHaveBeenCalled();
+
+      usePlayer.setState({
+        nowPlaying: { ...ref, queue: { offsets: [0], total: 100 } },
+        snapshot: { state: 'paused', trackIndex: 0, position: 40, duration: 100, rate: 1 },
+      });
+      hold();
+      mockNative.playRequest?.(carItemId(ref));
+      await settle();
+      mockNative.playCancel?.(carItemId(ref));
+      release();
+      await settle();
+      expect(usePlayer.getState().toggle).not.toHaveBeenCalled();
+    } finally {
+      jest.mocked(bootstrapPlayback).mockImplementation(async () => {});
+    }
   });
 
   it('ignores an id that is not a car item, and logs a failed start', async () => {
@@ -2233,7 +2346,7 @@ describe('before the launch steps finish', () => {
     mockClients.c1 = fakeClient({});
     release();
     await settle(SETTLE_MS + MIN_GAP_MS);
-    expect(mockStartBookInPlace).toHaveBeenCalledWith(ref);
+    expect(mockStartBookInPlace).toHaveBeenCalledWith(ref, {}, carStart);
     // Never a signed-out snapshot over the good one.
     expect(mockNative.setSnapshot).toHaveBeenCalled();
     for (const [json] of mockNative.setSnapshot.mock.calls) {

@@ -50,7 +50,13 @@ import {
 import { KnownServerRow, type Probe, ProbeNotice } from './connect-parts';
 import { CoverFan } from './cover-cascade';
 import { finishConnect } from './finish-connect';
-import { beginInviteSignIn, openScanner, takeScanReconnect } from './invite-handoff';
+import {
+  beginInviteSignIn,
+  openScanner,
+  peekScanReconnect,
+  takeScanReconnect,
+  useHandoff,
+} from './invite-handoff';
 import { finishOidcSignIn, oidcReturnOrigin } from './oidc-sign-in';
 import { ProxyHeadersEditor } from './proxy-headers-editor';
 import { draftOf, draftToSet, type HeaderDraftRow } from './proxy-headers-model';
@@ -150,11 +156,16 @@ export function ConnectStart() {
   const [retryLink, setRetryLink] = useState<PairingScan | null>(null);
   // The reconnect the code that opened this screen continues (scanned from a reconnect's
   // sign-in step, `holdScanReconnect`): taken once, and only that code's (Try again too),
-  // never a link pasted or opened later.
-  const [scanned] = useState(() => {
-    const reconnectId = token ? takeScanReconnect(token) : undefined;
-    return reconnectId ? { token, reconnectId } : null;
-  });
+  // never a link pasted or opened later (`useHandoff`).
+  const scanned = useHandoff(
+    () => {
+      const reconnectId = token ? peekScanReconnect(token) : undefined;
+      return reconnectId ? { token, reconnectId } : null;
+    },
+    () => {
+      if (token) takeScanReconnect(token);
+    },
+  );
   // Custom headers for an auth proxy in front of the server (fe#167), for the address in
   // the field: held by the session for the connect flow's clients (`connectProxyHeaders`)
   // while the section is open, and kept with the connection the sign-in makes. The flow's
@@ -302,7 +313,7 @@ export function ConnectStart() {
     const ask = new AbortController();
     servedAsk.current = ask;
     setServed('pending');
-    void connect(origin, 'manual', ask.signal).then((found) => {
+    void connect(origin, 'manual', ask.signal, true).then((found) => {
       if (!ask.signal.aborted) setServed(found ? 'found' : null);
     });
   };
@@ -324,8 +335,14 @@ export function ConnectStart() {
   // Ask the server who it is. The typed address and the served player's own server show what
   // was found (or why not); a remembered server goes straight on to sign-in unless it runs a
   // demo. True when the server answered. Nothing is recorded once the screen is gone or the
-  // ask was cancelled (`signal`): not the pending address, nor what was found.
-  const connect = async (target: string, tag: string, signal?: AbortSignal): Promise<boolean> => {
+  // ask was cancelled (`signal`): not the pending address, nor what was found. `own`: the
+  // served player asking its own origin, which nobody typed.
+  const connect = async (
+    target: string,
+    tag: string,
+    signal?: AbortSignal,
+    own = false,
+  ): Promise<boolean> => {
     setFieldError(null);
     setDemoError(null);
     setProbe(null);
@@ -374,6 +391,15 @@ export function ConnectStart() {
       return true;
     } catch (e) {
       if (gone()) return false;
+      // The page's own origin answered, but not as an AudioSilo server (a 404, or a page
+      // that isn't JSON): a production build hosted on a site of its own, beside servers
+      // that let it in. No error about an address nobody typed, and an empty field
+      // (CONNECT-11). A server that is down, or answers with its own error, still says so.
+      if (own && e instanceof ApiError && (e.status === 404 || e.status < 300)) {
+        setUrl((u) => (u === target ? '' : u));
+        setTypedUrl((u) => (u === target ? '' : u));
+        return false;
+      }
       setProbe(
         e instanceof ApiError
           ? { kind: 'error', message: e.message }

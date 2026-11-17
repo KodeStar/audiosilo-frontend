@@ -63,6 +63,10 @@ export type CarConnectionEvent = { connected: boolean };
 /** The car asked to play a book native can't start alone; JS starts it (`startBookInPlace`). */
 export type CarPlayRequestEvent = { id: string };
 
+/** Android: a car play JS received is over without its load (the service's 10 s wait ran
+ * out, or another play took its place). Never sent by iOS or an older binary. */
+export type CarPlayCancelEvent = { id: string };
+
 /** A book's identity: path is the identity, scoped by connection (never a DB id). */
 export type BookRef = { connectionId: string; libraryId: number; path: string };
 
@@ -108,4 +112,5 @@ export type AudiosiloPlayerModuleEvents = {
   onRemoteBookmark: (event: RemoteBookmarkEvent) => void;
   onCarConnection: (event: CarConnectionEvent) => void;
   onCarPlayRequest: (event: CarPlayRequestEvent) => void;
+  onCarPlayCancel: (event: CarPlayCancelEvent) => void;
 };

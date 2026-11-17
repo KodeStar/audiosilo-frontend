@@ -139,10 +139,12 @@ can never log anyone out (`{ authReset, cacheReset }`):
   the part itself: the whole's name hashes its code, not the cut, and the build's files are
   cached as immutable, so a changed cut must never reuse a part's name), chained by
   `requires` so the HTML names them in order (whatever required the whole requires the last
-  part): several parts compile on several threads at once. A cut is kept only when every part
-  compiles on its own. This is what makes a start fast where no service worker can help (a
-  page on plain http, a private window: no code cache), about 60-80 ms off both cold and warm
-  starts. An async chunk is never cut (the runtime loads it by its name).
+  part): several parts compile on several threads at once. Every part compiles on its own: a
+  boundary that would leave one that doesn't (a `__d(` line inside a template literal) is
+  dropped and its part joined to the next, so the other boundaries stay. This is what makes
+  a start fast where no service worker can help (a page on plain http, a private window: no
+  code cache), about 60-80 ms off both cold and warm starts. An async chunk is never cut (the
+  runtime loads it by its name).
 
 **The launch steps are ONE memoised run, `bootstrapPlayback()` (`src/lib/bootstrap.ts`)**: the
 storage migration, then the downloads-root wipe (`engine.clearAll()`) when **either** axis reset,
@@ -444,7 +446,9 @@ iOS does NOT allow arbitrary loads: Expo's ATS default is `NSAllowsArbitraryLoad
 single-label names, but not for a `.lan`, `.home.arpa` or `.internal` home. `repairPlan`: a
 re-pair through one of a connection's own addresses keeps its paired `serverUrl`; the reconnect
 banner signs in through `effectiveUrl` and hands the sign-in step the connection it re-pairs in
-memory, by that address (`holdReconnect` / `takeReconnect`, taken once as the step opens; never a
+memory, by that address (`holdReconnect` / `takeReconnect`, taken once as the step opens: read as
+the screen renders and taken once it is on screen, `useHandoff`, as every hand-off of the flow is,
+the layout's `takeOidcIntent` too, since a first render can be thrown away and run again; never a
 `/connect/sign-in` param, fe#298: a link opens that route and must not name the connection a
 sign-in replaces), so a reset server reached through its away address still retires its dead
 identity. The sign-in step's "Scan a QR code
@@ -1525,7 +1529,7 @@ Retry when no server answered and a note when some did, never "Nothing coming up
 `statuses` carries each answered server's `ok|pending|stale` (its notes show over the list or the
 empty state). A note naming servers joins them with `joinNames` ("Home and Maya", `common.and`)
 and passes `count`, so its verb is plural (`_one`/`_other`). Dates show through
-`formatReleaseDate` (`src/lib/format.ts`: "2027", "Nov 2026", "Nov 12, 2026" (the UI language's own order: `getLocale()` is the bare language, so English reads month first), read in UTC; any
+`formatReleaseDate` (`src/lib/format.ts`: "2027", "Nov 2026", "12 Nov 2026" ("Nov 12, 2026" in en-US: `getLocale()` is the UI language with the device's region for it, fe#204), read in UTC; any
 other text as it came) and `upcomingDateLabel` by kind: "Out", "Released", "First released"
 (the metadata's one date is a work's FIRST release), no line without a date. Surfaces
 (`src/components/upcoming/`): Home's rail (without the works Home's Next in your series shows as
@@ -1665,8 +1669,8 @@ media GETs only.
   engine that outlives the JS can say later which book it holds), `setConfig` (auto-rewind, skip
   lengths, `smartSpeed`, `voiceBoost`), `setCarSnapshot(json)`, `getLoadedBook()` (Android; iOS
   null) and `consumePendingBookmarks()` (Android; iOS `[]`); events `onRemoteMove`,
-  `onRateChange`, `onRemoteBookmark`, `onCarConnection`, `onCarPlayRequest` and
-  `onProgress.silenceSaved`. **Feature-detect every function added after the first shipped
+  `onRateChange`, `onRemoteBookmark`, `onCarConnection`, `onCarPlayRequest`,
+  `onCarPlayCancel` (Android) and `onProgress.silenceSaved`. **Feature-detect every function added after the first shipped
   builds**: the JS bundle can be newer than the installed binary (a store build lags), and an
   Expo function called with more arguments than it declares throws. So `load`'s 5th `book` is
   passed only when the binary also has `getLoadedBook` (`moduleTakesBook` in
@@ -2605,8 +2609,9 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   (`audiosilo.carResumable`, kept with whether kids mode was on, and dropped when that
   changed), so opening the app after a kill without playing keeps it; once one was stopped or
   finished here, none. Native reads it in `CarSnapshot.resumable` (a snapshot kept from before
-  the field still answers with its first Continue row). The minimal snapshot waits for the
-  start's read of the car-seen mark.
+  the field still answers with its first Continue row), after the engine's own live place
+  (Android Auto below), which wins when the snapshot lists its book. The minimal snapshot
+  waits for the start's read of the car-seen mark.
   Both writes go through one queue (`snapshotWrites`), and the minimal one never lands once a
   car was seen. It is not the snapshot an unreadable build leaves alone (it sets no
   `audiosilo.carSnapshotWritten`), so the first car's build replaces it away from every
@@ -2620,7 +2625,15 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   plays on, never restarted; any other starts through `startBookInPlace` from its saved place,
   a downloaded one from its download; **while casting it ends the cast first**, `endCastForCar`:
   the receiver's place comes home, then the book plays in the car, never on a TV the driver
-  can't hear) and **bookmarks**: `carNative.onBookmark` (the module's
+  can't hear; **a request native gave up on never plays** (Android's `onCarPlayCancel`, sent
+  when the service's 10 s wait for the load runs out or another play takes its place: a media
+  button start's foreground service is released by then, and a start a frozen server held
+  played on in the background with no notification or controls; `cancelledPlays` makes
+  `StartHow.wanted` false, so the start stops before its load, or `playBook` loads it paused,
+  or loads nothing once another start took the player (`replaced`); an episode's fetch it
+  was handed to ends with it, starting nothing (`requestEpisodeFetch`'s `wanted`); natively
+  its late load never completes the play that took its place (`PlayerBridge.completesCarPlay`);
+  a new request for the item takes the mark off) and **bookmarks**: `carNative.onBookmark` (the module's
   `onRemoteBookmark`, carrying the engine's own book) adds one through the framework-free
   `addBookmark` (no label, so the `annotations` gate has nothing to hold back) at the engine's
   place on the book the engine names, else the loaded one; Android's bookmarks pressed with no
@@ -2667,6 +2680,25 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   resumption removes it and stops the service (`onStartCommand`, `watchResumption`; every
   play `playFromCar` leaves pending is watched, so a car play that superseded the resumption
   and then failed, by its timeout or a load that left nothing loaded, ends it too, fe#252).
+  **The engine's live place** (`LivePlace.kt`, FE-13): the service keeps where the engine is
+  (the book, the file by path and index, the seconds in it) in a prefs file of its own
+  (`audiosilo.liveplace`), every 10 s while it plays and at once on a play, a pause and a seek
+  (`LivePlaceRecorder`); the end of the book, an emptied player (JS's `reset`: a stop, a
+  finish) and the app's own `load` drop it. A resumption (`CarSnapshot.resumable(live)`, read
+  by `ResumptionReceiver`, `onPlaybackResumption` and the placeholder's title) starts that book
+  when the snapshot lists it with a play spec, else the book `resume` names. On that book the
+  later place wins: the live place is stamped when saved (`savedAt`, the device's clock) and
+  each spec carries when JS saved its place (`placeSavedAt`: a paused book's when first
+  written, else the resume lookup's row by this device's clock, `placeSavedAt` in
+  `progress-sync.ts`), a spec with none counting as older; so a place a dead process left
+  never beats a newer one JS read since (another device's listen). Across books too: when
+  `resume` names another book whose `placeSavedAt` is later than the live place's `savedAt`,
+  that book resumes at its own place; with either time missing the live place's book wins. A
+  `resume` of null (JS named none: kids mode changed, another person's book) resumes nothing,
+  whatever the engine last held. A car tap that `playFromCar` starts natively starts at it too
+  when it is that book's and newer (`CarPlaySpec.at`). So a crash or kill mid-play, a pause in a cold
+  runtime away from every server (which writes no snapshot) and a resumption write still
+  queued behind a build lose at most 10 s.
   **Remote buttons are logged on demand** (`MediaKeyLog`, fe#301): `adb shell setprop
   log.tag.AudiosiloKeys DEBUG`, then `adb logcat -s AudiosiloKeys` shows each media key (the
   receiver, the service start, `onMediaButtonEvent` with the sender, the notification

@@ -187,10 +187,18 @@ export function storageBar(
   groups: readonly Pick<ServerGroup, 'connectionId' | 'name' | 'bytes'>[],
   estimate: StorageEstimate | null,
   measured: number | null,
+  growing = 0,
+  grownSinceMeasure = 0,
 ): StorageBar {
   const listed = groups.filter((g) => g.bytes > 0);
   const sum = listed.reduce((s, g) => s + g.bytes, 0);
-  const used = Math.max(sum, measured ?? 0);
+  // The downloads under way count as they grow (PLAYER-05): `growing` beside the listed
+  // books, and `grownSinceMeasure` (`grownSince`) beside `measured`, which is read only as
+  // a book lands or goes and already holds what they had written by then. `measured` also
+  // counts what the list doesn't (covers, another person's books), so it is often the
+  // larger, and must grow too. With no measure there is nothing to grow beside: the list
+  // alone.
+  const used = Math.max(sum + growing, measured === null ? 0 : measured + grownSinceMeasure);
   const segments: StorageSegment[] = listed.slice(0, CHART_COLOURS).map((g, i) => ({
     kind: 'server',
     connectionId: g.connectionId,
@@ -206,11 +214,69 @@ export function storageBar(
       bytes: rest.reduce((s, g) => s + g.bytes, 0),
     });
   if (estimate?.scope === 'device') {
-    const other = estimate.capacity - estimate.free - used;
+    // `free` is read with the measure, so the disk it tells of holds none of what was
+    // written since: other apps' share is that disk less what was ours then, or it would
+    // shrink as a download grows and come back as it lands.
+    const other = estimate.capacity - estimate.free - Math.max(0, used - grownSinceMeasure);
     if (other > 0) segments.push({ kind: 'other-apps', bytes: other });
   }
   const scale = estimate ? Math.max(estimate.capacity, used) : used;
   return { scale, segments, used };
+}
+
+const GROWING_STEP = 1024 * 1024;
+
+/** `bytes` in whole megabytes: a value for a selector that moves as downloads grow without
+ * changing on every progress tick. */
+const wholeSteps = (bytes: number) => Math.floor(bytes / GROWING_STEP) * GROWING_STEP;
+
+/** What the given connections' running downloads have written so far, in whole megabytes
+ * (`storageBar`'s `growing`). */
+export function growingBytes(
+  entries: Record<string, DownloadEntry>,
+  connectionIds: readonly string[],
+): number {
+  let sum = 0;
+  for (const e of Object.values(entries))
+    if (e.status === 'downloading' && connectionIds.includes(e.connectionId)) sum += e.bytes;
+  return wholeSteps(sum);
+}
+
+/** Bytes a download holds on the device, whatever its state: `entryBytes`, or the files it
+ * has kept when they are more (a retry counts from 0 again, and only then passes the files
+ * its failed attempt finished, which never left the device). */
+function heldBytes(e: DownloadEntry): number {
+  if (e.status === 'downloaded') return entryBytes(e);
+  return Math.max(
+    e.bytes,
+    e.manifest.files.reduce((sum, f) => sum + (f.bytes ?? 0), 0),
+  );
+}
+
+/** What every download holds, by its key: what the engine's measure counted of each as it
+ * was read, for `grownSince` to count from. */
+export function heldByKey(entries: Record<string, DownloadEntry>): Record<string, number> {
+  const held: Record<string, number> = {};
+  for (const [key, e] of Object.entries(entries)) held[key] = heldBytes(e);
+  return held;
+}
+
+/**
+ * What the downloads (every person's, as the engine's measure counts) have written since
+ * `held` was read (`heldByKey`), in whole megabytes: `storageBar`'s `grownSinceMeasure`.
+ * Each download by its own growth, so one that began since counts whole, one that landed
+ * since keeps what it added until the measure is read again (no dip in between), and a
+ * retry counts only past the files its failed attempt kept, which the measure already
+ * holds.
+ */
+export function grownSince(
+  entries: Record<string, DownloadEntry>,
+  held: Readonly<Record<string, number>>,
+): number {
+  let sum = 0;
+  for (const [key, e] of Object.entries(entries))
+    sum += Math.max(0, heldBytes(e) - (held[key] ?? 0));
+  return wholeSteps(sum);
 }
 
 /** Why downloads can't work in this browser, most fundamental first:

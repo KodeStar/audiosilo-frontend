@@ -62,7 +62,7 @@ describe('LanguageProvider', () => {
 
     await waitFor(() => expect(value()).toBeTruthy());
     expect(value()!.pref).toBe('de');
-    expect(value()!.language).toBe('de');
+    expect(i18n.language).toBe('de');
   });
 
   it('paints first in the saved language, its catalog required before (only English starts in)', async () => {

@@ -14,11 +14,11 @@ import {
 } from '@/api/hooks';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { CodeBox, CopyButton } from '@/components/ui/copy-button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { FormError } from '@/components/ui/form-error';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { copyText } from '@/lib/clipboard';
 import {
   type CalendarConnection,
   calendarRowState,
@@ -87,7 +87,6 @@ function CalendarRow({
   const mint = useMintUpcomingCalendar(row.id);
   const off = useDeleteUpcomingCalendar(row.id);
   const [asking, setAsking] = useState<Asking>(null);
-  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const state = calendarRowState({
@@ -105,7 +104,6 @@ function CalendarRow({
   }, [forgetStale, forget]);
   const run = async (action: () => Promise<unknown>) => {
     setError(null);
-    setCopied(false);
     try {
       await action();
     } catch (e) {
@@ -163,13 +161,9 @@ function CalendarRow({
       <View className="gap-3">
         {shown ? (
           <>
-            {/* The box on a wrapper, not the Text: a clamped Text with padding shows a sliver
-                of its next line in the bottom padding (web). */}
-            <View className="rounded-control bg-muted px-3 py-2.5">
-              <Text selectable variant="mono" numberOfLines={3} testID="upcoming-calendar-url">
-                {shown}
-              </Text>
-            </View>
+            <CodeBox numberOfLines={3} testID="upcoming-calendar-url">
+              {shown}
+            </CodeBox>
             <Text variant="caption">{t('upcoming.calendar.private')}</Text>
             <Text variant="caption">{t('upcoming.calendar.publicNote')}</Text>
           </>
@@ -190,16 +184,11 @@ function CalendarRow({
                   testID="upcoming-calendar-subscribe"
                 />
               ) : null}
-              <Button
+              <CopyButton
                 variant="outline"
-                icon={copied ? 'check' : 'copy'}
-                title={copied ? t('common.copied') : t('upcoming.calendar.copy')}
+                text={shown}
+                title={t('upcoming.calendar.copy')}
                 disabled={busy}
-                onPress={() =>
-                  void copyText(shown).then((ok) => {
-                    if (ok) setCopied(true);
-                  })
-                }
                 testID="upcoming-calendar-copy"
               />
             </>

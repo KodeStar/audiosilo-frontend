@@ -31,6 +31,7 @@ jest.mock('@/api/hooks', () => {
 
 /* eslint-disable import/first */
 import { CapabilityError } from '@/api/hooks';
+import { useSession } from '@/stores/session';
 
 import { DevicesSection } from './devices-section';
 /* eslint-enable import/first */
@@ -71,6 +72,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockDevices = loaded([laptop, key, here]);
   Platform.OS = OS;
+  useSession.setState({ connections: [] });
 });
 afterAll(() => {
   Platform.OS = OS;
@@ -183,6 +185,32 @@ describe('DevicesSection', () => {
     expect(screen.getByText("Couldn't load your devices from Hearthside.")).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
     expect(mockDevices.refetch).toHaveBeenCalled();
+  });
+
+  // CONNECT-15: a server that ended this sign-in offers signing in again, not a Retry.
+  it('offers to sign in again when the server ended the sign-in', async () => {
+    useSession.setState({
+      connections: [
+        {
+          id: 'c',
+          name: 'Hearthside',
+          serverUrl: 'https://books.example',
+          token: 't',
+          user: { username: 'chris' } as never,
+          needsReconnect: 'auth',
+        },
+      ],
+    });
+    mockDevices = {
+      ...loaded([]),
+      data: undefined,
+      isError: true,
+      isSuccess: false,
+      error: new ApiError(401, 'unauthorized'),
+    };
+    await mount();
+    expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   // server#285: a read again that fails (after a password change) keeps the list it held.

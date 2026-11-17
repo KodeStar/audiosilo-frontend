@@ -11,9 +11,10 @@ import androidx.media3.session.MediaButtonReceiver
  * as a FOREGROUND service, and the service must then start playback within seconds or the system
  * kills the app (`ForegroundServiceDidNotStartInTimeException`). We can only resume a book the
  * car snapshot can start without JS (a downloaded book with a play spec, see
- * [CarSnapshot.resumable]); with none, the press is ignored instead of crashing. JS writes that
- * snapshot on every pause, stop and book change on Android, also on a phone that never met a car
- * (fe#251, `car-controller.ts` `buildResumable`). Should a resumption still fail after the
+ * [CarSnapshot.resumable], started at the engine's last place, [LivePlace]); with none, the
+ * press is ignored instead of crashing. JS writes that snapshot on every pause, stop and book
+ * change on Android, also on a phone that never met a car (fe#251, `car-controller.ts`
+ * `buildResumable`). Should a resumption still fail after the
  * start, the service releases the start itself ([AudiosiloPlayerService.watchResumption]).
  *
  * The override must match the Media3 the app RUNS (build.gradle's `media3Version`): 1.9.0 calls
@@ -23,7 +24,7 @@ import androidx.media3.session.MediaButtonReceiver
 @androidx.annotation.OptIn(UnstableApi::class)
 class ResumptionReceiver : MediaButtonReceiver() {
   override fun shouldStartForegroundService(context: Context, intent: Intent): Boolean {
-    val resumable = CarSnapshotStore.get(context)?.resumable()
+    val resumable = CarSnapshotStore.get(context)?.resumable(LivePlaceStore.get(context))
     MediaKeyLog.d { "receiver: ${MediaKeyLog.describe(intent)}, resumable=${MediaKeyLog.ref(resumable?.id)}" }
     return resumable != null
   }

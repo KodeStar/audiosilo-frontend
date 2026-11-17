@@ -256,6 +256,57 @@ describe('requestEpisodeFetch', () => {
     expect(mockStart.mock.calls).toEqual([[target, { position: 600 }, { fetched: true }]]);
   });
 
+  // FE-13: a car start of an episode its server had still to fetch, given up on by the car's
+  // native side: the fetch went on, and started the episode once it was ready.
+  it('ends, starting nothing, once the start that asked for it is called off', async () => {
+    let wanted = true;
+    requestEpisodeFetch(target, book, {}, { wanted: () => wanted });
+    await flush();
+    expect(phase()).toBe('waiting');
+    wanted = false;
+    mockClient!.podcastFetchStatus.mockResolvedValue({ fetch: wire2b.ready });
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(mockStart).not.toHaveBeenCalled();
+    // Over quietly: no failed fetch is shown, and the server is not asked again.
+    expect(useEpisodeFetch.getState().pending).toBeNull();
+    expect(mockClient!.podcastFetchStatus).not.toHaveBeenCalled();
+  });
+
+  it('hands its check on to the start, and ends quietly when the start refuses it', async () => {
+    let wanted = true;
+    const check = () => wanted;
+    mockClient!.prepareEpisodeStream.mockResolvedValue(undefined);
+    // The start asks the check itself (`startNow`), and says no.
+    mockStart.mockImplementation(async () => {
+      wanted = false;
+      return false;
+    });
+    requestEpisodeFetch(target, book, {}, { wanted: check });
+    await flush();
+    expect(mockStart.mock.calls).toEqual([[target, {}, { fetched: true, wanted: check }]]);
+    expect(useEpisodeFetch.getState().pending).toBeNull();
+  });
+
+  it("a tap that joins the car's fetch makes it the listener's: nothing calls it off", async () => {
+    let wanted = true;
+    requestEpisodeFetch(target, book, {}, { wanted: () => wanted });
+    await flush();
+    requestEpisodeFetch(target, book);
+    wanted = false;
+    mockClient!.podcastFetchStatus.mockResolvedValue({ fetch: wire2b.ready });
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(mockStart.mock.calls).toEqual([[target, {}, { fetched: true }]]);
+  });
+
+  it("the car's start joining the listener's fetch can not call it off", async () => {
+    requestEpisodeFetch(target, book);
+    await flush();
+    requestEpisodeFetch(target, book, {}, { wanted: () => false });
+    mockClient!.podcastFetchStatus.mockResolvedValue({ fetch: wire2b.ready });
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(mockStart.mock.calls).toEqual([[target, {}, { fetched: true }]]);
+  });
+
   it('keeps waiting through a proxy 502 or the rate limiter while it follows the fetch', async () => {
     mockClient!.podcastFetchStatus
       .mockRejectedValueOnce(new ApiError(502, 'Bad Gateway'))

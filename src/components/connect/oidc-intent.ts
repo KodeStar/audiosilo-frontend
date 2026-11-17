@@ -85,14 +85,25 @@ export function holdOidcIntent(book?: ConnectBook, reconnect?: OidcReconnect): v
  * The intent held before the trip, taken (read and removed) as the connect flow opens on a
  * page load: what it was when this load is the provider's return (`returning`) and it was
  * held within `MAX_AGE_MS`, else null. Either way it is gone, so a trip abandoned at the
- * provider leaves nothing for a later flow.
+ * provider leaves nothing for a later flow. The layout reads it as it renders
+ * (`peekOidcIntent`) and takes it once it is on screen (`useHandoff`): a first render that
+ * is thrown away and run again must still find it.
  */
 export function takeOidcIntent(returning: boolean): OidcIntent | null {
-  const s = storage();
+  const held = peekOidcIntent(returning);
+  try {
+    storage()?.removeItem(KEY);
+  } catch {
+    // Refused storage holds nothing.
+  }
+  return held;
+}
+
+/** `takeOidcIntent`'s answer, left in the tab (`useHandoff`). */
+export function peekOidcIntent(returning: boolean): OidcIntent | null {
   let raw: string | null = null;
   try {
-    raw = s?.getItem(KEY) ?? null;
-    s?.removeItem(KEY);
+    raw = storage()?.getItem(KEY) ?? null;
   } catch {
     return null;
   }

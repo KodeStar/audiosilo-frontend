@@ -5,7 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useApiRegistry } from '@/api/provider';
+import { reconnectConnection } from '@/components/layout/reconnect-banner';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Icon } from '@/components/ui/icon';
@@ -143,25 +145,45 @@ export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => 
       <View className="gap-2">
         {connections.map((c) => {
           const name = serverDisplayName(c, savedConnections);
+          const manage = t('account.connections.manage', { name });
           return (
             <RowSurface key={c.id} className="flex-row items-center gap-1 pr-1">
               <AnimatedPressable
                 onPress={() => router.push(accountHref(c.id))}
                 accessibilityRole="button"
-                accessibilityLabel={t('account.connections.manage', { name })}
+                // The label stands for the row's text, so it carries the badge too.
+                accessibilityLabel={
+                  c.needsReconnect ? `${manage}, ${t('account.connections.signedOut')}` : manage
+                }
                 className="flex-1 flex-row items-center gap-3 rounded-xl px-3 py-3"
               >
                 <Icon name="server" size={18} color={themed.mutedForeground} />
-                <View className="flex-1">
+                <View className="flex-1 gap-0.5">
                   <Text variant="label" numberOfLines={2}>
                     {name}
                   </Text>
                   <Text variant="caption" numberOfLines={1}>
                     {c.user.username} · {c.serverUrl}
                   </Text>
+                  {c.needsReconnect ? (
+                    <Badge variant="warning" className="self-start">
+                      <Text>{t('account.connections.signedOut')}</Text>
+                    </Badge>
+                  ) : null}
                 </View>
                 <Icon name="chevron-right" size={16} color={themed.mutedForeground} />
               </AnimatedPressable>
+              {/* A server whose sign-in ended says so, with the banner's way back
+                  (CONNECT-15), not a row that looks like a healthy one. */}
+              {c.needsReconnect ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  title={t('reconnect.connect.heading')}
+                  accessibilityLabel={t('reconnect.connect.action', { name })}
+                  onPress={() => void reconnectConnection(c)}
+                />
+              ) : null}
               <AnimatedPressable
                 onPress={() => onRemove(c)}
                 hitSlop={hitSlop}

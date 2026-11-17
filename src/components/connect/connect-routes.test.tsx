@@ -1,4 +1,5 @@
 import { act, render, screen } from '@testing-library/react-native';
+import { Suspense } from 'react';
 
 import type { User } from '@/api/types';
 import { useSession } from '@/stores/session';
@@ -71,7 +72,7 @@ jest.mock('@/api/provider', () => ({
 import ConnectRoute from '@/app/connect/index';
 import ReadyRoute from '@/app/connect/ready';
 import SignInRoute from '@/app/connect/sign-in';
-import { holdInvite, holdReconnect } from '@/components/connect/invite-handoff';
+import { holdInvite, holdReconnect, takeInviteCode } from '@/components/connect/invite-handoff';
 /* eslint-enable import/first */
 
 const user = { id: 1, username: 'u', role: 'user' } as User;
@@ -218,6 +219,36 @@ describe('/connect/sign-in', () => {
     holdInvite({ base: 'https://a', code: 'ABCD-1234' });
     await render(<SignInRoute />);
     expect(screen.getByText('sign in https://a  code ABCD-1234')).toBeTruthy();
+  });
+
+  // A render thrown away before it shows (on the web, the route's chunk still loading) runs
+  // the screen's first render again: the step that shows still has the pasted invite's code,
+  // and only the step on screen takes it.
+  it("keeps the invite's code through a first render that is run again", async () => {
+    signedOut('https://a');
+    holdInvite({ base: 'https://a', code: 'ABCD-1234' });
+    let ready = false;
+    let open = () => {};
+    const loading = new Promise<void>((resolve) => {
+      open = () => {
+        ready = true;
+        resolve();
+      };
+    });
+    const Loading = () => {
+      if (!ready) throw loading;
+      return null;
+    };
+    await render(
+      <Suspense fallback={null}>
+        <SignInRoute />
+        <Loading />
+      </Suspense>,
+    );
+    expect(screen.queryByText(/sign in/)).toBeNull();
+    await act(async () => open());
+    expect(screen.getByText('sign in https://a  code ABCD-1234')).toBeTruthy();
+    expect(takeInviteCode('https://a')).toBeUndefined();
   });
 
   it('goes back to the first step with no server to sign in to', async () => {
