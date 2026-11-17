@@ -98,6 +98,19 @@ it('urlEndpoint userinfo: a user before the host, never an @ in the path', () =>
   expect(urlEndpoint('https://u:p@librivox.org/')?.userinfo).toBe(true);
   expect(urlEndpoint('https://librivox.org/a@b')?.userinfo).toBe(false);
   expect(urlEndpoint('https://librivox.org/?q=a@b')?.userinfo).toBe(false);
+  // The last @ before the path ends it, as a browser reads it: the host is what follows.
+  expect(urlEndpoint('https://a@librivox.org@evil.example/')).toMatchObject({
+    host: 'evil.example',
+    userinfo: true,
+  });
+  expect(urlEndpoint('https://u:p@w@[fd00::5]:8443/')).toMatchObject({
+    host: 'fd00::5',
+    port: '8443',
+    userinfo: true,
+  });
+  // No host after it is no URL.
+  expect(urlEndpoint('https://a@b@/')).toBeNull();
+  expect(urlEndpoint('https://librivox.org@:80/')).toBeNull();
 });
 
 it('urlEndpoint: a backslash ends the host, as a browser reads an http(s) URL', () => {
