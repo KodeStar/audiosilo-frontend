@@ -50,5 +50,12 @@ jobs:
       - name: Format
         run: npm run format
 
+      # src/api/__wire__ is a byte copy of the server's wire goldens at the commit
+      # source.json pins; the parity test (in Test) checks types.ts against it.
+      - name: Wire goldens match the pinned server commit
+        run: npm run wire:check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
       - name: Test
         run: npm test -- --ci --coverage
