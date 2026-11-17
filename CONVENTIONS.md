@@ -2506,11 +2506,37 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   (`resumeStart`) and rate, so the service can start it with no JS; no session token ever
   leaves expo-secure-store for the car.
 - **`car-controller.ts`** (`startCarSync`, from the root layout and the car task; a no-op on the
-  web and on a binary without the car functions) **builds nothing until a car has connected on
-  this device** (`audiosilo.carSeen`), so a phone that never meets a car never builds a
-  snapshot or fetches car covers. Then: at start, on a car connect, a language change, a book
-  starting or pausing in the car, and 2 s after the lists, queue, downloads, connections,
-  library selection or default speed change; never two writes within 2 s. It never overwrites
+  web and on a binary without the car functions) **builds the full snapshot only once a car has
+  connected on this device** (`audiosilo.carSeen`), so a phone that never meets a car never
+  reads lists for it or fetches car covers. Then: at start, on a car connect, a language
+  change, a book starting or pausing in the car, and 2 s after the lists, queue, downloads,
+  connections, library selection or default speed change; never two writes within 2 s while
+  a car is connected. On Android a pause, a stop, a paused book's move (a seek, a chapter
+  skip, another device's place picked up: `pausedMove`) or another book is what a resumption
+  plays: with no car connected the full snapshot is written for it at once
+  (`writeForResumption`), on no timer and from the query cache (`cachedBuild`: a server is
+  asked only for a list the cache never held), so a pause in the background, where Android
+  holds the JS timers and a request's timeout is one, still writes it.
+  **Before any car, Android writes a minimal resumable snapshot** (`buildResumable`, fe#251)
+  on those same changes, and when the person, their servers or the downloads change: the
+  loaded book at its live place and the downloaded books, no server read, no cover fetched or
+  pruned, and no timer, so Bluetooth or a headset's play after a kill resumes the book with no
+  car ever met. **The book a resumption starts is the one the snapshot names** (`resume`, an
+  item id; `resumableBook`, the full snapshot's too), never just the first Continue listening
+  row, which after a stop is the newest book in progress: the loaded book while it is neither
+  stopped nor finished; until a book is loaded in this runtime, the book offered last
+  (`audiosilo.carResumable`, kept with whether kids mode was on, and dropped when that
+  changed), so opening the app after a kill without playing keeps it; once one was stopped or
+  finished here, none. Native reads it in `CarSnapshot.resumable` (a snapshot kept from before
+  the field still answers with its first Continue row). The minimal snapshot waits for the
+  start's read of the car-seen mark.
+  Both writes go through one queue (`snapshotWrites`), and the minimal one never lands once a
+  car was seen. It is not the snapshot an unreadable build leaves alone (it sets no
+  `audiosilo.carSnapshotWritten`), so the first car's build replaces it away from every
+  server too; and a resumption's write no car saw does not start the 2 s gap for the build of
+  a car that connects right after. A paused loaded book's play spec starts where it was
+  paused (`pausedPlaceOf`), not at the device save the pause may not have written yet. It
+  never overwrites
   native's snapshot with a worse one (not while `sessionHydrateFailed()`, not with unreadable
   lists once one was written). Every write, play request, adoption and bookmark drain waits for
   `bootstrapPlayback()`. It answers `onCarPlayRequest` (`handleCarPlayRequest`: the loaded book
@@ -2561,7 +2587,15 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   `ForegroundServiceDidNotStartInTimeException`); a media button start that does go ahead goes
   into the foreground AT ONCE with a placeholder under Media3's notification id (Media3's own
   replaces it when the book plays; a JS-routed resumption can take 10 s), and a failed
-  resumption removes it and stops the service (`onStartCommand`, `watchResumption`).
+  resumption removes it and stops the service (`onStartCommand`, `watchResumption`; every
+  play `playFromCar` leaves pending is watched, so a car play that superseded the resumption
+  and then failed, by its timeout or a load that left nothing loaded, ends it too, fe#252).
+  **Remote buttons are logged on demand** (`MediaKeyLog`, fe#301): `adb shell setprop
+  log.tag.AudiosiloKeys DEBUG`, then `adb logcat -s AudiosiloKeys` shows each media key (the
+  receiver, the service start, `onMediaButtonEvent` with the sender, the notification
+  controller and the next/previous commands), each controller's connect and what the
+  player then does (play, pause, a move, and who asked). A book is named by a short hash of
+  its item id (`MediaKeyLog.ref`), never the id: it holds the connection, library and path.
   `onPlaybackResumption(…, isForPlayback = false)` (System UI's card after a reboot) answers from
   the play spec with no side effect; `CarConnectionMonitor` reads the Auto host's
   connection provider (Media3 only notices a legacy controller leaving by timeout).
@@ -3773,8 +3807,9 @@ states*), each naming the server when there are several. A stored pick whose lis
 loading mounts its mode at once (no extra round trip). The car's Library tab has no picker and
 no state to show for a server, so it never waits on one (`resolveCarLibrary`): where the rule
 would wait (no pick, or a pick whose server answered that it shares nothing), it lists the
-first server that IS read and has a library, and goes back to the first server once that
-answers (nothing is remembered); a pick whose server has not answered, or still has a
+first server that IS read and has a library, and keeps it for the drive once the first server
+answers (the car passes the library it listed last while connected as `shown`, forgotten
+when the car goes or the person changes: D9 of fe#271); a pick whose server has not answered, or still has a
 library, is never replaced by another server's there either. `LibraryPicker` offers every server's libraries whatever is
 shown (the way out of a server that does not answer); among several servers its labels carry
 the server ("Books · Home"), and with nothing else to choose it is a plain label

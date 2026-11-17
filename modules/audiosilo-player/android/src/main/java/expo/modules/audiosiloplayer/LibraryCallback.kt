@@ -1,7 +1,9 @@
 package expo.modules.audiosiloplayer
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaConstants
@@ -55,6 +57,7 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
       .apply { if (PlayerBridge.isAppController(controller)) add(SessionCommand(CMD_SET_EFFECTS, Bundle.EMPTY)) }
       .build()
     service.onControllerConnected(controller)
+    MediaKeyLog.d { "connect: ${service.describe(controller)}" }
     return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
       .setAvailableSessionCommands(commands)
       .build()
@@ -62,6 +65,29 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
 
   override fun onDisconnected(session: MediaSession, controller: MediaSession.ControllerInfo) {
     service.onControllerDisconnected(controller)
+  }
+
+  /**
+   * Logged only ([MediaKeyLog], fe#301), then left to Media3 (false): a key from Bluetooth, a
+   * headset or the car reaches the player through the media notification controller (or, with
+   * none connected, the legacy session's own handling), and a play/pause waits out Media3's
+   * double-tap window first (a double tap is next).
+   */
+  override fun onMediaButtonEvent(
+    session: MediaSession,
+    controllerInfo: MediaSession.ControllerInfo,
+    intent: Intent,
+  ): Boolean {
+    MediaKeyLog.d {
+      val p = service.player
+      val commands = p?.availableCommands
+      "key: ${MediaKeyLog.describe(intent)} from ${service.describe(controllerInfo)}; " +
+        "notification controller=${session.mediaNotificationControllerInfo != null}, " +
+        "items=${p?.mediaItemCount}, playWhenReady=${p?.playWhenReady}, state=${p?.playbackState}, " +
+        "next=${commands?.contains(Player.COMMAND_SEEK_TO_NEXT)}, " +
+        "previous=${commands?.contains(Player.COMMAND_SEEK_TO_PREVIOUS)}"
+    }
+    return false
   }
 
   override fun onCustomCommand(
@@ -177,9 +203,10 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
 
   /**
    * A play with an empty player (Bluetooth, the car's play button, the system's resumption
-   * card): the snapshot's first Continue listening book, when it is downloaded (has a play
-   * spec). Media3 asks with [isForPlayback] true only for a play command, so merely connecting
-   * Auto never plays. With false (System UI's resumption card after a reboot) it only wants the
+   * card): the book the snapshot names for it ([CarSnapshot.resumable]: the one left loaded,
+   * never a stopped or finished one), when it is downloaded (has a play spec). Media3 asks
+   * with [isForPlayback] true only for a play command, so merely connecting Auto never plays.
+   * With false (System UI's resumption card after a reboot) it only wants the
    * item to show: answered from the spec with no side effect (no JS boot, no car request).
    * A failed play resumption releases a foreground start ([AudiosiloPlayerService.watchResumption]).
    */
@@ -189,6 +216,9 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
     isForPlayback: Boolean,
   ): ListenableFuture<MediaItemsWithStartPosition> {
     val item = service.snapshot()?.resumable()
+    MediaKeyLog.d {
+      "resumption from ${service.describe(controller)}: forPlayback=$isForPlayback, item=${MediaKeyLog.ref(item?.id)}"
+    }
     if (!isForPlayback) {
       return item?.play?.let { Futures.immediateFuture(MediaItems.startPositionOf(it)) } ?: nothingToResume()
     }

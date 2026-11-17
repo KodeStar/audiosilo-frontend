@@ -177,6 +177,8 @@ class AudiosiloPlayerService : MediaLibraryService() {
 
   /** A car play JS must start, waiting for the module's next `load` (see [playFromCar]). */
   private var pendingPlay: SettableFuture<MediaItemsWithStartPosition>? = null
+  /** A car play that timed out. One made during a media button start ends that start too
+   * ([playFromCar] watches every pending play, fe#252). */
   private val pendingTimeout = Runnable { failPendingPlay() }
 
   /** The snapshot the car was last told about ([onSnapshotChanged]); null before the first. */
@@ -365,6 +367,20 @@ class AudiosiloPlayerService : MediaLibraryService() {
     override fun onRemoteRate(rate: Float) {
       PlayerBridge.sink?.rateChange(rate.toDouble())
     }
+
+    override fun requester(): String? = mediaSession?.controllerForCurrentRequest?.let(::describe)
+  }
+
+  /** A controller as [MediaKeyLog] shows it: its package, Media3 or legacy, and our role for it. */
+  internal fun describe(c: MediaSession.ControllerInfo): String {
+    val role = when {
+      PlayerBridge.isAppController(c) -> " (app)"
+      mediaSession?.isMediaNotificationController(c) == true -> " (notification)"
+      isCarController(c) -> " (car)"
+      else -> ""
+    }
+    val kind = if (c.controllerVersion == MediaSession.ControllerInfo.LEGACY_CONTROLLER_VERSION) "legacy" else "media3"
+    return "${c.packageName} $kind$role"
   }
 
   /** Where the player is, in FILE coordinates (from the current item's extras). */
@@ -514,10 +530,11 @@ class AudiosiloPlayerService : MediaLibraryService() {
    * resumption fails ([watchResumption]) or never answers ([buttonStartTimeout]).
    */
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    val mediaButton = intent?.action == Intent.ACTION_MEDIA_BUTTON
+    val items = player?.mediaItemCount ?: 0
+    if (mediaButton) MediaKeyLog.d { "service start: ${MediaKeyLog.describe(intent)}, items=$items" }
     // Every such start needs its own startForeground, a second press while the first waits too.
-    if (intent?.action == Intent.ACTION_MEDIA_BUTTON && (player?.mediaItemCount ?: 0) == 0 &&
-      startPlaceholderForeground()
-    ) {
+    if (mediaButton && items == 0 && startPlaceholderForeground()) {
       buttonStart = true
       handler.removeCallbacks(buttonStartTimeout)
       handler.postDelayed(buttonStartTimeout, BUTTON_START_TIMEOUT_MS)
@@ -587,6 +604,9 @@ class AudiosiloPlayerService : MediaLibraryService() {
    * A play resumption's [future], watched: when it fails after a media button start and nothing
    * else loaded meanwhile, the placeholder goes and the started service stops ([endButtonStart]),
    * so a press with nothing to resume never leaves a foreground start the system kills the app for.
+   * [playFromCar] watches every play it leaves pending too, so a car tap that replaced the
+   * resumption ends the start as well, whichever way it fails (its timeout, a load that left
+   * nothing loaded): the placeholder never waits for [buttonStartTimeout] then (fe#252).
    */
   internal fun watchResumption(
     future: ListenableFuture<MediaItemsWithStartPosition>,
@@ -647,6 +667,8 @@ class AudiosiloPlayerService : MediaLibraryService() {
     failPendingPlay(notify = false)
     val future = SettableFuture.create<MediaItemsWithStartPosition>()
     pendingPlay = future
+    // Whoever asked: this play is now the one a media button start waits on.
+    watchResumption(future)
     handler.postDelayed(pendingTimeout, CAR_PLAY_TIMEOUT_MS)
     PlayerBridge.requestCarPlay(id)
     needJs()

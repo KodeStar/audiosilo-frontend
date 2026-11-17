@@ -398,6 +398,18 @@ describe('playSpec', () => {
     expect(spec).toMatchObject({ startIndex: 0, positionInTrack: 0 });
   });
 
+  it('starts the loaded book where it was paused, over the saved place (fe#251)', () => {
+    const spec = playSpec(
+      bookRef,
+      twoFiles,
+      { kind: 'progress', progress: makeProgress({ path: 'A', position: 30, playback_speed: 1 }) },
+      1,
+      1800,
+      { position: 150, rate: 1.5 },
+    );
+    expect(spec).toMatchObject({ startIndex: 1, positionInTrack: 50, rate: 1.5 });
+  });
+
   it('starts a new book at 0 at the default speed, clamped to the product range', () => {
     expect(playSpec(bookRef, twoFiles, { kind: 'empty' }, 3, 1800)).toMatchObject({
       startIndex: 0,
@@ -440,6 +452,22 @@ describe('buildCarSnapshot', () => {
       ['downloads', 'Downloads', []],
       ['library', 'Library', ['c']],
     ]);
+  });
+
+  it('names the book a resumption starts by its item id (Android), or none, and only when asked', () => {
+    const input = {
+      generatedAt: 'x',
+      labels,
+      signedIn: true,
+      books: { continue: [book('a'), book('b')], upnext: null, downloads: [], library: [] },
+    };
+    const b = { connectionId: 'c1', libraryId: 2, path: 'b' };
+    expect(buildCarSnapshot({ ...input, resume: b }, ctx()).resume).toBe(carItemId(b));
+    // A stopped or finished book: none, never the first Continue listening row.
+    expect(buildCarSnapshot({ ...input, resume: null }, ctx()).resume).toBeNull();
+    expect(buildCarSnapshot({ ...input, signedIn: false, resume: b }, ctx()).resume).toBeNull();
+    // iOS asks for none: no such key.
+    expect(buildCarSnapshot(input, ctx())).not.toHaveProperty('resume');
   });
 
   it('leaves Up next out where the server keeps no queue', () => {

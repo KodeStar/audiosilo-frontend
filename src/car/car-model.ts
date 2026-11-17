@@ -84,6 +84,10 @@ export type CarSnapshot = {
   labels: CarLabels;
   signedIn: boolean;
   tabs: CarTab[];
+  /** Android: the id of the item a playback resumption starts (a headset's or Bluetooth's
+   * play with nothing loaded, `CarSnapshot.resumable`), null when there is none. Absent on
+   * iOS (CarPlay has no resumption). */
+  resume?: string | null;
 };
 
 /** The most items each tab carries (Android Auto doesn't page; CarPlay trims further to its
@@ -273,6 +277,10 @@ export function carItem(b: CarBook, ctx: CarItemContext): CarItem {
  * `resumeStart` (`book-source.ts`) as `playBook` reads it: an unfinished book resumes at its
  * saved place, a finished one starts again at 0, and its saved speed wins over the default.
  * Android only (iOS always lets JS start a book). Undefined when a file has no local copy.
+ *
+ * `paused` is where the listener paused this book, when it is the loaded one and paused now:
+ * its place and speed win over the lookup, whose device save may not have landed yet when a
+ * pause writes the snapshot (fe#251).
  */
 export function playSpec(
   ref: BookRef,
@@ -280,6 +288,7 @@ export function playSpec(
   lookup: ResumeLookup,
   defaultRate: number,
   virtualChapterInterval: number,
+  paused?: { position: number; rate: number },
 ): CarPlaySpec | undefined {
   const queue = buildBookQueue(
     null,
@@ -291,14 +300,15 @@ export function playSpec(
   );
   if (queue.tracks.length === 0 || queue.tracks.some((t) => !t.url)) return undefined;
   const saved = lookup.kind === 'progress' ? lookup.progress : null;
-  const { index, positionInTrack } = locate(queue.offsets, saved ? resumeStart(saved) : 0);
+  const start = paused ? paused.position : saved ? resumeStart(saved) : 0;
+  const { index, positionInTrack } = locate(queue.offsets, start);
   return {
     book: ref,
     tracks: queue.tracks.map(toNativeTrack),
     chapters: queue.chapterClips,
     startIndex: index,
     positionInTrack,
-    rate: bookSpeed(saved?.playback_speed, defaultRate),
+    rate: paused ? paused.rate : bookSpeed(saved?.playback_speed, defaultRate),
   };
 }
 
@@ -316,6 +326,10 @@ export type CarSnapshotInput = {
   /** A tab's title in place of its usual one (the kids shelf's Library tab is "Your
    * stories"). */
   titles?: Partial<Record<CarTabId, string>>;
+  /** Android: the book a playback resumption starts, null for none (`CarSnapshot.resume`).
+   * Never the newest Continue listening row: a book stopped or finished stays stopped at a
+   * headset's play. */
+  resume?: BookRef | null;
 };
 
 /** Each tab's title (namespace `car`). */
@@ -353,6 +367,9 @@ export function buildCarSnapshot(input: CarSnapshotInput, ctx: CarItemContext): 
     labels: input.labels,
     signedIn: input.signedIn,
     tabs,
+    ...(input.resume === undefined
+      ? {}
+      : { resume: input.signedIn && input.resume ? carItemId(input.resume) : null }),
   };
 }
 

@@ -175,6 +175,7 @@ jest.mock('@/api/connection-clients', () => ({
 /* eslint-disable import/first */
 import { AppState, Platform } from 'react-native';
 
+import { queryClient } from '@/api/provider';
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 import { bootstrapPlayback } from '@/lib/bootstrap';
@@ -183,6 +184,7 @@ import * as store from '@/playback/store';
 import { useLibrarySelection } from '@/stores/library-selection';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession, type Connection } from '@/stores/session';
+import * as storage from '@/lib/storage';
 import { getItem, setItem } from '@/lib/storage';
 
 import { artworkOnDisk, ensureArtwork, pruneArtwork } from './car-artwork';
@@ -349,6 +351,7 @@ beforeEach(async () => {
     return { remove: () => {} };
   }) as never);
   forgetCarSync();
+  (queryClient.getQueryData as jest.Mock).mockImplementation(() => undefined);
   mockArtOnDisk.clear();
   for (const k of Object.keys(mockClients)) delete mockClients[k];
   for (const k of Object.keys(mockCaps)) delete mockCaps[k];
@@ -378,6 +381,7 @@ afterEach(async () => {
   await setItem('audiosilo.carBookmarks', []);
   await setItem('audiosilo.carSeen', false);
   await setItem('audiosilo.carSnapshotWritten', false);
+  await setItem('audiosilo.carResumable', null);
   jest.clearAllTimers();
   jest.useRealTimers();
 });
@@ -734,7 +738,7 @@ describe('startCarSync', () => {
     expect(mockNative.setSnapshot).toHaveBeenCalledTimes(3);
   });
 
-  it('rebuilds nothing for a book starting or pausing while no car is connected', async () => {
+  it('rebuilds nothing on iOS for a book starting or pausing while no car is connected', async () => {
     connect(['c1']);
     mockClients.c1 = fakeClient({});
     stop = startCarSync();
@@ -1103,6 +1107,426 @@ describe('startCarSync', () => {
     expect(mockNative.connection).not.toBeNull();
     b();
     expect(mockNative.connection).toBeNull();
+  });
+});
+
+describe('the resumable snapshot (Android, fe#251)', () => {
+  const loaded = (state: string, trackIndex: number, position: number) => ({
+    nowPlaying: {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'D',
+      queue: { offsets: [0, 100], total: 200 },
+    },
+    snapshot: { state, trackIndex, position, duration: 100, rate: 1.5 },
+    rate: 1.5,
+  });
+
+  /** Promise turns only: no timer runs (Android holds the JS timers in the background). */
+  async function flushPromises() {
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+  }
+
+  beforeEach(async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    await setItem('audiosilo.carSeen', false);
+    connect(['c1']);
+    mockClients.c1 = fakeClient({ books: [makeBook({ rel_path: 'L1' })] });
+    useDownloads.setState({
+      entries: { 'c1:2:D': downloaded('c1', 'D'), 'c1:2:E': downloaded('c1', 'E') },
+    });
+  });
+
+  it('is written on a pause with no car ever met, at the paused place, with no timer and no server read', async () => {
+    usePlayer.setState(loaded('playing', 1, 20));
+    stop = startCarSync();
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(mockNative.setSnapshot).not.toHaveBeenCalled(); // playing on: nothing to write
+
+    usePlayer.setState(loaded('paused', 1, 30));
+    await flushPromises();
+    expect(mockNative.setSnapshot).toHaveBeenCalledTimes(1);
+    const snap = lastSnapshot();
+    expect(snap.signedIn).toBe(true);
+    expect(snap.tabs.map((t) => t.id)).toEqual(['continue', 'downloads']);
+    // What a resumption plays (`CarSnapshot.resumable`): the paused book, from where it paused.
+    const first = tab(snap, 'continue')!.items[0];
+    expect(first.book).toEqual({ connectionId: 'c1', libraryId: 2, path: 'D' });
+    expect(snap.resume).toBe(first.id);
+    expect(first.play).toMatchObject({ startIndex: 1, positionInTrack: 30, rate: 1.5 });
+    expect(first.artwork).toBe('file:///d/cover.jpg');
+    expect(
+      tab(snap, 'downloads')!
+        .items.map((i) => i.book.path)
+        .sort(),
+    ).toEqual(['D', 'E']);
+    // Nothing read from a server, no cover fetched or pruned, and no car remembered.
+    expect(mockClients.c1.allProgress).not.toHaveBeenCalled();
+    expect(mockClients.c1.listBooks).not.toHaveBeenCalled();
+    expect(ensureArtwork).not.toHaveBeenCalled();
+    expect(pruneArtwork).not.toHaveBeenCalled();
+    expect(await getItem('audiosilo.carSeen')).toBe(false);
+    expect(JSON.stringify(snap)).not.toMatch(/secret|https?:/);
+  });
+
+  it('leaves nothing to resume once the book is stopped', async () => {
+    stop = startCarSync();
+    await settle();
+    usePlayer.setState(loaded('paused', 0, 10));
+    await flushPromises();
+    expect(tab(lastSnapshot(), 'continue')!.items).toHaveLength(1);
+
+    usePlayer.setState({
+      nowPlaying: null,
+      snapshot: { state: 'idle', trackIndex: 0, position: 0, duration: 0, rate: 1 },
+    });
+    await flushPromises();
+    expect(tab(lastSnapshot(), 'continue')!.items).toEqual([]);
+    expect(lastSnapshot().resume).toBeNull();
+  });
+
+  it('is written again for another person, so their book is never resumed', async () => {
+    stop = startCarSync();
+    await settle();
+    usePlayer.setState(loaded('paused', 0, 10));
+    await flushPromises();
+    expect(lastSnapshot().signedIn).toBe(true);
+
+    connect([]);
+    await flushPromises();
+    expect(lastSnapshot().signedIn).toBe(false);
+    expect(lastSnapshot().tabs.every((t) => t.items.length === 0)).toBe(true);
+  });
+
+  it('is not written on iOS (CarPlay has no resumption)', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
+    stop = startCarSync();
+    await settle();
+    usePlayer.setState(loaded('playing', 1, 20));
+    usePlayer.setState(loaded('paused', 1, 30));
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(mockNative.setSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('offers the book a pause offered before on a launch that loads none (after a kill)', async () => {
+    await setItem('audiosilo.carResumable', { connectionId: 'c1', libraryId: 2, path: 'D' });
+    mockLocalPlaces.mirror = {
+      'c1:2:D': {
+        connectionId: 'c1',
+        libraryId: 2,
+        path: 'D',
+        position: 130,
+        duration: 200,
+        finished: false,
+        playback_speed: 1,
+        device_id: 'me',
+        updated_at: '2026-02-01T00:00:00.000Z',
+      },
+    };
+    stop = startCarSync();
+    await settle();
+    // The launch hydrates the downloads: written again, still offering that book.
+    useDownloads.setState({ entries: { 'c1:2:D': downloaded('c1', 'D') } });
+    await flushPromises();
+    const first = tab(lastSnapshot(), 'continue')!.items[0];
+    expect(first.book).toEqual({ connectionId: 'c1', libraryId: 2, path: 'D' });
+    expect(first.play).toMatchObject({ startIndex: 1, positionInTrack: 30 });
+
+    // Once a book was loaded and stopped here, nothing is offered, after a launch too.
+    usePlayer.setState(loaded('paused', 0, 10));
+    usePlayer.setState({
+      nowPlaying: null,
+      snapshot: { state: 'idle', trackIndex: 0, position: 0, duration: 0, rate: 1 },
+    });
+    await flushPromises();
+    expect(tab(lastSnapshot(), 'continue')!.items).toEqual([]);
+    expect(await getItem('audiosilo.carResumable')).toBeNull();
+  });
+
+  it('is written again when the paused book moves, at its new place', async () => {
+    stop = startCarSync();
+    await settle();
+    usePlayer.setState(loaded('paused', 1, 30));
+    await flushPromises();
+    usePlayer.setState(loaded('paused', 0, 40));
+    await flushPromises();
+    expect(tab(lastSnapshot(), 'continue')!.items[0].play).toMatchObject({
+      startIndex: 0,
+      positionInTrack: 40,
+    });
+  });
+
+  it('never writes over a car-seen phone at launch, before its car-seen mark was read', async () => {
+    await setItem('audiosilo.carSeen', true);
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const read = storage.getItem;
+    const slow = jest.spyOn(storage, 'getItem').mockImplementation(async (key: string) => {
+      if (key === 'audiosilo.carSeen') await held;
+      return read(key);
+    });
+    try {
+      stop = startCarSync();
+      connect(['c1']); // the launch hydrates the session meanwhile
+      await flushPromises();
+      release();
+      await flushPromises();
+    } finally {
+      slow.mockRestore();
+    }
+    // The full snapshot is due on its timer; the resumable one never went over it.
+    expect(mockNative.setSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('with a car met before but none connected, a pause writes the full snapshot at once, from the cache', async () => {
+    const cache = queryClient.getQueryData as jest.Mock;
+    await setItem('audiosilo.carSeen', true);
+    usePlayer.setState(loaded('playing', 1, 20));
+    stop = startCarSync();
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    const writes = mockNative.setSnapshot.mock.calls.length;
+    const reads = mockClients.c1.allProgress.mock.calls.length;
+    cache.mockImplementation(() => []);
+
+    usePlayer.setState(loaded('paused', 1, 50));
+    await flushPromises(); // no timer runs
+    expect(mockNative.setSnapshot).toHaveBeenCalledTimes(writes + 1);
+    expect(mockClients.c1.allProgress).toHaveBeenCalledTimes(reads);
+    expect(tab(lastSnapshot(), 'continue')!.items[0].play).toMatchObject({
+      startIndex: 1,
+      positionInTrack: 50,
+    });
+    cache.mockImplementation(() => undefined);
+  });
+
+  it('with a car met before but none connected, a pause writes the full snapshot at the paused place', async () => {
+    await setItem('audiosilo.carSeen', true);
+    mockClients.c1 = fakeClient({
+      progress: [
+        makeProgress({ path: 'D', position: 130, duration: 200, updated_at: '2026-01-15' }),
+      ],
+    });
+    usePlayer.setState(loaded('playing', 1, 20));
+    stop = startCarSync();
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    const writes = mockNative.setSnapshot.mock.calls.length;
+
+    usePlayer.setState(loaded('paused', 1, 50));
+    await settle(MIN_GAP_MS);
+    expect(mockNative.setSnapshot).toHaveBeenCalledTimes(writes + 1);
+    const snap = lastSnapshot();
+    expect(snap.tabs.map((t) => t.id)).toEqual(['continue', 'downloads', 'library']);
+    // The paused place (150 s), not the server row's 130 s the device save has not passed yet.
+    expect(tab(snap, 'continue')!.items[0].play).toMatchObject({
+      startIndex: 1,
+      positionInTrack: 50,
+    });
+  });
+
+  it("is not the snapshot an unreadable build keeps: the first car's is written offline too", async () => {
+    const offline = new TypeError('Network request failed');
+    mockClients.c1.allProgress.mockRejectedValue(offline);
+    mockClients.c1.queue.mockRejectedValue(offline);
+    mockClients.c1.libraries.mockRejectedValue(offline);
+    mockClients.c1.listBooks.mockRejectedValue(offline);
+    stop = startCarSync();
+    await settle();
+    usePlayer.setState(loaded('paused', 1, 30));
+    await flushPromises();
+    expect(lastSnapshot().tabs.map((t) => t.id)).toEqual(['continue', 'downloads']);
+    expect(await getItem('audiosilo.carSnapshotWritten')).not.toBe(true);
+
+    // The first car, away from the server: its own snapshot, not the minimal one kept.
+    mockNative.connection?.(true);
+    await settle(MIN_GAP_MS);
+    expect(lastSnapshot().tabs.map((t) => t.id)).toContain('library');
+    expect(await getItem('audiosilo.carSnapshotWritten')).toBe(true);
+  });
+
+  it('a pause while a snapshot is being written is written right after it, with no timer', async () => {
+    await setItem('audiosilo.carSeen', true);
+    usePlayer.setState(loaded('playing', 1, 20));
+    let answer = (_rows: Progress[]) => {};
+    mockClients.c1.allProgress.mockImplementationOnce(
+      () => new Promise<Progress[]>((resolve) => (answer = resolve)),
+    );
+    stop = startCarSync();
+    await settle(MIN_GAP_MS); // the launch's build is reading the server
+    expect(mockNative.setSnapshot).not.toHaveBeenCalled();
+
+    usePlayer.setState(loaded('paused', 1, 50));
+    await flushPromises();
+    answer([]);
+    await flushPromises(); // no timer runs: the launch's write,
+    await flushPromises(); // then the pause's
+    expect(tab(lastSnapshot(), 'continue')!.items[0].play).toMatchObject({
+      startIndex: 1,
+      positionInTrack: 50,
+    });
+  });
+
+  it("a resumption's write never holds back the build of a car that connects right after", async () => {
+    await setItem('audiosilo.carSeen', true);
+    usePlayer.setState(loaded('playing', 1, 20));
+    stop = startCarSync();
+    await settle(SETTLE_MS + MIN_GAP_MS);
+
+    usePlayer.setState(loaded('paused', 1, 50));
+    await flushPromises();
+    const reads = mockClients.c1.allProgress.mock.calls.length;
+
+    // No car saw that write: the connect's fresh build does not wait `MIN_GAP_MS` after it.
+    mockNative.connection?.(true);
+    await settle();
+    expect(mockClients.c1.allProgress.mock.calls.length).toBeGreaterThan(reads);
+  });
+
+  describe('the book a resumption starts, on a phone that met a car', () => {
+    const D = carItemId({ connectionId: 'c1', libraryId: 2, path: 'D' });
+    const stopped = {
+      nowPlaying: null,
+      snapshot: { state: 'idle', trackIndex: 0, position: 0, duration: 0, rate: 1 },
+    };
+
+    beforeEach(async () => {
+      await setItem('audiosilo.carSeen', true);
+      // D is the newest book in progress, and downloaded: the first Continue listening row
+      // has a play spec whether or not it is loaded.
+      mockClients.c1 = fakeClient({
+        progress: [
+          makeProgress({ path: 'D', position: 130, duration: 200, updated_at: '2026-01-15' }),
+        ],
+      });
+    });
+
+    it('is the paused book, and none once it is stopped: the newest book in progress stays stopped', async () => {
+      usePlayer.setState(loaded('playing', 1, 20));
+      stop = startCarSync();
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      usePlayer.setState(loaded('paused', 1, 50));
+      await flushPromises();
+      expect(lastSnapshot().resume).toBe(D);
+
+      usePlayer.setState(stopped);
+      await flushPromises();
+      const snap = lastSnapshot();
+      // Still listed first, still startable from the car, but not what a headset's play starts.
+      expect(tab(snap, 'continue')!.items[0]).toMatchObject({ id: D, play: expect.anything() });
+      expect(snap.resume).toBeNull();
+      expect(await getItem('audiosilo.carResumable')).toBeNull();
+    });
+
+    it('is none once the book finished', async () => {
+      usePlayer.setState(loaded('playing', 1, 20));
+      stop = startCarSync();
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      usePlayer.setState(loaded('ended', 1, 100));
+      await flushPromises();
+      expect(lastSnapshot().resume).toBeNull();
+    });
+
+    it('is the book a pause offered before on a launch that loads none (after a kill)', async () => {
+      await setItem('audiosilo.carResumable', { connectionId: 'c1', libraryId: 2, path: 'E' });
+      stop = startCarSync();
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      const snap = lastSnapshot();
+      // Not the newest book in progress (D): the one that was paused (E, among the downloads).
+      expect(tab(snap, 'continue')!.items[0].id).toBe(D);
+      expect(snap.resume).toBe(carItemId({ connectionId: 'c1', libraryId: 2, path: 'E' }));
+    });
+
+    it('is not named on iOS (CarPlay has no resumption)', async () => {
+      Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
+      usePlayer.setState(loaded('paused', 1, 50));
+      stop = startCarSync();
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      expect(lastSnapshot()).not.toHaveProperty('resume');
+    });
+  });
+
+  it('never offers a kids profile the book offered before kids mode was turned on', async () => {
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [{ id: 'p', name: 'P', connectionIds: ['c1'] }],
+      activeProfileId: 'p',
+    });
+    await setItem('audiosilo.carResumable', {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'D',
+      kids: false,
+    });
+    stop = startCarSync();
+    await settle();
+    useDownloads.setState({ entries: { 'c1:2:D': downloaded('c1', 'D') } });
+    await flushPromises();
+    expect(tab(lastSnapshot(), 'continue')!.items).toHaveLength(1);
+
+    // Kids mode on, no book loaded since the launch: that book may not be on the kids shelf.
+    useProfiles.setState({
+      profiles: [{ id: 'p', name: 'P', connectionIds: ['c1'], kids: { bedtime: '19:30' } }],
+    });
+    await flushPromises();
+    const snap = lastSnapshot();
+    expect(tab(snap, 'continue')!.items).toEqual([]);
+    expect(snap.resume).toBeNull();
+    expect(await getItem('audiosilo.carResumable')).toBeNull();
+  });
+});
+
+describe("the car's Library tab with no pick (D9, fe#271)", () => {
+  it('keeps the server it listed for the drive when the first server answers later', async () => {
+    connect(['c1', 'c2']);
+    mockClients.c1 = fakeClient({ books: [makeBook({ rel_path: 'One' })] });
+    (mockClients.c1.libraries as jest.Mock).mockRejectedValueOnce(
+      new TypeError('Network request failed'),
+    );
+    mockClients.c2 = fakeClient({ books: [makeBook({ rel_path: 'Two' })] });
+    stop = startCarSync();
+    mockNative.connection?.(true);
+    await settle(MIN_GAP_MS);
+    const listed = () => tab(lastSnapshot(), 'library')!.items.map((i) => i.book.path);
+    expect(listed()).toEqual(['Two']);
+
+    // The first server answers mid-drive: the tab stays on the second's library.
+    useDownloads.setState({ entries: { 'c1:2:D': downloaded('c1', 'D') } });
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect((mockClients.c1.libraries as jest.Mock).mock.calls.length).toBeGreaterThan(1);
+    expect(tab(lastSnapshot(), 'downloads')!.items).toHaveLength(1);
+    expect(listed()).toEqual(['Two']);
+
+    // The next drive starts afresh: the first server's library.
+    mockNative.connection?.(false);
+    mockNative.connection?.(true);
+    await settle(MIN_GAP_MS);
+    expect(listed()).toEqual(['One']);
+  });
+
+  it('forgets the library it listed when another person takes over mid-drive', async () => {
+    connect(['c1', 'c2']);
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'chris', name: 'Chris', connectionIds: ['c1', 'c2'] },
+        { id: 'sam', name: 'Sam', connectionIds: ['c1', 'c2'] },
+      ],
+      activeProfileId: 'chris',
+    });
+    mockClients.c1 = fakeClient({ books: [makeBook({ rel_path: 'One' })] });
+    (mockClients.c1.libraries as jest.Mock).mockRejectedValueOnce(
+      new TypeError('Network request failed'),
+    );
+    mockClients.c2 = fakeClient({ books: [makeBook({ rel_path: 'Two' })] });
+    stop = startCarSync();
+    mockNative.connection?.(true);
+    await settle(MIN_GAP_MS);
+    const listed = () => tab(lastSnapshot(), 'library')!.items.map((i) => i.book.path);
+    expect(listed()).toEqual(['Two']);
+
+    // Sam's lists start afresh: the first server, which answers now.
+    useProfiles.setState({ activeProfileId: 'sam' });
+    await settle(MIN_GAP_MS);
+    expect(listed()).toEqual(['One']);
   });
 });
 
