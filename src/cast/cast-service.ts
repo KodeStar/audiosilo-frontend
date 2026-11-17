@@ -168,8 +168,9 @@ export class CastPlaybackService implements PlaybackService {
   private minting: { loaded: Loaded; done: Promise<boolean> } | null = null;
   /** Whether this sender's own last command asked the receiver to play (`play`) or not
    * (`pause`, a `load`, which is sent paused); for a session it did not load, the play state
-   * it was taken over in (`adoptQueue`), null when that is not known. What a refused receiver's reload plays on with (`reloadFresh`): the
-   * receiver's own status reads `loading` while it buffers a seek of a paused book. */
+   * it was taken over in (`adoptQueue`); null when that is not known. A refused receiver's
+   * reload plays on by it (`reloadFresh`), since the receiver's own status reads `loading`
+   * while it buffers a seek of a paused book. */
   private playAsked: boolean | null = null;
 
   constructor(
@@ -606,8 +607,7 @@ export class CastPlaybackService implements PlaybackService {
    * The receiver stopped on an error with our book loaded (a later file, a seek or a reload
    * it was refused): the queue is loaded again there with a newly minted cast token
    * (`freshToken`), playing on when this sender last asked it to play (`playAsked`, else when
-   * it was last seen playing), else paused,
-   * before the error reaches the store. The place is
+   * it was last seen playing), else paused, before the error reaches the store. The place is
    * where it was last seen on that file when the receiver reports less (it reports 0 once
    * idle). A reload that fails is the error after all.
    */

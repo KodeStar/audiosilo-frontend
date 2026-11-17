@@ -20,6 +20,11 @@ const urls = {
   coverUrl: () => 'https://h/cover?token=CAST',
 };
 
+/** Lets the service's chained promises (a mint, a reload) run out. */
+async function flush() {
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+}
+
 function fakeRemote() {
   let statusHandler: ((s: CastMediaStatus | null) => void) | null = null;
   let progressHandler: ((p: number) => void) | null = null;
@@ -247,7 +252,7 @@ describe('CastPlaybackService', () => {
         }),
     );
     const first = t.svc.load(TRACKS, 0, 0, [], BOOK);
-    for (let i = 0; i < 10; i++) await Promise.resolve();
+    await flush();
     await t.svc.skipToTrack(2, 0); // a chapter in another file before the load answered
     reject(new Error('REPLACED'));
     await expect(first).resolves.toBeUndefined();
@@ -508,7 +513,7 @@ describe('CastPlaybackService', () => {
       t.status({ playerState: 'playing', contentId: t.url(1), position: 42 });
       // The next request for the file is refused: the receiver stops on an error, at 0.
       t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(1), position: 0 });
-      for (let i = 0; i < 10; i++) await Promise.resolve();
+      await flush();
       expect(t.snaps.some((s) => s.state === 'error')).toBe(false);
       expect(m.asks).toEqual([undefined, true]);
       expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 1, startTime: 42, autoplay: true });
@@ -522,7 +527,7 @@ describe('CastPlaybackService', () => {
       await t.svc.load(TRACKS, 0, 0, [], BOOK);
       t.status({ playerState: 'paused', contentId: t.url(0), position: 10 });
       t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
-      for (let i = 0; i < 10; i++) await Promise.resolve();
+      await flush();
       expect(t.remote.loads.at(-1)).toMatchObject({
         startIndex: 0,
         startTime: 10,
@@ -544,7 +549,7 @@ describe('CastPlaybackService', () => {
       t.status({ playerState: 'buffering', contentId: t.url(0), position: 300 });
       expect(t.svc.getSnapshot().state).toBe('loading');
       t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
-      for (let i = 0; i < 10; i++) await Promise.resolve();
+      await flush();
       expect(m.asks).toEqual([undefined, true]);
       expect(t.remote.loads.at(-1)).toMatchObject({
         startIndex: 0,
@@ -561,7 +566,7 @@ describe('CastPlaybackService', () => {
       await t.svc.play();
       t.status({ playerState: 'buffering', contentId: t.url(0), position: 10 });
       t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
-      for (let i = 0; i < 10; i++) await Promise.resolve();
+      await flush();
       expect(t.remote.loads.at(-1)).toMatchObject({ startTime: 10, autoplay: true });
     });
 
@@ -580,7 +585,7 @@ describe('CastPlaybackService', () => {
       await t.svc.adoptQueue(TRACKS, BOOK, status);
       t.status({ ...status, playerState: 'buffering', position: 200 });
       t.status({ ...status, playerState: 'idle', idleReason: 'error', position: 0 });
-      for (let i = 0; i < 10; i++) await Promise.resolve();
+      await flush();
       expect(t.remote.loads.at(-1)).toMatchObject({ startTime: 200, autoplay: false });
       expect(t.svc.getSnapshot()).toMatchObject({ state: 'paused', position: 200 });
     });
@@ -591,7 +596,7 @@ describe('CastPlaybackService', () => {
       await t.svc.load(TRACKS, 0, 0, [], BOOK);
       t.status({ playerState: 'playing', contentId: t.url(0), position: 5 });
       t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
-      for (let i = 0; i < 10; i++) await Promise.resolve();
+      await flush();
       t.tick(REMINT_EVERY_MS - 1);
       t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
       expect(t.svc.getSnapshot().state).toBe('error');
@@ -614,9 +619,9 @@ describe('CastPlaybackService', () => {
         .mockRejectedValueOnce(new Error('LOAD_FAILED'))
         .mockRejectedValueOnce(new Error('LOAD_FAILED'));
       const first = t.svc.skipToTrack(1, 10);
-      for (let i = 0; i < 10; i++) await Promise.resolve();
+      await flush();
       const second = t.svc.skipToTrack(0, 20);
-      for (let i = 0; i < 10; i++) await Promise.resolve();
+      await flush();
       minted();
       await Promise.all([first, second]);
       expect(asks).toEqual([undefined, true]);
@@ -641,7 +646,7 @@ describe('CastPlaybackService', () => {
         .mockRejectedValueOnce(new Error('LOAD_FAILED'))
         .mockRejectedValueOnce(new Error('LOAD_FAILED'));
       const move = t.svc.skipToTrack(1, 10);
-      for (let i = 0; i < 10; i++) await Promise.resolve();
+      await flush();
       // The other book's own load is refused while the first book's mint is still out.
       await t.svc.load(TRACKS, 0, 0, [], { ...BOOK, path: 'A/C' });
       expect(asks.slice(-2)).toEqual([
@@ -662,13 +667,13 @@ describe('CastPlaybackService', () => {
       await t.svc.load(TRACKS, 0, 0, [], BOOK);
       t.status({ playerState: 'playing', contentId: t.url(0), position: 5 });
       t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
-      for (let i = 0; i < 10; i++) await Promise.resolve();
+      await flush();
       t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
       expect(t.svc.getSnapshot().state).toBe('error');
       // A minute on the app comes back and reads the receiver's status: still the error.
       t.tick(REMINT_EVERY_MS);
       t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
-      for (let i = 0; i < 10; i++) await Promise.resolve();
+      await flush();
       expect(t.svc.getSnapshot().state).toBe('error');
       expect(m.asks).toEqual([undefined, true]);
       expect(t.remote.loads).toHaveLength(2);
@@ -707,7 +712,7 @@ describe('CastPlaybackService', () => {
       await t.svc.load(TRACKS, 0, 0, [], BOOK);
       t.status({ playerState: 'playing', contentId: t.url(0), position: 5 });
       t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
-      for (let i = 0; i < 10; i++) await Promise.resolve();
+      await flush();
       expect(t.svc.getSnapshot().state).toBe('error');
       expect(t.remote.loads).toHaveLength(1);
     });
