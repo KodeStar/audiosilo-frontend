@@ -65,14 +65,17 @@ export function SeriesCard({
 }) {
   const { t } = useTranslation();
   const { openSeries } = useOpen();
-  const { books } = useSeriesBooks(libraryId, series.name, connectionId, { batch: true });
+  const { books, complete } = useSeriesBooks(libraryId, series.name, connectionId, {
+    batch: true,
+  });
   const entries =
     books.length > 0 ? localEntries(books, { connectionId, connectionName, progressOf }) : null;
   const average = series.books > 0 ? series.duration / series.books : undefined;
   // Per work, as the series page counts (fe#313): a work held in two recordings is one book
-  // once the shelf is in. Until then the list's own figures: its count of recordings, and
-  // the gaps in its positions (a range holds every slot it covers: 1-3 gives 1, 2, 3).
-  const stats = entries ? seriesStats(entries) : null;
+  // once the whole shelf is in (a long series' later pages, or one that failed, would count
+  // short). Until then the list's own figures: its count of recordings, and the gaps in its
+  // positions (a range holds every slot it covers: 1-3 gives 1, 2, 3).
+  const stats = entries && complete ? seriesStats(entries) : null;
   const owned = stats?.owned ?? series.books;
   const gaps = stats?.missing ?? localGaps(series.positions).length;
   const inProgress = stats?.inProgress ?? 0;

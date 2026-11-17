@@ -50,6 +50,8 @@ let mockBooks: {
   isLoading: boolean;
   isIdle: boolean;
   offline?: boolean;
+  /** Every page is in (`useAllLibraryBooks`). */
+  complete?: boolean;
   error: unknown;
   retry: jest.Mock;
 };
@@ -305,7 +307,14 @@ describe('SeriesMode', () => {
       book("Abaddon's Gate", 3),
       book('Cibola Burn', 4),
     ];
-    mockBooks = { books, isLoading: false, isIdle: false, error: null, retry: jest.fn() };
+    mockBooks = {
+      books,
+      complete: true,
+      isLoading: false,
+      isIdle: false,
+      error: null,
+      retry: jest.fn(),
+    };
     mockProgressOf = () => ({
       position: 36_000,
       duration: 36_000,
@@ -332,6 +341,14 @@ describe('SeriesMode', () => {
       screen.getByRole('button', {
         name: /^The Expanse, James S\. A\. Corey · .+, 4 books · 4 finished$/,
       }),
+    ).toBeTruthy();
+    // A shelf still missing pages counts nothing short: the list's own figures until then.
+    mockBooks = { ...mockBooks, books: books.slice(0, 2), complete: false };
+    await show(<SeriesMode connectionId="home" libraryId={1} />);
+    await fireEvent(screen.getByTestId('card-grid'), 'layout', layoutEvent);
+    await settleFlashList();
+    expect(
+      screen.getByRole('button', { name: /^The Expanse, James S\. A\. Corey · .+, 5 books$/ }),
     ).toBeTruthy();
   });
 
