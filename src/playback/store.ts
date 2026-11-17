@@ -1229,10 +1229,11 @@ function sendFinish(np: NowPlaying) {
 /**
  * "Mark as finished" outside the player (the book page; `finish-route.ts`, fe#208), on a
  * server that takes listening events: a `finish` event, queued offline like any other.
- * When it is the loaded book, its open span closes first and goes before the finish (a
- * book still playing opens its next span on the next tick), and the player's own end
- * does not send a second one until the book plays again. This device's mirror records
- * the book finished at its end, so offline it reads finished and Play starts it again.
+ * The caller has stopped and unloaded the loaded book first (`leaveFinishedBook`), its span
+ * closed ahead of the finish; one loaded again since has its open span closed first all the
+ * same, and the player's own end does not send a second finish until the book plays again.
+ * This device's mirror records the book finished at its end, so offline it reads finished
+ * and Play starts it again.
  */
 async function recordFinish(ref: FinishRef): Promise<void> {
   const np = usePlayer.getState().nowPlaying;
