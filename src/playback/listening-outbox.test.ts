@@ -1371,6 +1371,24 @@ describe("a connection's listening_sync across launches", () => {
     expect(keepServerFlag).toHaveBeenCalledWith('c1', 'listening_sync');
   });
 
+  it('a sync answer after a rollback this launch takes the sync route again', async () => {
+    // Rolled back (the server had no route then), and a later send (another tab's events,
+    // the server since updated) is taken: the next listening goes by sync.
+    await appendEvents('c1', [listen('old')]);
+    client(async () => {
+      throw new ApiError(404, 'not found');
+    });
+    await flushOutbox('c1');
+    mockCaps = { listening_sync: false };
+    expect(usesListeningSync('c1')).toBe(false);
+    await appendEvents('c1', [listen('new')]);
+    client(async (body) => answer(body));
+    await flushOutbox('c1');
+    expect(keepServerFlag).toHaveBeenCalledWith('c1', 'listening_sync');
+    mockCaps = { listening_sync: true };
+    expect(usesListeningSync('c1')).toBe(true);
+  });
+
   it('a sync answer changes no flag when the cached /server agrees or is unknown', async () => {
     for (const caps of [{ listening_sync: true }, undefined]) {
       mockCaps = caps;

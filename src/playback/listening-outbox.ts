@@ -1180,7 +1180,9 @@ async function sendChunk(
       );
       noteSuccess(connectionId);
       // It took the events, so it has the route: a kept `/server` that says otherwise (an
-      // older answer, from before the server was updated) takes the flag now.
+      // older answer, from before the server was updated) takes the flag now, and a
+      // rollback earlier this launch (the server since updated) no longer holds.
+      rolledBack.delete(connectionId);
       if (cachedCapability(connectionId, 'listening_sync') === false) {
         keepServerFlag(connectionId, 'listening_sync');
       }

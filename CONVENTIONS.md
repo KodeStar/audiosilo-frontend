@@ -2057,9 +2057,9 @@ media GETs only.
     *The kept `/server` answer*, fe#211: the outbox keeps no copy of its own), else unknown,
     which records events (a 404 that a fresh `/server` confirms turns them into PUTs, and that
     answer is kept: `keepServerAnswer`, unless it names another `server_id`, a reset server: then
-    nothing rolls back); never after a rollback this session. A send the server took while the
-    cached flag says off sets it on the held answer (`keepServerFlag`, kept too) and has the
-    cache ask `/server` again (fe#270). False: the
+    nothing rolls back); never after a rollback this session, until a send the server takes. A
+    send the server took while the cached flag says off sets it on the held answer
+    (`keepServerFlag`, kept too) and has the cache ask `/server` again (fe#270). False: the
     PUT save loop and `POST /history`, unchanged. On the sync path `persist` only writes the
     mirror (with the file place `file`/`file_pos`, fe#188) and the place reaches the server as
     listen spans; `POST /history` is not sent (the server writes history from spans).
