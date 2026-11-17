@@ -1,13 +1,6 @@
 import { memo, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  AppState,
-  Platform,
-  Pressable,
-  ScrollView,
-  View,
-  type ScrollViewInstance,
-} from 'react-native';
+import { AppState, FlatList, Platform, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError, isSignedOutError } from '@/api/client';
@@ -611,13 +604,18 @@ function useDelayed(value: boolean, ms: number): boolean {
   return value && shown;
 }
 
-/** How far above the current entry the contents open, so the entries before it show too. */
-const TOC_LEAD = 96;
+/** How many entries above the current one the contents open at, so those before it show too. */
+const TOC_LEAD = 2;
+/** Tries at opening on the current entry before its row has been measured. */
+const TOC_SCROLL_TRIES = 3;
 
 /** The contents, one row per entry: the current chapter (the first entry named as the
- * section on screen) marked, and scrolled into view when the list opens. Memoized: the
- * screen re-renders on every page turn, and a long contents list need not be rebuilt for
- * it. Its own scroller (the sheet caps its height), so it can open at the current entry. */
+ * section on screen) marked, and the list opened at it. Memoized: the screen re-renders on
+ * every page turn, and a long contents list need not be rebuilt for it. A virtual list
+ * (fe#165): a book's contents can run to thousands of entries, and only the rows on screen
+ * are drawn. Rows wrap to two lines, so their heights are not known ahead: the list starts
+ * drawing at the entry it opens on, and an entry not measured yet is reached by scrolling
+ * near it on the average row height first. Its own scroller (the sheet caps its height). */
 const TocList = memo(function TocList({
   toc,
   section,
@@ -629,31 +627,34 @@ const TocList = memo(function TocList({
 }) {
   const entries = toc ?? [];
   const current = section ? entries.findIndex((entry) => entry.label === section) : -1;
-  const scroller = useRef<ScrollViewInstance>(null);
-  // Once per opening (the sheet mounts the list each time it opens).
-  const scrolled = useRef(false);
+  const list = useRef<FlatList<TocEntry>>(null);
+  // Per opening (the sheet mounts the list each time it opens).
+  const tries = useRef(0);
+  const start = current > TOC_LEAD ? current - TOC_LEAD : undefined;
   return (
-    <ScrollView ref={scroller} style={{ flexShrink: 1 }} contentContainerClassName="px-2 pb-4">
-      {entries.map((entry, i) => {
+    <FlatList
+      ref={list}
+      testID="reader-toc"
+      data={entries}
+      style={{ flexShrink: 1 }}
+      contentContainerClassName="px-2 pb-4"
+      keyExtractor={(entry, i) => `${i}:${entry.href}`}
+      initialScrollIndex={start}
+      onScrollToIndexFailed={({ index, averageItemLength }) => {
+        if (tries.current >= TOC_SCROLL_TRIES) return;
+        tries.current += 1;
+        list.current?.scrollToOffset({ offset: index * averageItemLength, animated: false });
+        setTimeout(() => list.current?.scrollToIndex({ index, animated: false }), 50);
+      }}
+      renderItem={({ item: entry, index: i }) => {
         const here = i === current;
         return (
           <Pressable
-            key={`${i}:${entry.href}`}
             role="button"
             aria-current={here ? 'location' : undefined}
             accessibilityState={{ selected: here }}
             className={`rounded-lg py-2.5 pr-2 active:bg-muted web:hover:bg-muted ${here ? 'bg-muted' : ''}`}
             style={{ paddingLeft: 8 + entry.depth * 16 }}
-            onLayout={
-              here
-                ? (e) => {
-                    if (scrolled.current) return;
-                    scrolled.current = true;
-                    const y = Math.max(0, e.nativeEvent.layout.y - TOC_LEAD);
-                    scroller.current?.scrollTo({ y, animated: false });
-                  }
-                : undefined
-            }
             onPress={() => onSelect(entry.href)}
           >
             <Text variant={here ? 'label' : 'body'} numberOfLines={2}>
@@ -661,8 +662,8 @@ const TocList = memo(function TocList({
             </Text>
           </Pressable>
         );
-      })}
-    </ScrollView>
+      }}
+    />
   );
 });
 
