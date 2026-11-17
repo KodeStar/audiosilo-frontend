@@ -106,7 +106,8 @@ edits code. Which model each agent runs on is pinned in its definition
 npm run web                 # expo start --web (testable without a dev build)
 npm run ios / npm run android
 npx tsc --noEmit            # typecheck (strict; must stay clean)
-npm run lint                # eslint flat config (eslint-config-expo + prettier)
+npm run lint                # eslint flat config (eslint-config-expo + prettier); an unused variable is an error
+npm run knip                # unused files, exports and dependencies (knip.json); CI reports it, does not gate on it
 npm test                    # colour-token drift + generator tests + style guards (scripts/check-styles.cjs), then jest-expo (npm test -- --coverage for coverage)
 npm run test:watch          # the watch app's Core tests (SwiftPM, watch-core/; skips without swift)
 npm run test:wear           # the Wear OS app's Core tests (Gradle, wear-core/; skips without a JDK)

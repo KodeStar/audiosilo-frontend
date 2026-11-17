@@ -1,0 +1,12 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "reader/src/reader.js",
+    "public/sw.js",
+    "scripts/*.{js,mjs,cjs}",
+    "src/testing/jsdom-environment.js",
+    "targets/*/expo-target.config.js"
+  ],
+  "ignore": ["reader/vendor/**", "scripts/glyphs/**"],
+  "ignoreDependencies": ["babel-preset-expo", "expo-modules-core"]
+}
