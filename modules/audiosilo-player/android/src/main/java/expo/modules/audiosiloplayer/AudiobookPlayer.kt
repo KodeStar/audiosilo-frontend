@@ -18,6 +18,9 @@ interface AudiobookPlayerHooks {
 
   /** A remote controller changed the speed; [rate] is already applied. */
   fun onRemoteRate(rate: Float)
+
+  /** Who sent the Player call in progress, for [MediaKeyLog] only (null when unknown). */
+  fun requester(): String? = null
 }
 
 /**
@@ -80,6 +83,7 @@ class AudiobookPlayer(player: Player, private val hooks: AudiobookPlayerHooks) :
   }
 
   override fun play() {
+    MediaKeyLog.d { "player: play from ${origin()}" }
     val maxMs = PlayerConfig.autoRewindMaxMs
     if (maxMs > 0 && pausedAt > 0L) {
       val rewind = minOf(maxMs, System.currentTimeMillis() - pausedAt)
@@ -91,6 +95,7 @@ class AudiobookPlayer(player: Player, private val hooks: AudiobookPlayerHooks) :
   }
 
   override fun pause() {
+    MediaKeyLog.d { "player: pause from ${origin()}" }
     pausedAt = System.currentTimeMillis()
     super.pause()
   }
@@ -182,9 +187,14 @@ class AudiobookPlayer(player: Player, private val hooks: AudiobookPlayerHooks) :
 
   private fun isRemote(): Boolean = internalDepth == 0 && (forcedRemote ?: hooks.isRemoteRequest())
 
+  /** The call's origin as [MediaKeyLog] shows it. */
+  private fun origin(): String =
+    if (internalDepth > 0) "the service" else "${hooks.requester() ?: "?"} remote=${isRemote()}"
+
   private inline fun move(block: () -> Unit) {
     val outermost = moveDepth == 0
     val remote = outermost && isRemote()
+    if (outermost) MediaKeyLog.d { "player: move from ${origin()} (items=$mediaItemCount)" }
     moveDepth++
     try {
       block()

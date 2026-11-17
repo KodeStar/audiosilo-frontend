@@ -176,7 +176,13 @@ class AudiosiloPlayerService : MediaLibraryService() {
 
   /** A car play JS must start, waiting for the module's next `load` (see [playFromCar]). */
   private var pendingPlay: SettableFuture<MediaItemsWithStartPosition>? = null
-  private val pendingTimeout = Runnable { failPendingPlay() }
+  /** A car play that timed out also ends a media button start it was waiting on: a car tap
+   * that superseded the resumption is not watched ([watchResumption]), and its failure used to
+   * leave the placeholder until [buttonStartTimeout] (fe#252). */
+  private val pendingTimeout = Runnable {
+    failPendingPlay()
+    endButtonStart(failed = true)
+  }
 
   /** The snapshot the car was last told about ([onSnapshotChanged]); null before the first. */
   private var shownSnapshot: CarSnapshot? = null
@@ -360,6 +366,20 @@ class AudiosiloPlayerService : MediaLibraryService() {
     override fun onRemoteRate(rate: Float) {
       PlayerBridge.sink?.rateChange(rate.toDouble())
     }
+
+    override fun requester(): String? = mediaSession?.controllerForCurrentRequest?.let(::describe)
+  }
+
+  /** A controller as [MediaKeyLog] shows it: its package, Media3 or legacy, and our role for it. */
+  internal fun describe(c: MediaSession.ControllerInfo): String {
+    val role = when {
+      PlayerBridge.isAppController(c) -> " (app)"
+      mediaSession?.isMediaNotificationController(c) == true -> " (notification)"
+      isCarController(c) -> " (car)"
+      else -> ""
+    }
+    val kind = if (c.controllerVersion == MediaSession.ControllerInfo.LEGACY_CONTROLLER_VERSION) "legacy" else "media3"
+    return "${c.packageName} $kind$role"
   }
 
   /** Where the player is, in FILE coordinates (from the current item's extras). */
@@ -509,6 +529,9 @@ class AudiosiloPlayerService : MediaLibraryService() {
    * resumption fails ([watchResumption]) or never answers ([buttonStartTimeout]).
    */
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    if (intent?.action == Intent.ACTION_MEDIA_BUTTON) {
+      MediaKeyLog.d { "service start: ${MediaKeyLog.describe(intent)}, items=${player?.mediaItemCount ?: 0}" }
+    }
     // Every such start needs its own startForeground, a second press while the first waits too.
     if (intent?.action == Intent.ACTION_MEDIA_BUTTON && (player?.mediaItemCount ?: 0) == 0 &&
       startPlaceholderForeground()
