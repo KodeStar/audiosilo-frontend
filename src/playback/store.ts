@@ -1618,13 +1618,16 @@ let atPartialEnd = false;
  * listener's own next from the lock screen, a headset or the car, whose file change Android
  * reports before `onRemoteMove`.
  *
- * `elsewhere`: the engine's first report from another file since the ask, which bounds how
- * long such a report reads as one from before the move landed (`engineFault`). */
+ * `before`: the file of the ask this one took the place of while that still stood (else -1),
+ * whose move the engine may report yet. `elsewhere`: the engine's first report from another
+ * file since the ask, which bounds how long such a report reads as one from before the move
+ * landed (`engineFault`). */
 let askedPlace: {
   np: NowPlaying;
   trackIndex: number;
   position: number;
   playing: boolean;
+  before: number;
   elsewhere: { trackIndex: number; position: number } | null;
 } | null = null;
 const PLAYED_ON = 3;
@@ -1638,7 +1641,8 @@ const loadedFaulted = () => faultedBook !== null && faultedBook === usePlayer.ge
 /** The store asks the engine for `(trackIndex, position)` of `np`'s queue (`askedPlace`).
  * Returns the ask, for a caller whose move can be refused (`withdrawAsk`). */
 function askEngineTo(np: NowPlaying, trackIndex: number, position: number) {
-  const ask = { np, trackIndex, position, playing: false, elsewhere: null };
+  const before = askedPlace?.np === np ? askedPlace.trackIndex : -1;
+  const ask = { np, trackIndex, position, playing: false, before, elsewhere: null };
   askedPlace = ask;
   faultedBook = null;
   return ask;
@@ -1661,10 +1665,11 @@ function withdrawAsk(ask: NonNullable<typeof askedPlace>) {
  * `prev` is the store's snapshot before `s`. A report still in the file it shows, when that is
  * not the asked one, is from before the move landed (a native progress tick or a Cast status
  * sent before the seek or the track jump took): the ask stands, and nothing ran off its file.
- * Only until the engine has moved `PLAYED_ON` seconds in that other file: it never took the
- * move then (a seek it refused, or a run off the asked file straight back into the one it came
- * from), and the ask stands no longer, or the engine's next file, minutes on, would read as a
- * run off the asked one.
+ * So is one in the file of an ask this one replaced before the engine reported it (a jump on,
+ * then a seek back, inside the engine's latency). Only until the engine has moved `PLAYED_ON`
+ * seconds in that other file: it never took the move then (a seek it refused, or a run off the
+ * asked file straight back into the one it came from), and the ask stands no longer, or the
+ * engine's next file, minutes on, would read as a run off the asked one.
  * And an `ended` the engine already showed is no new end: the native and web services keep
  * their last state, so a seek or a track jump on a book that ended re-reports `ended` with the
  * place it asked for.
@@ -1683,7 +1688,10 @@ function engineFault(
   if (s.trackIndex === asked.trackIndex && s.position > asked.position + PLAYING_PAST) {
     asked.playing = true;
   }
-  if (s.trackIndex !== asked.trackIndex && s.trackIndex === prev.trackIndex) {
+  if (
+    s.trackIndex !== asked.trackIndex &&
+    (s.trackIndex === prev.trackIndex || s.trackIndex === asked.before)
+  ) {
     const first = asked.elsewhere;
     if (first?.trackIndex !== s.trackIndex) {
       asked.elsewhere = { trackIndex: s.trackIndex, position: s.position };

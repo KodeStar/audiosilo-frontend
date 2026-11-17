@@ -3426,6 +3426,23 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     expect(mockSvc.pause).not.toHaveBeenCalled();
   });
 
+  it('a late report of a jump on, sent before a seek back replaced it, is no fault', async () => {
+    await resume(30);
+    pushSnapshot(snap('playing', 31, { trackIndex: 0 }));
+    pushSnapshot(snap('playing', 34, { trackIndex: 0 }));
+    await usePlayer.getState().goToTrack(1);
+    await usePlayer.getState().seekBook(100);
+    pushSnapshot(snap('playing', 0.2, { trackIndex: 1 })); // the jump's, only now
+    pushSnapshot(snap('playing', 100.1, { trackIndex: 0 }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'playing',
+      trackIndex: 0,
+      position: 100.1,
+    });
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+  });
+
   it("a faulted book is still faulted on its download's files: a press reloads it", async () => {
     await resume(30);
     pushSnapshot(snap('playing', 0.4, { trackIndex: 1, duration: short }));

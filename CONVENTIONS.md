@@ -1942,7 +1942,8 @@ media GETs only.
   `ended` short of the book's end (`endsShortOfBook`), which otherwise reads as the book
   finished (the credits, `finishBook`'s `finished: true`, Sync v2's `finish`): a Retry or a
   seek past the engine's end never finishes a book. Neither is a report still in the file the
-  store last showed (a progress tick or a Cast status from before a move back landed), nor an
+  store last showed (a progress tick or a Cast status from before a move back landed) or in
+  the file of an ask this one replaced before the engine reported it, nor an
   `ended` the store already showed (a seek or a track jump on a book that ended re-reports it,
   the services keeping their last state); a seek or a track jump on a faulted book puts the
   engine in the target's file by its index (`skipToTrack`). An ask the engine never took
