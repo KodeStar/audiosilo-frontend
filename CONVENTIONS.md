@@ -171,8 +171,8 @@ against its inputs: a `queryClient.getQueryData(...)` in a render body is read a
 the key's parts change, never because the cache did or because something else rendered the
 component again (fe#280: a row's menu kept offering Download after the episode page found the
 episode not available). Read the cache at render through a subscription: a query hook, or
-`useCachedQueryData(key, enabled)` (`src/api/use-cached-query-data.ts`: cache only, no fetch,
-no observer, one listener per entry while `enabled`). `getQueryData` stays fine in callbacks,
+`useCachedQueryData(key)` (`src/api/use-cached-query-data.ts`: cache only, no fetch, no
+observer, one listener per entry; `false` for no key reads nothing). `getQueryData` stays fine in callbacks,
 effects and framework-free code. Jest leaves the compiler off, so a test of code that depends
 on it renders through `withReactCompiler(require, './module')` (`src/testing/react-compiler.ts`).
 

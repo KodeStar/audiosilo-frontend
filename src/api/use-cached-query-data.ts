@@ -7,16 +7,14 @@ const noSubscribe = () => () => {};
 
 /**
  * A query's data as the cache holds it, never asked from here (no fetch, no observer):
- * while `enabled`, one listener on the cache for this entry renders the caller again when
- * it changes; while not, nothing listens and it reads `undefined`.
- *
- * For a render that would read `queryClient.getQueryData`: the React Compiler memoises
- * that read against its inputs (the key's parts), so it is never read again while they
- * stay the same, whatever the cache does meanwhile (CONVENTIONS.md, "Cache reads at
- * render"). React reads this one at every render and on every change.
+ * one listener on the cache for this entry renders the caller again when it changes. No
+ * key (`false`, `null`, `undefined`): nothing listens and it reads `undefined`. Use it
+ * instead of `getQueryData` at render (CONVENTIONS.md, "Cache reads at render").
  */
-export function useCachedQueryData<T>(queryKey: QueryKey, enabled = true): T | undefined {
-  const hash = hashKey(queryKey);
+export function useCachedQueryData<T>(
+  queryKey: QueryKey | false | null | undefined,
+): T | undefined {
+  const hash = queryKey ? hashKey(queryKey) : undefined;
   const subscribe = useCallback(
     (onChange: () => void) =>
       queryClient.getQueryCache().subscribe((e) => {
@@ -24,6 +22,6 @@ export function useCachedQueryData<T>(queryKey: QueryKey, enabled = true): T | u
       }),
     [hash],
   );
-  const read = () => (enabled ? queryClient.getQueryData<T>(queryKey) : undefined);
-  return useSyncExternalStore(enabled ? subscribe : noSubscribe, read, read);
+  const read = () => (queryKey ? queryClient.getQueryData<T>(queryKey) : undefined);
+  return useSyncExternalStore(hash ? subscribe : noSubscribe, read, read);
 }

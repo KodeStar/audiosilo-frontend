@@ -22,13 +22,9 @@ export function useCastButton(): CastButtonModel {
   );
   const { supported, status, deviceName } = useCast();
   // Followed, not read once: the button turns on when either lands after the book loaded.
-  const book = useCachedQueryData<Book>(
-    qk.item(np?.connectionId ?? '', np?.libraryId ?? 0, np?.path ?? ''),
-    !!np,
-  );
+  const book = useCachedQueryData<Book>(np && qk.item(np.connectionId, np.libraryId, np.path));
   const chapters = useCachedQueryData<ChaptersResponse>(
-    qk.chapters(np?.connectionId ?? '', np?.libraryId ?? 0, np?.path ?? ''),
-    !!np,
+    np && qk.chapters(np.connectionId, np.libraryId, np.path),
   );
   return castButtonModel({
     loaded: !!np,

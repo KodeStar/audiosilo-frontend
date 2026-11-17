@@ -25,12 +25,12 @@ describe('useCachedQueryData', () => {
     expect(queryClient.getQueryCache().find({ queryKey: KEY })).toBeUndefined();
   });
 
-  it('reads nothing and listens to nothing while not enabled', async () => {
+  it('reads nothing and listens to nothing without a key', async () => {
     queryClient.setQueryData(KEY, 'first');
     const subscribe = jest.spyOn(queryClient.getQueryCache(), 'subscribe');
     try {
       const { result, rerender } = await renderHook(
-        ({ on }: { on: boolean }) => useCachedQueryData<string>(KEY, on),
+        ({ on }: { on: boolean }) => useCachedQueryData<string>(on && KEY),
         { initialProps: { on: false } },
       );
       expect(result.current).toBeUndefined();

@@ -143,8 +143,10 @@ export function useBookActions(
   // fetch keep the live status in the cache. Followed there once the menu opened (no
   // observer per row, never asked from here), so the menu offers what the page does (fe#280).
   const live = useCachedQueryData<PodcastFetchStatus>(
-    qk.podcastFetch(connectionId, libraryId, path),
-    opened && !!known?.episode && !known.episode.downloaded,
+    opened &&
+      !!known?.episode &&
+      !known.episode.downloaded &&
+      qk.podcastFetch(connectionId, libraryId, path),
   );
   const current =
     live && known?.episode ? { ...known, episode: { ...known.episode, fetch: live } } : known;
