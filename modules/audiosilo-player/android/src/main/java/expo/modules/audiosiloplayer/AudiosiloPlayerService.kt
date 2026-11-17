@@ -529,13 +529,11 @@ class AudiosiloPlayerService : MediaLibraryService() {
    * resumption fails ([watchResumption]) or never answers ([buttonStartTimeout]).
    */
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    if (intent?.action == Intent.ACTION_MEDIA_BUTTON) {
-      MediaKeyLog.d { "service start: ${MediaKeyLog.describe(intent)}, items=${player?.mediaItemCount ?: 0}" }
-    }
+    val mediaButton = intent?.action == Intent.ACTION_MEDIA_BUTTON
+    val items = player?.mediaItemCount ?: 0
+    if (mediaButton) MediaKeyLog.d { "service start: ${MediaKeyLog.describe(intent)}, items=$items" }
     // Every such start needs its own startForeground, a second press while the first waits too.
-    if (intent?.action == Intent.ACTION_MEDIA_BUTTON && (player?.mediaItemCount ?: 0) == 0 &&
-      startPlaceholderForeground()
-    ) {
+    if (mediaButton && items == 0 && startPlaceholderForeground()) {
       buttonStart = true
       handler.removeCallbacks(buttonStartTimeout)
       handler.postDelayed(buttonStartTimeout, BUTTON_START_TIMEOUT_MS)
