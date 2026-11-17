@@ -396,7 +396,10 @@ describe('progress-sync', () => {
     const changes = jest.fn();
     const stop = onQueueChange(changes);
     reachable.mockReturnValue(false);
-    await saveProgress(fakeApi(() => Promise.resolve()), { ...save, connectionId: 'c2' });
+    await saveProgress(
+      fakeApi(() => Promise.resolve()),
+      { ...save, connectionId: 'c2' },
+    );
     expect(changes).toHaveBeenCalledTimes(1);
     routeClients({ c2: fakeApi(() => Promise.resolve()) });
     await flushConnection('c2');

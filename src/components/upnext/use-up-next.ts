@@ -57,8 +57,7 @@ function useShownBook(cid: string | undefined): BookRef | undefined {
   const path = onBookPage ? segmentsToPath(params.path) : '';
   const onServer = (connectionParam(params.connection) || defaultId) === cid;
   return useMemo(
-    () =>
-      libraryId !== null && path && onServer ? { library_id: libraryId, path } : undefined,
+    () => (libraryId !== null && path && onServer ? { library_id: libraryId, path } : undefined),
     [libraryId, path, onServer],
   );
 }

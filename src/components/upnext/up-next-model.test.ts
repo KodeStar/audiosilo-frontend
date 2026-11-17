@@ -172,7 +172,11 @@ describe('pickSuggestions', () => {
       current,
       shown: { library_id: 1, path: 'Shown/Disc 2' },
       queued: [],
-      inProgress: [prog('Series/1/Part 2', 10, 100), prog('Shown', 10, 100), prog('Other', 30, 100)],
+      inProgress: [
+        prog('Series/1/Part 2', 10, 100),
+        prog('Shown', 10, 100),
+        prog('Other', 30, 100),
+      ],
     });
     expect(out).toEqual([{ kind: 'progress', ref: { library_id: 1, path: 'Other' }, percent: 30 }]);
   });

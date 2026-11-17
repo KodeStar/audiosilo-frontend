@@ -227,7 +227,11 @@ describe('NowCard', () => {
       { rel_path: 'a', duration: 2000, seq: 2 },
     ];
     await render(
-      <NowCard at={at} playable={mockPlayable} saved={{ ...saved, position: 500, file: { path: 'a', pos: 1500 } }} />,
+      <NowCard
+        at={at}
+        playable={mockPlayable}
+        saved={{ ...saved, position: 500, file: { path: 'a', pos: 1500 } }}
+      />,
     );
     // File b (1000 s) first: 1000 + 1500 in file a, Holden's chapter (its file's 1000-2000).
     expect(screen.getByText('Chapter 2 of 3')).toBeTruthy();
