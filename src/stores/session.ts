@@ -546,7 +546,8 @@ export const useSession = create<SessionState>()((set, get) => ({
     // adding a duplicate. Another user on the same server is another connection. A legacy
     // connection (its id still the bare server_id) is matched the same way and KEEPS its id
     // until the key migration moves it, so its downloads and saves stay reachable; one saved
-    // without a usable user id is taken to be this user (it was the server's one connection).
+    // without a usable user id is taken to be this user (it was the server's one connection)
+    // only under the username it kept, if any (`priorConnection`, fe#298).
     const sameServer = existing.filter((c) => serverIdOf(c) === serverId);
     const prior = priorConnection(existing, serverId, user.id, user.username);
     const id = prior?.id ?? connectionIdOf(serverId, user.id);

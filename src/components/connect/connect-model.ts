@@ -29,7 +29,7 @@ export type ConnectStep = 0 | 1 | 2;
 /** The part of a connection a re-pair reads. */
 export type RepairConnection = AddressedConnection & {
   needsReconnect?: string;
-  user?: { id?: number };
+  user?: { id?: number; username?: string };
 };
 
 /**
@@ -69,12 +69,13 @@ export function repairPlan(input: {
   answer?: ServerAddresses;
   known?: KnownServer;
   userId?: number;
+  username?: string;
 }): { serverUrl: string; addresses: ServerAddresses | undefined } {
-  const { pending, serverId, connections, reconnectId, answer, known, userId } = input;
-  // The connection the session will update (`priorConnection`), else another user's on
-  // the same server (its address is the server's own all the same).
+  const { pending, serverId, connections, reconnectId, answer, known, userId, username } = input;
+  // The connection the session will update (`priorConnection`, by the same rule), else
+  // another user's on the same server (its address is the server's own all the same).
   const same =
-    (userId !== undefined ? priorConnection(connections, serverId, userId) : undefined) ??
+    (userId !== undefined ? priorConnection(connections, serverId, userId, username) : undefined) ??
     connections.find((c) => serverIdOf(c) === serverId);
   if (same && isOwnAddress(pending, same)) {
     return { serverUrl: same.serverUrl, addresses: answer };

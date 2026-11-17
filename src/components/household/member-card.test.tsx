@@ -591,7 +591,7 @@ describe('MemberCard', () => {
   it('signs them in on this device, never minting a session when they are already here', async () => {
     await mount();
     await fireEvent.press(screen.getByRole('button', { name: 'Sign Evie in on this device' }));
-    expect(mockSignedInHere).toHaveBeenCalledWith('a', 12);
+    expect(mockSignedInHere).toHaveBeenCalledWith('a', 12, 'evie');
     expect(mockSession).toHaveBeenCalledWith(12);
     expect(mockAddHere).toHaveBeenCalledWith(expect.objectContaining({ token: 's' }), {
       name: 'Evie',

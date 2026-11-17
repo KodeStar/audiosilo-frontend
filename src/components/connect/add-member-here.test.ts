@@ -134,6 +134,18 @@ it('learns the addresses the answer carried, on both connections', async () => {
   }
 });
 
+it('asks by name beside a connection saved without a user id, as addMemberHere does (fe#298)', () => {
+  // Adam's connection from before user ids were kept: under his name, not Evie's.
+  const noId = undefined as unknown as number;
+  useSession.setState((s) => ({
+    connections: s.connections.map((c) => ({ ...c, id: 'srv', user: { ...c.user, id: noId } })),
+  }));
+  // Allowed: Evie is not Adam.
+  expect(memberSignedInHere('srv', 12, 'evie')).toBe(false);
+  // Denied: Adam is.
+  expect(memberSignedInHere('srv', 1, 'adam')).toBe(true);
+});
+
 it('refuses a member already signed in on this device, changing nothing', async () => {
   await addMemberHere(memberSession(evie), { name: 'Evie' });
   const connections = useSession.getState().connections;

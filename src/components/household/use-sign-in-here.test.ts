@@ -19,7 +19,7 @@ import { AddMemberHereError } from '@/components/connect/add-member-here';
 import { hereFailure, sessionRefusalText, signInMemberHere } from './use-sign-in-here';
 /* eslint-enable import/first */
 
-const evie = { id: 12, name: 'Evie' };
+const evie = { id: 12, name: 'Evie', username: 'evie' };
 const session = { token: 't', server_id: 'srv', user: { id: 12 } } as AuthSession;
 const t = ((key: string, o?: { name?: string }) =>
   o?.name ? `${key}:${o.name}` : key) as unknown as TFunction;
@@ -33,7 +33,7 @@ describe('signInMemberHere', () => {
   it('mints their session and signs them in here, named as their owner named them', async () => {
     const mint = jest.fn(async () => session);
     await expect(signInMemberHere(mint, evie, 'srv')).resolves.toEqual({ status: 'done' });
-    expect(mockSignedInHere).toHaveBeenCalledWith('srv', 12);
+    expect(mockSignedInHere).toHaveBeenCalledWith('srv', 12, 'evie');
     expect(mockAddHere).toHaveBeenCalledWith(session, { name: 'Evie' });
   });
 

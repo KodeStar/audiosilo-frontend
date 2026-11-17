@@ -89,6 +89,7 @@ export async function finishConnect(input: {
     answer: mergeAddresses(input.linkAddresses, input.session.addresses),
     known,
     userId: input.session.user.id,
+    username: input.session.user.username,
   });
   const newPerson = connectForNewProfile();
   // A connection the device already had (a re-pair) keeps its person; read before the
