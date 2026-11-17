@@ -1240,6 +1240,28 @@ async function recordFinish(ref: FinishRef): Promise<void> {
   await finishAfter(closing, ref, at, () => refreshAfterFinish(ref));
 }
 
+/**
+ * "Mark as finished" outside the player of the loaded book (the book page, fe#258): it stops
+ * and unloads, as the book's own end does (`finishBook`). Left loaded, the playing book went
+ * on recording listening past its finish (the server ended finished at a later place), any
+ * later save of the engine's place stamped after the finish put the book back in progress
+ * (the device record after an offline finish was delivered, a PUT over the finish), and its
+ * page went on reading "Resume". Its place is saved first, as a stop saves it (stamped
+ * before the finish the caller records next), and its span closes there (a finish waits for
+ * that close: `finishAfter`). Nothing for another book.
+ */
+function leaveFinishedBook(ref: ContentRef): void {
+  const { nowPlaying: np, rate } = usePlayer.getState();
+  if (!np || !sameBook(np, ref)) return;
+  clearPlaybackIntent();
+  stopSaveLoop();
+  closeListeningSpan();
+  endHistory();
+  void persist(); // reads the book synchronously, before it is unloaded below
+  usePlayer.setState({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate } });
+  void service?.reset();
+}
+
 /** Each book's mirror record before its Mark as finished (`recordFinish`), for its Undo
  * (`unrecordFinish`). */
 const beforeFinish = new Map<string, ProgressSave | null>();
@@ -1282,6 +1304,7 @@ async function unrecordFinish(ref: UndoRef): Promise<void> {
 
 setFinishRecorder({
   takesEvent: usesListeningSync,
+  leave: leaveFinishedBook,
   record: recordFinish,
   withdraw: withdrawFinish,
   unrecord: unrecordFinish,

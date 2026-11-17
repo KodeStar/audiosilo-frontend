@@ -32,7 +32,7 @@ import { toast } from '@/components/ui/toast';
 import { playFailedToast } from '@/components/player/play-failed';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import type { PendingEpisodeFetch } from '@/playback/episode-fetch';
-import { finishTakesEvent, undoFinish } from '@/playback/finish-route';
+import { finishTakesEvent, leaveFinishedBook, undoFinish } from '@/playback/finish-route';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
@@ -177,6 +177,8 @@ export function useBookActions(
             }
           : undefined,
       });
+    // The loaded book stops first, its place saved before the finish (fe#258).
+    leaveFinishedBook({ connectionId, libraryId, path });
     if (canUndo && !finishTakesEvent(connectionId)) {
       if (await setFinished(true)) done();
       return;

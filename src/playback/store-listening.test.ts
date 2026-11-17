@@ -135,11 +135,12 @@ import { useSettings } from '@/stores/settings';
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 
-import { finishTakesEvent, recordFinishEvent, undoFinish } from './finish-route';
+import { finishTakesEvent, leaveFinishedBook, recordFinishEvent, undoFinish } from './finish-route';
 import { appendEvents, closeSpan } from './listening-outbox';
 import {
   cutListeningSpanNow,
   flushHistoryOnHide,
+  holdSaves,
   saveLoadedPlace,
   selectBookLength,
   standByPlace,
@@ -1014,6 +1015,57 @@ describe('Mark as finished outside the player (finish-route)', () => {
     pushSnapshot(snap('paused', 1, 45));
     await settle();
     expect(mockClosed.at(-1)).toMatchObject({ from: { pos: 90 }, to: { pos: 95 } });
+  });
+
+  // fe#258: left playing, the book recorded listening past its finish, and a later save of
+  // the engine's place (a reconcile's held save on reconnect) put the device record back in
+  // progress after an offline finish was delivered.
+  it('marked from the book page, the loaded book stops and unloads before the finish', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('playing', 0, 9));
+    const release = holdSaves(); // a reconcile check out (the server coming back)
+    leaveFinishedBook(ref);
+    await expect(recordFinishEvent(ref)).resolves.toBe(true);
+    await settle();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+    expect(mockSvc.reset).toHaveBeenCalled();
+    expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 5, 9]]);
+    expect(mockAppended.map((e) => e.kind)).toEqual(['finish']);
+    expect(mockWriteMirror.mock.calls.at(-1)?.[0]).toMatchObject({ finished: true });
+    // Nothing after it: the held save released, the save loop's time, a late engine event.
+    release();
+    pushSnapshot(snap('playing', 0, 12));
+    jest.advanceTimersByTime(60_000);
+    await settle();
+    expect(mockClosed).toHaveLength(1);
+    expect(mockAppended.map((e) => e.kind)).toEqual(['finish']);
+    expect(mockWriteMirror.mock.calls.at(-1)?.[0]).toMatchObject({ finished: true });
+  });
+
+  it('on the PUT path, its place is saved before the finish the caller saves next', async () => {
+    mockSync = false;
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('playing', 0, 9));
+    mockSaveProgress.mockClear();
+    leaveFinishedBook(ref);
+    await settle();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+    expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ position: 9, finished: false });
+  });
+
+  it('another book loaded plays on', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    leaveFinishedBook({ ...ref, path: 'Other/Book' });
+    await settle();
+    expect(usePlayer.getState().nowPlaying?.path).toBe(folder);
+    expect(mockClosed).toEqual([]);
   });
 
   // The server applies a batch in time order (request order only breaks ties): a finish

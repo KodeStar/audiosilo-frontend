@@ -57,8 +57,11 @@ jest.mock('@/components/player/use-play-book', () => ({ usePlayBook: () => mockP
 let mockTakesEvent = false;
 // The Undo goes through `undoFinish` (the waiting finish taken back first, fe#208).
 const mockUndoRefs: unknown[] = [];
+// The loaded book stops before the finish is recorded (fe#258); `steps` gives the order.
+const mockSteps: string[] = [];
 jest.mock('@/playback/finish-route', () => ({
   finishTakesEvent: () => mockTakesEvent,
+  leaveFinishedBook: (ref: { path: string }) => mockSteps.push(`leave ${ref.path}`),
   undoFinish: (ref: unknown, edit: () => Promise<boolean>) => {
     mockUndoRefs.push(ref);
     return edit();
@@ -184,6 +187,23 @@ describe('useBookActions', () => {
       path: 'Author/Series/01 - Book',
       edit: { finished: false, position: 900 },
     });
+  });
+
+  it('stops the loaded book before either route records the finish (fe#258)', async () => {
+    mockSteps.length = 0;
+    mockEdit.mockImplementation(async () => mockSteps.push('edit'));
+    mockMarkFinished.mockImplementation(() => mockSteps.push('mark'));
+    const first = await actions(book(), progress());
+    await act(async () => first.find('finish')!.onPress());
+    mockTakesEvent = true;
+    try {
+      const second = await actions(book(), progress());
+      await act(async () => second.find('finish')!.onPress());
+    } finally {
+      mockTakesEvent = false;
+    }
+    const leave = 'leave Author/Series/01 - Book';
+    expect(mockSteps).toEqual([leave, 'edit', leave, 'mark']);
   });
 
   it('marks finished on an older server through the save at the end, without an Undo', async () => {
