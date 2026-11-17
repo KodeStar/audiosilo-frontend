@@ -45,7 +45,7 @@ export default function ConnectLayout() {
   const kids = useKidsActive();
   const ready = !!useRootNavigationState()?.key;
   // The hook, not the module-level `router`, as every mount-time navigation (CONVENTIONS.md,
-  // "Navigation at mount": that one throws with no root navigator mounted, as in a test).
+  // "Navigation at mount": that one throws with no navigation container mounted, as in a test).
   const router = useRouter();
   // Whether kids mode is on can only be told once both are read.
   const known = status !== 'loading' && profilesRead;

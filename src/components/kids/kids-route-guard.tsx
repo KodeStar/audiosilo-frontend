@@ -21,7 +21,7 @@ import { useKidsActive } from './use-kids';
  * when it is not, it replaces the current route. Waits for the root navigator (a
  * navigation before it mounts throws), and navigates through `useRouter()`, as every
  * mount-time navigation does (CONVENTIONS.md, "Navigation at mount": the module-level
- * `router` throws with no root navigator mounted, which only a test's lone render meets).
+ * `router` throws with no navigation container mounted, which only a test's lone render meets).
  *
  * And the other way: `/kids` is a kids profile's only. Leaving kids mode through "Who's
  * listening?" puts the shell over it (the guard replaced the shell's anchor with it), so

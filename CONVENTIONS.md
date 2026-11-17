@@ -3642,9 +3642,10 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   `expo-router/build/global-state/navigationRef` path (the route-tree tests pin it). An
   expo-router upgrade checks that path first.
 - **Navigation at mount uses `useRouter()`.** Since expo-router 58 the module-level `router`
-  throws while no root navigator is mounted (`Attempted to navigate before mounting`). In the
-  app the root layout's navigator is always mounted before a screen's effect runs (its ref is
-  attached in the commit, ahead of any effect), so only a screen rendered on its own, as a Jest
+  throws until the navigation container has bound it (`The imperative router is unavailable
+  before the first render has finished`; `ImperativeRoutingQueueBridge`, a layout effect of the
+  container). In the app that layout effect runs in the container's first commit, ahead of any
+  screen's effect, so only a screen rendered on its own, as a Jest
   test does, meets it; an effect or guard that navigates on mount (`kids-route-guard.tsx`, the connect layout,
   `LeaveOnboarding`) still takes the hook's router, which is right in both. The module-level
   one stays fine in press handlers and later code. `setParams` is the exception: both routers hand it
