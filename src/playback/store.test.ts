@@ -66,6 +66,12 @@ const mockLoadInitialProgress = jest.fn(async (..._args: unknown[]): Promise<Res
   kind: 'empty',
 }));
 const mockReadMirror = jest.fn(async (..._args: unknown[]): Promise<unknown> => null);
+type Stamped = { updated_at: string };
+// No clock skew is known here: the two stamps as they are.
+const mockMirrorIsNewest = jest.fn(
+  async (record: Stamped, place: Stamped): Promise<boolean> =>
+    Date.parse(record.updated_at) >= Date.parse(place.updated_at),
+);
 jest.mock('./progress-sync', () => ({
   saveProgress: (...args: unknown[]) => mockSaveProgress(...args),
   // This device's own record between two saves (`placeLoop`).
@@ -75,6 +81,7 @@ jest.mock('./progress-sync', () => ({
   getDeviceId: jest.fn(async () => 'dev-1'),
   loadInitialProgress: (...args: unknown[]) => mockLoadInitialProgress(...args),
   readMirror: (...args: unknown[]) => mockReadMirror(...args),
+  mirrorIsNewest: (...args: [Stamped, Stamped]) => mockMirrorIsNewest(...args),
 }));
 
 // Smart Speed's counts: what the store hands over, and when it asks for a write.
@@ -1040,6 +1047,21 @@ describe('the speed a book starts at', () => {
     );
     await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 30);
     expect(usePlayer.getState().rate).toBe(1.8);
+  });
+
+  // The cached place is the server's row, stamped by its server's clock; the mirror's record
+  // a capture of this device's. Which is newer is the mirror's own rule (`mirrorIsNewest`,
+  // by one clock), never the two stamps as they are (fe#259).
+  it("takes this device's later record over a row stamped by a server whose clock is ahead", async () => {
+    const mine = mirror(1.4, '2026-10-01T00:00:30Z');
+    // 90 s ahead: the row was written at 00:00:00 here.
+    const row = makeProgress({ playback_speed: 1.8, updated_at: '2026-10-01T00:01:30Z' });
+    mockReadMirror.mockResolvedValueOnce(mine);
+    (queryClient.getQueryData as jest.Mock).mockReturnValueOnce(row);
+    mockMirrorIsNewest.mockResolvedValueOnce(true);
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 30);
+    expect(mockMirrorIsNewest).toHaveBeenLastCalledWith(mine, row);
+    expect(usePlayer.getState().rate).toBe(1.4);
   });
 
   // Decision 7 regression (8b-1, D3): the one change here is the default a book with no

@@ -1976,8 +1976,9 @@ media GETs only.
   Keep-newest, so a newer save of this device's own stays. A server's row in the mirror is
   marked `server_clock` (`progressToSave`) and compared by this device's clock, its stamp moved
   back by the connection's known skew (`localTimeOf`, fe#259): with the server's clock ahead,
-  a row read back once hid this device's own captures for that long. `mirrorSpanEnd` and a
-  tab's `otherTabsPlace` compare through it too.
+  a row read back once hid this device's own captures for that long. `mirrorSpanEnd`, a
+  tab's `otherTabsPlace` and an explicit start's read of the book's speed and finish
+  (`knownProgress`, against the cached place: `mirrorIsNewest`) compare through it too.
 - **The replay guard (legacy PUT path, fe#198).** The PUT is last-write-wins by
   `updated_at`, so a session that began at a place this device never checked against its
   server must not move another device's further place back. `resumeLookupOf` marks such a

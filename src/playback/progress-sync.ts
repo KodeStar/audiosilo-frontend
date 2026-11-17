@@ -586,6 +586,30 @@ export async function mirrorTimeOf(record: ProgressSave): Promise<number> {
   return localTimeOf(record, await knownSkew(record.connectionId));
 }
 
+/**
+ * Whether the mirror's `record` of a book is at least as new as `place`, the place the app
+ * has cached for it (`bookPlace`'s pick), by this device's clock (`localTimeOf`). Compared
+ * raw, a server's row hid this device's later record (a speed chosen, a finish marked
+ * offline) for as long as its server's clock is ahead (fe#259). The same stamp is the same
+ * record. Else `place` is read by what it is:
+ *  - the server's own row (it has a version, and no `server` row beside it): by its
+ *    server's clock;
+ *  - a record of this device's with the server's row beside it: by this device's;
+ *  - a record read from this device alone (its server not reached, or holding none): the
+ *    mirror's or the queue's of then, and the mirror's may have been a server's row, which
+ *    the place no longer says. The earlier of the two readings: the mirror only ever takes
+ *    a newer record, so its record now is never the older one of those.
+ */
+export async function mirrorIsNewest(
+  record: ProgressSave,
+  place: PlacedProgress,
+): Promise<boolean> {
+  if (record.updated_at === place.updated_at) return true;
+  const skew = await knownSkew(record.connectionId);
+  const ahead = place.server ? 0 : place.version > 0 ? skew : Math.max(0, skew);
+  return localTimeOf(record, skew) >= Date.parse(place.updated_at) - ahead;
+}
+
 // Serialize mirror read-modify-write so concurrent saves can't clobber each other.
 const withMirrorLock = serialQueue();
 

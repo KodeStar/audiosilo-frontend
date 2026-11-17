@@ -82,6 +82,7 @@ import {
   getDeviceId,
   guardSettled,
   loadInitialProgress,
+  mirrorIsNewest,
   mirrorTimeOf,
   type PlacedProgress,
   type ProgressSave,
@@ -698,9 +699,11 @@ async function knownProgress(
     queryClient.getQueryData<PlacedProgress | null>(qk.progress(connectionId, libraryId, path)) ??
     null;
   const mirror = await readMirror(connectionId, libraryId, path).catch(() => null);
+  // By one clock (`mirrorIsNewest`): the cached place may be the server's row, stamped by
+  // its server's clock, and the mirror's record a capture of this device's.
   const newest =
     cached && mirror
-      ? Date.parse(mirror.updated_at) >= Date.parse(cached.updated_at)
+      ? (await mirrorIsNewest(mirror, cached).catch(() => false))
         ? mirror
         : cached
       : (cached ?? mirror);

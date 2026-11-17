@@ -65,6 +65,9 @@ jest.mock('./progress-sync', () => ({
   loadInitialProgress: (...a: unknown[]) => mockLoadInitialProgress(...a),
   readMirror: (...a: unknown[]) => mockReadMirror(...a),
   guardSettled: (id: string) => mockSettled.has(id),
+  // No clock skew is known here: the two stamps as they are.
+  mirrorIsNewest: async (record: { updated_at: string }, place: { updated_at: string }) =>
+    Date.parse(record.updated_at) >= Date.parse(place.updated_at),
 }));
 
 // The outbox: the path choice is the test's, storage and sending are captured.
