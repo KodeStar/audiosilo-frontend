@@ -615,14 +615,9 @@ export class CastPlaybackService implements PlaybackService {
    * a new media session's first status can still name the media it replaces, and the native
    * SDK's status carries no session id to tell them apart. */
   private skippedPast(status: CastMediaStatus, index: number, within = Infinity): boolean {
-    return isSettled(status) && this.pastIntent(status, index, within);
-  }
-
-  /** Whether a status on file `index` names a later file than the one this phone means
-   * (`intended`, not landed) that is not the replaced media playing on (`skippedPast`), in any
-   * player state. */
-  private pastIntent(status: CastMediaStatus, index: number, within: number): boolean {
-    return this.laterUnlanded(index, within) && !this.replacedMedia(status, index);
+    return (
+      isSettled(status) && this.laterUnlanded(index, within) && !this.replacedMedia(status, index)
+    );
   }
 
   /** Whether file `index` is a later one than the file this phone means (`intended`) while that
