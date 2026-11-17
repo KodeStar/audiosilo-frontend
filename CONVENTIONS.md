@@ -361,7 +361,9 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
 every way in (pairing link or QR, invite code, password, single sign-on, demo) ends in `finishConnect`, which
 stores the connection with the server's name and the addresses the link (`linkAddresses`) and the
 answer taught, merged there once, and shows `/connect/ready?connection=` ("Your library is
-ready.") only for the device's first connection; an added server goes back with `leaveOnboarding()`. A
+ready.") only for the device's first connection (over the flow's first screen: `endConnect` pops the
+connect stack to its root and pushes it, so Back from it never lands on the scanner or the sign-in
+step); an added server goes back with `leaveOnboarding()`. A
 link naming a book (`book=<library_id>&path=<rel_path>` + `uid`, the admin console's "Listen in
 player": `parseConnectBook`, carried on `PairingScan` as `book` + `userId` by the route and a pasted
 link alike) ends on that book instead (`endConnect`, the one ending `finishConnect` shares: a
