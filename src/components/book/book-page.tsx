@@ -1,5 +1,5 @@
 import { type InfiniteData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { router, useRouter } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -184,9 +184,10 @@ function useCanonicalBookPath(
   book: { rel_path: string } | undefined,
 ): boolean {
   const qc = useQueryClient();
-  // The hook: a cached item can run the move on the first commit, before expo-router 58
-  // has bound its module-level `router`.
-  const nav = useRouter();
+  // The screen's own navigation: a cached item runs the move as the screen mounts, where on
+  // a page load a router's `setParams` (the module's or `useRouter()`'s) reaches no
+  // navigator yet and is dropped (CONVENTIONS.md, "Navigation at mount"; fe#310).
+  const nav = useNavigation<{ setParams(params: { path?: string }): void }>();
   const target = book?.rel_path.replace(/\/+$/, '');
   const move = !!target && path.startsWith(`${target}/`);
   useEffect(() => {
