@@ -544,6 +544,63 @@ describe('CastPlaybackService', () => {
       expect(t.remote.loads).toHaveLength(2);
     });
 
+    it('a second move refused while the token is minted is sent again too, after the first', async () => {
+      let minted: () => void = () => {};
+      const asks: (boolean | undefined)[] = [];
+      const t = setup({
+        prepare: async (tracks, book, opts) => {
+          asks.push(opts?.freshToken);
+          if (opts?.freshToken) await new Promise<void>((resolve) => (minted = resolve));
+          return { items: buildCastItems(tracks, book, urls, false) };
+        },
+      });
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      (t.remote.load as jest.Mock)
+        .mockRejectedValueOnce(new Error('LOAD_FAILED'))
+        .mockRejectedValueOnce(new Error('LOAD_FAILED'));
+      const first = t.svc.skipToTrack(1, 10);
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      const second = t.svc.skipToTrack(0, 20);
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      minted();
+      await Promise.all([first, second]);
+      expect(asks).toEqual([undefined, true]);
+      expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 0, startTime: 20 });
+      expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 0, position: 20 });
+    });
+
+    it('another book refused while a mint is on its way asks for its own', async () => {
+      let minted: () => void = () => {};
+      const asks: [string, boolean | undefined][] = [];
+      const t = setup({
+        prepare: async (tracks, book, opts) => {
+          asks.push([book.path, opts?.freshToken]);
+          if (opts?.freshToken && book.path === BOOK.path) {
+            await new Promise<void>((resolve) => (minted = resolve));
+          }
+          return { items: buildCastItems(tracks, book, urls, false) };
+        },
+      });
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      (t.remote.load as jest.Mock)
+        .mockRejectedValueOnce(new Error('LOAD_FAILED'))
+        .mockRejectedValueOnce(new Error('LOAD_FAILED'));
+      const move = t.svc.skipToTrack(1, 10);
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      // The other book's own load is refused while the first book's mint is still out.
+      await t.svc.load(TRACKS, 0, 0, [], { ...BOOK, path: 'A/C' });
+      expect(asks.slice(-2)).toEqual([
+        ['A/C', undefined],
+        ['A/C', true],
+      ]);
+      expect(t.remote.loads.at(-1)).toMatchObject({ book: { path: 'A/C' } });
+      // The first book's mint lands on a receiver that is the other book's now: not sent.
+      const sent = t.remote.loads.length;
+      minted();
+      await expect(move).rejects.toThrow('LOAD_FAILED');
+      expect(t.remote.loads).toHaveLength(sent);
+    });
+
     it('a book loaded again (a Retry) mints no sooner than a minute on; another book may', async () => {
       const m = minting();
       const t = setup({ prepare: m.prepare });

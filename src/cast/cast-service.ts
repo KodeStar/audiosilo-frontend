@@ -163,6 +163,9 @@ export class CastPlaybackService implements PlaybackService {
    * when (`freshToken`): kept across loads and resets, so a book loaded again mints no sooner
    * than `REMINT_EVERY_MS` later; another book may mint at once. */
   private reminted: { book: string; at: number } | null = null;
+  /** The mint on its way (`freshToken`) and the queue it is for, which a second refused send
+   * of that queue waits on too. */
+  private minting: { loaded: Loaded; done: Promise<boolean> } | null = null;
 
   constructor(
     private readonly remote: CastRemote,
@@ -398,9 +401,23 @@ export class CastPlaybackService implements PlaybackService {
    * caps a person's cast tokens and ends the oldest, which a receiver may still be playing
    * with, so its next file, seek or load is refused while the cache still holds that token.
    * Resolves whether the queue was swapped (false: not due, the mint failed, or another book
-   * or a reset took the receiver meanwhile).
+   * or a reset took the receiver meanwhile). One mint at a time for a loaded queue: sent again
+   * and refused while one is on its way (a second seek, sent with the token being replaced),
+   * it waits on that one and is sent again after the first, so the later move is the one the
+   * receiver ends on. Another book loaded meanwhile asks for its own.
    */
-  private async freshToken(): Promise<boolean> {
+  private freshToken(): Promise<boolean> {
+    const loaded = this.loaded;
+    if (!loaded) return Promise.resolve(false);
+    if (this.minting?.loaded === loaded) return this.minting.done;
+    const done = this.mintFresh().finally(() => {
+      if (this.minting?.done === done) this.minting = null;
+    });
+    this.minting = { loaded, done };
+    return done;
+  }
+
+  private async mintFresh(): Promise<boolean> {
     const loaded = this.loaded;
     if (!loaded || !this.remintDue()) return false;
     this.reminted = { book: castBookKey(loaded.book), at: this.now() };
