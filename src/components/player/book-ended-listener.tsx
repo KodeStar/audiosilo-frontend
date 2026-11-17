@@ -1,4 +1,4 @@
-import { router, usePathname } from 'expo-router';
+import { router, usePathname, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
@@ -8,7 +8,13 @@ import { finishedHref } from '@/lib/paths';
 import { sharedStart } from '@/lib/shared-start';
 import { whenActive } from '@/lib/when-active';
 import { useSleepTimer } from '@/playback/sleep-timer';
-import { selectBookKey, selectIsEnded, usePlayer, type FinishedBook } from '@/playback/store';
+import {
+  type FinishedBook,
+  type NowPlaying,
+  selectBookKey,
+  selectIsEnded,
+  usePlayer,
+} from '@/playback/store';
 import { resolveUpNext } from '@/playback/up-next-resolver';
 import { upNextSources } from '@/playback/up-next-sources';
 import { useSettings } from '@/stores/settings';
@@ -19,6 +25,10 @@ import { dropFromQueue } from './queue-drop';
 /** The route on screen, as `BookEndedRoute` last saw it; null while no root layout is
  * mounted (a car-only session: Android's headless task, a CarPlay-first launch). */
 let route: string | null = null;
+/** The root layout's router (`useRouter()`), while `BookEndedRoute` is mounted: the credits a
+ * car-only session left waiting open as the root layout mounts, and a navigation at mount
+ * takes the hook's router (CONVENTIONS.md, "Navigation at mount"). */
+let rootRouter: ReturnType<typeof useRouter> | null = null;
 /** Calls waiting for a route (`whenRouted`). */
 const routeWaiters = new Set<() => void>();
 
@@ -36,15 +46,18 @@ function whenRouted(fn: () => void): void {
  */
 export function BookEndedRoute() {
   const pathname = usePathname();
+  const nav = useRouter();
   useEffect(() => {
+    rootRouter = nav;
     route = pathname;
     const waiting = [...routeWaiters];
     routeWaiters.clear();
     for (const fn of waiting) fn();
-  }, [pathname]);
+  }, [pathname, nav]);
   useEffect(
     () => () => {
       route = null;
+      rootRouter = null;
     },
     [],
   );
@@ -58,19 +71,25 @@ export function BookEndedRoute() {
  * (the book reached its natural end; the store keeps nowPlaying populated in that state), once
  * per ended book and only for a real book (nowPlaying set). The flow runs a microtask later:
  * the engine's own `ended` handling (the finish it sends, the final save) reads nowPlaying
- * after the store set the snapshot, and `finishBook` clears it. Shared (`sharedStart`): the
- * root layout starts it, and so does the car's stack. Returns the stop.
+ * after the store set the snapshot, and `finishBook` clears it. A book already ended when the
+ * watch starts is taken too, as the listener mounted over it took it: on Android the activity,
+ * and the root layout's start with it, can go while the service plays the book to its end, and
+ * the end is finished once the app is opened again. Shared (`sharedStart`): the root layout
+ * starts it, and so does the car's stack. Returns the stop.
  */
-export const startBookEndWatch = sharedStart(() =>
-  usePlayer.subscribe((state, prev) => {
-    if (!selectIsEnded(state) || selectIsEnded(prev) || !state.nowPlaying) return;
-    const ended = state.nowPlaying;
+export const startBookEndWatch = sharedStart(() => {
+  const ended = (np: NowPlaying) =>
     void Promise.resolve().then(() => {
       const now = usePlayer.getState();
-      if (now.nowPlaying === ended && selectIsEnded(now)) bookEnded();
+      if (now.nowPlaying === np && selectIsEnded(now)) bookEnded();
     });
-  }),
-);
+  const at = usePlayer.getState();
+  if (selectIsEnded(at) && at.nowPlaying) ended(at.nowPlaying);
+  return usePlayer.subscribe((state, prev) => {
+    if (!selectIsEnded(state) || selectIsEnded(prev) || !state.nowPlaying) return;
+    ended(state.nowPlaying);
+  });
+});
 
 function bookEnded(): void {
   const player = usePlayer.getState();
@@ -161,7 +180,8 @@ function endEpisode(info: FinishedBook, finished: BookRef, sleptThrough: boolean
       return;
     whenActive(() => {
       if (usePlayer.getState().nowPlaying || route !== '/player') return;
-      if (router.canGoBack()) router.back();
+      const nav = rootRouter ?? router;
+      if (nav.canGoBack()) nav.back();
     });
   })();
 }
@@ -182,6 +202,7 @@ async function playNextInPlace(info: FinishedBook, queueOnly = false): Promise<b
  * its place), else push over whatever content route is showing. */
 function goToFinished(info: FinishedBook, pathname: string | null): void {
   const href = finishedHref(info.connectionId, info.libraryId, info.path, true);
-  if (pathname === '/player') router.replace(href);
-  else router.push(href);
+  const nav = rootRouter ?? router;
+  if (pathname === '/player') nav.replace(href);
+  else nav.push(href);
 }

@@ -21,13 +21,15 @@ const mockPush = jest.fn();
 const mockReplace = jest.fn();
 let mockPathname = '/library';
 const mockBack = jest.fn();
+const mockRouter = {
+  push: (h: unknown) => mockPush(h),
+  replace: (h: unknown) => mockReplace(h),
+  back: () => mockBack(),
+  canGoBack: () => true,
+};
 jest.mock('expo-router', () => ({
-  router: {
-    push: (h: unknown) => mockPush(h),
-    replace: (h: unknown) => mockReplace(h),
-    back: () => mockBack(),
-    canGoBack: () => true,
-  },
+  router: mockRouter,
+  useRouter: () => mockRouter,
   usePathname: () => mockPathname,
 }));
 const mockResolve = jest.fn();
@@ -236,6 +238,21 @@ describe('the end-of-book flow', () => {
     await becomeActive();
     expect(mockPush).not.toHaveBeenCalled();
     expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('finishes a book already ended when the watch starts (the activity came back)', async () => {
+    await render(<BookEndedRoute />);
+    await act(async () => {
+      setPlayer({
+        nowPlaying: { connectionId: 'c1', libraryId: 1, path: FINISHED.path },
+        snapshot: { state: 'ended' },
+      });
+    });
+    expect(mockFinishBook).not.toHaveBeenCalled();
+    stopWatch = startBookEndWatch();
+    await act(async () => {});
+    expect(mockFinishBook).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith(finishedHref('c1', 1, FINISHED.path, true));
   });
 
   describe('a car-only session: no root layout mounted (fe#158)', () => {
