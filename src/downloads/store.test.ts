@@ -197,7 +197,12 @@ jest.mock('@/api/hooks', () => ({
 /* eslint-disable import/first */
 import { resolveClient } from '@/api/connection-clients';
 import { engine } from '@/downloads/engine';
-import { downloadBookLength, downloadEndsBefore, isKeptOffline } from '@/downloads/kept-offline';
+import {
+  downloadBookLength,
+  downloadEndsBefore,
+  isKeptOffline,
+  refreshKeptMeta,
+} from '@/downloads/kept-offline';
 import { bookFileSpecs } from '@/playback/book-queue';
 import { readMirror } from '@/playback/progress-sync';
 import {
@@ -3157,6 +3162,24 @@ describe('the offline companion (community metadata kept with a download)', () =
     mockCapture.mockRejectedValue(new Error('meta down'));
     await downloadOne(path);
     expect(useDownloads.getState().entries[downloadKey('c1', 2, path)]?.status).toBe('downloaded');
+  });
+
+  // fe#158: a finished Bridge job has the kept copy read again, past this launch's try.
+  it('keeps it again when a Bridge job for the book finished, and nothing for another book', async () => {
+    const path = nextPath();
+    mockCapture.mockResolvedValue(payload());
+    await downloadOne(path);
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+    const fresh = payload(Date.parse('2026-06-01T10:00:00Z'));
+    mockCapture.mockResolvedValue(fresh);
+    await refreshKeptMeta('c1', 2, path);
+    expect(mockCapture).toHaveBeenCalledTimes(2);
+    expect(mockWriteMeta).toHaveBeenLastCalledWith(expect.objectContaining({ path }), fresh);
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, path)]?.manifest.meta).toEqual({
+      savedAt: '2026-06-01T10:00:00.000Z',
+    });
+    await refreshKeptMeta('c1', 2, 'Not/Downloaded');
+    expect(mockCapture).toHaveBeenCalledTimes(2);
   });
 
   it('a removed book stops keeping its cache entries for good', async () => {

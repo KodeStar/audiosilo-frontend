@@ -55,7 +55,7 @@ import {
   libraryRequests,
   requestsDone,
 } from '@/lib/podcast-requests';
-import { isKeptOffline } from '@/downloads/kept-offline';
+import { isKeptOffline, refreshKeptMeta } from '@/downloads/kept-offline';
 import { finishedSave, recordFinishEvent } from '@/playback/finish-route';
 import {
   bookPlace,
@@ -2664,6 +2664,8 @@ async function refreshAfterFinish(qc: QueryClient, cid: string, jobs: readonly B
     // a later launch's first read of the jobs costs the map it shows nothing.
     qc.invalidateQueries({ predicate: (q) => isBookAnswerOf(q, cid, libraryId, path) }),
   ]);
+  // A downloaded book's kept copy too, so offline it has what the job made. Not waited for.
+  void refreshKeptMeta(cid, libraryId, path);
 }
 
 /** While a generate run is past chapter detection (`midRunCheckpoint`): read the book's

@@ -37,7 +37,12 @@ import { useSettings } from '@/stores/settings';
 
 import { engine } from './engine';
 import { type EpisodeWaitEnd, stopWaiting, waitForEpisode } from './episode-ready';
-import { setDownloadEndCheck, setDownloadLengthCheck, setKeptOfflineCheck } from './kept-offline';
+import {
+  setDownloadEndCheck,
+  setDownloadLengthCheck,
+  setKeptMetaRefresh,
+  setKeptOfflineCheck,
+} from './kept-offline';
 import { estimateBytes, pendingBytes, roomLeft } from './keep-ahead';
 import { classifyDownloadError } from './failure';
 import {
@@ -298,6 +303,17 @@ setDownloadLengthCheck(async (connectionId, libraryId, path) => {
   if (hydrating) await hydrating;
   const manifest = downloadedEntryOf({ connectionId, libraryId, path })?.manifest;
   return manifest?.endsBefore ? (manifest.bookDuration ?? 0) : undefined;
+});
+
+// A finished Bridge job made the book's characters, recaps or description: its kept copy
+// is read again now (`refreshAfterFinish`, which can't import this store), not at the
+// launch a week on (fe#158). This launch's earlier attempt does not hold it back.
+setKeptMetaRefresh(async (connectionId, libraryId, path) => {
+  const entry = downloadedEntryOf({ connectionId, libraryId, path });
+  if (!entry) return;
+  const key = downloadKey(connectionId, libraryId, path);
+  metaTried.delete(`${key}@${entry.manifest.savedAt}`);
+  await keepOfflineMeta(key);
 });
 
 // --- helpers ---------------------------------------------------------------
