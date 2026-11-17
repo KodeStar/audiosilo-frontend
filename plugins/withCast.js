@@ -25,13 +25,10 @@ const withGoogleCast = castPlugin.default ?? castPlugin;
  *    Cast dialog's Stop casting only leaves the session and the TV plays on while the book
  *    comes back to the phone paused (two places at once). A network drop never stops it.
  *    iOS: `stopReceiverApplicationWhenEndingSession`, set here in the plugin's options block
- *    (`addStopReceiverOnEnd`); it covers the Stop casting button only, and a Wi-Fi drop
- *    suspends the session, which the SDK resumes. Android: NOT that option, which the SDK
- *    applies to every end, including the one it makes itself when the phone's Wi-Fi drops and
- *    MediaRouter loses the route. Instead `patches/react-native-google-cast+4.9.1.patch` gives
- *    the library's Cast buttons a dialog whose Stop casting ends the session with the receiver
- *    stopped (`RNGCStopCastingDialogFactory`); the notification's stop already does
- *    (`ACTION_STOP_CASTING`), and the app's own Stop casting asks for it (`endSession(true)`).
+ *    (`addStopReceiverOnEnd`; a Wi-Fi drop suspends the session, so it does not apply).
+ *    Android: not that option, which the SDK also applies to the end it makes on a Wi-Fi drop;
+ *    `patches/react-native-google-cast+4.9.1.patch` adds `RNGCStopCastingDialogFactory`
+ *    instead (its Javadoc has the detail; CONVENTIONS.md covers the other stop paths).
  *  - Android: the Cast framework version is PINNED (the plugin's default is `+`, a build
  *    that changes under us). The library's options provider keeps the Cast SDK's own media
  *    notification and media session: while a book casts the app's Media3 engine is

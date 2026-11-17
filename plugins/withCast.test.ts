@@ -118,12 +118,12 @@ describe('withCast: Stop casting stops the receiver', () => {
     expect(factory).toContain('findViewById(android.R.id.button1)');
     expect(factory).toContain('endCurrentSession(true)');
     // Both Cast buttons open it: the app's and the expanded controller's.
-    expect(library('components/RNGoogleCastButtonManager.java')).toContain(
-      'button.setDialogFactory(new RNGCStopCastingDialogFactory())',
-    );
-    expect(library('RNGCExpandedControllerActivity.java')).toContain(
-      'setDialogFactory(new RNGCStopCastingDialogFactory())',
-    );
+    for (const button of [
+      'components/RNGoogleCastButtonManager.java',
+      'RNGCExpandedControllerActivity.java',
+    ]) {
+      expect(library(button)).toContain('setDialogFactory(new RNGCStopCastingDialogFactory())');
+    }
     // The notification's stop is the SDK's own end with the receiver stopped.
     expect(library('GoogleCastOptionsProvider.java')).toContain(
       'MediaIntentReceiver.ACTION_STOP_CASTING',
@@ -131,8 +131,6 @@ describe('withCast: Stop casting stops the receiver', () => {
   });
 
   it('Android: no session end stops the receiver by itself (a Wi-Fi drop must not)', () => {
-    // The SDK ends the session when MediaRouter loses the route (the phone's Wi-Fi went), and
-    // the global option would make that end stop the TV.
     expect(library('GoogleCastOptionsProvider.java')).not.toContain(
       'setStopReceiverApplicationWhenEndingSession',
     );

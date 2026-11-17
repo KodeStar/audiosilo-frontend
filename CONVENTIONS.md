@@ -3530,13 +3530,17 @@ on first need). NOT device-verified (no Cast device yet).
   `stopCasting` end a session from the app. A user's Stop casting stops the receiver's app (from
   the app, the Cast dialog or the notification), so the TV never plays on while the book comes
   back paused; a network drop never does. iOS: `stopReceiverApplicationWhenEndingSession`
-  (`withCast.js`; the Stop casting button only, a Wi-Fi drop suspends and resumes). Android: not
-  that option (the SDK applies it to the end it makes itself when the Wi-Fi drops and MediaRouter
-  loses the route): `patches/react-native-google-cast+4.9.1.patch` gives the Cast buttons a dialog
-  whose Stop casting calls `endCurrentSession(true)` (`RNGCStopCastingDialogFactory`), the
+  (`withCast.js`; a Wi-Fi drop suspends the session and the SDK resumes it). Android: not that
+  option, since the SDK ends (not suspends) the session when the Wi-Fi drops and MediaRouter
+  loses the route, and would stop the TV then too (so `ReconnectionService` has nothing to
+  resume either): `patches/react-native-google-cast+4.9.1.patch` gives both Cast buttons (the
+  library's `CastButton` and the expanded controller's) a dialog whose Stop casting calls
+  `endCurrentSession(true)` (`RNGCStopCastingDialogFactory`; it finds the button by
+  mediarouter's internal `android.R.id.button1`: re-check it when the cast-framework pin
+  moves), and the
   notification's stop is `ACTION_STOP_CASTING`; `withCast.test.ts` fails if the patch is lost.
-  Android cannot rejoin after a Wi-Fi drop: the SDK ends the session (not suspends) when the
-  route goes, so `ReconnectionService` has nothing to resume.
+  A stop from outside the app (the system output switcher, Google Home) is not covered and
+  likely leaves the TV playing (not device-checked).
 - **The receiver never gets the session token**: `prepareCast` builds the queue with cast tokens
   (`POST /cast/token`, book-scoped, 24 h; `castTokens` caches one per book until an hour before it
   expires, drops expired ones and forgets a removed connection's), on the connection's address in
