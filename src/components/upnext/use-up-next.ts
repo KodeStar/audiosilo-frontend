@@ -133,10 +133,13 @@ export function useUpNextData(cid: string | undefined) {
 }
 
 /** The loaded book's path when it is the folder book holding `entry`'s path (a part of it,
- * as the server resolves one), else the entry's own path. */
+ * as the server resolves one), else the entry's own path. Only for an entry the server sent
+ * with no `book`: one that is a book of its own inside the loaded book's folder (a book
+ * nested in another's) is never taken for a part of it. */
 function loadedHolding(cid: string, entry: QueueEntry): string {
   const np = usePlayer.getState().nowPlaying;
   const holds =
+    !entry.book &&
     np?.connectionId === cid &&
     np.libraryId === entry.library_id &&
     entry.path.startsWith(`${np.path}/`);
@@ -150,7 +153,8 @@ function loadedHolding(cid: string, entry: QueueEntry): string {
  * any start does: the one remove, never a second one beside the start's own), and stays
  * when the start failed. An entry that is no longer exactly a book (a part path the server
  * now resolves to the folder book holding it, which the server sends with no `book`) leaves
- * too once that book is the one loaded: the start found it already playing and played on.
+ * too once that book is the one loaded: the start found it already playing and played on
+ * (the player route on a phone, `startBookInPlace` elsewhere; neither loads it again).
  */
 export function usePlayNow(cid: string | undefined) {
   const { t } = useTranslation();

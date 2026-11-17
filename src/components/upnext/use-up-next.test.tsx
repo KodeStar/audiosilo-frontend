@@ -241,6 +241,25 @@ describe('usePlayNow', () => {
     }
   });
 
+  // A book of its own nested in the loaded book's folder (the server sends its `book`) is
+  // not a part of it: it leaves only once it has started itself.
+  it("keeps its own path for a book nested in the loaded book's folder", async () => {
+    mockLayout = 'phone';
+    usePlayer.setState({ nowPlaying: loadedAt('B') });
+    try {
+      const { result } = await renderHook(() => usePlayNow('c'));
+      await act(async () => {
+        await result.current(
+          { ...entry('B/Book 2'), book: { rel_path: 'B/Book 2' } as QueueEntry['book'] },
+          'Book 2',
+        );
+      });
+      expect(mockDrop).toHaveBeenCalledWith('c', 1, 'B/Book 2', 'B/Book 2');
+    } finally {
+      usePlayer.setState({ nowPlaying: null });
+    }
+  });
+
   it('keeps its own path for an entry the loaded book does not hold', async () => {
     usePlayer.setState({ nowPlaying: loadedAt('Bo') });
     try {
