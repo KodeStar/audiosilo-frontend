@@ -629,7 +629,7 @@
       "whosWhoLabel_other": "Quem é quem, {{count}} personagens conhecidas até agora",
       "storySoFar": "A história até agora",
       "countOf": "{{chapter}} de {{total}}",
-      "notDownloaded": "Não baixado",
+      "notDownloaded": "Não transferido",
       "notDownloadedHint": "Este livro não está neste dispositivo. Ele toca quando você voltar a ficar online.",
       "notDownloadedServerHint": "Este livro não está neste dispositivo. Ele toca quando {{name}} voltar a responder.",
       "episodeOfflineHint": "Este episódio toca quando você voltar a ficar online.",
@@ -1105,20 +1105,20 @@
     "rules": {
       "title": "Downloads automáticos",
       "mode": {
-        "label": "Baixar automaticamente",
+        "label": "Transferir automaticamente",
         "never": "Nunca",
         "wifi": "Com Wi-Fi",
         "always": "Sempre"
       },
       "modeHint": {
-        "never": "Nada é baixado sozinho. Baixe um livro pela página dele.",
-        "wifi": "Baixa um livro no Wi-Fi quando você começa a ouvi-lo.",
-        "always": "Baixa um livro em qualquer conexão quando você começa a ouvi-lo."
+        "never": "Nada é transferido sozinho. Transfere um livro na página dele.",
+        "wifi": "Transfere um livro no Wi-Fi quando começas a ouvi-lo.",
+        "always": "Transfere um livro em qualquer ligação quando começas a ouvi-lo."
       },
-      "webWifi": "Um navegador não distingue Wi-Fi de dados móveis, então aqui Com Wi-Fi baixa em qualquer conexão.",
+      "webWifi": "Um navegador não distingue Wi-Fi de dados móveis, por isso aqui Com Wi-Fi transfere em qualquer ligação.",
       "keepAhead": {
         "label": "Deixar os próximos livros prontos",
-        "hint": "Baixa os próximos livros de A seguir e depois da série, antes de você precisar deles.",
+        "hint": "Transfere os próximos livros de A seguir e depois da série, antes de precisares deles.",
         "off": "Não"
       },
       "keepAheadStatus": {
@@ -1133,8 +1133,8 @@
         "unavailable": "Este navegador não consegue manter os próximos livros offline."
       },
       "episodes": {
-        "label": "Baixar episódios de podcast quando você os inicia",
-        "hint": "Segue a mesma regra de rede dos livros. Um episódio que ainda não está no seu servidor é baixado lá primeiro."
+        "label": "Transferir episódios de podcast quando os inicias",
+        "hint": "Segue a mesma regra de rede dos livros. Um episódio que ainda não está no teu servidor é transferido lá primeiro."
       },
       "autoDelete": "Remover um download quando terminares o livro"
     },
@@ -1150,8 +1150,8 @@
       "progress": "{{percent}}% · faltam {{size}}",
       "percent": "{{percent}}%",
       "queued": "Aguardando para começar",
-      "gettingOnServer": "Baixando no seu servidor",
-      "gettingOnServerPercent": "Baixando no seu servidor {{percent}}%",
+      "gettingOnServer": "A transferir no teu servidor",
+      "gettingOnServerPercent": "A transferir no teu servidor {{percent}}%",
       "waitingWifi": "Aguardando o Wi-Fi",
       "noSpace": "Precisa de mais espaço livre",
       "keptAhead": "Preparado",
@@ -1170,7 +1170,7 @@
       "server": "{{server}} não conseguiu enviar o livro (erro {{status}}).",
       "storageDevice": "Este dispositivo ficou sem espaço.",
       "storageBrowser": "O navegador ficou sem espaço.",
-      "unservable": "Salvo, mas a reprodução offline ainda não está pronta. Recarregue o app e tente de novo.",
+      "unservable": "Guardado, mas a reprodução offline ainda não está pronta. Recarrega a app e tenta de novo.",
       "removed": "Você não está mais conectado a este servidor.",
       "interrupted": "A app fechou antes de terminar.",
       "serverFetch": "{{server}} não conseguiu obter este episódio.",
@@ -1197,8 +1197,8 @@
       "confirm": "Remover"
     },
     "empty": {
-      "title": "Nada baixado ainda",
-      "body": "Baixe um livro na página dele para ouvir sem conexão.",
+      "title": "Nada transferido ainda",
+      "body": "Transfere um livro na página dele para ouvires sem ligação.",
       "action": "Explorar a biblioteca"
     },
     "unsupported": {
@@ -1403,7 +1403,7 @@
       "forOffline": "Transferir para ouvir offline",
       "progressCancel": "{{percent}}% · Cancelar",
       "queuedCancel": "Na fila · Cancelar",
-      "gettingCancel": "Baixando no seu servidor · Cancelar",
+      "gettingCancel": "A transferir no teu servidor · Cancelar",
       "onDevice": "{{size}} neste dispositivo"
     },
     "chapters": {
@@ -1420,7 +1420,7 @@
       "startsAt": "começa em {{time}}",
       "community": "Capítulos da base de dados da comunidade AudioSilo",
       "generated": "Capítulos encontrados na narração neste servidor",
-      "id3Chap": "Capítulos do arquivo do episódio",
+      "id3Chap": "Capítulos do ficheiro do episódio",
       "edited": "Capítulos editados neste servidor",
       "wholeEpisode": "O episódio inteiro",
       "partsTitleEpisode": "Este episódio não tem marcas de capítulo"
@@ -1504,9 +1504,9 @@
       "agentNotReady": "O agente de IA do Bridge não está pronto. Entre com ele pela página do Bridge.",
       "estimateFailed": "Não foi possível obter uma estimativa do Bridge. Tente de novo daqui a pouco.",
       "unavailable": "O Bridge não oferece isto no momento.",
-      "detectOpen": "Os capítulos do livro ainda estão sendo procurados. Toque em Gerar quando terminar: a transcrição é reutilizada.",
-      "contributeOpen": "Os personagens e resumos deste livro estão sendo compartilhados com a comunidade. Toque em Gerar quando terminar.",
-      "readalongOpen": "A leitura sincronizada deste livro está sendo criada. Toque em Gerar quando terminar.",
+      "detectOpen": "Os capítulos do livro ainda estão a ser procurados. Toca em Gerar quando terminar: a transcrição é reutilizada.",
+      "contributeOpen": "As personagens e os resumos deste livro estão a ser partilhados com a comunidade. Toca em Gerar quando terminar.",
+      "readalongOpen": "A leitura sincronizada deste livro está a ser criada. Toca em Gerar quando terminar.",
       "confirm": "Gerar",
       "confirmMany_one": "Gerar {{count}} livro",
       "confirmMany_other": "Gerar {{count}} livros",
@@ -1542,8 +1542,8 @@
     },
     "status": {
       "title": "A gerar personagens, resumos e uma descrição",
-      "waiting": "Esperando o Bridge",
-      "stopping": "Parando",
+      "waiting": "À espera do Bridge",
+      "stopping": "A parar",
       "count": "{{done}} de {{total}}",
       "eta": "faltam cerca de {{time}}",
       "parkedTitle": "A geração está em pausa",
@@ -1557,32 +1557,32 @@
       "cancelFailed": "Não foi possível cancelar. Tente de novo daqui a pouco."
     },
     "stage": {
-      "inspecting": "Verificando os arquivos",
-      "splitting": "Preparando o áudio",
-      "asr": "Transcrevendo",
-      "chapter_detecting": "Encontrando os capítulos na narração",
-      "sanitizing": "Limpando a transcrição",
-      "qa_sweep": "Verificando a transcrição",
-      "qa_adjudicating": "Revisando trechos duvidosos",
-      "retranscribing": "Transcrevendo trechos de novo",
+      "inspecting": "A verificar os ficheiros",
+      "splitting": "A preparar o áudio",
+      "asr": "A transcrever",
+      "chapter_detecting": "A encontrar os capítulos na narração",
+      "sanitizing": "A limpar a transcrição",
+      "qa_sweep": "A verificar a transcrição",
+      "qa_adjudicating": "A rever trechos duvidosos",
+      "retranscribing": "A transcrever trechos de novo",
       "readalong_aligning": "A alinhar o texto com a narração",
-      "markers_normalizing": "Encontrando os capítulos",
-      "spelling_research": "Verificando nomes e grafias",
-      "correcting": "Corrigindo a transcrição",
-      "fact_pass": "Lendo em busca de fatos",
-      "synthesizing": "Escrevendo personagens e resumos",
-      "auditing": "Procurando erros e spoilers",
-      "fixing": "Corrigindo o que a verificação encontrou",
-      "validating": "Validando os resultados",
-      "ready": "Pronto para salvar",
-      "contributing": "Salvando personagens e resumos",
-      "extracting": "Lendo o e-book",
-      "chapter_mapping": "Associando os capítulos do e-book",
-      "waiting": "Esperando a vez",
-      "describing": "Escrevendo a descrição",
-      "writing": "Salvando os resultados",
-      "rescanning": "Atualizando a biblioteca",
-      "working": "Trabalhando"
+      "markers_normalizing": "A encontrar os capítulos",
+      "spelling_research": "A verificar nomes e grafias",
+      "correcting": "A corrigir a transcrição",
+      "fact_pass": "A ler em busca de factos",
+      "synthesizing": "A escrever personagens e resumos",
+      "auditing": "A procurar erros e spoilers",
+      "fixing": "A corrigir o que a verificação encontrou",
+      "validating": "A validar os resultados",
+      "ready": "Pronto para guardar",
+      "contributing": "A guardar personagens e resumos",
+      "extracting": "A ler o e-book",
+      "chapter_mapping": "A associar os capítulos do e-book",
+      "waiting": "À espera da vez",
+      "describing": "A escrever a descrição",
+      "writing": "A guardar os resultados",
+      "rescanning": "A atualizar a biblioteca",
+      "working": "A trabalhar"
     },
     "park": {
       "agent": "O agente de IA não está disponível.",
@@ -1597,7 +1597,7 @@
       "ebook": "Não foi possível ler o e-book.",
       "core": "O livro precisa antes de um registro no AudioSilo Meta.",
       "contrib": "Contribuir não está configurado no Bridge.",
-      "changed": "Os arquivos do livro mudaram durante a leitura.",
+      "changed": "Os ficheiros do livro mudaram durante a leitura.",
       "review": "As verificações não conseguiram confirmar os resultados.",
       "other": "Precisa que uma pessoa dê uma olhada."
     }
@@ -2616,7 +2616,7 @@
       "timerLeft_other": "Temporizador de sono ligado, faltam {{count}} minutos",
       "at": "A hora de dormir é às {{time}}",
       "now": "O temporizador de sono liga-se quando uma história começa",
-      "later": "Depois da hora de dormir, uma história para sozinha ao fim de 20 minutos e o som vai baixando devagar."
+      "later": "Depois da hora de dormir, uma história para sozinha ao fim de 20 minutos e o som baixa devagar."
     },
     "player": {
       "play": "Reproduzir",
@@ -2977,17 +2977,17 @@
       "label": "T{{season}} E{{episode}}",
       "labelEpisodeOnly": "E{{episode}}",
       "ready": "Pronto no seu servidor",
-      "onDemand": "Baixado ao tocar",
-      "getting": "Baixando",
-      "gettingPercent": "Baixando {{percent}}%",
-      "failed": "Não foi possível baixar",
+      "onDemand": "Transferido ao tocar",
+      "getting": "A transferir",
+      "gettingPercent": "A transferir {{percent}}%",
+      "failed": "Não foi possível transferir",
       "unavailable": "Indisponível agora",
       "onDevice": "Neste dispositivo",
       "play": "Tocar",
       "resume": "Continuar",
       "tryAgain": "Tentar de novo",
       "playLabel": "Tocar {{title}}",
-      "tryAgainLabel": "Tentar baixar {{title}} de novo",
+      "tryAgainLabel": "Tentar transferir {{title}} de novo",
       "finished": "Concluído",
       "timelineChangedTitle": "O áudio mudou",
       "timelineChanged": "O áudio deste episódio mudou desde que você começou (os anúncios podem variar). Seu ponto continua como estava."
@@ -3005,21 +3005,21 @@
       "errorFailed": "Não foi possível mudar isso. Tente de novo."
     },
     "fetch": {
-      "title": "Baixando este episódio",
-      "body": "Seu servidor está baixando o episódio. Ele começa assim que estiver pronto.",
+      "title": "A transferir este episódio",
+      "body": "O teu servidor está a transferir o episódio. Começa assim que estiver pronto.",
       "queued": "Esperando a vez",
       "progress": "{{received}} de {{total}}",
       "progressUnknown": "{{received}} até agora",
-      "failedTitle": "Não foi possível baixar este episódio",
-      "unavailableTitle": "Este episódio não pode ser baixado agora",
+      "failedTitle": "Não foi possível transferir este episódio",
+      "unavailableTitle": "Este episódio não pode ser transferido agora",
       "cancel": "Cancelar",
-      "cancelLabel": "Parar de baixar {{title}}",
+      "cancelLabel": "Parar de transferir {{title}}",
       "tryAgain": "Tentar de novo",
-      "stripLabel": "Baixando {{title}}",
+      "stripLabel": "A transferir {{title}}",
       "reason": {
         "module_off": "Os podcasts estão desativados neste servidor.",
-        "bridge_unavailable": "Seu servidor não pode baixar episódios agora.",
-        "library_not_writable": "Seu servidor não pode salvar episódios nesta biblioteca.",
+        "bridge_unavailable": "O teu servidor não pode transferir episódios agora.",
+        "library_not_writable": "O teu servidor não pode guardar episódios nesta biblioteca.",
         "fetch_limit": "Já há cinco episódios a caminho. Tente de novo quando um estiver pronto.",
         "demo_account": "A demonstração só toca episódios que já estão no servidor.",
         "too_large": "Este episódio é grande demais para o seu servidor.",
@@ -3090,7 +3090,7 @@
         "invalidFeedUrl": "Esse endereço de feed não pode ser usado. Confira e tente de novo.",
         "privacyConflict": "Este feed já está sendo adicionado com a outra configuração de privacidade. Espere terminar e tente de novo.",
         "cantAddNow": "Seu servidor não pode adicionar programas novos agora. Tente mais tarde.",
-        "notWritable": "Seu servidor não pode salvar programas nesta biblioteca.",
+        "notWritable": "O teu servidor não pode guardar programas nesta biblioteca.",
         "tooMany": "Cinco programas já estão sendo adicionados. Tente de novo quando um terminar.",
         "other": "Não foi possível seguir esse programa. Tente de novo."
       },
@@ -3135,11 +3135,11 @@
       }
     },
     "import": {
-      "intro": "Traga os programas que você segue em outro app de podcasts. Exporte lá um arquivo OPML e escolha-o aqui. Listas longas são adicionadas de cinco em cinco.",
-      "choose": "Escolher um arquivo",
-      "chooseAnother": "Escolher outro arquivo",
-      "tooLarge": "Esse arquivo tem mais de 1 MB. Exporte uma lista menor.",
-      "unreadable": "Não foi possível ler esse arquivo.",
+      "intro": "Traz os programas que segues noutra app de podcasts. Exporta lá um ficheiro OPML e escolhe-o aqui. Listas longas são adicionadas de cinco em cinco.",
+      "choose": "Escolher um ficheiro",
+      "chooseAnother": "Escolher outro ficheiro",
+      "tooLarge": "Esse ficheiro tem mais de 1 MB. Exporta uma lista mais pequena.",
+      "unreadable": "Não foi possível ler esse ficheiro.",
       "summary": "{{settled}} de {{total}} programas seguidos ou sendo adicionados",
       "rowsLabel": "Programas da lista",
       "entry": "Item {{index}}",
@@ -3163,7 +3163,7 @@
         "doneFailed_other": "Importação terminada. {{count}} programas não foram adicionados. Consulta os estados abaixo."
       },
       "fail": {
-        "notOpml": "Esse arquivo não é uma lista OPML.",
+        "notOpml": "Esse ficheiro não é uma lista OPML.",
         "tooLarge": "Essa lista é grande demais para importar.",
         "other": "Não foi possível importar a lista. Tente de novo."
       },
@@ -3195,7 +3195,7 @@
       "unavailableLeftOut_one": "{{count}} programa sem endereço público ficou de fora.",
       "unavailableLeftOut_other": "{{count}} programas sem endereço público ficaram de fora.",
       "error": {
-        "tooMany": "Programas demais para exportar em um arquivo.",
+        "tooMany": "Programas a mais para exportar num ficheiro.",
         "busy": "Você exportou muito agora há pouco. Tente de novo em um minuto.",
         "other": "Não foi possível exportar seus programas. Tente de novo."
       }
