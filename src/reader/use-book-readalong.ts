@@ -235,9 +235,11 @@ export function useBookReadalong(
             ? qk.readalongLocal(connectionId, libraryId, path, kept ?? '')
             : qk.readalong(connectionId, libraryId, path, generatedAt),
         );
+  // Per answer too: a query removed and read again under the same hash (its connection
+  // removed and added back while a surface shows it) is pinned in its turn.
   useEffect(() => {
     if (readHash) pinMap(client, readHash);
-  }, [client, readHash]);
+  }, [client, readHash, data]);
   // The server's map with no network on the device and no copy here (`offlineState`): held
   // back for the connection (TanStack's `paused`), or its read failed for want of one (a
   // reload offline, where the request went out before anything knew). Not a failure with
