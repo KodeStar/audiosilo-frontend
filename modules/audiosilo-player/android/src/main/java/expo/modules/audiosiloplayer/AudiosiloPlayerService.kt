@@ -175,14 +175,14 @@ class AudiosiloPlayerService : MediaLibraryService() {
   private val carControllers = HashSet<MediaSession.ControllerInfo>()
   private var carMonitor: CarConnectionMonitor? = null
 
-  /** A car play JS must start, waiting for the module's next `load` (see [playFromCar]). */
-  private var pendingPlay: SettableFuture<MediaItemsWithStartPosition>? = null
+  /** A car play JS must start (its car item [id]), waiting for the module's next `load` (see
+   * [playFromCar]). */
+  private class PendingPlay(val id: String, val future: SettableFuture<MediaItemsWithStartPosition>)
+
+  private var pendingPlay: PendingPlay? = null
   /** A car play that timed out. One made during a media button start ends that start too
    * ([playFromCar] watches every pending play, fe#252). */
   private val pendingTimeout = Runnable { failPendingPlay() }
-
-  /** The id of the car play [pendingPlay] waits on (JS may be starting it). */
-  private var pendingPlayId: String? = null
 
   /** Keeps where the engine is on disk, for a resumption after a crash or a kill ([LivePlace]). */
   private var livePlaces: LivePlaceRecorder? = null
@@ -345,12 +345,11 @@ class AudiosiloPlayerService : MediaLibraryService() {
    * the book, or when the items name no book (a load from an older JS). */
   private fun livePlaceNow(): LivePlace? {
     val p = player ?: return null
-    if (p.mediaItemCount == 0 || p.playbackState == Player.STATE_ENDED) return null
+    if (p.playbackState == Player.STATE_ENDED) return null
     val item = p.currentMediaItem ?: return null
     val book = MediaItems.bookOf(item) ?: return null
     val (fileIndex, position) = currentFilePosition() ?: return null
-    val relPath = LoadedFiles.pathOf(item.mediaId, MediaItems.entryOf(item)?.clip ?: false)
-    return LivePlace(book, relPath, fileIndex, position)
+    return LivePlace(book, MediaItems.relPathOf(item), fileIndex, position)
   }
 
   /**
@@ -474,7 +473,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     // The file by its path too (fe#185): JS may reload the book in another file order (an
     // adoption in the download's order) before it reads the press, and the index alone would
     // then name another file.
-    val relPath = item?.let { LoadedFiles.pathOf(it.mediaId, MediaItems.entryOf(it)?.clip ?: false) }
+    val relPath = item?.let(MediaItems::relPathOf)
     val sink = PlayerBridge.sink
     if (sink != null && sink.observingBookmarks) {
       // With its book: JS may not have adopted the book the engine plays yet (a car start
@@ -699,17 +698,11 @@ class AudiosiloPlayerService : MediaLibraryService() {
    *    While a JS runtime exists, even a downloaded book goes through JS: JS may hold another
    *    book as `nowPlaying`, and swapping the engine under it would save one book's place as
    *    another's.
-   * [start] is the spec to start from in place of the item's own (a resumption's, at the live
-   * place: [resumable]).
+   * [item] is the snapshot's (a resumption's starts at the live place: [resumable]); null when
+   * the snapshot lists none.
    */
-  internal fun playFromCar(
-    id: String,
-    requirePlaySpec: Boolean,
-    start: CarPlaySpec? = null,
-  ): ListenableFuture<MediaItemsWithStartPosition> {
-    val snapshot = snapshot()
-    val item = snapshot?.find(id)
-    val spec = item?.play?.let { start ?: it }
+  internal fun playFromCar(item: CarItem?, requirePlaySpec: Boolean): ListenableFuture<MediaItemsWithStartPosition> {
+    val spec = item?.play
     if (item == null || (requirePlaySpec && spec == null)) {
       sendUnavailable()
       return Futures.immediateFailedFuture(UnsupportedOperationException("Unknown car item"))
@@ -733,12 +726,11 @@ class AudiosiloPlayerService : MediaLibraryService() {
     }
     failPendingPlay(notify = false)
     val future = SettableFuture.create<MediaItemsWithStartPosition>()
-    pendingPlay = future
-    pendingPlayId = id
+    pendingPlay = PendingPlay(item.id, future)
     // Whoever asked: this play is now the one a media button start waits on.
     watchResumption(future)
     handler.postDelayed(pendingTimeout, CAR_PLAY_TIMEOUT_MS)
-    PlayerBridge.requestCarPlay(id)
+    PlayerBridge.requestCarPlay(item.id)
     needJs()
     return future
   }
@@ -770,7 +762,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     val snapshot = snapshot()
     val q = query?.trim().orEmpty()
     val match = if (q.isEmpty()) null else snapshot?.findByTitle(q)
-    if (match != null) return playFromCar(match.id, requirePlaySpec = false)
+    if (match != null) return playFromCar(match, requirePlaySpec = false)
     playingQueue(null)?.let {
       failPendingPlay(notify = false)
       return Futures.immediateFuture(it)
@@ -780,7 +772,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
       sendUnavailable()
       return Futures.immediateFailedFuture(UnsupportedOperationException("Nothing to play"))
     }
-    return playFromCar(first.id, requirePlaySpec = false)
+    return playFromCar(first, requirePlaySpec = false)
   }
 
   /** The module's `load` arrived (the app's controller set a queue). Completes a pending car
@@ -792,10 +784,9 @@ class AudiosiloPlayerService : MediaLibraryService() {
     if (pendingPlay == null) return
     // Posted: the app's items are applied right after this callback returns.
     handler.post {
-      val future = pendingPlay ?: return@post
+      val future = pendingPlay?.future ?: return@post
       val p = player ?: return@post
       pendingPlay = null
-      pendingPlayId = null
       handler.removeCallbacks(pendingTimeout)
       val items = p.mediaItems()
       if (items.isEmpty()) {
@@ -815,13 +806,18 @@ class AudiosiloPlayerService : MediaLibraryService() {
    * ([PlayerBridge.cancelCarPlay]): played later, after a media button start was released, it
    * would play in the background with no foreground notification and no controls. */
   private fun failPendingPlay(notify: Boolean = true) {
-    handler.removeCallbacks(pendingTimeout)
-    val future = pendingPlay ?: return
-    pendingPlay = null
-    pendingPlayId?.let(PlayerBridge::cancelCarPlay)
-    pendingPlayId = null
-    future.setException(IllegalStateException("The car play request timed out"))
+    if (!endPendingPlay("The car play request timed out")) return
     if (notify) sendUnavailable()
+  }
+
+  /** Fails the pending car play with [error] and tells JS to drop it; false with none. */
+  private fun endPendingPlay(error: String): Boolean {
+    handler.removeCallbacks(pendingTimeout)
+    val pending = pendingPlay ?: return false
+    pendingPlay = null
+    PlayerBridge.cancelCarPlay(pending.id)
+    pending.future.setException(IllegalStateException(error))
+    return true
   }
 
   /** An error Android Auto shows (the platform session's error state), in the listener's
@@ -871,13 +867,10 @@ class AudiosiloPlayerService : MediaLibraryService() {
     // The pendingPlay failed below reaches watchResumption after this: nothing left to end.
     buttonStart = false
     handler.removeCallbacksAndMessages(null)
-    pendingPlay?.setException(IllegalStateException("Service stopped"))
-    pendingPlay = null
     // A car request JS never received dies with the service: delivered to a JS that starts
     // listening later (the car long gone), it would start the book on the phone. One it did
     // receive is dropped there too.
-    pendingPlayId?.let(PlayerBridge::cancelCarPlay)
-    pendingPlayId = null
+    endPendingPlay("Service stopped")
     PlayerBridge.pendingCarPlayId = null
     carMonitor?.stop()
     carMonitor = null

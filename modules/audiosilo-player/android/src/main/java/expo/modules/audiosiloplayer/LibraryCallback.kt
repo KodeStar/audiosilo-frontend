@@ -178,7 +178,7 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
     if (single != null && single.localConfiguration == null) {
       // No id: a voice or search play (Media3's onPlayFromSearch item carries only the query).
       if (single.mediaId.isEmpty()) return service.playFromSearch(single.requestMetadata.searchQuery)
-      return service.playFromCar(single.mediaId, requirePlaySpec = false)
+      return service.playFromCar(service.snapshot()?.find(single.mediaId), requirePlaySpec = false)
     }
     // Never another app's playable URI (see onAddMediaItems).
     return Futures.immediateFailedFuture(UnsupportedOperationException("Only car items play here"))
@@ -224,7 +224,7 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
       return item?.play?.let { Futures.immediateFuture(MediaItems.startPositionOf(it)) } ?: nothingToResume()
     }
     return service.watchResumption(
-      item?.let { service.playFromCar(it.id, requirePlaySpec = true, start = it.play) } ?: nothingToResume(),
+      item?.let { service.playFromCar(it, requirePlaySpec = true) } ?: nothingToResume(),
     )
   }
 
