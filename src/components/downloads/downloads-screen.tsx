@@ -13,6 +13,7 @@ import { Text } from '@/components/ui/text';
 import {
   episodeShowTitle,
   groupByServer,
+  growingBytes,
   isEpisodeEntry,
   orphanDownloads,
   type ServerRef,
@@ -150,7 +151,14 @@ export function DownloadsScreen() {
     .filter((s) => !entries[downloadKey(s.book.connectionId, s.book.libraryId, s.book.path)]);
 
   const scope = storage.estimate?.scope ?? (Platform.OS === 'web' ? 'browser' : 'device');
-  const bar = storageBar(allGroups, storage.estimate, storage.measured);
+  // What the downloads under way have written, so the figure grows with them (PLAYER-05).
+  const growing = useDownloads((s) =>
+    growingBytes(
+      s.entries,
+      servers.map((x) => x.id),
+    ),
+  );
+  const bar = storageBar(allGroups, storage.estimate, storage.measured, growing);
   const summary =
     scope === 'device'
       ? t('downloads.summary.device', { size: formatBytes(bar.used) })

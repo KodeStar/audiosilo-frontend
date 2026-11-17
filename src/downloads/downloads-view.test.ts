@@ -7,6 +7,7 @@ import {
   isEpisodeEntry,
   orphanDownloads,
   splitDownloads,
+  growingBytes,
   storageBar,
   unsupportedReason,
   visibleDownloads,
@@ -14,6 +15,7 @@ import {
 import type { DownloadEntry, DownloadStatus } from './types';
 
 const GB = 1024 ** 3;
+const MB = 1024 ** 2;
 
 function entry(
   path: string,
@@ -145,6 +147,13 @@ describe('storageBar', () => {
     expect(bar.scale).toBe(7);
   });
 
+  // PLAYER-05: the figure grows while a download runs, not only once it lands.
+  it('counts what the downloads under way have written', () => {
+    expect(storageBar([g('a', 10 * MB)], null, 12 * MB, 5 * MB).used).toBe(15 * MB);
+    // A measure read mid-download that already holds those bytes is not counted twice.
+    expect(storageBar([g('a', 10 * MB)], null, 18 * MB, 5 * MB).used).toBe(18 * MB);
+  });
+
   it('prefers the measured total, and skips empty servers', () => {
     const bar = storageBar([g('a', 10), g('b', 0)], null, 25);
     expect(bar.used).toBe(25);
@@ -219,5 +228,22 @@ describe('episode downloads', () => {
       'The Daily',
     );
     expect(episodeShowTitle(withBook({ episode: { show_path: 'Pods/Daily' } }))).toBe('Daily');
+  });
+});
+
+describe('growingBytes', () => {
+  const entry = (connectionId: string, status: DownloadEntry['status'], bytes: number) =>
+    ({ connectionId, status, bytes }) as DownloadEntry;
+
+  it("sums the listener's running downloads, in whole megabytes", () => {
+    const entries = {
+      a: entry('c1', 'downloading', 3 * MB + 500),
+      b: entry('c1', 'queued', 0),
+      c: entry('c1', 'error', MB),
+      d: entry('c1', 'downloaded', 40 * MB),
+      e: entry('c2', 'downloading', 9 * MB),
+    };
+    expect(growingBytes(entries, ['c1'])).toBe(3 * MB);
+    expect(growingBytes(entries, [])).toBe(0);
   });
 });

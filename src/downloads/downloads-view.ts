@@ -187,10 +187,13 @@ export function storageBar(
   groups: readonly Pick<ServerGroup, 'connectionId' | 'name' | 'bytes'>[],
   estimate: StorageEstimate | null,
   measured: number | null,
+  growing = 0,
 ): StorageBar {
   const listed = groups.filter((g) => g.bytes > 0);
   const sum = listed.reduce((s, g) => s + g.bytes, 0);
-  const used = Math.max(sum, measured ?? 0);
+  // The downloads under way count as they grow (PLAYER-05); `measured` is read only as a
+  // book lands or goes, and may hold what they had written by then.
+  const used = Math.max(sum + growing, measured ?? 0);
   const segments: StorageSegment[] = listed.slice(0, CHART_COLOURS).map((g, i) => ({
     kind: 'server',
     connectionId: g.connectionId,
@@ -211,6 +214,22 @@ export function storageBar(
   }
   const scale = estimate ? Math.max(estimate.capacity, used) : used;
   return { scale, segments, used };
+}
+
+const GROWING_STEP = 1024 * 1024;
+
+/** What the given connections' running downloads have written so far, in whole
+ * megabytes: a value for a selector that moves as they grow without changing on every
+ * progress tick (`storageBar`'s `growing`). */
+export function growingBytes(
+  entries: Record<string, DownloadEntry>,
+  connectionIds: readonly string[],
+): number {
+  const theirs = new Set(connectionIds);
+  let sum = 0;
+  for (const e of Object.values(entries))
+    if (e.status === 'downloading' && theirs.has(e.connectionId)) sum += e.bytes;
+  return Math.floor(sum / GROWING_STEP) * GROWING_STEP;
 }
 
 /** Why downloads can't work in this browser, most fundamental first:

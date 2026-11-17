@@ -209,6 +209,18 @@ describe('DownloadsScreen', () => {
     expect(store().cancel).toHaveBeenCalledWith('a', 1, 'Running');
   });
 
+  // PLAYER-05: the storage figure grows with a running download, not only once it lands.
+  it('grows the storage figure while a download runs', async () => {
+    const MB = 1024 ** 2;
+    const running = (bytes: number) =>
+      entry('Running', 'downloading', { progress: 0.2, bytes, totalBytes: 50 * MB });
+    setEntries(running(10 * MB));
+    await mount();
+    expect(screen.getByText(/10 MB of about/)).toBeTruthy();
+    await act(async () => setEntries(running(41 * MB)));
+    expect(screen.getByText(/41 MB of about/)).toBeTruthy();
+  });
+
   it('offers no dead Retry for a book this browser now plays transcoded', async () => {
     Platform.OS = 'web';
     mockCaps = { transcode: true };
