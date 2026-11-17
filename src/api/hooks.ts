@@ -922,7 +922,7 @@ function hidesSpoilers(queryKey: readonly unknown[]): boolean {
  * and the goal when it can move a finish (they count finish dates), and the book's
  * `spoilers=hide` metadata when it can move the saved place the server cuts that at
  * (the position, or the finished flag). */
-export function invalidateProgressDependents(
+function invalidateProgressDependents(
   qc: QueryClient,
   cid: string,
   libraryId: number,

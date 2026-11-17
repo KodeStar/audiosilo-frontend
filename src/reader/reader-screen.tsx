@@ -175,6 +175,9 @@ export function ReaderScreen({
   // saved place falls on), not a move: saving it would pull a place read at another page
   // size back to this page's start (fe#172). The first move saves.
   const landing = useRef(false);
+  // Whether the reader moved since it opened: until then where it is is that landing, and a
+  // Stay saves the place it opened at instead.
+  const moved = useRef(false);
   const [current, setCurrent] = useState<Place | null>(null);
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<ReaderFailure | null>(null);
@@ -211,6 +214,12 @@ export function ReaderScreen({
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
   };
+  /** Drop the save waiting for its debounce, if any. */
+  const cancelSave = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    pending.current = null;
+  };
   // The reader follows the narration (`onFollowing`): no place is saved meanwhile (the
   // narration turns the pages; a save would carry another device's reading along with
   // it). Once the listener turns away, where they are is saved, and every move after.
@@ -218,18 +227,14 @@ export function ReaderScreen({
     following.current = value;
     setFollowingShown(value);
     if (value) {
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = null;
-      pending.current = null;
+      cancelSave();
     } else if (atNow.current) {
       scheduleSave(atNow.current);
     }
   };
   const flushSave = useLatest(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
     const next = pending.current;
-    pending.current = null;
+    cancelSave();
     if (!next || next.cfi === lastSaved.current) return;
     lastSaved.current = next.cfi;
     void saveReaderPlace(api, connectionId, libraryId, path, next);
@@ -286,6 +291,7 @@ export function ReaderScreen({
       case 'opened':
         shownOnce.current = true;
         landing.current = true;
+        moved.current = false;
         setOpened({ title: message.title, toc: message.toc, rtl: message.rtl });
         return;
       case 'progress':
@@ -299,6 +305,7 @@ export function ReaderScreen({
           landing.current = false;
           return;
         }
+        moved.current = true;
         if (following.current) return;
         scheduleSave(atNow.current);
         return;
@@ -382,13 +389,36 @@ export function ReaderScreen({
   const here = show && current ? { cfi: current.cfi, progression: current.fraction } : null;
   const offer = answer && here ? jumpOffer(answer, here) : null;
   const notSaved = show && (unsaved === 'shown' || (unsaved !== null && signedOut !== undefined));
-  const acknowledge = useLatest(() => {
-    if (answer) void adoptServerPlace(connectionId, libraryId, path, answer.saved.reading_progress);
+  const acknowledge = useLatest((): Promise<void> => {
+    const adopted = answer
+      ? adoptServerPlace(connectionId, libraryId, path, answer.saved.reading_progress)
+      : Promise.resolve();
     setAnswer(null);
+    return adopted;
+  });
+  // Stay: the page on screen is saved at once, on the version just acknowledged, as a
+  // listening Stay is sent at once (fe#321). Left to the next page turn, the other device's
+  // place stood on the server meanwhile (and for good if the reader closed first), and a
+  // save captured before the acknowledgement landed went on the old version, kept as the
+  // other place again.
+  const stay = useLatest(() => {
+    const adopted = acknowledge();
+    // Not moved since it opened (an offer the open's own replay brought): the place it opened
+    // at, never the start of the page that place landed on (fe#172).
+    const place =
+      !moved.current && at?.cfi !== undefined && at.fraction !== undefined
+        ? { cfi: at.cfi, progression: at.fraction }
+        : atNow.current;
+    if (!place || following.current) return;
+    cancelSave();
+    lastSaved.current = place.cfi;
+    void adopted
+      .catch(() => undefined)
+      .then(() => saveReaderPlace(api, connectionId, libraryId, path, place));
   });
   const alreadyThere = here !== null && answer !== null && offer === null && !answer.seen;
   useEffect(() => {
-    if (alreadyThere) acknowledge();
+    if (alreadyThere) void acknowledge();
   }, [alreadyThere, acknowledge]);
 
   // The host starts before the place is known (fe#164: the EPUB is fetched meanwhile), and
@@ -550,9 +580,9 @@ export function ReaderScreen({
                   offer={offer}
                   onJump={() => {
                     host.current?.goto({ cfi: offer.cfi });
-                    acknowledge();
+                    void acknowledge();
                   }}
-                  onStay={acknowledge}
+                  onStay={stay}
                 />
               ) : null}
             </View>

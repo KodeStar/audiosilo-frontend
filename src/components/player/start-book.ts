@@ -17,6 +17,7 @@ import {
 import { isAbsentEpisode } from '@/playback/episode-fetch-rules';
 import { usePlayer } from '@/playback/store';
 import { mayActFor } from '@/stores/profiles';
+import { withTimeout } from '@/lib/with-timeout';
 
 import type { PlayTarget } from './play-route';
 import { dropStartedBook } from './drop-started';
@@ -53,18 +54,14 @@ export const FRESH_SOURCE_WAIT_MS = 3_000;
 async function startSourceOf(target: PlayTarget): Promise<BookSource | null> {
   const client = downloadedEntryOf(target) ? resolveClient(target.connectionId) : null;
   if (client && isDeviceOnline() && isReachable(target.connectionId)) {
-    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      return await Promise.race([
+      return await withTimeout(
         fetchBookSource(target, client),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error('slow server')), FRESH_SOURCE_WAIT_MS);
-        }),
-      ]);
+        FRESH_SOURCE_WAIT_MS,
+        'slow server',
+      );
     } catch {
       // The download's own copy (below).
-    } finally {
-      clearTimeout(timer);
     }
   }
   return bookSourceOf(target);

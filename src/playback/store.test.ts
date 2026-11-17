@@ -66,6 +66,12 @@ const mockLoadInitialProgress = jest.fn(async (..._args: unknown[]): Promise<Res
   kind: 'empty',
 }));
 const mockReadMirror = jest.fn(async (..._args: unknown[]): Promise<unknown> => null);
+type Stamped = { updated_at: string };
+// No clock skew is known here: the two stamps as they are.
+const mockMirrorIsNewest = jest.fn(
+  async (record: Stamped, place: Stamped): Promise<boolean> =>
+    Date.parse(record.updated_at) >= Date.parse(place.updated_at),
+);
 jest.mock('./progress-sync', () => ({
   saveProgress: (...args: unknown[]) => mockSaveProgress(...args),
   // This device's own record between two saves (`placeLoop`).
@@ -75,6 +81,7 @@ jest.mock('./progress-sync', () => ({
   getDeviceId: jest.fn(async () => 'dev-1'),
   loadInitialProgress: (...args: unknown[]) => mockLoadInitialProgress(...args),
   readMirror: (...args: unknown[]) => mockReadMirror(...args),
+  mirrorIsNewest: (...args: [Stamped, Stamped]) => mockMirrorIsNewest(...args),
 }));
 
 // Smart Speed's counts: what the store hands over, and when it asks for a write.
@@ -141,7 +148,7 @@ import { useSettings } from '@/stores/settings';
 
 import { bookFileSpecs } from './book-queue';
 import { clearJumpUndo, startJumpUndo, useJumpUndo } from './jump-undo';
-import { flushConnection } from './progress-sync';
+import { flushConnection, writeMirror } from './progress-sync';
 import { useSleepTimer } from './sleep-timer';
 import { useReachability } from '@/api/reachability';
 import { AutoplayBlockedError, PlaybackStartError } from './types';
@@ -153,6 +160,7 @@ import {
   onPickedUpAgain,
   selectBookKey,
   selectBookPosition,
+  selectEndsPartial,
   selectIsPlaying,
   selectIsTransportLive,
   stopPlaybackForConnection,
@@ -1041,6 +1049,21 @@ describe('the speed a book starts at', () => {
     expect(usePlayer.getState().rate).toBe(1.8);
   });
 
+  // The cached place is the server's row, stamped by its server's clock; the mirror's record
+  // a capture of this device's. Which is newer is the mirror's own rule (`mirrorIsNewest`,
+  // by one clock), never the two stamps as they are (fe#259).
+  it("takes this device's later record over a row stamped by a server whose clock is ahead", async () => {
+    const mine = mirror(1.4, '2026-10-01T00:00:30Z');
+    // 90 s ahead: the row was written at 00:00:00 here.
+    const row = makeProgress({ playback_speed: 1.8, updated_at: '2026-10-01T00:01:30Z' });
+    mockReadMirror.mockResolvedValueOnce(mine);
+    (queryClient.getQueryData as jest.Mock).mockReturnValueOnce(row);
+    mockMirrorIsNewest.mockResolvedValueOnce(true);
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 30);
+    expect(mockMirrorIsNewest).toHaveBeenLastCalledWith(mine, row);
+    expect(usePlayer.getState().rate).toBe(1.4);
+  });
+
   // Decision 7 regression (8b-1, D3): the one change here is the default a book with no
   // speed of its own starts at (`listenerSettings`): 1x for a kids profile.
   describe('in kids mode', () => {
@@ -1580,6 +1603,26 @@ describe('a downloaded book re-ordered on its server', () => {
     // The book unloads: the server's answer in the cache is still not taken.
     usePlayer.setState({ nowPlaying: null });
     expect(order()).toEqual(paths);
+  });
+
+  // fe#273: the end credits read the book's end from the loaded queue (`over` in
+  // end-credits.tsx: the place against the queue's length, never on a partial queue). An
+  // old-order download ends in another file than the server's order does, and is still
+  // the whole book.
+  it("ends the whole book at the old order's last file: finished, never a partial end", async () => {
+    await usePlayer.getState().playBook('c1', 2, book, chaptersIn(paths), 0);
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('playing', 40, { trackIndex: 1, duration: 50 }));
+    pushSnapshot(snap('ended', 50, { trackIndex: 1, duration: 50 }));
+    await flushMicrotasks();
+    const s = usePlayer.getState();
+    expect(selectEndsPartial(s)).toBe(false);
+    expect(selectBookPosition(s)).toBe(100);
+    expect(mockSaveProgress.mock.calls.at(-1)?.[1]).toMatchObject({
+      position: 100,
+      duration: 100,
+      finished: true,
+    });
   });
 
   it("plays the download's order when a start has no chapters for it", async () => {
@@ -2431,10 +2474,15 @@ describe('plays a downloaded book whose connection is gone', () => {
     try {
       await usePlayer.getState().playBook('gone', 2, makeBook(), undefined);
       mockSaveProgress.mockClear();
+      (writeMirror as jest.Mock).mockClear();
       pushSnapshot(snap('playing', 40));
       pushSnapshot(snap('paused', 40));
       await flushMicrotasks();
       expect(mockSaveProgress).not.toHaveBeenCalled();
+      // This device's record still keeps the place (fe#265): an offline Resume reads it.
+      expect(writeMirror).toHaveBeenCalledWith(
+        expect.objectContaining({ connectionId: 'gone', position: 40 }),
+      );
     } finally {
       mockResolveClient.mockReturnValue(fakeClient);
     }

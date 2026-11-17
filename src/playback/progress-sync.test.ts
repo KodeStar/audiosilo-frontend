@@ -14,6 +14,7 @@ import {
   onHeldSave,
   flushQueue,
   loadInitialProgress,
+  mirrorIsNewest,
   answerOffer,
   ignoreOffer,
   bookPlace,
@@ -22,6 +23,7 @@ import {
   noteClockSkew,
   pendingSaveCount,
   type PlacedProgress,
+  progressToSave,
   type ProgressSave,
   readLocalPlaces,
   readMirror as readMirrorOf,
@@ -860,6 +862,7 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
     // The stored skews come from the outbox, their one reader (fe#211): a stand-in here.
     let stored: Record<string, number> = {};
     beforeAll(() => provideStoredSkews(async () => stored));
+    afterAll(() => provideStoredSkews(null));
     beforeEach(() => {
       stored = {};
     });
@@ -915,6 +918,77 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
       );
       expect(r).toMatchObject({ file: { path: 'A/Book/02.mp3', pos: 600 } });
       expect(await readMirrorOf(cid, 1, 'A/Book')).toMatchObject({ file: 'A/Book/02.mp3' });
+    });
+
+    // fe#259: keep-newest compared the server's stamp with this device's, so with the
+    // server's clock S ahead a row read back hid this device's own captures for S.
+    it("keeps this device's capture made after a server row by this device's clock", async () => {
+      noteClockSkew('c1', 20_000);
+      await writeMirror(progressToSave('c1', 1, 'A/Book', echo)); // 00:00:02 here
+      await writeMirror({ ...save, position: 4200, updated_at: '2026-01-02T00:00:05Z' });
+      expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ position: 4200 });
+      expect(await readMirrorOf('c1', 1, 'A/Book')).not.toHaveProperty('server_clock');
+    });
+
+    it('a server row newer by its own clock than the capture still replaces it', async () => {
+      noteClockSkew('c1', 20_000);
+      await writeMirror({ ...save, position: 4000, updated_at: '2026-01-02T00:00:01Z' });
+      await writeMirror(progressToSave('c1', 1, 'A/Book', echo)); // 00:00:02 here
+      expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({
+        position: 4100,
+        server_clock: true,
+      });
+    });
+
+    it("a server behind: its row after the capture by this device's clock wins", async () => {
+      noteClockSkew('c1', -20_000);
+      await writeMirror({ ...save, position: 4000, updated_at: '2026-01-02T00:00:30Z' });
+      await writeMirror(progressToSave('c1', 1, 'A/Book', echo)); // 00:00:42 here
+      expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ position: 4100 });
+    });
+
+    // The place the app has cached against the mirror (`knownProgress` in the store): an
+    // explicit start reads the book's speed and its finish from the newer of the two.
+    describe('mirrorIsNewest', () => {
+      const capture = { ...save, position: 4200, updated_at: '2026-01-02T00:00:05Z' };
+      // The server's own row: it has a version.
+      const row = makeProgress({ ...echo, version: 7 });
+
+      it("a capture made after the server's row by this device's clock is the newest", async () => {
+        // The row is 00:00:02 here: raw, its 00:00:22 stamp hid the 00:00:05 capture.
+        expect(await mirrorIsNewest(capture, row)).toBe(false);
+        noteClockSkew('c1', 20_000);
+        expect(await mirrorIsNewest(capture, row)).toBe(true);
+        // A row after the capture by this device's clock too still wins.
+        const later = makeProgress({ ...row, updated_at: '2026-01-02T00:00:30Z' });
+        expect(await mirrorIsNewest(capture, later)).toBe(false);
+      });
+
+      it("a record of this device's (the server's row beside it) is on this device's clock", async () => {
+        noteClockSkew('c1', 20_000);
+        const mine: PlacedProgress = { ...row, version: 0, server: row };
+        expect(await mirrorIsNewest(capture, mine)).toBe(false);
+        // The mirror's own copy of the server's row, against that row: the same record.
+        expect(await mirrorIsNewest(progressToSave('c1', 1, 'A/Book', row), row)).toBe(true);
+      });
+
+      it("a place read offline from the mirror's copy of a server row never hides a later capture", async () => {
+        noteClockSkew('c1', 20_000);
+        // The mirror held the server's row (00:00:02 here), and the book's page read it with
+        // its server away: a place with no version, stamped 00:00:22.
+        await writeMirror(progressToSave('c1', 1, 'A/Book', row));
+        const offline = (await bookPlace(undefined, 'c1', 1, 'A/Book'))!;
+        expect(offline).toMatchObject({ version: 0, updated_at: echo.updated_at });
+        expect(offline).not.toHaveProperty('server');
+        // Then a speed chosen offline, 00:00:05 here: the mirror takes it, and it is the newest.
+        await writeMirror({ ...capture, playback_speed: 1.5 });
+        const mirror = (await readMirrorOf('c1', 1, 'A/Book'))!;
+        expect(mirror).toMatchObject({ playback_speed: 1.5 });
+        expect(await mirrorIsNewest(mirror, offline)).toBe(true);
+        // With no skew known the stamps stand as they are.
+        noteClockSkew('c1', 0);
+        expect(await mirrorIsNewest(mirror, offline)).toBe(false);
+      });
     });
 
     it('still drops a file place older than the skew allows', async () => {
@@ -1242,6 +1316,17 @@ describe('the replay guard on the legacy PUT path (fe#198)', () => {
         saveProgress(serverWith(null), { ...guarded, guard_session: 's-live' }),
       ).resolves.toBe('saved');
       expect(guardSettled('s-live')).toBe(true);
+    });
+
+    // fe#259: the settled sessions were never pruned; only the newest 50 are kept.
+    it('keeps the newest settled sessions only', async () => {
+      const api = serverWith(null);
+      for (let i = 0; i < 51; i++) {
+        await saveProgress(api, { ...guarded, guard_session: `s-many-${i}` });
+      }
+      expect(guardSettled('s-many-0')).toBe(false);
+      expect(guardSettled('s-many-1')).toBe(true);
+      expect(guardSettled('s-many-50')).toBe(true);
     });
 
     it('a read with no answer keeps the guarded save queued for later', async () => {

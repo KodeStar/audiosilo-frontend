@@ -29,6 +29,7 @@ import { isDeviceOnline } from '@/lib/device-online';
 import { canAutoDownload } from '@/lib/network';
 import { flushReadingConnection } from '@/reader/reading-progress';
 import { quietOffScreen } from '@/lib/visible-store';
+import { withTimeout } from '@/lib/with-timeout';
 import { mayActFor } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
@@ -66,6 +67,7 @@ import {
   sendOnPageHide,
   type SpanEnd,
   spanIsBareMove,
+  spanSaysSomething,
   spanToEvent,
   storeOpenSpan,
   usesListeningStay,
@@ -80,6 +82,8 @@ import {
   getDeviceId,
   guardSettled,
   loadInitialProgress,
+  mirrorIsNewest,
+  mirrorTimeOf,
   type PlacedProgress,
   type ProgressSave,
   readMirror,
@@ -498,8 +502,13 @@ type PlayerState = {
  * natural end AND for a manual "mark as finished" mid-book. A forced finish bypasses the
  * position/slip guards (they exist to protect an in-progress place, not a deliberate
  * completion) and records the whole-book duration so the book reads as 100% done.
- * `local`: only this device's own record of the place, with no request (`placeLoop`). */
-async function persist(opts?: { forceFinished?: boolean; local?: boolean }) {
+ * `local`: only this device's own record of the place, with no request (`placeLoop`).
+ * Resolves the whole-book place saved (this device's record of it, and its server's save
+ * when one goes), else undefined: none saved, or the server held it back or refused it. */
+async function persist(opts?: {
+  forceFinished?: boolean;
+  local?: boolean;
+}): Promise<number | undefined> {
   const { nowPlaying, snapshot, rate, loadingBook } = usePlayer.getState();
   if (!nowPlaying) return;
   // A book whose load has not landed has no place here yet: the snapshot is still the
@@ -515,7 +524,8 @@ async function persist(opts?: { forceFinished?: boolean; local?: boolean }) {
   // tab's (`catchingUp`): dated now, it would be the newest in the mirror the tabs share.
   if (behindOtherTab(nowPlaying) && !opts?.forceFinished) return;
   // A downloaded book started while its connection wasn't there (a session that could not
-  // be read yet: a CarPlay launch with the phone locked) saves from when it is back.
+  // be read yet: a CarPlay launch with the phone locked) keeps this device's record of its
+  // place meanwhile, and sends from when it is back (below).
   // A switch takes the next book's client before that book is `nowPlaying` (`switchBook`;
   // its resume lookup and load are awaits away): a save meanwhile (a lock-screen pause, the
   // sleep timer) is still the previous book's, and goes to its own server.
@@ -523,7 +533,6 @@ async function persist(opts?: { forceFinished?: boolean; local?: boolean }) {
     apiRefFor !== null && apiRefFor !== nowPlaying.connectionId
       ? resolveClient(nowPlaying.connectionId)
       : (apiRef ??= resolveClient(nowPlaying.connectionId));
-  if (!api) return;
   const forceFinished = opts?.forceFinished ?? false;
   // Held while a reconcile check is out (a finish is the listener's own and still saves).
   // Past its deadline the hold is over even when its timer has not fired (Android pauses
@@ -588,19 +597,22 @@ async function persist(opts?: { forceFinished?: boolean; local?: boolean }) {
   if (usesListeningSync(nowPlaying.connectionId)) {
     await writeMirror(save);
     if (span && sameBook(span, nowPlaying) && !forceFinished && end) span.to = end;
-    return;
+    return position;
   }
   // The legacy PUT path's own record alone (`placeLoop`): the mirror, and no request. A
   // server known to be away is sent nothing either way (`saveProgress` writes the mirror
   // and queues the save), so that capture goes whole and the queue holds the same place.
-  if (opts?.local && isReachable(nowPlaying.connectionId)) {
+  // No client (the connection not there yet): the mirror alone, so the device record does
+  // not stand still while the download plays (fe#265).
+  if (!api || (opts?.local && isReachable(nowPlaying.connectionId))) {
     await writeMirror(save);
-    return;
+    return position;
   }
   const outcome = await saveProgress(api, save);
   // Once a guarded save is PUT, the server had nothing further on: the session's saves go
   // straight on from here.
   if (guarded && outcome === 'saved' && placeGuard === guard) placeGuard = null;
+  return outcome === 'saved' || outcome === 'queued' ? position : undefined;
 }
 
 /** Save the loaded book's place now: the listener answered Stay to a place its server held
@@ -687,9 +699,11 @@ async function knownProgress(
     queryClient.getQueryData<PlacedProgress | null>(qk.progress(connectionId, libraryId, path)) ??
     null;
   const mirror = await readMirror(connectionId, libraryId, path).catch(() => null);
+  // By one clock (`mirrorIsNewest`): the cached place may be the server's row, stamped by
+  // its server's clock, and the mirror's record a capture of this device's.
   const newest =
     cached && mirror
-      ? Date.parse(mirror.updated_at) >= Date.parse(cached.updated_at)
+      ? (await mirrorIsNewest(mirror, cached).catch(() => false))
         ? mirror
         : cached
       : (cached ?? mirror);
@@ -826,7 +840,8 @@ function haltAndPersist() {
 // out of `playing`), a move (the new place opens the next span with the move's reason), a stop,
 // a book switch and the end. Offline, a tick leaves the span open (cut only after an hour,
 // `MAX_SPAN_MS`), so a day offline is a handful of events. Online or offline, the open span is
-// stored every 5 s (`OPEN_SPAN_KEEP_MS`), so a kill loses at most that. The persist guards
+// stored every 5 s (`OPEN_SPAN_KEEP_MS`), so a kill loses at most that, and a move's span as it
+// opens, so a kill never loses the move. The persist guards
 // above (the load, the hot-swap, an adoption's reload, the resume floor) keep a suspicious
 // place out of a span too: a span then ends where it was last seen.
 
@@ -949,6 +964,10 @@ function openListeningSpan(at?: SpanEnd) {
   nextStart = 'resume';
   const opened = spanAt(np, here, start, now);
   span = opened;
+  // A move's span (a seek, a Stay, starting again) is stored now, not at the next keep
+  // (`OPEN_SPAN_KEEP_MS`): a kill in between would lose the move itself (fe#321). Behind the
+  // close of the span before it (`spanOps` keeps the order), so the stored one is this.
+  if (spanSaysSomething(opened)) void storeOpenSpan({ ...opened });
   if (finishSent === contentKeyOf(np)) finishSent = null;
   void baseVersionOf(np).then((base) => {
     opened.baseVersion = base;
@@ -1210,10 +1229,11 @@ function sendFinish(np: NowPlaying) {
 /**
  * "Mark as finished" outside the player (the book page; `finish-route.ts`, fe#208), on a
  * server that takes listening events: a `finish` event, queued offline like any other.
- * When it is the loaded book, its open span closes first and goes before the finish (a
- * book still playing opens its next span on the next tick), and the player's own end
- * does not send a second one until the book plays again. This device's mirror records
- * the book finished at its end, so offline it reads finished and Play starts it again.
+ * The caller has stopped and unloaded the loaded book first (`leaveFinishedBook`), its span
+ * closed ahead of the finish; one loaded again since has its open span closed first all the
+ * same, and the player's own end does not send a second finish until the book plays again.
+ * This device's mirror records the book finished at its end, so offline it reads finished
+ * and Play starts it again.
  */
 async function recordFinish(ref: FinishRef): Promise<void> {
   const np = usePlayer.getState().nowPlaying;
@@ -1231,6 +1251,32 @@ async function recordFinish(ref: FinishRef): Promise<void> {
   const id = deviceId || (await getDeviceId());
   await writeMirror(finishedSave({ ...ref, playback_speed: speed }, id, at)).catch(() => undefined);
   await finishAfter(closing, ref, at, () => refreshAfterFinish(ref));
+}
+
+/**
+ * "Mark as finished" outside the player of the loaded book (the book page, fe#258): it stops
+ * and unloads, as the book's own end does (`finishBook`). Left loaded, the playing book went
+ * on recording listening past its finish (the server ended finished at a later place), any
+ * later save of the engine's place stamped after the finish put the book back in progress
+ * (the device record after an offline finish was delivered, a PUT over the finish), and its
+ * page went on reading "Resume". Its place is saved first, as a stop saves it (resolves once
+ * that save is over, so the finish the caller records next comes after it, a PUT included,
+ * with the place saved: the one an Undo goes back to, which the page's progress, read before
+ * that listening, can be behind), and its span closes there (a finish waits for that close:
+ * `finishAfter`). Nothing for another book.
+ */
+function leaveFinishedBook(ref: ContentRef): Promise<number | undefined> {
+  const { nowPlaying: np, rate } = usePlayer.getState();
+  if (!np || !sameBook(np, ref)) return Promise.resolve(undefined);
+  clearPlaybackIntent();
+  stopSaveLoop();
+  closeListeningSpan();
+  endHistory();
+  // Reads the book synchronously, before it is unloaded below.
+  const saved = persist().catch(() => undefined);
+  usePlayer.setState({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate } });
+  void service?.reset();
+  return saved;
 }
 
 /** Each book's mirror record before its Mark as finished (`recordFinish`), for its Undo
@@ -1262,9 +1308,10 @@ async function unrecordFinish(ref: UndoRef): Promise<void> {
     // Sync v2 fields stay the mirror's own (`writeMirror` keeps them): an ack since is newer.
     const stamp = Date.parse(now.updated_at);
     const at = Number.isFinite(stamp) ? new Date(stamp + 1).toISOString() : now.updated_at;
+    // By the clock of the stamp it took (`localTimeOf`): `now`'s `server_clock`.
     const back: ProgressSave = {
       ...(prior && !prior.finished
-        ? { ...prior, ack_version: undefined, answered: undefined }
+        ? { ...prior, ack_version: undefined, answered: undefined, server_clock: now.server_clock }
         : { ...now, finished: false, position: ref.position }),
       updated_at: at,
     };
@@ -1275,6 +1322,7 @@ async function unrecordFinish(ref: UndoRef): Promise<void> {
 
 setFinishRecorder({
   takesEvent: usesListeningSync,
+  leave: leaveFinishedBook,
   record: recordFinish,
   withdraw: withdrawFinish,
   unrecord: unrecordFinish,
@@ -1628,11 +1676,14 @@ async function otherTabsPlace(
   const record = await readMirror(loaded.connectionId, loaded.libraryId, loaded.path).catch(
     () => null,
   );
+  // By this device's clock: a server's row (this browser's own place read back) is stamped
+  // by the server's, which may be ahead (fe#262).
+  const savedAt = record ? await mirrorTimeOf(record).catch(() => Number.NaN) : Number.NaN;
   const { nowPlaying: np, snapshot, loadingBook } = usePlayer.getState();
   // Another book, a place not known yet (a load), or the listener moved meanwhile.
   if (!np || !sameBook(np, loaded) || loadingBook || localMoves !== moves) return null;
   if (!record || record.device_id !== (deviceId || cachedDeviceId())) return null;
-  if (!(Date.parse(record.updated_at) >= since)) return null;
+  if (!(savedAt >= since)) return null;
   const stopped = { ...record, filePos: record.file_pos };
   const here = toBookPosition(np.queue.offsets, snapshot.trackIndex, snapshot.position);
   return tabPlaceOf(np, here, stopped, opts);
@@ -1689,7 +1740,8 @@ function adoptTabPlace(np: NowPlaying, place: TabPlace) {
  * is offered. Resolves the place taken, else null; never rejects (a play that waits on it
  * goes on from where the engine is: what `adoptTabPlace` set for the place is put back, or a
  * floor at a place far ahead that the engine never reached would refuse every save and
- * span of the play that follows, `SLIP_TOLERANCE`).
+ * span of the play that follows, `SLIP_TOLERANCE`). A seek that has not settled within
+ * `TAB_MOVE_MAX_MS` is taken as refused, until it lands after all (`landTabPlaceLate`).
  */
 async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<TabPlace | null> {
   const { nowPlaying: np, snapshot } = usePlayer.getState();
@@ -1699,9 +1751,14 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
   const playPos = play?.pos;
   adoptTabPlace(np, place);
   const moves = localMoves;
+  let seek: Promise<void> | undefined;
   try {
-    if (place.index === snapshot.trackIndex) await svc.seekTo(place.positionInTrack);
-    else await svc.skipToTrack(place.index, place.positionInTrack);
+    seek = Promise.resolve(
+      place.index === snapshot.trackIndex
+        ? svc.seekTo(place.positionInTrack)
+        : svc.skipToTrack(place.index, place.positionInTrack),
+    );
+    await withTimeout(seek, TAB_MOVE_MAX_MS, 'the move did not settle');
     return place;
   } catch (e) {
     console.warn('[player] could not take the place another tab left', e);
@@ -1711,10 +1768,47 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
       nextStart = before.nextStart;
       unfinishDue = before.unfinishDue;
       if (play && playPos !== undefined) play.pos = playPos;
+      // Given up on, not refused: the seek may still land (a refused one never does).
+      void seek?.then(
+        () => landTabPlaceLate(np, place, moves),
+        () => undefined,
+      );
     }
     return null;
   }
 }
+
+/**
+ * A move to another tab's place lands after it was given up (`TAB_MOVE_MAX_MS`): the engine
+ * is at that place after all, so the book is at it as a move that landed in time leaves it
+ * (`adoptTabPlace`). With the floor still where the engine was, a place more than
+ * `SLIP_TOLERANCE` behind it would refuse every save and span of the play, and the span
+ * opened where the engine was would run on over the audio between the two places, which
+ * nobody heard. So the listening begun there is dropped, as an answer's move drops it
+ * (`onGaveWayAnswer`), and begins again at the place while it plays.
+ *
+ * Not once the listener moved, another book started or another such move began meanwhile
+ * (`localMoves`, `catchingUp`: the place is theirs), nor when the engine is not at the
+ * place (a queue replaced under the seek).
+ */
+function landTabPlaceLate(np: NowPlaying, place: TabPlace, moves: number) {
+  if (localMoves !== moves || catchingUp) return;
+  const { nowPlaying, snapshot, loadingBook } = usePlayer.getState();
+  if (nowPlaying !== np || loadingBook) return;
+  const here = toBookPosition(np.queue.offsets, snapshot.trackIndex, snapshot.position);
+  if (!(Math.abs(here - place.pos) <= SAME_PLACE_S)) return;
+  dropListening();
+  adoptTabPlace(np, place);
+  if (!isPlayingState(snapshot.state)) return;
+  beginHistory();
+  openListeningSpan(endAt(np, place.index, place.positionInTrack) ?? undefined);
+}
+
+/** How long a move to another tab's place is waited for (`moveToTabPlace`). A seek that
+ * never settled left `catchingUp` set, and with it no span, history or save until a book
+ * switch (fe#262); past this the move counts as refused (one that lands later is taken
+ * then: `landTabPlaceLate`). */
+const TAB_MOVE_MAX_MS = 5_000;
 
 /** Take the place the tabs share for the loaded book, when it is another one than the
  * engine's (`otherTabsPlace`, `moveToTabPlace`). Resolves the place taken, else null. */

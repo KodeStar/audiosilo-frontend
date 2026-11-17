@@ -86,6 +86,7 @@ import {
 import {
   ackVersion,
   getDeviceId,
+  noteClockSkew,
   pendingSaves,
   type ProgressSave,
   readLocalPlaces,
@@ -275,6 +276,27 @@ describe('the outbox', () => {
     expect(await outboxEvents('c1')).toHaveLength(1);
   });
 
+  // fe#321: the store keeps a move's span as it opens, right behind the close before it.
+  it("a move's span stored right behind the close before it is the one a kill leaves", async () => {
+    await storeOpenSpan(span({ id: 'a' }));
+    const at = { pos: 30000, file: 'Author/Book/09.mp3', filePos: 12 };
+    const jump = span({
+      id: 'b',
+      from: at,
+      to: at,
+      start: 'jump',
+      startedAt: '2026-10-25T07:33:30.000Z',
+      endedAt: '2026-10-25T07:33:30.000Z',
+    });
+    // Neither awaited before the other starts, as the store calls them.
+    await Promise.all([closeSpan(span({ id: 'a' })), storeOpenSpan(jump)]);
+    resetOutboxForTests();
+    await recoverOpenSpan();
+    const events = (await outboxEvents('c1')).map((e) => e.event);
+    expect(events.map((e) => e.id)).toEqual(['a', 'b']);
+    expect(events[1]).toMatchObject({ start: 'jump', from_pos: 30000, to_pos: 30000 });
+  });
+
   it('a span goes on the base acknowledged when it closes, never below the one it opened on', async () => {
     const row = {
       library_id: 3,
@@ -426,6 +448,25 @@ describe("a recovered span brings this device's record of the place up to its en
     expect(await record()).toEqual(chosen);
   });
 
+  // fe#259: a server's row read back is stamped by its clock, here 20 s ahead: by this
+  // device's it is from before the span's end.
+  it("moves a server row older than the span by this device's clock", async () => {
+    noteClockSkew('c1', 20_000);
+    try {
+      await writeMirror({
+        ...capture({ updated_at: '2026-10-25T07:33:45.000Z' }),
+        server_clock: true,
+      });
+      await relaunch();
+      const moved = await record();
+      expect(moved).toMatchObject({ position: 16800, updated_at: '2026-10-25T07:33:30.000Z' });
+      // Stamped by this device now: no longer the server's clock.
+      expect(moved).not.toHaveProperty('server_clock');
+    } finally {
+      noteClockSkew('c1', 0);
+    }
+  });
+
   it('never moves a place back', async () => {
     const further = capture({ position: 20000 });
     await writeMirror(further);
@@ -489,6 +530,17 @@ describe("a recovered span brings this device's record of the place up to its en
       await writeMirror(capture({ duration: 16803 }));
       await relaunch(span({ to: { pos: 16800, file: 'Author/Book/06.mp3', filePos: 1203.9 } }));
       expect(await record()).toMatchObject({ position: 16800, finished: true });
+    });
+
+    // fe#273: before the launch read the registry (or after a read that threw) the check
+    // answered "no early end", as if the download held the book's end.
+    it('never reads its end as finished while the downloads registry is not known', async () => {
+      setDownloadEndCheck(async () => {
+        throw new Error('the downloads registry is not read');
+      });
+      await writeMirror(capture({ duration: 16803 }));
+      await relaunch();
+      expect(await record()).toMatchObject({ position: 16800, finished: false });
     });
   });
 
@@ -1231,6 +1283,40 @@ describe('a queued stay to a server without listening_stay (row 9c-2)', () => {
     const h = client(() => new Promise(() => {}));
     sendOnPageHide([], 'dev');
     expect(sent(h).map(starts)).toEqual([['jump']]);
+  });
+
+  // fe#321: the cached flag was stale (the server rolled back to a build without it), so the
+  // stay went as a stay and the old decoder refused it.
+  it('a stay refused alone under a stale flag goes once more as a jump', async () => {
+    mockCaps = { listening_sync: true, listening_stay: true };
+    await appendEvents('c1', [listen('a'), stay()]);
+    const c = client(async (body) => {
+      if (body.events.some((e) => e.kind === 'listen' && e.start === 'stay')) {
+        throw new ApiError(400, 'invalid request');
+      }
+      return answer(body);
+    });
+    await flushOutbox('c1');
+    expect(sent(c).map(starts)).toEqual([['resume', 'stay'], ['resume'], ['stay'], ['jump']]);
+    expect(sent(c)[3].events[0].id).toBe('s');
+    expect(await outboxEvents('c1')).toEqual([]);
+    expect((await syncStateOf('c1')).failed ?? []).toEqual([]);
+    // The flag is asked again, so the next Stay goes as a jump from the start.
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['server', 'c1'] });
+  });
+
+  it('a stay alone refused as a jump too goes to the list as invalid', async () => {
+    mockCaps = { listening_sync: true, listening_stay: true };
+    await appendEvents('c1', [stay()]);
+    const c = client(async () => {
+      throw new ApiError(400, 'invalid request');
+    });
+    await flushOutbox('c1');
+    expect(sent(c).map(starts)).toEqual([['stay'], ['jump']]);
+    const state = await syncStateOf('c1');
+    expect(state.failed?.map((f) => [f.event.id, f.reason])).toEqual([['s', 'invalid']]);
+    // The list keeps the event as it was stored.
+    expect(state.failed?.[0].event).toMatchObject({ start: 'stay' });
   });
 
   it('held as the jump it went as, it is no held Stay (the usual 10 minutes apply)', async () => {

@@ -728,6 +728,29 @@ describe('reading-progress', () => {
       expect(server.row()).toMatchObject({ cfi: CFI_A, progression: 0.3, version: 2 });
     });
 
+    // Jump, or a reader already at the other place: the acknowledgement is not waited for,
+    // and a save asked for right behind it read the version before it was written.
+    it('makes a save asked for right after an acknowledgement on that version', async () => {
+      const server = ruleServer('This phone');
+      // This device read to 20% (version 1, acknowledged); the tablet then read on to 80%.
+      await saveReaderPlace(server.api, 'c1', 1, 'A/Book', { cfi: CFI_A, progression: 0.2 });
+      await server.api.saveReadingProgress(1, 'A/Book', {
+        cfi: CFI_C,
+        progression: 0.8,
+        device_id: 'tablet',
+        updated_at: new Date().toISOString(),
+        base_version: 1,
+      });
+      const tablet = server.row()!;
+      expect(tablet).toMatchObject({ progression: 0.8, version: 2 });
+      // Shown here (Jump), then a page back at once: a move back on purpose, which applies.
+      const adopted = adoptServerPlace('c1', 1, 'A/Book', tablet);
+      await saveReaderPlace(server.api, 'c1', 1, 'A/Book', { cfi: CFI_B, progression: 0.5 });
+      await adopted;
+      expect(server.api.saveReadingProgress.mock.lastCall?.[2].base_version).toBe(2);
+      expect(server.row()).toMatchObject({ cfi: CFI_B, progression: 0.5, version: 3 });
+    });
+
     it('acknowledges this save when the server replaced its time (a clock ahead)', async () => {
       const heard: ReadingSaved[] = [];
       const off = onReadingSaved((a) => heard.push(a));

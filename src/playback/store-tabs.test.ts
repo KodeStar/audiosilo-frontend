@@ -41,6 +41,8 @@ const mockMirror = {
   /** Every place saved while `on`, in the order the tabs saved them. */
   saved: [] as number[],
 };
+/** How far the server's clock is ahead of the browser's (ms), for its rows in the mirror. */
+let mockSkewMs = 0;
 const mirrorKey = (connectionId: string, libraryId: number, path: string) =>
   `${connectionId}|${libraryId}|${path}`;
 
@@ -80,6 +82,9 @@ jest.mock('./progress-sync', () => ({
       : null,
   ),
   guardSettled: () => false,
+  // By this device's clock: a server row moved back by the skew the test sets (fe#262).
+  mirrorTimeOf: async (r: MirrorRecord & { server_clock?: true }) =>
+    Date.parse(r.updated_at) - (r.server_clock ? mockSkewMs : 0),
   noteClockSkew: jest.fn(),
   pendingSaves: jest.fn(async () => ({ events: 0, listens: 0 })),
 }));
@@ -306,6 +311,9 @@ const other = hourLong(3, 'C/Other');
 
 type Tab = Awaited<ReturnType<typeof openTab>>;
 
+/** Every tab's outbox opened by the test running, reset as it ends (`afterEach` below). */
+const openOutboxes: (typeof import('./listening-outbox'))[] = [];
+
 /** Open a tab of `browser`: its own copies of the store and the outbox, the service made
  * (so it listens for the other tabs' claims) while the tab's globals are the window's. */
 async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = false } = {}) {
@@ -343,6 +351,7 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
   } finally {
     Object.assign(g, before);
   }
+  openOutboxes.push(outbox);
   let gaveWay = 0;
   const listen = () => store.onGaveWayToTab(() => gaveWay++);
   if (!lateNotice) listen();
@@ -422,6 +431,13 @@ beforeEach(() => {
   mockMirror.on = false;
   mockMirror.records.clear();
   mockMirror.saved = [];
+  mockSkewMs = 0;
+});
+// A tab's look again at another tab's live span (`checkAgainLater`, 30 s on): a move's span
+// is stored as it opens, so a sweep finds one live, and its timer must not outlive the
+// file's modules.
+afterEach(() => {
+  for (const outbox of openOutboxes.splice(0)) outbox.resetOutboxForTests();
 });
 
 /** Every listen the server got as `[from, to, start]`, by where it began. */
@@ -1045,6 +1061,37 @@ describe.each([
       ]);
     });
 
+    // fe#262: the server's row of this browser's own place, read back after the claim, is
+    // stamped by a server clock ahead: by the browser's it is from before the claim.
+    it.each([
+      [0, true],
+      [60_000, false],
+    ])(
+      'a server row stamped after the claim by a clock %i ms ahead moves it: %s',
+      async (skew, moves) => {
+        await playedPast(a, b);
+        mockSkewMs = skew;
+        const key = mirrorKey('c1', long.book.library_id, long.book.rel_path);
+        const {
+          file: _file,
+          file_pos: _pos,
+          ...saved
+        } = mockMirror.records.get(key) as MirrorRecord & {
+          file?: string;
+          file_pos?: number;
+        };
+        mockMirror.records.set(key, {
+          ...saved,
+          position: 70,
+          updated_at: new Date(Date.now() + 30_000).toISOString(),
+          server_clock: true,
+        } as MirrorRecord);
+        await a.player().toggle();
+        await until(() => b.player().snapshot.state === 'paused', 'B to give way');
+        expect(a.engine.svc.seekTo.mock.calls).toEqual(moves ? [[70]] : []);
+      },
+    );
+
     it('moves nothing for a place a moment away', async () => {
       await playedPast(a, b);
       b.engine.at(31.5);
@@ -1127,6 +1174,129 @@ describe.each([
         [90, 100, 'resume'],
       ]);
       expectNoSharedSeconds();
+    });
+
+    // fe#262: a seek that never settled left the tab catching up for good: no span, no
+    // history and no save until another book.
+    it('a move there that never settles stops holding the play back after 5 s', async () => {
+      await playedPast(a, b);
+      b.engine.at(90);
+      await b.save();
+      const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      // The 5 s bound (`TAB_MOVE_MAX_MS`) runs out in a moment; every other timer is real.
+      const realTimeout = globalThis.setTimeout;
+      const shortened = jest
+        .spyOn(globalThis, 'setTimeout')
+        .mockImplementation(((fn: () => void, ms?: number) =>
+          realTimeout(fn, ms === 5_000 ? 20 : ms)) as typeof setTimeout);
+      try {
+        a.engine.svc.seekTo.mockImplementationOnce(() => new Promise<void>(() => {}));
+        await a.engine.svc.play(); // no press in the page: the engine plays from 30
+        await until(() => b.player().snapshot.state === 'paused', 'B to give way');
+        await until(() => a.engine.svc.seekTo.mock.calls.length === 1, 'A to move');
+        shortened.mockRestore();
+        // Over: B's answer (where it stopped) is taken now, and that move settles.
+        await until(() => a.engine.svc.seekTo.mock.calls.length === 2, 'A to move again');
+        await sleep(10);
+        a.engine.at(100);
+        await a.player().pause();
+        await until(() => listens().length === 3, 'the three spans on the server');
+        expect(heard()).toEqual([
+          [5, 30, 'jump'],
+          [30, 90, 'jump'],
+          [90, 100, 'resume'],
+        ]);
+      } finally {
+        shortened.mockRestore();
+        warned.mockRestore();
+      }
+    });
+
+    // A move given up on (not refused) can still land. Left as it was, the floor put back at
+    // the place the engine had refused every save of a landing far behind it, and the span
+    // opened at that place ran on over the audio in between.
+    describe('a move there that lands after it was given up', () => {
+      /** A's next seek stays out until the returned `land`; the 5 s bound is 20 ms. */
+      function slowSeek() {
+        let land: () => void = () => {};
+        a.engine.svc.seekTo.mockImplementationOnce(
+          (position: number) =>
+            new Promise<void>((resolve) => {
+              land = () => {
+                a.engine.at(position);
+                resolve();
+              };
+            }),
+        );
+        const realTimeout = globalThis.setTimeout;
+        const shortened = jest
+          .spyOn(globalThis, 'setTimeout')
+          .mockImplementation(((fn: () => void, ms?: number) =>
+            realTimeout(fn, ms === 5_000 ? 20 : ms)) as typeof setTimeout);
+        return { land: () => land(), restore: () => shortened.mockRestore() };
+      }
+
+      it('further on: its listening begins there, with nothing for the stretch between', async () => {
+        await playedPast(a, b);
+        // B is paused, so no answer of B's moves A there.
+        b.engine.at(900);
+        await b.player().pause();
+        await until(() => listens().length === 2, "B's span on the server");
+        const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const seek = slowSeek();
+        try {
+          await a.player().toggle();
+          seek.restore();
+          expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 30 });
+          await sleep(10);
+          seek.land();
+          await sleep(10);
+          a.engine.at(910);
+          await a.player().pause();
+          await until(() => listens().length === 3, 'the three spans on the server');
+          expect(heard()).toEqual([
+            [5, 30, 'jump'],
+            [30, 900, 'jump'],
+            [900, 910, 'resume'],
+          ]);
+        } finally {
+          seek.restore();
+          warned.mockRestore();
+        }
+      });
+
+      it('far behind: the play that follows still saves its place', async () => {
+        mockMirror.on = true;
+        await a.start(5, 'c1', long);
+        await sleep(10);
+        a.engine.at(300);
+        await b.start(300, 'c1', long);
+        await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+        // The listener went back in B (more than the save guard's slip tolerance), which
+        // then paused: no answer of B's moves A there.
+        await b.player().seekBook(12);
+        await sleep(10);
+        b.engine.at(15);
+        await b.player().pause();
+        const key = mirrorKey('c1', 2, long.book.rel_path);
+        await until(() => mockMirror.records.get(key)?.position === 15, "B's place saved");
+        const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const seek = slowSeek();
+        try {
+          await a.player().toggle();
+          seek.restore();
+          expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 300 });
+          seek.land();
+          await sleep(10);
+          a.engine.at(20);
+          await a.save();
+          expect(mockMirror.records.get(key)?.position).toBe(20);
+          await a.player().pause();
+        } finally {
+          seek.restore();
+          warned.mockRestore();
+        }
+      });
     });
 
     it('a play that buffers during that move begins its history where the move lands', async () => {

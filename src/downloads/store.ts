@@ -283,9 +283,12 @@ setKeptOfflineCheck((connectionId, libraryId, path) => {
 });
 
 // A span recovered past a download's early end never finishes its book (`mirrorSpanEnd`,
-// which can't import this store): asked after the launch's read of the registry.
+// which can't import this store): asked after the launch's read of the registry. A registry
+// not read (before that read starts, or a read that threw) is not known, which is not "the
+// download holds the book's end": the check rejects (fe#273).
 setDownloadEndCheck(async (connectionId, libraryId, path) => {
   if (hydrating) await hydrating;
+  if (!useDownloads.getState().hydrated) throw new Error('the downloads registry is not read');
   return downloadedEntryOf({ connectionId, libraryId, path })?.manifest.endsBefore;
 });
 
@@ -837,17 +840,33 @@ export function noteDownloadEnd(ref: BookRef, order: readonly string[]): void {
 }
 
 /**
- * `manifest` with the chapters answer the cache already holds for its book, when
- * `refreshedChapters` takes it. `startChapterRefresh` only sees answers that land while the
+ * `manifest` with the chapters answer the cache already holds for its book
+ * (`withServedChapters`: where the book ends, its length, and the chapters when
+ * `refreshedChapters` takes them). `startChapterRefresh` only sees answers that land while the
  * book is downloaded; this takes one that landed before, while it was downloading or before
  * the launch's `hydrate` read the registry. That answer is the one the download was given
- * or a newer one (the callers read it from the same cache entry).
+ * or a newer one (the callers read it from the same cache entry). Not the manifest's own
+ * chapters (the store's seed, `seedQueryCache`): they name only the files on the device, so
+ * read as an answer they would say the download holds the book's end, and drop the
+ * `endsBefore` a server answer set (D3).
  */
 function withCachedChapters(ref: BookRef, manifest: DownloadManifest): DownloadManifest {
   const cached = queryClient.getQueryData<ChaptersResponse>(
     qk.chapters(ref.connectionId, ref.libraryId, ref.path),
   );
-  return (cached && refreshedChapters(manifest, cached)) || manifest;
+  return cached && cached !== manifest.chapters ? withServedChapters(manifest, cached) : manifest;
+}
+
+/** `manifest` after a server chapters answer for its book: where the book ends and its
+ * length (`withBookEnd`, by every answer, also one naming files the download lacks), then
+ * the chapters when `refreshedChapters` takes them. The same manifest when nothing changes. */
+function withServedChapters(manifest: DownloadManifest, fresh: ChaptersResponse): DownloadManifest {
+  const ended = withBookEnd(
+    manifest,
+    bookFileSpecs(manifest.book, fresh).map((f) => f.path),
+    fresh.duration,
+  );
+  return refreshedChapters(ended, fresh) ?? ended;
 }
 
 /**
@@ -879,14 +898,7 @@ export function startChapterRefresh(): () => void {
     const ref = { connectionId: book.cid, libraryId: book.libraryId, path: book.path };
     const entry = downloadedEntryOf(ref);
     if (!entry) return;
-    // Whether the download ends before the book does, by every answer (D3): also one
-    // naming files the download lacks, which `refreshedChapters` never takes.
-    const ended = withBookEnd(
-      entry.manifest,
-      bookFileSpecs(entry.manifest.book, fresh).map((f) => f.path),
-      fresh.duration,
-    );
-    const manifest = refreshedChapters(ended, fresh) ?? ended;
+    const manifest = withServedChapters(entry.manifest, fresh);
     if (manifest === entry.manifest) return;
     patchEntry(contentKeyOf(ref), { manifest });
     // A burst of answers (a reconnect's refetches, a search fan-out, the start's own

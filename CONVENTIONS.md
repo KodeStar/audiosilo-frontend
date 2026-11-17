@@ -959,7 +959,15 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   never saw (another device's, or its own at a version it never acknowledged: the device id
   outlives the places kept here) only once the open reader
   has shown it (`adoptServerPlace`: Jump, Stay, or the reader is already there), so a save
-  that never saw it stays diverged and never moves it back. The answer's `seen` says which;
+  that never saw it stays diverged and never moves it back. Stay then saves the page on screen
+  at once, once the acknowledgement has landed (fe#321): left to the next page turn, the other
+  device's place stood on the server meanwhile. Before any move since the reader opened, that
+  is the place it opened at, never the start of the page it landed on (fe#172). An
+  acknowledgement and the reader's captures run one after another in the order asked
+  (`withReaderPlaceLock`), so the save a Jump's move makes, or a page turned as the reader
+  finds itself already there, is made on the acknowledged version, never on the one read
+  while the acknowledgement was still being written. The answer's
+  `seen` says which;
   the offer "Jump there?" (`jumpOffer`) is judged against the page on screen. The lookup opens at
   the newest place, or at a queued save the server will keep (diverged and further on), and
   with no answer from the server and no place on this device it fails (the fetch notice; Try
@@ -1995,7 +2003,12 @@ media GETs only.
   `downloads/kept-offline.ts`, which has no imports), and from Home's progress list
   (`allProgressQuery`: the downloaded books' rows in one `writeMirrors`, fe#198): offline it
   opens there, never at 0 with its first save over the server's place (v2.5.1 PLAYER-01).
-  Keep-newest, so a newer save of this device's own stays.
+  Keep-newest, so a newer save of this device's own stays. A server's row in the mirror is
+  marked `server_clock` (`progressToSave`) and compared by this device's clock, its stamp moved
+  back by the connection's known skew (`localTimeOf`, fe#259): with the server's clock ahead,
+  a row read back once hid this device's own captures for that long. `mirrorSpanEnd`, a
+  tab's `otherTabsPlace` and an explicit start's read of the book's speed and finish
+  (`knownProgress`, against the cached place: `mirrorIsNewest`) compare through it too.
 - **The replay guard (legacy PUT path, fe#198).** The PUT is last-write-wins by
   `updated_at`, so a session that began at a place this device never checked against its
   server must not move another device's further place back. `resumeLookupOf` marks such a
@@ -2080,7 +2093,9 @@ media GETs only.
     (`takeSpan`: the pause, the end) leaves the next play a `jump`, and a cut with none open
     leaves it waiting. The outbox sends a queued `stay` as a `jump` when the flag is gone by then
     (`eventsForServer`, every send path: the batch, one by one, the page's keepalive); the
-    stored event keeps its `stay` and id. The open span is stored every 5 s online or offline (`OPEN_SPAN_KEEP_MS`),
+    stored event keeps its `stay` and id. A move's span (`jump`, `moved_back`, `restart`, `stay`) is
+    stored as it opens, queued behind the close of the span before it, so a kill in the next 5 s
+    still sends the move (fe#321). The open span is stored every 5 s online or offline (`OPEN_SPAN_KEEP_MS`),
     so a kill loses at most that, and takes its event id when it opens (`OpenSpan.id`): closed
     twice it is one event. A book playing with none open (its play's own could not open: a
     load, the hot-swap or an adoption's reload held the place) gets one at that same 5 s keep
@@ -2093,7 +2108,12 @@ media GETs only.
     no session to mark); a close already on its way (the web's `paused` before `ended`) is
     waited for too and leaves its send to the finish (`closesInFlight`). The book page's Mark as finished is a `finish` event too on such a
     server (`finish-route.ts`, which the store registers: the hooks can't import it; the loaded
-    book's span closes first, the mirror records it finished, offline it waits in the outbox,
+    book stops and unloads first on every route, as its own end does (`leaveFinishedBook`,
+    fe#258: its place saved and its span closed ahead of the finish; left loaded it went on
+    recording past the finish, a later save of its place put the device record back in progress,
+    and its page read "Resume"; the place it saved is the one the Undo goes back to, since the
+    page's progress was read before that listening), the mirror records it finished, offline it
+    waits in the outbox,
     so `useMarkFinished` runs whatever the online flag says, `networkMode: 'always'`;
     Undo is a progress edit, sent only after `undoFinish` took the book's waiting finish
     back out of the outbox (`withdrawFinish`; one whose request is out is waited for, and a
@@ -2137,7 +2157,9 @@ media GETs only.
     `storage` event.
   - *Sending* (`flushOutbox`). One request in flight per connection, chunks of 200, `sent_at` set
     at each attempt. A 413 or `too_many_events` halves the chunk (one event alone still 413:
-    `too_large`); another 400 resends that chunk one event at a time once, and an event still
+    `too_large`); another 400 resends that chunk one event at a time once (a `stay` refused alone,
+    a server rolled back under a stale cached `listening_stay`, goes once more as a `jump`, and the
+    cached `/server` is asked again, fe#321), and an event still
     refused alone goes to the couldn't-sync list (`invalid`); a network error or 5xx keeps
     everything. An event older than 90 days goes to the list as `too_old` unsent (the server's
     own bound, `syncRejectAge`, so the list's wording is true of both), so none holds its
@@ -2259,7 +2281,13 @@ media GETs only.
     more than a minute makes one), and that Undo is the listener's own `seekBook`. A seek
     the engine refuses puts back what `adoptTabPlace` set (`moveToTabPlace`): the play goes
     on from where the engine is, and a floor left at a place far ahead would refuse its
-    every save and span. A book switch drops a move still out (`switchBook` clears
+    every save and span; so does a move that has not settled within 5 s (`TAB_MOVE_MAX_MS`,
+    fe#262: a seek that never settled held the play's spans and saves until another book).
+    One that lands after that is taken then (`landTabPlaceLate`: the floor at the place, the
+    listening begun where the engine was dropped and begun again there), unless the listener
+    moved or another book started meanwhile: left alone, a landing far behind the floor put
+    back refused every save, and one further on ran the open span over audio nobody heard. A
+    book switch drops a move still out (`switchBook` clears
     `catchingUp`), so it holds none of the next book's saves or spans. A book
     the other tab **finished** starts again from 0 as a `restart` with the `unfinish` owed,
     as a fresh load of a finished book does (not when this tab is at the end itself).
@@ -2522,7 +2550,8 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     an earlier file (an intro) is not: it holds the book's end, and reaching that end
     finishes the book as usual (credits, `finish`, the finished save). The fact is kept on
     the download (`DownloadManifest.endsBefore`: set by every server chapters answer,
-    `startChapterRefresh`, and by an adoption with no answer, `noteDownloadEnd`), so a cold
+    `startChapterRefresh`, the cached ones its first sweep finds included (`withServedChapters`),
+    and by an adoption with no answer, `noteDownloadEnd`), so a cold
     start of it with no server to stream from (the device offline, `isDeviceOnline`; no
     client; the server marked unreachable, `isReachable`) is partial too: `playBook` builds
     it from the download's copy whatever chapters it was given (a cold start's cached server
@@ -2530,7 +2559,8 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     downloaded part's end); and on each capture of the mirror (`ProgressSave.partial`), so a
     span recovered after a kill in the last seconds (`mirrorSpanEnd`) never makes the record
     finished. `mirrorSpanEnd` also asks the download (`downloadEndsBefore`, registered by the
-    downloads store in `kept-offline.ts`), since a server row written into the mirror since
+    downloads store in `kept-offline.ts`; it rejects while the registry is not read, which
+    `mirrorSpanEnd` takes as not known and never finishes the book, fe#273), since a server row written into the mirror since
     the capture carries no `partial`: only a span that ended in the book's last file (it
     streamed it) reads that end as finished. A partial queue's end is
     the downloaded part's, so the engine's `ended` there
@@ -3910,7 +3940,10 @@ are asked, at most 10,000 rows.
   `manifest.chapters` when its audio files are the ones on the device (`refreshedChapters`: same
   paths, same order, same sizes where both answers know them); otherwise the manifest stays (that
   is a new download). An answer that reached the cache before the book was downloaded (while its
-  files did, or before launch's `hydrate`) is taken as it becomes downloaded (`withCachedChapters`).
+  files did, or before launch's `hydrate`) is taken as it becomes downloaded (`withCachedChapters`),
+  with where the book ends and its length, as every later answer (`withServedChapters`); never the
+  manifest's own chapters (the store's seed), which name only the files on the device and would
+  drop where a partial download's book ends (D3).
   The audio is never touched, and a queue already playing keeps its chapters until the book is
   next started. The same files in another order (server v2.4.0 plays them in natural order, "2-"
   before "10-") are taken **only by a start that loads the engine in that order**

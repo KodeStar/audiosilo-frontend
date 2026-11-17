@@ -471,6 +471,45 @@ describe('ReaderScreen', () => {
     expect(screen.queryByTestId('reader-jump-offer')).toBeNull();
   });
 
+  // fe#321: the Stay waited for the next page turn to be saved, so the other device's place
+  // stood meanwhile; and it is saved only once the acknowledgement has landed.
+  it('Stay saves the page on screen at once, after the acknowledgement', async () => {
+    let adopted = () => {};
+    jest
+      .mocked(adoptServerPlace)
+      .mockImplementationOnce(() => new Promise<void>((resolve) => (adopted = resolve)));
+    await mount();
+    await opened();
+    await answered(row());
+    await fireEvent.press(screen.getByText('Stay'));
+    expect(saveReaderPlace).not.toHaveBeenCalled();
+    await act(async () => adopted());
+    expect(saveReaderPlace).toHaveBeenCalledWith({}, 'c1', 1, 'A/Book', {
+      cfi: CFI_A,
+      progression: expect.any(Number),
+    });
+  });
+
+  // fe#172: the page it landed on starts before the place it opened at (here 0.25 into the
+  // book, on the page from 0.2); a Stay before any move saves that place, not the page start.
+  it('Stay before any move saves the place it opened at, not the page it landed on', async () => {
+    const opening = 'epubcfi(/6/4!/4/2/7:120)';
+    mockPlace = query({
+      place: { cfi: opening, progression: 0.25, device_id: 'dev', updated_at: '2026-10-01' },
+      fromServer: null,
+    });
+    await mount();
+    await opened(CFI_A);
+    await answered(row());
+    await fireEvent.press(screen.getByText('Stay'));
+    await waitFor(() =>
+      expect(saveReaderPlace).toHaveBeenCalledWith({}, 'c1', 1, 'A/Book', {
+        cfi: opening,
+        progression: 0.25,
+      }),
+    );
+  });
+
   it('jumps there, and acknowledges it', async () => {
     await mount();
     await opened();

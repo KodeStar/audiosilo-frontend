@@ -65,6 +65,9 @@ jest.mock('./progress-sync', () => ({
   loadInitialProgress: (...a: unknown[]) => mockLoadInitialProgress(...a),
   readMirror: (...a: unknown[]) => mockReadMirror(...a),
   guardSettled: (id: string) => mockSettled.has(id),
+  // No clock skew is known here: the two stamps as they are.
+  mirrorIsNewest: async (record: { updated_at: string }, place: { updated_at: string }) =>
+    Date.parse(record.updated_at) >= Date.parse(place.updated_at),
 }));
 
 // The outbox: the path choice is the test's, storage and sending are captured.
@@ -80,6 +83,7 @@ jest.mock('./listening-outbox', () => {
   return {
     spanToEvent: actual.spanToEvent,
     spanIsBareMove: actual.spanIsBareMove,
+    spanSaysSomething: actual.spanSaysSomething,
     movesNowhere: actual.movesNowhere,
     finishEvent: actual.finishEvent,
     newEventId: actual.newEventId,
@@ -134,11 +138,12 @@ import { useSettings } from '@/stores/settings';
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 
-import { finishTakesEvent, recordFinishEvent, undoFinish } from './finish-route';
+import { finishTakesEvent, leaveFinishedBook, recordFinishEvent, undoFinish } from './finish-route';
 import { appendEvents, closeSpan } from './listening-outbox';
 import {
   cutListeningSpanNow,
   flushHistoryOnHide,
+  holdSaves,
   saveLoadedPlace,
   selectBookLength,
   standByPlace,
@@ -1015,6 +1020,71 @@ describe('Mark as finished outside the player (finish-route)', () => {
     expect(mockClosed.at(-1)).toMatchObject({ from: { pos: 90 }, to: { pos: 95 } });
   });
 
+  // fe#258: left playing, the book recorded listening past its finish, and a later save of
+  // the engine's place (a reconcile's held save on reconnect) put the device record back in
+  // progress after an offline finish was delivered.
+  it('marked from the book page, the loaded book stops and unloads before the finish', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('playing', 0, 9));
+    const release = holdSaves(); // a reconcile check out (the server coming back)
+    await leaveFinishedBook(ref);
+    await expect(recordFinishEvent(ref)).resolves.toBe(true);
+    await settle();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+    expect(mockSvc.reset).toHaveBeenCalled();
+    expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 5, 9]]);
+    expect(mockAppended.map((e) => e.kind)).toEqual(['finish']);
+    expect(mockWriteMirror.mock.calls.at(-1)?.[0]).toMatchObject({ finished: true });
+    // Nothing after it: the held save released, the save loop's time, a late engine event.
+    release();
+    pushSnapshot(snap('playing', 0, 12));
+    jest.advanceTimersByTime(60_000);
+    await settle();
+    expect(mockClosed).toHaveLength(1);
+    expect(mockAppended.map((e) => e.kind)).toEqual(['finish']);
+    expect(mockWriteMirror.mock.calls.at(-1)?.[0]).toMatchObject({ finished: true });
+  });
+
+  it('on the PUT path, its place is saved before the finish the caller saves next', async () => {
+    mockSync = false;
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('playing', 0, 9));
+    mockSaveProgress.mockClear();
+    let saved = () => {};
+    mockSaveProgress.mockImplementationOnce(
+      () => new Promise<void>((r) => (saved = () => r('saved' as never))),
+    );
+    let left = false;
+    const leaving = leaveFinishedBook(ref).then((at) => {
+      left = true;
+      return at;
+    });
+    await settle();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+    expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ position: 9, finished: false });
+    // The caller records the finish once that save is over: after it, a PUT included.
+    expect(left).toBe(false);
+    saved();
+    // With the place saved: where an Undo goes back to.
+    await expect(leaving).resolves.toBe(9);
+    expect(left).toBe(true);
+  });
+
+  it('another book loaded plays on', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    await leaveFinishedBook({ ...ref, path: 'Other/Book' });
+    await settle();
+    expect(usePlayer.getState().nowPlaying?.path).toBe(folder);
+    expect(mockClosed).toEqual([]);
+  });
+
   // The server applies a batch in time order (request order only breaks ties): a finish
   // dated before its book's last span was applied first, as server#359's was.
   it("the finish is dated no earlier than the loaded book's last span", async () => {
@@ -1552,7 +1622,11 @@ describe('the open span is kept every 5 s', () => {
     pushSnapshot(snap('playing', 0, 2)); // landed 4 s back: the keep runs on this snapshot
     remoteMove(0, 2);
     await settle();
-    expect(stored().at(-1)).toEqual(['resume', 1, 6]);
+    // The keep, then the move's own span stored as it opens (fe#321).
+    expect(stored().slice(-2)).toEqual([
+      ['resume', 1, 6],
+      ['moved_back', 2, 2],
+    ]);
     expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 1, 6]]);
     pushSnapshot(snap('paused', 0, 3));
     await settle();
@@ -1577,6 +1651,37 @@ describe('the open span is kept every 5 s', () => {
       ['moved_back', 10, 22],
       ['continue', 22, 24],
     ]);
+  });
+
+  // fe#321: a kill within 5 s of a move lost the move, which lived only in memory.
+  it('a seek while playing stores the span it opens at once, before any keep', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 30));
+    await settle();
+    mockStoreOpenSpan.mockClear();
+    await usePlayer.getState().seekBook(70);
+    await settle();
+    expect(stored()).toEqual([['jump', 70, 70]]);
+  });
+
+  it('a playing Stay stores the span it opens at once', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 30));
+    await settle();
+    mockStoreOpenSpan.mockClear();
+    standByPlace();
+    await settle();
+    expect(stored()).toEqual([['jump', 30, 30]]);
+  });
+
+  it('a cut stores nothing at once: the keep does', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 30));
+    await settle();
+    mockStoreOpenSpan.mockClear();
+    cutListeningSpanNow();
+    await settle();
+    expect(mockStoreOpenSpan).not.toHaveBeenCalled();
   });
 
   it('stops with the playing: a pause stores nothing more', async () => {

@@ -197,7 +197,7 @@ jest.mock('@/api/hooks', () => ({
 /* eslint-disable import/first */
 import { resolveClient } from '@/api/connection-clients';
 import { engine } from '@/downloads/engine';
-import { downloadBookLength, isKeptOffline } from '@/downloads/kept-offline';
+import { downloadBookLength, downloadEndsBefore, isKeptOffline } from '@/downloads/kept-offline';
 import { bookFileSpecs } from '@/playback/book-queue';
 import { readMirror } from '@/playback/progress-sync';
 import {
@@ -2100,6 +2100,28 @@ describe("refreshing a downloaded book's chapters", () => {
       expect((await readPersisted())[key]?.manifest.chapters).toEqual(fresh());
     });
 
+    // fe#273: a partial download from before fe#272 had no book length until the server
+    // answered again; the answer the cache already held gave it none.
+    it("takes the book's end and length from an answer the cache held before it started", () => {
+      stop();
+      const key = downloadKey('c1', 2, 'A/Book');
+      const e = downloadedEntry();
+      useDownloads.setState({
+        entries: { [key]: { ...e, manifest: { ...e.manifest, endsBefore: 'A/Book/03.mp3' } } },
+      });
+      const three = fresh(['A/Book/01.mp3', 'A/Book/02.mp3', 'A/Book/03.mp3'], { duration: 180 });
+      mockGetQueryData.mockImplementation(() => three);
+      try {
+        stop = startChapterRefresh();
+      } finally {
+        mockGetQueryData.mockImplementation(() => undefined);
+      }
+      expect(useDownloads.getState().entries[key].manifest).toMatchObject({
+        endsBefore: 'A/Book/03.mp3',
+        bookDuration: 180,
+      });
+    });
+
     it('changes nothing at start when the cache holds only the manifest seed', () => {
       stop();
       const key = downloadKey('c1', 2, 'A/Book');
@@ -2108,6 +2130,26 @@ describe("refreshing a downloaded book's chapters", () => {
       useDownloads.setState({ entries: { [key]: e } });
       // The seed is the manifest's own chapters (`seedOfflineMeta`), here a copy.
       mockGetQueryData.mockImplementation(() => fresh());
+      try {
+        stop = startChapterRefresh();
+      } finally {
+        mockGetQueryData.mockImplementation(() => undefined);
+      }
+      expect(useDownloads.getState().entries[key]).toBe(e);
+    });
+
+    // D3: the seed names only the downloaded files; read as an answer it said the download
+    // holds the book's end, and the start's sweep dropped where the book really ends.
+    it("keeps a partial download's end when the cache holds only the manifest seed", () => {
+      stop();
+      const key = downloadKey('c1', 2, 'A/Book');
+      const e = downloadedEntry();
+      e.manifest.chapters = fresh();
+      e.manifest.endsBefore = 'A/Book/03.mp3';
+      e.manifest.bookDuration = 180;
+      useDownloads.setState({ entries: { [key]: e } });
+      const seed = e.manifest.chapters;
+      mockGetQueryData.mockImplementation(() => seed);
       try {
         stop = startChapterRefresh();
       } finally {
@@ -2187,6 +2229,16 @@ describe('hydrate concurrency', () => {
 
 describe('hydrate holds off what needs the registry', () => {
   const savedKey = downloadKey('c1', 2, 'A/Book');
+
+  // fe#273: unread, it answered "no early end" for every book.
+  it("the download end check rejects until the registry is read, then answers the download's", async () => {
+    useDownloads.setState({ hydrated: false, entries: {} });
+    await expect(downloadEndsBefore('c1', 2, 'A/Book')).rejects.toThrow('not read');
+    const e = downloadedEntry();
+    await seed({ [savedKey]: { ...e, manifest: { ...e.manifest, endsBefore: 'A/Book/03.mp3' } } });
+    await useDownloads.getState().hydrate();
+    await expect(downloadEndsBefore('c1', 2, 'A/Book')).resolves.toBe('A/Book/03.mp3');
+  });
 
   it('a download() of a saved book during hydrate answers exists, never fetching over it', async () => {
     await seed({ [savedKey]: downloadedEntry() });

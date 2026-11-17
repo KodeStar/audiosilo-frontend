@@ -105,6 +105,7 @@ jest.mock('./listening-outbox', () => {
   return {
     spanToEvent: actual.spanToEvent,
     spanIsBareMove: actual.spanIsBareMove,
+    spanSaysSomething: actual.spanSaysSomething,
     movesNowhere: actual.movesNowhere,
     finishEvent: actual.finishEvent,
     newEventId: actual.newEventId,
