@@ -176,4 +176,12 @@ describe('FoldersMode', () => {
     await fireEvent.press(screen.getByRole('button', { name: /Audiobooks/ }));
     expect(mockOpenLibrary).toHaveBeenCalledWith('a', 1);
   });
+
+  // fe#144 (CONNECT-17): the admin's default view is no subtitle for a listener.
+  it("names a library without the admin's default view under it", async () => {
+    mockLists = [list('a', 'Home', 'ready', ['Audiobooks'])];
+    await render(<FoldersMode />);
+    expect(screen.getByText('Audiobooks')).toBeTruthy();
+    expect(screen.queryByText('folders')).toBeNull();
+  });
 });
