@@ -35,9 +35,8 @@ async function system(state: NetState) {
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 // fe#179 / fe#202: on iOS and Android nothing told React Query the device was offline, so
-// queries never paused and the offline states only showed on the web. (The web keeps
-// TanStack's own listener, the browser's `online` and `offline` events: the provider only
-// replaces it off the web.)
+// queries never paused and the offline states only showed on the web. (The web follows the
+// browser's flag: below.)
 describe("React Query's online flag in the app", () => {
   beforeAll(() => queryClient.mount());
   afterAll(() => queryClient.unmount());
@@ -138,8 +137,66 @@ describe("React Query's online flag in the app", () => {
   });
 });
 
-// The web is untouched: TanStack's default there, a write waits for the browser to come
-// back online and is sent then (the tab stays open meanwhile).
+// fe#271: TanStack's own listener starts online and hears only the browser's events, so a
+// cold launch with no network asked every read, and a page that mounts a reader of a
+// failed one asked it again, over and over. The provider wires the browser's flag instead,
+// read at start: its own module registry per test, so each sees the wiring of a fresh start.
+describe("React Query's online flag on the web", () => {
+  const g = globalThis as unknown as { window?: unknown; navigator?: unknown };
+  const saved = { window: g.window, navigator: g.navigator };
+  afterEach(() => {
+    g.window = saved.window;
+    Object.defineProperty(globalThis, 'navigator', { value: saved.navigator, configurable: true });
+  });
+
+  /** Imports the provider on the web in a browser that says `onLine`: React Query's online
+   * flag, and the browser's `online` / `offline` events. */
+  function startWeb(onLine: boolean) {
+    const handlers: Record<string, (() => void)[]> = {};
+    g.window = {
+      addEventListener: (type: string, cb: () => void) => (handlers[type] ??= []).push(cb),
+      removeEventListener: () => undefined,
+    };
+    const nav = { onLine };
+    Object.defineProperty(globalThis, 'navigator', { value: nav, configurable: true });
+    let flag: { isOnline: () => boolean } | undefined;
+    jest.isolateModules(() => {
+      const { Platform } = jest.requireActual<typeof import('react-native')>('react-native');
+      const os = Platform.OS;
+      Platform.OS = 'web';
+      try {
+        jest.requireActual('./provider');
+        flag =
+          jest.requireActual<typeof import('@tanstack/react-query')>(
+            '@tanstack/react-query',
+          ).onlineManager;
+      } finally {
+        Platform.OS = os;
+      }
+    });
+    const fire = (type: 'online' | 'offline') => {
+      nav.onLine = type === 'online';
+      for (const cb of handlers[type] ?? []) cb();
+    };
+    return { flag: flag!, fire };
+  }
+
+  it('starts from the browser saying it is offline', () => {
+    expect(startWeb(false).flag.isOnline()).toBe(false);
+    expect(startWeb(true).flag.isOnline()).toBe(true);
+  });
+
+  it("follows the browser's online and offline events", () => {
+    const { flag, fire } = startWeb(false);
+    fire('online');
+    expect(flag.isOnline()).toBe(true);
+    fire('offline');
+    expect(flag.isOnline()).toBe(false);
+  });
+});
+
+// A write on the web keeps TanStack's default: it waits for the browser to come back
+// online and is sent then (the tab stays open meanwhile).
 describe('a write on the web', () => {
   it('waits for the network, as it always has', () => {
     jest.isolateModules(() => {
