@@ -5,13 +5,16 @@
  * launch). `sharedStart(run)` returns a start whose every call returns its own release; `run`
  * is called by the first start, and its teardown by the last release (a second release of one
  * holder is a no-op). Two runs at once would race for the same module state, and either's
- * teardown would clear it under the other.
+ * teardown would clear it under the other. A start's arguments go to `run`, so the first
+ * start's win.
  */
-export function sharedStart(run: () => () => void): () => () => void {
+export function sharedStart<A extends unknown[]>(
+  run: (...args: A) => () => void,
+): (...args: A) => () => void {
   let holders = 0;
   let teardown: (() => void) | null = null;
-  return () => {
-    teardown ??= run();
+  return (...args) => {
+    teardown ??= run(...args);
     holders++;
     let released = false;
     return () => {
