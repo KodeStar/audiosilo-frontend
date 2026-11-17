@@ -718,6 +718,9 @@ class AudiosiloPlayerService : MediaLibraryService() {
     // `nowPlaying` (even with its car sync not listening yet), and swapping the engine under
     // it would map this book's place onto that one.
     if (spec != null && PlayerBridge.sink == null) {
+      // It takes the place of a play still waiting for JS (a streamed book tapped while JS
+      // boots): that one ends quietly, or a JS that listens later would start it over this one.
+      failPendingPlay(notify = false)
       val queue = MediaItems.startPositionOf(spec)
       // Every track of a play spec is a local file: no auth headers.
       AuthHolder.clear()
