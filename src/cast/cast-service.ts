@@ -955,8 +955,15 @@ export class CastPlaybackService implements PlaybackService {
     const loaded = this.loaded;
     if (this.foreignMedia) return;
     if (loaded && isForeign(status, loaded)) {
-      // Our own load's earlier statuses can still name the book it replaces.
-      if (this.loadsInFlight > 0) return;
+      // Our own load's earlier statuses can still name the book it replaces: while it is in
+      // flight, and once it answered until its place lands (`pendingIntent`; a recast of
+      // another book: the session's first statuses reach the phone late). Taken as another
+      // sender's, they would have this book's own statuses ignored from then on.
+      if (this.loadsInFlight > 0 || this.pendingIntent()?.queued) {
+        // The media from before is another book: no status of this one is it (`replacedMedia`).
+        if (this.intended && !this.intended.from) this.intended.replacedGone = true;
+        return;
+      }
       this.foreignMedia = true;
       this.needsReload = true; // a play here puts this book back on the receiver
       this.update({ state: 'paused' });

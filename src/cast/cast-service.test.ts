@@ -1932,6 +1932,63 @@ describe('CastPlaybackService', () => {
         expect(t.remote.load).toHaveBeenCalledTimes(2);
       });
 
+      describe('a recast of another book, the receiver still on the old one', () => {
+        const other = { ...BOOK, path: 'X/Y' };
+        const theirs = (i: number) => `https://h/stream?path=X/Y/0${i}.mp3&token=CAST0`;
+
+        it("the old book's late statuses are not another sender's", async () => {
+          // They reach the phone once the load answered. Taken as another sender's media, this
+          // book's own landing was ignored from then on: paused here, playing on the TV, and no
+          // pause reached it.
+          const t = setup();
+          await t.svc.load(TRACKS, 0, 30, [], BOOK);
+          await t.svc.play();
+          t.status({ playerState: 'playing', contentId: theirs(2), book: other, position: 37 });
+          t.status({
+            playerState: 'idle',
+            idleReason: 'interrupted',
+            contentId: theirs(2),
+            book: other,
+            position: 0,
+          });
+          t.status({ playerState: 'buffering', contentId: theirs(2), book: other, position: 0 });
+          expect(t.svc.getSnapshot()).toMatchObject({
+            state: 'ready',
+            trackIndex: 0,
+            position: 30,
+          });
+          // The queue lands paused: the play lost while the receiver took it is sent again.
+          t.status({ playerState: 'paused', contentId: t.url(0), book: BOOK, position: 30 });
+          await flush();
+          expect(t.remote.play).toHaveBeenCalledTimes(2);
+          t.status({ playerState: 'playing', contentId: t.url(0), book: BOOK, position: 30 });
+          expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', position: 30 });
+          await t.svc.pause();
+          expect(t.remote.pause).toHaveBeenCalledTimes(1);
+          // Once this book landed, another book on the receiver is another sender's again.
+          t.tick(10_000);
+          t.status({ playerState: 'playing', contentId: theirs(0), book: other, position: 5 });
+          await t.svc.pause();
+          expect(t.remote.pause).toHaveBeenCalledTimes(1);
+        });
+
+        it('a later file of this book played is a refusal, whatever the old book was on', async () => {
+          const m = minting();
+          const t = setup({ prepare: m.prepare });
+          const answer = holdLoad(t);
+          const recast = t.svc.load(TRACKS, 0, 30, [], BOOK);
+          await flush();
+          t.status({ playerState: 'playing', contentId: theirs(2), book: other, position: 37 });
+          // Refused Part 1 and Part 2 (no error reached the phone), it plays Part 3.
+          t.status({ playerState: 'playing', contentId: t.url(2), position: 0 });
+          answer();
+          await recast;
+          await flush();
+          expect(m.asks).toEqual([undefined, true]);
+          expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 0, startTime: 30 });
+        });
+      });
+
       it('a play held while a load is on its way is sent once the hold runs out', async () => {
         // A load the receiver never answers must not keep every play from it for good.
         const t = setup();

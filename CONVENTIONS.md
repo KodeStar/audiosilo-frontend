@@ -3601,8 +3601,12 @@ on first need). NOT device-verified (no Cast device yet).
   driver drops a start reported after its session ended.
 - **Foreign media** is told by stream address (`streamIdentity`: the route and its `path` /
   `transcode`, whatever base, token or `t=`): another sender's book or another app's media on the
-  receiver is ignored (never paused, stopped or saved as ours) until this device loads again. On
-  the web only the tab that started a session follows it (`sessionStorage`; other tabs leave
+  receiver is ignored (never paused, stopped or saved as ours) until this device loads again.
+  Not the book a queue of ours replaces: its statuses are dropped while that queue is on its way
+  and, once it answered, until its place lands (for at most `ASKED_MOVE_MS`; a recast of another
+  book, whose first statuses reach the phone late and, taken as another sender's, would have
+  this book's own ignored), and they say the media from before is another book (`replacedGone`).
+  On the web only the tab that started a session follows it (`sessionStorage`; other tabs leave
   the origin's session without stopping the receiver).
 - **Transcoded streams** can't seek on the receiver: a seek or a jump to another file reloads
   the queue from there (`&t=`, the offset added back to every place read); an idle `finished`
