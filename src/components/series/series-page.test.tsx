@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
-import type { Book, BookMeta } from '@/api/types';
+import type { Book, BookMeta, BookRef } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
 
 const mockPush = jest.fn();
@@ -91,9 +91,11 @@ const mockProgress: Record<
   string,
   { position: number; duration: number; finished: boolean; updated_at: string }
 > = {};
+// The rows read for what the rail places outside the series' own books.
+const mockPlaced = jest.fn((_cid: string, _refs: BookRef[]): Book[] => []);
 jest.mock('./use-series-data', () => ({
   useElsewhereBooks: () => mockElsewhere,
-  usePlacedBooks: () => [],
+  usePlacedBooks: (cid: string, refs: BookRef[]) => mockPlaced(cid, refs),
   // The series' books (each in this series: the fixtures are in no other).
   useSeriesBooks: () => mockBooks,
 }));
@@ -145,6 +147,7 @@ beforeEach(() => {
   mockMetaLoading = false;
   mockMetaCalls.length = 0;
   mockElsewhere = [];
+  mockPlaced.mockReset().mockReturnValue([]);
   for (const k of Object.keys(mockProgress)) delete mockProgress[k];
   mockPush.mockClear();
   mockQueue.mockClear();
@@ -439,6 +442,37 @@ describe('SeriesPage, community rail', () => {
           params: expect.objectContaining({ connection: 'home', path: lwCast.rel_path }),
         }),
       );
+    });
+
+    it('reads an unplayed recording outside the series only when the picker opens (fe#313)', async () => {
+      const lwKids = book('Leviathan Wakes', 1, {
+        rel_path: 'Elsewhere/Leviathan Wakes (abridged)',
+        narrator: 'Someone Else',
+        duration: 20_000,
+        work_id: 'lw',
+      });
+      const series = (mockMeta as { series: { works: Record<string, unknown>[] }[] }).series[0];
+      series.works[0].local_others = [
+        { library_id: 1, path: lwCast.rel_path },
+        { library_id: 1, path: lwKids.rel_path },
+      ];
+      mockPlaced.mockImplementation((_cid, refs) =>
+        refs.some((r) => r.path === lwKids.rel_path) ? [lwKids] : [],
+      );
+      const asked = () =>
+        mockPlaced.mock.calls.some(([, refs]) => refs.some((r) => r.path === lwKids.rel_path));
+      await mountWithPortal(<SeriesPage libraryId={1} name="The Expanse" />);
+      expect(asked()).toBe(false);
+      await fireEvent.press(
+        screen.getAllByRole('button', {
+          name: '3 recordings, choose a recording of Leviathan Wakes',
+        })[0],
+      );
+      expect(asked()).toBe(true);
+      const list = screen.getByTestId('series-recordings');
+      expect(
+        within(list).getByRole('button', { name: 'Read by Someone Else, 5h 33m' }),
+      ).toBeTruthy();
     });
 
     it('shows no chip when the server sends no work ids (an older server)', async () => {

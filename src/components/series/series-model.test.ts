@@ -14,7 +14,6 @@ import {
   pickRail,
   type ProgressLike,
   railEntries,
-  recordingCounts,
   type SeriesEntry,
   seriesOf,
   seriesStats,
@@ -134,6 +133,19 @@ describe('localEntries', () => {
     const untitled = book('', 2, { rel_path: 'Corey/Expanse/Caliban' });
     const entries = localEntries([book('One', 1), untitled], src);
     expect(entries.map((e) => e.title)).toEqual(['One', 'Caliban']);
+  });
+
+  it("leaves a second recording's own number a gap: the work sits at its first book's place (fe#313)", () => {
+    const one = book('One', 1, { work_id: 'w1' });
+    // The same work, tagged 3 on its second recording.
+    const oneAgain = book('One', 3, { work_id: 'w1', rel_path: 'Corey/Expanse/One (cast)' });
+    const entries = localEntries([one, oneAgain, book('Four', 4)], src);
+    expect(entries.map((e) => [e.kind, e.position])).toEqual([
+      ['owned', '1'],
+      ['ghost', '2'],
+      ['ghost', '3'],
+      ['owned', '4'],
+    ]);
   });
 
   it('fills a gap from another server by series number', () => {
@@ -297,23 +309,18 @@ describe('other recordings of a work (server#241)', () => {
     expect(seriesStats(entries)).toMatchObject({ entries: 2, owned: 2 });
   });
 
-  it('counts in progress and finished per recording, a work held twice as two', () => {
-    setProgress(lw, { position: 36_000, finished: true });
+  it('counts in progress and finished per work, a work held twice as one (fe#313)', () => {
     setProgress(lwCast, { position: 10_000, duration: 40_000 });
-    setProgress(cw, { position: 1_000 });
+    setProgress(cw, { position: 36_000, finished: true });
     const entries = localEntries([lw, lwCast, cw], src);
     expect(entries).toHaveLength(2);
-    expect(recordingCounts(entries)).toEqual({ inProgress: 2, finished: 1 });
-    // A copy on another server is not one of this library's recordings.
-    const [, owned] = entries;
-    if (owned.kind !== 'owned') throw new Error('expected an owned entry');
-    const elsewhere = {
-      ...owned,
-      kind: 'elsewhere',
-      recordings: undefined,
-      finished: true,
-    } as const;
-    expect(recordingCounts([...entries, elsewhere])).toEqual({ inProgress: 2, finished: 1 });
+    expect(seriesStats(entries)).toMatchObject({
+      entries: 2,
+      owned: 2,
+      missing: 0,
+      inProgress: 1,
+      finished: 1,
+    });
   });
 
   it("shows the recording the listener is on, and keeps each one's own progress", () => {

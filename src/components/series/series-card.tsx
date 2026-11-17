@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 
 import { MiniShelf, MiniShelfSkeleton } from './mini-shelf';
-import { localEntries, localGaps, type ProgressLookup, recordingCounts } from './series-model';
+import { localEntries, localGaps, type ProgressLookup, seriesStats } from './series-model';
 import { useSeriesBooks } from './use-series-data';
 
 const SHELF = 118;
@@ -68,15 +68,19 @@ export function SeriesCard({
   const { books } = useSeriesBooks(libraryId, series.name, connectionId, { batch: true });
   const entries =
     books.length > 0 ? localEntries(books, { connectionId, connectionName, progressOf }) : null;
-  // The list's positions hold every slot a range covers (an omnibus 1-3 gives 1, 2, 3).
-  const gaps = localGaps(series.positions).length;
   const average = series.books > 0 ? series.duration / series.books : undefined;
-  // Per recording, like `series.books`: the shelf shows a work held twice once.
-  const { inProgress, finished } = recordingCounts(entries ?? []);
+  // Per work, as the series page counts (fe#313): a work held in two recordings is one book
+  // once the shelf is in. Until then the list's own figures: its count of recordings, and
+  // the gaps in its positions (a range holds every slot it covers: 1-3 gives 1, 2, 3).
+  const stats = entries ? seriesStats(entries) : null;
+  const owned = stats?.owned ?? series.books;
+  const gaps = stats?.missing ?? localGaps(series.positions).length;
+  const inProgress = stats?.inProgress ?? 0;
+  const finished = stats?.finished ?? 0;
   const summary = [
     gaps > 0
-      ? t('series.mode.ofTotal', { owned: series.books, total: series.books + gaps })
-      : t('series.mode.books', { count: series.books }),
+      ? t('series.mode.ofTotal', { owned, total: owned + gaps })
+      : t('series.mode.books', { count: owned }),
     inProgress ? t('series.mode.inProgress', { count: inProgress }) : '',
     finished ? t('series.mode.finished', { count: finished }) : '',
   ]

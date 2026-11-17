@@ -3779,6 +3779,11 @@ card's `MiniShelf`): `copy` is the recording the listener is on, else the latest
 the server's pick (`local`; the first in series order without a rail), and `recordings` lists every
 one with its own progress. A "2 recordings" picker chip (`RecordingsChip`, `recordings-picker.tsx`)
 beside the caption's badge and the list row's action opens its own dialog (a sheet on a phone) of them.
+The page reads the rows of a rail's `local_others` the listener has played; the picker reads the rest
+when it opens (fe#313). Counts are per work on both surfaces (`seriesStats`): the series page's, and
+a Series mode card's "N books", in progress and finished once its shelf is in (until then the list's
+recording count). A work's slot on the local shelf is its first recording's number, so another
+recording tagged elsewhere leaves that number a ghost.
 Without the fields (an older server, metadata off) every book is its own entry, as before; Home's
 Next keeps the server's pick and `/series` counts are unchanged.
 Series mode cards (`series-card.tsx`) show a `MiniShelf` of the owned spines and fetch their books

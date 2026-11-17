@@ -343,9 +343,13 @@ function ownedBookEntry(group: readonly Book[], src: Source): SeriesEntry {
  * it covers, once).
  */
 export function localEntries(books: readonly Book[], src: Source): SeriesEntry[] {
-  const out = groupByWork(sortSeriesBooks(books)).map((g) => ownedBookEntry(g, src));
+  const groups = groupByWork(sortSeriesBooks(books));
+  const out = groups.map((g) => ownedBookEntry(g, src));
   let filled: SeriesSpan | undefined;
-  for (const n of localGaps(books.map(bookSeriesSpan))) {
+  // The slots the entries hold: a work's at its first book's place only, so a second
+  // recording tagged with another number leaves that number a gap (fe#313), not a slot
+  // held by nothing on the shelf.
+  for (const n of localGaps(groups.map((g) => bookSeriesSpan(g[0])))) {
     if (filled && spanCovers(filled, n)) continue;
     const match = src.elsewhere?.find((b) => b.series_index === n);
     const fields = { key: `g:${n}`, position: match ? bookSeriesNumber(match) : String(n) };
@@ -529,11 +533,15 @@ export function defaultSelection(entries: readonly SeriesEntry[]): SeriesEntry |
   );
 }
 
+/** A series' counts, one per work (entry), a work held in several recordings once (fe#313:
+ * the series page and a Library series card count alike). */
 export type SeriesStats = {
   entries: number;
   owned: number;
   elsewhere: number;
   missing: number;
+  /** Started and not finished. */
+  inProgress: number;
   finished: number;
   /** Seconds of every entry with a known length (copies on the listener's servers). */
   seconds: number;
@@ -547,6 +555,7 @@ export function seriesStats(entries: readonly SeriesEntry[]): SeriesStats {
     owned: 0,
     elsewhere: 0,
     missing: 0,
+    inProgress: 0,
     finished: 0,
     seconds: 0,
     aheadSeconds: 0,
@@ -556,32 +565,13 @@ export function seriesStats(entries: readonly SeriesEntry[]): SeriesStats {
     else if (e.kind === 'elsewhere') s.elsewhere++;
     else s.missing++;
     if (e.finished) s.finished++;
+    else if (e.started) s.inProgress++;
     if (e.seconds) {
       s.seconds += e.seconds;
       if (!e.finished) s.aheadSeconds += e.seconds * (1 - e.fraction);
     }
   }
   return s;
-}
-
-/** How many of the listener's own recordings they are in and have finished, each recording
- * of a work held twice counted on its own (an owned entry without `recordings` counts as one;
- * a copy elsewhere or a ghost not at all): a Library series card's counts, in the unit of its
- * "N books" (the server's `/series` counts this library's recordings). */
-export function recordingCounts(entries: readonly SeriesEntry[]): {
-  inProgress: number;
-  finished: number;
-} {
-  let inProgress = 0;
-  let finished = 0;
-  for (const e of entries) {
-    if (e.kind !== 'owned') continue;
-    for (const r of e.recordings ?? [e]) {
-      if (r.finished) finished++;
-      else if (r.started) inProgress++;
-    }
-  }
-  return { inProgress, finished };
 }
 
 /** The median known length, the stand-in width for entries of unknown length. */
