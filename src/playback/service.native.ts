@@ -80,9 +80,8 @@ class NativePlaybackService implements PlaybackService {
     // and the next tick starts the measure afresh (taken at once, never for a jump).
     if (patch.position !== undefined || patch.trackIndex !== undefined) {
       // The engine is in the held tick's file whatever replaced its place.
-      const file = this.held?.trackIndex;
-      if (file !== undefined && patch.trackIndex === undefined)
-        patch = { ...patch, trackIndex: file };
+      if (this.held?.trackIndex !== undefined)
+        patch = { trackIndex: this.held.trackIndex, ...patch };
       this.dropHeld();
       this.lastTick = null;
     }
@@ -119,29 +118,36 @@ class NativePlaybackService implements PlaybackService {
     if (this.held && now - this.held.since >= LANDING_HOLD_MS) this.releaseHeld();
     const last = this.lastTick;
     const playing = this.snapshot.state === 'playing';
+    if (this.held) {
+      // A later tick while one is held: the newest place waits, on the first one's clock.
+      this.held = { ...this.held, position, duration };
+      return;
+    }
     const jumped =
       playing &&
       last !== null &&
-      (position - last.position >
-        ((now - last.at) / 1000) * (this.snapshot.rate || 1) + LANDING_AHEAD_S ||
+      (!this.plays(position - last.position, now - last.at) ||
         position < last.position - LANDING_BACK_S);
-    if (jumped || this.held) {
-      // Held, or a later tick while one is: the newest place waits, on the first one's clock.
-      const timer = this.held?.timer ?? setTimeout(() => this.releaseHeld(), LANDING_HOLD_MS);
-      this.held = this.held
-        ? { ...this.held, position, duration }
-        : { position, duration, since: now, from: last!, timer };
+    if (jumped) {
+      const timer = setTimeout(() => this.releaseHeld(), LANDING_HOLD_MS);
+      this.held = { position, duration, since: now, from: last, timer };
       return;
     }
-    this.takeTick(position, duration, now);
+    this.takeTick({ position, duration }, now);
+  }
+  /** Does playing explain covering `seconds` of audio in `ms`, at the speed? */
+  private plays(seconds: number, ms: number) {
+    return seconds <= (ms / 1000) * (this.snapshot.rate || 1) + LANDING_AHEAD_S;
   }
   private releaseHeld() {
     const held = this.held;
     if (!held) return;
     this.dropHeld();
-    if (held.trackIndex !== undefined)
-      this.snapshot = { ...this.snapshot, trackIndex: held.trackIndex };
-    this.takeTick(held.position, held.duration, Date.now());
+    const { position, duration, trackIndex } = held;
+    this.takeTick(
+      trackIndex === undefined ? { position, duration } : { trackIndex, position, duration },
+      Date.now(),
+    );
     if (this.snapshot.state !== 'playing') this.landed?.();
   }
   /**
@@ -174,13 +180,12 @@ class NativePlaybackService implements PlaybackService {
   }
   /** Did playing carry a held tick from the snapshot's file's end into the next one? */
   private ranOn(index: number, held: HeldTick) {
-    const { trackIndex, duration, rate } = this.snapshot;
+    const { trackIndex, duration } = this.snapshot;
     if (index !== trackIndex + 1 || !(duration > 0)) return false;
-    const played = duration - held.from.position + held.position;
-    return played <= ((held.since - held.from.at) / 1000) * (rate || 1) + LANDING_AHEAD_S;
+    return this.plays(duration - held.from.position + held.position, held.since - held.from.at);
   }
-  private takeTick(position: number, duration: number, at: number) {
-    this.setPlace({ position, duration }, at);
+  private takeTick(place: Partial<PlaybackSnapshot>, at: number) {
+    this.setPlace(place, at);
     this.emit();
   }
   /** Set the snapshot's place without telling the listeners; while playing, it is the
