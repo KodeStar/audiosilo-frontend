@@ -699,14 +699,16 @@ async function episodeWaitEnded(key: string, end: EpisodeWaitEnd): Promise<void>
   // Its file's own format is known only now: one this browser plays through the server's
   // transcoder is refused, as `queueBook` refuses it (the control says why).
   if (webTranscodeFromCache(connectionId, book, chapters)) return drop();
+  // The show's cached lists, by the item as it was read (one whose read failed marks
+  // nothing: the lists are read again).
+  const show = book.episode?.show_path;
+  if (show !== undefined) {
+    markEpisodeOnServer(queryClient, connectionId, libraryId, show, path, book);
+  }
   // Its server has the file now, whatever an older answer said (the re-read failed): the
   // manifest a later Retry starts from must not send it back to wait.
   if (book.episode && !book.episode.downloaded) {
     book = { ...book, episode: { ...book.episode, downloaded: true } };
-  }
-  const show = book.episode?.show_path;
-  if (show !== undefined) {
-    markEpisodeOnServer(queryClient, connectionId, libraryId, show, path, book);
   }
   enqueue(key, connectionId, libraryId, book, chapters, entry.origin ?? 'listener');
 }

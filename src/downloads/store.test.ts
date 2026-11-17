@@ -153,11 +153,15 @@ jest.mock('@/api/provider', () => ({
       },
     }),
     setQueryData: jest.fn(),
-    setQueriesData: jest.fn(),
     invalidateQueries: jest.fn(),
     getQueryData: (...a: unknown[]) => mockGetQueryData(...a),
     fetchQuery: (o: { queryKey: unknown[] }) => mockFetchQuery(o),
   },
+}));
+// The show's cached episode lists (its own tests): what a fetched episode marks them with.
+const mockMarkEpisodeOnServer = jest.fn();
+jest.mock('@/api/podcast-cache', () => ({
+  markEpisodeOnServer: (...a: unknown[]) => mockMarkEpisodeOnServer(...a),
 }));
 jest.mock('@/api/hooks', () => ({
   useSavedProgress: () => undefined,
@@ -2577,23 +2581,27 @@ describe('podcast episodes', () => {
     expect(entry()?.status).toBe('downloaded');
     expect(entry()?.serverFetch).toBeUndefined();
     expect(entry()?.manifest.book.episode?.downloaded).toBe(true);
-    // Marked on its server in the show's cached lists, none read again (fe#280).
+    // Marked on its server in the show's cached lists, by its item (fe#280).
     const { queryClient } = jest.requireMock('@/api/provider');
-    expect(queryClient.setQueriesData).toHaveBeenCalledWith(
-      { queryKey: ['podcastEpisodes', 'c1', 2, 'Show'] },
-      expect.any(Function),
+    expect(mockMarkEpisodeOnServer).toHaveBeenLastCalledWith(
+      queryClient,
+      'c1',
+      2,
+      'Show',
+      'Show/Monday.mp3',
+      ready,
     );
-    expect(queryClient.invalidateQueries).not.toHaveBeenCalledWith({
-      queryKey: ['podcastEpisodes', 'c1', 2, 'Show'],
-    });
   });
 
-  it('marks it on its server even when the read after ready fails', async () => {
-    await useDownloads.getState().download('c1', 2, episodeBook(false), chapters);
+  it('downloads it even when the read after ready fails, its lists left to be read again', async () => {
+    const absent = episodeBook(false);
+    await useDownloads.getState().download('c1', 2, absent, chapters);
     mockWaits[0].hooks.onEnd({ kind: 'ready' });
     await settle();
     expect(entry()?.status).toBe('downloaded');
     expect(entry()?.manifest.book.episode?.downloaded).toBe(true);
+    // The lists are given the older answer, which marks nothing (`markEpisodeOnServer`).
+    expect(mockMarkEpisodeOnServer.mock.calls.at(-1)?.[5]).toBe(absent);
   });
 
   it("fails a fetch its server couldn't make, with the code; Retry POSTs", async () => {

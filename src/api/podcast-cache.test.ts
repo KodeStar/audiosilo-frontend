@@ -61,4 +61,29 @@ describe('markEpisodeOnServer (fe#280)', () => {
     markEpisodeOnServer(qc, 'c1', 5, 'Daily News', path, episodeBook());
     expect(qc.getQueryData(key)).toBe(list);
   });
+  it("keeps a marked list's date, and the read a write left it waiting for", async () => {
+    const qc = new QueryClient();
+    const key = qk.latestEpisodes('c1', 5, 'Daily News', 6);
+    const read = Date.now() - 4 * 60_000;
+    qc.setQueryData(key, page(), { updatedAt: read });
+    await qc.invalidateQueries({ queryKey: key, refetchType: 'none' });
+    const item = episodeBook({ size: 16493 }, { downloaded: true });
+    markEpisodeOnServer(qc, 'c1', 5, 'Daily News', path, item);
+    const state = qc.getQueryState<PodcastEpisodePage>(key)!;
+    expect(state.data!.episodes[0].downloaded).toBe(true);
+    // One row marked is not the list read again: it is refreshed when it would have been.
+    expect(state.dataUpdatedAt).toBe(read);
+    expect(state.isInvalidated).toBe(true);
+  });
+
+  it('reads the lists again when the item does not say the episode is there', () => {
+    const qc = new QueryClient();
+    const key = qk.latestEpisodes('c1', 5, 'Daily News', 6);
+    const list = page();
+    qc.setQueryData(key, list);
+    // The item's read failed: the cache's older answer, with nothing of the file to mark.
+    markEpisodeOnServer(qc, 'c1', 5, 'Daily News', path, episodeBook({}, { downloaded: false }));
+    expect(qc.getQueryData(key)).toBe(list);
+    expect(qc.getQueryState(key)!.isInvalidated).toBe(true);
+  });
 });

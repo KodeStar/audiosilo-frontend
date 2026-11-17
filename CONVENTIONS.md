@@ -823,7 +823,7 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   wait their turn, leaving room under the server's five), and on `ready` reads the
   item and chapters (again, when it had them; `fetchFailFast`; none is read before the wait, on web either),
   marks it on its server in the show's cached episode lists with its item's size and length
-  (`markEpisodeOnServer`, no list read again; the player's fetch does the same) and joins the queue. The wait can be
+  (`markEpisodeOnServer`, no list read again and each list keeping its date; an item whose read failed marks nothing, the lists are read again; the player's fetch does the same) and joins the queue. The wait can be
   long, so `episodeWaitEnded` decides again what `queueBook` decided before it: an `auto` download
   the network rule no longer lets start is dropped with no decline mark (`canAutoDownload`), and so
   is one this browser turns out to play transcoded. The fetch limit, 429 and blips ask again
