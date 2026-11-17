@@ -79,9 +79,6 @@ class NativePlaybackService implements PlaybackService {
     // A place set by anything else (the app's own seek, a new file) replaces a held tick's,
     // and the next tick starts the measure afresh (taken at once, never for a jump).
     if (patch.position !== undefined || patch.trackIndex !== undefined) {
-      // The engine is in the held tick's file whatever replaced its place.
-      if (this.held?.trackIndex !== undefined)
-        patch = { trackIndex: this.held.trackIndex, ...patch };
       this.dropHeld();
       this.lastTick = null;
     }
@@ -163,13 +160,19 @@ class NativePlaybackService implements PlaybackService {
    * the snapshot keeps the place before the jump, with its own file.
    *
    * iOS tells the change before the new file's first tick: a held tick was the file it
-   * leaves, taken first, and the new file starts at 0 until its tick.
+   * leaves, taken first, and a new file starts at 0 until its tick.
    */
   private fileChanged(index: number) {
     const held = this.held;
     if (Platform.OS !== 'android') {
       this.releaseHeld();
-      this.update({ trackIndex: index, position: 0 });
+      // A rebuild in the same file (a remote move, a skip) tells it too: its place stands
+      // until the tick that follows.
+      this.update(
+        index === this.snapshot.trackIndex
+          ? { trackIndex: index }
+          : { trackIndex: index, position: 0 },
+      );
     } else if (!held) {
       this.update({ trackIndex: index });
     } else if (this.ranOn(index, held)) {
@@ -273,6 +276,12 @@ class NativePlaybackService implements PlaybackService {
     await AudiosiloPlayer.pause();
   }
   async seekTo(positionInTrack: number) {
+    // The callers chose a seek for a place in the snapshot's file. Android may already be in
+    // another one, a move held for its report (`fileChanged`): back to the snapshot's file.
+    const moved = this.held?.trackIndex;
+    if (moved !== undefined && moved !== this.snapshot.trackIndex) {
+      return this.skipToTrack(this.snapshot.trackIndex, positionInTrack);
+    }
     await AudiosiloPlayer.seekTo(positionInTrack);
     this.update({ position: positionInTrack });
   }

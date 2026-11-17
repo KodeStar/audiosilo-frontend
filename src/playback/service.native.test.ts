@@ -304,6 +304,12 @@ describe('a progress tick that jumped while playing', () => {
     expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 0.3, duration: 200 });
   });
 
+  it('keeps the place on iOS when a rebuild tells the file it is already in', async () => {
+    const { places } = await heardPlaces();
+    send('onTrackChange', { index: 0 });
+    expect(places).toEqual([[0, 11]]);
+  });
+
   describe('on Android, where the new file’s tick comes before its change', () => {
     beforeEach(() => {
       Platform.OS = 'android';
@@ -359,12 +365,18 @@ describe('a progress tick that jumped while playing', () => {
       expect(landed).toHaveBeenCalledTimes(1);
     });
 
-    it('seeks in the file a held move went to', async () => {
+    it('seeks in the snapshot’s file, back from the one a held move went to', async () => {
       const { svc, places } = await heardPlaces();
-      (mockModule as Record<string, unknown>).seekTo = jest.fn(async () => {});
+      const seekTo = jest.fn(async () => {});
+      const skipToTrack = jest.fn(async () => {});
+      Object.assign(mockModule, { seekTo, skipToTrack });
       moveIntoFile1(3);
       await svc.seekTo(40);
-      expect(places).toEqual([[1, 40]]);
+      expect(seekTo).not.toHaveBeenCalled();
+      expect(skipToTrack).toHaveBeenCalledWith(0, 40);
+      expect(places).toEqual([[0, 40]]);
+      jest.advanceTimersByTime(600);
+      expect(places).toEqual([[0, 40]]);
     });
 
     it('tells a run-on into the next file at once, its place the new file’s', async () => {
