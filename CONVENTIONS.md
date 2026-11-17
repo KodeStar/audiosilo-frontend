@@ -3518,7 +3518,13 @@ on first need). NOT device-verified (no Cast device yet).
   move once it answered (later, a file it played unseen may have run on). Not the file the receiver
   was on when the move was asked, at or past where it was then (`Intent.from`: the replaced media
   playing on). A status in flight naming the asked file's URL as sent, playing or paused, lands it,
-  and its token counts as played. Not a status or error of the queue that load replaces
+  and its token counts as played. A queue sent puts the snapshot at the place it asks for at once,
+  as a local engine's file load does, and until the receiver lands it (for at most `ASKED_MOVE_MS`
+  after the move, `holdingAsked`) no status or tick moves the snapshot: they are the media the
+  queue replaces (its `interrupted` stop at its file's 0, a later file), and the store would save
+  that place, end the listening span the move began there, raise its resume floor past the asked
+  place (every save below it refused), or read a later file as the engine running off the asked
+  one and stop it there. Not a status or error of the queue that load replaces
   (`ofReplacedQueue`: one naming a URL with the token before the mint), nor one read (`refresh`):
   read before the queue was sent it is dropped, and an error read while it is on its way refuses
   nothing. A book's load refused so to the end still stands, at the place it asked for until a

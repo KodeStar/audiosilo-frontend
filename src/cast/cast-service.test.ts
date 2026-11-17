@@ -1335,10 +1335,10 @@ describe('CastPlaybackService', () => {
         await flush();
         t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
         t.status({ playerState: 'playing', contentId: t.url(1), position: 1 });
-        // Nor its ticks, each of which would read the status again.
+        // Nor its ticks, each of which would read the status again: the place asked for stands.
         t.progress(2);
         expect(t.remote.readStatus).not.toHaveBeenCalled();
-        expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 2, position: 10 });
+        expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 0, position: 0 });
         // The load never answers: the receiver's statuses count again.
         t.tick(9_000);
         t.status({ playerState: 'playing', contentId: t.url(1), position: 9 });
@@ -1488,6 +1488,96 @@ describe('CastPlaybackService', () => {
         await loading;
         expect(t.remote.loads).toHaveLength(2);
         expect(t.svc.getSnapshot()).toMatchObject({ state: 'ready', trackIndex: 0, position: 5 });
+      });
+
+      it("a file jump back holds the asked place while it loads, never the replaced media's", async () => {
+        const t = setup();
+        await t.svc.load(TRACKS, 2, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 5 });
+        t.tick(40_000);
+        t.progress(45);
+        const answer = holdLoad(t);
+        const from = t.snaps.length;
+        const jump = t.svc.skipToTrack(0, 0);
+        await flush();
+        // The asked place from the ask, as a local engine's file load shows it.
+        expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 0, position: 0 });
+        // The receiver's statuses at the move (device log, 19:41:31): the replaced media's
+        // stop at Part 3's 0, a tick of it, the new session's first status still naming Part 3,
+        // then Part 1 playing.
+        t.status({
+          playerState: 'idle',
+          idleReason: 'interrupted',
+          contentId: t.url(2),
+          position: 0,
+        });
+        t.progress(46);
+        t.status({ playerState: 'buffering', contentId: t.url(2), position: 0 });
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 0 });
+        answer();
+        await jump;
+        // Never Part 3 (its 0 became the saved place, and the floor that held every save back
+        // for two minutes), never a pause that ends the listening the move just began.
+        const since = t.snaps.slice(from);
+        expect(since.filter((s) => s.trackIndex !== 0)).toEqual([]);
+        expect(since.filter((s) => s.state !== 'playing')).toEqual([]);
+        // The asked file plays: its place follows the receiver from here.
+        t.progress(3);
+        expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 0, position: 3 });
+      });
+
+      it('a resume refused to the last file never reads past its file while it loads, and plays', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        // The book played to its end on the TV; another device then left it at Part 2 0:20,
+        // which this phone took.
+        await t.svc.load(TRACKS, 2, 590, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 595 });
+        t.tick(5_000);
+        t.status({ playerState: 'idle', idleReason: 'finished', contentId: t.url(2), position: 0 });
+        expect(t.svc.getSnapshot().state).toBe('ended');
+        t.tick(60_000);
+        t.svc.adoptPlace({ state: 'ended', trackIndex: 1, position: 20, duration: 600, rate: 1 });
+        // Resume chapter 2 at 0:20 with the cached token ended (device log, 19:49:29).
+        let refuse: (e: Error) => void = () => {};
+        (t.remote.load as jest.Mock).mockImplementationOnce(
+          (req) =>
+            new Promise<void>((_resolve, reject) => {
+              t.remote.loads.push(req);
+              refuse = reject;
+            }),
+        );
+        const from = t.snaps.length;
+        const loading = t.svc.load(TRACKS, 1, 20, [], BOOK);
+        await flush();
+        // The SDK says the replaced media's end again, then the new session tries Part 2 and
+        // Part 3 and is refused both.
+        t.status({ playerState: 'idle', idleReason: 'finished', contentId: t.url(2), position: 0 });
+        t.status({ playerState: 'idle', idleReason: null, contentId: t.url(1), position: 0 });
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(2), position: 0 });
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(2), position: 0 });
+        const answer = holdLoad(t);
+        refuse(new Error('LOAD_FAILED'));
+        await flush();
+        expect(m.asks).toEqual([undefined, undefined, true]);
+        t.status({ playerState: 'idle', idleReason: null, contentId: t.url(1), position: 0 });
+        t.status({ playerState: 'buffering', contentId: t.url(1), position: 0 });
+        t.status({ playerState: 'paused', contentId: t.url(1), position: 20 });
+        answer();
+        await loading;
+        // The store's play once the book is loaded.
+        await t.svc.play();
+        expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 1, startTime: 20 });
+        expect(t.remote.play).toHaveBeenCalledTimes(2);
+        // Never Part 3 (the store reads a later file reported during a load that asked for a
+        // place inside its file as the engine running off it, and stops it there: no play),
+        // never the end of the book, never an error.
+        const since = t.snaps.slice(from);
+        expect(since.filter((s) => s.trackIndex !== 1)).toEqual([]);
+        expect(since.filter((s) => s.position === 600 || s.state === 'error')).toEqual([]);
+        expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 20 });
       });
     });
 

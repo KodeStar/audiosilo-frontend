@@ -332,8 +332,8 @@ export class CastPlaybackService implements PlaybackService {
         // (`RoutedPlaybackService`), which would leave the receiver playing out of reach.
         if (!(err instanceof ReceiverRefused)) throw err;
         // Until a status says where (the read can come back empty), it stands at the place
-        // asked for: the snapshot is still the last book's (its ticks included, which name no
-        // file), which is no place in this one.
+        // asked for, ready: a tick taken since the hold on it ended (`holdingAsked`) names no
+        // file, and can be the last book's.
         if (seq === this.loadSeq && placed === this.statusPlaces) ready();
         return;
       }
@@ -586,6 +586,16 @@ export class CastPlaybackService implements PlaybackService {
     if (status.playerState === 'playing') this.notePlayed(status, loaded, index);
   }
 
+  /** Whether the snapshot holds the place a queue in flight asked for (`sendQueueOnce`) against
+   * the receiver: until the receiver plays or pauses there (`landInFlight`), its statuses and
+   * ticks are the media the queue replaces (its stop, its file, its place), a file it skips on
+   * to, or name no file, and are never the book's place. For at most `ASKED_MOVE_MS` after the
+   * move: a load the receiver never answers must not hide them for good. */
+  private holdingAsked(): boolean {
+    const want = this.intended;
+    return this.loadsInFlight > 0 && !!want && !want.landed && this.now() - want.at < ASKED_MOVE_MS;
+  }
+
   /** Whether the phone has been following the receiver just now (a status or a progress tick
    * within `EARLY_END_FRESH_MS`): it would have seen the receiver play any file it did. */
   private watching(): boolean {
@@ -730,6 +740,14 @@ export class CastPlaybackService implements PlaybackService {
     loaded.offsets = items.map((_, n) => (n === i ? start.offset : 0));
     this.askMove();
     this.intend(i, position);
+    // The place asked for is the book's from now, as a local engine's file load shows it: until
+    // the receiver lands it, its statuses and ticks are the media this queue replaces
+    // (`holdingAsked`), whose place must never be saved or end a listening span.
+    this.update({
+      trackIndex: i,
+      position: Math.max(0, position),
+      duration: loaded.tracks[i]?.duration ?? 0,
+    });
     // By the play intent as it is now (`autoplay` for a session no word came for): a play or
     // pause may have come while the caller minted a token.
     const play = this.playIntent ?? autoplay;
@@ -826,6 +844,7 @@ export class CastPlaybackService implements PlaybackService {
       status.playerState === 'idle' &&
       (status.idleReason === 'cancelled' || status.idleReason === 'interrupted');
     if (stoppedElsewhere) this.needsReload = true;
+    if (!read && this.holdingAsked()) return;
     if (
       this.loadsInFlight === 0 &&
       (status.playerState === 'playing' ||
@@ -967,7 +986,7 @@ export class CastPlaybackService implements PlaybackService {
    * report moves. */
   private onProgress(position: number) {
     if (!this.loaded || this.foreignMedia || !Number.isFinite(position)) return;
-    if (this.skippingRefused()) return;
+    if (this.holdingAsked() || this.skippingRefused()) return;
     const offset = this.loaded.offsets[this.snapshot.trackIndex] ?? 0;
     const next = position + offset;
     if (
