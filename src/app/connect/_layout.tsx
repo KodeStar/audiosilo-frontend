@@ -44,8 +44,8 @@ export default function ConnectLayout() {
   const profilesRead = useProfiles((s) => s.hydrated);
   const kids = useKidsActive();
   const ready = !!useRootNavigationState()?.key;
-  // The hook, not the module-level `router`: that throws until the router's first commit
-  // has bound it (expo-router 58), and a cold kids-mode link can run this effect first.
+  // The hook, not the module-level `router`, as every mount-time navigation (CONVENTIONS.md,
+  // "Navigation at mount": that one throws with no root navigator mounted, as in a test).
   const router = useRouter();
   // Whether kids mode is on can only be told once both are read.
   const known = status !== 'loading' && profilesRead;

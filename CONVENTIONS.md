@@ -3619,12 +3619,16 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   `tabStackListeners` strips the link params React Navigation copies onto that root and its
   ancestors (else back landed on `/?libraryId=1`). Since expo-router 58 the tab navigator's
   history also keeps the first tab under a cold link into another tab, so `canGoBack()` is
-  true at a tab root: tests read the tab's stack (`tabStack` in `src/testing/route-tree.tsx`).
+  true at a tab root, and Back there lands on Home (intended; `route-tree-you-cold.test.tsx`
+  pins it): tests read the tab's stack (`tabStack` in `src/testing/route-tree.tsx`).
 - **Tab presses from our chrome dispatch `JUMP_TO`** (`useTabPress`): another tab -
   `navigationRef.dispatch({ type: 'JUMP_TO', payload: { name: '(library)' } })`, which restores
   its stack; a href can't (`router.navigate('/(home)')` resolves to `/` and pops Home). The
-  active tab again: `popTabToRoot(tab)` (`src/lib/root-stack.ts`, `POP_TO_TOP` on that tab
-  stack's key), which keeps the root's own params; never a navigate to the root's href (a
+  active tab again: `pressActiveTab(tab)` (`src/lib/root-stack.ts`): `popTabToRoot(tab)`
+  (`POP_TO_TOP` on that tab stack's key), which keeps the root's own params, and when the
+  stack still reads as its root, once more on the first state change within 100 ms
+  (`QUEUED_NAVIGATION_MS`): `router.*` only queues a move, which lands after the next render,
+  so a push just before the press is not in the state yet (fe#252); never a navigate to the root's href (a
   navigate is a push in this router, so it stacked a second root over the pages).
 - **The navigation container is read through `src/lib/router-ref.ts`.** expo-router 58 removed
   its global store (`store.navigationRef`, `store.state`), and its only public read is a hook.
@@ -3633,9 +3637,12 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   `expo-router/build/global-state/navigationRef` path (the route-tree tests pin it). An
   expo-router upgrade checks that path first.
 - **Navigation at mount uses `useRouter()`.** Since expo-router 58 the module-level `router`
-  throws until the router has rendered once, so an effect or guard that navigates on mount
-  (`kids-route-guard.tsx`, the connect layout) takes the hook's router. The module-level one
-  stays fine in press handlers and later code. `setParams` is the exception: both routers hand it
+  throws while no root navigator is mounted (`Attempted to navigate before mounting`). In the
+  app the root layout's navigator is always mounted before a screen's effect runs (its ref is
+  attached in the commit, ahead of any effect), so only a screen rendered on its own, as a Jest
+  test does, meets it; an effect or guard that navigates on mount (`kids-route-guard.tsx`, the connect layout,
+  `LeaveOnboarding`) still takes the hook's router, which is right in both. The module-level
+  one stays fine in press handlers and later code. `setParams` is the exception: both routers hand it
   to the navigation container, which drops it (`NOT_INITIALIZED_ERROR`) until a navigator has
   registered as focused, so in a page load's first effects it is lost. A param taken off as the
   screen mounts goes through the screen's own `useNavigation().setParams` (queued like `push`),
