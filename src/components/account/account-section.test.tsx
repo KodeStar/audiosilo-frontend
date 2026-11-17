@@ -24,7 +24,8 @@ jest.mock('@/api/hooks', () => {
         data: mockCaps[cid] ? { version: mockVersion, capabilities: mockCaps[cid] } : undefined,
         isPaused: read === 'held',
         error: read === 'failed' ? mockServerError : null,
-        isFetching: read === 'asking',
+        // Asked again after it failed: the count stays, the error is cleared.
+        errorUpdateCount: read === 'failed' || read === 'asking' ? 1 : 0,
       };
     },
     // The real hook never asks a server without the flag: its query stays pending.
@@ -312,6 +313,15 @@ describe('AccountSection', () => {
     mockCaps.c1 = { my_devices: false };
     await view.rerender(<AccountSection connectionId="c1" />);
     expect(screen.queryByText('Signed-in devices')).toBeNull();
+  });
+
+  // Opened on a /server read that failed elsewhere: the page's own reader asks it again as it
+  // mounts, and the section shows from the first render, not once that fails too.
+  it('shows the devices section while a /server that failed before is asked again', async () => {
+    mockCaps.c1 = undefined;
+    mockServerRead = 'asking';
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.getByText('Signed-in devices')).toBeTruthy();
   });
 
   it('hides the password and API keys from a demo account', async () => {

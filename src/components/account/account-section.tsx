@@ -14,7 +14,6 @@ import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { isKidAccount } from '@/lib/account';
 import { useLayout } from '@/lib/layout';
-import { useUnreadQuery } from '@/lib/offline-state';
 import { cn } from '@/lib/utils';
 import { hostOf } from '@/lib/pairing';
 import { addressKind, mergeAddresses } from '@/lib/server-address';
@@ -121,10 +120,14 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   const serverInfo = useServerInfo(cid);
   const server = serverInfo.data;
   const caps = server?.capabilities;
-  // No `/server` answer kept and none coming (offline, or the server failed): its flags
-  // are unknown, so the blocks the device can show without it stand with their offline or
-  // failed state, not gone until the server answers (fe#271).
-  const capsUnread = useSettledUnread(serverInfo) !== null;
+  // No `/server` answer kept and none coming (held for the network, or it failed): its
+  // flags are unknown, so the blocks the device can show without it stand with their
+  // offline or failed state, not gone until the server answers (fe#271). "It failed" is
+  // `errorUpdateCount`, which a read again leaves as it was: a reader that mounts asks a
+  // failed read again (React Query's `retryOnMount`), which puts it back to pending with
+  // no error, so the error itself would hide the devices section, which mounts such a
+  // reader, bring it back once the request failed, and ask again, twice a second for good.
+  const capsUnread = !caps && (serverInfo.isPaused || serverInfo.errorUpdateCount > 0);
   const demo = !!user?.is_demo;
   // A kid's account (8b-1) can't pair a device or have API keys (the server refuses both).
   const kid = isKidAccount(user);
@@ -313,19 +316,6 @@ function AccountAddresses({
       inUse={Platform.OS === 'web' ? undefined : inUse}
     />
   );
-}
-
-/** `useUnreadQuery` of the `/server` read, the state it settled on kept while it is asked
- * again. A reader that mounts asks a failed read again (React Query's `retryOnMount`),
- * which puts it back to pending with no error: read as it is, the blocks shown for the
- * failure (the devices section, which mounts such a reader) went, came back once the
- * request failed, and asked it again, twice a second for good (fe#271). */
-function useSettledUnread(read: Parameters<typeof useUnreadQuery>[0] & { isFetching: boolean }) {
-  const unread = useUnreadQuery(read);
-  const [settled, setSettled] = useState(unread);
-  if (read.isFetching) return settled;
-  if (settled !== unread) setSettled(unread);
-  return unread;
 }
 
 /** Read the account again (`/me`) once as its page opens, into the stored connection user
