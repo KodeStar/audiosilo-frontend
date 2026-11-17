@@ -1,5 +1,5 @@
 # Gates every pull request and push to main on the Expo SDK pins, one copy of each native
-# module, typecheck + lint + format (prettier --check) + tests.
+# module, typecheck + lint + format (prettier --check) + the wire goldens' copy + tests.
 # The web-export image build (web.yml) stays separate.
 name: ci
 
