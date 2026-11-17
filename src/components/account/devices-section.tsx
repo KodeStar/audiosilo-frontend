@@ -69,9 +69,9 @@ export function deviceDetail(d: MyDevice, t: TFunction, now: number): string {
 
 /**
  * "Signed-in devices" (capability `my_devices`; the page renders it only when the
- * server has it, or offline with no `/server` answer kept, fe#271): the account's
- * sessions, this device first and marked, each with its app, platform and when it was
- * last seen. Another device signs out after a
+ * server has it, or when `/server` could not be read and nothing is kept, fe#271): the
+ * account's sessions, this device first and marked, each with its app, platform and when
+ * it was last seen. Another device signs out after a
  * confirmation (`useRevokeMyDevice`) and a toast says so, or what went wrong and that
  * nothing changed. The device the listener is on offers no sign-out (`canRevoke`). A
  * device where the listener signed in household members of theirs (its

@@ -14,7 +14,7 @@ import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { isKidAccount } from '@/lib/account';
 import { useLayout } from '@/lib/layout';
-import { useUnreadQuery } from '@/lib/offline-state';
+import { type UnreadState, useUnreadQuery } from '@/lib/offline-state';
 import { cn } from '@/lib/utils';
 import { hostOf } from '@/lib/pairing';
 import { addressKind, mergeAddresses } from '@/lib/server-address';
@@ -121,10 +121,10 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   const serverInfo = useServerInfo(cid);
   const server = serverInfo.data;
   const caps = server?.capabilities;
-  // No `/server` answer kept and none coming offline: its flags are unknown, so the blocks
-  // the device can show without it stand with their offline state, not gone until the
-  // network is back (fe#271).
-  const capsOffline = useUnreadQuery(serverInfo) === 'offline';
+  // No `/server` answer kept and none coming (offline, or the server failed): its flags
+  // are unknown, so the blocks the device can show without it stand with their offline or
+  // failed state, not gone until the server answers (fe#271).
+  const capsUnread = useSettledUnread(serverInfo) !== null;
   const demo = !!user?.is_demo;
   // A kid's account (8b-1) can't pair a device or have API keys (the server refuses both).
   const kid = isKidAccount(user);
@@ -191,7 +191,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
 
       {watchLink.supported ? <WatchCard connectionId={cid} /> : null}
 
-      <AccountAddresses cid={cid} caps={caps} capsOffline={capsOffline} />
+      <AccountAddresses cid={cid} caps={caps} capsUnread={capsUnread} />
 
       {/* Not gated on the server's flags: needed most when a proxy turns every request
           away (fe#167). A demo account has no use for it, unless its sign-in came through
@@ -199,7 +199,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
           and removed here like anyone's. */}
       {!demo || connection?.proxyHeaders ? <ProxyHeadersCard connectionId={cid} /> : null}
 
-      {caps?.my_devices === true || capsOffline ? (
+      {caps?.my_devices === true || capsUnread ? (
         <DevicesSection connectionId={cid} serverName={serverName} />
       ) : null}
 
@@ -282,24 +282,25 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
  * refreshes) merged with what the server says now (`useServerAddresses`; on the web it
  * is the only refresh), and on native which one this device is using now. Web never
  * switches (the served player stays on its own origin), so it shows no "in use" line.
- * Nothing for a server without the capability or with no address to show. Offline with
- * no `/server` answer kept, the device's own copy shows (most useful away from home).
+ * Nothing for a server without the capability or with no address to show. With no
+ * `/server` answer kept and none coming, the device's own copy shows (most useful away
+ * from home).
  */
 function AccountAddresses({
   cid,
   caps,
-  capsOffline,
+  capsUnread,
 }: {
   cid: string;
   caps: Capabilities | undefined;
-  /** `/server` waits for the network with nothing kept: the kept addresses still show. */
-  capsOffline: boolean;
+  /** `/server` could not be read and nothing is kept: the kept addresses still show. */
+  capsUnread: boolean;
 }) {
   const { t } = useTranslation();
   const kept = useSession((s) => s.connections.find((c) => c.id === cid)?.addresses);
   const { data: fresh } = useServerAddresses(cid);
   const active = useActiveAddress(cid);
-  if (caps?.addresses !== true && !capsOffline) return null;
+  if (caps?.addresses !== true && !capsUnread) return null;
   const addresses = mergeAddresses(kept, fresh);
   if (!addresses) return null;
   // Named against what the card shows (the server may have just told us an address the
@@ -312,6 +313,24 @@ function AccountAddresses({
       inUse={Platform.OS === 'web' ? undefined : inUse}
     />
   );
+}
+
+/** `useUnreadQuery` of the `/server` read, the state it settled on kept while it is asked
+ * again. A reader that mounts asks a failed read again (React Query's `retryOnMount`),
+ * which puts it back to pending with no error: read as it is, the blocks shown for the
+ * failure (the devices section, which mounts such a reader) went, came back once the
+ * request failed, and asked it again, twice a second for good (fe#271). */
+function useSettledUnread(read: {
+  data: unknown;
+  isPaused: boolean;
+  error: unknown;
+  isFetching: boolean;
+}): UnreadState {
+  const unread = useUnreadQuery(read);
+  const [settled, setSettled] = useState(unread);
+  if (read.isFetching) return settled;
+  if (settled !== unread) setSettled(unread);
+  return unread;
 }
 
 /** Read the account again (`/me`) once as its page opens, into the stored connection user
