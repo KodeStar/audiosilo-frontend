@@ -69,6 +69,8 @@ export function LibrivoxSearch({
   const named = libraries.find((l) => l.id === libraryId);
   // Undefined while the libraries load; the named one when the picked one is gone.
   const target = libraries.find((l) => l.id === picked) ?? named;
+  // The libraries failed with none kept: nowhere to add to, and a Retry (fe#299).
+  const librariesFailed = !known && librariesRead.isError;
 
   const submit = () => {
     const q = text.trim();
@@ -149,6 +151,19 @@ export function LibrivoxSearch({
           </Select>
         </View>
       ) : null}
+      {librariesFailed ? (
+        <View className="gap-2" accessibilityLiveRegion="polite" testID="librivox-library-error">
+          <Text variant="body">{t('librivox.library.loadError')}</Text>
+          <Button
+            variant="outline"
+            size="sm"
+            icon="rotate"
+            title={t('common.retry')}
+            onPress={() => void librariesRead.refetch()}
+            className="self-start"
+          />
+        </View>
+      ) : null}
       {failure ? (
         <View className="gap-2" accessibilityLiveRegion="polite" testID="librivox-search-error">
           <Text variant="body">{t(failure)}</Text>
@@ -200,7 +215,7 @@ export function LibrivoxSearch({
             <LibrivoxWorkPanel
               connectionId={connectionId}
               workId={item.work_id}
-              target={target}
+              target={librariesFailed ? null : target}
               bridgeAway={bridgeAway}
             />
           ) : null}

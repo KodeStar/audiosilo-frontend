@@ -32,6 +32,9 @@ type ReadState<T> = {
 let mockLibraries: Library[] | undefined = [];
 // The libraries read again (a cached list kept meanwhile).
 let mockLibrariesFetching = false;
+// The libraries' read failed (with `mockLibraries` undefined: none kept).
+let mockLibrariesError = false;
+const mockLibrariesRefetch = jest.fn();
 let mockSearch: ReadState<{ results: LibrivoxHit[] }> = {};
 const mockAsked: string[] = [];
 const mockSearchRefetch = jest.fn();
@@ -50,7 +53,12 @@ jest.mock('@/api/hooks', () => {
   return {
     CapabilityError,
     qk: { librivoxWorks: (cid: string) => ['librivoxWork', cid] },
-    useLibrariesOf: () => ({ data: mockLibraries, isFetching: mockLibrariesFetching }),
+    useLibrariesOf: () => ({
+      data: mockLibraries,
+      isFetching: mockLibrariesFetching,
+      isError: mockLibrariesError,
+      refetch: mockLibrariesRefetch,
+    }),
     useLibrivoxSearch: (q: string) => {
       mockAsked.push(q);
       return q
@@ -131,6 +139,7 @@ async function openWork() {
 beforeEach(() => {
   mockLibraries = [library(3, 'Books')];
   mockLibrariesFetching = false;
+  mockLibrariesError = false;
   mockSearch = { data: { results: [librivoxHit()] } };
   mockAsked.length = 0;
   mockWorkAsked.length = 0;
@@ -435,6 +444,22 @@ describe('LibrivoxSearch', () => {
     await openWork();
     const add = screen.getByTestId('librivox-add');
     expect(add.props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
+  });
+
+  // fe#299: no "Add to " naming nothing when the libraries failed with none kept.
+  it('says the libraries could not be read, with a Retry and no Add, when they failed', async () => {
+    mockLibraries = undefined;
+    mockLibrariesError = true;
+    await mount(9);
+    expect(
+      screen.getByText(
+        "Your libraries couldn't be read, so there's nowhere to add a recording yet.",
+      ),
+    ).toBeTruthy();
+    await fireEvent.press(within(screen.getByTestId('librivox-library-error')).getByText('Retry'));
+    expect(mockLibrariesRefetch).toHaveBeenCalled();
+    await openWork();
+    expect(screen.queryByTestId('librivox-add')).toBeNull();
   });
 
   it('says the work has no recording yet', async () => {

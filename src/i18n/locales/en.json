@@ -3358,7 +3358,8 @@
       "noneHint": "No LibriVox book matches that. Try another title or the author's name."
     },
     "library": {
-      "label": "Add to"
+      "label": "Add to",
+      "loadError": "Your libraries couldn't be read, so there's nowhere to add a recording yet."
     },
     "work": {
       "show": "Recordings of {{title}}",

@@ -42,7 +42,8 @@ import {
  * One work's LibriVox recordings, under its search result (LibriVox L6): each reader with
  * its length, sections and project number, a link to its LibriVox page, and Add to the
  * target library; In your library (Open) once this server holds it, its fetch's progress
- * while the Bridge works on it. `target`: undefined while the libraries load.
+ * while the Bridge works on it. `target`: undefined while the libraries load, null once they
+ * failed with none kept (no Add then, with no library to name: the page says why, fe#299).
  */
 export function LibrivoxWorkPanel({
   connectionId,
@@ -52,7 +53,7 @@ export function LibrivoxWorkPanel({
 }: {
   connectionId: string;
   workId: string;
-  target: Library | undefined;
+  target: Library | null | undefined;
   /** The Bridge went away while the page was open: Add and Cancel are held back until it
    * is back. */
   bridgeAway: boolean;
@@ -119,7 +120,7 @@ function RecordingRow({
 }: {
   connectionId: string;
   recording: LibrivoxRecording;
-  target: Library | undefined;
+  target: Library | null | undefined;
   bridgeAway: boolean;
 }) {
   const { t } = useTranslation();
@@ -197,7 +198,7 @@ function RecordingRow({
           held={bridgeAway}
         />
       ) : null}
-      {canAdd ? (
+      {canAdd && target !== null ? (
         <Button
           size="sm"
           icon="download"

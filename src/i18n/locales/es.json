@@ -3358,7 +3358,8 @@
       "noneHint": "Ningún libro de LibriVox coincide. Prueba otro título o el nombre del autor."
     },
     "library": {
-      "label": "Añadir a"
+      "label": "Añadir a",
+      "loadError": "No se pudieron leer tus bibliotecas, así que aún no hay dónde añadir una grabación."
     },
     "work": {
       "show": "Grabaciones de {{title}}",

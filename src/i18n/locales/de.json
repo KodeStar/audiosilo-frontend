@@ -3358,7 +3358,8 @@
       "noneHint": "Kein LibriVox-Buch passt dazu. Versuche einen anderen Titel oder den Namen des Autors."
     },
     "library": {
-      "label": "Hinzufügen zu"
+      "label": "Hinzufügen zu",
+      "loadError": "Deine Bibliotheken konnten nicht gelesen werden, daher gibt es noch keinen Ort, an dem eine Aufnahme hinzugefügt werden kann."
     },
     "work": {
       "show": "Aufnahmen von {{title}}",
