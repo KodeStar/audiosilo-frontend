@@ -53,10 +53,12 @@ class NativePlaybackService implements PlaybackService {
   private remoteMove: ((trackIndex: number, positionInTrack: number) => void) | null = null;
   private rateChange: ((rate: number) => void) | null = null;
   private silenceSaved: ((totalSeconds: number) => void) | null = null;
-  /** A progress tick whose place jumped while playing, held back (`LANDING_HOLD_MS`). */
+  /** A progress tick whose place jumped while playing, held back (`LANDING_HOLD_MS`) since
+   * `since`. */
   private held: {
     position: number;
     duration: number;
+    since: number;
     timer: ReturnType<typeof setTimeout>;
   } | null = null;
   /** The last progress tick the snapshot took in this stretch of playing, and when. */
@@ -67,7 +69,7 @@ class NativePlaybackService implements PlaybackService {
   }
   private update(patch: Partial<PlaybackSnapshot>) {
     // A place set by anything else (the app's own seek, a new file) replaces a held tick's,
-    // and the next tick is measured from it, not taken for a jump.
+    // and the next tick starts the measure afresh (taken at once, never for a jump).
     if (patch.position !== undefined || patch.trackIndex !== undefined) {
       this.dropHeld();
       this.lastTick = null;
@@ -94,6 +96,10 @@ class NativePlaybackService implements PlaybackService {
    */
   private progress(position: number, duration: number) {
     const now = Date.now();
+    // A hold past its time ends at the next tick even when its timer never fired: Android
+    // pauses the JS timers in the background, and every tick would otherwise fold into the
+    // hold, the store hearing none (no save, cut or keep) until the next state change.
+    if (this.held && now - this.held.since >= LANDING_HOLD_MS) this.releaseHeld();
     const last = this.lastTick;
     const playing = this.snapshot.state === 'playing';
     const jumped =
@@ -105,8 +111,9 @@ class NativePlaybackService implements PlaybackService {
         position < last.position - LANDING_BACK_S);
     if (jumped || this.held) {
       // Held, or a later tick while one is: the newest place waits, on the first one's clock.
+      const since = this.held?.since ?? now;
       const timer = this.held?.timer ?? setTimeout(() => this.releaseHeld(), LANDING_HOLD_MS);
-      this.held = { position, duration, timer };
+      this.held = { position, duration, since, timer };
       return;
     }
     this.takeTick(position, duration, now);

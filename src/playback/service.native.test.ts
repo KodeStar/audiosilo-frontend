@@ -170,6 +170,16 @@ describe('a progress tick that jumped while playing', () => {
     expect(heard()).toEqual([11, 70.25, 71.3]);
   });
 
+  it('ends a hold whose timer never fired at the next tick (Android pauses JS timers)', async () => {
+    const { heard } = await playing();
+    send('onProgress', { position: 70, duration: 100 });
+    expect(heard()).toEqual([11]);
+    // The clock moves on, but no timer runs.
+    jest.setSystemTime(Date.now() + 1_000);
+    send('onProgress', { position: 71, duration: 100 });
+    expect(heard()).toEqual([11, 70, 71]);
+  });
+
   it('takes ticks that play on at the speed at once', async () => {
     const { svc, heard } = await playing();
     (mockModule as Record<string, unknown>).setRate = jest.fn(async () => {});
@@ -197,7 +207,7 @@ describe('a progress tick that jumped while playing', () => {
     expect(heard()).toEqual([11, 40.5]);
   });
 
-  it('takes the tick after its own seek at once, measured from the place it set', async () => {
+  it('takes the tick after its own seek at once, never held for a jump', async () => {
     const { svc, heard } = await playing();
     (mockModule as Record<string, unknown>).seekTo = jest.fn(async () => {});
     await svc.seekTo(80);
