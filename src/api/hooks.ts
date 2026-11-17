@@ -3845,6 +3845,8 @@ export function useAllProgressAll({
       refused: results.flatMap((r, i) =>
         isSignedOutError(r.error) ? [apis[i].connection.id] : [],
       ),
+      /** The connections whose progress failed with nothing kept (Home names one). */
+      failed: results.flatMap((r, i) => (r.isError && !r.data ? [apis[i].connection.id] : [])),
       /** Ask again only for the servers whose progress failed. */
       retry: () => {
         for (const r of results) if (r.isError) void r.refetch();

@@ -68,6 +68,7 @@ type Progress = {
   updated_at: string;
 };
 let mockCaps: Record<string, boolean | undefined> = {};
+const mockRetryProgress = jest.fn();
 let mockProgress: {
   progress: Progress[];
   isLoading: boolean;
@@ -75,6 +76,7 @@ let mockProgress: {
   offline?: boolean;
   /** The connections whose progress read was refused (a 401). */
   refused?: string[];
+  failed?: string[];
 } = {
   progress: [],
   isLoading: false,
@@ -85,7 +87,7 @@ jest.mock('@/lib/device-online', () => ({
   ...jest.requireActual('@/lib/device-online'),
   useDeviceOnline: () => mockDeviceOnline,
 }));
-let mockRecent: { books: unknown[]; isLoading: boolean; error: Error | null } = {
+let mockRecent: { books: unknown[]; isLoading: boolean; error: Error | null; offline?: boolean } = {
   books: [],
   isLoading: false,
   error: null,
@@ -101,7 +103,7 @@ jest.mock('@/api/hooks', () => ({
   // Every server says the same flags.
   useCapabilitiesAll: () => Object.fromEntries(mockConnections.map((c) => [c.id, mockCaps])),
   useServerInfo: () => ({ data: { capabilities: {} } }),
-  useAllProgressAll: () => ({ refused: [], ...mockProgress }),
+  useAllProgressAll: () => ({ refused: [], failed: [], retry: mockRetryProgress, ...mockProgress }),
   useLibrariesAll: () => ({ groups: mockGroups }),
   useRecentAll: () => mockRecent,
   useFavouritesAll: () => ({ favourites: [] }),
@@ -268,10 +270,60 @@ describe('HomeScreen', () => {
   });
 
   it('shows what went wrong, with a retry, when progress failed and nothing is shown', async () => {
-    mockProgress = { progress: [], isLoading: false, error: new Error('down') };
+    mockProgress = { progress: [], isLoading: false, error: new Error('down'), failed: ['a'] };
     await mountHome();
     expect(screen.getByText("Couldn't load your progress")).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
+    expect(mockRetryProgress).toHaveBeenCalled();
+  });
+
+  // fe#271 (iPhone run): one server unreachable, another answering with nothing in
+  // progress: the card said "Couldn't load your progress" as if both had failed.
+  it('names the one server whose progress failed while another answered', async () => {
+    mockConnections = [
+      { id: 'a', name: 'Home' },
+      { id: 'b', name: "Maya's Shelf" },
+    ];
+    mockProgress = { progress: [], isLoading: false, error: new Error('down'), failed: ['b'] };
+    await mountHome();
+    expect(screen.getByText("Couldn't load your progress from Maya's Shelf")).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
+  // fe#271: offline, Home said "Could not load new books. Retry" and named a server "not
+  // answering" above "You're offline". The page says it once.
+  it('says it is offline once: no Recently added error, no servers pill', async () => {
+    mockDeviceOnline = false;
+    mockConnections = [
+      { id: 'a', name: 'Home' },
+      { id: 'b', name: "Maya's Shelf" },
+    ];
+    mockProgress = { progress: [], isLoading: false, error: null, offline: true };
+    mockRecent = {
+      books: [],
+      isLoading: false,
+      error: new TypeError('Failed to fetch'),
+      offline: true,
+    };
+    useReachability.setState({ online: { b: false } });
+    try {
+      await mountHome();
+      expect(screen.getByTestId('home-offline')).toBeTruthy();
+      expect(screen.queryByText('Recently added')).toBeNull();
+      expect(screen.queryByText('Could not load new books.')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+      expect(screen.queryByText("Maya's Shelf isn't answering")).toBeNull();
+      expect(screen.queryByText('2 servers')).toBeNull();
+    } finally {
+      screen.unmount();
+      useReachability.setState({ online: {} });
+    }
+  });
+
+  it('keeps the Recently added error with a Retry when the device has a network', async () => {
+    mockRecent = { books: [], isLoading: false, error: new TypeError('Failed to fetch') };
+    await mountHome();
+    expect(screen.getByText('Could not load new books.')).toBeTruthy();
   });
 
   // Offline before progress was read (the drop came on another tab): the offline state,

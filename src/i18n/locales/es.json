@@ -689,6 +689,7 @@
     },
     "error": {
       "title": "No se pudo cargar tu progreso",
+      "titleServer": "No se pudo cargar tu progreso de {{server}}",
       "body": "No se ha perdido nada: tu posición está guardada en cada servidor. Comprueba la conexión e inténtalo de nuevo."
     },
     "offline": {
@@ -917,6 +918,7 @@
     "picker": {
       "label": "Biblioteca",
       "placeholder": "Elige una biblioteca",
+      "waiting": "Esperando a {{name}}",
       "serverLabel": "Servidor",
       "serverPlaceholder": "Elige un servidor"
     },
@@ -1959,6 +1961,7 @@
     },
     "home": "Inicio de AudioSilo",
     "offline": "Sin conexión · las descargas se reproducen",
+    "offlinePlain": "Sin conexión",
     "notAnswering": "{{name}} no responde",
     "serverMore_one": "{{name}} + {{count}} más",
     "serverMore_other": "{{name}} + {{count}} más",

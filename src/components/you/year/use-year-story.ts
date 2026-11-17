@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -63,10 +63,15 @@ export function useYearStory(cid: string, range: YearRange): YearStory {
   const unreadStats = useUnreadQuery(stats);
 
   // This year's streak and goal are part of the story: wait for them (unless they fail,
-  // or wait for a network themselves).
+  // or wait for a network themselves), but only before it is first told. One held for
+  // the network is asked again once it is back, which used to drop a story on screen to
+  // `loading` and start it again at its first card (fe#271); it takes them in as they come.
   const stillComing = (q: { data: unknown; isError: boolean; isPaused: boolean }) =>
     !q.data && !q.isError && !q.isPaused;
-  const extrasPending = current && (stillComing(listening) || stillComing(goal));
+  const storyKey = `${cid}\n${range}`;
+  const [toldFor, setToldFor] = useState<string | null>(null);
+  const extrasPending =
+    toldFor !== storyKey && current && (stillComing(listening) || stillComing(goal));
 
   const built = useMemo(() => {
     if (!stats.data || extrasPending) return null;
@@ -95,6 +100,8 @@ export function useYearStory(cid: string, range: YearRange): YearStory {
     return { status: 'error', serverName, retry: () => void stats.refetch() };
   }
   if (!built) return { status: 'loading', serverName };
+  // Told from now on (a state update while rendering: React renders again at once).
+  if (toldFor !== storyKey) setToldFor(storyKey);
   if (built.cards.length === 0) {
     return { status: 'empty', serverName, year: built.year, current };
   }

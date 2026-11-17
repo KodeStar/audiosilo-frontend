@@ -470,6 +470,15 @@ describe('LibraryPicker', () => {
     await fireEvent.press(screen.getByText("Audiobooks · Maya's Shelf"));
     expect(mockSelect).toHaveBeenCalledWith({ connectionId: 'b', libraryId: 1 });
   });
+  // fe#271: a long hang on the picked library's server read "Choose a library".
+  it('names the server it waits for while the picked library is not listed yet', async () => {
+    mockGroups = [unread('a', 'loading'), group('b', [[3, 'Shelf']])];
+    pick({ connectionId: 'a', libraryId: 2 });
+    await mountWithPortal(<LibraryPicker />);
+    expect(screen.getByText('Waiting for Hearthside')).toBeTruthy();
+    expect(screen.queryByText('Choose a library')).toBeNull();
+  });
+
   it('in server mode names the server only and is hidden with one server', async () => {
     mockGroups = [
       group('a', [

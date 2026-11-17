@@ -208,6 +208,14 @@ describe('DevicesSection', () => {
     expect(screen.queryByText("You're offline")).toBeNull();
   });
 
+  // fe#271: a failed re-read hid the list it holds behind the error and its Retry.
+  it('keeps the list it holds when a re-read fails', async () => {
+    mockDevices = { ...loaded([laptop, here]), isError: true };
+    await mount();
+    expect(screen.getByText('Work laptop')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
   it('says when only this device is signed in', async () => {
     mockDevices = loaded([here]);
     await mount();

@@ -689,6 +689,7 @@
     },
     "error": {
       "title": "Couldn't load your progress",
+      "titleServer": "Couldn't load your progress from {{server}}",
       "body": "Nothing is lost: your place is kept on each server. Check the connection and try again."
     },
     "offline": {
@@ -917,6 +918,7 @@
     "picker": {
       "label": "Library",
       "placeholder": "Choose a library",
+      "waiting": "Waiting for {{name}}",
       "serverLabel": "Server",
       "serverPlaceholder": "Choose a server"
     },
@@ -1959,6 +1961,7 @@
     },
     "home": "AudioSilo home",
     "offline": "Offline · downloads play",
+    "offlinePlain": "Offline",
     "notAnswering": "{{name}} isn't answering",
     "serverMore_one": "{{name}} + {{count}} more",
     "serverMore_other": "{{name}} + {{count}} more",

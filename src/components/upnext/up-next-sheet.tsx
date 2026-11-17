@@ -35,7 +35,7 @@ export function UpNextSheet({ visible, onClose }: { visible: boolean; onClose: (
 
 function SheetBody({ cid, onNavigate }: { cid: string; onNavigate: () => void }) {
   const data = useUpNextData(cid);
-  const subline = useQueuedLine(cid, data.queuedSeconds, data.entries?.length ?? 0);
+  const subline = useQueuedLine(cid, data.queuedSeconds, data.entries?.length);
   return (
     <>
       <Text variant="caption" className="px-2 pb-3">

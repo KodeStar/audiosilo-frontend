@@ -3,6 +3,7 @@ import { Platform, Pressable, View } from 'react-native';
 
 import { useKnownBook } from '@/api/hooks';
 import type { QueueEntry } from '@/api/types';
+import { OfflineState } from '@/components/layout/offline-state';
 import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { BookCover } from '@/components/library/book-cover';
 import { GhostCover } from '@/components/library/ghost-cover';
@@ -37,13 +38,24 @@ import { entryTitle, QueueList, QueueSkeleton } from './queue-list';
 import type { Suggestion } from './up-next-model';
 import { usePlayNow, useUpNextData } from './use-up-next';
 
-/** "7h 2m queued" (with the server's name first when signed in to several). */
-export function useQueuedLine(cid: string | undefined, seconds: number, count: number): string {
+/** "7h 2m queued" (with the server's name first when signed in to several). `count`
+ * undefined: the queue is not read, so the line says nothing of it (the server's name
+ * alone, else nothing): not "Nothing queued" over books that are queued (fe#271). */
+export function useQueuedLine(
+  cid: string | undefined,
+  seconds: number,
+  count: number | undefined,
+): string {
   const { t } = useTranslation();
   const several = useProfileConnections().length > 1;
   const name = useConnectionName(cid);
   const amount =
-    count === 0 ? t('upnext.nothingQueued') : t('upnext.queued', { time: formatDuration(seconds) });
+    count === undefined
+      ? null
+      : count === 0
+        ? t('upnext.nothingQueued')
+        : t('upnext.queued', { time: formatDuration(seconds) });
+  if (!amount) return several && name ? name : '';
   return several && name ? `${name} · ${amount}` : amount;
 }
 
@@ -94,7 +106,11 @@ export function UpNextPanel({
         ) : null}
       </View>
 
-      {data.error ? (
+      {data.unread === 'offline' ? (
+        // Before the error: no Retry can work without a network, and the list is asked
+        // again by itself once it is back.
+        <OfflineState className="mb-2" hint={t('common.offlineList')} />
+      ) : data.error ? (
         signedOut ? (
           <SignInAgainState connection={signedOut} compact className="mx-1.5 mb-2" />
         ) : (

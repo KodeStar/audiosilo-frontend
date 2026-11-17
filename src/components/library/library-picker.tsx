@@ -41,10 +41,16 @@ export function LibraryPicker({
   className?: string;
 }) {
   const { t } = useTranslation();
-  const { groups, library, select } = useSelectedLibrary();
+  const { groups, library, server, select } = useSelectedLibrary();
   const withLibraries = groups.filter((g) => g.libraries.length > 0);
   // Several servers signed in: the server is always named.
   const named = groups.length > 1;
+  // No library shown while its server's list is on its way (or held, or failed): the
+  // picker names the server it waits for, not "Choose a library" (fe#271).
+  const waiting =
+    named && !library && server
+      ? t('library.picker.waiting', { name: server.connectionName })
+      : null;
   const total = withLibraries.reduce((n, g) => n + g.libraries.length, 0);
   const choices = by === 'server' ? withLibraries.length : total;
   if (choices === 0 || (choices === 1 && library)) {
@@ -74,7 +80,7 @@ export function LibraryPicker({
           className={cn('min-h-[34px] min-w-[140px] max-w-[260px] shrink', className)}
           accessibilityLabel={t('library.picker.serverLabel')}
         >
-          <SelectValue placeholder={t('library.picker.serverPlaceholder')} />
+          <SelectValue placeholder={waiting ?? t('library.picker.serverPlaceholder')} />
         </SelectTrigger>
         <SelectContent align="end">
           {withLibraries.map((g) => (
@@ -104,7 +110,7 @@ export function LibraryPicker({
         className={cn('min-h-[34px] min-w-[140px] max-w-[260px] shrink', className)}
         accessibilityLabel={t('library.picker.label')}
       >
-        <SelectValue placeholder={t('library.picker.placeholder')} />
+        <SelectValue placeholder={waiting ?? t('library.picker.placeholder')} />
       </SelectTrigger>
       <SelectContent align="end">
         {withLibraries.map((g) =>

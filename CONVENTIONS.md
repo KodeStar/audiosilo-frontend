@@ -2056,8 +2056,10 @@ media GETs only.
     (`cachedCapability`; an offline cold launch knows it from the kept answer seeded at launch,
     *The kept `/server` answer*, fe#211: the outbox keeps no copy of its own), else unknown,
     which records events (a 404 that a fresh `/server` confirms turns them into PUTs, and that
-    answer is kept: `keepServerAnswer`); never after a rollback this session. A send the server
-    took while the cached flag says off has the cache ask `/server` again. False: the
+    answer is kept: `keepServerAnswer`, unless it names another `server_id`, a reset server: then
+    nothing rolls back); never after a rollback this session. A send the server took while the
+    cached flag says off sets it on the held answer (`keepServerFlag`, kept too) and has the
+    cache ask `/server` again (fe#270). False: the
     PUT save loop and `POST /history`, unchanged. On the sync path `persist` only writes the
     mirror (with the file place `file`/`file_pos`, fe#188) and the place reaches the server as
     listen spans; `POST /history` is not sent (the server writes history from spans).
@@ -4275,13 +4277,26 @@ under their empty state).
   used to fail with a Retry. The Library's Series, Authors, Narrators, Collections and Shows
   modes, the series, author / narrator, book, episode, collection, show and folder pages, and
   a book's bookmarks, notes and history sections all do, and so do the Signed-in devices and
-  household members sections, Your listening (both of its reads, and its `/server`: until
-  the flag is known neither read is asked, so neither is ever held) and the Year story
-  (`useYearStory`'s `offline` status: a held streak or goal is left out, like a failed one);
-  Favourites and Home's See all, with no row to show, hand `useUnreadQuery` their fan-out's
-  `offline` (a server's list held with nothing kept, `anyHeld`), so one server's empty
-  answer is not "none" while another's is held (nor is its progress with no finished book
-  "none finished"). The Journal's tabs ask
+  household members sections, Your listening (both of its reads) and the Year story
+  (`useYearStory`'s `offline` status: a held streak or goal is left out, like a failed one,
+  and once told the story stays told while they are asked again, so it never restarts at its
+  first card). A capability-gated read whose flag is unknown because its `/server` read is
+  held (or failed) with nothing kept takes that read's state (`useCapabilityQuery`:
+  `isPaused`, or its error, and `refetch` asks `/server` again), so these screens need no
+  `/server` check of their own (fe#270). A section that keeps a list checks `isError` with
+  `!data` too: a failed re-read keeps what it holds. Favourites (its page and the Folders
+  row), Home's See all and Home's Recently added, with no row to show, ask
+  `useUnreadAll({ data, offline, error })` of their fan-out (`offline`: a server's list held
+  with nothing kept, `anyHeld`), so one server's empty answer is not "none" while another's
+  is held (nor is its progress with no finished book "none finished"), and a held list wins
+  over another server's failure, a refusal included (fe#271). Home says it is offline once:
+  the hero's `NowOffline`, no Recently added error with Retry, no servers pill
+  (`Greeting offline`); with one server of several failing while another answered, the
+  hero's error names it (`useAllProgressAll().failed`) and Retry asks only the failed. The
+  top bar's server line says plain "Offline" where downloads are unsupported
+  (`shell.offlinePlain`), Up next shows `OfflineState` for a held queue and no "Nothing
+  queued" subline for a queue it has not read, and the library picker names the server it
+  waits for (`library.picker.waiting`). The Journal's tabs ask
   `unreadSources` (a source held for the network is `waiting`, and so is one whose `/server`
   flag is). A page whose failure is `LoadFailedNote` (book, episode, folder) hands it the hint
   (`offline`), so the sign-in state still comes first. A new screen with a skeleton does the
@@ -4300,7 +4315,9 @@ under their empty state).
   launch that cannot reach it. Kept on every answer a request gets (`watchServerAnswers`, a
   query-cache subscription: a `setQueryData` seed is `manual` and is never written back; an
   answer that says what the kept one says is not rewritten) and on one read outside the cache
-  (`keepServerAnswer`); seeded into `qk.server(cid)` at launch (`restoreServerSnapshots`, awaited
+  (`keepServerAnswer`, which runs the cache's server-reset check first: an answer naming
+  another `server_id` flags the connection `server-reset` and is not kept; `keepServerFlag`
+  sets one flag a request proved); seeded into `qk.server(cid)` at launch (`restoreServerSnapshots`, awaited
   in `bootstrapPlayback` before any screen; dated `savedAt` so the first observer still asks
   again, `gcTime: Infinity`, never over an answer the cache already holds that is no older);
   forgotten with its connection. Every gate (`useCapability`, `cachedCapability`,

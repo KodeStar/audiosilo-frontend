@@ -55,6 +55,26 @@ export function useUnreadQuery(query: {
 }
 
 /**
+ * `useUnreadQuery` of ONE list read from every server (`useFavouritesAll`, `useRecentAll`,
+ * `useAllProgressAll`: `offline` when a server's list waits for the network, `error` the
+ * first one that failed), with nothing to show. A list that waits wins over another
+ * server's failure, a refusal included, as Home's own rule does: the waiting one may hold
+ * what the page shows, and it is asked again by itself once the network is back (fe#271).
+ */
+export function useUnreadAll(list: {
+  /** `undefined`: nothing to show. */
+  data: unknown;
+  offline: boolean;
+  error: unknown;
+}): UnreadState {
+  return useUnreadQuery({
+    data: list.data,
+    isPaused: list.offline,
+    error: list.offline ? null : list.error,
+  });
+}
+
+/**
  * `useUnreadQuery` of a whole list of books read page by page (`useAllLibraryBooks`):
  * with no book in, there is nothing to show, whatever page the read stopped on. A list
  * read to its end with no book in it IS an answer (an author with nothing left here): its

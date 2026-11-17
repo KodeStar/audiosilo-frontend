@@ -43,21 +43,26 @@ function Pill({ children, label, large }: { children: ReactNode; label: string; 
  * Home's greeting (STYLEGUIDE section 2): today's date, "Good evening, <name>." and the
  * truthful sync pill, plus how many servers Home gathers from when there is more than
  * one, or the one of them that is not answering (`down`, by name: never a green "2
- * servers" over a server that is down; frontend#131). A phone keeps its large "Home"
- * title (so back buttons stay named after it) and shows the date and the sync pill under
- * it, and the server that is down on a row of its own.
+ * servers" over a server that is down; frontend#131). With the device offline there is
+ * no servers pill at all: no server's trouble, and the page says it is offline once
+ * (fe#271). A phone keeps its large "Home" title (so back buttons stay named after it)
+ * and shows the date and the sync pill under it, and the server that is down on a row of
+ * its own.
  */
 export function Greeting({
   name,
   sync,
   servers,
   down,
+  offline = false,
 }: {
   name: string | undefined;
   sync: SyncPill;
   servers: number;
   /** The name of a server that is not answering. */
   down?: string;
+  /** The device has no network. */
+  offline?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   // Under large text the date and the pills stack, and their words wrap.
@@ -101,7 +106,7 @@ export function Greeting({
     </Pill>
   ) : null;
   const serversPill =
-    servers > 1 ? (
+    servers > 1 && !offline ? (
       <Pill label={serversText} large={large}>
         <View className={`h-[7px] w-[7px] rounded-full ${down ? 'bg-warning' : 'bg-success'}`} />
         <Text

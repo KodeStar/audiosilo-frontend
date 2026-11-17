@@ -88,11 +88,25 @@ export function NowOffline({ fill = false }: { fill?: boolean }) {
 }
 
 /** What went wrong with the listener's progress, and a way to try again. Shown in the
- * Now card's place only when nothing is on screen to keep. `fill` as for `NowEmpty`. */
-export function NowError({ onRetry, fill = false }: { onRetry: () => void; fill?: boolean }) {
+ * Now card's place only when nothing is on screen to keep. `server`: the one server of
+ * several whose progress failed while another answered (fe#271). `fill` as for
+ * `NowEmpty`. */
+export function NowError({
+  onRetry,
+  server,
+  fill = false,
+}: {
+  onRetry: () => void;
+  server?: string;
+  fill?: boolean;
+}) {
   const { t } = useTranslation();
   return (
-    <NowNotice title={t('home.error.title')} body={t('home.error.body')} fill={fill}>
+    <NowNotice
+      title={server ? t('home.error.titleServer', { server }) : t('home.error.title')}
+      body={t('home.error.body')}
+      fill={fill}
+    >
       <Button
         title={t('common.retry')}
         icon="rotate"

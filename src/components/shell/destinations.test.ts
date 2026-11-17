@@ -149,6 +149,14 @@ describe('serverLine', () => {
     expect(serverLineLabel(line, false, t)).toBe('Offline · downloads play');
   });
 
+  it('promises no downloads where the device has none (an http origin, fe#271)', () => {
+    const t = i18n.t.bind(i18n);
+    const line = serverLine([a, b], 'a', { a: false });
+    if (line.kind === 'none') throw new Error('no line');
+    expect(serverLineLabel(line, false, t, false)).toBe('Offline');
+    expect(serverLineLabel(line, true, t, false)).toBe("Hearthside isn't answering");
+  });
+
   // frontend#131: never a green "+ 1 more" over a server that is down.
   it('names another server that is not answering', () => {
     expect(serverLine([a, b], 'a', { b: false })).toEqual({ kind: 'down', name: "Maya's Shelf" });

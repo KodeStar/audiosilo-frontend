@@ -9,6 +9,7 @@ import { usePlayBook } from '@/components/player/use-play-book';
 import { toast } from '@/components/ui/toast';
 import { playFailedToast } from '@/components/player/play-failed';
 import { useLayout } from '@/lib/layout';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { usePlayer } from '@/playback/store';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -50,6 +51,9 @@ export function useUpNextBadge() {
 export function useUpNextData(cid: string | undefined) {
   const { t } = useTranslation();
   const queue = useQueue(cid);
+  // Not read and waiting for the network (or failed without one): the panel says so,
+  // not "Nothing queued" over books that are queued (fe#271).
+  const unread = useUnreadQuery(queue);
   // The panel's own writes (Remove, a dropped book, a suggestion) go through the same
   // mutations, so one `busy` covers them all.
   const actions = useQueueActions(cid);
@@ -119,6 +123,7 @@ export function useUpNextData(cid: string | undefined) {
 
   return {
     entries,
+    unread,
     isLoading: queue.isLoading,
     error: queue.error,
     refetch: queue.refetch,

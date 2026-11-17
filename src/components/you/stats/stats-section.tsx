@@ -8,7 +8,6 @@ import {
   useListeningGoal,
   useMyListening,
   useMyStats,
-  useServerInfo,
 } from '@/api/hooks';
 import type { ListeningGoalStatus, MyListening, UserStats } from '@/api/types';
 import { listeningStreak, serverToday } from '@/components/home/listening';
@@ -109,13 +108,13 @@ function StatsBody({ cid, server, width }: { cid: string; server: string; width:
   const goal = useListeningGoal(cid);
   const signedOut = useSignedOutConnection(cid);
   // The page needs both reads: either one held for the network (or failed without one)
-  // with nothing kept leaves nothing to show (`useUnreadQuery`). So does the server's own
-  // answer: until its flag is known neither read is asked, so neither is ever held.
-  const unreadInfo = useUnreadQuery(useServerInfo(cid));
+  // with nothing kept leaves nothing to show (`useUnreadQuery`). Each takes the state of a
+  // `/server` read that is held or failed while its flag is unknown (`useCapabilityQuery`).
   const unreadListening = useUnreadQuery(listening);
   const unreadStats = useUnreadQuery(stats);
-  const offline =
-    unreadInfo === 'offline' || unreadListening === 'offline' || unreadStats === 'offline';
+  const offline = unreadListening === 'offline' || unreadStats === 'offline';
+  // A failed re-read keeps what it holds (fe#271).
+  const failed = (listening.isError && !listening.data) || (stats.isError && !stats.data);
 
   if (supported === false) {
     return (
@@ -127,7 +126,7 @@ function StatsBody({ cid, server, width }: { cid: string; server: string; width:
     );
   }
   const today = listening.data ? serverToday(listening.data) : null;
-  if (offline || listening.isError || stats.isError || (listening.data && !today)) {
+  if (offline || failed || (listening.data && !today)) {
     // Signed out first, then offline (before the skeleton: a held read stays pending, and
     // no Retry can work), then the error.
     if (signedOut) return <SignInAgainState connection={signedOut} />;
