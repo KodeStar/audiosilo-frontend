@@ -146,17 +146,13 @@ describe('waitForEpisode', () => {
     const out = wait(1);
     await flush();
     expect(ends[out]).toEqual({ kind: 'signedOut' });
-    client.podcastFetchStatus.mockRejectedValueOnce(
-      new ApiError(403, 'no access to this library'),
-    );
+    client.podcastFetchStatus.mockRejectedValueOnce(new ApiError(403, 'no access to this library'));
     const denied = wait(2);
     await flush();
     await jest.advanceTimersByTimeAsync(2000);
     expect(ends[denied]).toEqual({ kind: 'noAccess' });
     // A 403 naming its reason keeps it.
-    client.prepareEpisodeStream.mockRejectedValueOnce(
-      new ApiError(403, 'demo', 'demo_account'),
-    );
+    client.prepareEpisodeStream.mockRejectedValueOnce(new ApiError(403, 'demo', 'demo_account'));
     const demo = wait(3);
     await flush();
     expect(ends[demo]).toEqual({ kind: 'failed', code: 'demo_account' });

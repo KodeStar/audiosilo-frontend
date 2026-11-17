@@ -162,7 +162,8 @@ describe('service worker: precacheBuild', () => {
     const font = (id: string) => `https://box.test/web/assets/fonts/Figtree_400.${id}.ttf`;
     const withFont = (id: string) => {
       const site = build(id);
-      site[SCOPE] += `<link rel="preload" href="/web/assets/fonts/Figtree_400.${id}.ttf" as="font" crossorigin="">
+      site[SCOPE] +=
+        `<link rel="preload" href="/web/assets/fonts/Figtree_400.${id}.ttf" as="font" crossorigin="">
         <style>@font-face{font-family:"Figtree";src:url("/web/assets/fonts/Figtree_400.${id}.ttf")}
         @font-face{font-family:"Other";src:url("//cdn.test/other.woff2")}</style>`;
       return { ...site, [font(id)]: 'font-bytes' };
