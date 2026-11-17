@@ -153,6 +153,22 @@ describe('usePlayBook', () => {
     expect(mockPlayBook).not.toHaveBeenCalled();
   });
 
+  it('plays the loaded book on as it opens the player on a phone, when it was paused (fe#280)', async () => {
+    mockLayout = 'phone';
+    setPlayer({ key: 'c:1:Book', live: false });
+    await play();
+    expect(mockPush.mock.calls.map((c) => c[0].pathname)).toEqual(['/player']);
+    expect(mockToggle).toHaveBeenCalledTimes(1);
+    // Playing already: never paused by it.
+    setPlayer({ key: 'c:1:Book', live: true });
+    await play();
+    expect(mockToggle).toHaveBeenCalledTimes(1);
+    // Another book: the player starts it.
+    setPlayer({ key: 'c:1:Other', live: false });
+    await play();
+    expect(mockToggle).toHaveBeenCalledTimes(1);
+  });
+
   // Which way each press goes is `playRoute`'s (its table); these pin the wiring.
   it('opens the player at the place, and over no second copy of the book page', async () => {
     mockLayout = 'phone';

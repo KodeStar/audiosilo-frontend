@@ -30,7 +30,8 @@ export type PlayOptions = {
  * Library, the series page, Up next, the book page, the bookmark and note rows, the
  * Journal), by `playRoute`:
  * - a phone opens the full player (which resumes from the saved place, or applies `at`
- *   once, also to the loaded book);
+ *   once, also to the loaded book), and a loaded book paused there plays on (fe#280: a row's
+ *   Play on the episode loaded and paused opened the player still paused);
  * - a tablet or desktop plays it in place under the docked player bar
  *   (`startBookInPlace`: once its chapters are in, through the book's own connection);
  *   a book already loaded just plays on (from `at`, or toggles with `toggle`);
@@ -63,6 +64,7 @@ export function usePlayBook() {
       case 'player':
         if (route.bookPage) openBook(connectionId, libraryId, path);
         openPlayer(connectionId, libraryId, path, at);
+        if (loaded && !selectIsTransportLive(store)) await store.toggle();
         return;
       case 'play-on':
         if (at.position !== undefined) await store.seekBook(at.position);
