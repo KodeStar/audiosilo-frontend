@@ -3569,7 +3569,9 @@ on first need). NOT device-verified (no Cast device yet).
   `interrupted` stop included, or a status naming the asked file: `replacedGone`) is no refusal;
   once the load answered, that media's settled statuses on another file are no place and no word
   on the play state, and its late stop (`replacedStop`: an `interrupted` on any file, or another
-  file's stop) is no place, and no reload. A status in flight naming the asked file's URL as sent,
+  file's stop) is no place, and no reload; nor is the end of a file of it there (`replacedEnd`:
+  followed, it would move the place meant to the next file, and the queue's own landing would be
+  taken for the old media). A status in flight naming the asked file's URL as sent,
   playing or paused, lands it, and its token counts as played. A play asked for while a queue of
   ours (or its mint) is on its way is not sent to the receiver, nor does it send a second queue
   (for at most `PLAY_HOLD_MS`, 25 s, so a load never answered holds no play for good):

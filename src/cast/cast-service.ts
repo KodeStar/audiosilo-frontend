@@ -673,6 +673,15 @@ export class CastPlaybackService implements PlaybackService {
     return status.idleReason === 'interrupted' ? !!this.pendingIntent() : this.unlandedOther(index);
   }
 
+  /** Whether idle `status`, on another file than the one a queue of ours asked for while that
+   * has not landed (`unlandedOther`), is the media that queue replaced ending a file: no file of
+   * the queue's can end before the one it starts on played. Followed (`followIntent`), it would
+   * move the place this phone means to the file after it, and the queue's own landing would
+   * then be the one taken for the replaced media. */
+  private replacedEnd(status: CastMediaStatus): boolean {
+    return status.idleReason === 'finished' && !!this.intended?.queued;
+  }
+
   /** Note when a status says the media from before a move whose `from` is unknown is gone
    * (`replacedMedia`): any idle but a file's end (the replaced media's stop, the new media's
    * start, an error; a `finished` is that media going on to its next file), or a status naming
@@ -1017,15 +1026,17 @@ export class CastPlaybackService implements PlaybackService {
     if (stoppedElsewhere) this.needsReload = true;
     if (!read && this.holdingAsked()) return;
     // Once a queue of ours answered, the media it replaced playing or paused on, on another
-    // file (`replacedMedia`): no place (below), and no word on this book's play state either
-    // (its `playing` would have the queue's paused landing played, its `paused` drop a play).
+    // file (`replacedMedia`), or ending a file there (`replacedEnd`): no place (below), and no
+    // word on this book's play state either (its `playing` would have the queue's paused
+    // landing played, its `paused` drop a play).
     const ofReplacedMedia =
       !!loaded &&
       index !== null &&
       this.loadsInFlight === 0 &&
-      status.playerState !== 'idle' &&
       this.unlandedOther(index) &&
-      this.replacedMedia(status, index);
+      (status.playerState === 'idle'
+        ? this.replacedEnd(status)
+        : this.replacedMedia(status, index));
     // A queue of ours landing paused while a play stands: the queue's own state, no word on
     // the play intent (`settleLanding`, from `followIntent` below), read or sent.
     const ownPausedLanding = this.pausedLanding(status, index);

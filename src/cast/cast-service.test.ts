@@ -1989,6 +1989,26 @@ describe('CastPlaybackService', () => {
         });
       });
 
+      it('the old media ending a file once the load answered moves nothing', async () => {
+        // Followed, the end of its last file put the book there, stopped, and the end of an
+        // earlier one moved the place meant to the next file, so the queue's own landing was
+        // taken for the old media and its play never sent again.
+        const t = setup();
+        await t.svc.load(TRACKS, 0, 30, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'idle', idleReason: 'finished', contentId: t.url(2), position: 0 });
+        t.status({ playerState: 'idle', idleReason: 'finished', contentId: t.url(1), position: 0 });
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 0.5 });
+        expect(t.svc.getSnapshot()).toMatchObject({ state: 'ready', trackIndex: 0, position: 30 });
+        t.status({ playerState: 'paused', contentId: t.url(0), position: 30 });
+        await flush();
+        expect(t.remote.play).toHaveBeenCalledTimes(2);
+        expect(t.snaps.filter((s) => s.trackIndex !== 0)).toEqual([]);
+        // The next play needs no new queue.
+        await t.svc.play();
+        expect(t.remote.loads).toHaveLength(1);
+      });
+
       it('a play held while a load is on its way is sent once the hold runs out', async () => {
         // A load the receiver never answers must not keep every play from it for good.
         const t = setup();
