@@ -201,6 +201,29 @@ describe('jobStatusView', () => {
     ).toEqual({ phase: 'parked', reason: 'other', retryAt: undefined });
   });
 
+  // server#218: a park code the player doesn't know says the Bridge's own words; a known
+  // one keeps the player's.
+  it("reads an unknown park with the Bridge's hint, a known one in the player's words", () => {
+    const parked = (code: string) =>
+      jobStatusView(
+        bridgeJob({
+          state: 'needs_attention',
+          progress: { park: { code, hint: ' The disk is full. Free some space. ' } },
+        }),
+      );
+    expect(parked('disk_full')).toEqual({
+      phase: 'parked',
+      reason: 'other',
+      hint: 'The disk is full. Free some space.',
+      retryAt: undefined,
+    });
+    expect(parked('budget_exceeded')).toEqual({
+      phase: 'parked',
+      reason: 'budget',
+      retryAt: undefined,
+    });
+  });
+
   it('reads a failure as its error', () => {
     expect(jobStatusView(bridgeJob({ state: 'failed', error: ' disk full ' }))).toEqual({
       phase: 'failed',
