@@ -1212,9 +1212,10 @@ describe("a single sign-on's return (?oidc=1)", () => {
     });
   });
 
-  it("says a session this device couldn't keep is spent", async () => {
+  it("says a session this device couldn't keep is spent, and signs it out", async () => {
     mockApi.oidcFinish.mockResolvedValue({ token: 'session', server_id: 'srv-1', user });
     mockApi.serverInfo.mockResolvedValue(info());
+    mockApi.logout.mockResolvedValue(undefined);
     const { setSession } = useSession.getState();
     useSession.setState({ setSession: jest.fn().mockRejectedValue(new Error('disk full')) });
     try {
@@ -1226,6 +1227,8 @@ describe("a single sign-on's return (?oidc=1)", () => {
           ),
         ).toBeTruthy(),
       );
+      // Nothing holds it: it would stay on the server as a device.
+      expect(mockApi.logout).toHaveBeenCalledTimes(1);
     } finally {
       useSession.setState({ setSession });
     }

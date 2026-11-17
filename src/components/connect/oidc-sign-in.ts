@@ -6,6 +6,7 @@ import type { AuthSession, ServerInfo } from '@/api/types';
 import { servedOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
 import { firstParam } from '@/lib/paths';
+import { useSession } from '@/stores/session';
 
 import { finishConnect } from './finish-connect';
 import { takeOidcBook } from './oidc-intent';
@@ -80,8 +81,9 @@ export function oidcFinishText(e: unknown, t: TFunction): string {
  * book the flow was opening before the trip (`takeOidcBook`). Resolves null once the flow
  * has moved on, else why it failed in words (`oidcFinishText`; a session this device then
  * couldn't keep, `notKept`, as the sign-in is spent). `live`: whether the connect screen is
- * still up. A session that answers once it has gone is signed out again (best effort), never
- * kept: nothing would use it, and it would stay on the server as a device (fe#310).
+ * still up. A session that answers once it has gone, or that `finishConnect` did not store,
+ * is signed out again (best effort), never kept: nothing would use it, and it would stay on
+ * the server as a device (fe#310).
  */
 export async function finishOidcSignIn(
   origin: string,
@@ -100,16 +102,22 @@ export async function finishOidcSignIn(
   } catch (e) {
     return oidcFinishText(e, t);
   }
-  if (!live()) {
+  // A session nothing keeps is signed out again (best effort): it would stay on the server
+  // as a device.
+  const signOut = () =>
     void new ApiClient(origin, session.token, undefined, undefined, undefined, carried)
       .logout()
       .catch(() => {});
+  if (!live()) {
+    signOut();
     return null;
   }
   try {
     await finishConnect({ serverUrl: origin, session, name: info?.name, book, carried });
     return null;
   } catch {
+    // Not stored (refused before `setSession`, or the store failed): nothing will use it.
+    if (!useSession.getState().connections.some((c) => c.token === session.token)) signOut();
     return t('connect.oidc.errors.notKept');
   }
 }
