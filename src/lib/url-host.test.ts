@@ -1,11 +1,4 @@
-import {
-  hasUserinfo,
-  httpUrl,
-  isLoopbackHost,
-  looksLikeHomeAddress,
-  urlEndpoint,
-  urlHost,
-} from './url-host';
+import { httpUrl, isLoopbackHost, looksLikeHomeAddress, urlEndpoint, urlHost } from './url-host';
 
 describe('urlHost', () => {
   it('reads the host without URL.hostname (React Native does not implement it)', () => {
@@ -22,16 +15,19 @@ describe('urlEndpoint', () => {
       scheme: 'https',
       host: 'books.example.com',
       port: '8443',
+      userinfo: false,
     });
     expect(urlEndpoint('https://nas.local')).toEqual({
       scheme: 'https',
       host: 'nas.local',
       port: '443',
+      userinfo: false,
     });
     expect(urlEndpoint('http://user@[fd00::5]?x')).toEqual({
       scheme: 'http',
       host: 'fd00::5',
       port: '80',
+      userinfo: true,
     });
     expect(urlEndpoint('ftp://files.example')?.port).toBe('');
     // A scheme named like an Object.prototype member has no default port either.
@@ -97,9 +93,9 @@ describe('httpUrl', () => {
   });
 });
 
-it('hasUserinfo: a user before the host, never an @ in the path', () => {
-  expect(hasUserinfo('https://librivox.org@evil.example/')).toBe(true);
-  expect(hasUserinfo('https://u:p@librivox.org/')).toBe(true);
-  expect(hasUserinfo('https://librivox.org/a@b')).toBe(false);
-  expect(hasUserinfo('https://librivox.org/?q=a@b')).toBe(false);
+it('urlEndpoint userinfo: a user before the host, never an @ in the path', () => {
+  expect(urlEndpoint('https://librivox.org@evil.example/')?.userinfo).toBe(true);
+  expect(urlEndpoint('https://u:p@librivox.org/')?.userinfo).toBe(true);
+  expect(urlEndpoint('https://librivox.org/a@b')?.userinfo).toBe(false);
+  expect(urlEndpoint('https://librivox.org/?q=a@b')?.userinfo).toBe(false);
 });

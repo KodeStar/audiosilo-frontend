@@ -10,7 +10,7 @@ import type {
 import { getLocale } from '@/i18n/locale';
 import { bitrateKbps } from '@/lib/format';
 import { bookLabels, LABEL_KINDS, type LabelKind } from '@/lib/labels';
-import { hasUserinfo, httpUrl, urlHost } from '@/lib/url-host';
+import { httpUrl, urlEndpoint } from '@/lib/url-host';
 import { codecLabel } from '@/playback/transcode';
 
 import { fileName } from './book-page-model';
@@ -252,7 +252,7 @@ export function librivoxUrl(
   recording: Pick<BookMetaRecording, 'librivox'> | undefined,
 ): string | undefined {
   const url = httpUrl(recording?.librivox?.url ?? '');
-  if (!url || hasUserinfo(url)) return undefined;
-  const host = urlHost(url) ?? '';
-  return LIBRIVOX_HOSTS.some((h) => host === h || host.endsWith(`.${h}`)) ? url : undefined;
+  const at = url ? urlEndpoint(url) : null;
+  if (!url || !at || at.userinfo) return undefined;
+  return LIBRIVOX_HOSTS.some((h) => at.host === h || at.host.endsWith(`.${h}`)) ? url : undefined;
 }

@@ -1,14 +1,23 @@
 /** An absolute URL's scheme, host and port, lower-cased: the host without brackets (IPv6),
- * the port the scheme's default (443 for https, 80 for http, else '') when it names none. A
- * regex rather than `URL.hostname`/`port`: React Native's URL polyfill does not implement them. */
-export function urlEndpoint(url: string): { scheme: string; host: string; port: string } | null {
-  const m = /^([a-z][a-z0-9+.-]*):\/\/(?:[^@/?#]*@)?(\[[^\]]+\]|[^:/?#]+)(?::(\d+))?/i.exec(
+ * the port the scheme's default (443 for https, 80 for http, else '') when it names none.
+ * `userinfo`: whether it names a user before the host (`https://user:pass@host/`), which a
+ * link can use to dress another host up as a trusted one. A regex rather than
+ * `URL.hostname`/`port`: React Native's URL polyfill does not implement them. */
+export function urlEndpoint(
+  url: string,
+): { scheme: string; host: string; port: string; userinfo: boolean } | null {
+  const m = /^([a-z][a-z0-9+.-]*):\/\/([^@/?#]*@)?(\[[^\]]+\]|[^:/?#]+)(?::(\d+))?/i.exec(
     url.trim(),
   );
   if (!m) return null;
   const scheme = m[1].toLowerCase();
-  const port = m[3] ?? (scheme === 'https' ? '443' : scheme === 'http' ? '80' : '');
-  return { scheme, host: m[2].replace(/^\[|\]$/g, '').toLowerCase(), port };
+  const port = m[4] ?? (scheme === 'https' ? '443' : scheme === 'http' ? '80' : '');
+  return {
+    scheme,
+    host: m[3].replace(/^\[|\]$/g, '').toLowerCase(),
+    port,
+    userinfo: m[2] !== undefined,
+  };
 }
 
 /** The host part of an absolute URL, as `urlEndpoint` reads it. */
@@ -74,10 +83,4 @@ export function httpUrl(url: string): string | null {
   const at = urlEndpoint(u);
   if (!at?.host || (at.scheme !== 'http' && at.scheme !== 'https')) return null;
   return at.scheme + u.slice(at.scheme.length);
-}
-
-/** Whether an absolute URL names a user before its host (`https://user:pass@host/`), which
- * `urlEndpoint` reads past: a link can dress another host up as a trusted one that way. */
-export function hasUserinfo(url: string): boolean {
-  return /^[a-z][a-z0-9+.-]*:\/\/[^/?#]*@/i.test(url.trim());
 }
