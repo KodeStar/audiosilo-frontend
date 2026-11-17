@@ -2502,17 +2502,24 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   web and on a binary without the car functions) **builds the full snapshot only once a car has
   connected on this device** (`audiosilo.carSeen`), so a phone that never meets a car never
   reads lists for it or fetches car covers. Then: at start, on a car connect, a language
-  change, a book starting or pausing in the car (on Android any pause, stop or book change,
-  car or not: what a resumption plays), and 2 s after the lists, queue, downloads,
-  connections, library selection or default speed change; never two writes within 2 s.
+  change, a book starting or pausing in the car, and 2 s after the lists, queue, downloads,
+  connections, library selection or default speed change; never two writes within 2 s while
+  a car is connected. On Android a pause, a stop, a paused book's move (a seek, a chapter
+  skip, another device's place picked up: `pausedMove`) or another book is what a resumption
+  plays: with no car connected the full snapshot is written for it at once
+  (`writeForResumption`), on no timer and from the query cache (`cachedBuild`: a server is
+  asked only for a list the cache never held), so a pause in the background, where Android
+  holds the JS timers and a request's timeout is one, still writes it.
   **Before any car, Android writes a minimal resumable snapshot** (`buildResumable`, fe#251)
-  on every pause, stop and book change, and when the person, their servers or the downloads
-  change: the loaded book at its live place and the downloaded books, no server read, no
-  cover fetched or pruned, and no timer (a pause in the background, where Android holds the
-  JS timers, still writes it), so Bluetooth or a headset's play after a kill resumes the
-  book with no car ever met. Both writes go through one queue (`snapshotWrites`), and the
-  minimal one never lands once a car was seen. A paused loaded book's play spec starts where
-  it was paused (`pausedPlaceOf`), not at the device save the pause may not have written yet. It never overwrites
+  on those same changes, and when the person, their servers or the downloads change: the
+  loaded book at its live place and the downloaded books, no server read, no cover fetched or
+  pruned, and no timer, so Bluetooth or a headset's play after a kill resumes the book with no
+  car ever met. Until a book is loaded in this runtime it offers the book it offered last
+  (`audiosilo.carResumable`), so opening the app after a kill without playing keeps it; once
+  one was stopped or finished here, none. It waits for the start's read of the car-seen mark.
+  Both writes go through one queue (`snapshotWrites`), and the minimal one never lands once a
+  car was seen. A paused loaded book's play spec starts where it was paused (`pausedPlaceOf`),
+  not at the device save the pause may not have written yet. It never overwrites
   native's snapshot with a worse one (not while `sessionHydrateFailed()`, not with unreadable
   lists once one was written). Every write, play request, adoption and bookmark drain waits for
   `bootstrapPlayback()`. It answers `onCarPlayRequest` (`handleCarPlayRequest`: the loaded book

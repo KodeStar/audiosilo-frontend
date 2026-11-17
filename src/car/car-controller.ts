@@ -21,7 +21,15 @@ import {
 } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { endCastForCar } from '@/cast/cast-session';
-import type { Book, Collection, Library, Progress, QueueEntry } from '@/api/types';
+import type {
+  Book,
+  Capabilities,
+  Collection,
+  Library,
+  Progress,
+  QueueEntry,
+  ServerInfo,
+} from '@/api/types';
 import {
   kidsCollections,
   kidsCollectionSections,
@@ -119,12 +127,13 @@ import { carNative } from './car-native';
  *   downloads car covers): at start, when a car connects (always a fresh build: native
  *   shows the last one it was handed at once, then this one), after adopting a book the
  *   service loaded, when the language changes, while a car is connected when a book starts
- *   or pauses (on Android, any pause, stop or book change, connected or not: what a
- *   Bluetooth resumption plays), and `SETTLE_MS` after the progress lists, the Up next
- *   queue, the downloads registry, the session's connections or default, the library
- *   selection or the default speed change (and once covers a written snapshot lacked have
- *   been fetched); never more often than every `MIN_GAP_MS`. Before any car, Android writes
- *   a minimal one instead (`buildResumable`, fe#251) on every pause, stop and book change.
+ *   or pauses, and `SETTLE_MS` after the progress lists, the Up next queue, the downloads
+ *   registry, the session's connections or default, the library selection or the default
+ *   speed change (and once covers a written snapshot lacked have been fetched); never more
+ *   often than every `MIN_GAP_MS`. On Android a pause, a stop, a paused book's move or
+ *   another book (what a Bluetooth resumption plays) with no car connected writes it at
+ *   once, from the cache (`writeForResumption`); before any car, Android writes a minimal
+ *   one instead (`buildResumable`, fe#251).
  *   It never replaces native's last snapshot with a worse one: not while the session's
  *   hydrate has failed, and not with no server's lists readable once one was written on
  *   this device. Every write, play request, adoption and bookmark drain
@@ -182,14 +191,28 @@ let ready: Promise<void> = Promise.resolve();
  * snapshot built and written, and are covers fetched for it (before, Android writes only the
  * minimal resumable one, `buildResumable`). */
 let carSeen = false;
+/** The start's read of `CAR_SEEN_KEY` into `carSeen`: a resumable build waits for it, so a
+ * launch's first one never takes a car-seen phone for one no car has met. */
+let carSeenRead: Promise<void> = Promise.resolve();
 
 // --- Reading what the app knows ---------------------------------------------------------
+
+/** The build under way is a resumption's (`writeForResumption`: a pause, a stop or another
+ * book with no car connected): its reads take what the cache holds, however old, and ask a
+ * server only for what it has never held, so the write never waits on a server (whose
+ * request timeout is a JS timer Android holds in the background). Builds are serialized
+ * (`snapshotWrites`) and only they read, so one flag serves. */
+let cachedBuild = false;
 
 /** A read that always settles: the server's answer when fresh enough or reachable, else what
  * the cache last held, else undefined (offline with nothing cached). */
 async function read<T, K extends QueryKey>(
   options: FetchQueryOptions<T, Error, T, K>,
 ): Promise<T | undefined> {
+  if (cachedBuild) {
+    const cached = queryClient.getQueryData<T>(options.queryKey);
+    if (cached !== undefined) return cached;
+  }
   try {
     return await fetchFailFast(options);
   } catch {
@@ -247,6 +270,19 @@ function progressLookup(rows: readonly SourcedProgress[]): (ref: BookRef) => Pro
   return (ref) => byKey.get(contentKeyOf(ref)) ?? null;
 }
 
+/** A server's flags, or null when they can't be known: the cached ones at once in a
+ * resumption's build (`cachedBuild`), else `fetchCapabilities` (which already falls back to
+ * the cached flags; it rejects only when none). */
+async function capabilitiesOf(
+  cid: string,
+  client: NonNullable<ReturnType<typeof resolveClient>>,
+): Promise<Capabilities | null> {
+  const cached = cachedBuild
+    ? queryClient.getQueryData<ServerInfo>(qk.server(cid))?.capabilities
+    : undefined;
+  return cached ?? (await fetchCapabilities(cid, client).catch(() => null));
+}
+
 /** The Up next queue the app shows (`queueConnectionId`: the loaded book's server, else the
  * default, else the first), or null when that server keeps none (no `queue`). */
 async function upNextEntries(): Promise<{ cid: string; entries: QueueEntry[] } | null> {
@@ -257,8 +293,7 @@ async function upNextEntries(): Promise<{ cid: string; entries: QueueEntry[] } |
   );
   const client = cid ? resolveClient(cid) : null;
   if (!cid || !client) return null;
-  // `fetchCapabilities` already falls back to the cached flags; it rejects only when none.
-  const caps = await fetchCapabilities(cid, client).catch(() => null);
+  const caps = await capabilitiesOf(cid, client);
   if (!caps?.queue) return null;
   const entries = await read({ ...queueQuery(cid, client), staleTime: LIST_STALE_MS });
   return { cid, entries: entries ?? [] };
@@ -336,7 +371,7 @@ async function memberCollections(
   client: NonNullable<ReturnType<typeof resolveClient>>,
 ): Promise<{ has: boolean | undefined; list: Collection[] | undefined }> {
   if (!conn.user.managed_by) return { has: undefined, list: undefined };
-  const caps = await fetchCapabilities(conn.id, client).catch(() => null);
+  const caps = await capabilitiesOf(conn.id, client);
   const has = caps ? !!caps.collections : undefined;
   const list = has
     ? await read({ ...collectionsQuery(conn.id, client), staleTime: LIST_STALE_MS })
@@ -616,33 +651,56 @@ function uniqueBooks(books: CarSnapshotInput['books']): Map<string, CarBook> {
   return all;
 }
 
+/** The book the resumable snapshot offers, kept across launches (`RESUMABLE_KEY`; undefined
+ * until read): a launch that loads no book offers it again, so opening the app after a kill
+ * without playing never takes away what a headset's play resumes. */
+const RESUMABLE_KEY = 'audiosilo.carResumable';
+let resumableRef: BookRef | null | undefined;
+/** The player has held a book in this runtime: from then on only the loaded book is offered,
+ * and none once it was stopped or finished. */
+let loadedHere = false;
+
+const sameBook = (a: BookRef | null | undefined, b: BookRef | null | undefined) =>
+  (a ? contentKeyOf(a) : null) === (b ? contentKeyOf(b) : null);
+
 /**
  * Android, on a phone no car has met (fe#251): Bluetooth or a headset's play after the app was
  * killed resumes the car snapshot's first Continue listening book when it has a play spec
  * (`ResumptionReceiver`), so a snapshot that holds the book being listened to is written on
  * every pause, stop and book change all the same. Minimal: the loaded book at its live place
- * (paused, its spec starts there) and the downloaded books (a kids profile's loaded story
- * only), the progress rows the app last read standing in for the servers'. No server is
- * read, no cover fetched or pruned (a downloaded book's own cover file only), and no timer is
- * waited on, so a pause made in the background, where Android holds the JS timers, still
- * writes it. Once a car has been seen the full snapshot takes over.
+ * (paused, its spec starts there; with none loaded yet in this runtime, the book offered
+ * before, `RESUMABLE_KEY`) and the downloaded books (a kids profile's loaded story only), the
+ * progress rows the app last read standing in for the servers'. No server is read, no cover
+ * fetched or pruned (a downloaded book's own cover file only), and no timer is waited on, so
+ * a pause made in the background, where Android holds the JS timers, still writes it. Once a
+ * car has been seen the full snapshot takes over.
  */
 async function buildResumable(): Promise<void> {
-  await bootstrapPlayback();
+  // The start's read of `CAR_SEEN_KEY` too: never this one over a car-seen phone's full one.
+  await Promise.all([bootstrapPlayback(), carSeenRead]);
   if (carSeen || sessionHydrateFailed()) return;
   const owner = snapshotOwner();
   const conns = profileConnections();
   const player = usePlayer.getState();
   const live = livePlaceOf(player);
+  if (player.nowPlaying) loadedHere = true;
+  if (resumableRef === undefined) {
+    const stored = await getItem<BookRef>(RESUMABLE_KEY);
+    resumableRef = stored
+      ? { ...stored, connectionId: resolveConnectionId(stored.connectionId) }
+      : null;
+  }
+  const kept = loadedHere ? null : resumableRef;
+  const offered = live?.ref ?? (kept && mayActFor(kept.connectionId) ? kept : null);
   const kids = !!activeProfile()?.kids;
   const { rows, known } = await progressRows(conns, true);
   const progressOf = progressLookup(rows);
-  const listed: CarBook[] = live
+  const listed: CarBook[] = offered
     ? [
         {
-          ref: live.ref,
-          book: downloadedEntryOf(live.ref)?.manifest.book ?? null,
-          progress: progressOf(live.ref),
+          ref: offered,
+          book: downloadedEntryOf(offered)?.manifest.book ?? null,
+          progress: progressOf(offered),
         },
       ]
     : [];
@@ -655,7 +713,7 @@ async function buildResumable(): Promise<void> {
   const plays = await playSpecs(uniqueBooks(books), known, progressOf, pausedPlaceOf(player, live));
   // A car met meanwhile: its full snapshot is due, never this one over it.
   if (carSeen) return;
-  await handOver(
+  const handed = await handOver(
     owner,
     { signedIn: conns.length > 0, books },
     {
@@ -664,6 +722,10 @@ async function buildResumable(): Promise<void> {
       playFor: (ref) => plays.get(contentKeyOf(ref)),
     },
   );
+  if (handed && !sameBook(offered, resumableRef)) {
+    resumableRef = offered;
+    await setItem(RESUMABLE_KEY, offered);
+  }
 }
 
 async function buildAndWrite(): Promise<void> {
@@ -844,7 +906,12 @@ function request(soon: boolean): void {
   timer = setTimeout(() => void write(), Math.max(0, due - now));
 }
 
-async function write(): Promise<void> {
+/** A resumption's write (`writeForResumption`) was asked while one was under way: it runs
+ * right after that one, with no timer either. */
+let resumptionAgain = false;
+
+/** Builds and writes the full snapshot; `cached`: a resumption's (`cachedBuild`). */
+async function write(cached = false): Promise<void> {
   timer = null;
   writing = true;
   try {
@@ -852,7 +919,14 @@ async function write(): Promise<void> {
     // as the listener registers (the root layout's path doesn't wait for them) would write a
     // signed-out snapshot over the good one and prune every cover it no longer names.
     await bootstrapPlayback();
-    await snapshotWrites(buildAndWrite);
+    await snapshotWrites(async () => {
+      cachedBuild = cached;
+      try {
+        await buildAndWrite();
+      } finally {
+        cachedBuild = false;
+      }
+    });
   } catch (err) {
     console.warn('[car] snapshot failed', err);
   } finally {
@@ -860,20 +934,44 @@ async function write(): Promise<void> {
     writing = false;
   }
   void fetchMissingArtwork();
-  if (again !== null) {
+  // A car connected meanwhile: its fresh build goes the usual way (`again`).
+  const resumption = resumptionAgain && !isCarConnected();
+  resumptionAgain = false;
+  if (resumption) {
+    again = null;
+    void write(true);
+  } else if (again !== null) {
     const soon = again;
     again = null;
     request(soon);
   }
 }
 
-/** Android: the listener paused, stopped or changed book. With a car met before, the full
- * snapshot as soon as the gap allows, connected or not, so the one native keeps for a
- * resumption names that book; else the resumable one, at once (`buildResumable`). */
+/** Android, a car met before and none connected now: the full snapshot for a resumption (a
+ * pause, a stop, another book), at once and from the cache (`cachedBuild`), never on a timer
+ * (Android holds the JS timers in the background, where a headset or lock-screen pause
+ * happens) nor after a server read. No car shows it, so `MIN_GAP_MS` does not apply. */
+function writeForResumption(): void {
+  if (!active) return;
+  if (writing) {
+    again = true;
+    resumptionAgain = true;
+    return;
+  }
+  if (timer) clearTimeout(timer);
+  void write(true);
+}
+
+/** Android: the listener paused, stopped, moved a paused book or changed book. With a car
+ * connected, the full snapshot as soon as the gap allows; with one met before but none
+ * connected, the full one at once (`writeForResumption`), so the one native keeps for a
+ * resumption names that book at that place; else the resumable one, at once
+ * (`buildResumable`). */
 function placeChanged(): void {
   if (Platform.OS !== 'android') return;
-  if (carSeen) request(true);
-  else resumableChanged();
+  if (!carSeen) resumableChanged();
+  else if (isCarConnected()) request(true);
+  else writeForResumption();
 }
 
 /** A resumable write is queued and has not started: a burst of changes joins it. */
@@ -1226,6 +1324,17 @@ function mayBeServiceChange(s: PlayerState, prev: PlayerState): boolean {
   );
 }
 
+/** The loaded book, paused, moved (a second or more) or changed speed: its paused place, the
+ * one a resumption starts from (`pausedPlaceOf`), is another. */
+function pausedMove(s: PlayerState, prev: PlayerState): boolean {
+  return (
+    !!s.nowPlaying &&
+    s.snapshot.state === 'paused' &&
+    prev.snapshot.state === 'paused' &&
+    (Math.abs(selectBookPosition(s) - selectBookPosition(prev)) >= 1 || s.rate !== prev.rate)
+  );
+}
+
 // --- Start and stop -------------------------------------------------------------------------
 
 /** The sync's connection listener: records the state, and on a connect runs the connect path. */
@@ -1293,13 +1402,19 @@ export function startCarSync(): () => void {
     carNative.onPlayRequest((id) => void handleCarPlayRequest(id)),
     carNative.onBookmark(onBookmarkPressed),
     usePlayer.subscribe((s, prev) => {
+      if (s.nowPlaying || prev.nowPlaying) loadedHere = true;
       const otherBook = selectBookKey(s) !== selectBookKey(prev);
       // A car is connected now: a book starting or pausing rebuilds the snapshot (a connect
       // builds a fresh one anyway).
       if (isCarConnected() && (otherBook || selectIsPlaying(s) !== selectIsPlaying(prev))) {
         request(true);
-      } else if (otherBook || (selectIsTransportLive(prev) && !selectIsTransportLive(s))) {
-        // Else, on Android, a pause, a stop or another book: what a resumption plays.
+      } else if (
+        otherBook ||
+        (selectIsTransportLive(prev) && !selectIsTransportLive(s)) ||
+        pausedMove(s, prev)
+      ) {
+        // Else, on Android, a pause, a stop, a paused book moved (a seek, a chapter skip,
+        // another device's place picked up) or another book: what a resumption plays.
         placeChanged();
       }
       if (mayBeServiceChange(s, prev)) void checkLoadedBook();
@@ -1355,10 +1470,12 @@ export function startCarSync(): () => void {
     }),
   ];
 
+  carSeenRead = getItem<boolean>(CAR_SEEN_KEY).then((seen) => {
+    carSeen ||= seen === true;
+  });
   ready = (async () => {
     try {
-      const [, seen] = await Promise.all([bootstrapPlayback(), getItem<boolean>(CAR_SEEN_KEY)]);
-      carSeen ||= seen === true;
+      await Promise.all([bootstrapPlayback(), carSeenRead]);
       if (!active) return;
       await checkLoadedBook();
       await drainCarBookmarks();
@@ -1381,6 +1498,7 @@ function teardown() {
   if (timer) clearTimeout(timer);
   timer = null;
   again = null;
+  resumptionAgain = false;
   kidsShelfSeen.clear();
   setCarConnected(false);
   carListed = null;
@@ -1401,4 +1519,8 @@ export function forgetCarSync() {
   wroteBefore = null;
   ownerStored = null;
   resumableQueued = false;
+  carSeenRead = Promise.resolve();
+  resumableRef = undefined;
+  loadedHere = false;
+  cachedBuild = false;
 }
