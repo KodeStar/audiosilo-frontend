@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
+import { ApiError } from '@/api/client';
 import type { Favourite, Progress } from '@/api/types';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
@@ -90,6 +91,16 @@ describe("a fan-out's unreadError", () => {
     await waitFor(() => expect(result.current.failed).toEqual(['b']));
     await waitFor(() => expect(result.current.error).toBe(down));
     expect(result.current.unreadError).toBe(refused);
+  });
+
+  // fe#147 with fe#271: one server's refused sign-in must not hide another's trouble.
+  it("names a server's trouble over another server's refused sign-in", async () => {
+    a.allProgress.mockRejectedValue(new ApiError(401, 'signed out'));
+    b.allProgress.mockRejectedValue(down);
+    const { result } = await renderHook(() => useAllProgressAll(), { wrapper });
+    await waitFor(() => expect(result.current.failed).toEqual(['a', 'b']));
+    expect(result.current.unreadError).toBe(down);
+    expect(result.current.refused).toEqual(['a']);
   });
 
   it('is null, as `failed` is empty, when only re-reads of kept progress failed', async () => {
