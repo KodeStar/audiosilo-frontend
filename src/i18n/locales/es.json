@@ -1879,7 +1879,7 @@
   "reconnect": {
     "banner": {
       "auth": "Volver a conectar con {{name}}",
-      "serverReset": "{{name}} se restableció - vuelve a emparejar para continuar",
+      "serverReset": "{{name}} se restableció. Vuelve a emparejar para continuar.",
       "more": "+{{count}} más",
       "hint": "Abre el inicio de sesión de este servidor"
     },

@@ -1879,7 +1879,7 @@
   "reconnect": {
     "banner": {
       "auth": "Reconnect to {{name}}",
-      "serverReset": "{{name}} was reset - re-pair to continue",
+      "serverReset": "{{name}} was reset. Pair this device again to continue.",
       "more": "+{{count}} more",
       "hint": "Opens sign-in for this server"
     },

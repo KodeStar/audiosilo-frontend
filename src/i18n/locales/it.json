@@ -1879,7 +1879,7 @@
   "reconnect": {
     "banner": {
       "auth": "Riconnetti a {{name}}",
-      "serverReset": "{{name}} è stato reimpostato - riesegui l'associazione per continuare",
+      "serverReset": "{{name}} è stato reimpostato. Riesegui l'associazione per continuare.",
       "more": "+{{count}} altri",
       "hint": "Apre l'accesso a questo server"
     },

@@ -1879,7 +1879,7 @@
   "reconnect": {
     "banner": {
       "auth": "Erneut mit {{name}} verbinden",
-      "serverReset": "{{name}} wurde zurückgesetzt - erneut koppeln, um fortzufahren",
+      "serverReset": "{{name}} wurde zurückgesetzt. Erneut koppeln, um fortzufahren.",
       "more": "+{{count}} weitere",
       "hint": "Öffnet die Anmeldung für diesen Server"
     },
