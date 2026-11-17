@@ -453,6 +453,15 @@ describe('startBookInPlace, a podcast episode', () => {
     expect(mockDrop).not.toHaveBeenCalled();
   });
 
+  // FE-13: the car's start of such an episode, which its native side can give up on.
+  it('hands the fetch the check of a start that may be called off', async () => {
+    serverFetches(true);
+    mockItem.mockResolvedValue(episode(false));
+    const wanted = () => true;
+    await expect(startBookInPlace(target, {}, { wanted })).resolves.toBe(true);
+    expect(mockRequestFetch).toHaveBeenCalledWith(target, episode(false), {}, { wanted });
+  });
+
   it('plays a downloaded episode at once', async () => {
     serverFetches(true);
     mockItem.mockResolvedValue(episode(true));

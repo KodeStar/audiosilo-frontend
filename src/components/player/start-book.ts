@@ -132,8 +132,8 @@ export type StartHow = {
   fetched?: boolean;
   /** Whether the start is still wanted, asked before the book loads and again before it
    * plays (the store's `playBook`): the car's, which its native side can give up on while a
-   * slow server holds the start. Called off before the load, nothing starts; after it, the
-   * book stays loaded, paused. */
+   * slow server holds the start. Called off before the load, nothing starts (an episode
+   * handed to its fetch included, which ends); after it, the book stays loaded, paused. */
   wanted?: () => boolean;
 };
 
@@ -195,7 +195,9 @@ async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): 
     // this device (fe#166): it plays from its download, whatever its server holds (a
     // downloaded book's source is its server's own when it answers, with no `local`).
     if (!isLatestStart(key)) return false;
-    requestEpisodeFetch(target, source.book, opts);
+    // With its check, when it has one: the fetch ends, and nothing starts, once it says no.
+    if (how.wanted) requestEpisodeFetch(target, source.book, opts, { wanted: how.wanted });
+    else requestEpisodeFetch(target, source.book, opts);
     return true;
   } else {
     // Played here (on its server now, or a server that does not fetch): a fetch of it still

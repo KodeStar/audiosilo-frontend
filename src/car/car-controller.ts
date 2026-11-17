@@ -1035,8 +1035,9 @@ function resumableChanged(): void {
  * load ran out (a slow or frozen server holding the start), or another play took its place.
  * Android released a media button start's foreground service then, so a start that went on to
  * play would be heard in the background with no notification and no controls: one still on
- * its way stops before the load, or loads paused (`StartHow.wanted`). A new request for the
- * same item takes the mark off, so a start it joins plays again.
+ * its way stops before the load, or loads paused (`StartHow.wanted`), and an episode still
+ * being fetched for it never starts (`requestEpisodeFetch`). A new request for the same item
+ * takes the mark off, so a start it joins plays again.
  */
 const cancelledPlays = new Set<string>();
 
