@@ -38,8 +38,17 @@ test('cutModules: whole module definitions, in order, each a complete script', (
   assert.ok(pieces[2].endsWith('__r(0);'));
 });
 
-test('cutModules: null when a cut would not be a complete script, or too few modules', () => {
+test('cutModules: a boundary that is not one is dropped, and the others kept', () => {
   // A template literal holding a line that looks like a module start.
+  const code = `var t=\`${'y'.repeat(500)}\n__d(oops\`;\n` + bundle(9, 100);
+  const pieces = cutModules(code, 4);
+  assert.ok(pieces && pieces.length >= 2);
+  assert.equal(pieces.join(''), code);
+  assert.ok(pieces[0].includes('__d(oops'));
+  for (const p of pieces.slice(1)) assert.ok(p.startsWith('__d(function'));
+});
+
+test('cutModules: null when no cut into complete scripts is left, or too few modules', () => {
   const code = `var t=\`${'y'.repeat(500)}\n__d(oops\`;\n` + bundle(2);
   assert.equal(cutModules(code, 3), null);
   assert.equal(cutModules(bundle(2), 5), null);
