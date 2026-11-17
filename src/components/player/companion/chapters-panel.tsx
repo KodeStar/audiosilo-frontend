@@ -165,9 +165,10 @@ export function ChaptersPanel({
   const rowHeight = chapterRowHeight(scale);
   const { height: windowHeight } = useWindowDimensions();
   const list = useRef<FlatList<string>>(null);
-  /** The list (this mount of it) that opened at its top and was scrolled to the current row
-   * (`openingIndex`): one that mounts again (the panel stayed while its book came and went)
-   * is placed again. */
+  /** The list (this mount of it) once it was first laid out, when one that opened at its top
+   * is scrolled to the current row (`openingIndex`): one that mounts again (the panel stayed
+   * while its book came and went) is placed again; a later layout of the same one (a
+   * rotation, a resized column) never is, wherever the playhead has got to. */
   const placed = useRef<FlatList<string> | null>(null);
   const seekBook = usePlayer((s) => s.seekBook);
   const goToTrack = usePlayer((s) => s.goToTrack);
@@ -226,10 +227,11 @@ export function ChaptersPanel({
   if (!virtualized) return <View>{labels.map((_, i) => render(i))}</View>;
   const want = Math.max(0, Math.min(current - 2, labels.length - 1));
   const opening = openingIndex(want, labels.length, rowHeight, windowHeight);
-  // Opened at its top: scrolled to the row as far as the list goes, once, when laid out.
+  // Opened at its top: scrolled to the row as far as the list goes, once, when first laid out.
   const onLayout = (e: LayoutChangeEvent) => {
-    if (opening !== undefined || !list.current || placed.current === list.current) return;
+    if (!list.current || placed.current === list.current) return;
     placed.current = list.current;
+    if (opening !== undefined) return;
     const room = labels.length * rowHeight + LIST_PAD_BOTTOM - e.nativeEvent.layout.height;
     const offset = Math.min(want * rowHeight, Math.max(0, room));
     if (offset > 0) list.current?.scrollToOffset({ offset, animated: false });
@@ -237,6 +239,7 @@ export function ChaptersPanel({
   return (
     <FlatList
       ref={list}
+      testID="chapters-list"
       data={labels}
       // The rows' words follow the playhead; the labels alone never change.
       extraData={`${position}|${current}|${rate}`}
