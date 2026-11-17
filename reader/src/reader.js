@@ -332,6 +332,10 @@ async function goToStart() {
 
 /** The book arriving in chunks (native), from its `open` until its last `chunk`. */
 let incoming = null;
+/** The transfer was refused (its `open`, or a chunk): the chunks still on their way are
+ * dropped unheard, so the refusal said once (`tooLarge`) is not followed by an
+ * `unreadable` for each of them, which the screen would show instead. */
+let refused = false;
 
 /** Native: `open` announces the book (size, chunk count) and the chunks follow. A transfer
  * that goes wrong in any way is the book being unreadable, never a half-open book; one over
@@ -339,11 +343,13 @@ let incoming = null;
  * as `tooLarge` (fe#172). */
 function beginTransfer(msg) {
   incoming = null;
+  refused = false;
   setAppearance(msg);
   setBusy(true);
   try {
     incoming = { msg, assembly: createAssembly(msg.size, msg.chunks) };
   } catch (err) {
+    refused = true;
     setBusy(false);
     report(
       err instanceof TooLargeError || err instanceof RangeError ? 'tooLarge' : 'unreadable',
@@ -353,13 +359,14 @@ function beginTransfer(msg) {
 }
 
 function receiveChunk(msg) {
-  if (!incoming) return report('unreadable', 'no book was announced');
+  if (!incoming) return refused ? undefined : report('unreadable', 'no book was announced');
   const { msg: announced, assembly } = incoming;
   let bytes;
   try {
     bytes = assembly.add(msg.seq, msg.data);
   } catch (err) {
     incoming = null;
+    refused = true;
     setBusy(false);
     return report('unreadable', err);
   }
