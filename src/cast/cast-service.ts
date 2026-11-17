@@ -216,8 +216,9 @@ export class CastPlaybackService implements PlaybackService {
     if (status && index !== null) loaded.offsets[index] = castStreamOffset(status);
     this.foreignMedia = false;
     this.earlyEndRetryAt = null;
-    // Taken over playing or paused, as the store adopted it (`adoptReceiverBook`).
-    this.playAsked = status
+    // Taken over playing or paused, as the store adopted it (`adoptReceiverBook`), unless a
+    // play or pause from this phone came since that status was read: the command stands.
+    this.playAsked ??= status
       ? status.playerState === 'playing' || status.playerState === 'buffering'
       : null;
     this.loaded = loaded;

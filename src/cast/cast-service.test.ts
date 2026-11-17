@@ -590,6 +590,27 @@ describe('CastPlaybackService', () => {
       expect(t.svc.getSnapshot()).toMatchObject({ state: 'paused', position: 200 });
     });
 
+    it('a pause from this phone while a playing session is taken over stands', async () => {
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      const status: CastMediaStatus = {
+        playerState: 'playing',
+        customIndex: 0,
+        position: 20,
+        rate: 1,
+        book: BOOK,
+        contentId: 'https://h/stream?path=A/B/00.mp3&token=CAST0',
+      };
+      t.svc.adoptPlace({ state: 'playing', trackIndex: 0, position: 20, duration: 600, rate: 1 });
+      // Paused after the receiver's status was read, before its queue was rebuilt.
+      await t.svc.pause();
+      await t.svc.adoptQueue(TRACKS, BOOK, status);
+      t.status({ ...status, playerState: 'paused', position: 30 });
+      t.status({ ...status, playerState: 'idle', idleReason: 'error', position: 0 });
+      await flush();
+      expect(t.remote.loads.at(-1)).toMatchObject({ startTime: 30, autoplay: false });
+    });
+
     it('a second error soon after is the error: no token minted on every try', async () => {
       const m = minting();
       const t = setup({ prepare: m.prepare });
