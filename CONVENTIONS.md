@@ -2372,7 +2372,9 @@ media GETs only.
   (3s) timer; if the engine hasn't reached `playing` when it fires, the store synthesizes
   an `error` so the player can offer a retry. Only reaching `playing` (or a user
   pause/stop) cancels it; a mid-playback stall (`playing`→`loading`) re-arms it. The fire
-  test is simply "not playing", so no transient state can prevent it.
+  test is simply "not playing", so no transient state can prevent it. It keeps a deadline
+  too, checked on every engine event (`checkStallDeadline`), since Android pauses JS timers
+  with the screen off while the engine's events still arrive (see `engineTicker`).
 - **Why not interpret engine events:** `service.native.ts` keeps ONE merged snapshot and
   re-emits it on every event, and iOS delivers `timeControlStatus`/status KVO
   asynchronously - so on a resume/retry the store sees a jumble of `ready`, frozen
