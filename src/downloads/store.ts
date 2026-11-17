@@ -148,8 +148,10 @@ type DownloadsState = {
    * listener's request is queued at once, an automatic one after reading the room. On
    * web, a list-shape `book` (no `direct_playable`) is first looked up in full, so a
    * book this browser plays transcoded is refused whoever asks; so is a podcast episode
-   * given without its chapters (an episode row's list shape), for its file's own. An
-   * episode not on its server yet waits there first (`episode-ready.ts`), off the queue. */
+   * given without its chapters (an episode row's list shape), for its file's own. A retry
+   * of a failed download reads the book's item and chapters afresh first, for its current
+   * files. An episode not on its server yet waits there first (`episode-ready.ts`), off the
+   * queue. */
   download: (
     connectionId: string,
     libraryId: number,
@@ -237,20 +239,25 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     // chapters (the file's own) go with the download. Not for an episode its caller says is
     // absent, on either platform: it waits on its server first, and both are read once the
     // file is there, where the transcode refusal is decided again (`episodeWaitEnded`).
+    // A retry of a failed download reads both afresh on every platform: the caller's files
+    // come from the query cache (kept up to 30 minutes), which can still list a file the
+    // server has since removed, and the retry would fetch it again.
+    const retrying = get().entries[key]?.status === 'error';
     const lookup =
       !isAbsentEpisode(book) &&
-      (lacksPlayability(book, chapterData) || (!!book.episode && !chapterData));
+      (retrying || lacksPlayability(book, chapterData) || (!!book.episode && !chapterData));
     const client = lookup ? resolveClient(connectionId) : null;
     if (!client) return queueBook(connectionId, libraryId, book, chapterData, origin);
+    const staleTime = retrying ? 0 : 30_000;
     return (async () => {
       const [item, chapters] = await Promise.allSettled([
         queryClient.fetchQuery({
           ...itemQuery(connectionId, client, libraryId, book.rel_path),
-          staleTime: 30_000,
+          staleTime,
         }),
         queryClient.fetchQuery({
           ...chaptersQuery(connectionId, client, libraryId, book.rel_path),
-          staleTime: 30_000,
+          staleTime,
         }),
       ]);
       if (stopCount(key) !== stops) return 'declined';

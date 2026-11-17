@@ -4194,7 +4194,9 @@ are asked, at most 10,000 rows.
   so Retry fetches only the gone ones (one keep-ahead started is dropped with its folder instead:
   keep-ahead never retries a failure, and plans a dropped book again). At launch a kept file is
   found by the index its stored name says (`storedIndex`, else its place in the list:
-  `relocateEntry`). A retry takes a kept file by its path wherever the server's list now puts it
+  `relocateEntry`). A retry reads the book's item and chapters afresh first (`download`,
+  `staleTime: 0`: the caller's come from the query cache, which can still list a file the server
+  removed), then takes a kept file by its path wherever the server's list now puts it
   (`retryPlan`, fe#158: a list that gained, lost or reordered a file fetches only the new ones),
   fetches each other file under a name no kept file holds (its index when free, else the next
   free number past the list), and keeps the kept files of the paths it never reached listed when
