@@ -993,6 +993,11 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   pressed in the book stays in the frame: the reader turns pages itself and sends Escape back
   (`escape`). An RTL book (`opened.rtl`) turns forward from the left edge and ArrowLeft. Only a
   bare arrow turns a page: with Cmd, Ctrl or Alt it is the browser's (Back, Forward).
+- **Appearance** (`use-reader-appearance.ts`, `reader-settings.ts`): the text size and the page
+  colours (fe#246: like the app, light, dark, black) are per device, never synced, and both
+  surfaces (the reader, the companion's Text tab) read them before the host opens. The host
+  only ever gets hex colours and a scheme (`ReaderTheme`, `readerThemeOf`): black is the dark
+  scheme on `#000000`, so the reader's dark rules and read-along highlight apply unchanged.
 - **One session setup** (fe#172, `reader-session.ts`): both hosts start each document's
   session with `startReaderSession` (the channel, the `READER_START_MS` timeout, and where each
   message goes: `ready` runs the host's `onReady`, sends what waited, then the read-along side's

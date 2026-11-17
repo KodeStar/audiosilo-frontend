@@ -3216,6 +3216,14 @@
     "contents": "Índice",
     "smaller": "Texto mais pequeno",
     "larger": "Texto maior",
+    "theme": {
+      "label": "Cores da página: {{theme}}",
+      "heading": "Cores da página",
+      "follow": "Como a app",
+      "light": "Claro",
+      "dark": "Escuro",
+      "black": "Preto"
+    },
     "previous": "Página anterior",
     "next": "Página seguinte",
     "where": "{{percent}}% do livro",

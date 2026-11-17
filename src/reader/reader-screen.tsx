@@ -8,6 +8,14 @@ import { useBook, useCapability, useReadingPlace } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Icon } from '@/components/ui/icon';
 import { Notice } from '@/components/ui/notice';
 import { useBehindModalProps } from '@/components/ui/modal-layer';
 import { Sheet } from '@/components/ui/sheet';
@@ -22,6 +30,7 @@ import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { canRead } from './can-read';
 import { hasLocalEbook } from './ebook-file';
@@ -30,7 +39,13 @@ import { FollowPill, followPillRoom, PageEdges, turnPage, usePageEdges } from '.
 import type { ReaderPlace, TocEntry } from './protocol';
 import { ReaderHost } from './reader-host';
 import { type ReaderHostEvent, type ReaderHostHandle, ReaderStartError } from './reader-host-types';
-import { FONT_SCALES, saveFontScale, stepFontScale } from './reader-settings';
+import {
+  FONT_SCALES,
+  READER_THEMES,
+  type ReaderThemeChoice,
+  saveFontScale,
+  stepFontScale,
+} from './reader-settings';
 import { useBookReadalong } from './use-book-readalong';
 import { useReaderAppearance } from './use-reader-appearance';
 import {
@@ -152,7 +167,7 @@ export function ReaderScreen({
     if (!readalongMap) following.current = false;
   }, [readalongMap]);
 
-  const { theme, fontScale, setFontScale } = useReaderAppearance();
+  const { theme, themeChoice, chooseTheme, fontScale, setFontScale } = useReaderAppearance();
   const changeFontScale = (direction: -1 | 1) => {
     const next = stepFontScale(fontScale ?? 1, direction);
     setFontScale(next);
@@ -501,6 +516,11 @@ export function ReaderScreen({
                 disabled={fontScale === FONT_SCALES.at(-1)}
                 onPress={() => changeFontScale(1)}
               />
+              <ThemeMenu
+                value={themeChoice}
+                dark={theme.scheme === 'dark'}
+                onChange={chooseTheme}
+              />
             </>
           ) : null}
         </View>
@@ -666,6 +686,46 @@ const TocList = memo(function TocList({
     />
   );
 });
+
+/** The page colours (fe#246): like the app, light, dark or black, saved on this device for
+ * the reader and the companion's Text tab. Its glyph is the colours' scheme. */
+function ThemeMenu({
+  value,
+  dark,
+  onChange,
+}: {
+  value: ReaderThemeChoice;
+  dark: boolean;
+  onChange: (choice: ReaderThemeChoice) => void;
+}) {
+  const { t } = useTranslation();
+  const themed = useThemeColors();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          icon={dark ? 'moon' : 'sun'}
+          accessibilityLabel={t('reader.theme.label', { theme: t(`reader.theme.${value}`) })}
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>{t('reader.theme.heading')}</DropdownMenuLabel>
+        {READER_THEMES.map((choice) => (
+          <DropdownMenuItem
+            key={choice}
+            onPress={() => onChange(choice)}
+            accessibilityState={{ checked: choice === value }}
+          >
+            <Text className="flex-1">{t(`reader.theme.${choice}`)}</Text>
+            {choice === value ? <Icon name="check" size={16} color={themed.foreground} /> : null}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 /** Whether a save's answer is about this book. */
 function sameBook(

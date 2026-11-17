@@ -6,7 +6,11 @@ import type { ReaderHostHandle, ReaderHostProps } from '@/reader/reader-host-typ
 import type { TextTabModel } from './use-text-tab';
 
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
-jest.mock('@/reader/reader-settings', () => ({ loadFontScale: () => Promise.resolve(1) }));
+let mockReaderTheme = 'follow';
+jest.mock('@/reader/reader-settings', () => ({
+  loadFontScale: () => Promise.resolve(1),
+  loadReaderTheme: () => Promise.resolve(mockReaderTheme),
+}));
 let mockApi: object | null = {};
 jest.mock('@/api/provider', () => ({ useOptionalApi: () => mockApi }));
 // The narration (its own tests): where the player is, and the seek.
@@ -124,6 +128,13 @@ describe('TextPanel', () => {
     mockApi = {};
     mockNarrating = true;
     mockSignedOut = undefined;
+    mockReaderTheme = 'follow';
+  });
+
+  it("draws the book in the reader's page colours on this device (fe#246)", async () => {
+    mockReaderTheme = 'black';
+    await mount();
+    expect(host().theme).toEqual({ scheme: 'dark', background: '#000000', foreground: '#e7ebf4' });
   });
 
   it('opens the book at the sentence being read, following the narration', async () => {

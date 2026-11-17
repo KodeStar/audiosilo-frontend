@@ -136,6 +136,7 @@ jest.mock('./reading-progress', () => ({
 /* eslint-disable import/first */
 import { FOLLOW_PILL_ROOM } from './page-edge';
 import { ReaderScreen } from './reader-screen';
+import { loadReaderTheme, saveReaderTheme } from './reader-settings';
 /* eslint-enable import/first */
 
 const CFI_A = 'epubcfi(/6/4!/4/2/1:0)';
@@ -417,6 +418,29 @@ describe('ReaderScreen', () => {
       expect(toOffset).toHaveBeenCalledWith({ offset: expect.any(Number), animated: false });
       toOffset.mockRestore();
     });
+  });
+
+  it('draws the page black once Black is chosen, and keeps it on this device (fe#246)', async () => {
+    await mount();
+    await waitFor(() => expect(mockHost).not.toBeNull());
+    expect(mockHost!.theme).toEqual({
+      scheme: 'light',
+      background: '#ffffff',
+      foreground: '#121c36',
+    });
+    await say({ type: 'opened', title: 'Alice', toc: [], rtl: false });
+    await fireEvent.press(screen.getByLabelText('Page colours: Like the app'));
+    await fireEvent.press(await screen.findByText('Black'));
+    await waitFor(() =>
+      expect(mockHost!.theme).toEqual({
+        scheme: 'dark',
+        background: '#000000',
+        foreground: '#e7ebf4',
+      }),
+    );
+    expect(screen.getByLabelText('Page colours: Black')).toBeTruthy();
+    await expect(loadReaderTheme()).resolves.toBe('black');
+    await saveReaderTheme('follow');
   });
 
   it('reads a download holding the EPUB offline, the capability unknown', async () => {

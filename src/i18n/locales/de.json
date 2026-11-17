@@ -3216,6 +3216,14 @@
     "contents": "Inhalt",
     "smaller": "Kleinere Schrift",
     "larger": "Größere Schrift",
+    "theme": {
+      "label": "Seitenfarben: {{theme}}",
+      "heading": "Seitenfarben",
+      "follow": "Wie die App",
+      "light": "Hell",
+      "dark": "Dunkel",
+      "black": "Schwarz"
+    },
     "previous": "Vorherige Seite",
     "next": "Nächste Seite",
     "where": "{{percent}} % des Buchs",

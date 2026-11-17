@@ -3216,6 +3216,14 @@
     "contents": "Contents",
     "smaller": "Smaller text",
     "larger": "Larger text",
+    "theme": {
+      "label": "Page colours: {{theme}}",
+      "heading": "Page colours",
+      "follow": "Like the app",
+      "light": "Light",
+      "dark": "Dark",
+      "black": "Black"
+    },
     "previous": "Previous page",
     "next": "Next page",
     "where": "{{percent}}% through the book",
