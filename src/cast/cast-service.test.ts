@@ -1184,6 +1184,42 @@ describe('CastPlaybackService', () => {
         expect(t.snaps.some((s) => s.state === 'error')).toBe(false);
         expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 0, position: 5 });
       });
+
+      it('a book load refused to the end stands at the place it asked for, not the last book', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 2, 400, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 410 });
+        const other = { ...BOOK, path: 'A/C' };
+        const first = holdLoad(t);
+        const second = holdLoad(t);
+        const loading = t.svc.load(TRACKS, 0, 30, [], other);
+        await flush();
+        // The last book's tick, before the receiver took the load: no place in this one.
+        t.progress(411);
+        t.status({
+          playerState: 'idle',
+          idleReason: 'error',
+          contentId: t.url(0),
+          book: other,
+          position: 0,
+        });
+        first();
+        await flush();
+        t.status({
+          playerState: 'idle',
+          idleReason: 'error',
+          contentId: t.url(0),
+          book: other,
+          position: 0,
+        });
+        second();
+        // The receiver's status can't be read (the read times out: null).
+        await expect(loading).resolves.toBeUndefined();
+        await flush();
+        expect(t.svc.getSnapshot()).toMatchObject({ state: 'ready', trackIndex: 0, position: 30 });
+      });
     });
 
     it('a book loaded again (a Retry) mints no sooner than a minute on; another book may', async () => {

@@ -215,6 +215,10 @@ export class CastPlaybackService implements PlaybackService {
    * place, for at most `ASKED_MOVE_MS` after the error (a load the receiver never answers
    * must not hide its statuses for good). */
   private refusedQueue: { seq: number; at: number } | null = null;
+  /** Bumped by every status that named a file of the loaded book and placed the snapshot
+   * there: a book's load refused to the end reads it to tell whether the receiver has said
+   * where it is in that book (`load`). A progress tick names no file and does not count. */
+  private statusPlaces = 0;
 
   constructor(
     private readonly remote: CastRemote,
@@ -299,6 +303,14 @@ export class CastPlaybackService implements PlaybackService {
       // round trip a cached one doesn't): it owns the receiver, this one stands back.
       if (seq !== this.loadSeq) return;
       this.loaded = loaded;
+      const ready = () =>
+        this.update({
+          state: 'ready',
+          trackIndex: startIndex,
+          position: positionInTrack,
+          duration: tracks[startIndex]?.duration ?? 0,
+        });
+      const placed = this.statusPlaces;
       let sent: boolean;
       try {
         sent = await this.sendQueue(startIndex, positionInTrack, false);
@@ -307,16 +319,15 @@ export class CastPlaybackService implements PlaybackService {
         // one (`ReceiverRefused`; its status, read again, shows where): it holds this book, so
         // the load stands. A failed load hands the book back to the phone
         // (`RoutedPlaybackService`), which would leave the receiver playing out of reach.
-        if (err instanceof ReceiverRefused) return;
-        throw err;
+        if (!(err instanceof ReceiverRefused)) throw err;
+        // Until a status says where (the read can come back empty), it stands at the place
+        // asked for: the snapshot is still the last book's (its ticks included, which name no
+        // file), which is no place in this one.
+        if (seq === this.loadSeq && placed === this.statusPlaces) ready();
+        return;
       }
       if (!sent || seq !== this.loadSeq) return;
-      this.update({
-        state: 'ready',
-        trackIndex: startIndex,
-        position: positionInTrack,
-        duration: tracks[startIndex]?.duration ?? 0,
-      });
+      ready();
     } finally {
       this.loadsInFlight--;
     }
@@ -775,6 +786,7 @@ export class CastPlaybackService implements PlaybackService {
       patch.rate = status.rate;
       this.rateChange?.(status.rate);
     }
+    if (index !== null) this.statusPlaces++;
     this.place(patch, index !== null);
   }
 
