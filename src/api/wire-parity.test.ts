@@ -119,6 +119,14 @@ function members(type: ts.Type): ts.Type[] {
   return type.isUnion() ? type.types : [type];
 }
 
+/** An object type, or an intersection of them (`A & { b: number }`); never an array. */
+function isObject(checker: ts.TypeChecker, type: ts.Type): boolean {
+  if (type.isIntersection()) return type.types.every((t) => isObject(checker, t));
+  return (
+    !!(type.flags & ts.TypeFlags.Object) && !checker.isArrayType(type) && !checker.isTupleType(type)
+  );
+}
+
 const SCALAR: Record<string, ts.TypeFlags> = {
   string: ts.TypeFlags.StringLike,
   number: ts.TypeFlags.NumberLike,
@@ -152,9 +160,7 @@ function walk(checker: ts.TypeChecker, shape: Shape, type: ts.Type, at: string, 
     if (el) walk(checker, shape[0], el, `${at}[]`, out);
     return;
   }
-  const objects = members(type).filter(
-    (m) => m.flags & ts.TypeFlags.Object && !checker.isArrayType(m) && !checker.isTupleType(m),
-  );
+  const objects = members(type).filter((m) => isObject(checker, m));
   if (objects.length === 0) {
     out.errors.push(`${at}: the server sends an object, the type is ${name()}`);
     return;
@@ -251,6 +257,7 @@ describe('the parity check itself', () => {
       f: Record<string, number>;
       g: string | undefined;
       h?: (string | number)[];
+      i?: Inner & { y: string };
     };`;
   const { checker, types } = probeTypes(['Probe'], extra);
   const good: Shape = {
@@ -260,6 +267,7 @@ describe('the parity check itself', () => {
     e: { kind: 'string' },
     f: { anything: 'number' },
     h: [{ $or: ['string', 'number'] }],
+    i: { x: 'number', y: 'string' },
   };
 
   it('accepts a shape the type covers (optional and undefined fields may be absent)', () => {
@@ -279,6 +287,7 @@ describe('the parity check itself', () => {
       e: { kind: 'string' },
       f: { anything: 'string' },
       h: [{ $or: ['string', 'boolean'] }],
+      i: { x: 'number', w: 'string' },
       z: 'boolean',
     };
     expect(compare(checker, bad, types[0])).toEqual({
@@ -287,8 +296,9 @@ describe('the parity check itself', () => {
         '$.c: required in the type, the server does not send it',
         '$.f.anything: the server sends string, the type is number',
         '$.h[]: the server sends boolean, the type is string | number',
+        '$.i.y: required in the type, the server does not send it',
       ],
-      unknown: ['$.d[].y', '$.z'],
+      unknown: ['$.d[].y', '$.i.w', '$.z'],
     });
   });
 
