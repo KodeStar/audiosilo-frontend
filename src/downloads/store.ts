@@ -1447,9 +1447,47 @@ function savedIndex(f: DownloadedFile, k: number): number {
   return storedIndex(f.localUri) ?? k;
 }
 
-/** The files of `earlier` (a failed attempt's) saved under index `from` or later. */
-function savedFrom(earlier: readonly DownloadedFile[], from: number): DownloadedFile[] {
-  return earlier.filter((f, k) => savedIndex(f, k) >= from);
+/**
+ * How a retry reuses the files an earlier attempt saved (`earlier`), by path (fe#158): a file
+ * the book still lists is taken wherever it now is in the list, under the name it was saved
+ * by, so a server list that gained, lost or reordered a file fetches only the files that are
+ * new. Each file the retry still has to fetch gets a name no kept file holds: its index when
+ * that is free, else the next free number past the list (`storedIndex` reads either). `kept`
+ * is the earlier file for a path, `nameFor` the name to fetch a path into, and `notReached`
+ * the kept files of the paths not handled yet (listed while the retry runs, and kept by a
+ * failure).
+ */
+function retryPlan(
+  earlier: readonly DownloadedFile[],
+  paths: readonly string[],
+): {
+  kept: (path: string) => DownloadedFile | undefined;
+  nameFor: (index: number, path: string) => string;
+  notReached: (handled: ReadonlySet<string>) => DownloadedFile[];
+} {
+  const listed = new Set(paths);
+  const byPath = new Map<string, DownloadedFile>();
+  // The names a kept file holds, by the index its name says: never fetched over.
+  const held = new Map<number, string>();
+  earlier.forEach((f, k) => {
+    if (!listed.has(f.relPath) || byPath.has(f.relPath)) return;
+    byPath.set(f.relPath, f);
+    held.set(savedIndex(f, k), f.relPath);
+  });
+  let spare = Math.max(paths.length, ...[...held.keys()].map((i) => i + 1));
+  return {
+    kept: (path) => byPath.get(path),
+    nameFor: (index, path) => {
+      // Its own name is free to write over (the file is gone, or the fetch replaces it).
+      const owner = held.get(index);
+      if (owner === undefined || owner === path) return fileName(index, path);
+      while (held.has(spare)) spare++;
+      const name = fileName(spare, path);
+      held.set(spare++, path);
+      return name;
+    },
+    notReached: (handled) => [...byPath.values()].filter((f) => !handled.has(f.relPath)),
+  };
 }
 
 async function runQueue() {
@@ -1532,12 +1570,18 @@ async function runOne(key: string) {
   // The files that finished, so a failure can keep them, and how many there are.
   const files: DownloadedFile[] = [];
   let fileCount = 0;
-  // Files a failed attempt already finished, each counted only for the index it was saved
-  // under (`savedIndex`), since a download of the index writes over it.
+  // Files a failed attempt already finished, reused by path (`retryPlan`), and the paths this
+  // attempt has handled (kept, fetched, or being fetched).
   const earlier = entry.manifest.files;
+  let plan: ReturnType<typeof retryPlan> | null = null;
+  const handled = new Set<string>();
   try {
     const specs = bookFileSpecs(entry.manifest.book, entry.manifest.chapters ?? undefined);
     fileCount = specs.length;
+    plan = retryPlan(
+      earlier,
+      specs.map((s) => s.path),
+    );
     // The ebook (Bridge Phase 3b-2) is one more step after the audio, and its size counts in
     // the total: 100% is the whole download, and the bytes kept include it. So is the
     // read-along map the book will likely take (its size counts once it is in, fe#193).
@@ -1589,7 +1633,8 @@ async function runOne(key: string) {
     };
     for (let i = 0; i < specs.length; i++) {
       const s = specs[i];
-      const done = earlier.find((f, k) => f.relPath === s.path && savedIndex(f, k) === i);
+      handled.add(s.path);
+      const done = plan.kept(s.path);
       if (done && (await engine.fileExists(done.localUri))) {
         files.push(done);
         priorBytes += done.bytes ?? s.size;
@@ -1602,7 +1647,7 @@ async function runOne(key: string) {
         connectionId,
         libraryId,
         path,
-        fileName(i, s.path),
+        plan.nameFor(i, s.path),
         fileUrl,
         (bytesWritten, totalBytes) => {
           curBytes = bytesWritten;
@@ -1614,15 +1659,15 @@ async function runOne(key: string) {
       priorBytes += curBytes;
       files.push({ relPath: s.path, localUri, bytes: curBytes });
       // List each finished file as it lands, so a download the app is closed in the
-      // middle of keeps them across the restart (`reviveEntry`). Files a failed attempt
-      // saved under a later index stay listed (the name on disk is the index).
+      // middle of keeps them across the restart (`reviveEntry`). Kept files of the paths
+      // not reached yet stay listed (`retryPlan` never fetches over them).
       const cur = useDownloads.getState().entries[key];
       if (cur && live()) {
         patchEntry(key, {
           bytes: priorBytes,
           totalBytes: knownTotal,
           progress: (i + 1) / steps,
-          manifest: { ...cur.manifest, files: [...files, ...savedFrom(earlier, files.length)] },
+          manifest: { ...cur.manifest, files: [...files, ...plan.notReached(handled)] },
         });
         persistSoon();
       }
@@ -1729,10 +1774,10 @@ async function runOne(key: string) {
     } else if (live()) {
       // Keep the files that finished: a retry skips them, so a failure 41% through a
       // multi-file book doesn't throw that 41% away. (The one being written is partial,
-      // and is written over by the retry.) So are the files an earlier attempt saved
-      // further on, which this one never reached (a download with a file gone, fe#158: a
-      // retry that fails on the gone file must not unlist the rest).
-      const held = [...files, ...savedFrom(earlier, files.length + 1)];
+      // and is written over by the retry.) So are the files an earlier attempt saved for
+      // the paths this one never reached (a download with a file gone, fe#158: a retry that
+      // fails on the gone file must not unlist the rest).
+      const held = [...files, ...(plan ? plan.notReached(handled) : earlier)];
       const kept = fileCount > 0 ? Math.min(1, held.length / fileCount) : 0;
       const failure: DownloadFailure = { ...classifyDownloadError(e), kept };
       const cur = useDownloads.getState().entries[key];
