@@ -10,8 +10,10 @@ import {
   useEditProgress,
   useIsPodcastLibrary,
   useMarkFinished,
+  qk,
 } from '@/api/hooks';
-import type { Book, Progress } from '@/api/types';
+import { queryClient } from '@/api/provider';
+import type { Book, PodcastFetchStatus, Progress } from '@/api/types';
 import { RemoveDownloadConfirm } from '@/components/downloads/remove-download-confirm';
 import { usePlayBook } from '@/components/player/use-play-book';
 import { episodeRowState, offersEpisodeDownload } from '@/components/podcasts/podcast-model';
@@ -137,6 +139,15 @@ export function useBookActions(
   // An empty path keeps the lookup off until it is wanted.
   const full = useBook(libraryId, unknown && opened ? path : '', connectionId);
   const known = unknown ? full.data : book;
+  // A list row's `episode.fetch` is as old as the list; the episode page and the player's
+  // fetch keep the live status in the cache. Read there once the menu opened (no observer per
+  // row), so the menu offers what the page does (fe#280).
+  const live =
+    opened && known?.episode && !known.episode.downloaded
+      ? queryClient.getQueryData<PodcastFetchStatus>(qk.podcastFetch(connectionId, libraryId, path))
+      : undefined;
+  const current =
+    live && known?.episode ? { ...known, episode: { ...known.episode, fetch: live } } : known;
   const download = useDownloadControls(libraryId, path, known ?? book, undefined, connectionId);
   const episode = podcastLibrary || !!(known ?? book).episode;
   const status = bookStatus(progress);
@@ -234,7 +245,7 @@ export function useBookActions(
   // A download already there stays manageable; a new one waits for the verdict.
   if (
     download.supported &&
-    (offersDownload(known ?? null, podcastLibrary, podcastFetch, pending) ||
+    (offersDownload(current ?? null, podcastLibrary, podcastFetch, pending) ||
       (s !== undefined && s !== 'error'))
   ) {
     const state =

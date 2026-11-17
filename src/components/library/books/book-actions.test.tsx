@@ -17,6 +17,7 @@ jest.mock('@/api/hooks', () => {
   const { CapabilityError } = jest.requireActual('@/api/hooks');
   return {
     CapabilityError,
+    qk: jest.requireActual('@/api/hooks').qk,
     useBook: (_lib: number, path: string) => {
       mockUseBook(path);
       return { data: path ? mockFull : undefined };
@@ -82,7 +83,8 @@ let mockSendToWatch: jest.Mock | null = null;
 jest.mock('@/watch/use-watch', () => ({ useSendToWatch: () => mockSendToWatch }));
 
 /* eslint-disable import/first */
-import { CapabilityError } from '@/api/hooks';
+import { CapabilityError, qk } from '@/api/hooks';
+import { queryClient } from '@/api/provider';
 import { fetchStatus } from '@/testing/podcast-fixtures';
 
 import { mountWithPortal } from '@/testing/render-overlay';
@@ -436,6 +438,26 @@ describe('useBookActions, a podcast episode', () => {
     // One on its server needs no fetch: a stopped fetch of it from before never hides it.
     mockPending = { key: 'c:1:Author/Series/01 - Book', phase: 'unavailable', code: 'module_off' };
     expect((await actions(book({ episode: info(true) }))).find('download')).toBeDefined();
+  });
+
+  it('reads the live fetch status once opened, as the episode page does (fe#280)', async () => {
+    mockCaps = { ...ALL, podcast_fetch: true };
+    const b = book({ episode: info(false) });
+    const key = qk.podcastFetch('c', 1, b.rel_path);
+    queryClient.setQueryData(
+      key,
+      fetchStatus({
+        state: 'unavailable',
+        error: { code: 'library_not_writable', message: 'read-only' },
+      }),
+    );
+    try {
+      // Closed, the row's own (older) status; open, the live one.
+      expect((await actions(b)).find('download')).toBeDefined();
+      expect((await actions(b, undefined, true)).find('download')).toBeUndefined();
+    } finally {
+      queryClient.removeQueries({ queryKey: key });
+    }
   });
 
   it('looks a list-shape item of a podcast library up once opened, then offers Download', async () => {

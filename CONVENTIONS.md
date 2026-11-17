@@ -811,7 +811,8 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
 - **Episodes download (v2.7.0, fe#166)**: Download / Remove download on the episode page
   (`DownloadControl`, disabled while nothing can fetch it) and in the row's ... menu
   (`offersDownload`: an episode on its server, or one `podcast_fetch` is not `false` for; a list
-  shape is looked up once the menu opens). The downloads store downloads an episode like a book (its
+  shape is looked up once the menu opens, and the live fetch status the episode page and the
+  player's fetch keep in the cache, `qk.podcastFetch`, read over the row's own then). The downloads store downloads an episode like a book (its
   item and chapters read first when the caller held a list shape of one on its server, the show's
   title kept in `manifest.showTitle`). One not on its server (`isAbsentEpisode`, or a last failure
   `serverFetch` or a server 503) first waits in `downloads/episode-ready.ts`, OUTSIDE the
