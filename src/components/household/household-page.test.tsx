@@ -16,7 +16,10 @@ jest.mock('expo-router', () => ({
     return mockRouter;
   },
 }));
-jest.mock('@/lib/root-stack', () => ({ popTabToRoot: jest.fn() }));
+jest.mock('@/lib/root-stack', () => ({
+  ...jest.requireActual('@/lib/root-stack'),
+  popTabToRoot: jest.fn(),
+}));
 jest.mock('@/playback/store', () => ({
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   ...require('@/testing/player-store-mock').createPlayerStoreMock(),

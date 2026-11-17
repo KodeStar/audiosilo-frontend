@@ -6,6 +6,7 @@ import { effectiveUrl } from '@/api/address-route';
 import { holdReconnect } from '@/components/connect/invite-handoff';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { currentNavState, focusedRoute } from '@/lib/root-stack';
 import { cn } from '@/lib/utils';
 import { useProfileConnections } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
@@ -14,12 +15,27 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 /** The brand strip a reconnect line sits on (the banner, kids mode's signed-out line). */
 export const RECONNECT_STRIP_CLASS = 'border-l-4 border-l-brand bg-brand/10';
 
+/** The connect flow's sign-in step, as the router names it (`src/app/connect/sign-in.tsx`). */
+const SIGN_IN_ROUTE = 'sign-in';
+
+/** The reconnect on its way (`reconnectConnection`), so a second tap joins it. */
+let reconnecting: Promise<void> | null = null;
+
 /** Start the reconnect flow for `conn`: the sign-in step for its server, through the
  * address the connection uses NOW (`effectiveUrl`; away from home that is its away
  * address, not the home address it may have been paired with, which can't answer).
  * Signing in keeps the connection's own `serverUrl` (`repairPlan`). The connection it
- * re-pairs is handed over in memory (`holdReconnect`). */
-export async function reconnectConnection(conn: Connection): Promise<void> {
+ * re-pairs is handed over in memory (`holdReconnect`). One at a time: a double tap while
+ * one is on its way, or once its sign-in step is on screen, pushes no second step. */
+export function reconnectConnection(conn: Connection): Promise<void> {
+  if (focusedRoute(currentNavState())?.name === SIGN_IN_ROUTE) return Promise.resolve();
+  reconnecting ??= startReconnect(conn).finally(() => {
+    reconnecting = null;
+  });
+  return reconnecting;
+}
+
+async function startReconnect(conn: Connection): Promise<void> {
   const server = effectiveUrl(conn);
   await useSession.getState().setPendingServerUrl(server);
   // Which connection the sign-in re-pairs goes in memory, never in the route (fe#298).

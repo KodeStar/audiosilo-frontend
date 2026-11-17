@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
 import { setAddressPick, useAddressRoute } from '@/api/address-route';
@@ -8,10 +8,15 @@ import { takeReconnect } from '@/components/connect/invite-handoff';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
-import { ReconnectBanner } from './reconnect-banner';
+import { ReconnectBanner, reconnectConnection } from './reconnect-banner';
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
+let mockNavState: unknown;
+jest.mock('@/lib/root-stack', () => ({
+  ...jest.requireActual('@/lib/root-stack'),
+  currentNavState: () => mockNavState,
+}));
 
 const user: User = {
   id: 1,
@@ -29,6 +34,7 @@ beforeEach(async () => {
   resetProfilesForTests();
   await AsyncStorage.clear();
   mockPush.mockClear();
+  mockNavState = undefined;
   useAddressRoute.setState({ picks: {} });
   useSession.setState({
     status: 'unauthenticated',
@@ -70,6 +76,28 @@ it('without a pick, signs in through the paired address', async () => {
   await render(<ReconnectBanner />);
   await fireEvent.press(screen.getByText('Reconnect to Hearthside'));
   expect(useSession.getState().pendingServerUrl).toBe(HOME);
+});
+
+it('a double tap pushes one sign-in step (one on its way, then one on screen)', async () => {
+  const conn = useSession.getState().connections[0];
+  // The second tap lands before the first has written the address.
+  await act(() => Promise.all([reconnectConnection(conn), reconnectConnection(conn)]));
+  expect(mockPush).toHaveBeenCalledTimes(1);
+  // Its sign-in step is on screen now: a tap that still reaches the banner pushes nothing.
+  mockNavState = {
+    index: 1,
+    routes: [
+      { name: '(app)' },
+      { name: 'connect', state: { index: 0, routes: [{ name: 'sign-in' }] } },
+    ],
+  };
+  await render(<ReconnectBanner />);
+  await fireEvent.press(screen.getByRole('button'));
+  expect(mockPush).toHaveBeenCalledTimes(1);
+  // Back on the app, a tap starts it again.
+  mockNavState = { index: 0, routes: [{ name: '(app)' }] };
+  await fireEvent.press(screen.getByRole('button'));
+  expect(mockPush).toHaveBeenCalledTimes(2);
 });
 
 it('renders nothing when no connection needs reconnecting', async () => {
