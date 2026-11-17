@@ -1,4 +1,10 @@
-import { ApiError, type ApiClient, isSignedOutError, TimeoutError } from '@/api/client';
+import {
+  ApiError,
+  type ApiClient,
+  isRefusedForGood,
+  isSignedOutError,
+  TimeoutError,
+} from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { ReadingProgress, ReadingProgressSaved } from '@/api/types';
@@ -365,16 +371,8 @@ export function onReadingRefused(listener: RefusedListener): () => void {
   };
 }
 
-/** A 4xx the save can never get past. Not a 408 or a 429 (the server's rate limit): those
- * say "not now", so the save is queued for the replay like a failed request. */
-const isUnrecoverable = (e: unknown): e is ApiError =>
-  e instanceof ApiError &&
-  e.status >= 400 &&
-  e.status < 500 &&
-  e.status !== 408 &&
-  e.status !== 429;
-
-/** A save dropped for `e` (`isUnrecoverable`), told to the listeners. */
+/** A save dropped for `e` (`isRefusedForGood`; a 408 or a 429 is queued for the replay like a
+ * failed request), told to the listeners. */
 function refused(save: ReadingSave, e: ApiError): void {
   const heard: ReadingRefused = {
     connectionId: save.connectionId,
@@ -452,7 +450,7 @@ async function sendOrQueue(
     await dropQueuedBefore(save);
     return saved;
   } catch (e) {
-    if (isUnrecoverable(e)) {
+    if (isRefusedForGood(e)) {
       refused(save, e);
       return null;
     }
@@ -506,7 +504,7 @@ async function flushGroup(
       await put(client, save);
       noteSuccess(cid);
     } catch (e) {
-      if (isUnrecoverable(e)) {
+      if (isRefusedForGood(e)) {
         refused(save, e);
         continue;
       }

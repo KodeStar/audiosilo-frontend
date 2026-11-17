@@ -218,6 +218,64 @@ it('says an invite used up at the exchange is used up, not a bad code', async ()
   expect(await screen.findByText(/This invite can't add another device/)).toBeTruthy();
 });
 
+// fe#159: a second redeem of the same code spent another of the invite's uses (and refused
+// a single-use invite as used), so a token whose exchange got no answer is exchanged again.
+describe('an invite whose exchange got no answer', () => {
+  const signInWithCode = async (code: string) => {
+    await fireEvent.changeText(screen.getByPlaceholderText('Enter your invite code'), code);
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign in' }));
+  };
+
+  it('exchanges the pairing token again on the next try, never redeeming twice', async () => {
+    mockApi.redeemCode.mockResolvedValue({ server_name: 'Hearthside', pairing_token: 'pt' });
+    mockApi.exchange
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValueOnce({ token: 's', server_id: 'srv-1', user });
+    await render(<SignInStep server={AWAY} />);
+    await signInWithCode('ABCD');
+    expect(await screen.findByText('Sign in failed. Please try again.')).toBeTruthy();
+    await signInWithCode('ABCD');
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockApi.redeemCode).toHaveBeenCalledTimes(1);
+    expect(mockApi.exchange.mock.calls).toEqual([
+      ['pt', 'Test device'],
+      ['pt', 'Test device'],
+    ]);
+  });
+
+  it('redeems afresh when the kept token is refused (expired meanwhile)', async () => {
+    mockApi.redeemCode
+      .mockResolvedValueOnce({ server_name: 'Hearthside', pairing_token: 'pt-1' })
+      .mockResolvedValueOnce({ server_name: 'Hearthside', pairing_token: 'pt-2' });
+    mockApi.exchange
+      .mockRejectedValueOnce(new ApiError(503, 'unavailable'))
+      .mockRejectedValueOnce(new ApiError(401, 'invalid or expired pairing token'))
+      .mockResolvedValueOnce({ token: 's', server_id: 'srv-1', user });
+    await render(<SignInStep server={AWAY} />);
+    await signInWithCode('ABCD');
+    expect(await screen.findByText('Sign in failed. Please try again.')).toBeTruthy();
+    await signInWithCode('ABCD');
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockApi.exchange.mock.calls.map((c) => c[0])).toEqual(['pt-1', 'pt-1', 'pt-2']);
+  });
+
+  it('redeems another code typed instead, and never keeps a token the server refused', async () => {
+    mockApi.redeemCode.mockResolvedValue({ server_name: 'Hearthside', pairing_token: 'pt' });
+    mockApi.exchange
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockRejectedValueOnce(new ApiError(401, 'invite already used on all its devices'))
+      .mockRejectedValueOnce(new ApiError(401, 'invite already used on all its devices'));
+    await render(<SignInStep server={AWAY} />);
+    await signInWithCode('ABCD');
+    expect(await screen.findByText('Sign in failed. Please try again.')).toBeTruthy();
+    await signInWithCode('WXYZ');
+    expect(await screen.findByText(/This invite can't add another device/)).toBeTruthy();
+    await signInWithCode('WXYZ');
+    await waitFor(() => expect(mockApi.exchange).toHaveBeenCalledTimes(3));
+    expect(mockApi.redeemCode.mock.calls).toEqual([['ABCD'], ['WXYZ'], ['WXYZ']]);
+  });
+});
+
 // frontend#129: a book link opened signed out ends on that book after sign-in.
 it('ends on the book the signed-out visit was opening', async () => {
   mockApi.login.mockResolvedValue({ token: 's', server_id: 'srv-1', user });
