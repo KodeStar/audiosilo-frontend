@@ -2100,6 +2100,28 @@ describe("refreshing a downloaded book's chapters", () => {
       expect((await readPersisted())[key]?.manifest.chapters).toEqual(fresh());
     });
 
+    // fe#273: a partial download from before fe#272 had no book length until the server
+    // answered again; the answer the cache already held gave it none.
+    it("takes the book's end and length from an answer the cache held before it started", () => {
+      stop();
+      const key = downloadKey('c1', 2, 'A/Book');
+      const e = downloadedEntry();
+      useDownloads.setState({
+        entries: { [key]: { ...e, manifest: { ...e.manifest, endsBefore: 'A/Book/03.mp3' } } },
+      });
+      const three = fresh(['A/Book/01.mp3', 'A/Book/02.mp3', 'A/Book/03.mp3'], { duration: 180 });
+      mockGetQueryData.mockImplementation(() => three);
+      try {
+        stop = startChapterRefresh();
+      } finally {
+        mockGetQueryData.mockImplementation(() => undefined);
+      }
+      expect(useDownloads.getState().entries[key].manifest).toMatchObject({
+        endsBefore: 'A/Book/03.mp3',
+        bookDuration: 180,
+      });
+    });
+
     it('changes nothing at start when the cache holds only the manifest seed', () => {
       stop();
       const key = downloadKey('c1', 2, 'A/Book');

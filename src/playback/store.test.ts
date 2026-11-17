@@ -153,6 +153,7 @@ import {
   onPickedUpAgain,
   selectBookKey,
   selectBookPosition,
+  selectEndsPartial,
   selectIsPlaying,
   selectIsTransportLive,
   stopPlaybackForConnection,
@@ -1580,6 +1581,26 @@ describe('a downloaded book re-ordered on its server', () => {
     // The book unloads: the server's answer in the cache is still not taken.
     usePlayer.setState({ nowPlaying: null });
     expect(order()).toEqual(paths);
+  });
+
+  // fe#273: the end credits read the book's end from the loaded queue (`over` in
+  // end-credits.tsx: the place against the queue's length, never on a partial queue). An
+  // old-order download ends in another file than the server's order does, and is still
+  // the whole book.
+  it("ends the whole book at the old order's last file: finished, never a partial end", async () => {
+    await usePlayer.getState().playBook('c1', 2, book, chaptersIn(paths), 0);
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('playing', 40, { trackIndex: 1, duration: 50 }));
+    pushSnapshot(snap('ended', 50, { trackIndex: 1, duration: 50 }));
+    await flushMicrotasks();
+    const s = usePlayer.getState();
+    expect(selectEndsPartial(s)).toBe(false);
+    expect(selectBookPosition(s)).toBe(100);
+    expect(mockSaveProgress.mock.calls.at(-1)?.[1]).toMatchObject({
+      position: 100,
+      duration: 100,
+      finished: true,
+    });
   });
 
   it("plays the download's order when a start has no chapters for it", async () => {

@@ -837,8 +837,9 @@ export function noteDownloadEnd(ref: BookRef, order: readonly string[]): void {
 }
 
 /**
- * `manifest` with the chapters answer the cache already holds for its book, when
- * `refreshedChapters` takes it. `startChapterRefresh` only sees answers that land while the
+ * `manifest` with the chapters answer the cache already holds for its book
+ * (`withServedChapters`: where the book ends, its length, and the chapters when
+ * `refreshedChapters` takes them). `startChapterRefresh` only sees answers that land while the
  * book is downloaded; this takes one that landed before, while it was downloading or before
  * the launch's `hydrate` read the registry. That answer is the one the download was given
  * or a newer one (the callers read it from the same cache entry).
@@ -847,7 +848,19 @@ function withCachedChapters(ref: BookRef, manifest: DownloadManifest): DownloadM
   const cached = queryClient.getQueryData<ChaptersResponse>(
     qk.chapters(ref.connectionId, ref.libraryId, ref.path),
   );
-  return (cached && refreshedChapters(manifest, cached)) || manifest;
+  return cached ? withServedChapters(manifest, cached) : manifest;
+}
+
+/** `manifest` after a server chapters answer for its book: where the book ends and its
+ * length (`withBookEnd`, by every answer, also one naming files the download lacks), then
+ * the chapters when `refreshedChapters` takes them. The same manifest when nothing changes. */
+function withServedChapters(manifest: DownloadManifest, fresh: ChaptersResponse): DownloadManifest {
+  const ended = withBookEnd(
+    manifest,
+    bookFileSpecs(manifest.book, fresh).map((f) => f.path),
+    fresh.duration,
+  );
+  return refreshedChapters(ended, fresh) ?? ended;
 }
 
 /**
@@ -879,14 +892,7 @@ export function startChapterRefresh(): () => void {
     const ref = { connectionId: book.cid, libraryId: book.libraryId, path: book.path };
     const entry = downloadedEntryOf(ref);
     if (!entry) return;
-    // Whether the download ends before the book does, by every answer (D3): also one
-    // naming files the download lacks, which `refreshedChapters` never takes.
-    const ended = withBookEnd(
-      entry.manifest,
-      bookFileSpecs(entry.manifest.book, fresh).map((f) => f.path),
-      fresh.duration,
-    );
-    const manifest = refreshedChapters(ended, fresh) ?? ended;
+    const manifest = withServedChapters(entry.manifest, fresh);
     if (manifest === entry.manifest) return;
     patchEntry(contentKeyOf(ref), { manifest });
     // A burst of answers (a reconnect's refetches, a search fan-out, the start's own
