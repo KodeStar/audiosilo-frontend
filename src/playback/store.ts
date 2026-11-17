@@ -3273,6 +3273,9 @@ function commitLocalSwap(nowPlaying: NowPlaying, swap: LocalSwap): NowPlaying | 
   if (now !== nowPlaying) return null;
   resumeFloor = Math.max(0, resumeFloor + swap.shift);
   const committed = { ...nowPlaying, cover: swap.cover ?? nowPlaying.cover, queue: swap.queue };
+  // A faulted engine is still one on the download's queue (`engineFault`): the swap put it at
+  // the place the store shows, and a press must still reload it there, never just resume it.
+  if (faultedBook === nowPlaying) faultedBook = committed;
   // The store's place moves onto the download's queue with it, by the file: the engine's
   // report of the download's index can be held back (a stream in `error` holds every
   // report but `playing`), and the stream's index read through the download's queue is

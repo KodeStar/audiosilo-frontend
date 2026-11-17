@@ -3389,6 +3389,47 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     await usePlayer.getState().seekInTrack(40); // no longer faulted: a plain seek
     expect(mockSvc.seekTo).toHaveBeenLastCalledWith(40);
   });
+
+  it("a faulted book is still faulted on its download's files: a press reloads it", async () => {
+    await resume(30);
+    pushSnapshot(snap('playing', 0.4, { trackIndex: 1, duration: short }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    const manifest: DownloadManifest = {
+      book,
+      chapters,
+      files: files.map((relPath, i) => ({ relPath, localUri: `file:///dl/${i}.mp3` })),
+      coverUri: null,
+      savedAt: '2026-01-01T00:00:00Z',
+    };
+    useDownloads.setState({
+      entries: {
+        'c1:2:A/Vbr': {
+          connectionId: 'c1',
+          libraryId: 2,
+          path: 'A/Vbr',
+          title: book.title,
+          status: 'downloaded',
+          progress: 1,
+          bytes: 0,
+          totalBytes: 0,
+          manifest,
+        },
+      },
+    });
+    await flushMicrotasks();
+    const urls = () =>
+      ((mockSvc.load as jest.Mock).mock.lastCall?.[0] as { url: string }[]).map((t) => t.url);
+    expect(urls()).toEqual(['file:///dl/0.mp3', 'file:///dl/1.mp3']);
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', trackIndex: 0 });
+    // The engine reports from the download's files: still not heard.
+    pushSnapshot(snap('playing', 0.4, { trackIndex: 1, duration: short }));
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', trackIndex: 0 });
+    (mockSvc.load as jest.Mock).mockClear();
+    await usePlayer.getState().toggle();
+    const [, index, position] = (mockSvc.load as jest.Mock).mock.lastCall as unknown[];
+    expect([index, position]).toEqual([0, 30]);
+  });
 });
 
 // --- the two readings of "the user is listening" ---------------------------

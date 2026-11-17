@@ -1945,7 +1945,8 @@ media GETs only.
   store last showed (a progress tick or a Cast status from before a move back landed), nor an
   `ended` the store already showed (a seek or a track jump on a book that ended re-reports it,
   the services keeping their last state); a seek or a track jump on a faulted book puts the
-  engine in the target's file by its index (`skipToTrack`). Once it has played on, its moves
+  engine in the target's file by its index (`skipToTrack`). A fault outlives the download
+  hot-swap's new `NowPlaying` (`commitLocalSwap`): a press still reloads. Once it has played on, its moves
   and its end are the book's, as for any book: a server length can overestimate the audio
   (ffprobe's bitrate estimate for a header-less VBR file), and the listener who played to the
   real end has finished.
