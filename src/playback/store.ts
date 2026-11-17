@@ -515,7 +515,8 @@ async function persist(opts?: { forceFinished?: boolean; local?: boolean }) {
   // tab's (`catchingUp`): dated now, it would be the newest in the mirror the tabs share.
   if (behindOtherTab(nowPlaying) && !opts?.forceFinished) return;
   // A downloaded book started while its connection wasn't there (a session that could not
-  // be read yet: a CarPlay launch with the phone locked) saves from when it is back.
+  // be read yet: a CarPlay launch with the phone locked) keeps this device's record of its
+  // place meanwhile, and sends from when it is back (below).
   // A switch takes the next book's client before that book is `nowPlaying` (`switchBook`;
   // its resume lookup and load are awaits away): a save meanwhile (a lock-screen pause, the
   // sleep timer) is still the previous book's, and goes to its own server.
@@ -523,7 +524,6 @@ async function persist(opts?: { forceFinished?: boolean; local?: boolean }) {
     apiRefFor !== null && apiRefFor !== nowPlaying.connectionId
       ? resolveClient(nowPlaying.connectionId)
       : (apiRef ??= resolveClient(nowPlaying.connectionId));
-  if (!api) return;
   const forceFinished = opts?.forceFinished ?? false;
   // Held while a reconcile check is out (a finish is the listener's own and still saves).
   // Past its deadline the hold is over even when its timer has not fired (Android pauses
@@ -593,7 +593,9 @@ async function persist(opts?: { forceFinished?: boolean; local?: boolean }) {
   // The legacy PUT path's own record alone (`placeLoop`): the mirror, and no request. A
   // server known to be away is sent nothing either way (`saveProgress` writes the mirror
   // and queues the save), so that capture goes whole and the queue holds the same place.
-  if (opts?.local && isReachable(nowPlaying.connectionId)) {
+  // No client (the connection not there yet): the mirror alone, so the device record does
+  // not stand still while the download plays (fe#265).
+  if (!api || (opts?.local && isReachable(nowPlaying.connectionId))) {
     await writeMirror(save);
     return;
   }

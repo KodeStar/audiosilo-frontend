@@ -141,7 +141,7 @@ import { useSettings } from '@/stores/settings';
 
 import { bookFileSpecs } from './book-queue';
 import { clearJumpUndo, startJumpUndo, useJumpUndo } from './jump-undo';
-import { flushConnection } from './progress-sync';
+import { flushConnection, writeMirror } from './progress-sync';
 import { useSleepTimer } from './sleep-timer';
 import { useReachability } from '@/api/reachability';
 import { AutoplayBlockedError, PlaybackStartError } from './types';
@@ -2431,10 +2431,15 @@ describe('plays a downloaded book whose connection is gone', () => {
     try {
       await usePlayer.getState().playBook('gone', 2, makeBook(), undefined);
       mockSaveProgress.mockClear();
+      (writeMirror as jest.Mock).mockClear();
       pushSnapshot(snap('playing', 40));
       pushSnapshot(snap('paused', 40));
       await flushMicrotasks();
       expect(mockSaveProgress).not.toHaveBeenCalled();
+      // This device's record still keeps the place (fe#265): an offline Resume reads it.
+      expect(writeMirror).toHaveBeenCalledWith(
+        expect.objectContaining({ connectionId: 'gone', position: 40 }),
+      );
     } finally {
       mockResolveClient.mockReturnValue(fakeClient);
     }
