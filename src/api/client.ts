@@ -772,10 +772,26 @@ export class ApiClient {
       body: { device_name: deviceName },
     }).then(withCleanAddresses);
   }
-  login(username: string, password: string, deviceName: string) {
-    return this.request<AuthSession>('POST', '/auth/login', {
-      body: { username, password, device_name: deviceName },
-    }).then(withCleanAddresses);
+  /** Sign in with a password. `deviceId`: this install's own stable id (progress sync's,
+   * `getDeviceId`), so a sign-in again from this device is not announced to the admin as a
+   * new device (fe#159). A server before 1.17.0 refuses a field it doesn't know (400): the
+   * sign-in is sent again without it. */
+  async login(username: string, password: string, deviceName: string, deviceId?: string) {
+    const send = (withId: boolean) =>
+      this.request<AuthSession>('POST', '/auth/login', {
+        body: {
+          username,
+          password,
+          device_name: deviceName,
+          ...(withId && deviceId ? { device_id: deviceId } : {}),
+        },
+      }).then(withCleanAddresses);
+    try {
+      return await send(true);
+    } catch (e) {
+      if (deviceId && e instanceof ApiError && e.status === 400) return send(false);
+      throw e;
+    }
   }
   /** Mint a throwaway demo account (when the server runs in demo mode). Returns a
    * ready-to-use session plus a pairing payload so the same user can be opened on

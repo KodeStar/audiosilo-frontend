@@ -171,7 +171,8 @@ it('a password: the login answer teaches the addresses', async () => {
   await fireEvent.changeText(screen.getByLabelText('Password'), 'pw');
   await fireEvent.press(screen.getByRole('button', { name: 'Sign in' }));
   await waitFor(() => expect(mockReplace).toHaveBeenCalled());
-  expect(mockApi.login).toHaveBeenCalledWith('chris', 'pw', 'Test device');
+  // With this install's device id (fe#159): a sign-in again is no new device to the admin.
+  expect(mockApi.login).toHaveBeenCalledWith('chris', 'pw', 'Test device', expect.any(String));
   expect(conn('srv-1')?.addresses).toEqual({ home: HOME, away: AWAY });
 });
 

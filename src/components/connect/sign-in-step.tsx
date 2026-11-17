@@ -13,6 +13,7 @@ import { getDeviceName } from '@/lib/device';
 import { useLayout } from '@/lib/layout';
 import { hostOf } from '@/lib/pairing';
 import type { ConnectBook } from '@/lib/paths';
+import { getDeviceId } from '@/playback/progress-sync';
 import { useSession } from '@/stores/session';
 
 import { ConnectFrame, ConnectInput, StepDots } from './connect-frame';
@@ -159,7 +160,12 @@ export function SignInStep({
           carried,
         });
       } else {
-        const session = await client.login(username.trim(), password, getDeviceName());
+        const session = await client.login(
+          username.trim(),
+          password,
+          getDeviceName(),
+          await getDeviceId(),
+        );
         await finishConnect({
           serverUrl: server,
           session,
