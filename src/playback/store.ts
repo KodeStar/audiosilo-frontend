@@ -29,6 +29,7 @@ import { isDeviceOnline } from '@/lib/device-online';
 import { canAutoDownload } from '@/lib/network';
 import { flushReadingConnection } from '@/reader/reading-progress';
 import { quietOffScreen } from '@/lib/visible-store';
+import { withTimeout } from '@/lib/with-timeout';
 import { mayActFor } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
@@ -1742,16 +1743,14 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
   const playPos = play?.pos;
   adoptTabPlace(np, place);
   const moves = localMoves;
-  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await Promise.race([
+    await withTimeout(
       place.index === snapshot.trackIndex
         ? svc.seekTo(place.positionInTrack)
         : svc.skipToTrack(place.index, place.positionInTrack),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('the move did not settle')), TAB_MOVE_MAX_MS);
-      }),
-    ]);
+      TAB_MOVE_MAX_MS,
+      'the move did not settle',
+    );
     return place;
   } catch (e) {
     console.warn('[player] could not take the place another tab left', e);
@@ -1763,8 +1762,6 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
       if (play && playPos !== undefined) play.pos = playPos;
     }
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
