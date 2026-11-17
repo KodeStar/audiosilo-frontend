@@ -5,7 +5,7 @@ import { tabChannel } from '@/lib/tab-channel';
 import { fakeBrowser, type FakeTab, sleep, until } from '@/testing/fake-browser';
 
 import { PLAYING_CHANNEL } from './playing-claim';
-import type { PlaybackService, PlaybackSnapshot } from './types';
+import type { PlaybackService, PlaybackSnapshot, PlaybackTrack } from './types';
 
 // One tab plays at a time (fe#123), with two tabs that are each the real store and the real
 // listening outbox: two module instances (`jest.isolateModules`) over one browser's shared
@@ -158,6 +158,8 @@ function makeEngine() {
   /** A pause the test holds open (`holdPause`): asked of the engine, not reported yet. */
   let heldPause: Promise<void> | null = null;
   let pauses = 0;
+  /** The tracks of the last load: where each file ends. */
+  let loaded: PlaybackTrack[] = [];
   const svc = {
     onRemoteSeek: jest.fn(),
     onRemoteMove: jest.fn(),
@@ -165,7 +167,8 @@ function makeEngine() {
     onSilenceSaved: jest.fn(),
     setup: jest.fn(async () => {}),
     configure: jest.fn(async () => {}),
-    load: jest.fn(async (_tracks: unknown, trackIndex: number, position: number) => {
+    load: jest.fn(async (tracks: PlaybackTrack[], trackIndex: number, position: number) => {
+      loaded = tracks;
       push({ state: 'loading', trackIndex, position, duration: 50 });
       await held;
     }),
@@ -197,9 +200,10 @@ function makeEngine() {
     svc: svc as typeof svc & PlaybackService,
     /** The engine plays on to `position` (seconds into the file). */
     at: (position: number) => push({ position }),
-    /** The playing file ends and the next one (`trackIndex`) loads and plays on, as the web
-     * engine does it: `loading`, then `playing`, with nothing pressed. */
+    /** The playing file plays to its end and the next one (`trackIndex`) loads and plays on, as
+     * the web engine does it: `loading`, then `playing`, with nothing pressed. */
     advance: (trackIndex: number) => {
+      push({ position: loaded[snapshot.trackIndex]?.duration ?? snapshot.position });
       push({ state: 'loading', trackIndex, position: 0 });
       push({ state: 'playing' });
     },
@@ -1167,6 +1171,33 @@ describe.each([
           [30, 40, 'resume'],
           [30, 900, 'jump'],
         ]);
+      } finally {
+        warned.mockRestore();
+      }
+    });
+
+    // Left standing, the ask for the 900 s the engine never went to read the engine's next
+    // file as a run off a file it measured short (`engineFault`): an error, and a pause.
+    it('a move the engine refuses leaves no ask standing: its next file is no fault', async () => {
+      mockMirror.on = true;
+      await a.start(5, 'c1', parts);
+      await sleep(10);
+      a.engine.at(30);
+      await b.start(30, 'c1', parts);
+      await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+      await sleep(10);
+      b.engine.at(900);
+      await b.player().pause();
+      const key = mirrorKey('c1', 2, parts.book.rel_path);
+      await until(() => mockMirror.records.get(key)?.position === 900, "B's place in the mirror");
+      const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        a.engine.svc.seekTo.mockRejectedValueOnce(new Error('no seek'));
+        await a.player().toggle();
+        expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 30 });
+        // The lock screen's next: the engine reports the second file.
+        await a.engine.svc.skipToTrack(1, 0);
+        expect(a.player().snapshot).toMatchObject({ state: 'playing', trackIndex: 1, position: 0 });
       } finally {
         warned.mockRestore();
       }

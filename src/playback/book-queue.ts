@@ -50,6 +50,40 @@ export const DEFAULT_VIRTUAL_CHAPTER_INTERVAL = 30 * 60;
  * store re-exports it. */
 export const FINISHED_TOLERANCE = 5;
 
+/** A queue's files' lengths as the server measured them (`PlaybackTrack.duration`). */
+type FileLengths = { tracks: readonly { duration?: number }[] };
+
+/** File `trackIndex`'s server length, 0 when unknown. */
+const serverLength = (queue: FileLengths, trackIndex: number) =>
+  queue.tracks[trackIndex]?.duration ?? 0;
+
+/** A file's length as the player reads it: the engine's, unless the server measured the file
+ * and the engine's is unknown or more than `FINISHED_TOLERANCE` shorter, then the server's. An
+ * engine can measure a file far short: Android's Media3 took a VBR MP3 with no seek header for a
+ * fifth of its length, from its first frame, and the server's length is the one the whole-book
+ * timeline (`offsets`), the chapters and the finish are built on. */
+export function fileDurationOf(queue: FileLengths, trackIndex: number, engine: number): number {
+  const server = serverLength(queue, trackIndex);
+  if (!(server > 0)) return engine;
+  return engine > server - FINISHED_TOLERANCE ? engine : server;
+}
+
+/** Is `position` in file `trackIndex` short of that file's end, as the server measured it, by
+ * more than `FINISHED_TOLERANCE`? False when the server has no length for the file. */
+export function shortOfFileEnd(queue: FileLengths, trackIndex: number, position: number): boolean {
+  const length = serverLength(queue, trackIndex);
+  return length > 0 && Number.isFinite(position) && position < length - FINISHED_TOLERANCE;
+}
+
+/** Did the engine's end of the media come before the book's: on a file before the last, or
+ * short of the last file's end (`shortOfFileEnd`)? An engine put past the end of a last file it
+ * measured short ends there at once, and that end must not finish the book (the store's
+ * `engineFault`; an end after playing on is the book's all the same). */
+export function endsShortOfBook(queue: FileLengths, trackIndex: number, position: number): boolean {
+  const last = queue.tracks.length - 1;
+  return trackIndex < last || shortOfFileEnd(queue, last, position);
+}
+
 /** One distinct audio file of a book, in play order. */
 export type FileSpec = { path: string; duration: number; size: number };
 

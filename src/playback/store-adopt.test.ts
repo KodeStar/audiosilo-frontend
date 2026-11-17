@@ -963,6 +963,9 @@ describe('adoptLoaded', () => {
         .adoptLoaded(engine(['B/3.mp3', 'B/1.mp3', 'B/2.mp3'], { trackIndex: 1, position: 30 }));
       expect(useDownloads.getState().entries['c1:2:B'].manifest.endsBefore).toBeUndefined();
       mockResolveClient.mockReturnValue(fakeClient);
+      // B/1 plays to its end, then B/2 (an engine never leaves a file it was put in the middle
+      // of without playing on from there: `engineFault`).
+      pushSnapshot(snap('playing', 0, 100));
       pushSnapshot(snap('playing', 1, 50));
       await flushMicrotasks();
       pushSnapshot({ ...snap('ended', 1, 60), duration: 60 });
@@ -1300,6 +1303,7 @@ describe('adoptLoaded', () => {
       ]);
       expect([index, inFile]).toEqual([1, 10]);
       // Its end is the book's: no pause there with "the rest isn't downloaded".
+      pushSnapshot(snap('playing', 1, 100));
       pushSnapshot(snap('playing', 2, 50));
       pushSnapshot({ ...snap('ended', 2, 60), duration: 60 });
       await flushMicrotasks();
