@@ -148,9 +148,18 @@ export function DownloadsScreen() {
     .filter((s) => !entries[downloadKey(s.book.connectionId, s.book.libraryId, s.book.path)]);
 
   const scope = storage.estimate?.scope ?? (Platform.OS === 'web' ? 'browser' : 'device');
-  // What the downloads under way have written, so the figure grows with them (PLAYER-05).
+  // What the downloads under way have written, so the figure grows with them (PLAYER-05):
+  // this person's beside their books, and every one's since the engine's measure (which
+  // counts the whole device's).
   const growing = useDownloads((s) => growingBytes(s.entries, serverIds));
-  const bar = storageBar(allGroups, storage.estimate, storage.measured, growing);
+  const growingAll = useDownloads((s) => growingBytes(s.entries));
+  const bar = storageBar(
+    allGroups,
+    storage.estimate,
+    storage.measured,
+    growing,
+    Math.max(0, growingAll - storage.growingAtMeasure),
+  );
   const summary =
     scope === 'device'
       ? t('downloads.summary.device', { size: formatBytes(bar.used) })

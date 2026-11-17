@@ -152,6 +152,11 @@ describe('storageBar', () => {
     expect(storageBar([g('a', 10 * MB)], null, 12 * MB, 5 * MB).used).toBe(15 * MB);
     // A measure read mid-download that already holds those bytes is not counted twice.
     expect(storageBar([g('a', 10 * MB)], null, 18 * MB, 5 * MB).used).toBe(18 * MB);
+    // A measure above the list (covers, another person's books) grows by what was written
+    // since it was read.
+    expect(storageBar([g('a', 10 * MB)], null, 900 * MB, 5 * MB, 3 * MB).used).toBe(903 * MB);
+    // No measure: another person's running download is not counted on this person's list.
+    expect(storageBar([g('a', 10 * MB)], null, null, 5 * MB, 30 * MB).used).toBe(15 * MB);
   });
 
   it('prefers the measured total, and skips empty servers', () => {
@@ -245,5 +250,7 @@ describe('growingBytes', () => {
     };
     expect(growingBytes(entries, ['c1'])).toBe(3 * MB);
     expect(growingBytes(entries, [])).toBe(0);
+    // Every connection's, as the engine's measure counts them.
+    expect(growingBytes(entries)).toBe(12 * MB);
   });
 });

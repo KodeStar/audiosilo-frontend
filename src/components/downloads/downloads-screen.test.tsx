@@ -37,6 +37,8 @@ jest.mock('@/api/hooks', () => ({
   useAllProgressAll: () => ({ progress: mockProgress, isLoading: false, error: null }),
 }));
 let mockSessionStatus = 'authenticated';
+// The engine's measure of everything on the device (`totalBytesUsed`).
+let mockMeasured = 0;
 jest.mock('@/stores/session', () => {
   const connections = [
     { id: 'a', name: 'Home Library' },
@@ -51,7 +53,7 @@ jest.mock('@/stores/session', () => {
 jest.mock('@/downloads/engine', () => ({
   engine: {
     supported: true,
-    totalBytesUsed: async () => 0,
+    totalBytesUsed: async () => mockMeasured,
     storageEstimate: async () => ({
       scope: 'browser',
       capacity: 60 * 1024 ** 3,
@@ -154,6 +156,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   resetProfilesForTests();
   mockSessionStatus = 'authenticated';
+  mockMeasured = 0;
   mockLayout = 'desktop';
   mockProgress = [];
   mockCaps = {};
@@ -219,6 +222,20 @@ describe('DownloadsScreen', () => {
     expect(screen.getByText(/10 MB of about/)).toBeTruthy();
     await act(async () => setEntries(running(41 * MB)));
     expect(screen.getByText(/41 MB of about/)).toBeTruthy();
+  });
+
+  // The engine measures the whole device (covers, another person's books): above the
+  // listed books, its figure still grows by what was written since it was read.
+  it('grows a measure larger than the listed books while a download runs', async () => {
+    const MB = 1024 ** 2;
+    mockMeasured = 900 * MB;
+    const running = (bytes: number) =>
+      entry('Running', 'downloading', { progress: 0.2, bytes, totalBytes: 50 * MB });
+    setEntries(running(10 * MB));
+    await mount();
+    expect(screen.getByText(/900 MB of about/)).toBeTruthy();
+    await act(async () => setEntries(running(41 * MB)));
+    expect(screen.getByText(/931 MB of about/)).toBeTruthy();
   });
 
   it('offers no dead Retry for a book this browser now plays transcoded', async () => {

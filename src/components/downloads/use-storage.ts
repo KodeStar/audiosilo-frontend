@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { growingBytes } from '@/downloads/downloads-view';
 import { engine } from '@/downloads/engine';
 import { useDownloads } from '@/downloads/store';
 import type { StorageEstimate } from '@/downloads/types';
@@ -9,6 +10,9 @@ export type StorageReading = {
   measured: number | null;
   /** Room for downloads, when the platform can tell (null otherwise or until read). */
   estimate: StorageEstimate | null;
+  /** What every running download had written as `measured` was read (`growingBytes`): the
+   * measure holds it, so only what they write after it adds to it (PLAYER-05). */
+  growingAtMeasure: number;
 };
 
 /** The registry's finished downloads, as a string that only changes when a book lands
@@ -24,14 +28,20 @@ const finishedSignature = (s: ReturnType<typeof useDownloads.getState>) =>
  * finishes downloading or is removed. Both reads are async (Cache API, disk). */
 export function useStorage(): StorageReading {
   const signature = useDownloads(finishedSignature);
-  const [reading, setReading] = useState<StorageReading>({ measured: null, estimate: null });
+  const [reading, setReading] = useState<StorageReading>({
+    measured: null,
+    estimate: null,
+    growingAtMeasure: 0,
+  });
   useEffect(() => {
     let cancelled = false;
     void Promise.all([
       engine.totalBytesUsed().catch(() => null),
       engine.storageEstimate().catch(() => null),
     ]).then(([measured, estimate]) => {
-      if (!cancelled) setReading({ measured, estimate });
+      if (cancelled) return;
+      const growingAtMeasure = growingBytes(useDownloads.getState().entries);
+      setReading({ measured, estimate, growingAtMeasure });
     });
     return () => {
       cancelled = true;
