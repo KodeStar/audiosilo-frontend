@@ -67,6 +67,7 @@ it('hands a pairing QR to the connect screen as before', async () => {
 describe('opened with the book its sign-in step was heading to', () => {
   beforeEach(() => {
     mockParams = { book: '2', path: 'A/Book' };
+    useSession.setState({ pendingServerUrl: 'https://books.example.com' });
   });
 
   it("takes it to an invite's sign-in step", async () => {
@@ -90,6 +91,21 @@ describe('opened with the book its sign-in step was heading to', () => {
     expect(mockReplace).toHaveBeenLastCalledWith({
       pathname: '/connect',
       params: expect.objectContaining({ token: 'def', book: '7', path: 'B/Other' }),
+    });
+  });
+
+  // Another server's library ids name other books: a code for it ends on its Home.
+  it("leaves it behind with another server's code", async () => {
+    await render(<ScanScreen />);
+    await scan('https://other.example.com/connect#code=ABCD-EFGH-JKMN-PQRS');
+    expect(mockReplace).toHaveBeenLastCalledWith('/connect/sign-in');
+    // The invite's sign-in moved the address on: back to the step's own.
+    useSession.setState({ pendingServerUrl: 'https://books.example.com' });
+    await render(<ScanScreen />);
+    await scan('https://other.example.com/web/connect?token=abc');
+    expect(mockReplace).toHaveBeenLastCalledWith({
+      pathname: '/connect',
+      params: expect.not.objectContaining({ book: '2' }),
     });
   });
 });

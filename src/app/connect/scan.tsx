@@ -19,6 +19,7 @@ import {
   takeScanFor,
 } from '@/components/connect/invite-handoff';
 import { parseInviteScan, parsePairingScan } from '@/lib/pairing';
+import { sameUrl } from '@/lib/server-address';
 import { connectBookParams, parseConnectBook } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
 import { useSession } from '@/stores/session';
@@ -96,15 +97,21 @@ export default function ScanScreen() {
     // The reconnect this scan continues, when the code is for that connection's server.
     const again = (base: string) =>
       scanReconnect(reconnect, base, useSession.getState().connections);
+    // The book the sign-in step was heading to goes on only with a code for that step's
+    // server (`pendingServerUrl`, read before an invite's sign-in replaces it): another
+    // server's library ids name other books.
+    const step = useSession.getState().pendingServerUrl;
+    const bookFor = (base: string) => (heading && step && sameUrl(base, step) ? heading : null);
     if (invite) {
       setError(null);
       const reconnectId = again(invite.base);
       // The reconnect goes with it in memory (`holdReconnect`), never in the params.
       beginInviteSignIn(invite, () => {
         if (reconnectId) holdReconnect(invite.base, reconnectId);
+        const book = bookFor(invite.base);
         router.replace(
-          heading
-            ? { pathname: '/connect/sign-in', params: connectBookParams(heading) }
+          book
+            ? { pathname: '/connect/sign-in', params: connectBookParams(book) }
             : '/connect/sign-in',
         );
       });
@@ -126,7 +133,7 @@ export default function ScanScreen() {
     if (reconnectId) holdScanReconnect(parsed.token, reconnectId);
     router.replace({
       pathname: '/connect',
-      params: scanParams(parsed.book || !heading ? parsed : { ...parsed, book: heading }),
+      params: scanParams({ ...parsed, book: parsed.book ?? bookFor(parsed.base) ?? undefined }),
     });
   };
 
