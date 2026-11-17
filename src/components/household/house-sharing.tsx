@@ -42,6 +42,8 @@ export function HouseSharing() {
               unread.map((c) => serverDisplayName(c, saved)),
               t,
             ),
+            // "Home and Maya offer this": the verb agrees with the servers named.
+            count: unread.length,
           })}
           retryLabel={t('common.retry')}
           onRetry={retry}

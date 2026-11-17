@@ -2765,7 +2765,8 @@
       "askAtLaunch": "Preguntar quién escucha al abrir la app",
       "askAtLaunchBody": "Con dos o más personas en este dispositivo",
       "noSharing": "Ninguno de tus servidores lo ofrece todavía.",
-      "checkFailed": "No se pudo comprobar si {{server}} lo ofrece."
+      "checkFailed_one": "No se pudo comprobar si {{server}} lo ofrece.",
+      "checkFailed_other": "No se pudo comprobar si {{server}} lo ofrecen."
     },
     "signIn": {
       "label": "Sesión cerrada",
