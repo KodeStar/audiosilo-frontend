@@ -3,6 +3,7 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { useServerInfo } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import { resolveAccountCid } from '@/components/account/account-model';
 import { BookCover } from '@/components/library/book-cover';
@@ -26,6 +27,7 @@ import { removeFromWatch, sendBookToWatch } from '@/watch/send';
 import { useWatchStatus, watchErrorText } from '@/watch/use-watch';
 import { forgetRow, ledgerRows, useWatchLedger } from '@/watch/watch-ledger';
 import {
+  serverServesWatch,
   watchAccountOf,
   type WatchCardStatus,
   watchCardStatus,
@@ -212,6 +214,9 @@ const WatchBookRow = memo(
     const phone = useLayout() === 'phone';
     const api = useOptionalApi(connection.id);
     const actions = rowActions(row.phase);
+    // Only where the server still makes what a watch plays, as Send to watch asks.
+    const serves = serverServesWatch(useServerInfo(connection.id).data?.renditions);
+    const offerAgain = actions.sendAgain && !!api && serves;
     const sendAgain = () => {
       if (!api) return;
       sendBookToWatch(api, connection, row.library_id, {
@@ -251,7 +256,7 @@ const WatchBookRow = memo(
         }
         actions={
           <>
-            {actions.sendAgain && api ? (
+            {offerAgain ? (
               <RowAction
                 variant="outline"
                 icon="rotate"
@@ -266,7 +271,7 @@ const WatchBookRow = memo(
               <RowAction
                 variant="ghost"
                 icon="trash"
-                iconOnly={phone || actions.sendAgain}
+                iconOnly={phone || offerAgain}
                 title={t('downloads.watch.remove.confirm')}
                 accessibilityLabel={t('downloads.watch.removeLabel', { title: row.title })}
                 onPress={() => onRemove(row)}

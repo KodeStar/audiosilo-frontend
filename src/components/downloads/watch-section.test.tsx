@@ -25,7 +25,10 @@ jest.mock('@/lib/device', () => ({ getDeviceName: () => 'iPhone' }));
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
-jest.mock('@/api/hooks', () => ({ useServerInfo: () => ({ data: { renditions: ['watch'] } }) }));
+let mockRenditions: string[] = ['watch'];
+jest.mock('@/api/hooks', () => ({
+  useServerInfo: () => ({ data: { renditions: mockRenditions } }),
+}));
 jest.mock('@/api/provider', () => ({
   useOptionalApi: () => ({ pair: async () => ({ base_url: 'https://b', pairing_token: 't' }) }),
 }));
@@ -119,6 +122,7 @@ beforeEach(() => {
   mockLink.kind = 'apple';
   mockParams = {};
   mockLayout = 'desktop';
+  mockRenditions = ['watch'];
   mockDefaultId = 'srv.7';
   mockUser = { id: 7, username: 'ada' };
   mockToast.mockReset();
@@ -260,6 +264,13 @@ describe('WatchSection', () => {
     expect(mockSendBook).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'book', library_id: 1, path: 'A/B', title: 'Sent book' }),
     );
+  });
+
+  it('offers no Send again from a server that no longer makes what a watch plays', async () => {
+    mockRenditions = [];
+    await mount(base, [row({ sent_at: NOW - 7 * 24 * 60 * 60 * 1000 })]);
+    expect(screen.getByText(/hasn't taken this in 7 days/)).toBeTruthy();
+    expect(screen.queryByLabelText('Send Sent book to your watch again')).toBeNull();
   });
 
   it('says it is on another account rather than showing an empty list, or that account’s books', async () => {
