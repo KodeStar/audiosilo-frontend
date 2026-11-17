@@ -216,7 +216,7 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
   ): ListenableFuture<MediaItemsWithStartPosition> {
     val item = service.snapshot()?.resumable()
     MediaKeyLog.d {
-      "resumption from ${service.describe(controller)}: forPlayback=$isForPlayback, item=${item?.id}"
+      "resumption from ${service.describe(controller)}: forPlayback=$isForPlayback, item=${MediaKeyLog.ref(item?.id)}"
     }
     if (!isForPlayback) {
       return item?.play?.let { Futures.immediateFuture(MediaItems.startPositionOf(it)) } ?: nothingToResume()

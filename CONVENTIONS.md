@@ -2580,7 +2580,8 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   log.tag.AudiosiloKeys DEBUG`, then `adb logcat -s AudiosiloKeys` shows each media key (the
   receiver, the service start, `onMediaButtonEvent` with the sender, the notification
   controller and the next/previous commands), each controller's connect and what the
-  player then does (play, pause, a move, and who asked).
+  player then does (play, pause, a move, and who asked). A book is named by a short hash of
+  its item id (`MediaKeyLog.ref`), never the id: it holds the connection, library and path.
   `onPlaybackResumption(…, isForPlayback = false)` (System UI's card after a reboot) answers from
   the play spec with no side effect; `CarConnectionMonitor` reads the Auto host's
   connection provider (Media3 only notices a legacy controller leaving by timeout).

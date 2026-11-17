@@ -24,7 +24,7 @@ import androidx.media3.session.MediaButtonReceiver
 class ResumptionReceiver : MediaButtonReceiver() {
   override fun shouldStartForegroundService(context: Context, intent: Intent): Boolean {
     val resumable = CarSnapshotStore.get(context)?.resumable()
-    MediaKeyLog.d { "receiver: ${MediaKeyLog.describe(intent)}, resumable=${resumable?.id}" }
+    MediaKeyLog.d { "receiver: ${MediaKeyLog.describe(intent)}, resumable=${MediaKeyLog.ref(resumable?.id)}" }
     return resumable != null
   }
 }

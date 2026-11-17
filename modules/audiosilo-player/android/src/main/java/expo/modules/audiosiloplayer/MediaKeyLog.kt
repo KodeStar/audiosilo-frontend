@@ -3,6 +3,7 @@ package expo.modules.audiosiloplayer
 import android.content.Intent
 import android.util.Log
 import android.view.KeyEvent
+import java.security.MessageDigest
 
 /**
  * Diagnostics for remote buttons (fe#301: Bluetooth and steering-wheel buttons that did
@@ -21,6 +22,15 @@ internal object MediaKeyLog {
 
   inline fun d(message: () -> String) {
     if (enabled()) Log.d(TAG, message())
+  }
+
+  /** A car item as a log line names it: the first 4 bytes of its id's SHA-256, enough to tell
+   * the lines of one book from another's. Never the id itself, which holds the connection id,
+   * the library id and the book's path. */
+  fun ref(id: String?): String {
+    if (id == null) return "none"
+    val digest = MessageDigest.getInstance("SHA-256").digest(id.toByteArray())
+    return digest.take(4).joinToString("") { "%02x".format(it.toInt() and 0xFF) }
   }
 
   /** A media button intent's key: its name, down or up, and its repeat count. */
