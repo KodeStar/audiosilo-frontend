@@ -111,6 +111,8 @@ export function startBookInPlace(
     opts.track,
     opts.speed,
     !!how.fetched,
+    // A start that may be called off (the car's) is never joined by one that may not.
+    !!how.wanted,
   ]);
   const running = starting.get(key);
   if (running && latestStart === key) return running;
@@ -128,6 +130,11 @@ export type StartHow = {
   /** The episode's fetch has just finished (`episode-fetch.ts`): start it, never hand it
    * back to the fetch. */
   fetched?: boolean;
+  /** Whether the start is still wanted, asked before the book loads and again before it
+   * plays (the store's `playBook`): the car's, which its native side can give up on while a
+   * slow server holds the start. Called off before the load, nothing starts; after it, the
+   * book stays loaded, paused. */
+  wanted?: () => boolean;
 };
 
 /** Whether `book` is an episode its server must fetch before it plays (`podcast_fetch`
@@ -170,6 +177,7 @@ async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): 
   if (!mayActFor(target.connectionId)) return false;
   const source = await startSourceOf(target);
   if (!source) return false;
+  if (how.wanted && !how.wanted()) return false;
   if (!how.fetched && (await playsOnLoaded(target, source.book, opts))) return true;
   const key = contentKeyOf(target);
   if (how.fetched) {
@@ -195,17 +203,18 @@ async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): 
     cancelEpisodeFetchOf(key);
   }
   // The speed goes in with the start: set after it, the book audibly began at another.
-  await usePlayer
-    .getState()
-    .playBook(
-      target.connectionId,
-      target.libraryId,
-      source.book,
-      source.chapters,
-      opts.position,
-      opts.track,
-      opts.speed,
-    );
+  await usePlayer.getState().playBook(
+    target.connectionId,
+    target.libraryId,
+    source.book,
+    source.chapters,
+    opts.position,
+    opts.track,
+    opts.speed,
+    // Only a start that may be called off passes the check (every other start's call is
+    // as it was).
+    ...(how.wanted ? ([how.wanted] as const) : ([] as const)),
+  );
   // The book you're on is not up next any more (Up next's own Play now does the same):
   // a queued book started from its page, a browse row or the car leaves the queue, once it
   // is the book loaded (a start another one took over keeps its place). Quiet

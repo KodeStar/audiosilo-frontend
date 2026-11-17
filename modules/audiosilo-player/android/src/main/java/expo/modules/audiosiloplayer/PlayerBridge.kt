@@ -27,6 +27,10 @@ interface PlayerEventSink {
   /** The car asked to play a book that JS must start. */
   fun carPlayRequest(id: String)
 
+  /** A car play JS received is over without its load (timed out, or another play took its
+   * place): JS must not start it any more. */
+  fun carPlayCancel(id: String)
+
   /** True while JS listens for bookmarks (else the service stores them as pending). */
   val observingBookmarks: Boolean
 
@@ -66,6 +70,15 @@ object PlayerBridge {
 
   /** True when the JS car controller is listening, so JS can adopt or start books. */
   val jsListening: Boolean get() = sink?.observingCar == true
+
+  /** The car play [id] is over without the app's load. Never delivered: it is dropped here.
+   * Delivered: JS is told, so a start still on its way loads paused instead of playing. */
+  fun cancelCarPlay(id: String) {
+    val delivered = pendingCarPlayId != id
+    pendingCarPlayId = null
+    val s = sink
+    if (delivered && s != null && s.observingCar) s.carPlayCancel(id)
+  }
 
   fun requestCarPlay(id: String) {
     val s = sink

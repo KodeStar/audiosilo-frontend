@@ -1649,8 +1649,8 @@ media GETs only.
   engine that outlives the JS can say later which book it holds), `setConfig` (auto-rewind, skip
   lengths, `smartSpeed`, `voiceBoost`), `setCarSnapshot(json)`, `getLoadedBook()` (Android; iOS
   null) and `consumePendingBookmarks()` (Android; iOS `[]`); events `onRemoteMove`,
-  `onRateChange`, `onRemoteBookmark`, `onCarConnection`, `onCarPlayRequest` and
-  `onProgress.silenceSaved`. **Feature-detect every function added after the first shipped
+  `onRateChange`, `onRemoteBookmark`, `onCarConnection`, `onCarPlayRequest`,
+  `onCarPlayCancel` (Android) and `onProgress.silenceSaved`. **Feature-detect every function added after the first shipped
   builds**: the JS bundle can be newer than the installed binary (a store build lags), and an
   Expo function called with more arguments than it declares throws. So `load`'s 5th `book` is
   passed only when the binary also has `getLoadedBook` (`moduleTakesBook` in
@@ -2605,7 +2605,12 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   plays on, never restarted; any other starts through `startBookInPlace` from its saved place,
   a downloaded one from its download; **while casting it ends the cast first**, `endCastForCar`:
   the receiver's place comes home, then the book plays in the car, never on a TV the driver
-  can't hear) and **bookmarks**: `carNative.onBookmark` (the module's
+  can't hear; **a request native gave up on never plays** (Android's `onCarPlayCancel`, sent
+  when the service's 10 s wait for the load runs out or another play takes its place: a media
+  button start's foreground service is released by then, and a start a frozen server held
+  played on in the background with no notification or controls; `cancelledPlays` makes
+  `StartHow.wanted` false, so the start stops before its load, or `playBook` loads it paused;
+  a new request for the item takes the mark off) and **bookmarks**: `carNative.onBookmark` (the module's
   `onRemoteBookmark`, carrying the engine's own book) adds one through the framework-free
   `addBookmark` (no label, so the `annotations` gate has nothing to hold back) at the engine's
   place on the book the engine names, else the loaded one; Android's bookmarks pressed with no

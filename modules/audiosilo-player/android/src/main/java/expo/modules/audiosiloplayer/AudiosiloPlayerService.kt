@@ -181,6 +181,9 @@ class AudiosiloPlayerService : MediaLibraryService() {
    * ([playFromCar] watches every pending play, fe#252). */
   private val pendingTimeout = Runnable { failPendingPlay() }
 
+  /** The id of the car play [pendingPlay] waits on (JS may be starting it). */
+  private var pendingPlayId: String? = null
+
   /** Keeps where the engine is on disk, for a resumption after a crash or a kill ([LivePlace]). */
   private var livePlaces: LivePlaceRecorder? = null
 
@@ -731,6 +734,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     failPendingPlay(notify = false)
     val future = SettableFuture.create<MediaItemsWithStartPosition>()
     pendingPlay = future
+    pendingPlayId = id
     // Whoever asked: this play is now the one a media button start waits on.
     watchResumption(future)
     handler.postDelayed(pendingTimeout, CAR_PLAY_TIMEOUT_MS)
@@ -791,6 +795,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
       val future = pendingPlay ?: return@post
       val p = player ?: return@post
       pendingPlay = null
+      pendingPlayId = null
       handler.removeCallbacks(pendingTimeout)
       val items = p.mediaItems()
       if (items.isEmpty()) {
@@ -805,11 +810,16 @@ class AudiosiloPlayerService : MediaLibraryService() {
     }
   }
 
+  /** The pending car play is over without the app's load: timed out, or another play took its
+   * place. JS, which may still be starting it (a slow server), is told to drop it
+   * ([PlayerBridge.cancelCarPlay]): played later, after a media button start was released, it
+   * would play in the background with no foreground notification and no controls. */
   private fun failPendingPlay(notify: Boolean = true) {
     handler.removeCallbacks(pendingTimeout)
     val future = pendingPlay ?: return
     pendingPlay = null
-    PlayerBridge.pendingCarPlayId = null
+    pendingPlayId?.let(PlayerBridge::cancelCarPlay)
+    pendingPlayId = null
     future.setException(IllegalStateException("The car play request timed out"))
     if (notify) sendUnavailable()
   }
@@ -864,7 +874,10 @@ class AudiosiloPlayerService : MediaLibraryService() {
     pendingPlay?.setException(IllegalStateException("Service stopped"))
     pendingPlay = null
     // A car request JS never received dies with the service: delivered to a JS that starts
-    // listening later (the car long gone), it would start the book on the phone.
+    // listening later (the car long gone), it would start the book on the phone. One it did
+    // receive is dropped there too.
+    pendingPlayId?.let(PlayerBridge::cancelCarPlay)
+    pendingPlayId = null
     PlayerBridge.pendingCarPlayId = null
     carMonitor?.stop()
     carMonitor = null

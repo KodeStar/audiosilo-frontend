@@ -156,3 +156,51 @@ describe('the native bridge', () => {
     await starting;
   });
 });
+
+// FE-13: a car play whose native wait ran out while a slow server held its start. Android had
+// released that start's foreground service, so a play then was heard with no notification.
+describe('a start that is no longer wanted', () => {
+  it('loads the book paused: it never plays, and no stall error follows', async () => {
+    jest.useFakeTimers();
+    try {
+      let wanted = true;
+      let landed!: () => void;
+      (mockSvc.load as jest.Mock).mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            landed = resolve;
+          }),
+      );
+      (mockSvc.play as jest.Mock).mockClear();
+      const starting = usePlayer
+        .getState()
+        .playBook('c1', 2, book('Late'), undefined, 10, undefined, undefined, () => wanted);
+      await flush(30);
+      finishSetup(); // the bridge's setup, when this test runs on its own
+      await flush(30);
+      expect(mockSvc.load).toHaveBeenCalled();
+      wanted = false;
+      landed();
+      await starting;
+      expect(mockSvc.play).not.toHaveBeenCalled();
+      expect(usePlayer.getState().nowPlaying?.path).toBe('Late');
+      // The stall watchdog was disarmed with the intent: the engine's idle report stays a
+      // paused book, never an error.
+      pushSnapshot({ state: 'ready', trackIndex: 0, position: 10, duration: 100, rate: 1 });
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(usePlayer.getState().snapshot.state).not.toBe('error');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('plays as before while it is wanted', async () => {
+    (mockSvc.play as jest.Mock).mockClear();
+    await usePlayer
+      .getState()
+      .playBook('c1', 2, book('Wanted'), undefined, 10, undefined, undefined, () => true);
+    expect(mockSvc.play).toHaveBeenCalled();
+    // Stopped, so no watchdog or save loop outlives the test.
+    await usePlayer.getState().stop();
+  });
+});

@@ -145,7 +145,9 @@ import { carNative } from './car-native';
  * - **Play requests** (`onCarPlayRequest`, a book native can't start alone): the loaded book
  *   plays on; any other starts through `startBookInPlace`, from its saved place (a
  *   downloaded one from its download, offline too). A failure is logged; native times the
- *   request out and says `labels.unavailable`.
+ *   request out and says `labels.unavailable`. A request native gave up on (Android's
+ *   `onCarPlayCancel`: its 10 s wait ran out, or another play took its place) never plays:
+ *   a start still on its way stops before the load, or loads paused (`cancelledPlays`).
  * - **Bookmarks from outside the app** (CarPlay's Now Playing button, Android Auto's
  *   custom action; `carNative.onBookmark`): added through the framework-free
  *   `addBookmark` (no label, so its `annotations` gate has nothing to hold back) at the
@@ -1028,8 +1030,24 @@ function resumableChanged(): void {
 
 // --- Play requests ------------------------------------------------------------------------
 
+/**
+ * The car item ids of play requests native gave up on (`onCarPlayCancel`): its wait for the
+ * load ran out (a slow or frozen server holding the start), or another play took its place.
+ * Android released a media button start's foreground service then, so a start that went on to
+ * play would be heard in the background with no notification and no controls: one still on
+ * its way stops before the load, or loads paused (`StartHow.wanted`). A new request for the
+ * same item takes the mark off, so a start it joins plays again.
+ */
+const cancelledPlays = new Set<string>();
+
+function cancelPlay(id: string): void {
+  cancelledPlays.add(id);
+}
+
 /** The car asked to play a book (its item id). */
 export async function handleCarPlayRequest(id: string): Promise<void> {
+  cancelledPlays.delete(id);
+  const wanted = () => !cancelledPlays.has(id);
   if (!parseCarItemId(id)) {
     console.warn('[car] not a car item id', id);
     return;
@@ -1057,14 +1075,16 @@ export async function handleCarPlayRequest(id: string): Promise<void> {
     const state = player.snapshot.state;
     if (selectIsTransportLive(player)) return;
     if (state !== 'ended' && state !== 'error') {
+      if (!wanted()) return;
       await player.toggle().catch((err) => console.warn('[car] play failed', err));
       return;
     }
   }
+  if (!wanted()) return;
   // An item of a snapshot written before a switch may name another person's book: the
   // start refuses it (`mayActFor`), quietly.
   try {
-    if (!(await startBookInPlace(ref))) {
+    if (!(await startBookInPlace(ref, {}, { wanted })) && wanted()) {
       console.warn("[car] the book can't start here (no connection, or another person's)");
     }
   } catch (err) {
@@ -1434,6 +1454,7 @@ export function startCarSync(): () => void {
   stops = [
     carNative.onConnection(onConnection),
     carNative.onPlayRequest((id) => void handleCarPlayRequest(id)),
+    carNative.onPlayCancel(cancelPlay),
     carNative.onBookmark(onBookmarkPressed),
     usePlayer.subscribe((s, prev) => {
       if (s.nowPlaying || prev.nowPlaying) loadedHere = true;
@@ -1534,6 +1555,7 @@ function teardown() {
   again = null;
   resumptionAgain = false;
   kidsShelfSeen.clear();
+  cancelledPlays.clear();
   setCarConnected(false);
   carListed = null;
 }

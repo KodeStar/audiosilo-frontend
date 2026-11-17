@@ -386,6 +386,38 @@ describe('startBookInPlace', () => {
     await expect(startBookInPlace(target)).resolves.toBe(true);
   });
 
+  // FE-13: a car play whose native wait ran out while a slow server held its start.
+  it('a start no longer wanted when its book is read starts nothing', async () => {
+    let wanted = true;
+    let answer: (v: unknown) => void = () => undefined;
+    mockItem.mockImplementationOnce(() => new Promise((r) => (answer = r)));
+    const start = startBookInPlace(target, {}, { wanted: () => wanted });
+    await asked(mockItem);
+    wanted = false;
+    answer({ rel_path: target.path });
+    await expect(start).resolves.toBe(false);
+    expect(mockPlayBook).not.toHaveBeenCalled();
+  });
+
+  it('hands the check on to playBook, which asks it again before it plays', async () => {
+    const wanted = () => true;
+    await startBookInPlace(target, {}, { wanted });
+    expect(mockPlayBook.mock.calls[0][7]).toBe(wanted);
+  });
+
+  it("never joins a start that may be called off with one that may not (the car's and a tap)", async () => {
+    let answer: (v: unknown) => void = () => undefined;
+    mockItem.mockImplementationOnce(() => new Promise((r) => (answer = r)));
+    const car = startBookInPlace(target, {}, { wanted: () => false });
+    const tap = startBookInPlace(target);
+    expect(tap).not.toBe(car);
+    await asked(mockItem);
+    answer({ rel_path: target.path });
+    await expect(car).resolves.toBe(false);
+    await expect(tap).resolves.toBe(true);
+    expect(mockPlayBook).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects, without playing, when the book cannot be fetched', async () => {
     mockChapters.mockRejectedValue(new Error('offline'));
     await expect(startBookInPlace(target)).rejects.toThrow('offline');

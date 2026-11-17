@@ -468,6 +468,7 @@ type PlayerState = {
     startBookPosition?: number,
     startTrack?: number,
     startSpeed?: number,
+    wanted?: () => boolean,
   ) => Promise<void>;
   toggle: () => Promise<void>;
   pause: () => Promise<void>;
@@ -2598,6 +2599,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     startBookPosition,
     startTrack,
     startSpeed,
+    wanted,
   ) => {
     // Only the person listening's books (Phase 8, `mayActFor`): every way a book starts
     // comes through here, so none can save to another person's account.
@@ -2833,6 +2835,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       if (dl && queueChapters) adoptStartedChapters(ref, queueChapters);
       await svc.setRate(speed);
       if (!current()) return;
+      // Called off while it was looked up or loaded (a car play its native side gave up on):
+      // loaded, never played. Android had released that start's foreground service, so a
+      // play now would be heard with no notification and no controls.
+      if (wanted && !wanted()) {
+        clearPlaybackIntent();
+        return;
+      }
       // False: gave way to another tab while it loaded (`giveWayTo`).
       if (!(await startEngine(svc))) return;
       // The save loop is started by the engine 'playing' transition (see subscribe).
