@@ -544,6 +544,29 @@ describe('CastPlaybackService', () => {
       expect(t.remote.loads).toHaveLength(2);
     });
 
+    it('a book loaded again (a Retry) mints no sooner than a minute on; another book may', async () => {
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      (t.remote.load as jest.Mock).mockRejectedValueOnce(new Error('LOAD_FAILED'));
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      expect(m.asks).toEqual([undefined, true]);
+      // Refused again: the Retry's load, after a reset, mints nothing within the minute.
+      (t.remote.load as jest.Mock).mockRejectedValueOnce(new Error('LOAD_FAILED'));
+      await t.svc.reset();
+      t.tick(REMINT_EVERY_MS - 1);
+      await expect(t.svc.load(TRACKS, 0, 0, [], BOOK)).rejects.toThrow('LOAD_FAILED');
+      expect(m.asks).toEqual([undefined, true, undefined]);
+      // A minute on: again.
+      t.tick(1);
+      (t.remote.load as jest.Mock).mockRejectedValueOnce(new Error('LOAD_FAILED'));
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      expect(m.asks).toEqual([undefined, true, undefined, undefined, true]);
+      // Another book: at once.
+      (t.remote.load as jest.Mock).mockRejectedValueOnce(new Error('LOAD_FAILED'));
+      await t.svc.load(TRACKS, 0, 0, [], { ...BOOK, path: 'A/C' });
+      expect(m.asks.slice(-2)).toEqual([undefined, true]);
+    });
+
     it('a mint that fails leaves the error', async () => {
       const t = setup({
         prepare: async (tracks, book, opts) => {

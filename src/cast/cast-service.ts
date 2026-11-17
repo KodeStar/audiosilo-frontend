@@ -33,9 +33,10 @@ const ASKED_MOVE_MS = 8_000;
 const EARLY_END_FRESH_MS = 15_000;
 
 /** How often (ms) at most the receiver's queue is loaded again with a newly minted cast token
- * after the receiver was refused (`freshToken`): a load that fails for another reason (a codec
- * the receiver can't play) must not mint a token on every try, since each one minted can end
- * another receiver's (the server keeps 20 per person). */
+ * after the receiver was refused (`freshToken`), for each book: a load that fails for another
+ * reason (a codec the receiver can't play) must not mint a token on every try, a Retry that
+ * loads the book again included, since each one minted can end another receiver's (the
+ * server keeps 20 per person). */
 export const REMINT_EVERY_MS = 60_000;
 
 /** The book loaded on the receiver: what was sent, so a seek into a transcoded file or a
@@ -90,13 +91,15 @@ export function castState(
   }
 }
 
-/** The same book of the same person (a receiver's `customData` can name a legacy
+/** A book's key with its connection id resolved (a receiver's `customData` can name a legacy
  * connection id, from a load before the identity migration). */
+function castBookKey(book: BookRef): string {
+  return contentKeyOf({ ...book, connectionId: resolveConnectionId(book.connectionId) });
+}
+
+/** The same book of the same person (`castBookKey`). */
 function sameBook(a: BookRef, b: BookRef): boolean {
-  return (
-    contentKeyOf({ ...a, connectionId: resolveConnectionId(a.connectionId) }) ===
-    contentKeyOf({ ...b, connectionId: resolveConnectionId(b.connectionId) })
-  );
+  return castBookKey(a) === castBookKey(b);
 }
 
 /** Whether the receiver plays media that is not this loaded book: another AudioSilo
@@ -156,9 +159,10 @@ export class CastPlaybackService implements PlaybackService {
   /** When the JS last set the speed: a status still carrying the old one is not the
    * receiver changing it. */
   private rateAskedAt = 0;
-  /** When a cast token was last minted again for a refused receiver (`freshToken`); a new
-   * book (`load`) or a reset may mint again at once. */
-  private remintedAt: number | null = null;
+  /** The book (`castBookKey`) a cast token was last minted again for a refused receiver, and
+   * when (`freshToken`): kept across loads and resets, so a book loaded again mints no sooner
+   * than `REMINT_EVERY_MS` later; another book may mint at once. */
+  private reminted: { book: string; at: number } | null = null;
 
   constructor(
     private readonly remote: CastRemote,
@@ -225,7 +229,6 @@ export class CastPlaybackService implements PlaybackService {
     if (!book) throw new Error('A cast needs the book it is loading');
     const seq = ++this.loadSeq;
     this.earlyEndRetryAt = null;
-    this.remintedAt = null;
     this.loadsInFlight++;
     try {
       const loaded = await this.prepareLoaded(tracks, book);
@@ -328,7 +331,6 @@ export class CastPlaybackService implements PlaybackService {
     this.loaded = null;
     this.seen = null;
     this.earlyEndRetryAt = null;
-    this.remintedAt = null;
     this.needsReload = false;
     // Another sender's book on the receiver is theirs: only ours is ever stopped (and
     // theirs stays ignored until this phone loads a book again, `sendQueue`).
@@ -380,9 +382,15 @@ export class CastPlaybackService implements PlaybackService {
     return { tracks, book, items, urls: items.map((i) => i.url), offsets: items.map(() => 0) };
   }
 
-  /** Whether a refused receiver may be given a newly minted token now (`REMINT_EVERY_MS`). */
+  /** Whether a refused receiver may be given a newly minted token for the loaded book now
+   * (`REMINT_EVERY_MS`). */
   private remintDue(): boolean {
-    return this.remintedAt === null || this.now() - this.remintedAt >= REMINT_EVERY_MS;
+    const loaded = this.loaded;
+    if (!loaded) return false;
+    const last = this.reminted;
+    return (
+      !last || last.book !== castBookKey(loaded.book) || this.now() - last.at >= REMINT_EVERY_MS
+    );
   }
 
   /**
@@ -395,7 +403,7 @@ export class CastPlaybackService implements PlaybackService {
   private async freshToken(): Promise<boolean> {
     const loaded = this.loaded;
     if (!loaded || !this.remintDue()) return false;
-    this.remintedAt = this.now();
+    this.reminted = { book: castBookKey(loaded.book), at: this.now() };
     const seq = this.loadSeq;
     this.loadsInFlight++;
     try {
