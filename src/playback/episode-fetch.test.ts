@@ -359,6 +359,17 @@ describe('requestEpisodeFetch', () => {
     expect(useEpisodeFetch.getState().pending?.code).toBe('fetch_limit');
   });
 
+  it.each([
+    [new ApiError(401, 'unauthorized'), 'signed_out'],
+    [new ApiError(403, 'no access to this library'), 'no_access'],
+  ])('fails a refusal of the listener (%s) with its own reason (fe#280)', async (e, code) => {
+    mockClient!.prepareEpisodeStream.mockRejectedValue(e);
+    requestEpisodeFetch(target, book);
+    await flush();
+    expect(phase()).toBe('failed');
+    expect(useEpisodeFetch.getState().pending?.code).toBe(code);
+  });
+
   it('reads the episode again when its identity changed, and fails', async () => {
     const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
     mockClient!.retryPodcastFetch.mockRejectedValue(

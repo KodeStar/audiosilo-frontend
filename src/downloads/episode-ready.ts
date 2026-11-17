@@ -3,7 +3,8 @@ import { AppState, type NativeEventSubscription } from 'react-native';
 import { ApiError, PodcastFetchPendingError } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
 import type { PodcastFetchStatus } from '@/api/types';
-import { blipDelay, pollDelay } from '@/playback/episode-fetch-rules';
+import { serverIdOf } from '@/lib/connection-id';
+import { accessRefusal, blipDelay, pollDelay } from '@/playback/episode-fetch-rules';
 
 /**
  * Waiting for a podcast episode to be on its server before it downloads (fe#166, D2). An
@@ -15,26 +16,33 @@ import { blipDelay, pollDelay } from '@/playback/episode-fetch-rules';
  * Each wait asks the stream once (`prepareEpisodeStream`, which starts the server's fetch;
  * `retry` POSTs instead, the listener's Retry after a failed fetch), then follows the fetch's
  * status every max(2, Retry-After) s. Only in the foreground (a poll due in the background
- * runs on the way back), and at most `MAX_WAITING` at once per server (connection): more
- * wait their turn here, so a listener's own plays keep room under each server's limit of five
- * fetches on their way, and waits stuck on a server that can't be reached never hold up
- * another server's. A refusal for the moment (the limit, the rate limiter, a blip) waits and
- * asks again; a fetch that failed or can't be made ends the wait with the server's code.
+ * runs on the way back), and at most `MAX_WAITING` at once per server (`serverIdOf`: two
+ * profiles' connections to one server share them): more wait their turn here, so a
+ * listener's own plays keep room under each server's limit of five fetches on their way, and
+ * waits stuck on a server that can't be reached never hold up another server's. A refusal for
+ * the moment (the limit, the rate limiter, a blip) waits and asks again; a fetch that failed
+ * or can't be made ends the wait with the server's code, and a refusal of the listener (signed
+ * out, no access: `accessRefusal`) says so.
  * Framework-free: the store hands each wait its hooks and stops it (`stopWaiting`) on a
  * cancel or remove.
  */
 
-/** How many episodes ask one server (connection) at once. */
+/** How many episodes ask one server at once (all of its connections together). */
 export const MAX_WAITING = 3;
 
 /** An episode the downloads store waits for: its registry key and where it lives. */
 export type EpisodeWaitRef = { key: string; connectionId: string; libraryId: number; path: string };
 
 /** How a wait ended: on the server (`ready`), a fetch that failed or can't be made now
- * (`failed`; `code` is the server's safe code, null when it said none), or the connection
- * gone (`removed`). */
+ * (`failed`; `code` is the server's safe code, null when it said none), the server refusing
+ * the listener (`signedOut`: a 401; `noAccess`: a 403 about the account, `accessRefusal`), or
+ * the connection gone (`removed`). */
 export type EpisodeWaitEnd =
-  { kind: 'ready' } | { kind: 'failed'; code: string | null } | { kind: 'removed' };
+  | { kind: 'ready' }
+  | { kind: 'failed'; code: string | null }
+  | { kind: 'signedOut' }
+  | { kind: 'noAccess' }
+  | { kind: 'removed' };
 
 export type EpisodeWaitHooks = {
   /** The server's fetch moved (queued, fetching and how far). */
@@ -48,7 +56,7 @@ type Waiter = {
   hooks: EpisodeWaitHooks;
   /** What the next step asks: the stream once, the listener's POST, or the status. */
   action: 'probe' | 'retry' | 'poll';
-  /** Holds one of its connection's `MAX_WAITING` turns. */
+  /** Holds one of its server's `MAX_WAITING` turns. */
   active: boolean;
   abort: AbortController;
   timer: ReturnType<typeof setTimeout> | null;
@@ -102,21 +110,26 @@ export function isWaiting(key: string): boolean {
   return waiters.has(key);
 }
 
-/** How many waits are asking `connectionId`'s server now (at most `MAX_WAITING`), or every
- * server's without one. */
+/** How many waits are asking `connectionId`'s server now, through any of its connections
+ * (at most `MAX_WAITING`), or every server's without one. */
 export function askingCount(connectionId?: string): number {
-  const turns = turnsByConnection();
-  if (connectionId !== undefined) return turns.get(connectionId) ?? 0;
+  const turns = turnsByServer();
+  if (connectionId !== undefined) return turns.get(serverOf(connectionId)) ?? 0;
   let n = 0;
   for (const c of turns.values()) n += c;
   return n;
 }
 
-/** How many waits hold a turn, per connection: one pass over the waits. */
-function turnsByConnection(): Map<string, number> {
+/** The server a wait's connection belongs to: its turns are counted there. */
+const serverOf = (connectionId: string) => serverIdOf({ id: connectionId });
+
+/** How many waits hold a turn, per server: one pass over the waits. */
+function turnsByServer(): Map<string, number> {
   const turns = new Map<string, number>();
   for (const w of waiters.values()) {
-    if (w.active) turns.set(w.ref.connectionId, (turns.get(w.ref.connectionId) ?? 0) + 1);
+    if (!w.active) continue;
+    const server = serverOf(w.ref.connectionId);
+    turns.set(server, (turns.get(server) ?? 0) + 1);
   }
   return turns;
 }
@@ -132,15 +145,15 @@ function drop(w: Waiter) {
   }
 }
 
-/** Give free turns to the waits next in line, each connection its own `MAX_WAITING`. */
+/** Give free turns to the waits next in line, each server its own `MAX_WAITING`. */
 function pump() {
-  const turns = turnsByConnection();
+  const turns = turnsByServer();
   for (const w of waiters.values()) {
-    const cid = w.ref.connectionId;
-    const n = turns.get(cid) ?? 0;
+    const server = serverOf(w.ref.connectionId);
+    const n = turns.get(server) ?? 0;
     if (w.active || n >= MAX_WAITING) continue;
     w.active = true;
-    turns.set(cid, n + 1);
+    turns.set(server, n + 1);
     void step(w);
   }
 }
@@ -222,7 +235,8 @@ async function step(w: Waiter) {
     if (e.code === 'fetch_limit' || e.status === 429 || e.status >= 500) {
       return askAgain(w, e.retryAfterSeconds);
     }
-    end(w, { kind: 'failed', code: e.code ?? null });
+    const refusal = accessRefusal(e);
+    end(w, refusal ? { kind: refusal } : { kind: 'failed', code: e.code ?? null });
   }
 }
 

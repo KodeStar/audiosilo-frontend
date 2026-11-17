@@ -1174,6 +1174,8 @@
       "removed": "Du bist bei diesem Server nicht mehr angemeldet.",
       "interrupted": "Die App wurde geschlossen, bevor der Download fertig war.",
       "serverFetch": "{{server}} konnte diese Folge nicht holen.",
+      "signedOut": "{{server}} hat dich abgemeldet. Melde dich wieder an und versuche es dann erneut.",
+      "noAccess": "Dieses Konto kann diese Folge nicht von {{server}} laden.",
       "unknown": "Der Download wurde angehalten.",
       "notInBrowser": "Dieser Browser kann dieses Buch nicht offline abspielen. Entferne es, um den Platz freizugeben.",
       "kept": "Deine {{percent}} % bleiben erhalten.",
@@ -3026,6 +3028,8 @@
         "demo_account": "Die Demo spielt nur Episoden, die schon auf dem Server sind.",
         "too_large": "Diese Episode ist zu groß für deinen Server.",
         "identity_changed": "Diese Episode hat sich in ihrem Feed geändert. Öffne die Sendung, um sie wiederzufinden.",
+        "signed_out": "Du bist von diesem Server abgemeldet. Melde dich wieder an und versuche es dann erneut.",
+        "no_access": "Dieses Konto hat keinen Zugriff auf diese Folge.",
         "other": "Beim Holen ist etwas schiefgegangen. Versuch es später noch einmal."
       }
     },

@@ -13,7 +13,7 @@ import { onForeground } from '@/lib/when-active';
 import { mayActFor, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
-import { blipDelay, isAbsentEpisode, pollDelay } from './episode-fetch-rules';
+import { accessRefusal, blipDelay, isAbsentEpisode, pollDelay } from './episode-fetch-rules';
 
 /**
  * Playing an episode that is not on the server yet (Bridge Phase 2d-1). The server fetches
@@ -348,10 +348,16 @@ function schedule(r: Run, seconds: number) {
   }, wait * 1000);
 }
 
-/** A refusal of the probe or of Try again, by the server's code. */
+/** A refusal of the probe or of Try again, by the server's code; one of the listener
+ * (signed out, no access: `accessRefusal`) by this app's own code for it. */
 function refused(r: Run, e: unknown) {
   const pending = pendingOf(r);
   if (!pending) return;
+  const refusal = e instanceof ApiError ? accessRefusal(e) : null;
+  if (refusal) {
+    patch(r, { phase: 'failed', code: refusal === 'signedOut' ? 'signed_out' : 'no_access' });
+    return;
+  }
   const code = e instanceof ApiError ? (e.code ?? null) : null;
   switch (code) {
     case 'fetch_limit':

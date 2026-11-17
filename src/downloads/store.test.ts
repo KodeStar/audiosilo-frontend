@@ -109,6 +109,7 @@ jest.mock('@/downloads/episode-ready', () => ({
   waitForEpisode: (ref: MockWait['ref'], hooks: MockWait['hooks'], opts?: MockWait['opts']) =>
     mockWaits.push({ ref, hooks, opts }),
   stopWaiting: (key: string) => mockStopWaiting(key),
+  isWaiting: () => false,
 }));
 
 // The launch's restore waits for the JS thread to be idle: here, the next turn.
@@ -120,9 +121,19 @@ jest.mock('@/api/connection-clients', () => ({
   resolveClient: jest.fn(() => null),
 }));
 
-// The store registers an onConnectionRemoved purge at import time.
+// The store registers an onConnectionRemoved purge at import time. The session has read its
+// connections unless a test says otherwise (`resumeEpisodeWaits` waits for that).
+let mockSessionStatus = 'authenticated';
+const mockSessionListeners: ((s: { status: string }) => void)[] = [];
 jest.mock('@/stores/session', () => ({
   onConnectionRemoved: jest.fn(() => () => {}),
+  useSession: {
+    getState: () => ({ status: mockSessionStatus }),
+    subscribe: (l: (s: { status: string }) => void) => {
+      mockSessionListeners.push(l);
+      return () => mockSessionListeners.splice(mockSessionListeners.indexOf(l), 1);
+    },
+  },
 }));
 
 // The network rule an automatic episode download is asked again once its wait ends.
@@ -2712,16 +2723,77 @@ describe('podcast episodes', () => {
     expect(mockWaits[0].opts).toEqual({ retry: false });
   });
 
-  it('a launch turns a saved wait into an interrupted download, to retry', () => {
+  describe('a launch with an episode that was waiting (fe#280)', () => {
     const waiting: DownloadEntry = {
       ...downloadedEntry({ path: 'Show/Monday.mp3' }),
       status: 'queued',
+      progress: 0,
       serverFetch: { percent: 40 },
       manifest: { ...downloadedEntry().manifest, book: episodeBook(false), files: [] },
     };
-    const revived = reviveEntry(waiting, true);
-    expect(revived).toMatchObject({ status: 'error', failure: { kind: 'interrupted', kept: 0 } });
-    expect(revived && 'serverFetch' in revived).toBe(false);
+    afterEach(() => {
+      mockSessionStatus = 'authenticated';
+      mockSessionListeners.length = 0;
+    });
+
+    it('keeps the wait', () => {
+      expect(reviveEntry(waiting, false)).toBe(waiting);
+    });
+
+    it('waits again for its server, from the stream', async () => {
+      await seed({ [key]: waiting });
+      await useDownloads.getState().hydrate();
+      expect(entry()).toMatchObject({ status: 'queued', serverFetch: { percent: 40 } });
+      expect(mockWaits).toHaveLength(1);
+      expect(mockWaits[0].ref).toEqual({
+        key,
+        connectionId: 'c1',
+        libraryId: 2,
+        path: 'Show/Monday.mp3',
+      });
+      expect(mockWaits[0].opts).toEqual({ retry: false });
+      mockFetchQuery.mockImplementation(async ({ queryKey }) =>
+        queryKey[0] === 'item' ? episodeBook(true) : chapters,
+      );
+      mockWaits[0].hooks.onEnd({ kind: 'ready' });
+      await settle();
+      expect(entry()?.status).toBe('downloaded');
+    });
+
+    it('waits for the session to read its connections first', async () => {
+      mockSessionStatus = 'loading';
+      await seed({ [key]: waiting });
+      await useDownloads.getState().hydrate();
+      expect(mockWaits).toHaveLength(0);
+      mockSessionStatus = 'authenticated';
+      mockSessionListeners.forEach((l) => l({ status: 'authenticated' }));
+      expect(mockWaits).toHaveLength(1);
+    });
+
+    it('is a download cut short, to retry, when its connection has no client', async () => {
+      mockResolveClient.mockReturnValue(null);
+      await seed({ [key]: waiting });
+      await useDownloads.getState().hydrate();
+      expect(mockWaits).toHaveLength(0);
+      expect(entry()).toMatchObject({
+        status: 'error',
+        failure: { kind: 'interrupted', kept: 0 },
+      });
+      expect(entry() && 'serverFetch' in entry()!).toBe(false);
+      expect((await readPersisted())[key]?.status).toBe('error');
+    });
+  });
+
+  it('says a wait its server ended by refusing the listener (401, 403) in its own words', async () => {
+    await useDownloads.getState().download('c1', 2, episodeBook(false), chapters);
+    mockWaits[0].hooks.onEnd({ kind: 'signedOut' });
+    expect(entry()).toMatchObject({ status: 'error', failure: { kind: 'signedOut', kept: 0 } });
+    // Retry waits on its server again, from the stream.
+    await useDownloads.getState().download('c1', 2, episodeBook(false), chapters);
+    expect(mockWaits).toHaveLength(2);
+    expect(mockWaits[1].opts).toEqual({ retry: false });
+    mockWaits[1].hooks.onEnd({ kind: 'noAccess' });
+    expect(entry()?.failure).toEqual({ kind: 'noAccess', kept: 0 });
   });
 });
 

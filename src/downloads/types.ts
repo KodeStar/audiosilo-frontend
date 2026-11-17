@@ -26,6 +26,10 @@ export type DownloadFailure = {
     | 'removed'
     | 'interrupted'
     | 'serverFetch'
+    /** An episode's wait its server ended by refusing the listener: signed out (a 401) or
+     * no access (`accessRefusal`). Nothing of it was downloaded. */
+    | 'signedOut'
+    | 'noAccess'
     | 'unknown';
   status?: number;
   /** With `serverFetch`: the server's code for why (absent when it said none). */

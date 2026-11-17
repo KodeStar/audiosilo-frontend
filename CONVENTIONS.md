@@ -817,15 +817,20 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   `serverFetch` or a server 503) first waits in `downloads/episode-ready.ts`, OUTSIDE the
   one-at-a-time queue (D2): the entry stays `queued` with `serverFetch: {percent}`, the waiter
   probes the stream once (the listener's Retry POSTs; an automatic download's own retry never does),
-  follows the status every max(2, Retry-After) s in the foreground only, at most three asking at
-  once (the rest wait their turn, leaving room under the server's five), and on `ready` reads the
+  follows the status every max(2, Retry-After) s in the foreground only, at most three asking each
+  server at once (counted by `serverIdOf`, so two profiles on one server share them; the rest
+  wait their turn, leaving room under the server's five), and on `ready` reads the
   item and chapters (again, when it had them; `fetchFailFast`) and joins the queue. The wait can be
   long, so `episodeWaitEnded` decides again what `queueBook` decided before it: an `auto` download
   the network rule no longer lets start is dropped with no decline mark (`canAutoDownload`), and so
   is one this browser turns out to play transcoded. The fetch limit, 429 and blips ask again
   (`blipDelay`); a failed or impossible fetch ends as a `serverFetch` failure with the server's code
   (`failureText` reads it through `fetchReasonKey`; `identity_changed` also reads the item and the
-  library's episode lists again). A cancel or remove stops the wait (`stopWaiting`); the server's
+  library's episode lists again). A refusal of the listener (`accessRefusal`: a 401, or a 403
+  naming no code) is its own failure, `signedOut` or `noAccess`, and the player's fetch says it as
+  the reasons `signed_out` / `no_access`. A wait outlives a reload or restart: `reviveEntry` keeps
+  the waiting entry and `resumeEpisodeWaits` asks again once the session has read its connections
+  (one with no client then is a download cut short). A cancel or remove stops the wait (`stopWaiting`); the server's
   fetch carries on. The fetch rules the player and the waiter share live in
   `playback/episode-fetch-rules.ts` (import-light: the downloads store must not pull in the start
   path). The row says "On this device" (`episode-on-device`) and the download's state; an episode on

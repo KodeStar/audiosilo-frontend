@@ -1174,6 +1174,8 @@
       "removed": "Ya no tienes la sesión iniciada en este servidor.",
       "interrupted": "La app se cerró antes de que terminara.",
       "serverFetch": "{{server}} no pudo conseguir este episodio.",
+      "signedOut": "{{server}} cerró tu sesión. Vuelve a iniciar sesión y reinténtalo.",
+      "noAccess": "Esta cuenta no puede obtener este episodio de {{server}}.",
       "unknown": "La descarga se detuvo.",
       "notInBrowser": "Este navegador no puede reproducir este libro sin conexión. Quítalo para liberar el espacio.",
       "kept": "Tu {{percent}} % se conserva.",
@@ -3026,6 +3028,8 @@
         "demo_account": "La demo solo reproduce episodios que ya están en el servidor.",
         "too_large": "Este episodio es demasiado grande para tu servidor.",
         "identity_changed": "Este episodio ha cambiado en su feed. Abre el programa para encontrarlo de nuevo.",
+        "signed_out": "Tu sesión en este servidor se ha cerrado. Vuelve a iniciar sesión y reinténtalo.",
+        "no_access": "Esta cuenta no tiene acceso a este episodio.",
         "other": "Algo falló al descargarlo. Inténtalo de nuevo más tarde."
       }
     },

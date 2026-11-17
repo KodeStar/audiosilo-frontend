@@ -1174,6 +1174,8 @@
       "removed": "Non hai più accesso a questo server.",
       "interrupted": "L’app si è chiusa prima che finisse.",
       "serverFetch": "{{server}} non è riuscito a recuperare questo episodio.",
+      "signedOut": "{{server}} ti ha disconnesso. Accedi di nuovo, poi riprova.",
+      "noAccess": "Questo account non può ottenere questo episodio da {{server}}.",
       "unknown": "Il download si è interrotto.",
       "notInBrowser": "Questo browser non può riprodurre questo libro offline. Rimuovilo per liberare spazio.",
       "kept": "Il tuo {{percent}}% è conservato.",
@@ -3026,6 +3028,8 @@
         "demo_account": "La demo riproduce solo gli episodi già presenti sul server.",
         "too_large": "Questo episodio è troppo grande per il tuo server.",
         "identity_changed": "Questo episodio è cambiato nel suo feed. Apri il programma per ritrovarlo.",
+        "signed_out": "Sei disconnesso da questo server. Accedi di nuovo, poi riprova.",
+        "no_access": "Questo account non ha accesso a questo episodio.",
         "other": "Qualcosa è andato storto durante il download. Riprova più tardi."
       }
     },

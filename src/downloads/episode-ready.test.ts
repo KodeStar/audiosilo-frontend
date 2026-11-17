@@ -141,6 +141,27 @@ describe('waitForEpisode', () => {
     expect(ends[key]).toEqual({ kind: 'failed', code: 'bridge_unavailable' });
   });
 
+  it('ends signed out on a 401 and with no access on a codeless 403 (fe#280)', async () => {
+    client.prepareEpisodeStream.mockRejectedValueOnce(new ApiError(401, 'unauthorized'));
+    const out = wait(1);
+    await flush();
+    expect(ends[out]).toEqual({ kind: 'signedOut' });
+    client.podcastFetchStatus.mockRejectedValueOnce(
+      new ApiError(403, 'no access to this library'),
+    );
+    const denied = wait(2);
+    await flush();
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(ends[denied]).toEqual({ kind: 'noAccess' });
+    // A 403 naming its reason keeps it.
+    client.prepareEpisodeStream.mockRejectedValueOnce(
+      new ApiError(403, 'demo', 'demo_account'),
+    );
+    const demo = wait(3);
+    await flush();
+    expect(ends[demo]).toEqual({ kind: 'failed', code: 'demo_account' });
+  });
+
   it('waits and asks again at the fetch limit, and on a blip', async () => {
     client.prepareEpisodeStream
       .mockRejectedValueOnce(new ApiError(409, 'limit', 'fetch_limit'))
@@ -217,6 +238,19 @@ describe('waitForEpisode', () => {
     expect(askingCount('c1')).toBe(MAX_WAITING);
     expect(askingCount()).toBe(MAX_WAITING + 1);
     expect(isWaiting(fourthOnA)).toBe(true);
+  });
+
+  it(`shares the ${MAX_WAITING} among one server's connections (two profiles, fe#280)`, async () => {
+    mockClients['s1.1'] = client;
+    mockClients['s1.2'] = client;
+    [1, 2].forEach((n) => wait(n, false, 's1.1'));
+    const second = [3, 4].map((n) => wait(n, false, 's1.2'));
+    await flush();
+    expect(askingCount('s1.1')).toBe(MAX_WAITING);
+    expect(askingCount('s1.2')).toBe(MAX_WAITING);
+    expect(client.prepareEpisodeStream).toHaveBeenCalledTimes(MAX_WAITING);
+    expect(isWaiting(second[1])).toBe(true);
+    expect(client.prepareEpisodeStream.mock.calls.map((c) => c[1])).not.toContain('ep-4');
   });
 
   it('pauses in the background and asks at once on the way back', async () => {

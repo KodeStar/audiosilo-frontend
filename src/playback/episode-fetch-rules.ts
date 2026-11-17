@@ -12,6 +12,18 @@ export function isAbsentEpisode(book: Book): boolean {
   return !!book.episode && !book.episode.downloaded;
 }
 
+/** A refusal about the listener, not the episode: signed out (a 401), or no access (a 403
+ * that names no code: the server's library scope; a 403 with a code, the demo account's,
+ * says that instead). Null for any other answer. */
+export function accessRefusal(e: {
+  status: number;
+  code?: string | null;
+}): 'signedOut' | 'noAccess' | null {
+  if (e.status === 401) return 'signedOut';
+  if (e.status === 403 && !e.code) return 'noAccess';
+  return null;
+}
+
 /** The poll interval floor, seconds (the server's `Retry-After`). */
 const MIN_POLL_S = 2;
 /** The longest wait between two looks while the server keeps failing (5xx, no answer). */

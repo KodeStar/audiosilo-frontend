@@ -70,4 +70,14 @@ describe('failureText', () => {
       "Home couldn't get this episode. Something went wrong getting it. Try again in a while.",
     );
   });
+
+  it('says an episode wait the server refused signed out, or with no access (fe#280)', () => {
+    const t = i18n.t.bind(i18n) as TFunction;
+    expect(failureText(t, { failure: { kind: 'signedOut', kept: 0 } }, 'Home', 'device')).toBe(
+      'Home signed you out. Sign in again, then retry.',
+    );
+    expect(failureText(t, { failure: { kind: 'noAccess', kept: 0 } }, 'Home', 'device')).toBe(
+      "This account can't get this episode from Home.",
+    );
+  });
 });
