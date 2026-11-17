@@ -101,8 +101,9 @@ export function SignInStep({
   const api = useMemo(() => connectClient(server, undefined, reconnectId), [server, reconnectId]);
 
   // Single sign-on: only the served player at its own server asks (`oidc-sign-in.ts`). What
-  // the flow is for (a grown-up's pass through kids mode, "Add someone", `book`) goes with
-  // the page to the provider and back (`holdOidcIntent`, fe#310).
+  // the flow is for (a grown-up's pass through kids mode, "Add someone", `book`, the
+  // connection a reconnect re-pairs with the address it signs in through) goes with the page
+  // to the provider and back (`holdOidcIntent`, fe#310).
   const canSso = onlyOwnServer(servedOrigin(), [server]);
   // The button's name once the server said single sign-on is on (`oidcButtonName`).
   const [ssoName, setSsoName] = useState<string | null>(null);
@@ -277,7 +278,7 @@ export function SignInStep({
           title={sso ? t('connect.oidc.signIn', { name: sso }) : t('connect.oidc.signInUnnamed')}
           disabled={loading}
           onPress={() => {
-            holdOidcIntent(book);
+            holdOidcIntent(book, reconnectId ? { server, id: reconnectId } : undefined);
             window.location.assign(api.oidcStartUrl());
           }}
           testID="sign-in-oidc"

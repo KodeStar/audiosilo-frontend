@@ -505,4 +505,32 @@ describe('single sign-on', () => {
       resetProfilesForTests();
     }
   });
+
+  // A reconnect's sign-in through single sign-on: the page load loses the in-memory hold, so
+  // the connection it re-pairs goes with the page, with the address it signs in through.
+  it('holds the reconnect with the address it signs in through', async () => {
+    const store = new Map<string, string>();
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      value: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, v),
+        removeItem: (k: string) => void store.delete(k),
+      },
+      configurable: true,
+    });
+    try {
+      mockApi.serverInfo.mockResolvedValue(serverInfo(true, 'Keycloak'));
+      await render(<SignInStep server={AWAY} reconnectId="srv-old.1" />);
+      await fireEvent.press(await screen.findByRole('button', { name: 'Sign in with Keycloak' }));
+      expect(assign).toHaveBeenCalled();
+      expect(JSON.parse(store.get('audiosilo.oidcIntent')!)).toEqual({
+        at: expect.any(Number),
+        newPerson: false,
+        grownUpFromKids: false,
+        reconnect: { server: AWAY, id: 'srv-old.1' },
+      });
+    } finally {
+      delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
+    }
+  });
 });

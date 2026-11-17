@@ -6,14 +6,14 @@ import { effectiveUrl, useAddressRoute } from '@/api/address-route';
 import type { User } from '@/api/types';
 import { endConnectFlow, kidsConnectAllowed } from '@/components/profiles/connect-intent';
 import { remember } from '@/lib/known-servers';
-import { resetProfilesForTests } from '@/stores/profiles';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 import { seedProfile } from '@/testing/seed-profile';
 
 import { ConnectStart } from './connect-start';
 import { renderConnect as render } from './connect-testing';
 import { holdScanReconnect, openScanner, takeScanFor } from './invite-handoff';
-import { dropOidcIntent, resumeOidcIntent } from './oidc-intent';
+import { dropOidcIntent, resumeOidcIntent, takeOidcReconnect } from './oidc-intent';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -1202,6 +1202,81 @@ describe("a single sign-on's return (?oidc=1)", () => {
       expect(mockSetParams).not.toHaveBeenCalled();
       expect(mockApi.serverInfo).toHaveBeenCalledTimes(1);
       expect(useSession.getState().connections).toEqual([]);
+    });
+  });
+
+  // A reconnect banner's sign-in through single sign-on, on a server reset at a home address
+  // (fe#298): only the sign-in that names the dead connection retires it there, and the name
+  // comes back from this tab's own intent, never from the address.
+  describe('re-pairing a connection to a server reset at a home address', () => {
+    const mine = { ...old('srv-old.1'), user };
+    const theirs = { ...old('srv-old.2'), user: { ...user, id: 2, username: 'sam' } };
+    function old(id: string) {
+      return { id, serverId: 'srv-old', name: 'Hearthside', serverUrl: HOME, token: 'dead' };
+    }
+    const ids = () => useSession.getState().connections.map((c) => c.id);
+    beforeEach(() => {
+      mockServed = HOME;
+      useSession.setState({ status: 'authenticated', connections: [mine, theirs] as never });
+      useProfiles.setState({
+        profiles: [
+          { id: 'p', name: 'Chris', connectionIds: ['srv-old.1'] },
+          { id: 'q', name: 'Sam', connectionIds: ['srv-old.2'] },
+        ],
+        activeProfileId: 'p',
+        hydrated: true,
+      });
+      mockApi.oidcFinish.mockResolvedValue({ token: 'session', server_id: 'srv-2', user });
+      mockApi.serverInfo.mockResolvedValue(info({ server_id: 'srv-2' }));
+      mockApi.logout.mockResolvedValue(undefined);
+    });
+    afterEach(async () => {
+      dropOidcIntent();
+      await act(async () => resetProfilesForTests());
+    });
+    const resume = (server: string) =>
+      resumeOidcIntent(
+        { newPerson: false, grownUpFromKids: false, reconnect: { server, id: 'srv-old.1' } },
+        jest.fn(),
+      );
+
+    it('replaces the dead connection it left with, and no one else', async () => {
+      resume(HOME);
+      await render(<ConnectStart />);
+      await waitFor(() => expect(ids()).toContain('srv-2.1'));
+      // No duplicate: the dead one is gone, the other person's stays.
+      expect(ids().sort()).toEqual(['srv-2.1', 'srv-old.2']);
+      expect(useSession.getState().connections.find((c) => c.id === 'srv-2.1')).toMatchObject({
+        token: 'session',
+        serverUrl: HOME,
+      });
+    });
+
+    it('replaces nothing for a ?reconnect= in the address (fe#298)', async () => {
+      mockParams = { oidc: '1', reconnect: 'srv-old.1' };
+      await render(<ConnectStart />);
+      await waitFor(() => expect(ids()).toContain('srv-2.1'));
+      expect(ids().sort()).toEqual(['srv-2.1', 'srv-old.1', 'srv-old.2']);
+    });
+
+    it('replaces nothing for a reconnect that signed in through another address', async () => {
+      resume('http://192.168.1.21:8080');
+      await render(<ConnectStart />);
+      await waitFor(() => expect(ids()).toContain('srv-2.1'));
+      expect(ids().sort()).toEqual(['srv-2.1', 'srv-old.1', 'srv-old.2']);
+    });
+
+    it('replaces nothing when the finish fails, and the reconnect is spent', async () => {
+      resume(HOME);
+      mockApi.oidcFinish.mockRejectedValue(new ApiError(401, 'x', 'oidc_no_sign_in'));
+      await render(<ConnectStart />);
+      await waitFor(() =>
+        expect(
+          screen.getByText("There's no sign-in to finish in this browser. Sign in again."),
+        ).toBeTruthy(),
+      );
+      expect(ids()).toEqual(['srv-old.1', 'srv-old.2']);
+      expect(takeOidcReconnect(HOME)).toBeUndefined();
     });
   });
 

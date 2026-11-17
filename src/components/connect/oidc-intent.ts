@@ -5,6 +5,7 @@ import {
   resumeConnectIntent,
 } from '@/components/profiles/connect-intent';
 import { type ConnectBook, connectBookParams, parseConnectBook } from '@/lib/paths';
+import { sameUrl } from '@/lib/server-address';
 
 /**
  * What a connect flow was for, carried across a single sign-on's trip to the provider
@@ -14,8 +15,15 @@ import { type ConnectBook, connectBookParams, parseConnectBook } from '@/lib/pat
  * the library. The sign-in step writes them to this tab's `sessionStorage` as it leaves
  * (`holdOidcIntent`); the connect flow's layout takes them once as it opens on the return
  * (`takeOidcIntent`). Only script on the player's own origin writes
- * there, never a link. The connection a reconnect re-pairs is not carried: the same user
- * signing in again re-pairs their connection by the server's id anyway.
+ * there, never a link.
+ *
+ * The connection a reconnect re-pairs goes too, with the address its sign-in step signed in
+ * through (the in-memory hold's, `holdReconnect`): a server reset at a home address keeps
+ * the dead connection unless the sign-in names it (`staleIdentities`), so without it the
+ * reconnect banner would keep asking. Only this tab's own intent carries it, never the
+ * return's address (a `?reconnect=` there does nothing, fe#298), and it is given to the
+ * finish only for the server the return is at (`takeOidcReconnect`) and used only once the
+ * server answered with a session.
  *
  * A trip abandoned at the provider leaves its intent in the tab, and a later page load of
  * `/connect?oidc=1` (typed, from the history) would take it as its own: a grown-up's pass
@@ -34,8 +42,17 @@ const KEY = 'audiosilo.oidcIntent';
  * (`oidc.FlowMaxAge`, ten minutes), with a minute's slack. A return after that can't sign in. */
 export const MAX_AGE_MS = 11 * 60_000;
 
+/** A reconnect's sign-in: the connection it re-pairs (`id`) and the address it signed in
+ * through (`server`). */
+export type OidcReconnect = { server: string; id: string };
+
 /** The flow's intent as it left for the provider. */
-export type OidcIntent = { newPerson: boolean; grownUpFromKids: boolean; book?: ConnectBook };
+export type OidcIntent = {
+  newPerson: boolean;
+  grownUpFromKids: boolean;
+  book?: ConnectBook;
+  reconnect?: OidcReconnect;
+};
 
 function storage(): Storage | null {
   try {
@@ -46,14 +63,16 @@ function storage(): Storage | null {
   }
 }
 
-/** The page is leaving for the provider: keep what the flow is for, and `book`, the book a
- * signed-out visit was opening (the sign-in step's own). */
-export function holdOidcIntent(book?: ConnectBook): void {
+/** The page is leaving for the provider: keep what the flow is for, `book`, the book a
+ * signed-out visit was opening, and `reconnect`, the connection a reconnect re-pairs (the
+ * sign-in step's own). */
+export function holdOidcIntent(book?: ConnectBook, reconnect?: OidcReconnect): void {
   const held = {
     at: Date.now(),
     newPerson: connectForNewProfile(),
     grownUpFromKids: kidsConnectAllowed(),
     ...(book ? { book: connectBookParams(book) } : {}),
+    ...(reconnect ? { reconnect: { server: reconnect.server, id: reconnect.id } } : {}),
   };
   try {
     storage()?.setItem(KEY, JSON.stringify(held));
@@ -84,10 +103,16 @@ export function takeOidcIntent(returning: boolean): OidcIntent | null {
     if (!(age >= 0 && age <= MAX_AGE_MS)) return null;
     const b = v.book as Record<string, unknown> | undefined;
     const book = b ? parseConnectBook({ book: b.book as string, path: b.path as string }) : null;
+    const r = v.reconnect as Record<string, unknown> | undefined;
+    const reconnect =
+      typeof r?.server === 'string' && typeof r.id === 'string' && r.server && r.id
+        ? { server: r.server, id: r.id }
+        : null;
     return {
       newPerson: v.newPerson === true,
       grownUpFromKids: v.grownUpFromKids === true,
       ...(book ? { book } : {}),
+      ...(reconnect ? { reconnect } : {}),
     };
   } catch {
     return null;
@@ -97,13 +122,18 @@ export function takeOidcIntent(returning: boolean): OidcIntent | null {
 /** The book the returned sign-in ends on (`resumeOidcIntent`), until the finish takes it. */
 let resumedBook: ConnectBook | undefined;
 
+/** The reconnect the returned sign-in re-pairs (`resumeOidcIntent`), until the finish takes
+ * it. */
+let resumedReconnect: OidcReconnect | undefined;
+
 /** Tells the layout that the pass it holds kids mode back for is settled (`settleOidcPass`);
  * null while none waits. */
 let passSettled: (() => void) | null = null;
 
 /**
  * Put the taken intent back (the layout, once the profiles are read): who the flow signs in
- * (`resumeConnectIntent`) and the book for the finish (`takeOidcBook`). A grown-up's pass
+ * (`resumeConnectIntent`), and the book and the reconnect for the finish (`takeOidcBook`,
+ * `takeOidcReconnect`). A grown-up's pass
  * through kids mode is not put back here: it waits on the sign-in's finish
  * (`settleOidcPass`). True while one waits, and the layout then runs the flow's first step
  * (which only finishes the sign-in) without it; `onSettled` is called once, when it is given
@@ -111,6 +141,7 @@ let passSettled: (() => void) | null = null;
  */
 export function resumeOidcIntent(held: OidcIntent, onSettled: () => void): boolean {
   resumedBook = held.book;
+  resumedReconnect = held.reconnect;
   const waits = resumeConnectIntent(held);
   passSettled = waits ? onSettled : null;
   return waits;
@@ -138,11 +169,21 @@ export function takeOidcBook(): ConnectBook | undefined {
   return book;
 }
 
+/** The connection the returned sign-in re-pairs, taken once (`finishOidcSignIn`): only when
+ * its sign-in step signed in through `origin`, the server the return is at; any other
+ * server's sign-in is no re-pair of it. */
+export function takeOidcReconnect(origin: string): string | undefined {
+  const held = resumedReconnect;
+  resumedReconnect = undefined;
+  return held && sameUrl(held.server, origin) ? held.id : undefined;
+}
+
 /** The connect flow was left (its layout's cleanup): an intent still held in the tab (a trip
- * abandoned at the provider, the page then restored from the browser's cache), a book nothing
- * took and a pass still waiting go with it. */
+ * abandoned at the provider, the page then restored from the browser's cache), a book or a
+ * reconnect nothing took and a pass still waiting go with it. */
 export function dropOidcIntent(): void {
   resumedBook = undefined;
+  resumedReconnect = undefined;
   passSettled = null;
   try {
     storage()?.removeItem(KEY);

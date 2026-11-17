@@ -400,7 +400,12 @@ provider, it would open the flow for a child): while `openAddSomeone`'s rule wou
 it waits on the finish, the layout holding kids mode back for the return's own screen only (it
 shows a spinner and finishes the sign-in), and `finishOidcSignIn` settles it (`settleOidcPass`):
 back with the server's session, before `finishConnect`; with none, kids mode takes the flow back
-and the reason is a toast. A reconnect id is not carried.
+and the reason is a toast. A reconnect's sign-in carries the connection it re-pairs with the
+address the step signed in through (the in-memory hold's, fe#298): without it a server reset at a
+home address keeps the dead connection (`staleIdentities`' `named`) and the banner keeps asking.
+It shares the stamp and the drop as the flow is left, is taken once by `finishOidcSignIn`
+(`takeOidcReconnect`) only for the server the return is at, and goes to `finishConnect` only with
+the server's session; a `?reconnect=` in the return's address does nothing.
 iOS does NOT allow arbitrary loads: Expo's ATS default is `NSAllowsArbitraryLoads: false` with
 `NSAllowsLocalNetworking: true`, so plain http works there for IP addresses, `.local` and
 single-label names, but not for a `.lan`, `.home.arpa` or `.internal` home. `repairPlan`: a
