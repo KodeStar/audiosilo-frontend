@@ -2976,8 +2976,9 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     `pairUntil` holds only that last pair: one for another account replaces it, as it does on the
     native side, and the watch saying it signed in ends it (its token is used, so nothing may
     follow it later; matched by account, `pairAfterSignIn`, so a legacy-id connection's pair ends
-    too). A password change forgets it (`forgetPair`: the server ends the account's
-    open pairing tokens with its other sessions), also one still being minted or sent (`pairEpoch`:
+    too). A password change forgets it (`forgetPair`: a server of 2.6.0 or later, server#281, ends
+    the account's open pairing tokens with its other sessions; an older one keeps them, so the pair
+    stays), also one still being minted or sent (`pairEpoch`:
     it is not noted when it lands), and so does removing its connection. While
     another account's pair has time left, a book is refused with "Your watch is being set up for
     {user} on {server}" (`bookPairStep` `busy`, `WatchBusyError`, D5; one still being minted, in

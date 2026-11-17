@@ -2425,7 +2425,8 @@ export function useMyDevices(connectionId?: string, opts: { enabled?: boolean } 
 /** Reads the caller's devices again now (capability `my_devices`), into the list's cache
  * so the devices list shows the answer: after a password change, which ends the other
  * sessions on a server since server#281. Resolves to the list, or `undefined` when the
- * server lists no devices or did not answer (nothing is sure then). */
+ * server lists no devices or did not answer (nothing is sure then). A read that fails
+ * leaves the list as it was, never its error in the list's place (server#285). */
 export function useReadMyDevicesAgain(
   connectionId?: string,
 ): () => Promise<MyDevice[] | undefined> {
@@ -2440,14 +2441,11 @@ export function useReadMyDevicesAgain(
       // the online flag would hold back the toast for good (as `fetchFailFast` drops a
       // paused one), and one sent before the change may answer with the ended devices.
       await qc.cancelQueries({ queryKey: qk.myDevices(cid), exact: true });
-      // Asked once, whatever the online flag says: a held or retried read would hold
-      // back the toast.
-      return await qc.fetchQuery({
-        ...myDevicesQuery(cid, api),
-        staleTime: 0,
-        networkMode: 'always',
-        retry: false,
-      });
+      // Asked once, whatever the online flag says (a held or retried read would hold back
+      // the toast), outside the cache: only an answer lands in the list.
+      const devices = await api.myDevices();
+      qc.setQueryData(qk.myDevices(cid), devices);
+      return devices;
     } catch {
       return undefined;
     }

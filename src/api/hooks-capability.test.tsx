@@ -1037,16 +1037,21 @@ describe('useReadMyDevicesAgain', () => {
     expect(mockClients.c1.myDevices).not.toHaveBeenCalled();
   });
 
-  it('answers undefined when the read fails', async () => {
-    const { result } = await mountMutation({ my_devices: true }, 'my_devices', () =>
+  it('answers undefined when the read fails, leaving the list as it was', async () => {
+    const { result, qc } = await mountMutation({ my_devices: true }, 'my_devices', () =>
       useReadMyDevicesAgain(),
     );
+    const kept = [{ id: 9, kind: 'session', current: true }];
+    qc.setQueryData(qk.myDevices('c1'), kept);
     mockClients.c1.myDevices.mockRejectedValueOnce(new Error('offline'));
     let read: unknown = 'unset';
     await act(async () => {
       read = await result.current.m();
     });
     expect(read).toBeUndefined();
+    // server#285: the list keeps its devices, never the read's error in their place.
+    expect(qc.getQueryData(qk.myDevices('c1'))).toEqual(kept);
+    expect(qc.getQueryState(qk.myDevices('c1'))?.status).toBe('success');
   });
 });
 
