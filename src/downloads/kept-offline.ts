@@ -67,7 +67,12 @@ export function downloadBookLength(
   return lengthCheck(connectionId, libraryId, path);
 }
 
-type KeptMetaRefresh = (connectionId: string, libraryId: number, path: string) => Promise<void>;
+type KeptMetaRefresh = (
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  job: number,
+) => Promise<void>;
 
 let keptMetaRefresh: KeptMetaRefresh = async () => {};
 
@@ -78,7 +83,14 @@ export function setKeptMetaRefresh(fn: KeptMetaRefresh): void {
 
 /** Keep a downloaded book's community metadata again now (after a Bridge job that made its
  * characters, recaps or description finished: `refreshAfterFinish`), rather than at the
- * launch a week on. Nothing for a book not downloaded; best effort, never rejects. */
-export function refreshKeptMeta(connectionId: string, libraryId: number, path: string) {
-  return keptMetaRefresh(connectionId, libraryId, path).catch(() => {});
+ * launch a week on. `job` is that job's id: the copy is kept again once for it, not at
+ * every launch that reads the job done. Nothing for a book not downloaded; best effort,
+ * never rejects. */
+export function refreshKeptMeta(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  job: number,
+) {
+  return keptMetaRefresh(connectionId, libraryId, path, job).catch(() => {});
 }

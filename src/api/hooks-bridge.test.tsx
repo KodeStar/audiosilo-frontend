@@ -369,7 +369,7 @@ describe('useBridgeJobs after a finish', () => {
     await act(async () => {
       await result.current.refetch();
     });
-    expect(refresh.mock.calls).toEqual([['c1', 1, 'Author/Book']]);
+    expect(refresh.mock.calls).toEqual([['c1', 1, 'Author/Book', finished()[0].id]]);
     setKeptMetaRefresh(async () => {});
   });
 

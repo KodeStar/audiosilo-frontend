@@ -308,10 +308,12 @@ setDownloadLengthCheck(async (connectionId, libraryId, path) => {
 // A finished Bridge job made the book's characters, recaps or description: its kept copy
 // is read again now (`refreshAfterFinish`, which can't import this store), not at the
 // launch a week on (fe#158). This launch's earlier attempt does not hold it back; a book not
-// downloaded is nothing (`keepOfflineMeta`'s own check).
-setKeptMetaRefresh((connectionId, libraryId, path) =>
-  keepOfflineMeta(downloadKey(connectionId, libraryId, path), { force: true }),
-);
+// downloaded is nothing (`keepOfflineMeta`'s own check), which only the registry once read
+// can say, and a copy already kept again for this job is left alone.
+setKeptMetaRefresh(async (connectionId, libraryId, path, job) => {
+  if (hydrating) await hydrating;
+  await keepOfflineMeta(downloadKey(connectionId, libraryId, path), { force: true, job });
+});
 
 // --- helpers ---------------------------------------------------------------
 
@@ -1135,12 +1137,17 @@ function stillDownloaded(key: string, entry: DownloadEntry): boolean {
 /** The keep under way for each download (`keepOfflineMeta`). */
 const metaKeeps = new Map<string, Promise<void>>();
 
+/** `force`: past this launch's earlier attempt. `job`: the finished Bridge job the keep is
+ * for, recorded on the manifest's marker; a copy already kept for it is not kept again (the
+ * job is read done at every launch, `refreshAfterFinish`). */
+type KeepOptions = { force?: boolean; job?: number };
+
 /** Keep a downloaded book's community metadata beside its files (best effort, once per
  * launch unless `force`): read it, save it, mark the manifest and seed the cache. One at a
  * time per download: a keep asked for while another is under way (a forced one after a
  * Bridge job, beside the launch's fill-in or the download's own) starts once that one has
  * ended, so the answer read last is the one written last. */
-function keepOfflineMeta(key: string, opts: { force?: boolean } = {}): Promise<void> {
+function keepOfflineMeta(key: string, opts: KeepOptions = {}): Promise<void> {
   const before = metaKeeps.get(key);
   const run = before
     ? before.then(() => keepOfflineMetaNow(key, opts))
@@ -1153,9 +1160,10 @@ function keepOfflineMeta(key: string, opts: { force?: boolean } = {}): Promise<v
   return run;
 }
 
-async function keepOfflineMetaNow(key: string, { force = false } = {}): Promise<void> {
+async function keepOfflineMetaNow(key: string, { force = false, job }: KeepOptions) {
   const entry = useDownloads.getState().entries[key];
   if (!entry || entry.status !== 'downloaded' || !engine.writeText) return;
+  if (job !== undefined && entry.manifest.meta?.job === job) return;
   const attempt = `${key}@${entry.manifest.savedAt}`;
   if (metaTried.has(attempt) && !force) return;
   metaTried.add(attempt);
@@ -1169,8 +1177,16 @@ async function keepOfflineMetaNow(key: string, { force = false } = {}): Promise<
     return;
   }
   const { manifest } = useDownloads.getState().entries[key];
+  // A keep for no job (the weekly one) leaves the job the copy was last kept for.
+  const keptFor = job ?? manifest.meta?.job;
   patchEntry(key, {
-    manifest: { ...manifest, meta: { savedAt: new Date(payload.savedAt).toISOString() } },
+    manifest: {
+      ...manifest,
+      meta: {
+        savedAt: new Date(payload.savedAt).toISOString(),
+        ...(keptFor === undefined ? {} : { job: keptFor }),
+      },
+    },
   });
   // Many books in a row (the launch's fill-in) save the registry once, not once each.
   persistSoon();

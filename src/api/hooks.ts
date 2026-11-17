@@ -2679,7 +2679,7 @@ async function refreshAfterFinish(qc: QueryClient, cid: string, jobs: readonly B
     qc.invalidateQueries({ predicate: (q) => isBookAnswerOf(q, cid, libraryId, path) }),
   ]);
   // A downloaded book's kept copy too, so offline it has what the job made. Not waited for.
-  void refreshKeptMeta(cid, libraryId, path);
+  void refreshKeptMeta(cid, libraryId, path, job.id);
 }
 
 /** While a generate run is past chapter detection (`midRunCheckpoint`): read the book's
