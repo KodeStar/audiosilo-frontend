@@ -20,6 +20,10 @@ data class CarPlaySpec(
   val startIndex: Int,
   val positionInTrack: Double,
   val rate: Double,
+  /** When the place it starts at was saved, by the device's clock (ms since the epoch); null
+   * when JS did not say (an older snapshot, a place it never had). A [LivePlace] on the same
+   * book wins only when it is newer ([at]). */
+  val placeSavedAt: Long? = null,
 )
 
 data class CarItem(
@@ -215,6 +219,7 @@ class CarSnapshot(
         startIndex = o.optInt("startIndex", 0),
         positionInTrack = o.optDouble("positionInTrack", 0.0).takeUnless { it.isNaN() } ?: 0.0,
         rate = o.optDouble("rate", 1.0).takeUnless { it.isNaN() || it <= 0 } ?: 1.0,
+        placeSavedAt = o.optDouble("placeSavedAt").takeUnless { it.isNaN() }?.toLong(),
       )
     }
   }

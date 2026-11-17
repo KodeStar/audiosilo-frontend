@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import { setConnectionAliases } from '@/lib/connection-id';
 
 import type { CarNative } from './car-native';
@@ -127,4 +129,25 @@ it('finding 9: native ownership refusal resets playback and feature-detects olde
   } finally {
     mockModule.reset = reset;
   }
+});
+
+describe('car-native: a car play native gave up on', () => {
+  const os = Platform.OS;
+  afterEach(() => Object.defineProperty(Platform, 'OS', { value: os, configurable: true }));
+
+  it('Android hands the cancelled item id on', () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    const cancelled = jest.fn();
+    carNative.onPlayCancel(cancelled);
+    mockHandlers.get('onCarPlayCancel')!({ id: 'book:c1/2/A' });
+    mockHandlers.get('onCarPlayCancel')!({});
+    expect(cancelled.mock.calls).toEqual([['book:c1/2/A']]);
+  });
+
+  it('iOS never listens: its module declares no such event', () => {
+    Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
+    mockHandlers.delete('onCarPlayCancel');
+    carNative.onPlayCancel(jest.fn());
+    expect(mockHandlers.has('onCarPlayCancel')).toBe(false);
+  });
 });

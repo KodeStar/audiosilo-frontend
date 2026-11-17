@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import AudiosiloPlayer from '../../modules/audiosilo-player';
 
 import { resolveConnectionId } from '@/lib/connection-id';
@@ -78,6 +80,15 @@ export const carNative: CarNative = {
   onPlayRequest(handler) {
     if (!available) return () => undefined;
     const sub = AudiosiloPlayer.addListener('onCarPlayRequest', (e) => {
+      if (typeof e?.id === 'string') handler(e.id);
+    });
+    return () => sub.remove();
+  },
+
+  // Android only: the iOS module declares no such event (CarPlay keeps no wait of its own).
+  onPlayCancel(handler) {
+    if (!available || Platform.OS !== 'android') return () => undefined;
+    const sub = AudiosiloPlayer.addListener('onCarPlayCancel', (e) => {
       if (typeof e?.id === 'string') handler(e.id);
     });
     return () => sub.remove();

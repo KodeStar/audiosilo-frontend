@@ -55,6 +55,12 @@ export type CarPlaySpec = {
   startIndex: number;
   positionInTrack: number;
   rate: number;
+  /** Android: when the place it starts at was saved, by this device's clock (ms since the
+   * epoch): a paused book's when JS first wrote it, else its resume lookup's (`placeSavedAt`).
+   * Absent when unknown (no place, an unreadable stamp). The engine's live place on the same
+   * book wins over the spec's only when it is newer, a spec with none counting as older
+   * (`CarPlaySpec.at`). */
+  placeSavedAt?: number;
 };
 
 export type CarItem = {
@@ -280,7 +286,8 @@ export function carItem(b: CarBook, ctx: CarItemContext): CarItem {
  *
  * `paused` is where the listener paused this book, when it is the loaded one and paused now:
  * its place and speed win over the lookup, whose device save may not have landed yet when a
- * pause writes the snapshot (fe#251).
+ * pause writes the snapshot (fe#251). `placeSavedAt` is when the place it starts at was saved
+ * (`CarPlaySpec.placeSavedAt`).
  */
 export function playSpec(
   ref: BookRef,
@@ -289,6 +296,7 @@ export function playSpec(
   defaultRate: number,
   virtualChapterInterval: number,
   paused?: { position: number; rate: number },
+  placeSavedAt?: number,
 ): CarPlaySpec | undefined {
   const queue = buildBookQueue(
     null,
@@ -309,6 +317,7 @@ export function playSpec(
     startIndex: index,
     positionInTrack,
     rate: paused ? paused.rate : bookSpeed(saved?.playback_speed, defaultRate),
+    ...(placeSavedAt === undefined ? {} : { placeSavedAt }),
   };
 }
 

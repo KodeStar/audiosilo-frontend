@@ -468,6 +468,7 @@ type PlayerState = {
     startBookPosition?: number,
     startTrack?: number,
     startSpeed?: number,
+    wanted?: () => boolean,
   ) => Promise<void>;
   toggle: () => Promise<void>;
   pause: () => Promise<void>;
@@ -2598,6 +2599,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     startBookPosition,
     startTrack,
     startSpeed,
+    wanted,
   ) => {
     // Only the person listening's books (Phase 8, `mayActFor`): every way a book starts
     // comes through here, so none can save to another person's account.
@@ -2632,7 +2634,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // holds the previous book (an adoption's engine already plays another, so its snapshot
       // is not that book's).
       void persist();
-      switchBook(api, { connectionId, libraryId, book, chapterData });
+      const request = { connectionId, libraryId, book, chapterData };
+      switchBook(api, request);
+      // Called off (a car play its native side gave up on) with another start made since
+      // (the play that took its place, the listener's own tap): that one owns the player, so
+      // this one loads nothing over it. Called off with the player still its own, it goes on
+      // to load, paused (below): the previous book's saves and span already ended above.
+      const replaced = () => !!wanted && !wanted() && lastPlayRequest !== request;
       pausedAt = null; // a book (re)started here just had its place looked up
       pickUpDue = null;
       deviceId = await getDeviceId();
@@ -2698,7 +2706,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       let unchecked = false;
       if (startBookPosition === undefined && startTrack === undefined) {
         const r = await loadInitialProgress(api, connectionId, libraryId, book.rel_path);
-        if (!current()) return;
+        if (!current() || replaced()) return;
         // Not reached (a downloaded book's 'failed' starts at 0), or resumed behind it.
         unchecked = r.kind === 'failed' || (r.kind === 'progress' && !!r.unchecked);
         if (r.kind === 'progress') {
@@ -2775,7 +2783,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         }
       }
 
-      if (!current()) return;
+      if (!current() || replaced()) return;
       const { index, positionInTrack } =
         startTrack !== undefined
           ? {
@@ -2802,6 +2810,11 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       restoreOutputGain(svc); // only now can the old book's fade no longer write over it
       beginPlaybackAttempt(); // intent + start window + watchdog armed from here
       askEngineTo(nowPlaying, index, positionInTrack);
+      // Called off already (a car play its native side gave up on while its place was looked
+      // up): the engine is set not to play before the load, so the book is never heard for a
+      // moment. One called off during the load is paused after it (below). A failed pause
+      // never skips the load: its `finally` is what releases `loadingBook`.
+      if (wanted && !wanted()) await svc.pause().catch(() => undefined);
       try {
         await svc.load(
           queue.tracks,
@@ -2833,6 +2846,17 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       if (dl && queueChapters) adoptStartedChapters(ref, queueChapters);
       await svc.setRate(speed);
       if (!current()) return;
+      // Called off while it was looked up or loaded (a car play its native side gave up on):
+      // loaded, never played. Android had released that start's foreground service, so a
+      // play now would be heard with no notification and no controls. Paused outright: the
+      // engine may still be set to play, so the load alone would start it (the module's
+      // `stop` keeps playWhenReady from the queue it replaced, and Media3 presses play on the
+      // empty player when a resumption it waited on fails).
+      if (wanted && !wanted()) {
+        clearPlaybackIntent();
+        await svc.pause();
+        return;
+      }
       // False: gave way to another tab while it loaded (`giveWayTo`).
       if (!(await startEngine(svc))) return;
       // The save loop is started by the engine 'playing' transition (see subscribe).

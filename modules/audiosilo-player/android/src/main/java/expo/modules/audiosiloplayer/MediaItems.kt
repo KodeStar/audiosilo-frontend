@@ -211,6 +211,9 @@ object MediaItems {
     val path = e.getString(KEY_PATH) ?: return null
     return BookRef(connection, e.getLong(KEY_LIBRARY), path)
   }
+
+  /** The library-relative path of the file an item plays ([LoadedFiles.pathOf]), or null. */
+  fun relPathOf(item: MediaItem): String? = LoadedFiles.pathOf(item.mediaId, entryOf(item)?.clip ?: false)
 }
 
 /**

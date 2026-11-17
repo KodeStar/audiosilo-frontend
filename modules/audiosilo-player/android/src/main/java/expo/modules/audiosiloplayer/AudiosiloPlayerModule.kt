@@ -130,6 +130,10 @@ class AudiosiloPlayerModule : Module() {
       sendEvent("onCarPlayRequest", mapOf("id" to id))
     }
 
+    override fun carPlayCancel(id: String) {
+      sendEvent("onCarPlayCancel", mapOf("id" to id))
+    }
+
     override val observingBookmarks: Boolean get() = this@AudiosiloPlayerModule.observingBookmarks
     override val observingCar: Boolean get() = this@AudiosiloPlayerModule.observingCar
   }
@@ -149,6 +153,7 @@ class AudiosiloPlayerModule : Module() {
       "onRemoteBookmark",
       "onCarConnection",
       "onCarPlayRequest",
+      "onCarPlayCancel",
     )
 
     OnCreate {
