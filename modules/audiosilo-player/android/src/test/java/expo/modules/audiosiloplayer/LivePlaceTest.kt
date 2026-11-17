@@ -90,6 +90,8 @@ class LivePlaceTest {
     assertEquals("book:A", item?.id)
     assertEquals(0, item?.play?.startIndex)
     assertEquals(30.0, item!!.play!!.positionInTrack, 0.0)
+    // Saved at the same time is not later: the engine's book stays.
+    assertEquals("book:B", snapshot("book:A", savedAt = 1_000L).resumable(live("B", savedAt = 1_000L))?.id)
   }
 
   // Either time missing (a snapshot from before the times, a live place never stamped): the
