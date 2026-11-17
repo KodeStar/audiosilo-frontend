@@ -10,7 +10,7 @@ import { firstParam } from '@/lib/paths';
 import { useSession } from '@/stores/session';
 
 import { finishConnect } from './finish-connect';
-import { settleOidcPass, takeOidcBook, takeOidcReconnect } from './oidc-intent';
+import { settleOidcPass, takeOidcResumed } from './oidc-intent';
 import { sharedRefusalText } from './sign-in-error';
 
 /**
@@ -83,9 +83,8 @@ export function oidcFinishText(e: unknown, t: TFunction): string {
  * Finish a single sign-on on the served player's own server (`origin`): `POST
  * /auth/oidc/finish` (the server's cookie goes with it, same origin) with the server's
  * name read alongside, then `finishConnect` as for a pairing link's exchange, ending on the
- * book the flow was opening before the trip (`takeOidcBook`) and re-pairing the connection a
- * reconnect left with (`takeOidcReconnect`: only for this server, and only with a session; a
- * failed finish spends it all the same). Resolves null once the flow
+ * book the flow was opening before the trip and re-pairing the connection a reconnect left
+ * with (`takeOidcResumed`; spent by a failed finish too). Resolves null once the flow
  * has moved on, else why it failed in words (`oidcFinishText`; a session this device then
  * couldn't keep, `notKept`, as the sign-in is spent). `live`: whether the connect screen is
  * still up. A session that answers once it has gone, or that `finishConnect` did not store,
@@ -103,8 +102,7 @@ export async function finishOidcSignIn(
   live: () => boolean,
 ): Promise<string | null> {
   const { client, proxy: carried } = connectClientFor(origin);
-  const book = takeOidcBook();
-  const reconnectId = takeOidcReconnect(origin);
+  const { book, reconnectId } = takeOidcResumed(origin);
   let session: AuthSession;
   let info: ServerInfo | null;
   try {

@@ -46,7 +46,7 @@ jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) 
 
 /* eslint-disable import/first */
 import ConnectLayout from '@/app/connect/_layout';
-import { holdOidcIntent, settleOidcPass, takeOidcBook } from '@/components/connect/oidc-intent';
+import { holdOidcIntent, settleOidcPass, takeOidcResumed } from '@/components/connect/oidc-intent';
 import {
   connectForNewProfile,
   endConnectFlow,
@@ -178,7 +178,10 @@ describe("a single sign-on's return (a page load, fe#310)", () => {
     expect(mockDismissTo).not.toHaveBeenCalled();
     expect(kidsConnectAllowed()).toBe(false);
     expect(connectForNewProfile()).toBe(true);
-    expect(takeOidcBook()).toEqual({ libraryId: 3, path: 'Austen/Emma' });
+    expect(takeOidcResumed('https://books.example.com').book).toEqual({
+      libraryId: 3,
+      path: 'Austen/Emma',
+    });
     // Allowed: the server answered with a session.
     await act(async () => void settleOidcPass(true));
     expect(kidsConnectAllowed()).toBe(true);

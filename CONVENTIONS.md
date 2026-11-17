@@ -404,7 +404,7 @@ and the reason is a toast. A reconnect's sign-in carries the connection it re-pa
 address the step signed in through (the in-memory hold's, fe#298): without it a server reset at a
 home address keeps the dead connection (`staleIdentities`' `named`) and the banner keeps asking.
 It shares the stamp and the drop as the flow is left, is taken once by `finishOidcSignIn`
-(`takeOidcReconnect`) only for the server the return is at, and goes to `finishConnect` only with
+(`takeOidcResumed`) only for the origin the return is at, and goes to `finishConnect` only with
 the server's session; a `?reconnect=` in the return's address does nothing.
 iOS does NOT allow arbitrary loads: Expo's ATS default is `NSAllowsArbitraryLoads: false` with
 `NSAllowsLocalNetworking: true`, so plain http works there for IP addresses, `.local` and

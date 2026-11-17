@@ -472,65 +472,58 @@ describe('single sign-on', () => {
     expect(screen.queryByTestId('sign-in-oidc')).toBeNull();
   });
 
-  // The return is a page load: what the flow is for goes with the page (fe#310), so a
-  // grown-up's pass through kids mode, "Add someone" and the book come back with it.
-  it("is offered on a grown-up's pass through kids mode, and holds the pass and the book", async () => {
-    seedProfile({ kids: true });
-    openAddSomeone();
-    // What `/connect?add=1&profile=new` sets as the flow opens.
-    setConnectForNewProfile(true);
+  // The return is a page load: what the flow is for goes with the page in this tab's
+  // storage (fe#310).
+  describe('what goes with the page', () => {
     const store = new Map<string, string>();
-    Object.defineProperty(globalThis, 'sessionStorage', {
-      value: {
-        getItem: (k: string) => store.get(k) ?? null,
-        setItem: (k: string, v: string) => void store.set(k, v),
-        removeItem: (k: string) => void store.delete(k),
-      },
-      configurable: true,
-    });
-    try {
+    const held = () => JSON.parse(store.get('audiosilo.oidcIntent')!);
+    beforeEach(() => {
+      store.clear();
+      Object.defineProperty(globalThis, 'sessionStorage', {
+        value: {
+          getItem: (k: string) => store.get(k) ?? null,
+          setItem: (k: string, v: string) => void store.set(k, v),
+          removeItem: (k: string) => void store.delete(k),
+        },
+        configurable: true,
+      });
       mockApi.serverInfo.mockResolvedValue(serverInfo(true, 'Keycloak'));
-      await render(<SignInStep server={AWAY} book={{ libraryId: 3, path: 'Austen/Emma' }} />);
+    });
+    afterEach(() => {
+      delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
+      endConnectFlow();
+      resetProfilesForTests();
+    });
+    const leave = async () => {
       await fireEvent.press(await screen.findByRole('button', { name: 'Sign in with Keycloak' }));
       expect(assign).toHaveBeenCalled();
-      expect(JSON.parse(store.get('audiosilo.oidcIntent')!)).toEqual({
+    };
+
+    it("is a grown-up's pass through kids mode, offered there, and the book", async () => {
+      seedProfile({ kids: true });
+      openAddSomeone();
+      // What `/connect?add=1&profile=new` sets as the flow opens.
+      setConnectForNewProfile(true);
+      await render(<SignInStep server={AWAY} book={{ libraryId: 3, path: 'Austen/Emma' }} />);
+      await leave();
+      expect(held()).toEqual({
         at: expect.any(Number),
         newPerson: true,
         grownUpFromKids: true,
         book: { book: '3', path: 'Austen/Emma' },
       });
-    } finally {
-      delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
-      endConnectFlow();
-      resetProfilesForTests();
-    }
-  });
-
-  // A reconnect's sign-in through single sign-on: the page load loses the in-memory hold, so
-  // the connection it re-pairs goes with the page, with the address it signs in through.
-  it('holds the reconnect with the address it signs in through', async () => {
-    const store = new Map<string, string>();
-    Object.defineProperty(globalThis, 'sessionStorage', {
-      value: {
-        getItem: (k: string) => store.get(k) ?? null,
-        setItem: (k: string, v: string) => void store.set(k, v),
-        removeItem: (k: string) => void store.delete(k),
-      },
-      configurable: true,
     });
-    try {
-      mockApi.serverInfo.mockResolvedValue(serverInfo(true, 'Keycloak'));
+
+    // The in-memory hold (`holdReconnect`) is lost to the page load (fe#298).
+    it('is the connection a reconnect re-pairs, with the address it signs in through', async () => {
       await render(<SignInStep server={AWAY} reconnectId="srv-old.1" />);
-      await fireEvent.press(await screen.findByRole('button', { name: 'Sign in with Keycloak' }));
-      expect(assign).toHaveBeenCalled();
-      expect(JSON.parse(store.get('audiosilo.oidcIntent')!)).toEqual({
+      await leave();
+      expect(held()).toEqual({
         at: expect.any(Number),
         newPerson: false,
         grownUpFromKids: false,
-        reconnect: { server: AWAY, id: 'srv-old.1' },
+        reconnect: { server: AWAY, reconnectId: 'srv-old.1' },
       });
-    } finally {
-      delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
-    }
+    });
   });
 });

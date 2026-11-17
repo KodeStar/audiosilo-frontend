@@ -14,9 +14,8 @@ import {
   MAX_AGE_MS,
   resumeOidcIntent,
   settleOidcPass,
-  takeOidcBook,
   takeOidcIntent,
-  takeOidcReconnect,
+  takeOidcResumed,
 } from './oidc-intent';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
@@ -45,6 +44,7 @@ afterEach(() => {
 });
 
 const BOOK = { libraryId: 3, path: 'Austen/Emma' };
+const HOME = 'http://192.168.1.20:8080';
 
 it('carries "Add someone" and the book across the trip, taken once', () => {
   seedProfile();
@@ -59,8 +59,8 @@ it('carries "Add someone" and the book across the trip, taken once', () => {
   // No pass left with the trip: none waits, and nothing is settled later.
   expect(resumeOidcIntent(held!, settled)).toBe(false);
   expect(connectForNewProfile()).toBe(true);
-  expect(takeOidcBook()).toEqual(BOOK);
-  expect(takeOidcBook()).toBeUndefined();
+  expect(takeOidcResumed(HOME).book).toEqual(BOOK);
+  expect(takeOidcResumed(HOME).book).toBeUndefined();
   expect(settleOidcPass(true)).toBe(false);
   expect(settled).not.toHaveBeenCalled();
 });
@@ -176,42 +176,44 @@ it("gives back no pass left by a trip abandoned at the provider: too old, or the
   resumeOidcIntent({ newPerson: false, grownUpFromKids: false, book: BOOK }, jest.fn());
   dropOidcIntent();
   expect(store.size).toBe(0);
-  expect(takeOidcBook()).toBeUndefined();
+  expect(takeOidcResumed(HOME)).toEqual({});
 });
 
 // A reconnect's sign-in through single sign-on (fe#298): the in-memory hold is lost to the
 // page load, so the connection it re-pairs goes with the intent, bound to its address.
 describe('a reconnect across the trip', () => {
-  const HOME = 'http://192.168.1.20:8080';
   const held = () => takeOidcIntent(true);
+  const reconnectOf = (origin: string) => takeOidcResumed(origin).reconnectId;
 
   it('is given to the finish for the address it signed in through, once', () => {
-    holdOidcIntent(undefined, { server: HOME, id: 'srv-old.1' });
+    // The server as the connection stored it: the same origin as the page's, written another
+    // way, is the same server, by the rule that offered single sign-on there (`onlyOwnServer`).
+    const server = 'HTTP://192.168.1.20:8080/';
+    holdOidcIntent(undefined, { server, reconnectId: 'srv-old.1' });
     const intent = held();
     expect(intent).toEqual({
       newPerson: false,
       grownUpFromKids: false,
-      reconnect: { server: HOME, id: 'srv-old.1' },
+      reconnect: { server, reconnectId: 'srv-old.1' },
     });
     resumeOidcIntent(intent!, jest.fn());
-    // The same address written another way is the same server.
-    expect(takeOidcReconnect(`${HOME}/`)).toBe('srv-old.1');
-    expect(takeOidcReconnect(HOME)).toBeUndefined();
+    expect(reconnectOf(HOME)).toBe('srv-old.1');
+    expect(reconnectOf(HOME)).toBeUndefined();
   });
 
   it('is not given for another server, and is spent all the same', () => {
-    holdOidcIntent(undefined, { server: HOME, id: 'srv-old.1' });
+    holdOidcIntent(undefined, { server: HOME, reconnectId: 'srv-old.1' });
     resumeOidcIntent(held()!, jest.fn());
     // Denied: the return is at another address than the sign-in step's.
-    expect(takeOidcReconnect('http://192.168.1.21:8080')).toBeUndefined();
-    expect(takeOidcReconnect(HOME)).toBeUndefined();
+    expect(reconnectOf('http://192.168.1.21:8080')).toBeUndefined();
+    expect(reconnectOf(HOME)).toBeUndefined();
   });
 
   it('is not given past the stamp, once the flow is left, or from a malformed intent', () => {
     const now = Date.now();
     const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
     try {
-      holdOidcIntent(undefined, { server: HOME, id: 'srv-old.1' });
+      holdOidcIntent(undefined, { server: HOME, reconnectId: 'srv-old.1' });
       // Denied: a return past the server's limit on a trip.
       clock.mockReturnValue(now + MAX_AGE_MS + 1);
       expect(held()).toBeNull();
@@ -219,12 +221,16 @@ describe('a reconnect across the trip', () => {
       clock.mockRestore();
     }
     // Denied: the flow was left before the finish took it.
-    holdOidcIntent(undefined, { server: HOME, id: 'srv-old.1' });
+    holdOidcIntent(undefined, { server: HOME, reconnectId: 'srv-old.1' });
     resumeOidcIntent(held()!, jest.fn());
     dropOidcIntent();
-    expect(takeOidcReconnect(HOME)).toBeUndefined();
+    expect(reconnectOf(HOME)).toBeUndefined();
     // Denied: a reconnect with no address, or no id, is none.
-    for (const reconnect of [{ id: 'srv-old.1' }, { server: HOME }, { server: HOME, id: 7 }]) {
+    for (const reconnect of [
+      { reconnectId: 'srv-old.1' },
+      { server: HOME },
+      { server: HOME, reconnectId: 7 },
+    ]) {
       store.set('audiosilo.oidcIntent', JSON.stringify({ at: Date.now(), reconnect }));
       expect(held()).toEqual({ newPerson: false, grownUpFromKids: false });
     }

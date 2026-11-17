@@ -13,7 +13,7 @@ import { seedProfile } from '@/testing/seed-profile';
 import { ConnectStart } from './connect-start';
 import { renderConnect as render } from './connect-testing';
 import { holdScanReconnect, openScanner, takeScanFor } from './invite-handoff';
-import { dropOidcIntent, resumeOidcIntent, takeOidcReconnect } from './oidc-intent';
+import { dropOidcIntent, resumeOidcIntent, takeOidcResumed } from './oidc-intent';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -1236,7 +1236,11 @@ describe("a single sign-on's return (?oidc=1)", () => {
     });
     const resume = (server: string) =>
       resumeOidcIntent(
-        { newPerson: false, grownUpFromKids: false, reconnect: { server, id: 'srv-old.1' } },
+        {
+          newPerson: false,
+          grownUpFromKids: false,
+          reconnect: { server, reconnectId: 'srv-old.1' },
+        },
         jest.fn(),
       );
 
@@ -1252,15 +1256,15 @@ describe("a single sign-on's return (?oidc=1)", () => {
       });
     });
 
-    it('replaces nothing for a ?reconnect= in the address (fe#298)', async () => {
-      mockParams = { oidc: '1', reconnect: 'srv-old.1' };
-      await render(<ConnectStart />);
-      await waitFor(() => expect(ids()).toContain('srv-2.1'));
-      expect(ids().sort()).toEqual(['srv-2.1', 'srv-old.1', 'srv-old.2']);
-    });
-
-    it('replaces nothing for a reconnect that signed in through another address', async () => {
-      resume('http://192.168.1.21:8080');
+    it.each([
+      // fe#298: only this tab's own intent names it.
+      ['a ?reconnect= in the address', () => (mockParams = { oidc: '1', reconnect: 'srv-old.1' })],
+      [
+        'a reconnect that signed in through another address',
+        () => resume('http://192.168.1.21:8080'),
+      ],
+    ])('replaces nothing for %s', async (_, arrange) => {
+      arrange();
       await render(<ConnectStart />);
       await waitFor(() => expect(ids()).toContain('srv-2.1'));
       expect(ids().sort()).toEqual(['srv-2.1', 'srv-old.1', 'srv-old.2']);
@@ -1276,7 +1280,7 @@ describe("a single sign-on's return (?oidc=1)", () => {
         ).toBeTruthy(),
       );
       expect(ids()).toEqual(['srv-old.1', 'srv-old.2']);
-      expect(takeOidcReconnect(HOME)).toBeUndefined();
+      expect(takeOidcResumed(HOME).reconnectId).toBeUndefined();
     });
   });
 
