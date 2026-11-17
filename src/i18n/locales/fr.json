@@ -1890,7 +1890,9 @@
     },
     "state": {
       "title": "Reconnecte-toi à {{name}}",
-      "hint": "Ta connexion à {{name}} a pris fin, il ne peut donc pas afficher tes livres ici. Rien n’est perdu."
+      "hint": "Ta connexion à {{name}} a pris fin, il ne peut donc pas afficher tes livres ici. Rien n’est perdu.",
+      "titleReset": "{{name}} a été réinitialisé",
+      "hintReset": "Réappaire cet appareil avec {{name}} pour afficher tes livres ici."
     }
   },
   "nav": {

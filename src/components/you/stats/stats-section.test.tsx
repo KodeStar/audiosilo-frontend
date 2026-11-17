@@ -203,6 +203,16 @@ describe('StatsSection states', () => {
     expect(screen.queryByText('Retry')).toBeNull();
   });
 
+  // fe#147: an answer that came but has no readable date is the error, not the sign-in
+  // state, even with the session ended since.
+  it('keeps the error for an answer it cannot read, signed out or not', async () => {
+    mockSignedOut = { id: 'a', name: 'Hearthside' };
+    mockListening = q<MyListening>({ ...mockListening.data!, to: 'not a date' });
+    await mount();
+    expect(screen.getByText("Your listening didn't load")).toBeTruthy();
+    expect(screen.queryByText('Sign in again to Hearthside')).toBeNull();
+  });
+
   // A read held for the network stays pending: the placeholders drawn for that never ended.
   it('says offline, with no placeholders and no Retry, while the stats wait for the network', async () => {
     mockStats = q<UserStats>(undefined, { isPaused: true });

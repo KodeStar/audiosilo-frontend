@@ -1890,7 +1890,9 @@
     },
     "state": {
       "title": "Accedi di nuovo a {{name}}",
-      "hint": "Il tuo accesso a {{name}} è terminato, quindi non può mostrare qui i tuoi libri. Non si è perso nulla."
+      "hint": "Il tuo accesso a {{name}} è terminato, quindi non può mostrare qui i tuoi libri. Non si è perso nulla.",
+      "titleReset": "{{name}} è stato reimpostato",
+      "hintReset": "Associa di nuovo questo dispositivo a {{name}} per vedere qui i tuoi libri."
     }
   },
   "nav": {

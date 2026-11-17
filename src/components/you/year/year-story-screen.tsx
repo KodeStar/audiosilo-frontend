@@ -7,6 +7,8 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCid } from '@/api/provider';
+import { useSignedOutConnection } from '@/components/layout/sign-in-again';
+import { signInAgainCopy } from '@/components/layout/sign-in-again-copy';
 import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { FOCUS_RING_CLASS } from '@/components/ui/text';
@@ -52,6 +54,18 @@ export function YearStoryScreen(params: {
   const cid = useCid(connection);
   const story = useYearStory(cid, range);
   const insets = useSafeAreaInsets();
+  // A session that ended is said as one (as the section's sign-in state does), never
+  // "didn't answer" with nothing to try again (fe#147).
+  const signedOut = useSignedOutConnection(cid);
+  const refused =
+    signedOut && (story.status === 'error' || story.status === 'offline')
+      ? signInAgainCopy(signedOut, t)
+      : null;
+  const copy = refused
+    ? { title: refused.title, body: refused.hint, titled: true }
+    : story.status === 'ready' || story.status === 'loading'
+      ? null
+      : { ...yearStateCopy(story, t), titled: story.status === 'offline' };
 
   useGlobalShortcut(true, (e) => e.key === 'Escape', closeStory);
   const pull = useMemo(
@@ -77,18 +91,18 @@ export function YearStoryScreen(params: {
           <FullStory story={story} cid={cid} initial={card} />
         ) : (
           <View className="flex-1 items-center justify-center gap-5 px-8">
-            {story.status === 'loading' ? (
+            {!copy ? (
               <Spinner color={colors.white} />
             ) : (
               <>
-                {story.status === 'offline' ? (
+                {copy.titled ? (
                   // The body alone ("This page shows once its server answers") says no why.
                   <StoryText className="text-center font-sans-semibold" style={{ fontSize: 18 }}>
-                    {yearStateCopy(story, t).title}
+                    {copy.title}
                   </StoryText>
                 ) : null}
                 <StoryText className="text-center" style={{ fontSize: 16, lineHeight: 23 }}>
-                  {yearStateCopy(story, t).body}
+                  {copy.body}
                 </StoryText>
               </>
             )}

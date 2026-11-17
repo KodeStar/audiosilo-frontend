@@ -1890,7 +1890,9 @@
     },
     "state": {
       "title": "Vuelve a iniciar sesión en {{name}}",
-      "hint": "Tu sesión en {{name}} terminó, así que no puede mostrar tus libros aquí. No se ha perdido nada."
+      "hint": "Tu sesión en {{name}} terminó, así que no puede mostrar tus libros aquí. No se ha perdido nada.",
+      "titleReset": "{{name}} se restableció",
+      "hintReset": "Vuelve a emparejar este dispositivo con {{name}} para ver tus libros aquí."
     }
   },
   "nav": {

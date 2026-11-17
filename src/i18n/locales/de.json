@@ -1890,7 +1890,9 @@
     },
     "state": {
       "title": "Erneut bei {{name}} anmelden",
-      "hint": "Deine Anmeldung bei {{name}} ist beendet, darum kann es deine Bücher hier nicht zeigen. Nichts ist verloren."
+      "hint": "Deine Anmeldung bei {{name}} ist beendet, darum kann es deine Bücher hier nicht zeigen. Nichts ist verloren.",
+      "titleReset": "{{name}} wurde zurückgesetzt",
+      "hintReset": "Kopple dieses Gerät erneut mit {{name}}, um deine Bücher hier zu sehen."
     }
   },
   "nav": {

@@ -12,6 +12,7 @@ import type { Connection } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { OfflineState } from './offline-state';
+import { signInAgainCopy } from './sign-in-again-copy';
 import { reconnectConnection, useSignedOutConnections } from './reconnect-banner';
 
 export { useSignedOutConnections } from './reconnect-banner';
@@ -61,8 +62,8 @@ export function refusedConnection(
 /**
  * The one state a screen shows for a connection that needs signing in again: "Sign in
  * again to <server>" with the Reconnect action (the banner's own flow,
- * `reconnectConnection`), never a Retry. `compact`: a slim row for a panel (Up next);
- * else a card in the page.
+ * `reconnectConnection`), never a Retry, in words that follow why (`signInAgainCopy`).
+ * `compact`: a slim row for a panel (Up next); else a card in the page.
  */
 export function SignInAgainState({
   connection,
@@ -75,7 +76,7 @@ export function SignInAgainState({
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
-  const title = t('reconnect.state.title', { name: connection.name });
+  const { title, hint } = signInAgainCopy(connection, t);
   const action = t('reconnect.connect.heading');
   const reconnect = () => void reconnectConnection(connection);
   if (compact) {
@@ -97,7 +98,7 @@ export function SignInAgainState({
       variant="card"
       icon="server"
       title={title}
-      hint={t('reconnect.state.hint', { name: connection.name })}
+      hint={hint}
       action={{ label: action, onPress: reconnect }}
       className={className}
     />
