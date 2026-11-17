@@ -106,6 +106,20 @@ function holdLoad(t: ReturnType<typeof setup>): () => void {
   return () => answer();
 }
 
+/** Hold the receiver's answer to the next load as `holdLoad` does, and refuse it when the
+ * returned function is called. */
+function refuseLoad(t: ReturnType<typeof setup>): (err: Error) => void {
+  let refuse: (err: Error) => void = () => {};
+  (t.remote.load as jest.Mock).mockImplementationOnce(
+    (req) =>
+      new Promise<void>((_resolve, reject) => {
+        t.remote.loads.push(req);
+        refuse = reject;
+      }),
+  );
+  return (err) => refuse(err);
+}
+
 describe('castState', () => {
   const ctx = { prev: 'paused' as const, lastTrack: false, loading: false };
   const s = (
@@ -1620,14 +1634,7 @@ describe('CastPlaybackService', () => {
         t.tick(60_000);
         t.svc.adoptPlace({ state: 'ended', trackIndex: 1, position: 20, duration: 600, rate: 1 });
         // Resume chapter 2 at 0:20 with the cached token ended (device log, 19:49:29).
-        let refuse: (e: Error) => void = () => {};
-        (t.remote.load as jest.Mock).mockImplementationOnce(
-          (req) =>
-            new Promise<void>((_resolve, reject) => {
-              t.remote.loads.push(req);
-              refuse = reject;
-            }),
-        );
+        const refuse = refuseLoad(t);
         const from = t.snaps.length;
         const loading = t.svc.load(TRACKS, 1, 20, [], BOOK);
         await flush();

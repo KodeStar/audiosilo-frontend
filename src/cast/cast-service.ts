@@ -751,11 +751,10 @@ export class CastPlaybackService implements PlaybackService {
     // The place asked for is the book's from now, as a local engine's file load shows it: until
     // the receiver lands it, its statuses and ticks are the media this queue replaces
     // (`holdingAsked`), whose place must never be saved or end a listening span.
-    this.update({
-      trackIndex: i,
-      position: Math.max(0, position),
-      duration: loaded.tracks[i]?.duration ?? 0,
-    });
+    const at = Math.max(0, position);
+    if (this.snapshot.trackIndex !== i || this.snapshot.position !== at) {
+      this.update({ trackIndex: i, position: at, duration: loaded.tracks[i]?.duration ?? 0 });
+    }
     // By the play intent as it is now (`autoplay` for a session no word came for): a play or
     // pause may have come while the caller minted a token.
     const play = this.playIntent ?? autoplay;
@@ -833,7 +832,7 @@ export class CastPlaybackService implements PlaybackService {
       !this.ofReplacedQueue(status, loaded)
     ) {
       if (this.skippedPast(status, index)) {
-        // The receiver plays (or buffers) a later file than the one this load asked for, which
+        // The receiver plays or pauses a later file than the one this load asked for, which
         // it never played: it was refused that file and skipped on (to one in its cache too),
         // whether or not its errors reached the phone. The load is a refused one, as an error
         // makes it, and that later file is not the book's place.
