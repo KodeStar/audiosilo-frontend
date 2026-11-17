@@ -11,7 +11,7 @@ import { startBookInPlace } from './start-book';
  * The book that ended while the listener's sleep timer was running for it, by its
  * `contentKey` (memory only). The listener asked the timer to stop for the night, and the
  * end of the book is where it stopped, so nothing plays on by itself after it: the
- * background start in place is skipped (`BookEndedListener`) and the credits hold their
+ * background start in place is skipped (`startBookEndWatch`) and the credits hold their
  * countdown (`EndCredits`; Play now still plays). Another book started there would play to
  * nobody for hours and move its saved place with it. Written at every end of a book (null
  * when no timer ran for it), so a later end is never held by an old one.
@@ -25,7 +25,7 @@ export const useAutoPlayHold = create<{ key: string | null }>(() => ({ key: null
  * once it is on its way; `false` when it could not start (its connection gone, or its
  * book could not be fetched or played; `onError` is told why), and then it stays on Up
  * next. The finished book is not this function's business: it leaves Up next where it is
- * finished, whether or not the next one starts (`BookEndedListener`, the credits). Showing the player is the caller's
+ * finished, whether or not the next one starts (`startBookEndWatch`, the credits). Showing the player is the caller's
  * choice (`navigateWhenActive`).
  *
  * An episode its server still has to fetch is handed to the fetch (`startBookInPlace`):

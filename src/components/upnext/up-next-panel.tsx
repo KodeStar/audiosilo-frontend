@@ -399,7 +399,7 @@ function SuggestedBook({
 
 /** The auto-play setting: when a book ends, the first book in Up next plays, else the
  * next in the series (`resolveUpNext`). Worded for an episode while one is loaded: after
- * an episode only Up next's first item plays (`BookEndedListener`). */
+ * an episode only Up next's first item plays (`startBookEndWatch`). */
 function AutoPlaySwitch({ episode }: { episode: boolean }) {
   const { t } = useTranslation();
   const on = useSettings((s) => s.autoPlayNext);

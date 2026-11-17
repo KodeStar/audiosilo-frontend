@@ -4,7 +4,7 @@ import { bookTitle } from '@/lib/paths';
 import { bookSeriesNumber, placedPositionLabel, railPositionLabel } from '@/lib/series-position';
 
 // What plays after a finished book: ONE answer for every end-of-book surface (the end
-// credits' Play now and countdown, the background auto-play in `BookEndedListener`).
+// credits' Play now and countdown, the background auto-play in `startBookEndWatch`).
 // Framework-free and it must NOT import the playback store; the server reads it does are
 // injected (`UpNextSources`, see `up-next-sources.ts` for the real ones), so every rule
 // here is tested without a server. In order:

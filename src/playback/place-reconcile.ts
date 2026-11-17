@@ -8,6 +8,7 @@ import { toast } from '@/components/ui/toast';
 import { contradictedTitle } from '@/lib/chapter-label';
 import { contentKeyOf } from '@/lib/content-key';
 import { formatClock } from '@/lib/format';
+import { sharedStart } from '@/lib/shared-start';
 import { onForeground, whenActive } from '@/lib/when-active';
 
 import { selectUndoFor, undoJump, useJumpUndo } from './jump-undo';
@@ -382,30 +383,13 @@ export function undoMove(bookKey: string, from: number): void {
   void player.seekBook(from);
 }
 
-/** How many callers hold the triggers, and their teardown while one does. */
-let holders = 0;
-let teardown: (() => void) | null = null;
-
 /**
  * Start the triggers for the life of the app; returns the release. Shared: the root layout
  * starts them, and so does the car's headless task (a book the car started is picked up from
  * another device's newer place there too). They run once until the last holder releases
  * them: two would race for `onPickedUpAgain`'s one slot, and either's teardown would clear it.
  */
-export function startPlaceReconcile(): () => void {
-  holders++;
-  teardown ??= runPlaceReconcile();
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    holders--;
-    if (holders > 0 || !teardown) return;
-    const stop = teardown;
-    teardown = null;
-    stop();
-  };
-}
+export const startPlaceReconcile = sharedStart(runPlaceReconcile);
 
 function runPlaceReconcile(): () => void {
   const stops: (() => void)[] = [];

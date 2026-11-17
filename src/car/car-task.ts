@@ -1,8 +1,12 @@
 import { startAddressRouting } from '@/api/address-runner';
+import { startBookEndWatch } from '@/components/player/book-ended-listener';
+import { startKeepAhead } from '@/downloads/keep-ahead-controller';
+import { startChapterRefresh, startReadalongRefresh } from '@/downloads/store';
 import { bootstrapPlayback } from '@/lib/bootstrap';
 import { startListeningSync } from '@/playback/listening-sync';
 import { startPlaceReconcile } from '@/playback/place-reconcile';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
+import { startWidgetSync } from '@/widgets/widget-sync';
 
 import { isCarConnected } from './car-connection';
 import { carSyncReady, startCarSync } from './car-controller';
@@ -56,7 +60,10 @@ export function startCarWork(): Promise<void> {
  * snapshot's labels), the address pick (a connection paired on its home address must reach
  * its server from the car, through its away address), the place reconcile (a book the car
  * started from its snapshot place picks up another device's newer place before its first
- * save) and the car sync. All are shared starts, so the root layout's own later starts add
+ * save), the listening sync, the session's own work the root layout would do (fe#158: the
+ * end of a book, marked finished, off Up next and on into the next one; keep-ahead's
+ * downloads; a downloaded book's chapters and read-along map kept in step; the iOS widget)
+ * and the car sync. All are shared starts, so the root layout's own later starts add
  * nothing; none is stopped, since the JS runtime outlives the car's work and a later car
  * event (a play request, a bookmark) must still find its listeners.
  */
@@ -68,13 +75,18 @@ async function startCarStack(): Promise<void> {
 
 let controllersStarted = false;
 
-/** The address pick, the place reconcile and the listening sync, once per runtime (marked started only once both
- * are, so a start that threw is tried again; each is a shared start). */
+/** The app's controllers a car-only session needs, once per runtime (marked started only
+ * once all are, so a start that threw is tried again; each is a shared start). */
 function startAppControllers() {
   if (controllersStarted) return;
   startAddressRouting();
   startPlaceReconcile();
   startListeningSync();
+  startBookEndWatch();
+  startKeepAhead();
+  startChapterRefresh();
+  startReadalongRefresh();
+  startWidgetSync();
   controllersStarted = true;
 }
 

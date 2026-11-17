@@ -25,6 +25,7 @@ import { identityMovePending } from '@/lib/connection-id';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { mapLimit } from '@/lib/map-limit';
 import { canAutoDownload } from '@/lib/network';
+import { sharedStart } from '@/lib/shared-start';
 import { getItem, setItem } from '@/lib/storage';
 import { DOWNLOADS_KEY } from '@/lib/storage-keys';
 import { bookFileSpecs } from '@/playback/book-queue';
@@ -967,14 +968,17 @@ function withServedChapters(manifest: DownloadManifest, fresh: ChaptersResponse)
  * server gives (any screen's fetch, the play and download paths) for a downloaded book
  * replaces its saved copy when `refreshedChapters` allows. The cache already holds that
  * answer, so there is nothing to seed. A queue already playing keeps its chapters until
- * the book is next started. Returns the unsubscribe (started once from the root layout).
+ * the book is next started. Returns the unsubscribe; shared (`sharedStart`) by the root
+ * layout and the car's stack (fe#158).
  *
  * The answers the cache already holds when it starts are taken too: the web starts it
  * after the first paint (`root-services.web.tsx`), when a screen's answer can have landed
  * already. Native starts it before any fetch, where the cache holds at most the store's
  * own seeds, which are the manifests' chapters and so change nothing.
  */
-export function startChapterRefresh(): () => void {
+export const startChapterRefresh = sharedStart(runChapterRefresh);
+
+function runChapterRefresh(): () => void {
   for (const entry of Object.values(useDownloads.getState().entries)) {
     if (entry.status !== 'downloaded') continue;
     const manifest = withCachedChapters(entry, entry.manifest);
@@ -1011,8 +1015,8 @@ const readalongTried = new Set<string>();
  * the map again when its `readalong.generated_at` is not the one the download keeps, and
  * drops the kept one when the server has no ready map any more, unless a stale one still fits
  * the download's EPUB (`readalongChange`; only from a server that serves maps, so an older one
- * never drops anything). Returns the unsubscribe
- * (started once from the root layout).
+ * never drops anything). Returns the unsubscribe; shared (`sharedStart`) by the root layout
+ * and the car's stack (fe#158).
  *
  * The answers the cache already holds when it starts, and when the launch's `hydrate` has
  * read the registry, are taken too (as `startChapterRefresh` and `withCachedChapters` do):
@@ -1020,7 +1024,9 @@ const readalongTried = new Set<string>();
  * The store's own seeds name the map the download keeps (`namingReadalong`), so they change
  * nothing but a map the download could not fetch, which is tried again (`readalongTried`).
  */
-export function startReadalongRefresh(): () => void {
+export const startReadalongRefresh = sharedStart(runReadalongRefresh);
+
+function runReadalongRefresh(): () => void {
   readalongRefreshOn = true;
   refreshCachedReadalongs(Object.values(useDownloads.getState().entries));
   const unsubscribe = queryClient.getQueryCache().subscribe((event) => {

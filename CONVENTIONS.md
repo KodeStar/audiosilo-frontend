@@ -822,7 +822,7 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   while the fetch is still `starting` (`isEpisodeFetchStarting`: a Cancel or another start wins).
   While it is on its way the full player shows `EpisodeFetchPanel` and the dock / mini player an
   `EpisodeFetchStrip`; the book playing meanwhile plays on (decision 6.4).
-- **What episodes never do**: open the end credits (`BookEndedListener` leaves Up next and, with
+- **What episodes never do**: open the end credits (`startBookEndWatch` leaves Up next and, with
   auto-play, starts Up next's head only, never the series or folder), cast (`castButtonModel`'s
   `episode`), Send to watch (the tile menu leaves it out), or keep-ahead (it plans books only).
   Kids mode shows no podcast library (decision 6.2) and lists no downloaded episode
@@ -1982,7 +1982,7 @@ media GETs only.
 - **Never navigate while the app is in the background.** `/player` and `/finished` are
   root `fullScreenModal`s and iOS cannot present one from the background (a book that
   ended locked with auto-play on came back to a black screen until a relaunch). Code
-  that playback drives (`BookEndedListener`, the end-credits Play now and countdown)
+  that playback drives (`startBookEndWatch`, the end-credits Play now and countdown)
   moves on with `advanceTo` (`src/components/player/end-of-book.ts`: start the next book
   in place with `startBookInPlace`, item + chapters through the query cache then
   `playBook`, and take it off Up next with `dropFromQueue`; the finished book leaves Up next
@@ -2089,7 +2089,7 @@ media GETs only.
     sleep timer's `remaining`. **Every other change is shown at once and whole**, the held
     field with it: a play, a pause, the end, the next file, another book, a load, an error,
     the timer's phase. That is what lets a component act in the background on what the hook
-    gives it (`BookEndedListener` starts the next book from `selectIsEnded`,
+    gives it (`startBookEndWatch` starts the next book from `selectIsEnded`,
     `useShakeToExtend` arms from the timer's phase, the hidden tab's title follows play and
     pause).
   - `getState()`, `setState()` and `subscribe()` on both stores are **live as ever**: the
@@ -2822,8 +2822,10 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     `register-car-task.ios.ts` (imported first from `index.ts`) listens for the car connection
     and on a connect runs `startCarWork` (`car-task.ts`), which runs `startCarStack` (the
     same start as Android's `runCarTask`: `bootstrapPlayback`, the address pick, the place
-    reconcile and the car sync) once per runtime (the root layout's later starts are shared
-    ones). Its listener is the first, so it alone gets the connect native queued before JS
+    reconcile, the listening sync, the session's work the root layout would do (fe#158: the
+    end-of-book flow `startBookEndWatch`, keep-ahead, the chapter and read-along refreshes, the
+    iOS widget) and the car sync) once per runtime (the root layout's later starts are shared
+    ones, `sharedStart` in `src/lib/shared-start.ts`). Its listener is the first, so it alone gets the connect native queued before JS
     listened; it records it with `setCarConnected` (`car-connection.ts`), and the car sync,
     starting while `isCarConnected()` is true, runs its connect path once itself (the sync's
     own listener registers later and never sees that connect). Play requests and bookmarks are
@@ -2831,7 +2833,11 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     no `ApiProvider` mounted the reachability probe builds its client from the session
     (`resolveClient`), so a server that dropped out mid-drive comes back (and its queued saves
     flush). **Anything new a car needs must be started from `startCarStack`, never only from a
-    screen or the root layout.**
+    screen or the root layout**, as a framework-free controller made a shared start
+    (`sharedStart`). The end-of-book flow is one: `startBookEndWatch` watches the store, and the
+    root's `BookEndedRoute` only tells it the route on screen; with none (a car-only session)
+    an end goes the background way (the next book in place, else the credits once the phone app
+    is in front with a route, `whenRouted`).
   - **Covers survive a container move.** The snapshot names covers by absolute `file://` path
     and iOS moves the data container on an update or restore; when a cover can't be read
     where the snapshot names it, `CarArtworkPath` reads the same `Documents/`/`Library/` path in
