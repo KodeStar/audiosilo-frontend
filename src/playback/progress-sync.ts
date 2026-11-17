@@ -573,7 +573,7 @@ export function progressToSave(
  * row through it: with the server's clock S seconds ahead, a server row read back hid this
  * device's own captures for S seconds (fe#259, fe#262).
  */
-export function localTimeOf(
+function localTimeOf(
   record: Pick<ProgressSave, 'updated_at' | 'server_clock'>,
   skewMs: number,
 ): number {

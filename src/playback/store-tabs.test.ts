@@ -311,6 +311,9 @@ const other = hourLong(3, 'C/Other');
 
 type Tab = Awaited<ReturnType<typeof openTab>>;
 
+/** Every tab's outbox opened by the test running, reset as it ends (`afterEach` below). */
+const openOutboxes: (typeof import('./listening-outbox'))[] = [];
+
 /** Open a tab of `browser`: its own copies of the store and the outbox, the service made
  * (so it listens for the other tabs' claims) while the tab's globals are the window's. */
 async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = false } = {}) {
@@ -348,6 +351,7 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
   } finally {
     Object.assign(g, before);
   }
+  openOutboxes.push(outbox);
   let gaveWay = 0;
   const listen = () => store.onGaveWayToTab(() => gaveWay++);
   if (!lateNotice) listen();
@@ -428,6 +432,12 @@ beforeEach(() => {
   mockMirror.records.clear();
   mockMirror.saved = [];
   mockSkewMs = 0;
+});
+// A tab's look again at another tab's live span (`checkAgainLater`, 30 s on): a move's span
+// is stored as it opens, so a sweep finds one live, and its timer must not outlive the
+// file's modules.
+afterEach(() => {
+  for (const outbox of openOutboxes.splice(0)) outbox.resetOutboxForTests();
 });
 
 /** Every listen the server got as `[from, to, start]`, by where it began. */
