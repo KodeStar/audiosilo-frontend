@@ -5,7 +5,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { qk } from '@/api/hooks';
 import { anyOffline, useReachability } from '@/api/reachability';
 import { onOutboxChange } from '@/playback/listening-outbox';
-import { pendingSaves } from '@/playback/progress-sync';
+import { onQueueChange, pendingSaves } from '@/playback/progress-sync';
 import { useLastSyncAt } from '@/playback/use-listening-sync';
 
 import { syncPill } from './home-model';
@@ -20,7 +20,8 @@ const NONE: PendingCounts = { saves: 0, listens: 0 };
 
 /**
  * Saves waiting in the offline queue and listens in the listening outbox (all of them, or
- * `connectionId`'s; a change to the outbox reads them again at once), re-read as
+ * `connectionId`'s; a change to the queue or the outbox reads them again at once, so a
+ * replay after a reconnect takes the pill down as it drains), re-read as
  * servers come and go and every 20 s while `active` (Home passes whether it is the screen
  * in front: a tab kept alive behind another reads nothing). `pollWhenClear: false` keeps
  * the 20 s re-read to the times it can change anything: something is waiting, or a server
@@ -51,11 +52,13 @@ export function usePendingCounts({
         .catch(() => undefined);
     read();
     const stopWatch = onOutboxChange(read);
+    const stopQueue = onQueueChange(read);
     const interval = poll ? setInterval(read, RECHECK_MS) : undefined;
     const settle = poll ? undefined : setTimeout(read, RECHECK_MS);
     return () => {
       live = false;
       stopWatch();
+      stopQueue();
       clearInterval(interval);
       clearTimeout(settle);
     };

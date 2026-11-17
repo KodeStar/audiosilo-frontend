@@ -7,6 +7,7 @@ jest.mock('@/playback/progress-sync', () => ({
     saves: await mockCount(connectionId),
     listens: await mockListens(),
   }),
+  onQueueChange: () => () => undefined,
 }));
 const mockOutboxWatchers = new Set<() => void>();
 jest.mock('@/playback/listening-outbox', () => ({

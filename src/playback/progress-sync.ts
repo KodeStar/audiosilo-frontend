@@ -145,6 +145,22 @@ async function readQueue(): Promise<ProgressSave[]> {
   return (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
 }
 
+const queueListeners = new Set<() => void>();
+
+/** Store the offline replay queue, and tell `onQueueChange`'s listeners. */
+async function writeQueue(next: ProgressSave[]): Promise<void> {
+  await setItem(QUEUE_KEY, next);
+  for (const fn of queueListeners) fn();
+}
+
+/** Be told when the offline replay queue was written (a save queued, a replay that drained
+ * it): the sync pills read `pendingSaves` again then, not up to 20 s later (fe#197). Returns
+ * the unsubscribe. */
+export function onQueueChange(listener: () => void): () => void {
+  queueListeners.add(listener);
+  return () => queueListeners.delete(listener);
+}
+
 /** Sync v2's stored backlog: the outbox's events and the open spans (one per web tab
  * playing), read from storage only (no outbox import: it imports this). Not an array: none. */
 async function readListeningBacklog(): Promise<{ outbox: OutboxEntry[]; spans: OpenSpan[] }> {
@@ -990,7 +1006,7 @@ async function enqueue(save: ProgressSave): Promise<void> {
         ),
     );
     next.push(save);
-    await setItem(QUEUE_KEY, next);
+    await writeQueue(next);
   });
 }
 
@@ -1069,7 +1085,7 @@ export async function flushQueue(): Promise<void> {
         return flushGroup(cid, client, saves);
       }),
     );
-    await setItem(QUEUE_KEY, remainingByGroup.flat());
+    await writeQueue(remainingByGroup.flat());
   });
 }
 
@@ -1095,7 +1111,7 @@ export async function flushConnection(connectionId: string): Promise<void> {
     if (mine.length === 0) return;
     const others = queue.filter((s) => s.connectionId !== connectionId);
     const remaining = await flushGroup(connectionId, client, mine);
-    await setItem(QUEUE_KEY, [...others, ...remaining]);
+    await writeQueue([...others, ...remaining]);
   });
 }
 
@@ -1121,7 +1137,7 @@ onConnectionRemoved(async (id) => {
     withQueueLock(async () => {
       const queue = await readQueue();
       const next = queue.filter((s) => s.connectionId !== id);
-      if (next.length !== queue.length) await setItem(QUEUE_KEY, next);
+      if (next.length !== queue.length) await writeQueue(next);
     }),
   ]);
 });

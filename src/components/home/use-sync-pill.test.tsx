@@ -2,8 +2,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
+let mockWaiting = { saves: 0, listens: 0 };
+const mockQueueListeners = new Set<() => void>();
 jest.mock('@/playback/progress-sync', () => ({
-  pendingSaves: async () => ({ saves: 0, listens: 0 }),
+  pendingSaves: async () => mockWaiting,
+  onQueueChange: (fn: () => void) => {
+    mockQueueListeners.add(fn);
+    return () => mockQueueListeners.delete(fn);
+  },
 }));
 jest.mock('@/playback/listening-outbox', () => ({
   onOutboxChange: () => () => undefined,
@@ -16,7 +22,7 @@ jest.mock('expo-router', () => ({ useIsFocused: () => true }));
 import { qk } from '@/api/hooks';
 import { useReachability } from '@/api/reachability';
 
-import { useSyncPill } from './use-sync-pill';
+import { usePendingCounts, useSyncPill } from './use-sync-pill';
 /* eslint-enable import/first */
 
 // UPGRADE-05: the pill says when this device last read the progress, not when the newest
@@ -45,5 +51,22 @@ describe('useSyncPill', () => {
       qc.setQueryData(qk.allProgress('b'), [], { updatedAt: readAt + 60_000 });
     });
     expect(result.current).toEqual({ kind: 'synced', at: '2026-10-05T10:24:00.000Z' });
+  });
+});
+
+// fe#197: a reconnect replays the queue; the pill goes as it drains, not 20 s later.
+describe('usePendingCounts', () => {
+  it('reads the counts again when the offline queue changes', async () => {
+    useReachability.setState({ online: {} });
+    mockWaiting = { saves: 2, listens: 0 };
+    const { result, unmount } = await renderHook(() => usePendingCounts());
+    expect(result.current).toEqual({ saves: 2, listens: 0 });
+    mockWaiting = { saves: 0, listens: 0 };
+    await act(async () => {
+      for (const fn of mockQueueListeners) fn();
+    });
+    expect(result.current).toEqual({ saves: 0, listens: 0 });
+    await unmount();
+    expect(mockQueueListeners.size).toBe(0);
   });
 });
