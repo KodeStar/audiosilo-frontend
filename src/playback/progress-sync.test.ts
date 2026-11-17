@@ -401,6 +401,12 @@ describe('progress-sync', () => {
       { ...save, connectionId: 'c2' },
     );
     expect(changes).toHaveBeenCalledTimes(1);
+    // A newer save of the same book replaces it in place: nothing to read again.
+    await saveProgress(
+      fakeApi(() => Promise.resolve()),
+      { ...save, connectionId: 'c2', position: save.position + 5 },
+    );
+    expect(changes).toHaveBeenCalledTimes(1);
     routeClients({ c2: fakeApi(() => Promise.resolve()) });
     await flushConnection('c2');
     expect(changes).toHaveBeenCalledTimes(2);
