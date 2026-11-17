@@ -48,8 +48,11 @@ import kotlin.math.roundToLong
 
 /** Each file's length as the server measured it, by the uri the engine loads (a stream url or a
  * download's file uri). Filled as the player builds an item's source, read as its extractor is
- * made. Bounded: an old queue's entries are dropped once [capacity] newer ones arrive. */
-class KnownDurations(private val capacity: Int = 1024) {
+ * made. Bounded: an old queue's entries are dropped once [capacity] newer ones arrive. The
+ * player builds every item's source as the queue is set and makes a file's extractor only as
+ * it reaches the file, so [capacity] is well over a book's files: a longer queue would lose
+ * its first files' lengths before they play. */
+class KnownDurations(private val capacity: Int = 4096) {
   private val byUri: MutableMap<String, Long> = Collections.synchronizedMap(
     object : LinkedHashMap<String, Long>(16, 0.75f, true) {
       override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?) = size > capacity

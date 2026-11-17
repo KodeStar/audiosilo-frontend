@@ -261,4 +261,12 @@ class KnownDurationsTest {
     k.note("d", 1.0)
     assertEquals(C.TIME_UNSET, k.durationUs("a")) // the oldest gave way
   }
+
+  @Test fun aLongBooksQueueKeepsItsFirstFilesLengths() {
+    // Every item's source is built as the queue is set; the first file's extractor comes after.
+    val k = KnownDurations()
+    for (i in 0 until 3000) k.note("https://server/stream?path=$i.mp3", 60.0 + i)
+    assertEquals(60_000_000L, k.durationUs("https://server/stream?path=0.mp3"))
+    assertEquals(3_059_000_000L, k.durationUs("https://server/stream?path=2999.mp3"))
+  }
 }
