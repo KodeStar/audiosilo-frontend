@@ -12,21 +12,37 @@ import vm from 'node:vm';
 const SCOPE = 'https://box.test/web/';
 const SW_SOURCE = fs.readFileSync(path.join(__dirname, '../../public/sw.js'), 'utf8');
 
-type Store = Map<string, { body: string; headers: [string, string][] }>;
+type Store = Map<string, { body: string; headers: [string, string][]; asked: Headers }>;
+type Req = string | { url: string; headers?: Headers };
 
 function makeCaches() {
   const caches = new Map<string, Store>();
-  const urlOf = (r: string | { url: string }) => (typeof r === 'string' ? r : r.url);
+  const urlOf = (r: Req) => (typeof r === 'string' ? r : r.url);
+  const headersOf = (r: Req) =>
+    typeof r === 'string' ? new Headers() : (r.headers ?? new Headers());
   const open = async (name: string) => {
     if (!caches.has(name)) caches.set(name, new Map());
     const store = caches.get(name)!;
     return {
-      match: async (r: string | { url: string }) => {
+      // Like Cache Storage: a response stored with `Vary` matches only a request whose named
+      // headers equal those of the request it was stored for, unless `ignoreVary`.
+      match: async (r: Req, opts: { ignoreVary?: boolean } = {}) => {
         const hit = store.get(urlOf(r));
-        return hit ? new Response(hit.body, { headers: hit.headers }) : undefined;
+        if (!hit) return undefined;
+        const vary = new Headers(hit.headers).get('vary');
+        if (vary && !opts.ignoreVary) {
+          const asked = headersOf(r);
+          const names = vary.split(',').map((n) => n.trim());
+          if (names.some((n) => n === '*' || asked.get(n) !== hit.asked.get(n))) return undefined;
+        }
+        return new Response(hit.body, { headers: hit.headers });
       },
-      put: async (r: string | { url: string }, res: Response) => {
-        store.set(urlOf(r), { body: await res.text(), headers: [...res.headers] });
+      put: async (r: Req, res: Response) => {
+        store.set(urlOf(r), {
+          body: await res.text(),
+          headers: [...res.headers],
+          asked: headersOf(r),
+        });
       },
       keys: async () => [...store.keys()].map((url) => ({ url })),
       delete: async (r: { url: string }) => store.delete(r.url),
@@ -35,7 +51,8 @@ function makeCaches() {
   return { api: { open, keys: async () => [...caches.keys()] }, caches };
 }
 
-function load(site: Record<string, string>) {
+/** `site`: what the server answers per url; `headers`: the headers it adds to some. */
+function load(site: Record<string, string>, headers: Record<string, Record<string, string>> = {}) {
   const fetched: string[] = [];
   const offline = new Set<string>();
   const fetch = jest.fn(async (r: string | Request) => {
@@ -43,7 +60,9 @@ function load(site: Record<string, string>) {
     fetched.push(url);
     if (offline.has(url)) throw new TypeError('offline');
     const body = site[url];
-    return body === undefined ? new Response('', { status: 404 }) : new Response(body);
+    return body === undefined
+      ? new Response('', { status: 404 })
+      : new Response(body, { headers: headers[url] });
   });
   const { api, caches } = makeCaches();
   const self = {
@@ -58,7 +77,7 @@ function load(site: Record<string, string>) {
   const sw = ctx as unknown as {
     precacheBuild: (fresh?: boolean) => Promise<void>;
     cacheFirst: (r: Request) => Promise<Response>;
-    staleWhileRevalidate: (r: Request) => Promise<Response>;
+    staleWhileRevalidate: (r: Request | FetchedAs) => Promise<Response>;
   };
   const cached = () => [...(caches.get('audiosilo-shell-v1') ?? new Map()).keys()].sort();
   /** A page `handleNavigation` cached while online. */
@@ -69,6 +88,9 @@ function load(site: Record<string, string>) {
     );
   return { sw, fetched, offline, cached, cachePage, site };
 }
+
+/** A request as the page sends it: Node's `Request` has no destination and no Origin. */
+type FetchedAs = { url: string; destination: string; headers: Headers };
 
 const js = (p: string) => `https://box.test/web/_expo/static/js/web/${p}.js`;
 const css = 'https://box.test/web/_expo/static/css/global-c1.css';
@@ -183,6 +205,26 @@ describe('service worker: precacheBuild', () => {
     expect(t.cached()).not.toContain(font('a'));
     expect(t.cached()).toContain(font('b'));
     expect(t.cached()).toContain(font('c'));
+  });
+
+  it('serves a precached font offline to the page, though the server varies it by Origin (fe#177)', async () => {
+    const font = 'https://box.test/web/assets/fonts/Figtree_400.v1.ttf';
+    const site = build('a');
+    site[SCOPE] += `<link rel="preload" href="/web/assets/fonts/Figtree_400.v1.ttf" as="font">`;
+    const t = load({ ...site, [font]: 'font-bytes' }, { [font]: { Vary: 'Origin' } });
+    await t.sw.precacheBuild(true);
+    t.offline.add(font);
+    // Cached under the worker's request, which has no Origin; the page's font request has one.
+    const page = (destination: string): FetchedAs => ({
+      url: font,
+      destination,
+      headers: new Headers({ Origin: 'https://box.test' }),
+    });
+    const served = await t.sw.staleWhileRevalidate(page('font'));
+    expect(served.status).toBe(200);
+    expect(await served.text()).toBe('font-bytes');
+    // Anything else keeps to Vary: an Origin-varied answer is never served to another origin.
+    expect((await t.sw.staleWhileRevalidate(page('image'))).status).toBe(504);
   });
 
   it('keeps a cached font at the next install, never fetching it again', async () => {
