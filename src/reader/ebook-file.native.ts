@@ -2,6 +2,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { readAsStringAsync } from 'expo-file-system/legacy';
 
 import { ApiError, type ApiClient } from '@/api/client';
+import { engine } from '@/downloads/engine';
 import { classifyDownloadError } from '@/downloads/failure';
 import { nativeNumber } from '@/lib/native-number';
 import { pathSlug } from '@/lib/path-slug';
@@ -27,7 +28,8 @@ import type { OpenedEbook } from './ebook-identity';
  * differ: it is the book while it is there and not empty, and a new size (a scan saw the
  * ebook change) fetches it again and drops the old copy. It goes with its connection
  * (`clearEbookCache`, on sign-out and on removing the connection), and the whole cache is
- * held to `READER_CACHE_MAX_BYTES`: after each fetch the copies fetched longest ago go first.
+ * held to `MAX_EBOOK_BYTES`, so one book of the largest size the reader opens always fits:
+ * after each fetch the copies fetched longest ago go first.
  *
  * A book over `MAX_EBOOK_BYTES` (the server's size, the copy's own length) is refused as too
  * large before any fetch or transfer, and a fetch that finds no room, or a copy the cache
@@ -36,10 +38,6 @@ import type { OpenedEbook } from './ebook-identity';
  */
 
 const ROOT = 'reader';
-
-/** The most the reader's EPUB cache keeps (bytes), all connections together: one book of the
- * largest size the reader opens always fits. */
-export const READER_CACHE_MAX_BYTES = MAX_EBOOK_BYTES;
 
 function cacheDir(connectionId: string, libraryId: number, path: string): Directory {
   return new Directory(Paths.cache, ROOT, connectionId, String(libraryId), pathSlug(path));
@@ -80,20 +78,12 @@ function sizeOf(file: File): number {
 }
 
 /** Refuses a book the reader can't take (`EbookTooLargeError`). */
-function readable(file: LocalEbook): LocalEbook {
-  if (file.size > MAX_EBOOK_BYTES) throw new EbookTooLargeError(file.size);
-  return file;
+function assertReadable(size: number): void {
+  if (size > MAX_EBOOK_BYTES) throw new EbookTooLargeError(size);
 }
 
-/** The free space on the device, or null when it can't be read. */
-function freeSpace(): number | null {
-  try {
-    const free = nativeNumber(Paths.availableDiskSpace);
-    return free > 0 ? free : null;
-  } catch {
-    return null;
-  }
-}
+const NO_ROOM = 'There is not enough space on this device for the ebook.';
+const NOT_SAVED = 'The ebook could not be saved on this device.';
 
 /** Deletes a file or folder when it is there. Best effort. */
 function drop(entry: File | Directory): void {
@@ -155,13 +145,14 @@ export async function localEbook({
   onFetch?: () => void;
 }): Promise<LocalEbook> {
   const here = existingEbook({ connectionId, libraryId, path, size, saved });
-  if (here) return readable(here);
-  // Too large for the reader, or for the room left: said before a byte is fetched.
-  if (size > MAX_EBOOK_BYTES) throw new EbookTooLargeError(size);
-  const free = freeSpace();
-  if (free !== null && free < size) {
-    throw new EbookStorageError('There is not enough space on this device for the ebook.');
+  if (here) {
+    assertReadable(here.size);
+    return here;
   }
+  // Too large for the reader, or for the room left: said before a byte is fetched.
+  assertReadable(size);
+  const free = (await engine.storageEstimate())?.free;
+  if (free !== undefined && free < size) throw new EbookStorageError(NO_ROOM);
   onFetch?.();
 
   const dir = cacheDir(connectionId, libraryId, path);
@@ -170,7 +161,7 @@ export async function localEbook({
   try {
     if (!dir.exists) dir.create({ intermediates: true });
   } catch (e) {
-    throw new EbookStorageError('The ebook could not be saved on this device.', { cause: e });
+    throw new EbookStorageError(NOT_SAVED, { cause: e });
   }
   // Fetched beside it, then moved over it: a download cut short never leaves a file that
   // reads as the book.
@@ -197,9 +188,7 @@ export async function localEbook({
         throw new ApiError(failure.status, 'The ebook could not be downloaded.');
       }
       if (failure.kind === 'storage') {
-        throw new EbookStorageError('There is not enough space on this device for the ebook.', {
-          cause: e,
-        });
+        throw new EbookStorageError(NO_ROOM, { cause: e });
       }
       throw e;
     }
@@ -212,7 +201,7 @@ export async function localEbook({
       await part.move(file, { overwrite: true });
     } catch (e) {
       drop(part);
-      throw new EbookStorageError('The ebook could not be saved on this device.', { cause: e });
+      throw new EbookStorageError(NOT_SAVED, { cause: e });
     }
   } finally {
     // Deletes nothing: after the move, `part` is the book.
@@ -245,7 +234,7 @@ function cachedCopies(dir: Directory, into: CachedCopy[] = []): CachedCopy[] {
 }
 
 /**
- * Holds the reader's cache, every connection's copies together, to `READER_CACHE_MAX_BYTES`:
+ * Holds the reader's cache, every connection's copies together, to `MAX_EBOOK_BYTES`:
  * the copies fetched longest ago go first, never `keep` (the copy this open fetched) or a
  * part a fetch is writing. Best effort: a copy dropped is fetched again on its next open.
  */
@@ -257,7 +246,7 @@ function trimCache(keep: string): void {
     let total = copies.reduce((sum, c) => sum + c.size, 0);
     copies.sort((a, b) => a.at - b.at);
     for (const copy of copies) {
-      if (total <= READER_CACHE_MAX_BYTES) break;
+      if (total <= MAX_EBOOK_BYTES) break;
       if (copy.file.uri === keep) continue;
       drop(copy.file);
       total -= copy.size;

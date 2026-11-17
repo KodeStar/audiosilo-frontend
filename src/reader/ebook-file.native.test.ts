@@ -105,6 +105,7 @@ jest.mock('expo-file-system', () => {
     Directory: MockDirectory,
     Paths: {
       cache: 'file:///cache',
+      totalDiskSpace: 64e9,
       get availableDiskSpace() {
         return mockFree;
       },
@@ -127,7 +128,6 @@ import {
   hasLocalEbook,
   identifyEbook,
   localEbook,
-  READER_CACHE_MAX_BYTES,
 } from './ebook-file.native';
 /* eslint-enable import/first */
 
@@ -258,6 +258,7 @@ describe('localEbook', () => {
     );
     const first = localEbook(args);
     const second = localEbook(args);
+    await new Promise((r) => setImmediate(r)); // both past the free-space read
     const [[, a], [, b]] = mockDownload.mock.calls;
     expect(a).toMatch(PART);
     expect(b).toMatch(PART);
@@ -339,6 +340,9 @@ describe('localEbook: size, disk and cache (fe#172)', () => {
   it('says a device with no room before fetching', async () => {
     mockFree = 999;
     await expect(localEbook(args)).rejects.toBeInstanceOf(EbookStorageError);
+    // A full disk reads as 0 free, not as unknown.
+    mockFree = 0;
+    await expect(localEbook(args)).rejects.toBeInstanceOf(EbookStorageError);
     expect(mockDownload).not.toHaveBeenCalled();
     // Room for it: fetched.
     mockFree = 1000;
@@ -371,7 +375,7 @@ describe('localEbook: size, disk and cache (fe#172)', () => {
     await localEbook({ ...args, size: 200 * MB });
     const book = `${FOLDER}/book-${200 * MB}.epub`;
     // 800 MB over a 512 MB limit: the two oldest go, the newest and this book stay.
-    expect(READER_CACHE_MAX_BYTES).toBe(512 * MB);
+    expect(MAX_EBOOK_BYTES).toBe(512 * MB);
     expect(files().sort()).toEqual([book, other(3)].sort());
   });
 
