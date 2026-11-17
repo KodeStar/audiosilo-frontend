@@ -41,13 +41,17 @@ export type ReadingPlace = {
 };
 
 /** The mirror's record for one book: the newest place this device knows of (by
- * `updated_at`) and the server version it last acknowledged (0 = none). */
+ * `updated_at`) and the server version it last acknowledged (0 = none). `own`: that version
+ * is this device's own save's, acknowledged from its answer, not one the reader adopted
+ * from elsewhere (`adoptServerPlace`); absent in a record from an older build (taken as
+ * not). */
 type MirrorEntry = {
   connectionId: string;
   libraryId: number;
   path: string;
   place: ReadingPlace | null;
   version: number;
+  own?: boolean;
 };
 
 /** One save, captured with its `updated_at` and `base_version` so an offline replay says
@@ -125,10 +129,21 @@ const withNewerPlace =
       ? { ...entry, place: placeOf(place) }
       : entry;
 
-/** Take the server's `row` as seen: its place when newer, and its version. */
+/** Take the server's `row` as seen: its place when newer, and its version (`own`: the
+ * answer to this device's own save, not a place adopted from elsewhere). */
 const acknowledged =
-  (row: ReadingProgress) =>
-  (entry: MirrorEntry): MirrorEntry => ({ ...withNewerPlace(row)(entry), version: row.version });
+  (row: ReadingProgress, own: boolean) =>
+  (entry: MirrorEntry): MirrorEntry => ({
+    ...withNewerPlace(row)(entry),
+    version: row.version,
+    own,
+  });
+
+/** Whether this device has seen the server's `row`: the very version it acknowledged (that
+ * row: a version is one write), or its own row at a version it had acknowledged. */
+const seenBy = (row: ReadingProgress, entry: MirrorEntry | null, deviceId: string) =>
+  entry !== null &&
+  (row.version === entry.version || (row.device_id === deviceId && row.version <= entry.version));
 
 /** Whether the server takes `save` as diverged from its stored `row` (catalog.ResolvePlace):
  * made on another version than the row's, by another device than the row's or on 0 (saw
@@ -150,7 +165,12 @@ async function readMirror(
 /** Where the reader opens a book: the newest place (by `updated_at`) of the server's row,
  * the mirror and the offline queue, except that a queued save the server will keep (one
  * that diverged and is further on) beats the row, however old; `fromServer` when it is
- * the server's row (then the reader adopts it with `adoptServerPlace`). `place` null: none
+ * the server's row (then the reader adopts it with `adoptServerPlace`). `unseen`: opening
+ * at a local place, the server's row when this device has not seen it (another device's
+ * kept place, after an offline session's replay from Home answered while no reader was
+ * open), so the open offers Jump there at once as that answer would have (fe#173), not at
+ * the first page turn's save. Not while a save of the book is queued: the reader replays
+ * it as it opens, and that answer says what the server kept. `place` null: none
  * anywhere, open at the start. With no answer from the server, this device's own places
  * stand; with none either, the lookup fails (throws the request's error) instead of
  * opening at the start: a start saved over a place read elsewhere would replace it. A 401
@@ -169,6 +189,7 @@ async function readMirror(
 export type ReadingPlaceLookup = {
   place: ReadingPlace | null;
   fromServer: ReadingProgress | null;
+  unseen: ReadingProgress | null;
 };
 
 export async function lookupReadingPlace(
@@ -215,10 +236,12 @@ export async function lookupReadingPlace(
       !(unknown instanceof TimeoutError && isReachable(connectionId));
     if (!offline || !(await localCopy(hasLocalCopy))) throw unknown;
   }
-  return {
-    place: best ? placeOf(best) : null,
-    fromServer: best !== null && best === server ? server : null,
-  };
+  const fromServer = best !== null && best === server ? server : null;
+  const unseen =
+    server && !fromServer && !queued && !seenBy(server, mirror, await getDeviceId())
+      ? server
+      : null;
+  return { place: best ? placeOf(best) : null, fromServer, unseen };
 }
 
 /** Whether the book's EPUB is on this device; a check that fails says no. */
@@ -249,7 +272,7 @@ export async function adoptServerPlace(
   row: ReadingProgress,
 ): Promise<void> {
   await withReaderPlaceLock(() =>
-    updateMirror({ connectionId, libraryId, path }, acknowledged(row)),
+    updateMirror({ connectionId, libraryId, path }, acknowledged(row, false)),
   );
 }
 
@@ -275,13 +298,15 @@ export async function captureReadingSave(
   };
 }
 
-const withReaderSaveLock = serialQueue();
-
 /** The open reader's save of `place`: captured now (its place and time, kept in the mirror
- * at once), sent once the previous save is answered. A save captured on 0 is then made on
- * the version that answer acknowledged: two first saves on 0 in flight together would
- * diverge from each other (catalog.ResolvePlace), so a move back would be kept as the
- * other place. Resolves as `saveReadingPlace`. */
+ * at once), sent once every save before it is answered, the offline queue's replays
+ * included (`withQueueLock`). A save captured on 0 is then made on the version an answer to
+ * this device's own save acknowledged meanwhile: two first saves on 0 in flight together
+ * would diverge from each other (catalog.ResolvePlace), so a move back would be kept as the
+ * other place. Never on one adopted meanwhile (Jump, Stay, the reader already there:
+ * `own` false): a page captured before the Jump, sent on the place jumped to, would apply
+ * and move that place back (fe#173); on 0 it diverges, and the server keeps the further.
+ * Resolves as `saveReadingPlace`. */
 export async function saveReaderPlace(
   api: ApiClient | null,
   connectionId: string,
@@ -295,12 +320,16 @@ export async function saveReaderPlace(
     await updateMirror(save, withNewerPlace(save));
     return save;
   });
-  return withReaderSaveLock(async () => {
-    const version = captured.base_version
-      ? captured.base_version
-      : ((await readMirror(connectionId, libraryId, path))?.version ?? 0);
-    return saveReadingPlace(api, { ...captured, base_version: version });
+  const saved = await withQueueLock(async () => {
+    let version = captured.base_version;
+    if (!version) {
+      const entry = await readMirror(connectionId, libraryId, path);
+      if (entry?.own) version = entry.version;
+    }
+    return sendOrQueue(api, { ...captured, base_version: version });
   });
+  if (saved) void flushReadingQueue();
+  return saved;
 }
 
 type SavedListener = (saved: ReadingSaved) => void;
@@ -376,8 +405,8 @@ async function put(client: ApiClient, save: ReadingSave): Promise<ReadingProgres
   const thisSave = own && row.cfi === save.cfi && row.progression === save.progression;
   let seen = false;
   await updateMirror(save, (entry) => {
-    seen = thisSave || (own && row.version <= entry.version);
-    return (thisSave ? acknowledged : withNewerPlace)(row)(entry);
+    seen = thisSave || seenBy(row, entry, save.device_id);
+    return thisSave ? acknowledged(row, true)(entry) : withNewerPlace(row)(entry);
   });
   const answer: ReadingSaved = {
     connectionId: save.connectionId,
@@ -400,14 +429,27 @@ export async function saveReadingPlace(
   save: ReadingSave,
 ): Promise<ReadingProgressSaved | null> {
   await updateMirror(save, withNewerPlace(save));
+  const saved = await withQueueLock(() => sendOrQueue(api, save));
+  if (saved) void flushReadingQueue();
+  return saved;
+}
+
+/** `saveReadingPlace`'s send, holding `withQueueLock`. A save sent supersedes a queued save
+ * of the same book made before it: the latest save per book wins, sent or queued, so a
+ * replay never follows it with an older place (one made on 0 that is further on would be
+ * kept, a place the reader had left). */
+async function sendOrQueue(
+  api: ApiClient | null,
+  save: ReadingSave,
+): Promise<ReadingProgressSaved | null> {
   if (!api || !isReachable(save.connectionId)) {
-    await enqueue(save);
+    await queueSave(save);
     return null;
   }
   try {
     const saved = await put(api, save);
     noteSuccess(save.connectionId);
-    void flushReadingQueue();
+    await dropQueuedBefore(save);
     return saved;
   } catch (e) {
     if (isUnrecoverable(e)) {
@@ -415,7 +457,7 @@ export async function saveReadingPlace(
       return null;
     }
     noteFailure(save.connectionId, e);
-    await enqueue(save);
+    await queueSave(save);
     return null;
   }
 }
@@ -427,15 +469,24 @@ async function readQueue(): Promise<ReadingSave[]> {
   return Array.isArray(queue) ? queue : [];
 }
 
+/** Every save sent and every change of the offline queue, one at a time (fe#173): the
+ * queue's replays and the open reader's saves (`saveReaderPlace`) once took separate locks,
+ * so a replay could be in flight beside a reader's save, both on 0, and the server took
+ * them as diverged from each other (a move back kept as the other place). */
 const withQueueLock = serialQueue();
 
-async function enqueue(save: ReadingSave): Promise<void> {
-  await withQueueLock(async () => {
-    // The latest save per book wins.
-    const next = (await readQueue()).filter((s) => !sameBook(s, save));
-    next.push(save);
-    await setItem(READING_QUEUE_KEY, next);
-  });
+/** Queue `save`, the latest per book winning. Holding `withQueueLock`. */
+async function queueSave(save: ReadingSave): Promise<void> {
+  const next = (await readQueue()).filter((s) => !sameBook(s, save));
+  next.push(save);
+  await setItem(READING_QUEUE_KEY, next);
+}
+
+/** Drop a queued save of `sent`'s book made no later than it. Holding `withQueueLock`. */
+async function dropQueuedBefore(sent: ReadingSave): Promise<void> {
+  const queue = await readQueue();
+  const next = queue.filter((s) => !sameBook(s, sent) || timeOf(s) > timeOf(sent));
+  if (next.length !== queue.length) await setItem(READING_QUEUE_KEY, next);
 }
 
 /** Replay one connection's saves through its client; returns those to keep. */

@@ -979,9 +979,13 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   the book.
 - **The place** (`reading-progress.ts`) is `progress-sync`'s pattern (offline queue, latest per
   book, durable mirror, 4xx dropped, replay through each save's connection) plus `base_version`:
-  the last version this device acknowledged, always sent (0 only when no row was ever seen). The
-  open reader's saves go one at a time (`saveReaderPlace`): one captured on 0 is sent on the
-  version the previous answer acknowledged, since two on 0 would diverge from each other. An
+  the last version this device acknowledged, always sent (0 only when no row was ever seen).
+  Every send, the queue's replays and the open reader's saves alike, and every queue change go
+  through one lock (`withQueueLock`, fe#173), and a sent save drops a queued one of the book made
+  before it. The open reader's saves go one at a time (`saveReaderPlace`): one captured on 0 is
+  sent on the version an answer to this device's own save acknowledged meanwhile, since two on 0
+  would diverge from each other; never on one adopted meanwhile (the mirror's `own`), so a page
+  captured before a Jump never applies on the place jumped to. An
   answer that kept this very save (this device, the same cfi and progression; not its time,
   which the server may replace) is acknowledged at once; one that kept a place this device
   never saw (another device's, or its own at a version it never acknowledged: the device id
@@ -997,9 +1001,13 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   while the acknowledgement was still being written. The answer's
   `seen` says which;
   the offer "Jump there?" (`jumpOffer`) is judged against the page on screen. The lookup opens at
-  the newest place, or at a queued save the server will keep (diverged and further on), and
-  with no answer from the server and no place on this device it fails (the fetch notice; Try
-  again looks again): never a guessed start, whose save would replace a place read elsewhere.
+  the newest place, or at a queued save the server will keep (diverged and further on);
+  opening at a local place, a server row this device never saw comes back as `unseen` (no save
+  of the book queued), which the screen takes as the first answer, so Jump shows at the open
+  after a replay from Home (fe#173). The answer's `seen` also counts the very version this
+  device acknowledged (one version is one write), so a late answer with an adopted row never
+  offers it again. With no answer from the server and no place on this device it fails (the
+  fetch notice; Try again looks again): never a guessed start, whose save would replace a place read elsewhere.
   Except offline with the EPUB on this device (the download's copy or the app's cache file,
   `hasLocalEbook`): a request that never reached the server opens at the start, its saves on
   `base_version: 0`, which the server takes as diverged from any row, this device's own too

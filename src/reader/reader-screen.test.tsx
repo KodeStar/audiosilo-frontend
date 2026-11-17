@@ -211,7 +211,7 @@ describe('ReaderScreen', () => {
     mockHost = null;
     mockShortcuts.length = 0;
     mockBook = query({ title: 'Alice', ebook: { path: 'A/Book/alice.epub', size: 1 } });
-    mockPlace = query({ place: null, fromServer: null });
+    mockPlace = query({ place: null, fromServer: null, unseen: null });
     mockEbooks = true;
     mockDownload = undefined;
     mockSignedOut = undefined;
@@ -585,6 +585,24 @@ describe('ReaderScreen', () => {
     await mount();
     await opened();
     await answered(row());
+    await fireEvent.press(screen.getByText('Jump'));
+    expect(mockHandle.goto).toHaveBeenCalledWith({ cfi: CFI_B });
+    expect(adoptServerPlace).toHaveBeenCalledWith('c1', 1, 'A/Book', row());
+  });
+
+  // fe#173: an offline session replayed from Home, answered with the tablet's place while no
+  // reader was open. Opening at the newer local place offers Jump at once, not after the
+  // first page turn's save is answered.
+  it('offers a row this device has not seen as it opens at a local place, with no save', async () => {
+    mockPlace = query({
+      place: { cfi: CFI_A, progression: 0.2, device_id: 'dev', updated_at: '2026-10-02' },
+      fromServer: null,
+      unseen: row(),
+    });
+    await mount();
+    await opened(CFI_A);
+    expect(screen.getByText('On Pixel 8 you were at 60%. Jump there?')).toBeTruthy();
+    expect(saveReaderPlace).not.toHaveBeenCalled();
     await fireEvent.press(screen.getByText('Jump'));
     expect(mockHandle.goto).toHaveBeenCalledWith({ cfi: CFI_B });
     expect(adoptServerPlace).toHaveBeenCalledWith('c1', 1, 'A/Book', row());
