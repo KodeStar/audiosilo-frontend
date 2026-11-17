@@ -9,7 +9,7 @@ import type { Connection } from '@/stores/session';
  * Home's module rails (Bridge Phase 2a): each active module's `homeRails`, in registry
  * order, for the person listening's servers that have the module on (a rail never has to
  * filter them itself, fe#159). Renders nothing without one (the registry is empty until a
- * module has a player part).
+ * module has a player part), and reads no flags then (`WithActiveModules`).
  */
 export function ModuleRails({
   connections,

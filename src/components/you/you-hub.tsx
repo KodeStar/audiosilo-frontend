@@ -107,8 +107,7 @@ function Hub({ active }: { active: readonly PlayerModule[] }) {
   const layout = useLayout();
   const phone = layout === 'phone';
   const params = useRouteParams<{ section?: string }>();
-  // Upcoming only once a server is known to offer it (not a kid there): a link to it while
-  // that is still loading opens Stats.
+  // Upcoming only once a server is known to offer it (not a kid there).
   const upcoming = useUpcomingAvailable() === true;
   const moduleSections = useMemo(
     () => youExtraSections(upcoming ? UPCOMING : null, youModuleSections(active)),
@@ -120,9 +119,9 @@ function Hub({ active }: { active: readonly PlayerModule[] }) {
   // being read, so a section no server offers opens Stats.
   const flagsPending = useFlagsPending();
   const asked = firstParam(params.section);
-  const waiting =
-    flagsPending && asked !== '' && !isCoreYouSection(asked) && !moduleKeys.includes(asked);
   const section = parseYouSection(params.section, moduleKeys);
+  const waiting = flagsPending && asked !== '' && section !== asked;
+  const shown = waiting ? asked : section;
   const ownSection = isCoreYouSection(section) && !waiting ? section : null;
   const moduleSection = ownSection ? undefined : moduleSections.get(section);
   const title = ownSection ? t(youTitleKey(ownSection)) : (moduleSection?.label(t) ?? '');
@@ -133,7 +132,7 @@ function Hub({ active }: { active: readonly PlayerModule[] }) {
     navigation.setOptions({ title });
   }, [navigation, title]);
   // The browser tab names the section at every width.
-  usePageTitle(waiting ? undefined : title);
+  usePageTitle(title);
 
   const options = youSectionsFor(layout, moduleKeys).map((value) => ({
     value,
@@ -148,7 +147,7 @@ function Hub({ active }: { active: readonly PlayerModule[] }) {
         <SubNavSections
           tab="(me)"
           options={options}
-          value={waiting ? asked : section}
+          value={shown}
           onChange={(next) => router.setParams(youSectionParams(next))}
           accessibilityLabel={t('you.sections.label')}
           className="max-w-full"
@@ -156,7 +155,7 @@ function Hub({ active }: { active: readonly PlayerModule[] }) {
       </View>
       {/* Keyed: a new section starts at its top, not at the offset the last one was left
           at (one shared scroller would keep it). */}
-      <Fragment key={waiting ? asked : section}>
+      <Fragment key={shown}>
         {waiting ? (
           <Spinner center />
         ) : ownSection ? (
