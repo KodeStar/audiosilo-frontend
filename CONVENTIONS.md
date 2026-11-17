@@ -833,7 +833,7 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   naming no code) is its own failure, `signedOut` or `noAccess`, and the player's fetch says it as
   the reasons `signed_out` / `no_access`. A wait outlives a reload or restart: `reviveEntry` keeps
   the waiting entry and `resumeEpisodeWaits` asks again once the session has read its connections
-  (one with no client then is a download cut short). A cancel or remove stops the wait (`stopWaiting`); the server's
+  (one with no client then, or in a browser the launch's check finds can't play a download offline, is a download cut short). A cancel or remove stops the wait (`stopWaiting`); the server's
   fetch carries on. The fetch rules the player and the waiter share live in
   `playback/episode-fetch-rules.ts` (import-light: the downloads store must not pull in the start
   path). The row says "On this device" (`episode-on-device`) and the download's state; an episode on

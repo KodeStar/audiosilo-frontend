@@ -2756,6 +2756,7 @@ describe('podcast episodes', () => {
     it('waits again for its server, from the stream', async () => {
       await seed({ [key]: waiting });
       await useDownloads.getState().hydrate();
+      await settle();
       expect(entry()).toMatchObject({ status: 'queued', serverFetch: { percent: 40 } });
       expect(mockWaits).toHaveLength(1);
       expect(mockWaits[0].ref).toEqual({
@@ -2788,6 +2789,7 @@ describe('podcast episodes', () => {
       mockResolveClient.mockReturnValue(null);
       await seed({ [key]: waiting });
       await useDownloads.getState().hydrate();
+      await settle();
       expect(mockWaits).toHaveLength(0);
       expect(entry()).toMatchObject({
         status: 'error',
@@ -2795,6 +2797,26 @@ describe('podcast episodes', () => {
       });
       expect(entry() && 'serverFetch' in entry()!).toBe(false);
       expect((await readPersisted())[key]?.status).toBe('error');
+    });
+
+    it("is gone, never left waiting with nothing asking, for keep-ahead's with no client", async () => {
+      mockResolveClient.mockReturnValue(null);
+      await seed({ [key]: { ...waiting, origin: 'keep-ahead' } });
+      await useDownloads.getState().hydrate();
+      await settle();
+      expect(mockWaits).toHaveLength(0);
+      expect(entry()).toBeUndefined();
+      expect((await readPersisted())[key]).toBeUndefined();
+      expect(mockEngine.removeBook).toHaveBeenCalledWith('c1', 2, 'Show/Monday.mp3');
+    });
+
+    it("is a download cut short where the launch's check says this browser can't play one", async () => {
+      mockEngine.probe = async () => false;
+      await seed({ [key]: waiting });
+      await useDownloads.getState().hydrate();
+      await settle();
+      expect(mockWaits).toHaveLength(0);
+      expect(entry()).toMatchObject({ status: 'error', failure: { kind: 'interrupted' } });
     });
   });
 

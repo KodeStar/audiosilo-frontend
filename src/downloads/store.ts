@@ -200,8 +200,10 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     if (readalongRefreshOn) refreshCachedReadalongs(Object.values(cleaned));
     await persist();
     // The episodes that were waiting for their server when the app closed wait again, once
-    // the session knows the connections to ask.
-    void whenSessionReady().then(resumeEpisodeWaits);
+    // the session knows the connections to ask and the browser's offline check has settled.
+    void Promise.all([whenSessionReady(), checked])
+      .then(resumeEpisodeWaits)
+      .catch(() => {});
     // The community metadata kept with each downloaded book, seeded for offline reading
     // (and filled in for a download made before it was kept). In the background, once the
     // launch's first screens are up: the registry is usable without it.
@@ -586,22 +588,33 @@ function watchEpisode(
 /**
  * The launch's waits (fe#280): each entry still waiting for its server (`serverFetch`, kept by
  * `reviveEntry`) waits again, from the stream, under the per-server cap. One whose connection
- * has no client now (it was removed, or is not signed in) is a download the app cut short, as
- * before, to retry.
+ * has no client now (it is gone), or in a browser that can't play a download offline (the
+ * launch's check, which `download` refuses on), is a download the app cut short, as before:
+ * a row to retry, or gone with its folder where `reviveEntry` drops it (keep-ahead's).
  */
 function resumeEpisodeWaits() {
-  const cut: Registry = {};
-  for (const [key, e] of Object.entries(useDownloads.getState().entries)) {
+  const { entries, supported } = useDownloads.getState();
+  const cut = new Map<string, DownloadEntry | null>();
+  for (const [key, e] of Object.entries(entries)) {
     if (e.status !== 'queued' || !e.serverFetch || isWaiting(key)) continue;
-    if (resolveClient(e.connectionId)) {
+    if (supported && resolveClient(e.connectionId)) {
       watchEpisode(key, e.connectionId, e.libraryId, e.path, false);
     } else {
+      // `reviveEntry` kept it only with every file it lists on disk. Dropped, or a row with no
+      // finished file, its folder goes (as `readRegistry` does).
       const revived = reviveEntry(withoutServerFetch(e), true);
-      if (revived) cut[key] = revived;
+      if (!revived || revived.manifest.files.length === 0)
+        void engine.removeBook(e.connectionId, e.libraryId, e.path);
+      cut.set(key, revived);
     }
   }
-  if (Object.keys(cut).length === 0) return;
-  useDownloads.setState({ entries: { ...useDownloads.getState().entries, ...cut } });
+  if (cut.size === 0) return;
+  const next: Registry = { ...useDownloads.getState().entries };
+  for (const [key, revived] of cut) {
+    if (revived) next[key] = revived;
+    else delete next[key];
+  }
+  useDownloads.setState({ entries: next });
   void persist();
 }
 
@@ -693,7 +706,7 @@ async function episodeWaitEnded(key: string, end: EpisodeWaitEnd): Promise<void>
   }
   const show = book.episode?.show_path;
   if (show !== undefined) {
-    markEpisodeOnServer(queryClient, connectionId, libraryId, show, path, book.size);
+    markEpisodeOnServer(queryClient, connectionId, libraryId, show, path, book);
   }
   enqueue(key, connectionId, libraryId, book, chapters, entry.origin ?? 'listener');
 }
