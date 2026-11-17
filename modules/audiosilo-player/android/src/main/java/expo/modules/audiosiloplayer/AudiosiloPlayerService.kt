@@ -721,7 +721,9 @@ class AudiosiloPlayerService : MediaLibraryService() {
       // It takes the place of a play still waiting for JS (a streamed book tapped while JS
       // boots): that one ends quietly, or a JS that listens later would start it over this one.
       failPendingPlay(notify = false)
-      val queue = MediaItems.startPositionOf(spec)
+      // The book the engine was last heard on starts where it was (a crash since its last
+      // snapshot write): a car tap's spec holds the place JS last wrote.
+      val queue = MediaItems.startPositionOf(spec.at(LivePlaceStore.get(this)))
       // Every track of a play spec is a local file: no auth headers.
       AuthHolder.clear()
       player?.internal { player?.setPlaybackParameters(PlaybackParameters(spec.rate.toFloat(), 1.0f)) }

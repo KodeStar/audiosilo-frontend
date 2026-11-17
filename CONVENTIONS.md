@@ -2658,14 +2658,17 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   play `playFromCar` leaves pending is watched, so a car play that superseded the resumption
   and then failed, by its timeout or a load that left nothing loaded, ends it too, fe#252).
   **The engine's live place** (`LivePlace.kt`, FE-13): the service keeps where the engine is
-  (the book, the file by path and index, the seconds in it) in a prefs file of its own (`audiosilo.liveplace`), every 10 s
-  while it plays and at once on a play, a pause and a seek (`LivePlaceRecorder`); the end of
-  the book, an emptied player (JS's `reset`: a stop, a finish) and the app's own `load` drop
-  it. A resumption (`CarSnapshot.resumable(live)`, read by `ResumptionReceiver`,
-  `onPlaybackResumption` and the placeholder's title) starts that book at that place when
-  the snapshot lists it with a play spec, else the book `resume` names, so a crash or kill
-  mid-play, a pause in a cold runtime away from every server (which writes no snapshot) and a
-  resumption write still queued behind a build lose at most 10 s.
+  (the book, the file by path and index, the seconds in it) in a prefs file of its own
+  (`audiosilo.liveplace`), every 10 s while it plays and at once on a play, a pause and a seek
+  (`LivePlaceRecorder`); the end of the book, an emptied player (JS's `reset`: a stop, a
+  finish) and the app's own `load` drop it. A resumption (`CarSnapshot.resumable(live)`, read
+  by `ResumptionReceiver`, `onPlaybackResumption` and the placeholder's title) starts that book
+  at that place when the snapshot lists it with a play spec, else the book `resume` names; a
+  `resume` of null (JS named none: kids mode changed, another person's book) resumes nothing,
+  whatever the engine last held. A car tap that `playFromCar` starts natively starts at it too
+  when it is that book's (`CarPlaySpec.at`). So a crash or kill mid-play, a pause in a cold
+  runtime away from every server (which writes no snapshot) and a resumption write still
+  queued behind a build lose at most 10 s.
   **Remote buttons are logged on demand** (`MediaKeyLog`, fe#301): `adb shell setprop
   log.tag.AudiosiloKeys DEBUG`, then `adb logcat -s AudiosiloKeys` shows each media key (the
   receiver, the service start, `onMediaButtonEvent` with the sender, the notification

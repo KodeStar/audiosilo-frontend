@@ -20,7 +20,7 @@ class LivePlaceTest {
     return CarItem("book:$path", path, "", null, finished = false, downloaded = downloaded, artwork = null, play = play, book = book)
   }
 
-  private fun snapshot(resume: String?) = CarSnapshot(
+  private fun snapshot(resume: String?, namesResume: Boolean = true) = CarSnapshot(
     labels,
     signedIn = true,
     tabs = listOf(
@@ -28,7 +28,7 @@ class LivePlaceTest {
       CarTab("downloads", "Downloads", listOf(item("A"), item("B"))),
     ),
     resume = resume,
-    namesResume = true,
+    namesResume = namesResume,
   )
 
   private fun live(path: String, file: Int = 2, at: Double = 81.5) = LivePlace(ref(path), "$path/$file.mp3", 0, at)
@@ -52,6 +52,24 @@ class LivePlaceTest {
   // A stopped or finished book: JS names none and the live place was dropped with it.
   @Test fun noLivePlaceAndNoBookNamedIsNothingToResume() {
     assertNull(snapshot(null).resumable(null))
+  }
+
+  // JS named none on purpose (kids mode changed in a cold runtime, the book no longer the person
+  // listening's): the engine's last book never overrides that.
+  @Test fun aLivePlaceNeverResumesWhenJsNamedNoBook() {
+    assertNull(snapshot(null).resumable(live("A")))
+    // A snapshot kept from before `resume` existed names nothing either way: the live book wins.
+    val old = snapshot(null, namesResume = false).resumable(live("B"))
+    assertEquals("book:B", old?.id)
+    assertEquals(81.5, old!!.play!!.positionInTrack, 0.0)
+  }
+
+  // A car tap's spec (playFromCar) takes the live place only on its own book.
+  @Test fun anotherBooksLivePlaceLeavesTheSpecAsItIs() {
+    val spec = item("A").play!!
+    assertEquals(spec, spec.at(live("B")))
+    assertEquals(spec, spec.at(null))
+    assertEquals(81.5, spec.at(live("A")).positionInTrack, 0.0)
   }
 
   @Test fun aLiveBookNotListedOrNotDownloadedFallsBackToTheNamedOne() {

@@ -20,11 +20,12 @@ data class LivePlace(
 )
 
 /**
- * The play spec started from [live] when it names one of the spec's files: by path when it has
- * one (the spec's file order may differ from the engine's), else by index. This spec as it is
- * otherwise.
+ * The play spec started from [live] when it is on this spec's book and names one of its files: by
+ * path when it has one (the spec's file order may differ from the engine's), else by index. This
+ * spec as it is otherwise (null [live] included).
  */
-fun CarPlaySpec.at(live: LivePlace): CarPlaySpec {
+fun CarPlaySpec.at(live: LivePlace?): CarPlaySpec {
+  if (live == null || live.book != book) return this
   val index = if (live.relPath != null) {
     tracks.indexOfFirst { LoadedFiles.pathOf(it.id, clip = false) == live.relPath }
   } else {
@@ -41,10 +42,12 @@ fun CarPlaySpec.at(live: LivePlace): CarPlaySpec {
  * snapshot was built for); else the book JS named ([CarSnapshot.resumable]). A live place exists
  * only for a book the engine still holds or held when the process died: a stop, the end of the
  * book and the app's own load of a queue drop it ([LivePlaceRecorder]), so a stopped or finished
- * book still never resumes.
+ * book still never resumes. When JS named none (a book stopped or finished here, offered before
+ * kids mode changed, or no longer the person listening's), nothing resumes, whatever the
+ * engine last held.
  */
 fun CarSnapshot.resumable(live: LivePlace?): CarItem? {
-  if (live != null) {
+  if (live != null && !(namesResume && resume == null)) {
     for (tab in tabs) for (item in tab.items) {
       val play = item.play ?: continue
       if (play.book == live.book) return item.copy(play = play.at(live))
