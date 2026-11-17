@@ -628,7 +628,7 @@ describe('CastPlaybackService', () => {
       // Paused after the receiver's status was read, before its queue was rebuilt.
       await t.svc.pause();
       await t.svc.adoptQueue(TRACKS, BOOK, status);
-      t.status({ ...status, playerState: 'paused', position: 30 });
+      t.status({ ...status, playerState: 'buffering', position: 30 });
       t.status({ ...status, playerState: 'idle', idleReason: 'error', position: 0 });
       await flush();
       expect(t.remote.loads.at(-1)).toMatchObject({ startTime: 30, autoplay: false });
@@ -661,6 +661,28 @@ describe('CastPlaybackService', () => {
       await flush();
       expect(t.remote.loads.at(-1)).toMatchObject({ startTime: 20, autoplay: false });
       expect(t.svc.getSnapshot()).toMatchObject({ state: 'paused', position: 20 });
+    });
+
+    it('a session taken over after a reset reloads in its own play state', async () => {
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      await t.svc.play();
+      await t.svc.reset();
+      const status: CastMediaStatus = {
+        playerState: 'paused',
+        customIndex: 0,
+        position: 20,
+        rate: 1,
+        book: BOOK,
+        contentId: 'https://h/stream?path=A/B/00.mp3&token=CAST0',
+      };
+      t.svc.adoptPlace({ state: 'paused', trackIndex: 0, position: 20, duration: 600, rate: 1 });
+      await t.svc.adoptQueue(TRACKS, BOOK, status);
+      t.status({ ...status, playerState: 'buffering', position: 200 });
+      t.status({ ...status, playerState: 'idle', idleReason: 'error', position: 0 });
+      await flush();
+      expect(t.remote.loads.at(-1)).toMatchObject({ startTime: 200, autoplay: false });
     });
 
     it('a paused status while our play reload loads leaves the play standing', async () => {
@@ -826,6 +848,17 @@ describe('CastPlaybackService', () => {
     await t.svc.play();
     expect(t.remote.play).not.toHaveBeenCalled();
     expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 1, startTime: 80, autoplay: true });
+  });
+
+  it('a seek after a stop from elsewhere loads the place again paused', async () => {
+    const t = setup();
+    await t.svc.load(TRACKS, 1, 0, [], BOOK);
+    await t.svc.play();
+    t.status({ playerState: 'playing', contentId: t.url(1), position: 80 });
+    t.status({ playerState: 'idle', idleReason: 'cancelled', position: NaN });
+    await t.svc.seekTo(120);
+    expect(t.remote.seek).not.toHaveBeenCalled();
+    expect(t.remote.loads.at(-1)).toMatchObject({ startTime: 120, autoplay: false });
   });
 
   it("never touches the receiver's volume (the sleep timer fade would set the TV's)", async () => {

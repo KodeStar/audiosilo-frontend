@@ -168,11 +168,11 @@ export class CastPlaybackService implements PlaybackService {
   private minting: { loaded: Loaded; done: Promise<boolean> } | null = null;
   /** Whether the book should be playing: the latest settled word from either side, this
    * phone's command (`play`; `pause` or a `load`, which is sent paused) or the receiver's
-   * own `playing` or `paused` (the TV remote, Google Home), read when no load of ours is in
-   * flight (`onStatus`); for a session it did not load and no word came since, the play
-   * state it was taken over in (`adoptQueue`); null when none is known. A reload plays on by
-   * it (`playOn`): the receiver's status reads `buffering` or `loading` while it takes a
-   * seek or a load, whichever play state it ends in. */
+   * own `playing`, `paused` or stop (the TV remote, Google Home), read when no load of ours
+   * is in flight (`onStatus`, `stopped`); for a session it did not load and no word came
+   * since, the play state it was taken over in (`adoptQueue`); null when none is known. A
+   * queue sent again plays by it (`playOn`): the receiver's status reads `buffering` or
+   * `loading` while it takes a seek or a load, whichever play state it ends in. */
   private playIntent: boolean | null = null;
 
   constructor(
@@ -351,6 +351,8 @@ export class CastPlaybackService implements PlaybackService {
     this.seen = null;
     this.earlyEndRetryAt = null;
     this.needsReload = false;
+    // The next book's play state is its own (`adoptQueue` takes the one it is taken over in).
+    this.playIntent = null;
     // Another sender's book on the receiver is theirs: only ours is ever stopped (and
     // theirs stays ignored until this phone loads a book again, `sendQueue`).
     if (!this.foreignMedia) await this.remote.stop().catch(() => undefined);
@@ -384,12 +386,17 @@ export class CastPlaybackService implements PlaybackService {
   // --- internals ------------------------------------------------------------
 
   /** Whether a queue sent again (a seek into a transcoded file, a file jump, a refused
-   * receiver's reload) should play: the play intent, else `fallback` (by default whether the
-   * book plays or loads now). */
-  private playOn(
-    fallback = this.snapshot.state === 'playing' || this.snapshot.state === 'loading',
-  ): boolean {
-    return this.playIntent ?? fallback;
+   * receiver's reload) should play: the play intent, else (an adopted session no word came
+   * for yet) whether the book plays now. */
+  private playOn(): boolean {
+    return this.playIntent ?? this.snapshot.state === 'playing';
+  }
+
+  /** Our book is off the receiver (stopped from elsewhere, or an early end not reloaded): it
+   * waits paused, and the next play loads it again. */
+  private stopped() {
+    this.needsReload = true;
+    this.playIntent = false;
   }
 
   private askMove() {
@@ -512,7 +519,7 @@ export class CastPlaybackService implements PlaybackService {
     if (!status) {
       // No media on the receiver: whatever was playing was stopped from elsewhere.
       if (this.loaded && this.loadsInFlight === 0) {
-        this.needsReload = true;
+        this.stopped();
         if (this.snapshot.state !== 'idle' && this.snapshot.state !== 'ended') {
           this.update({ state: 'paused' });
         }
@@ -529,12 +536,17 @@ export class CastPlaybackService implements PlaybackService {
       this.update({ state: 'paused' });
       return;
     }
-    // The receiver settled playing or paused, whoever asked: the play intent from now on. A
-    // status while a load of ours is in flight (a `paused` before it takes a play's queue,
-    // as the foreign check above) is not a word on that load.
+    // The receiver settled playing, paused or stopped, whoever asked: the play intent from
+    // now on. A status while a load of ours is in flight (a `paused` before it takes a play's
+    // queue, the replaced item's `interrupted`; as the foreign check above) is not a word on
+    // that load, though a stop still means the next play reloads.
+    const stoppedElsewhere =
+      status.playerState === 'idle' &&
+      (status.idleReason === 'cancelled' || status.idleReason === 'interrupted');
+    if (stoppedElsewhere) this.needsReload = true;
     if (
       this.loadsInFlight === 0 &&
-      (status.playerState === 'playing' || status.playerState === 'paused')
+      (status.playerState === 'playing' || status.playerState === 'paused' || stoppedElsewhere)
     ) {
       this.playIntent = status.playerState === 'playing';
     }
@@ -546,12 +558,6 @@ export class CastPlaybackService implements PlaybackService {
       lastTrack,
       loading: this.loadsInFlight > 0,
     });
-    if (
-      status.playerState === 'idle' &&
-      (status.idleReason === 'cancelled' || status.idleReason === 'interrupted')
-    ) {
-      this.needsReload = true;
-    }
     const offset = loaded?.offsets[trackIndex] ?? 0;
     const duration = loaded?.tracks[trackIndex]?.duration ?? this.snapshot.duration;
     let position = Number.isFinite(status.position)
@@ -607,14 +613,14 @@ export class CastPlaybackService implements PlaybackService {
     if (!isEarlyTranscodeEnd(place, duration, this.earlyEndRetryAt)) return false;
     this.earlyEndRetryAt = place;
     if (!seen?.playing || age > EARLY_END_FRESH_MS) {
-      this.needsReload = true;
+      this.stopped();
       this.place({ state: 'paused', trackIndex, position: place, duration }, false);
       return true;
     }
     this.place({ state: 'loading', trackIndex, position: place, duration }, false);
     void this.sendQueue(trackIndex, place, true).catch(() => {
       // Could not load it again: paused there, and the next play tries again.
-      this.needsReload = true;
+      this.stopped();
       this.update({ state: 'paused' });
     });
     return true;
@@ -623,15 +629,14 @@ export class CastPlaybackService implements PlaybackService {
   /**
    * The receiver stopped on an error with our book loaded (a later file, a seek or a reload
    * it was refused): the queue is loaded again there with a newly minted cast token
-   * (`freshToken`), playing on by the play intent (`playOn`, else when it was last seen
-   * playing there), else paused, before the error reaches the store. The place is
-   * where it was last seen on that file when the receiver reports less (it reports 0 once
-   * idle). A reload that fails is the error after all.
+   * (`freshToken`), playing on by the play intent (`playOn`), else paused, before the error
+   * reaches the store. The place is where it was last seen on that file when the receiver
+   * reports less (it reports 0 once idle). A reload that fails is the error after all.
    */
   private reloadFresh(trackIndex: number, reported: number, duration: number) {
     const seen = this.seen?.trackIndex === trackIndex ? this.seen : null;
     const place = Math.min(Math.max(reported, seen?.position ?? 0), duration || Infinity);
-    const autoplay = this.playOn(seen?.playing ?? false);
+    const autoplay = this.playOn();
     const seq = this.loadSeq;
     this.place({ state: 'loading', trackIndex, position: place, duration }, false);
     const fail = () => {
