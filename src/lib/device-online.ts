@@ -20,7 +20,14 @@ import { Platform } from 'react-native';
  * reads false (`ApiClient.send`).
  */
 export function useDeviceOnline(): boolean {
-  return useSyncExternalStore(subscribe, readOnline, readOnline);
+  return useSyncExternalStore(subscribe, readOnline, readOnlineAtBuild);
+}
+
+/** What the web's static pages were rendered with (no browser there, so online): read
+ * while they hydrate, so an offline start doesn't contradict them (the query wiring reads
+ * the browser's flag at start, before anything hydrates); the real one follows at once. */
+function readOnlineAtBuild(): boolean {
+  return true;
 }
 
 /**

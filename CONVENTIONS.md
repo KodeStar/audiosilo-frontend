@@ -4233,14 +4233,15 @@ under their empty state).
   nothing on tablet/desktop (iOS mounts both placements behind the hidden bar).
 - **The device's online signal** (`src/lib/device-online.ts`): `useDeviceOnline()` / `watchDeviceOnline()`
   say whether the device has a network at all, never whether the internet answers: the browser's
-  `online`/`offline` events on the web, expo-network's `isConnected` on native
+  `navigator.onLine` on the web (read at start, then on its `online`/`offline` events), expo-network's `isConnected` on native
   (`isInternetReachable` is not read: a phone on Wi-Fi with no internet still reaches a server
   on the LAN, and calling it offline hid Retry and the Library, fe#202; unknown counts as
   online, a network Android can't name (`type: UNKNOWN`) included, and the first read never
-  undoes a change the listener told before it landed). On native the same source drives TanStack's `onlineManager`
-  (`onlineManager.setEventListener(watchDeviceOnline)` in `provider.tsx`; the web keeps
-  TanStack's own window listeners, the same events), so native queries pause
-  with no network and resume when it returns, as they always did on the web: a screen must
+  undoes a change the listener told before it landed). On every platform the same source drives TanStack's `onlineManager`
+  (`onlineManager.setEventListener(watchDeviceOnline)` in `provider.tsx`; on the web it replaced
+  TanStack's own window listeners, which start online and hear only the events, so a cold launch
+  with no network asked every read and failed it, fe#271), so queries pause
+  with no network and resume when it returns: a screen must
   treat `fetchStatus: 'paused'` / `isPaused` as "offline", not as loading, and a read that has
   to settle whatever the flag says uses `networkMode: 'always'` or `fetchFailFast`: a read with
   a copy on this device to fall back to is one (`useBookProgress`'s mirror: held, it never runs).
