@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { useTheme } from '@/theme/theme-provider';
 import { themeColors } from '@/theme/high-contrast';
+import { colors } from '@/theme/tokens';
 
 import type { ReaderTheme } from './protocol';
 import {
@@ -10,9 +11,6 @@ import {
   type ReaderThemeChoice,
   saveReaderTheme,
 } from './reader-settings';
-
-/** The black theme's page: pure black, so an OLED screen lights only the text. */
-const BLACK = '#000000';
 
 /**
  * The colours a reader surface draws the book in, for the device's reader theme: the app's
@@ -28,7 +26,8 @@ export function readerThemeOf(
   const palette = themeColors(scheme, highContrast);
   return {
     scheme,
-    background: choice === 'black' ? BLACK : palette.card,
+    // Black: a pure black page, so an OLED screen lights only the text.
+    background: choice === 'black' ? colors.black : palette.card,
     foreground: palette.foreground,
   };
 }
