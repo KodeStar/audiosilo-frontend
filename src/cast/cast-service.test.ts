@@ -1220,6 +1220,35 @@ describe('CastPlaybackService', () => {
         await flush();
         expect(t.svc.getSnapshot()).toMatchObject({ state: 'ready', trackIndex: 0, position: 30 });
       });
+
+      it("a status read begun before a queue was sent is not that queue's word", async () => {
+        const t = setup();
+        await t.svc.load(TRACKS, 0, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 5 });
+        // The app comes back and reads the receiver, which says an error (it says the last one
+        // again on every read); the listener starts the book again before that read answers.
+        let read: (s: CastMediaStatus) => void = () => {};
+        (t.remote.readStatus as jest.Mock).mockImplementationOnce(
+          () => new Promise<CastMediaStatus>((r) => (read = r)),
+        );
+        const reading = t.svc.refresh();
+        const answer = holdLoad(t);
+        const loading = t.svc.load(TRACKS, 0, 5, [], BOOK);
+        await flush();
+        read({
+          playerState: 'idle',
+          idleReason: 'error',
+          contentId: t.url(0),
+          position: 0,
+          rate: 1,
+        });
+        await reading;
+        answer();
+        await loading;
+        expect(t.remote.loads).toHaveLength(2);
+        expect(t.svc.getSnapshot()).toMatchObject({ state: 'ready', trackIndex: 0, position: 5 });
+      });
     });
 
     it('a book loaded again (a Retry) mints no sooner than a minute on; another book may', async () => {

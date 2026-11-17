@@ -238,10 +238,13 @@ export class CastPlaybackService implements PlaybackService {
   }
 
   /** Read the receiver's status now (bounded) and fold it in, so the place handed back to
-   * the phone or saved before iOS suspends the app is the receiver's latest. */
+   * the phone or saved before iOS suspends the app is the receiver's latest. Not one read
+   * while a queue was sent (or the route was reset): that is the receiver before it took the
+   * queue, and an error it still says would count as that queue's refusal (`refusedQueue`). */
   async refresh(): Promise<void> {
+    const queue = this.queueSeq;
     const s = await this.remote.readStatus().catch(() => null);
-    if (s) this.onStatus(s);
+    if (s && queue === this.queueSeq) this.onStatus(s);
   }
 
   /**
