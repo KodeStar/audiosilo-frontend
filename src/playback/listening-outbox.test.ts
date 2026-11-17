@@ -1389,6 +1389,27 @@ describe("a connection's listening_sync across launches", () => {
     expect(usesListeningSync('c1')).toBe(true);
   });
 
+  it('an event the server takes alone after a rollback takes the sync route again too', async () => {
+    // The batch is refused as a whole (a 400), then each event is taken alone: that proves
+    // the route as a taken batch does.
+    await appendEvents('c1', [listen('old')]);
+    client(async () => {
+      throw new ApiError(404, 'not found');
+    });
+    await flushOutbox('c1');
+    mockCaps = { listening_sync: false };
+    expect(usesListeningSync('c1')).toBe(false);
+    await appendEvents('c1', [listen('one'), listen('two')]);
+    client(async (body) => {
+      if (body.events.length > 1) throw new ApiError(400, 'invalid request');
+      return answer(body);
+    });
+    await flushOutbox('c1');
+    expect(keepServerFlag).toHaveBeenCalledWith('c1', 'listening_sync');
+    mockCaps = { listening_sync: true };
+    expect(usesListeningSync('c1')).toBe(true);
+  });
+
   it('a sync answer changes no flag when the cached /server agrees or is unknown', async () => {
     for (const caps of [{ listening_sync: true }, undefined]) {
       mockCaps = caps;

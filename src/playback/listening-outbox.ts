@@ -1161,6 +1161,19 @@ async function giveUpOld(connectionId: string, now = Date.now()): Promise<void> 
 /** What one request's outcome asks of the flush. */
 type Next = 'more' | 'stop';
 
+/**
+ * The server took a sync request, so it has the route: a kept `/server` that says otherwise
+ * (an older answer, from before the server was updated) takes the flag now, and a rollback
+ * earlier this launch (the server since updated) no longer holds. For a batch and for an
+ * event sent alone (a batch refused as a whole, its events then taken one by one).
+ */
+function tookSync(connectionId: string): void {
+  rolledBack.delete(connectionId);
+  if (cachedCapability(connectionId, 'listening_sync') === false) {
+    keepServerFlag(connectionId, 'listening_sync');
+  }
+}
+
 async function sendChunk(
   connectionId: string,
   client: ApiClient,
@@ -1179,13 +1192,7 @@ async function sendChunk(
         ),
       );
       noteSuccess(connectionId);
-      // It took the events, so it has the route: a kept `/server` that says otherwise (an
-      // older answer, from before the server was updated) takes the flag now, and a
-      // rollback earlier this launch (the server since updated) no longer holds.
-      rolledBack.delete(connectionId);
-      if (cachedCapability(connectionId, 'listening_sync') === false) {
-        keepServerFlag(connectionId, 'listening_sync');
-      }
+      tookSync(connectionId);
       await applyAnswer(connectionId, live, answer, { sentAt, answeredAt: Date.now() });
       return 'more';
     });
@@ -1258,6 +1265,7 @@ async function sendAlone(
     await sending([entry], async (live) => {
       if (live.length === 0) return;
       const answer = await client.syncListening(syncBody(connectionId, [entry.event], deviceId));
+      tookSync(connectionId);
       await applyAnswer(connectionId, [entry], answer);
     });
     return 'sent';
