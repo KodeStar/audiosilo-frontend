@@ -1037,7 +1037,8 @@ function resumableChanged(): void {
  * play would be heard in the background with no notification and no controls: one still on
  * its way stops before the load, or loads paused (`StartHow.wanted`), and an episode still
  * being fetched for it never starts (`requestEpisodeFetch`). A new request for the same item
- * takes the mark off, so a start it joins plays again.
+ * takes the mark off, so a start it joins plays again. Kept when the sync stops (`teardown`):
+ * a start called off before it is still on its way, and must not read as wanted again.
  */
 const cancelledPlays = new Set<string>();
 
@@ -1554,7 +1555,6 @@ function teardown() {
   again = null;
   resumptionAgain = false;
   kidsShelfSeen.clear();
-  cancelledPlays.clear();
   setCarConnected(false);
   carListed = null;
 }
@@ -1562,6 +1562,7 @@ function teardown() {
 /** Tests only: stop everything and forget what was written, as if the app had just started. */
 export function forgetCarSync() {
   teardown();
+  cancelledPlays.clear();
   starts = 0;
   ready = Promise.resolve();
   lastBody = '';

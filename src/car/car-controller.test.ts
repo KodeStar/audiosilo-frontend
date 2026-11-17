@@ -1663,6 +1663,19 @@ describe('play requests', () => {
     expect(how.wanted()).toBe(true);
   });
 
+  // The sync stopping (the root layout gone while the runtime lives on) forgot the mark, so a
+  // start a frozen server still held read as wanted again and played.
+  it('a request native gave up on stays unwanted once the sync stops', async () => {
+    stop = startCarSync();
+    mockNative.playRequest?.(carItemId(ref));
+    await settle();
+    const how = mockStartBookInPlace.mock.calls[0][2] as { wanted: () => boolean };
+    mockNative.playCancel?.(carItemId(ref));
+    stop();
+    stop = () => {};
+    expect(how.wanted()).toBe(false);
+  });
+
   it('a request called off while JS booted starts nothing, the loaded book included', async () => {
     let release = () => {};
     const hold = () => {
