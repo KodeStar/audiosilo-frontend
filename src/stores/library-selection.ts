@@ -158,8 +158,10 @@ export function resolveLibrary(
  * while it can't be read (rule 4: no pick, or a pick whose server answered that it shares
  * nothing) left the tab empty for the whole drive. There the first server that IS read and
  * has a library is listed instead (the listener's own order). A pick whose server has not
- * answered, or still has a library, is never replaced by another server's (rules 1 to 3),
- * and nothing is remembered: once the first server answers, the tab is its library again.
+ * answered, or still has a library, is never replaced by another server's (rules 1 to 3).
+ * Nothing is remembered here: the car passes the library it listed last this drive as
+ * `shown` (`car-controller.ts`, D9 of fe#271), so the tab stays on it when the first server
+ * answers mid-drive, and the next drive starts afresh.
  */
 export function resolveCarLibrary(
   stored: LibrarySelection | null,

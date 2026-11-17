@@ -74,6 +74,7 @@ import {
 import { bookRefOf, type BookRef } from '@/playback/types';
 import {
   type LibraryGroup,
+  type LibrarySelection,
   resolveCarLibrary,
   useLibrarySelection,
 } from '@/stores/library-selection';
@@ -101,6 +102,7 @@ import {
   parseCarItemId,
   playSpec,
   type CarBook,
+  type CarItemContext,
   type CarPlaySpec,
   type CarSnapshotInput,
   type LivePlace,
@@ -112,17 +114,20 @@ import { carNative } from './car-native';
  * CarPlay and Android Auto, the JS side. Framework-free, started once from the root layout
  * and from the car's headless task (`car-task.ts`):
  *
- * - **The car snapshot**: built (`car-model.ts`) and handed to native only once a car has
- *   connected on this device (a phone that never meets a car never builds one, nor
+ * - **The car snapshot**: built (`car-model.ts`) and handed to native once a car has
+ *   connected on this device (a phone that never meets a car never builds the full one, nor
  *   downloads car covers): at start, when a car connects (always a fresh build: native
  *   shows the last one it was handed at once, then this one), after adopting a book the
  *   service loaded, when the language changes, while a car is connected when a book starts
- *   or pauses, and `SETTLE_MS` after the progress lists, the Up next queue, the downloads
- *   registry, the session's connections or default, the library selection or the default
- *   speed change (and once covers a written snapshot lacked have been fetched); never more
- *   often than every `MIN_GAP_MS`. It never replaces native's last snapshot with a worse one:
- *   not while the session's hydrate has failed, and not with no server's lists readable once
- *   one was written on this device. Every write, play request, adoption and bookmark drain
+ *   or pauses (on Android, any pause, stop or book change, connected or not: what a
+ *   Bluetooth resumption plays), and `SETTLE_MS` after the progress lists, the Up next
+ *   queue, the downloads registry, the session's connections or default, the library
+ *   selection or the default speed change (and once covers a written snapshot lacked have
+ *   been fetched); never more often than every `MIN_GAP_MS`. Before any car, Android writes
+ *   a minimal one instead (`buildResumable`, fe#251) on every pause, stop and book change.
+ *   It never replaces native's last snapshot with a worse one: not while the session's
+ *   hydrate has failed, and not with no server's lists readable once one was written on
+ *   this device. Every write, play request, adoption and bookmark drain
  *   waits for `bootstrapPlayback()`. Its covers are files the app wrote: a downloaded book's own
  *   cover, else a small JPEG (`car-artwork.ts`) fetched after the snapshot that needs it is
  *   out (a list never waits on the network). The downloaded books' play specs (Android's,
@@ -173,8 +178,9 @@ let starts = 0;
 let stops: (() => void)[] = [];
 let ready: Promise<void> = Promise.resolve();
 
-/** A car has connected on this device at least once (`CAR_SEEN_KEY`): only then is a
- * snapshot built and written, and are covers fetched for it. */
+/** A car has connected on this device at least once (`CAR_SEEN_KEY`): only then is the full
+ * snapshot built and written, and are covers fetched for it (before, Android writes only the
+ * minimal resumable one, `buildResumable`). */
 let carSeen = false;
 
 // --- Reading what the app knows ---------------------------------------------------------
@@ -207,19 +213,21 @@ async function itemOf(ref: BookRef): Promise<Book | null> {
 }
 
 /** The progress rows of `conns` (the person listening's servers), and which servers' rows are
- * known (read now or cached): only those can stand in for the server in a resume lookup. */
+ * known (read now or cached): only those can stand in for the server in a resume lookup.
+ * `cachedOnly`: what the query cache holds, with no request. */
 async function progressRows(
   conns: readonly Connection[],
+  cachedOnly = false,
 ): Promise<{ rows: SourcedProgress[]; known: Set<string> }> {
   const known = new Set<string>();
   const lists = await Promise.all(
     conns.map(async (c) => {
       const client = resolveClient(c.id);
       if (!client) return [];
-      const rows = await read({
-        ...allProgressQuery(c.id, client),
-        staleTime: LIST_STALE_MS,
-      });
+      const query = { ...allProgressQuery(c.id, client), staleTime: LIST_STALE_MS };
+      const rows = cachedOnly
+        ? queryClient.getQueryData<Progress[]>(query.queryKey)
+        : await read(query);
       if (!rows) return [];
       known.add(c.id);
       return rows.map((p): SourcedProgress => ({
@@ -230,6 +238,13 @@ async function progressRows(
     }),
   );
   return { rows: lists.flat(), known };
+}
+
+/** A book's progress row among `rows`, else null. */
+function progressLookup(rows: readonly SourcedProgress[]): (ref: BookRef) => Progress | null {
+  const byKey = new Map<string, Progress>();
+  for (const r of rows) byKey.set(contentKeyOf(progressAt(r)), r);
+  return (ref) => byKey.get(contentKeyOf(ref)) ?? null;
 }
 
 /** The Up next queue the app shows (`queueConnectionId`: the loaded book's server, else the
@@ -249,10 +264,16 @@ async function upNextEntries(): Promise<{ cid: string; entries: QueueEntry[] } |
   return { cid, entries: entries ?? [] };
 }
 
+/** The library the car's Library tab listed last while a car is connected (D9, fe#271): with
+ * no pick, the first readable server's stands for the drive, not swapped for the first
+ * server's once that answers mid-drive. Forgotten when the car goes. */
+let carListed: LibrarySelection | null = null;
+
 /** The Library tab's library: the app's own pick as the Library tab resolves it, over every
- * signed-in server's library list; with no pick, the first server that could be read
+ * signed-in server's library list; with no pick, what the car listed last this drive while
+ * it stands, else the library the app shows, else the first server that could be read
  * (`resolveCarLibrary`: the car has no state to show for one it waits on). */
-async function selectedLibrary(): Promise<{ connectionId: string; libraryId: number } | null> {
+async function selectedLibrary(): Promise<LibrarySelection | null> {
   const groups = await Promise.all(
     profileConnections().map(async (c): Promise<LibraryGroup> => {
       const client = resolveClient(c.id);
@@ -268,7 +289,9 @@ async function selectedLibrary(): Promise<{ connectionId: string; libraryId: num
     }),
   );
   const { selection, shown } = useLibrarySelection.getState();
-  return resolveCarLibrary(selection, groups, shown);
+  const lib = resolveCarLibrary(selection, groups, carListed ?? shown);
+  if (isCarConnected()) carListed = lib;
+  return lib;
 }
 
 /** The selected library's books, recently added first. */
@@ -438,12 +461,14 @@ let specs = new Map<string, { manifest: DownloadManifest; inputs: string; spec?:
  * the tabs list. Each resumes where `playBook` would: `resumeLookupOf` over the server row
  * the progress list holds (only a server whose list is known stands in for the server) and
  * the device's own places, read ONCE for all of them (`readLocalPlaces`), with no mirror
- * write. A spec is rebuilt only when its manifest, its resume place or the defaults changed.
+ * write. The loaded book, paused, starts where it was paused instead (`pausedPlaceOf`). A spec
+ * is rebuilt only when its manifest, its resume place or the defaults changed.
  */
 async function playSpecs(
   books: ReadonlyMap<string, CarBook>,
   known: ReadonlySet<string>,
   progressOf: (ref: BookRef) => Progress | null,
+  paused: PausedPlace | null,
 ): Promise<Map<string, CarPlaySpec | undefined>> {
   const downloaded = [...books].flatMap(([key, b]) => {
     const dl = downloadedEntryOf(b.ref);
@@ -459,12 +484,13 @@ async function playSpecs(
       const { connectionId, libraryId, path } = ref;
       const row = known.has(connectionId) ? progressOf(ref) : undefined;
       const lookup = resumeLookupOf(row, places, connectionId, libraryId, path);
-      const inputs = JSON.stringify([lookup, defaultRate, virtualChapterInterval]);
+      const at = paused?.key === key ? paused.place : undefined;
+      const inputs = JSON.stringify([lookup, defaultRate, virtualChapterInterval, at]);
       const had = specs.get(key);
       const spec =
         had && had.manifest === manifest && had.inputs === inputs
           ? had.spec
-          : playSpec(ref, manifest, lookup, defaultRate, virtualChapterInterval);
+          : playSpec(ref, manifest, lookup, defaultRate, virtualChapterInterval, at);
       next.set(key, { manifest, inputs, spec });
       out.set(key, spec);
     }
@@ -497,6 +523,123 @@ const snapshotOwner = () =>
     !!activeProfile()?.kids,
   ]);
 
+/** The loaded book's live place, when it is the person listening's and has not ended. */
+function livePlaceOf(player: PlayerState): LivePlace | null {
+  const np = player.nowPlaying;
+  return np && mayActFor(np.connectionId) && player.snapshot.state !== 'ended'
+    ? {
+        ref: bookRefOf(np),
+        position: selectBookPosition(player),
+        total: np.queue.total,
+        rate: player.rate,
+      }
+    : null;
+}
+
+/** Where the loaded book was paused (its content key, place and speed). */
+type PausedPlace = { key: string; place: { position: number; rate: number } };
+
+/** The live place of a loaded book that is paused and settled (no load of the store's under
+ * way), else null: only then is the live place the one the pause saves. */
+function pausedPlaceOf(player: PlayerState, live: LivePlace | null): PausedPlace | null {
+  if (!live || player.loadingBook || player.snapshot.state !== 'paused') return null;
+  return { key: contentKeyOf(live.ref), place: { position: live.position, rate: live.rate } };
+}
+
+/**
+ * Builds the snapshot of `input` (the date and the labels added) and hands it to native when
+ * its body changed. False when the person listening changed while it was built (nothing is
+ * written then). `beforeWrite` is asked last, right before the write: false skips it.
+ */
+async function handOver(
+  owner: string,
+  input: Omit<CarSnapshotInput, 'generatedAt' | 'labels'>,
+  ctx: Pick<CarItemContext, 'live' | 'artworkFor' | 'playFor'>,
+  beforeWrite: () => boolean = () => true,
+): Promise<boolean> {
+  const t = i18n.t.bind(i18n);
+  const { generatedAt, ...body } = buildCarSnapshot(
+    { generatedAt: new Date().toISOString(), labels: carLabels(t), ...input },
+    {
+      t,
+      defaultRate: listenerSettings().defaultRate,
+      isDownloaded: (ref) => !!downloadedEntryOf(ref),
+      ...ctx,
+    },
+  );
+  // Serialized once: the body is what is compared, and the date goes in front of it.
+  if (snapshotOwner() !== owner || !beforeWrite()) return false;
+  const bodyJson = JSON.stringify(body);
+  if (
+    bodyJson !== lastBody &&
+    (await carNative.setSnapshot(
+      `{"generatedAt":${JSON.stringify(generatedAt)},${bodyJson.slice(1)}`,
+    ))
+  ) {
+    lastBody = bodyJson;
+    await setItem(SNAPSHOT_OWNER_KEY, owner);
+    if (wroteBefore !== true) {
+      wroteBefore = true;
+      void setItem(WRITTEN_KEY, true);
+    }
+  }
+  return true;
+}
+
+/**
+ * Android, on a phone no car has met (fe#251): Bluetooth or a headset's play after the app was
+ * killed resumes the car snapshot's first Continue listening book when it has a play spec
+ * (`ResumptionReceiver`), so a snapshot that holds the book being listened to is written on
+ * every pause, stop and book change all the same. Minimal: the loaded book at its live place
+ * (paused, its spec starts there) and the downloaded books (a kids profile's loaded story
+ * only), the progress rows the app last read standing in for the servers'. No server is
+ * read, no cover fetched or pruned (a downloaded book's own cover file only), and no timer is
+ * waited on, so a pause made in the background, where Android holds the JS timers, still
+ * writes it. Once a car has been seen the full snapshot takes over.
+ */
+async function buildResumable(): Promise<void> {
+  await bootstrapPlayback();
+  if (carSeen || sessionHydrateFailed()) return;
+  const owner = snapshotOwner();
+  const conns = profileConnections();
+  const player = usePlayer.getState();
+  const live = livePlaceOf(player);
+  const kids = !!activeProfile()?.kids;
+  const { rows, known } = await progressRows(conns, true);
+  const progressOf = progressLookup(rows);
+  const carBook = (ref: BookRef, book: Book | null): CarBook => ({
+    ref,
+    book,
+    progress: progressOf(ref),
+  });
+  const listed = live
+    ? [carBook(live.ref, downloadedEntryOf(live.ref)?.manifest.book ?? null)]
+    : [];
+  const downloads = kids
+    ? null
+    : downloadedEntries(
+        useDownloads.getState().entries,
+        conns.map((c) => c.id),
+      ).map((e) => carBook(bookRefOf(e), e.manifest.book));
+  const all = new Map<string, CarBook>();
+  for (const b of [...listed, ...(downloads ?? [])]) all.set(contentKeyOf(b.ref), b);
+  const plays = await playSpecs(all, known, progressOf, pausedPlaceOf(player, live));
+  await handOver(
+    owner,
+    {
+      signedIn: conns.length > 0,
+      books: { continue: listed, upnext: null, downloads, library: null },
+    },
+    {
+      live,
+      artworkFor: (ref) => downloadedEntryOf(ref)?.manifest.coverUri ?? null,
+      playFor: (ref) => plays.get(contentKeyOf(ref)),
+    },
+    // A car met meanwhile: its full snapshot is due, never this one over it.
+    () => !carSeen,
+  );
+}
+
 async function buildAndWrite(): Promise<void> {
   const owner = snapshotOwner();
   // The session's connections never loaded (a locked keychain at a CarPlay launch): the
@@ -507,16 +650,7 @@ async function buildAndWrite(): Promise<void> {
   const conns = profileConnections();
   const signedIn = conns.length > 0;
   const player = usePlayer.getState();
-  const np = player.nowPlaying;
-  const live: LivePlace | null =
-    np && mayActFor(np.connectionId) && player.snapshot.state !== 'ended'
-      ? {
-          ref: bookRefOf(np),
-          position: selectBookPosition(player),
-          total: np.queue.total,
-          rate: player.rate,
-        }
-      : null;
+  const live = livePlaceOf(player);
 
   // A kids profile: its kids shelf only, on the connection kids mode shows (Phase 8b-1).
   const profile = activeProfile();
@@ -545,9 +679,7 @@ async function buildAndWrite(): Promise<void> {
     wroteBefore ??= (await getItem<boolean>(WRITTEN_KEY)) === true;
     if (wroteBefore && (await getItem<string>(SNAPSHOT_OWNER_KEY)) === owner) return;
   }
-  const progressByKey = new Map<string, Progress>();
-  for (const r of rows) progressByKey.set(contentKeyOf(progressAt(r)), r);
-  const progressOf = (ref: BookRef) => progressByKey.get(contentKeyOf(ref)) ?? null;
+  const progressOf = progressLookup(rows);
 
   const books: CarSnapshotInput['books'] = kids
     ? await kidsBooks(kidsConn, kids, await kidsRead, rows, live, progressOf)
@@ -562,7 +694,10 @@ async function buildAndWrite(): Promise<void> {
   }
 
   // iOS never starts a book without JS (CarPlay asks JS for every book): no play specs.
-  const plays = Platform.OS === 'android' ? await playSpecs(all, known, progressOf) : null;
+  const plays =
+    Platform.OS === 'android'
+      ? await playSpecs(all, known, progressOf, pausedPlaceOf(player, live))
+      : null;
 
   // Covers: a downloaded book's own cover file as it is (no network, no copy); any other's
   // a small JPEG written under the car artwork folder (one folder read per snapshot).
@@ -595,40 +730,21 @@ async function buildAndWrite(): Promise<void> {
     missing.set(key, { name, url, headers: client.proxyHeadersFor(url) });
   }
 
-  const { generatedAt, ...body } = buildCarSnapshot(
+  const handed = await handOver(
+    owner,
     {
-      generatedAt: new Date().toISOString(),
-      labels: carLabels(t),
       signedIn,
       books,
       // The kids shelf is the Library tab, under kids mode's own heading.
       ...(kids ? { titles: { library: t('kids.stories.title') } } : {}),
     },
     {
-      t,
-      defaultRate: listenerSettings().defaultRate,
       live,
-      isDownloaded: (ref) => !!downloadedEntryOf(ref),
       artworkFor: (ref) => artwork.get(contentKeyOf(ref)) ?? null,
       playFor: (ref) => plays?.get(contentKeyOf(ref)),
     },
   );
-  // Serialized once: the body is what is compared, and the date goes in front of it.
-  if (snapshotOwner() !== owner) return;
-  const bodyJson = JSON.stringify(body);
-  if (
-    bodyJson !== lastBody &&
-    (await carNative.setSnapshot(
-      `{"generatedAt":${JSON.stringify(generatedAt)},${bodyJson.slice(1)}`,
-    ))
-  ) {
-    lastBody = bodyJson;
-    await setItem(SNAPSHOT_OWNER_KEY, owner);
-    if (wroteBefore !== true) {
-      wroteBefore = true;
-      void setItem(WRITTEN_KEY, true);
-    }
-  }
+  if (!handed) return;
   pruneArtwork(names, onDisk);
   missingArtwork = missing;
 }
@@ -689,11 +805,14 @@ let dueAt = 0;
 let writing = false;
 let again: boolean | null = null;
 let lastWriteAt = 0;
+/** Every snapshot write, the full and the resumable one, in the order asked: the last asked
+ * lands last. */
+const snapshotWrites = serialQueue();
 
-/** Ask for a snapshot (none before a car was seen on this device): `soon` (a car connected,
- * a book started or paused) as soon as the gap allows, else after `SETTLE_MS`. Requests
- * while one is pending join it (a sooner one moves it earlier); a request while one is being
- * written runs once it is done. */
+/** Ask for the full snapshot (none before a car was seen on this device): `soon` (a car
+ * connected, a book started or paused) as soon as the gap allows, else after `SETTLE_MS`.
+ * Requests while one is pending join it (a sooner one moves it earlier); a request while one
+ * is being written runs once it is done. */
 function request(soon: boolean): void {
   if (!active || !carSeen) return;
   if (writing) {
@@ -718,7 +837,7 @@ async function write(): Promise<void> {
     // as the listener registers (the root layout's path doesn't wait for them) would write a
     // signed-out snapshot over the good one and prune every cover it no longer names.
     await bootstrapPlayback();
-    await buildAndWrite();
+    await snapshotWrites(buildAndWrite);
   } catch (err) {
     console.warn('[car] snapshot failed', err);
   } finally {
@@ -731,6 +850,28 @@ async function write(): Promise<void> {
     again = null;
     request(soon);
   }
+}
+
+/** Android: the listener paused, stopped or changed book. With a car met before, the full
+ * snapshot as soon as the gap allows, connected or not, so the one native keeps for a
+ * resumption names that book; else the resumable one, at once (`buildResumable`). */
+function placeChanged(): void {
+  if (Platform.OS !== 'android') return;
+  if (carSeen) request(true);
+  else resumableChanged();
+}
+
+/** Android, no car met yet: what the resumable snapshot holds changed (the person listening,
+ * their servers, the downloads). A car met before: the full snapshot's own requests cover it. */
+function resumableChanged(): void {
+  if (active && Platform.OS === 'android' && !carSeen) void writeResumable();
+}
+
+/** The resumable snapshot (`buildResumable`), queued behind any write under way. */
+function writeResumable(): Promise<void> {
+  return snapshotWrites(buildResumable).catch((err) => {
+    console.warn('[car] resumable snapshot failed', err);
+  });
 }
 
 // --- Play requests ------------------------------------------------------------------------
@@ -1071,6 +1212,7 @@ function mayBeServiceChange(s: PlayerState, prev: PlayerState): boolean {
 function onConnection(connected: boolean): void {
   setCarConnected(connected);
   if (connected) carConnected();
+  else carListed = null;
 }
 
 /** A car connected: remember a car has been seen here, write a fresh snapshot and check for a
@@ -1131,13 +1273,14 @@ export function startCarSync(): () => void {
     carNative.onPlayRequest((id) => void handleCarPlayRequest(id)),
     carNative.onBookmark(onBookmarkPressed),
     usePlayer.subscribe((s, prev) => {
-      if (
-        // A car is connected now: only then does a book starting or pausing rebuild the
-        // snapshot (a connect builds a fresh one anyway).
-        isCarConnected() &&
-        (selectBookKey(s) !== selectBookKey(prev) || selectIsPlaying(s) !== selectIsPlaying(prev))
-      ) {
+      const otherBook = selectBookKey(s) !== selectBookKey(prev);
+      // A car is connected now: a book starting or pausing rebuilds the snapshot (a connect
+      // builds a fresh one anyway).
+      if (isCarConnected() && (otherBook || selectIsPlaying(s) !== selectIsPlaying(prev))) {
         request(true);
+      } else if (otherBook || (selectIsTransportLive(prev) && !selectIsTransportLive(s))) {
+        // Else, on Android, a pause, a stop or another book: what a resumption plays.
+        placeChanged();
       }
       if (mayBeServiceChange(s, prev)) void checkLoadedBook();
     }),
@@ -1147,10 +1290,12 @@ export function startCarSync(): () => void {
       if (sig === downloadsSig && !chaptersChanged(s.entries, prev.entries)) return;
       downloadsSig = sig;
       request(false);
+      resumableChanged();
     }),
     useSession.subscribe((s, prev) => {
       if (s.connections !== prev.connections || s.defaultConnectionId !== prev.defaultConnectionId)
         request(false);
+      if (s.connections !== prev.connections) resumableChanged();
     }),
     // Another person on this device, or kids mode turned on or off (or its library
     // changed): their lists, at once (a fresh build, as on a connect).
@@ -1160,6 +1305,7 @@ export function startCarSync(): () => void {
         JSON.stringify(activeProfile(s)?.kids) !== JSON.stringify(activeProfile(prev)?.kids)
       ) {
         request(true);
+        resumableChanged();
       }
     }),
     useLibrarySelection.subscribe((s, prev) => {
@@ -1215,6 +1361,7 @@ function teardown() {
   again = null;
   kidsShelfSeen.clear();
   setCarConnected(false);
+  carListed = null;
 }
 
 /** Tests only: stop everything and forget what was written, as if the app had just started. */

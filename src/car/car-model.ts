@@ -273,6 +273,10 @@ export function carItem(b: CarBook, ctx: CarItemContext): CarItem {
  * `resumeStart` (`book-source.ts`) as `playBook` reads it: an unfinished book resumes at its
  * saved place, a finished one starts again at 0, and its saved speed wins over the default.
  * Android only (iOS always lets JS start a book). Undefined when a file has no local copy.
+ *
+ * `paused` is where the listener paused this book, when it is the loaded one and paused now:
+ * its place and speed win over the lookup, whose device save may not have landed yet when a
+ * pause writes the snapshot (fe#251).
  */
 export function playSpec(
   ref: BookRef,
@@ -280,6 +284,7 @@ export function playSpec(
   lookup: ResumeLookup,
   defaultRate: number,
   virtualChapterInterval: number,
+  paused?: { position: number; rate: number },
 ): CarPlaySpec | undefined {
   const queue = buildBookQueue(
     null,
@@ -291,14 +296,15 @@ export function playSpec(
   );
   if (queue.tracks.length === 0 || queue.tracks.some((t) => !t.url)) return undefined;
   const saved = lookup.kind === 'progress' ? lookup.progress : null;
-  const { index, positionInTrack } = locate(queue.offsets, saved ? resumeStart(saved) : 0);
+  const start = paused ? paused.position : saved ? resumeStart(saved) : 0;
+  const { index, positionInTrack } = locate(queue.offsets, start);
   return {
     book: ref,
     tracks: queue.tracks.map(toNativeTrack),
     chapters: queue.chapterClips,
     startIndex: index,
     positionInTrack,
-    rate: bookSpeed(saved?.playback_speed, defaultRate),
+    rate: paused ? paused.rate : bookSpeed(saved?.playback_speed, defaultRate),
   };
 }
 

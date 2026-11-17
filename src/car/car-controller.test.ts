@@ -734,7 +734,7 @@ describe('startCarSync', () => {
     expect(mockNative.setSnapshot).toHaveBeenCalledTimes(3);
   });
 
-  it('rebuilds nothing for a book starting or pausing while no car is connected', async () => {
+  it('rebuilds nothing on iOS for a book starting or pausing while no car is connected', async () => {
     connect(['c1']);
     mockClients.c1 = fakeClient({});
     stop = startCarSync();
@@ -1103,6 +1103,156 @@ describe('startCarSync', () => {
     expect(mockNative.connection).not.toBeNull();
     b();
     expect(mockNative.connection).toBeNull();
+  });
+});
+
+describe('the resumable snapshot (Android, fe#251)', () => {
+  const loaded = (state: string, trackIndex: number, position: number) => ({
+    nowPlaying: {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'D',
+      queue: { offsets: [0, 100], total: 200 },
+    },
+    snapshot: { state, trackIndex, position, duration: 100, rate: 1.5 },
+    rate: 1.5,
+  });
+
+  /** Promise turns only: no timer runs (Android holds the JS timers in the background). */
+  async function flushPromises() {
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+  }
+
+  beforeEach(async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    await setItem('audiosilo.carSeen', false);
+    connect(['c1']);
+    mockClients.c1 = fakeClient({ books: [makeBook({ rel_path: 'L1' })] });
+    useDownloads.setState({
+      entries: { 'c1:2:D': downloaded('c1', 'D'), 'c1:2:E': downloaded('c1', 'E') },
+    });
+  });
+
+  it('is written on a pause with no car ever met, at the paused place, with no timer and no server read', async () => {
+    usePlayer.setState(loaded('playing', 1, 20));
+    stop = startCarSync();
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(mockNative.setSnapshot).not.toHaveBeenCalled(); // playing on: nothing to write
+
+    usePlayer.setState(loaded('paused', 1, 30));
+    await flushPromises();
+    expect(mockNative.setSnapshot).toHaveBeenCalledTimes(1);
+    const snap = lastSnapshot();
+    expect(snap.signedIn).toBe(true);
+    expect(snap.tabs.map((t) => t.id)).toEqual(['continue', 'downloads']);
+    // What a resumption plays (`CarSnapshot.resumable`): the paused book, from where it paused.
+    const first = tab(snap, 'continue')!.items[0];
+    expect(first.book).toEqual({ connectionId: 'c1', libraryId: 2, path: 'D' });
+    expect(first.play).toMatchObject({ startIndex: 1, positionInTrack: 30, rate: 1.5 });
+    expect(first.artwork).toBe('file:///d/cover.jpg');
+    expect(
+      tab(snap, 'downloads')!
+        .items.map((i) => i.book.path)
+        .sort(),
+    ).toEqual(['D', 'E']);
+    // Nothing read from a server, no cover fetched or pruned, and no car remembered.
+    expect(mockClients.c1.allProgress).not.toHaveBeenCalled();
+    expect(mockClients.c1.listBooks).not.toHaveBeenCalled();
+    expect(ensureArtwork).not.toHaveBeenCalled();
+    expect(pruneArtwork).not.toHaveBeenCalled();
+    expect(await getItem('audiosilo.carSeen')).toBe(false);
+    expect(JSON.stringify(snap)).not.toMatch(/secret|https?:/);
+  });
+
+  it('leaves nothing to resume once the book is stopped', async () => {
+    stop = startCarSync();
+    await settle();
+    usePlayer.setState(loaded('paused', 0, 10));
+    await flushPromises();
+    expect(tab(lastSnapshot(), 'continue')!.items).toHaveLength(1);
+
+    usePlayer.setState({
+      nowPlaying: null,
+      snapshot: { state: 'idle', trackIndex: 0, position: 0, duration: 0, rate: 1 },
+    });
+    await flushPromises();
+    expect(tab(lastSnapshot(), 'continue')!.items).toEqual([]);
+  });
+
+  it('is written again for another person, so their book is never resumed', async () => {
+    stop = startCarSync();
+    await settle();
+    usePlayer.setState(loaded('paused', 0, 10));
+    await flushPromises();
+    expect(lastSnapshot().signedIn).toBe(true);
+
+    connect([]);
+    await flushPromises();
+    expect(lastSnapshot().signedIn).toBe(false);
+    expect(lastSnapshot().tabs.every((t) => t.items.length === 0)).toBe(true);
+  });
+
+  it('is not written on iOS (CarPlay has no resumption)', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
+    stop = startCarSync();
+    await settle();
+    usePlayer.setState(loaded('playing', 1, 20));
+    usePlayer.setState(loaded('paused', 1, 30));
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(mockNative.setSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('with a car met before but none connected, a pause writes the full snapshot at the paused place', async () => {
+    await setItem('audiosilo.carSeen', true);
+    mockClients.c1 = fakeClient({
+      progress: [
+        makeProgress({ path: 'D', position: 130, duration: 200, updated_at: '2026-01-15' }),
+      ],
+    });
+    usePlayer.setState(loaded('playing', 1, 20));
+    stop = startCarSync();
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    const writes = mockNative.setSnapshot.mock.calls.length;
+
+    usePlayer.setState(loaded('paused', 1, 50));
+    await settle(MIN_GAP_MS);
+    expect(mockNative.setSnapshot).toHaveBeenCalledTimes(writes + 1);
+    const snap = lastSnapshot();
+    expect(snap.tabs.map((t) => t.id)).toEqual(['continue', 'downloads', 'library']);
+    // The paused place (150 s), not the server row's 130 s the device save has not passed yet.
+    expect(tab(snap, 'continue')!.items[0].play).toMatchObject({
+      startIndex: 1,
+      positionInTrack: 50,
+    });
+  });
+});
+
+describe("the car's Library tab with no pick (D9, fe#271)", () => {
+  it('keeps the server it listed for the drive when the first server answers later', async () => {
+    connect(['c1', 'c2']);
+    mockClients.c1 = fakeClient({ books: [makeBook({ rel_path: 'One' })] });
+    (mockClients.c1.libraries as jest.Mock).mockRejectedValueOnce(
+      new TypeError('Network request failed'),
+    );
+    mockClients.c2 = fakeClient({ books: [makeBook({ rel_path: 'Two' })] });
+    stop = startCarSync();
+    mockNative.connection?.(true);
+    await settle(MIN_GAP_MS);
+    const listed = () => tab(lastSnapshot(), 'library')!.items.map((i) => i.book.path);
+    expect(listed()).toEqual(['Two']);
+
+    // The first server answers mid-drive: the tab stays on the second's library.
+    useDownloads.setState({ entries: { 'c1:2:D': downloaded('c1', 'D') } });
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect((mockClients.c1.libraries as jest.Mock).mock.calls.length).toBeGreaterThan(1);
+    expect(tab(lastSnapshot(), 'downloads')!.items).toHaveLength(1);
+    expect(listed()).toEqual(['Two']);
+
+    // The next drive starts afresh: the first server's library.
+    mockNative.connection?.(false);
+    mockNative.connection?.(true);
+    await settle(MIN_GAP_MS);
+    expect(listed()).toEqual(['One']);
   });
 });
 
