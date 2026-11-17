@@ -15,12 +15,19 @@ import { Platform } from 'react-native';
  * can be reached through it (fe#179): a server on the same Wi-Fi answers with the
  * internet down, so whether a server can be reached is that server's to say (by
  * answering), and a Retry stays on screen. React Query pauses its reads by the same
- * signal in the app (`watchDeviceOnline`, wired in `src/api/provider.tsx`; writes are
- * never held there), and the API client fails a request at once, unsent, while it reads
- * false (`ApiClient.send`).
+ * signal on every platform (`watchDeviceOnline`, wired in `src/api/provider.tsx`; writes
+ * are never held in the app), and the API client fails a request at once, unsent, while it
+ * reads false (`ApiClient.send`).
  */
 export function useDeviceOnline(): boolean {
-  return useSyncExternalStore(subscribe, readOnline, readOnline);
+  return useSyncExternalStore(subscribe, readOnline, readOnlineAtBuild);
+}
+
+/** What the web's static pages were rendered with (no browser there, so online): read
+ * while they hydrate, so an offline start doesn't contradict them (the query wiring reads
+ * the browser's flag at start, before anything hydrates); the real one follows at once. */
+function readOnlineAtBuild(): boolean {
+  return true;
 }
 
 /**

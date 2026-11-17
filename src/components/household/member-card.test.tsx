@@ -33,7 +33,14 @@ jest.mock('@/components/connect/add-member-here', () =>
   }),
 );
 
-let mockDevices: { data?: MyDevice[]; isPending: boolean; isError: boolean; refetch: jest.Mock };
+let mockDevices: {
+  data?: MyDevice[];
+  isPending: boolean;
+  isError: boolean;
+  isPaused?: boolean;
+  error?: unknown;
+  refetch: jest.Mock;
+};
 const mockDevicesAsked = jest.fn();
 const mockMyDevicesAsked = jest.fn();
 let mockMyDevices: Record<string, MyDevice[] | undefined> = {};
@@ -472,10 +479,38 @@ describe('MemberCard', () => {
     mockDevices = { isPending: true, isError: false, refetch: jest.fn() };
     await mount();
     expect(screen.getByTestId('member-devices-loading-12')).toBeTruthy();
-    mockDevices = { isPending: false, isError: true, refetch: jest.fn() };
+    mockDevices = {
+      isPending: false,
+      isError: true,
+      error: new Error('down'),
+      refetch: jest.fn(),
+    };
     await mount();
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
     expect(mockDevices.refetch).toHaveBeenCalled();
+  });
+
+  // A list held for the network stays pending: not a skeleton that never ends.
+  it('says the list waits for its server while it is held for the network', async () => {
+    mockDevices = { isPending: true, isError: false, isPaused: true, refetch: jest.fn() };
+    await mount();
+    expect(screen.getByTestId('member-devices-offline-12')).toBeTruthy();
+    expect(screen.queryByTestId('member-devices-loading-12')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  // fe#271: a failed re-read hid the devices it holds behind the error and its Retry.
+  it('keeps the devices it holds when a re-read fails', async () => {
+    mockDevices = {
+      data: [device()],
+      isPending: false,
+      isError: true,
+      error: new Error('down'),
+      refetch: jest.fn(),
+    };
+    await mount();
+    expect(screen.getByText('Kitchen iPad')).toBeTruthy();
+    expect(screen.queryByTestId('member-devices-error-12')).toBeNull();
   });
 
   it("shows their own device's pairing code", async () => {

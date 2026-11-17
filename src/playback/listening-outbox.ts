@@ -5,7 +5,7 @@ import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { cachedCapability, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
-import { keepServerAnswer } from '@/api/server-snapshots';
+import { keepServerAnswer, keepServerFlag } from '@/api/server-snapshots';
 import type {
   ListeningEvent,
   ListeningFinishEvent,
@@ -1161,6 +1161,19 @@ async function giveUpOld(connectionId: string, now = Date.now()): Promise<void> 
 /** What one request's outcome asks of the flush. */
 type Next = 'more' | 'stop';
 
+/**
+ * The server took a sync request, so it has the route: a kept `/server` that says otherwise
+ * (an older answer, from before the server was updated) takes the flag now, and a rollback
+ * earlier this launch (the server since updated) no longer holds. For a batch and for an
+ * event sent alone (a batch refused as a whole, its events then taken one by one).
+ */
+function tookSync(connectionId: string): void {
+  rolledBack.delete(connectionId);
+  if (cachedCapability(connectionId, 'listening_sync') === false) {
+    keepServerFlag(connectionId, 'listening_sync');
+  }
+}
+
 async function sendChunk(
   connectionId: string,
   client: ApiClient,
@@ -1179,11 +1192,7 @@ async function sendChunk(
         ),
       );
       noteSuccess(connectionId);
-      // It took the events, so it has the route: a kept `/server` that says otherwise (an
-      // older answer, from before the server was updated) is asked again.
-      if (cachedCapability(connectionId, 'listening_sync') === false) {
-        void queryClient.invalidateQueries({ queryKey: qk.server(connectionId) });
-      }
+      tookSync(connectionId);
       await applyAnswer(connectionId, live, answer, { sentAt, answeredAt: Date.now() });
       return 'more';
     });
@@ -1256,6 +1265,7 @@ async function sendAlone(
     await sending([entry], async (live) => {
       if (live.length === 0) return;
       const answer = await client.syncListening(syncBody(connectionId, [entry.event], deviceId));
+      tookSync(connectionId);
       await applyAnswer(connectionId, [entry], answer);
     });
     return 'sent';
@@ -1465,9 +1475,10 @@ function takeConnection(connectionId: string): Promise<OutboxEntry[]> {
 async function rollBack(connectionId: string, client: ApiClient): Promise<void> {
   const info = await client.serverInfo().catch(() => null);
   if (!info || info.capabilities?.listening_sync) return;
+  // Its answer is the connection's `/server` from now on, kept for the next launch too;
+  // another server's (a reset one) is no answer about this connection's route.
+  if (!keepServerAnswer(connectionId, info)) return;
   rolledBack.add(connectionId);
-  // Its answer is the connection's `/server` from now on, kept for the next launch too.
-  keepServerAnswer(connectionId, info);
   const mine = await outboxEvents(connectionId);
   const deviceId = await getDeviceId();
   // Out as a send (`sending`): an Undo's withdrawal waits for these PUTs, or took its

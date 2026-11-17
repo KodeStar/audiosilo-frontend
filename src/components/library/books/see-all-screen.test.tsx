@@ -45,7 +45,9 @@ jest.mock('@/components/library/cover-tile', () => ({
 jest.mock('./book-items', () => ({ BookTile: () => null }));
 jest.mock('@/components/home/book-title', () => ({ useProgressBook: () => undefined }));
 
-type List = { isLoading: boolean; offline: boolean; error: unknown };
+// `unreadError`: the failure of a server with nothing kept (`error` counts a failed re-read
+// of a kept list too).
+type List = { isLoading: boolean; offline: boolean; error: unknown; unreadError: unknown };
 let mockRecent: List & { books: MergedBook[] };
 let mockProgress: List & { progress: SourcedProgress[] };
 jest.mock('@/api/hooks', () => ({
@@ -57,7 +59,7 @@ jest.mock('@/api/hooks', () => ({
 import { SeeAllScreen } from './see-all-screen';
 /* eslint-enable import/first */
 
-const read: List = { isLoading: false, offline: false, error: null };
+const read: List = { isLoading: false, offline: false, error: null, unreadError: null };
 const place = (finished: boolean) =>
   ({
     connectionId: 'home',
@@ -124,7 +126,8 @@ describe('SeeAllScreen', () => {
   });
 
   it('says offline for a list that failed with no network, and that it failed with one', async () => {
-    mockRecent = { ...read, error: new Error('Network request failed'), books: [] };
+    const down = new Error('Network request failed');
+    mockRecent = { ...read, error: down, unreadError: down, books: [] };
     mockDeviceOnline = false;
     const view = await render(<SeeAllScreen />);
     expect(screen.getByText("You're offline")).toBeTruthy();
@@ -134,5 +137,33 @@ describe('SeeAllScreen', () => {
     await view.rerender(<SeeAllScreen />);
     expect(screen.getByText('Could not load.')).toBeTruthy();
     expect(screen.queryByText("You're offline")).toBeNull();
+  });
+
+  // fe#271: a kept list whose re-read failed read as "Could not load.".
+  it('says there are none for a list kept with nothing in it whose re-read failed', async () => {
+    mockRecent = { ...read, error: new Error('Network request failed'), books: [] };
+    await render(<SeeAllScreen />);
+    expect(screen.getByText('No books yet.')).toBeTruthy();
+    expect(screen.queryByText('Could not load.')).toBeNull();
+  });
+
+  it('says none are finished for kept progress with none finished whose re-read failed', async () => {
+    mockParams = { type: 'finished' };
+    mockProgress = {
+      ...read,
+      error: new Error('Network request failed'),
+      progress: [place(false)],
+    };
+    await render(<SeeAllScreen />);
+    expect(screen.getByText('No finished books yet.')).toBeTruthy();
+    expect(screen.queryByText('Could not load.')).toBeNull();
+  });
+
+  it('keeps showing the finished books it holds when their re-read failed', async () => {
+    mockParams = { type: 'finished' };
+    mockProgress = { ...read, error: new Error('Network request failed'), progress: [place(true)] };
+    await render(<SeeAllScreen />);
+    expect(screen.getByText('1 tiles')).toBeTruthy();
+    expect(screen.queryByText('Could not load.')).toBeNull();
   });
 });

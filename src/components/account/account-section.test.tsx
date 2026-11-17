@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import type { Capabilities, MyDevice, ServerAddresses, User } from '@/api/types';
 import { mountWithPortal } from '@/testing/render-overlay';
@@ -9,19 +9,40 @@ let mockDevices: Record<string, MyDevice[]>;
 let mockAddresses: Record<string, ServerAddresses | undefined>;
 // Each server's version (`/server`): a password change ends the pairing codes since 2.6.0.
 let mockVersion = '2.6.0';
+// A /server read with no answer kept: held for the network (an offline cold launch),
+// failed, or being asked again (pending, its error cleared, as React Query does it).
+let mockServerRead: 'held' | 'failed' | 'asking' | null = null;
+const mockServerError = new Error('Network request failed');
 const mockRevoke = jest.fn();
 jest.mock('@/api/hooks', () => {
   const { CapabilityError } = jest.requireActual('@/api/hooks');
   return {
     CapabilityError,
-    useServerInfo: (cid: string) => ({
-      data: mockCaps[cid] ? { version: mockVersion, capabilities: mockCaps[cid] } : undefined,
-    }),
+    useServerInfo: (cid: string) => {
+      const read = mockCaps[cid] ? null : mockServerRead;
+      return {
+        data: mockCaps[cid] ? { version: mockVersion, capabilities: mockCaps[cid] } : undefined,
+        isPaused: read === 'held',
+        error: read === 'failed' ? mockServerError : null,
+        // Asked again after it failed: the count stays, the error is cleared.
+        errorUpdateCount: read === 'failed' || read === 'asking' ? 1 : 0,
+      };
+    },
     // The real hook never asks a server without the flag: its query stays pending.
-    useMyDevices: (cid: string) =>
-      mockCaps[cid]?.my_devices
-        ? { data: mockDevices[cid], isPending: false, isError: false, isSuccess: true }
-        : { data: undefined, isPending: true, isError: false, isSuccess: false },
+    // While /server is held, it takes that read's state (`useCapabilityQuery`).
+    useMyDevices: (cid: string) => {
+      if (mockCaps[cid]?.my_devices)
+        return { data: mockDevices[cid], isPending: false, isError: false, isSuccess: true };
+      const read = mockCaps[cid] ? null : mockServerRead;
+      return {
+        data: undefined,
+        isPending: read !== 'failed',
+        isPaused: read === 'held',
+        error: read === 'failed' ? mockServerError : null,
+        isError: read === 'failed',
+        isSuccess: false,
+      };
+    },
     useRevokeMyDevice: () => ({ mutateAsync: mockRevoke, isPending: false }),
     useReadMyDevicesAgain: () => async () => undefined,
     // Gated like the real hook: nothing without the flag.
@@ -114,6 +135,7 @@ afterAll(() => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockVersion = '2.6.0';
+  mockServerRead = null;
   Platform.OS = 'ios';
   useAddressRoute.setState({ picks: {} });
   mockAddresses = {};
@@ -191,6 +213,25 @@ describe('AccountSection: at home and away', () => {
     expect(screen.queryByText('In use')).toBeNull();
   });
 
+  // fe#271: offline with no /server answer kept, the device's own copy still shows.
+  it('shows the kept addresses while /server waits for the network', async () => {
+    mockSession.connections[0].addresses = { home: HOME, away: AWAY };
+    mockCaps.c1 = undefined;
+    mockServerRead = 'held';
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.getByTestId('addresses-card')).toBeTruthy();
+    expect(screen.getByLabelText(`Home address: ${HOME}`)).toBeTruthy();
+  });
+
+  // fe#271: /server failed with a network and nothing kept: the device's copy shows too.
+  it('shows the kept addresses when /server failed', async () => {
+    mockSession.connections[0].addresses = { home: HOME, away: AWAY };
+    mockCaps.c1 = undefined;
+    mockServerRead = 'failed';
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.getByTestId('addresses-card')).toBeTruthy();
+  });
+
   it('is hidden without the capability, or with nothing known', async () => {
     mockSession.connections[0].addresses = { home: HOME, away: AWAY };
     await mountWithPortal(<AccountSection connectionId="c1" />);
@@ -234,6 +275,53 @@ describe('AccountSection', () => {
     expect(screen.getByText('@chris · Administrator on Hearthside')).toBeTruthy();
     expect(screen.queryByText('Signed-in devices')).toBeNull();
     expect(screen.queryByText('Personal API keys')).toBeNull();
+  });
+
+  // fe#271: an offline cold launch with no /server answer kept hid the whole section.
+  it('shows the devices section offline while /server waits for the network', async () => {
+    mockCaps.c1 = undefined;
+    mockServerRead = 'held';
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.getByText('Signed-in devices')).toBeTruthy();
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  // fe#271: /server failed with a network and nothing kept: the section says so, with Retry.
+  it('shows the devices section when /server failed', async () => {
+    mockCaps.c1 = undefined;
+    mockServerRead = 'failed';
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.getByText('Signed-in devices')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
+  // fe#271: the section's own reader asks a failed /server again as it mounts, which puts
+  // the read back to pending; the section unmounted, came back when it failed, and asked
+  // again, twice a second for good.
+  it('keeps the devices section while a failed /server is asked again', async () => {
+    mockCaps.c1 = undefined;
+    mockServerRead = 'failed';
+    // A plain render, so a rerender keeps the page mounted (and its state).
+    const view = await render(<AccountSection connectionId="c1" />);
+    expect(screen.getByText('Signed-in devices')).toBeTruthy();
+    mockServerRead = 'asking';
+    await view.rerender(<AccountSection connectionId="c1" />);
+    expect(screen.getByText('Signed-in devices')).toBeTruthy();
+    // It answers: the section follows the flag from then on.
+    mockServerRead = null;
+    mockCaps.c1 = { my_devices: false };
+    await view.rerender(<AccountSection connectionId="c1" />);
+    expect(screen.queryByText('Signed-in devices')).toBeNull();
+  });
+
+  // Opened on a /server read that failed elsewhere: the page's own reader asks it again as it
+  // mounts, and the section shows from the first render, not once that fails too.
+  it('shows the devices section while a /server that failed before is asked again', async () => {
+    mockCaps.c1 = undefined;
+    mockServerRead = 'asking';
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.getByText('Signed-in devices')).toBeTruthy();
   });
 
   it('hides the password and API keys from a demo account', async () => {

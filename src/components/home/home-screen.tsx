@@ -33,7 +33,7 @@ import { useDeviceOnline } from '@/lib/device-online';
 import type { MergedBook } from '@/lib/dedup';
 import { formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
-import { offlineState } from '@/lib/offline-state';
+import { offlineState, useUnreadAll } from '@/lib/offline-state';
 import { bookTitle } from '@/lib/paths';
 import { useMinuteClock } from '@/lib/use-now';
 import type { PlayerModule } from '@/modules/registry';
@@ -104,6 +104,9 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
     offline: progressOffline,
     error,
     refused,
+    unreadError,
+    failed: progressFailed,
+    retry: retryProgress,
   } = useAllProgressAll();
   // Each book where Resume plays it, as the player has it (fe#211): this device's own newer
   // place over the server's older row (an offline run the list has not heard of yet).
@@ -185,7 +188,6 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   );
   const serverLabel = useServerFlag();
 
-  const retryProgress = () => void qc.refetchQueries({ queryKey: qk.allProgressAll() });
   // A refused sign-in (a 401) shows ONE sign-in state, in the Now card's place, with the
   // Reconnect action; the shelves below show no Retry of their own for it (#124). It names
   // the server whose progress read was refused, not the first signed out (fe#147).
@@ -194,9 +196,29 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   const down = useReachability((s) => firstOffline(connections, s.online)?.name);
   const progressRefused = isSignedOutError(error) && !!signedOut;
   // The one offline rule (`offlineState`): the progress waits for the network or failed
-  // without one, else it failed with one (the server's trouble: Retry).
-  const unread = offlineState({ waiting: progressOffline, failed: !!error, deviceOnline });
-  const recentRefused = isSignedOutError(recent.error);
+  // without one, else it failed with one (the server's trouble: Retry). Failed with nothing
+  // kept (`unreadError`, as `failed` below counts it): a server whose rows are kept and
+  // only their re-read failed did answer, so with no book to show the hero is the empty
+  // state, not an error.
+  const unread = offlineState({
+    waiting: progressOffline,
+    failed: !!unreadError,
+    deviceOnline,
+  });
+  // One server of several failed while another answered: the error is that server's, not
+  // the whole card's (fe#271).
+  const failedServer =
+    connections.length > 1 && progressFailed.length === 1
+      ? connections.find((c) => c.id === progressFailed[0])?.name
+      : undefined;
+  // Recently added offline is no error with a Retry: the shelf waits with the rest of the
+  // page, which says it is offline once (fe#271).
+  const recentUnread = useUnreadAll({
+    rows: recent.books,
+    offline: recent.offline,
+    error: recent.unreadError,
+  });
+  const recentRefused = isSignedOutError(recent.unreadError);
 
   // This week stands beside the Now card only where the page column is wide enough for
   // both: a desktop window with the Up next drawer open is narrower than its class says.
@@ -222,7 +244,7 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
     // is back.
     <NowOffline fill={beside} />
   ) : unread === 'failed' ? (
-    <NowError onRetry={retryProgress} fill={beside} />
+    <NowError onRetry={retryProgress} server={failedServer} fill={beside} />
   ) : (
     <NowEmpty fill={beside} />
   );
@@ -252,6 +274,7 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
             sync={sync}
             servers={connections.length}
             down={down}
+            offline={!deviceOnline}
           />
           {/* Back on the Now card's book after 12+ days: where they left it. */}
           {nowAt ? <PreviouslyOnCard at={nowAt} saved={nowSaved} /> : null}
@@ -333,7 +356,9 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
           </HomeSection>
         ) : null}
 
-        {recent.isLoading || recent.books.length > 0 || (recent.error && !recentRefused) ? (
+        {recent.isLoading ||
+        recent.books.length > 0 ||
+        (recentUnread === 'failed' && !recentRefused) ? (
           <HomeSection
             title={t('home.recentlyAdded')}
             sub={connections.length > 1 ? t('home.acrossServers') : undefined}

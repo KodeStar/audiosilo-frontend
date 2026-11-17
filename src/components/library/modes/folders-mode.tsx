@@ -14,7 +14,7 @@ import { PressableRow } from '@/components/ui/row-surface';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useDeviceOnline } from '@/lib/device-online';
-import { offlineState, type UnreadState } from '@/lib/offline-state';
+import { offlineState, type UnreadState, useUnreadAll } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -25,22 +25,28 @@ import { NoLibrariesState } from '../no-libraries-state';
 const ROW = 'my-1 w-full flex-row items-center gap-3 px-3 py-2.5';
 
 /** Favourites sits alongside the libraries as a special "shelf": a row that opens
- * the dedicated Favourites screen. Always shown so it stays discoverable. */
+ * the dedicated Favourites screen. Always shown so it stays discoverable. With none in,
+ * a list held for the network (or failed) is not "none yet" (fe#271). */
 function FavouritesShelfRow() {
   const { t } = useTranslation();
-  const { favourites } = useFavouritesAll();
+  const { favourites, offline, unreadError } = useFavouritesAll();
   const count = favourites.length;
+  const unread = useUnreadAll({ rows: favourites, offline, error: unreadError });
+  const hint =
+    unread === 'offline'
+      ? t('common.offlineList')
+      : unread === 'failed'
+        ? t('library.favourites.error')
+        : count === 0
+          ? t('library.favourites.emptyHint')
+          : t('library.favourites.itemCount', { count });
   return (
     <Link href="/library/favourites" asChild>
       <PressableRow accessibilityRole="link" className={ROW}>
         <GlyphTile icon="heart-solid" />
         <View className="flex-1">
           <Text variant="label">{t('library.favourites.title')}</Text>
-          <Text variant="muted">
-            {count === 0
-              ? t('library.favourites.emptyHint')
-              : t('library.favourites.itemCount', { count })}
-          </Text>
+          <Text variant="muted">{hint}</Text>
         </View>
         <Icon name="chevron-right" size={16} />
       </PressableRow>

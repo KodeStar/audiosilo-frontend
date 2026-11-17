@@ -49,16 +49,10 @@ jest.mock('./use-share-card', () => ({
 
 type Query<T> = { data?: T; isError?: boolean; isPaused?: boolean; refetch?: () => void };
 let mockCaps: Record<string, Record<string, boolean> | undefined> = {};
-let mockInfoError = false;
-let mockInfoPaused = false;
 let mockStats: Record<string, Query<UserStats>> = {};
-const mockRefetch = jest.fn();
 jest.mock('@/api/hooks', () => ({
   useServerInfo: (cid: string) => ({
     data: mockCaps[cid] ? { name: 'Hearthside', capabilities: mockCaps[cid] } : undefined,
-    isError: mockInfoError,
-    isPaused: mockInfoPaused,
-    refetch: mockRefetch,
   }),
   useCapability: (flag: string, cid: string) => {
     const caps = mockCaps[cid];
@@ -95,8 +89,6 @@ beforeEach(() => {
   mockLayout = 'desktop';
   mockConnections = [{ id: 'a', name: 'Hearthside', user: { username: 'alex' } }];
   mockCaps = { a: { user_stats: true } };
-  mockInfoError = false;
-  mockInfoPaused = false;
   mockYears = [2025];
   mockStats = {
     year: { data: yearStats() },
@@ -232,9 +224,9 @@ describe('YearSection', () => {
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
-  it("says offline while the server's own answer is what waits for the network", async () => {
+  it("says offline while the stats take a held /server's state (the flag unknown)", async () => {
     mockCaps = {};
-    mockInfoPaused = true;
+    mockStats.year = { isPaused: true };
     await mount();
     expect(screen.getByText("You're offline")).toBeTruthy();
     expect(screen.queryByTestId('year-stage-skeleton')).toBeNull();

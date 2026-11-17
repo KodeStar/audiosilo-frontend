@@ -35,14 +35,18 @@ jest.mock('@/api/provider', () => ({
     invalidateQueries: jest.fn(async () => {}),
   },
 }));
-// Each connection's kept `/server` answer (its own tests: server-snapshots.test.ts).
-jest.mock('@/api/server-snapshots', () => ({ keepServerAnswer: jest.fn() }));
+// Each connection's kept `/server` answer (its own tests: server-snapshots.test.ts): this
+// server's answer is kept unless a test says it names another one.
+jest.mock('@/api/server-snapshots', () => ({
+  keepServerAnswer: jest.fn(() => true),
+  keepServerFlag: jest.fn(),
+}));
 
 /* eslint-disable import/first */
 import { resolveClient } from '@/api/connection-clients';
 import { queryClient } from '@/api/provider';
 import * as reachability from '@/api/reachability';
-import { keepServerAnswer } from '@/api/server-snapshots';
+import { keepServerAnswer, keepServerFlag } from '@/api/server-snapshots';
 import { setDownloadEndCheck, setDownloadLengthCheck } from '@/downloads/kept-offline';
 import { onConnectionRemoved } from '@/stores/session';
 
@@ -1357,23 +1361,63 @@ describe("a connection's listening_sync across launches", () => {
     expect(state.c1).not.toHaveProperty('listeningSync');
   });
 
-  it('a sync answer from a server whose kept /server says no has it asked again', async () => {
-    // An answer from before the server was updated: it took the events, so it has the route.
+  it('a sync answer from a server whose kept /server says no sets the flag', async () => {
+    // An answer from before the server was updated: it took the events, so it has the
+    // route, and the next listening goes by sync without waiting on a /server read (fe#270).
     mockCaps = { listening_sync: false };
     await appendEvents('c1', [listen('a')]);
     client(async (body) => answer(body));
     await flushOutbox('c1');
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['server', 'c1'] });
+    expect(keepServerFlag).toHaveBeenCalledWith('c1', 'listening_sync');
   });
 
-  it('a sync answer asks nothing again when the cached /server agrees or is unknown', async () => {
+  it('a sync answer after a rollback this launch takes the sync route again', async () => {
+    // Rolled back (the server had no route then), and a later send (another tab's events,
+    // the server since updated) is taken: the next listening goes by sync.
+    await appendEvents('c1', [listen('old')]);
+    client(async () => {
+      throw new ApiError(404, 'not found');
+    });
+    await flushOutbox('c1');
+    mockCaps = { listening_sync: false };
+    expect(usesListeningSync('c1')).toBe(false);
+    await appendEvents('c1', [listen('new')]);
+    client(async (body) => answer(body));
+    await flushOutbox('c1');
+    expect(keepServerFlag).toHaveBeenCalledWith('c1', 'listening_sync');
+    mockCaps = { listening_sync: true };
+    expect(usesListeningSync('c1')).toBe(true);
+  });
+
+  it('an event the server takes alone after a rollback takes the sync route again too', async () => {
+    // The batch is refused as a whole (a 400), then each event is taken alone: that proves
+    // the route as a taken batch does.
+    await appendEvents('c1', [listen('old')]);
+    client(async () => {
+      throw new ApiError(404, 'not found');
+    });
+    await flushOutbox('c1');
+    mockCaps = { listening_sync: false };
+    expect(usesListeningSync('c1')).toBe(false);
+    await appendEvents('c1', [listen('one'), listen('two')]);
+    client(async (body) => {
+      if (body.events.length > 1) throw new ApiError(400, 'invalid request');
+      return answer(body);
+    });
+    await flushOutbox('c1');
+    expect(keepServerFlag).toHaveBeenCalledWith('c1', 'listening_sync');
+    mockCaps = { listening_sync: true };
+    expect(usesListeningSync('c1')).toBe(true);
+  });
+
+  it('a sync answer changes no flag when the cached /server agrees or is unknown', async () => {
     for (const caps of [{ listening_sync: true }, undefined]) {
       mockCaps = caps;
       await appendEvents('c1', [listen(`a${caps ? 1 : 2}`)]);
       client(async (body) => answer(body));
       await flushOutbox('c1');
     }
-    expect(queryClient.invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ['server', 'c1'] });
+    expect(keepServerFlag).not.toHaveBeenCalled();
   });
 
   it("a confirmed rollback keeps the server's own answer; an unconfirmed one keeps nothing", async () => {
@@ -1396,6 +1440,23 @@ describe("a connection's listening_sync across launches", () => {
     );
     await flushOutbox('c1');
     expect(keepServerAnswer).toHaveBeenCalledWith('c1', info);
+  });
+
+  it('a 404 from a server that was reset rolls nothing back (fe#270)', async () => {
+    // Another server_id at the address: keepServerAnswer flags the reset and keeps nothing.
+    jest.mocked(keepServerAnswer).mockReturnValueOnce(false);
+    await appendEvents('c1', [listen('c')]);
+    const c = client(
+      async () => {
+        throw new ApiError(404, 'not found');
+      },
+      async () => ({ capabilities: {} }),
+    );
+    await flushOutbox('c1');
+    expect(keepServerAnswer).toHaveBeenCalled();
+    expect(c.saveProgress).not.toHaveBeenCalled();
+    expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['c']);
+    expect(usesListeningSync('c1')).toBe(true);
   });
 
   it('events recorded while the flag is unknown wait in the outbox and go by sync', async () => {

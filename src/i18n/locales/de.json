@@ -689,6 +689,7 @@
     },
     "error": {
       "title": "Dein Fortschritt konnte nicht geladen werden",
+      "titleServer": "Dein Fortschritt von {{server}} konnte nicht geladen werden",
       "body": "Nichts ist verloren: Deine Stelle ist auf jedem Server gespeichert. Prüfe die Verbindung und versuche es noch einmal."
     },
     "offline": {
@@ -917,6 +918,7 @@
     "picker": {
       "label": "Bibliothek",
       "placeholder": "Bibliothek wählen",
+      "waiting": "Warte auf {{name}}",
       "serverLabel": "Server",
       "serverPlaceholder": "Server wählen"
     },
@@ -1959,6 +1961,7 @@
     },
     "home": "AudioSilo-Startseite",
     "offline": "Offline · Downloads spielen",
+    "offlinePlain": "Offline",
     "notAnswering": "{{name}} antwortet nicht",
     "serverMore_one": "{{name}} + {{count}} weiterer",
     "serverMore_other": "{{name}} + {{count}} weitere",
@@ -2062,6 +2065,7 @@
     "cleared": "„Als Nächstes“ geleert",
     "loadFailed": "„Als Nächstes“ konnte nicht geladen werden.",
     "refreshFailed": "„Als Nächstes“ konnte nicht aktualisiert werden. Das ist der zuletzt geladene Stand.",
+    "offlineKept": "Du bist offline. Das ist der zuletzt geladene Stand.",
     "empty": {
       "title": "Noch nichts eingereiht",
       "hint": "Tippe bei einem Buch auf „Einreihen“, um es hier anzustellen.",

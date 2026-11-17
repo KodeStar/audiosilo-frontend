@@ -39,7 +39,7 @@ function Drawer({ cid }: { cid: string }) {
   const width = useUpNext((s) => s.drawerWidth);
   const setWidth = useUpNext((s) => s.setDrawerWidth);
   const data = useUpNextData(cid);
-  const subline = useQueuedLine(cid, data.queuedSeconds, data.entries?.length ?? 0);
+  const subline = useQueuedLine(cid, data.queuedSeconds, data.entries?.length);
 
   // The live width while dragging (UI thread); the store takes it on release.
   const live = useSharedValue(width);

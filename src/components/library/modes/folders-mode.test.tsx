@@ -16,8 +16,11 @@ jest.mock('@/lib/device-online', () => ({
   ...jest.requireActual('@/lib/device-online'),
   useDeviceOnline: () => mockDeviceOnline,
 }));
+let mockFavourites: { favourites: object[]; error?: unknown; unreadError?: unknown } = {
+  favourites: [],
+};
 jest.mock('@/api/hooks', () => ({
-  useFavouritesAll: () => ({ favourites: [] }),
+  useFavouritesAll: () => mockFavourites,
   useLibrariesAll: () => ({
     groups: mockLists,
     libraries: mockLists.flatMap((g) => g.libraries),
@@ -59,9 +62,28 @@ beforeEach(() => {
   mockSignedOut = [];
   mockLists = [];
   mockDeviceOnline = true;
+  mockFavourites = { favourites: [] };
 });
 
 describe('FoldersMode', () => {
+  // fe#271: with none in, a list that failed with nothing kept is not "none yet", and a
+  // list kept with nothing in it is still "none yet" when only its re-read failed.
+  it('says the Favourites row failed only for a list with nothing kept', async () => {
+    const down = new Error('down');
+    mockFavourites = { favourites: [], error: down, unreadError: down };
+    const view = await render(<FoldersMode />);
+    expect(screen.getByText("Couldn't load your favourites")).toBeTruthy();
+
+    mockFavourites = { favourites: [], error: down, unreadError: null };
+    await view.rerender(<FoldersMode />);
+    expect(screen.getByText('Tap the heart on any item to curate')).toBeTruthy();
+    expect(screen.queryByText("Couldn't load your favourites")).toBeNull();
+
+    mockFavourites = { favourites: [{}], error: down, unreadError: null };
+    await view.rerender(<FoldersMode />);
+    expect(screen.getByText('1 item')).toBeTruthy();
+  });
+
   // CONNECT-06: one server down names it under its heading, with a Retry.
   it('names the server whose libraries failed, under its heading, with a Retry', async () => {
     mockLists = [list('a', 'Home', 'ready', ['Audiobooks']), list('b', "Maya's Shelf", 'error')];

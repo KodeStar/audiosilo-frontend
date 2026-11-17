@@ -45,17 +45,18 @@ type Q<T> = {
   isError?: boolean;
   isLoading?: boolean;
   isPaused?: boolean;
+  error?: unknown;
   refetch: jest.Mock;
 };
 const q = <T,>(data?: T, extra: Partial<Q<T>> = {}): Q<T> => ({
   data,
   isError: false,
   isLoading: false,
+  error: extra.isError ? new Error('down') : null,
   refetch: jest.fn(async () => undefined),
   ...extra,
 });
 let mockCaps: Record<string, { user_stats: boolean } | undefined> = {};
-let mockInfoPaused = false;
 let mockListening: Q<MyListening>;
 let mockStats: Q<UserStats>;
 let mockGoal: Q<ListeningGoalStatus>;
@@ -65,11 +66,6 @@ const mockCalls: string[] = [];
 jest.mock('@/api/hooks', () => ({
   CapabilityError: class extends Error {},
   useCapabilitiesAll: () => mockCaps,
-  useServerInfo: (cid: string) => ({
-    data: mockCaps[cid] ? { capabilities: mockCaps[cid] } : undefined,
-    isPaused: mockInfoPaused,
-    error: null,
-  }),
   useCapability: (flag: string, cid: string) => {
     const c = mockCaps[cid];
     return c ? c.user_stats : undefined;
@@ -166,7 +162,6 @@ beforeEach(() => {
   mockLayout = 'desktop';
   mockConnections = [{ id: 'a', name: 'Hearthside' }];
   mockCaps = { a: { user_stats: true } };
-  mockInfoPaused = false;
   mockSetGoal.isPending = false;
   mockSetGoal.variables = undefined;
   mockClearGoal.isPending = false;
@@ -218,12 +213,12 @@ describe('StatsSection states', () => {
     expect(screen.queryByText('Retry')).toBeNull();
   });
 
-  // Until the server's flag is known neither read is asked, so neither is ever held.
+  // Until the server's flag is known neither read is asked: each takes the state of the
+  // `/server` read it waits on (`useCapabilityQuery`, fe#270).
   it("says offline while the server's own answer is what waits for the network", async () => {
     mockCaps = {};
-    mockInfoPaused = true;
-    mockListening = q<MyListening>();
-    mockStats = q<UserStats>();
+    mockListening = q<MyListening>(undefined, { isPaused: true });
+    mockStats = q<UserStats>(undefined, { isPaused: true });
     await mount();
     expect(screen.getByText("You're offline")).toBeTruthy();
     expect(screen.queryByTestId('stats-skeleton')).toBeNull();
@@ -235,6 +230,15 @@ describe('StatsSection states', () => {
     await mount();
     expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
     expect(screen.queryByText("You're offline")).toBeNull();
+  });
+
+  // fe#271: a failed re-read hid the stats it holds behind the error card.
+  it('keeps showing the stats it has when a re-read of them fails', async () => {
+    mockStats.isError = true;
+    mockListening.isError = true;
+    await mount();
+    expect(screen.queryByText("Your listening didn't load")).toBeNull();
+    expect(screen.queryByTestId('stats-skeleton')).toBeNull();
   });
 
   it('keeps showing the stats it has while a read behind them is held', async () => {

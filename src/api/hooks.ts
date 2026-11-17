@@ -415,8 +415,8 @@ export function addressesQuery(cid: string, client: MaybeClient) {
 }
 
 /** The caller's own signed-in devices (`GET /me/devices`). Ask only a server with
- * `my_devices` (pass no client otherwise). Read by `useMyDevices` and, after a password
- * change, by `useReadMyDevicesAgain`. */
+ * `my_devices` (pass no client otherwise). Read after a password change by
+ * `useReadMyDevicesAgain`; `useMyDevices` reads the same key through `useCapabilityQuery`. */
 export function myDevicesQuery(cid: string, client: MaybeClient) {
   return queryOptions({
     queryKey: qk.myDevices(cid),
@@ -812,7 +812,13 @@ export class CapabilityError extends Error {
  * has no function at all (`skipToken`), so not even a manual `refetch` reaches the
  * server (React Query rejects it instead). `ready` is the caller's own condition of the
  * same strength (an `enabled` flag, a valid id); `enabled` is React Query's own, which
- * only stops automatic fetching (a manual `refetch` still runs). */
+ * only stops automatic fetching (a manual `refetch` still runs).
+ *
+ * While the flag is unknown because the connection's `/server` read is itself held for
+ * the network (paused) or failed with nothing kept, the query takes that read's state
+ * (fe#270): `isPaused`, or the error, so `useUnreadQuery` says offline or names the
+ * server instead of the screen drawing a skeleton for good. A `refetch` then asks
+ * `/server` again; once it answers, the query runs by itself. */
 function useCapabilityQuery<T, S = T>(
   flag: keyof Capabilities,
   queryKey: (cid: string) => readonly unknown[],
@@ -829,8 +835,11 @@ function useCapabilityQuery<T, S = T>(
 ) {
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
-  const supported = useCapability(flag, connectionId) === true;
-  return useQuery<T, Error, S, readonly unknown[]>({
+  // `useServerInfo`, with the connection resolved once.
+  const info = useQuery(serverInfoQuery(cid, api));
+  const caps = info.data?.capabilities;
+  const supported = caps?.[flag] === true;
+  const query = useQuery<T, Error, S, readonly unknown[]>({
     queryKey: queryKey(cid),
     queryFn:
       supported && api && opts.ready !== false ? ({ signal }) => load(api, signal) : skipToken,
@@ -839,6 +848,40 @@ function useCapabilityQuery<T, S = T>(
     ...(opts.retry !== undefined ? { retry: opts.retry } : {}),
     ...(opts.refetchInterval !== undefined ? { refetchInterval: opts.refetchInterval } : {}),
     ...(opts.select !== undefined ? { select: opts.select } : {}),
+  });
+  // Only a read that would run once the flag is known, and holds nothing of its own. The
+  // query's own fields are read last, and only then: reading one subscribes the caller to
+  // its changes (tracked props), which a caller that reads none of them never asked for.
+  const held =
+    !caps &&
+    !!api &&
+    opts.ready !== false &&
+    opts.enabled !== false &&
+    (info.isPaused || info.isError) &&
+    query.data === undefined;
+  if (!held) return query;
+  const refetch: typeof query.refetch = async () => {
+    await info.refetch();
+    return query;
+  };
+  const state: Record<string, unknown> = info.isPaused
+    ? { isPaused: true, fetchStatus: 'paused', refetch }
+    : {
+        error: info.error,
+        isError: true,
+        isPending: false,
+        isLoading: false,
+        isLoadingError: true,
+        status: 'error',
+        fetchStatus: 'idle',
+        refetch,
+      };
+  // Laid over the query's own result, not spread from it: that result tracks the props a
+  // caller reads, and a spread would read every one of them, subscribing the caller to
+  // every change of this query for good.
+  return new Proxy(query, {
+    get: (target, key) =>
+      typeof key === 'string' && key in state ? state[key] : Reflect.get(target, key),
   });
 }
 
@@ -2413,12 +2456,16 @@ export function useClearListeningGoal(connectionId?: string) {
 
 /** The caller's own signed-in devices, most recently seen first (capability
  * `my_devices`). `enabled: false` asks nothing (its `data` may still be a cached answer:
- * ignore it then). */
+ * ignore it then). While the flag is unknown because `/server` is held or failed with
+ * nothing kept, the list takes that read's state (`useCapabilityQuery`), so Account says
+ * offline rather than hiding the section (fe#271). */
 export function useMyDevices(connectionId?: string, opts: { enabled?: boolean } = {}) {
-  const api = useOptionalApi(connectionId);
-  const supported = useCapability('my_devices', connectionId) === true;
-  return useQuery(
-    myDevicesQuery(useCid(connectionId), supported && opts.enabled !== false ? api : null),
+  return useCapabilityQuery(
+    'my_devices',
+    qk.myDevices,
+    (api, signal) => api.myDevices(signal),
+    connectionId,
+    { ready: opts.enabled !== false },
   );
 }
 
@@ -3478,6 +3525,15 @@ const fanOutError = (results: readonly { error: unknown }[]) =>
   (results.find((r) => r.error && !isSignedOutError(r.error)) ?? results.find((r) => r.error))
     ?.error ?? null;
 
+/**
+ * A fan-out's `unreadError`: `fanOutError` over the servers with nothing kept. A failed
+ * re-read of a list a server did answer (with nothing in it, too) is not one: the kept
+ * list is still that server's answer, so a screen with no row in says "none", not
+ * "couldn't load" (fe#271). `error` stays every failure, a failed re-read included.
+ */
+const firstUnread = (results: readonly { data: unknown; error: unknown }[]) =>
+  fanOutError(results.filter((r) => !r.data));
+
 export function useRecentAll(limit = RECENT_LIMIT) {
   const apis = useApis();
   const rank = (id: string) => {
@@ -3491,6 +3547,7 @@ export function useRecentAll(limit = RECENT_LIMIT) {
       isLoading: results.some((r) => r.isLoading),
       offline: anyHeld(results),
       error: fanOutError(results),
+      unreadError: firstUnread(results),
     }),
   });
 }
@@ -3768,6 +3825,7 @@ export function useFavouritesAll() {
       isLoading: results.some((r) => r.isLoading),
       offline: anyHeld(results),
       error: results.find((r) => r.error)?.error ?? null,
+      unreadError: firstUnread(results),
     }),
   });
 }
@@ -3802,11 +3860,14 @@ export function useAllProgressAll({
       isLoading: results.some((r) => r.isLoading),
       offline: anyHeld(results),
       error: fanOutError(results),
+      unreadError: firstUnread(results),
       /** The connections whose server refused the sign-in (a 401): Home names the one that
        * refused, not the first signed out. */
       refused: results.flatMap((r, i) =>
         isSignedOutError(r.error) ? [apis[i].connection.id] : [],
       ),
+      /** The connections whose progress failed with nothing kept (Home names one). */
+      failed: results.flatMap((r, i) => (r.isError && !r.data ? [apis[i].connection.id] : [])),
       /** Ask again only for the servers whose progress failed. */
       retry: () => {
         for (const r of results) if (r.isError) void r.refetch();

@@ -689,6 +689,7 @@
     },
     "error": {
       "title": "Impossibile caricare i tuoi progressi",
+      "titleServer": "Impossibile caricare i tuoi progressi da {{server}}",
       "body": "Non è andato perso nulla: la tua posizione è salvata su ogni server. Controlla la connessione e riprova."
     },
     "offline": {
@@ -917,6 +918,7 @@
     "picker": {
       "label": "Libreria",
       "placeholder": "Scegli una libreria",
+      "waiting": "In attesa di {{name}}",
       "serverLabel": "Server",
       "serverPlaceholder": "Scegli un server"
     },
@@ -1959,6 +1961,7 @@
     },
     "home": "Home di AudioSilo",
     "offline": "Offline · i download si riproducono",
+    "offlinePlain": "Offline",
     "notAnswering": "{{name}} non risponde",
     "serverMore_one": "{{name}} + un altro",
     "serverMore_other": "{{name}} + altri {{count}}",
@@ -2062,6 +2065,7 @@
     "cleared": "Prossimo svuotato",
     "loadFailed": "Impossibile caricare Prossimo.",
     "refreshFailed": "Impossibile aggiornare Prossimo. Questo è l'ultimo elenco disponibile.",
+    "offlineKept": "Sei offline. Questo è l'ultimo elenco disponibile.",
     "empty": {
       "title": "Ancora niente in coda",
       "hint": "Usa Metti in coda su un libro per aggiungerlo qui.",

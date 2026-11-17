@@ -689,6 +689,7 @@
     },
     "error": {
       "title": "Impossible de charger ta progression",
+      "titleServer": "Impossible de charger ta progression depuis {{server}}",
       "body": "Rien n’est perdu : ta position est conservée sur chaque serveur. Vérifie la connexion et réessaie."
     },
     "offline": {
@@ -917,6 +918,7 @@
     "picker": {
       "label": "Bibliothèque",
       "placeholder": "Choisir une bibliothèque",
+      "waiting": "En attente de {{name}}",
       "serverLabel": "Serveur",
       "serverPlaceholder": "Choisir un serveur"
     },
@@ -1959,6 +1961,7 @@
     },
     "home": "Accueil AudioSilo",
     "offline": "Hors ligne · les téléchargements sont lus",
+    "offlinePlain": "Hors ligne",
     "notAnswering": "{{name}} ne répond pas",
     "serverMore_one": "{{name}} + {{count}} autre",
     "serverMore_other": "{{name}} + {{count}} autres",
@@ -2062,6 +2065,7 @@
     "cleared": "À suivre vidé",
     "loadFailed": "Impossible de charger À suivre.",
     "refreshFailed": "Impossible d'actualiser À suivre. Voici la dernière liste connue.",
+    "offlineKept": "Vous êtes hors ligne. Voici la dernière liste connue.",
     "empty": {
       "title": "Rien en file pour l'instant",
       "hint": "Utilisez Mettre en file sur un livre pour l'ajouter ici.",

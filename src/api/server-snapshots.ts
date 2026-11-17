@@ -1,4 +1,4 @@
-import { isServerInfoKey } from '@/lib/auth-failure';
+import { isServerInfoKey, serverResetCid } from '@/lib/auth-failure';
 import { getItem, setItem } from '@/lib/storage';
 import { isRecord, OFFLINE_SERVERS_KEY } from '@/lib/storage-keys';
 import { tabLock } from '@/lib/tab-lock';
@@ -6,7 +6,7 @@ import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import { qk } from './hooks';
 import { queryClient } from './provider';
-import type { ServerInfo } from './types';
+import type { Capabilities, ServerInfo } from './types';
 
 /**
  * Each connection's last `/server` answer, kept on the device (`OFFLINE_SERVERS_KEY`, one
@@ -145,17 +145,53 @@ export function watchServerAnswers(): void {
 /**
  * An answer to `/server` read outside the query cache (the listening outbox asking the
  * server itself whether it still takes events): it is the connection's answer like any
- * other, so the cache holds it from now on and it is kept.
+ * other, so the cache holds it from now on and it is kept. Unless it names another server
+ * (`serverResetCid`, the check every `/server` read in the cache gets): this server was
+ * reset, the connection is flagged for it like a cached read flags it, and nothing is
+ * kept (fe#270). Returns false then: the answer says nothing about this connection's
+ * server. `savedAt`: when it was read (now, for an answer just in).
  */
-export function keepServerAnswer(connectionId: string, info: ServerInfo): void {
-  const snapshot = parseServerSnapshot({ info, savedAt: Date.now() });
+export function keepServerAnswer(
+  connectionId: string,
+  info: ServerInfo,
+  savedAt = Date.now(),
+): boolean {
+  const key = qk.server(connectionId);
+  const { connections, markNeedsReconnect } = useSession.getState();
+  if (serverResetCid(key, info, connections)) {
+    markNeedsReconnect(connectionId, 'server-reset');
+    return false;
+  }
+  const snapshot = parseServerSnapshot({ info, savedAt });
   if (!snapshot) {
     // Not an answer every reader can take (no flags at all): have the cache ask instead.
-    void queryClient.invalidateQueries({ queryKey: qk.server(connectionId) });
-    return;
+    void queryClient.invalidateQueries({ queryKey: key });
+    return true;
   }
-  queryClient.setQueryData(qk.server(connectionId), info, { updatedAt: snapshot.savedAt });
+  queryClient.setQueryData(key, info, { updatedAt: snapshot.savedAt });
   void saveServerSnapshot(connectionId, snapshot);
+  return true;
+}
+
+/**
+ * A request the server took proves it has the route `flag` names: a held `/server` answer
+ * that says otherwise (read before the server was updated) is kept with the flag set, so
+ * the next request takes the route without waiting on a `/server` read (a car-only session
+ * may never make one), and the cache asks the server again for the rest (fe#270). Dated
+ * when the answer it amends was read, as every kept answer is: the rest of it is that old,
+ * so a launch that seeds it still asks again.
+ */
+export function keepServerFlag(connectionId: string, flag: keyof Capabilities): void {
+  const key = qk.server(connectionId);
+  const state = queryClient.getQueryState<ServerInfo>(key);
+  const held = state?.data;
+  if (!state || !held?.capabilities || held.capabilities[flag]) return;
+  keepServerAnswer(
+    connectionId,
+    { ...held, capabilities: { ...held.capabilities, [flag]: true } },
+    state.dataUpdatedAt,
+  );
+  void queryClient.invalidateQueries({ queryKey: key });
 }
 
 let restored: Promise<void> | null = null;

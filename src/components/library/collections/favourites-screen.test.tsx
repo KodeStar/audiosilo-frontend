@@ -59,6 +59,8 @@ type Favourites = {
   isLoading: boolean;
   offline: boolean;
   error: unknown;
+  /** The failure of a server with nothing kept (`error` counts a failed re-read too). */
+  unreadError: unknown;
 };
 let mockFavourites: Favourites;
 jest.mock('@/api/hooks', () => ({
@@ -84,6 +86,7 @@ const read = (state: Partial<Favourites> = {}): Favourites => ({
   isLoading: false,
   offline: false,
   error: null,
+  unreadError: null,
   ...state,
 });
 
@@ -111,7 +114,8 @@ describe('FavouritesScreen', () => {
   });
 
   it('says offline for a list that failed with no network, and names the failure with one', async () => {
-    mockFavourites = read({ error: new Error('Network request failed') });
+    const down = new Error('Network request failed');
+    mockFavourites = read({ error: down, unreadError: down });
     mockDeviceOnline = false;
     const view = await render(<FavouritesScreen />);
     expect(screen.getByText("You're offline")).toBeTruthy();
@@ -121,6 +125,25 @@ describe('FavouritesScreen', () => {
     await view.rerender(<FavouritesScreen />);
     expect(screen.getByText("Couldn't load your favourites")).toBeTruthy();
     expect(screen.queryByText("You're offline")).toBeNull();
+    // Not "0 items" over a list that was not read.
+    expect(screen.queryByText('0 items')).toBeNull();
+  });
+
+  // fe#271: a kept list whose re-read failed read as "Couldn't load your favourites".
+  it('says there are none for a list kept with nothing in it whose re-read failed', async () => {
+    mockFavourites = read({ error: new Error('Network request failed') });
+    await render(<FavouritesScreen />);
+    expect(screen.getByText('Tap the heart on a folder or book to add it here.')).toBeTruthy();
+    expect(screen.getByText('0 items')).toBeTruthy();
+    expect(screen.queryByText("Couldn't load your favourites")).toBeNull();
+  });
+
+  it('keeps showing the favourites it holds when their re-read failed', async () => {
+    mockFavourites = read({ favourites: [book], error: new Error('Network request failed') });
+    await render(<FavouritesScreen />);
+    expect(screen.getByText('The Hobbit')).toBeTruthy();
+    expect(screen.getByText('1 item')).toBeTruthy();
+    expect(screen.queryByText("Couldn't load your favourites")).toBeNull();
   });
 
   it('keeps showing the favourites it has while another server is held', async () => {

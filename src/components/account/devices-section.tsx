@@ -69,8 +69,9 @@ export function deviceDetail(d: MyDevice, t: TFunction, now: number): string {
 
 /**
  * "Signed-in devices" (capability `my_devices`; the page renders it only when the
- * server has it): the account's sessions, this device first and marked, each with its
- * app, platform and when it was last seen. Another device signs out after a
+ * server has it, or when `/server` could not be read and nothing is kept, fe#271): the
+ * account's sessions, this device first and marked, each with its app, platform and when
+ * it was last seen. Another device signs out after a
  * confirmation (`useRevokeMyDevice`) and a toast says so, or what went wrong and that
  * nothing changed. The device the listener is on offers no sign-out (`canRevoke`). A
  * device where the listener signed in household members of theirs (its
@@ -139,7 +140,7 @@ export function DevicesSection({
           // Before the error and the skeleton: a list held for the network stays pending
           // (`useUnreadQuery`), and no Retry can work without one.
           <OfflineState className="py-6" />
-        ) : devices.isError && devices.data === undefined ? (
+        ) : unread === 'failed' ? (
           // Only with no list to show: a read again that fails (after a password change, a
           // revoke) keeps the list as it was, never its error in its place (server#285).
           <View className="gap-3 p-5">

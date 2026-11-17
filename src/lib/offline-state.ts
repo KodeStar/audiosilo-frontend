@@ -55,6 +55,40 @@ export function useUnreadQuery(query: {
 }
 
 /**
+ * The other side of `useUnreadQuery`: a KEPT answer whose read again waits for the network
+ * or failed without one. The screen shows what it keeps with an offline line, never a
+ * Retry, which cannot work until the network is back (fe#271). A refusal (an `ApiError`)
+ * is the server's answer, not the network's, so it is never this.
+ */
+export function useKeptOffline(query: { data: unknown; isPaused: boolean; error: unknown }) {
+  const deviceOnline = useDeviceOnline();
+  if (query.data === undefined || query.error instanceof ApiError) return false;
+  const failed = !!query.error;
+  return offlineState({ waiting: query.isPaused, failed, deviceOnline }) === 'offline';
+}
+
+/**
+ * `useUnreadQuery` of ONE list read from every server (`useFavouritesAll`, `useRecentAll`,
+ * `useAllProgressAll`: `offline` when a server's list waits for the network, `error` their
+ * `unreadError`, the first one that failed with nothing kept), with no row in. A list that
+ * waits wins over another server's failure, a refusal included, as Home's own rule does:
+ * the waiting one may hold what the page shows, and it is asked again by itself once the
+ * network is back (fe#271). Never the fan-out's own `error`: that one counts a failed
+ * re-read of a list a server did answer, and a kept empty list is "none", not a failure.
+ */
+export function useUnreadAll(list: {
+  rows: readonly unknown[];
+  offline: boolean;
+  error: unknown;
+}): UnreadState {
+  return useUnreadQuery({
+    data: list.rows.length > 0 ? list.rows : undefined,
+    isPaused: list.offline,
+    error: list.offline ? null : list.error,
+  });
+}
+
+/**
  * `useUnreadQuery` of a whole list of books read page by page (`useAllLibraryBooks`):
  * with no book in, there is nothing to show, whatever page the read stopped on. A list
  * read to its end with no book in it IS an answer (an author with nothing left here): its

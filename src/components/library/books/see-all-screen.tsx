@@ -16,7 +16,7 @@ import { GhostCovers } from '@/components/ui/ghost-art';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { contentKey } from '@/lib/content-key';
 import { formatRelative } from '@/lib/format';
-import { useUnreadQuery } from '@/lib/offline-state';
+import { useUnreadAll } from '@/lib/offline-state';
 import { bookTitle } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
@@ -58,14 +58,17 @@ export function SeeAllScreen() {
   );
   const state = type === 'recent' ? recent : progress;
   // With no row to show, a server's list held for the network (or failed without one) is
-  // not "no books": every list read with nothing in them is (`useUnreadQuery`). Finished
-  // books too: one server's progress with none finished says nothing about a held one's.
+  // not "no books": every list read with nothing in them is, and a held list wins over
+  // another server's failure (`useUnreadAll`). Finished books too: one server's progress
+  // with none finished says nothing about a held one's. A kept list whose re-read failed
+  // is still read (`unreadError`): with nothing in it, "no books", not a load error.
   const rows = type === 'recent' ? recent.books : finished;
-  const unread = useUnreadQuery({
-    data: rows.length > 0 ? rows : undefined,
-    isPaused: state.offline,
-    error: state.error,
+  const unread = useUnreadAll({
+    rows,
+    offline: state.offline,
+    error: state.unreadError,
   });
+  const failed = unread === 'failed';
 
   const header = (
     <View className="pb-5 pt-2">
@@ -91,12 +94,12 @@ export function SeeAllScreen() {
       variant="card"
       art={<GhostCovers />}
       title={
-        state.error
+        failed
           ? t('library.list.loadError')
           : t(type === 'recent' ? 'library.list.noBooks' : 'library.list.noFinished')
       }
       hint={
-        state.error
+        failed
           ? undefined
           : t(type === 'recent' ? 'library.list.noBooksHint' : 'library.list.noFinishedHint')
       }

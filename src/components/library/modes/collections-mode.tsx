@@ -7,7 +7,7 @@ import { useCollections, useFavouritesAll } from '@/api/hooks';
 import { OfflineState } from '@/components/layout/offline-state';
 import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { useLayout } from '@/lib/layout';
-import { useUnreadQuery } from '@/lib/offline-state';
+import { useUnreadAll, useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 
@@ -41,7 +41,15 @@ export function CollectionsMode({ connectionId }: LibraryModeProps) {
   // The list waits for the network, or failed without one: no Retry can work, and
   // Favourites (every server's, as last read) still shows below.
   const unread = useUnreadQuery(collections);
-  const { favourites } = useFavouritesAll();
+  const favouritesAll = useFavouritesAll();
+  const { favourites } = favouritesAll;
+  // With none in, a list held for the network (or failed with nothing kept) is not
+  // "0 items" (fe#271): the card says nothing of the count then.
+  const favouritesUnread = useUnreadAll({
+    rows: favourites,
+    offline: favouritesAll.offline,
+    error: favouritesAll.unreadError,
+  });
   const [creating, setCreating] = useState(false);
   const [width, setWidth] = useState(0);
   const { card, gap } = collectionGrid(Math.max(0, width - gutter * 2), layout);
@@ -76,7 +84,9 @@ export function CollectionsMode({ connectionId }: LibraryModeProps) {
             title={t('library.favourites.title')}
             icon="heart"
             lines={[
-              t('library.favourites.itemCount', { count: favourites.length }),
+              favouritesUnread
+                ? ''
+                : t('library.favourites.itemCount', { count: favourites.length }),
               t('library.collections.favouritesHint'),
             ]}
             onPress={() => router.push('/library/favourites')}

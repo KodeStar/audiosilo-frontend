@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, renderHook, screen } from '@testing-library/react-native';
 
 import type { Book, QueueEntry } from '@/api/types';
 import { setFontScale } from '@/testing/font-scale';
@@ -36,7 +36,7 @@ import { usePlayer } from '@/playback/store';
 import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 
-import { UpNextPanel } from './up-next-panel';
+import { UpNextPanel, useQueuedLine } from './up-next-panel';
 import { progressIndex } from './up-next-model';
 /* eslint-enable import/first */
 
@@ -49,6 +49,8 @@ const entry = (path: string): QueueEntry => ({
 });
 const data = (over: Partial<Data> = {}): Data => ({
   entries: [],
+  unread: null,
+  keptOffline: false,
   isLoading: false,
   error: null,
   refetch: jest.fn(),
@@ -100,12 +102,40 @@ describe('UpNextPanel', () => {
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
+  // fe#271: offline it said "Nothing queued" (the subline) over books that are queued.
+  it('says offline, with no Retry, while the queue waits for the network', async () => {
+    await render(
+      <UpNextPanel
+        cid="c"
+        data={data({ entries: undefined, unread: 'offline', error: new Error('x') })}
+      />,
+    );
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByText("Couldn't load Up next.")).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryByText('Nothing queued yet')).toBeNull();
+  });
+
   it('keeps the list on screen when a refresh fails', async () => {
     await render(
       <UpNextPanel cid="c" data={data({ entries: [entry('Kept')], error: new Error('x') })} />,
     );
     expect(screen.getByText('Kept')).toBeTruthy();
     expect(screen.getByText(/Couldn't refresh Up next/)).toBeTruthy();
+  });
+
+  // fe#271: offline, a kept list said "Couldn't refresh" with a Retry that cannot work.
+  it('keeps the list with the offline line, no Retry, when its refresh cannot reach offline', async () => {
+    await render(
+      <UpNextPanel
+        cid="c"
+        data={data({ entries: [entry('Kept')], keptOffline: true, error: new Error('x') })}
+      />,
+    );
+    expect(screen.getByText('Kept')).toBeTruthy();
+    expect(screen.getByText("You're offline. This is the last list we had.")).toBeTruthy();
+    expect(screen.queryByText(/Couldn't refresh Up next/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   it('has an empty state (no drop zone off the web desktop)', async () => {
@@ -270,5 +300,24 @@ describe('UpNextPanel', () => {
     expectNativeTarget(screen.getByLabelText('Play'));
     expectNativeTarget(screen.getByLabelText('Add Title of S/2 to Up next'));
     usePlayer.setState({ nowPlaying: null } as never);
+  });
+});
+
+describe('useQueuedLine', () => {
+  const line = async (count: number | undefined, connections: object[]) => {
+    useSession.setState({ connections: connections as never });
+    return (await renderHook(() => useQueuedLine('c', 3600, count))).result.current;
+  };
+  const one = [{ id: 'c', name: 'Home Library' }];
+  const two = [...one, { id: 'd', name: 'Cabin' }];
+
+  it('says nothing of a queue not read: the server alone, among several', async () => {
+    expect(await line(undefined, two)).toBe('Home Library');
+    expect(await line(undefined, one)).toBe('');
+  });
+
+  it('says what is queued once it is read', async () => {
+    expect(await line(0, two)).toBe('Home Library · Nothing queued');
+    expect(await line(2, one)).toBe('1h queued');
   });
 });

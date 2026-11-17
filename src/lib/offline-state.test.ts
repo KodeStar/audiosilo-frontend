@@ -9,7 +9,7 @@ jest.mock('./device-online', () => ({
 }));
 
 /* eslint-disable import/first */
-import { offlineState, useUnreadBooks, useUnreadQuery } from './offline-state';
+import { offlineState, useKeptOffline, useUnreadBooks, useUnreadQuery } from './offline-state';
 /* eslint-enable import/first */
 
 describe('offlineState (the one offline rule: Home, the Library, Folders, the read-along map)', () => {
@@ -73,6 +73,32 @@ describe('useUnreadQuery', () => {
       expect(await ask(refused, false)).toBe('failed');
       expect(await ask({ ...refused, isPaused: true }, false)).toBe('failed');
     }
+  });
+});
+
+// A kept answer whose read again cannot reach the server offline (Up next's kept queue):
+// the screen keeps it with an offline line, no Retry (fe#271).
+describe('useKeptOffline', () => {
+  const down = new TypeError('Network request failed');
+  const kept = { data: [] as unknown, isPaused: false, error: null as unknown };
+  const ask = async (query: typeof kept, deviceOnline = true) => {
+    mockDeviceOnline = deviceOnline;
+    return (await renderHook(() => useKeptOffline(query))).result.current;
+  };
+
+  it('is true while the read again waits for the network, or failed without one', async () => {
+    expect(await ask({ ...kept, isPaused: true })).toBe(true);
+    expect(await ask({ ...kept, error: down }, false)).toBe(true);
+  });
+
+  it('is false with a network (the Retry stands), with nothing kept, or when read', async () => {
+    expect(await ask({ ...kept, error: down })).toBe(false);
+    expect(await ask({ ...kept, data: undefined, isPaused: true }, false)).toBe(false);
+    expect(await ask(kept, false)).toBe(false);
+  });
+
+  it("never calls a server's refusal offline", async () => {
+    expect(await ask({ ...kept, error: new ApiError(401, 'no') }, false)).toBe(false);
   });
 });
 

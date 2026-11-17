@@ -133,6 +133,22 @@ describe('YearStoryScreen', () => {
     expect(screen.queryByText("You're offline")).toBeNull();
   });
 
+  // fe#271: the held streak and goal asked again once the network was back dropped the
+  // story to `loading`, and it started again at its first card.
+  it('keeps its place when the held streak and goal are asked again', async () => {
+    Platform.OS = 'web';
+    mockExtras = { data: undefined, isError: false, isPaused: true };
+    const view = await render(<YearStoryScreen />);
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    });
+    expect(screen.getByLabelText(/^Card 2 of /)).toBeTruthy();
+    // Back online: the reads go out again, with nothing in yet.
+    mockExtras = { data: undefined, isError: false, isPaused: false };
+    await view.rerender(<YearStoryScreen />);
+    expect(screen.getByLabelText(/^Card 2 of /)).toBeTruthy();
+  });
+
   it('says calmly why there is no story, with a way out', async () => {
     mockSupported = false;
     await render(<YearStoryScreen />);

@@ -117,8 +117,17 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   const connection = connections.find((c) => c.id === cid) ?? null;
   const user = connection?.user ?? null;
   const serverName = connection ? serverDisplayName(connection, connections) : '';
-  const { data: server } = useServerInfo(cid);
+  const serverInfo = useServerInfo(cid);
+  const server = serverInfo.data;
   const caps = server?.capabilities;
+  // No `/server` answer kept and none coming (held for the network, or it failed): its
+  // flags are unknown, so the blocks the device can show without it stand with their
+  // offline or failed state, not gone until the server answers (fe#271). "It failed" is
+  // `errorUpdateCount`, which a read again leaves as it was: a reader that mounts asks a
+  // failed read again (React Query's `retryOnMount`), which puts it back to pending with
+  // no error, so the error itself would hide the devices section, which mounts such a
+  // reader, bring it back once the request failed, and ask again, twice a second for good.
+  const capsUnread = !caps && (serverInfo.isPaused || serverInfo.errorUpdateCount > 0);
   const demo = !!user?.is_demo;
   // A kid's account (8b-1) can't pair a device or have API keys (the server refuses both).
   const kid = isKidAccount(user);
@@ -185,7 +194,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
 
       {watchLink.supported ? <WatchCard connectionId={cid} /> : null}
 
-      <AccountAddresses cid={cid} caps={caps} />
+      <AccountAddresses cid={cid} caps={caps} capsUnread={capsUnread} />
 
       {/* Not gated on the server's flags: needed most when a proxy turns every request
           away (fe#167). A demo account has no use for it, unless its sign-in came through
@@ -193,7 +202,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
           and removed here like anyone's. */}
       {!demo || connection?.proxyHeaders ? <ProxyHeadersCard connectionId={cid} /> : null}
 
-      {caps?.my_devices === true ? (
+      {caps?.my_devices === true || capsUnread ? (
         <DevicesSection connectionId={cid} serverName={serverName} />
       ) : null}
 
@@ -276,14 +285,25 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
  * refreshes) merged with what the server says now (`useServerAddresses`; on the web it
  * is the only refresh), and on native which one this device is using now. Web never
  * switches (the served player stays on its own origin), so it shows no "in use" line.
- * Nothing for a server without the capability or with no address to show.
+ * Nothing for a server without the capability or with no address to show. With no
+ * `/server` answer kept and none coming, the device's own copy shows (most useful away
+ * from home).
  */
-function AccountAddresses({ cid, caps }: { cid: string; caps: Capabilities | undefined }) {
+function AccountAddresses({
+  cid,
+  caps,
+  capsUnread,
+}: {
+  cid: string;
+  caps: Capabilities | undefined;
+  /** `/server` could not be read and nothing is kept: the kept addresses still show. */
+  capsUnread: boolean;
+}) {
   const { t } = useTranslation();
   const kept = useSession((s) => s.connections.find((c) => c.id === cid)?.addresses);
   const { data: fresh } = useServerAddresses(cid);
   const active = useActiveAddress(cid);
-  if (caps?.addresses !== true) return null;
+  if (caps?.addresses !== true && !capsUnread) return null;
   const addresses = mergeAddresses(kept, fresh);
   if (!addresses) return null;
   // Named against what the card shows (the server may have just told us an address the

@@ -12,6 +12,7 @@ import { Icon } from '@/components/ui/icon';
 import { Kbd } from '@/components/ui/kbd';
 import { Text } from '@/components/ui/text';
 import { UpNextButton } from '@/components/upnext/up-next-button';
+import { useDownloads } from '@/downloads/store';
 import { useDeviceOnline } from '@/lib/device-online';
 import { useLayout } from '@/lib/layout';
 import { openSettings } from '@/lib/open';
@@ -52,15 +53,18 @@ export function serverLine(
 
 /** The server line in words. With a network on the device, a default server that is down
  * is named ("Hearthside isn't answering"); without one, the device is offline
- * (CONNECT-15). */
+ * (CONNECT-15), and downloads play where this device has them (`downloads`: a browser on a
+ * plain http origin has none, fe#271). */
 export function serverLineLabel(
   line: Exclude<ReturnType<typeof serverLine>, { kind: 'none' }>,
   deviceOnline: boolean,
   t: TFunction,
+  downloads = true,
 ): string {
   switch (line.kind) {
     case 'offline':
-      return deviceOnline ? t('shell.notAnswering', { name: line.name }) : t('shell.offline');
+      if (deviceOnline) return t('shell.notAnswering', { name: line.name });
+      return downloads ? t('shell.offline') : t('shell.offlinePlain');
     case 'reconnect':
       return t('shell.profile.reconnect');
     case 'down':
@@ -79,9 +83,10 @@ function ServerLine() {
   const defaultId = useSession((s) => s.defaultConnectionId);
   const online = useReachability((s) => s.online);
   const deviceOnline = useDeviceOnline();
+  const downloads = useDownloads((s) => s.supported);
   const line = serverLine(connections, defaultId, online);
   if (line.kind === 'none') return null;
-  const label = serverLineLabel(line, deviceOnline, t);
+  const label = serverLineLabel(line, deviceOnline, t, downloads);
   return (
     <View className="flex-row items-center gap-1.5">
       <View

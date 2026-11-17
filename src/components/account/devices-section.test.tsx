@@ -172,7 +172,13 @@ describe('DevicesSection', () => {
     const view = await mount();
     expect(screen.getByTestId('devices-loading')).toBeTruthy();
 
-    mockDevices = { ...loaded([]), data: undefined, isError: true, isSuccess: false };
+    mockDevices = {
+      ...loaded([]),
+      data: undefined,
+      isError: true,
+      isSuccess: false,
+      error: new Error('down'),
+    };
     await view.rerender(<DevicesSection connectionId="c" serverName="Hearthside" />);
     expect(screen.getByText("Couldn't load your devices from Hearthside.")).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
@@ -206,6 +212,14 @@ describe('DevicesSection', () => {
     await view.rerender(<DevicesSection connectionId="c" serverName="Hearthside" />);
     expect(screen.getByText('Work laptop')).toBeTruthy();
     expect(screen.queryByText("You're offline")).toBeNull();
+  });
+
+  // fe#271: a failed re-read hid the list it holds behind the error and its Retry.
+  it('keeps the list it holds when a re-read fails', async () => {
+    mockDevices = { ...loaded([laptop, here]), isError: true };
+    await mount();
+    expect(screen.getByText('Work laptop')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   it('says when only this device is signed in', async () => {

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
+import { ApiError } from '@/api/client';
 import type { Collection, CollectionDetail } from '@/api/types';
 
 let mockParams: Record<string, string | undefined> = {};
@@ -33,7 +34,14 @@ jest.mock('../collections/collection-card', () => {
   const { Text } = jest.requireActual('react-native');
   return {
     CollectionCard: ({ collection }: { collection: Collection }) => <Text>{collection.name}</Text>,
-    CollectionCardFrame: ({ title }: { title: string }) => <Text>{title}</Text>,
+    CollectionCardFrame: ({ title, lines }: { title: string; lines: string[] }) => (
+      <>
+        <Text>{title}</Text>
+        {lines.filter(Boolean).map((line) => (
+          <Text key={line}>{line}</Text>
+        ))}
+      </>
+    ),
     CollectionCardSkeleton: () => <Text>loading card</Text>,
     CoverFan: () => null,
     NewCollectionCard: () => <Text>New collection</Text>,
@@ -69,11 +77,20 @@ const unread = <T,>(state: Partial<Read<T>> = {}): Read<T> => ({
 });
 let mockCollections: Read<Collection[]>;
 let mockCollection: Read<CollectionDetail>;
+let mockSupported: boolean | undefined = true;
+let mockFavourites: {
+  favourites: object[];
+  offline?: boolean;
+  error?: unknown;
+  unreadError?: unknown;
+} = {
+  favourites: [],
+};
 jest.mock('@/api/hooks', () => ({
-  useCapability: () => true,
+  useCapability: () => mockSupported,
   useCollections: () => mockCollections,
   useCollection: () => mockCollection,
-  useFavouritesAll: () => ({ favourites: [] }),
+  useFavouritesAll: () => mockFavourites,
   useAddCollectionItem: () => ({ mutateAsync: jest.fn(), isPending: false }),
   useDeleteCollection: () => ({ mutateAsync: jest.fn(), isPending: false }),
   useProgressLookup: () => ({ progressOf: () => undefined }),
@@ -90,6 +107,8 @@ const down = () => new TypeError('Network request failed');
 
 beforeEach(() => {
   mockDeviceOnline = true;
+  mockSupported = true;
+  mockFavourites = { favourites: [] };
   mockParams = { connection: 'home', id: '4' };
   mockCollections = unread();
   mockCollection = unread();
@@ -119,6 +138,24 @@ describe('CollectionsMode with no list read', () => {
     // Favourites is every server's, as last read: it stays.
     expect(screen.getByText('Favourites')).toBeTruthy();
     expect(screen.queryByText('New collection')).toBeNull();
+  });
+
+  // fe#271: the Favourites card said "0 items" over a list it had not read.
+  it('says no count on the Favourites card while its list is held or failed', async () => {
+    mockCollections = { ...unread(), data: [] };
+    await mountMode();
+    expect(screen.getByText('0 items')).toBeTruthy();
+    const down = new Error('down');
+    for (const held of [{ offline: true }, { error: down, unreadError: down }]) {
+      mockFavourites = { favourites: [], ...held };
+      await mountMode();
+      expect(screen.getByText('Favourites')).toBeTruthy();
+      expect(screen.queryByText('0 items')).toBeNull();
+    }
+    // A list kept with nothing in it is still read when only its re-read failed.
+    mockFavourites = { favourites: [], error: down };
+    await mountMode();
+    expect(screen.getByText('0 items')).toBeTruthy();
   });
 
   it('says offline, with no Retry, when it failed with no network on the device', async () => {
@@ -179,5 +216,15 @@ describe('CollectionScreen with the collection not read', () => {
     expect(screen.queryByText(OFFLINE)).toBeNull();
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
     expect(mockCollection.refetch).toHaveBeenCalled();
+  });
+
+  // fe#270: while the flag is unknown the read takes a failed `/server` read's error, whose
+  // 404 says nothing of this collection.
+  it("reads a 404 as gone only once the server's flag is known", async () => {
+    mockSupported = undefined;
+    mockCollection = unread({ error: new ApiError(404, 'not found') });
+    await render(<CollectionScreen />);
+    expect(screen.queryByText("This collection isn't here")).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 });

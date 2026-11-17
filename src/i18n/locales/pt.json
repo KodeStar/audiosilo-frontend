@@ -689,6 +689,7 @@
     },
     "error": {
       "title": "Não foi possível carregar o teu progresso",
+      "titleServer": "Não foi possível carregar o teu progresso de {{server}}",
       "body": "Nada se perdeu: a tua posição está guardada em cada servidor. Verifica a ligação e tenta novamente."
     },
     "offline": {
@@ -917,6 +918,7 @@
     "picker": {
       "label": "Biblioteca",
       "placeholder": "Escolha uma biblioteca",
+      "waiting": "À espera de {{name}}",
       "serverLabel": "Servidor",
       "serverPlaceholder": "Escolha um servidor"
     },
@@ -1959,6 +1961,7 @@
     },
     "home": "Início do AudioSilo",
     "offline": "Offline · as transferências tocam",
+    "offlinePlain": "Offline",
     "notAnswering": "{{name}} não responde",
     "serverMore_one": "{{name}} + mais {{count}}",
     "serverMore_other": "{{name}} + mais {{count}}",
@@ -2062,6 +2065,7 @@
     "cleared": "A seguir limpo",
     "loadFailed": "Não foi possível carregar A seguir.",
     "refreshFailed": "Não foi possível atualizar A seguir. Esta é a última lista que tínhamos.",
+    "offlineKept": "Estás offline. Esta é a última lista que tínhamos.",
     "empty": {
       "title": "Ainda nada na fila",
       "hint": "Use Pôr na fila em qualquer livro para o colocar aqui.",
