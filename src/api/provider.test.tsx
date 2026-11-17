@@ -417,6 +417,31 @@ describe('queries and reachability', () => {
     expect(serverInfo).not.toHaveBeenCalled();
   });
 
+  // fe#147: the reconnect reads the server's queries again, but not the `/server` whose
+  // answer brought it back, which would only ask the same thing twice.
+  it('reads a server brought back by its /server again, all but that /server', async () => {
+    const stopBridge = reachability.onReconnect((cid) => mockReconnect?.(cid));
+    const server = jest.fn().mockResolvedValue({});
+    const libraries = jest.fn().mockResolvedValue([]);
+    const observe = (queryKey: readonly unknown[], queryFn: () => Promise<unknown>) =>
+      new QueryObserver(queryClient, { queryKey, queryFn, retry: false });
+    const s = observe(qk.server('c1'), server);
+    const l = observe(qk.libraries('c1'), libraries);
+    const stops = [s, l].map((o) => o.subscribe(() => {}));
+    try {
+      await waitFor(() => expect(l.getCurrentResult().isSuccess).toBe(true));
+      await waitFor(() => expect(s.getCurrentResult().isSuccess).toBe(true));
+      useReachability.setState({ online: { c1: false } });
+      await s.refetch();
+      expect(useReachability.getState().online.c1).toBe(true);
+      await waitFor(() => expect(libraries).toHaveBeenCalledTimes(2));
+      expect(server).toHaveBeenCalledTimes(2);
+    } finally {
+      stops.forEach((stop) => stop());
+      stopBridge();
+    }
+  });
+
   it('never reads a read-along map it holds again on a reconnect, but one that failed', async () => {
     serverInfo.mockResolvedValue({});
     const held = jest.fn().mockResolvedValue({ sections: [] });
