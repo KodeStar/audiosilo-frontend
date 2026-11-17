@@ -1,4 +1,5 @@
 import type { EventSubscription } from 'expo-modules-core';
+import { Platform } from 'react-native';
 
 import { routed } from '@/cast/routed-service';
 
@@ -155,7 +156,14 @@ class NativePlaybackService implements PlaybackService {
         }
       }),
       AudiosiloPlayer.addListener('onTrackChange', ({ index }) => {
-        // A held tick was the file it leaves: taken first.
+        // A held tick on Android is the new file's: Media3 reports the move (its tick) before
+        // the item change. So the file joins the hold, told with its place (the move or the
+        // wait's end), never under the old file's index. On iOS the change comes before the
+        // new file's first tick, so a held tick was the file it leaves: taken first.
+        if (Platform.OS === 'android' && this.held) {
+          this.snapshot = { ...this.snapshot, trackIndex: index };
+          return;
+        }
         this.releaseHeld();
         this.update({ trackIndex: index });
       }),

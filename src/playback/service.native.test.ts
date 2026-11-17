@@ -26,6 +26,8 @@ jest.mock('../../modules/audiosilo-player', () => ({
 }));
 
 /* eslint-disable import/first */
+import { Platform } from 'react-native';
+
 import { createPlaybackService } from './service.native';
 /* eslint-enable import/first */
 
@@ -265,11 +267,50 @@ describe('a progress tick that jumped while playing', () => {
     expect(heard()).toEqual([11, 80, 80.2]);
   });
 
-  it('takes a held tick before the file changes', async () => {
+  it('takes a held tick before the file changes (iOS: the change comes first)', async () => {
     const { svc, heard } = await playing();
     send('onProgress', { position: 70, duration: 100 });
     send('onTrackChange', { index: 1 });
     expect(heard()).toEqual([11, 70, 70]);
     expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 70 });
+  });
+
+  describe('on Android, where the new file’s tick comes before its change', () => {
+    beforeEach(() => {
+      Platform.OS = 'android';
+    });
+    afterEach(() => {
+      Platform.OS = 'ios';
+    });
+
+    async function heardPlaces() {
+      const { svc } = await playing();
+      const places: [number, number][] = [];
+      svc.subscribe((s) => places.push([s.trackIndex, s.position]));
+      return { svc, places };
+    }
+
+    it('tells the held tick under the new file, with its move', async () => {
+      const { svc, places } = await heardPlaces();
+      let heardWhenMoved: [number, number][] | null = null;
+      svc.onRemoteMove!(() => {
+        heardWhenMoved = [...places];
+      });
+      send('onProgress', { position: 3, duration: 250 }); // the next chapter, in file 1
+      send('onTrackChange', { index: 1 });
+      expect(places).toEqual([]);
+      send('onRemoteMove', { trackIndex: 1, position: 3 });
+      expect(heardWhenMoved).toEqual([]);
+      expect(places).toEqual([[1, 3]]);
+      expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 3, duration: 250 });
+    });
+
+    it('tells the held tick under the new file once the wait is over', async () => {
+      const { places } = await heardPlaces();
+      send('onProgress', { position: 0.2, duration: 250 }); // ran on into file 1
+      send('onTrackChange', { index: 1 });
+      jest.advanceTimersByTime(600);
+      expect(places).toEqual([[1, 0.2]]);
+    });
   });
 });
