@@ -117,9 +117,11 @@ object PlayerConfig {
 
 /**
  * Shared auth headers for streaming + artwork. They are identical for every track
- * in a book (a single session bearer token), so the module sets them once per load
- * and the data source reads them at request time, ONLY for a request to the server they
- * were given for ([origin]): the token never goes to any other host.
+ * in a book (a single session bearer token, and a proxy's headers), so the module sets them
+ * once per load and the data source reads them at request time, ONLY for a request to the
+ * server they were given for ([originOf]): the token never goes to any other host. A proxy
+ * header goes only to an https origin ([AuthScope.headersFor], fe#295). What a redirect does
+ * with them is the HTTP stack's rule, not this one's (CONVENTIONS.md).
  */
 object AuthHolder {
   @Volatile
@@ -128,7 +130,8 @@ object AuthHolder {
   /** The book's auth headers and the URL of a track they are for (its origin scopes them). */
   fun set(headers: Map<String, String>?, url: String?) {
     val origin = url?.let { originOf(Uri.parse(it)) }
-    auth = if (headers.isNullOrEmpty() || origin == null) null else origin to headers
+    val kept = origin?.let { AuthScope.headersFor(it, headers) }
+    auth = if (origin == null || kept == null) null else origin to kept
   }
 
   fun clear() {
@@ -141,17 +144,7 @@ object AuthHolder {
     return if (originOf(uri) == origin) headers else emptyMap()
   }
 
-  private fun originOf(uri: Uri): String? {
-    val scheme = uri.scheme?.lowercase() ?: return null
-    val host = uri.host?.lowercase() ?: return null
-    val port = when {
-      uri.port != -1 -> uri.port
-      scheme == "https" -> 443
-      scheme == "http" -> 80
-      else -> -1
-    }
-    return "$scheme://$host:$port"
-  }
+  private fun originOf(uri: Uri): String? = AuthScope.origin(uri.scheme, uri.host, uri.port)
 }
 
 /**
