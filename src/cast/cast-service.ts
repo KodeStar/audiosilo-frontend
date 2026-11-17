@@ -374,9 +374,9 @@ export class CastPlaybackService implements PlaybackService {
   private async prepareLoaded(
     tracks: PlaybackTrack[],
     book: BookRef,
-    freshToken = false,
+    opts?: { freshToken?: boolean },
   ): Promise<Loaded> {
-    const { items } = await this.prepare(tracks, book, freshToken ? { freshToken } : undefined);
+    const { items } = await this.prepare(tracks, book, opts);
     return { tracks, book, items, urls: items.map((i) => i.url), offsets: items.map(() => 0) };
   }
 
@@ -399,7 +399,9 @@ export class CastPlaybackService implements PlaybackService {
     const seq = this.loadSeq;
     this.loadsInFlight++;
     try {
-      const fresh = await this.prepareLoaded(loaded.tracks, loaded.book, true).catch(() => null);
+      const fresh = await this.prepareLoaded(loaded.tracks, loaded.book, {
+        freshToken: true,
+      }).catch(() => null);
       if (!fresh || seq !== this.loadSeq || this.loaded !== loaded) return false;
       this.loaded = fresh;
       return true;
@@ -568,13 +570,14 @@ export class CastPlaybackService implements PlaybackService {
     const autoplay = this.isLive();
     const seq = this.loadSeq;
     this.place({ state: 'loading', trackIndex, position: place, duration }, false);
+    const fail = () => {
+      if (seq === this.loadSeq) this.update({ state: 'error' });
+    };
     void (async () => {
-      if (!(await this.freshToken())) throw new Error('No new cast token');
+      if (!(await this.freshToken())) return fail();
       if (!(await this.sendQueueOnce(trackIndex, place, autoplay))) return;
       if (!autoplay && seq === this.loadSeq) this.update({ state: 'paused' });
-    })().catch(() => {
-      if (seq === this.loadSeq) this.update({ state: 'error' });
-    });
+    })().catch(fail);
   }
 
   /** A progress tick names no item, so it can't tell a move from the receiver running on
