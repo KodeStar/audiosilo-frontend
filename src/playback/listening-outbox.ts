@@ -734,9 +734,7 @@ export function usesListeningStay(connectionId: string): boolean {
  */
 function eventsForServer(connectionId: string, events: ListeningEvent[]): ListeningEvent[] {
   if (usesListeningStay(connectionId)) return events;
-  return events.map((e) =>
-    e.kind === 'listen' && e.start === 'stay' ? { ...e, start: 'jump' as const } : e,
-  );
+  return events.map((e) => stayAsJump(e) ?? e);
 }
 
 // --- Sending ---------------------------------------------------------------------------
@@ -1222,13 +1220,15 @@ async function sendOneByOne(
   client: ApiClient,
   chunk: OutboxEntry[],
 ): Promise<Next> {
+  let flagAsked = false;
   for (const entry of chunk) {
     // A batch of one was that event alone already.
     let sent = chunk.length === 1 ? 'refused' : await sendAlone(connectionId, client, entry);
     const jump = sent === 'refused' ? stayAsJump(entry.event) : null;
     if (jump) {
-      // The cached flag said yes: it is asked again, so the next Stay goes as a `jump`.
-      void queryClient.invalidateQueries({ queryKey: qk.server(connectionId) });
+      // The cached flag said yes: it is asked again (once), so the next Stay goes as a `jump`.
+      if (!flagAsked) void queryClient.invalidateQueries({ queryKey: qk.server(connectionId) });
+      flagAsked = true;
       sent = await sendAlone(connectionId, client, { ...entry, event: jump });
     }
     if (sent === 'stop') return 'stop';
