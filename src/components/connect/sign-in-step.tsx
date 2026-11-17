@@ -13,7 +13,7 @@ import { getDeviceName } from '@/lib/device';
 import { useLayout } from '@/lib/layout';
 import { hostOf } from '@/lib/pairing';
 import type { ConnectBook } from '@/lib/paths';
-import { getDeviceId } from '@/playback/progress-sync';
+import { getSignInKey } from '@/lib/sign-in-key';
 import { useSession } from '@/stores/session';
 
 import { ConnectFrame, ConnectInput, StepDots } from './connect-frame';
@@ -164,7 +164,7 @@ export function SignInStep({
           username.trim(),
           password,
           getDeviceName(),
-          await getDeviceId(),
+          await getSignInKey(),
         );
         await finishConnect({
           serverUrl: server,
