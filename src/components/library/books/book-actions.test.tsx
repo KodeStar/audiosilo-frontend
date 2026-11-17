@@ -460,6 +460,33 @@ describe('useBookActions, a podcast episode', () => {
     }
   });
 
+  it("reads the live fetch status again at each opening of a row's menu (fe#280)", async () => {
+    mockCaps = { ...ALL, podcast_fetch: true };
+    const b = book({ episode: info(false) });
+    const key = qk.podcastFetch('c', 1, b.rel_path);
+    try {
+      await mountWithPortal(<BookActionsButton connectionId="c" libraryId={1} book={b} />);
+      const more = screen.getByLabelText('More for Book');
+      await fireEvent.press(more);
+      expect(screen.getByText('Download for offline')).toBeTruthy();
+      await fireEvent.press(more);
+      expect(screen.queryByText('Download for offline')).toBeNull();
+      // The episode page, visited since, read it as not available.
+      queryClient.setQueryData(
+        key,
+        fetchStatus({
+          state: 'unavailable',
+          error: { code: 'library_not_writable', message: 'read-only' },
+        }),
+      );
+      await fireEvent.press(more);
+      expect(screen.getByText('Play')).toBeTruthy();
+      expect(screen.queryByText('Download for offline')).toBeNull();
+    } finally {
+      queryClient.removeQueries({ queryKey: key });
+    }
+  });
+
   it('looks a list-shape item of a podcast library up once opened, then offers Download', async () => {
     mockPodcastLibrary = true;
     const shown = await actions(book());

@@ -140,8 +140,9 @@ export function useBookActions(
   const full = useBook(libraryId, unknown && opened ? path : '', connectionId);
   const known = unknown ? full.data : book;
   // A list row's `episode.fetch` is as old as the list; the episode page and the player's
-  // fetch keep the live status in the cache. Read there once the menu opened (no observer per
-  // row), so the menu offers what the page does (fe#280).
+  // fetch keep the live status in the cache. Read there at render once the menu opened (no
+  // observer per row; the menu renders again at each opening), so the menu offers what the
+  // page does (fe#280).
   const live =
     opened && known?.episode && !known.episode.downloaded
       ? queryClient.getQueryData<PodcastFetchStatus>(qk.podcastFetch(connectionId, libraryId, path))
@@ -343,7 +344,10 @@ export function BookActionsMenu({
   const [removing, setRemoving] = useState(false);
   // Shown once (the sheet, or the menu): what the actions look up waits for it.
   const [opened, setOpened] = useState(false);
-  if (sheetOpen && !opened) setOpened(true);
+  // The menu is the primitive's own state: kept here too so each opening renders the actions
+  // again, reading what they read at render (an episode's live fetch status, fe#280) anew.
+  const [menuOpen, setMenuOpen] = useState(false);
+  if ((sheetOpen || menuOpen) && !opened) setOpened(true);
   const actions = [
     ...useBookActions(
       { connectionId, libraryId, book, progress },
@@ -358,7 +362,7 @@ export function BookActionsMenu({
       {phone ? (
         trigger
       ) : (
-        <DropdownMenu onOpenChange={(open) => open && setOpened(true)}>
+        <DropdownMenu onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger ref={triggerRef} asChild>
             {trigger}
           </DropdownMenuTrigger>
