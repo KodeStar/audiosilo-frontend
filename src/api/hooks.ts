@@ -3469,6 +3469,16 @@ export function useSearchAll(query: string) {
 const anyHeld = (results: readonly { data: unknown; isPaused: boolean }[]) =>
   results.some((r) => !r.data && r.isPaused);
 
+/**
+ * A fan-out's `error`: a server's that is not a refused sign-in when there is one, else the
+ * first. A refusal has its own sign-in state (the reconnect banner, Home's Sign in again),
+ * so one server's 401 must not hide another's trouble, nor read as every server refusing
+ * (fe#147).
+ */
+const fanOutError = (results: readonly { error: unknown }[]) =>
+  (results.find((r) => r.error && !isSignedOutError(r.error)) ?? results.find((r) => r.error))
+    ?.error ?? null;
+
 export function useRecentAll(limit = RECENT_LIMIT) {
   const apis = useApis();
   const rank = (id: string) => {
@@ -3481,7 +3491,7 @@ export function useRecentAll(limit = RECENT_LIMIT) {
       books: dedupBooks(tagBooks(results, apis), rank),
       isLoading: results.some((r) => r.isLoading),
       offline: anyHeld(results),
-      error: results.find((r) => r.error)?.error ?? null,
+      error: fanOutError(results),
     }),
   });
 }
@@ -3792,7 +3802,12 @@ export function useAllProgressAll({
         .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)),
       isLoading: results.some((r) => r.isLoading),
       offline: anyHeld(results),
-      error: results.find((r) => r.error)?.error ?? null,
+      error: fanOutError(results),
+      /** The connections whose server refused the sign-in (a 401): Home names the one that
+       * refused, not the first signed out. */
+      refused: results.flatMap((r, i) =>
+        isSignedOutError(r.error) ? [apis[i].connection.id] : [],
+      ),
       /** Ask again only for the servers whose progress failed. */
       retry: () => {
         for (const r of results) if (r.isError) void r.refetch();
