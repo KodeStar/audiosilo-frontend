@@ -1583,6 +1583,29 @@ describe('CastPlaybackService', () => {
         expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 0, position: 71.9 });
       });
 
+      it('a second file jump before the first landed is no refusal for the media both replace', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 2, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 5 });
+        t.tick(40_000);
+        t.progress(45);
+        const first = holdLoad(t);
+        const back = t.svc.skipToTrack(0, 0);
+        await flush();
+        const second = holdLoad(t);
+        const on = t.svc.skipToTrack(1, 0);
+        await flush();
+        // Part 3 still playing on with the same token, before the receiver took either queue.
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 46 });
+        first();
+        second();
+        await Promise.all([back, on]);
+        expect(m.asks).toEqual([undefined]);
+        expect(t.remote.loads).toHaveLength(3);
+      });
+
       it('a resume refused to the last file never reads past its file while it loads, and plays', async () => {
         const m = minting();
         const t = setup({ prepare: m.prepare });

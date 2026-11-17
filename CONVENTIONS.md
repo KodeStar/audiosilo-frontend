@@ -3518,7 +3518,7 @@ on first need). NOT device-verified (no Cast device yet).
   media it replaces, and the native SDK's status has no session id): while the load is in flight (never by a status read), or within `ASKED_MOVE_MS` of the
   move once it answered (later, a file it played unseen may have run on). Not the file the receiver
   was on when the move was asked, at or past where it was then (`Intent.from`: the replaced media
-  playing on). A status in flight naming the asked file's URL as sent, playing or paused, lands it,
+  playing on; a move asked before the last one landed keeps where that one left from). A status in flight naming the asked file's URL as sent, playing or paused, lands it,
   and its token counts as played. A queue sent puts the snapshot at the place it asks for at once,
   as a local engine's file load does, and until the receiver lands it (for at most `ASKED_MOVE_MS`
   after the move, `holdingAsked`) no status or tick moves the snapshot: they are the media the

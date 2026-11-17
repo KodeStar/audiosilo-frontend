@@ -484,14 +484,21 @@ export class CastPlaybackService implements PlaybackService {
     this.askedMove = { until: this.now() + ASKED_MOVE_MS };
   }
 
-  /** Mean the receiver to be at `(trackIndex, position)` from now on (`landed`: it is). */
+  /** Mean the receiver to be at `(trackIndex, position)` from now on (`landed`: it is). Where
+   * it was (`from`) is the snapshot's place, unless the last move has not landed: the snapshot
+   * then holds that move's asked place (`sendQueueOnce`), and the receiver is still where that
+   * one left from. */
   private intend(trackIndex: number, position: number, landed = false) {
+    const last = this.intended;
     this.intended = {
       trackIndex,
       position: Math.max(0, position),
       at: this.now(),
       landed,
-      from: { trackIndex: this.snapshot.trackIndex, position: this.snapshot.position },
+      from:
+        last && !last.landed
+          ? last.from
+          : { trackIndex: this.snapshot.trackIndex, position: this.snapshot.position },
     };
   }
 
