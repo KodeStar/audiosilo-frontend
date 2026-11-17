@@ -3491,37 +3491,36 @@ on first need). NOT device-verified (no Cast device yet).
   `startCastSync` (the root's services, `root-services-impl.tsx`) follows the driver's session events; `endCastForCar` and
   `stopCasting` end a session from the app.
 - **The receiver never gets the session token**: `prepareCast` builds the queue with cast tokens
-  (`POST /cast/token`, book-scoped, 24 h; `castTokens` caches one per book until an hour before
-  it expires, drops expired ones and forgets a removed connection's), on the connection's address
-  in use (`effectiveUrl`), and refuses with `CastBlockedError` (no `cast`, an address another
-  device can't reach, a codec neither the receiver nor the server's transcoder handles). A
-  downloaded book casts from its server. The web's Remote Playback prompt is NOT used (it would
-  hand over the element's URL, token included). The server keeps 20 cast tokens per person and
-  ends the oldest, which a receiver may still be playing with (fe#158), so a queue load the
-  receiver refuses is sent once more with a newly minted token (`freshToken`,
+  (`POST /cast/token`, book-scoped, 24 h; `castTokens` caches one per book until an hour before it
+  expires, drops expired ones and forgets a removed connection's), on the connection's address in
+  use (`effectiveUrl`), and refuses with `CastBlockedError` (no `cast`, an address another device
+  can't reach, a codec neither the receiver nor the server's transcoder handles). A downloaded book
+  casts from its server. The web's Remote Playback prompt is NOT used (it would hand over the
+  element's URL, token included). The server keeps the 20 most recently used cast tokens per device
+  and 100 per person and ends the rest, which a receiver may still be playing with (fe#158), so a
+  queue load the receiver refuses is sent once more with a newly minted token (`freshToken`,
   `prepareCast(..., { freshToken })`, the cache's `fresh`), and a receiver that stops on an error
-  mid-book is loaded again with one, playing on when it was (only as the error arrives: one
-  already shown is the listener's to retry, since the receiver says it again on every status
-  read). The Default Media Receiver skips a file it is refused and tries the next, so its error
-  names the last file it tried: the reload goes to the place the phone means (`intended`: the
-  place a load, seek or file jump asked for, or the next file's start once one ended, until the
-  receiver plays or pauses there; `refusedPlace`; not once the receiver played or paused on
-  another file and the error came `ASKED_MOVE_MS` or more after the move, as it sends no status
-  while it simply plays; a move that old whose landing went unseen, its `playing` said while the
-  load was in flight, is reloaded where the ticks since put it), and an error while a load of
-  ours is in flight makes that load a refused one (`ReceiverRefused`, sent again with a new
-  token; the files the receiver skips on to meanwhile, the mint included, are not the book's
-  place, for at most `ASKED_MOVE_MS` after the error, so a load never answered hides nothing for
-  good). Not an error of the queue that load replaces: one naming a URL with the token before
-  the mint, or one read (`refresh`) before the queue was sent, which is dropped. A book's load
-  refused so to the end still stands, at the place it asked for until a status says where (the
-  receiver holds the book, and a failed load would hand it back to the phone while the receiver
-  plays on); a seek, file jump or play refused so fails. One mint per token:
-  another only once the receiver played with the last one minted at the place the phone meant
+  mid-book is loaded again with one, playing on when it was (only as the error arrives: one already
+  shown is the listener's to retry, since the receiver says it again on every status read). The
+  Default Media Receiver skips a file it is refused and tries the next, so its error names the last
+  file it tried: the reload goes to the place the phone means (`intended`: the place a load, seek or
+  file jump asked for, or the next file's start once one ended, until the receiver plays or pauses
+  there; `refusedPlace`; not once the receiver played or paused on another file and the error came
+  `ASKED_MOVE_MS` or more after the move, as it sends no status while it simply plays; a move that
+  old whose landing went unseen, its `playing` said while the load was in flight, is reloaded where
+  the ticks since put it), and an error while a load of ours is in flight makes that load a refused
+  one (`ReceiverRefused`, sent again with a new token; the files the receiver skips on to meanwhile,
+  the mint included, are not the book's place, for at most `ASKED_MOVE_MS` after the error, so a
+  load never answered hides nothing for good). Not an error of the queue that load replaces: one
+  naming a URL with the token before the mint, or one read (`refresh`) before the queue was sent,
+  which is dropped. A book's load refused so to the end still stands, at the place it asked for
+  until a status says where (the receiver holds the book, and a failed load would hand it back to
+  the phone while the receiver plays on); a seek, file jump or play refused so fails. One mint per
+  token: another only once the receiver played with the last one minted at the place the phone meant
   (not a later file it went on to), never more than two per `REMINT_EVERY_MS` (a minute) per book
-  loaded, and one when the last never played, so a failure with another cause never mints on
-  every try (each mint can end another receiver's token); a queue refused while a mint is on its
-  way waits on that mint and is sent again after it.
+  loaded, and one when the last never played, so a failure with another cause never mints on every
+  try (each mint can end another receiver's token); a queue refused while a mint is on its way waits
+  on that mint and is sent again after it.
 - **Generations**: the cast service numbers loads (`loadSeq`) and queues (`queueSeq`), the router
   its switches (`generation`): a load, queue or handover that a newer one (or a reset) overtook
   stands back, and the receiver's rejection of a replaced queue is not a failure. The native

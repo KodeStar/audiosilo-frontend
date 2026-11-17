@@ -38,11 +38,12 @@ const EARLY_END_FRESH_MS = 15_000;
  * after the receiver was refused (`freshToken`), for each book, while the last token minted
  * has not played yet: a load that fails for another reason (a codec the receiver can't play)
  * must not mint a token on every try, a Retry that loads the book again included, since each
- * one minted can end another receiver's (the server keeps 20 per person). A minted token the
- * receiver went on to play at the place this phone meant is a good one, and its own refusal
- * later (the server ended it in turn) mints at once, though never a third time within this
- * long: a receiver that plays each new token a while and then errs for another reason (a
- * network that drops) would otherwise mint on every error. */
+ * one minted can end another receiver's (the server keeps the 20 most recently used per device
+ * and 100 per person). A minted token the receiver went on to play at the place this phone
+ * meant is a good one, and its own refusal later (the server ended it in turn) mints at once,
+ * though never a third time within this long: a receiver that plays each new token a while
+ * and then errs for another reason (a network that drops) would otherwise mint on every
+ * error. */
 export const REMINT_EVERY_MS = 60_000;
 
 /** The receiver took a queue but reported an error while its load was in flight: the Default
@@ -587,13 +588,14 @@ export class CastPlaybackService implements PlaybackService {
 
   /**
    * The loaded queue again, its URLs carrying a newly minted cast token (fe#158): the server
-   * caps a person's cast tokens and ends the oldest, which a receiver may still be playing
-   * with, so its next file, seek or load is refused while the cache still holds that token.
-   * Resolves whether the queue was swapped (false: not due, the mint failed, or another book
-   * or a reset took the receiver meanwhile). One mint at a time for a loaded queue: sent again
-   * and refused while one is on its way (a second seek, sent with the token being replaced),
-   * it waits on that one and is sent again after the first, so the later move is the one the
-   * receiver ends on. Another book loaded meanwhile asks for its own.
+   * caps the cast tokens of a device and of a person and ends the least recently used, which a
+   * receiver may still be playing with, so its next file, seek or load is refused while the
+   * cache still holds that token. Resolves whether the queue was swapped (false: not due, the
+   * mint failed, or another book or a reset took the receiver meanwhile). One mint at a time
+   * for a loaded queue: sent again and refused while one is on its way (a second seek, sent
+   * with the token being replaced), it waits on that one and is sent again after the first, so
+   * the later move is the one the receiver ends on. Another book loaded meanwhile asks for its
+   * own.
    */
   private freshToken(): Promise<boolean> {
     const loaded = this.loaded;
