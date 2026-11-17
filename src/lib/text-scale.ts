@@ -32,8 +32,8 @@ function measureWebScale(): number {
 }
 
 /** The scale now: the system font scale on iOS and Android, the root font size over 16 px on
- * the web (the probe's cached value while anything listens, `subscribeWeb`). Never below a
- * sliver, so a divisor stays sane. */
+ * the web (the probe's cached value while anything listens and a probe runs,
+ * `subscribeWeb`). Never below a sliver, so a divisor stays sane. */
 export function readFontScale(): number {
   if (Platform.OS === 'web') return webScale ?? measureWebScale();
   const scale = Dimensions.get('window').fontScale;
@@ -59,11 +59,11 @@ export function linesFor(lines: number, large: boolean): number | undefined {
   return large ? undefined : lines;
 }
 
-// The web's scale while anything listens, else null (a read measures). One hidden probe,
-// 1rem wide, under a ResizeObserver: a browser font size changed mid-session (in its
-// settings, or a root font size a stylesheet sets) resizes the probe, so the change is
-// picked up at once, and a read between changes costs no `getComputedStyle` (fe#305). Page
-// zoom leaves a rem the same number of CSS px, so it moves nothing, as intended.
+// The web's scale while anything listens under a probe, else null (a read measures). One
+// hidden probe, 1rem wide, under a ResizeObserver: a browser font size changed mid-session
+// (in its settings, or a root font size a stylesheet sets) resizes the probe, so the change
+// is picked up at once, and a read between changes costs no `getComputedStyle` (fe#305).
+// Page zoom leaves a rem the same number of CSS px, so it moves nothing, as intended.
 let webScale: number | null = null;
 const webListeners = new Set<() => void>();
 let stopProbe: (() => void) | null = null;
@@ -93,8 +93,10 @@ function startProbe(): (() => void) | null {
 function subscribeWeb(onChange: () => void): () => void {
   webListeners.add(onChange);
   if (webListeners.size === 1) {
-    webScale = measureWebScale();
     stopProbe = startProbe();
+    // Cached only under a probe: with none (no ResizeObserver) nothing would ever refresh
+    // the value, so a read keeps measuring, as it does with no listener.
+    webScale = stopProbe ? measureWebScale() : null;
   }
   return () => {
     webListeners.delete(onChange);

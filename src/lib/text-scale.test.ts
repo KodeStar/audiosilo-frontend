@@ -139,4 +139,32 @@ describe('text scale', () => {
       g.ResizeObserver = saved.ro;
     }
   });
+
+  it('keeps measuring on the web where no probe can run (no ResizeObserver)', async () => {
+    const os = Platform.OS;
+    const g = globalThis as {
+      document?: unknown;
+      getComputedStyle?: unknown;
+      ResizeObserver?: unknown;
+    };
+    const saved = { doc: g.document, gcs: g.getComputedStyle, ro: g.ResizeObserver };
+    let rootPx = '16px';
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+    try {
+      g.document = { documentElement: {}, body: {} };
+      g.getComputedStyle = () => ({ fontSize: rootPx });
+      delete g.ResizeObserver;
+      const hook = await renderHook(() => useFontScale());
+      expect(hook.result.current).toBe(1);
+      // Nothing would refresh a cached value, so a listened-to read is not one.
+      rootPx = '24px';
+      expect(readFontScale()).toBe(1.5);
+      await hook.unmount();
+    } finally {
+      Object.defineProperty(Platform, 'OS', { value: os, configurable: true });
+      g.document = saved.doc;
+      g.getComputedStyle = saved.gcs;
+      g.ResizeObserver = saved.ro;
+    }
+  });
 });
