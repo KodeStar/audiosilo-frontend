@@ -310,6 +310,7 @@ export function ConnectStart() {
   const cancelServed = () => {
     servedAsk.current?.abort();
     servedAsk.current = null;
+    setBusy(null);
     setServed(null);
   };
 
@@ -355,6 +356,8 @@ export function ConnectStart() {
       }
       if (gone()) return false;
       await setPendingServerUrl(base);
+      // A Cancel while the address was written: the field stays, the card doesn't come back.
+      if (gone()) return false;
       const found: Probe = {
         kind: 'found',
         base,
@@ -385,7 +388,9 @@ export function ConnectStart() {
       );
       return false;
     } finally {
-      setBusy(null);
+      // A cancelled ask leaves `busy` to whoever cancelled it (`cancelServed`, or the ask
+      // that replaced it), so its late end can't free Continue while another is on its way.
+      if (!signal?.aborted) setBusy(null);
     }
   };
 

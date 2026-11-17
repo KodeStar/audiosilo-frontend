@@ -786,6 +786,24 @@ describe('the player the server serves', () => {
     expect(useSession.getState().pendingServerUrl).toBeNull();
   });
 
+  it('keeps a Continue busy when the ask it cancelled ends after it', async () => {
+    let refuse: () => void = () => {};
+    mockApi.serverInfo
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            refuse = () => reject(new DOMException('aborted', 'AbortError'));
+          }),
+      )
+      .mockImplementationOnce(() => new Promise(() => {}));
+    await render(<ConnectStart />);
+    await fireEvent.press(screen.getByTestId('connect-finding-cancel'));
+    await fireEvent.press(screen.getByText('Continue'));
+    refuse();
+    await act(async () => {});
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+  });
+
   it('records nothing once the screen is gone before its server answers', async () => {
     let answer: (v: unknown) => void = () => {};
     mockApi.serverInfo.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
