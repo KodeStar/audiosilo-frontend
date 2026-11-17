@@ -3902,7 +3902,9 @@ are asked, at most 10,000 rows.
   paths, same order, same sizes where both answers know them); otherwise the manifest stays (that
   is a new download). An answer that reached the cache before the book was downloaded (while its
   files did, or before launch's `hydrate`) is taken as it becomes downloaded (`withCachedChapters`),
-  with where the book ends and its length, as every later answer (`withServedChapters`).
+  with where the book ends and its length, as every later answer (`withServedChapters`); never the
+  manifest's own chapters (the store's seed), which name only the files on the device and would
+  drop where a partial download's book ends (D3).
   The audio is never touched, and a queue already playing keeps its chapters until the book is
   next started. The same files in another order (server v2.4.0 plays them in natural order, "2-"
   before "10-") are taken **only by a start that loads the engine in that order**

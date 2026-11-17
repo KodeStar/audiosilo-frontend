@@ -845,13 +845,16 @@ export function noteDownloadEnd(ref: BookRef, order: readonly string[]): void {
  * `refreshedChapters` takes them). `startChapterRefresh` only sees answers that land while the
  * book is downloaded; this takes one that landed before, while it was downloading or before
  * the launch's `hydrate` read the registry. That answer is the one the download was given
- * or a newer one (the callers read it from the same cache entry).
+ * or a newer one (the callers read it from the same cache entry). Not the manifest's own
+ * chapters (the store's seed, `seedQueryCache`): they name only the files on the device, so
+ * read as an answer they would say the download holds the book's end, and drop the
+ * `endsBefore` a server answer set (D3).
  */
 function withCachedChapters(ref: BookRef, manifest: DownloadManifest): DownloadManifest {
   const cached = queryClient.getQueryData<ChaptersResponse>(
     qk.chapters(ref.connectionId, ref.libraryId, ref.path),
   );
-  return cached ? withServedChapters(manifest, cached) : manifest;
+  return cached && cached !== manifest.chapters ? withServedChapters(manifest, cached) : manifest;
 }
 
 /** `manifest` after a server chapters answer for its book: where the book ends and its

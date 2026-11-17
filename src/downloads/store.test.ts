@@ -2138,6 +2138,26 @@ describe("refreshing a downloaded book's chapters", () => {
       expect(useDownloads.getState().entries[key]).toBe(e);
     });
 
+    // D3: the seed names only the downloaded files; read as an answer it said the download
+    // holds the book's end, and the start's sweep dropped where the book really ends.
+    it("keeps a partial download's end when the cache holds only the manifest seed", () => {
+      stop();
+      const key = downloadKey('c1', 2, 'A/Book');
+      const e = downloadedEntry();
+      e.manifest.chapters = fresh();
+      e.manifest.endsBefore = 'A/Book/03.mp3';
+      e.manifest.bookDuration = 180;
+      useDownloads.setState({ entries: { [key]: e } });
+      const seed = e.manifest.chapters;
+      mockGetQueryData.mockImplementation(() => seed);
+      try {
+        stop = startChapterRefresh();
+      } finally {
+        mockGetQueryData.mockImplementation(() => undefined);
+      }
+      expect(useDownloads.getState().entries[key]).toBe(e);
+    });
+
     it('stops listening once unsubscribed', () => {
       const e = downloadedEntry();
       const key = downloadKey('c1', 2, 'A/Book');
