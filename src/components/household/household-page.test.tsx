@@ -51,6 +51,11 @@ jest.mock('@/api/hooks', () => ({
     return mockMemberSession;
   },
 }));
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
+}));
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({
   ...jest.requireActual('@/components/ui/toast'),
@@ -109,6 +114,7 @@ beforeEach(async () => {
   for (const k of Object.keys(mockCaps)) delete mockCaps[k];
   mockCapsFailed = [];
   mockCapsReading = false;
+  mockDeviceOnline = true;
   mockCapsRetry.mockClear();
   useSession.setState({
     status: 'authenticated',
@@ -696,6 +702,18 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
     mockCapsReading = true;
     await mount();
     expect(screen.getAllByRole('button', { name: 'Retry' }).at(-1)).toBeBusy();
+  });
+
+  // With no network the read only waits for one: offline, and no Retry that can't work.
+  it('says offline, with no Retry, while the device has no network', async () => {
+    mockCaps['a.1'] = {};
+    mockCapsFailed = ['b.1'];
+    mockDeviceOnline = false;
+    await mount();
+    const section = within(screen.getByTestId('household-sharing'));
+    expect(section.getByText("You're offline")).toBeTruthy();
+    expect(section.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(section.queryByText(/Couldn't check/)).toBeNull();
   });
 
   it('shows the rows of a server that shares even while another could not be read', async () => {

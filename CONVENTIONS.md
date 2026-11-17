@@ -4295,7 +4295,9 @@ under their empty state).
   used to fail with a Retry. The Library's Series, Authors, Narrators, Collections and Shows
   modes, the series, author / narrator, book, episode, collection, show and folder pages, and
   a book's bookmarks, notes and history sections all do, and so do the Signed-in devices and
-  household members sections (a member card's devices too, as one line), Your listening
+  household members sections (a member card's devices too, as one line), Listening in the
+  house (a server's flags held or failed with no network: `useDeviceOnline`, since
+  `useCapabilitiesAllRead`'s `failed` names both), Your listening
   (both of its reads) and the Year story
   (`useYearStory`'s `offline` status: a held streak or goal is left out, like a failed one,
   and once told the story stays told while they are asked again, so it never restarts at its

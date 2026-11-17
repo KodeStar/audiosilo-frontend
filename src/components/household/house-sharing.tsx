@@ -3,10 +3,12 @@ import { View } from 'react-native';
 
 import { useCapabilitiesAllRead } from '@/api/hooks';
 import { HouseSharingRow } from '@/components/house/house-sharing-row';
+import { OfflineState } from '@/components/layout/offline-state';
 import { LoadError } from '@/components/library/books/book-states';
 import { SettingsCard } from '@/components/settings/settings-row';
 import { SectionTitle } from '@/components/ui/section-title';
 import { Text } from '@/components/ui/text';
+import { useDeviceOnline } from '@/lib/device-online';
 import { joinNames } from '@/lib/names';
 import { serverDisplayName } from '@/lib/server-display-name';
 import { useProfileConnections } from '@/stores/profiles';
@@ -15,11 +17,14 @@ import { useSession } from '@/stores/session';
 /** "Listening in the house": "Share what I'm listening to with the house", one row
  * (`HouseSharingRow`) per server of the person listening whose server has `household`; once
  * every server has answered or failed (fe#236), a note when none does, or, when a server's
- * flags could not be read, which one with a Retry. */
+ * flags could not be read, which one with a Retry. With no network on the device that read
+ * only waits for one (`failed` names a held read too), so the section says offline, with no
+ * Retry: it is asked again by itself (`offlineState`'s rule). */
 export function HouseSharing() {
   const { t } = useTranslation();
   const connections = useProfileConnections();
   const saved = useSession((s) => s.connections);
+  const deviceOnline = useDeviceOnline();
   const { caps, failed, retry, reading } = useCapabilitiesAllRead();
   const sharing = connections.filter((c) => caps[c.id]?.household === true);
   const unread = connections.filter((c) => failed.includes(c.id));
@@ -34,7 +39,11 @@ export function HouseSharing() {
             <HouseSharingRow key={c.id} connectionId={c.id} first={i === 0} />
           ))}
         </SettingsCard>
-      ) : unread.length > 0 ? (
+      ) : unread.length === 0 ? (
+        <Text variant="muted">{t('profiles.household.noSharing')}</Text>
+      ) : !deviceOnline ? (
+        <OfflineState variant="card" />
+      ) : (
         <LoadError
           compact
           title={t('profiles.household.checkFailed', {
@@ -49,8 +58,6 @@ export function HouseSharing() {
           onRetry={retry}
           retrying={reading}
         />
-      ) : (
-        <Text variant="muted">{t('profiles.household.noSharing')}</Text>
       )}
     </View>
   );
