@@ -32,10 +32,10 @@ import kotlin.math.roundToLong
  *
  * The server knows the file's length (its probe, the timeline the JS store reads), and every
  * queue item carries it (`MediaItems.KEY_FILE_DURATION`). So when Mp3Extractor falls back to a
- * constant-bitrate seek map whose length disagrees with the server's, the map is stretched onto
- * the server's length (the file's average bitrate, as a browser seeks such a file), and the
- * sample times after a seek are moved onto the same scale. Played from the start the times are
- * the extractor's own frame count, exact either way.
+ * constant-bitrate seek map whose length disagrees with the server's (by more than
+ * `Retimer.AGREES`), the map is stretched onto the server's length (the file's average bitrate,
+ * as a browser seeks such a file), and the sample times after a seek are moved onto the same
+ * scale. Played from the start the times are the extractor's own frame count, exact either way.
  *
  * Why not `Mp3Extractor.FLAG_ENABLE_INDEX_SEEKING`: in 1.9.0 it only replaces a seeker that is
  * NOT seekable, and the first-frame guess IS seekable whenever the length is known (a local file,
@@ -158,8 +158,11 @@ class Retimer(private val knownUs: Long) {
   }
 
   companion object {
-    /** Below this a constant-bitrate guess agrees with the server (a real CBR file): untouched. */
-    const val AGREES = 0.001
+    /** Within this a constant-bitrate guess agrees with the server: untouched. A real CBR file
+     * with a tag after its audio reads long by the tag's bytes (Media3 counts them as audio),
+     * and stretched onto the server's length every seek in it would land that much off. A
+     * header-less VBR file's first-frame guess is off by far more (the R1-R3 fixture by 79 %). */
+    const val AGREES = 0.02
     /** Outside these the server's length is the suspect one (a first frame is at most 10x a
      * speech file's average either way): untouched. */
     const val MIN_SCALE = 0.05

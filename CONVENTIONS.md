@@ -1761,6 +1761,8 @@ media GETs only.
     extractor so a disagreeing constant-bitrate seek map is stretched onto that length and the
     sample times after a seek follow (`Retimer`; played from the start the times are the frame
     count, exact). Seeks are then as close as the file's average bitrate, as in a browser.
+    Disagreeing is more than 2 % apart (`Retimer.AGREES`): a real CBR file with a tag after its
+    audio reads long by the tag's bytes, and stretched its seeks would land that much off.
     `FLAG_ENABLE_INDEX_SEEKING` is no fix: in 1.9.0 it replaces only an unseekable seeker, and
     the guess is seekable whenever the length is known; where it applies (no length) a seek
     reads every byte from the last indexed frame on. Tested on synthetic frames

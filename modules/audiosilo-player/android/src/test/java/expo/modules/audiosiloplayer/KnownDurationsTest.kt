@@ -176,16 +176,38 @@ class KnownDurationsTest {
   @Test fun aRealConstantBitrateFileIsLeftAsItIs() {
     val bytes = cbr(frames)
     val plain = extract(Mp3Extractor(), bytes)
-    // A server's length within 0.1 % of the guess (here 0.04 %): untouched.
+    // A server's length within 2 % of the guess (here 0.04 %): untouched.
     val held = extract(KnownDurationExtractor(Mp3Extractor(), plain.seekMaps.first().durationUs + 10_000), bytes)
     assertEquals(plain.seekMaps.first().durationUs, held.seekMaps.first().durationUs)
+    assertEquals(plain.track.times, held.track.times)
+  }
+
+  @Test fun aConstantBitrateFileWithATagAfterItsAudioIsLeftAsItIs() {
+    // Media3 counts the tag's bytes as audio: 1.5 % long here, where the server's length is the
+    // audio's. Stretched onto it, a seek to 1 h would land 54 s late.
+    val audio = cbr(frames)
+    val bytes = audio + ByteArray(audio.size * 20 / 1000) // unpadded frames run 0.5 % under 32 kb/s
+    val plain = extract(Mp3Extractor(), bytes)
+    val guess = plain.seekMaps.first().durationUs
+    assertEquals(1.015, guess / trueUs.toDouble(), 0.002)
+    val held = extract(KnownDurationExtractor(Mp3Extractor(), trueUs), bytes)
+    assertEquals(guess, held.seekMaps.first().durationUs)
     assertEquals(plain.track.times, held.track.times)
   }
 
   @Test fun scaleOnlyForASeekableConstantBitrateGuessThatDisagrees() {
     val guess = ConstantBitrateSeekMap(104_418, 0, 160_000, 522) // 5.22 s
     assertEquals(5.0, Retimer.scaleFor(guess, 26_100_000)!!, 0.01)
-    assertNull(Retimer.scaleFor(guess, 5_221_000)) // agrees within 0.1 %
+    assertNull(Retimer.scaleFor(guess, 5_221_000)) // agrees
+    // 1.5 % off either way still agrees (a tag's bytes read as audio); 2.5 % does not.
+    assertNull(Retimer.scaleFor(guess, 5_299_000))
+    assertNull(Retimer.scaleFor(guess, 5_143_000))
+    assertEquals(1.025, Retimer.scaleFor(guess, 5_351_000)!!, 0.001)
+    assertEquals(0.975, Retimer.scaleFor(guess, 5_090_000)!!, 0.001)
+    // The R1-R3 fixture: a 139.42 s file guessed at 29.9 s, 79 % off.
+    val r1 = ConstantBitrateSeekMap(598_000, 0, 160_000, 522)
+    assertEquals(29_900_000L, r1.durationUs)
+    assertEquals(139.42 / 29.9, Retimer.scaleFor(r1, 139_420_000)!!, 0.001)
     assertNull(Retimer.scaleFor(guess, 0))
     assertNull(Retimer.scaleFor(guess, 5_221_000_000)) // 1000x: the server's length is the suspect
     assertNull(Retimer.scaleFor(SeekMap.Unseekable(5_000_000), 26_100_000)) // not a guess
