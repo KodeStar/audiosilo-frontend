@@ -2345,7 +2345,7 @@ async function createService(): Promise<PlaybackService> {
     // again (`askEngineTo`: a Retry, or a press, which reloads), and a play it starts by
     // itself (the lock screen) is stopped again.
     if (loadedFaulted()) {
-      if (raw.state === 'playing') void svc.pause();
+      if (raw.state === 'playing') void svc.pause().catch(() => undefined);
       return;
     }
     let state = raw.state;
@@ -2386,7 +2386,7 @@ async function createService(): Promise<PlaybackService> {
     if (np && !loadingBook) {
       const fault = engineFault(np, snapshot, prev);
       if (fault) {
-        void svc.pause();
+        void svc.pause().catch(() => undefined);
         snapshot = fault;
       } else {
         const duration = fileDurationOf(np.queue, snapshot.trackIndex, snapshot.duration);
