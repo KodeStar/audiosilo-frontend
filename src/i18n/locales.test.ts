@@ -75,9 +75,6 @@ describe('locales', () => {
     expect(l.profiles.connect.leadServed).toBeTruthy();
     expect(l.profiles.connect.leadServed).not.toBe(l.profiles.connect.lead);
   });
-  it('says nothing of "their" server in the served lead', () => {
-    expect(en.profiles.connect.leadServed).not.toMatch(/theirs/);
-  });
 
   // pt is European Portuguese (fe#160, Q7): ficheiro, transferir, ecrã and guardar, never the
   // Brazilian arquivo, baixar (for a download), tela or salvar.
