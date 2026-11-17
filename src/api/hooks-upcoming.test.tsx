@@ -11,7 +11,13 @@ import { upcomingItem } from '@/testing/upcoming-fixtures';
 // query function, so it is never asked. The provider is mocked to list the connections of
 // `mockConnections` (each with its user), in order, each with its own stub client.
 type Stub = { serverInfo: jest.Mock; upcoming: jest.Mock };
-type MockConnection = { id: string; name: string; user: { member_kind?: 'kid' } };
+type MockConnection = {
+  id: string;
+  name: string;
+  user: { member_kind?: 'kid' };
+  serverId?: string;
+  serverUrl?: string;
+};
 const mockClients: Record<string, Stub> = {};
 let mockConnections: MockConnection[] = [];
 jest.mock('@/api/provider', () => ({
@@ -22,6 +28,7 @@ jest.mock('@/api/provider', () => ({
 
 /* eslint-disable import/first */
 import { useUpcomingAll, useUpcomingAvailable } from '@/api/hooks';
+import { useSession } from '@/stores/session';
 /* eslint-enable import/first */
 
 function serverWith(id: string, caps: Partial<Capabilities>): ServerInfo {
@@ -184,6 +191,55 @@ describe('useUpcomingAll', () => {
     await waitFor(() => expect(result.current.all.available).toBe(true));
     await waitFor(() => expect(mockClients.down.upcoming).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(result.current.all.failed).toEqual([]));
+  });
+
+  // fe#232: two servers named alike are told apart as everywhere else in the app.
+  it('names a server by its display name, its address when another shares the name', async () => {
+    const { result } = await mount(
+      [
+        { id: 'a', caps: { upcoming: true }, answer: { items: [upcomingItem({ id: 'w' })] } },
+        { id: 'b', caps: 'fail' },
+      ],
+      useUpcomingAll,
+    );
+    const saved = [
+      { id: 'a', serverId: 'sa', name: 'Home', serverUrl: 'https://one.example' },
+      { id: 'b', serverId: 'sb', name: 'Home', serverUrl: 'https://two.example' },
+    ];
+    for (const c of mockConnections)
+      Object.assign(
+        c,
+        saved.find((s) => s.id === c.id),
+      );
+    await act(async () => useSession.setState({ connections: saved as never }));
+    await waitFor(() => expect(result.current.failed).toEqual(['Home (two.example)']));
+    expect(result.current.items[0]?.connectionName).toBe('Home (one.example)');
+    expect(result.current.statuses[0]?.connectionName).toBe('Home (one.example)');
+    await act(async () => useSession.setState({ connections: [] }));
+  });
+
+  // fe#204: Retry is busy while the reads it asked for are on their way.
+  it('says it is retrying while a failed list or flags are read again', async () => {
+    const { result } = await mount(
+      [
+        { id: 'down', caps: 'fail' },
+        { id: 'x', caps: { upcoming: true }, answer: 'fail' },
+      ],
+      useUpcomingAll,
+    );
+    await waitFor(() => expect(result.current.failed).toEqual(['Server down', 'Server x']));
+    expect(result.current.retrying).toBe(false);
+    let answerFlags: (v: ServerInfo) => void = () => {};
+    mockClients.down.serverInfo.mockReturnValue(new Promise((r) => (answerFlags = r)));
+    let answerList: (v: unknown) => void = () => {};
+    mockClients.x.upcoming.mockReturnValue(new Promise((r) => (answerList = r)));
+    await act(async () => result.current.retry());
+    expect(result.current.retrying).toBe(true);
+    await act(async () => answerList({ status: 'ok', window_days: 90, items: [] }));
+    expect(result.current.retrying).toBe(true); // the flags still
+    await act(async () => answerFlags(serverWith('down', {})));
+    await waitFor(() => expect(result.current.retrying).toBe(false));
+    expect(result.current.failed).toEqual([]);
   });
 
   it('names an unreadable server beside one that answers', async () => {

@@ -344,7 +344,6 @@
       "loadError": "Impossibile caricare i tuoi dispositivi da {{server}}.",
       "alsoSignOut": "Disconnetti anche {{names}} su quel dispositivo",
       "alsoSignOutBody": "Le persone della tua famiglia che hai collegato lì",
-      "names": "{{first}} e {{second}}",
       "doneMembers_one": "Dovrà accedere di nuovo per raggiungere {{server}}. È stata disconnessa anche {{count}} persona della tua famiglia.",
       "doneMembers_other": "Dovrà accedere di nuovo per raggiungere {{server}}. Sono state disconnesse anche {{count}} persone della tua famiglia."
     },
@@ -2187,7 +2186,6 @@
       "choose": "scegli una registrazione di {{title}}",
       "title": "Registrazioni di {{title}}"
     },
-    "out": "Uscita: {{date}}",
     "ghostOutNote": "Uscita: {{date}}. Non ancora sui tuoi server."
   },
   "people": {

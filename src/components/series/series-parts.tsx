@@ -108,7 +108,7 @@ function entryFacts(entry: SeriesEntry, t: TFunction): string {
 
 /** "Out 12 Nov 2026" for a ghost whose release is still ahead (Track U2), else ''. */
 function outLabel(entry: SeriesEntry, t: TFunction): string {
-  return entry.outDate ? t('series.out', { date: formatReleaseDate(entry.outDate) }) : '';
+  return entry.outDate ? t('upcoming.out', { date: formatReleaseDate(entry.outDate) }) : '';
 }
 
 /** The words under a face-out book: who reads it, or where it is, or that it is on no

@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next';
+
 /**
  * Name helpers shared by Books, People, Series and Search, so they file, compare and
  * draw a name the same way.
@@ -34,4 +36,9 @@ export function initials(name: string): string {
 export function joinList(names: readonly string[], and: (rest: string, last: string) => string) {
   if (names.length <= 1) return names[0] ?? '';
   return and(names.slice(0, -1).join(', '), names[names.length - 1]);
+}
+
+/** `joinList` in the app's words (`common.and`): the one joiner every screen uses. */
+export function joinNames(names: readonly string[], t: TFunction): string {
+  return joinList(names, (rest, last) => String(t('common.and', { rest, last })));
 }

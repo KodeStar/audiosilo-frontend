@@ -24,7 +24,7 @@ import { SectionTitle } from '@/components/ui/section-title';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
-import { joinList } from '@/lib/names';
+import { joinNames } from '@/lib/names';
 import { useUnreadQuery } from '@/lib/offline-state';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
@@ -226,9 +226,9 @@ function RevokeDeviceDialog({
   }
   const name = device ? deviceName(device, t) : '';
   const members = device ? memberSignIns(device) : [];
-  const names = joinList(
+  const names = joinNames(
     members.map((m) => m.name),
-    (first, second) => t('account.devices.names', { first, second }),
+    t,
   );
   return (
     <AlertDialog open={device !== null} onOpenChange={(open) => !open && onCancel()}>

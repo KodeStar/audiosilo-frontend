@@ -1,4 +1,5 @@
-import { foldAccents, initials, joinList } from '@/lib/names';
+import i18n from '@/i18n';
+import { foldAccents, initials, joinList, joinNames } from '@/lib/names';
 
 describe('foldAccents', () => {
   it('removes accents and keeps everything else', () => {
@@ -32,5 +33,14 @@ describe('joinList', () => {
     expect(joinList(['Evie'], and)).toBe('Evie');
     expect(joinList(['Evie', 'Ellis'], and)).toBe('Evie and Ellis');
     expect(joinList(['Evie', 'Ellis', 'Sam'], and)).toBe('Evie, Ellis and Sam');
+  });
+});
+
+describe('joinNames', () => {
+  it("joins in the app's words (common.and)", () => {
+    const t = i18n.getFixedT('en');
+    expect(joinNames(['Evie', 'Ellis', 'Sam'], t)).toBe('Evie, Ellis and Sam');
+    expect(joinNames(['Evie', 'Ellis'], t)).toBe('Evie and Ellis');
+    expect(joinNames(['Evie'], t)).toBe('Evie');
   });
 });

@@ -344,7 +344,6 @@
       "loadError": "Deine Geräte konnten nicht von {{server}} geladen werden.",
       "alsoSignOut": "Auch {{names}} auf jenem Gerät abmelden",
       "alsoSignOutBody": "Personen aus deinem Haushalt, die du dort angemeldet hast",
-      "names": "{{first}} und {{second}}",
       "doneMembers_one": "Es muss sich neu anmelden, um {{server}} zu erreichen. {{count}} Person aus deinem Haushalt wurde mit abgemeldet.",
       "doneMembers_other": "Es muss sich neu anmelden, um {{server}} zu erreichen. {{count}} Personen aus deinem Haushalt wurden mit abgemeldet."
     },
@@ -2187,7 +2186,6 @@
       "choose": "eine Aufnahme von {{title}} wählen",
       "title": "Aufnahmen von {{title}}"
     },
-    "out": "Erscheint: {{date}}",
     "ghostOutNote": "Erscheint: {{date}}. Noch auf keinem deiner Server."
   },
   "people": {

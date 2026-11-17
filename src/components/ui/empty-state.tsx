@@ -18,7 +18,7 @@ export type EmptyStateProps = {
   /** One-line supporting hint below the title. */
   hint?: string;
   /** Optional call to action. */
-  action?: { label: string; onPress: () => void; icon?: IconName };
+  action?: { label: string; onPress: () => void; icon?: IconName; loading?: boolean };
   /** `card`: on a quiet card, for a state inside a page (a list's empty or failed load). */
   variant?: 'plain' | 'card';
   /** `large`: kids mode's bigger words and its big ink button (STYLEGUIDE section 5: 64 pt
@@ -76,6 +76,7 @@ export function EmptyState({
           variant={large ? 'default' : card ? 'outline' : 'secondary'}
           size={large ? 'xl' : card ? 'sm' : undefined}
           onPress={action.onPress}
+          loading={action.loading}
           className={card && !large ? undefined : 'mt-2'}
         />
       ) : null}

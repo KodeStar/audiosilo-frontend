@@ -1456,16 +1456,20 @@ back-catalogue gaps); a date's own rules are `src/lib/release-date.ts`
 "2026" or "2026-10" is ahead only while the whole period is), so `format.ts` and the series model
 never import the feature. A failed server adds no items but is named in `failed` (no answer: it
 failed or waits for the network, or its flags could not be read; `retry` asks it again, flags
-included), so the page shows "Couldn't load" with a
+included, and `retrying` keeps the Retry busy while those reads are on their way; a server is
+named by `serverDisplayName`), so the page shows "Couldn't load" with a
 Retry when no server answered and a note when some did, never "Nothing coming up" for a failure;
 `statuses` carries each answered server's `ok|pending|stale` (its notes show over the list or the
-empty state). A note naming servers joins them with `joinList` ("Home and Maya", `common.and`)
+empty state). A note naming servers joins them with `joinNames` ("Home and Maya", `common.and`)
 and passes `count`, so its verb is plural (`_one`/`_other`). Dates show through
 `formatReleaseDate` (`src/lib/format.ts`: "2027", "Nov 2026", "Nov 12, 2026" (the UI language's own order: `getLocale()` is the bare language, so English reads month first), read in UTC; any
 other text as it came) and `upcomingDateLabel` by kind: "Out", "Released", "First released"
 (the metadata's one date is a work's FIRST release), no line without a date. Surfaces
-(`src/components/upcoming/`): Home's rail, the `/upcoming` page (`upcomingHref`) and the You
-hub's Upcoming section (below). Every item is `UpcomingCover` (`upcoming-cover.tsx`, Track U3): a
+(`src/components/upcoming/`): Home's rail (without the works Home's Next in your series shows as
+a ghost just above, `skipWorks`), the `/upcoming` page (`upcomingHref`) and the You
+hub's Upcoming section (below). Their "New" badges count from `useUpcomingClock`, read again
+on screen focus and when the app comes to the front (and the stale lists read again then: the
+app does not refetch on window focus), steady in between. Every item is `UpcomingCover` (`upcoming-cover.tsx`, Track U3): a
 `GhostCover` with the work's real cover drawn over it only when the item's OWN connection (the one
 whose row won the merge) advertises `upcoming_covers === true` (never while unknown) and the item
 has a `cover_url`; the absence note says "Not on <server>", only about that source server

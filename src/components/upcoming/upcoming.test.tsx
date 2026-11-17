@@ -16,6 +16,7 @@ let mockUpcoming: {
   statuses: UpcomingServerStatus[];
   failed: string[];
   retry: () => void;
+  retrying?: boolean;
 };
 const mockRetry = jest.fn();
 // Each connection's `upcoming_covers` flag (Track U3), undefined while not known.
@@ -41,6 +42,8 @@ jest.mock('expo-image', () => {
   const { View } = jest.requireActual('react-native');
   return { Image: (props: object) => <View {...props} /> };
 });
+// The clock the badges count from (use-upcoming-clock.test.tsx): the faked now.
+jest.mock('./use-upcoming-clock', () => ({ useUpcomingClock: () => new Date() }));
 // The calendar card has its own tests (upcoming-calendar.test.tsx).
 jest.mock('./upcoming-calendar', () => ({
   UpcomingCalendarCard: () => {
@@ -52,6 +55,7 @@ jest.mock('./upcoming-calendar', () => ({
 /* eslint-disable import/first */
 import { fnv1a } from '@/lib/fnv1a';
 import { formatReleaseDate } from '@/lib/format';
+import * as textScale from '@/lib/text-scale';
 import { settleFlashList } from '@/testing/flash-list';
 import { sourcedUpcoming } from '@/testing/upcoming-fixtures';
 
@@ -132,10 +136,32 @@ describe('upcomingDateLabel', () => {
 });
 
 describe('UpcomingRail', () => {
-  const mount = async () => {
-    await render(<UpcomingRail />);
+  const mount = async (skipWorks?: ReadonlySet<string>) => {
+    await render(<UpcomingRail skipWorks={skipWorks} />);
     await settleFlashList();
   };
+
+  // fe#204: Home's Next in your series already shows the work as a ghost, just above.
+  it('leaves out the works Home already shows as a ghost', async () => {
+    mockUpcoming.items = [preorder, released];
+    await mount(new Set(['p']));
+    expect(screen.getAllByTestId('upcoming-tile')).toHaveLength(1);
+    expect(screen.queryByText('Beware Six')).toBeNull();
+    await mount(new Set(['p', 'r']));
+    expect(screen.queryByText('Coming up in your series')).toBeNull();
+  });
+
+  // fe#204: under large text the badge heads the words instead of covering the title.
+  it('moves the New badge off the cover under large text', async () => {
+    mockUpcoming.items = [preorder];
+    const large = jest.spyOn(textScale, 'useLargeText').mockReturnValue(true);
+    await mount();
+    const badge = screen.getByTestId('upcoming-new');
+    expect(badge.props.className).not.toContain('absolute');
+    large.mockRestore();
+    await mount();
+    expect(screen.getByTestId('upcoming-new').props.className).toContain('absolute');
+  });
 
   it('renders nothing while there is nothing to show', async () => {
     await mount();
@@ -316,6 +342,16 @@ describe('UpcomingContent', () => {
     expect(screen.queryByText('Nothing coming up')).toBeNull();
     await fireEvent.press(screen.getByText('Retry'));
     expect(mockRetry).toHaveBeenCalledTimes(1);
+  });
+
+  // fe#204: the Retry is busy while it reads again.
+  it('keeps the Retry busy while the reads are on their way', async () => {
+    mockUpcoming = { ...idle, available: true, failed: ['Home'], retrying: true };
+    await render(<UpcomingContent />);
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeBusy();
+    mockUpcoming = { ...mockUpcoming, items: [missing], statuses: [ok()], retrying: true };
+    await render(<UpcomingContent />);
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeBusy();
   });
 
   it('notes a server that did not answer beside the ones that did', async () => {

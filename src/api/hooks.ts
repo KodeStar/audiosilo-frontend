@@ -34,6 +34,7 @@ import { contentKey } from '@/lib/content-key';
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { isPodcastLibrary } from '@/lib/library-kind';
 import { parentPath } from '@/lib/paths';
+import { serverDisplayName } from '@/lib/server-display-name';
 import {
   mergeUpcoming,
   type SourcedUpcomingItem,
@@ -751,12 +752,14 @@ export function useCapabilitiesAll(): Record<string, Capabilities | undefined> {
  * {@link useCapabilitiesAll} with what it can't tell: `failed` lists the connections whose
  * `/server` read has failed with nothing known (an error, or held for the network), which
  * `caps` keeps reading as `undefined` (not known yet), so a screen that waits on the flags
- * can settle; `retry` asks each of them again.
+ * can settle; `retry` asks each of them again, and `reading` is true while a read with
+ * nothing known is on its way (a Retry's busy state).
  */
 export function useCapabilitiesAllRead(): {
   caps: Record<string, Capabilities | undefined>;
   failed: string[];
   retry: () => void;
+  reading: boolean;
 } {
   const apis = useApis();
   return useQueries({
@@ -771,6 +774,7 @@ export function useCapabilitiesAllRead(): {
       retry: () => {
         for (const r of results) if (!r.data && (r.isError || r.isPaused)) void r.refetch();
       },
+      reading: results.some((r) => !r.data && r.isFetching),
     }),
   });
 }
@@ -3576,10 +3580,11 @@ const UPCOMING_STALE_MS = 15 * 60_000;
  * server whose flags could not be read counts as `unreadable`, never as still loading. */
 function useUpcomingEligibility() {
   const apis = useApis();
-  const { caps, failed, retry } = useCapabilitiesAllRead();
+  const { caps, failed, retry, reading } = useCapabilitiesAllRead();
   return {
     apis,
     retryFlags: retry,
+    readingFlags: reading,
     ...upcomingEligibility(
       apis.map((a) => a.connection),
       caps,
@@ -3606,9 +3611,11 @@ export function useUpcomingAvailable(): boolean | undefined {
  * `failed` (no answer: its request failed, or waits for the network), so a screen never
  * reads a failure as "nothing coming up"; a server whose `/server` flags could not be read
  * is named there too (it may have Upcoming), so a cold link settles instead of loading
- * forever. `retry` asks each failed one again, its flags included. `statuses`
+ * forever. `retry` asks each failed one again, its flags included, and `retrying` is true
+ * while one of those reads is on its way. `statuses`
  * holds each answered connection's job status (`pending` before its first run, `stale`
- * after 48 h).
+ * after 48 h). A server is named as the app names it elsewhere (`serverDisplayName`: two
+ * named alike carry their address, fe#232).
  */
 export function useUpcomingAll(): {
   items: SourcedUpcomingItem[];
@@ -3617,14 +3624,18 @@ export function useUpcomingAll(): {
   statuses: UpcomingServerStatus[];
   failed: string[];
   retry: () => void;
+  retrying: boolean;
 } {
-  const { apis, eligible, available, unreadable, retryFlags } = useUpcomingEligibility();
+  const { apis, eligible, available, unreadable, retryFlags, readingFlags } =
+    useUpcomingEligibility();
+  const saved = useSession((s) => s.connections);
   // `combine` re-runs whenever its identity changes, so it is keyed on what it reads (each
-  // connection, in order, whether it is asked, and whether its flags could not be read):
-  // the merge and sort run per answer, not per render.
+  // connection, in order, its name, whether it is asked, and whether its flags could not be
+  // read): the merge and sort run per answer, not per render.
   const sources = JSON.stringify(
     apis.map(
-      ({ connection: c }) => [c.id, c.name, eligible.has(c.id), unreadable.has(c.id)] as const,
+      ({ connection: c }) =>
+        [c.id, serverDisplayName(c, saved), eligible.has(c.id), unreadable.has(c.id)] as const,
     ),
   );
   const combine = useCallback(
@@ -3634,6 +3645,7 @@ export function useUpcomingAll(): {
         isLoading: boolean;
         isError: boolean;
         isPaused: boolean;
+        isFetching: boolean;
         refetch: () => Promise<unknown>;
       }[],
     ) => {
@@ -3667,6 +3679,9 @@ export function useUpcomingAll(): {
             if (asked && results[i]?.isError) void results[i].refetch();
           });
         },
+        retrying: conns.some(
+          ([, , asked], i) => asked && !results[i]?.data && results[i]?.isFetching,
+        ),
       };
     },
     [sources, available],
@@ -3689,6 +3704,7 @@ export function useUpcomingAll(): {
       all.retry();
       retryFlags();
     },
+    retrying: all.retrying || readingFlags,
   };
 }
 

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -7,11 +6,12 @@ import { LoadError } from '@/components/library/books/book-states';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { joinList } from '@/lib/names';
+import { joinNames } from '@/lib/names';
 import { isNewUpcoming, upcomingSectionOf } from '@/lib/upcoming';
 
 import { UpcomingCalendarCard } from './upcoming-calendar';
 import { UpcomingRow } from './upcoming-parts';
+import { useUpcomingClock } from './use-upcoming-clock';
 
 /** The screen's sections, in order (`upcomingSectionOf` places each item). */
 const SECTIONS = [
@@ -53,14 +53,14 @@ function UpcomingSkeleton() {
  */
 export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
   const { t } = useTranslation();
-  const { items, available, isLoading, statuses, failed, retry } = useUpcomingAll();
-  // Counted from when the page opened (its badges stay put while it is open).
-  const [now] = useState(() => new Date());
+  const { items, available, isLoading, statuses, failed, retry, retrying } = useUpcomingAll();
+  // Counted from when the page was last in front (its badges stay put while it is).
+  const now = useUpcomingClock();
   const pending = statuses.filter((s) => s.status === 'pending').map((s) => s.connectionName);
   const stale = statuses.filter((s) => s.status === 'stale').map((s) => s.connectionName);
   // Servers named in a note: "Home", "Home and Maya", counted for the verb.
   const servers = (names: readonly string[]) => ({
-    server: joinList(names, (rest, last) => t('common.and', { rest, last })),
+    server: joinNames(names, t),
     count: names.length,
   });
 
@@ -83,6 +83,7 @@ export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
         hint={t('upcoming.error.hint', servers(failed))}
         retryLabel={t('common.retry')}
         onRetry={retry}
+        retrying={retrying}
       />
     );
   } else {
@@ -96,6 +97,7 @@ export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
             title={t('upcoming.error.partial', servers(failed))}
             retryLabel={t('common.retry')}
             onRetry={retry}
+            retrying={retrying}
           />
         ) : null}
         {stale.length > 0 ? (

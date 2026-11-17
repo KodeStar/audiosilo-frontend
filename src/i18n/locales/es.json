@@ -344,7 +344,6 @@
       "loadError": "No se pudieron cargar tus dispositivos de {{server}}.",
       "alsoSignOut": "Cerrar también la sesión de {{names}} en ese dispositivo",
       "alsoSignOutBody": "Personas de tu hogar a las que iniciaste sesión allí",
-      "names": "{{first}} y {{second}}",
       "doneMembers_one": "Tendrá que volver a iniciar sesión para llegar a {{server}}. Se cerró también la sesión de {{count}} persona de tu hogar.",
       "doneMembers_other": "Tendrá que volver a iniciar sesión para llegar a {{server}}. Se cerró también la sesión de {{count}} personas de tu hogar."
     },
@@ -2187,7 +2186,6 @@
       "choose": "elige una grabación de {{title}}",
       "title": "Grabaciones de {{title}}"
     },
-    "out": "Sale: {{date}}",
     "ghostOutNote": "Sale: {{date}}. Aún no está en tus servidores."
   },
   "people": {
