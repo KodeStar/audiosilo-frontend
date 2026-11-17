@@ -2367,7 +2367,8 @@ async function createService(): Promise<PlaybackService> {
   // so a lock-screen scrub back lowers the resume floor and saves like any other seek.
   svc.onRemoteSeek?.((positionInTrack) => void usePlayer.getState().seekInTrack(positionInTrack));
   // Native: the engine already moved for the lock screen, a headset or the car (its
-  // snapshot holds the landed place once this returns: `service.native.ts`). That is the
+  // snapshot holds the landed place once this returns: `service.native.ts`; the Cast
+  // receiver's moves come the same way, `cast-service.ts`). That is the
   // listener's own move: it lowers the floor (a scrub back past the slip tolerance would
   // otherwise never save) and counts for the place reconcile, which then stands back.
   svc.onRemoteMove?.((trackIndex, positionInTrack) => {
@@ -2381,7 +2382,7 @@ async function createService(): Promise<PlaybackService> {
     // The engine has moved already: the span ends where it was last seen (paused, where it
     // was is not known, so no move is taken for one that moves nowhere).
     if (np) moveListeningSpan(endAt(np, trackIndex, positionInTrack), { from: span?.to ?? null });
-    // The native engine tells the move before its landed place reaches the snapshot (so no
+    // The engine tells the move before its landed place reaches the snapshot (so no
     // save, cut or keep in between ends the span there, fe#211): the save waits for it.
     void Promise.resolve().then(() => persist());
   });

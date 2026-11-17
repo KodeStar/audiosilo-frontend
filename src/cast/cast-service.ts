@@ -516,9 +516,11 @@ export class CastPlaybackService implements PlaybackService {
     this.place({ position: next }, false);
   }
 
-  /** Take a new place from the receiver; a jump nobody here asked for is reported as a
-   * remote move AFTER the snapshot holds it (so the store's save inside the handler saves
-   * the landed place, as with the native engines). */
+  /** Take a new place from the receiver. A jump nobody here asked for is reported as a
+   * remote move before the listeners take it, as the native engines do (fe#211: the store
+   * ends the listening span where the receiver was before any save, cut or keep sees the
+   * landed place); the snapshot (`getSnapshot`) already holds it, and the listeners take it
+   * whatever the handler does. */
   private place(patch: Partial<PlaybackSnapshot>, trustworthy: boolean) {
     const next = { ...this.snapshot, ...patch };
     const at = this.now();
@@ -536,8 +538,15 @@ export class CastPlaybackService implements PlaybackService {
     }
     this.snapshot = next;
     this.see();
-    this.emit();
-    if (jumped && next.state !== 'ended') this.remoteMove?.(next.trackIndex, next.position);
+    if (!jumped || next.state === 'ended') {
+      this.emit();
+      return;
+    }
+    try {
+      this.remoteMove?.(next.trackIndex, next.position);
+    } finally {
+      this.emit();
+    }
   }
 
   private see() {
