@@ -392,7 +392,11 @@ export function ReaderScreen({
     // place is saved again, and "Follow narration" asks.
     following.current = false;
     setFollowingShown(null);
-    if (current) setResumeAt({ cfi: current.cfi, fraction: current.fraction });
+    // Where it was is the place it held, as Stay saves it: never the page a relayout or the
+    // landing showed, which can start a little before that place (fe#172).
+    const held = moved.current ? atNow.current : null;
+    if (held) setResumeAt({ cfi: held.cfi, fraction: held.progression });
+    else if (!at && current) setResumeAt({ cfi: current.cfi, fraction: current.fraction });
     setAttempt((n) => n + 1);
     if (bookFailed) void refetchBook();
     if (place.isError) void place.refetch();

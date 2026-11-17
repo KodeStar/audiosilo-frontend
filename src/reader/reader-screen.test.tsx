@@ -837,6 +837,16 @@ describe('ReaderScreen', () => {
     await waitFor(() => expect(mockHost?.at).toEqual({ cfi: CFI_B, fraction: 0.6 }));
   });
 
+  it('opens again at the place it held on Try again, not where a relayout showed (fe#172)', async () => {
+    await mount();
+    await opened(CFI_A);
+    await say({ type: 'progress', cfi: CFI_B, fraction: 0.6, sectionLabel: 'II' });
+    await say({ type: 'progress', cfi: CFI_A, fraction: 0.59, sectionLabel: 'II', relayout: true });
+    await act(async () => mockHost!.onLoadError(new ReaderStartError()));
+    await fireEvent.press(screen.getByText('Try again'));
+    await waitFor(() => expect(mockHost?.at).toEqual({ cfi: CFI_B, fraction: 0.6 }));
+  });
+
   it('turns a right-to-left book forward from the left edge', async () => {
     await mount();
     await opened(CFI_A, { rtl: true });
