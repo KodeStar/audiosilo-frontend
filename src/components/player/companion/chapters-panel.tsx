@@ -165,8 +165,10 @@ export function ChaptersPanel({
   const rowHeight = chapterRowHeight(scale);
   const { height: windowHeight } = useWindowDimensions();
   const list = useRef<FlatList<string>>(null);
-  /** The list opened at its top was scrolled to the current row (`openingIndex`). */
-  const placed = useRef(false);
+  /** The list (this mount of it) that opened at its top and was scrolled to the current row
+   * (`openingIndex`): one that mounts again (the panel stayed while its book came and went)
+   * is placed again. */
+  const placed = useRef<FlatList<string> | null>(null);
   const seekBook = usePlayer((s) => s.seekBook);
   const goToTrack = usePlayer((s) => s.goToTrack);
 
@@ -226,8 +228,8 @@ export function ChaptersPanel({
   const opening = openingIndex(want, labels.length, rowHeight, windowHeight);
   // Opened at its top: scrolled to the row as far as the list goes, once, when laid out.
   const onLayout = (e: LayoutChangeEvent) => {
-    if (opening !== undefined || placed.current) return;
-    placed.current = true;
+    if (opening !== undefined || !list.current || placed.current === list.current) return;
+    placed.current = list.current;
     const room = labels.length * rowHeight + LIST_PAD_BOTTOM - e.nativeEvent.layout.height;
     const offset = Math.min(want * rowHeight, Math.max(0, room));
     if (offset > 0) list.current?.scrollToOffset({ offset, animated: false });
