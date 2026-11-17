@@ -169,6 +169,19 @@ describe('usePlayBook', () => {
     expect(mockToggle).toHaveBeenCalledTimes(1);
   });
 
+  it('jumps the loaded book paused before it plays on, the player opened with no jump left', async () => {
+    mockLayout = 'phone';
+    const order: string[] = [];
+    mockSeekBook.mockImplementation(() => order.push('seek'));
+    mockToggle.mockImplementation(() => order.push('toggle'));
+    setPlayer({ key: 'c:1:Book', live: false });
+    await play({ at: { position: 1000 } });
+    expect(order).toEqual(['seek', 'toggle']);
+    expect(mockPush.mock.calls.map((c) => c[0])).toEqual([
+      { pathname: '/player', params: { connection: 'c', libraryId: '1', path: 'Book' } },
+    ]);
+  });
+
   // Which way each press goes is `playRoute`'s (its table); these pin the wiring.
   it('opens the player at the place, and over no second copy of the book page', async () => {
     mockLayout = 'phone';

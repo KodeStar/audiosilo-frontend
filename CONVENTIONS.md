@@ -3887,8 +3887,10 @@ screen reader, a press, hover or keyboard focus, and reduced motion makes it sti
 next, the book page and the jumps (bookmark and note rows, history spans and drift strips, all
 through `useJumpTo`) start a book or move into one. A `toggle` on the loaded book pauses or plays
 it in place on every layout. Otherwise a phone opens the full player (`playerHref(cid, lib, path,
-place)`, which the route applies once) - **also for the playing book, so a jump there opens the
-player on the place**, and the loaded book paused plays on (fe#280) - first pushing the book page under it with `viaBookPage` unless that page
+place)`, which the route applies once) - **also for the loaded book, so a jump there opens the
+player on the place**: that one jumps (`seekBook`) and plays on before the player opens on it with
+no place to apply, a paused one too (fe#280: playing first sounded the old place until the route's
+jump landed) - first pushing the book page under it with `viaBookPage` unless that page
 is already the one on screen. A tablet or desktop, and every layout while the full player is
 already on top (Up next's sheet over it; pushing `/player` over the open one stacked a second
 player), plays the loaded book on (`seekBook` to `at`, so the Undo chip offers the way back,

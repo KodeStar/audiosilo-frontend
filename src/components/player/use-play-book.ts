@@ -30,8 +30,8 @@ export type PlayOptions = {
  * Library, the series page, Up next, the book page, the bookmark and note rows, the
  * Journal), by `playRoute`:
  * - a phone opens the full player (which resumes from the saved place, or applies `at`
- *   once, also to the loaded book), and a loaded book paused there plays on (fe#280: a row's
- *   Play on the episode loaded and paused opened the player still paused);
+ *   once); the loaded book jumps to `at` and plays on first, also when it was paused
+ *   (fe#280: a row's Play on the episode loaded and paused opened the player still paused);
  * - a tablet or desktop plays it in place under the docked player bar
  *   (`startBookInPlace`: once its chapters are in, through the book's own connection);
  *   a book already loaded just plays on (from `at`, or toggles with `toggle`);
@@ -63,16 +63,26 @@ export function usePlayBook() {
         return;
       case 'player':
         if (route.bookPage) openBook(connectionId, libraryId, path);
-        openPlayer(connectionId, libraryId, path, at);
-        if (loaded && !selectIsTransportLive(store)) await store.toggle();
+        // The loaded book jumps and plays on here, so the player opens on it with no jump
+        // left to apply: one paused would otherwise play from where it was before the
+        // route's jump landed.
+        openPlayer(connectionId, libraryId, path, loaded ? undefined : at);
+        if (loaded) await playOn(at);
         return;
       case 'play-on':
-        if (at.position !== undefined) await store.seekBook(at.position);
-        else if (at.track !== undefined) await store.goToTrack(at.track);
-        if (!selectIsTransportLive(usePlayer.getState())) await usePlayer.getState().toggle();
+        await playOn(at);
         return;
       case 'start':
         await startBookInPlace(target, at);
     }
   };
+}
+
+/** The loaded book to `at` (`seekBook`, so the Undo chip offers the way back), then
+ * playing on, also when it was paused. */
+async function playOn(at: BookPlace) {
+  const store = usePlayer.getState();
+  if (at.position !== undefined) await store.seekBook(at.position);
+  else if (at.track !== undefined) await store.goToTrack(at.track);
+  if (!selectIsTransportLive(usePlayer.getState())) await usePlayer.getState().toggle();
 }
