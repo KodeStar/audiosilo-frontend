@@ -81,6 +81,7 @@ import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 import { usePlayerSheets } from '@/components/player/player-sheets';
+import { type NowPlaying, usePlayer } from '@/playback/store';
 import { usePlayNow, useUpNextConnection, useUpNextData } from './use-up-next';
 /* eslint-enable import/first */
 
@@ -89,6 +90,9 @@ const entry = (path: string): QueueEntry => ({
   path,
   added_at: '2026-10-06T10:00:00Z',
 });
+// The book loaded in the player (only what Play now reads of it).
+const loadedAt = (path: string) =>
+  ({ connectionId: 'c', libraryId: 1, path }) as unknown as NowPlaying;
 const lastToast = () => mockToast.mock.calls.at(-1)?.[0];
 
 beforeEach(() => {
@@ -220,18 +224,34 @@ describe('usePlayNow', () => {
     expect(mockDrop).toHaveBeenCalledWith('c', 1, 'B', 'B');
   });
 
-  // fe#147: an entry the server now resolves to its book's folder (a part path) is that
-  // book: started by its own path, and dropped by both.
-  it('plays a stale entry by its book path and drops the entry by both paths', async () => {
-    const { result } = await renderHook(() => usePlayNow('c'));
-    await act(async () => {
-      await result.current(
-        { ...entry('B/Part 1.mp3'), book: { rel_path: 'B' } as QueueEntry['book'] },
-        'Book B',
-      );
-    });
-    expect(mockItem).toHaveBeenCalledWith(1, 'B', expect.anything());
-    expect(mockDrop).toHaveBeenCalledWith('c', 1, 'B', 'B/Part 1.mp3');
+  // fe#147: an entry that is a part of the loaded book (the server sends it with no `book`)
+  // plays on and leaves the queue, by the book's path and its own. On a phone the player
+  // route finds the book already playing and drops nothing itself.
+  it('drops a stale part-path entry of the loaded book by both paths', async () => {
+    mockLayout = 'phone';
+    usePlayer.setState({ nowPlaying: loadedAt('B') });
+    try {
+      const { result } = await renderHook(() => usePlayNow('c'));
+      await act(async () => {
+        await result.current(entry('B/Part 1.mp3'), 'Book B');
+      });
+      expect(mockDrop).toHaveBeenCalledWith('c', 1, 'B', 'B/Part 1.mp3');
+    } finally {
+      usePlayer.setState({ nowPlaying: null });
+    }
+  });
+
+  it('keeps its own path for an entry the loaded book does not hold', async () => {
+    usePlayer.setState({ nowPlaying: loadedAt('Bo') });
+    try {
+      const { result } = await renderHook(() => usePlayNow('c'));
+      await act(async () => {
+        await result.current(entry('B'), 'Book B');
+      });
+      expect(mockDrop).toHaveBeenCalledWith('c', 1, 'B', 'B');
+    } finally {
+      usePlayer.setState({ nowPlaying: null });
+    }
   });
 
   it('opens the full player on a phone, closing the sheet first', async () => {
