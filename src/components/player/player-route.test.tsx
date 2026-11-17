@@ -56,6 +56,10 @@ jest.mock('@/components/podcasts/episode-fetch-panel', () => {
 });
 jest.mock('@/api/provider', () => ({ useCid: (id?: string) => id ?? 'c' }));
 jest.mock('@/components/player/player-view', () => ({ PlayerView: () => null }));
+const mockDismissBookmarkToast = jest.fn();
+jest.mock('@/components/player/player-shortcuts', () => ({
+  dismissBookmarkToast: () => mockDismissBookmarkToast(),
+}));
 const mockDrop = jest.fn();
 jest.mock('@/components/player/drop-started', () => ({
   dropStartedBook: (...a: unknown[]) => mockDrop(...a),
@@ -107,6 +111,7 @@ beforeEach(() => {
   mockGoToTrack.mockReset();
   mockPlayBook.mockReset().mockResolvedValue(undefined);
   mockDrop.mockReset();
+  mockDismissBookmarkToast.mockReset();
   mockRequestFetch.mockReset();
   mockBook = plainBook;
   mockBookQuery = null;
@@ -128,6 +133,16 @@ describe('the player route', () => {
     await act(async () => setNowPlaying(THIS_BOOK));
     expect(mockSeekBook.mock.calls).toEqual([[600]]);
     expect(mockPlayBook).not.toHaveBeenCalled();
+  });
+
+  // fe#197 PLAYER-13: the "Bookmark added" toast goes with the player.
+  it('takes the bookmark toast down when it closes', async () => {
+    setNowPlaying(THIS_BOOK);
+    routeTo({});
+    const screen = await render(<PlayerScreen />);
+    expect(mockDismissBookmarkToast).not.toHaveBeenCalled();
+    await screen.unmount();
+    expect(mockDismissBookmarkToast).toHaveBeenCalledTimes(1);
   });
 
   it('jumps again for a navigation with another position', async () => {

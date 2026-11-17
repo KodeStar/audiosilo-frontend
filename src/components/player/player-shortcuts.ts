@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next';
 
 import { addBookmark, cachedCapability } from '@/api/hooks';
-import { toast } from '@/components/ui/toast';
+import { dismissToast, toast } from '@/components/ui/toast';
 import { editBookmarkRequest } from '@/lib/annotation-request';
 import { formatClock } from '@/lib/format';
 import type { ShortcutKey } from '@/lib/keyboard';
@@ -92,6 +92,17 @@ export function playerShortcutFor(e: PlayerKey, ctx: PlayerKeyContext): PlayerSh
 /** The bookmark being added, while it is (`addBookmarkHere`). */
 let adding: Promise<void> | null = null;
 
+/** The last "Bookmark added" toast, while it may still be up (`dismissBookmarkToast`). */
+let bookmarkToast: number | null = null;
+
+/** Take the last "Bookmark added" toast down: the full player closing calls it (fe#197
+ * PLAYER-13), since its "Add note" opens a player sheet, and on the page below a phone's
+ * toast covers the chapter list beside the mini player. */
+export function dismissBookmarkToast(): void {
+  if (bookmarkToast !== null) dismissToast(bookmarkToast);
+  bookmarkToast = null;
+}
+
 /**
  * Add a bookmark at the playing book's current position, on its own server, and say so
  * ("Bookmark added", the clock). Adding stays one tap; where the server takes edits
@@ -121,7 +132,7 @@ async function addNow(t: TFunction): Promise<void> {
     const made = await addBookmark(connectionId, libraryId, path, position);
     // An edit needs `annotations`; an older server can't add a note to a bookmark it has.
     const editable = !!made?.id && cachedCapability(connectionId, 'annotations') === true;
-    toast({
+    bookmarkToast = toast({
       title: t('player.bookmarks.added'),
       description: formatClock(position),
       ...(editable
