@@ -3512,9 +3512,10 @@ on first need). NOT device-verified (no Cast device yet).
   one (`ReceiverRefused`, sent again with a new token, by the play intent as it is then, and played
   after if a play came while it was on its way; the files the receiver skips on to meanwhile, the
   mint included, are not the book's place, for at most `ASKED_MOVE_MS` after the error, so a load
-  never answered hides nothing for good). So is one whose receiver plays, pauses or buffers a later
-  file before it played the one asked for (`skippedPast`; its errors need not reach the phone, as on
-  Android): while the load is in flight (never by a status read), or within `ASKED_MOVE_MS` of the
+  never answered hides nothing for good). So is one whose receiver plays or pauses a later file
+  before it played the one asked for (`skippedPast`; its errors need not reach the phone, as on
+  Android; not a buffering or loading one, which a new media session says while still naming the
+  media it replaces, and the native SDK's status has no session id): while the load is in flight (never by a status read), or within `ASKED_MOVE_MS` of the
   move once it answered (later, a file it played unseen may have run on). Not the file the receiver
   was on when the move was asked, at or past where it was then (`Intent.from`: the replaced media
   playing on). A status in flight naming the asked file's URL as sent, playing or paused, lands it,

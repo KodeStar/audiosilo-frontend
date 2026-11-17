@@ -549,15 +549,16 @@ export class CastPlaybackService implements PlaybackService {
   }
 
   /** Whether a status on file `index` says the receiver went past the file this phone means
-   * (`intended`) before it ever played or paused there: a later file, not idle (`within`: and
-   * less than that long after the move). The Default Media Receiver goes on to the next file it
-   * can play when it is refused one, from that file's start: the file the receiver was on when
-   * the move was asked, at or past where it was then, is the replaced media playing on. */
+   * (`intended`) before it ever played or paused there: playing or paused on a later file
+   * (`within`: less than that long after the move). The Default Media Receiver goes on to the
+   * next file it can play when it is refused one, from that file's start: the file the receiver
+   * was on when the move was asked, at or past where it was then, is the replaced media playing
+   * on. A buffering or loading one is no sign: a new media session's first status can still name
+   * the media it replaces, and the native SDK's status carries no session id to tell them apart. */
   private skippedPast(status: CastMediaStatus, index: number, within = Infinity): boolean {
     const want = this.intended;
-    if (!want || want.landed || index <= want.trackIndex || status.playerState === 'idle') {
-      return false;
-    }
+    if (!want || want.landed || index <= want.trackIndex) return false;
+    if (status.playerState !== 'playing' && status.playerState !== 'paused') return false;
     const at = Number.isFinite(status.position) ? status.position : 0;
     const runningOn =
       index === want.from.trackIndex && at > 0 && at >= want.from.position - JUMP_SLACK_S;

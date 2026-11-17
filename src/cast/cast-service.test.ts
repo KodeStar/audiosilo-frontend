@@ -1527,6 +1527,62 @@ describe('CastPlaybackService', () => {
         expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 0, position: 3 });
       });
 
+      it("the new media's first status naming the replaced later file is no refusal", async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 2, 0, [], BOOK);
+        await t.svc.play();
+        // An earlier refusal minted CAST1, which the receiver played with: a refusal now would
+        // mint at once.
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 5 });
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(2), position: 0 });
+        await flush();
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 6 });
+        t.tick(40_000);
+        t.progress(46);
+        // A file jump back (device log, 19:41:31) with a token that still plays.
+        let answer = holdLoad(t);
+        const jump = t.svc.skipToTrack(0, 0);
+        await flush();
+        t.status({
+          playerState: 'idle',
+          idleReason: 'interrupted',
+          contentId: t.url(2),
+          position: 0,
+        });
+        t.status({ playerState: 'buffering', contentId: t.url(2), position: 0 });
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 0 });
+        answer();
+        await jump;
+        await flush();
+        t.tick(1_000);
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 1 });
+        await flush();
+        expect(m.asks).toEqual([undefined, true]);
+        expect(t.remote.loads).toHaveLength(3);
+        // Paused at Part 1 1:12, a recast onto it (19:46:30) while the receiver holds Part 2.
+        t.tick(120_000);
+        t.status({ playerState: 'paused', contentId: t.url(1), position: 30 });
+        answer = holdLoad(t);
+        const recast = t.svc.load(TRACKS, 0, 71.9, [], BOOK);
+        await flush();
+        t.status({ playerState: 'idle', idleReason: null, contentId: t.url(1), position: 0 });
+        t.status({
+          playerState: 'idle',
+          idleReason: 'interrupted',
+          contentId: t.url(1),
+          position: 0,
+        });
+        t.status({ playerState: 'buffering', contentId: t.url(1), position: 0 });
+        t.status({ playerState: 'paused', contentId: t.url(0), position: 71.9 });
+        answer();
+        await recast;
+        await flush();
+        expect(m.asks).toEqual([undefined, true, undefined]);
+        expect(t.remote.loads).toHaveLength(4);
+        expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 0, position: 71.9 });
+      });
+
       it('a resume refused to the last file never reads past its file while it loads, and plays', async () => {
         const m = minting();
         const t = setup({ prepare: m.prepare });
