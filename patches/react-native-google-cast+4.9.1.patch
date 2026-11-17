@@ -37,11 +37,12 @@ new file mode 100644
 index 0000000..ca1d27e
 --- /dev/null
 +++ b/node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/components/RNGCStopCastingDialogFactory.java
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,78 @@
 +package com.reactnative.googlecast.components;
 +
 +import android.content.Context;
 +import android.os.Bundle;
++import android.util.Log;
 +import android.view.View;
 +import androidx.annotation.NonNull;
 +import androidx.annotation.Nullable;
@@ -91,7 +92,11 @@ index 0000000..ca1d27e
 +      super.onCreate(savedInstanceState);
 +      // MediaRouteControllerDialog's stop button (its BUTTON_STOP_RES_ID).
 +      View stop = findViewById(android.R.id.button1);
-+      if (stop == null) return;
++      if (stop == null) {
++        // mediarouter moved its button: the stock Stop casting leaves the receiver playing.
++        Log.w("RNGCStopCasting", "no Stop casting button (android.R.id.button1) in the Cast dialog");
++        return;
++      }
 +      stop.setOnClickListener(v -> {
 +        if (!stopCasting(getContext()) && getRoute().isSelected()) {
 +          MediaRouter.getInstance(getContext()).unselect(MediaRouter.UNSELECT_REASON_STOPPED);
