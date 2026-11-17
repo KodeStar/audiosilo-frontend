@@ -1248,20 +1248,23 @@ async function recordFinish(ref: FinishRef): Promise<void> {
  * on recording listening past its finish (the server ended finished at a later place), any
  * later save of the engine's place stamped after the finish put the book back in progress
  * (the device record after an offline finish was delivered, a PUT over the finish), and its
- * page went on reading "Resume". Its place is saved first, as a stop saves it (stamped
- * before the finish the caller records next), and its span closes there (a finish waits for
- * that close: `finishAfter`). Nothing for another book.
+ * page went on reading "Resume". Its place is saved first, as a stop saves it (resolves once
+ * that save is over, so the finish the caller records next comes after it, a PUT included),
+ * and its span closes there (a finish waits for that close: `finishAfter`). Nothing for
+ * another book.
  */
-function leaveFinishedBook(ref: ContentRef): void {
+function leaveFinishedBook(ref: ContentRef): Promise<void> {
   const { nowPlaying: np, rate } = usePlayer.getState();
-  if (!np || !sameBook(np, ref)) return;
+  if (!np || !sameBook(np, ref)) return Promise.resolve();
   clearPlaybackIntent();
   stopSaveLoop();
   closeListeningSpan();
   endHistory();
-  void persist(); // reads the book synchronously, before it is unloaded below
+  // Reads the book synchronously, before it is unloaded below.
+  const saved = persist().catch(() => undefined);
   usePlayer.setState({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate } });
   void service?.reset();
+  return saved;
 }
 
 /** Each book's mirror record before its Mark as finished (`recordFinish`), for its Undo

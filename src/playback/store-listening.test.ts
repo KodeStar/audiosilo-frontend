@@ -1026,7 +1026,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
     await settle();
     pushSnapshot(snap('playing', 0, 9));
     const release = holdSaves(); // a reconcile check out (the server coming back)
-    leaveFinishedBook(ref);
+    await leaveFinishedBook(ref);
     await expect(recordFinishEvent(ref)).resolves.toBe(true);
     await settle();
     expect(usePlayer.getState().nowPlaying).toBeNull();
@@ -1051,18 +1051,26 @@ describe('Mark as finished outside the player (finish-route)', () => {
     await settle();
     pushSnapshot(snap('playing', 0, 9));
     mockSaveProgress.mockClear();
-    leaveFinishedBook(ref);
+    let saved = () => {};
+    mockSaveProgress.mockImplementationOnce(() => new Promise<void>((r) => (saved = r)));
+    let left = false;
+    const leaving = leaveFinishedBook(ref).then(() => (left = true));
     await settle();
     expect(usePlayer.getState().nowPlaying).toBeNull();
     expect(mockSaveProgress).toHaveBeenCalledTimes(1);
     expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ position: 9, finished: false });
+    // The caller records the finish once that save is over: after it, a PUT included.
+    expect(left).toBe(false);
+    saved();
+    await leaving;
+    expect(left).toBe(true);
   });
 
   it('another book loaded plays on', async () => {
     await start();
     pushSnapshot(snap('playing', 0, 5));
     await settle();
-    leaveFinishedBook({ ...ref, path: 'Other/Book' });
+    await leaveFinishedBook({ ...ref, path: 'Other/Book' });
     await settle();
     expect(usePlayer.getState().nowPlaying?.path).toBe(folder);
     expect(mockClosed).toEqual([]);

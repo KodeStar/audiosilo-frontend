@@ -178,7 +178,7 @@ export function useBookActions(
           : undefined,
       });
     // The loaded book stops first, its place saved before the finish (fe#258).
-    leaveFinishedBook({ connectionId, libraryId, path });
+    await leaveFinishedBook({ connectionId, libraryId, path });
     if (canUndo && !finishTakesEvent(connectionId)) {
       if (await setFinished(true)) done();
       return;

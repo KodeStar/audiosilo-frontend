@@ -61,7 +61,9 @@ const mockUndoRefs: unknown[] = [];
 const mockSteps: string[] = [];
 jest.mock('@/playback/finish-route', () => ({
   finishTakesEvent: () => mockTakesEvent,
-  leaveFinishedBook: (ref: { path: string }) => mockSteps.push(`leave ${ref.path}`),
+  leaveFinishedBook: async (ref: { path: string }) => {
+    mockSteps.push(`leave ${ref.path}`);
+  },
   undoFinish: (ref: unknown, edit: () => Promise<boolean>) => {
     mockUndoRefs.push(ref);
     return edit();
