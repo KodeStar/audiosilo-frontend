@@ -146,6 +146,17 @@ describe('EpisodeRow', () => {
 
   // fe#166: "On this device" is this device's copy, apart from the server's ("Ready on your
   // server"); on its way here, the row says how far.
+  it('says On this device for a finished episode downloaded here too (fe#280)', async () => {
+    const ep = podcastEpisode();
+    await onDevice(ep);
+    await renderRow(ep, {
+      progress: { position: 1800, duration: 1800, finished: true } as Progress,
+    });
+    expect(screen.getByTestId('episode-finished')).toBeTruthy();
+    expect(screen.getByTestId('episode-on-device')).toBeTruthy();
+    expect(screen.queryByTestId('episode-state')).toBeNull();
+  });
+
   it('says On this device for a downloaded episode, and plays it whatever its server says', async () => {
     const ep = podcastEpisode({ downloaded: false });
     await onDevice(ep);
