@@ -175,6 +175,9 @@ export function ReaderScreen({
   // saved place falls on), not a move: saving it would pull a place read at another page
   // size back to this page's start (fe#172). The first move saves.
   const landing = useRef(false);
+  // Whether the reader moved since it opened: until then where it is is that landing, and a
+  // Stay saves the place it opened at instead.
+  const moved = useRef(false);
   const [current, setCurrent] = useState<Place | null>(null);
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<ReaderFailure | null>(null);
@@ -288,6 +291,7 @@ export function ReaderScreen({
       case 'opened':
         shownOnce.current = true;
         landing.current = true;
+        moved.current = false;
         setOpened({ title: message.title, toc: message.toc, rtl: message.rtl });
         return;
       case 'progress':
@@ -301,6 +305,7 @@ export function ReaderScreen({
           landing.current = false;
           return;
         }
+        moved.current = true;
         if (following.current) return;
         scheduleSave(atNow.current);
         return;
@@ -398,13 +403,18 @@ export function ReaderScreen({
   // other place again.
   const stay = useLatest(() => {
     const adopted = acknowledge();
-    const at = atNow.current;
-    if (!at || following.current) return;
+    // Not moved since it opened (an offer the open's own replay brought): the place it opened
+    // at, never the start of the page that place landed on (fe#172).
+    const place =
+      !moved.current && at?.cfi !== undefined && at.fraction !== undefined
+        ? { cfi: at.cfi, progression: at.fraction }
+        : atNow.current;
+    if (!place || following.current) return;
     cancelSave();
-    lastSaved.current = at.cfi;
+    lastSaved.current = place.cfi;
     void adopted
       .catch(() => undefined)
-      .then(() => saveReaderPlace(api, connectionId, libraryId, path, at));
+      .then(() => saveReaderPlace(api, connectionId, libraryId, path, place));
   });
   const alreadyThere = here !== null && answer !== null && offer === null && !answer.seen;
   useEffect(() => {

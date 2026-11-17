@@ -938,7 +938,9 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   has shown it (`adoptServerPlace`: Jump, Stay, or the reader is already there), so a save
   that never saw it stays diverged and never moves it back. Stay then saves the page on screen
   at once, once the acknowledgement has landed (fe#321): left to the next page turn, the other
-  device's place stood on the server meanwhile. The answer's `seen` says which;
+  device's place stood on the server meanwhile. Before any move since the reader opened, that
+  is the place it opened at, never the start of the page it landed on (fe#172). The answer's
+  `seen` says which;
   the offer "Jump there?" (`jumpOffer`) is judged against the page on screen. The lookup opens at
   the newest place, or at a queued save the server will keep (diverged and further on), and
   with no answer from the server and no place on this device it fails (the fetch notice; Try
