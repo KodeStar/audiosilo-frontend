@@ -1659,10 +1659,16 @@ media GETs only.
 - **Remote moves vs the resume floor.** The `resumeFloor` save guard (below) lowers only for a
   deliberate move, and the lock screen, a headset, CarPlay and Android Auto (their chapter lists
   too) move the engine without the JS asking. The module reports those as `onRemoteMove
-  {trackIndex, position}`, in file coordinates, **once the move has landed**;
-  `service.native.ts` updates its snapshot first (so a save inside the handler saves the landed
-  place), and the store's handler (`userMoved`) lowers the floor to it, counts it in
-  `localMoves` (a place reconcile in flight stands back) and persists. Without it a lock-screen
+  {trackIndex, position}`, in file coordinates, **once the move has landed**; the landed place
+  comes in an `onProgress` just before it (iOS sends both together, Android the move with the
+  next position change or 300 ms later). `service.native.ts` tells the store of the move before
+  its listeners take the landed place (fe#211): a tick that jumped while playing (in one file,
+  past what playing explains, or a second back; never a play's first tick, a resume's
+  auto-rewind) is held up to 600 ms for its move, which replaces it, and is taken after that
+  when none comes (the engine's own move). So no save, 15 s cut or 5 s keep ends the listening
+  span at the landed place before the move is heard. The store's handler (`userMoved`) lowers
+  the floor to it, counts it in `localMoves` (a place reconcile in flight stands back) and
+  persists once the landed place is in the snapshot (a microtask later). Without it a lock-screen
   scrub back past the 60 s tolerance never saved. Never sent for JS-asked moves (`seekTo`,
   `skipToTrack`, `load`), auto-rewind, Smart speed's skips or a file running on into the next.
   `onRateChange` (iOS's rate command, CarPlay's rate button, an Android controller; already
@@ -2157,10 +2163,10 @@ media GETs only.
     twice it is one event. A book playing with none open (its play's own could not open: a
     load, the hot-swap or an adoption's reload held the place) gets one at that same 5 s keep
     (`openMissingSpan`), not only at the save loop's tick, which may be a minute away: what
-    plays before a span opens is in no listening event. The keep never moves the span's end back (a native lock-screen
-    move's landed place reaches the store before the move, which ends the span at its last
-    place); a save and the loop's cut take where the engine is (applying that rule there froze
-    the span after a seek back or a hot-swap to another file order, fe#211). The end's `finish` goes into the outbox only after the last span's close has landed
+    plays before a span opens is in no listening event. The keep never moves the span's end back (a
+    native move's landed place reached the store before the move; the native service now holds
+    it back, fe#211); a save and the loop's cut take where the engine is (applying that rule
+    there froze the span after a seek back or a hot-swap to another file order). The end's `finish` goes into the outbox only after the last span's close has landed
     there, then one send (`finishAfter`, server#359: a 12 s book's finish went first and found
     no session to mark); a close already on its way (the web's `paused` before `ended`) is
     waited for too and leaves its send to the finish (`closesInFlight`). The book page's Mark as finished is a `finish` event too on such a
