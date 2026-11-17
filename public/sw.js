@@ -183,9 +183,10 @@ async function staleWhileRevalidate(request) {
   const cache = await caches.open(SHELL_CACHE);
   // A font is precached under the worker's own request, which has no Origin, and the server
   // answers fonts with `Vary: Origin`; the page's font request is CORS mode, so it carries
-  // one, and a strict match would miss offline (fe#177). Same-origin and the same bytes for
-  // every origin, so a font ignores Vary. Nothing else does: an Origin-varied answer must
-  // not reach a request it was not given for.
+  // one, and a strict match would miss offline (fe#177). A font file is the same bytes
+  // whatever asks, so it ignores Vary. Only fonts are precached under a request unlike the
+  // page's; everything else keeps to Vary, which costs nothing and serves no varied answer
+  // to a request it was not given for.
   const cached = await cache.match(request, { ignoreVary: request.destination === 'font' });
   const network = fetch(request)
     .then((res) => {
