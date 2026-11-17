@@ -2764,7 +2764,8 @@
       "switch": "Cambiar",
       "askAtLaunch": "Preguntar quién escucha al abrir la app",
       "askAtLaunchBody": "Con dos o más personas en este dispositivo",
-      "noSharing": "Ninguno de tus servidores lo ofrece todavía."
+      "noSharing": "Ninguno de tus servidores lo ofrece todavía.",
+      "checkFailed": "No se pudo comprobar si {{server}} lo ofrece."
     },
     "signIn": {
       "label": "Sesión cerrada",

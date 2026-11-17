@@ -2764,7 +2764,8 @@
       "switch": "Wechseln",
       "askAtLaunch": "Beim Öffnen der App fragen, wer zuhört",
       "askAtLaunchBody": "Wenn zwei oder mehr Personen auf diesem Gerät sind",
-      "noSharing": "Noch keiner deiner Server bietet das an."
+      "noSharing": "Noch keiner deiner Server bietet das an.",
+      "checkFailed": "Konnte nicht prüfen, ob {{server}} das anbietet."
     },
     "signIn": {
       "label": "Abgemeldet",

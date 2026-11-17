@@ -2764,7 +2764,8 @@
       "switch": "Cambia",
       "askAtLaunch": "Chiedi chi ascolta all'apertura dell'app",
       "askAtLaunchBody": "Con due o più persone su questo dispositivo",
-      "noSharing": "Nessuno dei tuoi server lo offre ancora."
+      "noSharing": "Nessuno dei tuoi server lo offre ancora.",
+      "checkFailed": "Impossibile verificare se {{server}} lo offre."
     },
     "signIn": {
       "label": "Accesso terminato",

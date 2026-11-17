@@ -2764,7 +2764,8 @@
       "switch": "Mudar",
       "askAtLaunch": "Perguntar quem está a ouvir ao abrir a app",
       "askAtLaunchBody": "Com duas ou mais pessoas neste dispositivo",
-      "noSharing": "Nenhum dos seus servidores oferece isto ainda."
+      "noSharing": "Nenhum dos seus servidores oferece isto ainda.",
+      "checkFailed": "Não foi possível verificar se {{server}} oferece isto."
     },
     "signIn": {
       "label": "Sessão terminada",

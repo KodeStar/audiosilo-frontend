@@ -2764,7 +2764,8 @@
       "switch": "Switch",
       "askAtLaunch": "Ask who's listening when the app opens",
       "askAtLaunchBody": "With two or more people on this device",
-      "noSharing": "None of your servers offers this yet."
+      "noSharing": "None of your servers offers this yet.",
+      "checkFailed": "Couldn't check whether {{server}} offers this."
     },
     "signIn": {
       "label": "Signed out",
