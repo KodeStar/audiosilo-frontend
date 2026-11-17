@@ -71,7 +71,7 @@ import {
 import { bookSourceOf, downloadedSourceOf } from '@/playback/book-source';
 import { listenerSettings } from '@/playback/listener-settings';
 import { noteInteraction } from '@/playback/last-interaction';
-import { readLocalPlaces, resumeLookupOf } from '@/playback/progress-sync';
+import { placeSavedAt, readLocalPlaces, resumeLookupOf } from '@/playback/progress-sync';
 import {
   selectBookKey,
   selectBookPosition,
@@ -145,7 +145,9 @@ import { carNative } from './car-native';
  * - **Play requests** (`onCarPlayRequest`, a book native can't start alone): the loaded book
  *   plays on; any other starts through `startBookInPlace`, from its saved place (a
  *   downloaded one from its download, offline too). A failure is logged; native times the
- *   request out and says `labels.unavailable`.
+ *   request out and says `labels.unavailable`. A request native gave up on (Android's
+ *   `onCarPlayCancel`: its 10 s wait ran out, or another play took its place) never plays:
+ *   a start still on its way stops before the load, or loads paused (`cancelledPlays`).
  * - **Bookmarks from outside the app** (CarPlay's Now Playing button, Android Auto's
  *   custom action; `carNative.onBookmark`): added through the framework-free
  *   `addBookmark` (no label, so its `annotations` gate has nothing to hold back) at the
@@ -489,15 +491,25 @@ function kidsShelfChanged(key: readonly unknown[], hash: string, data: unknown):
 // --- Play specs (Android) ---------------------------------------------------------------
 
 /** The last play spec of each downloaded book, with what it was built from. */
-let specs = new Map<string, { manifest: DownloadManifest; inputs: string; spec?: CarPlaySpec }>();
+let specs = new Map<
+  string,
+  { manifest: DownloadManifest; inputs: string; skew: number; spec?: CarPlaySpec }
+>();
+
+/** How far a connection's measured clock skew moves (ms) before its books' specs are built
+ * again with it (`CarPlaySpec.placeSavedAt`): each sync answer measures it anew, a few
+ * hundred ms either way. */
+const SKEW_SLACK_MS = 2_000;
 
 /**
  * Android's play specs (how a downloaded book starts with no JS), for the downloaded books
  * the tabs list. Each resumes where `playBook` would: `resumeLookupOf` over the server row
  * the progress list holds (only a server whose list is known stands in for the server) and
  * the device's own places, read ONCE for all of them (`readLocalPlaces`), with no mirror
- * write. The loaded book, paused, starts where it was paused instead (`pausedPlaceOf`). A spec
- * is rebuilt only when its manifest, its resume place or the defaults changed.
+ * write. The loaded book, paused, starts where it was paused instead (`pausedPlaceOf`). Each
+ * carries when its place was saved (`CarPlaySpec.placeSavedAt`), so Android's live place on
+ * the book wins only when it is newer. A spec is rebuilt only when its manifest, its resume
+ * place or the defaults changed, or its server's clock skew moved (`SKEW_SLACK_MS`).
  */
 async function playSpecs(
   books: ReadonlyMap<string, CarBook>,
@@ -521,12 +533,30 @@ async function playSpecs(
       const lookup = resumeLookupOf(row, places, connectionId, libraryId, path);
       const at = paused?.key === key ? paused.place : undefined;
       const inputs = JSON.stringify([lookup, defaultRate, virtualChapterInterval, at]);
+      // The skew moves the lookup's time (a paused place's is this device's own): measured
+      // again at every sync answer, it is a new spec (and a snapshot write) only when it
+      // moved by more than SKEW_SLACK_MS.
+      const skew = at ? 0 : (places.skews?.[connectionId] ?? 0);
       const had = specs.get(key);
-      const spec =
-        had && had.manifest === manifest && had.inputs === inputs
-          ? had.spec
-          : playSpec(ref, manifest, lookup, defaultRate, virtualChapterInterval, at);
-      next.set(key, { manifest, inputs, spec });
+      // A paused place was saved as JS first wrote it: an unchanged spec keeps that time.
+      const reuse =
+        had &&
+        had.manifest === manifest &&
+        had.inputs === inputs &&
+        Math.abs(had.skew - skew) <= SKEW_SLACK_MS;
+      const spec = reuse
+        ? had.spec
+        : playSpec(
+            ref,
+            manifest,
+            lookup,
+            defaultRate,
+            virtualChapterInterval,
+            at,
+            at ? Date.now() : placeSavedAt(lookup, row, places, connectionId, libraryId, path),
+          );
+      // Kept with the skew it was built with, so slow drift still adds up to a rebuild.
+      next.set(key, { manifest, inputs, skew: reuse ? had.skew : skew, spec });
       out.set(key, spec);
     }
   }
@@ -1028,8 +1058,22 @@ function resumableChanged(): void {
 
 // --- Play requests ------------------------------------------------------------------------
 
+/**
+ * The car item ids of play requests native gave up on (`onCarPlayCancel`): its wait for the
+ * load ran out (a slow or frozen server holding the start), or another play took its place.
+ * Android released a media button start's foreground service then, so a start that went on to
+ * play would be heard in the background with no notification and no controls: one still on
+ * its way stops before the load, or loads paused (`StartHow.wanted`), and an episode still
+ * being fetched for it never starts (`requestEpisodeFetch`). A new request for the same item
+ * takes the mark off, so a start it joins plays again. Kept when the sync stops (`teardown`):
+ * a start called off before it is still on its way, and must not read as wanted again.
+ */
+const cancelledPlays = new Set<string>();
+
 /** The car asked to play a book (its item id). */
 export async function handleCarPlayRequest(id: string): Promise<void> {
+  cancelledPlays.delete(id);
+  const wanted = () => !cancelledPlays.has(id);
   if (!parseCarItemId(id)) {
     console.warn('[car] not a car item id', id);
     return;
@@ -1038,6 +1082,8 @@ export async function handleCarPlayRequest(id: string): Promise<void> {
   // the root layout's path comes before the launch steps hydrated the session and the
   // downloads: started then, the book would find no connection and no download.
   await bootstrapPlayback();
+  // Called off while JS booted: nothing happens for it, the cast's end below included.
+  if (!wanted()) return;
   // Read again now the aliases are loaded: an item of a snapshot written before the identity
   // migration names the old connection id.
   const ref = parseCarItemId(id)!;
@@ -1057,14 +1103,16 @@ export async function handleCarPlayRequest(id: string): Promise<void> {
     const state = player.snapshot.state;
     if (selectIsTransportLive(player)) return;
     if (state !== 'ended' && state !== 'error') {
+      if (!wanted()) return;
       await player.toggle().catch((err) => console.warn('[car] play failed', err));
       return;
     }
   }
+  if (!wanted()) return;
   // An item of a snapshot written before a switch may name another person's book: the
   // start refuses it (`mayActFor`), quietly.
   try {
-    if (!(await startBookInPlace(ref))) {
+    if (!(await startBookInPlace(ref, {}, { wanted })) && wanted()) {
       console.warn("[car] the book can't start here (no connection, or another person's)");
     }
   } catch (err) {
@@ -1434,6 +1482,7 @@ export function startCarSync(): () => void {
   stops = [
     carNative.onConnection(onConnection),
     carNative.onPlayRequest((id) => void handleCarPlayRequest(id)),
+    carNative.onPlayCancel((id) => void cancelledPlays.add(id)),
     carNative.onBookmark(onBookmarkPressed),
     usePlayer.subscribe((s, prev) => {
       if (s.nowPlaying || prev.nowPlaying) loadedHere = true;
@@ -1541,6 +1590,7 @@ function teardown() {
 /** Tests only: stop everything and forget what was written, as if the app had just started. */
 export function forgetCarSync() {
   teardown();
+  cancelledPlays.clear();
   starts = 0;
   ready = Promise.resolve();
   lastBody = '';

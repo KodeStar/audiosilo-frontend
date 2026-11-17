@@ -23,10 +23,12 @@ import {
   withLocalPlaces,
   noteClockSkew,
   pendingSaveCount,
+  type LocalPlaces,
   type PlacedProgress,
   progressToSave,
   type ProgressSave,
   readLocalPlaces,
+  placeSavedAt,
   readMirror as readMirrorOf,
   resumeLookupOf,
   saveProgress,
@@ -807,6 +809,49 @@ describe('readLocalPlaces / resumeLookupOf', () => {
       kind: 'progress',
       progress: row,
     });
+  });
+});
+
+// FE-13: Android's car snapshot carries it, and the engine's live place wins only when newer.
+describe('placeSavedAt', () => {
+  const capture = (updated_at: string, position: number): ProgressSave => ({
+    connectionId: 'c1',
+    libraryId: 1,
+    path: 'A/Book',
+    position,
+    duration: 3600,
+    finished: false,
+    playback_speed: 1,
+    device_id: 'me',
+    updated_at,
+  });
+  const savedAt = (server: Progress | null | undefined, mirror?: ProgressSave, skew = 0) => {
+    const places: LocalPlaces = {
+      mirror: mirror ? { 'c1:1:A/Book': mirror } : {},
+      queue: [],
+      pending: new Set<string>(),
+      skews: { c1: skew },
+    };
+    const lookup = resumeLookupOf(server, places, 'c1', 1, 'A/Book');
+    return placeSavedAt(lookup, server, places, 'c1', 1, 'A/Book');
+  };
+
+  it("is the server row's time by this device's clock, its skew taken off", () => {
+    const row = makeProgress({ position: 3000, updated_at: '2026-01-02T00:00:00.000Z' });
+    expect(savedAt(row, undefined, 60_000)).toBe(Date.parse('2026-01-02T00:00:00.000Z') - 60_000);
+  });
+
+  it("is a capture's own time, and a server's row the mirror holds by its server's clock", () => {
+    const mine = capture('2026-01-03T00:00:00.000Z', 20);
+    expect(savedAt(null, mine, 60_000)).toBe(Date.parse(mine.updated_at));
+    const kept = { ...mine, server_clock: true as const };
+    expect(savedAt(undefined, kept, 60_000)).toBe(Date.parse(mine.updated_at) - 60_000);
+  });
+
+  it('is nothing with no place, or an unreadable stamp', () => {
+    expect(savedAt(null)).toBeUndefined();
+    expect(savedAt(undefined)).toBeUndefined();
+    expect(savedAt(makeProgress({ updated_at: 'never' }))).toBeUndefined();
   });
 });
 

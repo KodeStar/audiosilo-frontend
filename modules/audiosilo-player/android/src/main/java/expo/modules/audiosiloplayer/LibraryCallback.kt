@@ -178,7 +178,7 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
     if (single != null && single.localConfiguration == null) {
       // No id: a voice or search play (Media3's onPlayFromSearch item carries only the query).
       if (single.mediaId.isEmpty()) return service.playFromSearch(single.requestMetadata.searchQuery)
-      return service.playFromCar(single.mediaId, requirePlaySpec = false)
+      return service.playFromCar(service.snapshot()?.find(single.mediaId), requirePlaySpec = false)
     }
     // Never another app's playable URI (see onAddMediaItems).
     return Futures.immediateFailedFuture(UnsupportedOperationException("Only car items play here"))
@@ -203,8 +203,9 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
 
   /**
    * A play with an empty player (Bluetooth, the car's play button, the system's resumption
-   * card): the book the snapshot names for it ([CarSnapshot.resumable]: the one left loaded,
-   * never a stopped or finished one), when it is downloaded (has a play spec). Media3 asks
+   * card): the book the engine was last heard on, at that place, else the one the snapshot
+   * names for it ([CarSnapshot.resumable]: never a stopped or finished one), when it is
+   * downloaded (has a play spec). Media3 asks
    * with [isForPlayback] true only for a play command, so merely connecting Auto never plays.
    * With false (System UI's resumption card after a reboot) it only wants the
    * item to show: answered from the spec with no side effect (no JS boot, no car request).
@@ -215,14 +216,16 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
     controller: MediaSession.ControllerInfo,
     isForPlayback: Boolean,
   ): ListenableFuture<MediaItemsWithStartPosition> {
-    val item = service.snapshot()?.resumable()
+    val item = service.resumable()
     MediaKeyLog.d {
       "resumption from ${service.describe(controller)}: forPlayback=$isForPlayback, item=${MediaKeyLog.ref(item?.id)}"
     }
     if (!isForPlayback) {
       return item?.play?.let { Futures.immediateFuture(MediaItems.startPositionOf(it)) } ?: nothingToResume()
     }
-    return service.watchResumption(item?.let { service.playFromCar(it.id, requirePlaySpec = true) } ?: nothingToResume())
+    return service.watchResumption(
+      item?.let { service.playFromCar(it, requirePlaySpec = true) } ?: nothingToResume(),
+    )
   }
 
   private fun nothingToResume(): ListenableFuture<MediaItemsWithStartPosition> =

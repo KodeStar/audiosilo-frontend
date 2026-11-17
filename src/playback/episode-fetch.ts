@@ -70,6 +70,10 @@ type Run = {
   blips: number;
   /** In the background with a poll due: it runs on the way back (`AppState`). */
   paused: boolean;
+  /** Whether the start that asked for it is still wanted (`StartHow.wanted`: the car's, which
+   * its native side can give up on): asked at every step, and by the episode's start. None
+   * for a listener's own tap or Try again, which nothing calls off. */
+  wanted: (() => boolean) | undefined;
   stop: () => void;
 };
 
@@ -147,6 +151,13 @@ export function isEpisodeFetchStarting(key: string): boolean {
   return pending?.key === key && pending.phase === 'starting';
 }
 
+/** Whether the start that asked for `r`'s fetch was called off (a car play its native side
+ * gave up on): the fetch ends quietly and the episode never starts, or it would play later
+ * (once fetched, or when the app comes back and its held poll runs) with nobody waiting. */
+function calledOff(r: Run): boolean {
+  return !!r.wanted && !r.wanted();
+}
+
 /** The show's title from the cached show list, else its folder. */
 function showTitleOf(target: PlayTarget, book: Book): string {
   const showPath = book.episode?.show_path ?? '';
@@ -160,18 +171,22 @@ function showTitleOf(target: PlayTarget, book: Book): string {
  * place. The same episode asked for again while it is on its way joins it (a second tap),
  * starting where the last tap asked; another one replaces it. `retry` asks the server to
  * fetch again (Try again), else the stream is asked once, which starts a fetch when none is
- * on its way.
+ * on its way. `wanted` is the asking start's own check (`StartHow.wanted`, the car's): once
+ * it says no, the fetch ends and nothing starts. A fetch joined by a start with no such check
+ * (the listener's own tap) can no longer be called off.
  */
 export function requestEpisodeFetch(
   target: PlayTarget,
   book: Book,
   opts: StartOptions = {},
-  { retry = false }: { retry?: boolean } = {},
+  { retry = false, wanted }: { retry?: boolean; wanted?: () => boolean } = {},
 ) {
   const key = contentKeyOf(target);
   lastStart = key;
   const pending = useEpisodeFetch.getState().pending;
   if (!retry && pending?.key === key && run && !isStopped(pending.phase)) {
+    // The listener's own tap stands whatever the car gives up on; the car's joins as it is.
+    if (run.wanted) run.wanted = wanted;
     const moved =
       pending.opts.position !== opts.position ||
       pending.opts.track !== opts.track ||
@@ -192,6 +207,7 @@ export function requestEpisodeFetch(
       status: book.episode?.fetch ?? null,
     },
     retry,
+    wanted,
   );
 }
 
@@ -210,6 +226,7 @@ export function isStopped(phase: EpisodeFetchPhase): boolean {
 function begin(
   from: Pick<PendingEpisodeFetch, 'key' | 'target' | 'title' | 'show' | 'opts' | 'status'>,
   retry: boolean,
+  wanted?: () => boolean,
 ) {
   cancelEpisodeFetch();
   const cid = from.target.connectionId;
@@ -218,6 +235,7 @@ function begin(
     timer: null,
     blips: 0,
     paused: false,
+    wanted,
     stop: () => {},
   };
   run = r;
@@ -263,7 +281,7 @@ async function step(r: Run, action: 'probe' | 'retry' | 'poll') {
   if (!pending) return;
   const { connectionId: cid, libraryId, path } = pending.target;
   const client = mayActFor(cid) ? resolveClient(cid) : null;
-  if (!client) {
+  if (!client || calledOff(r)) {
     cancelEpisodeFetch();
     return;
   }
@@ -389,6 +407,10 @@ function refused(r: Run, e: unknown) {
 async function start(r: Run, client: NonNullable<ReturnType<typeof resolveClient>>) {
   const pending = pendingOf(r);
   if (!pending) return;
+  if (calledOff(r)) {
+    cancelEpisodeFetch();
+    return;
+  }
   patch(r, { phase: 'starting' });
   const { target, opts } = pending;
   const { connectionId: cid, libraryId, path } = target;
@@ -403,9 +425,12 @@ async function start(r: Run, client: NonNullable<ReturnType<typeof resolveClient
   if (book?.episode) {
     markEpisodeOnServer(queryClient, cid, libraryId, book.episode.show_path, path, book);
   }
-  const started = await startBookInPlace(target, opts, { fetched: true }).catch(() => false);
+  // The asking start's check goes on with it (the store asks it again before it plays).
+  const how = r.wanted ? { fetched: true, wanted: r.wanted } : { fetched: true };
+  const started = await startBookInPlace(target, opts, how).catch(() => false);
   if (run !== r) return;
-  if (started) {
+  // Called off since (the start refused it): over, quietly, as nothing failed.
+  if (started || calledOff(r)) {
     cancelEpisodeFetch();
   } else {
     patch(r, { phase: 'failed', code: null });
