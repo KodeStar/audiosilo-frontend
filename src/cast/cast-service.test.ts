@@ -1689,6 +1689,21 @@ describe('CastPlaybackService', () => {
         expect(m.asks).toEqual([undefined]);
         expect(t.remote.loads).toHaveLength(3);
       });
+
+      it('a later file buffering just after a jump answered is no place', async () => {
+        const t = setup();
+        await t.svc.load(TRACKS, 2, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 45 });
+        t.tick(10_000);
+        const from = t.snaps.length;
+        await t.svc.skipToTrack(0, 0);
+        // The new session's first status, after the load answered, still naming Part 3.
+        t.status({ playerState: 'buffering', contentId: t.url(2), position: 0 });
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 0 });
+        expect(t.snaps.slice(from).filter((s) => s.trackIndex !== 0)).toEqual([]);
+        expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 0 });
+      });
     });
 
     it('a book loaded again (a Retry) mints no sooner than a minute on; another book may', async () => {

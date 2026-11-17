@@ -134,6 +134,12 @@ function castBookKey(book: BookRef): string {
   return contentKeyOf({ ...book, connectionId: resolveConnectionId(book.connectionId) });
 }
 
+/** Whether the receiver settled on its media: playing or paused (not buffering, loading or
+ * idle). */
+function isSettled(status: CastMediaStatus): boolean {
+  return status.playerState === 'playing' || status.playerState === 'paused';
+}
+
 /** The same book of the same person (`castBookKey`). */
 function sameBook(a: BookRef, b: BookRef): boolean {
   return castBookKey(a) === castBookKey(b);
@@ -517,7 +523,7 @@ export class CastPlaybackService implements PlaybackService {
    */
   private followIntent(status: CastMediaStatus, index: number, position: number, last: number) {
     const want = this.intended;
-    const settled = status.playerState === 'playing' || status.playerState === 'paused';
+    const settled = isSettled(status);
     if (status.playerState === 'idle') {
       if (status.idleReason === 'finished' && index < last) this.intend(index + 1, 0);
       return;
@@ -566,9 +572,15 @@ export class CastPlaybackService implements PlaybackService {
    * on. A buffering or loading one is no sign: a new media session's first status can still name
    * the media it replaces, and the native SDK's status carries no session id to tell them apart. */
   private skippedPast(status: CastMediaStatus, index: number, within = Infinity): boolean {
+    return isSettled(status) && this.pastIntent(status, index, within);
+  }
+
+  /** Whether a status on file `index` names a later file than the one this phone means
+   * (`intended`, not landed) that is not the replaced media playing on (`skippedPast`), in any
+   * player state. */
+  private pastIntent(status: CastMediaStatus, index: number, within: number): boolean {
     const want = this.intended;
     if (!want || want.landed || index <= want.trackIndex) return false;
-    if (status.playerState !== 'playing' && status.playerState !== 'paused') return false;
     const at = Number.isFinite(status.position) ? status.position : 0;
     const runningOn =
       index === want.from.trackIndex && at > 0 && at >= want.from.position - JUMP_SLACK_S;
@@ -587,8 +599,7 @@ export class CastPlaybackService implements PlaybackService {
    * simply plays), and a token played so is a good one (`notePlayed`). */
   private landInFlight(status: CastMediaStatus, index: number, loaded: Loaded) {
     const want = this.intended;
-    if (!want || want.landed || index !== want.trackIndex) return;
-    if (status.playerState !== 'playing' && status.playerState !== 'paused') return;
+    if (!want || want.landed || index !== want.trackIndex || !isSettled(status)) return;
     // The media it replaces on the same file (a transcoded item asked from another `&t=`).
     if (status.contentId && status.contentId !== loaded.urls[index]) return;
     want.landed = true;
@@ -882,6 +893,11 @@ export class CastPlaybackService implements PlaybackService {
         this.reloadFresh(index, position);
         return;
       }
+      // Buffering or loading past it is no refusal (`skippedPast`), but no place either: the
+      // new media's first status naming the media it replaces, or a file the receiver skips on
+      // to, which the store would save and read as the engine running off the asked file.
+      const unsettled = status.playerState !== 'idle' && !isSettled(status);
+      if (unsettled && this.pastIntent(status, index, ASKED_MOVE_MS)) return;
       this.followIntent(status, index, position, loaded.items.length - 1);
       if (status.playerState === 'playing') this.notePlayed(status, loaded, index);
     }
