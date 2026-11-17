@@ -50,14 +50,16 @@ describe('useBookCommunity', () => {
     expect(result.current.loading).toBe(false);
   });
 
-  it('reads the book but not its chapters or /meta when it has no ASIN or ISBN', async () => {
+  // fe#290: a book with no ASIN or ISBN can be matched in the console (a LibriVox
+  // download), which the server answers from, so the companion asks for it as the page does.
+  it('asks /meta and the chapters for a book with no ASIN or ISBN too', async () => {
     mockMetadata = true;
     mockBook = {};
     const { result } = await renderHook(() => useBookCommunity(target));
     expect(mockBookOpts).toHaveBeenLastCalledWith({ enabled: true });
-    expect(mockChapterOpts).toHaveBeenLastCalledWith({ enabled: false });
-    expect(mockMetaEnabled).toHaveBeenLastCalledWith(false);
-    expect(result.current.enabled).toBe(false);
+    expect(mockChapterOpts).toHaveBeenLastCalledWith({ enabled: true });
+    expect(mockMetaEnabled).toHaveBeenLastCalledWith(true);
+    expect(result.current.enabled).toBe(true);
   });
 
   // No ASIN or ISBN can't match the community, but a generated book's /meta answers

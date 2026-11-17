@@ -1,12 +1,12 @@
 import type { BookMetaCharacter, BookMetaRecap, Chapter, PodcastEpisodeInfo } from '@/api/types';
 
 import {
-  bookPageMetaEnabled,
   chapterNumberAt,
   chapterStartsOf,
   characterIsVisible,
   communityCredit,
   listeningProgressFor,
+  matchableById,
   metaAnswered,
   metaEnabledFor,
   recapIsVisible,
@@ -244,40 +244,34 @@ describe('chapterStartsOf', () => {
 });
 
 describe('metaEnabledFor', () => {
-  it('asks only a server with metadata, for a book with an ASIN or ISBN', () => {
-    expect(metaEnabledFor(true, { asin: 'B0', isbn: undefined })).toBe(true);
-    expect(metaEnabledFor(true, { asin: undefined, isbn: '978' })).toBe(true);
-    expect(metaEnabledFor(true, { asin: '', isbn: '' })).toBe(false);
-    expect(metaEnabledFor(true, undefined)).toBe(false);
-    expect(metaEnabledFor(false, { asin: 'B0', isbn: undefined })).toBe(false);
-    expect(metaEnabledFor(undefined, { asin: 'B0', isbn: undefined })).toBe(false);
-  });
-
-  // No ASIN or ISBN can't match the community, but characters and recaps a Bridge
-  // generated on the server come through /meta (Bridge Phase 1a).
-  it('asks for a book with neither that has generated characters or recaps', () => {
-    expect(metaEnabledFor(true, { asin: '', isbn: '', generated: true })).toBe(true);
-    expect(metaEnabledFor(false, { generated: true })).toBe(false);
-  });
-
-  it('never asks for a podcast episode, whatever its tags carry', () => {
-    const episode = { show_path: 'Show' } as PodcastEpisodeInfo;
-    expect(metaEnabledFor(true, { asin: 'B0', isbn: '978', generated: true, episode })).toBe(false);
-  });
-});
-
-describe('bookPageMetaEnabled', () => {
-  // LibriVox L5: the book page asks for any loaded book, ids or not (a console match).
+  // LibriVox L5 and fe#290: every surface asks for any loaded book, ids or not (a console
+  // match, or content a Bridge generated, answers without either).
   it('asks a server with metadata for any loaded book, ids or not', () => {
-    expect(bookPageMetaEnabled(true, {})).toBe(true);
-    expect(bookPageMetaEnabled(false, {})).toBe(false);
-    expect(bookPageMetaEnabled(undefined, {})).toBe(false);
+    expect(metaEnabledFor(true, {})).toBe(true);
+    expect(metaEnabledFor(true, { asin: '', isbn: '' } as never)).toBe(true);
+    expect(metaEnabledFor(false, {})).toBe(false);
+    expect(metaEnabledFor(undefined, {})).toBe(false);
   });
 
   it('never asks before the book is in, nor for a podcast episode', () => {
-    expect(bookPageMetaEnabled(true, undefined)).toBe(false);
+    expect(metaEnabledFor(true, undefined)).toBe(false);
     const episode = { show_path: 'Show' } as PodcastEpisodeInfo;
-    expect(bookPageMetaEnabled(true, { episode })).toBe(false);
+    expect(metaEnabledFor(true, { episode })).toBe(false);
+  });
+});
+
+describe('matchableById', () => {
+  it('is a book with an ASIN or ISBN, or with content generated on its server', () => {
+    expect(matchableById({ asin: 'B0', isbn: undefined })).toBe(true);
+    expect(matchableById({ asin: undefined, isbn: '978' })).toBe(true);
+    expect(matchableById({ asin: '', isbn: '', generated: true })).toBe(true);
+    expect(matchableById({ asin: '', isbn: '' })).toBe(false);
+    expect(matchableById(undefined)).toBe(false);
+  });
+
+  it('never a podcast episode, whatever its tags carry', () => {
+    const episode = { show_path: 'Show' } as PodcastEpisodeInfo;
+    expect(matchableById({ asin: 'B0', isbn: '978', generated: true, episode })).toBe(false);
   });
 });
 

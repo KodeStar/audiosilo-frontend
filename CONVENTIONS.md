@@ -1315,15 +1315,14 @@ keeps it. Every `sidecars.generate` run writes one as it saves (its progress ste
 included; the player has no description-only action (the console's "Write a description"
 queues `sidecars.describe`, whose finish `latestDone` also counts, so the book's `/meta` is
 read again). **The `/meta` gate is `metaEnabledFor(metadata, book)` (`meta-gating.ts`)**:
-the server's `metadata` flag and an ASIN, an ISBN **or `generated`**, never an episode; the
-companion and reveal toast, Home's Now card and Previously on, the end credits and the
-offline copy go through it. **The book page alone asks wider, `bookPageMetaEnabled`**: the
-flag and a loaded book that is not an episode, ids or not, since a newer server answers a
-book with neither from its console match (a LibriVox download, LibriVox L5) and an older one
-answers `matched:false` without asking upstream. The one page a listener opened asks; the
-surfaces that ask for a book in passing or for every download keep the id gate (so a
-console-matched book without ids shows its community content on its page and in Search's
-characters, not offline or in the player). The series page's anchor (`metadataAnchor`, an
+the server's `metadata` flag and a loaded book that is not an episode, ids or not, since a newer
+server answers a book with neither from its console match (a LibriVox download, LibriVox L5) or
+with what a Bridge generated, and an older one answers `matched:false` without asking upstream.
+The book page, the companion and reveal toast, Home's Now card and Previously on and the end
+credits go through it (fe#290: a console-matched book without ids shows its community content in
+the player too, and the companion offers no Generate for a book the community covers). **The
+offline copy alone keeps the id rule, `matchableById`** (an ASIN, an ISBN **or `generated`**,
+never an episode): it runs for every download, so such a book reads as unmatched offline. The series page's anchor (`metadataAnchor`, an
 ASIN or ISBN) and Search's characters (`characterBooksToLoad`, the started books, capped,
 ids or not) pick their books by their own rules. Two readers of the envelope, and each
 field is read through one of them, never both:
@@ -4012,7 +4011,7 @@ are asked, at most 10,000 rows.
   The Text tab reads it offline (`readDownloadedReadalong`, `qk.readalongLocal`, `networkMode:
   'always'`) with the EPUB on the device.
 - **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community
-  metadata (asked by `metaEnabledFor`, so a book with content generated on its server too; the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
+  metadata (asked by `matchableById`, so a book with content generated on its server too; the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
   `meta.json` beside its audio (`engine.writeText`: the book's folder on native, its Cache API
   prefix on web), so it is scoped by connection and deleted with the files. **Not in the registry**:
   that is ONE JSON document rewritten every couple of seconds while a download runs, an envelope
