@@ -871,8 +871,9 @@ function chaptersRefresh(
  * files take a new order (server v2.4.0 plays them in natural order, "2-" before "10-"):
  * the chapters carry the order every queue over the download plays them in
  * (`bookFileSpecs`, each file found by its path: `localFromManifest`), and `files` itself
- * never moves, since a file's name on disk is its index (`fileName`; `relocateEntry` keeps
- * a saved file's own name, `storedIndex`). A
+ * never moves, since a file's name on disk is the index it was saved under (`fileName`;
+ * `relocateEntry` keeps a saved file's own name, `storedIndex`, and so does a retry,
+ * `retryPlan`). A
  * background answer never does it (`refreshedChapters`): JS cannot see a book the Android
  * service or a Cast receiver holds before it is adopted. Chapters naming other files
  * change nothing.
