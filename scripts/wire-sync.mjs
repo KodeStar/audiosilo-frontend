@@ -15,15 +15,7 @@
 // npm run wire:sync / npm run wire:check run them.
 
 import { execFileSync } from 'node:child_process';
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -45,30 +37,47 @@ export function fromCheckout(dir, ref) {
   return Object.fromEntries(names.map((n) => [n, git(dir, 'show', `${ref}:${GOLDENS}/${n}`)]));
 }
 
+/** GETs url, failing after 15 s; a 403 or 429 is named as GitHub's rate limit. */
+async function get(url, what, headers = {}) {
+  const r = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
+  if (r.ok) return r;
+  const limited =
+    r.status === 429 || (r.status === 403 && r.headers.get('x-ratelimit-remaining') === '0');
+  const hint = limited ? ' (GitHub rate limit: set GITHUB_TOKEN, or pass --server <checkout>)' : '';
+  throw new Error(`${what}: HTTP ${r.status}${hint}`);
+}
+
 /** The goldens at a commit on GitHub (the server repository is public). */
 async function fromGitHub(sha) {
   const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'audiosilo-wire-check' };
   if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
-  const list = await fetch(`https://api.github.com/repos/${REPO}/contents/${GOLDENS}?ref=${sha}`, {
+  const list = await get(
+    `https://api.github.com/repos/${REPO}/contents/${GOLDENS}?ref=${sha}`,
+    `listing ${GOLDENS} at ${sha}`,
     headers,
-  });
-  if (!list.ok) throw new Error(`listing ${GOLDENS} at ${sha}: HTTP ${list.status}`);
-  const entries = (await list.json()).filter((e) => e.type === 'file' && e.name.endsWith('.json'));
-  const out = {};
-  for (const e of entries) {
-    const r = await fetch(`https://raw.githubusercontent.com/${REPO}/${sha}/${GOLDENS}/${e.name}`);
-    if (!r.ok) throw new Error(`${e.name} at ${sha}: HTTP ${r.status}`);
-    out[e.name] = await r.text();
-  }
-  return out;
+  );
+  const names = (await list.json())
+    .filter((e) => e.type === 'file' && e.name.endsWith('.json'))
+    .map((e) => e.name);
+  const raw = async (n) =>
+    (
+      await get(
+        `https://raw.githubusercontent.com/${REPO}/${sha}/${GOLDENS}/${n}`,
+        `${n} at ${sha}`,
+      )
+    ).text();
+  const texts = await Promise.all(names.map(raw));
+  return Object.fromEntries(names.map((n, i) => [n, texts[i]]));
+}
+
+/** The golden file names in out (source.json is the pin, not a golden). */
+function goldenNames(out) {
+  return readdirSync(out).filter((n) => n.endsWith('.json') && n !== 'source.json');
 }
 
 function localCopy(out) {
-  if (!existsSync(out)) return {};
   return Object.fromEntries(
-    readdirSync(out)
-      .filter((n) => n.endsWith('.json') && n !== 'source.json')
-      .map((n) => [n, readFileSync(path.join(out, n), 'utf8')]),
+    goldenNames(out).map((n) => [n, readFileSync(path.join(out, n), 'utf8')]),
   );
 }
 
@@ -94,7 +103,7 @@ export function sync(server, rev, out) {
   const sha = git(server, 'rev-parse', `${rev}^{commit}`).trim();
   const goldens = fromCheckout(server, sha);
   mkdirSync(out, { recursive: true });
-  for (const n of Object.keys(localCopy(out))) if (!(n in goldens)) rmSync(path.join(out, n));
+  for (const n of goldenNames(out)) if (!(n in goldens)) rmSync(path.join(out, n));
   for (const [n, text] of Object.entries(goldens)) writeFileSync(path.join(out, n), text);
   writeFileSync(
     path.join(out, 'source.json'),
