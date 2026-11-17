@@ -271,8 +271,34 @@ describe('a progress tick that jumped while playing', () => {
     const { svc, heard } = await playing();
     send('onProgress', { position: 70, duration: 100 });
     send('onTrackChange', { index: 1 });
-    expect(heard()).toEqual([11, 70, 70]);
-    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 70 });
+    expect(heard()).toEqual([11, 70, 0]);
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 0 });
+  });
+
+  /** Playing up to the end of file 0 (100 s long): its last tick at 99.8. */
+  async function nearTheEnd() {
+    const svc = await setUp();
+    send('onState', { state: 'playing' });
+    send('onProgress', { position: 98.8, duration: 100 });
+    jest.advanceTimersByTime(1_000);
+    send('onProgress', { position: 99.8, duration: 100 });
+    const places: [number, number][] = [];
+    svc.subscribe((s) => places.push([s.trackIndex, s.position]));
+    return { svc, places };
+  }
+
+  it('starts the new file at 0 on iOS, where its first tick comes after the change', async () => {
+    const { svc, places } = await nearTheEnd();
+    jest.advanceTimersByTime(300);
+    send('onTrackChange', { index: 1 });
+    send('onState', { state: 'paused' }); // before the new file's first tick
+    expect(places).toEqual([
+      [1, 0],
+      [1, 0],
+    ]);
+    jest.advanceTimersByTime(600);
+    send('onProgress', { position: 0.3, duration: 200 });
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 0.3, duration: 200 });
   });
 
   describe('on Android, where the new file’s tick comes before its change', () => {
@@ -307,10 +333,57 @@ describe('a progress tick that jumped while playing', () => {
 
     it('tells the held tick under the new file once the wait is over', async () => {
       const { places } = await heardPlaces();
-      send('onProgress', { position: 0.2, duration: 250 }); // ran on into file 1
+      send('onProgress', { position: 0.2, duration: 250 }); // a move into file 1, untold
       send('onTrackChange', { index: 1 });
       jest.advanceTimersByTime(600);
       expect(places).toEqual([[1, 0.2]]);
+    });
+
+    it('keeps the place before a move with its own file when playing stops first', async () => {
+      const { svc, places } = await heardPlaces();
+      const landed = jest.fn();
+      svc.onLanded!(landed);
+      send('onProgress', { position: 3, duration: 250 }); // a move into file 1, untold
+      send('onTrackChange', { index: 1 });
+      send('onState', { state: 'paused' });
+      expect(places).toEqual([[0, 11]]);
+      jest.advanceTimersByTime(600);
+      expect(places).toEqual([
+        [0, 11],
+        [1, 3],
+      ]);
+      expect(landed).toHaveBeenCalledTimes(1);
+    });
+
+    it('seeks in the file a held move went to', async () => {
+      const { svc, places } = await heardPlaces();
+      (mockModule as Record<string, unknown>).seekTo = jest.fn(async () => {});
+      send('onProgress', { position: 3, duration: 250 }); // a move into file 1, untold
+      send('onTrackChange', { index: 1 });
+      await svc.seekTo(40);
+      expect(places).toEqual([[1, 40]]);
+    });
+
+    it('tells a run-on into the next file at once, its place the new file’s', async () => {
+      const { svc, places } = await nearTheEnd();
+      jest.advanceTimersByTime(300);
+      send('onProgress', { position: 0.05, duration: 200 }); // file 1's first tick, held
+      expect(places).toEqual([]);
+      send('onTrackChange', { index: 1 });
+      expect(places).toEqual([[1, 0.05]]);
+      expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 0.05, duration: 200 });
+    });
+
+    it('saves a pause right after a run-on in the new file, never at the old one’s end', async () => {
+      const { svc, places } = await nearTheEnd();
+      jest.advanceTimersByTime(300);
+      send('onProgress', { position: 0.05, duration: 200 });
+      send('onTrackChange', { index: 1 });
+      send('onState', { state: 'paused' }); // within the hold's 600 ms
+      expect(places.at(-1)).toEqual([1, 0.05]);
+      jest.advanceTimersByTime(600);
+      for (const [file, position] of places) expect(file === 1 && position < 1).toBe(true);
+      expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 0.05 });
     });
   });
 });
