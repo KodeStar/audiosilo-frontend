@@ -44,15 +44,6 @@ async function setUp(phase6 = true) {
 }
 
 describe('the native engine, Phase 6 events', () => {
-  it('passes a remote move on, its landed place in the snapshot once told', async () => {
-    const svc = await setUp();
-    const handler = jest.fn();
-    svc.onRemoteMove!(handler);
-    send('onRemoteMove', { trackIndex: 1, position: 42 });
-    expect(handler).toHaveBeenCalledWith(1, 42);
-    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 42 });
-  });
-
   // fe#211: told after its landed place, the store's save, cut or keep could end the
   // listening span at the landed place first, and the move then read as one to nowhere.
   it('tells the store of a remote move before its listeners take the landed place', async () => {
@@ -60,13 +51,16 @@ describe('the native engine, Phase 6 events', () => {
     const heard: number[] = [];
     svc.subscribe((s) => heard.push(s.position));
     let heardWhenMoved: number[] = [];
-    svc.onRemoteMove!(() => {
+    const handler = jest.fn(() => {
       heardWhenMoved = [...heard];
     });
+    svc.onRemoteMove!(handler);
     send('onProgress', { position: 10, duration: 100 });
-    send('onRemoteMove', { trackIndex: 0, position: 42 });
+    send('onRemoteMove', { trackIndex: 1, position: 42 });
+    expect(handler).toHaveBeenCalledWith(1, 42);
     expect(heardWhenMoved).toEqual([10]);
     expect(heard).toEqual([10, 42]);
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 42 });
   });
 
   it('passes the OS speed on, in the snapshot too', async () => {
@@ -201,6 +195,14 @@ describe('a progress tick that jumped while playing', () => {
     await svc.seekTo(40.5);
     jest.advanceTimersByTime(1_000);
     expect(heard()).toEqual([11, 40.5]);
+  });
+
+  it('takes the tick after its own seek at once, measured from the place it set', async () => {
+    const { svc, heard } = await playing();
+    (mockModule as Record<string, unknown>).seekTo = jest.fn(async () => {});
+    await svc.seekTo(80);
+    send('onProgress', { position: 80.2, duration: 100 });
+    expect(heard()).toEqual([11, 80, 80.2]);
   });
 
   it('takes a held tick before the file changes', async () => {

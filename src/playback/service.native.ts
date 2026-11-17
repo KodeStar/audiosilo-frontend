@@ -66,8 +66,12 @@ class NativePlaybackService implements PlaybackService {
     for (const listener of this.listeners) listener(this.snapshot);
   }
   private update(patch: Partial<PlaybackSnapshot>) {
-    // A place set by anything else replaces a held tick's.
-    if (patch.position !== undefined || patch.trackIndex !== undefined) this.dropHeld();
+    // A place set by anything else (the app's own seek, a new file) replaces a held tick's,
+    // and the next tick is measured from it, not taken for a jump.
+    if (patch.position !== undefined || patch.trackIndex !== undefined) {
+      this.dropHeld();
+      this.lastTick = null;
+    }
     this.snapshot = { ...this.snapshot, ...patch };
     if (patch.state !== undefined && patch.state !== 'playing') this.lastTick = null;
     this.emit();
@@ -110,16 +114,19 @@ class NativePlaybackService implements PlaybackService {
   private releaseHeld() {
     const held = this.held;
     if (!held) return;
-    clearTimeout(held.timer);
-    this.held = null;
+    this.dropHeld();
     this.takeTick(held.position, held.duration, Date.now());
   }
   private takeTick(position: number, duration: number, at: number) {
-    this.snapshot = { ...this.snapshot, position, duration };
-    if (this.snapshot.state === 'playing') {
-      this.lastTick = { position, trackIndex: this.snapshot.trackIndex, at };
-    }
+    this.setPlace({ position, duration }, at);
     this.emit();
+  }
+  /** Set the snapshot's place without telling the listeners; while playing, it is the
+   * last tick the next one is measured from (`progress`). */
+  private setPlace(patch: Partial<PlaybackSnapshot>, at: number) {
+    this.snapshot = { ...this.snapshot, ...patch };
+    const { state, position, trackIndex } = this.snapshot;
+    this.lastTick = state === 'playing' ? { position, trackIndex, at } : null;
   }
 
   async setup() {
@@ -145,9 +152,7 @@ class NativePlaybackService implements PlaybackService {
       AudiosiloPlayer.addListener('onRemoteMove', ({ trackIndex, position }) => {
         if (!Number.isFinite(trackIndex) || !Number.isFinite(position)) return;
         this.dropHeld();
-        this.snapshot = { ...this.snapshot, trackIndex, position };
-        this.lastTick =
-          this.snapshot.state === 'playing' ? { position, trackIndex, at: Date.now() } : null;
+        this.setPlace({ trackIndex, position }, Date.now());
         this.remoteMove?.(trackIndex, position);
         this.emit();
       }),
