@@ -38,6 +38,7 @@ describe('nativeLoadRequest', () => {
     const req = nativeLoadRequest(load) as {
       autoplay: boolean;
       playbackRate: number;
+      startTime: number;
       queueData: {
         startIndex: number;
         startTime: number;
@@ -50,6 +51,8 @@ describe('nativeLoadRequest', () => {
     expect(req.playbackRate).toBe(1.25);
     expect(req.queueData.startIndex).toBe(1);
     expect(req.queueData.startTime).toBe(42.5);
+    // In the request too (`currentTime`), as the web sender's: a queue sent paused started at 0.
+    expect(req.startTime).toBe(42.5);
     expect(req.queueData.type).toBe('audioBook');
     expect(req.queueData.items).toHaveLength(2);
     expect(req.queueData.items[1].customData).toEqual({ index: 1, ...BOOK });

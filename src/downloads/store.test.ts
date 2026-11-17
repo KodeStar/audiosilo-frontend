@@ -3,7 +3,7 @@ import { AppState, Platform } from 'react-native';
 import { act, renderHook } from '@testing-library/react-native';
 
 import type { ApiClient } from '@/api/client';
-import type { Book, ChaptersResponse } from '@/api/types';
+import type { Book, BookFile, ChaptersResponse } from '@/api/types';
 import type { KeptReadalong, RefusedReadalong } from '@/downloads/readalong-file';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 
@@ -142,6 +142,9 @@ const mockGetQueryData = jest.fn((..._a: unknown[]): unknown => undefined);
 const mockFetchQuery = jest.fn((_o: { queryKey: unknown[] }): Promise<unknown> =>
   Promise.reject(new Error('not mocked')),
 );
+// The read that always settles, offline included (hooks.test.ts covers it): the same fake
+// fetch, recorded on its own so a test can tell which read was asked.
+const mockFetchFailFast = jest.fn((o: { queryKey: unknown[] }) => mockFetchQuery(o));
 // The query cache's listeners (`startChapterRefresh` subscribes one).
 const mockCacheListeners = new Set<(event: unknown) => void>();
 jest.mock('@/api/provider', () => ({
@@ -189,8 +192,7 @@ jest.mock('@/api/hooks', () => ({
       show,
     ],
   },
-  // The read that always settles (hooks.test.ts covers it): here, the same fake fetch.
-  fetchFailFast: (o: { queryKey: unknown[] }) => mockFetchQuery(o),
+  fetchFailFast: (o: { queryKey: unknown[] }) => mockFetchFailFast(o),
   itemQuery: (cid: string, _c: unknown, lib: number, path: string) => ({
     queryKey: ['item', cid, lib, path],
   }),
@@ -3187,9 +3189,22 @@ describe('failures, retry and the session decline mark', () => {
     })),
   });
   const key = downloadKey('c1', 2, 'A/Book');
+  /** The book's chapters response listing `f`, a minute each. */
+  const chaptersOf = (f: BookFile[]): ChaptersResponse => ({
+    library_id: 2,
+    path: 'A/Book',
+    duration: 60 * f.length,
+    is_folder: true,
+    chapters: [],
+    files: f,
+  });
 
   beforeEach(() => {
     mockResolveClient.mockReturnValue(api);
+    // A retry reads the book afresh first; unless a test answers, that read fails and the
+    // retry goes on the book it was given.
+    mockFetchQuery.mockReset().mockRejectedValue(new Error('offline'));
+    mockFetchFailFast.mockClear();
   });
 
   it('keeps the files that finished, classifies the cause, and a retry skips them', async () => {
@@ -3321,6 +3336,58 @@ describe('failures, retry and the session decline mark', () => {
     await settle();
     expect(useDownloads.getState().entries[key]?.status).toBe('downloaded');
     expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg', '0.mp3']);
+  });
+
+  it("a retry reads the book's files afresh, not the cached list naming a removed file", async () => {
+    // The first attempt kept 00 and 01; 02 failed. The server since removed 02 and added a
+    // prelude, but the caller's chapters (the query cache's) still list 02.
+    const entry = downloadedEntry({ status: 'error', failure: { kind: 'missing', kept: 2 / 3 } });
+    entry.manifest.book = book;
+    entry.manifest.files = [0, 1].map((i) => ({
+      relPath: `A/Book/0${i}.mp3`,
+      localUri: `file:///dl/${i}.mp3`,
+    }));
+    useDownloads.setState({ entries: { [key]: entry } });
+    const files = book.files ?? [];
+    const stale = chaptersOf(files);
+    const fresh = chaptersOf([
+      { rel_path: 'A/Book/prelude.mp3', seq: 0, duration: 60, format: 'mp3', size: 100 },
+      ...files.slice(0, 2).map((f) => ({ ...f, seq: f.seq + 1 })),
+    ]);
+    mockFetchQuery.mockImplementation(async ({ queryKey }) =>
+      queryKey[0] === 'item' ? book : fresh,
+    );
+    mockEngine.fileExists.mockResolvedValue(true);
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `file:///dl/${name}`,
+    );
+
+    await useDownloads.getState().download('c1', 2, book, stale);
+    await settle();
+
+    // Read from the server, never the cache's copy, by the read that fails at once offline
+    // (one held for the network would leave the Retry waiting unseen).
+    expect(mockFetchFailFast).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['chapters', 'c1', 2, 'A/Book'], staleTime: 0 }),
+    );
+    const done = useDownloads.getState().entries[key];
+    expect(done?.status).toBe('downloaded');
+    expect(done?.manifest.chapters).toBe(fresh);
+    expect(mockEngine.downloadFile.mock.calls.map((c) => c[4])).toEqual([
+      'cover:2:A/Book',
+      'stream:2:A/Book/prelude.mp3',
+    ]);
+  });
+
+  it('a first download takes the chapters it was given, unread', async () => {
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `file:///dl/${name}`,
+    );
+    const given = chaptersOf(book.files ?? []);
+    await useDownloads.getState().download('c1', 2, book, given);
+    await settle();
+    expect(useDownloads.getState().entries[key]?.status).toBe('downloaded');
+    expect(mockFetchQuery).not.toHaveBeenCalled();
   });
 
   it('a retry takes a kept file by its path when the order changed (fe#158)', async () => {

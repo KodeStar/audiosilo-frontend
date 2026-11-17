@@ -3491,20 +3491,53 @@ on first need). NOT device-verified (no Cast device yet).
   `startCastSync` (the root's services, `root-services-impl.tsx`) follows the driver's session events; `endCastForCar` and
   `stopCasting` end a session from the app.
 - **The receiver never gets the session token**: `prepareCast` builds the queue with cast tokens
-  (`POST /cast/token`, book-scoped, 24 h; `castTokens` caches one per book until an hour before
-  it expires, drops expired ones and forgets a removed connection's), on the connection's address
-  in use (`effectiveUrl`), and refuses with `CastBlockedError` (no `cast`, an address another
-  device can't reach, a codec neither the receiver nor the server's transcoder handles). A
-  downloaded book casts from its server. The web's Remote Playback prompt is NOT used (it would
-  hand over the element's URL, token included). The server keeps 20 cast tokens per person and
-  ends the oldest, which a receiver may still be playing with (fe#158), so a queue load the
-  receiver refuses is sent once more with a newly minted token (`freshToken`,
+  (`POST /cast/token`, book-scoped, 24 h; `castTokens` caches one per book until an hour before it
+  expires, drops expired ones and forgets a removed connection's), on the connection's address in
+  use (`effectiveUrl`), and refuses with `CastBlockedError` (no `cast`, an address another device
+  can't reach, a codec neither the receiver nor the server's transcoder handles). A downloaded book
+  casts from its server. The web's Remote Playback prompt is NOT used (it would hand over the
+  element's URL, token included). The server keeps the 20 most recently used cast tokens per device
+  and 100 per person and ends the rest, which a receiver may still be playing with (fe#158), so a
+  queue load the receiver refuses is sent once more with a newly minted token (`freshToken`,
   `prepareCast(..., { freshToken })`, the cache's `fresh`), and a receiver that stops on an error
-  mid-book is loaded again there with one, playing on when it was (only as the error arrives:
-  one already shown is the listener's to retry, since the receiver says it again on every status
-  read). At most one mint per `REMINT_EVERY_MS` (a minute) per book loaded, so a failure with
-  another cause never mints on every try (each mint can end another receiver's token); a queue
-  refused while a mint is on its way waits on that mint and is sent again after it.
+  mid-book is loaded again with one, playing on when it was (only as the error arrives: one already
+  shown is the listener's to retry, since the receiver says it again on every status read). The
+  Default Media Receiver skips a file it is refused and tries the next, so its error names the last
+  file it tried: the reload goes to the place the phone means (`intended`: the place a load, seek or
+  file jump asked for, or the next file's start once one ended, until the receiver plays or pauses
+  there; `refusedPlace`; not once the receiver played or paused on another file and the error came
+  `ASKED_MOVE_MS` or more after the move, as it sends no status while it simply plays; a move that
+  old whose landing went unseen, its `playing` said while the load was in flight, is reloaded where
+  the ticks since put it), and an error while a load of ours is in flight makes that load a refused
+  one (`ReceiverRefused`, sent again with a new token, by the play intent as it is then, and played
+  after if a play came while it was on its way; the files the receiver skips on to meanwhile, the
+  mint included, are not the book's place, for at most `ASKED_MOVE_MS` after the error, so a load
+  never answered hides nothing for good). So is one whose receiver plays or pauses a later file
+  before it played the one asked for (`skippedPast`; its errors need not reach the phone, as on
+  Android; not a buffering or loading one, which a new media session says while still naming the
+  media it replaces, and the native SDK's status has no session id, though no place either within
+  `ASKED_MOVE_MS` of the move): while the load is in flight (never by a status read), or within
+  `ASKED_MOVE_MS` of the move once it answered (later, a file it played unseen may have run on). Not
+  the file the receiver was on when the move was asked, at or past where it was then (`Intent.from`:
+  the replaced media playing on; a move asked within `ASKED_MOVE_MS` of the last one, before it
+  landed, keeps where that one left from). A status in flight naming the asked file's URL as sent,
+  playing or paused, lands it, and its token counts as played. Not a status or error of the queue that load replaces
+  (`ofReplacedQueue`: one naming a URL with the token before the mint), nor one read (`refresh`):
+  read before the queue was sent it is dropped, and an error read while it is on its way refuses
+  nothing. A queue sent puts the snapshot at the place it asks for at once, as a
+  local engine's file load does, and until the receiver lands it (for at most `ASKED_MOVE_MS` after
+  the move, `holdingAsked`) no status or tick moves the snapshot: they are the media the queue
+  replaces (its `interrupted` stop at its file's 0, a later file), and the store would save that
+  place, end the listening span the move began there, raise its resume floor past the asked place
+  (every save below it refused), or read a later file as the engine running off the asked one and
+  stop it there. A book's load refused so to the end still stands, at the place it asked for until a
+  status says where (the receiver holds the book, and a failed load would hand it back to the phone
+  while the receiver plays on); a seek, file jump or play refused so fails. One mint per token:
+  another only once the receiver played with the last one minted at the place the phone meant (not
+  a later file it went on to), never more than two per `REMINT_EVERY_MS` (a minute) per book
+  loaded, and one when the last never played, so a failure with another cause never mints on every
+  try (each mint can end another receiver's token); a queue refused while a mint is on its way waits
+  on that mint and is sent again after it.
 - **Generations**: the cast service numbers loads (`loadSeq`) and queues (`queueSeq`), the router
   its switches (`generation`): a load, queue or handover that a newer one (or a reset) overtook
   stands back, and the receiver's rejection of a replaced queue is not a failure. The native
@@ -4187,7 +4220,11 @@ are asked, at most 10,000 rows.
   so Retry fetches only the gone ones (one keep-ahead started is dropped with its folder instead:
   keep-ahead never retries a failure, and plans a dropped book again). At launch a kept file is
   found by the index its stored name says (`storedIndex`, else its place in the list:
-  `relocateEntry`). A retry takes a kept file by its path wherever the server's list now puts it
+  `relocateEntry`). A retry reads the book's item and chapters afresh first (`download`,
+  `fetchFailFast` with `staleTime: 0`: the caller's come from the query cache or the failed
+  download's saved copy, which can still list a file the server removed; offline the read fails at
+  once and the retry goes on the caller's), then takes a kept file by its path wherever the
+  server's list now puts it
   (`retryPlan`, fe#158: a list that gained, lost or reordered a file fetches only the new ones),
   fetches each other file under a name no kept file holds (its index when free, else the next
   free number past the list), and keeps the kept files of the paths it never reached listed when

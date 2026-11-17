@@ -148,8 +148,10 @@ type DownloadsState = {
    * listener's request is queued at once, an automatic one after reading the room. On
    * web, a list-shape `book` (no `direct_playable`) is first looked up in full, so a
    * book this browser plays transcoded is refused whoever asks; so is a podcast episode
-   * given without its chapters (an episode row's list shape), for its file's own. An
-   * episode not on its server yet waits there first (`episode-ready.ts`), off the queue. */
+   * given without its chapters (an episode row's list shape), for its file's own. A retry
+   * of a failed download reads the book's item and chapters afresh first, for its current
+   * files. An episode not on its server yet waits there first (`episode-ready.ts`), off the
+   * queue. */
   download: (
     connectionId: string,
     libraryId: number,
@@ -237,21 +239,30 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     // chapters (the file's own) go with the download. Not for an episode its caller says is
     // absent, on either platform: it waits on its server first, and both are read once the
     // file is there, where the transcode refusal is decided again (`episodeWaitEnded`).
+    // A retry of a failed download reads both afresh on every platform: the caller's files
+    // (the query cache's, kept up to 30 minutes, or the failed download's own saved copy)
+    // can still list a file the server has since removed, and the retry would fetch it
+    // again. Asked whatever the online flag says (`fetchFailFast`): held for the network, a
+    // Retry tapped offline would wait unseen instead of going on the files it was given.
+    const retrying = get().entries[key]?.status === 'error';
     const lookup =
       !isAbsentEpisode(book) &&
-      (lacksPlayability(book, chapterData) || (!!book.episode && !chapterData));
+      (retrying || lacksPlayability(book, chapterData) || (!!book.episode && !chapterData));
     const client = lookup ? resolveClient(connectionId) : null;
     if (!client) return queueBook(connectionId, libraryId, book, chapterData, origin);
+    const staleTime = retrying ? 0 : 30_000;
+    const itemOptions = {
+      ...itemQuery(connectionId, client, libraryId, book.rel_path),
+      staleTime,
+    };
+    const chaptersOptions = {
+      ...chaptersQuery(connectionId, client, libraryId, book.rel_path),
+      staleTime,
+    };
     return (async () => {
       const [item, chapters] = await Promise.allSettled([
-        queryClient.fetchQuery({
-          ...itemQuery(connectionId, client, libraryId, book.rel_path),
-          staleTime: 30_000,
-        }),
-        queryClient.fetchQuery({
-          ...chaptersQuery(connectionId, client, libraryId, book.rel_path),
-          staleTime: 30_000,
-        }),
+        retrying ? fetchFailFast(itemOptions) : queryClient.fetchQuery(itemOptions),
+        retrying ? fetchFailFast(chaptersOptions) : queryClient.fetchQuery(chaptersOptions),
       ]);
       if (stopCount(key) !== stops) return 'declined';
       // A lookup that failed decides on what the caller gave, as before.
