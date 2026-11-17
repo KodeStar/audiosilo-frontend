@@ -491,7 +491,15 @@ function kidsShelfChanged(key: readonly unknown[], hash: string, data: unknown):
 // --- Play specs (Android) ---------------------------------------------------------------
 
 /** The last play spec of each downloaded book, with what it was built from. */
-let specs = new Map<string, { manifest: DownloadManifest; inputs: string; spec?: CarPlaySpec }>();
+let specs = new Map<
+  string,
+  { manifest: DownloadManifest; inputs: string; skew: number; spec?: CarPlaySpec }
+>();
+
+/** How far a connection's measured clock skew moves (ms) before its books' specs are built
+ * again with it (`CarPlaySpec.placeSavedAt`): each sync answer measures it anew, a few
+ * hundred ms either way. */
+const SKEW_SLACK_MS = 2_000;
 
 /**
  * Android's play specs (how a downloaded book starts with no JS), for the downloaded books
@@ -501,7 +509,7 @@ let specs = new Map<string, { manifest: DownloadManifest; inputs: string; spec?:
  * write. The loaded book, paused, starts where it was paused instead (`pausedPlaceOf`). Each
  * carries when its place was saved (`CarPlaySpec.placeSavedAt`), so Android's live place on
  * the book wins only when it is newer. A spec is rebuilt only when its manifest, its resume
- * place or the defaults changed.
+ * place or the defaults changed, or its server's clock skew moved (`SKEW_SLACK_MS`).
  */
 async function playSpecs(
   books: ReadonlyMap<string, CarBook>,
@@ -524,23 +532,31 @@ async function playSpecs(
       const row = known.has(connectionId) ? progressOf(ref) : undefined;
       const lookup = resumeLookupOf(row, places, connectionId, libraryId, path);
       const at = paused?.key === key ? paused.place : undefined;
-      const skew = places.skews?.[connectionId];
-      const inputs = JSON.stringify([lookup, defaultRate, virtualChapterInterval, at, skew]);
+      const inputs = JSON.stringify([lookup, defaultRate, virtualChapterInterval, at]);
+      // The skew moves the lookup's time (a paused place's is this device's own): measured
+      // again at every sync answer, it is a new spec (and a snapshot write) only when it
+      // moved by more than SKEW_SLACK_MS.
+      const skew = at ? 0 : (places.skews?.[connectionId] ?? 0);
       const had = specs.get(key);
       // A paused place was saved as JS first wrote it: an unchanged spec keeps that time.
-      const spec =
-        had && had.manifest === manifest && had.inputs === inputs
-          ? had.spec
-          : playSpec(
-              ref,
-              manifest,
-              lookup,
-              defaultRate,
-              virtualChapterInterval,
-              at,
-              at ? Date.now() : placeSavedAt(lookup, row, places, connectionId, libraryId, path),
-            );
-      next.set(key, { manifest, inputs, spec });
+      const reuse =
+        had &&
+        had.manifest === manifest &&
+        had.inputs === inputs &&
+        Math.abs(had.skew - skew) <= SKEW_SLACK_MS;
+      const spec = reuse
+        ? had.spec
+        : playSpec(
+            ref,
+            manifest,
+            lookup,
+            defaultRate,
+            virtualChapterInterval,
+            at,
+            at ? Date.now() : placeSavedAt(lookup, row, places, connectionId, libraryId, path),
+          );
+      // Kept with the skew it was built with, so slow drift still adds up to a rebuild.
+      next.set(key, { manifest, inputs, skew: reuse ? had.skew : skew, spec });
       out.set(key, spec);
     }
   }

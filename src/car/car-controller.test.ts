@@ -85,12 +85,16 @@ jest.mock('@/components/player/start-book', () => ({
 }));
 
 // The device's own places (the mirror, the offline queue): read once per build.
-const mockLocalPlaces: { mirror: Record<string, unknown>; queue: unknown[]; pending: Set<string> } =
-  {
-    mirror: {},
-    queue: [],
-    pending: new Set(),
-  };
+const mockLocalPlaces: {
+  mirror: Record<string, unknown>;
+  queue: unknown[];
+  pending: Set<string>;
+  skews?: Record<string, number>;
+} = {
+  mirror: {},
+  queue: [],
+  pending: new Set(),
+};
 const mockReadLocalPlaces = jest.fn(async () => mockLocalPlaces);
 jest.mock('@/playback/progress-sync', () => ({
   readLocalPlaces: () => mockReadLocalPlaces(),
@@ -379,6 +383,7 @@ beforeEach(async () => {
   useLibrarySelection.setState({ selection: null, shown: null });
   mockLocalPlaces.mirror = {};
   mockLocalPlaces.queue = [];
+  delete mockLocalPlaces.skews;
   connect([]);
   resetProfilesForTests();
   // A car has met this phone before (the snapshot's gate); the gate's own tests clear it.
@@ -535,6 +540,25 @@ describe('startCarSync', () => {
     const e = tab(lastSnapshot(), 'downloads')!.items.find((i) => i.book.path === 'E')!;
     expect(e.play).toMatchObject({ startIndex: 1, positionInTrack: 50, rate: 1.25 });
     expect(e.play!.placeSavedAt).toBe(Date.parse('2026-02-01T00:00:00.000Z'));
+
+    // The server's clock skew, measured again at each sync answer: a jitter rebuilds nothing,
+    // a real move rebuilds the specs it dates (D's, read by its server's clock).
+    jest.mocked(playSpec).mockClear();
+    mockLocalPlaces.skews = { c1: 400 };
+    mockNative.connection?.(true);
+    await settle(MIN_GAP_MS);
+    expect(playSpec).not.toHaveBeenCalled();
+    mockLocalPlaces.skews = { c1: 60_000 };
+    mockNative.connection?.(true);
+    await settle(MIN_GAP_MS);
+    expect(
+      jest
+        .mocked(playSpec)
+        .mock.calls.map((c) => c[0].path)
+        .sort(),
+    ).toEqual(['D', 'E']);
+    const moved = tab(lastSnapshot(), 'downloads')!.items.find((i) => i.book.path === 'D')!;
+    expect(moved.play!.placeSavedAt).toBe(Date.parse('2026-01-15') - 60_000);
   });
 
   it("rebuilds a downloaded book's spec when its chapters change (its files in a new order)", async () => {
