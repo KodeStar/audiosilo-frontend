@@ -27,7 +27,7 @@ import * as CFI from '../vendor/foliate-js/epubcfi.js';
 import { Overlayer } from '../vendor/foliate-js/overlayer.js';
 import { View } from '../vendor/foliate-js/view.js';
 
-import { ChunkError, createAssembly, createTextAssembly } from './chunks.js';
+import { ChunkError, createAssembly, createTextAssembly, TooLargeError } from './chunks.js';
 import { BookError, openEpub } from './epub-open.js';
 import { createReadalong } from './readalong.js';
 import { guardRender } from './render-guard.js';
@@ -334,7 +334,9 @@ async function goToStart() {
 let incoming = null;
 
 /** Native: `open` announces the book (size, chunk count) and the chunks follow. A transfer
- * that goes wrong in any way is the book being unreadable, never a half-open book. */
+ * that goes wrong in any way is the book being unreadable, never a half-open book; one over
+ * the size the reader takes, or whose buffer could not be allocated (a RangeError), is said
+ * as `tooLarge` (fe#172). */
 function beginTransfer(msg) {
   incoming = null;
   setAppearance(msg);
@@ -343,7 +345,10 @@ function beginTransfer(msg) {
     incoming = { msg, assembly: createAssembly(msg.size, msg.chunks) };
   } catch (err) {
     setBusy(false);
-    report('unreadable', err);
+    report(
+      err instanceof TooLargeError || err instanceof RangeError ? 'tooLarge' : 'unreadable',
+      err,
+    );
   }
 }
 

@@ -135,6 +135,7 @@ jest.mock('./reading-progress', () => ({
 }));
 
 /* eslint-disable import/first */
+import { EbookStorageError, EbookTooLargeError } from './ebook-errors';
 import { FOLLOW_PILL_ROOM } from './page-edge';
 import { ReaderScreen } from './reader-screen';
 import { loadReaderTheme, saveReaderTheme } from './reader-settings';
@@ -702,6 +703,36 @@ describe('ReaderScreen', () => {
     await say({ type: 'error', code: 'unreadable', message: 'not a zip' });
     expect(screen.getByText("This ebook can't be opened")).toBeTruthy();
     expect(screen.queryByText('Try again')).toBeNull();
+  });
+
+  describe('an EPUB the device could not take (fe#172)', () => {
+    it('says a book too large for the reader, with no Try again', async () => {
+      await mount();
+      await waitFor(() => expect(mockHost).not.toBeNull());
+      await act(async () => mockHost!.onLoadError(new EbookTooLargeError(600 * 1024 * 1024)));
+      expect(screen.getByText('This ebook is too large')).toBeTruthy();
+      expect(screen.getByText(/up to 512 MB/)).toBeTruthy();
+      expect(screen.queryByText("Couldn't load the ebook")).toBeNull();
+      expect(screen.queryByText('Try again')).toBeNull();
+    });
+
+    it('says so when the reader could not take the transfer', async () => {
+      await mount();
+      await waitFor(() => expect(mockHost).not.toBeNull());
+      await say({ type: 'error', code: 'tooLarge', message: 'RangeError' });
+      expect(screen.getByText('This ebook is too large')).toBeTruthy();
+    });
+
+    it('says a full disk, never the fetch notice, with Try again', async () => {
+      await mount();
+      await waitFor(() => expect(mockHost).not.toBeNull());
+      const first = mockHost;
+      await act(async () => mockHost!.onLoadError(new EbookStorageError('no space')));
+      expect(screen.getByText('Not enough space for the ebook')).toBeTruthy();
+      expect(screen.queryByText("Couldn't load the ebook")).toBeNull();
+      await fireEvent.press(screen.getByText('Try again'));
+      await waitFor(() => expect(mockHost).not.toBe(first));
+    });
   });
 
   it('hides the page edges, the toolbar and the offer while the reader is made again', async () => {

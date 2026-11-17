@@ -976,8 +976,18 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   waits days for a connection, so an offline open would spin), then moves it over the cache
   file (`overwrite: true`) and drops the folder's other files except live parts. A server
   refusal becomes its `ApiError` status (`classifyDownloadError`); a failed or aborted fetch
-  leaves no part. A removed connection drops its cache (`clearEbookCache`, from
-  `reading-progress`'s `onConnectionRemoved`). Downloads save the EPUB as `book.epub` beside
+  leaves no part. Sizes and storage have their own failures (fe#172, `ebook-errors.ts`): a book
+  over `MAX_EBOOK_BYTES` (512 MB, the reader document's `MAX_BOOK_BYTES`, which a test keeps in
+  step) is `EbookTooLargeError`, by the server's size before any fetch and by the copy's own
+  length (a downloaded `book.epub` included, never checked against `ebook.size`); the reader
+  document says the same (`tooLarge`) for a buffer it could not allocate. No room for the
+  server's size (`Paths.availableDiskSpace`), a fetch the disk refused (`storage`), or a cache
+  folder or move that failed is `EbookStorageError`, leaving no part. The reader screen says
+  each in its own words (`tooLarge`, no Try again; `storage`, with Try again), never the
+  `fetch` notice. After each fetch the whole cache, every connection's, is held to
+  `READER_CACHE_MAX_BYTES` (512 MB): the copies fetched longest ago (`modificationTime`) go
+  first, never the one just fetched or a live part. A removed connection drops its cache
+  (`clearEbookCache`, from `reading-progress`'s `onConnectionRemoved`). Downloads save the EPUB as `book.epub` beside
   the audio when the book has one, after the audio: an attempt that fails on the audio never
   fetches it, so a retry fetches it once. Optional: a failure keeps the audio, a cancel cancels
   the book.

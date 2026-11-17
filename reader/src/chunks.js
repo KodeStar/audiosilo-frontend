@@ -16,15 +16,17 @@ export const MAX_CHUNKS = 65536;
 
 export class ChunkError extends Error {}
 
+/** A book over `MAX_BOOK_BYTES`: refused like any wrong transfer, and said as too large. */
+export class TooLargeError extends ChunkError {}
+
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
 
 /** A book announced by `open`: `add` each chunk in order; it returns the whole book's
  * bytes (an ArrayBuffer) with the last one, null before. Throws a ChunkError when the
  * transfer is wrong in any way, after which it accepts nothing more. */
 export function createAssembly(size, chunks) {
-  if (!Number.isInteger(size) || size < 1 || size > MAX_BOOK_BYTES) {
-    throw new ChunkError('the book size is not valid');
-  }
+  if (!Number.isInteger(size) || size < 1) throw new ChunkError('the book size is not valid');
+  if (size > MAX_BOOK_BYTES) throw new TooLargeError('the book is too large to open');
   if (!Number.isInteger(chunks) || chunks < 1 || chunks > MAX_CHUNKS || chunks > size) {
     throw new ChunkError('the chunk count is not valid');
   }
