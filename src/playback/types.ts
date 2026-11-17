@@ -245,11 +245,14 @@ export interface PlaybackService {
    * Native: the engine ALREADY moved because of something outside the JS API (the lock
    * screen or notification scrubber, its skip and chapter buttons, a headset, CarPlay,
    * Android Auto and their chapter lists), and landed at `(trackIndex, positionInTrack)`.
-   * The engine updates its snapshot BEFORE calling `handler`, so a save inside it saves the
-   * new place. The store treats it as the listener's own move (it lowers the resume
-   * floor). Not called for moves the JS asked for, auto-rewind, Smart speed's skips, or a
-   * file running on into the next. Optional: the web routes its OS seeks through
-   * `onRemoteSeek` instead (its engine has not moved yet when the OS asks).
+   * The landed place reaches the snapshot's listeners right AFTER `handler` on the native
+   * engine (fe#211: the handler ends the listening span where the engine was, before any
+   * save, cut or keep sees the landed place) and just before it on the Cast route, so a
+   * save for the move waits a microtask, never runs inside `handler`. The store treats it as
+   * the listener's own move (it lowers the resume floor). Not called for moves the JS asked
+   * for, auto-rewind, Smart speed's skips, or a file running on into the next. Optional: the
+   * web routes its OS seeks through `onRemoteSeek` instead (its engine has not moved yet when
+   * the OS asks).
    */
   onRemoteMove?(handler: ((trackIndex: number, positionInTrack: number) => void) | null): void;
   /** Native: the OS changed the speed (CarPlay's rate button, iOS's rate command, an

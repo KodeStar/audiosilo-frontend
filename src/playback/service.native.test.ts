@@ -156,6 +156,24 @@ describe('a progress tick that jumped while playing', () => {
     expect(heard()).toEqual([11, 2]);
   });
 
+  // A move into another file lands in a tick with that file's length, held for the move.
+  it('keeps the held tick’s length for the move that replaces it', async () => {
+    const { svc } = await playing();
+    send('onProgress', { position: 3, duration: 250 });
+    expect(svc.getSnapshot()).toMatchObject({ position: 11, duration: 100 });
+    send('onRemoteMove', { trackIndex: 1, position: 3 });
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 3, duration: 250 });
+  });
+
+  it('gives its listeners the landed place even when the move’s handler throws', async () => {
+    const { svc, heard } = await playing();
+    svc.onRemoteMove!(() => {
+      throw new Error('handler failed');
+    });
+    expect(() => send('onRemoteMove', { trackIndex: 0, position: 70 })).toThrow('handler failed');
+    expect(heard()).toEqual([11, 70]);
+  });
+
   it('takes a move the engine made by itself once the wait is over, the newest tick', async () => {
     const { heard } = await playing();
     send('onProgress', { position: 70, duration: 100 });

@@ -61,8 +61,9 @@ class NativePlaybackService implements PlaybackService {
     since: number;
     timer: ReturnType<typeof setTimeout>;
   } | null = null;
-  /** The last progress tick the snapshot took in this stretch of playing, and when. */
-  private lastTick: { position: number; trackIndex: number; at: number } | null = null;
+  /** The last progress tick the snapshot took in this stretch of playing, and when. Always
+   * of the snapshot's file: a new file starts the measure afresh (`update`). */
+  private lastTick: { position: number; at: number } | null = null;
 
   private emit() {
     for (const listener of this.listeners) listener(this.snapshot);
@@ -105,7 +106,6 @@ class NativePlaybackService implements PlaybackService {
     const jumped =
       playing &&
       last !== null &&
-      last.trackIndex === this.snapshot.trackIndex &&
       (position - last.position >
         ((now - last.at) / 1000) * (this.snapshot.rate || 1) + LANDING_AHEAD_S ||
         position < last.position - LANDING_BACK_S);
@@ -132,8 +132,8 @@ class NativePlaybackService implements PlaybackService {
    * last tick the next one is measured from (`progress`). */
   private setPlace(patch: Partial<PlaybackSnapshot>, at: number) {
     this.snapshot = { ...this.snapshot, ...patch };
-    const { state, position, trackIndex } = this.snapshot;
-    this.lastTick = state === 'playing' ? { position, trackIndex, at } : null;
+    const { state, position } = this.snapshot;
+    this.lastTick = state === 'playing' ? { position, at } : null;
   }
 
   async setup() {
@@ -155,16 +155,22 @@ class NativePlaybackService implements PlaybackService {
       // The engine already moved (the lock screen, a headset, the car): the store hears of
       // the move first, its landed place (this snapshot's, `getSnapshot`) right after, so its
       // listening span ends where the engine was, never at the landed place (fe#211). A tick
-      // held for it (`progress`) is replaced.
+      // held for it (`progress`) is replaced, its length kept: a move into another file lands
+      // in a tick with that file's length. The listeners take the place whatever the handler
+      // does.
       AudiosiloPlayer.addListener('onRemoteMove', ({ trackIndex, position }) => {
         if (!Number.isFinite(trackIndex) || !Number.isFinite(position)) return;
         this.dropHeld();
-        this.setPlace({ trackIndex, position }, Date.now());
-        this.remoteMove?.(trackIndex, position);
-        this.emit();
+        this.setPlace({ trackIndex, position, duration }, Date.now());
+        try {
+          this.remoteMove?.(trackIndex, position);
+        } finally {
+          this.emit();
+        }
       }),
       AudiosiloPlayer.addListener('onRateChange', ({ rate }) => {
         if (!Number.isFinite(rate) || rate <= 0) return;
+        const duration = this.held?.duration ?? this.snapshot.duration;
         this.update({ rate });
         this.rateChange?.(rate);
       }),
