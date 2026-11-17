@@ -311,9 +311,7 @@ setDownloadLengthCheck(async (connectionId, libraryId, path) => {
 setKeptMetaRefresh(async (connectionId, libraryId, path) => {
   const entry = downloadedEntryOf({ connectionId, libraryId, path });
   if (!entry) return;
-  const key = downloadKey(connectionId, libraryId, path);
-  metaTried.delete(`${key}@${entry.manifest.savedAt}`);
-  await keepOfflineMeta(key);
+  await keepOfflineMeta(downloadKey(connectionId, libraryId, path), { force: true });
 });
 
 // --- helpers ---------------------------------------------------------------
@@ -1136,12 +1134,12 @@ function stillDownloaded(key: string, entry: DownloadEntry): boolean {
 }
 
 /** Keep a downloaded book's community metadata beside its files (best effort, once per
- * launch): read it, save it, mark the manifest and seed the cache. */
-async function keepOfflineMeta(key: string): Promise<void> {
+ * launch unless `force`): read it, save it, mark the manifest and seed the cache. */
+async function keepOfflineMeta(key: string, { force = false } = {}): Promise<void> {
   const entry = useDownloads.getState().entries[key];
   if (!entry || entry.status !== 'downloaded' || !engine.writeText) return;
   const attempt = `${key}@${entry.manifest.savedAt}`;
-  if (metaTried.has(attempt)) return;
+  if (metaTried.has(attempt) && !force) return;
   metaTried.add(attempt);
   const payload = await captureOfflineMeta(entry);
   if (!payload || !stillDownloaded(key, entry)) return;
