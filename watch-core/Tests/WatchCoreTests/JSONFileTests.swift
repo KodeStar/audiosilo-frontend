@@ -5,7 +5,7 @@ import XCTest
 
 @testable import WatchCore
 
-private func tempDir(_ test: XCTestCase) throws -> URL {
+func tempDir(_ test: XCTestCase) throws -> URL {
   let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
   try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
   test.addTeardownBlock {

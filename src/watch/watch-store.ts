@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 
 import { onForeground } from '@/lib/when-active';
-import { onConnectionRemoved } from '@/stores/session';
+import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import { watchLink } from './link';
 import { applyWatchStatus, followConnectionRemovals, hydrateLedger } from './watch-ledger';
-import { accountOnWatch, NO_WATCH, type WatchStatus } from './watch-model';
+import { accountOnWatch, NO_WATCH, pairAfterSignIn, type WatchStatus } from './watch-model';
 
 type WatchStore = {
   status: WatchStatus;
@@ -24,9 +24,10 @@ export const useWatchStore = create<WatchStore>(() => ({ status: NO_WATCH, pairU
  * book would follow it and only be held), then as having run out when it never did. */
 function setStatus(status: WatchStatus): void {
   const here = accountOnWatch(status.state);
+  const { connections } = useSession.getState();
   useWatchStore.setState((s) => ({
     status,
-    pairUntil: here !== null && Object.hasOwn(s.pairUntil, here) ? {} : s.pairUntil,
+    pairUntil: pairAfterSignIn(s.pairUntil, here, connections),
   }));
   applyWatchStatus(status);
 }
@@ -60,16 +61,30 @@ export function startWatchLink(): void {
     .then(refreshWatch);
 }
 
+/** How many times each connection's pair was forgotten (`forgetPair`), for this run. */
+const forgotten = new Map<string, number>();
+
+/** The connection's pair epoch: a pair minted at one epoch and sent at another was forgotten on
+ * its way. */
+export function pairEpoch(connectionId: string): number {
+  return forgotten.get(connectionId) ?? 0;
+}
+
 /** A pair went out. The native link has cancelled any older one still undelivered, this
- * connection's or another's, so only this one counts. */
-export function notePairSent(connectionId: string, until: number): void {
-  useWatchStore.setState({ pairUntil: { [connectionId]: until } });
+ * connection's or another's, so only this one counts. `epoch`: `pairEpoch` when it was minted; a
+ * pair forgotten since (its token ended meanwhile) is not on its way, and has still cancelled the
+ * older one: then none is. */
+export function notePairSent(connectionId: string, until: number, epoch: number): void {
+  const live = epoch === pairEpoch(connectionId);
+  useWatchStore.setState({ pairUntil: live ? { [connectionId]: until } : {} });
 }
 
 /** The connection's pair on its way can no longer sign the watch in: its token was ended (a
  * password change ends the account's open pairing tokens on the server), or the connection went.
- * The next book brings a new one, and the card offers set up again. */
+ * The next book brings a new one, and the card offers set up again. One still being minted or sent
+ * is forgotten too, when it lands (`pairEpoch`). */
 export function forgetPair(connectionId: string): void {
+  forgotten.set(connectionId, pairEpoch(connectionId) + 1);
   useWatchStore.setState((s) => {
     if (!Object.hasOwn(s.pairUntil, connectionId)) return s;
     const { [connectionId]: _gone, ...rest } = s.pairUntil;

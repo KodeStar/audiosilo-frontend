@@ -37,6 +37,9 @@ final class APIClient: ListeningSyncTransport, @unchecked Sendable {
 
   // MARK: - Requests
 
+  /// The `Authorization` header this client sends; nil with no token.
+  var authorization: String? { token.map { "Bearer \($0)" } }
+
   func url(_ path: String, query: [String: String] = [:]) -> URL? {
     guard var c = URLComponents(string: base + "/api/v1" + path) else { return nil }
     // Encoded by hand: `queryItems` would leave `;` and `+` raw (QueryString).
@@ -53,7 +56,7 @@ final class APIClient: ListeningSyncTransport, @unchecked Sendable {
     r.httpMethod = method
     r.setValue(ClientHeader.value(version: appVersion), forHTTPHeaderField: ClientHeader.name)
     r.setValue("application/json", forHTTPHeaderField: "Accept")
-    if let token { r.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+    if let authorization { r.setValue(authorization, forHTTPHeaderField: "Authorization") }
     if let body {
       r.httpBody = body
       r.setValue("application/json", forHTTPHeaderField: "Content-Type")

@@ -9,8 +9,9 @@
 // CLOSED on a pause, a move (the next span opens with the move's reason), a stop, a book switch
 // and the end (then one `finish`). The open span is stored every 5 s (`OPEN_SPAN_KEEP`) with its
 // id fixed at open, and one a kill left is closed into the outbox at the next launch (one a
-// move opened and a kill cut short gives the launch's first span, when it is that book's and
-// resumes this watch's own place, the move's reason).
+// move opened and a kill cut short gives the next span, when it is that book's and resumes this
+// watch's own place, the move's reason; that move is stored too, so a launch that ends before the
+// book plays again, a background wake, keeps it for the next one).
 import Foundation
 
 /// One end of a span: whole-book seconds, and the audio file (rel path) and seconds in it.
@@ -129,11 +130,20 @@ enum Spans {
   }
 }
 
+/// A move a kill cut short (`SpanRecorder.recover`): the book and the reason its next span takes.
+struct RecoveredMove: Codable, Equatable, Sendable {
+  var ref: BookRef
+  var start: ListeningStart
+}
+
 /// Where the open span is kept between launches (Files.swift's `open-span.json`; a memory
-/// copy in the tests).
+/// copy in the tests), and the move a kill cut short until a span takes it
+/// (`open-span-move.json`, fe#321).
 protocol OpenSpanStore: AnyObject {
   func load() -> OpenSpan?
   func save(_ span: OpenSpan?)
+  func loadMove() -> RecoveredMove?
+  func saveMove(_ move: RecoveredMove?)
 }
 
 /// The span lifecycle. One per app; used on the main actor.
@@ -154,10 +164,11 @@ final class SpanRecorder {
   /// The book whose `finish` was sent: one per end, until it plays again.
   private var finishSent: BookRef?
   private var recovered = false
-  /// The move a kill cut short (`recover`): the launch's first span, when it is that book's,
-  /// nothing else was asked for (a resume) and it begins at this watch's own place
-  /// (`loadsFromRow`), begins with the move's reason.
-  private var recoveredMove: (ref: BookRef, start: ListeningStart)?
+  /// The move a kill cut short (`recover`): the next span, when it is that book's, nothing else
+  /// was asked for (a resume) and it begins at this watch's own place (`loadsFromRow`), begins
+  /// with the move's reason. Kept in the store until a span opens, so a launch that ends before
+  /// one does (a background wake) leaves it to the next (fe#321).
+  private var recoveredMove: RecoveredMove?
 
   init(store: OpenSpanStore, acks: AckStore, clock: @escaping () -> Date = Date.init,
        newId: @escaping () -> String = { UUID().uuidString },
@@ -175,15 +186,32 @@ final class SpanRecorder {
   func recover() {
     guard !recovered else { return }
     recovered = true
+    // One an earlier launch recovered and no span took.
+    recoveredMove = store.loadMove()
     if let left = store.load() {
       // In this order, as in `close`: a kill between the two sends the span twice under its one
-      // id (`duplicate`), the other way round it would lose the span.
+      // id (`duplicate`), the other way round it would lose the span. The move goes before the
+      // span leaves the store: a kill in between recovers both again.
       append(left)
-      store.save(nil)
       // A kill within `OPEN_SPAN_KEEP` of a move left the span the move opened, nothing heard:
       // a bare move, so the book's next span carries it, as after a pause (`close`).
-      if Spans.isBareMove(left) { recoveredMove = (left.ref, Spans.carried(left.start)) }
+      keepMove(Spans.isBareMove(left) ? RecoveredMove(ref: left.ref, start: Spans.carried(left.start)) : nil)
+      store.save(nil)
     }
+  }
+
+  /// The recovered move, in memory and in the store (written only when it changes).
+  private func keepMove(_ move: RecoveredMove?) {
+    guard move != recoveredMove else { return }
+    recoveredMove = move
+    store.saveMove(move)
+  }
+
+  /// The account left the watch: a move it recovered is no other account's. Written even with none
+  /// in memory (not `keepMove(nil)`): before `recover` the store may still hold one.
+  func forgetMove() {
+    recoveredMove = nil
+    store.saveMove(nil)
   }
 
   /// The base a span goes on as it closes: the version acknowledged now, never below the one
@@ -214,7 +242,7 @@ final class SpanRecorder {
   /// here was not made from that place, so it is not the reason of the book's first span.
   func loadsFromRow(_ ref: BookRef) {
     recover()
-    if recoveredMove?.ref == ref { recoveredMove = nil }
+    if recoveredMove?.ref == ref { keepMove(nil) }
   }
 
   /// Playing began (or goes on after a cut) at `at`.
@@ -223,10 +251,7 @@ final class SpanRecorder {
     if span?.ref == book.ref { return }
     // Taken first: closing another book's span may leave that book's move in `nextStart`.
     var start = nextStart
-    if let m = recoveredMove {
-      recoveredMove = nil
-      if m.ref == book.ref && start == .resume { start = m.start }
-    }
+    if let m = recoveredMove, m.ref == book.ref, start == .resume { start = m.start }
     close(at: nil)
     let now = clock()
     nextStart = .resume
@@ -242,6 +267,9 @@ final class SpanRecorder {
       start: start, baseVersion: base, id: newId())
     span = opened
     store.save(opened)
+    // Any book's span ends the recovered move, once that span is stored: a kill in between leaves
+    // both, and the next launch recovers the move again (`recover`).
+    keepMove(nil)
   }
 
   /// Close the open span at `at` (nil: where it was last seen) into the outbox. Returns it.

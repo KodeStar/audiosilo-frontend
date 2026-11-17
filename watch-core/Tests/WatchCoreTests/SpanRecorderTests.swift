@@ -8,10 +8,19 @@ import XCTest
 final class MemorySpanStore: OpenSpanStore {
   var stored: OpenSpan?
   var saves: [OpenSpan?] = []
+  var move: RecoveredMove?
+  /// What the store held after each write: what a kill right behind that write leaves.
+  var writes: [(span: OpenSpan?, move: RecoveredMove?)] = []
   func load() -> OpenSpan? { stored }
   func save(_ span: OpenSpan?) {
     stored = span
     saves.append(span)
+    writes.append((stored, move))
+  }
+  func loadMove() -> RecoveredMove? { move }
+  func saveMove(_ move: RecoveredMove?) {
+    self.move = move
+    writes.append((stored, move))
   }
 }
 
@@ -543,6 +552,86 @@ final class SpanRecorderTests: XCTestCase {
     next.close(at: at(30))
     next.open(book, at: at(30), speed: 1)
     XCTAssertEqual(next.span?.start, .resume, "taken once")
+  }
+
+  // fe#321: a launch that recovered the move but ended before the book played (a background wake)
+  // leaves it to the next launch: it is kept in the store, not in memory alone.
+  func testAKilledMoveOutlivesALaunchThatNeverPlays() {
+    let r = recorder()
+    r.open(book, at: at(80), speed: 1)
+    clock.advance(10)
+    r.move(book, to: at(10), from: at(90), playing: true, speed: 1)
+    // A kill, then a background wake that recovers the span and ends without playing.
+    let wake = recorder()
+    wake.recover()
+    XCTAssertNil(store.stored)
+    XCTAssertEqual(store.move, RecoveredMove(ref: book.ref, start: .movedBack))
+    // The launch after that.
+    let next = recorder()
+    next.recover()
+    next.prepareStart(.resume)
+    next.open(book, at: at(10), speed: 1)
+    XCTAssertEqual(next.span?.start, .movedBack)
+    XCTAssertNil(store.move, "taken once, off the store too")
+    // And not again at the launch after.
+    next.close(at: at(10))
+    let later = recorder()
+    later.prepareStart(.resume)
+    later.open(book, at: at(10), speed: 1)
+    XCTAssertEqual(later.span?.start, .resume)
+  }
+
+  func testAKeptMoveGoesWithARowTakenOrTheAccount() {
+    store.move = RecoveredMove(ref: book.ref, start: .jump)
+    let r = recorder()
+    r.loadsFromRow(book.ref)
+    XCTAssertNil(store.move, "the place came from the server's row")
+
+    store.move = RecoveredMove(ref: book.ref, start: .jump)
+    let s = recorder()
+    s.recover()
+    s.forgetMove()
+    XCTAssertNil(store.move, "the account left")
+    s.prepareStart(.resume)
+    s.open(book, at: at(10), speed: 1)
+    XCTAssertEqual(s.span?.start, .resume)
+  }
+
+  // The span that takes a kept move is stored before the move leaves the store: a kill between
+  // the two writes leaves both, never neither, and the launch after gives the book the move again.
+  func testAKillAsASpanTakesAKeptMoveKeepsTheMove() {
+    store.move = RecoveredMove(ref: book.ref, start: .jump)
+    let r = recorder()
+    r.prepareStart(.resume)
+    r.open(book, at: at(10), speed: 1)
+    XCTAssertEqual(r.span?.start, .jump)
+    XCTAssertNil(store.move)
+    // A kill right behind the first of the two writes: a new launch on what the store held then.
+    let killed = MemorySpanStore()
+    (killed.stored, killed.move) = store.writes[0]
+    store = killed
+    emitted = []
+    let next = recorder()
+    next.prepareStart(.resume)
+    next.open(book, at: at(10), speed: 1)
+    XCTAssertEqual(next.span?.start, .jump)
+    XCTAssertEqual(listens.map(\.start), [.jump], "the span the kill left, recovered")
+    XCTAssertNil(store.move, "taken once")
+  }
+
+  func testASpanHeardAfterTheMoveReplacesAKeptMove() {
+    // A kept move whose launch then played and was killed after listening: that span says nothing
+    // of a move, so the kept one (stale) does not reach the next play.
+    store.move = RecoveredMove(ref: book.ref, start: .jump)
+    store.stored = OpenSpan(libraryId: 2, path: "A/Folder", from: at(5), to: at(15), duration: 100, speed: 1,
+                            startedAt: clock.now, endedAt: clock.now.addingTimeInterval(10), start: .resume,
+                            baseVersion: 0, id: "left")
+    let r = recorder()
+    r.recover()
+    XCTAssertNil(store.move)
+    r.prepareStart(.resume)
+    r.open(book, at: at(15), speed: 1)
+    XCTAssertEqual(r.span?.start, .resume)
   }
 
   func testAKilledMoveGivesWayToAReasonAskedFor() {

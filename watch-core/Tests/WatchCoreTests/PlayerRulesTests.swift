@@ -394,6 +394,16 @@ final class AccountRulesTests: XCTestCase {
     // A 401, any other refusal, a body with no id, no answer at all: the exchange decides.
     XCTAssertFalse(AccountRules.keepsToken(meUserId: nil, userId: 7))
   }
+
+  // fe#322: exchanged anyway (no word on the token kept), the old token's session ends on the server.
+  func testAnExchangeForTheSameAccountEndsTheTokenItReplaces() {
+    XCTAssertTrue(AccountRules.endsKeptToken(.sameAccount, kept: "old", new: "new"))
+    XCTAssertFalse(AccountRules.endsKeptToken(.sameAccount, kept: "same", new: "same"), "never the token now kept")
+    XCTAssertFalse(AccountRules.endsKeptToken(.sameAccount, kept: nil, new: "new"), "none kept")
+    XCTAssertFalse(AccountRules.endsKeptToken(.sameAccount, kept: "", new: "new"))
+    XCTAssertFalse(AccountRules.endsKeptToken(.replace, kept: "old", new: "new"), "a replace ends its own")
+    XCTAssertFalse(AccountRules.endsKeptToken(.signIn, kept: "old", new: "new"))
+  }
 }
 
 @MainActor

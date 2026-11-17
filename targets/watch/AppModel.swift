@@ -636,8 +636,13 @@ final class AppModel: ObservableObject {
         // The token was lost, and what is here is another account's: never sent under this one.
         forgetAccount()
       }
+      // Read before it is written over: ended on its server below once the new one is kept.
+      let keptToken = Keychain.token()
       guard Keychain.setToken(session.token) else {
         failed("The watch could not keep its sign-in.")
+        // The session the exchange just made is kept nowhere: ended on its server, best effort.
+        let unkept = APIClient(base: base, token: session.token)
+        Task { try? await unkept.logout() }
         // The account may be gone already (above): the phone is told, and its titles leave.
         publishState()
         return
@@ -649,6 +654,15 @@ final class AppModel: ObservableObject {
       Account.save(a)
       account = a
       router.start(at: AddressPicker.isOwn(base, serverURL: a.serverURL, addresses: a.addresses) ? base : nil)
+      if let keptToken, AccountRules.endsKeptToken(change, kept: keptToken, new: session.token) {
+        // A Send again whose `GET /me` got no word: the session the old token holds ends too, once
+        // no download goes on with it (one refused 401 after this would fail its book as signed out).
+        let ended = APIClient(base: base, token: keptToken)
+        Task {
+          await downloads.tokenReplaced()
+          try? await ended.logout()
+        }
+      }
       phase = .ready
       pendingReplace = nil
       publishState()
@@ -731,6 +745,7 @@ final class AppModel: ObservableObject {
     try? FileManager.default.removeItem(at: Files.items)
     acks.clear()
     places.clear()
+    spans.forgetMove()
     outbox.discardAll()
     SyncUploader.shared.cancelAll()
     router.reset()

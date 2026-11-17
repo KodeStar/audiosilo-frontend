@@ -252,6 +252,24 @@ final class RenditionPlanTests: XCTestCase {
     XCTAssertEqual(RenditionPlan.message(.unavailable), "This server can't make books for the watch now.")
   }
 
+  func testAnAnswerTheWatchCantReadFailsTheBookInsteadOfWaitingOnTheConnection() {
+    // A 200 renditions answer in a shape this build can't decode (fe#320): the server answered, so
+    // it is no wait on the connection that would POST again every minute for good.
+    let garbled = Data(#"{"kind":"watch","files":"soon"}"#.utf8)
+    do {
+      _ = try Wire.decoder.decode(RenditionsAnswer.self, from: garbled)
+      XCTFail("it does not decode")
+    } catch {
+      XCTAssertEqual(RenditionPlan.trouble(error), .unreadable)
+    }
+    XCTAssertEqual(RenditionPlan.UNREADABLE, "Your server sent something this watch can't read.")
+    XCTAssertEqual(RenditionPlan.trouble(URLError(.timedOut)), .noAnswer, "no answer still waits")
+    XCTAssertEqual(RenditionPlan.trouble(URLError(.cannotParseResponse)), .noAnswer)
+    XCTAssertEqual(RenditionPlan.trouble(APIError(status: 503, code: "rendition_pending", retryAfter: 15)),
+                   .refused(.retry(after: 15)))
+    XCTAssertEqual(RenditionPlan.trouble(APIError(status: 401)), .refused(.signedOut))
+  }
+
   func testAnAnswerMustHoldEveryFileTheTimelinePlays() {
     func files(_ paths: String...) -> RenditionsAnswer {
       RenditionsAnswer(kind: "watch", files: paths.map { RenditionFile(path: $0, state: "ready") })

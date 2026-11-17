@@ -8,7 +8,9 @@
 //
 // While suspended, a task begun at the home address goes on there with its token, on whatever
 // network the system finds: cancelled and started again when the app next sees the pick has left
-// home (`RenditionPlan.keepsTransfer`, DownloadManager), not before.
+// home (`RenditionPlan.keepsTransfer`, DownloadManager), not before. Accepted (fe#216, owner
+// decision): cancelling such tasks on going to the background would lose the downloads of a server
+// only reachable at home.
 //
 // One delegate for the app's one background session; the DownloadManager sets `handler`.
 import Foundation
@@ -92,6 +94,26 @@ final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate, @unchecke
     session.getAllTasks { tasks in
       for t in tasks where Self.tag(t)?.book == book { t.cancel() }
     }
+  }
+
+  /// Cancel every task: the account left, and each is its own (also one of a book no record names
+  /// while the download index is unread).
+  func cancelAll() {
+    session.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
+  }
+
+  /// Cancel every transfer that does not send `authorization`: the files they were for. The token
+  /// was replaced and the one they carry ends on the server next, so a request the system makes
+  /// for one later (not begun yet, or tried again after a broken connection) would be refused 401.
+  /// A plain cancel brings no event.
+  func cancel(notSending authorization: String?) async -> [DownloadTaskTag] {
+    var cancelled: [DownloadTaskTag] = []
+    for task in await session.allTasks
+    where task.originalRequest?.value(forHTTPHeaderField: "Authorization") != authorization {
+      task.cancel()
+      if let tag = Self.tag(task) { cancelled.append(tag) }
+    }
+    return cancelled
   }
 
   /// A background wake for this session: resolves once the system's events are delivered.

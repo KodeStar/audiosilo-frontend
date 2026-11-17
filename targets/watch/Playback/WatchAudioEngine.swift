@@ -82,10 +82,9 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   private var lastTick = Date()
   private var lastKeep = Date()
   private var lastCut = Date()
-  /// It was playing when an interruption began: it plays on if that ends with `shouldResume`.
-  private var resumeAfterInterruption = false
-  /// When the system last paused the player (a pause the listener made clears it).
-  private var systemPausedAt: Date?
+  /// Whether an interruption's end plays the book again, and when the system last paused it
+  /// (monotonic: `StartRefusal.Stamp`).
+  private var interruption = InterruptionResume()
   /// When it last paused, for `onPickedUp`.
   private var pausedAt: Date?
   /// Which `play` a session activation is for: a pause or a stop meanwhile ends that one.
@@ -146,8 +145,8 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   private func controlChanged() {
     guard playing, !settling, player.currentItem != nil, player.timeControlStatus == .paused, player.rate == 0
     else { return }
-    let now = Date()
-    systemPausedAt = now
+    let now = StartRefusal.Stamp.now
+    interruption.systemPaused(at: now)
     let refusedStart = awaitingAudio
     pause(stoppedAt: lastAdvance)
     if refusedStart {
@@ -159,7 +158,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   /// The message of the start refused at `refusal`, once the slack has passed. No playback
   /// generation: `StartRefusal` keeps that stamp, so a timer finding a newer refusal (or none)
   /// shows nothing. The timer alone is the wait: a clock set back meanwhile cannot drop the message.
-  private func showRefusal(of refusal: Date) {
+  private func showRefusal(of refusal: StartRefusal.Stamp) {
     DispatchQueue.main.asyncAfter(deadline: .now() + StartRefusal.INTERRUPTION_SLACK) { [weak self] in
       MainActor.assumeIsolated {
         guard let self, let message = self.startRefusal.message(for: refusal) else { return }
@@ -399,8 +398,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   /// A pause nothing resumes by itself: the listener's, or headphones gone (`routeChanged`).
   private func hold(stoppedAt: Date?) {
     cancelStart()
-    resumeAfterInterruption = false
-    systemPausedAt = nil
+    interruption.held()
     pause(stoppedAt: stoppedAt)
   }
 
@@ -581,7 +579,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     let last = b.timeline.files.count - 1
     let lastDuration = b.timeline.files[last].duration
     let end = b.timeline.spanEnd(index: last, positionInTrack: lastDuration > 0 ? lastDuration : item.currentTime().seconds)
-    resumeAfterInterruption = false
+    interruption.held()
     playing = false
     ended = true
     spans.finish(b.playing, at: end)
@@ -622,14 +620,12 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     switch type {
     case .began:
       // Either order: the system may have paused the player just before this arrives.
-      let now = Date()
+      let now = StartRefusal.Stamp.now
       startRefusal.explained(at: now)
-      resumeAfterInterruption = playing || StartRefusal.withinSlack(of: systemPausedAt, at: now)
+      interruption.began(playing: playing, at: now)
       pause(stoppedAt: nil)
     case .ended:
-      let again = resumeAfterInterruption && resume
-      resumeAfterInterruption = false
-      if again { play() }
+      if interruption.ended(shouldResume: resume) { play() }
     @unknown default: break
     }
   }
@@ -639,11 +635,11 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   private func routeChanged(_ note: Notification) {
     let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
     guard raw.flatMap(AVAudioSession.RouteChangeReason.init(rawValue:)) == .oldDeviceUnavailable else { return }
-    startRefusal.explained(at: Date())
+    startRefusal.explained(at: .now)
     // The player may have stopped for it already (`controlChanged`): then an interruption beginning
-    // within the slack of that pause must not take it for its own and resume the book.
-    systemPausedAt = nil
-    if playing { hold(stoppedAt: lastAdvance) }
+    // within the slack of that pause must not take it for its own and resume the book. Paused by an
+    // interruption under way, its end must not play the book either (fe#320).
+    if playing { hold(stoppedAt: lastAdvance) } else { interruption.held() }
   }
 
   // MARK: - The session
