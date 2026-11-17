@@ -1340,6 +1340,44 @@ describe('the resumable snapshot (Android, fe#251)', () => {
     expect(lastSnapshot().tabs.map((t) => t.id)).toContain('library');
     expect(await getItem('audiosilo.carSnapshotWritten')).toBe(true);
   });
+
+  it('a pause while a snapshot is being written is written right after it, with no timer', async () => {
+    await setItem('audiosilo.carSeen', true);
+    usePlayer.setState(loaded('playing', 1, 20));
+    let answer = (_rows: Progress[]) => {};
+    mockClients.c1.allProgress.mockImplementationOnce(
+      () => new Promise<Progress[]>((resolve) => (answer = resolve)),
+    );
+    stop = startCarSync();
+    await settle(MIN_GAP_MS); // the launch's build is reading the server
+    expect(mockNative.setSnapshot).not.toHaveBeenCalled();
+
+    usePlayer.setState(loaded('paused', 1, 50));
+    await flushPromises();
+    answer([]);
+    await flushPromises(); // no timer runs: the launch's write,
+    await flushPromises(); // then the pause's
+    expect(tab(lastSnapshot(), 'continue')!.items[0].play).toMatchObject({
+      startIndex: 1,
+      positionInTrack: 50,
+    });
+  });
+
+  it("a resumption's write never holds back the build of a car that connects right after", async () => {
+    await setItem('audiosilo.carSeen', true);
+    usePlayer.setState(loaded('playing', 1, 20));
+    stop = startCarSync();
+    await settle(SETTLE_MS + MIN_GAP_MS);
+
+    usePlayer.setState(loaded('paused', 1, 50));
+    await flushPromises();
+    const reads = mockClients.c1.allProgress.mock.calls.length;
+
+    // No car saw that write: the connect's fresh build does not wait `MIN_GAP_MS` after it.
+    mockNative.connection?.(true);
+    await settle();
+    expect(mockClients.c1.allProgress.mock.calls.length).toBeGreaterThan(reads);
+  });
 });
 
 describe("the car's Library tab with no pick (D9, fe#271)", () => {

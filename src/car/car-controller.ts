@@ -935,7 +935,9 @@ async function write(cached = false): Promise<void> {
   } catch (err) {
     console.warn('[car] snapshot failed', err);
   } finally {
-    lastWriteAt = Date.now();
+    // The gap is between writes a car shows: a resumption's, made with none connected, never
+    // holds back the fresh build of a car that connects right after it.
+    if (!cached || isCarConnected()) lastWriteAt = Date.now();
     writing = false;
   }
   void fetchMissingArtwork();
