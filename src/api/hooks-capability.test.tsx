@@ -903,6 +903,69 @@ async function mountMutation<T>(caps: Partial<Capabilities>, flag: Flag, useHook
   return { ...r, qc: queryClients[queryClients.length - 1] };
 }
 
+// fe#270: a gated read whose flag is unknown because `/server` itself can't be read takes
+// that read's state, so the screen says offline (or names the server) instead of drawing a
+// skeleton that never ends.
+describe('a gated read while /server is held', () => {
+  it('reports paused while /server waits for the network, then runs by itself', async () => {
+    onlineManager.setOnline(false);
+    try {
+      const { result } = await mount({ c1: { collections: true } }, () => useCollections());
+      await waitFor(() => expect(result.current.isPaused).toBe(true));
+      expect(result.current.data).toBeUndefined();
+      expect(mockClients.c1.serverInfo).not.toHaveBeenCalled();
+      expect(mockClients.c1.collections).not.toHaveBeenCalled();
+      await act(async () => onlineManager.setOnline(true));
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(result.current.isPaused).toBe(false);
+      expect(mockClients.c1.collections).toHaveBeenCalledTimes(1);
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+
+  it("takes a failed /server read's error, and Retry asks /server again", async () => {
+    const down = new Error('Network request failed');
+    const { result } = await mount(
+      { c1: { collections: true } },
+      () => useCollections(),
+      () => mockClients.c1.serverInfo.mockRejectedValueOnce(down),
+    );
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error).toBe(down);
+    expect(result.current.isPending).toBe(false);
+    expect(mockClients.c1.collections).not.toHaveBeenCalled();
+    await act(async () => {
+      await result.current.refetch();
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockClients.c1.serverInfo).toHaveBeenCalledTimes(2);
+    expect(mockClients.c1.collections).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays an ordinary pending read while /server is on its way, or for a disabled hook', async () => {
+    onlineManager.setOnline(false);
+    try {
+      const { result } = await mount({ c1: { collections: true } }, () => ({
+        // A collection id that is no id: the hook asks nothing, held /server or not.
+        none: useCollection(0),
+        known: useCapability('collections'),
+      }));
+      await waitFor(() =>
+        expect(
+          queryClients[queryClients.length - 1].getQueryState(qk.server('c1'))?.fetchStatus,
+        ).toBe('paused'),
+      );
+      expect(result.current.none.isPaused).toBe(false);
+      expect(result.current.none.isError).toBe(false);
+      await act(async () => onlineManager.setOnline(true));
+      await waitFor(() => expect(result.current.known).toBe(true));
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+});
+
 describe('Phase 1b gated mutations', () => {
   it.each(mutationCases)(
     '$name rejects without a request on a server without $flag',

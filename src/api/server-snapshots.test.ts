@@ -9,13 +9,21 @@ jest.mock('@/api/provider', () => {
   const { QueryClient: QC } = jest.requireActual('@tanstack/react-query');
   return { queryClient: new QC({ defaultOptions: { queries: { retry: false } } }) };
 });
-// The session: two signed-in connections, and the removal listeners the modules register
-// (kept on the mock: the factory runs before this file's own constants exist).
+// The session: two signed-in connections on the server `srv`, the reconnect flag, and the
+// removal listeners the modules register (kept on the mock: the factory runs before this
+// file's own constants exist).
 jest.mock('@/stores/session', () => {
   const { create } = jest.requireActual('zustand');
   const removed: ((id: string) => void)[] = [];
   return {
-    useSession: create(() => ({ status: 'ready', connections: [{ id: 'c1' }, { id: 'c2' }] })),
+    useSession: create(() => ({
+      status: 'ready',
+      connections: [
+        { id: 'c1', serverId: 'srv' },
+        { id: 'c2', serverId: 'srv' },
+      ],
+      markNeedsReconnect: jest.fn(),
+    })),
     onConnectionRemoved: (cb: (id: string) => void) => {
       removed.push(cb);
       return () => undefined;
@@ -28,10 +36,12 @@ jest.mock('@/stores/session', () => {
 import { cachedCapability, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { OFFLINE_SERVERS_KEY } from '@/lib/storage-keys';
+import { useSession } from '@/stores/session';
 
 import {
   forgetServerSnapshot,
   keepServerAnswer,
+  keepServerFlag,
   readServerSnapshots,
   resetServerSnapshotsForTests,
   restoreServerSnapshots,
@@ -43,10 +53,10 @@ import {
 
 const qc = queryClient as QueryClient;
 
-function server(caps: Record<string, boolean>): ServerInfo {
+function server(caps: Record<string, boolean>, serverId = 'srv'): ServerInfo {
   return {
     name: 'S',
-    server_id: 'srv',
+    server_id: serverId,
     version: '1',
     api: '1',
     capabilities: caps as never,
@@ -188,6 +198,56 @@ describe('keeping every answer', () => {
     await written();
     expect(await readServerSnapshots()).toEqual({});
     invalidate.mockRestore();
+  });
+
+  it("keeps no answer that names another server, and flags the reset as the cache's read does", async () => {
+    const mark = useSession.getState().markNeedsReconnect as jest.Mock;
+    mark.mockClear();
+    seedServerSnapshot('c1', { info: server({ listening_sync: true }), savedAt: 7 });
+    expect(keepServerAnswer('c1', server({ listening_sync: false }, 'rebuilt'))).toBe(false);
+    expect(mark).toHaveBeenCalledWith('c1', 'server-reset');
+    expect(cachedCapability('c1', 'listening_sync')).toBe(true);
+    await written();
+    expect(await readServerSnapshots()).toEqual({});
+    // This server's own answer is kept, and flags nothing.
+    mark.mockClear();
+    expect(keepServerAnswer('c1', server({ listening_sync: false }))).toBe(true);
+    expect(mark).not.toHaveBeenCalled();
+    expect(cachedCapability('c1', 'listening_sync')).toBe(false);
+  });
+});
+
+describe('a flag a request proved', () => {
+  it('is set on a held answer that says otherwise, kept, and the cache asks again', async () => {
+    seedServerSnapshot('c1', {
+      info: server({ listening_sync: false, metadata: true }),
+      savedAt: 7,
+    });
+    const invalidate = jest.spyOn(qc, 'invalidateQueries');
+    try {
+      keepServerFlag('c1', 'listening_sync');
+      expect(cachedCapability('c1', 'listening_sync')).toBe(true);
+      expect(cachedCapability('c1', 'metadata')).toBe(true);
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.server('c1') });
+      await written();
+      expect((await readServerSnapshots()).c1.info.capabilities.listening_sync).toBe(true);
+    } finally {
+      invalidate.mockRestore();
+    }
+  });
+
+  it('changes nothing when no answer is held or it says so already', async () => {
+    const invalidate = jest.spyOn(qc, 'invalidateQueries');
+    try {
+      keepServerFlag('c1', 'listening_sync');
+      expect(qc.getQueryData(qk.server('c1'))).toBeUndefined();
+      seedServerSnapshot('c2', { info: server({ listening_sync: true }), savedAt: 7 });
+      keepServerFlag('c2', 'listening_sync');
+      expect(qc.getQueryState(qk.server('c2'))?.dataUpdatedAt).toBe(7);
+      expect(invalidate).not.toHaveBeenCalled();
+    } finally {
+      invalidate.mockRestore();
+    }
   });
 });
 

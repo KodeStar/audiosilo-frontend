@@ -812,7 +812,13 @@ export class CapabilityError extends Error {
  * has no function at all (`skipToken`), so not even a manual `refetch` reaches the
  * server (React Query rejects it instead). `ready` is the caller's own condition of the
  * same strength (an `enabled` flag, a valid id); `enabled` is React Query's own, which
- * only stops automatic fetching (a manual `refetch` still runs). */
+ * only stops automatic fetching (a manual `refetch` still runs).
+ *
+ * While the flag is unknown because the connection's `/server` read is itself held for
+ * the network (paused) or failed with nothing kept, the query takes that read's state
+ * (fe#270): `isPaused`, or the error, so `useUnreadQuery` says offline or names the
+ * server instead of the screen drawing a skeleton for good. A `refetch` then asks
+ * `/server` again; once it answers, the query runs by itself. */
 function useCapabilityQuery<T, S = T>(
   flag: keyof Capabilities,
   queryKey: (cid: string) => readonly unknown[],
@@ -829,8 +835,10 @@ function useCapabilityQuery<T, S = T>(
 ) {
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
-  const supported = useCapability(flag, connectionId) === true;
-  return useQuery<T, Error, S, readonly unknown[]>({
+  const info = useServerInfo(connectionId);
+  const caps = info.data?.capabilities;
+  const supported = caps?.[flag] === true;
+  const query = useQuery<T, Error, S, readonly unknown[]>({
     queryKey: queryKey(cid),
     queryFn:
       supported && api && opts.ready !== false ? ({ signal }) => load(api, signal) : skipToken,
@@ -840,6 +848,36 @@ function useCapabilityQuery<T, S = T>(
     ...(opts.refetchInterval !== undefined ? { refetchInterval: opts.refetchInterval } : {}),
     ...(opts.select !== undefined ? { select: opts.select } : {}),
   });
+  // Only a read that would run once the flag is known, and holds nothing of its own. The
+  // query's own fields are read last: reading one subscribes this render to it, and a
+  // caller that reads none of them must still be told of every change (tracked props).
+  const held =
+    !caps &&
+    !!api &&
+    opts.ready !== false &&
+    opts.enabled !== false &&
+    (info.isPaused || info.isError) &&
+    query.data === undefined;
+  if (!held) return query;
+  const refetch: typeof query.refetch = async () => {
+    await info.refetch();
+    return query;
+  };
+  return (
+    info.isPaused
+      ? { ...query, isPaused: true, fetchStatus: 'paused', refetch }
+      : {
+          ...query,
+          error: info.error,
+          isError: true,
+          isPending: false,
+          isLoading: false,
+          isLoadingError: true,
+          status: 'error',
+          fetchStatus: 'idle',
+          refetch,
+        }
+  ) as typeof query;
 }
 
 /** A capability-gated mutation: `request` runs against the connection's client only
