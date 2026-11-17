@@ -101,7 +101,7 @@ can never log anyone out (`{ authReset, cacheReset }`):
   one, so never `i18n.changeLanguage` directly (tests included: the catalog would not be in). A new module for the first screen keeps a static import; one
   for an overlay or a listener goes behind `deferred` in a web file, never in a shared one
   (native must not change). `public/sw.js` precaches the whole build (`precacheBuild`: the
-  shell's scripts, its fonts (the `StaticFonts` preloads, read from the shell only, fe#177) and
+  shell's scripts, its fonts (the `StaticFonts` preloads, read from the shell only, fe#177; one already cached is never fetched again) and
   every chunk they name, transitively; the shell cached once its own files are in), at install and when the app asks (`askPrecache`, 5 s after load), so a page never
   opened online still boots offline. Once a build is complete, the one before it stays one
   deploy longer (a tab still running it opens its pages from those files), older files go, and

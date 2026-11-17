@@ -185,6 +185,22 @@ describe('service worker: precacheBuild', () => {
     expect(t.cached()).toContain(font('c'));
   });
 
+  it('keeps a cached font at the next install, never fetching it again', async () => {
+    const font = 'https://box.test/web/assets/fonts/Figtree_400.f1.ttf';
+    const site = build('a');
+    site[SCOPE] += `<link rel="preload" href="/web/assets/fonts/Figtree_400.f1.ttf" as="font">`;
+    const t = load({ ...site, [font]: 'font-bytes' });
+    await t.sw.precacheBuild(true);
+    // The next install (each deploy's) writes the scripts again, not the font: a fetch of it
+    // that failed then would have dropped the copy the last build cached.
+    t.fetched.length = 0;
+    t.offline.add(font);
+    await t.sw.precacheBuild(true);
+    expect(t.fetched).not.toContain(font);
+    expect(t.fetched).toContain(js('index-a'));
+    expect(t.cached()).toContain(font);
+  });
+
   it('caches the shell for offline when a font of it is refused, the font left out', async () => {
     const site = build('a');
     site[SCOPE] += `<link rel="preload" href="/web/assets/fonts/Missing.ttf" as="font">`;

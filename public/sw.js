@@ -242,8 +242,9 @@ function refsOf(text, pattern) {
  * At install (`fresh`) every file is written again, even one already cached: Chrome
  * compiles a script a worker caches while installing and keeps the code with it, so the
  * next start skips most of its compiling (the app registers the worker under its build's
- * name, so each deploy installs one). Otherwise (the app's ask) a hashed file already
- * cached is not fetched again, and a shell naming the same files as last time is done.
+ * name, so each deploy installs one). A font has no such code, and is never fetched again.
+ * Otherwise (the app's ask) a hashed file already cached is not fetched again, and a shell
+ * naming the same files as last time is done.
  */
 async function precacheBuild(fresh = false) {
   try {
@@ -273,12 +274,12 @@ async function precacheBuild(fresh = false) {
       for (const url of level) seen.add(url);
       const texts = await Promise.all(
         level.map((url) => {
-          const asset = precacheAsset(cache, url, fresh);
+          if (!fonts.has(url)) return precacheAsset(cache, url, fresh);
           // A font is the look, not the boot: one the server won't give (a proxy refusing
           // its path) never stops the precache, or the shell would never be cached for
-          // offline. It is left out of the record.
-          if (!fonts.has(url)) return asset;
-          return asset.catch(() => {
+          // offline. It is left out of the record. Never fetched again once cached (`fresh`
+          // is for scripts, whose compiled code Chrome keeps): its name is its content.
+          return precacheAsset(cache, url, false).catch(() => {
             seen.delete(url);
             return '';
           });
