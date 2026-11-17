@@ -3843,7 +3843,11 @@ already on top (Up next's sheet over it; pushing `/player` over the open one sta
 player), plays the loaded book on (`seekBook` to `at`, so the Undo chip offers the way back,
 resuming a paused one) or starts another in place under the docked bar through its own connection
 once its chapters are in (`startBookInPlace`, at `at`). It rejects when the book can't be fetched,
-so the caller can say so (`useJumpTo` toasts).
+so the caller can say so (`useJumpTo` toasts). A path that is not the book's own (a stale Up next
+entry: a part path the server now resolves to the folder book holding it) whose book is the one
+loaded starts nothing: `startBookInPlace` plays the loaded book on and takes both paths off Up next
+(`playsOnLoaded`, fe#147; the player route's guard does the same on a phone), from Play now and the
+car alike.
 
 **Bookmarks and notes** (`src/components/annotations/`, the barrel exports only what outside
 callers use; rules in the pure `labels.ts`, `drift-marker.ts`, `editor-model.ts`). Adding a

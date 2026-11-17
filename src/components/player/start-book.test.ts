@@ -13,13 +13,21 @@ let mockReachable = true;
 jest.mock('@/api/reachability', () => ({ isReachable: () => mockReachable }));
 const mockPlayBook = jest.fn();
 const mockSetRate = jest.fn();
+const mockToggle = jest.fn();
+// The book loaded in the player (its content key) and the engine's state; a test sets them.
+let mockLoadedKey: string | null = null;
+let mockEngineState = 'playing';
 jest.mock('@/playback/store', () => ({
   usePlayer: {
     getState: () => ({
       playBook: (...a: unknown[]) => mockPlayBook(...a),
       setRate: (r: number) => mockSetRate(r),
+      toggle: () => mockToggle(),
+      snapshot: { state: mockEngineState },
     }),
   },
+  selectBookKey: () => mockLoadedKey,
+  selectIsTransportLive: () => mockEngineState === 'playing',
 }));
 
 const mockDrop = jest.fn();
@@ -84,6 +92,9 @@ beforeEach(() => {
   mockChapters.mockReset().mockResolvedValue({ chapters: [], files: [] });
   mockPlayBook.mockReset().mockResolvedValue(undefined);
   mockSetRate.mockReset();
+  mockToggle.mockReset().mockResolvedValue(undefined);
+  mockLoadedKey = null;
+  mockEngineState = 'playing';
   mockDrop.mockReset().mockResolvedValue(undefined);
   mockRequestFetch.mockReset();
   mockCancelUnless.mockReset();
@@ -143,6 +154,47 @@ describe('startBookInPlace', () => {
     mockItem.mockResolvedValue({ rel_path: 'Folder' });
     await expect(startBookInPlace({ ...target, path: 'Folder/Part 1' })).resolves.toBe(true);
     expect(mockDrop).toHaveBeenCalledWith('c1', 2, 'Folder', 'Folder/Part 1');
+  });
+
+  // fe#147: a stale Up next entry (a part path) of the book already loaded, asked for from
+  // a tablet's Play now or the car, must not load the book a second time.
+  describe('a path the server resolves to the book already loaded', () => {
+    const part = { ...target, path: 'Folder/Part 1' };
+    beforeEach(() => {
+      mockItem.mockResolvedValue({ rel_path: 'Folder' });
+      mockLoadedKey = 'c1:2:Folder';
+    });
+
+    it('plays on, never a second start, and takes both paths off Up next', async () => {
+      await expect(startBookInPlace(part)).resolves.toBe(true);
+      expect(mockPlayBook).not.toHaveBeenCalled();
+      expect(mockToggle).not.toHaveBeenCalled();
+      expect(mockDrop).toHaveBeenCalledWith('c1', 2, 'Folder', 'Folder/Part 1');
+    });
+
+    it('plays a paused one', async () => {
+      mockEngineState = 'paused';
+      await expect(startBookInPlace(part)).resolves.toBe(true);
+      expect(mockPlayBook).not.toHaveBeenCalled();
+      expect(mockToggle).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['ended', 'error'])('starts a book that has %s again', async (state) => {
+      mockEngineState = state;
+      await expect(startBookInPlace(part)).resolves.toBe(true);
+      expect(mockPlayBook).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts as asked when the start names a place', async () => {
+      await expect(startBookInPlace(part, { position: 30 })).resolves.toBe(true);
+      expect(mockPlayBook).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts the book when another one is loaded', async () => {
+      mockLoadedKey = 'c1:2:Other';
+      await expect(startBookInPlace(part)).resolves.toBe(true);
+      expect(mockPlayBook).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('leaves Up next alone when the book does not start', async () => {
