@@ -1001,6 +1001,13 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   pressed in the book stays in the frame: the reader turns pages itself and sends Escape back
   (`escape`). An RTL book (`opened.rtl`) turns forward from the left edge and ArrowLeft. Only a
   bare arrow turns a page: with Cmd, Ctrl or Alt it is the browser's (Back, Forward).
+- **Contents** (`TocList` in `reader-screen.tsx`): every entry is drawn, its label on up to
+  two lines, and the list scrolls to the current one once it is laid out. From
+  `TOC_VIRTUAL_FROM` entries (fe#165) it is a virtual `FlatList` of rows of one height
+  (`getItemLayout`, the height following the text scale, labels one line) opened with
+  `initialScrollIndex`. Never a virtual list without `getItemLayout` here: opened in its
+  middle on rows of unknown height it draws them at offset 0 and goes back to the first
+  entries at the first scroll.
 - **Appearance** (`use-reader-appearance.ts`, `reader-settings.ts`): the text size and the page
   colours (fe#246: like the app, light, dark, black) are per device, never synced, and both
   surfaces (the reader, the companion's Text tab) read them before the host opens; a theme

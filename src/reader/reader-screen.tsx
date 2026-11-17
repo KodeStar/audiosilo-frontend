@@ -1,6 +1,15 @@
 import { memo, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AppState, FlatList, Platform, Pressable, View } from 'react-native';
+import {
+  AppState,
+  FlatList,
+  type LayoutChangeEvent,
+  Platform,
+  Pressable,
+  ScrollView,
+  View,
+  type ScrollViewInstance,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError, isSignedOutError } from '@/api/client';
@@ -26,7 +35,8 @@ import type { Connection } from '@/stores/session';
 import { backOrHome } from '@/lib/back-or-home';
 import { type ShortcutKey, useGlobalShortcut } from '@/lib/keyboard';
 import { bookTitle } from '@/lib/paths';
-import { useLatest, useLatestRef } from '@/lib/use-latest';
+import { scaleCapped, useFontScale } from '@/lib/text-scale';
+import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -624,18 +634,28 @@ function useDelayed(value: boolean, ms: number): boolean {
   return value && shown;
 }
 
-/** How many entries above the current one the contents open at, so those before it show too. */
-const TOC_LEAD = 2;
-/** Tries at opening on the current entry before its row has been measured. */
-const TOC_SCROLL_TRIES = 3;
+/** How far above the current entry the contents open, so the entries before it show too. */
+const TOC_LEAD = 96;
+/** From this many entries the contents are a virtual list (`LongToc`). */
+const TOC_VIRTUAL_FROM = 200;
+/** A virtual contents' row height at the default text size (it follows the text scale, as
+ * the player's Chapters list does), and how many rows above the current one it opens at. */
+const TOC_ROW_H = 44;
+const TOC_ROW_MAX_SCALE = 3.2;
+const TOC_LEAD_ROWS = 2;
+
+type TocProps = {
+  entries: TocEntry[];
+  /** The current entry's index, -1 when none is. */
+  current: number;
+  onSelect: (href: string) => void;
+};
 
 /** The contents, one row per entry: the current chapter (the first entry named as the
  * section on screen) marked, and the list opened at it. Memoized: the screen re-renders on
- * every page turn, and a long contents list need not be rebuilt for it. A virtual list
- * (fe#165): a book's contents can run to thousands of entries, and only the rows on screen
- * are drawn. Rows wrap to two lines, so their heights are not known ahead: the list starts
- * drawing at the entry it opens on, and an entry not measured yet is reached by scrolling
- * near it on the average row height first. Its own scroller (the sheet caps its height). */
+ * every page turn, and a long contents list need not be rebuilt for it. Its own scroller
+ * (the sheet caps its height), so it can open at the current entry. A book's contents can
+ * run to thousands of entries (fe#165): from `TOC_VIRTUAL_FROM` they are a virtual list. */
 const TocList = memo(function TocList({
   toc,
   section,
@@ -647,50 +667,97 @@ const TocList = memo(function TocList({
 }) {
   const entries = toc ?? [];
   const current = section ? entries.findIndex((entry) => entry.label === section) : -1;
-  const list = useRef<FlatList<TocEntry>>(null);
-  // Per opening (the sheet mounts the list each time it opens).
-  const tries = useRef(0);
-  // How many entries the list holds now: a retry due after the contents went (the reader
-  // made again) must not ask for a row it no longer has (`scrollToIndex` throws).
-  const count = useLatestRef(entries.length);
-  const start = current > TOC_LEAD ? current - TOC_LEAD : undefined;
+  const Toc = entries.length >= TOC_VIRTUAL_FROM ? LongToc : ShortToc;
+  return <Toc entries={entries} current={current} onSelect={onSelect} />;
+});
+
+/** Every entry drawn, its label on up to two lines, scrolled to the current one once it is
+ * laid out. */
+function ShortToc({ entries, current, onSelect }: TocProps) {
+  const scroller = useRef<ScrollViewInstance>(null);
+  // Once per opening (the sheet mounts the list each time it opens).
+  const scrolled = useRef(false);
+  return (
+    <ScrollView ref={scroller} style={{ flexShrink: 1 }} contentContainerClassName="px-2 pb-4">
+      {entries.map((entry, i) => (
+        <TocRow
+          key={`${i}:${entry.href}`}
+          entry={entry}
+          here={i === current}
+          onLayout={
+            i === current
+              ? (e) => {
+                  if (scrolled.current) return;
+                  scrolled.current = true;
+                  const y = Math.max(0, e.nativeEvent.layout.y - TOC_LEAD);
+                  scroller.current?.scrollTo({ y, animated: false });
+                }
+              : undefined
+          }
+          onSelect={onSelect}
+        />
+      ))}
+    </ScrollView>
+  );
+}
+
+/** A long contents: only the rows near the screen are drawn. A virtual list can open in its
+ * middle, and keep its place once scrolled, only where it knows every row's offset
+ * (`getItemLayout`), so these rows are one height and their labels one line. Opened on
+ * rows not measured, with no known offsets, it drew the rows it opened on at offset 0 and
+ * went back to the first entries at the first scroll. */
+function LongToc({ entries, current, onSelect }: TocProps) {
+  const rowHeight = scaleCapped(TOC_ROW_H, useFontScale(), TOC_ROW_MAX_SCALE);
   return (
     <FlatList
-      ref={list}
       testID="reader-toc"
       data={entries}
       style={{ flexShrink: 1 }}
       contentContainerClassName="px-2 pb-4"
       keyExtractor={(entry, i) => `${i}:${entry.href}`}
-      initialScrollIndex={start}
-      onScrollToIndexFailed={({ index, averageItemLength }) => {
-        if (tries.current >= TOC_SCROLL_TRIES) return;
-        tries.current += 1;
-        list.current?.scrollToOffset({ offset: index * averageItemLength, animated: false });
-        setTimeout(() => {
-          if (index < count.current) list.current?.scrollToIndex({ index, animated: false });
-        }, 50);
-      }}
-      renderItem={({ item: entry, index: i }) => {
-        const here = i === current;
-        return (
-          <Pressable
-            role="button"
-            aria-current={here ? 'location' : undefined}
-            accessibilityState={{ selected: here }}
-            className={`rounded-lg py-2.5 pr-2 active:bg-muted web:hover:bg-muted ${here ? 'bg-muted' : ''}`}
-            style={{ paddingLeft: 8 + entry.depth * 16 }}
-            onPress={() => onSelect(entry.href)}
-          >
-            <Text variant={here ? 'label' : 'body'} numberOfLines={2}>
-              {entry.label}
-            </Text>
-          </Pressable>
-        );
-      }}
+      initialScrollIndex={Math.max(0, current - TOC_LEAD_ROWS)}
+      getItemLayout={(_, index) => ({ length: rowHeight, offset: rowHeight * index, index })}
+      renderItem={({ item, index }) => (
+        <TocRow entry={item} here={index === current} height={rowHeight} onSelect={onSelect} />
+      )}
     />
   );
-});
+}
+
+/** One entry of the contents. With a `height` (the virtual list's) its label is one line. */
+function TocRow({
+  entry,
+  here,
+  height,
+  onLayout,
+  onSelect,
+}: {
+  entry: TocEntry;
+  here: boolean;
+  height?: number;
+  onLayout?: (e: LayoutChangeEvent) => void;
+  onSelect: (href: string) => void;
+}) {
+  return (
+    <Pressable
+      role="button"
+      aria-current={here ? 'location' : undefined}
+      accessibilityState={{ selected: here }}
+      className={cn(
+        'rounded-lg pr-2 active:bg-muted web:hover:bg-muted',
+        height === undefined ? 'py-2.5' : 'justify-center',
+        here && 'bg-muted',
+      )}
+      style={{ paddingLeft: 8 + entry.depth * 16, height }}
+      onLayout={onLayout}
+      onPress={() => onSelect(entry.href)}
+    >
+      <Text variant={here ? 'label' : 'body'} numberOfLines={height === undefined ? 2 : 1}>
+        {entry.label}
+      </Text>
+    </Pressable>
+  );
+}
 
 /** The page colours (fe#246): like the app, light, dark or black, saved on this device for
  * the reader and the companion's Text tab. Its glyph is the colours' scheme. */

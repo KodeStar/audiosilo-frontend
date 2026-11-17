@@ -1,10 +1,11 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
-import { Dimensions, FlatList, Platform } from 'react-native';
+import { Dimensions, Platform, ScrollView } from 'react-native';
 
 import { ApiError } from '@/api/client';
 import type { ReadingProgress } from '@/api/types';
 import { backOrHome } from '@/lib/back-or-home';
 import type { ShortcutKey } from '@/lib/keyboard';
+import { readFontScale, scaleCapped } from '@/lib/text-scale';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 import {
@@ -381,7 +382,9 @@ describe('ReaderScreen', () => {
       { label: 'Chapter III', href: 'c3.xhtml', depth: 0 },
     ];
 
-    it('marks the current entry and opens at it', async () => {
+    it('marks the current entry and opens scrolled to it', async () => {
+      const scrollTo = jest.mocked(ScrollView.prototype.scrollTo);
+      scrollTo.mockClear();
       await mount();
       await waitFor(() => expect(mockHost).not.toBeNull());
       await say({ type: 'opened', title: 'Alice', toc, rtl: false });
@@ -391,6 +394,11 @@ describe('ReaderScreen', () => {
       const current = screen.getByRole('button', { name: 'Chapter II' });
       expect(current).toHaveProp('aria-current', 'location');
       expect(screen.getByRole('button', { name: 'Chapter I' })).not.toHaveProp('aria-current');
+      await fireEvent(current, 'layout', { nativeEvent: { layout: { y: 600 } } });
+      expect(scrollTo).toHaveBeenCalledWith({ y: 504, animated: false });
+      // Once per opening: a later layout leaves the reader's own scrolling alone.
+      await fireEvent(current, 'layout', { nativeEvent: { layout: { y: 900 } } });
+      expect(scrollTo).toHaveBeenCalledTimes(1);
     });
 
     it('draws only the rows near the current entry of a long contents (fe#165)', async () => {
@@ -399,7 +407,9 @@ describe('ReaderScreen', () => {
         href: `e${i}.xhtml`,
         depth: 0,
       }));
-      const toOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+      const shown = () => screen.getAllByRole('button', { name: /^Entry / }).length;
+      const scrollTo = jest.mocked(ScrollView.prototype.scrollTo);
+      scrollTo.mockClear();
       await mount();
       await waitFor(() => expect(mockHost).not.toBeNull());
       await say({ type: 'opened', title: 'Alice', toc: long, rtl: false });
@@ -412,11 +422,29 @@ describe('ReaderScreen', () => {
       );
       expect(screen.getByRole('button', { name: 'Entry 1498' })).toBeTruthy();
       expect(screen.queryByRole('button', { name: 'Entry 0' })).toBeNull();
-      expect(screen.getAllByRole('button', { name: /^Entry / }).length).toBeLessThan(50);
-      // Opening on an entry not measured yet scrolls near it on the average row first.
-      await fireEvent(screen.getByTestId('reader-toc'), 'contentSizeChange', 320, 800);
-      expect(toOffset).toHaveBeenCalledWith({ offset: expect.any(Number), animated: false });
-      toOffset.mockRestore();
+      expect(shown()).toBeLessThan(50);
+      // Rows of one height: the list opens two rows above the current one, at their offset.
+      const list = screen.getByTestId('reader-toc');
+      const rowHeight = scaleCapped(44, readFontScale(), 3.2);
+      const offset = 1498 * rowHeight;
+      await fireEvent(list, 'layout', { nativeEvent: { layout: { width: 320, height: 600 } } });
+      await fireEvent(list, 'contentSizeChange', 320, 2000 * rowHeight);
+      expect(scrollTo).toHaveBeenCalledWith({ y: offset, animated: false });
+      // And stays there once scrolled: a list opened with no known offsets went back to
+      // the first entries at the first scroll.
+      await fireEvent.scroll(list, {
+        nativeEvent: {
+          contentOffset: { x: 0, y: offset + 20 },
+          contentSize: { width: 320, height: 2000 * rowHeight },
+          layoutMeasurement: { width: 320, height: 600 },
+        },
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 100));
+      });
+      expect(screen.getByRole('button', { name: 'Entry 1500' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Entry 0' })).toBeNull();
+      expect(shown()).toBeLessThan(100);
     });
   });
 
