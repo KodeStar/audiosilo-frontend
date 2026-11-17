@@ -160,6 +160,7 @@ jest.mock('@/api/provider', () => ({
       },
     }),
     setQueryData: jest.fn(),
+    setQueriesData: jest.fn(),
     invalidateQueries: jest.fn(),
     getQueryData: (...a: unknown[]) => mockGetQueryData(...a),
     fetchQuery: (o: { queryKey: unknown[] }) => mockFetchQuery(o),
@@ -2531,6 +2532,21 @@ describe('podcast episodes', () => {
     expect(entry()?.manifest.chapters).toBe(chapters);
   });
 
+  it('reads nothing before the wait on web either, its list shape decided once ready (fe#280)', async () => {
+    const prevOS = Platform.OS;
+    Platform.OS = 'web';
+    try {
+      mockFetchQuery.mockClear();
+      await expect(useDownloads.getState().download('c1', 2, episodeBook(false))).resolves.toBe(
+        'queued',
+      );
+      expect(mockFetchQuery).not.toHaveBeenCalled();
+      expect(mockWaits).toHaveLength(1);
+    } finally {
+      Platform.OS = prevOS;
+    }
+  });
+
   it('an absent episode waits off the queue while other books download, then downloads', async () => {
     await expect(
       useDownloads.getState().download('c1', 2, episodeBook(false), chapters),
@@ -2568,8 +2584,13 @@ describe('podcast episodes', () => {
     expect(entry()?.status).toBe('downloaded');
     expect(entry()?.serverFetch).toBeUndefined();
     expect(entry()?.manifest.book.episode?.downloaded).toBe(true);
+    // Marked on its server in the show's cached lists, none read again (fe#280).
     const { queryClient } = jest.requireMock('@/api/provider');
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+    expect(queryClient.setQueriesData).toHaveBeenCalledWith(
+      { queryKey: ['podcastEpisodes', 'c1', 2, 'Show'] },
+      expect.any(Function),
+    );
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalledWith({
       queryKey: ['podcastEpisodes', 'c1', 2, 'Show'],
     });
   });

@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { ApiError, PodcastFetchPendingError } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
 import { cachedShowTitle, chaptersQuery, fetchFailFast, itemQuery, qk } from '@/api/hooks';
+import { markEpisodeOnServer } from '@/api/podcast-cache';
 import { queryClient } from '@/api/provider';
 import type { Book, PodcastFetchStatus } from '@/api/types';
 import type { PlayTarget } from '@/components/player/play-route';
@@ -382,9 +383,9 @@ function refused(r: Run, e: unknown) {
   }
 }
 
-/** Ready: read the item and chapters again (the file's own), read the show's episode
- * lists again (a show page or Home's rail on screen shows it on the server), then start it
- * in place. */
+/** Ready: read the item and chapters again (the file's own), mark it on its server in the
+ * show's cached episode lists (a show page or Home's rail on screen shows it there,
+ * `markEpisodeOnServer`), then start it in place. */
 async function start(r: Run, client: NonNullable<ReturnType<typeof resolveClient>>) {
   const pending = pendingOf(r);
   if (!pending) return;
@@ -400,11 +401,7 @@ async function start(r: Run, client: NonNullable<ReturnType<typeof resolveClient
   if (run !== r) return;
   const book = queryClient.getQueryData<Book>(qk.item(cid, libraryId, path));
   const show = book?.episode?.show_path;
-  if (show !== undefined) {
-    void queryClient.invalidateQueries({
-      queryKey: qk.podcastEpisodesOfShow(cid, libraryId, show),
-    });
-  }
+  if (show !== undefined) markEpisodeOnServer(queryClient, cid, libraryId, show, path, book!.size);
   const started = await startBookInPlace(target, opts, { fetched: true }).catch(() => false);
   if (run !== r) return;
   if (started) {

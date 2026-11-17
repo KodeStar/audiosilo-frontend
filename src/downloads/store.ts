@@ -12,6 +12,7 @@ import {
   itemQuery,
   qk,
 } from '@/api/hooks';
+import { markEpisodeOnServer } from '@/api/podcast-cache';
 import { queryClient } from '@/api/provider';
 import {
   saveServerSnapshot,
@@ -230,12 +231,12 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     // item and chapters (through the query cache, as keep-ahead's `startOne` does), which
     // also give the download its files. Native never transcodes, so it asks only for an
     // episode given without chapters: its item says whether its server has it now, and its
-    // chapters (the file's own) go with the download. Not for one its caller says is absent:
-    // it waits on its server first, and both are read once the file is there
-    // (`episodeWaitEnded`).
+    // chapters (the file's own) go with the download. Not for an episode its caller says is
+    // absent, on either platform: it waits on its server first, and both are read once the
+    // file is there, where the transcode refusal is decided again (`episodeWaitEnded`).
     const lookup =
-      lacksPlayability(book, chapterData) ||
-      (!!book.episode && !chapterData && !isAbsentEpisode(book));
+      !isAbsentEpisode(book) &&
+      (lacksPlayability(book, chapterData) || (!!book.episode && !chapterData));
     const client = lookup ? resolveClient(connectionId) : null;
     if (!client) return queueBook(connectionId, libraryId, book, chapterData, origin);
     return (async () => {
@@ -624,8 +625,9 @@ function withoutServerFetch(entry: DownloadEntry): DownloadEntry {
 /**
  * An episode's wait on its server ended. On its server: its item and chapters are read again
  * (the file's own size and chapters, `downloaded` now true; `fetchFailFast`, so the entry
- * never sits here on a read the network holds), the show's episode lists too (a show page
- * on screen says it is on the server), and it goes on the queue. The wait can be long (it
+ * never sits here on a read the network holds), it is marked on its server in the show's
+ * cached episode lists (`markEpisodeOnServer`: a show page on screen says so, with no list
+ * read again), and it goes on the queue. The wait can be long (it
  * stops in the background), so what `queueBook` decided before it is decided again: an
  * automatic download the network rule no longer lets start is dropped (no decline mark:
  * the next start asks again), and so is one this browser turns out to play transcoded.
@@ -702,9 +704,7 @@ async function episodeWaitEnded(key: string, end: EpisodeWaitEnd): Promise<void>
   }
   const show = book.episode?.show_path;
   if (show !== undefined) {
-    void queryClient.invalidateQueries({
-      queryKey: qk.podcastEpisodesOfShow(connectionId, libraryId, show),
-    });
+    markEpisodeOnServer(queryClient, connectionId, libraryId, show, path, book.size);
   }
   enqueue(key, connectionId, libraryId, book, chapters, entry.origin ?? 'listener');
 }

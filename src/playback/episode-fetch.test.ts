@@ -18,7 +18,7 @@ import { queryClient } from '@/api/provider';
 import type { PodcastFetchStatus } from '@/api/types';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
-import { episodeBook, fetchStatus, wire2b } from '@/testing/podcast-fixtures';
+import { episodeBook, fetchStatus, podcastEpisode, wire2b } from '@/testing/podcast-fixtures';
 
 import {
   cancelEpisodeFetch,
@@ -120,12 +120,24 @@ describe('requestEpisodeFetch', () => {
     expect(mockClient!.podcastFetchStatus).toHaveBeenCalledTimes(1);
     expect(phase()).toBe('waiting');
 
+    const rail = qk.latestEpisodes('c1', 5, 'Daily News', 6);
+    // Kept with no observer (a screen holds it in the app).
+    queryClient.setQueryDefaults(rail, { gcTime: Infinity });
+    queryClient.setQueryData(rail, {
+      episodes: [podcastEpisode({ downloaded: false })],
+      next_cursor: null,
+    });
     mockClient!.podcastFetchStatus.mockResolvedValue({ fetch: wire2b.ready });
     await jest.advanceTimersByTimeAsync(2000);
     expect(mockClient!.item).toHaveBeenCalledTimes(1);
     expect(mockClient!.chapters).toHaveBeenCalledTimes(1);
-    // Read again: a show page or Home's rail on screen shows it on the server.
-    expect(invalidate).toHaveBeenCalledWith({
+    // Marked on its server: a show page or Home's rail on screen shows it there, with no
+    // list read again (fe#280).
+    expect(
+      queryClient.getQueryData<{ episodes: { downloaded: boolean }[] }>(rail)!.episodes[0]
+        .downloaded,
+    ).toBe(true);
+    expect(invalidate).not.toHaveBeenCalledWith({
       queryKey: qk.podcastEpisodesOfShow('c1', 5, 'Daily News'),
     });
     expect(mockStart).toHaveBeenCalledTimes(1);
