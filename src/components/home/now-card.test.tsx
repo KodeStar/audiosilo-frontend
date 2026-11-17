@@ -8,10 +8,8 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 jest.mock('@/downloads/store', () => ({ useDownloadedCoverUri: () => null }));
-// Whether the book can start here (online, or downloaded): `use-playable-here` reads the
-// network, the servers and the downloads.
+// Whether the book can start here (online, or downloaded): Home's answer, a prop.
 let mockPlayable = true;
-jest.mock('./use-playable-here', () => ({ usePlayableHere: () => () => mockPlayable }));
 // Why it can't: the device's network, and the book's server by name.
 let mockDeviceOnline = true;
 jest.mock('@/lib/device-online', () => ({
@@ -164,7 +162,7 @@ describe('NowCard', () => {
   it("says a book isn't downloaded, instead of a Resume that can't start, offline", async () => {
     mockPlayable = false;
     mockDeviceOnline = false;
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     expect(screen.queryByRole('button', { name: /^Resume/ })).toBeNull();
     expect(screen.getByRole('button', { name: 'Not downloaded' })).toBeDisabled();
     expect(
@@ -176,7 +174,7 @@ describe('NowCard', () => {
 
   it('names the server when the device is online and the server is what is away', async () => {
     mockPlayable = false;
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     expect(screen.getByRole('button', { name: 'Not downloaded' })).toBeDisabled();
     expect(screen.getByText(/It plays once Hearthside is answering again\./)).toBeTruthy();
     expect(screen.queryByText(/back online/)).toBeNull();
@@ -186,14 +184,14 @@ describe('NowCard', () => {
     mockPlayable = false;
     mockEpisode = true;
     mockDeviceOnline = false;
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     expect(screen.queryByRole('button', { name: 'Not downloaded' })).toBeNull();
     expect(screen.getByRole('button', { name: /^Resume/ })).toBeDisabled();
     expect(screen.getByText("This episode plays once you're back online.")).toBeTruthy();
   });
 
   it('shows where the listener is in the book and resumes that chapter', async () => {
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     expect(screen.getByText("Caliban's War")).toBeTruthy();
     expect(screen.getByText('Continue listening · The Expanse, book 2')).toBeTruthy();
     expect(screen.getByText('Chapter 2 of 3')).toBeTruthy();
@@ -207,11 +205,11 @@ describe('NowCard', () => {
 
   // fe#267: beside the chip a one-word chapter name broke mid-word at Android's 2.0.
   it('stacks the chapter chip over its name under large text', async () => {
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     expect(String(screen.getByTestId('now-card-chapter').props.className)).toContain('flex-row');
     try {
       await setFontScale(2);
-      await render(<NowCard at={at} saved={saved} />);
+      await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
       expect(String(screen.getByTestId('now-card-chapter').props.className)).not.toContain(
         'flex-row',
       );
@@ -229,7 +227,7 @@ describe('NowCard', () => {
       { rel_path: 'a', duration: 2000, seq: 2 },
     ];
     await render(
-      <NowCard at={at} saved={{ ...saved, position: 500, file: { path: 'a', pos: 1500 } }} />,
+      <NowCard at={at} playable={mockPlayable} saved={{ ...saved, position: 500, file: { path: 'a', pos: 1500 } }} />,
     );
     // File b (1000 s) first: 1000 + 1500 in file a, Holden's chapter (its file's 1000-2000).
     expect(screen.getByText('Chapter 2 of 3')).toBeTruthy();
@@ -253,7 +251,7 @@ describe('NowCard', () => {
       },
     };
     mockLive = 2600;
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     expect(screen.getByText('Chapter 2 of 2')).toBeTruthy();
     expect(screen.getByText('Prologue')).toBeTruthy();
     expect(screen.getByRole('image', { name: '65% through the book' })).toBeTruthy();
@@ -263,12 +261,12 @@ describe('NowCard', () => {
   it('says "through the episode", and no "Chapter 1 of 1", for a podcast episode', async () => {
     mockEpisode = true;
     mockChapterCount = 1;
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     expect(screen.getByText('through the episode')).toBeTruthy();
     expect(screen.queryByText('Chapter 1 of 1')).toBeNull();
     // An episode with chapters of its own still says where it is.
     mockChapterCount = 3;
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     expect(screen.getByText('Chapter 2 of 3')).toBeTruthy();
     expect(screen.getByRole('image', { name: '50% through the episode' })).toBeTruthy();
   });
@@ -277,7 +275,7 @@ describe('NowCard', () => {
     // The item has not said it is an episode yet: its podcast library already has.
     mockPodcastLibrary = true;
     mockChapterCount = 1;
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     expect(screen.getByRole('button', { name: 'Resume' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Resume chapter/ })).toBeNull();
     expect(screen.getByText('through the episode')).toBeTruthy();
@@ -285,10 +283,10 @@ describe('NowCard', () => {
 
   it('names the chapter like the players do: a file name prettified, an untitled one by number', async () => {
     mockSecondTitle = 'wonderland_ch_01_64kb';
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     expect(screen.getByText('wonderland ch 01')).toBeTruthy();
     mockSecondTitle = '';
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     expect(screen.getByText('Chapter 2')).toBeTruthy();
   });
 
@@ -296,7 +294,7 @@ describe('NowCard', () => {
     // The 2nd chapter is titled "Chapter 1": "Ch. 2 of 3 · Chapter 1" and "Resume
     // chapter 2" disagreed with the player's "Chapter 1".
     mockSecondTitle = 'Chapter 1';
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     expect(screen.getByRole('button', { name: 'Resume Chapter 1' })).toBeTruthy();
     expect(screen.getByText('2 of 3')).toBeTruthy();
     expect(screen.queryByText('Chapter 2 of 3')).toBeNull();
@@ -304,7 +302,7 @@ describe('NowCard', () => {
   });
 
   it('stacks like the phone card when it is narrow on a desktop (the Up next drawer open)', async () => {
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     expect(screen.getByText('Chapter 2 of 3')).toBeTruthy();
     await fireEvent(screen.getByTestId('now-card'), 'layout', {
       nativeEvent: { layout: { width: 420, height: 400 } },
@@ -314,16 +312,16 @@ describe('NowCard', () => {
   });
 
   it('estimates a finish date only from enough listening', async () => {
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     expect(screen.queryByText('finish at your pace')).toBeNull();
     mockDays = Array.from({ length: 5 }, (_, i) => ({ date: `2026-10-0${i + 1}`, listened: 3600 }));
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     expect(screen.getByText('finish at your pace')).toBeTruthy();
   });
 
   it('stacks companion actions at phone width and allows the full label to wrap', async () => {
     mockCaps = { metadata: true };
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     await fireEvent(screen.getByTestId('now-card'), 'layout', {
       nativeEvent: { layout: { width: 358, height: 400 } },
     });
@@ -340,12 +338,12 @@ describe('NowCard', () => {
   });
 
   it('counts only the characters met so far, and only with community metadata', async () => {
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     expect(screen.queryByText("Who's who")).toBeNull();
     expect(screen.queryByText('Story so far')).toBeNull();
 
     mockCaps = { metadata: true };
-    await render(<NowCard at={at} saved={saved} />);
+    await render(<NowCard at={at} playable={mockPlayable} saved={saved} />);
     const who = screen.getByRole('button', { name: "Who's who, 2 characters met so far" });
     await fireEvent.press(who);
     expect(mockPush).toHaveBeenCalledWith({

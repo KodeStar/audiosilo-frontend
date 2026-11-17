@@ -231,7 +231,7 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   const hero = nowAt ? (
     // The page's largest cover: it loads first.
     <FirstScreenCovers.Provider value>
-      <NowCard at={nowAt} saved={nowSaved} />
+      <NowCard at={nowAt} saved={nowSaved} playable={playable(nowAt)} />
     </FirstScreenCovers.Provider>
   ) : isLoading ? (
     <NowCardSkeleton />
