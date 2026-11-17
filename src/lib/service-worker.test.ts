@@ -185,6 +185,16 @@ describe('service worker: precacheBuild', () => {
     expect(t.cached()).toContain(font('c'));
   });
 
+  it('caches the shell for offline when a font of it is refused, the font left out', async () => {
+    const site = build('a');
+    site[SCOPE] += `<link rel="preload" href="/web/assets/fonts/Missing.ttf" as="font">`;
+    const t = load(site);
+    await t.sw.precacheBuild(true);
+    expect(t.cached()).toContain(SCOPE);
+    expect(t.cached()).toContain(`${SCOPE}__precached-build`);
+    expect(t.cached()).not.toContain('https://box.test/web/assets/fonts/Missing.ttf');
+  });
+
   it('caches the shell only once its own files are in', async () => {
     const t = load(build('a'));
     t.offline.add(js('index-a'));

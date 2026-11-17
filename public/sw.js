@@ -255,7 +255,8 @@ async function precacheBuild(fresh = false) {
     const scripts = assetRefs(html);
     if (!scripts.length) return;
     // The shell's fonts with its own files: offline, a cold start draws its text in them.
-    const roots = [...scripts, ...fontRefs(html)];
+    const fonts = new Set(fontRefs(html));
+    const roots = [...scripts, ...fonts];
     const build = roots.slice().sort().join('\n');
     const marker = new URL(PRECACHED_BUILD, shell).href;
     const last = await readRecord(cache, marker);
@@ -270,7 +271,19 @@ async function precacheBuild(fresh = false) {
     let level = roots;
     while (level.length) {
       for (const url of level) seen.add(url);
-      const texts = await Promise.all(level.map((url) => precacheAsset(cache, url, fresh)));
+      const texts = await Promise.all(
+        level.map((url) => {
+          const asset = precacheAsset(cache, url, fresh);
+          // A font is the look, not the boot: one the server won't give (a proxy refusing
+          // its path) never stops the precache, or the shell would never be cached for
+          // offline. It is left out of the record.
+          if (!fonts.has(url)) return asset;
+          return asset.catch(() => {
+            seen.delete(url);
+            return '';
+          });
+        }),
+      );
       if (level === roots) await cache.put(shell, res);
       level = [...new Set(texts.flatMap(assetRefs))].filter((url) => !seen.has(url));
     }
