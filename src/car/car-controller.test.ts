@@ -1320,6 +1320,26 @@ describe('the resumable snapshot (Android, fe#251)', () => {
       positionInTrack: 50,
     });
   });
+
+  it("is not the snapshot an unreadable build keeps: the first car's is written offline too", async () => {
+    const offline = new TypeError('Network request failed');
+    mockClients.c1.allProgress.mockRejectedValue(offline);
+    mockClients.c1.queue.mockRejectedValue(offline);
+    mockClients.c1.libraries.mockRejectedValue(offline);
+    mockClients.c1.listBooks.mockRejectedValue(offline);
+    stop = startCarSync();
+    await settle();
+    usePlayer.setState(loaded('paused', 1, 30));
+    await flushPromises();
+    expect(lastSnapshot().tabs.map((t) => t.id)).toEqual(['continue', 'downloads']);
+    expect(await getItem('audiosilo.carSnapshotWritten')).not.toBe(true);
+
+    // The first car, away from the server: its own snapshot, not the minimal one kept.
+    mockNative.connection?.(true);
+    await settle(MIN_GAP_MS);
+    expect(lastSnapshot().tabs.map((t) => t.id)).toContain('library');
+    expect(await getItem('audiosilo.carSnapshotWritten')).toBe(true);
+  });
 });
 
 describe("the car's Library tab with no pick (D9, fe#271)", () => {

@@ -587,12 +587,15 @@ function pausedPlaceOf(player: PlayerState, live: LivePlace | null): PausedPlace
 /**
  * Builds the snapshot of `input` (the date and the labels added) and hands it to native when
  * its body changed. False when the person listening changed while it was built (nothing is
- * written then).
+ * written then). `full`: the car's own snapshot, the one a build with no readable list
+ * leaves alone once written (`WRITTEN_KEY`); the minimal resumable one is never that, so the
+ * first car's build replaces it offline too.
  */
 async function handOver(
   owner: string,
   input: Omit<CarSnapshotInput, 'generatedAt' | 'labels'>,
   ctx: Pick<CarItemContext, 'live' | 'artworkFor' | 'playFor'>,
+  full: boolean,
 ): Promise<boolean> {
   const t = i18n.t.bind(i18n);
   const { generatedAt, ...body } = buildCarSnapshot(
@@ -618,7 +621,7 @@ async function handOver(
       await setItem(SNAPSHOT_OWNER_KEY, owner);
       ownerStored = owner;
     }
-    if (wroteBefore !== true) {
+    if (full && wroteBefore !== true) {
       wroteBefore = true;
       void setItem(WRITTEN_KEY, true);
     }
@@ -721,6 +724,7 @@ async function buildResumable(): Promise<void> {
       artworkFor: (ref) => downloadedEntryOf(ref)?.manifest.coverUri ?? null,
       playFor: (ref) => plays.get(contentKeyOf(ref)),
     },
+    false,
   );
   if (handed && !sameBook(offered, resumableRef)) {
     resumableRef = offered;
@@ -826,6 +830,7 @@ async function buildAndWrite(): Promise<void> {
       artworkFor: (ref) => artwork.get(contentKeyOf(ref)) ?? null,
       playFor: (ref) => plays?.get(contentKeyOf(ref)),
     },
+    true,
   );
   if (!handed) return;
   pruneArtwork(names, onDisk);

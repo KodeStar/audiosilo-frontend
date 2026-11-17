@@ -2518,7 +2518,9 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   (`audiosilo.carResumable`), so opening the app after a kill without playing keeps it; once
   one was stopped or finished here, none. It waits for the start's read of the car-seen mark.
   Both writes go through one queue (`snapshotWrites`), and the minimal one never lands once a
-  car was seen. A paused loaded book's play spec starts where it was paused (`pausedPlaceOf`),
+  car was seen. It is not the snapshot an unreadable build leaves alone (it sets no
+  `audiosilo.carSnapshotWritten`), so the first car's build replaces it away from every
+  server too. A paused loaded book's play spec starts where it was paused (`pausedPlaceOf`),
   not at the device save the pause may not have written yet. It never overwrites
   native's snapshot with a worse one (not while `sessionHydrateFailed()`, not with unreadable
   lists once one was written). Every write, play request, adoption and bookmark drain waits for
