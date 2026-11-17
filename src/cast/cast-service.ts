@@ -707,7 +707,14 @@ export class CastPlaybackService implements PlaybackService {
     if (status.playerState === 'idle' && status.idleReason === 'error' && this.loadsInFlight > 0) {
       // Refused while a load of ours is in flight (or a mint for one): that load is sent again
       // with a new token (`sendQueue`), whatever later file the receiver skips on to meanwhile.
-      if (loaded) this.refusedQueue = { seq: this.queueSeq, at: this.now() };
+      // Not, once the mint is done, an error naming a URL that is none of the queue's: that is
+      // the queue it replaces, sent with the token before the mint, whose files the receiver
+      // can still be skipping through.
+      const replaced =
+        !this.minting &&
+        !!status.contentId &&
+        castUrlIndex(status.contentId, loaded?.urls ?? []) < 0;
+      if (loaded && !replaced) this.refusedQueue = { seq: this.queueSeq, at: this.now() };
       return;
     }
     if (this.skippingRefused()) return;

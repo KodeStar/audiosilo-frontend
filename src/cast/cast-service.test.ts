@@ -1160,6 +1160,30 @@ describe('CastPlaybackService', () => {
         });
         expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 130 });
       });
+
+      it('an error of the queue being replaced is no refusal of the one sent with the new token', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 0, 0, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 5 });
+        const ended = t.url(2);
+        // The receiver is refused Part 1 and starts on the next files.
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+        const answer = holdLoad(t);
+        await flush();
+        expect(m.asks).toEqual([undefined, true]);
+        expect(t.url(0)).toContain('token=CAST1');
+        // Still skipping through the old queue while the new one is on its way.
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: ended, position: 0 });
+        answer();
+        await flush();
+        t.status({ playerState: 'playing', contentId: t.url(0), position: 5 });
+        expect(t.remote.loads).toHaveLength(2);
+        expect(t.remote.readStatus).not.toHaveBeenCalled();
+        expect(t.snaps.some((s) => s.state === 'error')).toBe(false);
+        expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 0, position: 5 });
+      });
     });
 
     it('a book loaded again (a Retry) mints no sooner than a minute on; another book may', async () => {
