@@ -238,6 +238,22 @@ describe('DownloadsScreen', () => {
     expect(screen.getByText(/931 MB of about/)).toBeTruthy();
   });
 
+  // A retry counts from 0 again and passes what its failed attempt kept, which never left
+  // the device: the measure holds it, so only what is written past it adds to the figure.
+  it('does not count a retried download twice', async () => {
+    const MB = 1024 ** 2;
+    mockMeasured = 900 * MB;
+    const book = (status: DownloadStatus, bytes: number) =>
+      entry('Retried', status, { bytes, totalBytes: 500 * MB });
+    setEntries(book('error', 300 * MB));
+    await mount();
+    expect(screen.getByText(/900 MB of about/)).toBeTruthy();
+    await act(async () => setEntries(book('downloading', 300 * MB)));
+    expect(screen.getByText(/900 MB of about/)).toBeTruthy();
+    await act(async () => setEntries(book('downloading', 340 * MB)));
+    expect(screen.getByText(/940 MB of about/)).toBeTruthy();
+  });
+
   it('offers no dead Retry for a book this browser now plays transcoded', async () => {
     Platform.OS = 'web';
     mockCaps = { transcode: true };

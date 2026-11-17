@@ -14,6 +14,7 @@ import {
   episodeShowTitle,
   groupByServer,
   growingBytes,
+  grownSince,
   isEpisodeEntry,
   orphanDownloads,
   type ServerRef,
@@ -152,14 +153,8 @@ export function DownloadsScreen() {
   // this person's beside their books, and every one's since the engine's measure (which
   // counts the whole device's).
   const growing = useDownloads((s) => growingBytes(s.entries, serverIds));
-  const growingAll = useDownloads((s) => growingBytes(s.entries));
-  const bar = storageBar(
-    allGroups,
-    storage.estimate,
-    storage.measured,
-    growing,
-    Math.max(0, growingAll - storage.growingAtMeasure),
-  );
+  const grown = useDownloads((s) => grownSince(s.entries, storage.heldAtMeasure));
+  const bar = storageBar(allGroups, storage.estimate, storage.measured, growing, grown);
   const summary =
     scope === 'device'
       ? t('downloads.summary.device', { size: formatBytes(bar.used) })

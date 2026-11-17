@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { growingBytes } from '@/downloads/downloads-view';
+import { heldByKey } from '@/downloads/downloads-view';
 import { engine } from '@/downloads/engine';
 import { useDownloads } from '@/downloads/store';
 import type { StorageEstimate } from '@/downloads/types';
@@ -10,9 +10,9 @@ export type StorageReading = {
   measured: number | null;
   /** Room for downloads, when the platform can tell (null otherwise or until read). */
   estimate: StorageEstimate | null;
-  /** What every running download had written as `measured` was read (`growingBytes`): the
-   * measure holds it, so only what they write after it adds to it (PLAYER-05). */
-  growingAtMeasure: number;
+  /** What each download held as `measured` was read (`heldByKey`): the measure counts it,
+   * so only what is written after it adds to it (`grownSince`, PLAYER-05). */
+  heldAtMeasure: Record<string, number>;
 };
 
 /** The registry's finished downloads, as a string that only changes when a book lands
@@ -31,7 +31,7 @@ export function useStorage(): StorageReading {
   const [reading, setReading] = useState<StorageReading>({
     measured: null,
     estimate: null,
-    growingAtMeasure: 0,
+    heldAtMeasure: {},
   });
   useEffect(() => {
     let cancelled = false;
@@ -40,8 +40,8 @@ export function useStorage(): StorageReading {
       engine.storageEstimate().catch(() => null),
     ]).then(([measured, estimate]) => {
       if (cancelled) return;
-      const growingAtMeasure = growingBytes(useDownloads.getState().entries);
-      setReading({ measured, estimate, growingAtMeasure });
+      const heldAtMeasure = heldByKey(useDownloads.getState().entries);
+      setReading({ measured, estimate, heldAtMeasure });
     });
     return () => {
       cancelled = true;
