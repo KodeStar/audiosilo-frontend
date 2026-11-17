@@ -159,6 +159,19 @@ describe('storageBar', () => {
     expect(storageBar([g('a', 10 * MB)], null, null, 5 * MB, 30 * MB).used).toBe(15 * MB);
   });
 
+  // `free` is as old as the measure: what was written since is ours, never taken off the
+  // other apps' share (it would shrink while a download runs and come back as it lands).
+  it("keeps other apps' share while a download grows", () => {
+    const disk = { scope: 'device' as const, capacity: 128 * GB, free: 100 * GB };
+    const other = (grown: number) =>
+      storageBar([g('a', 2 * GB)], disk, 3 * GB, 0, grown).segments.find(
+        (s) => s.kind === 'other-apps',
+      )?.bytes;
+    expect(other(0)).toBe(25 * GB);
+    expect(other(GB)).toBe(25 * GB);
+    expect(storageBar([g('a', 2 * GB)], disk, 3 * GB, 0, GB).used).toBe(4 * GB);
+  });
+
   it('prefers the measured total, and skips empty servers', () => {
     const bar = storageBar([g('a', 10), g('b', 0)], null, 25);
     expect(bar.used).toBe(25);

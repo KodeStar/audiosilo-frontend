@@ -213,7 +213,10 @@ export function storageBar(
       bytes: rest.reduce((s, g) => s + g.bytes, 0),
     });
   if (estimate?.scope === 'device') {
-    const other = estimate.capacity - estimate.free - used;
+    // `free` is read with the measure, so the disk it tells of holds none of what was
+    // written since: other apps' share is that disk less what was ours then, or it would
+    // shrink as a download grows and come back as it lands.
+    const other = estimate.capacity - estimate.free - Math.max(0, used - grownSinceMeasure);
     if (other > 0) segments.push({ kind: 'other-apps', bytes: other });
   }
   const scale = estimate ? Math.max(estimate.capacity, used) : used;
