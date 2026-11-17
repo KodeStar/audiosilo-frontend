@@ -1212,6 +1212,93 @@ describe.each([
       }
     });
 
+    // A move given up on (not refused) can still land. Left as it was, the floor put back at
+    // the place the engine had refused every save of a landing far behind it, and the span
+    // opened at that place ran on over the audio in between.
+    describe('a move there that lands after it was given up', () => {
+      /** A's next seek stays out until the returned `land`; the 5 s bound is 20 ms. */
+      function slowSeek() {
+        let land: () => void = () => {};
+        a.engine.svc.seekTo.mockImplementationOnce(
+          (position: number) =>
+            new Promise<void>((resolve) => {
+              land = () => {
+                a.engine.at(position);
+                resolve();
+              };
+            }),
+        );
+        const realTimeout = globalThis.setTimeout;
+        const shortened = jest
+          .spyOn(globalThis, 'setTimeout')
+          .mockImplementation(((fn: () => void, ms?: number) =>
+            realTimeout(fn, ms === 5_000 ? 20 : ms)) as typeof setTimeout);
+        return { land: () => land(), restore: () => shortened.mockRestore() };
+      }
+
+      it('further on: its listening begins there, with nothing for the stretch between', async () => {
+        await playedPast(a, b);
+        // B is paused, so no answer of B's moves A there.
+        b.engine.at(900);
+        await b.player().pause();
+        await until(() => listens().length === 2, "B's span on the server");
+        const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const seek = slowSeek();
+        try {
+          await a.player().toggle();
+          seek.restore();
+          expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 30 });
+          await sleep(10);
+          seek.land();
+          await sleep(10);
+          a.engine.at(910);
+          await a.player().pause();
+          await until(() => listens().length === 3, 'the three spans on the server');
+          expect(heard()).toEqual([
+            [5, 30, 'jump'],
+            [30, 900, 'jump'],
+            [900, 910, 'resume'],
+          ]);
+        } finally {
+          seek.restore();
+          warned.mockRestore();
+        }
+      });
+
+      it('far behind: the play that follows still saves its place', async () => {
+        mockMirror.on = true;
+        await a.start(5, 'c1', long);
+        await sleep(10);
+        a.engine.at(300);
+        await b.start(300, 'c1', long);
+        await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+        // The listener went back in B (more than the save guard's slip tolerance), which
+        // then paused: no answer of B's moves A there.
+        await b.player().seekBook(12);
+        await sleep(10);
+        b.engine.at(15);
+        await b.player().pause();
+        const key = mirrorKey('c1', 2, long.book.rel_path);
+        await until(() => mockMirror.records.get(key)?.position === 15, "B's place saved");
+        const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const seek = slowSeek();
+        try {
+          await a.player().toggle();
+          seek.restore();
+          expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 300 });
+          seek.land();
+          await sleep(10);
+          a.engine.at(20);
+          await a.save();
+          expect(mockMirror.records.get(key)?.position).toBe(20);
+          await a.player().pause();
+        } finally {
+          seek.restore();
+          warned.mockRestore();
+        }
+      });
+    });
+
     it('a play that buffers during that move begins its history where the move lands', async () => {
       // A server that takes no listening events: the listening is its `POST /history`.
       mockServerCaps = { listening_sync: false };

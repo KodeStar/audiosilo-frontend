@@ -2256,7 +2256,11 @@ media GETs only.
     the engine refuses puts back what `adoptTabPlace` set (`moveToTabPlace`): the play goes
     on from where the engine is, and a floor left at a place far ahead would refuse its
     every save and span; so does a move that has not settled within 5 s (`TAB_MOVE_MAX_MS`,
-    fe#262: a seek that never settled held the play's spans and saves until another book). A
+    fe#262: a seek that never settled held the play's spans and saves until another book).
+    One that lands after that is taken then (`landTabPlaceLate`: the floor at the place, the
+    listening begun where the engine was dropped and begun again there), unless the listener
+    moved or another book started meanwhile: left alone, a landing far behind the floor put
+    back refused every save, and one further on ran the open span over audio nobody heard. A
     book switch drops a move still out (`switchBook` clears
     `catchingUp`), so it holds none of the next book's saves or spans. A book
     the other tab **finished** starts again from 0 as a `restart` with the `unfinish` owed,

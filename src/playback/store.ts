@@ -1740,7 +1740,7 @@ function adoptTabPlace(np: NowPlaying, place: TabPlace) {
  * goes on from where the engine is: what `adoptTabPlace` set for the place is put back, or a
  * floor at a place far ahead that the engine never reached would refuse every save and
  * span of the play that follows, `SLIP_TOLERANCE`). A seek that has not settled within
- * `TAB_MOVE_MAX_MS` is taken as refused.
+ * `TAB_MOVE_MAX_MS` is taken as refused, until it lands after all (`landTabPlaceLate`).
  */
 async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<TabPlace | null> {
   const { nowPlaying: np, snapshot } = usePlayer.getState();
@@ -1750,14 +1750,14 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
   const playPos = play?.pos;
   adoptTabPlace(np, place);
   const moves = localMoves;
+  let seek: Promise<void> | undefined;
   try {
-    await withTimeout(
+    seek = Promise.resolve(
       place.index === snapshot.trackIndex
         ? svc.seekTo(place.positionInTrack)
         : svc.skipToTrack(place.index, place.positionInTrack),
-      TAB_MOVE_MAX_MS,
-      'the move did not settle',
     );
+    await withTimeout(seek, TAB_MOVE_MAX_MS, 'the move did not settle');
     return place;
   } catch (e) {
     console.warn('[player] could not take the place another tab left', e);
@@ -1767,14 +1767,46 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
       nextStart = before.nextStart;
       unfinishDue = before.unfinishDue;
       if (play && playPos !== undefined) play.pos = playPos;
+      // Given up on, not refused: the seek may still land (a refused one never does).
+      void seek?.then(
+        () => landTabPlaceLate(np, place, moves),
+        () => undefined,
+      );
     }
     return null;
   }
 }
 
+/**
+ * A move to another tab's place lands after it was given up (`TAB_MOVE_MAX_MS`): the engine
+ * is at that place after all, so the book is at it as a move that landed in time leaves it
+ * (`adoptTabPlace`). With the floor still where the engine was, a place more than
+ * `SLIP_TOLERANCE` behind it would refuse every save and span of the play, and the span
+ * opened where the engine was would run on over the audio between the two places, which
+ * nobody heard. So the listening begun there is dropped, as an answer's move drops it
+ * (`onGaveWayAnswer`), and begins again at the place while it plays.
+ *
+ * Not once the listener moved, another book started or another such move began meanwhile
+ * (`localMoves`, `catchingUp`: the place is theirs), nor when the engine is not at the
+ * place (a queue replaced under the seek).
+ */
+function landTabPlaceLate(np: NowPlaying, place: TabPlace, moves: number) {
+  if (localMoves !== moves || catchingUp) return;
+  const { nowPlaying, snapshot, loadingBook } = usePlayer.getState();
+  if (nowPlaying !== np || loadingBook) return;
+  const here = toBookPosition(np.queue.offsets, snapshot.trackIndex, snapshot.position);
+  if (!(Math.abs(here - place.pos) <= SAME_PLACE_S)) return;
+  dropListening();
+  adoptTabPlace(np, place);
+  if (!isPlayingState(snapshot.state)) return;
+  beginHistory();
+  openListeningSpan(endAt(np, place.index, place.positionInTrack) ?? undefined);
+}
+
 /** How long a move to another tab's place is waited for (`moveToTabPlace`). A seek that
  * never settled left `catchingUp` set, and with it no span, history or save until a book
- * switch (fe#262); past this the move counts as refused. */
+ * switch (fe#262); past this the move counts as refused (one that lands later is taken
+ * then: `landTabPlaceLate`). */
 const TAB_MOVE_MAX_MS = 5_000;
 
 /** Take the place the tabs share for the loaded book, when it is another one than the
