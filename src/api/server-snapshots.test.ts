@@ -229,8 +229,12 @@ describe('a flag a request proved', () => {
       expect(cachedCapability('c1', 'listening_sync')).toBe(true);
       expect(cachedCapability('c1', 'metadata')).toBe(true);
       expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.server('c1') });
+      expect(qc.getQueryState(qk.server('c1'))?.dataUpdatedAt).toBe(7);
       await written();
-      expect((await readServerSnapshots()).c1.info.capabilities.listening_sync).toBe(true);
+      const kept = (await readServerSnapshots()).c1;
+      expect(kept.info.capabilities.listening_sync).toBe(true);
+      // Dated as the answer it amends: a launch that seeds it still asks again.
+      expect(kept.savedAt).toBe(7);
     } finally {
       invalidate.mockRestore();
     }

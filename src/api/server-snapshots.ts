@@ -149,16 +149,20 @@ export function watchServerAnswers(): void {
  * (`serverResetCid`, the check every `/server` read in the cache gets): this server was
  * reset, the connection is flagged for it like a cached read flags it, and nothing is
  * kept (fe#270). Returns false then: the answer says nothing about this connection's
- * server.
+ * server. `savedAt`: when it was read (now, for an answer just in).
  */
-export function keepServerAnswer(connectionId: string, info: ServerInfo): boolean {
+export function keepServerAnswer(
+  connectionId: string,
+  info: ServerInfo,
+  savedAt = Date.now(),
+): boolean {
   const key = qk.server(connectionId);
   const { connections, markNeedsReconnect } = useSession.getState();
   if (serverResetCid(key, info, connections)) {
     markNeedsReconnect(connectionId, 'server-reset');
     return false;
   }
-  const snapshot = parseServerSnapshot({ info, savedAt: Date.now() });
+  const snapshot = parseServerSnapshot({ info, savedAt });
   if (!snapshot) {
     // Not an answer every reader can take (no flags at all): have the cache ask instead.
     void queryClient.invalidateQueries({ queryKey: key });
@@ -173,13 +177,20 @@ export function keepServerAnswer(connectionId: string, info: ServerInfo): boolea
  * A request the server took proves it has the route `flag` names: a held `/server` answer
  * that says otherwise (read before the server was updated) is kept with the flag set, so
  * the next request takes the route without waiting on a `/server` read (a car-only session
- * may never make one), and the cache asks the server again for the rest (fe#270).
+ * may never make one), and the cache asks the server again for the rest (fe#270). Dated
+ * when the answer it amends was read, as every kept answer is: the rest of it is that old,
+ * so a launch that seeds it still asks again.
  */
 export function keepServerFlag(connectionId: string, flag: keyof Capabilities): void {
   const key = qk.server(connectionId);
-  const held = queryClient.getQueryData<ServerInfo>(key);
-  if (!held?.capabilities || held.capabilities[flag]) return;
-  keepServerAnswer(connectionId, { ...held, capabilities: { ...held.capabilities, [flag]: true } });
+  const state = queryClient.getQueryState<ServerInfo>(key);
+  const held = state?.data;
+  if (!state || !held?.capabilities || held.capabilities[flag]) return;
+  keepServerAnswer(
+    connectionId,
+    { ...held, capabilities: { ...held.capabilities, [flag]: true } },
+    state.dataUpdatedAt,
+  );
   void queryClient.invalidateQueries({ queryKey: key });
 }
 
