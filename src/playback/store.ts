@@ -343,7 +343,8 @@ async function pickUpBeforePlay(): Promise<boolean> {
     pickUpWait = wait;
   }
   const { snapshot } = usePlayer.getState();
-  usePlayer.setState({ snapshot: { ...snapshot, state: 'loading' } });
+  if (snapshot.state !== 'loading')
+    usePlayer.setState({ snapshot: { ...snapshot, state: 'loading' } });
   await pickUpWait;
   if (attempt !== playAttempts || !wantsPlayback) {
     if (!wantsPlayback) settlePickUpWaitPaused();
