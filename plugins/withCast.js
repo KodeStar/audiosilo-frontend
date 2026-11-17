@@ -1,4 +1,4 @@
-const { AndroidConfig, withAndroidManifest } = require('expo/config-plugins');
+const { AndroidConfig, withAndroidManifest, withAppDelegate } = require('expo/config-plugins');
 const castPlugin = require('react-native-google-cast/app.plugin.js');
 
 // The library's plugin is an ES module default export compiled to CommonJS.
@@ -21,6 +21,12 @@ const withGoogleCast = castPlugin.default ?? castPlugin;
  *    ReactNativeDelegate()` and `import GoogleCast` before `import React`, plus the Bonjour
  *    services; it keeps an `NSLocalNetworkUsageDescription` that is already there, and
  *    app.json's says what it is for (the server AND Cast devices).
+ *  - Stop casting stops the receiver's app (with the book), on both platforms: left alone, the
+ *    SDKs only leave the session and the TV plays on while the book comes back to the phone
+ *    paused (two places at once). iOS: `stopReceiverApplicationWhenEndingSession`, set here in
+ *    the plugin's options block (`addStopReceiverOnEnd`). Android: the library's options
+ *    provider builds the `CastOptions`, so `patches/react-native-google-cast+4.9.1.patch` sets
+ *    it there (`setStopReceiverApplicationWhenEndingSession(true)`).
  *  - Android: the Cast framework version is PINNED (the plugin's default is `+`, a build
  *    that changes under us). The library's options provider keeps the Cast SDK's own media
  *    notification and media session: while a book casts the app's Media3 engine is
@@ -61,7 +67,29 @@ function addExpandedController(manifest) {
   return manifest;
 }
 
+/** The plugin's options block, written into `didFinishLaunching` by react-native-google-cast's
+ * own mod: one more option after its last, so the session's end stops the receiver's app (Stop
+ * casting from the Cast dialog or the notification, another device picked). Throws when the
+ * block is not there, rather than shipping a build whose Stop casting leaves the TV playing. */
+function addStopReceiverOnEnd(src) {
+  if (src.includes('options.stopReceiverApplicationWhenEndingSession')) return src;
+  const anchor = /^([ \t]*)options\.suspendSessionsWhenBackgrounded = .*$/m;
+  if (!anchor.test(src)) {
+    throw new Error("withCast: react-native-google-cast's options block is not in the AppDelegate");
+  }
+  return src.replace(
+    anchor,
+    (line, indent) => `${line}\n${indent}options.stopReceiverApplicationWhenEndingSession = true`,
+  );
+}
+
 const withCast = (config) => {
+  // Registered before the library's own AppDelegate mod, so it runs after it (mods of one kind
+  // run in reverse registration order) and finds its options block.
+  config = withAppDelegate(config, (cfg) => {
+    cfg.modResults.contents = addStopReceiverOnEnd(cfg.modResults.contents);
+    return cfg;
+  });
   config = withGoogleCast(config, CAST_OPTIONS);
   config = withAndroidManifest(config, (cfg) => {
     cfg.modResults = addExpandedController(cfg.modResults);
@@ -74,3 +102,4 @@ module.exports = withCast;
 module.exports.CAST_OPTIONS = CAST_OPTIONS;
 module.exports.CAST_FRAMEWORK_VERSION = CAST_FRAMEWORK_VERSION;
 module.exports.addExpandedController = addExpandedController;
+module.exports.addStopReceiverOnEnd = addStopReceiverOnEnd;

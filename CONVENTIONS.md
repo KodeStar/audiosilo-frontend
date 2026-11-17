@@ -3527,7 +3527,11 @@ on first need). NOT device-verified (no Cast device yet).
   the other: the router emits `paused` at the handed-over place (the store saves it); a cast
   started while playing plays on, and the phone never plays by itself when a cast ends.
   `startCastSync` (the root's services, `root-services-impl.tsx`) follows the driver's session events; `endCastForCar` and
-  `stopCasting` end a session from the app.
+  `stopCasting` end a session from the app. Any end of a session stops the receiver's app (Stop
+  casting from the Cast dialog or the notification included), so the TV never plays on while the
+  book comes back paused: iOS's `stopReceiverApplicationWhenEndingSession` (`withCast.js`),
+  Android's through `patches/react-native-google-cast+4.9.1.patch` (the library's options
+  provider builds the `CastOptions`; `withCast.test.ts` fails if the patch is lost).
 - **The receiver never gets the session token**: `prepareCast` builds the queue with cast tokens
   (`POST /cast/token`, book-scoped, 24 h; `castTokens` caches one per book until an hour before it
   expires, drops expired ones and forgets a removed connection's), on the connection's address in

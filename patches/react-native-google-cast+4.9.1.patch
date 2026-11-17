@@ -1,0 +1,13 @@
+diff --git a/node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/GoogleCastOptionsProvider.java b/node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/GoogleCastOptionsProvider.java
+index 8387c5b..341a418 100644
+--- a/node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/GoogleCastOptionsProvider.java
++++ b/node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/GoogleCastOptionsProvider.java
+@@ -115,6 +115,8 @@ public class GoogleCastOptionsProvider implements OptionsProvider {
+     return new CastOptions.Builder()
+       .setReceiverApplicationId(getReceiverApplicationId(context))
+       .setCastMediaOptions(mediaOptions)
++      // AudioSilo: Stop casting stops the receiver's app, not only the session (plugins/withCast.js).
++      .setStopReceiverApplicationWhenEndingSession(true)
+       .build();
+   }
+ 

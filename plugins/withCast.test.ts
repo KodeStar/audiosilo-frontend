@@ -1,9 +1,16 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
 import type { ExpoConfig } from 'expo/config';
 
 import { APP_DELEGATE_SDK58 } from './__fixtures__/app-delegate-sdk58';
 import { MAIN_ACTIVITY_SDK58 } from './__fixtures__/main-activity-sdk58';
 import withCarPlay from './withCarPlay';
-import withCast, { addExpandedController, CAST_FRAMEWORK_VERSION } from './withCast';
+import withCast, {
+  addExpandedController,
+  addStopReceiverOnEnd,
+  CAST_FRAMEWORK_VERSION,
+} from './withCast';
 
 type Mod = (config: Record<string, unknown>) => Promise<{ modResults: unknown }>;
 
@@ -57,6 +64,10 @@ describe('withCast + withCarPlay: the SDK 58 AppDelegate', () => {
     expect(src).toContain('let receiverAppID = "CC1AD845"');
     expect(src).toContain('options.startDiscoveryAfterFirstTapOnCastButton = true');
     expect(src).toContain('options.suspendSessionsWhenBackgrounded = true');
+    // Stop casting stops the receiver's app: set before the shared context is made from it.
+    const stop = src.indexOf('options.stopReceiverApplicationWhenEndingSession = true');
+    expect(stop).toBeGreaterThan(src.indexOf('let options = GCKCastOptions('));
+    expect(stop).toBeLessThan(setup);
     // No automatic expanded controls: the app's full player is the controller.
     expect(src).toContain('useDefaultExpandedMediaControls = false');
   });
@@ -75,6 +86,32 @@ describe('withCast + withCarPlay: the SDK 58 AppDelegate', () => {
     })) as { modResults: { contents: string } };
     expect(out.modResults.contents).toContain('AudiosiloScenes.configure(');
     expect(out.modResults.contents).toContain('GCKCastContext.setSharedInstanceWith(options)');
+  });
+});
+
+describe('withCast: Stop casting stops the receiver', () => {
+  it('sets the iOS option once, and refuses an AppDelegate without the options block', () => {
+    const block =
+      '    let options = GCKCastOptions(discoveryCriteria: criteria)\n    options.suspendSessionsWhenBackgrounded = true\n';
+    const once = addStopReceiverOnEnd(block);
+    expect(once).toContain(
+      'options.suspendSessionsWhenBackgrounded = true\n    options.stopReceiverApplicationWhenEndingSession = true\n',
+    );
+    expect(addStopReceiverOnEnd(once)).toBe(once);
+    expect(() => addStopReceiverOnEnd('let delegate = ReactNativeDelegate()')).toThrow();
+  });
+
+  it("Android: the library's options provider, as patched at install, sets it", () => {
+    // `patches/react-native-google-cast+4.9.1.patch` (postinstall): a library upgrade that
+    // drops the patch fails here instead of leaving the TV playing after Stop casting.
+    const provider = readFileSync(
+      join(
+        __dirname,
+        '../node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/GoogleCastOptionsProvider.java',
+      ),
+      'utf8',
+    );
+    expect(provider).toContain('.setStopReceiverApplicationWhenEndingSession(true)');
   });
 });
 
