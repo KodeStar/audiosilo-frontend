@@ -2456,12 +2456,16 @@ export function useClearListeningGoal(connectionId?: string) {
 
 /** The caller's own signed-in devices, most recently seen first (capability
  * `my_devices`). `enabled: false` asks nothing (its `data` may still be a cached answer:
- * ignore it then). */
+ * ignore it then). While the flag is unknown because `/server` is held or failed with
+ * nothing kept, the list takes that read's state (`useCapabilityQuery`), so Account says
+ * offline rather than hiding the section (fe#271). */
 export function useMyDevices(connectionId?: string, opts: { enabled?: boolean } = {}) {
-  const api = useOptionalApi(connectionId);
-  const supported = useCapability('my_devices', connectionId) === true;
-  return useQuery(
-    myDevicesQuery(useCid(connectionId), supported && opts.enabled !== false ? api : null),
+  return useCapabilityQuery(
+    'my_devices',
+    qk.myDevices,
+    (api, signal) => api.myDevices(signal),
+    connectionId,
+    { ready: opts.enabled !== false },
   );
 }
 

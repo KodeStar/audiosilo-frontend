@@ -14,6 +14,7 @@ import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { isKidAccount } from '@/lib/account';
 import { useLayout } from '@/lib/layout';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { cn } from '@/lib/utils';
 import { hostOf } from '@/lib/pairing';
 import { addressKind, mergeAddresses } from '@/lib/server-address';
@@ -133,6 +134,9 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   // Signed-in sessions for the identity line (the same query the devices list reads).
   const devices = useMyDevices(cid);
   const deviceCount = devices.data ? signedInSessions(devices.data).length : undefined;
+  // With no `/server` answer kept and none coming offline, the flag is unknown: the
+  // section stands with its offline line, not gone until the network is back (fe#271).
+  const devicesOffline = useUnreadQuery(devices) === 'offline';
 
   useFreshUser(cid);
   const password = usePasswordEditor(cid);
@@ -193,7 +197,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
           and removed here like anyone's. */}
       {!demo || connection?.proxyHeaders ? <ProxyHeadersCard connectionId={cid} /> : null}
 
-      {caps?.my_devices === true ? (
+      {caps?.my_devices === true || (!caps && devicesOffline) ? (
         <DevicesSection connectionId={cid} serverName={serverName} />
       ) : null}
 

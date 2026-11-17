@@ -924,6 +924,21 @@ describe('a gated read while /server is held', () => {
     }
   });
 
+  // fe#271: Account shows its Signed-in devices section offline by this state, not hidden.
+  it("the caller's devices report paused too, then run by themselves", async () => {
+    onlineManager.setOnline(false);
+    try {
+      const { result } = await mount({ c1: { my_devices: true } }, () => useMyDevices());
+      await waitFor(() => expect(result.current.isPaused).toBe(true));
+      expect(mockClients.c1.myDevices).not.toHaveBeenCalled();
+      await act(async () => onlineManager.setOnline(true));
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockClients.c1.myDevices).toHaveBeenCalledTimes(1);
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+
   it("takes a failed /server read's error, and Retry asks /server again", async () => {
     const down = new Error('Network request failed');
     const { result } = await mount(

@@ -9,6 +9,8 @@ let mockDevices: Record<string, MyDevice[]>;
 let mockAddresses: Record<string, ServerAddresses | undefined>;
 // Each server's version (`/server`): a password change ends the pairing codes since 2.6.0.
 let mockVersion = '2.6.0';
+// No /server answer kept and the read held for the network (an offline cold launch).
+let mockServerHeld = false;
 const mockRevoke = jest.fn();
 jest.mock('@/api/hooks', () => {
   const { CapabilityError } = jest.requireActual('@/api/hooks');
@@ -18,10 +20,17 @@ jest.mock('@/api/hooks', () => {
       data: mockCaps[cid] ? { version: mockVersion, capabilities: mockCaps[cid] } : undefined,
     }),
     // The real hook never asks a server without the flag: its query stays pending.
+    // While /server is held, it takes that read's state (`useCapabilityQuery`).
     useMyDevices: (cid: string) =>
       mockCaps[cid]?.my_devices
         ? { data: mockDevices[cid], isPending: false, isError: false, isSuccess: true }
-        : { data: undefined, isPending: true, isError: false, isSuccess: false },
+        : {
+            data: undefined,
+            isPending: true,
+            isPaused: !mockCaps[cid] && mockServerHeld,
+            isError: false,
+            isSuccess: false,
+          },
     useRevokeMyDevice: () => ({ mutateAsync: mockRevoke, isPending: false }),
     useReadMyDevicesAgain: () => async () => undefined,
     // Gated like the real hook: nothing without the flag.
@@ -114,6 +123,7 @@ afterAll(() => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockVersion = '2.6.0';
+  mockServerHeld = false;
   Platform.OS = 'ios';
   useAddressRoute.setState({ picks: {} });
   mockAddresses = {};
@@ -234,6 +244,16 @@ describe('AccountSection', () => {
     expect(screen.getByText('@chris · Administrator on Hearthside')).toBeTruthy();
     expect(screen.queryByText('Signed-in devices')).toBeNull();
     expect(screen.queryByText('Personal API keys')).toBeNull();
+  });
+
+  // fe#271: an offline cold launch with no /server answer kept hid the whole section.
+  it('shows the devices section offline while /server waits for the network', async () => {
+    mockCaps.c1 = undefined;
+    mockServerHeld = true;
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.getByText('Signed-in devices')).toBeTruthy();
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   it('hides the password and API keys from a demo account', async () => {
