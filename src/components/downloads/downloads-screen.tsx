@@ -118,13 +118,10 @@ export function DownloadsScreen() {
   );
   const serverName = (id: string) =>
     servers.find((s) => s.id === id)?.name ?? t('downloads.storage.unknownServer');
+  const serverIds = useMemo(() => servers.map((s) => s.id), [servers]);
   const { active, ready } = useMemo(
-    () =>
-      visibleDownloads(
-        entries,
-        servers.map((s) => s.id),
-      ),
-    [entries, servers],
+    () => visibleDownloads(entries, serverIds),
+    [entries, serverIds],
   );
   // Episodes are listed on their own, under their show's name; the storage bar counts both.
   const readyBooks = useMemo(() => ready.filter((e) => !isEpisodeEntry(e)), [ready]);
@@ -152,12 +149,7 @@ export function DownloadsScreen() {
 
   const scope = storage.estimate?.scope ?? (Platform.OS === 'web' ? 'browser' : 'device');
   // What the downloads under way have written, so the figure grows with them (PLAYER-05).
-  const growing = useDownloads((s) =>
-    growingBytes(
-      s.entries,
-      servers.map((x) => x.id),
-    ),
-  );
+  const growing = useDownloads((s) => growingBytes(s.entries, serverIds));
   const bar = storageBar(allGroups, storage.estimate, storage.measured, growing);
   const summary =
     scope === 'device'

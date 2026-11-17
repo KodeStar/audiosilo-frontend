@@ -67,8 +67,11 @@ export function JournalScreen({ embedded = false }: { embedded?: boolean }) {
   // them on its own.
   const [notesWanted, setNotesWanted] = useState(tab === 'notes');
   const sources = useJournalSources({ notes: notesWanted });
-  const firstIn = overallStatus([...sources.history, ...sources.bookmarks]) !== 'loading';
-  if (!notesWanted && (tab === 'notes' || firstIn)) setNotesWanted(true);
+  if (
+    !notesWanted &&
+    (tab === 'notes' || overallStatus([...sources.history, ...sources.bookmarks]) !== 'loading')
+  )
+    setNotesWanted(true);
   const exporter = useJournalExport(sources);
 
   const setTab = (next: JournalTab) =>
