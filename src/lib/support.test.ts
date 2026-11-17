@@ -80,5 +80,28 @@ describe('support', () => {
       expect(openBrowserAsync).toHaveBeenCalledWith(url);
       expect(openURL).not.toHaveBeenCalled();
     });
+
+    it('lower-cases the scheme, which the in-app browser on iOS matches by case (fe#291)', async () => {
+      setPlatform('ios');
+      openBrowserAsync.mockResolvedValue(undefined);
+      await openExternalUrl(' HTTPS://meta.audiosilo.app/Work ');
+      expect(openBrowserAsync).toHaveBeenCalledWith('https://meta.audiosilo.app/Work');
+    });
+
+    it.each([
+      'javascript:alert(1)',
+      'file:///etc/passwd',
+      'intent://scan/#Intent;scheme=zxing;end',
+      'audiosilo://connect?token=x',
+      '/relative/path',
+      '',
+    ])('opens nothing for %p, on web or native (fe#291)', async (bad) => {
+      for (const os of ['web', 'android', 'ios']) {
+        setPlatform(os);
+        await openExternalUrl(bad);
+      }
+      expect(openURL).not.toHaveBeenCalled();
+      expect(openBrowserAsync).not.toHaveBeenCalled();
+    });
   });
 });

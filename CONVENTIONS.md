@@ -1185,13 +1185,16 @@ description, else the description a Bridge generated on this server (`aboutConte
 field, the credit included; `BookAbout` takes it as a required prop; the order is picked once,
 into `source`, and a `generated` text wears `GeneratedChip` (`testID` `about-generated-mark`)
 under the eyebrow, never the credit or "Improve this"), else a sentence naming the author and
-narrator; then the production facts known, the server's own `publisher` / `language` (named via
+narrator; then the production facts known ("First published" only when it is not the
+"Released" date, fe#291), the server's own `publisher` / `language` (named via
 `Intl.DisplayNames` where the platform has it) /
 `abridged` (absent = unknown, no row; the community only ever says true) before the community's; then the book's `genres` and `tags`
 as chips (`chipClass`, the filter chips' pill), each opening the Library's Books mode on it in the
 book's library, `openLabelBooks`; the publisher rule is `bookPublisher`, shared with the hero's facts; under the
 other links out, a LibriVox recording's quiet "Also free on LibriVox" link, `librivoxUrl`: the matched recording's
-`librivox.url`, only an absolute http(s) URL, its scheme lower-cased, LibriVox L5),
+`librivox.url`, only an absolute http(s) URL, its scheme lower-cased, on `librivox.org` or
+`archive.org` (or a subdomain) with no user before the host, LibriVox L5 and fe#291; every link
+out goes through `openExternalUrl`, which opens only an absolute http(s) URL, `httpUrl`),
 Other versions
 (`BookVersions`), Other recordings in your library (`OtherRecordings`, server#241: the item's
 `other_recordings`, only when present, each a `RecordingRow` with its own saved progress), Your listening (`listeningFigures`: started, finished, speed, and the time

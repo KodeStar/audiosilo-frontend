@@ -158,6 +158,12 @@ describe('aboutContent', () => {
     expect(aboutContent(book, undefined, undefined, t).details).toEqual([]);
   });
 
+  it('shows one date when first published is the release date (fe#291)', () => {
+    expect(
+      aboutContent(book, { ...work, first_published: '1813' }, { release_date: '1813' }, t).details,
+    ).toEqual([{ label: 'Released', value: '1813' }]);
+  });
+
   it("lists the server's publisher, language and abridged, before the community's", () => {
     const recording = { publisher: 'Community P', abridged: true };
     const own = { ...book, publisher: ' Server P ', language: 'English', abridged: false };
@@ -264,5 +270,17 @@ describe('librivoxUrl', () => {
     expect(librivoxUrl(rec('ftp://librivox.org/x/'))).toBeUndefined();
     expect(librivoxUrl(rec('https://'))).toBeUndefined();
     expect(librivoxUrl(rec('https://[]/x/'))).toBeUndefined();
+  });
+
+  it("goes only to LibriVox's or the Internet Archive's host, never past a user (fe#291)", () => {
+    expect(librivoxUrl(rec('https://www.librivox.org/x/'))).toBe('https://www.librivox.org/x/');
+    expect(librivoxUrl(rec('https://ia800.us.archive.org/x.zip'))).toBe(
+      'https://ia800.us.archive.org/x.zip',
+    );
+    expect(librivoxUrl(rec('https://evil.example/librivox.org/'))).toBeUndefined();
+    expect(librivoxUrl(rec('https://librivox.org.evil.example/x/'))).toBeUndefined();
+    expect(librivoxUrl(rec('https://notlibrivox.org/x/'))).toBeUndefined();
+    expect(librivoxUrl(rec('https://librivox.org@evil.example/x/'))).toBeUndefined();
+    expect(librivoxUrl(rec('https://user:pw@librivox.org/x/'))).toBeUndefined();
   });
 });

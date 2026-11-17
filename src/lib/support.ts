@@ -1,6 +1,8 @@
 import * as WebBrowser from 'expo-web-browser';
 import { Linking, Platform } from 'react-native';
 
+import { httpUrl } from '@/lib/url-host';
+
 /**
  * GitHub Sponsors is the single place AudioSilo collects voluntary contributions.
  * It is a pure donation - no functionality is unlocked and no reward is given back -
@@ -26,14 +28,18 @@ export function isSupportAvailable(): boolean {
  * Open an external URL. On web we want a normal new tab (`Linking` →
  * `window.open('_blank')`); `WebBrowser.openBrowserAsync` is avoided there because its
  * web path opens an OAuth-style centred popup window. On native `openBrowserAsync`
- * gives a nicer in-app Custom Tab.
+ * gives a nicer in-app Custom Tab. Only an absolute http(s) URL opens, its scheme
+ * lower-cased (`httpUrl`); anything else (`javascript:`, `file:`, `intent:`, from a server
+ * or the community data) does nothing (fe#291).
  */
 export async function openExternalUrl(url: string): Promise<void> {
+  const target = httpUrl(url);
+  if (!target) return;
   try {
     if (Platform.OS === 'web') {
-      await Linking.openURL(url);
+      await Linking.openURL(target);
     } else {
-      await WebBrowser.openBrowserAsync(url);
+      await WebBrowser.openBrowserAsync(target);
     }
   } catch {
     // user dismissed it, or no browser is available - nothing to recover from

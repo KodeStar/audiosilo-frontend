@@ -10,7 +10,7 @@ import type {
 import { getLocale } from '@/i18n/locale';
 import { bitrateKbps } from '@/lib/format';
 import { bookLabels, LABEL_KINDS, type LabelKind } from '@/lib/labels';
-import { urlEndpoint } from '@/lib/url-host';
+import { hasUserinfo, httpUrl, urlHost } from '@/lib/url-host';
 import { codecLabel } from '@/playback/transcode';
 
 import { fileName } from './book-page-model';
@@ -206,7 +206,8 @@ export function aboutContent(
   if (publisher) details.push({ label: t('book.meta.publisher'), value: publisher });
   const released = recording?.release_date || book.published;
   if (released) details.push({ label: t('book.meta.released'), value: released });
-  if (work?.first_published)
+  // The same date twice says nothing more (fe#291): one row, "Released".
+  if (work?.first_published && work.first_published !== released)
     details.push({ label: t('book.meta.firstPublished'), value: work.first_published });
   const language = book.language?.trim();
   if (language) details.push({ label: t('book.meta.language'), value: languageName(language) });
@@ -232,23 +233,26 @@ export function aboutContent(
   };
 }
 
+/** The hosts a LibriVox link may go to: LibriVox's own pages and the Internet Archive,
+ * which holds its files (each with its subdomains). */
+const LIBRIVOX_HOSTS = ['librivox.org', 'archive.org'];
+
 /**
  * Where the About card's "Also free on LibriVox" goes (LibriVox L5): the matched
- * recording's LibriVox page, only when it is an absolute http(s) URL with a host
- * (`urlEndpoint` reads "https://[]" as a URL with an empty one). The server already drops
- * any other, so this is the second check, kept because the link leaves the app. The
- * scheme goes out lower-cased: the in-app browser on iOS (expo-web-browser) matches it by
- * case and refuses "HTTPS://", which `openExternalUrl` swallows, leaving a link that does
- * nothing. `undefined` hides the link (no LibriVox release, or an older server). The
- * envelope carries one recording, the book's own match (the server falls back to the
- * work's first when the lookup names none), so there is no list here to pick from.
+ * recording's LibriVox page, only when it is an absolute http(s) URL (`httpUrl`: its scheme
+ * goes out lower-cased, which the in-app browser on iOS needs) on LibriVox's or the
+ * Internet Archive's host, with no user before the host (fe#291: the link is labelled
+ * LibriVox, so it must go there). The server already drops any other, so this is the second
+ * check, kept because the link leaves the app. `undefined` hides the link (no LibriVox
+ * release, or an older server). The envelope carries one recording, the book's own match
+ * (the server falls back to the work's first when the lookup names none), so there is no
+ * list here to pick from.
  */
 export function librivoxUrl(
   recording: Pick<BookMetaRecording, 'librivox'> | undefined,
 ): string | undefined {
-  const url = recording?.librivox?.url?.trim();
-  if (!url) return undefined;
-  const at = urlEndpoint(url);
-  if (!at?.host || (at.scheme !== 'http' && at.scheme !== 'https')) return undefined;
-  return at.scheme + url.slice(at.scheme.length);
+  const url = httpUrl(recording?.librivox?.url ?? '');
+  if (!url || hasUserinfo(url)) return undefined;
+  const host = urlHost(url) ?? '';
+  return LIBRIVOX_HOSTS.some((h) => host === h || host.endsWith(`.${h}`)) ? url : undefined;
 }

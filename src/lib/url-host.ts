@@ -63,3 +63,21 @@ export function looksLikeHomeAddress(url: string): boolean {
   if (/^\d+(\.\d+){3}$/.test(host) || host.includes(':')) return false;
   return /\.(local|lan|home\.arpa)$/.test(host) || !host.includes('.');
 }
+
+/**
+ * `url` to open outside the app: an absolute http(s) URL with a host, trimmed, its scheme
+ * lower-cased (the in-app browser on iOS, expo-web-browser, matches it by case and refuses
+ * "HTTPS://"). Null for anything else (`javascript:`, `file:`, `intent:`, a relative path).
+ */
+export function httpUrl(url: string): string | null {
+  const u = url.trim();
+  const at = urlEndpoint(u);
+  if (!at?.host || (at.scheme !== 'http' && at.scheme !== 'https')) return null;
+  return at.scheme + u.slice(at.scheme.length);
+}
+
+/** Whether an absolute URL names a user before its host (`https://user:pass@host/`), which
+ * `urlEndpoint` reads past: a link can dress another host up as a trusted one that way. */
+export function hasUserinfo(url: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:\/\/[^/?#]*@/i.test(url.trim());
+}

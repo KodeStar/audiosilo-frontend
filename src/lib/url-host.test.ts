@@ -1,4 +1,11 @@
-import { isLoopbackHost, looksLikeHomeAddress, urlEndpoint, urlHost } from './url-host';
+import {
+  hasUserinfo,
+  httpUrl,
+  isLoopbackHost,
+  looksLikeHomeAddress,
+  urlEndpoint,
+  urlHost,
+} from './url-host';
 
 describe('urlHost', () => {
   it('reads the host without URL.hostname (React Native does not implement it)', () => {
@@ -76,4 +83,23 @@ describe('looksLikeHomeAddress', () => {
   ])('%s -> %s', (url, home) => {
     expect(looksLikeHomeAddress(url)).toBe(home);
   });
+});
+
+describe('httpUrl', () => {
+  it('keeps an absolute http(s) URL, trimmed, its scheme lower-cased', () => {
+    expect(httpUrl(' HTTPS://Books.example.com/X ')).toBe('https://Books.example.com/X');
+    expect(httpUrl('http://192.168.1.20:8080/')).toBe('http://192.168.1.20:8080/');
+  });
+
+  it('refuses any other scheme, a relative path or no host', () => {
+    for (const bad of ['javascript:alert(1)', 'file:///x', 'intent://x', '/x', 'https://', ''])
+      expect(httpUrl(bad)).toBeNull();
+  });
+});
+
+it('hasUserinfo: a user before the host, never an @ in the path', () => {
+  expect(hasUserinfo('https://librivox.org@evil.example/')).toBe(true);
+  expect(hasUserinfo('https://u:p@librivox.org/')).toBe(true);
+  expect(hasUserinfo('https://librivox.org/a@b')).toBe(false);
+  expect(hasUserinfo('https://librivox.org/?q=a@b')).toBe(false);
 });
