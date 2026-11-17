@@ -235,8 +235,13 @@ describe('useUpcomingAll', () => {
     mockClients.x.upcoming.mockReturnValue(new Promise((r) => (answerList = r)));
     await act(async () => result.current.retry());
     expect(result.current.retrying).toBe(true);
+    // Still named while they are read again (a fetch with no data clears the error), so
+    // the page keeps its Retry, busy, instead of a skeleton.
+    expect(result.current.failed).toEqual(['Server down', 'Server x']);
+    expect(result.current.isLoading).toBe(false);
     await act(async () => answerList({ status: 'ok', window_days: 90, items: [] }));
     expect(result.current.retrying).toBe(true); // the flags still
+    expect(result.current.failed).toEqual(['Server down']);
     await act(async () => answerFlags(serverWith('down', {})));
     await waitFor(() => expect(result.current.retrying).toBe(false));
     expect(result.current.failed).toEqual([]);

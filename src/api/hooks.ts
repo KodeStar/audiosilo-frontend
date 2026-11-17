@@ -752,8 +752,9 @@ export function useCapabilitiesAll(): Record<string, Capabilities | undefined> {
  * {@link useCapabilitiesAll} with what it can't tell: `failed` lists the connections whose
  * `/server` read has failed with nothing known (an error, or held for the network), which
  * `caps` keeps reading as `undefined` (not known yet), so a screen that waits on the flags
- * can settle; `retry` asks each of them again, and `reading` is true while a read with
- * nothing known is on its way (a Retry's busy state).
+ * can settle; `retry` asks each of them again, and `reading` is true while one of those is
+ * read again (a Retry's busy state). A failed read asked again stays in `failed` meanwhile
+ * (`failedRead`), so the screen keeps its Retry, busy, rather than reading as loading.
  */
 export function useCapabilitiesAllRead(): {
   caps: Record<string, Capabilities | undefined>;
@@ -768,15 +769,25 @@ export function useCapabilitiesAllRead(): {
       caps: Object.fromEntries(
         results.map((r, i) => [apis[i].connection.id, r.data?.capabilities]),
       ),
-      failed: results.flatMap((r, i) =>
-        !r.data && (r.isError || r.isPaused) ? [apis[i].connection.id] : [],
-      ),
+      failed: results.flatMap((r, i) => (failedRead(r) ? [apis[i].connection.id] : [])),
       retry: () => {
         for (const r of results) if (!r.data && (r.isError || r.isPaused)) void r.refetch();
       },
-      reading: results.some((r) => !r.data && r.isFetching),
+      reading: results.some((r) => failedRead(r) && r.isFetching),
     }),
   });
+}
+
+/** Whether a query failed with nothing known: an error, held for the network, or asked
+ * again after a failure (a fetch with no data puts the query back to pending and clears its
+ * error, so only the count of its failures still says it failed, as `useKnownBook` reads). */
+function failedRead(r: {
+  data?: unknown;
+  isError: boolean;
+  isPaused: boolean;
+  errorUpdateCount: number;
+}): boolean {
+  return r.data === undefined && (r.isError || r.isPaused || r.errorUpdateCount > 0);
 }
 
 /** Whether any server has a capability: true as soon as one does, false once every one
@@ -3646,6 +3657,7 @@ export function useUpcomingAll(): {
         isError: boolean;
         isPaused: boolean;
         isFetching: boolean;
+        errorUpdateCount: number;
         refetch: () => Promise<unknown>;
       }[],
     ) => {
@@ -3657,17 +3669,17 @@ export function useUpcomingAll(): {
           : [];
       });
       // A server whose flags could not be read may have Upcoming too: it didn't answer
-      // either, named in its `useApis` place.
+      // either, named in its `useApis` place. One asked again after a failure stays named
+      // while it is (`failedRead`), its Retry busy.
       const failed = conns.flatMap(([, connectionName, asked, unread], i) => {
         const r = results[i];
-        return unread || (asked && r && !r.data && (r.isError || r.isPaused))
-          ? [connectionName]
-          : [];
+        return unread || (asked && r && failedRead(r)) ? [connectionName] : [];
       });
       return {
         items: mergeUpcoming(answered),
         available,
-        isLoading: results.some((r) => r.isLoading),
+        // A failed list read again is a busy Retry, not the page loading.
+        isLoading: results.some((r) => r.isLoading && r.errorUpdateCount === 0),
         statuses: answered.map(({ connectionId, connectionName, status }) => ({
           connectionId,
           connectionName,
@@ -3679,9 +3691,10 @@ export function useUpcomingAll(): {
             if (asked && results[i]?.isError) void results[i].refetch();
           });
         },
-        retrying: conns.some(
-          ([, , asked], i) => asked && !results[i]?.data && results[i]?.isFetching,
-        ),
+        retrying: conns.some(([, , asked], i) => {
+          const r = results[i];
+          return asked && !!r && failedRead(r) && r.isFetching;
+        }),
       };
     },
     [sources, available],

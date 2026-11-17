@@ -1445,7 +1445,10 @@ rules are `src/lib/upcoming.ts`: `upcomingEligibility` (who may be asked, and `a
 true / false / undefined while a server's flags load; a non-kid server whose `/server` read
 failed, from `useCapabilitiesAllRead` (`useCapabilitiesAll` plus `failed` ids and `retry`, the
 same shared reads), is `unreadable`, settled and not loading, so a cold link never waits on it
-forever; `useUpcomingAvailable` reads only `available`),
+forever; `useUpcomingAvailable` reads only `available`; a failed read asked again stays
+`failed` while it is, `failedRead`, since a fetch with no data clears the query's error and
+only its `errorUpdateCount` still says it failed, so a Retry stays on screen, busy, rather
+than the section vanishing or a skeleton taking its place),
 `mergeUpcoming` (tags each item with its connection, keeps the FIRST connection's row of a work
 id, then `compareUpcoming`, the server's order across servers: preorders soonest first, releases
 newest first, then missing by series name and numeric position) and `isNewUpcoming`
