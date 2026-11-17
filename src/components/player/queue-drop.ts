@@ -17,7 +17,8 @@ const entryKeyOf = (cid: string, e: BookRef) => JSON.stringify([cid, e.library_i
  * next's own Play now does). Each goes by the stored entry's own path (removes are
  * exact; the entry may be the book folder above a part path), looked up in the queue at
  * call time (the cached read while fresh, see `QUEUE_DROP_FRESH_MS`), so a book that
- * isn't queued sends nothing. A removed entry also leaves the cached queue at once, so a
+ * isn't queued sends nothing (when `/queue` can't be read, the cached queue answers, and
+ * with none each book goes by its own path). A removed entry also leaves the cached queue at once, so a
  * later call for the same book (the credits opened on return, after the end already
  * dropped it) sends nothing again, and one already being removed is not sent twice (a
  * start in place drops the book it starts, and the end of a book drops the same one).
@@ -43,8 +44,14 @@ export async function dropFromQueue(
       gcTime: QUEUE_DROP_FRESH_MS,
     })
     .catch(() => undefined);
-  if (!entries) return;
-  const held = entries.filter(
+  // A failed read must not keep the book queued (fe#155): the cached queue still knows the
+  // stored entries, and with no read at all each book goes by its own path (removes are
+  // exact and idempotent, so a book that was never queued costs one quiet request).
+  const known =
+    entries ??
+    queryClient.getQueryData<QueueEntry[]>(qk.queue(connectionId)) ??
+    books.map((b) => ({ library_id: b.library_id, path: b.path, added_at: '' }));
+  const held = known.filter(
     (e) =>
       books.some((b) => entryHolds(e, b.library_id, b.path)) &&
       !removing.has(entryKeyOf(connectionId, e)),

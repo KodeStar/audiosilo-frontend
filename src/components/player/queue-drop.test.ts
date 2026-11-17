@@ -119,6 +119,28 @@ describe('dropFromQueue', () => {
     });
   });
 
+  // fe#155: a failed re-read must still drop the book.
+  describe('when the queue read fails', () => {
+    beforeEach(() => mockQueueRead.mockReset().mockRejectedValue(new Error('offline')));
+
+    it('goes by the cached queue, the stored entry above a part path included', async () => {
+      queryClient.setQueryData(qk.queue('c1'), [entry('Other/Queued'), entry('Series')], {
+        updatedAt: Date.now() - QUEUE_DROP_FRESH_MS - 1_000,
+      });
+      await dropFromQueue('c1', [finished]);
+      expect(mockQueueRead).toHaveBeenCalledTimes(1);
+      expect(mockRemove.mock.calls).toEqual([['c1', { libraryId: 1, path: 'Series' }]]);
+    });
+
+    it('sends exact removes for the books themselves with no cached queue', async () => {
+      await dropFromQueue('c1', [finished, queued]);
+      expect(mockRemove.mock.calls).toEqual([
+        ['c1', { libraryId: 1, path: 'Series/Book 1' }],
+        ['c1', { libraryId: 1, path: 'Other/Queued' }],
+      ]);
+    });
+  });
+
   it('sends nothing for a book not queued, a server without a queue or a gone connection', async () => {
     queryClient.setQueryData(qk.queue('c1'), [entry('Other/Queued')]);
     await dropFromQueue('c1', [finished]);
