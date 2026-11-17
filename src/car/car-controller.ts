@@ -71,7 +71,7 @@ import {
 import { bookSourceOf, downloadedSourceOf } from '@/playback/book-source';
 import { listenerSettings } from '@/playback/listener-settings';
 import { noteInteraction } from '@/playback/last-interaction';
-import { readLocalPlaces, resumeLookupOf } from '@/playback/progress-sync';
+import { placeSavedAt, readLocalPlaces, resumeLookupOf } from '@/playback/progress-sync';
 import {
   selectBookKey,
   selectBookPosition,
@@ -498,8 +498,10 @@ let specs = new Map<string, { manifest: DownloadManifest; inputs: string; spec?:
  * the tabs list. Each resumes where `playBook` would: `resumeLookupOf` over the server row
  * the progress list holds (only a server whose list is known stands in for the server) and
  * the device's own places, read ONCE for all of them (`readLocalPlaces`), with no mirror
- * write. The loaded book, paused, starts where it was paused instead (`pausedPlaceOf`). A spec
- * is rebuilt only when its manifest, its resume place or the defaults changed.
+ * write. The loaded book, paused, starts where it was paused instead (`pausedPlaceOf`). Each
+ * carries when its place was saved (`CarPlaySpec.placeSavedAt`), so Android's live place on
+ * the book wins only when it is newer. A spec is rebuilt only when its manifest, its resume
+ * place or the defaults changed.
  */
 async function playSpecs(
   books: ReadonlyMap<string, CarBook>,
@@ -522,12 +524,22 @@ async function playSpecs(
       const row = known.has(connectionId) ? progressOf(ref) : undefined;
       const lookup = resumeLookupOf(row, places, connectionId, libraryId, path);
       const at = paused?.key === key ? paused.place : undefined;
-      const inputs = JSON.stringify([lookup, defaultRate, virtualChapterInterval, at]);
+      const skew = places.skews?.[connectionId];
+      const inputs = JSON.stringify([lookup, defaultRate, virtualChapterInterval, at, skew]);
       const had = specs.get(key);
+      // A paused place was saved as JS first wrote it: an unchanged spec keeps that time.
       const spec =
         had && had.manifest === manifest && had.inputs === inputs
           ? had.spec
-          : playSpec(ref, manifest, lookup, defaultRate, virtualChapterInterval, at);
+          : playSpec(
+              ref,
+              manifest,
+              lookup,
+              defaultRate,
+              virtualChapterInterval,
+              at,
+              at ? Date.now() : placeSavedAt(lookup, row, places, connectionId, libraryId, path),
+            );
       next.set(key, { manifest, inputs, spec });
       out.set(key, spec);
     }

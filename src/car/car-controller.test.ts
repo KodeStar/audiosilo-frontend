@@ -95,6 +95,7 @@ const mockReadLocalPlaces = jest.fn(async () => mockLocalPlaces);
 jest.mock('@/playback/progress-sync', () => ({
   readLocalPlaces: () => mockReadLocalPlaces(),
   resumeLookupOf: jest.requireActual('@/playback/progress-sync').resumeLookupOf,
+  placeSavedAt: jest.requireActual('@/playback/progress-sync').placeSavedAt,
 }));
 
 // The real model, with its play spec builder counted (rebuilt only when its inputs change).
@@ -507,6 +508,9 @@ describe('startCarSync', () => {
     await settle();
     expect(mockReadLocalPlaces).toHaveBeenCalledTimes(1);
     expect(playSpec).toHaveBeenCalledTimes(2);
+    // Each spec says when its place was saved (FE-13): here the server row's.
+    const d = tab(lastSnapshot(), 'downloads')!.items.find((i) => i.book.path === 'D')!;
+    expect(d.play!.placeSavedAt).toBe(Date.parse('2026-01-15'));
 
     // E is played on this device: its newer save (the mirror) moves its spec; D's stands.
     mockReadLocalPlaces.mockClear();
@@ -530,6 +534,7 @@ describe('startCarSync', () => {
     expect(jest.mocked(playSpec).mock.calls.map((c) => c[0].path)).toEqual(['E']);
     const e = tab(lastSnapshot(), 'downloads')!.items.find((i) => i.book.path === 'E')!;
     expect(e.play).toMatchObject({ startIndex: 1, positionInTrack: 50, rate: 1.25 });
+    expect(e.play!.placeSavedAt).toBe(Date.parse('2026-02-01T00:00:00.000Z'));
   });
 
   it("rebuilds a downloaded book's spec when its chapters change (its files in a new order)", async () => {
@@ -1320,6 +1325,7 @@ describe('the resumable snapshot (Android, fe#251)', () => {
     await settle(SETTLE_MS + MIN_GAP_MS);
     const writes = mockNative.setSnapshot.mock.calls.length;
 
+    const pausedAt = Date.now();
     usePlayer.setState(loaded('paused', 1, 50));
     await settle(MIN_GAP_MS);
     expect(mockNative.setSnapshot).toHaveBeenCalledTimes(writes + 1);
@@ -1330,6 +1336,8 @@ describe('the resumable snapshot (Android, fe#251)', () => {
       startIndex: 1,
       positionInTrack: 50,
     });
+    // Saved as it was written (FE-13): newer than the live place a dead process left.
+    expect(tab(snap, 'continue')!.items[0].play!.placeSavedAt).toBeGreaterThanOrEqual(pausedAt);
   });
 
   it("is not the snapshot an unreadable build keeps: the first car's is written offline too", async () => {

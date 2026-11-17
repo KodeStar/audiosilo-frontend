@@ -10,28 +10,61 @@ class LivePlaceTest {
 
   private fun ref(path: String) = BookRef("s.u", 2, path)
 
-  /** A downloaded book of two files, its spec starting at file 0, 30 s (where JS last wrote). */
-  private fun item(path: String, downloaded: Boolean = true): CarItem {
+  /** A downloaded book of two files, its spec starting at file 0, 30 s (where JS last wrote,
+   * at [savedAt]: null when the snapshot does not say). */
+  private fun item(path: String, downloaded: Boolean = true, savedAt: Long? = null): CarItem {
     val book = ref(path)
     val tracks = listOf(1, 2).map {
       TrackSpec("2:$path/$it.mp3", "file:///d/$path/$it.mp3", path, null, null, null, 100.0)
     }
-    val play = if (downloaded) CarPlaySpec(book, tracks, emptyList(), 0, 30.0, 1.0) else null
+    val play = if (downloaded) CarPlaySpec(book, tracks, emptyList(), 0, 30.0, 1.0, savedAt) else null
     return CarItem("book:$path", path, "", null, finished = false, downloaded = downloaded, artwork = null, play = play, book = book)
   }
 
-  private fun snapshot(resume: String?, namesResume: Boolean = true) = CarSnapshot(
+  private fun snapshot(resume: String?, namesResume: Boolean = true, savedAt: Long? = null) = CarSnapshot(
     labels,
     signedIn = true,
     tabs = listOf(
-      CarTab("continue", "Continue", listOf(item("A"), item("Streamed", downloaded = false))),
-      CarTab("downloads", "Downloads", listOf(item("A"), item("B"))),
+      CarTab("continue", "Continue", listOf(item("A", savedAt = savedAt), item("Streamed", downloaded = false))),
+      CarTab("downloads", "Downloads", listOf(item("A", savedAt = savedAt), item("B"))),
     ),
     resume = resume,
     namesResume = namesResume,
   )
 
-  private fun live(path: String, file: Int = 2, at: Double = 81.5) = LivePlace(ref(path), "$path/$file.mp3", 0, at)
+  private fun live(path: String, file: Int = 2, at: Double = 81.5, savedAt: Long = 1_000L) =
+    LivePlace(ref(path), "$path/$file.mp3", 0, at, savedAt)
+
+  // ---- The later place wins (FE-13) --------------------------------------------------------
+
+  // A car-seen phone: a dead process left A at 81.5 s; JS booted with an empty engine and
+  // wrote A's newer place (another device's listen) into the snapshot. That one resumes.
+  @Test fun aNewerSnapshotPlaceBeatsAnOlderLivePlace() {
+    val item = snapshot("book:A", savedAt = 2_000L).resumable(live("A", savedAt = 1_000L))
+    assertEquals("book:A", item?.id)
+    assertEquals(0, item?.play?.startIndex)
+    assertEquals(30.0, item!!.play!!.positionInTrack, 0.0)
+    // A car tap on the book starts there too.
+    val spec = item("A", savedAt = 2_000L).play!!
+    assertEquals(spec, spec.at(live("A", savedAt = 1_000L)))
+  }
+
+  @Test fun aNewerLivePlaceBeatsAnOlderSnapshotPlace() {
+    val play = snapshot("book:A", savedAt = 1_000L).resumable(live("A", savedAt = 2_000L))?.play
+    assertEquals(1, play?.startIndex)
+    assertEquals(81.5, play!!.positionInTrack, 0.0)
+  }
+
+  // A snapshot from before the time was written: older than any live place.
+  @Test fun aSnapshotPlaceWithNoTimeIsOlderThanAnyLivePlace() {
+    val play = snapshot("book:A", savedAt = null).resumable(live("A", savedAt = 0L))?.play
+    assertEquals(81.5, play!!.positionInTrack, 0.0)
+  }
+
+  // JS named no book: nothing resumes, however new the live place or old the snapshot.
+  @Test fun noBookNamedStillWinsOverANewerLivePlace() {
+    assertNull(snapshot(null, savedAt = 1_000L).resumable(live("A", savedAt = 9_000L)))
+  }
 
   // A crash mid-play: the named book resumes where the engine was, not where JS last wrote.
   @Test fun theNamedBookResumesAtItsLivePlace() {
@@ -99,12 +132,15 @@ class LivePlaceTest {
     var clears = 0
     val scheduled = ArrayList<Pair<Runnable, Long>>()
 
+    var now = 100L
+
     val recorder = LivePlaceRecorder(
       place = { place },
       save = { saves.add(it) },
       clear = { clears++ },
       schedule = { r, ms -> scheduled.add(r to ms) },
       unschedule = { r -> scheduled.removeAll { it.first === r } },
+      clock = { now },
     )
 
     /** The main looper runs what is due. */
@@ -130,6 +166,19 @@ class LivePlaceTest {
     f.recorder.onIsPlayingChanged(false)
     assertEquals(33.0, f.saves.last().position, 0.0)
     assertTrue("no tick once paused", f.scheduled.isEmpty())
+  }
+
+  // Each save is stamped; an unchanged place keeps the time it was first saved.
+  @Test fun aSavedPlaceIsStampedWhenItIsSaved() {
+    val f = Fake()
+    f.place = live("A", at = 10.0, savedAt = 0L)
+    f.recorder.onSeek()
+    f.now = 200L
+    f.recorder.onSeek()
+    f.place = live("A", at = 20.0, savedAt = 0L)
+    f.now = 300L
+    f.recorder.onSeek()
+    assertEquals(listOf(100L, 300L), f.saves.map { it.savedAt })
   }
 
   @Test fun aSeekIsKeptAtOnceAndAnUnchangedPlaceIsNotWrittenAgain() {

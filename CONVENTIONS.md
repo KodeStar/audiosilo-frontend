@@ -2666,10 +2666,15 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   (`LivePlaceRecorder`); the end of the book, an emptied player (JS's `reset`: a stop, a
   finish) and the app's own `load` drop it. A resumption (`CarSnapshot.resumable(live)`, read
   by `ResumptionReceiver`, `onPlaybackResumption` and the placeholder's title) starts that book
-  at that place when the snapshot lists it with a play spec, else the book `resume` names; a
+  when the snapshot lists it with a play spec, else the book `resume` names. On that book the
+  later place wins: the live place is stamped when saved (`savedAt`, the device's clock) and
+  each spec carries when JS saved its place (`placeSavedAt`: a paused book's when first
+  written, else the resume lookup's row by this device's clock, `placeSavedAt` in
+  `progress-sync.ts`), a spec with none counting as older; so a place a dead process left
+  never beats a newer one JS read since (another device's listen). A
   `resume` of null (JS named none: kids mode changed, another person's book) resumes nothing,
   whatever the engine last held. A car tap that `playFromCar` starts natively starts at it too
-  when it is that book's (`CarPlaySpec.at`). So a crash or kill mid-play, a pause in a cold
+  when it is that book's and newer (`CarPlaySpec.at`). So a crash or kill mid-play, a pause in a cold
   runtime away from every server (which writes no snapshot) and a resumption write still
   queued behind a build lose at most 10 s.
   **Remote buttons are logged on demand** (`MediaKeyLog`, fe#301): `adb shell setprop

@@ -359,6 +359,33 @@ export function resumeLookupOf(
 }
 
 /**
+ * When the place `resumeLookupOf` answered with (over the same `server` and `places`) was
+ * saved, by this device's clock (ms, `localTimeOf`): the server's row, or a server's row the
+ * mirror holds, moved back by its server's known skew. Undefined with no place (`empty`,
+ * `failed`) or an unreadable stamp. Android's car snapshot carries it, so a live place the
+ * engine kept is weighed against it (`CarPlaySpec.placeSavedAt`).
+ */
+export function placeSavedAt(
+  lookup: ResumeLookup,
+  server: Progress | null | undefined,
+  places: LocalPlaces,
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): number | undefined {
+  if (lookup.kind !== 'progress') return undefined;
+  const { updated_at } = lookup.progress;
+  const mirror = places.mirror[contentKey(connectionId, libraryId, path)];
+  const serverClock =
+    lookup.progress === server || (!!mirror?.server_clock && mirror.updated_at === updated_at);
+  const at = localTimeOf(
+    serverClock ? { updated_at, server_clock: true } : { updated_at },
+    places.skews?.[connectionId] ?? 0,
+  );
+  return Number.isFinite(at) ? at : undefined;
+}
+
+/**
  * Whether the server's finished row beats this device's newer, unfinished mirror record:
  * the finish is newer than that record, or it is a version this device never acknowledged
  * (another device's finish, landed after this device last saw the row: the mirror's

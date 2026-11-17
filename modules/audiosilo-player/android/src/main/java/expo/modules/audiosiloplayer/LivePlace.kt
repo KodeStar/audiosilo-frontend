@@ -7,7 +7,8 @@ import android.content.Context
  * and its index in the engine's order) and the seconds in that file. The service keeps it on
  * disk while a book plays ([LivePlaceRecorder]), so a playback resumption after a crash or a
  * kill starts near where the book was, not at the place JS last wrote into the car snapshot
- * (written on a pause, and not at all by a cold runtime away from every server). Never a DB id.
+ * (written on a pause, and not at all by a cold runtime away from every server), unless JS
+ * wrote a newer place since ([savedAt]). Never a DB id.
  */
 data class LivePlace(
   val book: BookRef,
@@ -17,15 +18,21 @@ data class LivePlace(
   val fileIndex: Int,
   /** Seconds in that file. */
   val position: Double,
+  /** When it was saved, by the device's clock (ms since the epoch; [LivePlaceRecorder] stamps
+   * it). 0 for a place not saved yet. */
+  val savedAt: Long = 0L,
 )
 
 /**
- * The play spec started from [live] when it is on this spec's book and names one of its files: by
- * path when it has one (the spec's file order may differ from the engine's), else by index. This
- * spec as it is otherwise (null [live] included).
+ * The play spec started from [live] when it is on this spec's book, newer than the spec's own
+ * place, and names one of its files: by path when it has one (the spec's file order may differ
+ * from the engine's), else by index. This spec as it is otherwise (null [live] included). The
+ * later place wins: a live place a dead process left is older than one JS wrote since (another
+ * device's listen it read, say), and a spec with no time counts as older than any live place.
  */
 fun CarPlaySpec.at(live: LivePlace?): CarPlaySpec {
   if (live == null || live.book != book) return this
+  if (placeSavedAt != null && placeSavedAt > live.savedAt) return this
   val index = if (live.relPath != null) {
     tracks.indexOfFirst { LoadedFiles.pathOf(it.id, clip = false) == live.relPath }
   } else {
@@ -37,9 +44,10 @@ fun CarPlaySpec.at(live: LivePlace?): CarPlaySpec {
 
 /**
  * What a playback resumption starts (a headset, Bluetooth or the car's play with nothing
- * loaded): the book the engine was last heard on, at that place ([LivePlace]), when the snapshot
- * lists it with a play spec (downloaded; and listed for the person and the kids mode the
- * snapshot was built for); else the book JS named ([CarSnapshot.resumable]). A live place exists
+ * loaded): the book the engine was last heard on, at that place ([LivePlace]) unless the spec's
+ * own place is newer ([at]), when the snapshot lists it with a play spec (downloaded; and listed
+ * for the person and the kids mode the snapshot was built for); else the book JS named
+ * ([CarSnapshot.resumable]). A live place exists
  * only for a book the engine still holds or held when the process died: a stop, the end of the
  * book and the app's own load of a queue drop it ([LivePlaceRecorder]), so a stopped or finished
  * book still never resumes. When JS named none (a book stopped or finished here, offered before
@@ -67,6 +75,7 @@ object LivePlaceStore {
   private const val KEY_FILE_PATH = "relPath"
   private const val KEY_FILE_INDEX = "fileIndex"
   private const val KEY_POSITION_MS = "positionMs"
+  private const val KEY_SAVED_AT = "savedAt"
 
   fun get(context: Context): LivePlace? {
     val prefs = prefs(context)
@@ -77,6 +86,7 @@ object LivePlaceStore {
       relPath = prefs.getString(KEY_FILE_PATH, null),
       fileIndex = prefs.getInt(KEY_FILE_INDEX, 0),
       position = prefs.getLong(KEY_POSITION_MS, 0L) / 1000.0,
+      savedAt = prefs.getLong(KEY_SAVED_AT, 0L),
     )
   }
 
@@ -89,6 +99,7 @@ object LivePlaceStore {
       .putString(KEY_FILE_PATH, place.relPath)
       .putInt(KEY_FILE_INDEX, place.fileIndex)
       .putLong(KEY_POSITION_MS, (place.position * 1000).toLong())
+      .putLong(KEY_SAVED_AT, place.savedAt)
       .apply()
   }
 
@@ -109,7 +120,8 @@ object LivePlaceStore {
  *
  * The engine is reached through functions so the timing is tested on the JVM: [place] reads
  * where the player is (null with nothing loaded, an ended book or no book named), [save] and
- * [clear] write the disk, [schedule] and [unschedule] are the main looper's.
+ * [clear] write the disk, [schedule] and [unschedule] are the main looper's, [clock] stamps what
+ * is saved ([LivePlace.savedAt]).
  */
 internal class LivePlaceRecorder(
   private val place: () -> LivePlace?,
@@ -117,8 +129,10 @@ internal class LivePlaceRecorder(
   private val clear: () -> Unit,
   private val schedule: (Runnable, Long) -> Unit,
   private val unschedule: (Runnable) -> Unit,
+  private val clock: () -> Long = System::currentTimeMillis,
 ) {
-  /** What is on disk as far as this recorder knows (an unchanged place is not written again). */
+  /** What is on disk as far as this recorder knows, unstamped (an unchanged place is not
+   * written again, and keeps the time it was first saved). */
   private var saved: LivePlace? = null
   private var cleared = false
 
@@ -151,7 +165,7 @@ internal class LivePlaceRecorder(
     if (now == saved) return
     saved = now
     cleared = false
-    save(now)
+    save(now.copy(savedAt = clock()))
   }
 
   companion object {
