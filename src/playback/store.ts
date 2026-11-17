@@ -2769,10 +2769,14 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     // place another tab left, and the pick-up check of a book left for long all stand. In
     // whatever order the download plays: nothing is playing for a new order to cut into.
     // Not while a load holds the store, whose place is not this book's yet (`loadingBook`).
-    const local =
+    const onto =
       !get().loadingBook && startsInFlight === 0 && streamsDownloadedFile(np)
         ? localSwapOf(np, { trackIndex: at.index, position: at.positionInTrack }, true)
         : null;
+    // A book another tab finished starts again from its start, which in another order is
+    // not where its first file is (the floor stays 0: `adoptTabPlace`).
+    const local =
+      onto && place?.finished ? { ...onto, index: 0, positionInTrack: 0, shift: 0 } : onto;
     const moved = local && commitLocalSwap(np, local);
     if (moved) {
       loaded = moved;
