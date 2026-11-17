@@ -311,9 +311,14 @@ export type PairingPayload = {
   /** https://<base>/web/connect?token=<pairing_token> - encoded in the QR. */
   web_url: string;
   qr_png_data_uri: string;
-  /** `apk`: the player's GitHub releases page, for an Android phone without Play
-   * (newer servers). */
-  links: { web: string; admin: string; ios?: string; android?: string; apk?: string };
+  links: {
+    web: string;
+    admin: string;
+    ios?: string;
+    android?: string;
+    /** The player's GitHub releases page, for an Android phone without Play (newer servers). */
+    apk?: string;
+  };
   /** True when the redeemed code pairs an admin's account (`/auth/redeem` only; the
    * connect page offers the console then). Absent otherwise. */
   admin?: boolean;
