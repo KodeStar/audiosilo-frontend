@@ -17,10 +17,7 @@ function dismissHome(nav: Pick<ImperativeRouter, 'dismissTo'>) {
 }
 
 /** `leaveOnboarding` as a render-time exit, where a screen would otherwise return
- * `<Redirect href="/" />`, through `useRouter()`. The module-level `router` throws while no
- * root navigator is mounted (expo-router 58). In the app one always is before a screen's
- * effect runs (its ref is attached in the commit, ahead of any effect), but a screen
- * rendered on its own, as a Jest test does, runs its effects without one. */
+ * `<Redirect href="/" />`, through `useRouter()` (CONVENTIONS.md, "Navigation at mount"). */
 export function LeaveOnboarding() {
   const nav = useRouter();
   useEffect(() => dismissHome(nav), [nav]);
