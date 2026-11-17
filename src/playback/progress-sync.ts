@@ -14,6 +14,7 @@ import {
   PROGRESS_QUEUE_KEY as QUEUE_KEY,
 } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
+import { shallow } from 'zustand/shallow';
 
 import { FINISHED_TOLERANCE } from './book-queue';
 import type { OutboxEntry } from './listening-outbox';
@@ -80,6 +81,10 @@ export type ProgressSave = {
   /** Sync v2: the other places (`device_id|updated_at`) the listener has answered (Jump or
    * Stay), so an offer never comes back. Mirror only; kept across captures. */
   answered?: string[];
+  /** A server's row (`progressToSave`): `updated_at` is by its server's clock, not this
+   * device's, and is compared with this device's captures through the known skew
+   * (`localTimeOf`, fe#259). Mirror only; a capture never carries it. */
+  server_clock?: true;
   /** The legacy PUT path's replay guard (fe#198): a save of a listening session that began
    * from a place this device could not check against its server (an offline start, or a
    * resume behind another device's further place: `ResumeLookup.unchecked`). Before it is
@@ -556,13 +561,36 @@ export function progressToSave(
     playback_speed: p.playback_speed,
     device_id: p.device_id,
     updated_at: p.updated_at,
+    server_clock: true,
   };
+}
+
+/**
+ * When a mirror record was written, by this device's clock (ms; NaN when unreadable): a
+ * server's row (`server_clock`) moved back by how far its server's clock is ahead of this
+ * device's (`skewMs`). The mirror's keep-newest (`writeMirrors`) and a tab's check of the
+ * place another tab left (`otherTabsPlace` in the store) compare a capture with a server
+ * row through it: with the server's clock S seconds ahead, a server row read back hid this
+ * device's own captures for S seconds (fe#259, fe#262).
+ */
+export function localTimeOf(
+  record: Pick<ProgressSave, 'updated_at' | 'server_clock'>,
+  skewMs: number,
+): number {
+  const at = Date.parse(record.updated_at);
+  return record.server_clock ? at - skewMs : at;
+}
+
+/** `localTimeOf` with the record's connection's known skew. */
+export async function mirrorTimeOf(record: ProgressSave): Promise<number> {
+  return localTimeOf(record, await knownSkew(record.connectionId));
 }
 
 // Serialize mirror read-modify-write so concurrent saves can't clobber each other.
 const withMirrorLock = serialQueue();
 
-/** Upsert the durable mirror, keeping the newest record by `updated_at`. The Sync v2
+/** Upsert the durable mirror, keeping the newest record by `updated_at` (a server row's by
+ * this device's clock: `localTimeOf`). The Sync v2
  * fields a capture doesn't carry (`ack_version`, `answered`) are kept from the record it
  * replaces, and so is its file place when the new record holds that place without one (a
  * server row read back after this device's own save: `holdsFilePlace`). */
@@ -581,23 +609,18 @@ export async function writeMirrors(saves: readonly ProgressSave[]): Promise<void
     for (const save of saves) {
       const key = contentKey(save.connectionId, save.libraryId, save.path);
       const existing = map[key];
-      if (!existing || Date.parse(save.updated_at) >= Date.parse(existing.updated_at)) {
+      const skew = existing ? await knownSkew(save.connectionId) : 0;
+      if (!existing || localTimeOf(save, skew) >= localTimeOf(existing, skew)) {
         const { guard: _guard, guard_session: _session, ...record } = save;
-        const next = mergeKept(record, existing, existing ? await knownSkew(save.connectionId) : 0);
-        if (existing && sameRecord(next, existing)) continue;
+        const next = mergeKept(record, existing, skew);
+        // The same fields (an array kept across records is the same array): no write.
+        if (existing && shallow(next, existing)) continue;
         map[key] = next;
         changed = true;
       }
     }
     if (changed) await setItem(MIRROR_KEY, map);
   });
-}
-
-/** Whether two mirror records hold the same fields (an array field by reference: one kept
- * across records is the same array). */
-function sameRecord(a: ProgressSave, b: ProgressSave): boolean {
-  const keys = Object.keys(a) as (keyof ProgressSave)[];
-  return keys.length === Object.keys(b).length && keys.every((k) => Object.is(a[k], b[k]));
 }
 
 /** `save` with what the mirror keeps across records (see `writeMirror`), its server's clock
@@ -675,10 +698,11 @@ export async function mirrorSpanEnd(span: OpenSpan): Promise<void> {
     () => undefined,
   );
   const shortEnd = endsBefore !== undefined && file !== endsBefore;
+  const skew = await knownSkew(span.connectionId);
   await updateMirror(span.connectionId, span.libraryId, span.path, (record) => {
     if (record.finished || !(pos > record.position)) return record;
-    if (!(endedAt > Date.parse(record.updated_at))) return record;
-    const { file: _file, file_pos: _filePos, ...kept } = record;
+    if (!(endedAt > localTimeOf(record, skew))) return record;
+    const { file: _file, file_pos: _filePos, server_clock: _clock, ...kept } = record;
     return {
       ...kept,
       position: pos,
@@ -846,8 +870,11 @@ async function guardPasses(client: ApiClient, save: ProgressSave): Promise<boole
   return false;
 }
 
-/** Sessions (`ProgressSave.guard_session`) one of whose guarded saves was PUT. */
+/** Sessions (`ProgressSave.guard_session`) one of whose guarded saves was PUT, the newest
+ * `MAX_SETTLED_GUARDS` (only the live session's is ever asked; a queue replays a few older
+ * ones). */
 const settledGuards = new Set<string>();
+const MAX_SETTLED_GUARDS = 50;
 
 /** Whether a guarded save of `session` has been PUT (live or replayed from the queue): the
  * server had nothing further on, so the session's later saves need no read first. */
@@ -857,7 +884,13 @@ export function guardSettled(session: string): boolean {
 
 /** A save was PUT: its session's guard, if any, is settled. */
 function notePut(save: ProgressSave): void {
-  if (save.guard && save.guard_session) settledGuards.add(save.guard_session);
+  if (!save.guard || !save.guard_session) return;
+  settledGuards.delete(save.guard_session); // re-added as the newest
+  settledGuards.add(save.guard_session);
+  for (const old of settledGuards) {
+    if (settledGuards.size <= MAX_SETTLED_GUARDS) break;
+    settledGuards.delete(old);
+  }
 }
 
 /** What became of a save: PUT (`saved`), kept for a later replay (`queued`), held back by

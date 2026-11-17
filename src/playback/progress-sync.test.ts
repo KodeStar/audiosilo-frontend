@@ -22,6 +22,7 @@ import {
   noteClockSkew,
   pendingSaveCount,
   type PlacedProgress,
+  progressToSave,
   type ProgressSave,
   readLocalPlaces,
   readMirror as readMirrorOf,
@@ -860,6 +861,7 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
     // The stored skews come from the outbox, their one reader (fe#211): a stand-in here.
     let stored: Record<string, number> = {};
     beforeAll(() => provideStoredSkews(async () => stored));
+    afterAll(() => provideStoredSkews(null));
     beforeEach(() => {
       stored = {};
     });
@@ -915,6 +917,33 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
       );
       expect(r).toMatchObject({ file: { path: 'A/Book/02.mp3', pos: 600 } });
       expect(await readMirrorOf(cid, 1, 'A/Book')).toMatchObject({ file: 'A/Book/02.mp3' });
+    });
+
+    // fe#259: keep-newest compared the server's stamp with this device's, so with the
+    // server's clock S ahead a row read back hid this device's own captures for S.
+    it("keeps this device's capture made after a server row by this device's clock", async () => {
+      noteClockSkew('c1', 20_000);
+      await writeMirror(progressToSave('c1', 1, 'A/Book', echo)); // 00:00:02 here
+      await writeMirror({ ...save, position: 4200, updated_at: '2026-01-02T00:00:05Z' });
+      expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ position: 4200 });
+      expect(await readMirrorOf('c1', 1, 'A/Book')).not.toHaveProperty('server_clock');
+    });
+
+    it('a server row newer by its own clock than the capture still replaces it', async () => {
+      noteClockSkew('c1', 20_000);
+      await writeMirror({ ...save, position: 4000, updated_at: '2026-01-02T00:00:01Z' });
+      await writeMirror(progressToSave('c1', 1, 'A/Book', echo)); // 00:00:02 here
+      expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({
+        position: 4100,
+        server_clock: true,
+      });
+    });
+
+    it("a server behind: its row after the capture by this device's clock wins", async () => {
+      noteClockSkew('c1', -20_000);
+      await writeMirror({ ...save, position: 4000, updated_at: '2026-01-02T00:00:30Z' });
+      await writeMirror(progressToSave('c1', 1, 'A/Book', echo)); // 00:00:42 here
+      expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ position: 4100 });
     });
 
     it('still drops a file place older than the skew allows', async () => {
@@ -1242,6 +1271,17 @@ describe('the replay guard on the legacy PUT path (fe#198)', () => {
         saveProgress(serverWith(null), { ...guarded, guard_session: 's-live' }),
       ).resolves.toBe('saved');
       expect(guardSettled('s-live')).toBe(true);
+    });
+
+    // fe#259: the settled sessions were never pruned; only the newest 50 are kept.
+    it('keeps the newest settled sessions only', async () => {
+      const api = serverWith(null);
+      for (let i = 0; i < 51; i++) {
+        await saveProgress(api, { ...guarded, guard_session: `s-many-${i}` });
+      }
+      expect(guardSettled('s-many-0')).toBe(false);
+      expect(guardSettled('s-many-1')).toBe(true);
+      expect(guardSettled('s-many-50')).toBe(true);
     });
 
     it('a read with no answer keeps the guarded save queued for later', async () => {

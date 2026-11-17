@@ -86,6 +86,7 @@ import {
 import {
   ackVersion,
   getDeviceId,
+  noteClockSkew,
   pendingSaves,
   type ProgressSave,
   readLocalPlaces,
@@ -445,6 +446,25 @@ describe("a recovered span brings this device's record of the place up to its en
     await writeMirror(chosen);
     await relaunch();
     expect(await record()).toEqual(chosen);
+  });
+
+  // fe#259: a server's row read back is stamped by its clock, here 20 s ahead: by this
+  // device's it is from before the span's end.
+  it("moves a server row older than the span by this device's clock", async () => {
+    noteClockSkew('c1', 20_000);
+    try {
+      await writeMirror({
+        ...capture({ updated_at: '2026-10-25T07:33:45.000Z' }),
+        server_clock: true,
+      });
+      await relaunch();
+      const moved = await record();
+      expect(moved).toMatchObject({ position: 16800, updated_at: '2026-10-25T07:33:30.000Z' });
+      // Stamped by this device now: no longer the server's clock.
+      expect(moved).not.toHaveProperty('server_clock');
+    } finally {
+      noteClockSkew('c1', 0);
+    }
   });
 
   it('never moves a place back', async () => {

@@ -81,6 +81,7 @@ import {
   getDeviceId,
   guardSettled,
   loadInitialProgress,
+  mirrorTimeOf,
   type PlacedProgress,
   type ProgressSave,
   readMirror,
@@ -1291,11 +1292,15 @@ async function unrecordFinish(ref: UndoRef): Promise<void> {
     // Sync v2 fields stay the mirror's own (`writeMirror` keeps them): an ack since is newer.
     const stamp = Date.parse(now.updated_at);
     const at = Number.isFinite(stamp) ? new Date(stamp + 1).toISOString() : now.updated_at;
-    const back: ProgressSave = {
-      ...(prior && !prior.finished
+    const { server_clock: _clock, ...base } =
+      prior && !prior.finished
         ? { ...prior, ack_version: undefined, answered: undefined }
-        : { ...now, finished: false, position: ref.position }),
+        : { ...now, finished: false, position: ref.position };
+    // By the clock of the stamp it took (`localTimeOf`).
+    const back: ProgressSave = {
+      ...base,
       updated_at: at,
+      ...(now.server_clock ? { server_clock: true as const } : {}),
     };
     await writeMirror(back).catch(() => undefined);
   }
@@ -1658,11 +1663,14 @@ async function otherTabsPlace(
   const record = await readMirror(loaded.connectionId, loaded.libraryId, loaded.path).catch(
     () => null,
   );
+  // By this device's clock: a server's row (this browser's own place read back) is stamped
+  // by the server's, which may be ahead (fe#262).
+  const savedAt = record ? await mirrorTimeOf(record).catch(() => Number.NaN) : Number.NaN;
   const { nowPlaying: np, snapshot, loadingBook } = usePlayer.getState();
   // Another book, a place not known yet (a load), or the listener moved meanwhile.
   if (!np || !sameBook(np, loaded) || loadingBook || localMoves !== moves) return null;
   if (!record || record.device_id !== (deviceId || cachedDeviceId())) return null;
-  if (!(Date.parse(record.updated_at) >= since)) return null;
+  if (!(savedAt >= since)) return null;
   const stopped = { ...record, filePos: record.file_pos };
   const here = toBookPosition(np.queue.offsets, snapshot.trackIndex, snapshot.position);
   return tabPlaceOf(np, here, stopped, opts);

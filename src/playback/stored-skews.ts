@@ -10,8 +10,8 @@ type SkewReader = () => Promise<Record<string, number>>;
 
 let reader: SkewReader | null = null;
 
-/** The outbox's reader of the stored skews. */
-export function provideStoredSkews(read: SkewReader): void {
+/** The outbox's reader of the stored skews (null: none, as before one registered). */
+export function provideStoredSkews(read: SkewReader | null): void {
   reader = read;
 }
 

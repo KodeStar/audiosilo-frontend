@@ -41,6 +41,8 @@ const mockMirror = {
   /** Every place saved while `on`, in the order the tabs saved them. */
   saved: [] as number[],
 };
+/** How far the server's clock is ahead of the browser's (ms), for its rows in the mirror. */
+let mockSkewMs = 0;
 const mirrorKey = (connectionId: string, libraryId: number, path: string) =>
   `${connectionId}|${libraryId}|${path}`;
 
@@ -80,6 +82,9 @@ jest.mock('./progress-sync', () => ({
       : null,
   ),
   guardSettled: () => false,
+  // By this device's clock: a server row moved back by the skew the test sets (fe#262).
+  mirrorTimeOf: async (r: MirrorRecord & { server_clock?: true }) =>
+    Date.parse(r.updated_at) - (r.server_clock ? mockSkewMs : 0),
   noteClockSkew: jest.fn(),
   pendingSaves: jest.fn(async () => ({ events: 0, listens: 0 })),
 }));
@@ -422,6 +427,7 @@ beforeEach(() => {
   mockMirror.on = false;
   mockMirror.records.clear();
   mockMirror.saved = [];
+  mockSkewMs = 0;
 });
 
 /** Every listen the server got as `[from, to, start]`, by where it began. */
@@ -1044,6 +1050,33 @@ describe.each([
         [30, 90, 'jump'],
       ]);
     });
+
+    // fe#262: the server's row of this browser's own place, read back after the claim, is
+    // stamped by a server clock ahead: by the browser's it is from before the claim.
+    it.each([
+      [0, true],
+      [60_000, false],
+    ])(
+      "a server row stamped after the claim by a clock %i ms ahead moves it: %s",
+      async (skew, moves) => {
+        await playedPast(a, b);
+        mockSkewMs = skew;
+        const key = mirrorKey('c1', long.book.library_id, long.book.rel_path);
+        const { file: _file, file_pos: _pos, ...saved } = mockMirror.records.get(key) as MirrorRecord & {
+          file?: string;
+          file_pos?: number;
+        };
+        mockMirror.records.set(key, {
+          ...saved,
+          position: 70,
+          updated_at: new Date(Date.now() + 30_000).toISOString(),
+          server_clock: true,
+        } as MirrorRecord);
+        await a.player().toggle();
+        await until(() => b.player().snapshot.state === 'paused', 'B to give way');
+        expect(a.engine.svc.seekTo.mock.calls).toEqual(moves ? [[70]] : []);
+      },
+    );
 
     it('moves nothing for a place a moment away', async () => {
       await playedPast(a, b);
