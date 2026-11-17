@@ -4290,7 +4290,9 @@ under their empty state).
   `useUnreadAll({ rows, offline, error })` of their fan-out (`offline`: a server's list held
   with nothing kept, `anyHeld`), so one server's empty answer is not "none" while another's
   is held (nor is its progress with no finished book "none finished"), and a held list wins
-  over another server's failure, a refusal included (fe#271). Home says it is offline once:
+  over another server's failure, a refusal included (fe#271); the Collections mode's
+  Favourites card and the Favourites page's header say no count then. Home says it is
+  offline once:
   the hero's `NowOffline`, no Recently added error with Retry, no servers pill
   (`Greeting offline`); with one server of several failing while another answered, the
   hero's error names it (`useAllProgressAll().failed`) and Retry asks only the failed. The

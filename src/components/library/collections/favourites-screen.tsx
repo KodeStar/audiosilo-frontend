@@ -57,7 +57,7 @@ export function FavouritesScreen() {
           <Text variant="display" accessibilityRole="header">
             {t('library.favourites.title')}
           </Text>
-          {isLoading || unread === 'offline' ? null : (
+          {isLoading || unread ? null : (
             <Text variant="caption">
               {t('library.favourites.itemCount', { count: favourites.length })}
             </Text>

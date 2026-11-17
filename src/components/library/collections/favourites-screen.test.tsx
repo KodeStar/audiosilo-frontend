@@ -121,6 +121,8 @@ describe('FavouritesScreen', () => {
     await view.rerender(<FavouritesScreen />);
     expect(screen.getByText("Couldn't load your favourites")).toBeTruthy();
     expect(screen.queryByText("You're offline")).toBeNull();
+    // Not "0 items" over a list that was not read.
+    expect(screen.queryByText('0 items')).toBeNull();
   });
 
   it('keeps showing the favourites it has while another server is held', async () => {
