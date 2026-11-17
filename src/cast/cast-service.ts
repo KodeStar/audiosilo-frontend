@@ -39,7 +39,8 @@ const JUMP_SLACK_S = 1;
 const EARLY_END_FRESH_MS = 15_000;
 /** How long a play asked for while a queue of ours (or its mint) is on its way is held back
  * (`play`): past a mint's request timeout (15 s) and a load's answer, so a load the receiver
- * never answers keeps no play from it for good. */
+ * never answers keeps no play from it for good. Also how long after a queue was asked its
+ * paused landing still has a standing play sent again (`pausedLanding`). */
 const PLAY_HOLD_MS = 25_000;
 
 /** How often (ms) at most the receiver's queue is loaded again with a newly minted cast token
@@ -733,7 +734,10 @@ export class CastPlaybackService implements PlaybackService {
   }
 
   /** Whether status `status` on file `index` lands the place a queue of ours asked for paused
-   * while this phone means the book to play (`settleLanding`). */
+   * while this phone means the book to play (`settleLanding`). Less than `PLAY_HOLD_MS` after
+   * the move: a landing nobody saw (an iPhone suspended as the cast began) leaves the queue
+   * unlanded, and a pause from the TV remote read when the app comes back, long after, is the
+   * receiver's word, never played over. */
   private pausedLanding(status: CastMediaStatus, index: number | null): boolean {
     const want = this.intended;
     return (
@@ -741,7 +745,8 @@ export class CastPlaybackService implements PlaybackService {
       !want.landed &&
       index === want.trackIndex &&
       status.playerState === 'paused' &&
-      this.playIntent === true
+      this.playIntent === true &&
+      this.now() - want.at < PLAY_HOLD_MS
     );
   }
 

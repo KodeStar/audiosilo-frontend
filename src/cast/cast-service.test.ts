@@ -2009,6 +2009,25 @@ describe('CastPlaybackService', () => {
         expect(t.remote.loads).toHaveLength(1);
       });
 
+      it("a pause read long after a landing nobody saw is the receiver's word", async () => {
+        // An iPhone suspended as the cast began: the landing went unseen, and the TV remote
+        // paused the book since. Back in the app, the read must not play it again.
+        const t = setup();
+        await t.svc.load(TRACKS, 0, 30, [], BOOK);
+        await t.svc.play();
+        t.tick(60_000);
+        (t.remote.readStatus as jest.Mock).mockResolvedValueOnce({
+          playerState: 'paused',
+          contentId: t.url(0),
+          position: 75,
+          rate: 1,
+        });
+        await t.svc.refresh();
+        await flush();
+        expect(t.remote.play).toHaveBeenCalledTimes(1);
+        expect(t.svc.getSnapshot()).toMatchObject({ state: 'paused', position: 75 });
+      });
+
       it('a play held while a load is on its way is sent once the hold runs out', async () => {
         // A load the receiver never answers must not keep every play from it for good.
         const t = setup();

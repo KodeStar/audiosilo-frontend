@@ -3578,7 +3578,9 @@ on first need). NOT device-verified (no Cast device yet).
   the queue goes out playing, or is played once it answers (a load refused with no mint due
   included), and a queue that lands paused while a play stands (a seek made before it landed
   included, sent or read) is played then
-  (`settleLanding`; that landing is no word from the receiver on the play state): a play that
+  (`settleLanding`; that landing is no word from the receiver on the play state, for at most
+  `PLAY_HOLD_MS` after the move: a pause read long after a landing nobody saw, an iPhone
+  suspended as the cast began, is the receiver's and is never played over): a play that
   reached the receiver while it still took the queue is lost, which left a resume after a mint
   paused at its place with the stall watchdog's "Playback stopped". Not a status or error of the queue that load replaces
   (`ofReplacedQueue`: one naming a URL with the token before the mint), nor one read (`refresh`):
