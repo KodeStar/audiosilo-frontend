@@ -954,10 +954,9 @@ export function invalidateFinishedProgress(
   invalidateProgressDependents(qc, cid, libraryId, path, { finish: true, place: true });
 }
 
+/** The libraries of the connection in scope (`useCid`). */
 export function useLibraries() {
-  const api = useApi();
-  const cid = useCid();
-  return useQuery(librariesQuery(cid, api));
+  return useLibrariesOf(useCid());
 }
 
 /** One connection's libraries, named by the page rather than its scope (a Find page's
