@@ -14,7 +14,7 @@ import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { isKidAccount } from '@/lib/account';
 import { useLayout } from '@/lib/layout';
-import { type UnreadState, useUnreadQuery } from '@/lib/offline-state';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { cn } from '@/lib/utils';
 import { hostOf } from '@/lib/pairing';
 import { addressKind, mergeAddresses } from '@/lib/server-address';
@@ -320,12 +320,7 @@ function AccountAddresses({
  * which puts it back to pending with no error: read as it is, the blocks shown for the
  * failure (the devices section, which mounts such a reader) went, came back once the
  * request failed, and asked it again, twice a second for good (fe#271). */
-function useSettledUnread(read: {
-  data: unknown;
-  isPaused: boolean;
-  error: unknown;
-  isFetching: boolean;
-}): UnreadState {
+function useSettledUnread(read: Parameters<typeof useUnreadQuery>[0] & { isFetching: boolean }) {
   const unread = useUnreadQuery(read);
   const [settled, setSettled] = useState(unread);
   if (read.isFetching) return settled;

@@ -18,33 +18,30 @@ jest.mock('@/api/hooks', () => {
   const { CapabilityError } = jest.requireActual('@/api/hooks');
   return {
     CapabilityError,
-    useServerInfo: (cid: string) =>
-      mockCaps[cid]
-        ? {
-            data: { version: mockVersion, capabilities: mockCaps[cid] },
-            isPaused: false,
-            error: null,
-            isFetching: false,
-          }
-        : {
-            data: undefined,
-            isPaused: mockServerRead === 'held',
-            error: mockServerRead === 'failed' ? mockServerError : null,
-            isFetching: mockServerRead === 'asking',
-          },
+    useServerInfo: (cid: string) => {
+      const read = mockCaps[cid] ? null : mockServerRead;
+      return {
+        data: mockCaps[cid] ? { version: mockVersion, capabilities: mockCaps[cid] } : undefined,
+        isPaused: read === 'held',
+        error: read === 'failed' ? mockServerError : null,
+        isFetching: read === 'asking',
+      };
+    },
     // The real hook never asks a server without the flag: its query stays pending.
     // While /server is held, it takes that read's state (`useCapabilityQuery`).
-    useMyDevices: (cid: string) =>
-      mockCaps[cid]?.my_devices
-        ? { data: mockDevices[cid], isPending: false, isError: false, isSuccess: true }
-        : {
-            data: undefined,
-            isPending: mockCaps[cid] || mockServerRead !== 'failed',
-            isPaused: !mockCaps[cid] && mockServerRead === 'held',
-            error: !mockCaps[cid] && mockServerRead === 'failed' ? mockServerError : null,
-            isError: !mockCaps[cid] && mockServerRead === 'failed',
-            isSuccess: false,
-          },
+    useMyDevices: (cid: string) => {
+      if (mockCaps[cid]?.my_devices)
+        return { data: mockDevices[cid], isPending: false, isError: false, isSuccess: true };
+      const read = mockCaps[cid] ? null : mockServerRead;
+      return {
+        data: undefined,
+        isPending: read !== 'failed',
+        isPaused: read === 'held',
+        error: read === 'failed' ? mockServerError : null,
+        isError: read === 'failed',
+        isSuccess: false,
+      };
+    },
     useRevokeMyDevice: () => ({ mutateAsync: mockRevoke, isPending: false }),
     useReadMyDevicesAgain: () => async () => undefined,
     // Gated like the real hook: nothing without the flag.
