@@ -31,6 +31,7 @@ import { DiscoveryResultRow, type ResultOutcome } from './discovery-result-row';
 import { deviceCountry } from './discovery-country';
 import {
   cleanSearchText,
+  feedAddressesOf,
   followByUrlErrorKey,
   MIN_SEARCH_LENGTH,
   requestEnd,
@@ -86,13 +87,16 @@ export function DirectorySearch({
   const { data: requests } = useFollowRequests(libraryId, { active: focused }, connectionId);
   // The shows the listener already follows in this library, by feed address (fe#126): their
   // results read Following with Open show from the start, not Follow. A private feed lists
-  // no address, so it is never matched.
+  // no address, so it is never matched. A feed that moved between http and https still
+  // matches the address the directory lists (`feedAddressesOf`); a show's own address wins.
   const { data: shows } = usePodcastShows(libraryId, connectionId);
   const liveOutcomes = useMemo(() => {
     const live: Record<string, ResultOutcome> = {};
     for (const show of shows ?? [])
       if (show.following && show.feed_url)
-        live[show.feed_url] = { kind: 'following', libraryId: show.library_id, path: show.path };
+        for (const [i, address] of feedAddressesOf(show.feed_url).entries())
+          if (i === 0 || !(address in live))
+            live[address] = { kind: 'following', libraryId: show.library_id, path: show.path };
     // What a Follow on this page did is newer than the list.
     for (const [feedUrl, outcome] of Object.entries(outcomes)) {
       const end = outcome.kind === 'adding' ? requestEnd(requests, outcome.requestId) : null;

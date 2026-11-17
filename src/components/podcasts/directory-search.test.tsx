@@ -341,6 +341,24 @@ describe('DirectorySearch', () => {
     expect(mockFollow).not.toHaveBeenCalled();
   });
 
+  it('marks a followed show whose feed moved to https as Following on its http listing', async () => {
+    mockShows = [
+      podcastShow({ library_id: 7, path: 'History Hour', feed_url: 'https://feeds.example.com/h' }),
+    ];
+    mockSearch = {
+      data: {
+        provider: 'itunes',
+        query: 'h',
+        country: 'GB',
+        results: [result({ feed_url: 'http://feeds.example.com/h' })],
+      },
+    };
+    await mount();
+    await search('history');
+    expect(screen.queryByRole('button', { name: 'Follow History Hour' })).toBeNull();
+    expect(screen.getByText('Following')).toBeTruthy();
+  });
+
   it('toasts why a follow was refused', async () => {
     mockSearch = { data: { provider: 'itunes', query: 'h', country: 'GB', results: [result()] } };
     mockFollow.mockRejectedValue(new ApiError(429, 'busy', 'too_many_requests'));

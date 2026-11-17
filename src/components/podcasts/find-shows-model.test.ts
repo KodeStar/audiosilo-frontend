@@ -11,6 +11,7 @@ import {
   cleanSearchText,
   exportErrorKey,
   failedRows,
+  feedAddressesOf,
   feedAddressProblem,
   followByUrlErrorKey,
   importFailureKey,
@@ -408,5 +409,19 @@ describe('canRetryImportRow', () => {
   it('allows cancelled rows, but never already added rows', () => {
     expect(canRetryImportRow({ status: 'cancelled', error: null })).toBe(true);
     expect(canRetryImportRow({ status: 'followed', error: null })).toBe(false);
+  });
+});
+
+describe('feedAddressesOf', () => {
+  it('answers to its own address and the same one over the other scheme', () => {
+    expect(feedAddressesOf('https://feeds.example.com/show.xml')).toEqual([
+      'https://feeds.example.com/show.xml',
+      'http://feeds.example.com/show.xml',
+    ]);
+    expect(feedAddressesOf('http://feeds.example.com:8080/a/')).toEqual([
+      'http://feeds.example.com:8080/a/',
+      'https://feeds.example.com:8080/a/',
+    ]);
+    expect(feedAddressesOf('feed.xml')).toEqual(['feed.xml']);
   });
 });
