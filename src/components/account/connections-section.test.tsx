@@ -56,6 +56,8 @@ describe('ConnectionsSection', () => {
     useSession.setState({ connections: [{ ...first, needsReconnect: 'auth' }] });
     await render(<ConnectionsSection onRemove={jest.fn()} />);
     expect(screen.getByText('Signed out')).toBeTruthy();
+    // A screen reader hears it too: the row's label stands for its text.
+    expect(screen.getByLabelText('Manage Hearthside, Signed out')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('Reconnect to Hearthside'));
     await waitFor(() =>
       expect(mockRouter.push).toHaveBeenCalledWith({
