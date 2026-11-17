@@ -2810,6 +2810,10 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       restoreOutputGain(svc); // only now can the old book's fade no longer write over it
       beginPlaybackAttempt(); // intent + start window + watchdog armed from here
       askEngineTo(nowPlaying, index, positionInTrack);
+      // Called off already (a car play its native side gave up on while its place was looked
+      // up): the engine is set not to play before the load, so the book is never heard for a
+      // moment. One called off during the load is paused after it (below).
+      if (wanted && !wanted()) await svc.pause();
       try {
         await svc.load(
           queue.tracks,

@@ -235,6 +235,35 @@ describe('a start that is no longer wanted', () => {
     await usePlayer.getState().stop();
   });
 
+  // Called off while its place was looked up, the player still its own: the engine is set
+  // not to play before the load, so the downloaded book is never heard for a moment.
+  it('pauses the engine before the load when called off before it', async () => {
+    const { loadInitialProgress } = jest.requireMock('./progress-sync') as {
+      loadInitialProgress: jest.Mock;
+    };
+    let answer!: (v: unknown) => void;
+    loadInitialProgress.mockImplementationOnce(() => new Promise((r) => (answer = r)));
+    let wanted = true;
+    const late = usePlayer
+      .getState()
+      .playBook('c1', 2, book('Early'), undefined, undefined, undefined, undefined, () => wanted);
+    await flush(30);
+    finishSetup(); // the bridge's setup, when this test runs on its own
+    await flush(30);
+    const load = mockSvc.load as jest.Mock;
+    const pause = mockSvc.pause as jest.Mock;
+    load.mockClear();
+    pause.mockClear();
+    (mockSvc.play as jest.Mock).mockClear();
+    wanted = false;
+    answer({ kind: 'empty' });
+    await late;
+    expect(load).toHaveBeenCalled();
+    expect(pause.mock.invocationCallOrder[0]).toBeLessThan(load.mock.invocationCallOrder[0]);
+    expect(mockSvc.play).not.toHaveBeenCalled();
+    await usePlayer.getState().stop();
+  });
+
   it('plays as before while it is wanted', async () => {
     (mockSvc.play as jest.Mock).mockClear();
     (mockSvc.pause as jest.Mock).mockClear();
