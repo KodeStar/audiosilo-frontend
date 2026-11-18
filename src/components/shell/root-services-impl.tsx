@@ -17,6 +17,7 @@ import { startOtherTabNotice } from '@/playback/other-tab-notice';
 import { startPartialDownloadNotice } from '@/playback/partial-download-notice';
 import { startPlaceReconcile } from '@/playback/place-reconcile';
 import { startQueueReplays } from '@/playback/queue-replays';
+import { startRemovedInOtherTab } from '@/playback/removed-in-other-tab';
 import { startUndoneElsewhere } from '@/playback/undone-elsewhere';
 import { startWidgetSync } from '@/widgets/widget-sync';
 
@@ -67,6 +68,9 @@ export function startRootServices({ late = false }: { late?: boolean } = {}): ()
     // Web: a finish another tab undid is read again here, so this tab's pages stop showing
     // the book finished; see the module.
     startUndoneElsewhere(),
+    // Web: a connection another tab removed stops playing here too, before this tab purges
+    // what it holds of it; see the module.
+    startRemovedInOtherTab(),
     // "The rest of this book isn't downloaded", when the player paused at the end of a
     // download that lacks the rest of its book (D3, fe#185); see the module.
     startPartialDownloadNotice(),

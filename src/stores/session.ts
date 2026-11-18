@@ -16,6 +16,7 @@ import { hostOf } from '@/lib/pairing';
 import { originOf, type ProxyHeaders } from '@/lib/proxy-headers';
 import { forgetProxyHeaders, readProxyHeaders, saveProxyHeaders } from '@/lib/proxy-headers-store';
 import { mergeAddresses, sameAddresses, sameUrl } from '@/lib/server-address';
+import { tabChannel, type TabChannel } from '@/lib/tab-channel';
 import { looksLikeHomeAddress } from '@/lib/url-host';
 import { getItem, getItemStrict, removeItem, setItem } from '@/lib/storage';
 import {
@@ -201,6 +202,87 @@ const removalCleanups = new Set<(id: string) => void | Promise<void>>();
 export function onConnectionRemoved(fn: (id: string) => void | Promise<void>): () => void {
   removalCleanups.add(fn);
   return () => removalCleanups.delete(fn);
+}
+
+/** Run every removal cleanup for each of `ids`; one that fails never blocks the others
+ * (nor the removal), it is only warned of (`what`). */
+async function runRemovalCleanups(ids: readonly string[], what: string): Promise<void> {
+  const results = await Promise.allSettled(
+    ids.flatMap((id) => [...removalCleanups].map((fn) => fn(id))),
+  );
+  for (const r of results) {
+    if (r.status === 'rejected') console.warn(`[session] ${what} cleanup failed`, r.reason);
+  }
+}
+
+// Web: the tabs of the player share the stored connections, tokens and every connection's
+// scoped state, but each holds its own copy in memory. A tab that removes a connection tells
+// the others (`REMOVAL_CHANNEL`), and each forgets it as that tab did (`removedInOtherTab`):
+// its screens leave the connection as the list changes, and the removal's cleanups run on its
+// own copies (its downloads, the queues and mirrors it holds, its query cache), which the
+// removing tab cannot reach. Native is one runtime: no other tab.
+type RemovalMessage = { removed: string };
+const REMOVAL_CHANNEL = 'audiosilo-connection-removed';
+let removalTabs: TabChannel<RemovalMessage> | null | undefined;
+let removalListening: (() => void) | null = null;
+/** The channel, opened on first use (null off the web). */
+const removalChannel = () =>
+  removalTabs === undefined
+    ? (removalTabs = tabChannel<RemovalMessage>(REMOVAL_CHANNEL))
+    : removalTabs;
+
+/** Test-only: the channel removals are told and heard on (heard from now on). */
+export function setRemovalChannelForTests(
+  channel: TabChannel<RemovalMessage> | null | undefined,
+): void {
+  removalListening?.();
+  removalListening = null;
+  removalTabs = channel;
+  listenForRemovals();
+}
+
+function listenForRemovals(): void {
+  if (!removalListening) {
+    removalListening =
+      removalChannel()?.subscribe((m) => void removedInOtherTab(m).catch(() => {})) ?? null;
+  }
+}
+
+// What a tab does first when another tab removed a connection, before the cleanups: what
+// the removing tab did before its removal (the player stops playing through it).
+const otherTabRemovalSteps = new Set<(id: string) => void | Promise<void>>();
+
+/** Register a step run first when ANOTHER tab of the web player removed a connection (the
+ * removing tab ran it itself before removing: `teardownBeforeTokenRevoke`). Returns an
+ * unsubscribe fn. */
+export function onConnectionRemovedInOtherTab(
+  fn: (id: string) => void | Promise<void>,
+): () => void {
+  otherTabRemovalSteps.add(fn);
+  return () => otherTabRemovalSteps.delete(fn);
+}
+
+/**
+ * Another tab removed the connection `message.removed` (its token, calendar link and proxy
+ * headers already deleted there, the stored list written): this tab drops it from its list
+ * (not written again: that tab wrote it) and runs the removal's cleanups. Nothing when its
+ * token is stored again (signed in again since, there or here), or cannot be read.
+ */
+async function removedInOtherTab(message: RemovalMessage): Promise<void> {
+  const id = message?.removed;
+  if (typeof id !== 'string' || !id) return;
+  if ((await getSecure(tokenKey(id))) !== null) return;
+  const { connections, defaultConnectionId } = useSession.getState();
+  if (connections.some((c) => c.id === id)) {
+    const next = connections.filter((c) => c.id !== id);
+    const nextDefault = defaultConnectionId === id ? (next[0]?.id ?? null) : defaultConnectionId;
+    useSession.setState({ connections: next, ...mirror(next, nextDefault) });
+  }
+  const steps = await Promise.allSettled([...otherTabRemovalSteps].map((fn) => fn(id)));
+  for (const r of steps) {
+    if (r.status === 'rejected') console.warn('[session] other-tab removal step failed', r.reason);
+  }
+  await runRemovalCleanups([id], 'connection-removed');
 }
 
 // Told when a sign-in retires a stale identity in favour of the new connection (a server
@@ -642,13 +724,10 @@ export const useSession = create<SessionState>()((set, get) => ({
     // query cache, scroll memory), same semantics as removeConnection: run every cleanup,
     // never let one block the re-pair.
     if (stale.length) {
-      const results = await Promise.allSettled(
-        stale.flatMap((c) => [...removalCleanups].map((fn) => fn(c.id))),
+      await runRemovalCleanups(
+        stale.map((c) => c.id),
+        'stale-identity',
       );
-      for (const r of results) {
-        if (r.status === 'rejected')
-          console.warn('[session] stale-identity cleanup failed', r.reason);
-      }
     }
     return id;
   },
@@ -729,14 +808,13 @@ export const useSession = create<SessionState>()((set, get) => ({
     await Promise.all([forgetCalendarLink(id), forgetProxyHeaders(id)]);
     await persist(next, nextDefault);
     set({ connections: next, ...mirror(next, nextDefault) });
+    // The web's other tabs forget it too, and purge what they hold of it
+    // (`removedInOtherTab`): told once the list is written and the token gone.
+    removalChannel()?.post({ removed: id });
     // Purge the removed connection's scoped state (downloads, progress mirror/queue,
     // query cache, scroll memory). A failing cleanup must never block removal, so run
     // them all and only warn on rejection.
-    const results = await Promise.allSettled([...removalCleanups].map((fn) => fn(id)));
-    for (const r of results) {
-      if (r.status === 'rejected')
-        console.warn('[session] connection-removed cleanup failed', r.reason);
-    }
+    await runRemovalCleanups([id], 'connection-removed');
   },
 
   markNeedsReconnect: (id, reason) => {
@@ -797,3 +875,6 @@ export function connectProxyHeaders(url: string, ownId?: string): ProxyHeaders |
   }
   return connections.find((c) => c.proxyHeaders?.origin === origin)?.proxyHeaders ?? null;
 }
+
+// Web: hear the other tabs' removals from the start (`removedInOtherTab`).
+listenForRemovals();
