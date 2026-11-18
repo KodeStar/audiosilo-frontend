@@ -539,9 +539,9 @@ describe('progress-sync', () => {
     // A frozen server, behind the client's own timeout (which rejects as the client does).
     const frozen = {
       getProgress: jest.fn(
-        (_lib: number, _path: string, _s?: AbortSignal, timeoutMs = 15_000) =>
+        () =>
           new Promise<Progress | null>((_, reject) => {
-            setTimeout(() => reject(new TimeoutError(timeoutMs)), timeoutMs);
+            setTimeout(() => reject(new TimeoutError(15_000)), 15_000);
           }),
       ),
     } as unknown as ApiClient;
@@ -549,18 +549,53 @@ describe('progress-sync', () => {
     try {
       const lookup = loadInitialProgress(frozen, 'c1', 1, 'A/Book', 3_000);
       await jest.advanceTimersByTimeAsync(3_000);
-      await expect(lookup).resolves.toEqual({
+      const r = await lookup;
+      expect(r).toEqual({
         kind: 'progress',
         progress: expect.objectContaining({ position: 75 }),
         unchecked: true,
+        late: expect.any(Promise),
+      });
+      // The slow server is checked at the wait (a `TimeoutError` is what `noteFailure` reads
+      // as no answer); the read goes on, and its failure says nothing late.
+      expect(reachability.noteFailure).toHaveBeenCalledWith('c1', expect.any(TimeoutError));
+      await jest.advanceTimersByTimeAsync(12_000);
+      await expect(r.late).resolves.toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // The review: a server answering after the wait left the book at this device's older place
+  // until the next place check.
+  it('loadInitialProgress: a server answering after the wait is told late, with the mirror as it stood', async () => {
+    await saveProgress(
+      fakeApi(() => Promise.resolve()),
+      { ...save, position: 75 },
+    );
+    let answer: (p: Progress | null) => void = () => {};
+    const slow = {
+      getProgress: jest.fn(() => new Promise<Progress | null>((resolve) => (answer = resolve))),
+    } as unknown as ApiClient;
+    jest.useFakeTimers();
+    try {
+      const lookup = loadInitialProgress(slow, 'c1', 1, 'A/Book', 3_000);
+      await jest.advanceTimersByTimeAsync(3_000);
+      const r = await lookup;
+      expect(r.kind).toBe('progress');
+      // The session saves on meanwhile: the late answer keeps the record the start read.
+      await saveProgress(
+        fakeApi(() => Promise.resolve()),
+        { ...save, position: 90 },
+      );
+      answer(makeProgress({ position: 400, device_id: 'other' }));
+      await expect(r.late).resolves.toEqual({
+        server: expect.objectContaining({ position: 400 }),
+        mirror: expect.objectContaining({ position: 75 }),
       });
     } finally {
       jest.useRealTimers();
     }
-    // The read is bounded by the client's timeout, which has the slow server checked (a
-    // `TimeoutError` is what `noteFailure` reads as no answer).
-    expect(frozen.getProgress).toHaveBeenCalledWith(1, 'A/Book', undefined, 3_000);
-    expect(reachability.noteFailure).toHaveBeenCalledWith('c1', expect.any(TimeoutError));
   });
 
   it("loadInitialProgress: a server answering inside the wait is the server's place", async () => {

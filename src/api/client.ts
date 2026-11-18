@@ -1385,12 +1385,11 @@ export class ApiClient {
     const r = await this.request<{ progress: Progress[] | null }>('GET', '/me/progress');
     return r.progress ?? [];
   }
-  /** `timeoutMs` bounds this read in place of the client's own timeout (a `TimeoutError`). */
-  async getProgress(libraryId: number, path: string, signal?: AbortSignal, timeoutMs?: number) {
+  async getProgress(libraryId: number, path: string, signal?: AbortSignal) {
     const r = await this.request<{ progress: Progress | null }>(
       'GET',
       `/libraries/${libraryId}/progress`,
-      { query: { path }, signal, timeoutMs },
+      { query: { path }, signal },
     );
     return r.progress;
   }

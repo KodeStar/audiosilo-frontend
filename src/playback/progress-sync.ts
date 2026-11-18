@@ -1,4 +1,4 @@
-import { ApiError, type ApiClient, isRefusedForGood } from '@/api/client';
+import { ApiError, type ApiClient, isRefusedForGood, TimeoutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { Progress } from '@/api/types';
@@ -236,12 +236,30 @@ export async function pendingSaveCount(connectionId?: string): Promise<number> {
   return saves + listens;
 }
 
+/** The server's place for a book that started without it (`loadInitialProgress`'s `late`):
+ * its row (null: no record there) and this device's mirror record as the start read it,
+ * before the session's own saves, which are of the place it started from. */
+export type LatePlace = { server: Progress | null; mirror: ProgressSave | null };
+
+/** What `loadInitialProgress` resolves: where the book resumes, and, when the server had not
+ * answered within the wait, its answer still to come (`late`). */
+export type InitialPlace = ResumeLookup & {
+  /** The read that outlasted the wait, going on to the client's own timeout: its answer, or
+   * null when it fails. Never rejects. */
+  late?: Promise<LatePlace | null>;
+};
+
+const OUT_OF_TIME = Symbol('out of time');
+
 /**
  * Where a book resumes: its server's row (written into the mirror) weighed against this
- * device's own records (`resumeLookupOf`). `waitMs` bounds the server's read (a downloaded
- * book, which starts from this device's records when its server is slow: a frozen server held
- * a car's start for the whole request timeout, past the car's own wait); a read that outlasts
- * it counts as a failed one, which only asks for a reachability check.
+ * device's own records (`resumeLookupOf`). `waitMs` bounds the wait for the server (a
+ * downloaded book, which starts from this device's records when its server is slow: a frozen
+ * server held a car's start for the whole request timeout, past the car's own wait). Past it
+ * the server is checked (`noteFailure`, as for a read that timed out), the book starts from
+ * this device's records, and the read goes on (`late`): a server that answers then may hold
+ * another device's newer place, which the player then moves to or offers as the place
+ * reconcile does (`onLatePlace`).
  */
 export async function loadInitialProgress(
   api: ApiClient | null,
@@ -249,37 +267,70 @@ export async function loadInitialProgress(
   libraryId: number,
   path: string,
   waitMs?: number,
-): Promise<ResumeLookup> {
+): Promise<InitialPlace> {
   let serverOk = false;
   let server: Progress | null = null;
+  let pending: Promise<Progress | null> | null = null;
+  // Reachability is per-connection, so a failure is reported against THIS book's own
+  // server. An `ApiError` is an answer (it is up); anything else only asks for a check
+  // (`noteFailure`): one slow read never marks a healthy server down (frontend#131).
+  const noteError = (e: unknown) => {
+    if (e instanceof ApiError) noteSuccess(connectionId);
+    else noteFailure(connectionId, e);
+  };
   // `api` is null when a downloaded book is played with no live connection (its token
   // failed to hydrate). There's no server to ask, so skip the fetch and resume from the
   // durable mirror / offline queue below - exactly the unreachable-server path.
   if (api) {
+    // null = HTTP 200, no record (new book).
+    const read = api.getProgress(libraryId, path);
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      // null = HTTP 200, no record (new book). The client's own timeout cuts a read past
-      // `waitMs` off: a `TimeoutError`, which has the server checked (`noteFailure`).
-      server = await api.getProgress(libraryId, path, undefined, waitMs);
-      serverOk = true;
+      const first =
+        waitMs === undefined
+          ? await read
+          : await Promise.race([
+              read,
+              new Promise<typeof OUT_OF_TIME>((resolve) => {
+                timer = setTimeout(() => resolve(OUT_OF_TIME), waitMs);
+              }),
+            ]);
+      if (first === OUT_OF_TIME) {
+        // No answer in time: the server is checked as for a read that timed out.
+        noteFailure(connectionId, new TimeoutError(waitMs ?? 0));
+        pending = read;
+      } else {
+        server = first;
+        serverOk = true;
+      }
     } catch (e) {
-      // Reachability is per-connection, so report the failure against THIS book's own
-      // server. An `ApiError` is an answer (it is up); anything else only asks for a check
-      // (`noteFailure`): one slow read never marks a healthy server down (frontend#131).
       // The local mirror/queue fallback below keys off `serverOk`, not this call.
-      if (e instanceof ApiError) noteSuccess(connectionId);
-      else noteFailure(connectionId, e);
+      noteError(e);
+    } finally {
+      clearTimeout(timer);
     }
   }
   // Cache the authoritative server value so a later offline resume has it (keep-newest,
   // so a locally-newer offline advance isn't regressed by a stale server read).
   if (serverOk && server) await writeMirror(progressToSave(connectionId, libraryId, path, server));
-  return resumeLookupOf(
+  const places = await readLocalPlaces();
+  const lookup = resumeLookupOf(
     serverOk ? server : undefined,
-    await readLocalPlaces(),
+    places,
     connectionId,
     libraryId,
     path,
   );
+  if (!pending) return lookup;
+  const mirror = places.mirror[contentKey(connectionId, libraryId, path)] ?? null;
+  const late = pending.then(
+    (row): LatePlace => ({ server: row, mirror }),
+    (e: unknown) => {
+      noteError(e);
+      return null;
+    },
+  );
+  return { ...lookup, late };
 }
 
 /** This device's own records of where books are: the durable mirror (by `contentKey`), the

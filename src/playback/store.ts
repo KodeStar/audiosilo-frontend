@@ -79,6 +79,7 @@ import {
   flushQueue,
   getDeviceId,
   guardSettled,
+  type LatePlace,
   loadInitialProgress,
   mirrorIsNewest,
   mirrorTimeOf,
@@ -2896,11 +2897,14 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       let speed = clampRate(askedSpeed ? startSpeed : defaultRate);
       // The replay guard (fe#198): set below when the resume could not be checked.
       let unchecked = false;
+      // The server's place still to come for a downloaded book that stopped waiting for it.
+      let late: Promise<LatePlace | null> | undefined;
       if (startBookPosition === undefined && startTrack === undefined) {
         // A downloaded book never waits long on its server: not asked at all when it is known
         // to be unreachable, else for `DOWNLOADED_PLACE_WAIT_MS` (a frozen server held a car's
         // start for the whole request timeout, and the car gave up on it). Started from this
-        // device's records, as offline: its saves go guarded (`unchecked`, fe#198).
+        // device's records, as offline: its saves go guarded (`unchecked`, fe#198). A server
+        // that answers later is followed once the book is loaded (`followLatePlace`).
         const placeApi = dl && (!isDeviceOnline() || !isReachable(connectionId)) ? null : api;
         const r = await loadInitialProgress(
           placeApi,
@@ -2911,6 +2915,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         );
         if (!current() || replaced()) return;
         if (markedFinished()) return await callOff(svc, request);
+        late = r.late;
         // Not reached (a downloaded book's 'failed' starts at 0), or resumed behind it.
         unchecked = r.kind === 'failed' || (r.kind === 'progress' && !!r.unchecked);
         if (r.kind === 'progress') {
@@ -3049,6 +3054,9 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         return;
       }
       placed = true;
+      // The engine holds this book at its place now: a place its server answers with later
+      // (another device's, newer) is moved to or offered from here.
+      if (late) followLatePlace(late, key);
       // A download that landed before this book was the store's (while its place was looked
       // up) was seen by nothing: the book streams, and is swapped in as this start ends.
       if (!dl && downloadedEntryOf(ref)) swapDue = key;
@@ -3419,6 +3427,37 @@ export function holdSaves(): (opts?: { flush?: boolean }) => void {
 
 /** The listener's own moves so far (`localMoves`). */
 export const localMoveCount = (): number => localMoves;
+
+/** The listener told of a downloaded book's late place (`onLatePlace`). */
+let latePlaceListener: ((bookKey: string, late: LatePlace, moves: number) => unknown) | null = null;
+
+/** Be told when a downloaded book that started without its server's place (the server had
+ * not answered within `DOWNLOADED_PLACE_WAIT_MS`) gets that place after all (one listener:
+ * `place-reconcile.ts`, which applies its rule to it as to a check's answer). Told only while
+ * the book is still the loaded one and the listener has not moved in it since its load
+ * landed (`moves`, the `localMoveCount` then, for the listener to check again after its own
+ * awaits). Returns the unsubscribe. */
+export function onLatePlace(
+  listener: (bookKey: string, late: LatePlace, moves: number) => unknown,
+): () => void {
+  latePlaceListener = listener;
+  return () => {
+    if (latePlaceListener === listener) latePlaceListener = null;
+  };
+}
+
+/** Tell the late place listener of `late`, the server's answer for the book `key` just loaded,
+ * when it comes and nothing has moved the book since (a seek of the listener's own, another
+ * book, a start again: each counts in `localMoves`). */
+function followLatePlace(late: Promise<LatePlace | null>, key: string) {
+  const moves = localMoves;
+  void late.then((answer) => {
+    if (!answer || localMoves !== moves) return;
+    const now = usePlayer.getState();
+    if (selectBookKey(now) !== key || now.loadingBook) return;
+    void latePlaceListener?.(key, answer, moves);
+  });
+}
 
 /** Be told when the loaded book is played again after `LONG_PAUSE_MS` or more of pause
  * (one listener: `place-reconcile.ts`). Called synchronously from the engine

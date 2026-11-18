@@ -2782,7 +2782,11 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   follows the same rule (`DOWNLOADED_PLACE_WAIT_MS`, `loadInitialProgress`'s `waitMs`): no
   server asked when there is none to ask, else 3 s at most, then this device's records with
   its saves guarded. A frozen server otherwise held a car's start for the whole request
-  timeout, past the car's 10 s wait.
+  timeout, past the car's 10 s wait. The read goes on (`InitialPlace.late`): a server that
+  answers after the wait gets the place reconcile's rule once the book is loaded
+  (`onLatePlace`, `applyLatePlace`: moved to another device's newer place with Undo, or offered
+  it on Sync v2), weighed against this device's record as the start read it, and a seek of the
+  listener's own made meanwhile wins.
 - **Auto sleep stays off in the car**: `car-connection.ts` (`isCarConnected`, written by the
   car sync and, on iOS, by the car start in `register-car-task.ios.ts`) is read by
   `auto-sleep-controller.ts`, so the nightly timer never pauses a driver. It is its own module
