@@ -732,7 +732,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     // plays on from where it is, as on iOS. Sent to JS, the request waited for a `load` JS
     // never makes for its own book, and the car said "unavailable" 10 s later while it played.
     item.book?.let { playingQueue(it) }?.let {
-      failPendingPlay(notify = false)
+      failPendingPlay(replaced = true)
       return Futures.immediateFuture(it)
     }
     // Natively only with no JS runtime at all: one that runs may hold another book as
@@ -741,7 +741,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     if (spec != null && PlayerBridge.sink == null) {
       // It takes the place of a play still waiting for JS (a streamed book tapped while JS
       // boots): that one ends quietly, or a JS that listens later would start it over this one.
-      failPendingPlay(notify = false)
+      failPendingPlay(replaced = true)
       // The book the engine was last heard on starts where it was (a crash since its last
       // snapshot write): a car tap's spec holds the place JS last wrote.
       val queue = MediaItems.startPositionOf(spec.at(LivePlaceStore.get(this)))
@@ -750,7 +750,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
       player?.internal { player?.setPlaybackParameters(PlaybackParameters(spec.rate.toFloat(), 1.0f)) }
       return Futures.immediateFuture(queue)
     }
-    failPendingPlay(notify = false)
+    failPendingPlay(replaced = true)
     val future = SettableFuture.create<MediaItemsWithStartPosition>()
     pendingPlay = PendingPlay(item.id, item.book ?: spec?.book, future)
     // Whoever asked: this play is now the one a media button start waits on.
@@ -790,7 +790,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     val match = if (q.isEmpty()) null else snapshot?.findByTitle(q)
     if (match != null) return playFromCar(match, requirePlaySpec = false)
     playingQueue(null)?.let {
-      failPendingPlay(notify = false)
+      failPendingPlay(replaced = true)
       return Futures.immediateFuture(it)
     }
     val first = snapshot?.firstContinue()
@@ -844,10 +844,10 @@ class AudiosiloPlayerService : MediaLibraryService() {
    * place. JS, which may still be starting it (a slow server), is told to drop it
    * ([PlayerBridge.cancelCarPlay]): played later, after a media button start was released, it
    * would play in the background with no foreground notification and no controls. */
-  private fun failPendingPlay(notify: Boolean = true) {
-    // Not told: another play took its place (the car's tap on another book, or the loaded one).
-    if (!endPendingPlay("The car play request timed out", replaced = !notify)) return
-    if (notify) sendUnavailable()
+  private fun failPendingPlay(replaced: Boolean = false) {
+    if (!endPendingPlay("The car play request timed out", replaced)) return
+    // The car is told only of a wait that ran out: a replaced play has the new one to show.
+    if (!replaced) sendUnavailable()
   }
 
   /** Fails the pending car play with [error] and tells JS to drop it ([replaced]: another

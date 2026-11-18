@@ -62,25 +62,14 @@ class ArtworkProvider : ContentProvider() {
      * it has none. */
     fun uriFor(context: Context, artworkKey: String?): Uri? {
       artworkKey ?: return null
-      return Uri.Builder()
-        .scheme("content")
-        .authority(authority(context))
-        .appendPath("art")
-        .appendPath(artworkKey)
-        .build()
+      return contentUri(context, ART, artworkKey)
     }
 
     /** [raw] as an item's artwork URI may carry it: a server URL ([RemoteArtwork.isRemote])
      * as its token-free `remote` content URI, anything else (a file the app wrote) as it is. */
     fun shareable(context: Context, raw: String): String {
       if (!RemoteArtwork.isRemote(raw)) return raw
-      return Uri.Builder()
-        .scheme("content")
-        .authority(authority(context))
-        .appendPath(REMOTE)
-        .appendPath(RemoteArtwork.register(raw))
-        .build()
-        .toString()
+      return contentUri(context, REMOTE, RemoteArtwork.register(raw)).toString()
     }
 
     /** The server URL a [shareable] remote URI stands for, or null for any other URI (or a key
@@ -92,7 +81,12 @@ class ArtworkProvider : ContentProvider() {
       return RemoteArtwork.urlFor(segments[1])?.let(Uri::parse)
     }
 
+    private const val ART = "art"
     private const val REMOTE = "remote"
+
+    /** `content://<authority>/<kind>/<key>`, the one shape [openFile] and [resolveRemote] read. */
+    private fun contentUri(context: Context, kind: String, key: String): Uri =
+      Uri.Builder().scheme("content").authority(authority(context)).appendPath(kind).appendPath(key).build()
 
     /** The snapshot names files the app wrote (the car artwork folder, a download's cover), all
      * inside the app's own data directory; anything else (a crafted path) is refused. */

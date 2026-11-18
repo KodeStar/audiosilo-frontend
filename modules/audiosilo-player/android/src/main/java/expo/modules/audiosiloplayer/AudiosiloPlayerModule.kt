@@ -65,15 +65,6 @@ class ConfigRecord : Record {
 }
 
 /**
- * Bridges the JS playback API to a Media3 MediaLibraryService via a MediaController.
- * Positions are reported per-FILE (seconds); the JS store maps them onto the whole-book
- * timeline. When chapters are supplied each chapter is a clipped media item, and this
- * module translates the engine's clip indices/positions back to file-relative ones so
- * the store's file-based math is unchanged ([TimelineMap], rebuilt from the controller's
- * timeline so it is right for a queue the SERVICE loaded too). All controller access happens on
- * the main thread.
- */
-/**
  * When the module's 1 s progress loop runs. Only while the engine plays, or buffers on its way
  * to playing: a paused audiobook can sit for hours, and a sample a second would wake JS for no
  * change (battery). The buffering ticks are the stall watchdog's heartbeat (fe#158): Android
@@ -86,6 +77,15 @@ object ProgressTicks {
     isPlaying || (playWhenReady && playbackState == Player.STATE_BUFFERING)
 }
 
+/**
+ * Bridges the JS playback API to a Media3 MediaLibraryService via a MediaController.
+ * Positions are reported per-FILE (seconds); the JS store maps them onto the whole-book
+ * timeline. When chapters are supplied each chapter is a clipped media item, and this
+ * module translates the engine's clip indices/positions back to file-relative ones so
+ * the store's file-based math is unchanged ([TimelineMap], rebuilt from the controller's
+ * timeline so it is right for a queue the SERVICE loaded too). All controller access happens on
+ * the main thread.
+ */
 class AudiosiloPlayerModule : Module() {
   private var controller: MediaController? = null
   private var controllerFuture: ListenableFuture<MediaController>? = null
@@ -257,9 +257,13 @@ class AudiosiloPlayerModule : Module() {
         lastTrackIndex = -1
         // A streamed cover's URL carries the media token: the items name it by a token-free
         // content URI that only the service's bitmap loader resolves (fe#349).
+        // Every item of a book shares its cover: each URL is hashed once.
         val ctx = appContext.reactContext
+        val shared = HashMap<String, String>()
         val specs = tracks.map {
-          val artwork = it.artwork?.let { a -> ctx?.let { c -> ArtworkProvider.shareable(c, a) } }
+          val artwork = it.artwork?.let { a ->
+            ctx?.let { c -> shared.getOrPut(a) { ArtworkProvider.shareable(c, a) } }
+          }
           TrackSpec(it.id, it.url, it.title, it.album, it.artist, artwork, it.duration ?: 0.0)
         }
         val clips = chapters.orEmpty().map { ClipSpec(it.fileIndex, it.startInFile, it.endInFile, it.title) }
