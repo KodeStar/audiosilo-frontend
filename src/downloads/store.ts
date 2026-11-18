@@ -1409,19 +1409,21 @@ function saveFailed(): void {
   saveRetryMs = Math.min(saveRetryMs * 2, SAVE_RETRY_MAX_MS);
   saveRetry = setTimeout(() => {
     saveRetry = null;
-    // A download's end saved at last lets its lock go (`syncHeldLocks`).
-    void persist()
-      .then(() => syncHeldLocks(useDownloads.getState()))
-      .catch(() => {});
+    void persist().catch(() => {});
   }, wait);
 }
 
-/** A save landed: no retry waits, and the next failure starts the backoff again. */
+/** A save landed: no retry waits, and the next failure starts the backoff again. After a
+ * failing spell, whichever save landed (the retry, or one with no change of the entries to
+ * follow: the page going), a download's end saved at last lets its lock go
+ * (`syncHeldLocks`). */
 function saveLanded(): void {
   if (saveRetry) clearTimeout(saveRetry);
   saveRetry = null;
   saveRetryMs = SAVE_RETRY_MS;
-  if (useDownloads.getState().saveFailing) useDownloads.setState({ saveFailing: false });
+  if (!useDownloads.getState().saveFailing) return;
+  useDownloads.setState({ saveFailing: false });
+  syncHeldLocks(useDownloads.getState());
 }
 
 /** Whether `live` differs from what this tab last wrote or read (`known`). */
@@ -1671,12 +1673,15 @@ useDownloads.subscribe((state, prev) => {
 });
 
 /** The locks of the downloads this tab runs: held while each is on its way here, let go
- * once its end is saved (again after a save that failed, `saveFailed`'s retry). */
+ * once its end is saved. Not tried while saves fail (each try is a save, at every change
+ * of the entries, past `saveFailed`'s backoff): the save that lands lets them go
+ * (`saveLanded`). */
 function syncHeldLocks(state: DownloadsState): void {
   if (!tabsShareDownloads()) return;
   for (const [key, entry] of Object.entries(state.entries)) {
     if (inProgress(entry) && !state.elsewhere[key]) holdDownload(key);
   }
+  if (state.saveFailing) return;
   for (const key of heldDownloads()) {
     if (!inProgress(state.entries[key]) || state.elsewhere[key]) {
       releaseDownloadAfter(key, endSaved(key));
@@ -1705,7 +1710,8 @@ type SyncStorage = Pick<Storage, 'getItem' | 'setItem'>;
  * So what this tab changed is written now, synchronously, over the stored registry read in
  * the same moment (`applyChanges`, as `persist` does), and the usual save runs too. Not under
  * the lock (nothing can wait here); another tab's save in flight can still write over it,
- * which the next launch's read settles as it always did. Drops wait for `persist`: their
+ * which this tab's own save then writes again (a closed tab: the next launch's read settles
+ * it, as it always did). Drops wait for `persist`: their
  * files could not be removed now. A storage that refuses it changes nothing.
  */
 function saveRegistryOnPageHide(storage: SyncStorage | null = webLocalStorage()): void {
@@ -1718,7 +1724,10 @@ function saveRegistryOnPageHide(storage: SyncStorage | null = webLocalStorage())
     const saved: Registry = isRecord(parsed) ? (parsed as Registry) : {};
     applyChanges(saved, live);
     storage.setItem(DOWNLOADS_KEY, JSON.stringify(saved));
-    known = live;
+    // Not taken as saved (`known` stays): a tab only hidden lives on, and another tab's save
+    // that read before this write lands over it. Its own save below writes the same changes
+    // again under the lock, and a download's end lets its lock go only once that save has
+    // (`endSaved`): let go on this write, the others would revive it as cut short.
   } catch {
     // Refused (full) or not readable: the save below, and its retries, still try.
   }

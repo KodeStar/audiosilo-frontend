@@ -430,6 +430,9 @@ describe('two tabs downloading (web)', () => {
       readable();
       await settle();
     }
+    // Not taken as saved: its own save writes the change again under the lock (a tab only
+    // hidden lives on, and another tab's save can land over the page's write).
+    expect((await stored())[a.downloadKey('c1', 2, 'X/Book')]?.status).toBe('downloaded');
   });
 
   it("removing a connection takes another tab's downloads of it from the registry", async () => {
@@ -601,6 +604,44 @@ describe('a download running in another tab (web, Web Locks)', () => {
     await settle();
     expect((await stored())[KEY_X]?.status).toBe('downloaded');
     expect(locks.names()).not.toContain(LOCK_X);
+  });
+
+  // The save that lands after the refusal is the page going, with no change of the entries
+  // to follow: it still lets the lock go (before its retry, which it stands in for).
+  it('lets its lock go when the page-hide save lands the end storage refused', async () => {
+    const a = await downloadingTab();
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const write = setItem.getMockImplementation()!;
+    setItem.mockImplementation(async (key: string, value: string) => {
+      if (key === KEY) throw new Error('quota');
+      return write(key, value);
+    });
+    try {
+      finish();
+      await settle();
+      expect(locks.names()).toContain(LOCK_X);
+      expect(a.useDownloads.getState().saveFailing).toBe(true);
+    } finally {
+      setItem.mockImplementation(write);
+    }
+    let page: string | null = null;
+    const storage = { getItem: () => page, setItem: (_k: string, v: string) => void (page = v) };
+    const win = new EventTarget();
+    const doc = Object.assign(new EventTarget(), { visibilityState: 'visible' });
+    const stop = a.watchRegistryOnPageHide(
+      win as unknown as Window,
+      doc as unknown as Document,
+      storage,
+    );
+    try {
+      win.dispatchEvent(new Event('pagehide'));
+      await settle();
+      expect((await stored())[KEY_X]?.status).toBe('downloaded');
+      expect(a.useDownloads.getState().saveFailing).toBe(false);
+      expect(locks.names()).not.toContain(LOCK_X);
+    } finally {
+      stop();
+    }
   });
 
   // A retry starting in another tab: its lock taken, its new start not saved yet. Read as the
