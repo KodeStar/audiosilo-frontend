@@ -16,6 +16,7 @@ import { startListeningSync } from '@/playback/listening-sync';
 import { startOtherTabNotice } from '@/playback/other-tab-notice';
 import { startPartialDownloadNotice } from '@/playback/partial-download-notice';
 import { startPlaceReconcile } from '@/playback/place-reconcile';
+import { startUndoneElsewhere } from '@/playback/undone-elsewhere';
 import { startWidgetSync } from '@/widgets/widget-sync';
 
 /**
@@ -58,6 +59,9 @@ export function startRootServices({ late = false }: { late?: boolean } = {}): ()
     // Web: "Playing in another tab", when this tab paused because another one began
     // playing (one tab plays at a time per connection); see the module.
     startOtherTabNotice(),
+    // Web: a finish another tab undid is read again here, so this tab's pages stop showing
+    // the book finished; see the module.
+    startUndoneElsewhere(),
     // "The rest of this book isn't downloaded", when the player paused at the end of a
     // download that lacks the rest of its book (D3, fe#185); see the module.
     startPartialDownloadNotice(),

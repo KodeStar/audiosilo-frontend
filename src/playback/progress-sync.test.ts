@@ -1882,3 +1882,53 @@ describe('mirror writes asked together', () => {
     expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ position: 20 });
   });
 });
+
+// fe#258's follow-up: after an Undo in one tab, another tab kept showing the book finished
+// ("Listen again") until clicked. The Undo reaches it through storage.
+describe('a finish undone in another tab', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  const otherTab = () => {
+    let other!: typeof import('@/playback/progress-sync');
+    jest.isolateModules(() => {
+      jest.doMock('@react-native-async-storage/async-storage', () => ({
+        __esModule: true,
+        default: AsyncStorage,
+      }));
+      /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+      other = require('@/playback/progress-sync') as typeof import('@/playback/progress-sync');
+    });
+    return other;
+  };
+
+  it('is told to the other tab as it is stored, and again as the mirror changes for a while', async () => {
+    const other = otherTab();
+    const told: unknown[] = [];
+    const stop = other.onFinishUndoneElsewhere((ref) => told.push(ref));
+    const at = Date.now();
+    await noteUndoneFinish('c1', 4, 'Author/Book: Two', at);
+    const stored = await AsyncStorage.getItem('audiosilo.undoneFinishes');
+    other.followUndoneFinishes(stored);
+    const ref = { connectionId: 'c1', libraryId: 4, path: 'Author/Book: Two' };
+    expect(told).toEqual([ref]);
+    // The same Undo again (another key's change): not told twice.
+    other.followUndoneFinishes(stored);
+    expect(told).toHaveLength(1);
+    // The Undo's change of the mirror lands after it.
+    other.followMirrorChange();
+    expect(told).toEqual([ref, ref]);
+    const later = jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 6_000);
+    try {
+      other.followMirrorChange();
+      expect(told).toHaveLength(2);
+    } finally {
+      later.mockRestore();
+    }
+    stop();
+    await noteUndoneFinish('c1', 4, 'Author/Book: Two', at + 1);
+    other.followUndoneFinishes(await AsyncStorage.getItem('audiosilo.undoneFinishes'));
+    expect(told).toHaveLength(2);
+  });
+});

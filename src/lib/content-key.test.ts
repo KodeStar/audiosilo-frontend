@@ -1,4 +1,4 @@
-import { connectionOfKey, contentKey, isKeyOf } from './content-key';
+import { bookOfKey, connectionOfKey, contentKey, isKeyOf } from './content-key';
 
 describe('contentKey', () => {
   it('composes (connectionId, libraryId, path)', () => {
@@ -22,5 +22,17 @@ describe('connectionOfKey / isKeyOf', () => {
     expect(isKeyOf(key, 'srv.u1')).toBe(true);
     expect(isKeyOf(key, 'srv.u')).toBe(false);
     expect(isKeyOf(key, 'srv')).toBe(false);
+  });
+});
+
+describe('bookOfKey', () => {
+  it('reads the book back from its key, a path with colons too', () => {
+    expect(bookOfKey(contentKey('c1', 2, 'A/Book: Two'))).toEqual({
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'A/Book: Two',
+    });
+    expect(bookOfKey('c1')).toBeNull();
+    expect(bookOfKey('c1:x:A')).toBeNull();
   });
 });

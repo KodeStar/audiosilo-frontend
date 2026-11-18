@@ -4,7 +4,7 @@ import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { Progress } from '@/api/types';
 import { downloadEndsBefore } from '@/downloads/kept-offline';
 import { identityMovePending } from '@/lib/connection-id';
-import { contentKey } from '@/lib/content-key';
+import { bookOfKey, contentKey } from '@/lib/content-key';
 import { replayQueue, type Route } from '@/lib/queue-claims';
 import { tabLock } from '@/lib/tab-lock';
 import { getItem, setItem } from '@/lib/storage';
@@ -816,13 +816,89 @@ const UNDONE_FINISHES_KEY = 'audiosilo.undoneFinishes';
 
 /** The stored undone finishes (`UNDONE_FINISHES_KEY`); anything else stored there is none. */
 async function readUndoneFinishes(): Promise<Record<string, number>> {
-  const stored = await getItem<unknown>(UNDONE_FINISHES_KEY);
+  return undoneFinishesIn(await getItem<unknown>(UNDONE_FINISHES_KEY));
+}
+
+/** The undone finishes in a stored value; anything else is none. */
+function undoneFinishesIn(stored: unknown): Record<string, number> {
   const out: Record<string, number> = {};
   if (!isRecord(stored)) return out;
   for (const [key, at] of Object.entries(stored)) {
     if (typeof at === 'number' && Number.isFinite(at)) out[key] = at;
   }
   return out;
+}
+
+type BookRefListener = (ref: { connectionId: string; libraryId: number; path: string }) => void;
+const undoneElsewhereListeners = new Set<BookRefListener>();
+
+/** Be told of a finish another tab of the web player undid (its Undo, or Mark as not
+ * finished): this tab's pages still show the book finished until they read it again.
+ * Told as the Undo is stored and again as the mirror changes in the next few seconds (the
+ * Undo's own change of it lands after). Returns the unsubscribe. */
+export function onFinishUndoneElsewhere(listener: BookRefListener): () => void {
+  undoneElsewhereListeners.add(listener);
+  return () => undoneElsewhereListeners.delete(listener);
+}
+
+/** How long after another tab's Undo this tab tells its listeners of each change of the
+ * mirror: the Undo's change of the mirror comes after the Undo is stored. */
+const UNDONE_FOLLOW_MS = 5_000;
+/** Each undone finish seen in the stored ones, by key: its time. */
+const undoneSeen = new Map<string, number>();
+/** The books another tab undid a finish of lately, by key: until when this tab follows. */
+const undoneFollowed = new Map<string, number>();
+
+function tellUndoneElsewhere(key: string): void {
+  const ref = bookOfKey(key);
+  if (!ref) return;
+  for (const listener of undoneElsewhereListeners) {
+    try {
+      listener(ref);
+    } catch {
+      // One listener's failure is not the others'.
+    }
+  }
+}
+
+/** Another tab stored the undone finishes (the web's `storage` event, `raw` the new value):
+ * each Undo not seen yet is told, and followed (`followMirrorChange`). */
+export function followUndoneFinishes(raw: string | null): void {
+  let stored: unknown;
+  try {
+    stored = raw ? JSON.parse(raw) : null;
+  } catch {
+    return;
+  }
+  const now = Date.now();
+  for (const [key, at] of Object.entries(undoneFinishesIn(stored))) {
+    if (undoneSeen.get(key) === at) continue;
+    undoneSeen.set(key, at);
+    undoneFollowed.set(key, now + UNDONE_FOLLOW_MS);
+    tellUndoneElsewhere(key);
+  }
+}
+
+/** Another tab changed the mirror: the books it undid a finish of lately are told again. */
+export function followMirrorChange(): void {
+  const now = Date.now();
+  for (const [key, until] of undoneFollowed) {
+    if (until < now) undoneFollowed.delete(key);
+    else tellUndoneElsewhere(key);
+  }
+}
+
+const win = globalThis as {
+  addEventListener?: (
+    type: 'storage',
+    listener: (e: { key: string | null; newValue: string | null }) => void,
+  ) => void;
+};
+if (typeof win.addEventListener === 'function') {
+  win.addEventListener('storage', (e) => {
+    if (e.key === UNDONE_FINISHES_KEY) followUndoneFinishes(e.newValue);
+    else if (e.key === MIRROR_KEY && undoneFollowed.size > 0) followMirrorChange();
+  });
 }
 
 /** The later of two Undo times, either unknown. */

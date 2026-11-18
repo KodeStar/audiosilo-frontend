@@ -25,3 +25,15 @@ export function connectionOfKey(key: string): string | null {
 export function isKeyOf(key: string, connectionId: string): boolean {
   return key.startsWith(`${connectionId}:`);
 }
+
+/** The book a `contentKey` names, or null when it is not one. */
+export function bookOfKey(
+  key: string,
+): { connectionId: string; libraryId: number; path: string } | null {
+  const first = key.indexOf(':');
+  const second = first < 0 ? -1 : key.indexOf(':', first + 1);
+  if (second < 0) return null;
+  const libraryId = Number(key.slice(first + 1, second));
+  if (!Number.isInteger(libraryId)) return null;
+  return { connectionId: key.slice(0, first), libraryId, path: key.slice(second + 1) };
+}

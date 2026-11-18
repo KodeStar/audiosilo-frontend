@@ -2401,7 +2401,10 @@ media GETs only.
     tabs write one mirror, under one lock across them, `tabLock`: a lock per tab let one tab
     write its read of the whole mirror over another tab's change; the writes asked while one
     waits for that lock join it, `waitingWrites`, one read and one write for them all: on
-    plain http each job pays the lease's wait); fe#208). The loaded book is left before any route
+    plain http each job pays the lease's wait); the other tabs' pages read the book again
+    as the Undo is stored and as the mirror changes in the next 5 s, `onFinishUndoneElsewhere`
+    through the `storage` event, `startUndoneElsewhere` among the root's services: they showed
+    "Listen again" until clicked; fe#208). The loaded book is left before any route
     records the finish (`leaveFinishedBook`), and a start of it still on its way is called off
     (a load that lands after the unload is reset, `stop()`'s race too); a finish or a
     progress edit that then fails loads it again, paused where it was (`reloadLeftBook`), and
