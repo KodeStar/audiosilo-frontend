@@ -1329,9 +1329,9 @@ async function recordFinish(ref: FinishRef): Promise<void> {
   await queued;
 }
 
-/** The book a Mark as finished stopped and unloaded (`leaveFinishedBook`), the start it was
- * loaded by and the place it was left at: for a finish that then failed (`reloadLeftBook`). */
-let leftForFinish: { request: PlayRequest; position: number | undefined } | null = null;
+/** The start of the book a Mark as finished stopped and unloaded (`leaveFinishedBook`), once
+ * its place is saved: for a finish that then failed (`reloadLeftBook`). */
+let leftForFinish: PlayRequest | null = null;
 
 /** A start of a book the listener marked finished while it was on its way
  * (`leaveFinishedBook`): it loads nothing (`playBook`). */
@@ -1367,16 +1367,18 @@ function leaveFinishedBook(ref: ContentRef): Promise<number | undefined> {
   usePlayer.setState({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate } });
   void service?.reset();
   return saved.then((position) => {
-    leftForFinish = request ? { request, position } : null;
+    leftForFinish = request;
     return position;
   });
 }
 
 /** A start called off as its book was marked finished (`finishedStart`), before it loaded
  * anything: no intent to play, the engine reset (it may still hold the book played before),
- * and nothing loaded unless another start has taken the player since. */
+ * and nothing loaded. Nothing at all once another start has taken the player since: the
+ * engine and the intent to play are that start's (reset, a book it loaded went silent). */
 async function callOff(svc: PlaybackService, request: PlayRequest): Promise<void> {
   finishedStart = null;
+  if (lastPlayRequest !== request) return;
   clearPlaybackIntent();
   await svc.reset();
   if (lastPlayRequest !== request) return;
@@ -1386,14 +1388,18 @@ async function callOff(svc: PlaybackService, request: PlayRequest): Promise<void
 
 /**
  * The finish a book was left for (`leaveFinishedBook`) failed (a progress edit or a PUT
- * refused, the server away): the book is loaded again, paused at the place it was left at,
- * as it was before the Mark. Not when anything was loaded since (the listener moved on).
+ * refused, the server away): the book is loaded again, paused at the place it was left at
+ * (saved as it was left, so its resume finds it), as it was before the Mark. Resumed, not
+ * started at that place: an explicit place is a `jump`, which the next play here sent over
+ * a place another device reached meanwhile. Not when anything was loaded since (the
+ * listener moved on).
  */
 async function reloadLeftBook(ref: ContentRef): Promise<void> {
   const left = leftForFinish;
   leftForFinish = null;
-  if (!left || usePlayer.getState().nowPlaying) return;
-  const { connectionId, libraryId, book, chapterData } = left.request;
+  // A start on its way counts too: loaded beside it, the slower of the two took the player.
+  if (!left || usePlayer.getState().nowPlaying || startsInFlight > 0) return;
+  const { connectionId, libraryId, book, chapterData } = left;
   if (contentKey(connectionId, libraryId, book.rel_path) !== contentKeyOf(ref)) return;
   await usePlayer
     .getState()
@@ -1402,7 +1408,7 @@ async function reloadLeftBook(ref: ContentRef): Promise<void> {
       libraryId,
       book,
       chapterData,
-      left.position,
+      undefined,
       undefined,
       undefined,
       () => false,
@@ -2978,6 +2984,9 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       if (dl && queueChapters) adoptStartedChapters(ref, queueChapters);
       await svc.setRate(speed);
       if (!current()) return;
+      // Unloaded while its speed was set (`stop`, a Mark as finished: their reset came after
+      // this load), or another book started: not played on the engine they reset.
+      if (selectBookKey(get()) !== key) return;
       // Called off while it was looked up or loaded (a car play its native side gave up on):
       // loaded, never played. Android had released that start's foreground service, so a
       // play now would be heard with no notification and no controls. Paused outright: the

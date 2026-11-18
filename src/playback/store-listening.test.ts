@@ -1198,6 +1198,22 @@ describe('Mark as finished outside the player (finish-route)', () => {
     expect(usePlayer.getState().nowPlaying).toBeNull();
   });
 
+  it('marked finished while its loaded start sets the speed: the start plays nothing', async () => {
+    let rateSet = () => {};
+    (mockSvc.setRate as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (rateSet = resolve)),
+    );
+    const starting = usePlayer.getState().playBook('c1', 2, book, chapters);
+    await settle();
+    expect(mockSvc.setRate).toHaveBeenCalled();
+    await leaveFinishedBook(ref);
+    rateSet();
+    await starting;
+    await settle();
+    expect(mockSvc.play).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+  });
+
   it('marked finished while its start looks up the place: the start loads nothing', async () => {
     let looked: (r: ResumeLookup) => void = () => {};
     mockLoadInitialProgress.mockImplementationOnce(
@@ -1213,6 +1229,29 @@ describe('Mark as finished outside the player (finish-route)', () => {
     expect(mockSvc.load).not.toHaveBeenCalled();
     expect(mockSvc.play).not.toHaveBeenCalled();
     expect(usePlayer.getState().nowPlaying).toBeNull();
+  });
+
+  // The called-off start reset the engine (and dropped the intent to play) of a book started
+  // after the Mark, which had loaded and played while its place was still looked up.
+  it('a start called off after another book has taken the player leaves that book playing', async () => {
+    let looked: (r: ResumeLookup) => void = () => {};
+    mockLoadInitialProgress.mockImplementationOnce(
+      () => new Promise<ResumeLookup>((resolve) => (looked = resolve)),
+    );
+    const starting = usePlayer.getState().playBook('c1', 2, book, chapters);
+    await settle();
+    await leaveFinishedBook(ref);
+    await usePlayer
+      .getState()
+      .playBook('c1', 2, { ...book, rel_path: 'Other/Book', title: 'Other' }, undefined);
+    await settle();
+    expect(usePlayer.getState().nowPlaying?.path).toBe('Other/Book');
+    (mockSvc.reset as jest.Mock).mockClear();
+    looked({ kind: 'empty' });
+    await starting;
+    await settle();
+    expect(mockSvc.reset).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying?.path).toBe('Other/Book');
   });
 
   it("another book's Mark as finished leaves a start on its way alone", async () => {
@@ -1242,12 +1281,23 @@ describe('Mark as finished outside the player (finish-route)', () => {
     expect(usePlayer.getState().nowPlaying).toBeNull();
     (mockSvc.load as jest.Mock).mockClear();
     (mockSvc.play as jest.Mock).mockClear();
+    // Its resume finds the place saved as it was left (whole-book 9 s: the first file).
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: row({ position: 9, version: 9, device_id: 'phone' }),
+    });
     await reloadLeftBook(ref);
     await settle();
     expect(usePlayer.getState().nowPlaying?.path).toBe(folder);
-    // At the place it was left at (whole-book 9 s: the first file), never played.
     expect((mockSvc.load as jest.Mock).mock.calls[0].slice(1, 3)).toEqual([0, 9]);
     expect(mockSvc.play).not.toHaveBeenCalled();
+    // Resumed there, not a `jump` to it: the next play here never sends the place over one
+    // another device reached meanwhile.
+    pushSnapshot(snap('playing', 0, 9));
+    await settle();
+    pushSnapshot(snap('paused', 0, 12));
+    await settle();
+    expect(mockClosed.at(-1)?.start).toBe('resume');
     // Once only: a second failure has nothing left to load.
     await usePlayer.getState().stop();
     (mockSvc.load as jest.Mock).mockClear();
@@ -1267,6 +1317,28 @@ describe('Mark as finished outside the player (finish-route)', () => {
     (mockSvc.load as jest.Mock).mockClear();
     await reloadLeftBook(ref);
     expect(mockSvc.load).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying?.path).toBe('Other/Book');
+  });
+
+  it("a finish that failed while another book's start is on its way loads nothing", async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    await leaveFinishedBook(ref);
+    let looked: (r: ResumeLookup) => void = () => {};
+    mockLoadInitialProgress.mockImplementationOnce(
+      () => new Promise<ResumeLookup>((resolve) => (looked = resolve)),
+    );
+    const starting = usePlayer
+      .getState()
+      .playBook('c1', 2, { ...book, rel_path: 'Other/Book', title: 'Other' }, undefined);
+    await settle();
+    (mockSvc.load as jest.Mock).mockClear();
+    await reloadLeftBook(ref);
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    looked({ kind: 'empty' });
+    await starting;
+    await settle();
     expect(usePlayer.getState().nowPlaying?.path).toBe('Other/Book');
   });
 
