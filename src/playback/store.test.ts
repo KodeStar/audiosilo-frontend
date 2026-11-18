@@ -1313,6 +1313,49 @@ describe('connection scoping', () => {
       resume({ kind: 'empty' });
       await starting;
     });
+
+    // The next book is a download whose connection is gone, so the switch holds no client at
+    // all: the span of the book still playing is its own server's all the same.
+    it('a listening span of the previous book is kept when the next book has no client', async () => {
+      await startBook(makeBook(), 0, 'c1');
+      playing();
+      const other = makeBook({ rel_path: 'B/Other.m4b' });
+      const entry: DownloadEntry = {
+        connectionId: 'c2',
+        libraryId: 2,
+        path: other.rel_path,
+        title: 'Other',
+        status: 'downloaded',
+        progress: 1,
+        bytes: 0,
+        totalBytes: 0,
+        manifest: {
+          book: other,
+          chapters: null,
+          files: [{ relPath: other.rel_path, localUri: 'file:///dl/other.m4b' }],
+          coverUri: null,
+          savedAt: '2026-01-01T00:00:00Z',
+        },
+      };
+      useDownloads.setState({ entries: { [`c2:2:${other.rel_path}`]: entry } });
+      mockResolveClient.mockImplementation((cid: string) => (cid === 'c2' ? null : fakeClient));
+      const { resume, starting } = await startOnOtherServer();
+      const addHistory = fakeClient.addHistory as jest.Mock;
+      addHistory.mockClear();
+      pushSnapshot(snap('paused', 45));
+      pushSnapshot(snap('playing', 45));
+      jest.advanceTimersByTime(45_000);
+      pushSnapshot(snap('paused', 90));
+      await flushMicrotasks();
+      expect(addHistory).toHaveBeenCalledWith(
+        2,
+        'A/Book.m4b',
+        expect.objectContaining({ from_pos: 45 }),
+        expect.anything(),
+      );
+      resume({ kind: 'empty' });
+      await starting;
+    });
   });
 
   it('finding 5: switching profiles cancels a pending resume before load or play', async () => {

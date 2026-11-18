@@ -2378,12 +2378,13 @@ function beginHistory() {
 function endHistory({ leaving = false }: { leaving?: boolean } = {}) {
   const start = historyStart;
   historyStart = null;
-  if (!start || !apiRef || Date.now() - start.at < MIN_HISTORY_MS) return;
+  if (!start || Date.now() - start.at < MIN_HISTORY_MS) return;
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (!np) return;
   // A switch takes the next book's client before that book is `nowPlaying` (`switchBook`), as
-  // `persist` reads it: a span of the book still named goes to its own server.
+  // `persist` reads it: a span of the book still named goes to its own server, also when the
+  // next book has no client (a download whose connection is gone).
   const api =
     apiRefFor !== null && apiRefFor !== np.connectionId ? resolveClient(np.connectionId) : apiRef;
   if (!api) return;
