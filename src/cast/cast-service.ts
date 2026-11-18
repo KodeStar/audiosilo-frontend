@@ -418,9 +418,11 @@ export class CastPlaybackService implements PlaybackService {
     }
     const item = this.loaded?.items[this.snapshot.trackIndex];
     this.askMove();
-    if (item?.transcoded || this.needsReload) {
-      // The receiver can't seek a transcoded stream: ask for it from there. A newer queue
-      // (or a reset) that replaced this one has the place now.
+    if (item?.transcoded || this.needsReload || this.skippingStalled()) {
+      // The receiver can't seek a transcoded stream: ask for it from there. Nor while it is on a
+      // later file it went on to from a stalled one (`skippingStalled`): a seek would move that
+      // file, not the one the book is on. A newer queue (or a reset) that replaced this one has
+      // the place now.
       if (!(await this.sendQueue(this.snapshot.trackIndex, positionInTrack, this.playOn()))) {
         return;
       }

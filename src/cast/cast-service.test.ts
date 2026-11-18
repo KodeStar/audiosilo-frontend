@@ -659,6 +659,20 @@ describe('CastPlaybackService', () => {
       expect(t.moves.at(-1)).toEqual([1, 9]);
     });
 
+    it('a seek while a later file is held after a stall reloads the file the book is on', async () => {
+      const t = setup();
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 30 });
+      t.tick(20_000);
+      await t.svc.play();
+      t.status({ playerState: 'buffering', contentId: t.url(0), position: 30 });
+      t.tick(2_000);
+      t.status({ playerState: 'playing', contentId: t.url(1), position: 0 });
+      await t.svc.seekTo(60);
+      expect(t.remote.seek).not.toHaveBeenCalled();
+      expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 0, startTime: 60 });
+    });
+
     it('a queue sent after a stall ends it: a run-on from the reloaded file is followed', async () => {
       const t = setup();
       await t.svc.load(TRACKS, 0, 0, [], BOOK);
