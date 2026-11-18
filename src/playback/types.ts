@@ -252,9 +252,12 @@ export interface PlaybackService {
    * the listener's own move (it lowers the resume floor). Not called for moves the JS asked
    * for, auto-rewind, Smart speed's skips, or a file running on into the next. Optional: the
    * web routes its OS seeks through `onRemoteSeek` instead (its engine has not moved yet when
-   * the OS asks).
+   * the OS asks). `checkpoint`: no move at all, the engine's place told so the store saves it
+   * now (Cast, as iOS suspends the app: `RoutedService.checkpoint`).
    */
-  onRemoteMove?(handler: ((trackIndex: number, positionInTrack: number) => void) | null): void;
+  onRemoteMove?(
+    handler: ((trackIndex: number, positionInTrack: number, checkpoint?: boolean) => void) | null,
+  ): void;
   /** Native: the OS changed the speed (CarPlay's rate button, iOS's rate command, an
    * Android controller) and the engine already applied it. Optional. */
   onRateChange?(handler: ((rate: number) => void) | null): void;

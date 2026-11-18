@@ -2947,13 +2947,17 @@ async function createService(): Promise<PlaybackService> {
   // receiver's moves come the same way, `cast-service.ts`). That is the
   // listener's own move: it lowers the floor (a scrub back past the slip tolerance would
   // otherwise never save) and counts for the place reconcile, which then stands back.
-  svc.onRemoteMove?.((trackIndex, positionInTrack) => {
+  svc.onRemoteMove?.((trackIndex, positionInTrack, checkpoint) => {
     const { nowPlaying: np, loadingBook } = usePlayer.getState();
     // A move reported while a book loads is the PREVIOUS queue's (a native move reported a
     // moment late): mapped through the new book's queue it would lower its floor to, and
     // save, a place that book never had. So is one at the download's index while the
     // hot-swap moves the playing file (`swapHold`).
     if (loadingBook || (np && heldBySwap(np, trackIndex))) return;
+    // A checkpoint is no move, only the engine's place (Cast, as iOS suspends the app): a
+    // faulted engine's, or one in a later file held as a run off the asked one, is not the
+    // book's place, and the fault stands.
+    if (checkpoint && (loadedFaulted() || askedPlace?.held)) return;
     // The listener's own move: no ask of the store's stands (`askedPlace`), and a run into a
     // later file held for it was this move.
     setAsk(null);

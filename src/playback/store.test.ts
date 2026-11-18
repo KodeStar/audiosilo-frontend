@@ -13,7 +13,7 @@ let pushSnapshot: (s: PlaybackSnapshot) => void = () => {};
 /** The seek the store handed the engine for the OS media controls (`onRemoteSeek`). */
 let remoteSeek: ((positionInTrack: number) => void) | null = null;
 /** The native engine's Phase 6 handlers the store registered. */
-type TrackPlace = (trackIndex: number, positionInTrack: number) => void;
+type TrackPlace = (trackIndex: number, positionInTrack: number, checkpoint?: boolean) => void;
 let remoteMove: TrackPlace | null = null;
 let rateChange: ((rate: number) => void) | null = null;
 let silenceSaved: ((total: number) => void) | null = null;
@@ -3904,6 +3904,36 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     });
     await usePlayer.getState().retry();
     expect(lastLoad()).toEqual([0, 80]);
+  });
+
+  it("a Cast checkpoint of a faulted book's place is not the book's place", async () => {
+    await resume(30);
+    ranOff();
+    await flushMicrotasks();
+    mockSaveProgress.mockClear();
+    remoteMove!(1, 0.4, true);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'error',
+      trackIndex: 0,
+      position: 30,
+    });
+    expect(mockSaveProgress).not.toHaveBeenCalled();
+    await usePlayer.getState().retry();
+    expect(lastLoad()).toEqual([0, 30]);
+  });
+
+  it('a Cast checkpoint during the wait for a move does not call the fault off', async () => {
+    await resume(30);
+    pushSnapshot(snap('playing', 0.4, { trackIndex: 1, duration: short }));
+    remoteMove!(1, 0.4, true);
+    jest.advanceTimersByTime(FAULT_HOLD_MS);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'error',
+      trackIndex: 0,
+      position: 30,
+    });
   });
 
   it('a start whose load fails leaves a later start of the same book its place and its play', async () => {

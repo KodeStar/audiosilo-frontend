@@ -409,14 +409,17 @@ describe('RoutedPlaybackService', () => {
 
   it('saves the cast place on a checkpoint through the store remote-move path', async () => {
     const t = setup();
+    const told: unknown[][] = [];
+    t.router.onRemoteMove((...args) => told.push(args));
     await playingLocally(t);
     t.router.checkpoint(); // not casting: nothing
-    expect(t.moves).toEqual([]);
+    expect(told).toEqual([]);
     const cast = fakeCast();
     await t.router.beginCast(cast as unknown as CastPlaybackService);
     cast.emit({ state: 'playing', trackIndex: 1, position: 500 });
     t.router.checkpoint();
-    expect(t.moves).toEqual([[1, 500]]);
+    // Told as a checkpoint: the store keeps a faulted book's own place.
+    expect(told).toEqual([[1, 500, true]]);
   });
 
   it('keeps OS route picking and configuration on the phone engine', async () => {

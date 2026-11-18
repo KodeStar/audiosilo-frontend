@@ -62,7 +62,8 @@ export class RoutedPlaybackService implements PlaybackService {
   /** The hand-back of a session that ended, while it runs (a load the end interrupted
    * waits for it: `load`). */
   private ending: Promise<void> | null = null;
-  private remoteMove: ((trackIndex: number, positionInTrack: number) => void) | null = null;
+  private remoteMove:
+    ((trackIndex: number, positionInTrack: number, checkpoint?: boolean) => void) | null = null;
   private rateChange: ((rate: number) => void) | null = null;
   private landed: (() => void) | null = null;
   private playAsked: (() => void) | null = null;
@@ -239,7 +240,7 @@ export class RoutedPlaybackService implements PlaybackService {
     if (this.mode !== 'cast') return;
     const s = this.snapshot;
     if (s.state === 'idle' || s.state === 'ended') return;
-    this.remoteMove?.(s.trackIndex, s.position);
+    this.remoteMove?.(s.trackIndex, s.position, true);
   }
 
   /** The queue of a book the store took over without `load` (a Cast session the app did
@@ -386,7 +387,9 @@ export class RoutedPlaybackService implements PlaybackService {
   onRemoteSeek(handler: ((positionInTrack: number) => void) | null) {
     this.local.onRemoteSeek?.(handler);
   }
-  onRemoteMove(handler: ((trackIndex: number, positionInTrack: number) => void) | null) {
+  onRemoteMove(
+    handler: ((trackIndex: number, positionInTrack: number, checkpoint?: boolean) => void) | null,
+  ) {
     this.remoteMove = handler;
   }
   onRateChange(handler: ((rate: number) => void) | null) {
