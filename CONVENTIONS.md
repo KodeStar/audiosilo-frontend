@@ -2344,7 +2344,11 @@ media GETs only.
     (a load that lands after the unload is reset, `stop()`'s race too); a finish or a
     progress edit that then fails loads it again, paused where it was (`reloadLeftBook`), and
     the page shows a toast while a slow one waits on its server. Undo of Mark as not
-    finished leaves a book started since the same way before its edit finishes it again. An event never claims more than 23 h of wall clock
+    finished leaves a book started since the same way, then finishes it again by the route
+    Mark as finished takes (`recordFinished` in `book-actions.tsx`): a `finish` event where
+    the server takes one, behind the close of the span the book was left with, never a
+    progress edit there (sent over HTTP beside the outbox, it reached the server before that
+    span did); the edit on an older server with `progress_edit`. An event never claims more than 23 h of wall clock
     (`MAX_EVENT_SPAN_MS`, timers that stood still). Each end carries whole-book seconds and its file and in-file seconds;
     `duration` is the audio's own length (`BookQueue.audio`, never a timeline a chapter
     overhangs: the server refuses a span more than 10 s off, `duration_mismatch`); a place that

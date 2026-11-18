@@ -396,6 +396,38 @@ describe('useBookActions', () => {
     expect(mockSteps).toEqual(['leave Author/Series/01 - Book', 'finish']);
   });
 
+  // On a server that takes listening events the finish goes as an event, behind the close of
+  // the span the book was left with: a progress edit, sent beside the outbox, reached the
+  // server before that span did.
+  it("Mark as not finished's Undo is a finish event where the server takes one", async () => {
+    mockTakesEvent = true;
+    mockEdit.mockImplementation(async (v: { edit: { finished: boolean } }) => {
+      mockSteps.push(v.edit.finished ? 'edit finished' : 'edit unfinished');
+    });
+    mockMarkFinished.mockImplementation(async () => mockSteps.push('mark'));
+    const { find } = await actions(book(), progress({ finished: true, position: 3 * H }));
+    await act(async () => find('finish')!.onPress());
+    await act(async () => mockToast.mock.calls.at(-1)![0].action.onPress());
+    expect(mockSteps).toEqual(['edit unfinished', 'leave Author/Series/01 - Book', 'mark']);
+    expect(mockMarkFinished).toHaveBeenCalledWith({
+      libraryId: 1,
+      path: 'Author/Series/01 - Book',
+      position: 3 * H,
+      duration: 3 * H,
+    });
+  });
+
+  it("a finish event that failed on Mark as not finished's Undo loads the book again", async () => {
+    mockTakesEvent = true;
+    mockEdit.mockResolvedValue(progress());
+    mockMarkFinished.mockRejectedValue(new Error('storage'));
+    const { find } = await actions(book(), progress({ finished: true, position: 3 * H }));
+    await act(async () => find('finish')!.onPress());
+    await act(async () => mockToast.mock.calls.at(-1)![0].action.onPress());
+    expect(mockSteps).toEqual(['leave Author/Series/01 - Book', 'reload Author/Series/01 - Book']);
+    expect(mockToast.mock.calls.at(-1)![0].title).toBe("Couldn't update this book. Try again.");
+  });
+
   it('marks a book finished at its end not finished from the start', async () => {
     mockEdit.mockResolvedValue(progress());
     const { find } = await actions(book(), progress({ finished: true, position: 3 * H }));

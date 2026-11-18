@@ -180,12 +180,34 @@ export function useBookActions(
 
   const ref = { connectionId, libraryId, path };
 
-  // Marked finished by a progress edit (`progress_edit`), the loaded book (or one starting)
-  // stopped and unloaded first, its place saved (fe#258); an edit that failed loads it
+  // Mark the book finished by the route its server takes; resolves to whether it was. A
+  // server that takes listening events: a `finish` event, offline too (fe#208), in the outbox
+  // behind the close of the span the book was left with. Never a progress edit there: sent
+  // over HTTP beside the outbox, it reached the server before that span did. An older server
+  // with progress edits: the edit (no span waits there, and Undo is an edit too); one without:
+  // the offline-aware save at the book's end.
+  const recordFinished = async (): Promise<boolean> => {
+    if (progressEdit === true && !finishTakesEvent(connectionId)) return setFinished(true);
+    try {
+      await markFinished.mutateAsync({
+        libraryId,
+        path,
+        position: book.duration,
+        duration: book.duration,
+      });
+      return true;
+    } catch (e) {
+      failed(e);
+      return false;
+    }
+  };
+
+  // Finished again (the Undo of Mark as not finished), the loaded book (or one starting)
+  // stopped and unloaded first, its place saved (fe#258); a finish that failed loads it
   // again where it was (FE-1): left unloaded, the failure stopped the listening for nothing.
-  const finishByEdit = async () => {
+  const finishAgain = async () => {
     await leaveFinishedBook(ref);
-    if (!(await setFinished(true))) await reloadLeftBook(ref);
+    if (!(await recordFinished())) await reloadLeftBook(ref);
   };
 
   const onFinish = async () => {
@@ -226,26 +248,7 @@ export function useBookActions(
         description: book.title,
         action: canUndo ? { label: t('queue.undo'), onPress: () => void undo() } : undefined,
       });
-    let ok = false;
-    try {
-      if (canUndo && !finishTakesEvent(connectionId)) {
-        ok = await setFinished(true);
-      } else {
-        // A server that takes listening events: a `finish` event, offline too (fe#208). An
-        // older server without progress edits: the offline-aware save at the book's end.
-        await markFinished.mutateAsync({
-          libraryId,
-          path,
-          position: book.duration,
-          duration: book.duration,
-        });
-        ok = true;
-      }
-    } catch (e) {
-      failed(e);
-    } finally {
-      settled();
-    }
+    const ok = await recordFinished().finally(settled);
     if (ok) done();
     else await reloadLeftBook(ref);
   };
@@ -256,7 +259,7 @@ export function useBookActions(
       title: t('library.bookActions.markedUnfinished'),
       description: book.title,
       // Finished again: a book started since stops first, as on Mark as finished (FE-1).
-      action: { label: t('queue.undo'), onPress: () => void finishByEdit() },
+      action: { label: t('queue.undo'), onPress: () => void finishAgain() },
     });
   };
 
