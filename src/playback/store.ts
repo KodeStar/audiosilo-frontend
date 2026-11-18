@@ -1460,7 +1460,8 @@ async function unrecordFinish(ref: UndoRef, since: number): Promise<void> {
   beforeFinish.delete(key);
   if (finishSent === key) finishSent = null;
   if (connectionGeneration(ref.connectionId) !== since) return;
-  await noteUndoneFinish(ref.connectionId, ref.libraryId, ref.path);
+  // Its lock refused (Web Locks): held off in this tab alone, and the record still goes back.
+  await noteUndoneFinish(ref.connectionId, ref.libraryId, ref.path).catch(() => undefined);
   await updateMirror(ref.connectionId, ref.libraryId, ref.path, (now) => {
     // Only the finish's record: a place saved since it (newer, unfinished) is not undone.
     if (!now.finished) return now;

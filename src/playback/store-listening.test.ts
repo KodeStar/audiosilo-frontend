@@ -67,7 +67,7 @@ const mockUpdateMirror = jest.fn(
     if (next !== now) mockMirrorUpdates.push(next);
   },
 );
-const mockNoteUndone = jest.fn((..._a: unknown[]) => {});
+const mockNoteUndone = jest.fn(async (..._a: unknown[]) => {});
 // Sessions whose guarded save the queue has PUT since (`guardSettled`).
 const mockSettled = new Set<string>();
 jest.mock('./progress-sync', () => ({
@@ -1486,6 +1486,27 @@ describe('Mark as finished outside the player (finish-route)', () => {
       );
       expect(edit).toHaveBeenCalledTimes(1);
       expect(mockMirrorUpdates.at(-1)).toMatchObject({ finished: false, position: 0 });
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
+  // Its stored copy for the other tabs behind a lock that may refuse (Web Locks): the hold
+  // stays in this tab, and the record still goes back.
+  it('Undo whose cross-tab hold could not be stored: the mirror still goes back', async () => {
+    mockReadMirror.mockResolvedValue(null);
+    try {
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      const finishedRec = mockWriteMirror.mock.calls.at(-1)?.[0] as { updated_at: string };
+      mockReadMirror.mockResolvedValue(finishedRec);
+      mockNoteUndone.mockRejectedValueOnce(new Error('lock refused'));
+      await expect(
+        undoFinish(
+          undoRef,
+          jest.fn(async () => {}),
+        ),
+      ).resolves.toBe('undone');
+      expect(mockMirrorUpdates.at(-1)).toMatchObject({ finished: false, position: 48 });
     } finally {
       mockReadMirror.mockImplementation(async () => null);
     }
