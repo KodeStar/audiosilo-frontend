@@ -204,6 +204,11 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     // refresh starts after paint, its own sweep then finding no downloads yet).
     if (readalongRefreshOn) refreshCachedReadalongs(Object.values(cleaned));
     await persist();
+    // Web: what other tabs changed while this one read (their `storage` events are not
+    // followed then) shows now, not at their next save.
+    if (Platform.OS === 'web') {
+      followStored(await getItemStrict<unknown>(DOWNLOADS_KEY).catch(() => null));
+    }
     // The episodes that were waiting for their server when the app closed wait again, once
     // the session knows the connections to ask and the browser's offline check has settled.
     void Promise.all([whenSessionReady(), checked])
@@ -392,8 +397,16 @@ async function readRegistry(): Promise<Registry> {
   }
   // What the launch read is what this tab knows of the stored registry: the save after the
   // merge writes what the read changed (an entry relocated, revived or dropped) and the
-  // live entries made meanwhile, and leaves the rest as stored.
-  known = saved;
+  // live entries made meanwhile, and leaves the rest as stored. An entry the read kept as it
+  // was stored is known as the live copy (`relocateEntry` always makes a new object): taken
+  // as changed, every one was written back over what another tab changed or removed while
+  // this one read.
+  const read: Registry = {};
+  for (const [key, raw] of Object.entries(saved)) {
+    const kept = merged[key];
+    read[key] = kept && JSON.stringify(kept) === JSON.stringify(raw) ? kept : raw;
+  }
+  known = read;
   useDownloads.setState({ entries: merged, hydrated: true, supported: engine.supported });
   return cleaned;
 }
@@ -1236,22 +1249,28 @@ function changedSinceKnown(live: Registry): boolean {
  * before this tab read the registry (its read takes what is there).
  */
 export function followStoredRegistry(raw: string | null): void {
-  if (hydrating || !useDownloads.getState().hydrated) return;
-  let stored: Registry;
+  let parsed: unknown;
   try {
-    const parsed: unknown = raw ? JSON.parse(raw) : {};
-    if (!isRecord(parsed)) return;
-    stored = parsed as Registry;
+    parsed = raw ? JSON.parse(raw) : {};
   } catch {
     return;
   }
+  followStored(parsed);
+}
+
+/** `followStoredRegistry` over the stored registry as read (anything but a record: nothing). */
+function followStored(parsed: unknown): void {
+  if (hydrating || !useDownloads.getState().hydrated || !isRecord(parsed)) return;
+  const stored = parsed as Registry;
   const live = useDownloads.getState().entries;
   const next: Registry = { ...live };
   const nextKnown: Registry = { ...known };
   let changed = false;
   for (const key of new Set([...Object.keys(live), ...Object.keys(stored)])) {
     if (controllers.has(key) || queue.includes(key) || isWaiting(key)) continue;
-    if (key in live && live[key] !== known[key]) continue; // changed here, not saved yet
+    // Changed here, not saved yet: added, updated, or taken out (a remove whose save waits
+    // for the lock would be undone by the other tab's copy, its files already gone).
+    if (live[key] !== known[key]) continue;
     const mine = live[key];
     const theirs = stored[key];
     if (theirs?.status === 'downloaded') {

@@ -210,6 +210,38 @@ describe('two tabs downloading (web)', () => {
     expect(Object.keys(await stored())).toEqual([b.downloadKey('c1', 2, 'Y/Book')]);
   });
 
+  it("a removal waiting for its save is not undone by another tab's write heard meanwhile", async () => {
+    const seeded = openTab();
+    await seeded.useDownloads.getState().hydrate();
+    await seeded.useDownloads.getState().download('c1', 2, book('X/Book'));
+    await settle();
+    const a = openTab();
+    await a.useDownloads.getState().hydrate();
+    const holdingX = await rawStored();
+    a.useDownloads.getState().cancel('c1', 2, 'X/Book');
+    // Another tab's save (the registry still holding X) is heard before tab A's takes the lock.
+    a.followStoredRegistry(holdingX);
+    await settle();
+    expect(entryOf(a, 'X/Book')).toBeUndefined();
+    expect(await stored()).toEqual({});
+  });
+
+  it('a tab reading the registry at launch does not write back what another tab removed meanwhile', async () => {
+    const seeded = openTab();
+    await seeded.useDownloads.getState().hydrate();
+    await seeded.useDownloads.getState().download('c1', 2, book('X/Book'));
+    await seeded.useDownloads.getState().download('c1', 2, book('Y/Book'));
+    await settle();
+    const a = openTab();
+    await a.useDownloads.getState().hydrate();
+    const b = openTab();
+    const reading = b.useDownloads.getState().hydrate();
+    await a.useDownloads.getState().remove('c1', 2, 'X/Book');
+    await reading;
+    await settle();
+    expect(Object.keys(await stored())).toEqual([a.downloadKey('c1', 2, 'Y/Book')]);
+  });
+
   it('a save storage refused is written by the next save', async () => {
     const a = openTab();
     await a.useDownloads.getState().hydrate();
