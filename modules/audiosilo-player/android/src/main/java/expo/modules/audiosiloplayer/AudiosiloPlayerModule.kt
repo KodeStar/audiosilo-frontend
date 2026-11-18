@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
@@ -586,13 +587,15 @@ class AudiosiloPlayerModule : Module() {
   }
 
   /** Seek the controller on the main thread to the place [target] gives for it, resolving
-   * [promise] once the seek landed ([MoveLandings]), or at once with no controller. A seek the
-   * controller never took rejects (`ERR_MOVE_NOT_TAKEN`): the store reads it as refused, the
-   * engine still where it was. */
+   * [promise] once the seek landed ([MoveLandings]). A seek the controller never took, or one
+   * that threw (logged here, never thrown on the main thread), rejects (`ERR_MOVE_NOT_TAKEN`),
+   * and so does a move with no controller to make it (`ERR_NO_CONTROLLER`, while it
+   * reconnects): the store reads either as refused, the engine still where it was. */
   private fun moveOnMain(promise: Promise, target: (MediaController) -> MoveLandings.Target) {
     handler.post {
-      val c = controller ?: return@post promise.resolve(null)
-      landings.run(
+      val c = controller
+        ?: return@post promise.reject("ERR_NO_CONTROLLER", "The player is not connected", null)
+      val failed = landings.run(
         { taken ->
           if (taken) {
             promise.resolve(null)
@@ -602,6 +605,7 @@ class AudiosiloPlayerModule : Module() {
         },
         { MoveLandings.Target(c.currentMediaItemIndex, c.currentPosition) },
       ) { target(c).also { c.seekTo(it.item, it.positionMs) } }
+      if (failed != null) Log.w(TAG, "A seek failed", failed)
     }
   }
 
@@ -699,5 +703,6 @@ class AudiosiloPlayerModule : Module() {
     /** A remote move is emitted at the controller's next discontinuity, or after this if
      * none comes (the service already moved; never lose the event). */
     const val REMOTE_MOVE_FALLBACK_MS = 300L
+    const val TAG = "AudiosiloPlayer"
   }
 }

@@ -38,28 +38,31 @@ internal class MoveLandings(
    * controller took it: at once when it reported the seek inside the call, or when [here], the
    * controller's place once the call returned, is already at the target (a seek to where the
    * engine is may report no discontinuity), else once it reports one at the target, or
-   * `false` after [FALLBACK_MS] (or when [move] threw). */
-  fun run(done: (taken: Boolean) -> Unit, here: () -> Target, move: () -> Target) {
+   * `false` after [FALLBACK_MS], or at once when [move] threw. The throw is returned for the
+   * caller to report, never rethrown: [run] is called on the main thread, where it would crash
+   * the app. Null otherwise. */
+  fun run(done: (taken: Boolean) -> Unit, here: () -> Target, move: () -> Target): Exception? {
     val before = reports
     val target = try {
       move()
     } catch (e: Exception) {
       done(false)
-      throw e
+      return e
     }
     if (reports != before) {
       // Taken, and past every move still waiting.
       settleAll(taken = true)
       done(true)
-      return
+      return null
     }
     if (near(target, here())) {
       done(true)
-      return
+      return null
     }
     waiting.add(Waiting(target, done))
     cancel(fallback)
     schedule(fallback, FALLBACK_MS)
+    return null
   }
 
   /** The controller reported a seek's new place: the move being made, or a waiting one whose

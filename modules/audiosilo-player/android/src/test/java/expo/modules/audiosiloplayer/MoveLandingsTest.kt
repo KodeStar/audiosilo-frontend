@@ -1,6 +1,7 @@
 package expo.modules.audiosiloplayer
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -67,7 +68,7 @@ class MoveLandingsTest {
   @Test
   fun aMoveTheControllerNeverReportsIsNotTakenAfterTheFallback() {
     val taken = mutableListOf<Boolean>()
-    landings.run({ taken.add(it) }, elsewhere) { target }
+    assertNull(landings.run({ taken.add(it) }, elsewhere) { target })
     assertEquals(listOf(MoveLandings.FALLBACK_MS), clock.posted.map { it.second })
     clock.fire()
     assertEquals(listOf(false), taken)
@@ -98,12 +99,13 @@ class MoveLandingsTest {
   }
 
   @Test
-  fun aMoveThatThrowsIsNotTaken() {
+  fun aMoveThatThrowsIsNotTakenAndItsThrowIsReturnedNotRethrown() {
     val taken = mutableListOf<Boolean>()
-    try {
-      landings.run({ taken.add(it) }, elsewhere) { throw IllegalStateException("no controller") }
-    } catch (_: IllegalStateException) {
+    // Rethrown, it would crash the app from the main thread's post.
+    val failed = landings.run({ taken.add(it) }, elsewhere) {
+      throw IllegalStateException("bad seek")
     }
+    assertEquals("bad seek", failed?.message)
     assertEquals(listOf(false), taken)
     assertTrue(clock.posted.isEmpty())
     // The next move is told apart from it.
