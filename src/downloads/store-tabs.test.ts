@@ -733,6 +733,46 @@ describe('a download running in another tab (web, Web Locks)', () => {
     expect(mockRemoveBook).toHaveBeenCalledWith('c1', 2, 'X/Book');
   });
 
+  // Its end is saved after the removal (a new `savedAt`), and reaches the removing tab (its
+  // `storage` event) before the lock is let go: not shown there, and still purged.
+  it('a tab running it that does not answer: its end heard here is still purged', async () => {
+    const a = await downloadingTab();
+    a.setDownloadStopChannelForTests(null);
+    const { b, removeC1 } = await removingTab();
+    await removeC1();
+    await settle();
+    const setItem = jest.mocked(AsyncStorage.setItem);
+    const write = setItem.getMockImplementation()!;
+    setItem.mockImplementation(async (k, v) => {
+      await write(k, v);
+      if (k === KEY) b.followStoredRegistry(v);
+    });
+    try {
+      finish();
+      await settle();
+    } finally {
+      setItem.mockImplementation(write);
+    }
+    expect(entryOf(b, 'X/Book')).toBeUndefined();
+    expect(await stored()).toEqual({});
+    expect(mockRemoveBook).toHaveBeenCalledWith('c1', 2, 'X/Book');
+  });
+
+  it('a book downloaded again in the tab that ran it is not purged', async () => {
+    const a = await downloadingTab();
+    const { b, removeC1 } = await removingTab();
+    await removeC1();
+    await settle();
+    expect(await stored()).toEqual({});
+    mockTransfer.gate = null;
+    await a.useDownloads.getState().download('c1', 2, book('X/Book'));
+    await settle();
+    b.followStoredRegistry(await rawStored());
+    await settle();
+    expect((await stored())[KEY_X]?.status).toBe('downloaded');
+    expect(entryOf(b, 'X/Book')?.status).toBe('downloaded');
+  });
+
   it('a tab running it that closes meanwhile: its entry and files go then', async () => {
     const a = await downloadingTab();
     a.setDownloadStopChannelForTests(null);

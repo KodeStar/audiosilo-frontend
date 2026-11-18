@@ -2054,7 +2054,8 @@ media GETs only.
   that tab is asked on the tab channel to remove the connection's downloads it runs
   (`connectionRemoved`), and once it let each go (removed, ended first, or the tab closed)
   what the registry still holds of it goes, files too (`purgeWhenLeft`). Meanwhile its saves
-  are not followed here (`removals`). **Files are stored
+  are not followed here, its end's either (`removals`, by key `purging`), unless one shows it
+  started again since (signed in again, a retry): then it is that download's, not purged. **Files are stored
   per-connection**: native `downloads/<connectionId>/<libraryId>/<slug>/`, web Cache API
   `/_offline/<connectionId>/<libraryId>/<slug>/`; the registry keys on
   `downloadKey(connectionId, libraryId, path)`. Pre-scoping downloads (from before the

@@ -1495,9 +1495,9 @@ function followStored(parsed: unknown): void {
     if (live[key] !== known[key]) continue;
     const mine = live[key];
     const theirs = stored[key];
-    // A removed connection's (`removals`): the other tab's save or removal of it changes
-    // nothing here.
-    if (theirs && ofRemovedConnection(theirs)) continue;
+    // A removed connection's (`removals`, `purging`): the other tab's save or removal of it
+    // changes nothing here.
+    if (theirs && ofRemovedConnection(key, theirs)) continue;
     if (theirs?.status === 'downloaded') {
       if (mine?.status === 'downloaded' && sameStored(mine, theirs)) continue;
       next[key] = nextKnown[key] = theirs;
@@ -1557,7 +1557,7 @@ async function followStarted(keys: readonly string[]): Promise<void> {
   for (const key of keys) {
     const theirs = stored[key];
     if (!away.has(key) || !inProgress(theirs) || elsewhere[key]) continue;
-    if (ofRemovedConnection(theirs)) continue;
+    if (ofRemovedConnection(key, theirs)) continue;
     if (controllers.has(key) || queue.includes(key) || isWaiting(key)) continue;
     if (live[key] !== known[key]) continue;
     next[key] = nextKnown[key] = theirs;
@@ -2421,10 +2421,25 @@ async function runOne(key: string) {
  * never shown here again from another tab's save of them (that tab may not know of the
  * removal). A later removal covers an earlier one. */
 const removals = new Map<string, string>();
-const ofRemovedConnection = (e: DownloadEntry) => {
+
+/** A removed connection's downloads another tab was running, by key, with when it was
+ * removed (`purgeWhenLeft`): never shown here, by key, not by `savedAt` (the end of one saved
+ * there is stamped after the removal). One saved there on its way since the removal is a
+ * download started again (signed in again, a retry): no longer this purge's. */
+const purging = new Map<string, string>();
+
+/** Whether another tab's save of `e` (the stored entry of `key`) is a removed connection's,
+ * not shown here. */
+function ofRemovedConnection(key: string, e: DownloadEntry): boolean {
+  const purgeAt = purging.get(key);
+  if (purgeAt !== undefined) {
+    if (!(inProgress(e) && e.manifest.savedAt > purgeAt)) return true;
+    purging.delete(key);
+    return false;
+  }
   const removedAt = removals.get(e.connectionId);
   return removedAt !== undefined && !(e.manifest.savedAt > removedAt);
-};
+}
 
 // Removing a connection purges its downloads: abort any in-flight transfer, delete the
 // files, and drop the entries (signing out of an account takes its downloads with it;
@@ -2462,7 +2477,10 @@ onConnectionRemoved(async (id) => {
     });
   }
   if (away.size > 0) stopChannel()?.post({ connectionId: id, connectionRemoved: true });
-  for (const key of away) void purgeWhenLeft(key).catch(() => {});
+  for (const key of away) {
+    purging.set(key, removedAt);
+    void purgeWhenLeft(key, removedAt).catch(() => {});
+  }
   await removeEntryFiles(mine.map(([, e]) => e));
   // The stored registry is every tab's: the connection's downloads this tab did not hold
   // (another tab's, finished) go from it too, and then their files (`persist`).
@@ -2474,13 +2492,24 @@ onConnectionRemoved(async (id) => {
  * (it removed it, as asked; it ended first; or it closed), what the registry still holds of
  * it goes, and its files with it (`persist`'s drop of an entry this tab does not hold). By
  * key, not by `savedAt`: a download that ended there was saved again as it ended, after the
- * removal. Unless this tab has a download of the book again (signed in again meanwhile).
+ * removal (`purging`, which keeps that save from showing here meanwhile). Unless the book's
+ * download was started again since, here or there (signed in again, a retry).
  */
-async function purgeWhenLeft(key: string): Promise<void> {
+async function purgeWhenLeft(key: string, removedAt: string): Promise<void> {
   await whenDownloadLeft(key);
-  // Taken up again there meanwhile (a retry): still that tab's.
-  if ((await downloadsRunningElsewhere()).has(key)) return purgeWhenLeft(key);
-  await persist((e) => contentKeyOf(e) === key && !useDownloads.getState().entries[key]);
+  // Started again since (`purging`): not this purge's.
+  if (purging.get(key) !== removedAt) return;
+  // Taken up again there meanwhile, its start not saved yet: wait for its end.
+  if ((await downloadsRunningElsewhere()).has(key)) return purgeWhenLeft(key, removedAt);
+  await persist(
+    (e) =>
+      purging.get(key) === removedAt &&
+      contentKeyOf(e) === key &&
+      !useDownloads.getState().entries[key] &&
+      // One saved on its way since the removal: started again, before its lock was held.
+      !(inProgress(e) && e.manifest.savedAt > removedAt),
+  );
+  if (purging.get(key) === removedAt) purging.delete(key);
 }
 
 // --- selectors -------------------------------------------------------------
