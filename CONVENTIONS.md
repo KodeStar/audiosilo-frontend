@@ -1058,7 +1058,9 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   Every send, the queue's replays and the open reader's saves alike, goes one at a time in the
   tab (`withSendTurn`, fe#173), and a sent save drops a queued one of the book made before it.
   The mirror and the stored queue are every tab's: their read-modify-writes take `tabLock`
-  (storage only), and a replay claims what it sends (`replayQueue`, as the legacy queue). The open reader's saves go one at a time (`saveReaderPlace`): one captured on 0 is
+  (storage only), and a replay claims what it sends (`replayQueue`, as the legacy queue; a
+  queued place whose drop storage refused after a newer one was sent is remembered,
+  `sentUnsettled`, and never replayed after it). The open reader's saves go one at a time (`saveReaderPlace`): one captured on 0 is
   sent on the version an answer to this device's own save acknowledged meanwhile, since two on 0
   would diverge from each other; never on one adopted meanwhile (the mirror's `own`), so a page
   captured before a Jump never applies on the place jumped to. An
@@ -2022,7 +2024,21 @@ media GETs only.
   download another tab made meanwhile), and a tab follows the others' finished downloads and
   removals through the `storage` event, and once after its launch's read
   (`followStoredRegistry`; never a book it is running or changed since, a removal waiting to
-  be saved included, nor a download on its way, which is the other tab's to show and stop). A removed connection's purge takes
+  be saved included; a finished download is compared whole, not by `savedAt`, which a
+  chapters or read-along change keeps, and a removal followed releases the book's kept
+  queries as `remove` does). **A download on its way is its tab's** (`tab-owner.ts`, Web
+  Locks only): the tab running it holds the lock `audiosilo-download:<key>` from queued until
+  its end is saved (kept while storage refuses that save), and the browser frees it when the
+  tab goes. A tab that finds the lock held by another, at its launch's read or on a `storage`
+  event, keeps the entry as stored and lists it in `elsewhere` (shown "In another tab", with
+  the progress that tab saves): never revived as Interrupted, its folder never emptied, never
+  saved from here, and `cancel` / `remove` ask the running tab on a tab channel
+  (`askOwnerToStop`). It waits on the lock (`watchOwner`): let go with the entry still on its
+  way means the tab closed, and the waiting tab revives it as a launch does (`ownerLeft`).
+  The launch reads the registry again after looking at the locks (`readStoredWithOwners`):
+  an entry is nobody's only when it reads the same on both sides of a look that found no
+  holder. Without Web Locks (plain http) a tab cannot tell, and a download on its way reads
+  as cut short on reload, as before. A removed connection's purge takes
   the other tabs' downloads of it from the stored registry too, then their files. **Files are stored
   per-connection**: native `downloads/<connectionId>/<libraryId>/<slug>/`, web Cache API
   `/_offline/<connectionId>/<libraryId>/<slug>/`; the registry keys on
@@ -2210,7 +2226,12 @@ media GETs only.
   fetch), and the offline queue by `updated_at` (shared by the web's tabs: its changes take
   `tabLock`, and a replay claims the saves it sends under it and sends them with it released,
   `replayQueue` in `src/lib/queue-claims.ts`: a plain-http lease runs out in 5 s, a replay can
-  take longer; a claim left by a tab that went runs out in 2 minutes; a tab's own replays go
+  take longer; a replay still sending stamps its claims again every 30 s, and one not stamped
+  for two of those ran out, its tab gone; the queues are replayed on the foreground, the
+  window's focus and `online` too, `startQueueReplays`, so such saves do not wait for the
+  next save; storage that refuses the claim's write sends nothing, and entries sent whose
+  removal it refused are remembered in the tab, `ReplayQueue.sent`, and never sent again from
+  it; a tab's own replays go
   one at a time, `withReplayTurn`, so a sign-out's or a reconnect's flush waits for one out). `playBook` resumes from `progress`; on
   `failed` for a **streaming** book it sets an `error` (retry re-runs the lookup) instead
   of silently starting at 0; `empty`/downloaded-`failed` start at 0 (genuinely new). A
@@ -2369,8 +2390,9 @@ media GETs only.
     written by `writeFinishedMirror`; decided by the record under the mirror's lock, so a
     reload and another tab see it, another tab's finish or a place saved since is never undone
     from an earlier look, and a place another device saved after it, read next, is newer and
-    wins; a finished record without it, the server's row read back since, goes to the Undo's
-    own place). One a request carried with no answer while its server looked
+    wins; a finished record without it, the server's row read back since, goes to the place
+    the tab that marked it kept in memory, `placeBefore`, file place included, else to the
+    Undo's own place). One a request carried with no answer while its server looked
     reachable (`gotNoAnswer`: a timeout, a dropped connection, a gateway that lost the
     server (502, 504, Cloudflare's 520 and 524), a 2xx that could not be read; and the
     page's keepalive send) may be on the server, its answer lost: while the server looks
@@ -2380,8 +2402,9 @@ media GETs only.
     (`Withdrawal.unreachable`, `undoFinish`'s `'unreachable'`; fe#258: done on this device
     alone, a finish the server did hold won on reconnect), which offers Retry (the Undo run
     again); so does an edit that found the server away (`isServerAwayError` in `client.ts`:
-    no answer, a timeout, a proxy's 502 to 504 or Cloudflare's 520 to 524; the first edit
-    after the server died, before reachability noticed), the finish put back. Mark as not finished takes the same route at its own place (`unfinish` in
+    no answer, a timeout, a proxy's 502 or 504 or Cloudflare's 520 to 524; the first edit
+    after the server died, before reachability noticed), the finish put back; the server's
+    own 503, busy, is an answer and fails as any edit does. Mark as not finished takes the same route at its own place (`unfinish` in
     `book-actions.tsx`, through `undoFinish`): a finish still waiting is taken back before its
     edit, and with the server down it fails the same way. One taken back unsent is undone
     here as an Undo is, the mirror back to its record before the finish, not at its own place:
