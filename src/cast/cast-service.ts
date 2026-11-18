@@ -42,6 +42,10 @@ const EARLY_END_FRESH_MS = 15_000;
  * never answers keeps no play from it for good. Also how long after a queue was asked its
  * paused landing still has a standing play sent again (`pausedLanding`). */
 const PLAY_HOLD_MS = 25_000;
+/** How long after the receiver began to buffer a file a skip on to a later one still reads as
+ * the stall's end (`stalledPlace`): the Default Media Receiver retries a refused range for about
+ * half a minute; a stall older than this is no word on where the book is. */
+const STALL_MS = 60_000;
 
 /** How often (ms) at most the receiver's queue is loaded again with a newly minted cast token
  * after the receiver was refused (`freshToken`), for each book, while the last token minted
@@ -245,6 +249,13 @@ export class CastPlaybackService implements PlaybackService {
    * place, for at most `ASKED_MOVE_MS` after the error (a load the receiver never answers
    * must not hide its statuses for good). */
   private refusedQueue: { seq: number; at: number } | null = null;
+  /** The file the book is on (the snapshot's, its place landed) while the receiver's last
+   * status there said it buffers or loads, since `at`, and the place it held when the receiver
+   * then went on to a later file without playing it (`stallSkip`, from `at`): a receiver refused
+   * a file it loaded paused retries it for half a minute, then skips on through the later files
+   * it is refused too and says the error on the last (`stalledPlace`). */
+  private stalling: { trackIndex: number; at: number } | null = null;
+  private stallSkip: { trackIndex: number; position: number; at: number } | null = null;
   /** Bumped by every status that named a file of the loaded book and placed the snapshot
    * there: a book's load refused to the end reads it to tell whether the receiver has said
    * where it is in that book (`load`). A progress tick names no file and does not count. */
@@ -469,6 +480,8 @@ export class CastPlaybackService implements PlaybackService {
     this.needsReload = false;
     this.intended = null;
     this.refusedQueue = null;
+    this.stalling = null;
+    this.stallSkip = null;
     // The next book's play state is its own (`adoptQueue` takes the one it is taken over in).
     this.playIntent = null;
     // Another sender's book on the receiver is theirs: only ours is ever stopped (and
@@ -676,6 +689,62 @@ export class CastPlaybackService implements PlaybackService {
    * then be the one taken for the replaced media. */
   private replacedEnd(status: CastMediaStatus): boolean {
     return status.idleReason === 'finished' && !!this.intended?.queued;
+  }
+
+  /** Whether idle `status`, with no reason, names file `index` while a move this phone asked for
+   * has not landed on another file (`unlandedOther`): the receiver between items, on its way to
+   * the asked file or on to a later one after being refused it (its error follows). No place:
+   * the Android SDK answers a queue load before the receiver has tried its file, so this comes
+   * once the load answered, and a later file would read to the store as the engine running off
+   * the asked one (`engineFault`), which stops the book. */
+  private betweenItems(status: CastMediaStatus, index: number): boolean {
+    return status.playerState === 'idle' && !status.idleReason && this.unlandedOther(index);
+  }
+
+  /** The place a status on file `index` (no load in flight) is not, as the receiver went on to
+   * that later file from the file the book is on while it stalled there (`stalling`, less than
+   * `STALL_MS` before), less than `ASKED_MOVE_MS` before: the place it held. Null for any other
+   * status, which ends the window: a move of the receiver's own while it buffers (the TV
+   * remote's next) is followed once no error came in that time. */
+  private stalledPlace(
+    status: CastMediaStatus,
+    index: number,
+  ): { trackIndex: number; position: number } | null {
+    const on = this.snapshot.trackIndex;
+    if (index <= on) {
+      const buffering = status.playerState === 'buffering' || status.playerState === 'loading';
+      if (!buffering || index < on) this.stalling = null;
+      else if (this.stalling?.trackIndex !== on) this.stalling = { trackIndex: on, at: this.now() };
+      this.stallSkip = null;
+      return null;
+    }
+    const want = this.intended;
+    const stalled = this.stalling?.trackIndex === on && this.now() - this.stalling.at < STALL_MS;
+    const ended = status.playerState === 'idle' && status.idleReason === 'finished';
+    if (!this.stallSkip && stalled && want?.landed && want.trackIndex === on && !ended) {
+      this.stallSkip = { trackIndex: on, position: this.snapshot.position, at: this.now() };
+    }
+    this.stalling = null;
+    if (this.skippingStalled()) return this.stallSkip;
+    this.stallSkip = null;
+    return null;
+  }
+
+  /** Whether the receiver is on a later file it went on to from a stalled one (`stallSkip`). */
+  private skippingStalled(): boolean {
+    return !!this.stallSkip && this.now() - this.stallSkip.at < ASKED_MOVE_MS;
+  }
+
+  /** Whether idle `status` on file `trackIndex` reports no place of its own: an idle receiver
+   * says 0 (between items, refused, stopped), never where the book is on the file the snapshot
+   * holds, and taken so a reload after its error would start the file over. A file's end
+   * (`finished`) is read by its own rule. */
+  private idleAtZero(status: CastMediaStatus, trackIndex: number): boolean {
+    return (
+      status.playerState === 'idle' &&
+      status.idleReason !== 'finished' &&
+      trackIndex === this.snapshot.trackIndex
+    );
   }
 
   /** Note when a status says the media from before a move whose `from` is unknown is gone
@@ -1025,6 +1094,16 @@ export class CastPlaybackService implements PlaybackService {
     }
     if (stoppedElsewhere) this.needsReload = true;
     if (!read && this.holdingAsked()) return;
+    // A later file the receiver went on to from one it stalled on: no place nor play state (the
+    // store would read it as the engine running off the book's place); its error is the stalled
+    // file's, reloaded where it was.
+    const stalled =
+      loaded && index !== null && this.loadsInFlight === 0 && !read
+        ? this.stalledPlace(status, index)
+        : null;
+    const stalledError = status.playerState === 'idle' && status.idleReason === 'error';
+    if (stalled && !stalledError) return;
+    if (stalled) this.stallSkip = null;
     // Once a queue of ours answered, the media it replaced playing or paused on, on another
     // file (`replacedMedia`), or ending a file there (`replacedEnd`): no place (below), and no
     // word on this book's play state either (its `playing` would have the queue's paused
@@ -1050,7 +1129,7 @@ export class CastPlaybackService implements PlaybackService {
     ) {
       this.playIntent = status.playerState === 'playing';
     }
-    const trackIndex = index ?? this.snapshot.trackIndex;
+    const trackIndex = stalled?.trackIndex ?? index ?? this.snapshot.trackIndex;
     const lastTrack = !loaded || trackIndex >= loaded.items.length - 1;
     const state = castState(status, {
       prev: this.snapshot.state,
@@ -1059,10 +1138,11 @@ export class CastPlaybackService implements PlaybackService {
     });
     const offset = loaded?.offsets[trackIndex] ?? 0;
     const duration = loaded?.tracks[trackIndex]?.duration ?? this.snapshot.duration;
-    let position = Number.isFinite(status.position)
-      ? status.position + offset
-      : this.snapshot.position;
-    if (loaded && index !== null && this.loadsInFlight === 0) {
+    let position =
+      Number.isFinite(status.position) && !this.idleAtZero(status, trackIndex) && !stalled
+        ? status.position + offset
+        : (stalled?.position ?? this.snapshot.position);
+    if (loaded && index !== null && this.loadsInFlight === 0 && !stalled) {
       // As in flight (`skippedPast`), once the load answered: only just after the move, as a
       // file the receiver played unseen may have run on into the next by now.
       if (this.skippedPast(status, index, ASKED_MOVE_MS) && this.remintDue()) {
@@ -1078,7 +1158,8 @@ export class CastPlaybackService implements PlaybackService {
         ofReplacedMedia ||
         (status.playerState !== 'idle' &&
           !isSettled(status) &&
-          this.laterUnlanded(index, ASKED_MOVE_MS))
+          this.laterUnlanded(index, ASKED_MOVE_MS)) ||
+        this.betweenItems(status, index)
       ) {
         return;
       }
@@ -1196,7 +1277,16 @@ export class CastPlaybackService implements PlaybackService {
    * report moves. */
   private onProgress(position: number) {
     if (!this.loaded || this.foreignMedia || !Number.isFinite(position)) return;
-    if (this.holdingAsked() || this.skippingRefused()) return;
+    // Nor once the queue answered while its place has not landed: the Android SDK answers a load
+    // before the receiver has the file, whose ticks are then its 0 on the way there.
+    if (
+      this.holdingAsked() ||
+      this.pendingIntent()?.queued ||
+      this.skippingRefused() ||
+      this.skippingStalled()
+    ) {
+      return;
+    }
     const offset = this.loaded.offsets[this.snapshot.trackIndex] ?? 0;
     const next = position + offset;
     if (

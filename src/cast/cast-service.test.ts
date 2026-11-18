@@ -586,6 +586,109 @@ describe('CastPlaybackService', () => {
       expect(t.svc.getSnapshot()).toMatchObject({ state: 'loading', trackIndex: 1, position: 42 });
     });
 
+    it('a load answered before the receiver tried its file: the file it skips on to is no place, and it plays on once reloaded', async () => {
+      // Android answers a queue load at once. Resume at Part 2 0:20 with an ended token: the
+      // receiver is refused Part 2, says it is idle on Part 3 between items, then the error.
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      await t.svc.load(TRACKS, 1, 20, [], BOOK);
+      await t.svc.play();
+      expect(t.remote.play).toHaveBeenCalledTimes(1);
+      const from = t.snaps.length;
+      // The receiver's first tick, at 0 on its way to the asked place.
+      t.progress(0);
+      expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 20 });
+      t.status({ playerState: 'idle', contentId: t.url(1), position: 0 });
+      t.status({ playerState: 'idle', contentId: t.url(2), position: 0 });
+      // The store faults an engine that reports a later file before the asked one played.
+      expect(t.snaps.slice(from).some((s) => s.trackIndex !== 1)).toBe(false);
+      expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 20 });
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(2), position: 0 });
+      await flush();
+      expect(m.asks).toEqual([undefined, true]);
+      expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 1, startTime: 20, autoplay: true });
+      expect(t.url(1)).toContain('token=CAST1');
+      t.status({ playerState: 'playing', contentId: t.url(1), position: 20 });
+      expect(t.remote.pause).not.toHaveBeenCalled();
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 1, position: 20 });
+      expect(t.snaps.slice(from).some((s) => s.trackIndex !== 1 || s.state === 'error')).toBe(
+        false,
+      );
+    });
+
+    it('a file the receiver stalled on, refused, then skipped past: the reload goes back to it', async () => {
+      // Landed paused on Part 1; the play needs bytes the ended token is refused for. The
+      // receiver buffers there (it retries for half a minute), then skips through the later
+      // files it is refused too and says the error on the last.
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 0 });
+      t.tick(25_000);
+      await t.svc.play();
+      t.status({ playerState: 'buffering', contentId: t.url(0), position: 0 });
+      t.tick(33_000);
+      t.progress(0);
+      const from = t.snaps.length;
+      t.status({ playerState: 'idle', contentId: t.url(1), position: 0 });
+      t.status({ playerState: 'playing', contentId: t.url(1), position: 0 });
+      t.tick(1_000);
+      t.progress(1);
+      t.status({ playerState: 'idle', contentId: t.url(2), position: 0 });
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(2), position: 0 });
+      await flush();
+      expect(m.asks).toEqual([undefined, true]);
+      expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 0, startTime: 0, autoplay: true });
+      expect(t.snaps.slice(from).some((s) => s.trackIndex !== 0)).toBe(false);
+    });
+
+    it('a later file while the receiver buffers that no error follows is a move, followed', async () => {
+      // The TV remote's next while the file buffers: no error comes, and the next status there
+      // after the window is the book's place.
+      const t = setup();
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 30 });
+      t.tick(20_000);
+      await t.svc.play();
+      t.status({ playerState: 'buffering', contentId: t.url(0), position: 30 });
+      t.tick(2_000);
+      t.status({ playerState: 'playing', contentId: t.url(1), position: 0 });
+      t.tick(9_000);
+      t.status({ playerState: 'playing', contentId: t.url(1), position: 9 });
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 1, position: 9 });
+      expect(t.moves.at(-1)).toEqual([1, 9]);
+    });
+
+    it('a later file long after the receiver began to buffer is a move, followed at once', async () => {
+      // No receiver retries that long: the stall is no word on where the book is.
+      const t = setup();
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 30 });
+      t.tick(20_000);
+      await t.svc.play();
+      t.status({ playerState: 'buffering', contentId: t.url(0), position: 30 });
+      t.tick(70_000);
+      t.status({ playerState: 'playing', contentId: t.url(1), position: 4 });
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 1, position: 4 });
+    });
+
+    it('an idle status before the error is no place: the reload starts where it was playing', async () => {
+      // Played from its buffer, then the receiver retried the ended token, went idle at 0 and
+      // said the error.
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      await t.svc.load(TRACKS, 2, 0, [], BOOK);
+      await t.svc.play();
+      t.status({ playerState: 'playing', contentId: t.url(2), position: 1 });
+      t.tick(5_000);
+      t.progress(6);
+      t.status({ playerState: 'idle', contentId: t.url(2), position: 0 });
+      expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 2, position: 6 });
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(2), position: 0 });
+      await flush();
+      expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 2, startTime: 6, autoplay: true });
+    });
+
     it('a paused receiver reloaded after an error stays paused', async () => {
       const m = minting();
       const t = setup({ prepare: m.prepare });
