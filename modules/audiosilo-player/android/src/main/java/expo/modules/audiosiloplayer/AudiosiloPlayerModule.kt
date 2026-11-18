@@ -323,33 +323,27 @@ class AudiosiloPlayerModule : Module() {
     AsyncFunction("seekTo") { seconds: Double, promise: Promise ->
       // `seconds` is file-relative (the store's per-track position). In chapter mode it
       // maps to (clip item, clip-relative position).
-      handler.post {
-        val c = controller ?: return@post promise.resolve(null)
-        landings.run({ promise.resolve(null) }) {
-          val map = timelineMap
-          if (map.clipped) {
-            val fileIndex = map.itemToFile(c.currentMediaItemIndex, 0L).first
-            val (idx, ms) = map.fileToItem(fileIndex, seconds)
-            c.seekTo(idx, ms)
-          } else {
-            c.seekTo((seconds * 1000).toLong())
-          }
+      moveOnMain(promise) { c ->
+        val map = timelineMap
+        if (map.clipped) {
+          val fileIndex = map.itemToFile(c.currentMediaItemIndex, 0L).first
+          val (idx, ms) = map.fileToItem(fileIndex, seconds)
+          c.seekTo(idx, ms)
+        } else {
+          c.seekTo((seconds * 1000).toLong())
         }
       }
     }
 
     AsyncFunction("skipToTrack") { index: Int, seconds: Double, promise: Promise ->
       // `index` is a FILE index; map it to the clip item that starts that file/position.
-      handler.post {
-        val c = controller ?: return@post promise.resolve(null)
-        landings.run({ promise.resolve(null) }) {
-          val map = timelineMap
-          if (map.clipped) {
-            val (idx, ms) = map.fileToItem(index, seconds)
-            c.seekTo(idx, ms)
-          } else {
-            c.seekTo(index, (seconds * 1000).toLong())
-          }
+      moveOnMain(promise) { c ->
+        val map = timelineMap
+        if (map.clipped) {
+          val (idx, ms) = map.fileToItem(index, seconds)
+          c.seekTo(idx, ms)
+        } else {
+          c.seekTo(index, (seconds * 1000).toLong())
         }
       }
     }
@@ -590,6 +584,15 @@ class AudiosiloPlayerModule : Module() {
       // A failed engine reaches JS from the service (`PlayerEventSink.playerFailed`): the
       // session shows it to controllers as stopped, with no error (fe#157).
     })
+  }
+
+  /** Make a JS move on the main thread with the controller, resolving [promise] once it landed
+   * ([MoveLandings]), or at once with no controller. */
+  private fun moveOnMain(promise: Promise, move: (MediaController) -> Unit) {
+    handler.post {
+      val c = controller ?: return@post promise.resolve(null)
+      landings.run({ promise.resolve(null) }) { move(c) }
+    }
   }
 
   private fun dropRemoteMove() {

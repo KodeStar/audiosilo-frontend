@@ -38,8 +38,9 @@ internal class MoveLandings(
   fun landed() = resolveAll()
 
   private fun resolveAll() {
-    cancel(fallback)
+    // The fallback is only ever scheduled while a move waits.
     if (waiting.isEmpty()) return
+    cancel(fallback)
     val done = waiting.toList()
     waiting.clear()
     done.forEach { it() }
