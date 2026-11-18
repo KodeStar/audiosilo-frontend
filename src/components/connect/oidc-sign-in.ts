@@ -28,7 +28,7 @@ import { sharedRefusalText } from './sign-in-error';
 
 // The return's own rule lives apart (`oidc-return.ts`), where the root layout reaches it
 // without this module's weight.
-export { oidcFlowKey, oidcReturnOnLoad, oidcReturnOrigin } from './oidc-return';
+export { oidcFlowKey, oidcReturnCleared, oidcReturnOnLoad, oidcReturnOrigin } from './oidc-return';
 
 /** The sign-in step's button while the server's `oidc` capability is on: the provider's
  * name ("Sign in with Keycloak"), '' when it sent none (the button then names single

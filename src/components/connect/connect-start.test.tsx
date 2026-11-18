@@ -1236,23 +1236,19 @@ describe("a single sign-on's return (?oidc=1)", () => {
     expect(mockApi.logout).not.toHaveBeenCalled();
   });
 
-  it("names the flow its return named, so the sign-in it takes is this tab's own (server#406)", async () => {
-    mockParams = { oidc: '1', flow: 'aZ09-_aZ09-_aZ09' };
+  // server#406: the flow its return named, so the sign-in it takes is this tab's own; none
+  // for anything that can be no key.
+  it.each([
+    ['aZ09-_aZ09-_aZ09', 'aZ09-_aZ09-_aZ09'],
+    ['aZ09/aZ09.aZ09+a', undefined],
+  ])('finishes a return naming flow %s with flow %s', async (flow, sent) => {
+    mockParams = { oidc: '1', flow };
     mockApi.oidcFinish.mockResolvedValue({ token: 'session', server_id: 'srv-1', user });
     mockApi.serverInfo.mockResolvedValue(info());
     await render(<ConnectStart />);
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
-    expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', undefined, 'aZ09-_aZ09-_aZ09');
+    expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', undefined, sent);
     expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined, flow: undefined });
-  });
-
-  it('sends no flow that can be no key', async () => {
-    mockParams = { oidc: '1', flow: 'aZ09/aZ09.aZ09+a' };
-    mockApi.oidcFinish.mockResolvedValue({ token: 'session', server_id: 'srv-1', user });
-    mockApi.serverInfo.mockResolvedValue(info());
-    await render(<ConnectStart />);
-    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
-    expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', undefined, undefined);
   });
 
   it('ends on the book the flow was opening before the trip (fe#310)', async () => {

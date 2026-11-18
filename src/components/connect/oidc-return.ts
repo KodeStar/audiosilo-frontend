@@ -29,6 +29,10 @@ export function oidcFlowKey(flow: string | string[] | undefined): string | undef
   return /^[A-Za-z0-9_-]{16}$/.test(key) ? key : undefined;
 }
 
+/** The params a single sign-on's return brings, all taken off the address at once (a reload
+ * must find none of them to try the finish again). */
+export const oidcReturnCleared = { oidc: undefined, flow: undefined } as const;
+
 /** Whether this page load is the server's return from a single sign-on, read from the
  * address itself (`oidcReturnOrigin`'s rule, on the flow's first step: the one route that
  * finishes it, so `?oidc=1` on any other of the flow's routes is no return): the connect

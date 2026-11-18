@@ -58,7 +58,7 @@ import {
   useHandoff,
 } from './invite-handoff';
 import { settleOidcPass } from './oidc-intent';
-import { finishOidcSignIn, oidcFlowKey, oidcReturnOrigin } from './oidc-sign-in';
+import { finishOidcSignIn, oidcFlowKey, oidcReturnCleared, oidcReturnOrigin } from './oidc-sign-in';
 import { ProxyHeadersEditor } from './proxy-headers-editor';
 import { draftOf, draftToSet, type HeaderDraftRow } from './proxy-headers-model';
 import { useLinkPairing } from './use-pairing';
@@ -125,7 +125,8 @@ export function ConnectStart() {
   // The server's return from a single sign-on, on the player it serves (read once: the
   // param leaves the address as the finish starts). A pairing link wins.
   const [oidcOrigin] = useState(() => oidcReturnOrigin(oidc, token));
-  // The flow the return names (`&flow=`), so the finish takes this tab's own sign-in.
+  // The flow it names (`&flow=`, server#406), read with it, so the finish takes this tab's
+  // own sign-in whatever the router does with the params once they are taken off.
   const [oidcFlow] = useState(() => oidcFlowKey(flow));
   // Opened by a link (a pairing token or a single sign-on's return): it runs at once, with
   // no address field or served card until it fails.
@@ -254,9 +255,7 @@ export function ConnectStart() {
   const oidcStarted = useRef(false);
   // The screen's own navigation: this runs as the screen mounts, on a page load, where a
   // router's `setParams` reaches nothing yet (CONVENTIONS.md, "Navigation at mount").
-  const navigation = useNavigation<{
-    setParams(params: { oidc?: string; flow?: string }): void;
-  }>();
+  const navigation = useNavigation<{ setParams(params: typeof oidcReturnCleared): void }>();
   useEffect(() => {
     if (oidcStarted.current) return;
     if (!oidcOrigin) {
@@ -267,12 +266,12 @@ export function ConnectStart() {
       return;
     }
     oidcStarted.current = true;
-    navigation.setParams({ oidc: undefined, flow: undefined });
+    navigation.setParams(oidcReturnCleared);
     void finishOidcSignIn(oidcOrigin, t, () => mounted.current, oidcFlow).then((message) => {
       if (message === null || !mounted.current) return;
       // A backstop once settled, when the navigators surely listen: the reason must not sit
       // under an address that would try the finish again.
-      router.setParams({ oidc: undefined, flow: undefined });
+      router.setParams(oidcReturnCleared);
       fail(message);
       showServedCard(oidcOrigin);
     });
