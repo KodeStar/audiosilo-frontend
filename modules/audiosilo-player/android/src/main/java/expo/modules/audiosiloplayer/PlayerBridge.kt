@@ -29,7 +29,8 @@ interface PlayerEventSink {
 
   /** A car play JS received is over without its load: timed out, or another play took its
    * place ([replaced]: the car's tap on another book, or on the loaded book, which plays on).
-   * JS must not start it any more; one [replaced] must not load either (fe#350). */
+   * JS must not start it any more; one [replaced] must not load either (fe#350). A play that
+   * timed out is told again, [replaced], when another play is made before its load. */
   fun carPlayCancel(id: String, replaced: Boolean)
 
   /** True while JS listens for bookmarks (else the service stores them as pending). */

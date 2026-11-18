@@ -1805,6 +1805,31 @@ describe('play requests', () => {
       expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loadedP, expect.any(Function));
     });
 
+    // Its wait ran out (it would load paused), then the car tapped the loaded book before it
+    // loaded: native says replaced after all, so it loads nothing over the book just asked for.
+    it('is superseded when its wait ran out and another play was made before its load', async () => {
+      stop = startCarSync();
+      await settle();
+      holdStart();
+      mockNative.playRequest?.(carItemId(ref));
+      await settle();
+      const how = mockStartBookInPlace.mock.calls[0][2] as {
+        wanted: () => boolean;
+        superseded: () => boolean;
+      };
+      mockNative.playCancel?.(carItemId(ref), false);
+      expect(how.wanted()).toBe(false);
+      expect(how.superseded()).toBe(false);
+      mockNative.playCancel?.(carItemId(ref), true);
+      expect(how.superseded()).toBe(true);
+
+      mockNative.getLoadedBook.mockResolvedValue(loadedP);
+      usePlayer.getState().adoptLoaded.mockClear();
+      finish(true);
+      await settle();
+      expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loadedP, expect.any(Function));
+    });
+
     // Called off while its place was looked up: the store never named X (`playBook` sets the
     // book after the lookup), yet X's switch let P's saves, save loop and span go. P, the book
     // the store still names and the engine plays, is taken back all the same.

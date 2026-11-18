@@ -46,6 +46,17 @@ class PlayerBridgeTest {
     assertEquals(listOf("book:X" to true), sink.cancels)
   }
 
+  // A play whose wait ran out, then the car's tap on the loaded book before JS loaded it: JS is
+  // told again, replaced this time, or its late start would load over the book just asked for.
+  @Test fun aTimedOutPlayIsReplacedByALaterOne() {
+    val sink = Sink(observingCar = true)
+    PlayerBridge.sink = sink
+    PlayerBridge.requestCarPlay("book:X")
+    PlayerBridge.cancelCarPlay("book:X", replaced = false)
+    PlayerBridge.cancelCarPlay("book:X", replaced = true)
+    assertEquals(listOf("book:X" to false, "book:X" to true), sink.cancels)
+  }
+
   // Never delivered (JS not listening yet): dropped here, so a JS that listens later never
   // starts it, and is told nothing.
   @Test fun anUndeliveredPlayIsDroppedQuietly() {

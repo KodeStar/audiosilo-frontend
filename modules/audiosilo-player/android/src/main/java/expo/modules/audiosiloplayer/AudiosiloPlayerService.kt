@@ -189,8 +189,12 @@ class AudiosiloPlayerService : MediaLibraryService() {
    * load, when JS was past stopping it, never completes the play that took its place
    * ([PlayerBridge.completesCarPlay]). */
   private var calledOff: BookRef? = null
-  /** The book of the car play last given up on, until the app's next load ([onAppLoad]). */
-  private var lateLoad: BookRef? = null
+  /** A car play given up on, which JS may still load ([replaced]: JS was told another play
+   * took its place, so it loads nothing for it). */
+  private class GivenUp(val id: String, val book: BookRef?, var replaced: Boolean)
+
+  /** The car play last given up on, until the app's next load ([onAppLoad], [giveWayTo]). */
+  private var lateLoad: GivenUp? = null
   /** A car play that timed out. One made during a media button start ends that start too
    * ([playFromCar] watches every pending play, fe#252). */
   private val pendingTimeout = Runnable { failPendingPlay() }
@@ -697,7 +701,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
       object : FutureCallback<MediaItemsWithStartPosition> {
         override fun onSuccess(result: MediaItemsWithStartPosition) = endButtonStart(failed = false)
 
-        // A JS-routed resumption superseded by a newer one (failPendingPlay) fails too: the
+        // A JS-routed resumption superseded by a newer one (giveWayTo) fails too: the
         // newer one, still pending, keeps the start (its own answer or the timeout ends it).
         override fun onFailure(t: Throwable) {
           if (pendingPlay == null) endButtonStart(failed = true)
@@ -732,7 +736,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     // plays on from where it is, as on iOS. Sent to JS, the request waited for a `load` JS
     // never makes for its own book, and the car said "unavailable" 10 s later while it played.
     item.book?.let { playingQueue(it) }?.let {
-      failPendingPlay(replaced = true)
+      giveWayTo(null)
       return Futures.immediateFuture(it)
     }
     // Natively only with no JS runtime at all: one that runs may hold another book as
@@ -741,7 +745,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     if (spec != null && PlayerBridge.sink == null) {
       // It takes the place of a play still waiting for JS (a streamed book tapped while JS
       // boots): that one ends quietly, or a JS that listens later would start it over this one.
-      failPendingPlay(replaced = true)
+      giveWayTo(null)
       // The book the engine was last heard on starts where it was (a crash since its last
       // snapshot write): a car tap's spec holds the place JS last wrote.
       val queue = MediaItems.startPositionOf(spec.at(LivePlaceStore.get(this)))
@@ -750,7 +754,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
       player?.internal { player?.setPlaybackParameters(PlaybackParameters(spec.rate.toFloat(), 1.0f)) }
       return Futures.immediateFuture(queue)
     }
-    failPendingPlay(replaced = true)
+    giveWayTo(item.id)
     val future = SettableFuture.create<MediaItemsWithStartPosition>()
     pendingPlay = PendingPlay(item.id, item.book ?: spec?.book, future)
     // Whoever asked: this play is now the one a media button start waits on.
@@ -790,7 +794,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     val match = if (q.isEmpty()) null else snapshot?.findByTitle(q)
     if (match != null) return playFromCar(match, requirePlaySpec = false)
     playingQueue(null)?.let {
-      failPendingPlay(replaced = true)
+      giveWayTo(null)
       return Futures.immediateFuture(it)
     }
     val first = snapshot?.firstContinue()
@@ -813,7 +817,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     // goes in paused, so it is never heard for the moment before JS's pause lands (Media3
     // pressed play on the player when that play failed). Any other load comes first only when
     // JS started something else, and then JS never loads the called-off book.
-    val late = lateLoad
+    val late = lateLoad?.book
     lateLoad = null
     if (book != null && book == late && book != pendingPlay?.book) player?.playWhenReady = false
     if (pendingPlay == null) return
@@ -840,14 +844,44 @@ class AudiosiloPlayerService : MediaLibraryService() {
     }
   }
 
-  /** The pending car play is over without the app's load: timed out, or another play took its
-   * place. JS, which may still be starting it (a slow server), is told to drop it
-   * ([PlayerBridge.cancelCarPlay]): played later, after a media button start was released, it
-   * would play in the background with no foreground notification and no controls. */
-  private fun failPendingPlay(replaced: Boolean = false) {
-    if (!endPendingPlay("The car play request timed out", replaced)) return
-    // The car is told only of a wait that ran out: a replaced play has the new one to show.
-    if (!replaced) sendUnavailable()
+  /** The pending car play's wait ran out without the app's load. JS, which may still be
+   * starting it (a slow server), is told to drop it ([PlayerBridge.cancelCarPlay]): played
+   * later, after a media button start was released, it would play in the background with no
+   * foreground notification and no controls. The car is told too ("unavailable"). */
+  private fun failPendingPlay() {
+    if (endPendingPlay("The car play request timed out", replaced = false)) sendUnavailable()
+  }
+
+  /**
+   * Another play takes the player: the loaded book playing on or a start made here ([id]
+   * null), or the car play of [id] (a book's car item id) about to wait for JS. The last tap
+   * wins (fe#350).
+   *  - The car play still waiting ends for it, and JS loads nothing for it (`replaced`). The
+   *    car is told nothing: it has the new play to show.
+   *  - So does the play whose wait already ran out while JS may still be starting it
+   *    ([lateLoad]): told only that its wait ran out, JS would load it, paused, over the play
+   *    made since, which the car just asked for.
+   *  - Never the same book asked for again (its row tapped twice, or again after its wait ran
+   *    out): its start in JS is the one this request joins. Told to drop it and then asked for
+   *    it, a start that read the mark in between loaded nothing, and the request joined to it
+   *    waited out its 10 s. Its wait alone ends, for the new one.
+   */
+  private fun giveWayTo(id: String?) {
+    val pending = pendingPlay
+    if (pending != null) {
+      if (pending.id == id) {
+        handler.removeCallbacks(pendingTimeout)
+        pendingPlay = null
+        pending.future.setException(IllegalStateException("The car asked for it again"))
+      } else {
+        endPendingPlay("Another play took its place", replaced = true)
+      }
+      return
+    }
+    val late = lateLoad ?: return
+    if (late.replaced || late.id == id) return
+    late.replaced = true
+    PlayerBridge.cancelCarPlay(late.id, replaced = true)
   }
 
   /** Fails the pending car play with [error] and tells JS to drop it ([replaced]: another
@@ -857,7 +891,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     val pending = pendingPlay ?: return false
     pendingPlay = null
     calledOff = pending.book
-    lateLoad = pending.book
+    lateLoad = GivenUp(pending.id, pending.book, replaced)
     PlayerBridge.cancelCarPlay(pending.id, replaced)
     pending.future.setException(IllegalStateException(error))
     return true

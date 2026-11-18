@@ -2737,7 +2737,9 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   or loads nothing once another start took the player (`replaced`) or native played another
   play in its place (`replaced: true` on the event, `StartHow.superseded`, fe#350: the last
   tap wins; the car then takes the engine's book back, `checkLoadedBook`'s `gaveWay`, which
-  its switch let go of); an episode's fetch it
+  its switch let go of; the service's `giveWayTo` also says so, late, for a play whose wait
+  had run out when the next play is made before its load, and never calls a play off for a
+  second tap on its own row, whose request joins the start under way); an episode's fetch it
   was handed to ends with it, starting nothing (`requestEpisodeFetch`'s `wanted`); natively
   its late load never completes the play that took its place (`PlayerBridge.completesCarPlay`);
   a new request for the item takes the mark off) and **bookmarks**: `carNative.onBookmark` (the module's
