@@ -154,8 +154,9 @@ describe("a grown-up's pass through kids mode", () => {
     expect(second).not.toBe(first);
   });
 
-  it('sends no tag when the tab keeps nothing', () => {
-    seedProfile();
+  it("sends no tag when the tab keeps nothing, and leaves no earlier trip's intent for its return", () => {
+    leaveWithPass();
+    expect(store.size).toBe(1);
     const full = jest.spyOn(sessionStorage, 'setItem').mockImplementation(() => {
       throw new Error('full');
     });
@@ -164,6 +165,7 @@ describe("a grown-up's pass through kids mode", () => {
     } finally {
       full.mockRestore();
     }
+    expect(takeOidcIntent(true)).toBeNull();
   });
 
   it('does not wait while kids mode would not let it through now', () => {

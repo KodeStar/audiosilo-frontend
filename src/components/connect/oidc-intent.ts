@@ -99,7 +99,13 @@ export function holdOidcIntent(book?: ConnectBook, reconnect?: OidcReconnect): s
     store.setItem(KEY, JSON.stringify(held));
     return tag;
   } catch {
-    // Full or refused: the return then starts with no intent, as before.
+    // Full or refused: the return then starts with no intent, as before. Nor an earlier
+    // trip's, which this untagged trip's return would take for its own.
+    try {
+      store.removeItem(KEY);
+    } catch {
+      // Refused storage holds nothing.
+    }
     return undefined;
   }
 }
