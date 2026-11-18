@@ -200,6 +200,9 @@ function makeEngine() {
     svc: svc as typeof svc & PlaybackService,
     /** The engine plays on to `position` (seconds into the file). */
     at: (position: number) => push({ position }),
+    /** The engine goes on into a later file by itself, at `position` in it (a run off the end
+     * of a file it measured short). */
+    runOff: (trackIndex: number, position: number) => push({ trackIndex, position }),
     /** The playing file plays to its end and the next one (`trackIndex`) loads and plays on, as
      * the web engine does it: `loading`, then `playing`, with nothing pressed. */
     advance: (trackIndex: number) => {
@@ -1277,6 +1280,55 @@ describe.each([
           [30, 90, 'jump'],
           [90, 100, 'resume'],
         ]);
+      } finally {
+        shortened.mockRestore();
+        warned.mockRestore();
+      }
+    });
+
+    // fe#351: the move called off a fault (the seek made before it never settled), so once it
+    // was given up a refusal that came later left the engine playing where it faulted.
+    it('a move there refused after it was given up brings back the fault it called off', async () => {
+      mockMirror.on = true;
+      await a.start(30, 'c1', parts);
+      await sleep(10);
+      a.engine.runOff(1, 0.4); // file 1 measured short: the engine ran on into file 2
+      await until(() => a.player().snapshot.state === 'error', 'A to fault');
+      // A seek on the faulted book calls the fault off; the engine never settles it.
+      a.engine.svc.skipToTrack.mockImplementationOnce(() => new Promise<void>(() => {}));
+      void a.player().seekInTrack(60);
+      await sleep(10);
+      // B plays the book on to 605 and stops there.
+      await b.start(600, 'c1', parts);
+      await sleep(10);
+      b.engine.at(605);
+      await b.save();
+      await b.player().pause();
+      await sleep(40);
+      const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      let refuse: (e: Error) => void = () => {};
+      const refused = () => new Promise<void>((_, reject) => (refuse = reject));
+      a.engine.svc.seekTo.mockImplementationOnce(refused);
+      a.engine.svc.skipToTrack.mockImplementationOnce(refused);
+      const realTimeout = globalThis.setTimeout;
+      const shortened = jest
+        .spyOn(globalThis, 'setTimeout')
+        .mockImplementation(((fn: () => void, ms?: number) =>
+          realTimeout(fn, ms === 5_000 ? 20 : ms)) as typeof setTimeout);
+      try {
+        // A's press moves to B's place, a move given up on after the bound (20 ms here).
+        await a.player().toggle();
+        shortened.mockRestore();
+        expect(
+          a.engine.svc.seekTo.mock.calls.length + a.engine.svc.skipToTrack.mock.calls.length,
+        ).toBeGreaterThan(1);
+        refuse(new Error('refused'));
+        await sleep(10);
+        a.engine.svc.pause.mockClear();
+        a.engine.at(1.4); // still where it faulted, playing on
+        await sleep(10);
+        expect(a.engine.svc.pause).toHaveBeenCalled();
+        expect(a.player().snapshot.position).not.toBe(1.4);
       } finally {
         shortened.mockRestore();
         warned.mockRestore();

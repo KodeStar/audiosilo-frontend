@@ -2124,7 +2124,10 @@ media GETs only.
   already showed (a seek or a track jump on a book that ended re-reports it, the services
   keeping their last state). A seek or a track jump on a faulted book puts the engine in the
   target's file by its index (`skipToTrack`). An ask the engine never took stands no longer:
-  one whose move it refused (`withdrawAsk`, `engineTakes`), and one whose engine has moved
+  one whose move it refused (`engineTakes`; never to bring back the fault of a book no longer
+  loaded), one the store gave up on (`withdrawAsk`, a move to another tab's place past
+  `TAB_MOVE_MAX_MS`: a refusal that comes later still brings its fault back, `givenUpAsk`,
+  while nothing was asked since), and one whose engine has moved
   `PLAYED_ON` seconds in the other file since (left standing, its next file, minutes on, read
   as a run off the asked one). Nor does one whose call has not settled `ASK_SETTLE_MAX_MS`
   on once its engine has played `PLAYED_ON` on in its file. A faulted book: a press reloads it,

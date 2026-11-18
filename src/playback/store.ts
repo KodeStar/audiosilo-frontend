@@ -1837,13 +1837,13 @@ let atPartialEnd = false;
  * took it (`engineTakes`). `landed`: that call resolved, so every report from then on is from
  * after the move (the services resolve once the engine took it and report the asked place as
  * they do, a report sent before it out by then; the native module ships with this bundle, no
- * over-the-air update ever pairing it with a binary that resolves sooner). Only a landed ask's file can show that the engine
- * played on from it: a progress tick sent before a seek back of `PLAYED_ON` or more took is
- * still in that file, past the asked place. And only before the ask lands can a report from
- * another file be one from before the move (`engineFault`). A call that never settles (a Cast
- * receiver that never answers) leaves its ask unlanded: `ASK_SETTLE_MAX_MS` after the ask
- * (`at`) no such tick is out any more, so its file shows the engine played on as a landed
- * one's does.
+ * over-the-air update ever pairing it with a binary that resolves sooner). Only a landed
+ * ask's file can show that the engine played on from it: a progress tick sent before a seek
+ * back of `PLAYED_ON` or more took is still in that file, past the asked place. And only
+ * before the ask lands can a report from another file be one from before the move
+ * (`engineFault`). A call that never settles (a Cast receiver that never answers) leaves its
+ * ask unlanded: `ASK_SETTLE_MAX_MS` after the ask (`at`) no such tick is out any more, so its
+ * file shows the engine played on as a landed one's does.
  *
  * `faulted`: the ask called off its book's fault (`faultedBook`), or replaced an ask that did
  * before it landed. An engine that refuses the move (`engineTakes`) is still where it faulted,
@@ -1933,10 +1933,17 @@ const stoppedState = (state: PlaybackState) => state === 'paused' || state === '
 /** Has the loaded book's engine faulted (`faultedBook`)? */
 const loadedFaulted = () => faultedBook !== null && faultedBook === usePlayer.getState().nowPlaying;
 
+/** The ask the store gave up on before its engine call settled (`withdrawAsk`: a move to
+ * another tab's place past `TAB_MOVE_MAX_MS`), while no ask has stood since. Its call may still
+ * be refused, the engine then still where it faulted: a fault it called off stands again
+ * (`engineTakes`). */
+let givenUpAsk: EngineAsk | null = null;
+
 /** `askedPlace` is `next` from here; a fault the one before it held back is called off. */
 function setAsk(next: EngineAsk | null) {
   if (askedPlace) dropHeld(askedPlace);
   askedPlace = next;
+  givenUpAsk = null;
 }
 
 /** The engine is back where `ask` put it, or the ask is over: no fault is held for it. */
@@ -1946,8 +1953,8 @@ function dropHeld(ask: EngineAsk) {
 }
 
 /** The store asks the engine for `(trackIndex, position)` of `np`'s queue (`askedPlace`).
- * Returns the ask, for the engine call that makes the move (`engineTakes`), or for a caller
- * whose move can be refused (`withdrawAsk`). */
+ * Returns the ask, for the engine call that makes the move (`engineTakes`), and for a caller
+ * that may give up on it (`withdrawAsk`). */
 function askEngineTo(np: NowPlaying, trackIndex: number, position: number): EngineAsk {
   const before = askedPlace?.np === np ? askedPlace.trackIndex : -1;
   // An ask this one replaces before it landed may have called the fault off: the engine may
@@ -1971,23 +1978,34 @@ function askEngineTo(np: NowPlaying, trackIndex: number, position: number): Engi
 }
 
 /** `move` is the engine call that makes `ask`'s move: once it resolves the engine took it
- * (`EngineAsk.landed`); one that rejects was refused, and its ask stands no longer
- * (`withdrawAsk`), while a fault it called off stands again (`EngineAsk.faulted`): the engine
- * is still where it faulted. */
+ * (`EngineAsk.landed`); one that rejects was refused, and its ask stands no longer, while a
+ * fault it called off stands again (`EngineAsk.faulted`): the engine is still where it
+ * faulted. */
 async function engineTakes<T>(ask: EngineAsk, move: Promise<T>): Promise<T> {
   try {
     const taken = await move;
     if (askedPlace === ask) ask.landed = true;
     // Replaced, yet taken: the engine left the place it faulted at, so a later ask of the book
-    // that inherited the fault (`askEngineTo`) no longer brings it back when refused.
-    else if (ask.faulted && askedPlace?.np === ask.np) askedPlace.faulted = false;
+    // that inherited the fault (`askEngineTo`), or one given up on since, no longer brings it
+    // back when refused.
+    else if (ask.faulted) {
+      for (const later of [askedPlace, givenUpAsk]) if (later?.np === ask.np) later.faulted = false;
+    }
     return taken;
   } catch (err) {
-    if (askedPlace === ask && ask.faulted && faultedBook === null) faultedBook = ask.np;
-    withdrawAsk(ask);
+    // Refused while it still stands, or once given up on with nothing asked since: the
+    // engine is where it faulted. Not for a book no longer loaded (the player closed, another
+    // book started): its fault went with it.
+    const standing = askedPlace === ask || givenUpAsk === ask;
+    if (standing && ask.faulted && faultedBook === null && isLoaded(ask.np)) faultedBook = ask.np;
+    if (askedPlace === ask) setAsk(null);
+    else if (givenUpAsk === ask) givenUpAsk = null;
     throw err;
   }
 }
+
+/** Is `np` the book loaded now? */
+const isLoaded = (np: NowPlaying) => usePlayer.getState().nowPlaying === np;
 
 /** The store asks the engine for `(trackIndex, position)` of `np`'s queue, and `move` is the
  * engine call that makes it (`engineTakes`). With no book loaded there is nothing to ask. */
@@ -2002,11 +2020,13 @@ function engineMove<T>(
   return engineTakes(ask, move());
 }
 
-/** The engine took no such move (it refused, or the store gave up on it): `ask` no longer
- * stands. Left standing, the engine's next file from where it stayed would read as a run off
- * the asked one. A later ask is left alone. */
+/** The store gave up on `ask`'s move (`moveToTabPlace`): it no longer stands. Left standing,
+ * the engine's next file from where it stayed would read as a run off the asked one. Kept as
+ * `givenUpAsk`, for a refusal that comes later. A later ask is left alone. */
 function withdrawAsk(ask: EngineAsk) {
-  if (askedPlace === ask) setAsk(null);
+  if (askedPlace !== ask) return;
+  setAsk(null);
+  givenUpAsk = ask;
 }
 
 /** The ask standing for `from` stands for `to` from here, the same book on another queue (the
@@ -2015,6 +2035,8 @@ function withdrawAsk(ask: EngineAsk) {
  * nothing: a run off its file, one held for the listener's move included (`EngineAsk.held`),
  * would be taken as the book's place. */
 function moveAsk(from: NowPlaying, to: NowPlaying, lost: { trackIndex: number; position: number }) {
+  // An ask given up on is the same book's still: a late refusal brings its fault back there.
+  if (givenUpAsk?.np === from) givenUpAsk.np = to;
   const ask = askedPlace;
   if (ask?.np !== from) return;
   const onto = (i: number) => trackIndexById(to.queue, from.queue.tracks[i]?.id);
