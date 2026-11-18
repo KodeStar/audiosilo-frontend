@@ -430,7 +430,7 @@ kids mode, "Add someone", a signed-out visit's book) goes through the tab's `ses
 layout takes it once as it opens (`takeOidcIntent`, only on the return: `oidcReturnOnLoad` reads
 the address itself, `/connect?oidc=1` and no other route of the flow) and puts "Add someone" and
 the book back once the profiles are read (`resumeConnectIntent`). The grown-up's pass is never
-put back by the address alone (typed within the stamp's 11 minutes of a trip abandoned at the
+put back by the address alone (typed within the stamp's 10 minutes of a trip abandoned at the
 provider, it would open the flow for a child): while `openAddSomeone`'s rule would give it now
 it waits on the finish, the layout holding kids mode back for the return's own screen only (it
 shows a spinner and finishes the sign-in), and `finishOidcSignIn` settles it (`settleOidcPass`):

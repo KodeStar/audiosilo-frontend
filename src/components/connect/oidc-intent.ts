@@ -50,8 +50,8 @@ import { sameOrigin } from '@/lib/same-origin';
 const KEY = 'audiosilo.oidcIntent';
 
 /** How long a held intent stays good: the server's own limit on a trip to the provider
- * (`oidc.FlowMaxAge`, ten minutes), with a minute's slack. A return after that can't sign in. */
-export const MAX_AGE_MS = 11 * 60_000;
+ * (`oidc.FlowMaxAge`, ten minutes). A return after that can't sign in. */
+export const MAX_AGE_MS = 10 * 60_000;
 
 /** A reconnect's sign-in: the connection it re-pairs and the address it signed in through
  * (`holdReconnect`'s pair). */
