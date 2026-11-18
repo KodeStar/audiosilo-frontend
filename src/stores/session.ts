@@ -205,13 +205,15 @@ export function onConnectionRemoved(fn: (id: string) => void | Promise<void>): (
 }
 
 /** Run each of `fns` (the removal cleanups, the other-tab steps) for each of `ids`; one that
- * fails never blocks the others (nor the removal), it is only warned of (`what`). */
+ * fails never blocks the others (nor the removal), it is only warned of (`what`). Each is
+ * started in this call (a cleanup's first step is its mark that the connection is gone); one
+ * that throws outright (not every one is async) fails as a rejection does. */
 async function runEach(
   fns: ReadonlySet<(id: string) => void | Promise<void>>,
   ids: readonly string[],
   what: string,
 ): Promise<void> {
-  const results = await Promise.allSettled(ids.flatMap((id) => [...fns].map((fn) => fn(id))));
+  const results = await Promise.allSettled(ids.flatMap((id) => [...fns].map(async (fn) => fn(id))));
   for (const r of results) {
     if (r.status === 'rejected') console.warn(`[session] ${what} failed`, r.reason);
   }

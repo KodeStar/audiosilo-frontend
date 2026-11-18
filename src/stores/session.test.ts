@@ -672,6 +672,27 @@ describe('session store (multi-connection)', () => {
       expect(useSession.getState().connections[0].serverUrl).toBe(AWAY); // never rewritten
     });
 
+    // Not every cleanup is async: one that throws outright is a failure like a rejection.
+    it('a cleanup that throws neither blocks removal nor the other cleanups', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const id = await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'srv-a', token: 't', user: mkUser('a') });
+      const other = jest.fn();
+      unsubs.push(
+        onConnectionRemoved(() => {
+          throw new Error('cleanup boom');
+        }),
+      );
+      unsubs.push(onConnectionRemoved(other));
+
+      await expect(useSession.getState().removeConnection(id)).resolves.toBeUndefined();
+
+      expect(other).toHaveBeenCalledWith(id);
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
     it('loads a connection saved before addresses existed (no version bump)', async () => {
       await AsyncStorage.setItem('audiosilo.storageVersion', JSON.stringify(2));
       await AsyncStorage.setItem(
