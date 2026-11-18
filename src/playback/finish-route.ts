@@ -137,7 +137,7 @@ export type UndoOutcome = 'undone' | 'unreachable';
  */
 export async function undoFinish(ref: UndoRef, edit: () => Promise<unknown>): Promise<UndoOutcome> {
   const r = recorder;
-  if (!r) return (await editReached(edit)) ? 'undone' : 'unreachable';
+  if (!r) return runEdit(edit);
   const since = r.generation(ref.connectionId);
   const taken = await r.withdraw(ref.connectionId, ref.libraryId, ref.path);
   if (taken.unreachable) return 'unreachable';
@@ -151,30 +151,25 @@ export async function undoFinish(ref: UndoRef, edit: () => Promise<unknown>): Pr
       return 'undone';
     }
   }
-  let reached: boolean;
-  try {
-    reached = await editReached(edit);
-  } catch (e) {
-    await taken.restore().catch(() => undefined);
-    throw e;
-  }
-  if (!reached) {
-    await taken.restore().catch(() => undefined);
-    return 'unreachable';
-  }
-  await r.unrecord(ref, since).catch(() => undefined);
-  return 'undone';
+  const outcome = await runEdit(edit, () => taken.restore().catch(() => undefined));
+  if (outcome === 'undone') await r.unrecord(ref, since).catch(() => undefined);
+  return outcome;
 }
 
-/** Run the Undo's `edit`: false when it failed for its server being away
- * (`isServerAwayError`: the first edit after the server died, before reachability noticed,
- * says `unreachable` as the next would, with its Try again); another failure rejects. */
-async function editReached(edit: () => Promise<unknown>): Promise<boolean> {
+/** Run the Undo's `edit` (`failed` runs first when it fails): `unreachable` when it failed
+ * for its server being away (`isServerAwayError`: the first edit after the server died,
+ * before reachability noticed, says `unreachable` as the next would, with its Try again);
+ * another failure rejects. */
+async function runEdit(
+  edit: () => Promise<unknown>,
+  failed?: () => Promise<unknown>,
+): Promise<UndoOutcome> {
   try {
     await edit();
-    return true;
+    return 'undone';
   } catch (e) {
-    if (isServerAwayError(e)) return false;
+    await failed?.();
+    if (isServerAwayError(e)) return 'unreachable';
     throw e;
   }
 }

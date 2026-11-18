@@ -433,19 +433,22 @@ export class NetworkError extends TypeError {
  * answer in time (502, 503, 504, Cloudflare's 520 to 524). */
 const SERVER_AWAY = new Set([502, 503, 504, 520, 521, 522, 523, 524]);
 
+/** Whether a failed request got no answer from its server: our timeout, or the fetch
+ * itself rejecting (a `TypeError`: the client's `NetworkError` on every platform, the
+ * browser's "Failed to fetch"). Strict, so a caller that sees every kind of failure (the
+ * query cache) never reads a capability gate or a cancelled read as a dead server. */
+export function isUnreachableError(e: unknown): boolean {
+  return e instanceof TimeoutError || e instanceof TypeError;
+}
+
 /**
- * Whether a failed request found its server away rather than refused: our timeout, the
- * fetch itself rejecting (a `TypeError`: `NetworkError`, the browser's "Failed to fetch"),
- * or a gateway answering for a server that is down (`SERVER_AWAY`). For what a failure
- * tells the listener: the first request after a server died fails so before reachability
- * has noticed.
+ * Whether a failed request found its server away rather than refused: no answer
+ * (`isUnreachableError`), or a gateway answering for a server that is down (`SERVER_AWAY`).
+ * For what a failure tells the listener: the first request after a server died fails so
+ * before reachability has noticed.
  */
 export function isServerAwayError(e: unknown): boolean {
-  return (
-    e instanceof TimeoutError ||
-    e instanceof TypeError ||
-    (e instanceof ApiError && SERVER_AWAY.has(e.status))
-  );
+  return isUnreachableError(e) || (e instanceof ApiError && SERVER_AWAY.has(e.status));
 }
 
 type QueryValue = string | number | boolean | undefined | null;
