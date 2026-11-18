@@ -99,7 +99,7 @@ import { useLinkPairing } from './use-pairing';
  * (`finishOidcSignIn`, with the `flow` the return names), the params queued off the address
  * before the finish is sent so a reload never tries it again; a failure says why above its
  * own server's card, as a dead pairing link does, with Try again when the server kept the
- * sign-in (no answer, a 5xx, a 429 once its wait is over): the same finish, from memory.
+ * sign-in (`oidcRetryWait`): the same finish, from memory.
  */
 export function ConnectStart() {
   const { t } = useTranslation();
@@ -168,14 +168,15 @@ export function ConnectStart() {
   // A pairing link that failed for a reason that can pass (`PairOutcome` `temporary`).
   const [retryLink, setRetryLink] = useState<PairingScan | null>(null);
   // A single sign-on's finish the server kept the sign-in for (`OidcFinishFailure.retry`):
-  // Try again sends it once `ready` (its `Retry-After` over), and the finish runs meanwhile
+  // Try again sends it once its `waitMs` is down to 0, and the finish runs meanwhile
   // (`oidcFinishing`) as the first did, under "Connecting".
-  const [oidcRetry, setOidcRetry] = useState<{
-    run: OidcFinishRetry['run'];
-    ready: boolean;
-  } | null>(null);
-  const oidcRetryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(oidcRetryTimer.current), []);
+  const [oidcRetry, setOidcRetry] = useState<OidcFinishRetry | null>(null);
+  // The wait runs while this retry is the one offered: dropping it (or the screen) ends it.
+  useEffect(() => {
+    if (!oidcRetry?.waitMs) return;
+    const id = setTimeout(() => setOidcRetry({ ...oidcRetry, waitMs: 0 }), oidcRetry.waitMs);
+    return () => clearTimeout(id);
+  }, [oidcRetry]);
   const [oidcFinishing, setOidcFinishing] = useState(false);
   // The reconnect the code that opened this screen continues (scanned from a reconnect's
   // sign-in step, `holdScanReconnect`): taken once, and only that code's (Try again too),
@@ -298,21 +299,14 @@ export function ConnectStart() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // A failed finish says why, and offers its retry when the server left room for one (its
-  // wait, a 429's `Retry-After`, over first). None: the sign-in is refused, so Sign in again.
+  // A failed finish says why, with its retry when the server left room for one
+  // (`oidcRetryWait`); none: the sign-in is refused, so Sign in again.
   const oidcFailed = ({ message, retry }: OidcFinishFailure) => {
     fail(message);
-    clearTimeout(oidcRetryTimer.current);
-    setOidcRetry(retry ? { run: retry.run, ready: retry.waitMs <= 0 } : null);
-    if (retry && retry.waitMs > 0) {
-      oidcRetryTimer.current = setTimeout(
-        () => setOidcRetry((r) => r && { ...r, ready: true }),
-        retry.waitMs,
-      );
-    }
+    setOidcRetry(retry ?? null);
   };
   const retryOidc = () => {
-    if (!oidcRetry?.ready) return;
+    if (!oidcRetry || oidcRetry.waitMs > 0) return;
     const { run } = oidcRetry;
     setOidcRetry(null);
     clearPairError();
@@ -633,7 +627,7 @@ export function ConnectStart() {
           variant="outline"
           icon="rotate"
           title={t('connect.oidc.tryAgain')}
-          disabled={!oidcRetry.ready}
+          disabled={oidcRetry.waitMs > 0}
           onPress={retryOidc}
           testID="oidc-try-again"
         />

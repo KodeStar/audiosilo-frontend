@@ -1613,6 +1613,8 @@ describe("a single sign-on's return (?oidc=1)", () => {
     expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
     expect(useSession.getState().connections).toEqual([]);
     expect(mockReplace).not.toHaveBeenCalled();
+    // A refused sign-in has no Try again (`oidcRetryWait`).
+    expect(screen.queryByTestId('oidc-try-again')).toBeNull();
     // Sign in again from the card.
     await fireEvent.press(screen.getByText('Sign in'));
     expect(mockPush).toHaveBeenCalledWith({
@@ -1680,16 +1682,6 @@ describe("a single sign-on's return (?oidc=1)", () => {
       expect(screen.getByText('Sign in')).toBeTruthy();
       expect(mockApi.oidcFinish).toHaveBeenCalledTimes(2);
       expect(useSession.getState().connections).toEqual([]);
-    });
-
-    it('offers none for a 401 at the first try', async () => {
-      mockApi.oidcFinish.mockRejectedValue(new ApiError(401, 'x', 'oidc_no_sign_in'));
-      await render(<ConnectStart />);
-      await waitFor(() => expect(screen.getByText('Found Hearthside')).toBeTruthy());
-      expect(
-        screen.getByText("There's no sign-in to finish in this browser. Sign in again."),
-      ).toBeTruthy();
-      expect(screen.queryByTestId('oidc-try-again')).toBeNull();
     });
 
     it("waits out a 429's Retry-After before Try again sends it", async () => {

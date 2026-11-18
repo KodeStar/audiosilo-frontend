@@ -114,7 +114,7 @@ describe('oidcFinishText', () => {
     [new ApiError(503, 'busy'), 'connect.oidc.errors.failedRetry'],
     [new ApiError(400, 'invalid request'), 'connect.oidc.errors.failed'],
     [new ApiError(401, 'no', 'oidc_no_sign_in'), 'connect.oidc.errors.noSignIn'],
-  ] as const)('words %p as one to try again', (e, key) => {
+  ] as const)('words %p with Try again offered', (e, key) => {
     expect(oidcFinishText(e, t, true)).toBe(t(key));
   });
 });

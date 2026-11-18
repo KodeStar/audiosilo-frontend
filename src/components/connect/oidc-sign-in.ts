@@ -155,8 +155,8 @@ export async function finishOidcSignIn(
         return null;
       }
       const waitMs = oidcRetryWait(e);
-      if (waitMs === undefined) return { message: oidcFinishText(e, t) };
-      return { message: oidcFinishText(e, t, true), retry: { waitMs, run: attempt } };
+      const message = oidcFinishText(e, t, waitMs !== undefined);
+      return waitMs === undefined ? { message } : { message, retry: { waitMs, run: attempt } };
     }
     // A session nothing keeps is signed out again (best effort): it would stay on the server
     // as a device.
