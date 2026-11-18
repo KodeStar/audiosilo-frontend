@@ -180,6 +180,22 @@ describe('service worker: precacheBuild', () => {
     expect(t.cached()).toContain('https://box.test/web/library');
   });
 
+  it('drops a page kept under an address with a one-time value, though it names this build', async () => {
+    // A worker from before the rule handles the first page load after the deploy that
+    // brings it, and keeps that page with this build's own HTML.
+    const t = load(build('a'));
+    const page = '<script src="/web/_expo/static/js/web/__common-a.js" defer></script>';
+    const landing = 'https://box.test/web/connect?oidc=1&flow=aZ09-_aZ09-_aZ09';
+    const pairing = 'https://box.test/web/connect?token=pair-tok';
+    await t.cachePage(landing, page);
+    await t.cachePage(pairing, page);
+    await t.cachePage('https://box.test/web/settings', page);
+    await t.sw.precacheBuild(true);
+    expect(t.cached()).not.toContain(landing);
+    expect(t.cached()).not.toContain(pairing);
+    expect(t.cached()).toContain('https://box.test/web/settings');
+  });
+
   it("precaches the shell's fonts, so an offline cold start draws its text (fe#177)", async () => {
     const font = (id: string) => `https://box.test/web/assets/fonts/Figtree_400.${id}.ttf`;
     const withFont = (id: string) => {

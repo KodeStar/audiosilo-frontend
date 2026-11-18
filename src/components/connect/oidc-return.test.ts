@@ -1,5 +1,5 @@
 import { holdOidcIntent, takeOidcIntent } from './oidc-intent';
-import { endOidcTripOnLoad } from './oidc-return';
+import { endOidcTripOnLoad, oidcFlowKey, oidcReturnCleared } from './oidc-return';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 // The player the server serves at /web.
@@ -89,4 +89,32 @@ it('runs as the root layout loads', () => {
     require('@/app/_layout');
   });
   expect(store.size).toBe(0);
+});
+
+// server#406: the key of the flow a return names, for the finish to take this tab's sign-in.
+describe('oidcFlowKey', () => {
+  it('takes a key as the server makes it', () => {
+    expect(oidcFlowKey('aZ09-_aZ09-_aZ09')).toBe('aZ09-_aZ09-_aZ09');
+    expect(oidcFlowKey(['aZ09-_aZ09-_aZ09', 'x'])).toBe('aZ09-_aZ09-_aZ09');
+  });
+
+  it('drops anything that can be no key', () => {
+    for (const flow of [
+      undefined,
+      '',
+      'short',
+      'aZ09-_aZ09-_aZ09x',
+      'aZ09/aZ09.aZ09+a',
+      'aZ09 aZ09 aZ09 a',
+    ]) {
+      expect(oidcFlowKey(flow)).toBeUndefined();
+    }
+  });
+});
+
+// Every param a return brings: one left on the address would stay for a reload, and in the
+// history (`public/sw.js` keeps no page carrying `flow`).
+it("clears both of a return's params", () => {
+  expect(Object.keys(oidcReturnCleared).sort()).toEqual(['flow', 'oidc']);
+  expect(Object.values(oidcReturnCleared)).toEqual([undefined, undefined]);
 });

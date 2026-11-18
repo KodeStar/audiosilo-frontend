@@ -788,10 +788,13 @@ export class ApiClient {
    * sent only while a kids-mode pass waits on it (`oidcPassTag`, audiosilo#202): the server
    * answers 403 `oidc_intent_mismatch` for any other sign-in and makes no session. A server
    * with single sign-on from before the tag refuses the field (400, no session); the caller
-   * still checks the echo (`AuthSession.intent`). */
-  oidcFinish(deviceName: string, intent?: string) {
+   * still checks the echo (`AuthSession.intent`). `flow`: the key of the flow whose sign-in
+   * this tab finishes (`/connect?oidc=1&flow=<key>`, server#406), sent only when the return
+   * named one (a server that names it takes it), so two tabs whose sign-ins came back at
+   * once each finish their own. */
+  oidcFinish(deviceName: string, intent?: string, flow?: string) {
     return this.request<AuthSession>('POST', '/auth/oidc/finish', {
-      body: { device_name: deviceName, ...(intent ? { intent } : {}) },
+      body: { device_name: deviceName, ...(intent ? { intent } : {}), ...(flow ? { flow } : {}) },
     }).then(withCleanAddresses);
   }
   /** Sign in with a password. `deviceId`: this install's own random sign-in key for this

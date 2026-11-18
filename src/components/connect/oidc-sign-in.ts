@@ -15,8 +15,9 @@ import { sharedRefusalText } from './sign-in-error';
  * Single sign-on (OpenID Connect, server#235) in the web player. The sign-in step offers
  * "Sign in with <name>" as a full page load of the server's `/auth/oidc/start` (the
  * provider, then the server's callback); the server lands the browser on
- * `/web/connect?oidc=1` with the finished sign-in in an HttpOnly cookie on its own
- * origin, and the connect screen trades it for a session (`finishOidcSignIn`). A cookie
+ * `/web/connect?oidc=1&flow=<key>` with the finished sign-in in an HttpOnly cookie of that
+ * flow's on its own origin, and the connect screen trades it for a session
+ * (`finishOidcSignIn`, naming the flow, so two tabs back at once each finish their own). A cookie
  * is the whole hand-over, so only the player the server serves signing in to its own
  * server (`onlyOwnServer(servedOrigin(), [server])`) can offer it: never the app, the
  * Metro dev server, or a player hosted on another origin. The return is a page load, so
@@ -27,7 +28,7 @@ import { sharedRefusalText } from './sign-in-error';
 
 // The return's own rule lives apart (`oidc-return.ts`), where the root layout reaches it
 // without this module's weight.
-export { oidcReturnOnLoad, oidcReturnOrigin } from './oidc-return';
+export { oidcFlowKey, oidcReturnCleared, oidcReturnOnLoad, oidcReturnOrigin } from './oidc-return';
 
 /** The sign-in step's button while the server's `oidc` capability is on: the provider's
  * name ("Sign in with Keycloak"), '' when it sent none (the button then names single
@@ -44,10 +45,16 @@ export function oidcButtonName(info: ServerInfo | null): string | null {
  * cookie back); one spent or past its minute (`oidc_sign_in_expired`); one that is not the
  * trip a kids-mode pass waits on (`oidc_intent_mismatch`); no answer from
  * the server; anything else (a 400, a 5xx) as a sign-in that didn't finish. Each says to
- * sign in again: the finish can't be retried (the cookie went with the first try).
+ * sign in again, unless the screen offers the same finish again (`retry`, `oidcRetryWait`):
+ * then no answer, a 408 and a 5xx say to try again. A reload never sends a finish again (the
+ * return's params leave the address before it goes): only the screen's Try again does,
+ * from memory. The server clears the cookie with each refusal of the sign-in itself, and
+ * keeps it for the rest of its minute on a 429, a 400 and (server#406) a 500, which a new
+ * sign-in never meets: its return names its own flow.
  */
-export function oidcFinishText(e: unknown, t: TFunction): string {
-  if (!(e instanceof ApiError)) return t('connect.oidc.errors.reach');
+export function oidcFinishText(e: unknown, t: TFunction, retry = false): string {
+  if (!(e instanceof ApiError))
+    return t(retry ? 'connect.oidc.errors.reachRetry' : 'connect.oidc.errors.reach');
   const shared = sharedRefusalText(e, t);
   if (shared !== undefined) return shared;
   switch (apiErrorKind(e)) {
@@ -58,20 +65,69 @@ export function oidcFinishText(e: unknown, t: TFunction): string {
     case 'oidc_intent_mismatch':
       return t('connect.oidc.errors.notThisTrip');
   }
+  if (retry && (e.status >= 500 || e.status === 408)) return t('connect.oidc.errors.failedRetry');
   return t('connect.oidc.errors.failed');
 }
 
+/** How long the server keeps a finished sign-in for its finish (its done cookie, the
+ * server's `oidcDoneTTL`): a retry can't outlive it. */
+export const OIDC_DONE_MS = 60_000;
+
+/** What is left of the done cookie's minute that ends at `doneBy` (epoch ms), in ms: none once
+ * it is over, and none once the clock went back past its start (`Date.now()` is the wall
+ * clock), so no clock change ever extends the minute. */
+export function oidcDoneLeft(doneBy: number): number {
+  const left = doneBy - Date.now();
+  return left > 0 && left <= OIDC_DONE_MS ? left : 0;
+}
+
+/**
+ * How long before a failed finish may go again (ms), or undefined when it may not: the
+ * server kept the sign-in (its done cookie) for no answer at all, a 408 (a proxy's timeout,
+ * as `pairFailure` and `isRefusedForGood` read it), a 5xx (server#406: nothing was spent)
+ * and a 429 (after its `Retry-After`, none being no wait). Never a refusal of the sign-in (a
+ * 401, a 403, a 400): the cookie is gone, or the request itself is wrong. None either once
+ * the done cookie's minute is over (`leftMs`, what is left of `OIDC_DONE_MS`), nor for a wait
+ * that outlasts it (a lockout's 15 minutes): the sign-in can't outlive it.
+ */
+export function oidcRetryWait(e: unknown, leftMs: number): number | undefined {
+  if (leftMs <= 0) return undefined;
+  if (!(e instanceof ApiError)) return 0;
+  if (e.status >= 500 || e.status === 408) return 0;
+  if (e.status !== 429) return undefined;
+  const ms = (e.retryAfterSeconds ?? 0) * 1000;
+  return ms < leftMs ? ms : undefined;
+}
+
+/** The same finish sent again (`finishOidcSignIn`'s, with its flow, book and reconnect, all
+ * in memory only), offered as Try again once `waitMs` has passed and until `doneBy` (epoch
+ * ms: the done cookie's minute from the provider's return, `OIDC_DONE_MS`), when the server
+ * holds the sign-in no more. */
+export type OidcFinishRetry = {
+  waitMs: number;
+  doneBy: number;
+  run: () => Promise<OidcFinishFailure | null>;
+};
+
+/** A finish that failed on the screen: why, in words, and the retry the server left room
+ * for (`oidcRetryWait`), none once the sign-in is refused. */
+export type OidcFinishFailure = { message: string; retry?: OidcFinishRetry };
+
 /**
  * Finish a single sign-on on the served player's own server (`origin`): `POST
- * /auth/oidc/finish` (the server's cookie goes with it, same origin) with the server's
+ * /auth/oidc/finish` (the server's cookie goes with it, same origin; `flow`, the key the
+ * return named, picks this tab's sign-in among the browser's, `oidcFlowKey`) with the server's
  * name read alongside, then `finishConnect` as for a pairing link's exchange, ending on the
  * book the flow was opening before the trip and re-pairing the connection a reconnect left
- * with (`takeOidcResumed`; spent by a failed finish too). Resolves null once the flow
+ * with (`takeOidcResumed`, taken once: a retry keeps them). Resolves null once the flow
  * has moved on, else why it failed in words (`oidcFinishText`; a session this device then
- * couldn't keep, `notKept`, as the sign-in is spent). `live`: whether the connect screen is
- * still up. A session that answers once it has gone, or that `finishConnect` did not store,
- * is signed out again (best effort), never kept: nothing would use it, and it would stay on
- * the server as a device (fe#310).
+ * couldn't keep, `notKept`, as the sign-in is spent) and, when the server kept the sign-in
+ * (`oidcRetryWait`: no answer, a 408, a 5xx, a 429, within the done cookie's minute) and no
+ * pass waits, the same finish to send again (`retry`). The flow's key lives in that closure
+ * only, never the address, storage or a log, and goes with it once the finish succeeds or is
+ * refused. `live`: whether the connect screen is still up. A session that answers once it
+ * has gone, or that `finishConnect` did not store, is signed out again (best effort), never
+ * kept: nothing would use it, and it would stay on the server as a device (fe#310).
  *
  * A grown-up's pass through kids mode that the trip left with waits on this answer
  * (`settleOidcPass`): given back only with a session that echoes the trip's own tag
@@ -91,63 +147,78 @@ export async function finishOidcSignIn(
   origin: string,
   t: TFunction,
   live: () => boolean,
-): Promise<string | null> {
+  flow?: string,
+): Promise<OidcFinishFailure | null> {
+  // The provider's return loaded this page just now: the done cookie's minute runs from here.
+  const doneBy = Date.now() + OIDC_DONE_MS;
   const { book, reconnectId } = takeOidcResumed(origin);
   // A reconnect's finish goes out with its own proxy headers, as its password sign-in
   // would (`connectClientFor(server, _, reconnectId)`), never another person's.
   const { client, proxy: carried } = connectClientFor(origin, undefined, reconnectId);
   // Read before the answer: `settleOidcPass` spends it.
   const expected = oidcPassTag();
-  let session: AuthSession;
-  let info: ServerInfo | null;
-  try {
-    [session, info] = await Promise.all([
-      client.oidcFinish(getDeviceName(), expected),
-      client.serverInfo().catch(() => null),
-    ]);
-  } catch (e) {
-    // A 400 to a finish that named a tag: a server from before the tag, refusing the field.
-    const message =
-      expected && e instanceof ApiError && e.status === 400
-        ? t('connect.oidc.errors.needsUpdate')
-        : oidcFinishText(e, t);
-    if (settleOidcPass(null) === 'none') return message;
-    toast({ title: message });
-    return null;
-  }
-  // A session nothing keeps is signed out again (best effort): it would stay on the server
-  // as a device.
-  const signOut = () =>
-    void new ApiClient(origin, session.token, undefined, undefined, undefined, carried)
-      .logout()
-      .catch(() => {});
-  if (!live()) {
-    settleOidcPass(null);
-    signOut();
-    return null;
-  }
-  if (settleOidcPass(session) === 'refused') {
-    signOut();
-    // A server that knows the request's tag never answers it with a session it doesn't echo,
-    // and one from before the tag refuses the request (above): this is neither's answer.
-    toast({
-      title: t(expected ? 'connect.oidc.errors.needsUpdate' : 'connect.oidc.errors.notThisTrip'),
-    });
-    return null;
-  }
-  try {
-    await finishConnect({
-      serverUrl: origin,
-      session,
-      name: info?.name,
-      reconnectId,
-      book,
-      carried,
-    });
-    return null;
-  } catch {
-    // Not stored (refused before `setSession`, or the store failed): nothing will use it.
-    if (!useSession.getState().connections.some((c) => c.token === session.token)) signOut();
-    return t('connect.oidc.errors.notKept');
-  }
+  const attempt = async (): Promise<OidcFinishFailure | null> => {
+    let session: AuthSession;
+    let info: ServerInfo | null;
+    try {
+      [session, info] = await Promise.all([
+        client.oidcFinish(getDeviceName(), expected, flow),
+        client.serverInfo().catch(() => null),
+      ]);
+    } catch (e) {
+      // A pass waiting on this answer is refused now (kids mode takes the flow back, so no
+      // screen is left to try again from), and the reason goes over it.
+      if (settleOidcPass(null) !== 'none') {
+        // A 400 to a finish that named a tag: a server from before the tag, refusing the field.
+        const why =
+          expected && e instanceof ApiError && e.status === 400
+            ? t('connect.oidc.errors.needsUpdate')
+            : oidcFinishText(e, t);
+        toast({ title: why });
+        return null;
+      }
+      const waitMs = oidcRetryWait(e, oidcDoneLeft(doneBy));
+      const message = oidcFinishText(e, t, waitMs !== undefined);
+      return waitMs === undefined
+        ? { message }
+        : { message, retry: { waitMs, doneBy, run: attempt } };
+    }
+    // A session nothing keeps is signed out again (best effort): it would stay on the server
+    // as a device.
+    const signOut = () =>
+      void new ApiClient(origin, session.token, undefined, undefined, undefined, carried)
+        .logout()
+        .catch(() => {});
+    if (!live()) {
+      settleOidcPass(null);
+      signOut();
+      return null;
+    }
+    if (settleOidcPass(session) === 'refused') {
+      signOut();
+      // A server that knows the request's tag never answers it with a session it doesn't
+      // echo, and one from before the tag refuses the request (above): this is neither's
+      // answer.
+      toast({
+        title: t(expected ? 'connect.oidc.errors.needsUpdate' : 'connect.oidc.errors.notThisTrip'),
+      });
+      return null;
+    }
+    try {
+      await finishConnect({
+        serverUrl: origin,
+        session,
+        name: info?.name,
+        reconnectId,
+        book,
+        carried,
+      });
+      return null;
+    } catch {
+      // Not stored (refused before `setSession`, or the store failed): nothing will use it.
+      if (!useSession.getState().connections.some((c) => c.token === session.token)) signOut();
+      return { message: t('connect.oidc.errors.notKept') };
+    }
+  };
+  return attempt();
 }

@@ -121,7 +121,9 @@ can never log anyone out (`{ authReset, cacheReset }`):
   every chunk they name, transitively; the shell cached once its own files are in), at install and when the app asks (`askPrecache`, 5 s after load), so a page never
   opened online still boots offline. Once a build is complete, the one before it stays one
   deploy longer (a tab still running it opens its pages from those files), older files go, and
-  so does every page an earlier build cached (offline it falls back to the shell). The worker
+  so does every page an earlier build cached (offline it falls back to the shell); a page whose
+  address carries a one-time value (a pairing link's `token`, a single sign-on return's `flow`)
+  is never cached at all (`UNKEPT_PAGE_PARAMS`). The worker
   is registered under its build's name (`sw.js?build=`, the entry's and the shared chunk's:
   `buildId`; the entry does not name `__common`), so each deploy installs a new one: Chrome
   keeps the compiled code of scripts a worker caches while installing, which is most of a warm
@@ -419,13 +421,19 @@ Android allows cleartext for it (`expo-build-properties` `android.usesCleartextT
 Single sign-on (server#235, `oidc-sign-in.ts`) is the served web player's only: the sign-in step
 at its own origin (`onlyOwnServer`) asks `GET /server` and offers "Sign in with <name>" while the
 `oidc` capability is on, a full page load of `client.oidcStartUrl(tag)`; the server lands on
-`/connect?oidc=1` with the sign-in in an HttpOnly cookie (`oidcReturnOrigin` tells a return, for
-the route and the screen), and `ConnectStart` takes the param off first (the screen's own
-`useNavigation().setParams`: it runs at mount), then `POST /auth/oidc/finish`
-(`finishOidcSignIn`, the exchange's answer) and `finishConnect`; a failure is worded above the served card
-(`oidcFinishText`), and a session that answers once the screen has gone is signed out again, never
-kept. Nothing in memory survives the page load, so what the flow is for (a grown-up's pass through
-kids mode, "Add someone", a signed-out visit's book) goes through the tab's `sessionStorage`
+`/connect?oidc=1&flow=<key>` with the sign-in in an HttpOnly cookie of that flow's
+(`oidcReturnOrigin` tells a return, for the route and the screen; `oidcFlowKey` reads the key),
+and `ConnectStart` takes the params off first (the screen's own `useNavigation().setParams`: it
+runs at mount), then `POST /auth/oidc/finish` naming the `flow` (so two tabs back at once each
+finish their own sign-in, server#406; none from a server before the key) (`finishOidcSignIn`, the
+exchange's answer) and `finishConnect`; a failure is worded above the served card
+(`oidcFinishText`), with Try again when the server kept the sign-in (`oidcRetryWait`: no answer,
+a 408, a 5xx, a 429 once its `Retry-After` is over, within the done cookie's minute and gone
+with it, the reason then the refusal's (`doneBy`, `OIDC_DONE_MS`); the same
+finish from memory, its flow key never in the address, storage or a log; never for a refusal, nor
+while a kids-mode pass waits; dropped as the screen leaves for another sign-in), and a session
+that answers once the screen has gone is signed out again, never kept. Nothing in memory
+survives the page load, so what the flow is for (a grown-up's pass through kids mode, "Add someone", a signed-out visit's book) goes through the tab's `sessionStorage`
 (`oidc-intent.ts`, fe#310): the step writes it as it leaves (`holdOidcIntent`), and the connect
 layout takes it once as it opens (`takeOidcIntent`, only on the return: `oidcReturnOnLoad` reads
 the address itself, `/connect?oidc=1` and no other route of the flow) and puts "Add someone" and

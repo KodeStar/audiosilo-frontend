@@ -208,6 +208,21 @@ describe('sw.js', () => {
     );
   });
 
+  it("never keeps a page whose address carries a one-time value (a sign-on's flow, a pairing token)", async () => {
+    const LANDING = `${SCOPE}connect?oidc=1&flow=aZ09-_aZ09-_aZ09`;
+    const PAIRING = `${SCOPE}connect?token=pair-tok`;
+    const PAGE = `${SCOPE}library`;
+    const sw = worker({
+      served: { ...SITE, [LANDING]: SHELL_HTML, [PAIRING]: SHELL_HTML, [PAGE]: SHELL_HTML },
+    });
+    for (const url of [LANDING, PAIRING, PAGE])
+      expect((await sw.navigate(url))?.body).toBe(SHELL_HTML);
+    expect(sw.cached(LANDING)).toBeUndefined();
+    expect(sw.cached(PAIRING)).toBeUndefined();
+    // Any other page is still kept for offline.
+    expect(sw.cached(PAGE)).toBe(SHELL_HTML);
+  });
+
   it('answers any other offline navigation with the app shell', async () => {
     const sw = worker({ served: SITE });
     await sw.dispatch('install');
