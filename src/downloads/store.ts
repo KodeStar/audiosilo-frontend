@@ -26,8 +26,9 @@ import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { mapLimit } from '@/lib/map-limit';
 import { canAutoDownload } from '@/lib/network';
 import { sharedStart } from '@/lib/shared-start';
-import { getItem, setItem } from '@/lib/storage';
-import { DOWNLOADS_KEY } from '@/lib/storage-keys';
+import { getItem, getItemStrict, setItemStrict } from '@/lib/storage';
+import { DOWNLOADS_KEY, isRecord } from '@/lib/storage-keys';
+import { tabLock } from '@/lib/tab-lock';
 import { bookFileSpecs } from '@/playback/book-queue';
 import { fetchPercent, isAbsentEpisode } from '@/playback/episode-fetch-rules';
 import { progressToSave, writeMirror } from '@/playback/progress-sync';
@@ -282,7 +283,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     declined.add(key);
     stopRun(key);
     void engine.removeBook(connectionId, libraryId, path);
-    removeEntry(key);
+    void removeEntry(key);
   },
 
   remove: async (connectionId, libraryId, path) => {
@@ -293,8 +294,9 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     declined.add(key);
     stopRun(key);
     await engine.removeBook(connectionId, libraryId, path);
-    removeEntry(key);
+    const saved = removeEntry(key);
     releaseOfflineBook(connectionId, libraryId, path);
+    await saved;
   },
 }));
 
@@ -387,6 +389,10 @@ async function readRegistry(): Promise<Registry> {
   for (const [key, entry] of Object.entries(useDownloads.getState().entries)) {
     if (!(key in merged)) merged[key] = entry;
   }
+  // What the launch read is what this tab knows of the stored registry: the save after the
+  // merge writes what the read changed (an entry relocated, revived or dropped) and the
+  // live entries made meanwhile, and leaves the rest as stored.
+  known = saved;
   useDownloads.setState({ entries: merged, hydrated: true, supported: engine.supported });
   return cleaned;
 }
@@ -691,7 +697,7 @@ async function episodeWaitEnded(key: string, end: EpisodeWaitEnd): Promise<void>
     stopCount(key) === stops && !!useDownloads.getState().entries[key]?.serverFetch;
   const drop = () => {
     void engine.removeBook(connectionId, libraryId, path);
-    removeEntry(key);
+    void removeEntry(key);
   };
   const client = resolveClient(connectionId);
   let book = entry.manifest.book;
@@ -735,7 +741,7 @@ async function episodeWaitEnded(key: string, end: EpisodeWaitEnd): Promise<void>
 function stepAside(key: string) {
   const idx = queue.indexOf(key);
   if (idx >= 0) queue.splice(idx, 1);
-  removeEntry(key);
+  void removeEntry(key);
 }
 
 /**
@@ -1156,17 +1162,110 @@ const PROGRESS_EVERY_MS = 250;
 let pendingSave: { timer: ReturnType<typeof setTimeout>; watch: { remove: () => void } } | null =
   null;
 
-/** Save the registry now (and drop any save `persistSoon` was holding). */
-function persist(): Promise<void> {
+/** The registry's entries as this tab last wrote or read them (the same objects): `persist`
+ * writes only the entries this tab changed since, so the tabs of the web player, which
+ * share the one stored registry, never write over each other's downloads. */
+let known: Registry = {};
+
+/** The stored registry's read-modify-writes one at a time, in this tab and across tabs
+ * (`tabLock`): each tab holds its own entries in memory, and a tab that wrote all of them
+ * over the stored registry lost every download another tab made meanwhile. */
+const withRegistryLock = tabLock(DOWNLOADS_KEY);
+
+/** Save the registry now (and drop any save `persistSoon` was holding): into the stored
+ * registry, only what this tab changed (`known`), under `withRegistryLock`. `drop` also
+ * takes out stored entries it names (a removed connection's, another tab's included);
+ * resolves to the ones it took that this tab did not hold. A read that fails writes
+ * nothing: the next save writes the same changes. */
+function persist(drop?: (entry: DownloadEntry) => boolean): Promise<DownloadEntry[]> {
   // The launch's read saves once it has merged (`hydrating`): before that the live entries
   // are not the registry, and saving them would write over every saved download.
-  if (hydrating) return Promise.resolve();
+  if (hydrating) return Promise.resolve([]);
   if (pendingSave) {
     clearTimeout(pendingSave.timer);
     pendingSave.watch.remove();
     pendingSave = null;
   }
-  return setItem(DOWNLOADS_KEY, useDownloads.getState().entries);
+  return withRegistryLock(async () => {
+    const live = useDownloads.getState().entries;
+    const raw = await getItemStrict<unknown>(DOWNLOADS_KEY).catch(() => undefined);
+    if (raw === undefined) return [];
+    const saved: Registry = isRecord(raw) ? (raw as Registry) : {};
+    let changed = false;
+    for (const key of new Set([...Object.keys(live), ...Object.keys(known)])) {
+      if (live[key] === known[key]) continue;
+      if (live[key]) saved[key] = live[key];
+      else delete saved[key];
+      changed = true;
+    }
+    const dropped: DownloadEntry[] = [];
+    if (drop) {
+      for (const [key, entry] of Object.entries(saved)) {
+        if (!drop(entry)) continue;
+        if (!live[key]) dropped.push(entry);
+        delete saved[key];
+        changed = true;
+      }
+    }
+    if (changed) await setItemStrict(DOWNLOADS_KEY, saved).catch(() => undefined);
+    known = live;
+    return dropped;
+  });
+}
+
+/**
+ * Another tab changed the stored registry (the web's `storage` event, `raw` its new
+ * value): a book it downloaded, or a download of its own it removed or updated, shows here
+ * too. Only finished downloads, and only books this tab is not running and has not changed
+ * since (`known`): a download on its way is the other tab's to show and to stop. Nothing
+ * before this tab read the registry (its read takes what is there).
+ */
+export function followStoredRegistry(raw: string | null): void {
+  if (hydrating || !useDownloads.getState().hydrated) return;
+  let stored: Registry;
+  try {
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+    if (!isRecord(parsed)) return;
+    stored = parsed as Registry;
+  } catch {
+    return;
+  }
+  const live = useDownloads.getState().entries;
+  const next: Registry = { ...live };
+  const nextKnown: Registry = { ...known };
+  let changed = false;
+  for (const key of new Set([...Object.keys(live), ...Object.keys(stored)])) {
+    if (controllers.has(key) || queue.includes(key) || isWaiting(key)) continue;
+    if (key in live && live[key] !== known[key]) continue; // changed here, not saved yet
+    const mine = live[key];
+    const theirs = stored[key];
+    if (theirs?.status === 'downloaded') {
+      if (mine?.status === 'downloaded' && mine.manifest.savedAt === theirs.manifest.savedAt)
+        continue;
+      next[key] = nextKnown[key] = theirs;
+      seedQueryCache(theirs.connectionId, theirs.libraryId, theirs.path, theirs.manifest);
+      changed = true;
+    } else if (!theirs && mine?.status === 'downloaded') {
+      delete next[key];
+      delete nextKnown[key];
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  known = nextKnown;
+  useDownloads.setState({ entries: next });
+}
+
+const win = globalThis as {
+  addEventListener?: (
+    type: 'storage',
+    listener: (e: { key: string | null; newValue: string | null }) => void,
+  ) => void;
+};
+if (Platform.OS === 'web' && typeof win.addEventListener === 'function') {
+  win.addEventListener('storage', (e) => {
+    if (e.key === DOWNLOADS_KEY) followStoredRegistry(e.newValue);
+  });
 }
 
 /** Save the registry within `PERSIST_EVERY_MS`: a book of many files lands one file at
@@ -1191,11 +1290,12 @@ function patchEntry(key: string, patch: Partial<DownloadEntry>) {
   });
 }
 
-function removeEntry(key: string) {
+/** Take a book's entry out, and save the registry (resolves once saved). */
+function removeEntry(key: string): Promise<unknown> {
   const next = { ...useDownloads.getState().entries };
   delete next[key];
   useDownloads.setState({ entries: next });
-  void persist();
+  return persist();
 }
 
 /** Seed a downloaded book's item and chapters for offline reading (`seedQuery`: never
@@ -1818,17 +1918,22 @@ async function runOne(key: string) {
 onConnectionRemoved(async (id) => {
   const entries = useDownloads.getState().entries;
   const doomed = Object.entries(entries).filter(([, e]) => e.connectionId === id);
-  if (doomed.length === 0) return;
-  const next = { ...entries };
-  for (const [key] of doomed) {
-    stopRun(key);
-    delete next[key];
+  if (doomed.length > 0) {
+    const next = { ...entries };
+    for (const [key] of doomed) {
+      stopRun(key);
+      delete next[key];
+    }
+    useDownloads.setState({ entries: next });
   }
-  useDownloads.setState({ entries: next });
   // The file deletions are independent (and on web each one re-lists the cache), so
   // run them concurrently rather than making removal wait on N sequential scans.
-  await Promise.all(doomed.map(([, e]) => engine.removeBook(e.connectionId, e.libraryId, e.path)));
-  await persist();
+  const removeFiles = (gone: DownloadEntry[]) =>
+    Promise.all(gone.map((e) => engine.removeBook(e.connectionId, e.libraryId, e.path)));
+  await removeFiles(doomed.map(([, e]) => e));
+  // The stored registry is every tab's: the connection's downloads this tab did not hold
+  // (another tab's) go from it too, and then their files.
+  await removeFiles(await persist((e) => e.connectionId === id));
 });
 
 // --- selectors -------------------------------------------------------------

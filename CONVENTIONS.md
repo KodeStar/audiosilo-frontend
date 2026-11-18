@@ -2013,7 +2013,14 @@ media GETs only.
   `engine.renameFile`; a rename that fails keeps whichever name the file is under after
   it). While hydrate reads the registry (`hydrating`), `download` and `remove` wait for it
   and `persist` holds off, so a saved book is never fetched over, put back after a remove,
-  or saved over by the live entries. **Files are stored
+  or saved over by the live entries. **The web's tabs share one registry** (fe#258's
+  follow-up): `persist` writes only the entries this tab changed since it last wrote or read
+  them (`known`, compared by object), into the stored registry read again under `tabLock`
+  (a tab that wrote all its entries lost every download another tab made meanwhile), and a
+  tab follows the others' finished downloads and removals through the `storage` event
+  (`followStoredRegistry`; never a book it is running or changed since, nor a download on
+  its way, which is the other tab's to show and stop). A removed connection's purge takes
+  the other tabs' downloads of it from the stored registry too, then their files. **Files are stored
   per-connection**: native `downloads/<connectionId>/<libraryId>/<slug>/`, web Cache API
   `/_offline/<connectionId>/<libraryId>/<slug>/`; the registry keys on
   `downloadKey(connectionId, libraryId, path)`. Pre-scoping downloads (from before the
