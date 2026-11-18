@@ -15,8 +15,9 @@ import { sharedRefusalText } from './sign-in-error';
  * Single sign-on (OpenID Connect, server#235) in the web player. The sign-in step offers
  * "Sign in with <name>" as a full page load of the server's `/auth/oidc/start` (the
  * provider, then the server's callback); the server lands the browser on
- * `/web/connect?oidc=1` with the finished sign-in in an HttpOnly cookie on its own
- * origin, and the connect screen trades it for a session (`finishOidcSignIn`). A cookie
+ * `/web/connect?oidc=1&flow=<key>` with the finished sign-in in an HttpOnly cookie of that
+ * flow's on its own origin, and the connect screen trades it for a session
+ * (`finishOidcSignIn`, naming the flow, so two tabs back at once each finish their own). A cookie
  * is the whole hand-over, so only the player the server serves signing in to its own
  * server (`onlyOwnServer(servedOrigin(), [server])`) can offer it: never the app, the
  * Metro dev server, or a player hosted on another origin. The return is a page load, so
@@ -27,7 +28,7 @@ import { sharedRefusalText } from './sign-in-error';
 
 // The return's own rule lives apart (`oidc-return.ts`), where the root layout reaches it
 // without this module's weight.
-export { oidcReturnOnLoad, oidcReturnOrigin } from './oidc-return';
+export { oidcFlowKey, oidcReturnOnLoad, oidcReturnOrigin } from './oidc-return';
 
 /** The sign-in step's button while the server's `oidc` capability is on: the provider's
  * name ("Sign in with Keycloak"), '' when it sent none (the button then names single
@@ -63,7 +64,8 @@ export function oidcFinishText(e: unknown, t: TFunction): string {
 
 /**
  * Finish a single sign-on on the served player's own server (`origin`): `POST
- * /auth/oidc/finish` (the server's cookie goes with it, same origin) with the server's
+ * /auth/oidc/finish` (the server's cookie goes with it, same origin; `flow`, the key the
+ * return named, picks this tab's sign-in among the browser's, `oidcFlowKey`) with the server's
  * name read alongside, then `finishConnect` as for a pairing link's exchange, ending on the
  * book the flow was opening before the trip and re-pairing the connection a reconnect left
  * with (`takeOidcResumed`; spent by a failed finish too). Resolves null once the flow
@@ -91,6 +93,7 @@ export async function finishOidcSignIn(
   origin: string,
   t: TFunction,
   live: () => boolean,
+  flow?: string,
 ): Promise<string | null> {
   const { book, reconnectId } = takeOidcResumed(origin);
   // A reconnect's finish goes out with its own proxy headers, as its password sign-in
@@ -102,7 +105,7 @@ export async function finishOidcSignIn(
   let info: ServerInfo | null;
   try {
     [session, info] = await Promise.all([
-      client.oidcFinish(getDeviceName(), expected),
+      client.oidcFinish(getDeviceName(), expected, flow),
       client.serverInfo().catch(() => null),
     ]);
   } catch (e) {

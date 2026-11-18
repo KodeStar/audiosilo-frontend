@@ -20,6 +20,15 @@ export function oidcReturnOrigin(
   return !token && firstParam(oidc) === '1' ? servedOrigin() : null;
 }
 
+/** The key of the flow a single sign-on's return names (`/connect?oidc=1&flow=<key>`): the
+ * finish sends it, so the sign-in it takes is this tab's own when another tab's came back
+ * too (server#406). Undefined from a server before the key, or for anything that can be no
+ * key (16 base64url characters, as the server makes it). */
+export function oidcFlowKey(flow: string | string[] | undefined): string | undefined {
+  const key = firstParam(flow);
+  return /^[A-Za-z0-9_-]{16}$/.test(key) ? key : undefined;
+}
+
 /** Whether this page load is the server's return from a single sign-on, read from the
  * address itself (`oidcReturnOrigin`'s rule, on the flow's first step: the one route that
  * finishes it, so `?oidc=1` on any other of the flow's routes is no return): the connect

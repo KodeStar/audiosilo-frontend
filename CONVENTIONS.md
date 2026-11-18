@@ -419,10 +419,12 @@ Android allows cleartext for it (`expo-build-properties` `android.usesCleartextT
 Single sign-on (server#235, `oidc-sign-in.ts`) is the served web player's only: the sign-in step
 at its own origin (`onlyOwnServer`) asks `GET /server` and offers "Sign in with <name>" while the
 `oidc` capability is on, a full page load of `client.oidcStartUrl(tag)`; the server lands on
-`/connect?oidc=1` with the sign-in in an HttpOnly cookie (`oidcReturnOrigin` tells a return, for
-the route and the screen), and `ConnectStart` takes the param off first (the screen's own
-`useNavigation().setParams`: it runs at mount), then `POST /auth/oidc/finish`
-(`finishOidcSignIn`, the exchange's answer) and `finishConnect`; a failure is worded above the served card
+`/connect?oidc=1&flow=<key>` with the sign-in in an HttpOnly cookie of that flow's
+(`oidcReturnOrigin` tells a return, for the route and the screen; `oidcFlowKey` reads the key),
+and `ConnectStart` takes the params off first (the screen's own `useNavigation().setParams`: it
+runs at mount), then `POST /auth/oidc/finish` naming the `flow` (so two tabs back at once each
+finish their own sign-in, server#406; none from a server before the key) (`finishOidcSignIn`, the
+exchange's answer) and `finishConnect`; a failure is worded above the served card
 (`oidcFinishText`), and a session that answers once the screen has gone is signed out again, never
 kept. Nothing in memory survives the page load, so what the flow is for (a grown-up's pass through
 kids mode, "Add someone", a signed-out visit's book) goes through the tab's `sessionStorage`

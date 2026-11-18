@@ -1214,12 +1214,12 @@ describe("a single sign-on's return (?oidc=1)", () => {
     mockApi.serverInfo.mockResolvedValue(info());
     await render(<ConnectStart />);
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
-    expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined });
+    expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined, flow: undefined });
     // No failure backstop on the way to "Your library is ready.".
     expect(mockSetParams).not.toHaveBeenCalled();
     expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
     // No pass waits on it: no tag for the server to hold the sign-in to.
-    expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', undefined);
+    expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', undefined, undefined);
     expect(mockApi.exchange).not.toHaveBeenCalled();
     expect(new Set(mockBases)).toEqual(new Set([ORIGIN]));
     expect(conn()).toMatchObject({
@@ -1234,6 +1234,25 @@ describe("a single sign-on's return (?oidc=1)", () => {
     });
     // Kept: the screen was up to take it.
     expect(mockApi.logout).not.toHaveBeenCalled();
+  });
+
+  it("names the flow its return named, so the sign-in it takes is this tab's own (server#406)", async () => {
+    mockParams = { oidc: '1', flow: 'aZ09-_aZ09-_aZ09' };
+    mockApi.oidcFinish.mockResolvedValue({ token: 'session', server_id: 'srv-1', user });
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', undefined, 'aZ09-_aZ09-_aZ09');
+    expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined, flow: undefined });
+  });
+
+  it('sends no flow that can be no key', async () => {
+    mockParams = { oidc: '1', flow: 'aZ09/aZ09.aZ09+a' };
+    mockApi.oidcFinish.mockResolvedValue({ token: 'session', server_id: 'srv-1', user });
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', undefined, undefined);
   });
 
   it('ends on the book the flow was opening before the trip (fe#310)', async () => {
@@ -1298,7 +1317,7 @@ describe("a single sign-on's return (?oidc=1)", () => {
         expect(kidsConnectAllowed()).toBe(true);
         expect(mockToast).not.toHaveBeenCalled();
         // The finish named the tag the pass expects, for the server to refuse any other.
-        expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', tag);
+        expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', tag, undefined);
       } finally {
         useSession.setState({ setSession });
       }
@@ -1331,7 +1350,7 @@ describe("a single sign-on's return (?oidc=1)", () => {
       mockApi.serverInfo.mockResolvedValue(info());
       await render(<ConnectStart />);
       await waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
-      expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', tag);
+      expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', tag, undefined);
       // Denied: no pass, so kids mode takes the flow back (the layout); the reason goes over it.
       expect(kidsConnectAllowed()).toBe(false);
       expect(mockToast).toHaveBeenCalledTimes(1);
@@ -1353,7 +1372,7 @@ describe("a single sign-on's return (?oidc=1)", () => {
       mockApi.serverInfo.mockResolvedValue(info());
       await render(<ConnectStart />);
       await waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
-      expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', tag);
+      expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', tag, undefined);
       expect(kidsConnectAllowed()).toBe(false);
       expect(mockToast).toHaveBeenCalledTimes(1);
       expect(mockToast).toHaveBeenCalledWith({
@@ -1397,7 +1416,7 @@ describe("a single sign-on's return (?oidc=1)", () => {
         mockApi.logout.mockResolvedValue(undefined);
         await render(<ConnectStart />);
         await waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
-        expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', tag);
+        expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', tag, undefined);
         // Denied: no pass, the session not kept, and the reason over kids mode. Not "Sign in
         // again": it would end the same way.
         expect(kidsConnectAllowed()).toBe(false);
@@ -1422,7 +1441,7 @@ describe("a single sign-on's return (?oidc=1)", () => {
       mockApi.logout.mockResolvedValue(undefined);
       await render(<ConnectStart />);
       await waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
-      expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', undefined);
+      expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', undefined, undefined);
       expect(kidsConnectAllowed()).toBe(false);
       await waitFor(() => expect(mockApi.logout).toHaveBeenCalledTimes(1));
       expect(mockToast).toHaveBeenCalledWith({
@@ -1551,7 +1570,7 @@ describe("a single sign-on's return (?oidc=1)", () => {
     mockApi.oidcFinish.mockReturnValue(new Promise(() => {}));
     await render(<ConnectStart />);
     expect(mockNavSetParams).toHaveBeenCalledTimes(1);
-    expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined });
+    expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined, flow: undefined });
     expect(mockNavSetParams.mock.invocationCallOrder[0]).toBeLessThan(
       mockApi.oidcFinish.mock.invocationCallOrder[0],
     );
@@ -1587,8 +1606,8 @@ describe("a single sign-on's return (?oidc=1)", () => {
     expect(screen.getByText(words)).toBeTruthy();
     // Its strip queued before the finish went out (a reload can't try it again), and again
     // through the router once it failed.
-    expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined });
-    expect(mockSetParams).toHaveBeenCalledWith({ oidc: undefined });
+    expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined, flow: undefined });
+    expect(mockSetParams).toHaveBeenCalledWith({ oidc: undefined, flow: undefined });
     expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
     expect(useSession.getState().connections).toEqual([]);
     expect(mockReplace).not.toHaveBeenCalled();

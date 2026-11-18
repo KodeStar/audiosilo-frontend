@@ -58,7 +58,7 @@ import {
   useHandoff,
 } from './invite-handoff';
 import { settleOidcPass } from './oidc-intent';
-import { finishOidcSignIn, oidcReturnOrigin } from './oidc-sign-in';
+import { finishOidcSignIn, oidcFlowKey, oidcReturnOrigin } from './oidc-sign-in';
 import { ProxyHeadersEditor } from './proxy-headers-editor';
 import { draftOf, draftToSet, type HeaderDraftRow } from './proxy-headers-model';
 import { useLinkPairing } from './use-pairing';
@@ -89,17 +89,18 @@ import { useLinkPairing } from './use-pairing';
  *
  * The served player opened as `?oidc=1` is the server's return from a single sign-on
  * (server#235, started on the sign-in step): the sign-in is finished at once
- * (`finishOidcSignIn`), the param queued off the address before the finish is sent so a
- * reload never tries it again; a failure says why above its own server's card, as a dead
- * pairing link does.
+ * (`finishOidcSignIn`, with the `flow` the return names), the params queued off the address
+ * before the finish is sent so a reload never tries it again; a failure says why above its
+ * own server's card, as a dead pairing link does.
  */
 export function ConnectStart() {
   const { t } = useTranslation();
   const large = useLargeText();
   const phone = useLayout() === 'phone';
-  const { token, server, home, away, sid, profile, book, path, uid, oidc } = useRouteParams<{
+  const { token, server, home, away, sid, profile, book, path, uid, oidc, flow } = useRouteParams<{
     token?: string;
     oidc?: string;
+    flow?: string;
     server?: string;
     home?: string;
     away?: string;
@@ -124,6 +125,8 @@ export function ConnectStart() {
   // The server's return from a single sign-on, on the player it serves (read once: the
   // param leaves the address as the finish starts). A pairing link wins.
   const [oidcOrigin] = useState(() => oidcReturnOrigin(oidc, token));
+  // The flow the return names (`&flow=`), so the finish takes this tab's own sign-in.
+  const [oidcFlow] = useState(() => oidcFlowKey(flow));
   // Opened by a link (a pairing token or a single sign-on's return): it runs at once, with
   // no address field or served card until it fails.
   const linkFlow = !!token || oidcOrigin !== null;
@@ -251,7 +254,9 @@ export function ConnectStart() {
   const oidcStarted = useRef(false);
   // The screen's own navigation: this runs as the screen mounts, on a page load, where a
   // router's `setParams` reaches nothing yet (CONVENTIONS.md, "Navigation at mount").
-  const navigation = useNavigation<{ setParams(params: { oidc?: string }): void }>();
+  const navigation = useNavigation<{
+    setParams(params: { oidc?: string; flow?: string }): void;
+  }>();
   useEffect(() => {
     if (oidcStarted.current) return;
     if (!oidcOrigin) {
@@ -262,12 +267,12 @@ export function ConnectStart() {
       return;
     }
     oidcStarted.current = true;
-    navigation.setParams({ oidc: undefined });
-    void finishOidcSignIn(oidcOrigin, t, () => mounted.current).then((message) => {
+    navigation.setParams({ oidc: undefined, flow: undefined });
+    void finishOidcSignIn(oidcOrigin, t, () => mounted.current, oidcFlow).then((message) => {
       if (message === null || !mounted.current) return;
       // A backstop once settled, when the navigators surely listen: the reason must not sit
       // under an address that would try the finish again.
-      router.setParams({ oidc: undefined });
+      router.setParams({ oidc: undefined, flow: undefined });
       fail(message);
       showServedCard(oidcOrigin);
     });

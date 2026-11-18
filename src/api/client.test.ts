@@ -273,6 +273,23 @@ describe('ApiClient', () => {
     expect(session.intent).toBe(tag);
   });
 
+  it('names the flow whose sign-in this tab finishes, only when the return named one (server#406)', async () => {
+    const fetchMock = installFetch(() => ({
+      status: 200,
+      body: { token: 't', server_id: 's', user: { id: 1 } },
+    }));
+    const key = 'aZ09-_aZ09-_aZ09';
+    await new ApiClient('https://h').oidcFinish('iPhone', undefined, key);
+    await new ApiClient('https://h').oidcFinish('iPhone', 'ab'.repeat(32), key);
+    const bodies = fetchMock.mock.calls.map(([, init]) =>
+      JSON.parse((init as RequestInit).body as string),
+    );
+    expect(bodies).toEqual([
+      { device_name: 'iPhone', flow: key },
+      { device_name: 'iPhone', intent: 'ab'.repeat(32), flow: key },
+    ]);
+  });
+
   it('answers with a session that came back with no echo, for the caller to refuse', async () => {
     installFetch(() => ({ status: 200, body: { token: 't', server_id: 's', user: { id: 1 } } }));
     const session = await new ApiClient('https://h').oidcFinish('iPhone', 'ab'.repeat(32));
