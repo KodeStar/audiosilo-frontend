@@ -1328,7 +1328,7 @@ async function recordFinish(ref: FinishRef): Promise<void> {
   const speed = ref.playback_speed ?? prior?.playback_speed;
   const id = deviceId || (await getDeviceId());
   if (connectionGeneration(ref.connectionId) === since) {
-    beforeFinish.set(contentKeyOf(ref), prior);
+    beforeFinish.set(contentKeyOf(ref), { prior, at, deviceId: id });
     await writeMirror(finishedSave({ ...ref, playback_speed: speed }, id, at)).catch(
       () => undefined,
     );
@@ -1441,8 +1441,22 @@ async function reloadLeftBook(ref: ContentRef): Promise<void> {
 }
 
 /** Each book's mirror record before its Mark as finished (`recordFinish`), for its Undo
- * (`unrecordFinish`). */
-const beforeFinish = new Map<string, ProgressSave | null>();
+ * (`unrecordFinish`), with the finish's own record (its time and device). */
+const beforeFinish = new Map<
+  string,
+  { prior: ProgressSave | null; at: string; deviceId: string }
+>();
+
+/** Whether this device knows the place before the book's waiting finish
+ * (`knowsPlaceBefore` in `finish-route.ts`): the record before it was a place, unfinished,
+ * and the mirror still holds the finish's own record. Not after a reload (none kept), nor
+ * for another tab's finish or one marked since (the mirror holds that one). */
+async function knowsPlaceBefore(ref: ContentRef): Promise<boolean> {
+  const before = beforeFinish.get(contentKeyOf(ref));
+  if (!before?.prior || before.prior.finished) return false;
+  const now = await readMirror(ref.connectionId, ref.libraryId, ref.path);
+  return !!now?.finished && now.updated_at === before.at && now.device_id === before.deviceId;
+}
 
 /**
  * A Mark as finished was undone (`undoFinish`: its finish taken back from the outbox unsent,
@@ -1456,7 +1470,7 @@ const beforeFinish = new Map<string, ProgressSave | null>();
  */
 async function unrecordFinish(ref: UndoRef, since: number): Promise<void> {
   const key = contentKeyOf(ref);
-  const prior = ref.atPosition ? undefined : beforeFinish.get(key);
+  const prior = ref.atPosition ? undefined : beforeFinish.get(key)?.prior;
   beforeFinish.delete(key);
   if (finishSent === key) finishSent = null;
   if (connectionGeneration(ref.connectionId) !== since) return;
@@ -1496,6 +1510,7 @@ setFinishRecorder({
   record: recordFinish,
   withdraw: withdrawFinish,
   unrecord: unrecordFinish,
+  knowsPlaceBefore,
 });
 
 /**

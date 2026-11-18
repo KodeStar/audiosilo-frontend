@@ -58,13 +58,17 @@ type FinishRecorder = {
   /** An undone finish leaves this device: its record goes back to the place before it
    * (`ref.position`), unfinished; nothing when `connectionId` was signed out since `since`. */
   unrecord: (ref: UndoRef, since: number) => Promise<void>;
+  /** Whether this device still holds the book's record from before its waiting finish (its
+   * mirror holds that finish's own record, and the one before it was a place, unfinished):
+   * the place the server still holds while the finish has not reached it. */
+  knowsPlaceBefore: (ref: FinishBook) => Promise<boolean>;
 };
 
 /** The book an Undo unfinishes, and the place it goes back to. */
 export type UndoRef = Pick<FinishRef, 'connectionId' | 'libraryId' | 'path' | 'position'> & {
   /** Mark as not finished, not the Undo of a Mark: this device's record goes to `position`,
    * never to the one before a finish marked earlier (kept for that finish's Undo, it may be
-   * long out of date). */
+   * long out of date). Unless that finish never reached the server (`undoFinish`). */
   atPosition?: boolean;
 };
 
@@ -115,8 +119,10 @@ export type UndoOutcome = 'undone' | 'unreachable';
  * outbox is taken back first, since sent after the edit it would finish the book again. A
  * finish that never reached the server (offline) needs no edit: taken back, this device's
  * record goes back to the place before and the Undo is done (an edit offline fails, and
- * putting the finish back sent it on reconnect). Else the edit (a finish the server has, or
- * may have: `Withdrawal.unsent`), and an edit that failed puts the finish back and rejects.
+ * putting the finish back sent it on reconnect); for Mark as not finished too (`atPosition`),
+ * whose own place the server would never get, when this device knows the place before. Else
+ * the edit (a finish the server has, or may have: `Withdrawal.unsent`), and an edit that
+ * failed puts the finish back and rejects.
  * One a request carried with no answer, while its server looks down, is not undone at all
  * (`unreachable`): the server may hold it and no edit can reach it. A withdrawal that
  * failed (storage refused it) rejects with no edit: the finish still waits, and sent after
@@ -134,8 +140,13 @@ export async function undoFinish(ref: UndoRef, edit: () => Promise<unknown>): Pr
   const since = r.generation(ref.connectionId);
   const taken = await r.withdraw(ref.connectionId, ref.libraryId, ref.path);
   if (taken.unreachable) return 'unreachable';
-  if (taken.unsent) {
-    await r.unrecord(ref, since).catch(() => undefined);
+  // Never reached the server, so it still holds the place before the finish: this device's
+  // record goes back there, with no edit (offline too). Mark as not finished as well, not at
+  // its own place: the server would hold one place and this device another. Only when this
+  // device knows that place (`knowsPlaceBefore`: not after a reload, nor for another tab's
+  // finish); else the edit puts the server at the place asked for, as for a finish it has.
+  if (taken.unsent && (!ref.atPosition || (await r.knowsPlaceBefore(ref).catch(() => false)))) {
+    await r.unrecord({ ...ref, atPosition: false }, since).catch(() => undefined);
     return 'undone';
   }
   try {

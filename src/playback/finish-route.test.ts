@@ -8,6 +8,7 @@ describe('undoFinish', () => {
   let unsent = false;
   let unreachable = false;
   let generation = 0;
+  let knowsBefore = false;
   const restore = jest.fn(async () => {
     steps.push('restore');
   });
@@ -23,8 +24,11 @@ describe('undoFinish', () => {
         return { unsent, restore, ...(unreachable ? { unreachable: true as const } : {}) };
       },
       unrecord: async (r, since) => {
-        steps.push(`unrecord at ${r.position} for sign-in ${since}`);
+        steps.push(
+          `unrecord at ${r.position}${r.atPosition ? ' (own place)' : ''} for sign-in ${since}`,
+        );
       },
+      knowsPlaceBefore: async () => knowsBefore,
       ...over,
     });
 
@@ -33,6 +37,7 @@ describe('undoFinish', () => {
     unsent = false;
     unreachable = false;
     generation = 0;
+    knowsBefore = false;
     restore.mockClear();
     recorder();
   });
@@ -60,6 +65,35 @@ describe('undoFinish', () => {
     unsent = true;
     await expect(undoFinish(ref, edit(false))).resolves.toBe('undone');
     expect(steps).toEqual(['withdraw c1 3 Author/Book', 'unrecord at 48 for sign-in 0']);
+  });
+
+  // Mark as not finished of a finish the server never got: undone here at its own place, the
+  // server kept the place before the finish while this device's record moved to another.
+  describe('Mark as not finished (atPosition) of a finish that never left', () => {
+    const own = { ...ref, atPosition: true };
+
+    it('this device knowing the place before it: back there, as the server is, with no edit', async () => {
+      unsent = true;
+      knowsBefore = true;
+      await expect(undoFinish(own, edit(false))).resolves.toBe('undone');
+      expect(steps).toEqual(['withdraw c1 3 Author/Book', 'unrecord at 48 for sign-in 0']);
+    });
+
+    it('not knowing it (a reload, another tab): the edit puts the server at the place asked', async () => {
+      unsent = true;
+      await expect(undoFinish(own, edit(true))).resolves.toBe('undone');
+      expect(steps).toEqual([
+        'withdraw c1 3 Author/Book',
+        'edit',
+        'unrecord at 48 (own place) for sign-in 0',
+      ]);
+    });
+
+    it('not knowing it, an edit that failed (offline) puts the finish back', async () => {
+      unsent = true;
+      await expect(undoFinish(own, edit(false))).rejects.toThrow('refused');
+      expect(steps).toEqual(['withdraw c1 3 Author/Book', 'edit', 'restore']);
+    });
   });
 
   // fe#258 (4a): undone here, a finish that did reach the server stayed there and won on

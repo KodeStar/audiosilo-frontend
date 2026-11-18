@@ -1491,6 +1491,54 @@ describe('Mark as finished outside the player (finish-route)', () => {
     }
   });
 
+  // An offline Mark as finished, then Mark as not finished: the finish never reached the
+  // server, which kept the place before it, while the mirror went to the place asked for (the
+  // start, for a book read finished at its end) with no edit to put the server there.
+  describe('Mark as not finished of a finish that never left', () => {
+    const before = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'Other/Book',
+      position: 48,
+      duration: 100,
+      finished: false,
+      playback_speed: 1,
+      device_id: 'dev-1',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+    const notFinished = { ...undoRef, position: 0, atPosition: true };
+    afterEach(() => mockReadMirror.mockImplementation(async () => null));
+
+    it('the mirror goes back to the place the server holds, with no edit', async () => {
+      mockReadMirror.mockResolvedValue(before);
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      const finishedRec = mockWriteMirror.mock.calls.at(-1)?.[0] as { updated_at: string };
+      mockReadMirror.mockResolvedValue(finishedRec);
+      const edit = jest.fn(async () => {});
+      await expect(undoFinish(notFinished, edit)).resolves.toBe('undone');
+      expect(edit).not.toHaveBeenCalled();
+      expect(mockMirrorUpdates.at(-1)).toMatchObject({ finished: false, position: 48 });
+    });
+
+    // Another tab's finish (or one after a reload): the mirror holds a finished record this
+    // device did not write, so the place before it is not known here.
+    it('one this device does not know the place before: the edit, then its own place', async () => {
+      mockReadMirror.mockResolvedValue(before);
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      mockReadMirror.mockResolvedValue({
+        ...before,
+        position: 100,
+        finished: true,
+        device_id: 'dev-1',
+        updated_at: '2026-01-03T00:00:00Z',
+      });
+      const edit = jest.fn(async () => {});
+      await expect(undoFinish(notFinished, edit)).resolves.toBe('undone');
+      expect(edit).toHaveBeenCalledTimes(1);
+      expect(mockMirrorUpdates.at(-1)).toMatchObject({ finished: false, position: 0 });
+    });
+  });
+
   // Its stored copy for the other tabs behind a lock that may refuse (Web Locks): the hold
   // stays in this tab, and the record still goes back.
   it('Undo whose cross-tab hold could not be stored: the mirror still goes back', async () => {
