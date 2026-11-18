@@ -1624,8 +1624,10 @@ describe('Mark as finished outside the player (finish-route)', () => {
   // fe#258: a sign-out while the Mark or its Undo was on its way left a record of the old
   // sign-in in the mirror, which stood for the next sign-in to the same account.
   it('signed out while the finish was recorded: no mirror record, nothing appended', async () => {
+    // Every read of the mirror waits (the finish's base and the record before it alike).
     let read: (v: unknown) => void = () => {};
-    mockReadMirror.mockImplementationOnce(() => new Promise((resolve) => (read = resolve)));
+    const held = new Promise((resolve) => (read = resolve));
+    mockReadMirror.mockImplementation(() => held);
     const recording = recordFinishEvent({ ...ref, path: 'Other/Book' });
     await settle();
     mockGeneration = 1; // the connection removed

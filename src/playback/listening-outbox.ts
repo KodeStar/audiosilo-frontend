@@ -1827,6 +1827,7 @@ export function resetOutboxForTests(): void {
   wentOn = null;
   queued.clear();
   appendsInTurn.clear();
+  removals.clear();
   tabId = randomUUID();
   if (staleCheck) clearTimeout(staleCheck);
   staleCheck = null;
