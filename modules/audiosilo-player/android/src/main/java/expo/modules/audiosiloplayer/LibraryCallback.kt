@@ -222,7 +222,10 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
     }
     if (!isForPlayback) {
       return item?.play?.let {
-        Futures.immediateFuture(MediaItems.startPositionOf(it, ArtworkProvider.authority(service)))
+        val queue = MediaItems.startPositionOf(it, ArtworkProvider.authority(service))
+        // The card loads the cover's URI itself (Media3 sends a browse item no bitmap): let it.
+        service.grantItemArtwork(controller.packageName, queue.mediaItems.firstOrNull())
+        Futures.immediateFuture(queue)
       } ?: nothingToResume()
     }
     return service.watchResumption(

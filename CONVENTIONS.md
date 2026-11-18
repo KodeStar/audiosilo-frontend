@@ -2791,9 +2791,10 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   `ArtworkProvider` serves only covers inside the app's data directory that the current
   snapshot names or the loaded queue's items name (`art/<key>`, the same key for the same
   file). A downloaded book's cover goes on its loaded items as that content URI
-  (`ArtworkProvider.itemArtwork`, `LocalArtwork`), granted to each connected car
-  (`grantPlayingArtwork`): the car loads the playing item's artwork itself and could not read
-  the `file://` URI. A book with no cover shows the bundled `audiosilo_car_cover` in the
+  (`ArtworkProvider.itemArtwork`, `LocalArtwork`), granted to each connected car and System UI
+  (`grantPlayingArtwork`) and to the resumption card's asker (`onPlaybackResumption`): they load
+  the item's artwork URI themselves (the car always; System UI when it has no bitmap, which a
+  browse item never carries) and could not read the `file://` URI. A book with no cover shows the bundled `audiosilo_car_cover` in the
   browse lists (an `android.resource` URI, no grant; with none the car drew a warning
   triangle). A streamed book's cover URL carries the media token, so a loaded
   item names it as `audiosilo-artwork://remote/<key>` (a hash of the URL, `RemoteArtwork`,

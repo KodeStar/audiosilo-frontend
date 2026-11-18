@@ -2,6 +2,7 @@ package expo.modules.audiosiloplayer
 
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,6 +22,17 @@ class LocalArtworkTest {
     assertEquals(File(cover), LocalArtwork.fileFor(key))
     // Nothing of the path in the URI.
     assertTrue(!uri.contains("downloads") && !uri.contains("cover.jpg"))
+  }
+
+  // The lock screen and System UI's resumption card load a downloaded cover's URI from another
+  // app, as the car does: only the provider's own URIs are granted, never a streamed cover's
+  // token-free URI or the bundled placeholder.
+  @Test fun onlyTheProvidersUrisAreGranted() {
+    assertTrue(ArtworkProvider.serves(ArtworkProvider.itemArtwork("file://$cover", authority), authority))
+    val streamed = ArtworkProvider.itemArtwork("https://books.example/cover?token=secret", authority)
+    assertFalse(ArtworkProvider.serves(streamed, authority))
+    assertFalse(ArtworkProvider.serves(ArtworkProvider.browseArtwork(authority, "app.audiosilo.dev", null), authority))
+    assertFalse(ArtworkProvider.serves("content://other.provider/art/0123", authority))
   }
 
   @Test fun aBarePathIsAFileToo() {

@@ -591,24 +591,34 @@ class AudiosiloPlayerService : MediaLibraryService() {
 
   /** Lets the browsing app (Android Auto's package) open a cover's content URI; each (package,
    * uri) once, since every browse of a tab asks again. */
-  internal fun grantArtwork(browser: MediaSession.ControllerInfo, uri: Uri) {
-    val grant = browser.packageName to uri
+  internal fun grantArtwork(browser: MediaSession.ControllerInfo, uri: Uri) = grantArtwork(browser.packageName, uri)
+
+  private fun grantArtwork(packageName: String, uri: Uri) {
+    val grant = packageName to uri
     if (!artworkGrants.add(grant)) return
     try {
-      grantUriPermission(browser.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      grantUriPermission(packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
     } catch (e: Exception) {
       artworkGrants.remove(grant)
-      Log.w(TAG, "Could not grant artwork to ${browser.packageName}", e)
+      Log.w(TAG, "Could not grant artwork to $packageName", e)
     }
   }
 
-  /** Lets every connected car open the loaded item's cover, when it is one the artwork provider
-   * serves (a downloaded book's, [LocalArtwork]): the car loads the playing item's artwork URI
-   * itself. A streamed cover's URI is the app's own, which no grant opens. */
+  /** Lets [packageName] open [item]'s cover, when it is one the artwork provider serves (a
+   * downloaded book's, [LocalArtwork]). A streamed cover's URI is the app's own, which no grant
+   * opens. */
+  internal fun grantItemArtwork(packageName: String, item: MediaItem?) {
+    val uri = item?.mediaMetadata?.artworkUri ?: return
+    if (ArtworkProvider.serves(uri.toString(), ArtworkProvider.authority(this))) grantArtwork(packageName, uri)
+  }
+
+  /** Lets every connected car and System UI open the loaded item's cover: the car loads the
+   * playing item's artwork URI itself, and System UI (the lock screen, the media controls) does
+   * when the session's metadata has no bitmap yet. */
   private fun grantPlayingArtwork() {
-    val uri = player?.currentMediaItem?.mediaMetadata?.artworkUri ?: return
-    if (uri.scheme != "content" || uri.authority != ArtworkProvider.authority(this)) return
-    for (car in carControllers) grantArtwork(car, uri)
+    val item = player?.currentMediaItem ?: return
+    grantItemArtwork(ArtworkProvider.SYSTEM_UI, item)
+    for (car in carControllers) grantItemArtwork(car.packageName, item)
   }
 
   /**

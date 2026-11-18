@@ -18,7 +18,7 @@ import java.io.FileNotFoundException
  * ([LocalArtwork]), looked up by an opaque key (a hash of the path, see
  * [CarSnapshot.artworkKey]); a URI can't name any other file, and a cover neither names any
  * more stops being served. Not exported: the service grants read access per URI to the car's
- * package (`grantUriPermission`, `android:grantUriPermissions`).
+ * package and System UI's ([SYSTEM_UI]) (`grantUriPermission`, `android:grantUriPermissions`).
  *
  * A streamed book's cover is never served here: its URL carries the media token, and no other
  * app may fetch with it. An item names it by a URI of the app's own ([RemoteArtwork]), and
@@ -79,6 +79,14 @@ class ArtworkProvider : ContentProvider() {
       val file = CarSnapshot.artworkFile(raw) ?: return raw
       return uriString(authority, LocalArtwork.register(file))
     }
+
+    /** True when [uri] is one of this provider's ([authority]): a grant lets another app open
+     * it. */
+    fun serves(uri: String, authority: String): Boolean = uri.startsWith("content://$authority/$ART/")
+
+    /** System UI's package: it draws the lock screen's and the media controls' cover, and the
+     * resumption card's, loading the artwork URI itself when it is given no bitmap. */
+    const val SYSTEM_UI = "com.android.systemui"
 
     private const val ART = "art"
 
