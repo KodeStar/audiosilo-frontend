@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { ApiClient, ApiError } from '@/api/client';
+import { ApiClient, ApiError, TimeoutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import * as reachability from '@/api/reachability';
 import type { Progress } from '@/api/types';
@@ -536,12 +536,14 @@ describe('progress-sync', () => {
       fakeApi(() => Promise.resolve()),
       { ...save, position: 75 },
     );
-    let signal: AbortSignal | undefined;
+    // A frozen server, behind the client's own timeout (which rejects as the client does).
     const frozen = {
-      getProgress: jest.fn((_lib: number, _path: string, s?: AbortSignal) => {
-        signal = s;
-        return new Promise<Progress | null>(() => {});
-      }),
+      getProgress: jest.fn(
+        (_lib: number, _path: string, _s?: AbortSignal, timeoutMs = 15_000) =>
+          new Promise<Progress | null>((_, reject) => {
+            setTimeout(() => reject(new TimeoutError(timeoutMs)), timeoutMs);
+          }),
+      ),
     } as unknown as ApiClient;
     jest.useFakeTimers();
     try {
@@ -555,9 +557,10 @@ describe('progress-sync', () => {
     } finally {
       jest.useRealTimers();
     }
-    // The read is called off, and the slow server only asked to be checked.
-    expect(signal?.aborted).toBe(true);
-    expect(reachability.noteFailure).toHaveBeenCalledWith('c1', expect.any(Error));
+    // The read is bounded by the client's timeout, which has the slow server checked (a
+    // `TimeoutError` is what `noteFailure` reads as no answer).
+    expect(frozen.getProgress).toHaveBeenCalledWith(1, 'A/Book', undefined, 3_000);
+    expect(reachability.noteFailure).toHaveBeenCalledWith('c1', expect.any(TimeoutError));
   });
 
   it("loadInitialProgress: a server answering inside the wait is the server's place", async () => {

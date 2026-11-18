@@ -7,7 +7,6 @@ import { identityMovePending } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { serialQueue } from '@/lib/serial-queue';
 import { tabLock } from '@/lib/tab-lock';
-import { withTimeout } from '@/lib/with-timeout';
 import { getItem, setItem } from '@/lib/storage';
 import {
   LISTENING_OPEN_SPAN_KEY,
@@ -257,11 +256,10 @@ export async function loadInitialProgress(
   // failed to hydrate). There's no server to ask, so skip the fetch and resume from the
   // durable mirror / offline queue below - exactly the unreachable-server path.
   if (api) {
-    const abort = new AbortController();
     try {
-      // null = HTTP 200, no record (new book)
-      const read = api.getProgress(libraryId, path, abort.signal);
-      server = await (waitMs === undefined ? read : withTimeout(read, waitMs, 'slow server'));
+      // null = HTTP 200, no record (new book). The client's own timeout cuts a read past
+      // `waitMs` off: a `TimeoutError`, which has the server checked (`noteFailure`).
+      server = await api.getProgress(libraryId, path, undefined, waitMs);
       serverOk = true;
     } catch (e) {
       // Reachability is per-connection, so report the failure against THIS book's own
@@ -270,9 +268,6 @@ export async function loadInitialProgress(
       // The local mirror/queue fallback below keys off `serverOk`, not this call.
       if (e instanceof ApiError) noteSuccess(connectionId);
       else noteFailure(connectionId, e);
-    } finally {
-      // A read past its wait is not left holding a connection to a frozen server.
-      abort.abort();
     }
   }
   // Cache the authoritative server value so a later offline resume has it (keep-newest,
