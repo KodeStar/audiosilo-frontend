@@ -1001,13 +1001,26 @@ async function sending<T>(
   }
 }
 
-/** Mark `entries` out from this tab until `settled` (`sendingNow`); returns the release,
- * which clears only the marks still this request's. */
+/** Mark `entries` out from this tab until `settled` (`sendingNow`); returns the release
+ * (called once `settled` has), which clears only the marks still this request's. An entry
+ * another request still carries (a flush's as the page hides, the keepalive's as a flush
+ * follows) stays out until both have ended: released with the first, a withdrawal took a
+ * finish back from under the other, which could then land it after the Undo's edit. */
 function markSending(entries: OutboxEntry[], settled: Promise<unknown>): () => void {
-  for (const e of entries) sendingNow.set(e.event.id, settled);
+  const marks = entries.map((e) => {
+    const other = sendingNow.get(e.event.id);
+    const mark = other ? Promise.allSettled([other, settled]) : settled;
+    sendingNow.set(e.event.id, mark);
+    return [e.event.id, mark] as const;
+  });
   return () => {
-    for (const e of entries)
-      if (sendingNow.get(e.event.id) === settled) sendingNow.delete(e.event.id);
+    for (const [id, mark] of marks) {
+      const clear = () => {
+        if (sendingNow.get(id) === mark) sendingNow.delete(id);
+      };
+      if (mark === settled) clear();
+      else void mark.then(clear);
+    }
   };
 }
 

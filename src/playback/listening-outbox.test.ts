@@ -1226,6 +1226,44 @@ describe('flushOutbox', () => {
       expect(taken.unsent).toBe(false);
       expect(await outboxEvents('c1')).toEqual([]);
     });
+
+    // The keepalive's mark replaced the flush's: ended first (refused at once), it released
+    // the finish while the flush's request still carried it, and once the page's stored
+    // mark ran out (`PAGE_HIDE_MARK_MS`, before a slow request's timeout) the Undo took it
+    // back from under that request, which could then land it after the edit.
+    it("an Undo waits for a flush's request still out when the page's keepalive ends first", async () => {
+      await appendEvents('c1', [finish('f')]);
+      let release: () => void = () => {};
+      const gate = new Promise<void>((r) => (release = r));
+      const c = client(async (body) => {
+        if (c.syncListening.mock.calls.length > 1) throw new TypeError('Failed to fetch');
+        await gate;
+        return answer(body);
+      });
+      const flushing = flushOutbox('c1');
+      while (c.syncListening.mock.calls.length === 0) await tick();
+      sendOnPageHide([], 'dev');
+      await tick();
+      // Every stored `out` mark has run out by the Undo: only this tab's memory holds it.
+      const later = Date.now() + 60_000;
+      const now = jest.spyOn(Date, 'now').mockReturnValue(later);
+      try {
+        let done = false;
+        const withdrawing = withdrawFinish('c1', 3, 'Author/Book').then((w) => {
+          done = true;
+          return w;
+        });
+        await tick();
+        expect(done).toBe(false);
+        release();
+        const [, taken] = await Promise.all([flushing, withdrawing]);
+        // Answered by the flush's request: the server has it, so the Undo takes its edit.
+        expect(taken.unsent).toBe(false);
+        expect(await outboxEvents('c1')).toEqual([]);
+      } finally {
+        now.mockRestore();
+      }
+    });
   });
 
   it('a 404/405 from anything but the rolled-back server keeps the outbox', async () => {
