@@ -7,6 +7,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  useWindowDimensions,
   View,
   type ScrollViewInstance,
 } from 'react-native';
@@ -348,6 +349,10 @@ export function ReaderScreen({
           fraction: message.fraction,
           sectionLabel: message.sectionLabel,
         });
+        // A relayout (a rotation, a resize, a new text size) is no move: the page it lands on
+        // can start a little before the place, and saving it pulled the place back with
+        // every one (fe#172). Shown, while where the reader is stays the place it held.
+        if (message.relayout) return;
         atNow.current = { cfi: message.cfi, progression: message.fraction };
         if (landing.current) {
           landing.current = false;
@@ -387,7 +392,11 @@ export function ReaderScreen({
     // place is saved again, and "Follow narration" asks.
     following.current = false;
     setFollowingShown(null);
-    if (current) setResumeAt({ cfi: current.cfi, fraction: current.fraction });
+    // Where it was is the place it held, as Stay saves it: never the page a relayout or the
+    // landing showed, which can start a little before that place (fe#172).
+    const held = moved.current ? atNow.current : null;
+    if (held) setResumeAt({ cfi: held.cfi, fraction: held.progression });
+    else if (!at && current) setResumeAt({ cfi: current.cfi, fraction: current.fraction });
     setAttempt((n) => n + 1);
     if (bookFailed) void refetchBook();
     if (place.isError) void place.refetch();
@@ -731,22 +740,57 @@ function ShortToc({ entries, current, onSelect }: TocProps) {
   );
 }
 
+/**
+ * The row a long contents opens at (`initialScrollIndex`): `want`, when the rows from it on
+ * fill a window's height, so the list can scroll that far. Otherwise none: a list too short
+ * below that row renders from it and never fills in the rows above it, which stay blank and
+ * can't be tapped (the player's Chapters list showed it on Android). The list then opens at
+ * its top and is scrolled to the row once laid out (`LongToc`).
+ */
+export function tocOpeningIndex(
+  want: number,
+  count: number,
+  rowHeight: number,
+  windowHeight: number,
+): number | undefined {
+  return want > 0 && (count - want) * rowHeight >= windowHeight ? want : undefined;
+}
+
 /** A long contents: only the rows near the screen are drawn. A virtual list can open in its
  * middle, and keep its place once scrolled, only where it knows every row's offset
  * (`getItemLayout`), so these rows are one height and their labels one line. Opened on
  * rows not measured, with no known offsets, it drew the rows it opened on at offset 0 and
- * went back to the first entries at the first scroll. */
+ * went back to the first entries at the first scroll. Near the end it opens at its top and
+ * is scrolled there instead (`tocOpeningIndex`). */
 function LongToc({ entries, current, onSelect }: TocProps) {
   const rowHeight = scaleCapped(TOC_ROW_H, useFontScale(), TOC_ROW_MAX_SCALE);
+  const { height: windowHeight } = useWindowDimensions();
+  const list = useRef<FlatList<TocEntry>>(null);
+  // Once per opening (the sheet mounts the list each time it opens): a later layout (a
+  // rotation) leaves the reader's own scrolling alone.
+  const placed = useRef(false);
+  const want = Math.max(0, current - TOC_LEAD_ROWS);
+  const opening = tocOpeningIndex(want, entries.length, rowHeight, windowHeight);
+  const onLayout = (e: LayoutChangeEvent) => {
+    if (placed.current) return;
+    placed.current = true;
+    if (opening !== undefined) return;
+    // As far toward the row as the list scrolls.
+    const room = entries.length * rowHeight - e.nativeEvent.layout.height;
+    const offset = Math.min(want * rowHeight, Math.max(0, room));
+    if (offset > 0) list.current?.scrollToOffset({ offset, animated: false });
+  };
   return (
     <FlatList
+      ref={list}
       testID="reader-toc"
       data={entries}
       style={{ flexShrink: 1 }}
       contentContainerClassName="px-2 pb-4"
       keyExtractor={(entry, i) => `${i}:${entry.href}`}
-      initialScrollIndex={Math.max(0, current - TOC_LEAD_ROWS)}
+      initialScrollIndex={opening}
       getItemLayout={(_, index) => ({ length: rowHeight, offset: rowHeight * index, index })}
+      onLayout={onLayout}
       renderItem={({ item, index }) => (
         <TocRow entry={item} here={index === current} height={rowHeight} onSelect={onSelect} />
       )}

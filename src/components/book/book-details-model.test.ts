@@ -1,8 +1,10 @@
 import i18n from '@/i18n';
+import { formatReleaseDate } from '@/lib/format';
 
 import {
   aboutContent,
   bookPublisher,
+  bookReleased,
   fileRows,
   FILES_SHOWN,
   labelGroups,
@@ -158,6 +160,22 @@ describe('aboutContent', () => {
     expect(aboutContent(book, undefined, undefined, t).details).toEqual([]);
   });
 
+  it("formats a day or month date the listener's way, a year or free text as it came", () => {
+    const release = (release_date: string, first_published?: string) =>
+      aboutContent(book, { ...work, first_published }, { release_date }, t).details;
+    expect(release('2012-06-26', '1937-09-21')).toEqual([
+      { label: 'Released', value: formatReleaseDate('2012-06-26') },
+      { label: 'First published', value: formatReleaseDate('1937-09-21') },
+    ]);
+    expect(formatReleaseDate('2012-06-26')).not.toBe('2012-06-26');
+    expect(release('2012-06')).toEqual([
+      { label: 'Released', value: formatReleaseDate('2012-06') },
+    ]);
+    expect(release('Summer 2012')).toEqual([{ label: 'Released', value: 'Summer 2012' }]);
+    // Compared as stated: the same day twice is still one row.
+    expect(release('2012-06-26', '2012-06-26')).toHaveLength(1);
+  });
+
   it('shows one date when first published is the release date (fe#291)', () => {
     expect(
       aboutContent(book, { ...work, first_published: '1813' }, { release_date: '1813' }, t).details,
@@ -217,6 +235,16 @@ describe('bookPublisher', () => {
     expect(bookPublisher({ publisher: ' Server P ' }, recording)).toBe('Server P');
     expect(bookPublisher({ publisher: '  ' }, recording)).toBe('Community P');
     expect(bookPublisher({}, undefined)).toBeUndefined();
+  });
+});
+
+describe('bookReleased', () => {
+  it("is the recording's release, else the server's published date", () => {
+    // A match fills `published` with the year the work was first published.
+    expect(bookReleased({ published: '1937' }, { release_date: '2012-06-26' })).toBe('2012-06-26');
+    expect(bookReleased({ published: '2010-08-31' }, undefined)).toBe('2010-08-31');
+    expect(bookReleased({ published: '2010' }, { release_date: '' })).toBe('2010');
+    expect(bookReleased({}, undefined)).toBeUndefined();
   });
 });
 

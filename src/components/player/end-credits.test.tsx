@@ -72,6 +72,8 @@ jest.mock('@/api/provider', () => {
 });
 
 let mockCaps: Record<string, boolean | undefined> = {};
+let mockMeta: unknown;
+let mockPublisher: string | undefined;
 let mockEnded = true;
 let mockSavedFinished = false;
 let mockSavedSpeed = 1.25;
@@ -100,10 +102,11 @@ jest.mock('@/api/hooks', () => {
         series_index: 1,
         duration: 36_000,
         asin: 'B003ZWFO7E',
-        published: '2010',
+        published: '2010-08-31',
+        publisher: mockPublisher,
       },
     }),
-    useBookMeta: () => ({ data: undefined }),
+    useBookMeta: () => ({ data: mockMeta }),
     useBookProgress: () => ({
       data: { playback_speed: mockSavedSpeed, finished: mockSavedFinished },
     }),
@@ -128,6 +131,7 @@ jest.mock('@/playback/up-next-sources', () => ({ upNextSources: () => ({}) }));
 /* eslint-disable import/first */
 import { queryClient } from '@/api/provider';
 import { contentKey } from '@/lib/content-key';
+import { formatReleaseDate } from '@/lib/format';
 import { playerHref } from '@/lib/paths';
 import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
@@ -211,6 +215,8 @@ beforeEach(() => {
   ] satisfies QueueEntry[]);
   queryClient.setQueryData(['server', 'c1'], { capabilities: { queue: true } });
   mockCaps = { queue: true, next_book: true, ratings: true, user_stats: true };
+  mockMeta = undefined;
+  mockPublisher = undefined;
   mockStats = undefined;
   mockEnded = true;
   mockSavedFinished = false;
@@ -723,7 +729,41 @@ describe('EndCredits', () => {
     expect(page().props.importantForAccessibility).toBe('no-hide-descendants');
     expect(screen.getByText('Read by')).toBeTruthy();
     expect(screen.getByText('Released')).toBeTruthy();
-    expect(screen.getByText('2010')).toBeTruthy();
+    // The date the listener's way, never the stored `2010-08-31`.
+    expect(screen.getByText(formatReleaseDate('2010-08-31'))).toBeTruthy();
+    expect(screen.queryByText('2010-08-31')).toBeNull();
     expect(screen.getByText(PATH)).toBeTruthy();
+  });
+
+  it("shows the matched recording's release date, as the book page does", async () => {
+    // A match fills the book's `published` with the year the work was first published:
+    // "Released" is this audiobook's own date.
+    mockCaps = { ...mockCaps, metadata: true };
+    mockMeta = {
+      matched: true,
+      work: { id: 'w1', title: 'The Way of Kings' },
+      recording: { id: 'r1', narrators: [], release_date: '2011-03-15', publisher: 'Macmillan' },
+    };
+    await mount();
+    await fireEvent.press(screen.getByText('Credits'));
+    expect(screen.getByText(formatReleaseDate('2011-03-15'))).toBeTruthy();
+    expect(screen.queryByText(formatReleaseDate('2010-08-31'))).toBeNull();
+    // No publisher of the server's own: the recording's.
+    expect(screen.getByText('Macmillan')).toBeTruthy();
+  });
+
+  it("shows the server's own publisher before the recording's, as the book page does", async () => {
+    // An admin's edit or an Audiobookshelf metadata.json: on a book nothing matched, too.
+    mockPublisher = 'Tor Books';
+    mockCaps = { ...mockCaps, metadata: true };
+    mockMeta = {
+      matched: true,
+      work: { id: 'w1', title: 'The Way of Kings' },
+      recording: { id: 'r1', narrators: [], publisher: 'Macmillan' },
+    };
+    await mount();
+    await fireEvent.press(screen.getByText('Credits'));
+    expect(screen.getByText('Tor Books')).toBeTruthy();
+    expect(screen.queryByText('Macmillan')).toBeNull();
   });
 });

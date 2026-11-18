@@ -3,7 +3,12 @@ import { View } from 'react-native';
 
 import { ApiError } from '@/api/client';
 import type { PodcastSearchParams } from '@/api/hooks';
-import type { PodcastDiscoveryResult, PodcastFollowResult, PodcastRequest } from '@/api/types';
+import type {
+  PodcastDiscoveryResult,
+  PodcastFollowResult,
+  PodcastRequest,
+  PodcastShow,
+} from '@/api/types';
 import { podcastShow } from '@/testing/podcast-fixtures';
 import { mountWithPortal } from '@/testing/render-overlay';
 
@@ -32,6 +37,7 @@ const mockRefetch = jest.fn();
 const mockFollow = jest.fn();
 jest.mock('expo-router', () => ({ useIsFocused: () => true }));
 let mockRequests: Partial<PodcastRequest>[] = [];
+let mockShows: PodcastShow[] = [];
 jest.mock('@/api/hooks', () => {
   const { CapabilityError } = jest.requireActual('@/api/hooks');
   return {
@@ -59,6 +65,7 @@ jest.mock('@/api/hooks', () => {
     },
     useFollowPodcastByUrl: () => ({ mutateAsync: mockFollow, isPending: false }),
     useFollowRequests: () => ({ data: mockRequests }),
+    usePodcastShows: () => ({ data: mockShows }),
   };
 });
 
@@ -104,6 +111,7 @@ beforeEach(() => {
   mockToast.mockReset();
   mockOpenShow.mockReset();
   mockRequests = [];
+  mockShows = [];
 });
 
 describe('DirectorySearch', () => {
@@ -306,6 +314,65 @@ describe('DirectorySearch', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Follow History Hour' }));
     await fireEvent.press(await screen.findByRole('button', { name: 'Open show' }));
     expect(mockOpenShow).toHaveBeenCalledWith('c1', 7, 'History Hour');
+  });
+
+  it('marks a show the listener already follows here as Following, before any Follow (fe#126)', async () => {
+    const feed = (name: string) => `https://feeds.example.com/${name}.xml`;
+    mockShows = [
+      podcastShow({ library_id: 7, path: 'History Hour', feed_url: feed('history') }),
+      // In the library, but someone else's follow: still Follow.
+      podcastShow({ path: 'Other', feed_url: feed('other'), following: false }),
+    ];
+    mockSearch = {
+      data: {
+        provider: 'itunes',
+        query: 'h',
+        country: 'GB',
+        results: [result(), result({ title: 'Other', feed_url: feed('other') })],
+      },
+    };
+    await mount();
+    await search('history');
+    expect(screen.queryByRole('button', { name: 'Follow History Hour' })).toBeNull();
+    expect(screen.getByText('Following')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Open show' }));
+    expect(mockOpenShow).toHaveBeenCalledWith('c1', 7, 'History Hour');
+    expect(screen.getByRole('button', { name: 'Follow Other' })).toBeTruthy();
+    expect(mockFollow).not.toHaveBeenCalled();
+  });
+
+  it('marks a followed show whose feed moved to https as Following on its http listing', async () => {
+    mockShows = [
+      podcastShow({ library_id: 7, path: 'History Hour', feed_url: 'https://feeds.example.com/h' }),
+    ];
+    mockSearch = {
+      data: {
+        provider: 'itunes',
+        query: 'h',
+        country: 'GB',
+        results: [result({ feed_url: 'http://feeds.example.com/h' })],
+      },
+    };
+    await mount();
+    await search('history');
+    expect(screen.queryByRole('button', { name: 'Follow History Hour' })).toBeNull();
+    expect(screen.getByText('Following')).toBeTruthy();
+  });
+
+  it('reads Following once the listener follows a show whose Follow here had failed', async () => {
+    mockSearch = { data: { provider: 'itunes', query: 'h', country: 'GB', results: [result()] } };
+    mockFollow.mockResolvedValueOnce({ state: 'subscribing', request: { id: 3 } });
+    mockRequests = [{ id: 3, state: 'failed', library_id: 7, show_path: null }];
+    await mount();
+    await search('history');
+    await fireEvent.press(screen.getByRole('button', { name: 'Follow History Hour' }));
+    expect(await screen.findByTestId('discovery-result-failed')).toBeTruthy();
+    // Followed by its address (the page's own form) after that: the list has the show.
+    mockShows = [podcastShow({ library_id: 7, path: 'History Hour', feed_url: result().feed_url })];
+    await fireEvent.changeText(screen.getByTestId('directory-search-input'), 'history ');
+    expect(screen.queryByTestId('discovery-result-failed')).toBeNull();
+    expect(screen.getByText('Following')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Follow History Hour' })).toBeNull();
   });
 
   it('toasts why a follow was refused', async () => {

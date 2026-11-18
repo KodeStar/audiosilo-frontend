@@ -137,7 +137,7 @@ jest.mock('./reading-progress', () => ({
 /* eslint-disable import/first */
 import { EbookStorageError, EbookTooLargeError } from './ebook-errors';
 import { FOLLOW_PILL_ROOM } from './page-edge';
-import { ReaderScreen } from './reader-screen';
+import { ReaderScreen, tocOpeningIndex } from './reader-screen';
 import { loadReaderTheme, saveReaderTheme } from './reader-settings';
 /* eslint-enable import/first */
 
@@ -234,6 +234,21 @@ describe('ReaderScreen', () => {
       await opened(CFI_A);
       await say({ type: 'progress', cfi: CFI_B, fraction: 0.3, sectionLabel: '' });
       await unmount();
+      expect(saveReaderPlace).toHaveBeenCalledWith({}, 'c1', 1, 'A/Book', {
+        cfi: CFI_B,
+        progression: 0.3,
+      });
+    });
+
+    it("shows a relayout's page but saves nothing for it, keeping the place it held (fe#172)", async () => {
+      const { unmount } = await mount();
+      await opened(CFI_A);
+      await say({ type: 'progress', cfi: CFI_B, fraction: 0.3, sectionLabel: '' });
+      // A rotation lands on a page that starts a little earlier: shown, not saved.
+      await say({ type: 'progress', cfi: CFI_A, fraction: 0.29, sectionLabel: '', relayout: true });
+      expect(screen.getByText('29% through the book')).toBeTruthy();
+      await unmount();
+      expect(saveReaderPlace).toHaveBeenCalledTimes(1);
       expect(saveReaderPlace).toHaveBeenCalledWith({}, 'c1', 1, 'A/Book', {
         cfi: CFI_B,
         progression: 0.3,
@@ -446,6 +461,37 @@ describe('ReaderScreen', () => {
       expect(screen.getByRole('button', { name: 'Entry 1500' })).toBeTruthy();
       expect(screen.queryByRole('button', { name: 'Entry 0' })).toBeNull();
       expect(shown()).toBeLessThan(100);
+    });
+
+    it('opens a long contents at its top and scrolls down when the current entry is near its end', async () => {
+      const long = Array.from({ length: 200 }, (_, i) => ({
+        label: `Entry ${i}`,
+        href: `e${i}.xhtml`,
+        depth: 0,
+      }));
+      const scrollTo = jest.mocked(ScrollView.prototype.scrollTo);
+      await mount();
+      await waitFor(() => expect(mockHost).not.toBeNull());
+      await say({ type: 'opened', title: 'Alice', toc: long, rtl: false });
+      await say({ type: 'progress', cfi: CFI_A, fraction: 0.99, sectionLabel: 'Entry 199' });
+      await fireEvent.press(screen.getByLabelText('Contents'));
+
+      // Opened at 197, the three rows below it fill no window: the list would draw from 197
+      // and leave the rows above it blank. It opens at its top instead.
+      const list = screen.getByTestId('reader-toc');
+      expect(list).toHaveProp('initialScrollIndex', undefined);
+      expect(screen.getByRole('button', { name: 'Entry 0' })).toBeTruthy();
+      // Then, once laid out, as far toward the entry as the list scrolls.
+      const rowHeight = scaleCapped(44, readFontScale(), 3.2);
+      scrollTo.mockClear();
+      await fireEvent(list, 'layout', { nativeEvent: { layout: { width: 320, height: 600 } } });
+      expect(scrollTo).toHaveBeenCalledWith(
+        expect.objectContaining({ y: 200 * rowHeight - 600, animated: false }),
+      );
+      // Once per opening: a later layout (a rotation) leaves the reader's scrolling alone.
+      scrollTo.mockClear();
+      await fireEvent(list, 'layout', { nativeEvent: { layout: { width: 600, height: 320 } } });
+      expect(scrollTo).not.toHaveBeenCalled();
     });
   });
 
@@ -791,6 +837,16 @@ describe('ReaderScreen', () => {
     await waitFor(() => expect(mockHost?.at).toEqual({ cfi: CFI_B, fraction: 0.6 }));
   });
 
+  it('opens again at the place it held on Try again, not where a relayout showed (fe#172)', async () => {
+    await mount();
+    await opened(CFI_A);
+    await say({ type: 'progress', cfi: CFI_B, fraction: 0.6, sectionLabel: 'II' });
+    await say({ type: 'progress', cfi: CFI_A, fraction: 0.59, sectionLabel: 'II', relayout: true });
+    await act(async () => mockHost!.onLoadError(new ReaderStartError()));
+    await fireEvent.press(screen.getByText('Try again'));
+    await waitFor(() => expect(mockHost?.at).toEqual({ cfi: CFI_B, fraction: 0.6 }));
+  });
+
   it('turns a right-to-left book forward from the left edge', async () => {
     await mount();
     await opened(CFI_A, { rtl: true });
@@ -987,5 +1043,15 @@ describe('ReaderScreen', () => {
       await unmount();
       expect(saveReaderPlace).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('tocOpeningIndex', () => {
+  it('opens at the row only when the rows from it on fill the window', () => {
+    // 10 rows of 50 below row 190 fill a 500-high window; 9 rows do not.
+    expect(tocOpeningIndex(190, 200, 50, 500)).toBe(190);
+    expect(tocOpeningIndex(191, 200, 50, 500)).toBeUndefined();
+    // The top needs no opening index.
+    expect(tocOpeningIndex(0, 200, 50, 500)).toBeUndefined();
   });
 });

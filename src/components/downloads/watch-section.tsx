@@ -3,6 +3,7 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { useServerInfo } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import { resolveAccountCid } from '@/components/account/account-model';
 import { BookCover } from '@/components/library/book-cover';
@@ -26,6 +27,7 @@ import { removeFromWatch, sendBookToWatch } from '@/watch/send';
 import { useWatchStatus, watchErrorText } from '@/watch/use-watch';
 import { forgetRow, ledgerRows, useWatchLedger } from '@/watch/watch-ledger';
 import {
+  serverServesWatch,
   watchAccountOf,
   type WatchCardStatus,
   watchCardStatus,
@@ -75,6 +77,8 @@ export function WatchSection({ onReveal }: { onReveal: (y: number) => void }) {
   const pairUntil = useWatchStore((s) => (connection ? s.pairUntil[connection.id] : undefined));
   const ledger = useWatchLedger((s) => s.ledger);
   const visible = !!connection && watchSectionVisible(watch, connection.user);
+  // Send again only where the server still makes what a watch plays, as Send to watch asks.
+  const serves = serverServesWatch(useServerInfo(connection?.id).data?.renditions);
   // A sent row stops claiming progress after 7 days, with nothing else to say so: no hurry, each
   // tick builds the rows anew. A pair on its way is what the minute is for, as on the account card.
   const now = useNow(pairUntil === undefined ? 3_600_000 : 60_000, visible);
@@ -110,6 +114,7 @@ export function WatchSection({ onReveal }: { onReveal: (y: number) => void }) {
               row={row}
               connection={connection}
               first={i === 0}
+              serves={serves}
               onRemove={setRemoving}
             />
           ))}
@@ -200,11 +205,14 @@ const WatchBookRow = memo(
     row,
     connection,
     first,
+    serves,
     onRemove,
   }: {
     row: WatchRow;
     connection: Connection;
     first: boolean;
+    /** The server makes what a watch plays (`serverServesWatch`): Send again is offered. */
+    serves: boolean;
     onRemove: (row: WatchRow) => void;
   }) {
     const { t } = useTranslation();
@@ -212,6 +220,7 @@ const WatchBookRow = memo(
     const phone = useLayout() === 'phone';
     const api = useOptionalApi(connection.id);
     const actions = rowActions(row.phase);
+    const offerAgain = actions.sendAgain && !!api && serves;
     const sendAgain = () => {
       if (!api) return;
       sendBookToWatch(api, connection, row.library_id, {
@@ -251,7 +260,7 @@ const WatchBookRow = memo(
         }
         actions={
           <>
-            {actions.sendAgain && api ? (
+            {offerAgain ? (
               <RowAction
                 variant="outline"
                 icon="rotate"
@@ -266,7 +275,7 @@ const WatchBookRow = memo(
               <RowAction
                 variant="ghost"
                 icon="trash"
-                iconOnly={phone || actions.sendAgain}
+                iconOnly={phone || offerAgain}
                 title={t('downloads.watch.remove.confirm')}
                 accessibilityLabel={t('downloads.watch.removeLabel', { title: row.title })}
                 onPress={() => onRemove(row)}
@@ -289,6 +298,7 @@ const WatchBookRow = memo(
   },
   (a, b) =>
     a.first === b.first &&
+    a.serves === b.serves &&
     a.connection === b.connection &&
     a.row.library_id === b.row.library_id &&
     a.row.path === b.row.path &&

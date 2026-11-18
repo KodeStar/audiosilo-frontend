@@ -8,6 +8,13 @@ describe('parseReaderMessage', () => {
     expect(
       parseReaderMessage({ type: 'progress', cfi: CFI, fraction: 0.5, sectionLabel: 'One' }),
     ).toEqual({ type: 'progress', cfi: CFI, fraction: 0.5, sectionLabel: 'One' });
+    // A relayout's place (fe#172): only a true flag is one.
+    expect(
+      parseReaderMessage({ type: 'progress', cfi: CFI, fraction: 0.5, relayout: true }),
+    ).toEqual({ type: 'progress', cfi: CFI, fraction: 0.5, sectionLabel: '', relayout: true });
+    expect(
+      parseReaderMessage({ type: 'progress', cfi: CFI, fraction: 0.5, relayout: 'yes' }),
+    ).toEqual({ type: 'progress', cfi: CFI, fraction: 0.5, sectionLabel: '' });
     expect(parseReaderMessage({ type: 'loading', value: true })).toEqual({
       type: 'loading',
       value: true,

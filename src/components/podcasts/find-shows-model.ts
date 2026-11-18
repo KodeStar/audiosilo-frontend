@@ -276,6 +276,20 @@ export function requestEnd(
   return r.state === 'cancelled' ? { kind: 'cancelled' } : { kind: 'failed', error: r.error };
 }
 
+/**
+ * The feed addresses a followed show answers to in directory results: its own, and the
+ * same address over the other of http and https. A feed that moved there with a permanent
+ * redirect (an http feed now served over https, the common case) is stored at the address
+ * it moved to while the directories still list the old one, and a follow by the old one
+ * finds the show anyway (the server keeps the hashes it moved from).
+ */
+export function feedAddressesOf(feedUrl: string): string[] {
+  const m = /^(https?):\/\//i.exec(feedUrl);
+  if (!m) return [feedUrl];
+  const other = m[1].toLowerCase() === 'https' ? 'http' : 'https';
+  return [feedUrl, `${other}://${feedUrl.slice(m[0].length)}`];
+}
+
 /** An import's rows with each queued one's request read live: followed once it ended
  * done, cancelled, or an error (with the request's error) once it ended otherwise. A
  * request the list does not hold stands as the import's answer said: the import's own

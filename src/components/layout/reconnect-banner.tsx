@@ -6,6 +6,7 @@ import { effectiveUrl } from '@/api/address-route';
 import { holdReconnect } from '@/components/connect/invite-handoff';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { currentNavState, focusedRoute } from '@/lib/root-stack';
 import { cn } from '@/lib/utils';
 import { useProfileConnections } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
@@ -14,17 +15,45 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 /** The brand strip a reconnect line sits on (the banner, kids mode's signed-out line). */
 export const RECONNECT_STRIP_CLASS = 'border-l-4 border-l-brand bg-brand/10';
 
+/** The connect flow's sign-in step, as the router names it (`src/app/connect/sign-in.tsx`). */
+const SIGN_IN_ROUTE = 'sign-in';
+
+/** The reconnect on its way (`reconnectConnection`), so a second tap joins it. */
+let reconnecting: Promise<void> | null = null;
+
+/** How long a pushed sign-in step can take to show on the stack. expo-router only queues a
+ * push and applies it in a later render (a transition, which a tap interrupts), so for a
+ * moment the stack says nothing of the step on its way. Bounded: a push that never lands
+ * cannot hold Reconnect back. */
+const PUSH_LANDS_MS = 1000;
+/** When the sign-in step was last pushed (`Date.now()`), or null. */
+let pushedAt: number | null = null;
+
 /** Start the reconnect flow for `conn`: the sign-in step for its server, through the
  * address the connection uses NOW (`effectiveUrl`; away from home that is its away
  * address, not the home address it may have been paired with, which can't answer).
  * Signing in keeps the connection's own `serverUrl` (`repairPlan`). The connection it
- * re-pairs is handed over in memory (`holdReconnect`). */
-export async function reconnectConnection(conn: Connection): Promise<void> {
+ * re-pairs is handed over in memory (`holdReconnect`). One at a time: a double tap while
+ * one is on its way, while its pushed step has yet to reach the stack, or once that step is
+ * on screen, pushes no second step. */
+export function reconnectConnection(conn: Connection): Promise<void> {
+  const state = currentNavState();
+  if (focusedRoute(state)?.name === SIGN_IN_ROUTE) return Promise.resolve();
+  // Only against a stack that can be read: with none there is no push to wait for.
+  if (state && pushedAt !== null && Date.now() - pushedAt < PUSH_LANDS_MS) return Promise.resolve();
+  reconnecting ??= startReconnect(conn).finally(() => {
+    reconnecting = null;
+  });
+  return reconnecting;
+}
+
+async function startReconnect(conn: Connection): Promise<void> {
   const server = effectiveUrl(conn);
   await useSession.getState().setPendingServerUrl(server);
   // Which connection the sign-in re-pairs goes in memory, never in the route (fe#298).
   holdReconnect(server, conn.id);
   router.push({ pathname: '/connect/sign-in', params: { serverName: conn.name } });
+  pushedAt = Date.now();
 }
 
 /**
