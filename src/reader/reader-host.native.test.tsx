@@ -321,6 +321,15 @@ describe('ReaderHost (app)', () => {
     await say({ type: 'ready' });
     await say({ type: 'progress', cfi: 'epubcfi(/6/8!/4/2)', fraction: 0.4, sectionLabel: 'II' });
     expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'progress' }));
+    // A rotation's page starts a little before that place: shown, not where it reopens.
+    await say({
+      type: 'progress',
+      cfi: 'epubcfi(/6/8!/4/1)',
+      fraction: 0.39,
+      sectionLabel: 'II',
+      relayout: true,
+    });
+    expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ relayout: true }));
     const first = latest();
     await act(async () => first.props.onContentProcessDidTerminate());
     expect(mockViews).toHaveLength(2);

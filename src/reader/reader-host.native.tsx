@@ -116,7 +116,8 @@ export function ReaderHost({
   });
   // The WebView's life: a new one after its content process died.
   const [generation, setGeneration] = useState(0);
-  // Where the reader last was, to reopen there after a crash (else `at`).
+  // Where the reader last was, to reopen there after a crash (else `at`): the place it
+  // held, never the page a relayout showed, which can start a little before it (fe#172).
   const lastPlace = useRef<ReaderPlace | undefined>(undefined);
   // When this WebView last said `opened` (null before it did), for the reload budget.
   const openedAt = useRef<number | null>(null);
@@ -206,7 +207,8 @@ export function ReaderHost({
       onReady: () => void sendBook(),
       observe: (message) => {
         if (message.type === 'progress') {
-          lastPlace.current = { cfi: message.cfi, fraction: message.fraction };
+          if (!message.relayout)
+            lastPlace.current = { cfi: message.cfi, fraction: message.fraction };
         } else if (message.type === 'opened') {
           openedAt.current = Date.now();
         }
