@@ -1860,7 +1860,10 @@ describe('the place before a finish (writeFinishedMirror)', () => {
       finished: true,
       before: { position: 48, finished: false, updated_at: place.updated_at },
     });
-    // The server's row for the finish read back: not this device's Mark.
+    // The server's row for the finish read back: not this device's Mark, so the record no
+    // longer carries the place (carried on, an old finish's place would stand for every
+    // later one). The Undo in the tab that marked it keeps that place itself, outside the
+    // mirror (`placeBefore` in the store), so it still goes back to the file place.
     await writeMirror({ ...finish, updated_at: '2026-01-02T00:00:01Z', server_clock: true });
     expect(await readMirrorOf('c1', 1, 'A/Book')).not.toHaveProperty('before');
   });

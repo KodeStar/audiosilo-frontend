@@ -1635,6 +1635,8 @@ describe('Mark as finished outside the player (finish-route)', () => {
       playback_speed: 1,
       device_id: 'dev-1',
       updated_at: '2026-01-01T00:00:00Z',
+      file: 'Other/Book/3.mp3',
+      file_pos: 12,
     };
     mockReadMirror.mockResolvedValue(before);
     try {
@@ -1651,10 +1653,17 @@ describe('Mark as finished outside the player (finish-route)', () => {
       const edit = jest.fn(async () => {});
       await expect(undoFinish(undoRef, edit)).resolves.toBe('undone');
       expect(edit).toHaveBeenCalledTimes(1);
+      // The row read back replaced the record that carried the place before the finish
+      // (`ProgressSave.before`): the tab that marked it still knows that place, so the Undo
+      // keeps its file place too. On the position alone, a downloaded book opened offline
+      // at the wrong file.
+      expect(echo).not.toHaveProperty('before');
       expect(mockMirrorUpdates.at(-1)).toMatchObject({
         path: 'Other/Book',
         finished: false,
         position: 48,
+        file: 'Other/Book/3.mp3',
+        file_pos: 12,
         updated_at: '2999-01-01T00:00:00.001Z',
       });
     } finally {
