@@ -4330,8 +4330,9 @@ export async function stopPlaybackForConnection(connectionId: string): Promise<v
  * Stop playback through the connection and wait out the stop's span close, which waits its
  * turn into the outbox (`closeSpan`): past that turn (`appendInTurn` of nothing, behind it),
  * the outbox holds the span. Run before a removal's purges, by the removing tab
- * (`teardownBeforeTokenRevoke`) and by every other tab told of it (`removed-in-other-tab.ts`):
- * done after them, the place and the span landed once they were purged.
+ * (`teardownBeforeTokenRevoke`) and by a tab playing through the connection when told of it,
+ * or when a sign-in retires it (`removed-in-other-tab.ts`): done after them, the place and
+ * the span landed once they were purged.
  */
 export async function stopPlaybackAndCloseSpan(connectionId: string): Promise<void> {
   await stopPlaybackForConnection(connectionId);

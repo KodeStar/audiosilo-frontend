@@ -7,7 +7,8 @@ import { stopPlaybackAndCloseSpan, usePlayer } from './store';
  * stopped its own playback through it first (`teardownBeforeTokenRevoke`); this tab stops
  * too, before the removal's cleanups run here (`onConnectionRemovedInOtherTab`), so the
  * stop's place and its span's close are written before the purges take them, not after.
- * Nothing is sent: the token is gone.
+ * Nothing is sent: the token is gone. The same when a sign-in here retires a stale identity
+ * the book plays through (any platform: the connect flow runs no teardown of its own).
  *
  * A tab with no book loaded through the connection does nothing: there is nothing to stop,
  * and waiting a turn into the outbox would take the span lock every tab shares (a

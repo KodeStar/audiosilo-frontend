@@ -267,12 +267,15 @@ function listenForRemovals(): void {
     removalChannel()?.subscribe((m) => void removedInOtherTab(m).catch(() => {})) ?? null;
 }
 
-// What a tab does first when another tab removed a connection, before the cleanups: what
-// the removing tab did before its removal (the player stops playing through it).
+// What a tab does first, before the cleanups, when a connection goes with no teardown run
+// here before it (the player stops playing through it): another tab removed it (that tab
+// ran its own, `teardownBeforeTokenRevoke`), or a sign-in here retired it as a stale
+// identity (`setSession`).
 const otherTabRemovalSteps = new Set<(id: string) => void | Promise<void>>();
 
 /** Register a step run first when ANOTHER tab of the web player removed a connection (the
- * removing tab ran it itself before removing: `teardownBeforeTokenRevoke`). Returns an
+ * removing tab ran it itself before removing: `teardownBeforeTokenRevoke`), and when a
+ * sign-in here retires a stale identity (nothing ran before that). Returns an
  * unsubscribe fn. */
 export function onConnectionRemovedInOtherTab(
   fn: (id: string) => void | Promise<void>,
@@ -739,13 +742,14 @@ export const useSession = create<SessionState>()((set, get) => ({
     });
     // Purge each dropped stale identity's scoped state (downloads, progress mirror/queue,
     // query cache, scroll memory), same semantics as removeConnection: run every cleanup,
-    // never let one block the re-pair.
+    // never let one block the re-pair. No teardown ran before this (the connect flow has
+    // none): a book still playing through the retired identity (its download) stops first,
+    // as it does in a tab told of a removal, so its place and span are written before the
+    // purge, not after it, and nothing plays on from files the purge deletes.
     if (stale.length) {
-      await runEach(
-        removalCleanups,
-        stale.map((c) => c.id),
-        'stale-identity cleanup',
-      );
+      const retired = stale.map((c) => c.id);
+      await runEach(otherTabRemovalSteps, retired, 'stale-identity stop');
+      await runEach(removalCleanups, retired, 'stale-identity cleanup');
     }
     return id;
   },

@@ -69,7 +69,7 @@ export function startRootServices({ late = false }: { late?: boolean } = {}): ()
     // the book finished; see the module.
     startUndoneElsewhere(),
     // Web: a connection another tab removed stops playing here too, before this tab purges
-    // what it holds of it; see the module.
+    // what it holds of it (and a stale identity a sign-in retires, anywhere); see the module.
     startRemovedInOtherTab(),
     // "The rest of this book isn't downloaded", when the player paused at the end of a
     // download that lacks the rest of its book (D3, fe#185); see the module.
