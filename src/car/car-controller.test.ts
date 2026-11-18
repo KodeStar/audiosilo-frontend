@@ -1805,6 +1805,27 @@ describe('play requests', () => {
       expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loadedP, expect.any(Function));
     });
 
+    // Called off while its place was looked up: the store never named X (`playBook` sets the
+    // book after the lookup), yet X's switch let P's saves, save loop and span go. P, the book
+    // the store still names and the engine plays, is taken back all the same.
+    it('takes the engine book back when the store still names it (called off in its lookup)', async () => {
+      usePlayer.setState({
+        nowPlaying: { ...loadedP, queue: { offsets: [0] } },
+        snapshot: { state: 'playing', trackIndex: 0, position: 12, duration: 100, rate: 1 },
+      });
+      stop = startCarSync();
+      await settle();
+      mockStartBookInPlace.mockImplementationOnce(() => new Promise<boolean>((r) => (finish = r)));
+      mockNative.playRequest?.(carItemId(ref));
+      await settle();
+      mockNative.playCancel?.(carItemId(ref), true);
+      mockNative.getLoadedBook.mockResolvedValue(loadedP);
+      usePlayer.getState().adoptLoaded.mockClear();
+      finish(true);
+      await settle();
+      expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loadedP, expect.any(Function));
+    });
+
     it('adopts nothing for a timed-out one, nor when the engine holds the book that gave way', async () => {
       stop = startCarSync();
       await settle();

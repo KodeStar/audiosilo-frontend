@@ -1160,12 +1160,14 @@ export async function handleCarPlayRequest(id: string): Promise<void> {
   }
   // Gave way to a play native made in its place (fe#350): the store takes the engine's book
   // back (`checkLoadedBook`), which this start's switch let go of (its saves' server, its
-  // listening span). The store now names the book that gave way, so nothing is adopted when
-  // the engine holds that one (called off during its own load: it stays loaded, paused). A
-  // check already running read the store before the switch: it ends first.
+  // save loop, its listening span). Called off while its place was looked up, the store
+  // still names that book (the switch never set another), so it is adopted all the same;
+  // nothing is adopted when the engine holds the book that gave way (called off during its
+  // own load: it stays loaded, paused). A check already running read the store before the
+  // switch: it ends first, and this one is never joined to it.
   if (started && superseded()) {
-    await checking;
-    await checkLoadedBook();
+    while (checking) await checking;
+    await checkLoadedBook(ref);
   }
 }
 
@@ -1390,9 +1392,12 @@ let checking: Promise<void> | null = null;
  * it, or it kept playing while JS restarted), adopt it. Never while a book the store started
  * is still loading (the service then still reports the previous one), and never when the
  * store changed its book while the service was asked (a book finished or stopped: the
- * service is about to drop the one it reported, which must not come back).
+ * service is about to drop the one it reported, which must not come back). `gaveWay`: a car
+ * start of that book gave way to the engine's (`handleCarPlayRequest`, fe#350); its switch let
+ * the store's book go, so the engine's book is adopted even when the store names it, unless
+ * it is the one that gave way.
  */
-function checkLoadedBook(): Promise<void> {
+function checkLoadedBook(gaveWay?: BookRef): Promise<void> {
   if (Platform.OS !== 'android') return Promise.resolve();
   checking ??= (async () => {
     try {
@@ -1416,7 +1421,8 @@ function checkLoadedBook(): Promise<void> {
         request(true);
         return;
       }
-      if (player.nowPlaying && contentKeyOf(player.nowPlaying) === contentKeyOf(loaded)) return;
+      const named = !!player.nowPlaying && contentKeyOf(player.nowPlaying) === contentKeyOf(loaded);
+      if (named && (!gaveWay || contentKeyOf(gaveWay) === contentKeyOf(loaded))) return;
       // Read again once the book's source is read (the engine plays on meanwhile).
       if (await player.adoptLoaded(loaded, () => carNative.getLoadedBook())) request(true);
       else if (refused(loaded)) {
