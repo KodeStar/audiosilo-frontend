@@ -2354,7 +2354,8 @@ media GETs only.
     (a load that lands after the unload is reset, `stop()`'s race too); a finish or a
     progress edit that then fails loads it again, paused where it was (`reloadLeftBook`), and
     the page shows a toast while a slow one waits on its server. A `finish` event that could
-    not be queued puts the mirror back to its record before the finish first
+    not be queued puts the mirror back to its record before the finish first, or removes the
+    finish's own record when the book had none (`updateMirror` changing it to null)
     (`recordFinish`: read finished, the book loaded again started over at 0). Undo of Mark as not
     finished leaves a book started since the same way, then finishes it again by the route
     Mark as finished takes (`recordFinished` in `book-actions.tsx`): a `finish` event where

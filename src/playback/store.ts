@@ -1341,6 +1341,13 @@ async function recordFinish(ref: FinishRef): Promise<void> {
     // Left finished, the book loaded again after the failure (`reloadLeftBook`) started
     // over at 0, and its next play sent that restart over the place the server holds.
     if (prior && !prior.finished) await unrecordFinish({ ...ref, position: prior.position }, since);
+    // No record before it: the finish's own record goes (only it: one written since stands).
+    else if (!prior && connectionGeneration(ref.connectionId) === since) {
+      await updateMirror(ref.connectionId, ref.libraryId, ref.path, (now) =>
+        now.finished && now.device_id === id && now.updated_at === at ? null : now,
+      ).catch(() => undefined);
+      invalidateFinishedProgress(queryClient, ref.connectionId, ref.libraryId, ref.path);
+    }
     beforeFinish.delete(contentKeyOf(ref));
     if (finishSent === contentKeyOf(ref)) finishSent = null;
     throw e;

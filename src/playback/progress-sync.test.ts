@@ -34,6 +34,7 @@ import {
   resumeLookupOf,
   saveProgress,
   serverRowOf,
+  updateMirror,
   writeMirror,
 } from '@/playback/progress-sync';
 import { provideStoredSkews } from '@/playback/stored-skews';
@@ -946,6 +947,16 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
     const m = await readMirrorOf('c1', 1, 'A/Book');
     expect(m).not.toHaveProperty('file');
     expect(m?.ack_version).toBe(7);
+  });
+
+  // A finish never queued on a book with no record before it (`recordFinish`): its record
+  // goes, and only the book's.
+  it('updateMirror removes a record changed to null', async () => {
+    await writeMirror({ ...save, finished: true, updated_at: '2026-01-04T00:00:00Z' });
+    await writeMirror({ ...save, path: 'B/Book', updated_at: '2026-01-04T00:00:00Z' });
+    await updateMirror('c1', 1, 'A/Book', () => null);
+    expect(await readMirrorOf('c1', 1, 'A/Book')).toBeNull();
+    expect(await readMirrorOf('c1', 1, 'B/Book')).toMatchObject({ path: 'B/Book' });
   });
 
   // fe#258 (fe#272's partial fix): a read of the server's row on its way as the Undo was

@@ -802,12 +802,14 @@ function mergeKept(
 /**
  * Change a book's mirror record in place (Sync v2: its acknowledged version, the offers
  * answered), creating it from `row` when there is none yet. Nothing when there is neither.
+ * A change to null removes the record (a finish that was never queued, on a book with no
+ * record before it: `recordFinish` in the store).
  */
 export async function updateMirror(
   connectionId: string,
   libraryId: number,
   path: string,
-  change: (save: ProgressSave) => ProgressSave,
+  change: (save: ProgressSave) => ProgressSave | null,
   row?: Progress | null,
 ): Promise<void> {
   await withMirrorLock(async () => {
@@ -817,7 +819,9 @@ export async function updateMirror(
     if (!base) return;
     const next = change(base);
     if (next === map[key]) return; // unchanged (an acknowledgement already known)
-    map[key] = next;
+    if (next) map[key] = next;
+    else if (key in map) delete map[key];
+    else return;
     await setItem(MIRROR_KEY, map);
   });
 }

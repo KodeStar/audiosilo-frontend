@@ -1604,6 +1604,28 @@ describe('Mark as finished outside the player (finish-route)', () => {
     }
   });
 
+  // With no record before the finish there was nothing to put back, and the book stayed
+  // finished on this device with no finish queued.
+  it('a finish that could not be queued on a book with no record: its record goes', async () => {
+    mockReadMirror.mockResolvedValue(null);
+    mockWriteMirror.mockImplementationOnce(async (rec: unknown) => {
+      mockReadMirror.mockResolvedValue(rec);
+    });
+    mockAppendInTurn.mockImplementationOnce(async () => {
+      throw new Error('no turn');
+    });
+    try {
+      await expect(recordFinishEvent({ ...ref, path: 'Other/Book' })).rejects.toThrow('no turn');
+      expect(mockWriteMirror.mock.calls.at(-1)?.[0]).toMatchObject({
+        path: 'Other/Book',
+        finished: true,
+      });
+      expect(mockMirrorUpdates).toEqual([null]);
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
   it('Undo whose edit failed: the mirror keeps the finish (it is sent again)', async () => {
     mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
     await recordFinishEvent({ ...ref, path: 'Other/Book' });
