@@ -446,11 +446,18 @@ export function isUnreachableError(e: unknown): boolean {
  * Whether a failed request found its server away rather than refused: no answer
  * (`isUnreachableError`), or a gateway answering for a server that is down (`SERVER_AWAY`).
  * For what a failure tells the listener: the first request after a server died fails so
- * before reachability has noticed. A busy server's 503 is the request's own failure, said
- * as any other ("Couldn't update this book. Try again."), never "can't be reached".
+ * before reachability has noticed. A busy server's 503 is never "can't be reached": it says
+ * the server is busy (`isServerBusyError`).
  */
 export function isServerAwayError(e: unknown): boolean {
   return isUnreachableError(e) || (e instanceof ApiError && SERVER_AWAY.has(e.status));
+}
+
+/** Whether a failed request found its server busy: its own 503 (its request timeout, a
+ * restart). It was reached, so not `isServerAwayError`; said as busy, to try again in a
+ * moment, rather than as the request's own failure. */
+export function isServerBusyError(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 503;
 }
 
 type QueryValue = string | number | boolean | undefined | null;

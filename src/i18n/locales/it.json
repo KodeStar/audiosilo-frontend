@@ -5,6 +5,7 @@
     "save": "Salva",
     "done": "Fatto",
     "retry": "Riprova",
+    "serverBusy": "Il server è occupato. Riprova tra un momento.",
     "close": "Chiudi",
     "copied": "Copiato",
     "on": "Attivo",

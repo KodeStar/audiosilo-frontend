@@ -5,6 +5,7 @@
     "save": "Save",
     "done": "Done",
     "retry": "Retry",
+    "serverBusy": "The server is busy. Try again in a moment.",
     "close": "Close",
     "copied": "Copied",
     "on": "On",

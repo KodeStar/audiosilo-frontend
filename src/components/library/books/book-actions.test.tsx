@@ -94,6 +94,7 @@ let mockSendToWatch: jest.Mock | null = null;
 jest.mock('@/watch/use-watch', () => ({ useSendToWatch: () => mockSendToWatch }));
 
 /* eslint-disable import/first */
+import { ApiError } from '@/api/client';
 import { CapabilityError, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { fetchStatus } from '@/testing/podcast-fixtures';
@@ -354,6 +355,26 @@ describe('useBookActions', () => {
     expect(mockSteps).toEqual(['leave Author/Series/01 - Book', 'reload Author/Series/01 - Book']);
     expect(mockToast).toHaveBeenCalledTimes(1);
     expect(mockToast.mock.calls[0][0].title).toBe("Couldn't update this book. Try again.");
+  });
+
+  // A busy server's own 503 was reached: it says busy, to try again in a moment, never
+  // "can't be reached" (a gateway's 502 / 504) nor the edit's own failure.
+  it("a busy server's 503 on the Mark and on its Undo says the server is busy", async () => {
+    const BUSY = 'The server is busy. Try again in a moment.';
+    mockEdit.mockRejectedValueOnce(new ApiError(503, 'busy'));
+    const { find } = await actions(book(), progress());
+    await act(async () => find('finish')!.onPress());
+    expect(mockToast.mock.calls.at(-1)![0].title).toBe(BUSY);
+    mockEdit.mockResolvedValueOnce(progress({ finished: true }));
+    await act(async () => find('finish')!.onPress());
+    expect(mockToast.mock.calls.at(-1)![0].title).toBe('Marked as finished');
+    mockEdit.mockRejectedValueOnce(new ApiError(503, 'busy'));
+    await act(async () => mockToast.mock.calls.at(-1)![0].action.onPress());
+    expect(mockToast.mock.calls.at(-1)![0].title).toBe(BUSY);
+    // Another failure is still the edit's own.
+    mockEdit.mockRejectedValueOnce(new ApiError(500, 'oops'));
+    await act(async () => find('finish')!.onPress());
+    expect(mockToast.mock.calls.at(-1)![0].title).toBe("Couldn't update this book. Try again.");
   });
 
   // FE-1: the Mark waited on its request with nothing shown (the menu had closed).

@@ -5,6 +5,7 @@
     "save": "Speichern",
     "done": "Fertig",
     "retry": "Erneut versuchen",
+    "serverBusy": "Der Server ist gerade ausgelastet. Versuche es gleich noch einmal.",
     "close": "Schließen",
     "copied": "Kopiert",
     "on": "Ein",
