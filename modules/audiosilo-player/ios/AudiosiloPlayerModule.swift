@@ -95,7 +95,8 @@ public class AudiosiloPlayerModule: Module {
     // (fe#351), never as their main-thread hop is queued: a progress tick from the place before
     // would otherwise reach JS after the call resolved. A load or a file jump rebuilds the queue
     // on the main thread, every tick from then on the new item's (at 0 until a deferred start
-    // seek lands, never past the asked place); a seek waits for AVPlayer's completion.
+    // seek lands, never past the asked place); a seek waits for AVPlayer's completion (on an
+    // item not ready yet it is such a rebuild, `AudioEngine.seek`).
     AsyncFunction("load") {
       [weak self] (tracks: [TrackRecord], startIndex: Int, position: Double, chapters: [ChapterRecord]?, book: BookRecord?, promise: Promise) in
       onMain {
