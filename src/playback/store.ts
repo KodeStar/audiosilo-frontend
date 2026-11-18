@@ -1878,7 +1878,7 @@ const PLAYING_PAST = 0.5;
 /** How long a run into a later file waits for its `onRemoteMove` before it is a fault
  * (`EngineAsk.held`): Android's module sends the move at most 300 ms after the file change, the
  * same wait as the native service's for a jumped tick (`LANDING_HOLD_MS`). */
-const FAULT_HOLD_MS = 600;
+export const FAULT_HOLD_MS = 600;
 /** The book whose engine faulted (`engineFault`): its reports are dropped, and a play the
  * engine makes by itself is paused again, until the store asks it for a place again.
  * `faultStopped`: the faulted engine has reported something other than `playing` since, so a
@@ -1933,6 +1933,19 @@ async function engineTakes<T>(ask: EngineAsk, move: Promise<T>): Promise<T> {
     withdrawAsk(ask);
     throw err;
   }
+}
+
+/** The store asks the engine for `(trackIndex, position)` of `np`'s queue, and `move` is the
+ * engine call that makes it (`engineTakes`). With no book loaded there is nothing to ask. */
+function engineMove<T>(
+  np: NowPlaying | null,
+  trackIndex: number,
+  position: number,
+  move: () => Promise<T>,
+): Promise<T> {
+  if (!np) return move();
+  const ask = askEngineTo(np, trackIndex, position);
+  return engineTakes(ask, move());
 }
 
 /** The engine took no such move (it refused, or the store gave up on it): `ask` no longer
@@ -3437,8 +3450,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       loaded = moved;
       at = local;
     }
-    await engineTakes(
-      askEngineTo(loaded, at.index, at.positionInTrack),
+    await engineMove(loaded, at.index, at.positionInTrack, () =>
       svc.load(
         loaded.queue.tracks,
         at.index,
@@ -3465,9 +3477,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     // A faulted engine sits in another file than the snapshot's (`engineFault`): it is put in
     // the target's by its index, never sought within whatever file it is in.
     const faulted = loadedFaulted();
-    const ask = askEngineTo(np, target.index, target.positionInTrack);
-    await engineTakes(
-      ask,
+    await engineMove(np, target.index, target.positionInTrack, () =>
       target.index === get().snapshot.trackIndex && !faulted
         ? svc.seekTo(target.positionInTrack)
         : svc.skipToTrack(target.index, target.positionInTrack),
@@ -3486,9 +3496,9 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     userMoved(np ? toBookPosition(np.queue.offsets, trackIndex, pos) : undefined);
     // A faulted engine sits in another file than the snapshot's (`engineFault`): put in it.
     const faulted = loadedFaulted();
-    const ask = np ? askEngineTo(np, trackIndex, pos) : null;
-    const move = faulted ? svc.skipToTrack(trackIndex, pos) : svc.seekTo(pos);
-    await (ask ? engineTakes(ask, move) : move);
+    await engineMove(np, trackIndex, pos, () =>
+      faulted ? svc.skipToTrack(trackIndex, pos) : svc.seekTo(pos),
+    );
     void persist();
   },
 
@@ -3499,7 +3509,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     const svc = await ensureService();
     moveListeningSpan(endAt(np, i, 0));
     userMoved(toBookPosition(np.queue.offsets, i, 0));
-    await engineTakes(askEngineTo(np, i, 0), svc.skipToTrack(i, 0));
+    await engineMove(np, i, 0, () => svc.skipToTrack(i, 0));
     void persist();
   },
 
@@ -4394,10 +4404,8 @@ async function reloadAdopted(
   quietAdopted = key;
   if (playing) beginPlaybackAttempt();
   const attempts = playAttempts;
-  const ask = askEngineTo(nowPlaying, landing.index, landing.positionInTrack);
   try {
-    await engineTakes(
-      ask,
+    await engineMove(nowPlaying, landing.index, landing.positionInTrack, () =>
       svc.load(
         nowPlaying.queue.tracks,
         landing.index,

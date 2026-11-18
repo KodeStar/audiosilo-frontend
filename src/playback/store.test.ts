@@ -159,6 +159,7 @@ import { useReachability } from '@/api/reachability';
 import { AutoplayBlockedError, PlaybackStartError } from './types';
 import {
   DOWNLOADED_PLACE_WAIT_MS,
+  FAULT_HOLD_MS,
   flushHistoryOnHide,
   holdSaves,
   LONG_PAUSE_MS,
@@ -3420,8 +3421,7 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
   const resume = (at: number) => usePlayer.getState().playBook('c1', 2, book, chapters, at);
   const savedFinished = () =>
     mockSaveProgress.mock.calls.some((c) => (c[1] as { finished: boolean }).finished);
-  /** How long a run into a later file waits for the listener's own move (store.ts). */
-  const FAULT_HOLD_MS = 600;
+  const lastLoad = () => ((mockSvc.load as jest.Mock).mock.lastCall as unknown[]).slice(1, 3);
   /** The engine ran off its 29.9 s of file 1 into file 2, and no move of the listener's came. */
   const ranOff = () => {
     pushSnapshot(snap('playing', 0.4, { trackIndex: 1, duration: short }));
@@ -3443,8 +3443,7 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
 
   it('a resume that lands in the next file stops there as an error, at the resumed place', async () => {
     await resume(30);
-    const [, index, position] = (mockSvc.load as jest.Mock).mock.lastCall as unknown[];
-    expect([index, position]).toEqual([0, 30]);
+    expect(lastLoad()).toEqual([0, 30]);
     ranOff();
     await flushMicrotasks();
     expect(usePlayer.getState().snapshot).toMatchObject({
@@ -3471,8 +3470,7 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     (mockSvc.load as jest.Mock).mockClear();
     (mockSvc.play as jest.Mock).mockClear();
     await usePlayer.getState().toggle();
-    const [, index, position] = (mockSvc.load as jest.Mock).mock.lastCall as unknown[];
-    expect([index, position]).toEqual([0, 30]);
+    expect(lastLoad()).toEqual([0, 30]);
   });
 
   it('a file played on from the resumed place goes on into the next one', async () => {
@@ -3733,11 +3731,8 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', trackIndex: 0 });
     (mockSvc.load as jest.Mock).mockClear();
     await usePlayer.getState().toggle();
-    const [, index, position] = (mockSvc.load as jest.Mock).mock.lastCall as unknown[];
-    expect([index, position]).toEqual([0, 30]);
+    expect(lastLoad()).toEqual([0, 30]);
   });
-
-  const lastLoad = () => ((mockSvc.load as jest.Mock).mock.lastCall as unknown[]).slice(1, 3);
 
   it("a headset's next before the engine played on is no fault, its move told after the file", async () => {
     await resume(30);
