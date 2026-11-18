@@ -932,10 +932,17 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   on our side, never in the vendored copy: `reader/src/render-guard.js` skips the paginator's
   relayout (its ResizeObserver's `render()`) while the section it shows has no root or body
   yet, which threw in `columnize` when the frame resized during a section load (fe#239). Its
-  `watchRelayouts` reads each relocate's reason where the paginator dispatches it (foliate's
-  view drops it): a relayout (a resize, a rotation, a new text size, fonts loaded; reason
-  `anchor`) goes to the host as `progress` with `relayout: true`, which the host shows and never
-  saves, since its page can start a little before the place (fe#172).
+  `watchRelayouts` reads each relocate where the paginator dispatches it (foliate's view
+  drops the reason): a relayout (a resize, a rotation, a new text size, fonts loaded) goes to
+  the host as `progress` with `relayout: true`, which the host shows and never saves, since
+  its page can start a little before the place (fe#172). A relayout is reason `anchor` in the
+  section the last relocate was in AND a layout that changed since (the paginator's box, the
+  section's `viewSize`, its text size), never the reason alone: foliate says `anchor` for
+  real moves too (focus going to a link on another page, a keyboard selection crossing a
+  page) and for a section it just loaded, laid out first on the last one's place. Flagged,
+  those were never saved: the reader says each page once, so the move that follows onto the
+  same page (a contents jump after a contents jump) says nothing. The app's host reopens a
+  dead WebView at the last place that was no relayout's.
 - **The host** (`reader-host.web.tsx`): a same-origin iframe sandboxed to `allow-scripts
   allow-same-origin` (foliate cannot run in an opaque origin). The host fetches `/ebook` with
   the Authorization header (`client.ebook`, never `?token=`) and posts the bytes as a

@@ -24,10 +24,11 @@ import type { ReaderReadalongMap } from './readalong-map';
  * Reader -> host: `ready`, `opened` (title, flattened TOC, whether the book reads right to
  * left), `progress` (on every move; marked `relayout` after a relayout, which is no move),
  * `loading` (a section is being laid out), `error`, `escape` (Escape pressed in the book,
- * which the host's own keys never see), `csp` (a blocked load, logged); read-along: `seek {t}` (a sentence was tapped: play from its
- * start), `following {value}` (the reader follows the narration, or stopped because the
- * reader turned away) and `readalong {state, unresolved}` (`ok` once a map is in with a
- * sentence in this book's sections, else `none`; `unresolved` counts the spans skipped).
+ * which the host's own keys never see), `csp` (a blocked load, logged); read-along:
+ * `seek {t}` (a sentence was tapped: play from its start), `following {value}` (the reader
+ * follows the narration, or stopped because the reader turned away) and
+ * `readalong {state, unresolved}` (`ok` once a map is in with a sentence in this book's
+ * sections, else `none`; `unresolved` counts the spans skipped).
  * The reader parses an EPUB nobody vetted, so its messages are checked here field by field
  * (`parseReaderMessage`) and taken only from that frame's window on our own origin
  * (`acceptReaderMessage`).

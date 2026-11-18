@@ -34,26 +34,58 @@ export function guardRender(renderer) {
   return true;
 }
 
-// A relayout (the frame resized or rotated, a new text size) and a section that grows as
-// its fonts load both put the paginator back on the place it holds (`#scrollToAnchor`,
-// relocate reason `anchor`): no move, though the page it lands on can start a little before
-// that place. Saved as a move, each one pulled the place back a little (fe#172). foliate's
-// view passes a relocate on without its reason, so the reason is read where the paginator
-// dispatches it, before the view hears of it.
+// A relayout (the frame resized or rotated, a new text size, a section that grows as its
+// fonts load) puts the paginator back on the place it holds (`#scrollToAnchor`, relocate
+// reason `anchor`): no move, though the page it lands on can start a little before that
+// place. Saved as a move, each one pulled the place back a little (fe#172).
+//
+// The reason alone does not say so. foliate relocates with `anchor` for two real moves too,
+// focus going to a link on another page and a keyboard selection crossing a page
+// (paginator.js, the section's `focusin` and `selectionchange`), and for a section it has
+// just loaded, which it first lays out on the place the last one held. What tells a
+// relayout apart is the layout: it lands in the section the last relocate was in, in a
+// layout that changed since. foliate's view passes a relocate on without its reason, so
+// both are read where the paginator dispatches it, before the view hears of it.
+
+/**
+ * The layout the shown section is in: the paginator's box (a resize, a rotation), the
+ * section's laid-out length (its page count: fonts or images that loaded) and its text
+ * size. '' when it cannot be read. A reflow that changes none of them is not seen.
+ */
+function layoutOf(renderer) {
+  try {
+    const box = renderer.getBoundingClientRect?.();
+    const doc = renderer.getContents?.()[0]?.doc;
+    const textSize = doc?.defaultView?.getComputedStyle?.(doc.documentElement)?.fontSize;
+    return [box?.width, box?.height, renderer.viewSize, textSize].join('|');
+  } catch {
+    return '';
+  }
+}
 
 /**
  * Watches the relocates `renderer` dispatches (an instance property, so its own
  * `this.dispatchEvent` goes through it, as `guardRender`'s does). Returns whether the last
- * one was a relayout: read from the view's `relocate`, which foliate sends from inside that
- * dispatch.
+ * one was a relayout: the paginator back on its place (`anchor`) in the same section, in a
+ * layout that changed since the relocate before it. Read from the view's `relocate`, which
+ * foliate sends from inside that dispatch.
  */
 export function watchRelayouts(renderer) {
   const dispatch = renderer?.dispatchEvent;
   if (typeof dispatch !== 'function') return () => false;
-  let reason;
+  // The last relocate's section, and the layout it landed in.
+  let section;
+  let shown = '';
+  let relayout = false;
   renderer.dispatchEvent = function watchedDispatch(event) {
-    if (event?.type === 'relocate') reason = event.detail?.reason;
+    if (event?.type === 'relocate') {
+      const { reason, index } = event.detail ?? {};
+      const layout = layoutOf(this);
+      relayout = reason === 'anchor' && index === section && layout !== shown;
+      section = index;
+      shown = layout;
+    }
     return dispatch.call(this, event);
   };
-  return () => reason === 'anchor';
+  return () => relayout;
 }
