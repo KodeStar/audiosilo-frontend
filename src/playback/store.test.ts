@@ -3665,6 +3665,56 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     expect(mockSvc.skipToTrack).toHaveBeenLastCalledWith(0, 60);
   });
 
+  describe('on iOS, a remote move into a later file at a place in it', () => {
+    /** Resumed at 30 s, still buffering there; the lock screen's next chapter, 45 s into
+     * file 2: iOS tells the file at 0, then the place, and `onRemoteMove` only once the
+     * deferred seek lands. */
+    const moveIntoFile2 = async () => {
+      await resume(30);
+      pushSnapshot(snap('loading', 30, { trackIndex: 0 }));
+      pushSnapshot(snap('loading', 0, { trackIndex: 1 }));
+      pushSnapshot(snap('loading', 45, { trackIndex: 1 }));
+    };
+
+    it('waits for its deferred seek past the fault hold', async () => {
+      await moveIntoFile2();
+      jest.advanceTimersByTime(FAULT_HOLD_MS * 3); // a slow stream
+      await flushMicrotasks();
+      expect(usePlayer.getState().snapshot.state).not.toBe('error');
+      remoteMove!(1, 45);
+      pushSnapshot(snap('playing', 45.5, { trackIndex: 1 }));
+      jest.advanceTimersByTime(ASK_SETTLE_MAX_MS);
+      await flushMicrotasks();
+      expect(usePlayer.getState().snapshot).toMatchObject({
+        state: 'playing',
+        trackIndex: 1,
+        position: 45.5,
+      });
+      expect(mockSvc.pause).not.toHaveBeenCalled();
+    });
+
+    it('is a fault once no move came within the settle bound', async () => {
+      await moveIntoFile2();
+      jest.advanceTimersByTime(ASK_SETTLE_MAX_MS);
+      await flushMicrotasks();
+      expect(usePlayer.getState().snapshot).toMatchObject({
+        state: 'error',
+        trackIndex: 0,
+        position: 30,
+      });
+    });
+
+    it('a run off the asked file still stops after the fault hold', async () => {
+      await resume(30);
+      pushSnapshot(snap('playing', 0, { trackIndex: 1, duration: short }));
+      jest.advanceTimersByTime(300);
+      pushSnapshot(snap('playing', 0.3, { trackIndex: 1, duration: short }));
+      jest.advanceTimersByTime(FAULT_HOLD_MS - 300);
+      await flushMicrotasks();
+      expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', trackIndex: 0 });
+    });
+  });
+
   it('a seek back the engine never took stands no longer once it plays on where it was', async () => {
     // Three files: the engine stays in the second, and goes on into the third by itself.
     const paths = [...files, 'A/Vbr/03.mp3'];

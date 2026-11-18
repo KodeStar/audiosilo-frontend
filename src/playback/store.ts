@@ -1858,7 +1858,8 @@ let atPartialEnd = false;
  * own next as often (a headset press soon after a paused scrub or while it buffered), which
  * Android tells up to 300 ms after the file change, so the fault waits `FAULT_HOLD_MS` for that
  * `onRemoteMove`, the engine's reports held back meanwhile. `report`: the latest, which decides
- * it when no other comes in time (`timer`; `due` once it fired).
+ * it when no other comes in time (`timer`; `due` once it fired). `move`: a report placed it
+ * where no run off the asked file reaches (`heldMs`), so it waits longer.
  *
  * `before`: the file of the ask this one took the place of while that still stood (else -1),
  * whose move the engine may report yet. `elsewhere`: the engine's first report from another
@@ -1877,6 +1878,7 @@ type EngineAsk = {
     report: PlaybackSnapshot;
     timer: ReturnType<typeof setTimeout> | null;
     due: boolean;
+    move: boolean;
   } | null;
   before: number;
   elsewhere: { trackIndex: number; position: number } | null;
@@ -1896,6 +1898,24 @@ export const FAULT_HOLD_MS = 600;
  * the file; a Cast receiver's move is told before its place, `cast-service.ts`), so a later
  * file under a standing ask is a run off it, paused at once, not 600 ms into the wrong file. */
 const faultHoldMs = () => (Platform.OS === 'web' ? 0 : FAULT_HOLD_MS);
+/** How far into a later file a run off the asked one can be when reported, beyond what it
+ * played since the hold began (`EngineAsk.held`): iOS tells the new file at 0, its ticks
+ * after. */
+const RUN_ON_SLACK_S = 1;
+/** Does `s`, a report of a later file held since `since`, place the engine past what a run
+ * into that file explains? Only iOS's remote move does so: a lock-screen, headset or car
+ * move into a later file at a non-zero place tells the file and that place at once, and
+ * `onRemoteMove` only once the deferred seek lands, which on a slow stream is longer than
+ * `FAULT_HOLD_MS`. Android tells the move within 300 ms whatever the place. */
+function heldMove(s: PlaybackSnapshot, since: number, now: number): boolean {
+  if (Platform.OS !== 'ios') return false;
+  const played = ((now - since) / 1000) * (usePlayer.getState().rate || 1);
+  return s.position > played + RUN_ON_SLACK_S;
+}
+/** How long `held` waits for its `onRemoteMove`: a move's deferred seek may land as late as
+ * any engine move settles (`ASK_SETTLE_MAX_MS`), a run's report only `faultHoldMs`. */
+const heldMs = (held: NonNullable<EngineAsk['held']>) =>
+  held.move ? ASK_SETTLE_MAX_MS : faultHoldMs();
 /** The book whose engine faulted (`engineFault`): its reports are dropped, and a play the
  * engine makes by itself is paused again, until the store asks it for a place again.
  * `faultPause`: the fault's pause, one record per fault. It has landed once its call resolved
@@ -2072,9 +2092,10 @@ function engineFault(
     (asked.held !== null || wantsPlayback || startingPlayback);
   if (rolled) {
     const now = Date.now();
-    const held = asked.held ?? { since: now, report: s, timer: null, due: false };
+    const held = asked.held ?? { since: now, report: s, timer: null, due: false, move: false };
     asked.held = held;
-    if (!held.due && now - held.since < faultHoldMs()) return 'hold';
+    if (heldMove(s, held.since, now)) held.move = true;
+    if (!held.due && now - held.since < heldMs(held)) return 'hold';
   } else if (!short) {
     // Not a run off the asked file after all: a run held for one is called off.
     dropHeld(asked);
@@ -2981,12 +3002,22 @@ async function createService(): Promise<PlaybackService> {
     const held = ask?.held;
     if (!ask || !held) return;
     held.report = raw;
-    held.timer ??= setTimeout(() => {
-      if (askedPlace !== ask || ask.held !== held) return;
-      if (usePlayer.getState().nowPlaying !== ask.np) return;
-      held.due = true;
-      onReport(held.report);
-    }, FAULT_HOLD_MS);
+    if (held.timer) return;
+    // Armed again while a later report made the wait longer (`heldMs`).
+    const wait = (ms: number) =>
+      setTimeout(() => {
+        held.timer = null;
+        if (askedPlace !== ask || ask.held !== held) return;
+        if (usePlayer.getState().nowPlaying !== ask.np) return;
+        const left = held.since + heldMs(held) - Date.now();
+        if (left > 0) {
+          held.timer = wait(left);
+          return;
+        }
+        held.due = true;
+        onReport(held.report);
+      }, ms);
+    held.timer = wait(Math.max(0, held.since + heldMs(held) - Date.now()));
   };
   svc.subscribe(onReport);
   // The OS media controls' seeks (web Media Session) go through the store's own seek,
