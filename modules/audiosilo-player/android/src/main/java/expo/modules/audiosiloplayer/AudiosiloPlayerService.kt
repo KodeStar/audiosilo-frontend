@@ -924,19 +924,20 @@ class AudiosiloPlayerService : MediaLibraryService() {
     PlayerBridge.sink?.playerFailed()
     // peek: never a disk read on the main thread (the snapshot is preloaded in onCreate).
     val label = CarSnapshotStore.peek()?.labels?.playbackError?.ifEmpty { null } ?: error.message ?: return
-    try {
-      mediaSession?.sendError(SessionError(SessionError.ERROR_IO, label))
-    } catch (e: Exception) {
-      Log.w(TAG, "Could not report the playback error", e)
-    }
+    sendSessionError(SessionError.ERROR_IO, label)
   }
 
   /** An error Android Auto shows (the platform session's error state), in the listener's
    * language (the snapshot's label). */
   private fun sendUnavailable() {
     val label = snapshot()?.labels?.unavailable?.ifEmpty { null } ?: return
+    sendSessionError(SessionError.ERROR_NOT_SUPPORTED, label)
+  }
+
+  /** Sends [label] to the session's controllers as a non-fatal error of [code]. */
+  private fun sendSessionError(code: Int, label: String) {
     try {
-      mediaSession?.sendError(SessionError(SessionError.ERROR_NOT_SUPPORTED, label))
+      mediaSession?.sendError(SessionError(code, label))
     } catch (e: Exception) {
       Log.w(TAG, "Could not report the car error", e)
     }

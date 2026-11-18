@@ -257,11 +257,11 @@ export async function loadInitialProgress(
   // failed to hydrate). There's no server to ask, so skip the fetch and resume from the
   // durable mirror / offline queue below - exactly the unreachable-server path.
   if (api) {
-    const abort = waitMs === undefined ? undefined : new AbortController();
+    const abort = new AbortController();
     try {
       // null = HTTP 200, no record (new book)
-      const read = api.getProgress(libraryId, path, abort?.signal);
-      server = waitMs === undefined ? await read : await withTimeout(read, waitMs, 'slow server');
+      const read = api.getProgress(libraryId, path, abort.signal);
+      server = await (waitMs === undefined ? read : withTimeout(read, waitMs, 'slow server'));
       serverOk = true;
     } catch (e) {
       // Reachability is per-connection, so report the failure against THIS book's own
@@ -272,7 +272,7 @@ export async function loadInitialProgress(
       else noteFailure(connectionId, e);
     } finally {
       // A read past its wait is not left holding a connection to a frozen server.
-      abort?.abort();
+      abort.abort();
     }
   }
   // Cache the authoritative server value so a later offline resume has it (keep-newest,
