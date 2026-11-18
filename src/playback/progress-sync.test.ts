@@ -1823,6 +1823,23 @@ describe('the legacy queue across tabs', () => {
     await flushing;
     expect(await readQueue()).toEqual([newer]);
   });
+
+  it("a sign-out's last-chance flush waits for this tab's replay that is out", async () => {
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save]));
+    const { api, answer } = slowApi();
+    routeClients({ c1: api });
+    const flushing = flushQueue();
+    await tick();
+    let lastChanceDone = false;
+    const lastChance = flushConnection('c1').then(() => (lastChanceDone = true));
+    await tick();
+    // Resolved now, the token would be revoked under the save still on its way.
+    expect(lastChanceDone).toBe(false);
+    answer();
+    await Promise.all([flushing, lastChance]);
+    expect(api.saveProgress).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toEqual([]);
+  });
 });
 
 // fe#258's follow-up: the record a Mark as finished replaced rides on the finished record, so

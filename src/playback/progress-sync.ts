@@ -6,6 +6,7 @@ import { downloadEndsBefore } from '@/downloads/kept-offline';
 import { identityMovePending } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { replayQueue, type Route } from '@/lib/queue-claims';
+import { serialQueue } from '@/lib/serial-queue';
 import { tabChannel, type TabChannel } from '@/lib/tab-channel';
 import { tabLock } from '@/lib/tab-lock';
 import { getItem, setItem } from '@/lib/storage';
@@ -1306,15 +1307,24 @@ async function flushGroup(
   return remaining;
 }
 
+/** This tab's replays of the legacy queue, one at a time (held over the requests, so in this
+ * tab only): a replay asked while one is out waits for it, then sends what is still queued.
+ * Without it, it found everything claimed and returned at once: a sign-out's last-chance
+ * flush (`flushConnection`) let the token be revoked under the saves still on their way,
+ * and a reconnect's left the saves of a replay that then failed queued until the next save. */
+const withReplayTurn = serialQueue();
+
 /** `replayQueue` over the legacy queue: claimed under its lock, sent outside it. */
 function replaySaves(route: (cid: string) => Route<ApiClient>): Promise<void> {
-  return replayQueue<ProgressSave, ApiClient>({
-    lock: withQueueLock,
-    read: readQueue,
-    write: writeQueue,
-    route,
-    send: flushGroup,
-  });
+  return withReplayTurn(() =>
+    replayQueue<ProgressSave, ApiClient>({
+      lock: withQueueLock,
+      read: readQueue,
+      write: writeQueue,
+      route,
+      send: flushGroup,
+    }),
+  );
 }
 
 /**
