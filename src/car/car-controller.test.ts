@@ -1765,11 +1765,28 @@ describe('play requests', () => {
       rate: 1,
       playing: true,
     };
+    /** A start that holds until `finish`: a started one switched the store to its book. */
+    let finish: (v: boolean) => void = () => undefined;
+    const holdStart = () =>
+      mockStartBookInPlace.mockImplementationOnce(
+        () =>
+          new Promise<boolean>((r) => {
+            finish = (v) => {
+              if (v) usePlayer.setState({ nowPlaying: { ...ref, queue: { offsets: [0] } } });
+              r(v);
+            };
+          }),
+      );
+
+    beforeEach(() => {
+      // Native gives up on a car play on Android only (CarPlay keeps no wait of its own).
+      Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    });
 
     it('is superseded, not just unwanted, and the store adopts the book the engine plays', async () => {
       stop = startCarSync();
-      let finish: (v: boolean) => void = () => undefined;
-      mockStartBookInPlace.mockImplementationOnce(() => new Promise((r) => (finish = r)));
+      await settle();
+      holdStart();
       mockNative.playRequest?.(carItemId(ref));
       await settle();
       const how = mockStartBookInPlace.mock.calls[0][2] as {
@@ -1790,11 +1807,11 @@ describe('play requests', () => {
 
     it('adopts nothing for a timed-out one, nor when the engine holds the book that gave way', async () => {
       stop = startCarSync();
+      await settle();
       mockNative.getLoadedBook.mockResolvedValue(loadedP);
       usePlayer.getState().adoptLoaded.mockClear();
       // Its wait ran out (not replaced): it loads paused, and the store keeps it.
-      let finish: (v: boolean) => void = () => undefined;
-      mockStartBookInPlace.mockImplementationOnce(() => new Promise((r) => (finish = r)));
+      holdStart();
       mockNative.playRequest?.(carItemId(ref));
       await settle();
       mockNative.playCancel?.(carItemId(ref), false);
@@ -1804,7 +1821,7 @@ describe('play requests', () => {
 
       // Replaced during its own load: the engine holds it (paused), and it stays.
       mockNative.getLoadedBook.mockResolvedValue({ ...loadedP, path: ref.path });
-      mockStartBookInPlace.mockImplementationOnce(() => new Promise((r) => (finish = r)));
+      holdStart();
       mockNative.playRequest?.(carItemId(ref));
       await settle();
       mockNative.playCancel?.(carItemId(ref), true);
@@ -1814,7 +1831,7 @@ describe('play requests', () => {
 
       // A start that never began (called off before its book was read) switched nothing.
       mockNative.getLoadedBook.mockResolvedValue(loadedP);
-      mockStartBookInPlace.mockImplementationOnce(() => new Promise((r) => (finish = r)));
+      holdStart();
       mockNative.playRequest?.(carItemId(ref));
       await settle();
       mockNative.playCancel?.(carItemId(ref), true);

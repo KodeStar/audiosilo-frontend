@@ -1096,20 +1096,22 @@ const cancelledPlays = new Map<string, boolean>();
  * book (an item of a snapshot written before the identity migration names the old connection
  * id), which a start of either joins (`startBookInPlace` joins by book). */
 function marksOn(id: string): string[] {
+  const book = bookOfItem(id);
+  return [...cancelledPlays.keys()].filter((mark) => bookOfItem(mark) === book);
+}
+
+/** The book a car item id names (its content key), or the id itself when it names none. Read
+ * at each check, never when a mark goes in: a cancel may come before the aliases load. */
+function bookOfItem(id: string): string {
   const ref = parseCarItemId(id);
-  const key = ref ? contentKeyOf(ref) : null;
-  return [...cancelledPlays.keys()].filter((mark) => {
-    if (mark === id) return true;
-    const other = key === null ? null : parseCarItemId(mark);
-    return other !== null && contentKeyOf(other) === key;
-  });
+  return ref ? contentKeyOf(ref) : id;
 }
 
 /** The car asked to play a book (its item id). */
 export async function handleCarPlayRequest(id: string): Promise<void> {
   for (const mark of marksOn(id)) cancelledPlays.delete(mark);
   const wanted = () => marksOn(id).length === 0;
-  const superseded = () => marksOn(id).some((mark) => cancelledPlays.get(mark) === true);
+  const superseded = () => marksOn(id).some((mark) => cancelledPlays.get(mark));
   if (!parseCarItemId(id)) {
     console.warn('[car] not a car item id', id);
     return;
@@ -1157,27 +1159,13 @@ export async function handleCarPlayRequest(id: string): Promise<void> {
     console.warn('[car] the book could not start', err);
   }
   // Gave way to a play native made in its place (fe#350): the store takes the engine's book
-  // back, which this start's switch let go of (its saves' server, its listening span).
-  if (started && superseded()) await retakeLoaded(ref);
-}
-
-/**
- * A car start that gave way before its load to a play native made in its place (the car's tap
- * on the loaded book, which plays on): the store adopts the book the engine holds again
- * (`adoptLoaded`), as it does a book the service started. Nothing when the engine holds the
- * book that gave way (called off during its own load: it stays loaded, paused) or none.
- */
-async function retakeLoaded(gaveWay: BookRef): Promise<void> {
-  try {
-    const loaded = await carNative.getLoadedBook();
-    if (!loaded) return;
-    const engine = { ...loaded, connectionId: resolveConnectionId(loaded.connectionId) };
-    if (contentKeyOf(engine) === contentKeyOf(gaveWay)) return;
-    if (await usePlayer.getState().adoptLoaded(loaded, () => carNative.getLoadedBook())) {
-      request(true);
-    }
-  } catch (err) {
-    console.warn('[car] taking the loaded book back failed', err);
+  // back (`checkLoadedBook`), which this start's switch let go of (its saves' server, its
+  // listening span). The store now names the book that gave way, so nothing is adopted when
+  // the engine holds that one (called off during its own load: it stays loaded, paused). A
+  // check already running read the store before the switch: it ends first.
+  if (started && superseded()) {
+    await checking;
+    await checkLoadedBook();
   }
 }
 
