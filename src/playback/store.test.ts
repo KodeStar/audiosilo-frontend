@@ -3695,11 +3695,8 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     expect(mockSvc.pause).not.toHaveBeenCalled();
   });
 
-  it("a faulted book is still faulted on its download's files: a press reloads it", async () => {
-    await resume(30);
-    ranOff();
-    await flushMicrotasks();
-    expect(usePlayer.getState().snapshot.state).toBe('error');
+  /** The book's download lands: the hot-swap moves the engine onto its files. */
+  const downloadLands = () => {
     const manifest: DownloadManifest = {
       book,
       chapters,
@@ -3722,6 +3719,14 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
         },
       },
     });
+  };
+
+  it("a faulted book is still faulted on its download's files: a press reloads it", async () => {
+    await resume(30);
+    ranOff();
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    downloadLands();
     await flushMicrotasks();
     const urls = () =>
       ((mockSvc.load as jest.Mock).mock.lastCall?.[0] as { url: string }[]).map((t) => t.url);
@@ -3732,6 +3737,23 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', trackIndex: 0 });
     (mockSvc.load as jest.Mock).mockClear();
     await usePlayer.getState().toggle();
+    expect(lastLoad()).toEqual([0, 30]);
+  });
+
+  it("a report still told as playing once the fault's pause call resolved is not the listener's play", async () => {
+    await resume(30);
+    ranOff(); // the pause call resolves at once, as a native one does, before the engine paused
+    await flushMicrotasks();
+    (mockSvc.load as jest.Mock).mockClear();
+    // The web's pause tells the place once more first; a native tick carries the last state.
+    pushSnapshot(snap('playing', 1.1, { trackIndex: 1, duration: short }));
+    await flushMicrotasks();
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', trackIndex: 0 });
+    // Paused now: the next play is the listener's.
+    pushSnapshot(snap('paused', 1.1, { trackIndex: 1, duration: short }));
+    pushSnapshot(snap('playing', 1.1, { trackIndex: 1, duration: short }));
+    await flushMicrotasks();
     expect(lastLoad()).toEqual([0, 30]);
   });
 

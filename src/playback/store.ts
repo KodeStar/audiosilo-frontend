@@ -1886,12 +1886,18 @@ export const ASK_SETTLE_MAX_MS = 10_000;
 export const FAULT_HOLD_MS = 600;
 /** The book whose engine faulted (`engineFault`): its reports are dropped, and a play the
  * engine makes by itself is paused again, until the store asks it for a place again.
- * `faultStopped`: the fault's pause has landed (its call resolved; `faults` numbers the fault it
- * was asked for), so a `playing` from then on is the listener's own (the lock screen, a
- * headset, the car), never the engine still playing on, or done buffering, before it lands. */
+ * `faultPause`: the fault's pause, one record per fault. It has landed once its call resolved
+ * (`resolved`) and the engine told `paused` or `ended` since it was asked, or faulted so
+ * (`stopped`). The call alone does not say so: a native one resolves before its engine has
+ * paused, and the web's pause tells the place once more before its `paused`, each report
+ * still a `playing` one. A `playing` from then on is the listener's own (the lock screen, a
+ * headset, the car), never the engine still playing on, or done buffering, before the pause
+ * lands. */
 let faultedBook: NowPlaying | null = null;
-let faultStopped = false;
-let faults = 0;
+let faultPause = { resolved: false, stopped: false };
+/** Does `state` say the engine stopped: neither playing nor about to (a load's `ready` with
+ * its play on the way, a buffer)? */
+const stoppedState = (state: PlaybackState) => state === 'paused' || state === 'ended';
 /** Has the loaded book's engine faulted (`faultedBook`)? */
 const loadedFaulted = () => faultedBook !== null && faultedBook === usePlayer.getState().nowPlaying;
 
@@ -2742,10 +2748,13 @@ async function createService(): Promise<PlaybackService> {
     // the fault's pause lands is stopped again; one after it landed is the listener's own (the
     // lock screen, a headset, the car), which reloads the book at its place, as a press does.
     if (loadedFaulted()) {
-      if (raw.state !== 'playing') return;
+      if (raw.state !== 'playing') {
+        if (stoppedState(raw.state)) faultPause.stopped = true;
+        return;
+      }
       void svc.pause().catch(() => undefined);
-      if (faultStopped) {
-        faultStopped = false;
+      if (faultPause.resolved && faultPause.stopped) {
+        faultPause = { resolved: false, stopped: false };
         void usePlayer
           .getState()
           .retry()
@@ -2813,11 +2822,11 @@ async function createService(): Promise<PlaybackService> {
         return;
       }
       if (fault) {
-        const seq = ++faults;
-        faultStopped = false;
+        const pause = { resolved: false, stopped: stoppedState(raw.state) };
+        faultPause = pause;
         void svc.pause().then(
           () => {
-            if (seq === faults) faultStopped = true;
+            pause.resolved = true;
           },
           () => undefined,
         );

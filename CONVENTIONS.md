@@ -2110,17 +2110,20 @@ media GETs only.
   one whose move it refused (`withdrawAsk`, `engineTakes`), and one whose engine has moved
   `PLAYED_ON` seconds in the other file since (left standing, its next file, minutes on, read
   as a run off the asked one). Nor does one whose call has not settled `ASK_SETTLE_MAX_MS`
-  on once its engine has played `PLAYED_ON` on in its file. A faulted book: a press reloads it, as Retry does; a play the
-  engine goes on with until the fault's pause lands (its call resolved) is paused again, and one
-  after it is the listener's (the lock screen, a headset, the car), which reloads like a press
-  (`faultStopped`); a lock-screen move is the place it shows and reloads at, a Cast checkpoint
-  (`onRemoteMove`'s `checkpoint`, as iOS suspends the app) never is, nor calls off a held
-  run. A fault outlives the download hot-swap's new `NowPlaying` (`commitLocalSwap`): a press
-  still reloads. A start whose load rejects shows the place it asked for in its error state
-  at once (Retry loads there), never the snapshot it had. Once the engine has played on, its
-  moves and its end are the book's, as for any book: a server length can overestimate the
-  audio (ffprobe's bitrate estimate for a header-less VBR file), and the listener who played
-  to the real end has finished.
+  on once its engine has played `PLAYED_ON` on in its file. A faulted book: a press reloads it,
+  as Retry does; a play the engine goes on with until the fault's pause lands is paused again,
+  and one after it is the listener's (the lock screen, a headset, the car), which reloads like a
+  press. The pause has landed once its call resolved and the engine told `paused` or `ended`
+  (`faultPause`): the call alone does not say so, since a native one resolves before its engine
+  has paused, and the web's pause tells the place once more first, each report still a `playing`
+  one. A lock-screen move is the place it shows and reloads at, a Cast checkpoint
+  (`onRemoteMove`'s `checkpoint`, as iOS suspends the app) never is, nor calls off a held run. A
+  fault outlives the download hot-swap's new `NowPlaying` (`commitLocalSwap`): a press still
+  reloads. A start whose load rejects shows the place it
+  asked for in its error state at once (Retry loads there), never the snapshot it had. Once the
+  engine has played on, its moves and its end are the book's, as for any book: a server length
+  can overestimate the audio (ffprobe's bitrate estimate for a header-less VBR file), and the
+  listener who played to the real end has finished.
 - **Start playback only after chapters/files have loaded** (the player gates on
   `useChapters` settling) - starting early made multi-file books stream the folder
   path (MediaToolbox `-12864`) and lose chapter info.
