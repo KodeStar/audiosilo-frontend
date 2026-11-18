@@ -498,6 +498,7 @@
         "expired": "Diese Anmeldung ist abgelaufen oder wurde schon verwendet. Melde dich erneut an.",
         "reach": "Der Server war nicht erreichbar, um die Anmeldung abzuschließen. Melde dich erneut an.",
         "notKept": "Du hast dich angemeldet, aber dieses Gerät konnte die Anmeldung nicht speichern. Melde dich erneut an.",
+        "notThisTrip": "Diese Anmeldung wurde nicht auf diesem Gerät gestartet und daher nicht gespeichert. Melde dich erneut an.",
         "failed": "Die Anmeldung wurde nicht abgeschlossen. Melde dich erneut an."
       }
     },

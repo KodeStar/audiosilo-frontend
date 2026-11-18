@@ -240,6 +240,10 @@ describe('ApiClient', () => {
     expect(new ApiClient('https://h').oidcStartUrl()).toBe(
       'https://h/api/v1/auth/oidc/start?return=web',
     );
+    // The trip's own tag (audiosilo#202), for its finish to echo.
+    expect(new ApiClient('https://h').oidcStartUrl('ab'.repeat(32))).toBe(
+      `https://h/api/v1/auth/oidc/start?return=web&intent=${'ab'.repeat(32)}`,
+    );
     const raw = { home: 'ftp://nas', away: ' https://books.example.com/ ' };
     const fetchMock = installFetch(() => ({
       status: 200,

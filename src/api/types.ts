@@ -288,6 +288,10 @@ export type AuthSession = {
   /** The server's home and away addresses (capability `addresses`; omitted when it
    * has neither, and by older servers). */
   addresses?: ServerAddresses;
+  /** `POST /auth/oidc/finish` only: the tag the web player started this sign-in's trip with
+   * (`oidcStartUrl(intent)`), echoed once by the finish of the sign-in that trip completed
+   * (audiosilo#202). Absent for an untagged trip, a tag spent before, and on older servers. */
+  intent?: string;
 };
 
 /** Response of /demo/session: a session for this client plus a pairing payload

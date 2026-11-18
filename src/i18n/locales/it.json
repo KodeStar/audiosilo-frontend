@@ -498,6 +498,7 @@
         "expired": "Quell'accesso è scaduto o è già stato usato. Accedi di nuovo.",
         "reach": "Impossibile raggiungere il server per completare l'accesso. Accedi di nuovo.",
         "notKept": "Hai effettuato l'accesso, ma questo dispositivo non è riuscito a conservarlo. Accedi di nuovo.",
+        "notThisTrip": "Questo accesso non è stato avviato su questo dispositivo, quindi non è stato conservato. Accedi di nuovo.",
         "failed": "L'accesso non è stato completato. Accedi di nuovo."
       }
     },

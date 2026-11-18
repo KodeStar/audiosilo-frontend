@@ -498,6 +498,7 @@
         "expired": "Cette connexion a expiré ou a déjà été utilisée. Connectez-vous à nouveau.",
         "reach": "Impossible de joindre le serveur pour terminer la connexion. Connectez-vous à nouveau.",
         "notKept": "Vous êtes connecté, mais cet appareil n'a pas pu garder la connexion. Connectez-vous à nouveau.",
+        "notThisTrip": "Cette connexion n'a pas été lancée sur cet appareil, elle n'a donc pas été gardée. Connectez-vous à nouveau.",
         "failed": "La connexion n'a pas abouti. Connectez-vous à nouveau."
       }
     },

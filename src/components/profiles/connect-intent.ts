@@ -77,8 +77,9 @@ export function resumeConnectIntent(held: {
   return held.grownUpFromKids && kidsPassOpen();
 }
 
-/** The returned single sign-on finished (the server answered with a session): the grown-up's
- * pass the trip left with is back, while kids mode would still give it. */
+/** The returned single sign-on finished (the server answered with a session echoing the
+ * trip's own tag, `settleOidcPass`): the grown-up's pass the trip left with is back, while kids
+ * mode would still give it. */
 export function restoreKidsConnectPass(): void {
   if (kidsPassOpen()) intent = { ...intent, grownUpFromKids: true };
 }

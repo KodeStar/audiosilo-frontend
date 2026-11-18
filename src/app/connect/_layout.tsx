@@ -58,8 +58,9 @@ export default function ConnectLayout() {
   // back from this tab's storage (`takeOidcIntent`, fe#310), put back once the profiles are
   // read. A grown-up's pass through kids mode is not: it waits on the sign-in's finish
   // (`passWaits`, until `settleOidcPass`), and meanwhile kids mode lets only the return's own
-  // screen run, which finishes the sign-in and shows nothing else. No session, no pass: the
-  // address typed after a trip abandoned at the provider opens nothing for a child. Read as
+  // screen run, which finishes the sign-in and shows nothing else. No session echoing this
+  // trip's tag, no pass: the address (or the server's start URL) typed after a trip abandoned
+  // at the provider opens nothing for a child (audiosilo#202). Read as
   // the layout renders and taken once it is on screen (`useHandoff`): the app's first render
   // is a transition, and one thrown away and run again must still find it.
   const intent = useHandoff(

@@ -92,9 +92,12 @@ export function oidcFinishText(e: unknown, t: TFunction): string {
  * the server as a device (fe#310).
  *
  * A grown-up's pass through kids mode that the trip left with waits on this answer
- * (`settleOidcPass`): given back only with the session, before `finishConnect`. With no
- * session it is not, kids mode takes the flow back (the connect layout), and the reason goes
- * over it as a toast, since the screen that would say it is gone (null: the flow moved on).
+ * (`settleOidcPass`): given back only with a session that echoes the trip's own tag
+ * (`intent`, audiosilo#202), before `finishConnect`. Otherwise it is not, kids mode takes
+ * the flow back (the connect layout), and the reason goes over it as a toast, since the
+ * screen that would say it is gone (null: the flow moved on). A session that came back
+ * without the tag is signed out again: kept, it would add someone to the kids device with
+ * no grown-up's say (the start URL typed in this tab while the provider is still signed in).
  */
 export async function finishOidcSignIn(
   origin: string,
@@ -114,7 +117,7 @@ export async function finishOidcSignIn(
     ]);
   } catch (e) {
     const message = oidcFinishText(e, t);
-    if (!settleOidcPass(false)) return message;
+    if (settleOidcPass(null) === 'none') return message;
     toast({ title: message });
     return null;
   }
@@ -125,11 +128,15 @@ export async function finishOidcSignIn(
       .logout()
       .catch(() => {});
   if (!live()) {
-    settleOidcPass(false);
+    settleOidcPass(null);
     signOut();
     return null;
   }
-  settleOidcPass(true);
+  if (settleOidcPass(session) === 'refused') {
+    signOut();
+    toast({ title: t('connect.oidc.errors.notThisTrip') });
+    return null;
+  }
   try {
     await finishConnect({
       serverUrl: origin,

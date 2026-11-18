@@ -333,8 +333,8 @@ export function SignInStep({
           title={sso ? t('connect.oidc.signIn', { name: sso }) : t('connect.oidc.signInUnnamed')}
           disabled={loading}
           onPress={() => {
-            holdOidcIntent(book, reconnectId ? { server, reconnectId } : undefined);
-            window.location.assign(api.oidcStartUrl());
+            const tag = holdOidcIntent(book, reconnectId ? { server, reconnectId } : undefined);
+            window.location.assign(api.oidcStartUrl(tag));
           }}
           testID="sign-in-oidc"
         />

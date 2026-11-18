@@ -1257,10 +1257,12 @@ describe("a single sign-on's return (?oidc=1)", () => {
   // this finish (`oidc-intent.ts`), with kids mode held back by the connect layout meanwhile.
   describe("with a grown-up's pass through kids mode waiting on it", () => {
     const settled = jest.fn();
+    // The tag the trip left with (audiosilo#202): only its own finish echoes it.
+    const tag = 'ab'.repeat(32);
     beforeEach(() => {
       settled.mockClear();
       seedProfile({ kids: true });
-      expect(resumeOidcIntent({ newPerson: true, grownUpFromKids: true }, settled)).toBe(true);
+      expect(resumeOidcIntent({ newPerson: true, grownUpFromKids: true, tag }, settled)).toBe(true);
     });
     afterEach(async () => {
       dropOidcIntent();
@@ -1269,7 +1271,7 @@ describe("a single sign-on's return (?oidc=1)", () => {
       await act(async () => resetProfilesForTests());
     });
 
-    it('gives the pass back once the server answered with a session', async () => {
+    it("gives the pass back once the server answered with a session echoing the trip's tag", async () => {
       let passAtStore: boolean | null = null;
       const { setSession } = useSession.getState();
       useSession.setState({
@@ -1278,7 +1280,12 @@ describe("a single sign-on's return (?oidc=1)", () => {
           throw new Error('stop here');
         }),
       });
-      mockApi.oidcFinish.mockResolvedValue({ token: 'session', server_id: 'srv-1', user });
+      mockApi.oidcFinish.mockResolvedValue({
+        token: 'session',
+        server_id: 'srv-1',
+        user,
+        intent: tag,
+      });
       mockApi.serverInfo.mockResolvedValue(info());
       mockApi.logout.mockResolvedValue(undefined);
       try {
@@ -1311,6 +1318,34 @@ describe("a single sign-on's return (?oidc=1)", () => {
       expect(mockSetParams).not.toHaveBeenCalled();
       expect(mockApi.serverInfo).toHaveBeenCalledTimes(1);
       expect(useSession.getState().connections).toEqual([]);
+    });
+
+    // audiosilo#202: the server's start URL typed in this tab while the provider is still
+    // signed in finishes a sign-in, but never with this trip's tag; nor does an older server.
+    it.each([
+      ['no tag (the start URL typed)', {}],
+      ["another trip's tag", { intent: 'cd'.repeat(32) }],
+    ])('gives none for a session with %s, and signs it out again', async (_, echoed) => {
+      mockApi.oidcFinish.mockResolvedValue({
+        token: 'session',
+        server_id: 'srv-1',
+        user,
+        ...echoed,
+      });
+      mockApi.serverInfo.mockResolvedValue(info());
+      mockApi.logout.mockResolvedValue(undefined);
+      await render(<ConnectStart />);
+      await waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
+      // Denied: no pass, the session not kept, and the reason over kids mode.
+      expect(kidsConnectAllowed()).toBe(false);
+      await waitFor(() => expect(mockApi.logout).toHaveBeenCalledTimes(1));
+      expect(mockToast).toHaveBeenCalledWith({
+        title:
+          "That sign-in wasn't the one started on this device, so it wasn't kept. Sign in again.",
+      });
+      expect(useSession.getState().connections).toEqual([]);
+      expect(screen.queryByText('Found Hearthside')).toBeNull();
+      expect(mockSetParams).not.toHaveBeenCalled();
     });
   });
 

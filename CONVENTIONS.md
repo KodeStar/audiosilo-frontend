@@ -418,7 +418,7 @@ address pick so the first requests go there; the address runner re-checks it as 
 Android allows cleartext for it (`expo-build-properties` `android.usesCleartextTraffic`).
 Single sign-on (server#235, `oidc-sign-in.ts`) is the served web player's only: the sign-in step
 at its own origin (`onlyOwnServer`) asks `GET /server` and offers "Sign in with <name>" while the
-`oidc` capability is on, a full page load of `client.oidcStartUrl()`; the server lands on
+`oidc` capability is on, a full page load of `client.oidcStartUrl(tag)`; the server lands on
 `/connect?oidc=1` with the sign-in in an HttpOnly cookie (`oidcReturnOrigin` tells a return, for
 the route and the screen), and `ConnectStart` takes the param off first (the screen's own
 `useNavigation().setParams`: it runs at mount), then `POST /auth/oidc/finish`
@@ -434,8 +434,13 @@ put back by the address alone (typed within the stamp's 11 minutes of a trip aba
 provider, it would open the flow for a child): while `openAddSomeone`'s rule would give it now
 it waits on the finish, the layout holding kids mode back for the return's own screen only (it
 shows a spinner and finishes the sign-in), and `finishOidcSignIn` settles it (`settleOidcPass`):
-back with the server's session, before `finishConnect`; with none, kids mode takes the flow back
-and the reason is a toast. A reconnect's sign-in carries the connection it re-pairs with the
+back only with a session echoing the trip's own tag, before `finishConnect`; otherwise kids mode
+takes the flow back and the reason is a toast. The tag (audiosilo#202): `holdOidcIntent` makes 32
+random bytes in hex per trip, keeps them in the intent and returns them for the start URL's
+`intent`; the server carries it through the provider and echoes it on that trip's finish only,
+once (`AuthSession.intent`). Any session without it is signed out again (`notThisTrip`): with the
+provider still signed in, the server's start URL typed in the tab finishes a sign-in too, and an
+older server echoes nothing, so it fails safe. A reconnect's sign-in carries the connection it re-pairs with the
 address the step signed in through (the in-memory hold's, fe#298): without it a server reset at a
 home address keeps the dead connection (`staleIdentities`' `named`) and the banner keeps asking.
 It shares the stamp and the drop as the flow is left, is taken once by `finishOidcSignIn`

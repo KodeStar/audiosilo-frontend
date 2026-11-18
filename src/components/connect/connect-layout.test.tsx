@@ -162,11 +162,13 @@ it('gives no pass with a grown-up on the device, nor for a grown-up', async () =
 describe("a single sign-on's return (a page load, fe#310)", () => {
   // A grown-up's "Add someone" from kids mode leaves for the provider with a book: the page
   // load then forgets both, as it forgets everything in memory.
+  // The trip's tag, which only its own finish echoes (audiosilo#202).
+  let tag: string | undefined;
   const leaveForProvider = () => {
     seedProfile({ kids: true });
     openAddSomeone();
     setConnectForNewProfile(true);
-    holdOidcIntent({ libraryId: 3, path: 'Austen/Emma' });
+    tag = holdOidcIntent({ libraryId: 3, path: 'Austen/Emma' });
     endConnectFlow();
   };
 
@@ -183,8 +185,8 @@ describe("a single sign-on's return (a page load, fe#310)", () => {
       libraryId: 3,
       path: 'Austen/Emma',
     });
-    // Allowed: the server answered with a session.
-    await act(async () => void settleOidcPass(true));
+    // Allowed: the server answered with a session echoing this trip's tag.
+    await act(async () => void settleOidcPass({ intent: tag }));
     expect(kidsConnectAllowed()).toBe(true);
     expect(screen.getByText('connect flow')).toBeTruthy();
     expect(mockDismissTo).not.toHaveBeenCalled();
@@ -196,12 +198,24 @@ describe("a single sign-on's return (a page load, fe#310)", () => {
     await render(<ConnectLayout />);
     expect(screen.getByText('connect flow')).toBeTruthy();
     // Denied: no session came back.
-    await act(async () => void settleOidcPass(false));
+    await act(async () => void settleOidcPass(null));
     expect(kidsConnectAllowed()).toBe(false);
     expect(screen.queryByText('connect flow')).toBeNull();
     expect(mockDismissTo).toHaveBeenCalledWith('/kids');
     // The finish says why itself (`finishOidcSignIn`): no "ask a grown-up to open this link".
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it("gives no pass to a session without this trip's tag (the start URL typed with the provider still signed in): kids mode takes the flow back", async () => {
+    leaveForProvider();
+    mockReturning = true;
+    await render(<ConnectLayout />);
+    expect(screen.getByText('connect flow')).toBeTruthy();
+    // Denied: a session, but untagged (another trip, or an older server).
+    await act(async () => void settleOidcPass({}));
+    expect(kidsConnectAllowed()).toBe(false);
+    expect(screen.queryByText('connect flow')).toBeNull();
+    expect(mockDismissTo).toHaveBeenCalledWith('/kids');
   });
 
   // The app's first render is a transition, and one thrown away runs the layout's first
@@ -268,7 +282,7 @@ describe("a single sign-on's return (a page load, fe#310)", () => {
     mockReturning = true;
     const view = await render(<ConnectLayout />);
     await view.unmount();
-    expect(settleOidcPass(true)).toBe(false);
+    expect(settleOidcPass({ intent: tag })).toBe('none');
     expect(kidsConnectAllowed()).toBe(false);
   });
 

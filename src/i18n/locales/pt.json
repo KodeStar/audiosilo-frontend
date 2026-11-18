@@ -498,6 +498,7 @@
         "expired": "Esse início de sessão expirou ou já foi usado. Inicia sessão novamente.",
         "reach": "Não foi possível contactar o servidor para concluir o início de sessão. Inicia sessão novamente.",
         "notKept": "Iniciaste sessão, mas este dispositivo não conseguiu guardá-la. Inicia sessão novamente.",
+        "notThisTrip": "Esse início de sessão não foi começado neste dispositivo, por isso não foi guardado. Inicia sessão novamente.",
         "failed": "O início de sessão não foi concluído. Inicia sessão novamente."
       }
     },

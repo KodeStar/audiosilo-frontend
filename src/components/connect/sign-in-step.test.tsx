@@ -43,7 +43,8 @@ const mockApi = {
   exchange: jest.fn(),
   login: jest.fn(),
   serverInfo: jest.fn(),
-  oidcStartUrl: () => `${AWAY}/api/v1/auth/oidc/start?return=web`,
+  oidcStartUrl: (intent?: string) =>
+    `${AWAY}/api/v1/auth/oidc/start?return=web${intent ? `&intent=${intent}` : ''}`,
 };
 const mockBases: string[] = [];
 // The proxy headers (fe#167) each client was built with (its sixth argument).
@@ -601,7 +602,13 @@ describe('single sign-on', () => {
         newPerson: true,
         grownUpFromKids: true,
         book: { book: '3', path: 'Austen/Emma' },
+        tag: expect.stringMatching(/^[0-9a-f]{64}$/),
       });
+      // The trip starts with the tag its intent holds, for its own finish to echo
+      // (audiosilo#202).
+      expect(assign).toHaveBeenCalledWith(
+        `${AWAY}/api/v1/auth/oidc/start?return=web&intent=${held().tag}`,
+      );
     });
 
     // The in-memory hold (`holdReconnect`) is lost to the page load (fe#298).
@@ -613,6 +620,7 @@ describe('single sign-on', () => {
         newPerson: false,
         grownUpFromKids: false,
         reconnect: { server: AWAY, reconnectId: 'srv-old.1' },
+        tag: expect.any(String),
       });
     });
   });

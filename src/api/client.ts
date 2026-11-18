@@ -770,9 +770,11 @@ export class ApiClient {
   }
   /** Where the web player sends the browser (a full page load, never a fetch) to sign in
    * with the server's single sign-on (capability `oidc`): the provider, then back to
-   * `/web/connect?oidc=1`, where `oidcFinish` trades the sign-in for a session. */
-  oidcStartUrl() {
-    return this.apiUrl('/auth/oidc/start', { return: 'web' });
+   * `/web/connect?oidc=1`, where `oidcFinish` trades the sign-in for a session. `intent`:
+   * the trip's own random tag (`holdOidcIntent`), echoed by that trip's finish only
+   * (`AuthSession.intent`, audiosilo#202); an older server ignores it. */
+  oidcStartUrl(intent?: string) {
+    return this.apiUrl('/auth/oidc/start', intent ? { return: 'web', intent } : { return: 'web' });
   }
   /** Finish a single sign-on (capability `oidc`): the server reads the finished sign-in
    * from a cookie it set on its own origin (sent by the browser's default same-origin
