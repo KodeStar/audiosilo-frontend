@@ -1,5 +1,5 @@
 import { holdOidcIntent, takeOidcIntent } from './oidc-intent';
-import { endOidcTripOnLoad, oidcFlowKey } from './oidc-return';
+import { endOidcTripOnLoad, oidcFlowKey, oidcReturnCleared } from './oidc-return';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 // The player the server serves at /web.
@@ -110,4 +110,11 @@ describe('oidcFlowKey', () => {
       expect(oidcFlowKey(flow)).toBeUndefined();
     }
   });
+});
+
+// Every param a return brings: one left on the address would stay for a reload, and in the
+// history (`public/sw.js` keeps no page carrying `flow`).
+it("clears both of a return's params", () => {
+  expect(Object.keys(oidcReturnCleared).sort()).toEqual(['flow', 'oidc']);
+  expect(Object.values(oidcReturnCleared)).toEqual([undefined, undefined]);
 });

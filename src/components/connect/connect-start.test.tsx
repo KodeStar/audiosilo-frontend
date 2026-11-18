@@ -1565,8 +1565,9 @@ describe("a single sign-on's return (?oidc=1)", () => {
   it("takes ?oidc=1 off through the screen's own navigation as it mounts", async () => {
     mockApi.oidcFinish.mockReturnValue(new Promise(() => {}));
     await render(<ConnectStart />);
-    expect(mockNavSetParams).toHaveBeenCalledTimes(1);
-    expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined, flow: undefined });
+    // Strictly: `toHaveBeenCalledWith` takes a param left out for one set to undefined, and
+    // one left out stays on the address.
+    expect(mockNavSetParams.mock.calls).toStrictEqual([[{ oidc: undefined, flow: undefined }]]);
     expect(mockNavSetParams.mock.invocationCallOrder[0]).toBeLessThan(
       mockApi.oidcFinish.mock.invocationCallOrder[0],
     );
@@ -1601,9 +1602,9 @@ describe("a single sign-on's return (?oidc=1)", () => {
     await waitFor(() => expect(screen.getByText('Found Hearthside')).toBeTruthy());
     expect(screen.getByText(words)).toBeTruthy();
     // Its strip queued before the finish went out (a reload can't try it again), and again
-    // through the router once it failed.
-    expect(mockNavSetParams).toHaveBeenCalledWith({ oidc: undefined, flow: undefined });
-    expect(mockSetParams).toHaveBeenCalledWith({ oidc: undefined, flow: undefined });
+    // through the router once it failed (strictly, as above: each names both params).
+    expect(mockNavSetParams.mock.calls).toStrictEqual([[{ oidc: undefined, flow: undefined }]]);
+    expect(mockSetParams.mock.calls).toStrictEqual([[{ oidc: undefined, flow: undefined }]]);
     expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
     expect(useSession.getState().connections).toEqual([]);
     expect(mockReplace).not.toHaveBeenCalled();
