@@ -7,6 +7,7 @@ import type { User } from '@/api/types';
 import { endConnectFlow, kidsConnectAllowed } from '@/components/profiles/connect-intent';
 import { remember } from '@/lib/known-servers';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
+import i18n from '@/i18n';
 import { useSession } from '@/stores/session';
 import { seedProfile } from '@/testing/seed-profile';
 
@@ -1716,6 +1717,31 @@ describe("a single sign-on's return (?oidc=1)", () => {
         await waitFor(() => expect(mockReplace).toHaveBeenCalled());
         expect(mockApi.oidcFinish).toHaveBeenLastCalledWith('Test device', undefined, FLOW);
       } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    // The wait counts from the failure: a language switch while it runs re-renders the screen
+    // but never starts it over.
+    it("keeps a 429's wait running across a language switch", async () => {
+      jest.useFakeTimers();
+      try {
+        mockApi.oidcFinish
+          .mockRejectedValueOnce(new ApiError(429, 'slow down', undefined, 30))
+          .mockResolvedValueOnce({ token: 'session', server_id: 'srv-1', user });
+        await render(<ConnectStart />);
+        await waitFor(() => expect(screen.getByTestId('oidc-try-again')).toBeTruthy());
+        await act(async () => jest.advanceTimersByTime(20_000));
+        await act(async () => {
+          await i18n.changeLanguage('de');
+        });
+        await act(async () => jest.advanceTimersByTime(10_000));
+        await fireEvent.press(screen.getByTestId('oidc-try-again'));
+        expect(mockApi.oidcFinish).toHaveBeenCalledTimes(2);
+      } finally {
+        await act(async () => {
+          await i18n.changeLanguage('en');
+        });
         jest.useRealTimers();
       }
     });

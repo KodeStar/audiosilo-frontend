@@ -176,21 +176,21 @@ export function ConnectStart() {
   // The wait, and the done cookie's minute (`doneBy`), run while this retry is the one offered:
   // dropping it (or the screen) ends them. Past the minute the server holds the sign-in no
   // more, so Try again goes and the reason is the refusal's: only Sign in again is left.
+  // The minute is absolute (`oidcDoneLeft`), so re-arming it (a language switch) moves
+  // nothing; the wait is relative, so only a new retry re-arms it.
   useEffect(() => {
     if (!oidcRetry) return;
-    const expire = setTimeout(() => {
+    const id = setTimeout(() => {
       setOidcRetry(null);
       fail(t('connect.oidc.errors.expired'));
     }, oidcDoneLeft(oidcRetry.doneBy));
-    const wait =
-      oidcRetry.waitMs > 0
-        ? setTimeout(() => setOidcRetry({ ...oidcRetry, waitMs: 0 }), oidcRetry.waitMs)
-        : undefined;
-    return () => {
-      clearTimeout(expire);
-      clearTimeout(wait);
-    };
+    return () => clearTimeout(id);
   }, [oidcRetry, fail, t]);
+  useEffect(() => {
+    if (!oidcRetry?.waitMs) return;
+    const id = setTimeout(() => setOidcRetry({ ...oidcRetry, waitMs: 0 }), oidcRetry.waitMs);
+    return () => clearTimeout(id);
+  }, [oidcRetry]);
   const [oidcFinishing, setOidcFinishing] = useState(false);
   // The reconnect the code that opened this screen continues (scanned from a reconnect's
   // sign-in step, `holdScanReconnect`): taken once, and only that code's (Try again too),
