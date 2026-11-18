@@ -58,6 +58,11 @@ class KnownDurationsTest {
 
   private class Track : TrackOutput {
     val times = ArrayList<Long>()
+    var durationUs = C.TIME_UNSET
+
+    override fun durationUs(durationUs: Long) {
+      this.durationUs = durationUs
+    }
 
     override fun format(format: Format) {}
 
@@ -223,6 +228,32 @@ class KnownDurationsTest {
     // Decided on the first map only.
     val guess = ConstantBitrateSeekMap(104_418, 0, 160_000, 522)
     assertSame(guess, r.seekMap(guess))
+  }
+
+  @Test fun aTrackLengthFollowsTheSeekMapsScale() {
+    val unscaled = Retimer(26_100_000)
+    assertEquals(5_221_000L, unscaled.durationUs(5_221_000)) // no map yet: as it is
+    unscaled.seekMap(SeekMap.Unseekable(26_000_000))
+    assertEquals(5_221_000L, unscaled.durationUs(5_221_000)) // a header's map: as it is
+
+    val r = Retimer(26_100_000)
+    val map = r.seekMap(ConstantBitrateSeekMap(104_418, 0, 160_000, 522))
+    assertEquals(map.durationUs.toDouble(), r.durationUs(5_221_000).toDouble(), 1_000.0)
+    assertEquals(26_100_000.0, r.durationUs(5_221_000).toDouble(), 30_000.0)
+    assertEquals(C.TIME_UNSET, r.durationUs(C.TIME_UNSET))
+  }
+
+  @Test fun indexSeekersTrackLengthPassesThroughTheExtractorUnscaled() {
+    // No length known: Media3 indexes the file as it reads, and tells the exact length (the
+    // frame count) at the end, through the track. No constant-bitrate map, so no scale.
+    val bytes = vbr(frames)
+    val out = extract(
+      KnownDurationExtractor(Mp3Extractor(Mp3Extractor.FLAG_ENABLE_INDEX_SEEKING), trueUs * 3),
+      bytes,
+      lengthKnown = false,
+    )
+    assertEquals(trueUs.toDouble(), out.track.durationUs.toDouble(), 30_000.0)
+    assertEquals(trueUs.toDouble(), out.durations.last().toDouble(), 30_000.0)
   }
 
   @Test fun sampleTimesAnchorOnTheFirstSampleAfterEachSeek() {

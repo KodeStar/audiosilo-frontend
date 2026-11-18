@@ -161,6 +161,11 @@ class Retimer(private val knownUs: Long) {
     return anchorOut + (timeUs - anchorIn)
   }
 
+  /** A track length the extractor tells ([TrackOutput.durationUs]) on the same scale as the
+   * seek map, so the two never disagree. Mp3Extractor (1.9.0) tells one only for an index
+   * seeker, at the end of the input, and a scale only ever follows a constant-bitrate map, so
+   * there it passes through as it is; the scaling holds a later Media3 that also tells a
+   * constant-bitrate map's length to the server's. An unknown length stays unknown. */
   fun durationUs(durationUs: Long): Long {
     val s = scale ?: return durationUs
     return if (durationUs == C.TIME_UNSET) durationUs else (durationUs * s).roundToLong()
