@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiProvider } from '@/api/provider';
+import { endOidcTripOnLoad } from '@/components/connect/oidc-return';
 import { KidsRouteGuard } from '@/components/kids/kids-route-guard';
 import { DocumentTitle } from '@/components/shell/document-title';
 import { RootListeners, useRootServices } from '@/components/shell/root-services';
@@ -24,6 +25,10 @@ import '@/lib/rnw-button-fix';
 import { StaticFonts } from '@/theme/static-fonts';
 import { ThemeProvider } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
+
+// A page load that is no single sign-on's return ends any trip the tab still holds
+// (audiosilo#202): here, so it runs on every route and before anything renders.
+endOidcTripOnLoad();
 
 export const unstable_settings = {
   anchor: '(app)',

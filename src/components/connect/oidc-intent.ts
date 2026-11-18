@@ -38,13 +38,18 @@ import { sameOrigin } from '@/lib/same-origin';
  * finish of the sign-in that trip completed, once (`AuthSession.intent`), and the pass comes
  * back only on this tab's own tag. The finish also names the tag a waiting pass expects
  * (`oidcPassTag`, the request's `intent`), so the server refuses any other sign-in before it
- * makes a session (403 `oidc_intent_mismatch`). A session with no tag back (an older server,
- * which ignores the request's): no pass, and the finish signs the session out again. The
- * intent is also stamped and lives only as long as the server lets a sign-in's trip take
+ * makes a session (403 `oidc_intent_mismatch`). A server from before the tag (a build before
+ * its first release with single sign-on) refuses a finish that names one (400): no session,
+ * no pass. A session with no tag back all the same: no pass, and the finish signs the session
+ * out again.
+ *
+ * The intent is also stamped and lives only as long as the server lets a sign-in's trip take
  * (`MAX_AGE_MS`, its `FlowMaxAge`), and the flow's layout drops it as the flow is left
- * (`dropOidcIntent`). So does the server's own connect page (its `connect.js`, same origin)
- * when a trip ends there with no sign-in (`#oidc=<reason>`): it removes `KEY` too, so keep the
- * name in step with it.
+ * (`dropOidcIntent`). Every page load that is not the return drops it too, on any route
+ * (`endOidcTripOnLoad`, the root layout): while the tag is held, the server's start URL sent
+ * again from the history would complete its trip. So does the server's own connect page (its
+ * `connect.js`, same origin) when a trip ends there with no sign-in (`#oidc=<reason>`): it
+ * removes `KEY` too, so keep the name in step with it.
  */
 
 const KEY = 'audiosilo.oidcIntent';

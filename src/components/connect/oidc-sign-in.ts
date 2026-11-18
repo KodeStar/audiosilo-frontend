@@ -4,9 +4,7 @@ import { ApiClient, ApiError, apiErrorKind } from '@/api/client';
 import { connectClientFor } from '@/api/connect-client';
 import type { AuthSession, ServerInfo } from '@/api/types';
 import { toast } from '@/components/ui/toast';
-import { appPath, servedOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
-import { firstParam } from '@/lib/paths';
 import { useSession } from '@/stores/session';
 
 import { finishConnect } from './finish-connect';
@@ -27,36 +25,9 @@ import { sharedRefusalText } from './sign-in-error';
  * `sessionStorage` instead (`oidc-intent.ts`, fe#310).
  */
 
-/** The served player's return from a single sign-on (`/connect?oidc=1`): its own origin,
- * where the server's cookie is, or null (the app, Metro, another value, or a pairing link,
- * which wins: any `token`, a repeated one's list too). The route, the connect screen and the
- * layout (`oidcReturnOnLoad`) all decide by it, from params as the router hands them over. */
-export function oidcReturnOrigin(
-  oidc: string | string[] | undefined,
-  token?: string | string[],
-): string | null {
-  return !token && firstParam(oidc) === '1' ? servedOrigin() : null;
-}
-
-/** Whether this page load is the server's return from a single sign-on, read from the
- * address itself (`oidcReturnOrigin`'s rule, on the flow's first step: the one route that
- * finishes it, so `?oidc=1` on any other of the flow's routes is no return): the connect
- * flow's layout must know before any route's params reach it, to put back what the flow was
- * for (`takeOidcIntent`). */
-export function oidcReturnOnLoad(): boolean {
-  if (!servedOrigin()) return false;
-  const at = globalThis.location;
-  if (appPath(at?.pathname ?? '').replace(/\/+$/, '') !== '/connect') return false;
-  const q = new URLSearchParams(at?.search ?? '');
-  // As the router hands the screen its params (a repeated one is a list): the layout and the
-  // screen must agree, or the layout would hold kids mode back for a finish that never runs
-  // (`?oidc=1&token=&token=x`: no token here by its first value, a pairing link there).
-  const param = (name: string) => {
-    const all = q.getAll(name);
-    return all.length > 1 ? all : all[0];
-  };
-  return oidcReturnOrigin(param('oidc'), param('token')) !== null;
-}
+// The return's own rule lives apart (`oidc-return.ts`), where the root layout reaches it
+// without this module's weight.
+export { oidcReturnOnLoad, oidcReturnOrigin } from './oidc-return';
 
 /** The sign-in step's button while the server's `oidc` capability is on: the provider's
  * name ("Sign in with Keycloak"), '' when it sent none (the button then names single
