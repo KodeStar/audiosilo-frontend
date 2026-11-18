@@ -2777,7 +2777,11 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   phone start a book at the same place. A downloaded book's start asks its server first
   (`startSourceOf`, up to `FRESH_SOURCE_WAIT_MS`) only when there is someone to ask: with no
   network on the device (`isDeviceOnline`) or its server marked unreachable it starts from
-  the download's copy at once (a Play offline spun for the whole wait).
+  the download's copy at once (a Play offline spun for the whole wait). Its resume lookup
+  follows the same rule (`DOWNLOADED_PLACE_WAIT_MS`, `loadInitialProgress`'s `waitMs`): no
+  server asked when there is none to ask, else 3 s at most, then this device's records with
+  its saves guarded. A frozen server otherwise held a car's start for the whole request
+  timeout, past the car's 10 s wait.
 - **Auto sleep stays off in the car**: `car-connection.ts` (`isCarConnected`, written by the
   car sync and, on iOS, by the car start in `register-car-task.ios.ts`) is read by
   `auto-sleep-controller.ts`, so the nightly timer never pauses a driver. It is its own module
