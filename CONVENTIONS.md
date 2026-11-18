@@ -2376,7 +2376,9 @@ media GETs only.
     down no edit can be made: nothing is taken back and the Undo fails with a toast
     (`Withdrawal.unreachable`, `undoFinish`'s `'unreachable'`; fe#258: done on this device
     alone, a finish the server did hold won on reconnect), which offers Retry (the Undo run
-    again). Mark as not finished takes the same route at its own place (`unfinish` in
+    again); so does an edit that found the server away (`isServerAwayError` in `client.ts`:
+    no answer, a timeout, a proxy's 502 to 504 or Cloudflare's 520 to 524; the first edit
+    after the server died, before reachability noticed), the finish put back. Mark as not finished takes the same route at its own place (`unfinish` in
     `book-actions.tsx`, through `undoFinish`): a finish still waiting is taken back before its
     edit, and with the server down it fails the same way. One taken back unsent is undone
     here as an Undo is, the mirror back to its record before the finish, not at its own place:

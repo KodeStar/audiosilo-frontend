@@ -1,3 +1,5 @@
+import { ApiError, NetworkError, TimeoutError } from '@/api/client';
+
 import { setFinishRecorder, undoFinish } from './finish-route';
 
 // fe#208: an Undo's progress edit goes only after the waiting finish is taken back; a
@@ -62,6 +64,28 @@ describe('undoFinish', () => {
   it('an edit that failed puts the finish back and fails the Undo', async () => {
     await expect(undoFinish(ref, edit(false))).rejects.toThrow('refused');
     expect(steps).toEqual(['withdraw c1 3 Author/Book', 'edit', 'restore']);
+  });
+
+  // The first edit after the server died, before reachability noticed: the generic failure
+  // offered no Try again, where the next attempt said the server can't be reached.
+  it.each([
+    ['no answer', new NetworkError(new Error('Failed to fetch'))],
+    ['a timeout', new TimeoutError(15_000)],
+    ["a proxy's 502", new ApiError(502, 'bad gateway')],
+  ])('an edit that found the server away (%s): the finish back, unreachable', async (_, e) => {
+    const failing = async () => {
+      steps.push('edit');
+      throw e;
+    };
+    await expect(undoFinish(ref, failing)).resolves.toBe('unreachable');
+    expect(steps).toEqual(['withdraw c1 3 Author/Book', 'edit', 'restore']);
+  });
+
+  it("an edit the server refused is still the edit's failure", async () => {
+    const refused = async () => {
+      throw new ApiError(500, 'boom');
+    };
+    await expect(undoFinish(ref, refused)).rejects.toThrow('boom');
   });
 
   it('a finish that never left (offline): undone here, no edit, never put back', async () => {
@@ -145,5 +169,9 @@ describe('undoFinish', () => {
     const e = jest.fn(async () => {});
     await expect(undoFinish(ref, e)).resolves.toBe('undone');
     expect(e).toHaveBeenCalledTimes(1);
+    const away = async () => {
+      throw new TypeError('Failed to fetch');
+    };
+    await expect(undoFinish(ref, away)).resolves.toBe('unreachable');
   });
 });

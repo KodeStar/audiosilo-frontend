@@ -429,6 +429,25 @@ export class NetworkError extends TypeError {
   }
 }
 
+/** What a proxy or Cloudflare answers for a server behind it that is down or did not
+ * answer in time (502, 503, 504, Cloudflare's 520 to 524). */
+const SERVER_AWAY = new Set([502, 503, 504, 520, 521, 522, 523, 524]);
+
+/**
+ * Whether a failed request found its server away rather than refused: our timeout, the
+ * fetch itself rejecting (a `TypeError`: `NetworkError`, the browser's "Failed to fetch"),
+ * or a gateway answering for a server that is down (`SERVER_AWAY`). For what a failure
+ * tells the listener: the first request after a server died fails so before reachability
+ * has noticed.
+ */
+export function isServerAwayError(e: unknown): boolean {
+  return (
+    e instanceof TimeoutError ||
+    e instanceof TypeError ||
+    (e instanceof ApiError && SERVER_AWAY.has(e.status))
+  );
+}
+
 type QueryValue = string | number | boolean | undefined | null;
 /** A list value is sent as the key repeated once per item (`name=A&name=B`). */
 type Query = Record<string, QueryValue | readonly QueryValue[]>;
