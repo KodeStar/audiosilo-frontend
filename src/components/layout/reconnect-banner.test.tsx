@@ -78,12 +78,31 @@ it('without a pick, signs in through the paired address', async () => {
   expect(useSession.getState().pendingServerUrl).toBe(HOME);
 });
 
+/** A clock the test moves (`now`), started well after any push an earlier test made: when
+ * the last one was is the module's own, kept from test to test. */
+let now = Date.now();
+function laterClock() {
+  now += 600_000;
+  return jest.spyOn(Date, 'now').mockImplementation(() => now);
+}
+
 it('a double tap pushes one sign-in step (one on its way, then one on screen)', async () => {
   const conn = useSession.getState().connections[0];
+  const app = { index: 0, routes: [{ name: '(app)' }] };
+  const clock = laterClock();
+  mockNavState = app;
   // The second tap lands before the first has written the address.
   await act(() => Promise.all([reconnectConnection(conn), reconnectConnection(conn)]));
   expect(mockPush).toHaveBeenCalledTimes(1);
-  // Its sign-in step is on screen now: a tap that still reaches the banner pushes nothing.
+  // The step is pushed and not on the stack yet (the router applies a push a render later,
+  // and the address is written at once, so nothing is on its way either): the second tap
+  // of a double tap reads the app's stack, and pushes nothing.
+  await render(<ReconnectBanner />);
+  now += 150;
+  await fireEvent.press(screen.getByRole('button'));
+  expect(mockPush).toHaveBeenCalledTimes(1);
+  // Its sign-in step is on screen now: a tap that still reaches the banner pushes nothing,
+  // however long after.
   mockNavState = {
     index: 1,
     routes: [
@@ -91,13 +110,29 @@ it('a double tap pushes one sign-in step (one on its way, then one on screen)', 
       { name: 'connect', state: { index: 0, routes: [{ name: 'sign-in' }] } },
     ],
   };
-  await render(<ReconnectBanner />);
+  now += 60_000;
   await fireEvent.press(screen.getByRole('button'));
   expect(mockPush).toHaveBeenCalledTimes(1);
   // Back on the app, a tap starts it again.
-  mockNavState = { index: 0, routes: [{ name: '(app)' }] };
+  mockNavState = app;
   await fireEvent.press(screen.getByRole('button'));
   expect(mockPush).toHaveBeenCalledTimes(2);
+  clock.mockRestore();
+});
+
+it('a push that never reached the stack holds Reconnect back only for a moment', async () => {
+  const conn = useSession.getState().connections[0];
+  const clock = laterClock();
+  mockNavState = { index: 0, routes: [{ name: '(app)' }] };
+  await act(() => reconnectConnection(conn));
+  expect(mockPush).toHaveBeenCalledTimes(1);
+  now += 999;
+  await act(() => reconnectConnection(conn));
+  expect(mockPush).toHaveBeenCalledTimes(1);
+  now += 1;
+  await act(() => reconnectConnection(conn));
+  expect(mockPush).toHaveBeenCalledTimes(2);
+  clock.mockRestore();
 });
 
 it('renders nothing when no connection needs reconnecting', async () => {

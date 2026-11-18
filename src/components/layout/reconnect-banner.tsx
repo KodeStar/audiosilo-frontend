@@ -21,14 +21,26 @@ const SIGN_IN_ROUTE = 'sign-in';
 /** The reconnect on its way (`reconnectConnection`), so a second tap joins it. */
 let reconnecting: Promise<void> | null = null;
 
+/** How long a pushed sign-in step can take to show on the stack. expo-router only queues a
+ * push and applies it in a later render (a transition, which a tap interrupts), so for a
+ * moment the stack says nothing of the step on its way. Bounded: a push that never lands
+ * cannot hold Reconnect back. */
+const PUSH_LANDS_MS = 1000;
+/** When the sign-in step was last pushed (`Date.now()`), or null. */
+let pushedAt: number | null = null;
+
 /** Start the reconnect flow for `conn`: the sign-in step for its server, through the
  * address the connection uses NOW (`effectiveUrl`; away from home that is its away
  * address, not the home address it may have been paired with, which can't answer).
  * Signing in keeps the connection's own `serverUrl` (`repairPlan`). The connection it
  * re-pairs is handed over in memory (`holdReconnect`). One at a time: a double tap while
- * one is on its way, or once its sign-in step is on screen, pushes no second step. */
+ * one is on its way, while its pushed step has yet to reach the stack, or once that step is
+ * on screen, pushes no second step. */
 export function reconnectConnection(conn: Connection): Promise<void> {
-  if (focusedRoute(currentNavState())?.name === SIGN_IN_ROUTE) return Promise.resolve();
+  const state = currentNavState();
+  if (focusedRoute(state)?.name === SIGN_IN_ROUTE) return Promise.resolve();
+  // Only against a stack that can be read: with none there is no push to wait for.
+  if (state && pushedAt !== null && Date.now() - pushedAt < PUSH_LANDS_MS) return Promise.resolve();
   reconnecting ??= startReconnect(conn).finally(() => {
     reconnecting = null;
   });
@@ -41,6 +53,7 @@ async function startReconnect(conn: Connection): Promise<void> {
   // Which connection the sign-in re-pairs goes in memory, never in the route (fe#298).
   holdReconnect(server, conn.id);
   router.push({ pathname: '/connect/sign-in', params: { serverName: conn.name } });
+  pushedAt = Date.now();
 }
 
 /**
