@@ -436,6 +436,9 @@ export type Chapter = {
   book_offset: number;
 };
 
+/** A part of a book a Bridge generated on this server (`Book.generated_parts`). */
+export type GeneratedPart = 'characters' | 'recaps' | 'description';
+
 /** Where a book's chapters come from when they are not the files' own: a community
  * recording's list fitted onto its audio (from the metadata service), a Bridge's detection
  * in the narration of a chapterless book (Bridge Phase 1d), a podcast episode file's own
@@ -538,6 +541,10 @@ export type Book = {
    * Bridge generated on this server (Bridge Phases 1a and 1c; list, search, item, recent
    * and the next book's `book` send it). Absent otherwise, and on older servers. */
   generated?: boolean;
+  /** Which generated parts the book's `.audiosilo/` folder holds, in this order:
+   * `characters`, `recaps`, `description` (server#443). Sent beside `generated`, left out
+   * when there are none, and on older servers; a part a newer server adds passes through. */
+  generated_parts?: (GeneratedPart | (string & {}))[];
   /** Set when the item is a podcast episode (Bridge Phase 2c): only GET
    * /libraries/{id}/item sends it (list shapes leave it out). Its `fetch` is the episode's
    * on-demand fetch status while it is not on the server. Absent for a book, and on older
@@ -2027,6 +2034,10 @@ export type PodcastShow = {
     next_check: string | null;
     /** The last check failed (the player says so, never the code). */
     error: PodcastError | null;
+    /** A check found the Bridge no longer holds this private feed's address
+     * (`feed_secret_missing`) and none has succeeded since: following it again by its
+     * address restores it (server#443). Absent on older servers. */
+    secret_missing?: boolean;
   };
   /** How many episodes the server keeps (an admin setting; the player shows none). */
   retention?: { mode: string; keep: number; days: number };
