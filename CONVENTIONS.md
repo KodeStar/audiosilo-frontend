@@ -441,14 +441,25 @@ random bytes in hex per trip, keeps them in the intent and returns them for the 
 once (`AuthSession.intent`). While a pass waits, the finish also sends the tag it expects (the
 request's `intent`, `oidcPassTag`), and the server refuses any other sign-in before it makes a
 session (403 `oidc_intent_mismatch`, the `notThisTrip` toast): with the provider still signed in,
-the server's start URL typed in the tab finishes a sign-in too. An older server ignores the
-request's tag and echoes nothing, so a session that finishes a waiting pass without the echo is
-signed out again and the toast says the server needs updating (`needsUpdate`): it fails safe. A
-sign-in with no pass waiting sends no tag and never reads one, so it is kept as before. The
-server's own connect page removes the held intent (`audiosilo.oidcIntent`) too, when a trip ends
-there with no sign-in. A page restored from the
-browser's back/forward cache comes back with the pass in memory: the connect layout ends it on a
-persisted `pageshow`, as a page load would. A reconnect's sign-in carries the connection it re-pairs with the
+the server's start URL typed in the tab finishes a sign-in too. A server with single sign-on
+from before the tag refuses a finish that names one (400: its bodies take no field it doesn't
+know) and makes no session, and the toast says the server needs updating (`needsUpdate`); a
+session that finishes a waiting pass without the echo all the same is signed out again under
+the same toast: it fails safe. A sign-in with no pass waiting sends no tag and never reads one,
+so it is kept as before. A page load that is not the return ends the trip the tab still holds,
+on any route (`endOidcTripOnLoad` in `oidc-return.ts`, run by the root layout's module before
+anything renders): while the tag is held, the server's start URL sent again from the history
+would complete it. The server's own connect page removes the held intent
+(`audiosilo.oidcIntent`) too, when a trip ends there with no sign-in. The layout
+(`oidcReturnOnLoad`) and the screen (`ConnectStart`) tell a return by the one rule
+(`oidcReturnOrigin`) over params shaped alike (a repeated one is a list, as the router hands
+it), and a first step that is no return refuses a pass still waiting (`settleOidcPass(null)`):
+the layout never holds kids mode back for a finish that does not run. A page restored from the
+browser's back/forward cache comes back with the pass in memory: the connect layout ends it on
+a persisted `pageshow`, as a page load would, and holds that as state (`passEnded`), since the
+compiled gate is worked out again only when something the render holds changes ("Cache reads at
+render", above; `connect-layout.test.tsx` runs it compiled). A reconnect's sign-in carries the
+connection it re-pairs with the
 address the step signed in through (the in-memory hold's, fe#298): without it a server reset at a
 home address keeps the dead connection (`staleIdentities`' `named`) and the banner keeps asking.
 It shares the stamp and the drop as the flow is left, is taken once by `finishOidcSignIn`
