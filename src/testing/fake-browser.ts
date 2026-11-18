@@ -115,6 +115,7 @@ export function tabStorage(storage: FakeTab['localStorage']) {
   return {
     getItem: async (key: string) => read(key),
     getItemStrict: async (key: string) => read(key),
+    getRawItem: async (key: string) => storage.getItem(key),
     setItem: async (key: string, value: unknown) => storage.setItem(key, JSON.stringify(value)),
     setItemStrict: async (key: string, value: unknown) =>
       storage.setItem(key, JSON.stringify(value)),

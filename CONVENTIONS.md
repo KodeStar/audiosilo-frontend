@@ -51,19 +51,28 @@ connection-keyed document to `ID_DOCUMENTS` in the identity migration too). The 
 (`resolveClient`) and gate on the session having hydrated (`sessionReady`) before
 reading storage, without importing React; removing/signing out of a connection
 **purges** its scoped state through the `onConnectionRemoved` registry in
-`src/stores/session.ts`. On the web every tab does: the removing tab tells the others
-(`removedInOtherTab`, a tab channel, once its list is written and the token gone), and each
-drops the connection from its own list (not written again; its screens leave it as the list
-changes, as the removing tab's do), stops playing through it first
-(`onConnectionRemovedInOtherTab`, `playback/removed-in-other-tab.ts`; a tab with no book
-loaded through it has nothing to stop, and stays off the span lock the tabs share) and runs
-the same cleanups over its own copies. Not when the token is back (signed in again before the
-word arrived; no cleanups when it is back once the tab stopped playing). The channel is
-listened on from `hydrate`, never at import (the static render imports the store in Node,
-where an open `BroadcastChannel` holds the export's process). A
-stale identity a sign-in retires (`setSession`'s `retire`) stops the same way in the tab that
-retired it, before its purge; the other tabs are NOT told of it (they do not know the
-connection that replaced it, so their profiles would drop the person with it). Stale
+`src/stores/session.ts`. On the web every tab does. Each tab follows the stored list and
+tokens (`followStored`, on the `storage` events of another tab's writes; a write heard while it
+reads, the launch's hydrate included, has it read again) and reads the list again before it
+writes it (`catchUp`), so it never writes its older copy over another tab's sign-in; its default
+connection and reconnect flags stay its own (the default follows only once it is gone). Before
+its teardown's flush the removing tab tells the others the connection is going
+(`tellOtherTabsGoing`): a tab playing through it stops and sends its place and listening while
+the token works (`onConnectionGoingInOtherTab`), and the removing tab waits on it
+(`GOING_ANSWER_MS` for an answer, at most `GOING_FLUSH_MS`). Once its list is written and the
+token gone it tells them it is removed (`removedInOtherTab`, the same tab channel), and each
+takes the stored list (its screens leave it as the list changes, as the removing tab's do),
+stops playing through it first (`onConnectionRemovedInOtherTab`,
+`playback/removed-in-other-tab.ts`; a tab with no book loaded through it has nothing to stop,
+and stays off the span lock the tabs share) and runs the same cleanups over its own copies.
+Not when the token is back (signed in again before the word arrived; no cleanups when it is
+back once the tab stopped playing). The channel and the `storage` events are listened to from
+`hydrate`, never at import (the static render imports the store in Node, where an open
+`BroadcastChannel` holds the export's process). A stale identity a sign-in retires
+(`setSession`'s `retire`) stops the same way in the tab that retired it, before its purge, and
+the other tabs are told of it with the connection that replaced it (`replacedBy`): each moves
+the person to it first (`onConnectionReplaced`), so their profile keeps its PIN, name and kids
+settings. Stale
 persisted state is reconciled once, before any store
 hydrates, by `resetStaleStorage()` (run inside the memoised launch migration `migrateStorage()`,
 `src/lib/storage-migration.ts`, which `bootstrapPlayback` (the launch steps, below) and ThemeProvider both await) along **two independent version axes** so cache churn
@@ -592,6 +601,12 @@ snapshot and the widget follow `activeProfileId`). The rules:
   setting a PIN over a stored one asks for it first. SHA-256 is pure JS (`src/lib/sha256.ts`:
   no subtle crypto on a plain-http web origin, and an async digest per round was too slow),
   hashed in chunks that let the UI paint. A forgotten PIN: remove that person from the device.
+- **Tabs (web)** share the stored document, each holding its own copy: a tab takes another's
+  writes (`followStoredDoc`), and reads the document again before it writes (`writeChanges`),
+  making its changes again over a newer one (a change is a function of the document,
+  `commit`). A list change a tab followed from another tab is never reconciled there
+  (`sessionChangeFollowed`): the tab that made it writes the people that go with it. The
+  person listening stays each tab's own.
 - **A document that can't be read** is retried (`HYDRATE_ATTEMPTS`), never taken as missing
   (rebuilding it would drop every PIN and kids setting). Then: with someone signed in the store
   stays shut (`hydrationFailed`: nothing shows or plays, nobody new signs in) and reads again
