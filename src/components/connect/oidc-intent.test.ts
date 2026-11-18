@@ -13,6 +13,7 @@ import {
   holdOidcIntent,
   MAX_AGE_MS,
   resumeOidcIntent,
+  oidcPassTag,
   settleOidcPass,
   takeOidcIntent,
   takeOidcResumed,
@@ -87,14 +88,18 @@ describe("a grown-up's pass through kids mode", () => {
     const tag = leaveWithPass();
     const settled = jest.fn();
     // Denied: the address alone (`/connect?oidc=1`) gives no pass back.
+    expect(oidcPassTag()).toBeUndefined();
     expect(resumeOidcIntent(takeOidcIntent(true)!, settled)).toBe(true);
     expect(kidsConnectAllowed()).toBe(false);
     expect(settled).not.toHaveBeenCalled();
+    // The tag the finish's request names while the pass waits.
+    expect(oidcPassTag()).toBe(tag);
     // Allowed: the server answered with a session echoing this trip's tag.
     expect(settleOidcPass({ intent: tag })).toBe('given');
     expect(kidsConnectAllowed()).toBe(true);
     expect(settled).toHaveBeenCalledTimes(1);
-    // Settled once.
+    // Settled once, and the tag spent with it.
+    expect(oidcPassTag()).toBeUndefined();
     expect(settleOidcPass({ intent: tag })).toBe('none');
     expect(settled).toHaveBeenCalledTimes(1);
   });
@@ -170,6 +175,8 @@ describe("a grown-up's pass through kids mode", () => {
     const settled = jest.fn();
     const held = takeOidcIntent(true)!;
     expect(resumeOidcIntent(held, settled)).toBe(false);
+    // No pass waits: the finish names no tag.
+    expect(oidcPassTag()).toBeUndefined();
     expect(settleOidcPass({ intent: held.tag })).toBe('none');
     expect(kidsConnectAllowed()).toBe(false);
   });
@@ -189,6 +196,7 @@ describe("a grown-up's pass through kids mode", () => {
     const settled = jest.fn();
     expect(resumeOidcIntent(takeOidcIntent(true)!, settled)).toBe(true);
     dropOidcIntent();
+    expect(oidcPassTag()).toBeUndefined();
     expect(settleOidcPass({ intent: tag })).toBe('none');
     expect(kidsConnectAllowed()).toBe(false);
     expect(settled).not.toHaveBeenCalled();

@@ -499,6 +499,7 @@
         "reach": "No se pudo contactar con el servidor para completar el inicio de sesión. Vuelve a iniciar sesión.",
         "notKept": "Has iniciado sesión, pero este dispositivo no pudo guardarla. Vuelve a iniciar sesión.",
         "notThisTrip": "Ese inicio de sesión no se empezó en este dispositivo, así que no se guardó. Vuelve a iniciar sesión.",
+        "needsUpdate": "Hay que actualizar este servidor para poder añadir a alguien desde el modo infantil con inicio de sesión único, así que el inicio de sesión no se guardó. Actualiza el servidor o inicia sesión de otra forma.",
         "failed": "El inicio de sesión no se completó. Vuelve a iniciar sesión."
       }
     },

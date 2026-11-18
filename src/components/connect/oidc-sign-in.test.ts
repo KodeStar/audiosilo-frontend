@@ -82,6 +82,8 @@ describe('oidcFinishText', () => {
   it.each([
     [new ApiError(401, 'no', 'oidc_no_sign_in'), 'connect.oidc.errors.noSignIn'],
     [new ApiError(401, 'gone', 'oidc_sign_in_expired'), 'connect.oidc.errors.expired'],
+    [new ApiError(403, 'other', 'oidc_intent_mismatch'), 'connect.oidc.errors.notThisTrip'],
+    [new ApiError(403, 'old server, no code'), 'connect.oidc.errors.failed'],
     [new ApiError(400, 'invalid request'), 'connect.oidc.errors.failed'],
     [new ApiError(500, 'boom'), 'connect.oidc.errors.failed'],
     [new ApiError(403, 'disabled', 'member_disabled'), 'connect.signIn.errors.disabled'],

@@ -1218,7 +1218,8 @@ describe("a single sign-on's return (?oidc=1)", () => {
     // No failure backstop on the way to "Your library is ready.".
     expect(mockSetParams).not.toHaveBeenCalled();
     expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
-    expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device');
+    // No pass waits on it: no tag for the server to hold the sign-in to.
+    expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', undefined);
     expect(mockApi.exchange).not.toHaveBeenCalled();
     expect(new Set(mockBases)).toEqual(new Set([ORIGIN]));
     expect(conn()).toMatchObject({
@@ -1296,6 +1297,8 @@ describe("a single sign-on's return (?oidc=1)", () => {
         await waitFor(() => expect(passAtStore).toBe(true));
         expect(kidsConnectAllowed()).toBe(true);
         expect(mockToast).not.toHaveBeenCalled();
+        // The finish named the tag the pass expects, for the server to refuse any other.
+        expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', tag);
       } finally {
         useSession.setState({ setSession });
       }
@@ -1321,22 +1324,72 @@ describe("a single sign-on's return (?oidc=1)", () => {
     });
 
     // audiosilo#202: the server's start URL typed in this tab while the provider is still
-    // signed in finishes a sign-in, but never with this trip's tag; nor does an older server.
-    it.each([
-      ['no tag (the start URL typed)', {}],
-      ["another trip's tag", { intent: 'cd'.repeat(32) }],
-    ])('gives none for a session with %s, and signs it out again', async (_, echoed) => {
-      mockApi.oidcFinish.mockResolvedValue({
-        token: 'session',
-        server_id: 'srv-1',
-        user,
-        ...echoed,
+    // signed in finishes a sign-in, but never this trip's: the server refuses it for the tag
+    // the finish names, and makes no session.
+    it('gives none when the server refuses the sign-in as another trip (403 oidc_intent_mismatch), with nothing to sign out', async () => {
+      mockApi.oidcFinish.mockRejectedValue(new ApiError(403, 'x', 'oidc_intent_mismatch'));
+      mockApi.serverInfo.mockResolvedValue(info());
+      await render(<ConnectStart />);
+      await waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
+      expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', tag);
+      // Denied: no pass, so kids mode takes the flow back (the layout); the reason goes over it.
+      expect(kidsConnectAllowed()).toBe(false);
+      expect(mockToast).toHaveBeenCalledTimes(1);
+      expect(mockToast).toHaveBeenCalledWith({
+        title:
+          "That sign-in wasn't the one started on this device, so it wasn't kept. Sign in again.",
       });
+      // No session was made: nothing stored, nothing to sign out.
+      expect(mockApi.logout).not.toHaveBeenCalled();
+      expect(useSession.getState().connections).toEqual([]);
+      expect(screen.queryByText('Found Hearthside')).toBeNull();
+      expect(mockSetParams).not.toHaveBeenCalled();
+    });
+
+    // An older server ignores the request's tag and answers with a session: it can't tell
+    // this trip's sign-in from the start URL typed in the tab, so none is kept.
+    it.each([
+      ['no tag (a server before the tag)', {}],
+      ["another trip's tag", { intent: 'cd'.repeat(32) }],
+    ])(
+      'gives none for a session with %s from a server that ignored the tag sent, signs it out again, and says the server needs updating',
+      async (_, echoed) => {
+        mockApi.oidcFinish.mockResolvedValue({
+          token: 'session',
+          server_id: 'srv-1',
+          user,
+          ...echoed,
+        });
+        mockApi.serverInfo.mockResolvedValue(info());
+        mockApi.logout.mockResolvedValue(undefined);
+        await render(<ConnectStart />);
+        await waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
+        expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', tag);
+        // Denied: no pass, the session not kept, and the reason over kids mode. Not "Sign in
+        // again": it would end the same way.
+        expect(kidsConnectAllowed()).toBe(false);
+        await waitFor(() => expect(mockApi.logout).toHaveBeenCalledTimes(1));
+        expect(mockToast).toHaveBeenCalledTimes(1);
+        expect(mockToast).toHaveBeenCalledWith({
+          title:
+            "This server needs updating before single sign-on can add someone from kids mode, so the sign-in wasn't kept. Update the server, or sign in another way.",
+        });
+        expect(useSession.getState().connections).toEqual([]);
+        expect(screen.queryByText('Found Hearthside')).toBeNull();
+        expect(mockSetParams).not.toHaveBeenCalled();
+      },
+    );
+
+    it('sends no tag for a pass that left with none (an older build of the player), and keeps no session', async () => {
+      dropOidcIntent();
+      settled.mockClear();
+      expect(resumeOidcIntent({ newPerson: true, grownUpFromKids: true }, settled)).toBe(true);
+      mockApi.oidcFinish.mockResolvedValue({ token: 'session', server_id: 'srv-1', user });
       mockApi.serverInfo.mockResolvedValue(info());
       mockApi.logout.mockResolvedValue(undefined);
       await render(<ConnectStart />);
       await waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
-      // Denied: no pass, the session not kept, and the reason over kids mode.
+      expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', undefined);
       expect(kidsConnectAllowed()).toBe(false);
       await waitFor(() => expect(mockApi.logout).toHaveBeenCalledTimes(1));
       expect(mockToast).toHaveBeenCalledWith({
@@ -1344,8 +1397,6 @@ describe("a single sign-on's return (?oidc=1)", () => {
           "That sign-in wasn't the one started on this device, so it wasn't kept. Sign in again.",
       });
       expect(useSession.getState().connections).toEqual([]);
-      expect(screen.queryByText('Found Hearthside')).toBeNull();
-      expect(mockSetParams).not.toHaveBeenCalled();
     });
   });
 

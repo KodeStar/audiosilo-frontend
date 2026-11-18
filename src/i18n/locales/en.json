@@ -499,6 +499,7 @@
         "reach": "Could not reach the server to finish signing in. Sign in again.",
         "notKept": "You signed in, but this device couldn't keep the sign-in. Sign in again.",
         "notThisTrip": "That sign-in wasn't the one started on this device, so it wasn't kept. Sign in again.",
+        "needsUpdate": "This server needs updating before single sign-on can add someone from kids mode, so the sign-in wasn't kept. Update the server, or sign in another way.",
         "failed": "Signing in didn't finish. Sign in again."
       }
     },

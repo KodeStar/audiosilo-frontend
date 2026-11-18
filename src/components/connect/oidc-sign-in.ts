@@ -10,7 +10,7 @@ import { firstParam } from '@/lib/paths';
 import { useSession } from '@/stores/session';
 
 import { finishConnect } from './finish-connect';
-import { settleOidcPass, takeOidcResumed } from './oidc-intent';
+import { oidcPassTag, settleOidcPass, takeOidcResumed } from './oidc-intent';
 import { sharedRefusalText } from './sign-in-error';
 
 /**
@@ -62,7 +62,8 @@ export function oidcButtonName(info: ServerInfo | null): string | null {
  * A failed finish in words of our own: a 429's wait and a disabled member as every
  * sign-in words them (`sharedRefusalText`); no
  * finished sign-in in this browser (`oidc_no_sign_in`: a reload, or a browser keeping the
- * cookie back); one spent or past its minute (`oidc_sign_in_expired`); no answer from
+ * cookie back); one spent or past its minute (`oidc_sign_in_expired`); one that is not the
+ * trip a kids-mode pass waits on (`oidc_intent_mismatch`); no answer from
  * the server; anything else (a 400, a 5xx) as a sign-in that didn't finish. Each says to
  * sign in again: the finish can't be retried (the cookie went with the first try).
  */
@@ -75,6 +76,8 @@ export function oidcFinishText(e: unknown, t: TFunction): string {
       return t('connect.oidc.errors.noSignIn');
     case 'oidc_sign_in_expired':
       return t('connect.oidc.errors.expired');
+    case 'oidc_intent_mismatch':
+      return t('connect.oidc.errors.notThisTrip');
   }
   return t('connect.oidc.errors.failed');
 }
@@ -95,9 +98,13 @@ export function oidcFinishText(e: unknown, t: TFunction): string {
  * (`settleOidcPass`): given back only with a session that echoes the trip's own tag
  * (`intent`, audiosilo#202), before `finishConnect`. Otherwise it is not, kids mode takes
  * the flow back (the connect layout), and the reason goes over it as a toast, since the
- * screen that would say it is gone (null: the flow moved on). A session that came back
- * without the tag is signed out again: kept, it would add someone to the kids device with
- * no grown-up's say (the start URL typed in this tab while the provider is still signed in).
+ * screen that would say it is gone (null: the flow moved on). The finish names the tag the
+ * pass expects (`oidcPassTag`), so the server refuses any other sign-in itself and makes no
+ * session (403 `oidc_intent_mismatch`: the start URL typed in this tab while the provider is
+ * still signed in). A session that came back without the tag is an older server's, which
+ * ignores the request's and can't tell the trips apart: signed out again, since kept it
+ * could add someone to the kids device with no grown-up's say, and the toast says the
+ * server needs updating (`needsUpdate`: signing in again would end the same way).
  */
 export async function finishOidcSignIn(
   origin: string,
@@ -108,11 +115,13 @@ export async function finishOidcSignIn(
   // A reconnect's finish goes out with its own proxy headers, as its password sign-in
   // would (`connectClientFor(server, _, reconnectId)`), never another person's.
   const { client, proxy: carried } = connectClientFor(origin, undefined, reconnectId);
+  // Read before the answer: `settleOidcPass` spends it.
+  const expected = oidcPassTag();
   let session: AuthSession;
   let info: ServerInfo | null;
   try {
     [session, info] = await Promise.all([
-      client.oidcFinish(getDeviceName()),
+      client.oidcFinish(getDeviceName(), expected),
       client.serverInfo().catch(() => null),
     ]);
   } catch (e) {
@@ -134,7 +143,10 @@ export async function finishOidcSignIn(
   }
   if (settleOidcPass(session) === 'refused') {
     signOut();
-    toast({ title: t('connect.oidc.errors.notThisTrip') });
+    // A server that knows the request's tag never answers it with a session it doesn't echo.
+    toast({
+      title: t(expected ? 'connect.oidc.errors.needsUpdate' : 'connect.oidc.errors.notThisTrip'),
+    });
     return null;
   }
   try {

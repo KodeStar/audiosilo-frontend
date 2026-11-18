@@ -499,6 +499,7 @@
         "reach": "Impossibile raggiungere il server per completare l'accesso. Accedi di nuovo.",
         "notKept": "Hai effettuato l'accesso, ma questo dispositivo non è riuscito a conservarlo. Accedi di nuovo.",
         "notThisTrip": "Questo accesso non è stato avviato su questo dispositivo, quindi non è stato conservato. Accedi di nuovo.",
+        "needsUpdate": "Questo server va aggiornato prima di poter aggiungere qualcuno dalla modalità bambini con il single sign-on, quindi l'accesso non è stato conservato. Aggiorna il server o accedi in un altro modo.",
         "failed": "L'accesso non è stato completato. Accedi di nuovo."
       }
     },

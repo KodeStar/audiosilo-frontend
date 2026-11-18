@@ -253,6 +253,7 @@ describe('ApiClient', () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('https://h/api/v1/auth/oidc/finish');
     expect(init.method).toBe('POST');
+    // No tag unless the caller expects one (audiosilo#202).
     expect(JSON.parse(init.body as string)).toEqual({ device_name: 'iPhone' });
     // No token of ours: the server reads its own cookie (the browser's same-origin default).
     expect(headerValue(init, 'Authorization')).toBeUndefined();
@@ -260,15 +261,38 @@ describe('ApiClient', () => {
     expect(session).toMatchObject({ token: 't', addresses: { away: 'https://books.example.com' } });
   });
 
-  it.each(['oidc_no_sign_in', 'oidc_sign_in_expired'] as const)(
-    "a refused finish carries the server's %s code",
-    async (code) => {
-      installFetch(() => ({ status: 401, body: { error: 'no', code } }));
-      const e = await new ApiClient('https://h').oidcFinish('d').catch((x: unknown) => x);
-      expect(e).toBeInstanceOf(ApiError);
-      expect(apiErrorKind(e as InstanceType<typeof ApiError>)).toBe(code);
-    },
-  );
+  it('names the tag a finish must have been started with, and reads the echo (audiosilo#202)', async () => {
+    const tag = 'ab'.repeat(32);
+    const fetchMock = installFetch(() => ({
+      status: 200,
+      body: { token: 't', server_id: 's', user: { id: 1 }, intent: tag },
+    }));
+    const session = await new ApiClient('https://h').oidcFinish('iPhone', tag);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ device_name: 'iPhone', intent: tag });
+    expect(session.intent).toBe(tag);
+  });
+
+  it('answers with the session of an older server that ignores the tag, with no echo', async () => {
+    installFetch(() => ({ status: 200, body: { token: 't', server_id: 's', user: { id: 1 } } }));
+    const session = await new ApiClient('https://h').oidcFinish('iPhone', 'ab'.repeat(32));
+    expect(session.token).toBe('t');
+    expect(session.intent).toBeUndefined();
+  });
+
+  it.each([
+    [401, 'oidc_no_sign_in'],
+    [401, 'oidc_sign_in_expired'],
+    // Another sign-in than the one the request's tag names: no session was made.
+    [403, 'oidc_intent_mismatch'],
+  ] as const)("a refused finish (%i) carries the server's %s code", async (status, code) => {
+    installFetch(() => ({ status, body: { error: 'no', code } }));
+    const e = await new ApiClient('https://h')
+      .oidcFinish('d', 'ab'.repeat(32))
+      .catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(ApiError);
+    expect(apiErrorKind(e as InstanceType<typeof ApiError>)).toBe(code);
+  });
 
   it('lists favourites by GET /me/favourites and tolerates a null array', async () => {
     const fetchMock = installFetch(() => ({ status: 200, body: { favourites: null } }));

@@ -36,10 +36,15 @@ import { sameOrigin } from '@/lib/same-origin';
  * holds a random tag (`tag`) the sign-in step sends to the server's start
  * (`oidcStartUrl(tag)`); the server carries it through the provider and echoes it on the
  * finish of the sign-in that trip completed, once (`AuthSession.intent`), and the pass comes
- * back only on this tab's own tag. No tag back (another trip, one spent, an older server):
- * no pass, and the finish signs the session out again. The intent is also stamped and lives
- * only as long as the server lets a sign-in's trip take (`MAX_AGE_MS`, its `FlowMaxAge`), and
- * the flow's layout drops it as the flow is left (`dropOidcIntent`).
+ * back only on this tab's own tag. The finish also names the tag a waiting pass expects
+ * (`oidcPassTag`, the request's `intent`), so the server refuses any other sign-in before it
+ * makes a session (403 `oidc_intent_mismatch`). A session with no tag back (an older server,
+ * which ignores the request's): no pass, and the finish signs the session out again. The
+ * intent is also stamped and lives only as long as the server lets a sign-in's trip take
+ * (`MAX_AGE_MS`, its `FlowMaxAge`), and the flow's layout drops it as the flow is left
+ * (`dropOidcIntent`). So does the server's own connect page (its `connect.js`, same origin)
+ * when a trip ends there with no sign-in (`#oidc=<reason>`): it removes `KEY` too, so keep the
+ * name in step with it.
  */
 
 const KEY = 'audiosilo.oidcIntent';
@@ -174,6 +179,13 @@ export function resumeOidcIntent(held: OidcIntent, onSettled: () => void): boole
   return waits;
 }
 
+/** The tag the waiting pass expects its sign-in's finish to carry, for the finish's request
+ * (`client.oidcFinish`'s `intent`); undefined with no pass waiting, or one that left with no
+ * tag. */
+export function oidcPassTag(): string | undefined {
+  return pass?.tag;
+}
+
 /** What `settleOidcPass` did: no pass waited, it was given back, or it was refused. */
 export type OidcPassAnswer = 'none' | 'given' | 'refused';
 
@@ -182,9 +194,9 @@ export type OidcPassAnswer = 'none' | 'given' | 'refused';
  * (null: no sign-in to finish, as when the address was typed after a trip abandoned at the
  * provider). The pass that waited on it is given back only when the session echoes this
  * trip's own tag (`intent`): the grown-up signed in on the trip this tab started. A session
- * with no tag, or another, is someone's sign-in the start URL typed later completed (a
- * provider still signed in), or an older server's: refused. The layout is told either way,
- * and the tag is spent.
+ * with no tag, or another, is an older server's (a current one refuses the finish itself,
+ * `oidcPassTag`), where it may be someone's sign-in the start URL typed later completed (a
+ * provider still signed in): refused. The layout is told either way, and the tag is spent.
  */
 export function settleOidcPass(session: { intent?: string } | null): OidcPassAnswer {
   const waiting = pass;

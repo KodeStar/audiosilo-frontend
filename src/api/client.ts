@@ -241,6 +241,9 @@ const API_ERROR_CODES = [
   // sign-in's cookie in this browser, and one spent or expired.
   'oidc_no_sign_in',
   'oidc_sign_in_expired',
+  // The same finish, 403 (audiosilo#202): the sign-in is not the one the request's `intent`
+  // names (a kids-mode pass waiting on its own trip). No session was made.
+  'oidc_intent_mismatch',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -780,10 +783,14 @@ export class ApiClient {
    * from a cookie it set on its own origin (sent by the browser's default same-origin
    * credentials, so only the player the server serves can), and answers as `exchange`
    * does. 401 `oidc_no_sign_in` (no sign-in to finish in this browser) or
-   * `oidc_sign_in_expired` (spent or expired), 429 while the address is locked out. */
-  oidcFinish(deviceName: string) {
+   * `oidc_sign_in_expired` (spent or expired), 429 while the address is locked out.
+   * `intent`: the tag the sign-in must have been started with (`oidcStartUrl(intent)`),
+   * sent only while a kids-mode pass waits on it (`oidcPassTag`, audiosilo#202): the server
+   * answers 403 `oidc_intent_mismatch` for any other sign-in and makes no session. An older
+   * server ignores the field, so the caller still checks the echo (`AuthSession.intent`). */
+  oidcFinish(deviceName: string, intent?: string) {
     return this.request<AuthSession>('POST', '/auth/oidc/finish', {
-      body: { device_name: deviceName },
+      body: { device_name: deviceName, ...(intent ? { intent } : {}) },
     }).then(withCleanAddresses);
   }
   /** Sign in with a password. `deviceId`: this install's own random sign-in key for this
