@@ -746,19 +746,13 @@ describe('a download running in another tab (web, Web Locks)', () => {
     expect((await stored())[KEY_X]?.status).toBe('error');
   });
 
-  /** Tab B, launched, with the purges it registers for a removed connection. */
-  async function removingTab(): Promise<{ b: Store; removeC1: () => Promise<unknown> }> {
-    const b = await launchTab();
-    return { b, removeC1: () => purgeC1(b) };
-  }
-
   // Removing its connection in another tab deleted its folder under the transfer, and the
   // tab running it wrote its entry back with its next save.
   it('removing its connection in another tab: the tab running it, told, removes it', async () => {
     const a = await downloadingTab();
-    const { b, removeC1 } = await removingTab();
+    const b = await launchTab();
     expect(b.useDownloads.getState().elsewhere[KEY_X]).toBe(true);
-    await removeC1();
+    await purgeC1(b);
     await settle();
     // Tab B leaves tab A's folder alone: the transfer is still writing it.
     expect(mockRemoveBook).not.toHaveBeenCalled();
@@ -776,8 +770,8 @@ describe('a download running in another tab (web, Web Locks)', () => {
     const a = await downloadingTab();
     // Tab A hears no request (a tab of an older build).
     a.setDownloadStopChannelForTests(null);
-    const { b, removeC1 } = await removingTab();
-    await removeC1();
+    const b = await launchTab();
+    await purgeC1(b);
     await settle();
     expect(mockRemoveBook).not.toHaveBeenCalled();
     expect(entryOf(b, 'X/Book')).toBeUndefined();
@@ -801,8 +795,8 @@ describe('a download running in another tab (web, Web Locks)', () => {
   it('a tab running it that does not answer: its end heard here is still purged', async () => {
     const a = await downloadingTab();
     a.setDownloadStopChannelForTests(null);
-    const { b, removeC1 } = await removingTab();
-    await removeC1();
+    const b = await launchTab();
+    await purgeC1(b);
     await settle();
     const setItem = jest.mocked(AsyncStorage.setItem);
     const write = setItem.getMockImplementation()!;
@@ -823,8 +817,8 @@ describe('a download running in another tab (web, Web Locks)', () => {
 
   it('a book downloaded again in the tab that ran it is not purged', async () => {
     const a = await downloadingTab();
-    const { b, removeC1 } = await removingTab();
-    await removeC1();
+    const b = await launchTab();
+    await purgeC1(b);
     await purgeC1(a);
     await settle();
     expect(await stored()).toEqual({});
@@ -840,8 +834,7 @@ describe('a download running in another tab (web, Web Locks)', () => {
   it('a tab running it that closes meanwhile: its entry and files go then', async () => {
     const a = await downloadingTab();
     a.setDownloadStopChannelForTests(null);
-    const { removeC1 } = await removingTab();
-    await removeC1();
+    await purgeC1(await launchTab());
     await settle();
     expect(mockRemoveBook).not.toHaveBeenCalled();
     locks.close(LOCK_X);
@@ -864,8 +857,7 @@ describe('a download running in another tab (web, Web Locks)', () => {
   it('without Web Locks, the tab running it purges it when told of the removal', async () => {
     const a = await downloadingTab();
     Object.defineProperty(nav, 'locks', { configurable: true, value: undefined });
-    const { removeC1 } = await removingTab();
-    await removeC1();
+    await purgeC1(await launchTab());
     await purgeC1(a);
     await settle();
     expect(entryOf(a, 'X/Book')).toBeUndefined();

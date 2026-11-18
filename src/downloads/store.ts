@@ -1627,9 +1627,7 @@ async function ownerLeft(key: string): Promise<void> {
   if (revived?.serverFetch) resumeEpisodeWaits();
 }
 
-/** What a tab asks the tab running a download to do with it (`askOwnerToStop`). A connection
- * removed in another tab is not asked here: every tab runs the removal's purge itself (the
- * session's `removedInOtherTab`). */
+/** What a tab asks the tab running a download to do with it (`askOwnerToStop`). */
 type StopRequest = { connectionId: string; libraryId: number; path: string; remove: boolean };
 
 /** The channel a tab asks another to stop its download on. */
@@ -1665,8 +1663,12 @@ function askOwnerToStop(key: string, ask: StopRequest): boolean {
 
 /** Another tab asked for a download to be stopped: done when this tab is running it. */
 function stopAsked(ask: StopRequest): void {
-  if (typeof ask?.connectionId !== 'string') return;
-  if (typeof ask.path !== 'string' || typeof ask.libraryId !== 'number') return;
+  if (
+    typeof ask?.connectionId !== 'string' ||
+    typeof ask.path !== 'string' ||
+    typeof ask.libraryId !== 'number'
+  )
+    return;
   const state = useDownloads.getState();
   const key = downloadKey(ask.connectionId, ask.libraryId, ask.path);
   if (!inProgress(state.entries[key]) || state.elsewhere[key]) return;
@@ -2484,11 +2486,12 @@ onConnectionRemoved(async (id) => {
 
 /**
  * A removed connection's download another tab was running (`key`): once that tab let it go
- * (it removed it, running this purge itself; it ended first; or it closed), what the registry
- * still holds of it goes, and its files with it (`persist`'s drop of an entry this tab does not hold). By
- * key, not by `savedAt`: a download that ended there was saved again as it ended, after the
- * removal (`purging`, which keeps that save from showing here meanwhile). Unless the book's
- * download was started again since, here or there (signed in again, a retry).
+ * (it removed it, running this purge itself; it ended first; or it closed), what the
+ * registry still holds of it goes, and its files with it (`persist`'s drop of an entry this
+ * tab does not hold). By key, not by `savedAt`: a download that ended there was saved again
+ * as it ended, after the removal (`purging`, which keeps that save from showing here
+ * meanwhile). Unless the book's download was started again since, here or there (signed in
+ * again, a retry).
  */
 async function purgeWhenLeft(key: string, removedAt: string): Promise<void> {
   await whenDownloadLeft(key);
