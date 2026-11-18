@@ -19,14 +19,9 @@ import java.io.FileNotFoundException
  * names stops being served. Not exported: the service grants read access per URI to the
  * browsing controller's package (`grantUriPermission`, `android:grantUriPermissions`).
  *
- * A streamed book's cover is a server URL that carries the media token (`?token=`). Media3
- * hands an item's artwork URI to every controller and the platform session, and Android's
- * SystemUI logs the URIs it loads, so the token ended up in the device log (fe#349). Such a
- * cover goes out as `content://.../remote/<key>` instead ([shareable]): the key is a hash of the
- * URL ([RemoteArtwork]), and only the service's own bitmap loader turns it back into the URL
- * ([resolveRemote]), in this process. This provider never serves a remote key (no other app
- * may fetch with the listener's token), so another process falls back to the bitmap the
- * session sends with the metadata.
+ * A streamed book's cover is never served here: its URL carries the media token, and no other
+ * app may fetch with it. An item names it by a URI of the app's own ([RemoteArtwork]), and
+ * another process shows the bitmap the session sends with the metadata.
  */
 class ArtworkProvider : ContentProvider() {
   override fun onCreate(): Boolean = true
@@ -34,7 +29,7 @@ class ArtworkProvider : ContentProvider() {
   override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
     if (mode != "r") throw SecurityException("Read only")
     val ctx = context ?: throw FileNotFoundException(uri.toString())
-    // Only `art/<key>` ([uriFor]): a `remote` URI, or any other path, never names a file.
+    // Only `art/<key>` ([uriFor]): any other path never names a file.
     val segments = uri.pathSegments
     if (segments.size != 2 || segments[0] != ART) throw FileNotFoundException(uri.toString())
     val file = CarSnapshotStore.get(ctx)?.artworkByKey?.get(segments[1])
@@ -64,31 +59,15 @@ class ArtworkProvider : ContentProvider() {
      * it has none. */
     fun uriFor(context: Context, artworkKey: String?): Uri? {
       artworkKey ?: return null
-      return contentUri(context, ART, artworkKey)
-    }
-
-    /** [raw] as an item's artwork URI may carry it: a server URL ([RemoteArtwork.isRemote])
-     * as its token-free `remote` content URI, anything else (a file the app wrote) as it is. */
-    fun shareable(context: Context, raw: String): String {
-      if (!RemoteArtwork.isRemote(raw)) return raw
-      return contentUri(context, REMOTE, RemoteArtwork.register(raw)).toString()
-    }
-
-    /** The server URL a [shareable] remote URI stands for, or null for any other URI (or a key
-     * no longer held). In-process only: the service's bitmap loader. */
-    fun resolveRemote(context: Context, uri: Uri): Uri? {
-      if (uri.scheme != "content" || uri.authority != authority(context)) return null
-      val segments = uri.pathSegments
-      if (segments.size != 2 || segments[0] != REMOTE) return null
-      return RemoteArtwork.urlFor(segments[1])?.let(Uri::parse)
+      return Uri.Builder()
+        .scheme("content")
+        .authority(authority(context))
+        .appendPath(ART)
+        .appendPath(artworkKey)
+        .build()
     }
 
     private const val ART = "art"
-    private const val REMOTE = "remote"
-
-    /** `content://<authority>/<kind>/<key>`, the one shape [openFile] and [resolveRemote] read. */
-    private fun contentUri(context: Context, kind: String, key: String): Uri =
-      Uri.Builder().scheme("content").authority(authority(context)).appendPath(kind).appendPath(key).build()
 
     /** The snapshot names files the app wrote (the car artwork folder, a download's cover), all
      * inside the app's own data directory; anything else (a crafted path) is refused. */
@@ -101,14 +80,27 @@ class ArtworkProvider : ContentProvider() {
 }
 
 /**
- * The server cover URLs handed out as `remote` artwork URIs ([ArtworkProvider.shareable]), by
- * their opaque key (a SHA-256 of the URL, so the token never shows in the URI). Kept in memory:
- * only the module's own load makes a remote cover (a car play spec holds files only), and a new
- * process loads again. The last [MAX] are kept, more than one book's queue ever names (every
- * item of a book shares its cover). Pure Kotlin (unit-tested on the JVM).
+ * A streamed book's cover as an item's artwork URI may name it. The cover is a server URL that
+ * carries the media token (`?token=`). Media3 hands an item's artwork URI to every controller
+ * and the platform session, and Android's SystemUI logs the URIs it loads, so the token ended
+ * up in the device log (fe#349). The item names it as `audiosilo-artwork://remote/<key>`
+ * instead ([shareable]): the key is a SHA-256 of the URL, and only the service's own bitmap
+ * loader turns it back into the URL ([resolve]), in this process.
+ *
+ * The scheme is the app's own, which no other process can open, so the car and the lock
+ * screen show the bitmap the session sends with the metadata, as they did when the item held
+ * the https URL. Never a `content` URI of [ArtworkProvider], which does not serve it: the car
+ * loads covers from content URIs, and one that opens the URI ahead of the bitmap would show
+ * no cover.
+ *
+ * Kept in memory: only the module's own load makes a remote cover (a car play spec holds files
+ * only), and a new process loads again. The last [MAX] are kept, more than one book's queue
+ * ever names (every item of a book shares its cover). Pure Kotlin (unit-tested on the JVM).
  */
 object RemoteArtwork {
   const val MAX = 8
+
+  private const val PREFIX = "audiosilo-artwork://remote/"
 
   private val urls = object : LinkedHashMap<String, String>(MAX, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?) = size > MAX
@@ -117,6 +109,15 @@ object RemoteArtwork {
   /** True for a URL fetched from a server (http or https), which may carry the media token. */
   fun isRemote(raw: String): Boolean =
     raw.startsWith("https://", ignoreCase = true) || raw.startsWith("http://", ignoreCase = true)
+
+  /** [raw] as an item's artwork URI may carry it: a server URL ([isRemote]) as its token-free
+   * URI, anything else (a file the app wrote) as it is. */
+  fun shareable(raw: String): String = if (isRemote(raw)) PREFIX + register(raw) else raw
+
+  /** The server URL a [shareable] URI stands for, or null for any other URI (or a key no
+   * longer held). */
+  fun resolve(uri: String): String? =
+    if (uri.startsWith(PREFIX)) urlFor(uri.substring(PREFIX.length)) else null
 
   /** Keeps [url] and returns its key. */
   @Synchronized

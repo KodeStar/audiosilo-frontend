@@ -2775,8 +2775,11 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
 - **Android Auto.** `LibraryCallback` + `CarBrowseTree` answer browsing from the snapshot;
   `ArtworkProvider` serves only covers the current snapshot names inside the app's data
   directory (`art/<key>`). A streamed book's cover URL carries the media token, so a loaded
-  item names it as `remote/<key>` (a hash of the URL, `RemoteArtwork`, fe#349): only the
-  service's own bitmap loader turns it back into the URL, and the provider never serves it.
+  item names it as `audiosilo-artwork://remote/<key>` (a hash of the URL, `RemoteArtwork`,
+  fe#349): only the service's own bitmap loader turns it back into the URL. Its scheme is
+  the app's own, never `content`: the provider does not serve it, and the car and the lock
+  screen show the session's bitmap, as they did with the https URL. An item never carries a
+  server URL as its artwork, whoever built it (`MediaItems.artworkUriOf`).
   `playFromCar`: the book already loaded plays on; a downloaded book starts from its
   spec **only when no JS runtime exists** (with JS running, JS may hold another book as
   `nowPlaying`, and swapping the engine under it would save one book's place as another's);

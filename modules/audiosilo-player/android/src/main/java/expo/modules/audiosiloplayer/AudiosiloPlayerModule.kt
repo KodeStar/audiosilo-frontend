@@ -256,14 +256,11 @@ class AudiosiloPlayerModule : Module() {
         AuthHolder.set(authed?.headers, authed?.url)
         lastTrackIndex = -1
         // A streamed cover's URL carries the media token: the items name it by a token-free
-        // content URI that only the service's bitmap loader resolves (fe#349).
+        // URI that only the service's bitmap loader resolves (RemoteArtwork, fe#349).
         // Every item of a book shares its cover: each URL is hashed once.
-        val ctx = appContext.reactContext
         val shared = HashMap<String, String>()
         val specs = tracks.map {
-          val artwork = it.artwork?.let { a ->
-            ctx?.let { c -> shared.getOrPut(a) { ArtworkProvider.shareable(c, a) } }
-          }
+          val artwork = it.artwork?.let { a -> shared.getOrPut(a) { RemoteArtwork.shareable(a) } }
           TrackSpec(it.id, it.url, it.title, it.album, it.artist, artwork, it.duration ?: 0.0)
         }
         val clips = chapters.orEmpty().map { ClipSpec(it.fileIndex, it.startInFile, it.endInFile, it.title) }

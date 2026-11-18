@@ -40,6 +40,38 @@ class RemoteArtworkTest {
     assertNull(RemoteArtwork.urlFor(first))
   }
 
+  // The URI an item carries: nothing of the URL in it, and only this process reads it back.
+  @Test fun aServerCoverGoesOutAsATokenFreeUri() {
+    val url = cover("Author/Shared")
+    val uri = RemoteArtwork.shareable(url)
+    assertFalse(uri.contains("secret"))
+    assertFalse(uri.contains("Shared"))
+    assertFalse(RemoteArtwork.isRemote(uri))
+    assertEquals(url, RemoteArtwork.resolve(uri))
+    assertEquals(uri, RemoteArtwork.shareable(url))
+  }
+
+  // Never a content URI: the artwork provider does not serve a streamed cover, and a surface
+  // that opens the content URIs it is given (the car) would show no cover instead of the
+  // session's bitmap.
+  @Test fun aServerCoverIsNeverAContentUri() {
+    assertTrue(RemoteArtwork.shareable(cover("Author/Car")).startsWith("audiosilo-artwork://remote/"))
+  }
+
+  @Test fun aFileGoesOutAsItIs() {
+    val file = "file:///data/user/0/app/files/cover.jpg"
+    assertEquals(file, RemoteArtwork.shareable(file))
+    assertNull(RemoteArtwork.resolve(file))
+  }
+
+  @Test fun onlyAKeptCoverResolves() {
+    assertNull(RemoteArtwork.resolve("audiosilo-artwork://remote/0123456789abcdef0123456789abcdef"))
+    assertNull(RemoteArtwork.resolve("content://app.audiosilo.artwork/art/0123456789abcdef0123456789abcdef"))
+    val evicted = RemoteArtwork.shareable(cover("Evicted/Uri"))
+    repeat(RemoteArtwork.MAX) { RemoteArtwork.register(cover("Newer/$it")) }
+    assertNull(RemoteArtwork.resolve(evicted))
+  }
+
   @Test fun onlyServerUrlsAreRemote() {
     assertTrue(RemoteArtwork.isRemote("https://host/cover?token=x"))
     assertTrue(RemoteArtwork.isRemote("HTTP://host/cover"))

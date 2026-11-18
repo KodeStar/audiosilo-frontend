@@ -129,7 +129,7 @@ object MediaItems {
       .setArtist(t.artist ?: "")
       .setAlbumTitle(t.album ?: t.title)
       .setExtras(extras(fileIndex, 0.0, 0.0, t.duration, clip = false, book = book, track = t))
-      .apply { t.artwork?.let { setArtworkUri(Uri.parse(it)) } }
+      .apply { artworkUriOf(t)?.let { setArtworkUri(it) } }
       .build()
     return MediaItem.Builder()
       .setUri(t.url)
@@ -150,7 +150,7 @@ object MediaItems {
       .setExtras(
         extras(clip.fileIndex, clip.startInFile, clip.endInFile, t.duration, clip = true, book = book, track = t),
       )
-      .apply { t.artwork?.let { setArtworkUri(Uri.parse(it)) } }
+      .apply { artworkUriOf(t)?.let { setArtworkUri(it) } }
       .build()
     val clipping = MediaItem.ClippingConfiguration.Builder()
       .setStartPositionMs((clip.startInFile * 1000).toLong())
@@ -163,6 +163,13 @@ object MediaItems {
       .setClippingConfiguration(clipping)
       .build()
   }
+
+  /** The artwork URI an item carries, which Media3 hands to every controller and the platform
+   * session: never a server URL, whose query holds the media token (fe#349). The module names
+   * a streamed cover by its token-free URI ([RemoteArtwork.shareable]) and a play
+   * spec holds files only, so this only stops a URL that came some other way. */
+  private fun artworkUriOf(t: TrackSpec): Uri? =
+    t.artwork?.takeUnless(RemoteArtwork::isRemote)?.let(Uri::parse)
 
   private fun extras(
     fileIndex: Int,

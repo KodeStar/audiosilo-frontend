@@ -284,10 +284,10 @@ class AudiosiloPlayerService : MediaLibraryService() {
     // its non-daemon thread when the service dies.
     val executor = Executors.newSingleThreadExecutor()
     bitmapExecutor = executor
-    // A streamed cover is named by a token-free content URI (ArtworkProvider.shareable,
-    // fe#349): the loader alone turns it back into the server URL it stands for.
+    // A streamed cover is named by a token-free URI (RemoteArtwork.shareable, fe#349): the
+    // loader alone turns it back into the server URL it stands for.
     val artworkSourceFactory = ResolvingDataSource.Factory(dataSourceFactory) { dataSpec ->
-      ArtworkProvider.resolveRemote(this, dataSpec.uri)?.let(dataSpec::withUri) ?: dataSpec
+      RemoteArtwork.resolve(dataSpec.uri.toString())?.let { dataSpec.withUri(Uri.parse(it)) } ?: dataSpec
     }
     val bitmapLoader = CacheBitmapLoader(
       DataSourceBitmapLoader.Builder(this)
