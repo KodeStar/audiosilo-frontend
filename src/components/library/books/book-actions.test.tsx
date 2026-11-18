@@ -469,7 +469,8 @@ describe('useBookActions', () => {
     expect(mockEdit).not.toHaveBeenCalled();
     const said = mockToast.mock.calls.at(-1)![0];
     expect(said).toMatchObject({
-      title: "Can't mark as not finished while the server can't be reached. Try again once it's back.",
+      title:
+        "Can't mark as not finished while the server can't be reached. Try again once it's back.",
       description: 'Book',
       action: { label: 'Retry' },
     });
