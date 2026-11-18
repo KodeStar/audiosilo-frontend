@@ -51,7 +51,13 @@ connection-keyed document to `ID_DOCUMENTS` in the identity migration too). The 
 (`resolveClient`) and gate on the session having hydrated (`sessionReady`) before
 reading storage, without importing React; removing/signing out of a connection
 **purges** its scoped state through the `onConnectionRemoved` registry in
-`src/stores/session.ts`. Stale persisted state is reconciled once, before any store
+`src/stores/session.ts`. On the web every tab does: the removing tab tells the others
+(`removedInOtherTab`, a tab channel, once its list is written and the token gone), and each
+drops the connection from its own list (not written again; its screens leave it as the list
+changes, as the removing tab's do), stops playing through it first
+(`onConnectionRemovedInOtherTab`, `playback/removed-in-other-tab.ts`) and runs the same
+cleanups over its own copies. Not when the token is back (signed in again before the word
+arrived). Stale persisted state is reconciled once, before any store
 hydrates, by `resetStaleStorage()` (run inside the memoised launch migration `migrateStorage()`,
 `src/lib/storage-migration.ts`, which `bootstrapPlayback` (the launch steps, below) and ThemeProvider both await) along **two independent version axes** so cache churn
 can never log anyone out (`{ authReset, cacheReset }`):
@@ -2085,12 +2091,15 @@ media GETs only.
   as cut short on reload, as before. A removed connection's purge takes
   the other tabs' finished downloads of it from the stored registry too, then their files. One
   another tab is running (its lock held) is that tab's: its folder is never touched from here;
-  that tab is asked on the tab channel to remove the connection's downloads it runs
-  (`connectionRemoved`), and once it let each go (removed, ended first, or the tab closed)
-  what the registry still holds of it goes, files too (`purgeWhenLeft`). Meanwhile its saves
-  are not followed here, its end's either (`removals`, by key `purging`), unless one shows it
-  started again since (signed in again, a retry): then it is that download's, not purged.
-  Without Web Locks the tabs are asked all the same. **Files are stored
+  that tab, told of the removal by the session, runs the purge itself (so its downloads of
+  the connection go, files too, whatever their state: on their way, ended first, failed; and
+  the removing tab may be gone by then), and once it let each go (removed, ended first, or
+  the tab closed) what the registry still holds of it goes here too (`purgeWhenLeft`).
+  Meanwhile its saves are not followed here, its end's either (`removals`, by key `purging`),
+  unless one shows it started again since (signed in again, a retry): then it is that
+  download's, not purged. Without Web Locks every tab is told all the same. A removed
+  connection downloads nothing until it is signed in again (`removedConnection`: `download`
+  answers `declined`, no entry). **Files are stored
   per-connection**: native `downloads/<connectionId>/<libraryId>/<slug>/`, web Cache API
   `/_offline/<connectionId>/<libraryId>/<slug>/`; the registry keys on
   `downloadKey(connectionId, libraryId, path)`. Pre-scoping downloads (from before the
