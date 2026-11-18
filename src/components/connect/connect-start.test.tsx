@@ -1366,6 +1366,19 @@ describe("a single sign-on's return (?oidc=1)", () => {
       expect(screen.queryByText('Found Hearthside')).toBeNull();
     });
 
+    // The layout holds kids mode back for the return's own screen only. A first step that is
+    // no return (the two disagreeing on the address) finishes nothing, so nothing would ever
+    // answer the pass: it is refused as the screen opens, and kids mode takes the flow back.
+    it('refuses the pass at once on a first step that is no return', async () => {
+      mockParams = { oidc: '1', token: 'tok' };
+      mockApi.exchange.mockRejectedValue(new ApiError(401, 'x'));
+      mockApi.serverInfo.mockResolvedValue(info());
+      await render(<ConnectStart />);
+      await waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
+      expect(kidsConnectAllowed()).toBe(false);
+      expect(mockApi.oidcFinish).not.toHaveBeenCalled();
+    });
+
     // A session without the echo all the same (no server of ours answers so): it can't be
     // told from the start URL typed in the tab, so none is kept.
     it.each([

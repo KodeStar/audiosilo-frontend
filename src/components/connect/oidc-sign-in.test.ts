@@ -54,6 +54,12 @@ describe('oidcReturnOnLoad', () => {
     expect(oidcReturnOnLoad()).toBe(false);
     at('/web/connect', '?oidc=1&token=tok');
     expect(oidcReturnOnLoad()).toBe(false);
+    // A repeated param reaches the screen as a list, which it takes for a pairing link: read
+    // the same way here, or the layout would wait on a finish the screen never starts.
+    at('/web/connect', '?oidc=1&token=&token=tok');
+    expect(oidcReturnOnLoad()).toBe(false);
+    at('/web/connect', '?oidc=1&oidc=2');
+    expect(oidcReturnOnLoad()).toBe(true);
     mockServed = null;
     at('/web/connect', '?oidc=1');
     expect(oidcReturnOnLoad()).toBe(false);

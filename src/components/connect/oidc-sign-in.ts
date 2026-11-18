@@ -29,10 +29,11 @@ import { sharedRefusalText } from './sign-in-error';
 
 /** The served player's return from a single sign-on (`/connect?oidc=1`): its own origin,
  * where the server's cookie is, or null (the app, Metro, another value, or a pairing link,
- * which wins). The route and the connect screen both decide by it. */
+ * which wins: any `token`, a repeated one's list too). The route, the connect screen and the
+ * layout (`oidcReturnOnLoad`) all decide by it, from params as the router hands them over. */
 export function oidcReturnOrigin(
   oidc: string | string[] | undefined,
-  token?: string,
+  token?: string | string[],
 ): string | null {
   return !token && firstParam(oidc) === '1' ? servedOrigin() : null;
 }
@@ -47,7 +48,14 @@ export function oidcReturnOnLoad(): boolean {
   const at = globalThis.location;
   if (appPath(at?.pathname ?? '').replace(/\/+$/, '') !== '/connect') return false;
   const q = new URLSearchParams(at?.search ?? '');
-  return oidcReturnOrigin(q.get('oidc') ?? undefined, q.get('token') ?? undefined) !== null;
+  // As the router hands the screen its params (a repeated one is a list): the layout and the
+  // screen must agree, or the layout would hold kids mode back for a finish that never runs
+  // (`?oidc=1&token=&token=x`: no token here by its first value, a pairing link there).
+  const param = (name: string) => {
+    const all = q.getAll(name);
+    return all.length > 1 ? all : all[0];
+  };
+  return oidcReturnOrigin(param('oidc'), param('token')) !== null;
 }
 
 /** The sign-in step's button while the server's `oidc` capability is on: the provider's

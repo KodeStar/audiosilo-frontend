@@ -57,6 +57,7 @@ import {
   takeScanReconnect,
   useHandoff,
 } from './invite-handoff';
+import { settleOidcPass } from './oidc-intent';
 import { finishOidcSignIn, oidcReturnOrigin } from './oidc-sign-in';
 import { ProxyHeadersEditor } from './proxy-headers-editor';
 import { draftOf, draftToSet, type HeaderDraftRow } from './proxy-headers-model';
@@ -252,7 +253,14 @@ export function ConnectStart() {
   // router's `setParams` reaches nothing yet (CONVENTIONS.md, "Navigation at mount").
   const navigation = useNavigation<{ setParams(params: { oidc?: string }): void }>();
   useEffect(() => {
-    if (!oidcOrigin || oidcStarted.current) return;
+    if (oidcStarted.current) return;
+    if (!oidcOrigin) {
+      // No return to finish here. A grown-up's pass through kids mode still waiting on one
+      // (the layout holds kids mode back for the return's own screen only) gets no answer
+      // from this screen, so it is refused now and kids mode takes the flow back.
+      settleOidcPass(null);
+      return;
+    }
     oidcStarted.current = true;
     navigation.setParams({ oidc: undefined });
     void finishOidcSignIn(oidcOrigin, t, () => mounted.current).then((message) => {
