@@ -45,7 +45,10 @@ export function oidcButtonName(info: ServerInfo | null): string | null {
  * cookie back); one spent or past its minute (`oidc_sign_in_expired`); one that is not the
  * trip a kids-mode pass waits on (`oidc_intent_mismatch`); no answer from
  * the server; anything else (a 400, a 5xx) as a sign-in that didn't finish. Each says to
- * sign in again: the finish can't be retried (the cookie went with the first try).
+ * sign in again: this page sends a finish once (the return's params leave the address before
+ * it goes). The server clears the cookie with each refusal of the sign-in itself, and keeps
+ * it for the rest of its minute on a 429, a 400 and (server#406) a 500, which a new sign-in
+ * never meets: its return names its own flow.
  */
 export function oidcFinishText(e: unknown, t: TFunction): string {
   if (!(e instanceof ApiError)) return t('connect.oidc.errors.reach');
