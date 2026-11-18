@@ -674,7 +674,41 @@ describe('stall watchdog promotes a stuck loading to error', () => {
     expect(usePlayer.getState().snapshot.state).toBe('error');
   });
 
-  it('lets a genuine recovery (playing) clear the error', async () => {
+  // The device run (fe#158): the stop said "Playback stopped" while the engine went on
+  // buffering, and it started by itself once the server answered again.
+  it('stops the engine when it fires, so nothing plays without a press', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    pushSnapshot(snap('loading', 50));
+    await Promise.resolve();
+    jest.mocked(mockSvc.pause).mockClear();
+    jest.advanceTimersByTime(3_000);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+    // The engine's report of that pause is held by the error.
+    pushSnapshot(snap('paused', 50));
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+  });
+
+  it('never stops the engine for an attempt that played in time', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    pushSnapshot(snap('loading', 50));
+    await Promise.resolve();
+    jest.mocked(mockSvc.pause).mockClear();
+    pushSnapshot(snap('playing', 51));
+    await Promise.resolve();
+    jest.advanceTimersByTime(5_000);
+    await Promise.resolve();
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+  });
+
+  it('lets a play from outside the app (playing) clear the error', async () => {
     await startBook(makeBook(), 0);
     pushSnapshot(snap('playing', 50));
     await Promise.resolve();
@@ -685,8 +719,8 @@ describe('stall watchdog promotes a stuck loading to error', () => {
     await Promise.resolve();
     expect(usePlayer.getState().snapshot.state).toBe('error');
 
-    // The stream comes back on its own → the engine reports 'playing', which is not a
-    // stall re-report, so it clears the error.
+    // The lock screen or the car plays the paused engine → it reports 'playing', which is
+    // not a stall re-report, so it clears the error.
     pushSnapshot(snap('playing', 50));
     await Promise.resolve();
     expect(usePlayer.getState().snapshot.state).toBe('playing');

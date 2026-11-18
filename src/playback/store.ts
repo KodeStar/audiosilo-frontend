@@ -2270,6 +2270,10 @@ function fireStallWatchdog() {
   clearPlaybackIntent();
   usePlayer.setState({ snapshot: { ...snapshot, state: 'error' } });
   haltAndPersist();
+  // The engine stops waiting to play too: left buffering, it would start on its own once the
+  // server answered again, with the listener told playback had stopped. Only a press (Retry,
+  // play, the car, a headset) plays from here. Its report of the pause is held by the error.
+  void service?.pause().catch(() => undefined);
 }
 
 /** Begin a playback attempt: we intend to play, we're "connecting" until the engine
@@ -2584,7 +2588,9 @@ async function createService(): Promise<PlaybackService> {
     // to a spinner/play button (the flash→spinner loop seen on Android). So once we're
     // in `error` and NOT retrying, hold it against EVERY re-report except a genuine
     // recovery (`playing`). It's released by the user retrying (wantsPlayback flips true
-    // → this guard is skipped) or the stream actually resuming. Enumerating the "noisy"
+    // → this guard is skipped) or a play from outside the app (the lock screen, the car, a
+    // headset), never by the stream coming back on its own: the watchdog pauses the engine,
+    // and a failed Android engine stays idle until a press. Enumerating the "noisy"
     // states bit us repeatedly (loading, ready, idle, paused…); suppress-all-but-playing
     // is the robust rule.
     if (prev.state === 'error' && !wantsPlayback && reported.state !== 'playing') {
