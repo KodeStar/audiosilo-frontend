@@ -2132,18 +2132,24 @@ media GETs only.
   while nothing was asked since), and one whose engine has moved
   `PLAYED_ON` seconds in the other file since (left standing, its next file, minutes on, read
   as a run off the asked one). Nor does one whose call has not settled `ASK_SETTLE_MAX_MS`
-  on once its engine has played `PLAYED_ON` on in its file. A faulted book: a press reloads it,
-  as Retry does; a play the engine goes on with until the fault's pause lands is paused again,
-  and one after it is the listener's (the lock screen, a headset, the car), which reloads like a
-  press. The pause has landed once its call resolved and the engine told `paused` or `ended`
+  on once its engine has played `PLAYED_ON` on in its file. A faulted book, or any book in
+  error: a press reloads it, as Retry does (`toggle`, so Play from Up next or the command
+  palette too); a faulted book's play the engine goes on with until the fault's pause lands is
+  paused again, and one after it is the listener's (the lock screen, a headset, the car), which
+  reloads like a press. The pause has landed once its call resolved and the engine told `paused` or `ended`
   (`faultPause`): the call alone does not say so, since a native one resolves before its engine
   has paused, and the web's pause tells the place once more first, each report still a `playing`
   one. A move on a faulted book, or on any book in error (`reportsUnheard`: the error hold
   keeps the engine's reports off the snapshot), is the place it shows, saves and reloads at
   (`showPlace`): the listener's from the lock screen at once, and an in-app seek, skip or
-  track jump once the engine took it (`listenerMove`; not a refused one, nor one the listener
-  moved on from meanwhile), even one the engine took clamped at its short measure (which ends
-  the fault but not the error). A Cast checkpoint
+  track jump once the engine took it (`listenerMove`, read as it lands: an error the stall
+  watchdog surfaced while it was out counts; not a refused one, nor one the listener moved on
+  from meanwhile), even one the engine took clamped at its short measure. The book is faulted
+  from then on, as the engine may not be where it shows: a play the engine makes reloads there
+  (a late one from before the fault's pause landed is paused again), and a move on it, as on
+  any book in error, rebuilds the engine at the place (`skipToTrack`: a failed iOS item may never
+  settle a seek). The file's length shown is the server's, the engine's where the server has
+  none. A Cast checkpoint
   (`onRemoteMove`'s `checkpoint`, as iOS suspends the app) never is, nor calls off a held run. A
   fault outlives the download hot-swap's new `NowPlaying` (`commitLocalSwap`): a press still
   reloads. So does an ask still standing, in the same file of the download's queue (`moveAsk`),

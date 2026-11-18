@@ -1945,11 +1945,22 @@ const errorHeld = () => usePlayer.getState().snapshot.state === 'error' && !want
 const reportsUnheard = () => loadedFaulted() || errorHeld();
 
 /** The snapshot shows `(trackIndex, position)` of `np`'s queue, its state kept, at the file's
- * server length (the engine's may be a short measure). */
-function showPlace(np: NowPlaying, trackIndex: number, position: number) {
+ * server length (the engine's may be a short measure). A file the server has no length for
+ * keeps the engine's when it is the snapshot's own (`fileDurationOf`).
+ *
+ * The engine may not be where the book now shows (it took the move clamped at its short
+ * measure), so the book is faulted from here (`faultedBook`): a play the engine makes is a
+ * reload at this place, as a press is, never a run from the clamped one, and a move puts the
+ * engine in its file by index. `faulted`: the move called off a fault, whose pause
+ * (`faultPause`) may not have landed yet, so a late `playing` of the engine's is still paused
+ * again; else none is out, and a `playing` from now on is the listener's. */
+function showPlace(np: NowPlaying, trackIndex: number, position: number, faulted: boolean) {
   const { snapshot } = usePlayer.getState();
-  const duration = fileDurationOf(np.queue, trackIndex, 0);
+  const engine = trackIndex === snapshot.trackIndex ? snapshot.duration : 0;
+  const duration = fileDurationOf(np.queue, trackIndex, engine);
   usePlayer.setState({ snapshot: { ...snapshot, trackIndex, position, duration } });
+  if (!faulted) faultPause = { resolved: true, stopped: true };
+  faultedBook = np;
 }
 
 /** The ask the store gave up on before its engine call settled (`withdrawAsk`: a move to
@@ -2040,21 +2051,25 @@ function engineMove<T>(
 }
 
 /** `engineMove` for the listener's own move in the app (a seek, a skip, a track jump). On a
- * book whose engine reports don't reach its snapshot (`reportsUnheard`) the move shows its
- * place itself (`showPlace`) once the engine took it, so the screen, the place saved and a
- * Retry's reload follow it: not when the engine refused it (it is still where the book shows),
- * nor once the listener moved again meanwhile, another book loaded or a play began. */
+ * book whose engine reports don't reach its snapshot (`reportsUnheard`) once the engine took
+ * the move, the move shows its place itself (`showPlace`), so the screen, the place saved and
+ * a Retry's reload follow it: not when the engine refused it (it is still where the book
+ * shows), nor once the listener moved again meanwhile, another book loaded or a play began.
+ * Read once the move landed, not as it was made: an error surfacing meanwhile (the stall
+ * watchdog, while a seek waits on a stalled stream) holds off the engine's report of it. */
 async function listenerMove<T>(
   np: NowPlaying | null,
   trackIndex: number,
   position: number,
   move: () => Promise<T>,
 ): Promise<T> {
-  const unheard = reportsUnheard();
   const moves = localMoves;
-  const taken = await engineMove(np, trackIndex, position, move);
+  const taking = engineMove(np, trackIndex, position, move);
+  // The move's ask (`askEngineTo`, made at once): did it call off a fault?
+  const faulted = np !== null && askedPlace?.np === np && askedPlace.faulted;
+  const taken = await taking;
   const still = np !== null && usePlayer.getState().nowPlaying === np && localMoves === moves;
-  if (unheard && still && reportsUnheard()) showPlace(np, trackIndex, position);
+  if (still && reportsUnheard()) showPlace(np, trackIndex, position, faulted);
   return taken;
 }
 
@@ -3115,8 +3130,11 @@ async function createService(): Promise<PlaybackService> {
     setAsk(null);
     // A faulted engine's reports, or an errored book's, are not heard (`reportsUnheard`): the
     // move's place is the one the book shows, so a Retry or a press reloads there, not at the
-    // place the error was at.
-    if (np && reportsUnheard()) showPlace(np, trackIndex, positionInTrack);
+    // place the error was at. Not a checkpoint's, which is no move: an errored book keeps its
+    // place (a faulted one's never gets here).
+    if (np && !checkpoint && reportsUnheard()) {
+      showPlace(np, trackIndex, positionInTrack, loadedFaulted());
+    }
     userMoved(np ? toBookPosition(np.queue.offsets, trackIndex, positionInTrack) : undefined);
     // The engine has moved already: the span ends where it was last seen (paused, where it
     // was is not known, so no move is taken for one that moves nowhere).
@@ -3645,10 +3663,11 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     moveListeningSpan(endAt(np, target.index, target.positionInTrack));
     userMoved(clamped); // a deliberate user seek may legitimately move backward
     // A faulted engine sits in another file than the snapshot's (`engineFault`): it is put in
-    // the target's by its index, never sought within whatever file it is in.
-    const faulted = loadedFaulted();
+    // the target's by its index, never sought within whatever file it is in. So is one in
+    // error: a failed item may never settle a seek (iOS), while a rebuild settles at once.
+    const unheard = reportsUnheard();
     await listenerMove(np, target.index, target.positionInTrack, () =>
-      target.index === get().snapshot.trackIndex && !faulted
+      target.index === get().snapshot.trackIndex && !unheard
         ? svc.seekTo(target.positionInTrack)
         : svc.skipToTrack(target.index, target.positionInTrack),
     );
@@ -3665,9 +3684,10 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     if (np) moveListeningSpan(endAt(np, trackIndex, pos));
     userMoved(np ? toBookPosition(np.queue.offsets, trackIndex, pos) : undefined);
     // A faulted engine sits in another file than the snapshot's (`engineFault`): put in it.
-    const faulted = loadedFaulted();
+    // So is one in error, rebuilt (`seekBook`).
+    const unheard = reportsUnheard();
     await listenerMove(np, trackIndex, pos, () =>
-      faulted ? svc.skipToTrack(trackIndex, pos) : svc.seekTo(pos),
+      unheard ? svc.skipToTrack(trackIndex, pos) : svc.seekTo(pos),
     );
     void persist();
   },
