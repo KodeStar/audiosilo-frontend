@@ -16,6 +16,7 @@ import { startListeningSync } from '@/playback/listening-sync';
 import { startOtherTabNotice } from '@/playback/other-tab-notice';
 import { startPartialDownloadNotice } from '@/playback/partial-download-notice';
 import { startPlaceReconcile } from '@/playback/place-reconcile';
+import { startQueueReplays } from '@/playback/queue-replays';
 import { startUndoneElsewhere } from '@/playback/undone-elsewhere';
 import { startWidgetSync } from '@/widgets/widget-sync';
 
@@ -56,6 +57,10 @@ export function startRootServices({ late = false }: { late?: boolean } = {}): ()
     // Sync v2 (`listening_sync`): sends the listening outbox at launch, on reconnect and in
     // the foreground, and cuts the playing span when the app leaves; see the module.
     startListeningSync(),
+    // The stored offline queues (progress saves, the reader's places) are replayed when the
+    // app is picked up again, so a replay that died with its tab is not left waiting for
+    // the next save; see the module.
+    startQueueReplays(),
     // Web: "Playing in another tab", when this tab paused because another one began
     // playing (one tab plays at a time per connection); see the module.
     startOtherTabNotice(),

@@ -22,6 +22,7 @@ jest.mock('@/downloads/store', () => ({
 jest.mock('@/playback/jump-undo', () => ({ startJumpUndo: service('jumpUndo') }));
 jest.mock('@/playback/place-reconcile', () => ({ startPlaceReconcile: service('reconcile') }));
 jest.mock('@/playback/listening-sync', () => ({ startListeningSync: service('listeningSync') }));
+jest.mock('@/playback/queue-replays', () => ({ startQueueReplays: service('queueReplays') }));
 jest.mock('@/playback/other-tab-notice', () => ({ startOtherTabNotice: service('otherTab') }));
 jest.mock('@/playback/undone-elsewhere', () => ({ startUndoneElsewhere: service('undone') }));
 jest.mock('@/playback/partial-download-notice', () => ({
@@ -70,6 +71,7 @@ describe('startRootServices', () => {
       'start jumpUndo',
       'start reconcile',
       'start listeningSync',
+      'start queueReplays',
       'start otherTab',
       'start undone',
       'start partialDownload',
@@ -90,6 +92,7 @@ describe('startRootServices', () => {
       'stop jumpUndo',
       'stop reconcile',
       'stop listeningSync',
+      'stop queueReplays',
       'stop otherTab',
       'stop undone',
       'stop partialDownload',

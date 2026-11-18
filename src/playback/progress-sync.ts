@@ -9,7 +9,7 @@ import { replayQueue, type Route } from '@/lib/queue-claims';
 import { serialQueue } from '@/lib/serial-queue';
 import { tabChannel, type TabChannel } from '@/lib/tab-channel';
 import { tabLock } from '@/lib/tab-lock';
-import { getItem, setItem } from '@/lib/storage';
+import { getItem, setItem, setItemStrict } from '@/lib/storage';
 import { withTimeout } from '@/lib/with-timeout';
 import {
   LISTENING_OPEN_SPAN_KEY,
@@ -158,9 +158,10 @@ const queueListeners = new Set<() => void>();
 
 /** Store the offline replay queue, read at `before` entries, and tell `onQueueChange`'s
  * listeners when its length changed. A write only ever adds a save, replaces one in place
- * or takes some out, so every count `pendingSaves` gives moves with the length. */
+ * or takes some out, so every count `pendingSaves` gives moves with the length. Rejects
+ * when storage refused it (a replay must know: `replayQueue`). */
 async function writeQueue(next: ProgressSave[], before: number): Promise<void> {
-  await setItem(QUEUE_KEY, next);
+  await setItemStrict(QUEUE_KEY, next);
   if (next.length !== before) for (const fn of queueListeners) fn();
 }
 
@@ -1254,7 +1255,8 @@ async function enqueue(save: ProgressSave): Promise<void> {
         ),
     );
     next.push(save);
-    await writeQueue(next, queue.length);
+    // Best effort, as ever: a save storage has no room for stays in the mirror only.
+    await writeQueue(next, queue.length).catch(() => undefined);
   });
 }
 
@@ -1305,6 +1307,10 @@ async function flushGroup(
  * and a reconnect's left the saves of a replay that then failed queued until the next save. */
 const withReplayTurn = serialQueue();
 
+/** The saves this tab sent whose removal from the queue storage refused
+ * (`ReplayQueue.sent`). */
+const sentUnsettled = new Set<string>();
+
 /** `replayQueue` over the legacy queue: claimed under its lock, sent outside it. */
 function replaySaves(route: (cid: string) => Route<ApiClient>): Promise<void> {
   return withReplayTurn(() =>
@@ -1314,6 +1320,7 @@ function replaySaves(route: (cid: string) => Route<ApiClient>): Promise<void> {
       write: writeQueue,
       route,
       send: flushGroup,
+      sent: sentUnsettled,
     }),
   );
 }
@@ -1393,7 +1400,9 @@ onConnectionRemoved(async (id) => {
     withQueueLock(async () => {
       const queue = await readQueue();
       const next = queue.filter((s) => s.connectionId !== id);
-      if (next.length !== queue.length) await writeQueue(next, queue.length);
+      if (next.length !== queue.length) {
+        await writeQueue(next, queue.length).catch(() => undefined);
+      }
     }),
   ]);
 });

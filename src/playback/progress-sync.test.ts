@@ -1810,6 +1810,30 @@ describe('the legacy queue across tabs', () => {
     expect(await readQueue()).toEqual([]);
   });
 
+  // Storage full: a replay whose claim is not in the queue would send what another tab's
+  // replay sends too.
+  it('sends nothing while storage refuses its claim, and replays once it can write', async () => {
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save]));
+    const api = fakeApi(async () => {});
+    routeClients({ c1: api });
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const write = setItem.getMockImplementation()!;
+    setItem.mockImplementation(async (key: string, value: string) => {
+      if (key === QUEUE_KEY) throw new Error('quota');
+      return write(key, value);
+    });
+    try {
+      await flushQueue();
+    } finally {
+      setItem.mockImplementation(write);
+    }
+    expect(api.saveProgress).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([save]);
+    await flushQueue();
+    expect(api.saveProgress).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toEqual([]);
+  });
+
   it('a save queued again while its older copy is out leaves the newer one queued', async () => {
     await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save]));
     const { api, answer } = slowApi();

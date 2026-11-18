@@ -1104,4 +1104,36 @@ describe('reading places across tabs', () => {
     await replaying;
     expect((await readQueue()).map((s) => s.path)).toEqual(['B/Other']);
   });
+
+  // Storage full: the drop of the older queued place after a newer one was sent is refused,
+  // and the replay that followed sent the older place over the newer.
+  it('never replays an older place after a newer one, when storage refuses to drop it', async () => {
+    const older = save({ cfi: CFI_A, updated_at: '2026-01-01T00:00:00Z' });
+    await AsyncStorage.setItem(READING_QUEUE_KEY, JSON.stringify([older]));
+    const sent: string[] = [];
+    const api = fakeApi(async (input) => {
+      const place = input as Partial<ReadingProgress>;
+      sent.push(place.cfi ?? '');
+      return { reading_progress: row({ ...place, version: 5 }) };
+    });
+    routeClients({ c1: api });
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const write = setItem.getMockImplementation()!;
+    setItem.mockImplementation(async (key: string, value: string) => {
+      if (key === READING_QUEUE_KEY) throw new Error('quota');
+      return write(key, value);
+    });
+    try {
+      await saveReadingPlace(api, save({ cfi: CFI_B, updated_at: '2026-01-02T00:00:00Z' }));
+      await flushReadingQueue();
+      expect(sent).toEqual([CFI_B]);
+      expect(await readQueue()).toHaveLength(1);
+    } finally {
+      setItem.mockImplementation(write);
+    }
+    // Storage takes writes again: the older place leaves the queue, unsent.
+    await flushReadingQueue();
+    expect(sent).toEqual([CFI_B]);
+    expect(await readQueue()).toEqual([]);
+  });
 });

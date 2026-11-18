@@ -9,9 +9,9 @@ import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { ReadingProgress, ReadingProgressSaved } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
-import { replayQueue, type Route } from '@/lib/queue-claims';
+import { queuedKey, replayQueue, type Route } from '@/lib/queue-claims';
 import { serialQueue } from '@/lib/serial-queue';
-import { getItem, setItem } from '@/lib/storage';
+import { getItem, setItem, setItemStrict } from '@/lib/storage';
 import { READING_MIRROR_KEY, READING_QUEUE_KEY } from '@/lib/storage-keys';
 import { tabLock } from '@/lib/tab-lock';
 import { getDeviceId, onlyConnection, queuedRoute } from '@/playback/progress-sync';
@@ -502,10 +502,22 @@ async function dropQueuedBefore(sent: ReadingSave): Promise<boolean> {
   return withStoredQueue(async () => {
     const queue = await readQueue();
     const next = queue.filter((s) => !stale(s));
-    if (next.length !== queue.length) await setItem(READING_QUEUE_KEY, next);
+    if (next.length === queue.length) return next.length > 0;
+    try {
+      await setItemStrict(READING_QUEUE_KEY, next);
+    } catch {
+      // Storage refused the drop: the older place is still queued, and a replay would send
+      // it after this newer one. Remembered here, so no replay of this tab's does.
+      for (const s of queue) if (stale(s)) sentUnsettled.add(queuedKey(s));
+      return false;
+    }
     return next.length > 0;
   });
 }
+
+/** The queued saves this tab must never send (`ReplayQueue.sent`): sent already, or made no
+ * later than a save of their book sent since, while storage refused to take them out. */
+const sentUnsettled = new Set<string>();
 
 /** Replay one connection's saves through its client; returns those to keep. */
 async function flushGroup(
@@ -545,9 +557,10 @@ function replayReadingSaves(route: (cid: string) => Route<ApiClient>): Promise<v
     replayQueue<ReadingSave, ApiClient>({
       lock: withStoredQueue,
       read: readQueue,
-      write: (next) => setItem(READING_QUEUE_KEY, next),
+      write: (next) => setItemStrict(READING_QUEUE_KEY, next),
       route,
       send: flushGroup,
+      sent: sentUnsettled,
     }),
   );
 }

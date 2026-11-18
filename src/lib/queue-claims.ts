@@ -1,4 +1,4 @@
-import { contentKey } from './content-key';
+import { contentKeyOf } from './content-key';
 import { randomUUID } from './random';
 
 /**
@@ -9,11 +9,17 @@ import { randomUUID } from './random';
  *
  * So a replay claims what it sends, under the lock and touching only storage: each entry it
  * takes is marked with its claim (`QueueClaim`) and stays in the queue; another tab's replay
- * leaves a live claim alone. The requests go out with no lock held. Then, under the lock
- * again, the entries the replay settled leave the queue and the rest lose the claim, ready
- * for the next replay. An entry replaced meanwhile (the latest save per book wins) is no
- * longer there to settle; a claim whose tab went away (closed, crashed) runs out
- * (`CLAIM_MS`), and its entries are replayed again: a save sent twice is the same save.
+ * leaves a live claim alone. The requests go out with no lock held, the claims stamped again
+ * every `CLAIM_RENEW_MS` while they do. Then, under the lock again, the entries the replay
+ * settled leave the queue and the rest lose the claim, ready for the next replay. An entry
+ * replaced meanwhile (the latest save per book wins) is no longer there to settle; a claim
+ * whose tab went away (closed, crashed) is not renewed and runs out (`CLAIM_MS`), and its
+ * entries are replayed again: a save sent twice is the same save.
+ *
+ * Storage that refuses a write (full): a claim that could not be written sends nothing (two
+ * tabs would send the same entries), and the next replay tries again; entries sent whose
+ * removal could not be written are remembered in this tab (`ReplayQueue.sent`), which never
+ * sends them again and takes them out with the next replay that can write.
  */
 
 /** A replay's mark on a queued entry: which replay, and until when it stands (ms, this
@@ -23,8 +29,11 @@ export type QueueClaim = { id: string; until: number };
 /** A queued entry as stored: the entry, and the claim of the replay sending it, if any. */
 export type Claimed<T> = T & { claim?: QueueClaim };
 
-/** How long a claim stands: past a replay of many entries, each with its own timeout. */
-export const CLAIM_MS = 120_000;
+/** How often a replay still sending stamps its claims again. */
+export const CLAIM_RENEW_MS = 30_000;
+
+/** How long a claim stands from its last stamp: two renewals missed, its tab went away. */
+export const CLAIM_MS = 2 * CLAIM_RENEW_MS;
 
 /** Whether a replay's claim on `entry` stands. One further ahead than any is written for
  * (the clock set back since) has run out too. */
@@ -54,18 +63,22 @@ export type QueuedSave = {
 };
 
 /** One entry per book in the queue: its book's key, and when it was made. */
-const keyOf = (s: QueuedSave) =>
-  `${contentKey(s.connectionId, s.libraryId, s.path)}|${s.updated_at}`;
+export const queuedKey = (s: QueuedSave) => `${contentKeyOf(s)}|${s.updated_at}`;
+const keyOf = queuedKey;
 
 export type ReplayQueue<T extends QueuedSave, C> = {
   /** The queue's cross-tab lock (`tabLock`): storage reads and writes only. */
   lock: <R>(job: () => Promise<R>) => Promise<R>;
   read: () => Promise<Claimed<T>[]>;
-  /** Store the queue (`before`: its length as read). */
+  /** Store the queue (`before`: its length as read). Rejects when storage refused it. */
   write: (next: Claimed<T>[], before: number) => Promise<void>;
   route: (connectionId: string) => Route<C>;
   /** Send one connection's entries in order; resolves to those to keep queued. */
   send: (connectionId: string, client: C, entries: T[]) => Promise<T[]>;
+  /** The entries (`queuedKey`) this tab sent, or sent a later save of, whose removal storage
+   * refused (the queue's own set, kept for the life of the tab): never sent again from
+   * here. */
+  sent: Set<string>;
 };
 
 /**
@@ -84,12 +97,18 @@ export async function replayQueue<T extends QueuedSave, C>(q: ReplayQueue<T, C>)
     const routes = new Map<string, Route<C>>();
     const taken = new Map<string, { client: C; entries: T[] }>();
     const next: Claimed<T>[] = [];
+    const removed: string[] = [];
     for (const stored of queue) {
       if (claimStands(stored, now)) {
         next.push(stored);
         continue;
       }
       const entry = unclaimed(stored);
+      // Sent from here already, its removal refused: taken out now, never sent again.
+      if (q.sent.has(keyOf(entry))) {
+        removed.push(keyOf(entry));
+        continue;
+      }
       const cid = entry.connectionId;
       let route = routes.get(cid);
       if (!route) routes.set(cid, (route = q.route(cid)));
@@ -103,24 +122,61 @@ export async function replayQueue<T extends QueuedSave, C>(q: ReplayQueue<T, C>)
       taken.set(cid, group);
       next.push({ ...entry, claim: { id, until: now + CLAIM_MS } });
     }
-    if (taken.size > 0 || next.length !== queue.length) await q.write(next, queue.length);
+    if (taken.size > 0 || next.length !== queue.length) {
+      try {
+        await q.write(next, queue.length);
+      } catch {
+        // The claim is not stored, so another tab would send these too: nothing is sent.
+        return new Map<string, { client: C; entries: T[] }>();
+      }
+    }
+    for (const key of removed) q.sent.delete(key);
     return taken;
   });
   if (groups.size === 0) return;
-  const settled = new Set<string>();
-  await Promise.all(
-    [...groups].map(async ([cid, { client, entries }]) => {
-      const kept = new Set(await q.send(cid, client, entries).catch(() => entries));
-      for (const entry of entries) if (!kept.has(entry)) settled.add(keyOf(entry));
-    }),
+  // Still sending: the claims are stamped again, so they stand only while this tab lives.
+  const renewing = setInterval(
+    () => void renewClaims(q, id).catch(() => undefined),
+    CLAIM_RENEW_MS,
   );
-  await q.lock(async () => {
+  const settled = new Set<string>();
+  try {
+    await Promise.all(
+      [...groups].map(async ([cid, { client, entries }]) => {
+        const kept = new Set(await q.send(cid, client, entries).catch(() => entries));
+        for (const entry of entries) if (!kept.has(entry)) settled.add(keyOf(entry));
+      }),
+    );
+  } finally {
+    clearInterval(renewing);
+  }
+  try {
+    await q.lock(async () => {
+      const queue = await q.read();
+      const next: Claimed<T>[] = [];
+      for (const stored of queue) {
+        if (stored.claim?.id !== id) next.push(stored);
+        else if (!settled.has(keyOf(stored))) next.push(unclaimed(stored));
+      }
+      await q.write(next, queue.length);
+    });
+  } catch {
+    // The sent entries are still queued (their claim runs out): not sent again from here.
+    for (const key of settled) q.sent.add(key);
+  }
+}
+
+/** Stamp the claims of replay `id` again (`CLAIM_RENEW_MS`), under the queue's lock. */
+function renewClaims<T extends QueuedSave, C>(q: ReplayQueue<T, C>, id: string): Promise<void> {
+  return q.lock(async () => {
     const queue = await q.read();
-    const next: Claimed<T>[] = [];
-    for (const stored of queue) {
-      if (stored.claim?.id !== id) next.push(stored);
-      else if (!settled.has(keyOf(stored))) next.push(unclaimed(stored));
-    }
-    await q.write(next, queue.length);
+    if (!queue.some((stored) => stored.claim?.id === id)) return;
+    const until = Date.now() + CLAIM_MS;
+    await q.write(
+      queue.map((stored) =>
+        stored.claim?.id === id ? { ...stored, claim: { id, until } } : stored,
+      ),
+      queue.length,
+    );
   });
 }
