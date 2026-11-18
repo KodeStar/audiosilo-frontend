@@ -23,10 +23,11 @@ const MEDIA_CACHE = 'audiosilo-media-v1'; // keep in sync with engine.web.ts
 // presence marks a token-bearing URL that must never be written into Cache Storage.
 const TOKEN_PARAM = 'token';
 // A page address carrying any of these is never written into Cache Storage either: a pairing
-// link's token, and the key of a single sign-on's flow its return names
+// link's `token` (`/connect?token=`, the server's `web_url`: its own param, named as the media
+// one is), and the key of a single sign-on's flow its return names
 // (`/connect?oidc=1&flow=<key>`, server#406). Each is one-time, so a kept copy would only hold
 // the value (one more page per sign-in), and offline such a page boots from the app shell.
-const UNKEPT_PAGE_PARAMS = [TOKEN_PARAM, 'flow'];
+const UNKEPT_PAGE_PARAMS = ['token', 'flow'];
 
 // Registered with `?dev=1` under the Metro dev server. In dev we only serve offline
 // media (so downloads are testable via `npm run web`) and never cache the app shell,
@@ -160,10 +161,7 @@ async function handleNavigation(request, shellFallback = true) {
     // Only cache a good response as the app shell - caching a transient 5xx would
     // then be served for offline navigations instead of the shell fallback - and never
     // under an address carrying a one-time value (`UNKEPT_PAGE_PARAMS`).
-    const { searchParams } = new URL(request.url);
-    if (fresh.ok && !UNKEPT_PAGE_PARAMS.some((p) => searchParams.has(p))) {
-      cache.put(request, fresh.clone());
-    }
+    if (fresh.ok && !carriesOneTimeValue(request.url)) cache.put(request, fresh.clone());
     return fresh;
   } catch {
     return (
@@ -172,6 +170,12 @@ async function handleNavigation(request, shellFallback = true) {
       new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } })
     );
   }
+}
+
+/** Whether a page's address carries a one-time value (`UNKEPT_PAGE_PARAMS`). */
+function carriesOneTimeValue(url) {
+  const { searchParams } = new URL(url);
+  return UNKEPT_PAGE_PARAMS.some((p) => searchParams.has(p));
 }
 
 /** A good same-origin answer, safe to keep. */
@@ -250,7 +254,8 @@ function refsOf(text, pattern) {
  * complete, the build before it stays one deploy longer (a tab still running it, its
  * worker replaced by another tab's new build, opens its pages from these), older files
  * go, and so does every page an earlier build cached (`handleNavigation`): offline such a
- * page would name files no longer kept, and the shell boots this build instead. Offline
+ * page would name files no longer kept, and the shell boots this build instead. So does any
+ * page kept under an address with a one-time value (`UNKEPT_PAGE_PARAMS`). Offline
  * or failing part way, it stops and leaves the record unwritten, so the next ask finishes
  * it.
  *
@@ -317,7 +322,11 @@ async function precacheBuild(fresh = false) {
       }
       const page = await cache.match(request);
       if (!page || !(page.headers.get('content-type') || '').includes('text/html')) continue;
-      if (assetRefs(await page.text()).some((ref) => !seen.has(ref))) await cache.delete(request);
+      // One kept under a one-time address goes whatever it names: a worker from before that
+      // rule (`UNKEPT_PAGE_PARAMS`) wrote it, the last time as this build's first page load.
+      if (carriesOneTimeValue(url) || assetRefs(await page.text()).some((ref) => !seen.has(ref))) {
+        await cache.delete(request);
+      }
     }
     await cache.put(marker, new Response(JSON.stringify({ build, files: [...seen], previous })));
   } catch {
