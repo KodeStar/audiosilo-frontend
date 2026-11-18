@@ -4,7 +4,7 @@ import { create } from 'zustand';
 import { quietly } from '@/lib/quietly';
 import { ticker } from '@/lib/ticker';
 
-import { selectBookKey, selectBookPosition, usePlayer } from './store';
+import { selectBookKey, selectBookPosition, showsFaultPlace, usePlayer } from './store';
 
 /**
  * Undo jump (STYLEGUIDE section 8, "Undo jump chip"): after ANY jump of more than a
@@ -27,7 +27,11 @@ import { selectBookKey, selectBookPosition, usePlayer } from './store';
  *   it (an engine can report its start position in more than one step).
  * - Retry / reload and buffering: only SETTLED states (`playing`, `paused`) are sampled.
  *   While the engine is `loading`, `ready`, `error`... the last settled sample is kept,
- *   and a reload resumes where it was.
+ *   and a reload resumes where it was. Except a faulted book's `error`
+ *   (`showsFaultPlace`): it shows the place asked for, or a move made on the book in error,
+ *   never the engine's (clamped at a file it measured short), so it is sampled like a
+ *   `paused`, and a jump from there is undone back to it. A failed resume lookup's `error`
+ *   at 0 is no such place.
  * - The downloads hot-swap (`switchCurrentBookToLocal`): same book, same position (it keeps
  *   the engine's file order; only a download holding other files can move the place).
  * - The app coming back after iOS suspended JS: while the previous sample was playing,
@@ -250,7 +254,10 @@ export function startJumpUndo(): () => void {
       return;
     }
     const { state } = s.snapshot;
-    if (state !== 'playing' && state !== 'paused') return; // keep the last settled sample
+    // Keep the last settled sample.
+    const settledState =
+      state === 'playing' || state === 'paused' || (state === 'error' && showsFaultPlace());
+    if (!settledState) return;
 
     const now = Date.now();
     const unobserved = now <= suspendedUntil || (!foreground() && stalled(now));

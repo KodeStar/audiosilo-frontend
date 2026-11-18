@@ -2103,12 +2103,17 @@ media GETs only.
   (reports from then on are from after the move: the native module resolves `load`, `seekTo`
   and `skipToTrack` once the engine took the move, iOS in AVPlayer's seek completion, Android
   at the seek discontinuity its own call reported (`MoveLandings`); a seek the controller
-  never reported within a second rejects, as a refused one does, so a press that fires a move
+  never reported within a second rejects, as a refused one does, and so does one that threw
+  (logged, never rethrown on the main thread) or one made while the controller is not
+  connected (`ERR_NO_CONTROLLER`), so a press that fires a move
   and forgets it (`void seekBook(...)`) wraps it in `quietly` (`src/lib/quietly.ts`) instead,
   leaving no unhandled rejection. No old-binary fallback: the
   app has no `expo-updates`, so a JS bundle only ever runs on the binary it shipped with, and a
   native change to how a call settles needs no feature marker), and a call that
-  rejects withdraws it, a fault it called off standing again (`EngineAsk.faulted`). The ask
+  rejects withdraws it, a fault it called off standing again (`calledOff`: one record for the
+  book, the fault and the number of the latest ask since, `EngineAsk.seq`; a refusal of that ask
+  brings the fault back, any ask of the book from the one that called it off on taken, or the
+  asks ending otherwise, clears it). The ask
   stands until the engine has played on `PLAYED_ON` seconds from it in its file (counted only
   once landed: a tick sent before a seek back took is past the asked place), moved on into a
   later file from within the tolerance of the asked file's end, or the listener moved
@@ -2119,7 +2124,13 @@ media GETs only.
   listener's next from the lock screen, whose file change Android reports before
   `onRemoteMove`), and an `ended` short of the book's end (`endsShortOfBook`), which otherwise
   reads as the book finished (the credits, `finishBook`'s `finished: true`, Sync v2's
-  `finish`): a Retry or a seek past the engine's end never finishes a book. An end while a
+  `finish`): a Retry or a seek past the engine's end never finishes a book. So is a report in
+  the asked file at the end of the engine's own measure of it (its `duration`) with the asked
+  place past that measure, the server's length going on (`pastMeasure`): the engine took the
+  move clamped there (Media3 on a VBR MP3 whose seek header measures it short), landed or not
+  (Android tells a paused seek's clamped place once, inside the call), at once, paused or
+  playing, so the clamped place never shows and nothing plays on into the next file; the move's
+  own `listenerMove` then shows nothing more (`EngineAsk.faultShown`). An end while a
   start shows its spinner is one too, from an ask inside its file, at once (not the stall
   watchdog's error later). On the native engines the later file waits `FAULT_HOLD_MS` first,
   its reports held back: a headset or car next soon after a paused scrub or while buffering
@@ -2127,7 +2138,9 @@ media GETs only.
   change, and iOS sends the file and the move as two events (a move into a later file at a
   place in it, which iOS reports at once but tells as a move only when its deferred seek
   lands, waits up to `ASK_SETTLE_MAX_MS`: `heldMove`, which reads it from the place jumping between
-  two reports, never from when they reach JS, so a burst of a run's queued ticks is no move); that move, or a report back in
+  two reports, never from when they reach JS, so a burst of a run's queued ticks is no move;
+  each measured on the store's queue, as the hot-swap's load reads it (`EngineAsk.held.seen`),
+  and allowing a tick a second late at any speed, `runOnStep`); that move, or a report back in
   the asked file, calls the fault off (a pause meanwhile does not). The web waits for nothing
   (`faultHoldMs`): only the store's own asks change the file there. Before
   the ask lands, neither is a report still in the file the store last showed (a progress tick
@@ -2139,13 +2152,21 @@ media GETs only.
   target's file by its index (`skipToTrack`). An ask the engine never took stands no longer:
   one whose move it refused (`engineTakes`; never to bring back the fault of a book no longer
   loaded), one the store gave up on (`withdrawAsk`, a move to another tab's place past
-  `TAB_MOVE_MAX_MS`: a refusal that comes later still brings its fault back, `givenUpAsk`,
+  `TAB_MOVE_MAX_MS`: a refusal that comes later still brings its fault back, `calledOff`,
   while nothing was asked since), and one whose engine has moved
   `PLAYED_ON` seconds in the other file since (left standing, its next file, minutes on, read
   as a run off the asked one). Nor does one whose call has not settled `ASK_SETTLE_MAX_MS`
   on once its engine has played `PLAYED_ON` on in its file. A faulted book, or any book in
   error: a press reloads it, as Retry does (`toggle`, so Play from Up next or the command
-  palette too); a faulted book's play the engine goes on with until the fault's pause lands is
+  palette too), at the place of a move whose call is still out (`reloadPlace`: Android takes
+  up to a second to rebuild the engine for a move on a book in error), else at the place shown.
+  Not at a place past the engine's own measure of its file (`stuckPastMeasure`, the length it
+  last reported for the file in a report not the first of a file change, `engineLengths`, kept
+  per `NowPlaying` and dropped as the route switch loads the book back on the phone): the
+  engine would clamp and play into the next file before its fault stopped it, so nothing is
+  reloaded or played, the book stays faulted in its error at the place, and the listener moves
+  it back to play; not where a download landed meanwhile (the reload is of its files) or
+  another tab played the book on. A faulted book's play the engine goes on with until the fault's pause lands is
   paused again, and one after it is the listener's (the lock screen, a headset, the car), which
   reloads like a press. The pause has landed once its call resolved and the engine told `paused` or `ended`
   (`faultPause`): the call alone does not say so, since a native one resolves before its engine
@@ -2160,10 +2181,11 @@ media GETs only.
   (a late one from before the fault's pause landed is paused again), and a move on it, as on
   any book in error, rebuilds the engine at the place (`skipToTrack`: a failed iOS item may never
   settle a seek). The file's length shown is the server's, the engine's where the server has
-  none. A Cast checkpoint
+  none. Jump undo samples such an `error` as a settled place (`showsFaultPlace`; no other
+  `error`), so a jump from a fault's place offers the way back to it. A Cast checkpoint
   (`onRemoteMove`'s `checkpoint`, as iOS suspends the app) never is, nor calls off a held run. A
-  fault outlives the download hot-swap's new `NowPlaying` (`commitLocalSwap`): a press still
-  reloads. So does an ask still standing, in the same file of the download's queue (`moveAsk`),
+  fault outlives the download hot-swap's new `NowPlaying` (`commitLocalSwap`, `moveAsk`): a
+  press still reloads. So does a fault an ask called off, and an ask still standing, in the same file of the download's queue (`moveAsk`),
   a run held for the listener's move with it. A start whose load rejects shows the place it
   asked for in its error state at once (Retry loads there), never the snapshot it had. Once the
   engine has played on, its moves and its end are the book's, as for any book: a server length

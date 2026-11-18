@@ -82,6 +82,8 @@ function buildPlayerStoreMock() {
     setRate: jest.fn((_rate: number) => Promise.resolve()),
   };
   let outputVolume = 1;
+  /** The store's `showsFaultPlace` (`setFaultPlace`). */
+  let faultPlace = false;
 
   const initialState = (): PlayerMockState => ({
     snapshot: { ...IDLE_SNAPSHOT },
@@ -160,6 +162,8 @@ function buildPlayerStoreMock() {
     /** The loose reading, which counts a book buffering with playback intended. */
     selectIsTransportLive: (s: PlayerMockState) =>
       s.snapshot.state === 'playing' || s.snapshot.state === 'loading',
+    /** Whether the snapshot is a faulted book's place (`setFaultPlace`). */
+    showsFaultPlace: () => faultPlace,
 
     // --- driving the double ------------------------------------------------
 
@@ -168,6 +172,10 @@ function buildPlayerStoreMock() {
     /** Change the play state the way the real store does: a write that NOTIFIES. */
     setPlayState(state: string) {
       usePlayer.setState({ snapshot: { ...usePlayer.getState().snapshot, state } });
+    },
+    /** Make the next snapshots a faulted book's place, as the store's fault and `showPlace` do. */
+    setFaultPlace(on: boolean) {
+      faultPlace = on;
     },
     /** Set the world up WITHOUT notifying - fixture setup, and the shape of a change
      * that happened while nothing was subscribed. */
@@ -187,6 +195,7 @@ function buildPlayerStoreMock() {
      * clears them where it wants the count to start). */
     reset() {
       outputVolume = 1;
+      faultPlace = false;
       usePlayer.setState(initialState(), true);
     },
     clearSpies() {
