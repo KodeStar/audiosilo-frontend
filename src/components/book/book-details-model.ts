@@ -138,6 +138,16 @@ export function bookPublisher(
   return book.publisher?.trim() || recording?.publisher;
 }
 
+/** When the book was released: the community recording's date (this audiobook's own
+ * release), else the server's `published`, which a match fills with the year the work was
+ * first published (the About card and the credits, one order). */
+export function bookReleased(
+  book: Pick<Book, 'published'>,
+  recording: Pick<BookMetaRecording, 'release_date'> | undefined,
+): string | undefined {
+  return recording?.release_date || book.published || undefined;
+}
+
 /** The About text of a book nothing describes: who wrote it and who reads it, so it
  * still reads complete. */
 function undescribed(book: Pick<Book, 'title' | 'author' | 'narrator'>, t: TFunction): string {
@@ -206,7 +216,7 @@ export function aboutContent(
   if (publisher) details.push({ label: t('book.meta.publisher'), value: publisher });
   // Dates read the listener's way (`formatReleaseDate`: "26 Jun 2012" in en-GB), at the
   // precision given; a value that is no date shows as it came.
-  const released = recording?.release_date || book.published;
+  const released = bookReleased(book, recording);
   if (released)
     details.push({ label: t('book.meta.released'), value: formatReleaseDate(released) });
   // The same date twice says nothing more (fe#291): one row, "Released".

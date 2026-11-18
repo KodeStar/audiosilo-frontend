@@ -15,6 +15,7 @@ import {
   useMyStats,
 } from '@/api/hooks';
 import { ConnectionScope, useCid, useOptionalApi } from '@/api/provider';
+import { bookPublisher, bookReleased } from '@/components/book/book-details-model';
 import { BookCover } from '@/components/library/book-cover';
 import { matchedMeta } from '@/components/library/book-meta';
 import { CoverWash } from '@/components/library/cover-wash';
@@ -481,7 +482,9 @@ function EndCreditsBody({
           author: book?.author,
           narrator: book?.narrator,
           recording: matched?.recording,
-          released: book?.published || matched?.recording?.release_date || undefined,
+          // The publisher and the date the book page's About card shows, by its rules.
+          publisher: bookPublisher(book ?? {}, matched?.recording),
+          released: bookReleased(book ?? {}, matched?.recording),
           attribution: matched?.work.attribution,
           path,
         }}

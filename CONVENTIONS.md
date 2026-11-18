@@ -1300,8 +1300,11 @@ description, else the description a Bridge generated on this server (`aboutConte
 field, the credit included; `BookAbout` takes it as a required prop; the order is picked once,
 into `source`, and a `generated` text wears `GeneratedChip` (`testID` `about-generated-mark`)
 under the eyebrow, never the credit or "Improve this"), else a sentence naming the author and
-narrator; then the production facts known ("First published" only when it is not the
-"Released" date, fe#291), the server's own `publisher` / `language` (named via
+narrator; then the production facts known ("Released" is `bookReleased`, the recording's
+`release_date` before the server's `published` (a match fills that with the year the work
+was first published), the one order the credits' Released row reads too, both through
+`formatReleaseDate`, as their Publisher rows both read `bookPublisher`; "First published"
+only when it is not the "Released" date, fe#291), the server's own `publisher` / `language` (named via
 `Intl.DisplayNames` where the platform has it) /
 `abridged` (absent = unknown, no row; the community only ever says true) before the community's; then the book's `genres` and `tags`
 as chips (`chipClass`, the filter chips' pill), each opening the Library's Books mode on it in the

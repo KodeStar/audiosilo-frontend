@@ -4,6 +4,7 @@ import { formatReleaseDate } from '@/lib/format';
 import {
   aboutContent,
   bookPublisher,
+  bookReleased,
   fileRows,
   FILES_SHOWN,
   labelGroups,
@@ -234,6 +235,16 @@ describe('bookPublisher', () => {
     expect(bookPublisher({ publisher: ' Server P ' }, recording)).toBe('Server P');
     expect(bookPublisher({ publisher: '  ' }, recording)).toBe('Community P');
     expect(bookPublisher({}, undefined)).toBeUndefined();
+  });
+});
+
+describe('bookReleased', () => {
+  it("is the recording's release, else the server's published date", () => {
+    // A match fills `published` with the year the work was first published.
+    expect(bookReleased({ published: '1937' }, { release_date: '2012-06-26' })).toBe('2012-06-26');
+    expect(bookReleased({ published: '2010-08-31' }, undefined)).toBe('2010-08-31');
+    expect(bookReleased({ published: '2010' }, { release_date: '' })).toBe('2010');
+    expect(bookReleased({}, undefined)).toBeUndefined();
   });
 });
 
