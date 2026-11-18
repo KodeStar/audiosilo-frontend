@@ -455,9 +455,10 @@ export function isServerAwayError(e: unknown): boolean {
 
 /** Whether a failed request found its server busy: its own 503 (its request timeout, a
  * restart). It was reached, so not `isServerAwayError`; said as busy, to try again in a
- * moment, rather than as the request's own failure. */
+ * moment, rather than as the request's own failure. Not an episode still on its way
+ * (`PodcastFetchPendingError`, a 503 of its own). */
 export function isServerBusyError(e: unknown): boolean {
-  return e instanceof ApiError && e.status === 503;
+  return e instanceof ApiError && e.status === 503 && !(e instanceof PodcastFetchPendingError);
 }
 
 type QueryValue = string | number | boolean | undefined | null;
