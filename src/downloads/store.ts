@@ -29,7 +29,7 @@ import { sharedStart } from '@/lib/shared-start';
 import { getItem, getItemStrict, setItemStrict } from '@/lib/storage';
 import { DOWNLOADS_KEY, isRecord } from '@/lib/storage-keys';
 import { onStoredChange, tabChannel, type TabChannel } from '@/lib/tab-channel';
-import { tabLock } from '@/lib/tab-lock';
+import { tabLock, webLocalStorage } from '@/lib/tab-lock';
 import { bookFileSpecs } from '@/playback/book-queue';
 import { fetchPercent, isAbsentEpisode } from '@/playback/episode-fetch-rules';
 import { progressToSave, writeMirror } from '@/playback/progress-sync';
@@ -191,8 +191,10 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     let read!: () => void;
     const reading = new Promise<void>((r) => (read = r));
     hydrating = reading;
-    // The launch reads the registry: no copy of an earlier read stands for it (`storedCopy`).
+    // The launch reads the registry: no copy of an earlier read stands for it (`storedCopy`,
+    // `heldAs`).
     storedCopy = null;
+    heldAs.clear();
     listenForStops();
     let cleaned: Registry;
     // On web, having the Cache API isn't enough - offline files only play if the
@@ -1305,21 +1307,23 @@ function persist(drop?: (entry: DownloadEntry) => boolean): Promise<void> {
     pendingSave = null;
   }
   // Nothing changed here and nothing to drop: no lock taken, the registry not read.
-  if (dropsWaiting.length === 0 && !changedSinceKnown(useDownloads.getState().entries)) {
-    saveLanded();
-    return Promise.resolve();
-  }
-  return withRegistryLock(saveChanges).then(removeDroppedFiles);
+  if (nothingToSave()) return Promise.resolve();
+  return withRegistryLock(saveChanges).then(removeEntryFiles);
+}
+
+/** Whether this tab has nothing to save (no change since `known`, no drop waiting): then
+ * any save that failed has nothing left to land (`saveLanded`). */
+function nothingToSave(): boolean {
+  if (dropsWaiting.length > 0 || changedSinceKnown(useDownloads.getState().entries)) return false;
+  saveLanded();
+  return true;
 }
 
 /** `persist`'s read, merge and write, holding the registry's lock; resolves to the stored
  * entries a drop took that this tab did not hold. */
 async function saveChanges(): Promise<DownloadEntry[]> {
   // A save that waited behind another: that one wrote these changes too.
-  if (dropsWaiting.length === 0 && !changedSinceKnown(useDownloads.getState().entries)) {
-    saveLanded();
-    return [];
-  }
+  if (nothingToSave()) return [];
   const raw = await readStoredRegistry();
   if (raw === undefined) {
     saveFailed();
@@ -1347,7 +1351,7 @@ async function saveChanges(): Promise<DownloadEntry[]> {
       return [];
     }
   }
-  storedCopy = saved;
+  if (Platform.OS !== 'web') storedCopy = saved;
   known = live;
   dropsWaiting.splice(0, drops.length);
   saveLanded();
@@ -1376,9 +1380,10 @@ async function readStoredRegistry(): Promise<unknown> {
   return getItemStrict<unknown>(DOWNLOADS_KEY).catch(() => undefined);
 }
 
-/** The files of the entries a drop took from the stored registry (another tab's downloads
- * of a removed connection): nothing else would ever reach them. */
-async function removeDroppedFiles(gone: DownloadEntry[]): Promise<void> {
+/** The files of `gone`, removed concurrently (on web each removal re-lists the cache): a
+ * removed connection's downloads, and the stored entries a drop took that this tab did not
+ * hold (another tab's), whose files nothing else would ever reach. */
+async function removeEntryFiles(gone: DownloadEntry[]): Promise<void> {
   await Promise.all(gone.map((e) => engine.removeBook(e.connectionId, e.libraryId, e.path)));
 }
 
@@ -1703,7 +1708,7 @@ type SyncStorage = Pick<Storage, 'getItem' | 'setItem'>;
  * which the next launch's read settles as it always did. Drops wait for `persist`: their
  * files could not be removed now. A storage that refuses it changes nothing.
  */
-function saveRegistryOnPageHide(storage: SyncStorage | null = webStorage()): void {
+function saveRegistryOnPageHide(storage: SyncStorage | null = webLocalStorage()): void {
   if (hydrating || !storage || !useDownloads.getState().hydrated) return;
   const live = useDownloads.getState().entries;
   if (!changedSinceKnown(live)) return;
@@ -1718,15 +1723,6 @@ function saveRegistryOnPageHide(storage: SyncStorage | null = webStorage()): voi
     // Refused (full) or not readable: the save below, and its retries, still try.
   }
   void persist();
-}
-
-function webStorage(): SyncStorage | null {
-  try {
-    const storage = (globalThis as { localStorage?: SyncStorage }).localStorage;
-    return typeof storage?.getItem === 'function' ? storage : null;
-  } catch {
-    return null;
-  }
 }
 
 /** Listens for the page going on `win`/`doc` (`saveRegistryOnPageHide`); returns the stop. */
@@ -2415,9 +2411,7 @@ onConnectionRemoved(async (id) => {
       ),
     });
   }
-  // The file deletions are independent (and on web each one re-lists the cache), so
-  // run them concurrently rather than making removal wait on N sequential scans.
-  await Promise.all(doomed.map(([, e]) => engine.removeBook(e.connectionId, e.libraryId, e.path)));
+  await removeEntryFiles(doomed.map(([, e]) => e));
   // The stored registry is every tab's: the connection's downloads this tab did not hold
   // (another tab's) go from it too, and then their files (`persist`).
   await persist((e) => e.connectionId === id);

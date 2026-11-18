@@ -18,7 +18,7 @@ export function tabLock(name: string): <T>(job: () => Promise<T>) => Promise<T> 
     queue(() => {
       const locks = webLocks();
       if (locks) return locks.request(name, job);
-      const storage = leaseStorage();
+      const storage = webLocalStorage();
       return storage ? withLease(storage, name, job) : job();
     });
 }
@@ -79,7 +79,7 @@ export function whenWebLockFree(name: string): Promise<void> {
 export type LeaseStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 /** The web's `localStorage`, or null (native, or a browser that refuses it). */
-function leaseStorage(): LeaseStorage | null {
+export function webLocalStorage(): LeaseStorage | null {
   if (Platform.OS !== 'web') return null;
   try {
     const storage = (globalThis as { localStorage?: LeaseStorage }).localStorage;
