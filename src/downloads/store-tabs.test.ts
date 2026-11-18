@@ -1,8 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 import type { ApiClient } from '@/api/client';
 import type { Book } from '@/api/types';
 import type { DownloadEntry } from '@/downloads/types';
+import { tabChannel } from '@/lib/tab-channel';
+import { fakeBrowser } from '@/testing/fake-browser';
+import { fakeWebLocks } from '@/testing/fake-web-locks';
 
 /**
  * The web player's tabs share one stored downloads registry (`audiosilo.downloads`) but
@@ -11,15 +15,36 @@ import type { DownloadEntry } from '@/downloads/types';
  * store.test.ts.
  */
 
+// Every tab's folder deletions, and a transfer that waits while `mockTransfer.gate` is set
+// (rejecting when its download is stopped, as a real one does).
+const mockRemoveBook = jest.fn(async (..._a: unknown[]) => {});
+const mockTransfer: { gate: Promise<void> | null } = { gate: null };
 jest.mock('@/downloads/engine', () => ({
   engine: {
     supported: true,
     localUri: (cid: string, lib: number, path: string, name: string) =>
       `live:${cid}:${lib}:${path}:${name}`,
     fileExists: async () => true,
-    removeBook: jest.fn(async () => {}),
-    downloadFile: async (cid: string, lib: number, path: string, name: string) =>
-      `live:${cid}:${lib}:${path}:${name}`,
+    removeBook: (...a: unknown[]) => mockRemoveBook(...a),
+    downloadFile: async (
+      cid: string,
+      lib: number,
+      path: string,
+      name: string,
+      _url: string,
+      _onProgress: unknown,
+      signal?: AbortSignal,
+    ) => {
+      if (mockTransfer.gate) {
+        await Promise.race([
+          mockTransfer.gate,
+          new Promise((_, reject) =>
+            signal?.addEventListener('abort', () => reject(new Error('aborted'))),
+          ),
+        ]);
+      }
+      return `live:${cid}:${lib}:${path}:${name}`;
+    },
     storageEstimate: async () => null,
     verify: undefined,
     probe: undefined,
@@ -157,6 +182,8 @@ const entryOf = (tab: Store, path: string) =>
 beforeEach(async () => {
   await AsyncStorage.clear();
   mockRemovalPurges.length = 0;
+  mockRemoveBook.mockClear();
+  mockTransfer.gate = null;
 });
 
 describe('two tabs downloading (web)', () => {
@@ -304,4 +331,153 @@ it("follows another tab's change of a finished download that kept its savedAt", 
   b.followStoredRegistry(await rawStored());
   expect(entryOf(b, 'X/Book')?.manifest.savedAt).toBe(saved[key].manifest.savedAt);
   expect(entryOf(b, 'X/Book')?.manifest.chapters).toEqual(chapters);
+});
+
+// A download on its way lives only in its tab. A tab reloaded (or opened) meanwhile read its
+// entry as cut short: marked Interrupted, its folder emptied under the transfer, and that
+// written over the downloading tab's entry. The tab running a download now holds a Web Lock
+// named for it, which the others see.
+describe('a download running in another tab (web, Web Locks)', () => {
+  const nav = globalThis.navigator as { locks?: unknown };
+  const os = Platform.OS;
+  const KEY_X = 'c1:2:X/Book';
+  const LOCK_X = `audiosilo-download:${KEY_X}`;
+  let locks: ReturnType<typeof fakeWebLocks>;
+  let browser: ReturnType<typeof fakeBrowser>;
+  let finish: () => void;
+
+  beforeEach(() => {
+    Platform.OS = 'web';
+    locks = fakeWebLocks();
+    Object.defineProperty(nav, 'locks', { configurable: true, value: locks });
+    browser = fakeBrowser();
+    mockTransfer.gate = new Promise<void>((r) => (finish = r));
+  });
+  afterEach(() => {
+    finish();
+    Platform.OS = os;
+    delete nav.locks;
+  });
+
+  /** A tab of the browser, on its stop channel, its registry read. */
+  async function launchTab(): Promise<Store> {
+    const tab = openTab();
+    tab.setDownloadStopChannelForTests(tabChannel('audiosilo-download-stop', browser.tab()));
+    await tab.useDownloads.getState().hydrate();
+    return tab;
+  }
+
+  /** Tab A, downloading X (its transfer waiting on `finish`). */
+  async function downloadingTab(): Promise<Store> {
+    const a = await launchTab();
+    await a.useDownloads.getState().download('c1', 2, book('X/Book'));
+    await settle();
+    expect(entryOf(a, 'X/Book')?.status).toBe('downloading');
+    expect(locks.names()).toContain(LOCK_X);
+    return a;
+  }
+
+  it("a tab opened meanwhile shows it as that tab's: not Interrupted, its folder kept", async () => {
+    const a = await downloadingTab();
+    const b = await launchTab();
+    await settle();
+    expect(entryOf(b, 'X/Book')?.status).toBe('downloading');
+    expect(b.useDownloads.getState().elsewhere[KEY_X]).toBe(true);
+    expect(a.useDownloads.getState().elsewhere[KEY_X]).toBeUndefined();
+    expect(mockRemoveBook).not.toHaveBeenCalled();
+    expect((await stored())[KEY_X]?.status).toBe('downloading');
+    // It finishes in tab A: shown downloaded in tab B, and the lock is let go.
+    finish();
+    await settle();
+    expect(entryOf(a, 'X/Book')?.status).toBe('downloaded');
+    b.followStoredRegistry(await rawStored());
+    expect(entryOf(b, 'X/Book')?.status).toBe('downloaded');
+    expect(b.useDownloads.getState().elsewhere[KEY_X]).toBeUndefined();
+    expect(locks.names()).not.toContain(LOCK_X);
+  });
+
+  it('an open tab shows a download another tab starts, with its progress', async () => {
+    const b = await launchTab();
+    await downloadingTab();
+    b.followStoredRegistry(await rawStored());
+    await settle();
+    expect(entryOf(b, 'X/Book')?.status).toBe('downloading');
+    expect(b.useDownloads.getState().elsewhere[KEY_X]).toBe(true);
+    // Never this tab's to save: the registry keeps the downloading tab's entry.
+    await b.useDownloads.getState().download('c1', 2, book('X/Book'));
+    expect((await stored())[KEY_X]?.status).toBe('downloading');
+  });
+
+  it('Cancel there asks the tab running it, which stops and removes it', async () => {
+    const a = await downloadingTab();
+    const b = await launchTab();
+    b.useDownloads.getState().cancel('c1', 2, 'X/Book');
+    // Nothing done in tab B itself: the transfer and its folder are tab A's.
+    expect(entryOf(b, 'X/Book')?.status).toBe('downloading');
+    expect(mockRemoveBook).not.toHaveBeenCalled();
+    await settle();
+    expect(entryOf(a, 'X/Book')).toBeUndefined();
+    expect(mockRemoveBook).toHaveBeenCalledWith('c1', 2, 'X/Book');
+    expect(await stored()).toEqual({});
+    b.followStoredRegistry(await rawStored());
+    expect(entryOf(b, 'X/Book')).toBeUndefined();
+    expect(b.useDownloads.getState().elsewhere).toEqual({});
+  });
+
+  it('Remove there asks the tab running it too', async () => {
+    const a = await downloadingTab();
+    const b = await launchTab();
+    await b.useDownloads.getState().remove('c1', 2, 'X/Book');
+    await settle();
+    expect(entryOf(a, 'X/Book')).toBeUndefined();
+    expect(await stored()).toEqual({});
+  });
+
+  it('the tab running it closed: cut short now, revived by the tab that showed it', async () => {
+    await downloadingTab();
+    const b = await launchTab();
+    expect(b.useDownloads.getState().elsewhere[KEY_X]).toBe(true);
+    // Tab A closes: the browser frees its lock, and nothing more is saved from it.
+    locks.close(LOCK_X);
+    await settle();
+    expect(entryOf(b, 'X/Book')).toMatchObject({
+      status: 'error',
+      failure: { kind: 'interrupted' },
+    });
+    expect(b.useDownloads.getState().elsewhere).toEqual({});
+    expect((await stored())[KEY_X]?.status).toBe('error');
+  });
+
+  it('keeps its lock while storage refuses the save of its end', async () => {
+    const a = await downloadingTab();
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const write = setItem.getMockImplementation()!;
+    setItem.mockImplementation(async (key: string, value: string) => {
+      if (key === KEY) throw new Error('quota');
+      return write(key, value);
+    });
+    try {
+      finish();
+      await settle();
+      expect(entryOf(a, 'X/Book')?.status).toBe('downloaded');
+      // Still stored as on its way: let go now, another tab would revive it as cut short.
+      expect((await stored())[KEY_X]?.status).toBe('downloading');
+      expect(locks.names()).toContain(LOCK_X);
+    } finally {
+      setItem.mockImplementation(write);
+    }
+    await a.useDownloads.getState().download('c1', 2, book('Y/Book'));
+    await settle();
+    expect((await stored())[KEY_X]?.status).toBe('downloaded');
+    expect(locks.names()).not.toContain(LOCK_X);
+  });
+
+  it('without Web Locks a tab cannot tell: cut short, as before', async () => {
+    const a = await downloadingTab();
+    Object.defineProperty(nav, 'locks', { configurable: true, value: undefined });
+    const b = await launchTab();
+    expect(entryOf(b, 'X/Book')?.status).toBe('error');
+    expect(b.useDownloads.getState().elsewhere).toEqual({});
+    expect(entryOf(a, 'X/Book')?.status).toBe('downloading');
+  });
 });

@@ -879,7 +879,8 @@
       "download": "Transferir",
       "downloaded": "Transferido",
       "queued": "Em fila…",
-      "downloading": "A transferir {{percent}} %"
+      "downloading": "A transferir {{percent}} %",
+      "otherTab": "Noutro separador"
     },
     "list": {
       "recentlyAdded": "Adicionados recentemente",

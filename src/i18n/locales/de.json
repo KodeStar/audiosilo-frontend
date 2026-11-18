@@ -879,7 +879,8 @@
       "download": "Herunterladen",
       "downloaded": "Heruntergeladen",
       "queued": "In Warteschlange…",
-      "downloading": "Download läuft {{percent}} %"
+      "downloading": "Download läuft {{percent}} %",
+      "otherTab": "In einem anderen Tab"
     },
     "list": {
       "recentlyAdded": "Kürzlich hinzugefügt",

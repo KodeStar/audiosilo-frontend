@@ -879,7 +879,8 @@
       "download": "Scarica",
       "downloaded": "Scaricato",
       "queued": "In coda…",
-      "downloading": "Download {{percent}} %"
+      "downloading": "Download {{percent}} %",
+      "otherTab": "In un'altra scheda"
     },
     "list": {
       "recentlyAdded": "Aggiunti di recente",

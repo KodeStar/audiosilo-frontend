@@ -19,7 +19,12 @@ import { ProgressBar } from '@/components/ui/progress-bar';
 import { ProgressRing } from '@/components/ui/progress-ring';
 import { Text } from '@/components/ui/text';
 import { failureText } from '@/downloads/failure';
-import { useDownloadEntry, useDownloadProgress, useDownloadServerFetch } from '@/downloads/store';
+import {
+  useDownloadElsewhere,
+  useDownloadEntry,
+  useDownloadProgress,
+  useDownloadServerFetch,
+} from '@/downloads/store';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import { formatBytes } from '@/lib/format';
 import { useConnectionName } from '@/stores/session';
@@ -254,8 +259,11 @@ function OnDeviceLabel({
  * with the control's button (which handles cancel), so it carries no controls. */
 export function DownloadProgress({ libraryId, path }: { libraryId: number; path: string }) {
   const { t } = useTranslation();
+  const cid = useCid();
   // It redraws with every tick anyway, so the whole entry is the one read it needs.
-  const entry = useDownloadEntry(useCid(), libraryId, path);
+  const entry = useDownloadEntry(cid, libraryId, path);
+  // Web: another tab of this browser is running it (its progress as that tab saves it).
+  const elsewhere = useDownloadElsewhere(cid, libraryId, path);
   if (entry?.status !== 'downloading' && entry?.status !== 'queued') return null;
   const { status, progress, bytes, totalBytes, serverFetch } = entry;
   return (
@@ -267,6 +275,7 @@ export function DownloadProgress({ libraryId, path }: { libraryId: number; path:
             ? t('library.download.queued')
             : t('library.download.downloading', { percent: Math.round(progress * 100) })}
         {totalBytes > 0 ? ` · ${formatBytes(bytes)} / ${formatBytes(totalBytes)}` : ''}
+        {elsewhere ? ` · ${t('library.download.otherTab')}` : ''}
       </Text>
       <ProgressBar fraction={progress} minPercent={4} fillClassName="bg-foreground/60" />
     </View>

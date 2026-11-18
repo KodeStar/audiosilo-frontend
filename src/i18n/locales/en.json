@@ -879,7 +879,8 @@
       "download": "Download",
       "downloaded": "Downloaded",
       "queued": "Queued…",
-      "downloading": "Downloading {{percent}}%"
+      "downloading": "Downloading {{percent}}%",
+      "otherTab": "In another tab"
     },
     "list": {
       "recentlyAdded": "Recently added",
