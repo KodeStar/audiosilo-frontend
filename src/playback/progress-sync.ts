@@ -1354,8 +1354,6 @@ function replaySaves(route: (cid: string) => Route<ApiClient>): Promise<void> {
     lock: withQueueLock,
     read: readQueue,
     write: writeQueue,
-    connectionOf: (s) => s.connectionId,
-    keyOf: (s) => `${contentKey(s.connectionId, s.libraryId, s.path)}|${s.updated_at}`,
     route,
     send: flushGroup,
   });
@@ -1374,16 +1372,26 @@ export async function flushQueue(): Promise<void> {
   // client to null (the connection list is still empty) and drop the whole queue as
   // unroutable. Wait until the session is ready so entries route to a real client.
   if (!sessionReady()) return;
-  await replaySaves((cid) => {
-    if (!isReachable(cid)) return 'keep'; // this server known down; keep its saves queued
-    const client = resolveClient(cid);
-    // A connection removed: unroutable, drop the whole group. Not while an identity
-    // move is on its way (`identityMovePending`): the id can be one the documents
-    // moved and the connections don't show yet, so the saves wait for that launch.
-    if (!client) return identityMovePending() ? 'keep' : 'drop';
-    return { send: client };
-  });
+  await replaySaves(queuedRoute);
 }
+
+/** Where a replay of a stored queue (this one, the reader's) sends a connection's saves:
+ * through its client, kept while its server is known down, dropped with the connection. */
+export function queuedRoute(cid: string): Route<ApiClient> {
+  if (!isReachable(cid)) return 'keep'; // this server known down; keep its saves queued
+  const client = resolveClient(cid);
+  // A connection removed: unroutable, drop the whole group. Not while an identity
+  // move is on its way (`identityMovePending`): the id can be one the documents
+  // moved and the connections don't show yet, so the saves wait for that launch.
+  if (!client) return identityMovePending() ? 'keep' : 'drop';
+  return { send: client };
+}
+
+/** A replay's route of `connectionId`'s saves alone, through `client`: the rest stay. */
+export const onlyConnection =
+  (connectionId: string, client: ApiClient) =>
+  (cid: string): Route<ApiClient> =>
+    cid === connectionId ? { send: client } : 'keep';
 
 /**
  * Flush exactly ONE connection's queued saves through its client, regardless of that
@@ -1401,7 +1409,7 @@ export async function flushConnection(connectionId: string): Promise<void> {
   if (!sessionReady()) return;
   const client = resolveClient(connectionId);
   if (!client) return; // already gone - nothing routable to flush
-  await replaySaves((cid) => (cid === connectionId ? { send: client } : 'keep'));
+  await replaySaves(onlyConnection(connectionId, client));
 }
 
 // Removing a connection orphans its scoped state (signing in again starts from the

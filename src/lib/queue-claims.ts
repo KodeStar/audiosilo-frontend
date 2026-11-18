@@ -1,3 +1,4 @@
+import { contentKey } from './content-key';
 import { randomUUID } from './random';
 
 /**
@@ -44,15 +45,24 @@ export function unclaimed<T extends object>(entry: Claimed<T>): T {
  * queued, or drop them (the connection is gone). */
 export type Route<C> = { send: C } | 'keep' | 'drop';
 
-export type ReplayQueue<T extends object, C> = {
+/** A queued save: its book, and when it was made. */
+export type QueuedSave = {
+  connectionId: string;
+  libraryId: number;
+  path: string;
+  updated_at: string;
+};
+
+/** One entry per book in the queue: its book's key, and when it was made. */
+const keyOf = (s: QueuedSave) =>
+  `${contentKey(s.connectionId, s.libraryId, s.path)}|${s.updated_at}`;
+
+export type ReplayQueue<T extends QueuedSave, C> = {
   /** The queue's cross-tab lock (`tabLock`): storage reads and writes only. */
   lock: <R>(job: () => Promise<R>) => Promise<R>;
   read: () => Promise<Claimed<T>[]>;
   /** Store the queue (`before`: its length as read). */
   write: (next: Claimed<T>[], before: number) => Promise<void>;
-  connectionOf: (entry: T) => string;
-  /** One entry per book in the queue: its book's key, and when it was made. */
-  keyOf: (entry: T) => string;
   route: (connectionId: string) => Route<C>;
   /** Send one connection's entries in order; resolves to those to keep queued. */
   send: (connectionId: string, client: C, entries: T[]) => Promise<T[]>;
@@ -63,7 +73,10 @@ export type ReplayQueue<T extends object, C> = {
  * connections at once), then settle. Entries another tab claims are left to it; a
  * connection `route` drops leaves the queue unsent.
  */
-export async function replayQueue<T extends object, C>(q: ReplayQueue<T, C>): Promise<void> {
+export async function replayQueue<T extends QueuedSave, C>(q: ReplayQueue<T, C>): Promise<void> {
+  // Nothing to claim (an empty queue, as after most saves, or every entry another tab's):
+  // no lock taken. The claim below reads the queue again under it.
+  if (!(await q.read()).some((stored) => !claimStands(stored))) return;
   const id = randomUUID();
   const groups = await q.lock(async () => {
     const queue = await q.read();
@@ -77,7 +90,7 @@ export async function replayQueue<T extends object, C>(q: ReplayQueue<T, C>): Pr
         continue;
       }
       const entry = unclaimed(stored);
-      const cid = q.connectionOf(entry);
+      const cid = entry.connectionId;
       let route = routes.get(cid);
       if (!route) routes.set(cid, (route = q.route(cid)));
       if (route === 'drop') continue;
@@ -98,15 +111,15 @@ export async function replayQueue<T extends object, C>(q: ReplayQueue<T, C>): Pr
   await Promise.all(
     [...groups].map(async ([cid, { client, entries }]) => {
       const kept = new Set(await q.send(cid, client, entries).catch(() => entries));
-      for (const entry of entries) if (!kept.has(entry)) settled.add(q.keyOf(entry));
+      for (const entry of entries) if (!kept.has(entry)) settled.add(keyOf(entry));
     }),
   );
   await q.lock(async () => {
     const queue = await q.read();
     const next: Claimed<T>[] = [];
     for (const stored of queue) {
-      if ((stored.claim as Partial<QueueClaim> | undefined)?.id !== id) next.push(stored);
-      else if (!settled.has(q.keyOf(stored))) next.push(unclaimed(stored));
+      if (stored.claim?.id !== id) next.push(stored);
+      else if (!settled.has(keyOf(stored))) next.push(unclaimed(stored));
     }
     await q.write(next, queue.length);
   });

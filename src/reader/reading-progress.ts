@@ -8,14 +8,13 @@ import {
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { ReadingProgress, ReadingProgressSaved } from '@/api/types';
-import { identityMovePending } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { replayQueue, type Route } from '@/lib/queue-claims';
 import { serialQueue } from '@/lib/serial-queue';
 import { getItem, setItem } from '@/lib/storage';
 import { READING_MIRROR_KEY, READING_QUEUE_KEY } from '@/lib/storage-keys';
 import { tabLock } from '@/lib/tab-lock';
-import { getDeviceId } from '@/playback/progress-sync';
+import { getDeviceId, onlyConnection, queuedRoute } from '@/playback/progress-sync';
 import { onConnectionRemoved } from '@/stores/session';
 
 import { clearEbookCache } from './ebook-file';
@@ -495,11 +494,14 @@ async function queueSave(save: ReadingSave): Promise<void> {
 }
 
 /** Drop a queued save of `sent`'s book made no later than it; whether any save is still
- * queued. */
+ * queued. The lock only when there is one to drop: every page turn sends a save. */
 async function dropQueuedBefore(sent: ReadingSave): Promise<boolean> {
+  const stale = (s: ReadingSave) => sameBook(s, sent) && timeOf(s) <= timeOf(sent);
+  const queued = await readQueue();
+  if (!queued.some(stale)) return queued.length > 0;
   return withStoredQueue(async () => {
     const queue = await readQueue();
-    const next = queue.filter((s) => !sameBook(s, sent) || timeOf(s) > timeOf(sent));
+    const next = queue.filter((s) => !stale(s));
     if (next.length !== queue.length) await setItem(READING_QUEUE_KEY, next);
     return next.length > 0;
   });
@@ -544,8 +546,6 @@ function replayReadingSaves(route: (cid: string) => Route<ApiClient>): Promise<v
       lock: withStoredQueue,
       read: readQueue,
       write: (next) => setItem(READING_QUEUE_KEY, next),
-      connectionOf: (s) => s.connectionId,
-      keyOf: (s) => `${contentKey(s.connectionId, s.libraryId, s.path)}|${s.updated_at}`,
       route,
       send: flushGroup,
     }),
@@ -557,12 +557,7 @@ function replayReadingSaves(route: (cid: string) => Route<ApiClient>): Promise<v
  * another tab is replaying are left to it. */
 export async function flushReadingQueue(): Promise<void> {
   if (!sessionReady()) return;
-  await replayReadingSaves((cid) => {
-    if (!isReachable(cid)) return 'keep';
-    const client = resolveClient(cid);
-    if (!client) return identityMovePending() ? 'keep' : 'drop';
-    return { send: client };
-  });
+  await replayReadingSaves(queuedRoute);
 }
 
 /** Replay one connection's queued saves whatever its recorded reachability: it just came
@@ -571,7 +566,7 @@ export async function flushReadingConnection(connectionId: string): Promise<void
   if (!sessionReady()) return;
   const client = resolveClient(connectionId);
   if (!client) return;
-  await replayReadingSaves((cid) => (cid === connectionId ? { send: client } : 'keep'));
+  await replayReadingSaves(onlyConnection(connectionId, client));
 }
 
 // --- "Jump there?" -----------------------------------------------------------------------------

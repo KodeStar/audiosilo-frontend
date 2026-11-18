@@ -1,4 +1,11 @@
-import { CLAIM_MS, claimStands, replayQueue, unclaimed } from './queue-claims';
+import {
+  CLAIM_MS,
+  claimStands,
+  type QueuedSave,
+  replayQueue,
+  type ReplayQueue,
+  unclaimed,
+} from './queue-claims';
 
 describe('queue claims', () => {
   const now = 1_000_000;
@@ -17,31 +24,56 @@ describe('queue claims', () => {
   });
 
   it('drops, keeps and sends by connection, and a send that throws keeps its entries', async () => {
-    type E = { cid: string; n: number };
+    const entry = (connectionId: string, n: number) => ({
+      connectionId,
+      libraryId: 1,
+      path: `Book ${n}`,
+      updated_at: `2026-01-0${n}T00:00:00Z`,
+    });
+    type E = ReturnType<typeof entry>;
     let stored: (E & { claim?: { id: string; until: number } })[] = [
-      { cid: 'gone', n: 1 },
-      { cid: 'down', n: 2 },
-      { cid: 'up', n: 3 },
-      { cid: 'broken', n: 4 },
+      entry('gone', 1),
+      entry('down', 2),
+      entry('up', 3),
+      entry('broken', 4),
     ];
-    const sent: number[] = [];
+    const sent: string[] = [];
     await replayQueue<E, string>({
       lock: (job) => job(),
       read: async () => stored,
       write: async (next) => void (stored = next),
-      connectionOf: (e) => e.cid,
-      keyOf: (e) => String(e.n),
       route: (cid) => (cid === 'gone' ? 'drop' : cid === 'down' ? 'keep' : { send: cid }),
       send: async (cid, _client, entries) => {
         if (cid === 'broken') throw new Error('no');
-        sent.push(...entries.map((e) => e.n));
+        sent.push(...entries.map((e) => e.path));
         return [];
       },
     });
-    expect(sent).toEqual([3]);
-    expect(stored).toEqual([
-      { cid: 'down', n: 2 },
-      { cid: 'broken', n: 4 },
-    ]);
+    expect(sent).toEqual(['Book 3']);
+    expect(stored).toEqual([entry('down', 2), entry('broken', 4)]);
+  });
+
+  it('takes no lock when there is nothing to claim', async () => {
+    const lock = jest.fn((job: () => Promise<unknown>) => job()) as ReplayQueue<
+      QueuedSave,
+      string
+    >['lock'];
+    const claimed = {
+      connectionId: 'up',
+      libraryId: 1,
+      path: 'A',
+      updated_at: '2026-01-01T00:00:00Z',
+      claim: { id: 'other', until: Date.now() + 60_000 },
+    };
+    for (const queue of [[], [claimed]]) {
+      await replayQueue<QueuedSave, string>({
+        lock,
+        read: async () => queue,
+        write: async () => undefined,
+        route: (cid) => ({ send: cid }),
+        send: async () => [],
+      });
+    }
+    expect(lock).not.toHaveBeenCalled();
   });
 });
