@@ -325,16 +325,15 @@ class AudiosiloPlayerModule : Module() {
       // maps to (clip item, clip-relative position).
       moveOnMain(promise) { c ->
         val map = timelineMap
-        if (map.clipped) {
+        val target = if (map.clipped) {
           val fileIndex = map.itemToFile(c.currentMediaItemIndex, 0L).first
           val (idx, ms) = map.fileToItem(fileIndex, seconds)
-          c.seekTo(idx, ms)
           MoveLandings.Target(idx, ms)
         } else {
-          val ms = (seconds * 1000).toLong()
-          c.seekTo(ms)
-          MoveLandings.Target(c.currentMediaItemIndex, ms)
+          MoveLandings.Target(c.currentMediaItemIndex, (seconds * 1000).toLong())
         }
+        c.seekTo(target.item, target.positionMs)
+        target
       }
     }
 
@@ -599,13 +598,16 @@ class AudiosiloPlayerModule : Module() {
   private fun moveOnMain(promise: Promise, move: (MediaController) -> MoveLandings.Target) {
     handler.post {
       val c = controller ?: return@post promise.resolve(null)
-      landings.run({ taken ->
-        if (taken) {
-          promise.resolve(null)
-        } else {
-          promise.reject("ERR_MOVE_NOT_TAKEN", "The player did not take the move", null)
-        }
-      }) { move(c) }
+      landings.run(
+        { taken ->
+          if (taken) {
+            promise.resolve(null)
+          } else {
+            promise.reject("ERR_MOVE_NOT_TAKEN", "The player did not take the move", null)
+          }
+        },
+        { MoveLandings.Target(c.currentMediaItemIndex, c.currentPosition) },
+      ) { move(c) }
     }
   }
 

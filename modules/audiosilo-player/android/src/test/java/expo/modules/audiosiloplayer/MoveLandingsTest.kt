@@ -24,11 +24,13 @@ class MoveLandingsTest {
   private val clock = Clock()
   private val landings = MoveLandings(clock::schedule, clock::cancel)
   private val target = MoveLandings.Target(2, 40_000)
+  /** The controller's place once a move's call returned, far from [target]. */
+  private val elsewhere = { MoveLandings.Target(0, 0) }
 
   @Test
   fun aMaskedSeekResolvesInsideItsCallAfterItsSample() {
     val log = mutableListOf<String>()
-    landings.run({ log.add("taken $it") }) {
+    landings.run({ log.add("taken $it") }, elsewhere) {
       // The controller's masked seek tells its discontinuity inside the call, even at a place
       // other than the asked one (clamped to a short measure).
       log.add("progress")
@@ -42,7 +44,7 @@ class MoveLandingsTest {
   @Test
   fun aMoveReportedAfterItsCallResolvesAtItsTarget() {
     val taken = mutableListOf<Boolean>()
-    landings.run({ taken.add(it) }) { target }
+    landings.run({ taken.add(it) }, elsewhere) { target }
     assertEquals(emptyList<Boolean>(), taken)
     landings.landed(2, 40_020)
     assertEquals(listOf(true), taken)
@@ -54,7 +56,7 @@ class MoveLandingsTest {
   @Test
   fun aLockScreenSeekWhileAMoveWaitsIsNotItsLanding() {
     val taken = mutableListOf<Boolean>()
-    landings.run({ taken.add(it) }) { target }
+    landings.run({ taken.add(it) }, elsewhere) { target }
     landings.landed(2, 90_000) // the lock screen's scrub, another place
     landings.landed(3, 40_000) // the car's next, another item
     assertEquals(emptyList<Boolean>(), taken)
@@ -65,7 +67,7 @@ class MoveLandingsTest {
   @Test
   fun aMoveTheControllerNeverReportsIsNotTakenAfterTheFallback() {
     val taken = mutableListOf<Boolean>()
-    landings.run({ taken.add(it) }) { target }
+    landings.run({ taken.add(it) }, elsewhere) { target }
     assertEquals(listOf(MoveLandings.FALLBACK_MS), clock.posted.map { it.second })
     clock.fire()
     assertEquals(listOf(false), taken)
@@ -75,8 +77,8 @@ class MoveLandingsTest {
   fun aMoveThatLandsInItsCallTakesTheEarlierOnesStillWaiting() {
     val first = mutableListOf<Boolean>()
     val second = mutableListOf<Boolean>()
-    landings.run({ first.add(it) }) { target }
-    landings.run({ second.add(it) }) {
+    landings.run({ first.add(it) }, elsewhere) { target }
+    landings.run({ second.add(it) }, elsewhere) {
       landings.landed(2, 10_000)
       MoveLandings.Target(2, 10_000)
     }
@@ -89,7 +91,7 @@ class MoveLandingsTest {
   fun aDiscontinuityWithNoMoveWaitingSettlesNothing() {
     landings.landed(2, 40_000)
     val taken = mutableListOf<Boolean>()
-    landings.run({ taken.add(it) }) { target }
+    landings.run({ taken.add(it) }, elsewhere) { target }
     assertEquals(emptyList<Boolean>(), taken)
     landings.landed(2, 40_000)
     assertEquals(listOf(true), taken)
@@ -99,16 +101,34 @@ class MoveLandingsTest {
   fun aMoveThatThrowsIsNotTaken() {
     val taken = mutableListOf<Boolean>()
     try {
-      landings.run({ taken.add(it) }) { throw IllegalStateException("no controller") }
+      landings.run({ taken.add(it) }, elsewhere) { throw IllegalStateException("no controller") }
     } catch (_: IllegalStateException) {
     }
     assertEquals(listOf(false), taken)
     assertTrue(clock.posted.isEmpty())
     // The next move is told apart from it.
-    landings.run({ taken.add(it) }) {
+    landings.run({ taken.add(it) }, elsewhere) {
       landings.landed(2, 40_000)
       target
     }
     assertEquals(listOf(false, true), taken)
+  }
+
+  @Test
+  fun aMoveToWhereTheEngineIsIsTakenWithNoDiscontinuity() {
+    // Tapping the chapter it is in: Media3 may report nothing for a seek that goes nowhere.
+    val taken = mutableListOf<Boolean>()
+    landings.run({ taken.add(it) }, { MoveLandings.Target(2, 40_180) }) { target }
+    assertEquals(listOf(true), taken)
+    assertTrue(clock.posted.isEmpty())
+  }
+
+  @Test
+  fun aMoveNotTakenNearItsTargetInAnotherItemStillWaits() {
+    val taken = mutableListOf<Boolean>()
+    landings.run({ taken.add(it) }, { MoveLandings.Target(1, 40_000) }) { target }
+    assertEquals(emptyList<Boolean>(), taken)
+    clock.fire()
+    assertEquals(listOf(false), taken)
   }
 }
