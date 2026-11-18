@@ -1822,11 +1822,12 @@ media GETs only.
   still applies auto-rewind on every `play()` and hides prev/next **only when there's a
   single item** (a chapterless single-file book, so "previous" can't restart it).
   **A failed engine reads as stopped, never as a fatal error** (fe#157): idle with an error
-  and a queue loaded, `AudiobookPlayer` shows every controller a ready player with no error,
-  and the service clears its playWhenReady as it fails (`onEngineFailed`), so the platform
-  session says paused with play available (a fatal error there is Android's error state, in
-  which Android Auto drops its controls). A play prepares it again first
-  (`prepareIfFailed`); the app hears of the failure from the service
+  and a queue loaded, `AudiobookPlayer`'s getters read ready with no error, and the service
+  clears its playWhenReady as it fails (`onEngineFailed`), so the platform session (built from
+  the getters) says paused with play available (a fatal error there is Android's error state,
+  in which Android Auto drops its controls). Media3 controllers hear the engine's own idle,
+  with no error (the session copies a state change's argument). A play prepares it again
+  first (`prepareIfFailed`); the app hears of the failure from the service
   (`PlayerEventSink.playerFailed`), and the car shows `labels.playbackError` as a non-fatal
   session error.
   - **A long MP4-family file plays as one whole-file item** (fe#194, `ClipBudget` in

@@ -44,12 +44,13 @@ interface AudiobookPlayerHooks {
  *    auto-rewind inside [play] ([internal]), Smart speed's silence skips and a file/clip
  *    advancing at its end (neither calls a seek method on this wrapper).
  *  - **Remote speed**: a controller other than the app changing the speed is reported too.
- *  - **A failed engine reads as stopped** (fe#157): idle with an error, it is shown to every
- *    controller as ready with no error ([failed], [getPlaybackState], [getPlayerError]), and
- *    the service clears its playWhenReady, so the platform session says paused with play
- *    available. A fatal error there (Android's error state) made Android Auto drop its
- *    controls: only a hardware play key could start the book again. A play prepares the
- *    failed engine again first ([prepareIfFailed]): the session, shown a ready player, never
+ *  - **A failed engine reads as stopped** (fe#157): idle with an error, its getters read ready
+ *    with no error ([failed], [getPlaybackState], [getPlayerError]), and the service clears
+ *    its playWhenReady, so the platform session (built from the getters) says paused with
+ *    play available (Media3 controllers hear the engine's own idle, as the session copies a
+ *    state change's argument, with no error, and paused). A fatal error on the platform
+ *    session (Android's error state) made Android Auto drop its controls: only a hardware
+ *    play key could start the book again. A play prepares the failed engine again first ([prepareIfFailed]): the session, shown a ready player, never
  *    does. The service tells the app (`PlayerEventSink.playerFailed`) and the car (a
  *    non-fatal session error, in the listener's language) itself.
  */
