@@ -140,11 +140,7 @@ export async function undoFinish(ref: UndoRef, edit: () => Promise<unknown>): Pr
   const since = r.generation(ref.connectionId);
   const taken = await r.withdraw(ref.connectionId, ref.libraryId, ref.path);
   if (taken.unreachable) return 'unreachable';
-  // Never reached the server, so it still holds the place before the finish: this device's
-  // record goes back there, with no edit (offline too). Mark as not finished as well, not at
-  // its own place: the server would hold one place and this device another. Only when this
-  // device knows that place (`knowsPlaceBefore`: not after a reload, nor for another tab's
-  // finish); else the edit puts the server at the place asked for, as for a finish it has.
+  // Never reached the server, which still holds the place before: back there, no edit.
   if (taken.unsent && (!ref.atPosition || (await r.knowsPlaceBefore(ref).catch(() => false)))) {
     await r.unrecord({ ...ref, atPosition: false }, since).catch(() => undefined);
     return 'undone';

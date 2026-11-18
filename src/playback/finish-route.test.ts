@@ -71,16 +71,17 @@ describe('undoFinish', () => {
   // server kept the place before the finish while this device's record moved to another.
   describe('Mark as not finished (atPosition) of a finish that never left', () => {
     const own = { ...ref, atPosition: true };
+    beforeEach(() => {
+      unsent = true;
+    });
 
     it('this device knowing the place before it: back there, as the server is, with no edit', async () => {
-      unsent = true;
       knowsBefore = true;
       await expect(undoFinish(own, edit(false))).resolves.toBe('undone');
       expect(steps).toEqual(['withdraw c1 3 Author/Book', 'unrecord at 48 for sign-in 0']);
     });
 
     it('not knowing it (a reload, another tab): the edit puts the server at the place asked', async () => {
-      unsent = true;
       await expect(undoFinish(own, edit(true))).resolves.toBe('undone');
       expect(steps).toEqual([
         'withdraw c1 3 Author/Book',
@@ -90,7 +91,6 @@ describe('undoFinish', () => {
     });
 
     it('not knowing it, an edit that failed (offline) puts the finish back', async () => {
-      unsent = true;
       await expect(undoFinish(own, edit(false))).rejects.toThrow('refused');
       expect(steps).toEqual(['withdraw c1 3 Author/Book', 'edit', 'restore']);
     });

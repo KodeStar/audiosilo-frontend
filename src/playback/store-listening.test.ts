@@ -1507,11 +1507,13 @@ describe('Mark as finished outside the player (finish-route)', () => {
       updated_at: '2026-01-01T00:00:00Z',
     };
     const notFinished = { ...undoRef, position: 0, atPosition: true };
+    beforeEach(async () => {
+      mockReadMirror.mockResolvedValue(before);
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+    });
     afterEach(() => mockReadMirror.mockImplementation(async () => null));
 
     it('the mirror goes back to the place the server holds, with no edit', async () => {
-      mockReadMirror.mockResolvedValue(before);
-      await recordFinishEvent({ ...ref, path: 'Other/Book' });
       const finishedRec = mockWriteMirror.mock.calls.at(-1)?.[0] as { updated_at: string };
       mockReadMirror.mockResolvedValue(finishedRec);
       const edit = jest.fn(async () => {});
@@ -1523,13 +1525,10 @@ describe('Mark as finished outside the player (finish-route)', () => {
     // Another tab's finish (or one after a reload): the mirror holds a finished record this
     // device did not write, so the place before it is not known here.
     it('one this device does not know the place before: the edit, then its own place', async () => {
-      mockReadMirror.mockResolvedValue(before);
-      await recordFinishEvent({ ...ref, path: 'Other/Book' });
       mockReadMirror.mockResolvedValue({
         ...before,
         position: 100,
         finished: true,
-        device_id: 'dev-1',
         updated_at: '2026-01-03T00:00:00Z',
       });
       const edit = jest.fn(async () => {});

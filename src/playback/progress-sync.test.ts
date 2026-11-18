@@ -862,6 +862,20 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
     await AsyncStorage.clear();
   });
 
+  /** Another tab: its own copy of the module (its own memory) over the same storage. */
+  const otherTab = () => {
+    let other!: typeof import('@/playback/progress-sync');
+    jest.isolateModules(() => {
+      jest.doMock('@react-native-async-storage/async-storage', () => ({
+        __esModule: true,
+        default: AsyncStorage,
+      }));
+      /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+      other = require('@/playback/progress-sync') as typeof import('@/playback/progress-sync');
+    });
+    return other;
+  };
+
   const filed = {
     ...save,
     position: 3600,
@@ -1014,16 +1028,7 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
     // tab's read of the finished row finish it again.
     it("holds off another tab's finished record too", async () => {
       await writeMirror(unfinished);
-      // The other tab: its own copy of the module (its own memory) over the same storage.
-      let other!: typeof import('@/playback/progress-sync');
-      jest.isolateModules(() => {
-        jest.doMock('@react-native-async-storage/async-storage', () => ({
-          __esModule: true,
-          default: AsyncStorage,
-        }));
-        /* eslint-disable-next-line @typescript-eslint/no-require-imports */
-        other = require('@/playback/progress-sync') as typeof import('@/playback/progress-sync');
-      });
+      const other = otherTab();
       await noteUndoneFinish('c1', 1, 'A/Book', undoneAt);
       const now = jest.spyOn(Date, 'now').mockReturnValue(undoneAt + 5_000);
       try {
@@ -1058,20 +1063,6 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
     afterEach(() => {
       delete nav.locks;
     });
-
-    /** Another tab: its own copy of the module (its own memory) over the same storage. */
-    const otherTab = () => {
-      let other!: typeof import('@/playback/progress-sync');
-      jest.isolateModules(() => {
-        jest.doMock('@react-native-async-storage/async-storage', () => ({
-          __esModule: true,
-          default: AsyncStorage,
-        }));
-        /* eslint-disable-next-line @typescript-eslint/no-require-imports */
-        other = require('@/playback/progress-sync') as typeof import('@/playback/progress-sync');
-      });
-      return other;
-    };
 
     it("never writes over the other tab's record (the browser's Web Locks)", async () => {
       // One browser's Web Locks: a job per name at a time, whichever tab asks.
