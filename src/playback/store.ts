@@ -2382,6 +2382,11 @@ function endHistory({ leaving = false }: { leaving?: boolean } = {}) {
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (!np) return;
+  // A switch takes the next book's client before that book is `nowPlaying` (`switchBook`), as
+  // `persist` reads it: a span of the book still named goes to its own server.
+  const api =
+    apiRefFor !== null && apiRefFor !== np.connectionId ? resolveClient(np.connectionId) : apiRef;
+  if (!api) return;
   // Listening spans are best-effort; don't fire at a server we know is unreachable
   // (reachability is per-connection, so key it on the playing book's own server).
   if (!isReachable(np.connectionId)) return;
@@ -2389,7 +2394,7 @@ function endHistory({ leaving = false }: { leaving?: boolean } = {}) {
   // them from the listening's start (`tickListeningSpan` ends a PUT path's history where a
   // span opens) and still does (not rolled back since).
   if (start.sync && usesListeningSync(np.connectionId)) return;
-  void apiRef
+  void api
     .addHistory(
       np.libraryId,
       np.path,

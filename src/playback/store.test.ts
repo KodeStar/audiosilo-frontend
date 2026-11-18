@@ -1227,7 +1227,11 @@ describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
 
 describe('connection scoping', () => {
   describe("finding 11: a switch to another server's book saves the previous book through its own server", () => {
-    const client2 = { ...fakeClient, coverUrl: () => 'c2-cover' };
+    const client2 = {
+      ...fakeClient,
+      coverUrl: () => 'c2-cover',
+      addHistory: jest.fn(async () => {}),
+    };
     const playing = () => {
       pushSnapshot(snap('playing', 40));
     };
@@ -1281,6 +1285,31 @@ describe('connection scoping', () => {
         expect.objectContaining({ connectionId: 'c1', position: 45 }),
       );
       expect(mockSaveProgress).not.toHaveBeenCalledWith(client2, expect.anything());
+      resume({ kind: 'empty' });
+      await starting;
+    });
+
+    it('a listening span of the previous book before the next one loads goes to its server', async () => {
+      await startBook(makeBook(), 0, 'c1');
+      playing();
+      const { resume, starting } = await startOnOtherServer();
+      client2.addHistory.mockClear();
+      const addHistory = fakeClient.addHistory as jest.Mock;
+      addHistory.mockClear();
+      // The old book, paused and played again from the lock screen, pauses once more: a span
+      // long enough to keep.
+      pushSnapshot(snap('paused', 45));
+      pushSnapshot(snap('playing', 45));
+      jest.advanceTimersByTime(45_000);
+      pushSnapshot(snap('paused', 90));
+      await flushMicrotasks();
+      expect(addHistory).toHaveBeenCalledWith(
+        2,
+        'A/Book.m4b',
+        expect.objectContaining({ from_pos: 45 }),
+        expect.anything(),
+      );
+      expect(client2.addHistory).not.toHaveBeenCalled();
       resume({ kind: 'empty' });
       await starting;
     });
