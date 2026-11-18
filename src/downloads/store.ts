@@ -1175,8 +1175,8 @@ const withRegistryLock = tabLock(DOWNLOADS_KEY);
 /** Save the registry now (and drop any save `persistSoon` was holding): into the stored
  * registry, only what this tab changed (`known`), under `withRegistryLock`. `drop` also
  * takes out stored entries it names (a removed connection's, another tab's included);
- * resolves to the ones it took that this tab did not hold. A read that fails writes
- * nothing: the next save writes the same changes. */
+ * resolves to the ones it took that this tab did not hold. A read or a write that fails
+ * changes nothing here: the next save writes the same changes. */
 function persist(drop?: (entry: DownloadEntry) => boolean): Promise<DownloadEntry[]> {
   // The launch's read saves once it has merged (`hydrating`): before that the live entries
   // are not the registry, and saving them would write over every saved download.
@@ -1207,7 +1207,13 @@ function persist(drop?: (entry: DownloadEntry) => boolean): Promise<DownloadEntr
         changed = true;
       }
     }
-    if (changed) await setItemStrict(DOWNLOADS_KEY, saved).catch(() => undefined);
+    if (changed) {
+      try {
+        await setItemStrict(DOWNLOADS_KEY, saved);
+      } catch {
+        return dropped; // refused: `known` stays, so the next save writes it again
+      }
+    }
     known = live;
     return dropped;
   });

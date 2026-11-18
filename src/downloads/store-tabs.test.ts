@@ -210,6 +210,34 @@ describe('two tabs downloading (web)', () => {
     expect(Object.keys(await stored())).toEqual([b.downloadKey('c1', 2, 'Y/Book')]);
   });
 
+  it('a save storage refused is written by the next save', async () => {
+    const a = openTab();
+    await a.useDownloads.getState().hydrate();
+    // Storage refuses the save of X finished (its last).
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const write = setItem.getMockImplementation()!;
+    let refused = false;
+    setItem.mockImplementation(async (key: string, value: string) => {
+      if (!refused && key === KEY && value.includes('"status":"downloaded"')) {
+        refused = true;
+        throw new Error('quota');
+      }
+      return write(key, value);
+    });
+    try {
+      await a.useDownloads.getState().download('c1', 2, book('X/Book'));
+      await settle();
+    } finally {
+      setItem.mockImplementation(write);
+    }
+    expect(refused).toBe(true);
+    await a.useDownloads.getState().download('c1', 2, book('Y/Book'));
+    await settle();
+    const saved = await stored();
+    expect(saved[a.downloadKey('c1', 2, 'X/Book')]?.status).toBe('downloaded');
+    expect(saved[a.downloadKey('c1', 2, 'Y/Book')]?.status).toBe('downloaded');
+  });
+
   it("removing a connection takes another tab's downloads of it from the registry", async () => {
     const a = openTab();
     // Tab A's purges (its copy of the store's, and of what it imports).
