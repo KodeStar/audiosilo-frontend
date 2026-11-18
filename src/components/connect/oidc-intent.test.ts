@@ -119,7 +119,7 @@ describe("a grown-up's pass through kids mode", () => {
   // audiosilo#202: with the provider still signed in, the server's start URL typed in this tab
   // finishes a sign-in too. Its session never carries this trip's tag.
   it.each([
-    ['no tag (the start URL typed, a tag spent before, or an older server)', {}],
+    ['no tag (the start URL typed, or a tag spent before)', {}],
     ["another trip's tag", { intent: 'cd'.repeat(32) }],
     ['an empty tag', { intent: '' }],
   ])('is not given for a session with %s', (_, session) => {

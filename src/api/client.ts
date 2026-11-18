@@ -775,7 +775,7 @@ export class ApiClient {
    * with the server's single sign-on (capability `oidc`): the provider, then back to
    * `/web/connect?oidc=1`, where `oidcFinish` trades the sign-in for a session. `intent`:
    * the trip's own random tag (`holdOidcIntent`), echoed by that trip's finish only
-   * (`AuthSession.intent`, audiosilo#202); an older server ignores it. */
+   * (`AuthSession.intent`, audiosilo#202); an older server ignores the query param. */
   oidcStartUrl(intent?: string) {
     return this.apiUrl('/auth/oidc/start', { return: 'web', intent });
   }
@@ -786,8 +786,9 @@ export class ApiClient {
    * `oidc_sign_in_expired` (spent or expired), 429 while the address is locked out.
    * `intent`: the tag the sign-in must have been started with (`oidcStartUrl(intent)`),
    * sent only while a kids-mode pass waits on it (`oidcPassTag`, audiosilo#202): the server
-   * answers 403 `oidc_intent_mismatch` for any other sign-in and makes no session. An older
-   * server ignores the field, so the caller still checks the echo (`AuthSession.intent`). */
+   * answers 403 `oidc_intent_mismatch` for any other sign-in and makes no session. A server
+   * with single sign-on from before the tag refuses the field (400, no session); the caller
+   * still checks the echo (`AuthSession.intent`). */
   oidcFinish(deviceName: string, intent?: string) {
     return this.request<AuthSession>('POST', '/auth/oidc/finish', {
       body: { device_name: deviceName, ...(intent ? { intent } : {}) },

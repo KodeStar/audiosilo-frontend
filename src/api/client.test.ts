@@ -273,7 +273,7 @@ describe('ApiClient', () => {
     expect(session.intent).toBe(tag);
   });
 
-  it('answers with the session of an older server that ignores the tag, with no echo', async () => {
+  it('answers with a session that came back with no echo, for the caller to refuse', async () => {
     installFetch(() => ({ status: 200, body: { token: 't', server_id: 's', user: { id: 1 } } }));
     const session = await new ApiClient('https://h').oidcFinish('iPhone', 'ab'.repeat(32));
     expect(session.token).toBe('t');

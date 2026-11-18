@@ -1346,8 +1346,28 @@ describe("a single sign-on's return (?oidc=1)", () => {
       expect(mockSetParams).not.toHaveBeenCalled();
     });
 
-    // An older server ignores the request's tag and answers with a session: it can't tell
-    // this trip's sign-in from the start URL typed in the tab, so none is kept.
+    // A server with single sign-on from before the tag takes no field it doesn't know in a
+    // body: it refuses the finish that names one, and signing in again would end the same way.
+    it('gives none when a server from before the tag refuses the request (400), and says the server needs updating', async () => {
+      mockApi.oidcFinish.mockRejectedValue(new ApiError(400, 'invalid request'));
+      mockApi.serverInfo.mockResolvedValue(info());
+      await render(<ConnectStart />);
+      await waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
+      expect(mockApi.oidcFinish).toHaveBeenCalledWith('Test device', tag);
+      expect(kidsConnectAllowed()).toBe(false);
+      expect(mockToast).toHaveBeenCalledTimes(1);
+      expect(mockToast).toHaveBeenCalledWith({
+        title:
+          "This server needs updating before single sign-on can add someone from kids mode, so the sign-in wasn't kept. Update the server, or sign in another way.",
+      });
+      // No session was made: nothing stored, nothing to sign out.
+      expect(mockApi.logout).not.toHaveBeenCalled();
+      expect(useSession.getState().connections).toEqual([]);
+      expect(screen.queryByText('Found Hearthside')).toBeNull();
+    });
+
+    // A session without the echo all the same (no server of ours answers so): it can't be
+    // told from the start URL typed in the tab, so none is kept.
     it.each([
       ['no tag (a server before the tag)', {}],
       ["another trip's tag", { intent: 'cd'.repeat(32) }],

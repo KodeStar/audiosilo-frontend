@@ -101,10 +101,12 @@ export function oidcFinishText(e: unknown, t: TFunction): string {
  * screen that would say it is gone (null: the flow moved on). The finish names the tag the
  * pass expects (`oidcPassTag`), so the server refuses any other sign-in itself and makes no
  * session (403 `oidc_intent_mismatch`: the start URL typed in this tab while the provider is
- * still signed in). A session that came back without the tag is an older server's, which
- * ignores the request's and can't tell the trips apart: signed out again, since kept it
- * could add someone to the kids device with no grown-up's say, and the toast says the
- * server needs updating (`needsUpdate`: signing in again would end the same way).
+ * still signed in). A server with single sign-on from before the tag can't tell the trips
+ * apart: it refuses a body naming one (400, its bodies take no field it doesn't know) and
+ * makes no session, and the toast says the server needs updating (`needsUpdate`: signing in
+ * again would end the same way). A session that came back without the tag all the same is
+ * treated alike: signed out again, since kept it could add someone to the kids device with
+ * no grown-up's say.
  */
 export async function finishOidcSignIn(
   origin: string,
@@ -125,7 +127,11 @@ export async function finishOidcSignIn(
       client.serverInfo().catch(() => null),
     ]);
   } catch (e) {
-    const message = oidcFinishText(e, t);
+    // A 400 to a finish that named a tag: a server from before the tag, refusing the field.
+    const message =
+      expected && e instanceof ApiError && e.status === 400
+        ? t('connect.oidc.errors.needsUpdate')
+        : oidcFinishText(e, t);
     if (settleOidcPass(null) === 'none') return message;
     toast({ title: message });
     return null;
@@ -143,7 +149,8 @@ export async function finishOidcSignIn(
   }
   if (settleOidcPass(session) === 'refused') {
     signOut();
-    // A server that knows the request's tag never answers it with a session it doesn't echo.
+    // A server that knows the request's tag never answers it with a session it doesn't echo,
+    // and one from before the tag refuses the request (above): this is neither's answer.
     toast({
       title: t(expected ? 'connect.oidc.errors.needsUpdate' : 'connect.oidc.errors.notThisTrip'),
     });
