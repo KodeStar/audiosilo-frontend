@@ -2422,7 +2422,9 @@ media GETs only.
     no answer, a timeout, a proxy's 502 or 504 or Cloudflare's 520 to 524; the first edit
     after the server died, before reachability noticed), the finish put back; the server's
     own 503, busy, is an answer: the edit fails and says the server is busy, to try again in a
-    moment (`isServerBusyError`, `common.serverBusy`; a Mark as finished's edit too). Mark as not finished takes the same route at its own place (`unfinish` in
+    moment (`failureTitle` in `src/lib/failure-title.ts`, `isServerBusyError`,
+    `common.serverBusy`; a Mark as finished's edit too, and a rating or a listening goal saved;
+    a proxy's 503 reads busy as well). Mark as not finished takes the same route at its own place (`unfinish` in
     `book-actions.tsx`, through `undoFinish`): a finish still waiting is taken back before its
     edit, and with the server down it fails the same way. One taken back unsent is undone
     here as an Undo is, the mirror back to its record before the finish, not at its own place:

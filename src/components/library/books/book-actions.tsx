@@ -12,7 +12,6 @@ import {
   useMarkFinished,
   qk,
 } from '@/api/hooks';
-import { isServerBusyError } from '@/api/client';
 import type { Book, PodcastFetchStatus, Progress } from '@/api/types';
 import { useCachedQueryData } from '@/api/use-cached-query-data';
 import { RemoveDownloadConfirm } from '@/components/downloads/remove-download-confirm';
@@ -41,6 +40,7 @@ import {
   reloadLeftBook,
   undoFinish,
 } from '@/playback/finish-route';
+import { failureTitle } from '@/lib/failure-title';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { useLatestRef } from '@/lib/use-latest';
@@ -165,12 +165,10 @@ export function useBookActions(
   const status = bookStatus(progress);
   const sendToWatch = useSendToWatch(connectionId, libraryId);
 
-  // A busy server (its own 503, `isServerBusyError`) says so: reached, to try again shortly.
+  // A busy server says so (`failureTitle`): reached, to try again shortly.
   const failed = (e: unknown) => {
     if (e instanceof CapabilityError) return;
-    toast({
-      title: isServerBusyError(e) ? t('common.serverBusy') : t('library.bookActions.failed'),
-    });
+    toast({ title: failureTitle(e, t('library.bookActions.failed')) });
   };
 
   const ref = { connectionId, libraryId, path };

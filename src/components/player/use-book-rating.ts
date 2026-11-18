@@ -5,6 +5,7 @@ import { CapabilityError, useMyRatings, useRating, useSetRating } from '@/api/ho
 import type { RatingValue } from '@/api/types';
 import { savedRating } from './end-credits-logic';
 import { toast } from '@/components/ui/toast';
+import { failureTitle } from '@/lib/failure-title';
 
 /**
  * A book's rating for its stars (capability `ratings`, which the caller checks; the book
@@ -29,7 +30,8 @@ export function useBookRating(connectionId: string, libraryId: number, path: str
       () => toast({ title: t('player.finished.ratingSaved') }),
       (e: unknown) => {
         setPicked(undefined);
-        if (!(e instanceof CapabilityError)) toast({ title: t('player.finished.ratingFailed') });
+        if (e instanceof CapabilityError) return;
+        toast({ title: failureTitle(e, t('player.finished.ratingFailed')) });
       },
     );
   };
