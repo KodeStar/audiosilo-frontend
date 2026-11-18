@@ -204,15 +204,31 @@ export function onConnectionRemoved(fn: (id: string) => void | Promise<void>): (
   return () => removalCleanups.delete(fn);
 }
 
-/** Run every removal cleanup for each of `ids`; one that fails never blocks the others
- * (nor the removal), it is only warned of (`what`). */
-async function runRemovalCleanups(ids: readonly string[], what: string): Promise<void> {
-  const results = await Promise.allSettled(
-    ids.flatMap((id) => [...removalCleanups].map((fn) => fn(id))),
-  );
+/** Run each of `fns` (the removal cleanups, the other-tab steps) for each of `ids`; one that
+ * fails never blocks the others (nor the removal), it is only warned of (`what`). */
+async function runEach(
+  fns: ReadonlySet<(id: string) => void | Promise<void>>,
+  ids: readonly string[],
+  what: string,
+): Promise<void> {
+  const results = await Promise.allSettled(ids.flatMap((id) => [...fns].map((fn) => fn(id))));
   for (const r of results) {
-    if (r.status === 'rejected') console.warn(`[session] ${what} cleanup failed`, r.reason);
+    if (r.status === 'rejected') console.warn(`[session] ${what} failed`, r.reason);
   }
+}
+
+/** The connection list without `id`, and the default after it (the first left when it was
+ * `id`): one rule for the removing tab and the tabs it tells. */
+function withoutConnection(
+  connections: readonly Connection[],
+  defaultConnectionId: string | null,
+  id: string,
+): { next: Connection[]; nextDefault: string | null } {
+  const next = connections.filter((c) => c.id !== id);
+  return {
+    next,
+    nextDefault: defaultConnectionId === id ? (next[0]?.id ?? null) : defaultConnectionId,
+  };
 }
 
 // Web: the tabs of the player share the stored connections, tokens and every connection's
@@ -242,10 +258,8 @@ export function setRemovalChannelForTests(
 }
 
 function listenForRemovals(): void {
-  if (!removalListening) {
-    removalListening =
-      removalChannel()?.subscribe((m) => void removedInOtherTab(m).catch(() => {})) ?? null;
-  }
+  removalListening =
+    removalChannel()?.subscribe((m) => void removedInOtherTab(m).catch(() => {})) ?? null;
 }
 
 // What a tab does first when another tab removed a connection, before the cleanups: what
@@ -274,15 +288,11 @@ async function removedInOtherTab(message: RemovalMessage): Promise<void> {
   if ((await getSecure(tokenKey(id))) !== null) return;
   const { connections, defaultConnectionId } = useSession.getState();
   if (connections.some((c) => c.id === id)) {
-    const next = connections.filter((c) => c.id !== id);
-    const nextDefault = defaultConnectionId === id ? (next[0]?.id ?? null) : defaultConnectionId;
+    const { next, nextDefault } = withoutConnection(connections, defaultConnectionId, id);
     useSession.setState({ connections: next, ...mirror(next, nextDefault) });
   }
-  const steps = await Promise.allSettled([...otherTabRemovalSteps].map((fn) => fn(id)));
-  for (const r of steps) {
-    if (r.status === 'rejected') console.warn('[session] other-tab removal step failed', r.reason);
-  }
-  await runRemovalCleanups([id], 'connection-removed');
+  await runEach(otherTabRemovalSteps, [id], 'other-tab removal step');
+  await runEach(removalCleanups, [id], 'connection-removed cleanup');
 }
 
 // Told when a sign-in retires a stale identity in favour of the new connection (a server
@@ -724,9 +734,10 @@ export const useSession = create<SessionState>()((set, get) => ({
     // query cache, scroll memory), same semantics as removeConnection: run every cleanup,
     // never let one block the re-pair.
     if (stale.length) {
-      await runRemovalCleanups(
+      await runEach(
+        removalCleanups,
         stale.map((c) => c.id),
-        'stale-identity',
+        'stale-identity cleanup',
       );
     }
     return id;
@@ -798,8 +809,7 @@ export const useSession = create<SessionState>()((set, get) => ({
 
   removeConnection: async (id) => {
     const { connections, defaultConnectionId } = get();
-    const next = connections.filter((c) => c.id !== id);
-    const nextDefault = defaultConnectionId === id ? (next[0]?.id ?? null) : defaultConnectionId;
+    const { next, nextDefault } = withoutConnection(connections, defaultConnectionId, id);
     // The connection's calendar link (Track U3) and proxy headers (fe#167) are credentials
     // like its token: this device forgets them with the connection (the link itself keeps
     // working until turned off). The token first: a delete of it that fails stops the
@@ -814,7 +824,7 @@ export const useSession = create<SessionState>()((set, get) => ({
     // Purge the removed connection's scoped state (downloads, progress mirror/queue,
     // query cache, scroll memory). A failing cleanup must never block removal, so run
     // them all and only warn on rejection.
-    await runRemovalCleanups([id], 'connection-removed');
+    await runEach(removalCleanups, [id], 'connection-removed cleanup');
   },
 
   markNeedsReconnect: (id, reason) => {

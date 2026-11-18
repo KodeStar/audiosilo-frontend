@@ -1,18 +1,14 @@
-const mockCalls: string[] = [];
-let mockStep: ((id: string) => Promise<void>) | null = null;
 const mockUnsubscribe = jest.fn();
+let mockStep: ((id: string) => Promise<void>) | null = null;
 jest.mock('@/stores/session', () => ({
   onConnectionRemovedInOtherTab: (fn: (id: string) => Promise<void>) => {
     mockStep = fn;
     return mockUnsubscribe;
   },
 }));
+const mockStopAndClose = jest.fn(async (_id: string) => {});
 jest.mock('./store', () => ({
-  stopPlaybackForConnection: async (id: string) => void mockCalls.push(`stop ${id}`),
-}));
-jest.mock('./listening-outbox', () => ({
-  appendInTurn: async (id: string, events: unknown[]) =>
-    void mockCalls.push(`turn ${id} ${events.length}`),
+  stopPlaybackAndCloseSpan: (id: string) => mockStopAndClose(id),
 }));
 
 /* eslint-disable import/first */
@@ -23,7 +19,7 @@ describe('startRemovedInOtherTab', () => {
   it('stops playing through the removed connection, past its span close, then lets go', async () => {
     const stop = startRemovedInOtherTab();
     await mockStep!('srv.1');
-    expect(mockCalls).toEqual(['stop srv.1', 'turn srv.1 0']);
+    expect(mockStopAndClose).toHaveBeenCalledWith('srv.1');
     stop();
     expect(mockUnsubscribe).toHaveBeenCalled();
   });

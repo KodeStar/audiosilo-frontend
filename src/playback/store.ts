@@ -4327,6 +4327,18 @@ export async function stopPlaybackForConnection(connectionId: string): Promise<v
 }
 
 /**
+ * Stop playback through the connection and wait out the stop's span close, which waits its
+ * turn into the outbox (`closeSpan`): past that turn (`appendInTurn` of nothing, behind it),
+ * the outbox holds the span. Run before a removal's purges, by the removing tab
+ * (`teardownBeforeTokenRevoke`) and by every other tab told of it (`removed-in-other-tab.ts`):
+ * done after them, the place and the span landed once they were purged.
+ */
+export async function stopPlaybackAndCloseSpan(connectionId: string): Promise<void> {
+  await stopPlaybackForConnection(connectionId);
+  await appendInTurn(connectionId, []).catch(() => undefined);
+}
+
+/**
  * The shared teardown rule for every token-revoking path (sign-out in
  * use-sign-out.ts, remove-connection in connections-section.tsx): stop playback
  * through the connection first, so the final position persists while its token is
@@ -4335,14 +4347,12 @@ export async function stopPlaybackForConnection(connectionId: string): Promise<v
  * `flushConnection`, not `flushQueue`: the latter no-ops while the ACTIVE server is
  * offline, which would skip this last-chance sync when removing a still-reachable
  * background connection. One helper so a new step can't be added to one path and
- * forgotten in the other. The stop's span close waits its turn into the outbox
- * (`closeSpan`), so the outbox is sent only once that turn has passed (`appendInTurn` of
- * nothing, behind it): sent at once, the send found the outbox without the span, which then
- * landed after the token was revoked and went with the connection's purge.
+ * forgotten in the other. The outbox is sent only once the stop's span is in it
+ * (`stopPlaybackAndCloseSpan`): sent at once, the send found the outbox without the span,
+ * which then landed after the token was revoked and went with the connection's purge.
  */
 export async function teardownBeforeTokenRevoke(connectionId: string): Promise<void> {
-  await stopPlaybackForConnection(connectionId);
-  await appendInTurn(connectionId, []).catch(() => undefined);
+  await stopPlaybackAndCloseSpan(connectionId);
   await Promise.all([
     flushConnection(connectionId).catch(() => undefined),
     // Sync v2's listening outbox (the stop above closed its span).
