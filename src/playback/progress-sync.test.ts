@@ -1892,13 +1892,34 @@ describe('the place before a finish (writeFinishedMirror)', () => {
     expect(await readMirrorOf('c1', 1, 'A/Book')).not.toHaveProperty('before');
   });
 
-  it('a finish marked again carries the place the first one did; none over no place', async () => {
+  it('the same finish written again keeps its place; none over no place', async () => {
+    await writeMirror(place);
+    await writeFinishedMirror(finish);
+    await writeFinishedMirror({ ...finish, playback_speed: 1.5 });
+    expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({
+      playback_speed: 1.5,
+      before: { position: 48 },
+    });
+    await writeFinishedMirror({ ...finish, path: 'B/Other' });
+    expect(await readMirrorOf('c1', 1, 'B/Other')).not.toHaveProperty('before');
+  });
+
+  // Carried on, the Undo of the second finish went back to the place before the first: the
+  // book unfinished at a place older than the finish it undid.
+  it('another finish over a finished record carries no place', async () => {
     await writeMirror(place);
     await writeFinishedMirror(finish);
     await writeFinishedMirror({ ...finish, updated_at: '2026-01-03T00:00:00Z' });
-    expect((await readMirrorOf('c1', 1, 'A/Book'))?.before).toMatchObject({ position: 48 });
-    await writeFinishedMirror({ ...finish, path: 'B/Other' });
-    expect(await readMirrorOf('c1', 1, 'B/Other')).not.toHaveProperty('before');
+    const record = await readMirrorOf('c1', 1, 'A/Book');
+    expect(record).toMatchObject({ finished: true, updated_at: '2026-01-03T00:00:00Z' });
+    expect(record).not.toHaveProperty('before');
+    // Another device's finish with this one's stamp is not this finish either.
+    const third = { path: 'C/Third' };
+    await writeMirror({ ...place, ...third });
+    await writeFinishedMirror({ ...finish, ...third });
+    expect((await readMirrorOf('c1', 1, 'C/Third'))?.before).toMatchObject({ position: 48 });
+    await writeFinishedMirror({ ...finish, ...third, device_id: 'other' });
+    expect(await readMirrorOf('c1', 1, 'C/Third')).not.toHaveProperty('before');
   });
 });
 

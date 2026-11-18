@@ -750,13 +750,26 @@ export function writeMirrors(saves: readonly ProgressSave[]): Promise<void> {
 /**
  * The record of this device's Mark as finished (`save`, finished): written as `writeMirror`
  * writes, and carrying the record it replaces when that is a place, unfinished (`before`;
- * one finishing a finish of this device's again carries the one that finish carried). The
+ * the same finish written again keeps the place it carried, `placeBeforeFinish`). The
  * Undo of a finish that never reached the server goes back there (`restorePlaceBefore` in
  * the store), deciding by the record it changes under the mirror's lock: a reload, and
  * another tab's finish, see the same record.
  */
 export function writeFinishedMirror(save: ProgressSave): Promise<void> {
   return queueMirrorWrites([{ save, before: true }]);
+}
+
+/**
+ * The place a finish's record carries (`before`) over the record it replaces (`existing`):
+ * that record when it is a place, unfinished. Over a finished record, only the place that
+ * very finish carried (the same finish written again: its device and stamp): another finish
+ * (an earlier Mark, the book finished since and marked again) carries none, or the Undo of
+ * this one went back to a place from before that one.
+ */
+function placeBeforeFinish(save: ProgressSave, existing: ProgressSave): ProgressSave | undefined {
+  if (!existing.finished) return existing;
+  const same = existing.device_id === save.device_id && existing.updated_at === save.updated_at;
+  return same ? existing.before : undefined;
 }
 
 function queueMirrorWrites(writes: MirrorWrite[]): Promise<void> {
@@ -790,7 +803,7 @@ async function applyMirrorWrites(writes: readonly MirrorWrite[]): Promise<void> 
     if (!existing || localTimeOf(save, skew) >= localTimeOf(existing, skew)) {
       const { guard: _guard, guard_session: _session, before: _before, ...record } = save;
       const next = mergeKept(record, existing, skew);
-      const prior = before && existing && (existing.finished ? existing.before : existing);
+      const prior = before && existing && placeBeforeFinish(save, existing);
       if (prior) {
         const { before: _nested, ...place } = prior;
         next.before = place;

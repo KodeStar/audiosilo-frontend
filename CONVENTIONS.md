@@ -2387,7 +2387,9 @@ media GETs only.
     taken back that never reached the server (an offline Mark as finished) needs no edit:
     the Undo is done here, the mirror back to its record before the finish as it was, its own
     stamp (`restorePlaceBefore`: the finish's record carries it, `ProgressSave.before`,
-    written by `writeFinishedMirror`; decided by the record under the mirror's lock, so a
+    written by `writeFinishedMirror`, only over a place: over a finished record only that
+    same finish written again keeps the place it carried, `placeBeforeFinish`, so the Undo of
+    a book marked finished twice never goes back to a place from before the first; decided by the record under the mirror's lock, so a
     reload and another tab see it, another tab's finish or a place saved since is never undone
     from an earlier look, and a place another device saved after it, read next, is newer and
     wins; a finished record without it, the server's row read back since, goes to the place
