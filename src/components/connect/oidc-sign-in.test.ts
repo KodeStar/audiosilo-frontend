@@ -112,6 +112,7 @@ describe('oidcFinishText', () => {
     [new NetworkError(new Error('offline')), 'connect.oidc.errors.reachRetry'],
     [new ApiError(500, 'boom'), 'connect.oidc.errors.failedRetry'],
     [new ApiError(503, 'busy'), 'connect.oidc.errors.failedRetry'],
+    [new ApiError(408, 'request timeout'), 'connect.oidc.errors.failedRetry'],
     [new ApiError(400, 'invalid request'), 'connect.oidc.errors.failed'],
     [new ApiError(401, 'no', 'oidc_no_sign_in'), 'connect.oidc.errors.noSignIn'],
   ] as const)('words %p with Try again offered', (e, key) => {
@@ -126,6 +127,7 @@ describe('oidcRetryWait', () => {
     ['a 502 from a proxy', new ApiError(502, 'bad gateway'), 0],
     ['a 429 with no Retry-After', new ApiError(429, 'slow down'), 0],
     ['a 429 with Retry-After', new ApiError(429, 'slow down', undefined, 30), 30_000],
+    ["a proxy's 408", new ApiError(408, 'request timeout'), 0],
   ] as const)('lets %s go again', (_, e, ms) => {
     expect(oidcRetryWait(e)).toBe(ms);
   });
@@ -135,6 +137,8 @@ describe('oidcRetryWait', () => {
     ['a 401', new ApiError(401, 'x', 'oidc_sign_in_expired')],
     ['a 403', new ApiError(403, 'x', 'oidc_intent_mismatch')],
     ['a 429 asking a wait past the trip itself', new ApiError(429, 'slow', undefined, 3600)],
+    // The lockout's minutes outlive the done cookie's one (`OIDC_DONE_MS`).
+    ['a 429 asking a wait past the done cookie', new ApiError(429, 'slow', undefined, 300)],
   ] as const)('never lets %s go again', (_, e) => {
     expect(oidcRetryWait(e)).toBeUndefined();
   });

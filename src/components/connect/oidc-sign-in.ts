@@ -8,7 +8,7 @@ import { getDeviceName } from '@/lib/device';
 import { useSession } from '@/stores/session';
 
 import { finishConnect } from './finish-connect';
-import { MAX_AGE_MS, oidcPassTag, settleOidcPass, takeOidcResumed } from './oidc-intent';
+import { oidcPassTag, settleOidcPass, takeOidcResumed } from './oidc-intent';
 import { sharedRefusalText } from './sign-in-error';
 
 /**
@@ -46,7 +46,7 @@ export function oidcButtonName(info: ServerInfo | null): string | null {
  * trip a kids-mode pass waits on (`oidc_intent_mismatch`); no answer from
  * the server; anything else (a 400, a 5xx) as a sign-in that didn't finish. Each says to
  * sign in again, unless the screen offers the same finish again (`retry`, `oidcRetryWait`):
- * then no answer and a 5xx say to try again. A reload never sends a finish again (the
+ * then no answer, a 408 and a 5xx say to try again. A reload never sends a finish again (the
  * return's params leave the address before it goes): only the screen's Try again does,
  * from memory. The server clears the cookie with each refusal of the sign-in itself, and
  * keeps it for the rest of its minute on a 429, a 400 and (server#406) a 500, which a new
@@ -65,23 +65,29 @@ export function oidcFinishText(e: unknown, t: TFunction, retry = false): string 
     case 'oidc_intent_mismatch':
       return t('connect.oidc.errors.notThisTrip');
   }
-  if (retry && e.status >= 500) return t('connect.oidc.errors.failedRetry');
+  if (retry && (e.status >= 500 || e.status === 408)) return t('connect.oidc.errors.failedRetry');
   return t('connect.oidc.errors.failed');
 }
 
+/** How long the server keeps a finished sign-in for its finish (its done cookie, the
+ * server's `oidcDoneTTL`): a retry can't outlive it. */
+export const OIDC_DONE_MS = 60_000;
+
 /**
  * How long before a failed finish may go again (ms), or undefined when it may not: the
- * server kept the sign-in (its done cookie) for no answer at all, a 5xx (server#406: nothing
- * was spent) and a 429 (after its `Retry-After`, none being no wait). Never a refusal of the
- * sign-in (a 401, a 403, a 400): the cookie is gone, or the request itself is wrong. A wait
- * past a trip's whole life (`MAX_AGE_MS`) is none: the sign-in can't outlive it.
+ * server kept the sign-in (its done cookie) for no answer at all, a 408 (a proxy's timeout,
+ * as `pairFailure` and `isRefusedForGood` read it), a 5xx (server#406: nothing was spent)
+ * and a 429 (after its `Retry-After`, none being no wait). Never a refusal of the sign-in (a
+ * 401, a 403, a 400): the cookie is gone, or the request itself is wrong. A wait past the
+ * done cookie's minute (`OIDC_DONE_MS`, a lockout's 15 minutes) is none: the sign-in can't
+ * outlive it.
  */
 export function oidcRetryWait(e: unknown): number | undefined {
   if (!(e instanceof ApiError)) return 0;
-  if (e.status >= 500) return 0;
+  if (e.status >= 500 || e.status === 408) return 0;
   if (e.status !== 429) return undefined;
   const ms = (e.retryAfterSeconds ?? 0) * 1000;
-  return ms <= MAX_AGE_MS ? ms : undefined;
+  return ms < OIDC_DONE_MS ? ms : undefined;
 }
 
 /** The same finish sent again (`finishOidcSignIn`'s, with its flow, book and reconnect, all
@@ -101,12 +107,12 @@ export type OidcFinishFailure = { message: string; retry?: OidcFinishRetry };
  * with (`takeOidcResumed`, taken once: a retry keeps them). Resolves null once the flow
  * has moved on, else why it failed in words (`oidcFinishText`; a session this device then
  * couldn't keep, `notKept`, as the sign-in is spent) and, when the server kept the sign-in
- * (`oidcRetryWait`: no answer, a 5xx, a 429) and no pass waits, the same finish to send again
- * (`retry`). The flow's key lives in that closure only, never the address, storage or a log,
- * and goes with it once the finish succeeds or is refused. `live`: whether the connect screen
- * is still up. A session that answers once it has gone, or that `finishConnect` did not store,
- * is signed out again (best effort), never kept: nothing would use it, and it would stay on
- * the server as a device (fe#310).
+ * (`oidcRetryWait`: no answer, a 408, a 5xx, a 429) and no pass waits, the same finish to
+ * send again (`retry`). The flow's key lives in that closure only, never the address,
+ * storage or a log, and goes with it once the finish succeeds or is refused. `live`: whether
+ * the connect screen is still up. A session that answers once it has gone, or that
+ * `finishConnect` did not store, is signed out again (best effort), never kept: nothing would
+ * use it, and it would stay on the server as a device (fe#310).
  *
  * A grown-up's pass through kids mode that the trip left with waits on this answer
  * (`settleOidcPass`): given back only with a session that echoes the trip's own tag
