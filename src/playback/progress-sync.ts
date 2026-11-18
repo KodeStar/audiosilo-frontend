@@ -657,8 +657,10 @@ export async function mirrorIsNewest(
   return localTimeOf(record, skew) >= Date.parse(place.updated_at) - ahead;
 }
 
-// Serialize mirror read-modify-write so concurrent saves can't clobber each other.
-const withMirrorLock = serialQueue();
+// The mirror's read-modify-writes one at a time, in this tab and across tabs (`tabLock`): the
+// tabs of the web player write one mirror, and a per-tab queue let one tab write its read of
+// the whole mirror over another tab's change made meanwhile.
+const withMirrorLock = tabLock(MIRROR_KEY);
 
 /** Upsert the durable mirror, keeping the newest record by `updated_at` (a server row's by
  * this device's clock: `localTimeOf`). The Sync v2

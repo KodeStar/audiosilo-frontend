@@ -2340,7 +2340,15 @@ media GETs only.
     alone, a finish the server did hold won on reconnect), which offers Retry (the Undo run
     again). Mark as not finished takes the same route at its own place (`unfinish` in
     `book-actions.tsx`, through `undoFinish`): a finish still waiting is taken back before its
-    edit, and with the server down it fails the same way. After an edit that went
+    edit, and with the server down it fails the same way. One taken back unsent is undone
+    here as an Undo is, the mirror back to its record before the finish, not at its own place:
+    the server never got the finish and keeps that place, and no edit put it at the other
+    (the two disagreed until the next read). Only while this device knows that record
+    (`knowsPlaceBefore`: the mirror still holds the finish's own record; not after a reload,
+    nor for another tab's finish): else it takes the edit at its own place, as for a finish
+    the server has, and an edit that fails (offline) puts the finish back. On a server
+    without `listening_sync` nothing waits to be taken back and both take the edit, then
+    the same mirror change and hold below. After an edit that went
     through the mirror goes back as well (`unrecordFinish`, under the mirror's lock,
     `updateMirror`: the edit's answer only reaches
     the query caches, and the finished record would start the book again at 0 on the next
@@ -2349,7 +2357,8 @@ media GETs only.
     time, and for a minute the mirror takes no finished record of the book stamped before the
     Undo, `noteUndoneFinish`: the finish's own refresh, landing after it with the server's
     later stamp, finished it again; in every tab of the web player, through storage, as the
-    tabs write one mirror); fe#208). The loaded book is left before any route
+    tabs write one mirror, under one lock across them, `tabLock`: a lock per tab let one tab
+    write its read of the whole mirror over another tab's change); fe#208). The loaded book is left before any route
     records the finish (`leaveFinishedBook`), and a start of it still on its way is called off
     (a load that lands after the unload is reset, `stop()`'s race too); a finish or a
     progress edit that then fails loads it again, paused where it was (`reloadLeftBook`), and

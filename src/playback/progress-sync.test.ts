@@ -1050,6 +1050,54 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
     });
   });
 
+  // Web: the tabs write one mirror, each reading it whole and writing it back. With a lock
+  // per tab, two tabs both read it before either wrote, and the later write lost the other
+  // tab's record.
+  describe('two tabs writing the mirror at once', () => {
+    const nav = globalThis.navigator as { locks?: unknown };
+    afterEach(() => {
+      delete nav.locks;
+    });
+
+    /** Another tab: its own copy of the module (its own memory) over the same storage. */
+    const otherTab = () => {
+      let other!: typeof import('@/playback/progress-sync');
+      jest.isolateModules(() => {
+        jest.doMock('@react-native-async-storage/async-storage', () => ({
+          __esModule: true,
+          default: AsyncStorage,
+        }));
+        /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+        other = require('@/playback/progress-sync') as typeof import('@/playback/progress-sync');
+      });
+      return other;
+    };
+
+    it("never writes over the other tab's record (the browser's Web Locks)", async () => {
+      // One browser's Web Locks: a job per name at a time, whichever tab asks.
+      const chains = new Map<string, Promise<unknown>>();
+      const request = (name: string, job: () => Promise<unknown>) => {
+        const run = (chains.get(name) ?? Promise.resolve()).then(job);
+        chains.set(
+          name,
+          run.catch(() => undefined),
+        );
+        return run;
+      };
+      Object.defineProperty(nav, 'locks', { configurable: true, value: { request } });
+      const other = otherTab();
+      await Promise.all([
+        writeMirror({ ...save, path: 'A/One' }),
+        other.writeMirror({ ...save, path: 'B/Two' }),
+        updateMirror('c1', 1, 'C/Three', (r) => r, makeProgress({ position: 7 })),
+        other.writeMirror({ ...save, path: 'D/Four' }),
+      ]);
+      for (const path of ['A/One', 'B/Two', 'C/Three', 'D/Four']) {
+        expect(await readMirrorOf('c1', 1, path)).not.toBeNull();
+      }
+    });
+  });
+
   // fe#208: the echo is stamped in server time, the capture in this device's time.
   describe("a device whose clock is behind the server's", () => {
     // The stored skews come from the outbox, their one reader (fe#211): a stand-in here.
