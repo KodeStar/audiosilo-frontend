@@ -9,7 +9,6 @@ import android.os.Looper
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
@@ -133,6 +132,10 @@ class AudiosiloPlayerModule : Module() {
         mapOf("connectionId" to it.connectionId, "libraryId" to it.libraryId.toDouble(), "path" to it.path)
       } ?: emptyMap()
       sendEvent("onRemoteBookmark", place + named)
+    }
+
+    override fun playerFailed() {
+      sendEvent("onState", mapOf("state" to "error"))
     }
 
     override fun carConnection(connected: Boolean) {
@@ -563,10 +566,8 @@ class AudiosiloPlayerModule : Module() {
         // same file; emitTrackChange dedupes, so this only fires when the file changes.
         emitTrackChange(timelineMap.itemToFile(c.currentMediaItemIndex, 0L).first)
       }
-
-      override fun onPlayerError(error: PlaybackException) {
-        sendEvent("onState", mapOf("state" to "error"))
-      }
+      // A failed engine reaches JS from the service (`PlayerEventSink.playerFailed`): the
+      // session shows it to controllers as stopped, with no error (fe#157).
     })
   }
 

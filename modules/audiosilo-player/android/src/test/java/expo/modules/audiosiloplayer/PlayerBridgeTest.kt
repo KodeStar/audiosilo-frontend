@@ -14,6 +14,7 @@ class PlayerBridgeTest {
     override fun remoteMove(fileIndex: Int, position: Double) = Unit
     override fun rateChange(rate: Double) = Unit
     override fun remoteBookmark(fileIndex: Int, position: Double, book: BookRef?, relPath: String?) = Unit
+    override fun playerFailed() = Unit
     override fun carConnection(connected: Boolean) = Unit
     override fun carPlayRequest(id: String) { requests.add(id) }
     override fun carPlayCancel(id: String, replaced: Boolean) { cancels.add(id to replaced) }

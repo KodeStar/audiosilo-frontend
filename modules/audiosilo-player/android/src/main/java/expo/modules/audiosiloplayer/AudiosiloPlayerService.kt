@@ -16,6 +16,7 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -278,6 +279,9 @@ class AudiosiloPlayerService : MediaLibraryService() {
         // progress: boot JS, which adopts the loaded book (store `adoptLoaded`).
         if (isPlaying) needJs() else maybeReleaseJs()
       }
+
+      // Registered before the session's own listener, so this runs first.
+      override fun onPlayerError(error: PlaybackException) = onEngineFailed(exo, error)
     })
     val audiobookPlayer = AudiobookPlayer(exo, PlayerHooks())
     player = audiobookPlayer
@@ -449,10 +453,6 @@ class AudiosiloPlayerService : MediaLibraryService() {
     }
 
     override fun requester(): String? = mediaSession?.controllerForCurrentRequest?.let(::describe)
-
-    // peek: the session asks on the main thread, never a disk read there (the snapshot is
-    // preloaded in onCreate).
-    override fun errorMessage(): String? = CarSnapshotStore.peek()?.labels?.playbackError
   }
 
   /** A controller as [MediaKeyLog] shows it: its package, Media3 or legacy, and our role for it. */
@@ -768,10 +768,11 @@ class AudiosiloPlayerService : MediaLibraryService() {
   /** The player's own queue at its place when it has [book] loaded (any book with null) and
    * can play on (ready or buffering), else null. Media3 then sets that same queue again
    * (absorbed, see [AudiobookPlayer.absorbIdenticalSet]) and plays: a paused book resumes,
-   * with auto-rewind; an ended or failed one goes the usual way, through JS. */
+   * with auto-rewind; an ended or failed one goes the usual way, through JS (a failed one
+   * reads as ready to controllers, [AudiobookPlayer.failed]: asked for here). */
   private fun playingQueue(book: BookRef?): MediaItemsWithStartPosition? {
     val p = player ?: return null
-    if (p.mediaItemCount == 0) return null
+    if (p.mediaItemCount == 0 || p.failed) return null
     if (book != null && MediaItems.bookOf(p.currentMediaItem) != book) return null
     val state = p.playbackState
     if (state != Player.STATE_READY && state != Player.STATE_BUFFERING) return null
@@ -895,6 +896,25 @@ class AudiosiloPlayerService : MediaLibraryService() {
     PlayerBridge.cancelCarPlay(pending.id, replaced)
     pending.future.setException(IllegalStateException(error))
     return true
+  }
+
+  /**
+   * The engine failed (a stream that could not be read): it is shown as stopped, never as a
+   * fatal error ([AudiobookPlayer.failed], fe#157). It stops wanting to play, here before the
+   * session reads it, so the platform session says paused with play available and nothing
+   * plays until a press; the app hears of the failure from here (the session no longer shows
+   * it), and the car shows why, in the listener's language, as a non-fatal error.
+   */
+  private fun onEngineFailed(exo: ExoPlayer, error: PlaybackException) {
+    exo.playWhenReady = false
+    PlayerBridge.sink?.playerFailed()
+    // peek: never a disk read on the main thread (the snapshot is preloaded in onCreate).
+    val label = CarSnapshotStore.peek()?.labels?.playbackError?.ifEmpty { null } ?: error.message ?: return
+    try {
+      mediaSession?.sendError(SessionError(SessionError.ERROR_IO, label))
+    } catch (e: Exception) {
+      Log.w(TAG, "Could not report the playback error", e)
+    }
   }
 
   /** An error Android Auto shows (the platform session's error state), in the listener's

@@ -43,8 +43,9 @@ export type CarLabels = {
   signedOut: string;
   /** A play request that failed or timed out. */
   unavailable: string;
-  /** Android: the error a car shows when the engine fails mid-play, in place of Media3's own
-   * English text (fe#157). The player's own error line. */
+  /** Android: the message a car shows when the engine fails mid-play (a non-fatal error
+   * beside a paused player, which keeps its play button), in place of Media3's own English
+   * text (fe#157). The player's own error line. */
   playbackError: string;
 };
 

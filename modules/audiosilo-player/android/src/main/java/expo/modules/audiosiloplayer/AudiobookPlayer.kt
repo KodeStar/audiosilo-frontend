@@ -7,7 +7,6 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
-import androidx.media3.common.util.UnstableApi
 
 /** What [AudiobookPlayer] asks of its service (the session knows who sent a command). */
 interface AudiobookPlayerHooks {
@@ -23,10 +22,6 @@ interface AudiobookPlayerHooks {
 
   /** Who sent the Player call in progress, for [MediaKeyLog] only (null when unknown). */
   fun requester(): String? = null
-
-  /** The message a failed player shows controllers, in the listener's language; null keeps
-   * the engine's own. */
-  fun errorMessage(): String? = null
 }
 
 /**
@@ -49,9 +44,14 @@ interface AudiobookPlayerHooks {
  *    auto-rewind inside [play] ([internal]), Smart speed's silence skips and a file/clip
  *    advancing at its end (neither calls a seek method on this wrapper).
  *  - **Remote speed**: a controller other than the app changing the speed is reported too.
- *  - **Error text**: a failed player's error, as the session shows it to Android Auto and the
- *    system (the platform session's error state), carries the listener's language's message
- *    in place of ExoPlayer's English one ([getPlayerError], fe#157).
+ *  - **A failed engine reads as stopped** (fe#157): idle with an error, it is shown to every
+ *    controller as ready with no error ([failed], [getPlaybackState], [getPlayerError]), and
+ *    the service clears its playWhenReady, so the platform session says paused with play
+ *    available. A fatal error there (Android's error state) made Android Auto drop its
+ *    controls: only a hardware play key could start the book again. A play prepares the
+ *    failed engine again first ([prepareIfFailed]): the session, shown a ready player, never
+ *    does. The service tells the app (`PlayerEventSink.playerFailed`) and the car (a
+ *    non-fatal session error, in the listener's language) itself.
  */
 class AudiobookPlayer(player: Player, private val hooks: AudiobookPlayerHooks) : ForwardingPlayer(player) {
   private var pausedAt: Long = 0L
@@ -73,21 +73,21 @@ class AudiobookPlayer(player: Player, private val hooks: AudiobookPlayerHooks) :
    */
   var absorbIdenticalSet = false
 
-  /** The last error [getPlayerError] gave, and the engine's error and message it was made
-   * from: the session asks on every state update, and one error stays one object. */
-  private var shownError: Triple<PlaybackException, String, PlaybackException>? = null
+  /** The engine failed: idle with an error and a queue still loaded. Shown to controllers as
+   * stopped, ready to play again (see the class doc). */
+  val failed: Boolean
+    get() = super.getPlaybackState() == Player.STATE_IDLE && super.getPlayerError() != null && mediaItemCount > 0
 
-  /** The engine's error with the listener's language's message ([AudiobookPlayerHooks.errorMessage]):
-   * the session builds the platform session's error state from this (what Android Auto shows).
-   * The code, the cause and the extras stay the engine's. */
-  @androidx.annotation.OptIn(UnstableApi::class)
-  override fun getPlayerError(): PlaybackException? {
-    val error = super.getPlayerError() ?: return null
-    val message = hooks.errorMessage()?.ifEmpty { null } ?: return error
-    shownError?.let { (from, text, shown) -> if (from === error && text == message) return shown }
-    val shown = PlaybackException(message, error.cause, error.errorCode, error.extras)
-    shownError = Triple(error, message, shown)
-    return shown
+  override fun getPlaybackState(): Int = if (failed) Player.STATE_READY else super.getPlaybackState()
+
+  override fun getPlayerError(): PlaybackException? = if (failed) null else super.getPlayerError()
+
+  /** Prepares a [failed] engine again (at its place), so the play that follows plays. True
+   * when it did. */
+  fun prepareIfFailed(): Boolean {
+    if (!failed) return false
+    super.prepare()
+    return true
   }
 
   override fun getAvailableCommands(): Player.Commands {
@@ -117,6 +117,7 @@ class AudiobookPlayer(player: Player, private val hooks: AudiobookPlayerHooks) :
       if (rewind > 500) internal { seekBackBy(rewind) }
     }
     pausedAt = 0L
+    prepareIfFailed()
     super.play()
   }
 

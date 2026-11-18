@@ -21,6 +21,10 @@ interface PlayerEventSink {
    * another shape). */
   fun remoteBookmark(fileIndex: Int, position: Double, book: BookRef?, relPath: String?)
 
+  /** The engine failed (a stream that could not be read). Controllers see it stopped, not
+   * failed ([AudiobookPlayer.failed]), so this is how the app hears of it. */
+  fun playerFailed()
+
   /** Android Auto (or Automotive) connected or disconnected. */
   fun carConnection(connected: Boolean)
 

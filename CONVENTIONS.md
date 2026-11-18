@@ -1821,6 +1821,14 @@ media GETs only.
   `android/.../res/drawable/ic_notification.xml`). `AudiobookPlayer` (a `ForwardingPlayer`)
   still applies auto-rewind on every `play()` and hides prev/next **only when there's a
   single item** (a chapterless single-file book, so "previous" can't restart it).
+  **A failed engine reads as stopped, never as a fatal error** (fe#157): idle with an error
+  and a queue loaded, `AudiobookPlayer` shows every controller a ready player with no error,
+  and the service clears its playWhenReady as it fails (`onEngineFailed`), so the platform
+  session says paused with play available (a fatal error there is Android's error state, in
+  which Android Auto drops its controls). A play prepares it again first
+  (`prepareIfFailed`); the app hears of the failure from the service
+  (`PlayerEventSink.playerFailed`), and the car shows `labels.playbackError` as a non-fatal
+  session error.
   - **A long MP4-family file plays as one whole-file item** (fe#194, `ClipBudget` in
     `MediaItems.kt`): Media3's `Mp4Extractor` keeps the file's whole sample table on the Java
     heap (about 33 bytes per AAC frame: ~120 MB for a 23.5 h m4b), and every clip is its own
