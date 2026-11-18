@@ -56,6 +56,18 @@ const mockLoadInitialProgress = jest.fn(async (..._a: unknown[]): Promise<Resume
   kind: 'empty',
 }));
 const mockReadMirror = jest.fn(async (..._a: unknown[]): Promise<unknown> => null);
+// A change under the mirror's lock (`updateMirror`): made to the record `mockReadMirror`
+// gives, each changed record kept here, in order.
+const mockMirrorUpdates: unknown[] = [];
+const mockUpdateMirror = jest.fn(
+  async (cid: string, lib: number, path: string, change: (r: never) => unknown) => {
+    const now = await mockReadMirror(cid, lib, path);
+    if (!now) return;
+    const next = change(now as never);
+    if (next !== now) mockMirrorUpdates.push(next);
+  },
+);
+const mockNoteUndone = jest.fn(async (..._a: unknown[]) => {});
 // Sessions whose guarded save the queue has PUT since (`guardSettled`).
 const mockSettled = new Set<string>();
 jest.mock('./progress-sync', () => ({
@@ -68,6 +80,9 @@ jest.mock('./progress-sync', () => ({
   cachedDeviceId: () => 'dev-1',
   loadInitialProgress: (...a: unknown[]) => mockLoadInitialProgress(...a),
   readMirror: (...a: unknown[]) => mockReadMirror(...a),
+  updateMirror: (cid: string, lib: number, path: string, change: (r: never) => unknown) =>
+    mockUpdateMirror(cid, lib, path, change),
+  noteUndoneFinish: (...a: unknown[]) => mockNoteUndone(...a),
   guardSettled: (id: string) => mockSettled.has(id),
   // No clock skew is known here: the two stamps as they are.
   mirrorIsNewest: async (record: { updated_at: string }, place: { updated_at: string }) =>
@@ -82,6 +97,20 @@ const mockAppended: ListeningEvent[] = [];
 const mockSendOnPageHide = jest.fn((..._a: unknown[]) => {});
 const mockFlushOutbox = jest.fn(async (..._a: unknown[]) => {});
 const mockStoreOpenSpan = jest.fn(async (..._a: unknown[]): Promise<OpenSpan | null> => null);
+// The sign-in each connection is on (`connectionGeneration`).
+let mockGeneration = 0;
+// Whether events wait their turn behind a close (`waitingInTurn`).
+let mockWaitingInTurn = false;
+/** `appendInTurn` as the outbox does it, less the turn: the base read, then appended. */
+async function appendedInTurn(
+  _cid: string,
+  events: ListeningEvent[],
+  base?: () => Promise<number | undefined>,
+) {
+  const b = base ? await base() : undefined;
+  mockAppended.push(...events.map((e) => (b === undefined ? e : { ...e, base_version: b })));
+}
+const mockAppendInTurn = jest.fn(appendedInTurn);
 jest.mock('./listening-outbox', () => {
   const actual = jest.requireActual('./listening-outbox');
   return {
@@ -100,6 +129,13 @@ jest.mock('./listening-outbox', () => {
     appendEvents: jest.fn(async (_cid: string, events: ListeningEvent[]) => {
       mockAppended.push(...events);
     }),
+    appendInTurn: (
+      cid: string,
+      events: ListeningEvent[],
+      base?: () => Promise<number | undefined>,
+    ) => mockAppendInTurn(cid, events, base),
+    connectionGeneration: () => mockGeneration,
+    waitingInTurn: () => mockWaitingInTurn,
     flushOutbox: (...a: unknown[]) => mockFlushOutbox(...a),
     sendOnPageHide: (...a: unknown[]) => mockSendOnPageHide(...a),
     withdrawFinish: (...a: unknown[]) => mockWithdraw(...a),
@@ -142,8 +178,14 @@ import { useSettings } from '@/stores/settings';
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 
-import { finishTakesEvent, leaveFinishedBook, recordFinishEvent, undoFinish } from './finish-route';
-import { appendEvents, closeSpan } from './listening-outbox';
+import {
+  finishTakesEvent,
+  leaveFinishedBook,
+  recordFinishEvent,
+  reloadLeftBook,
+  undoFinish,
+} from './finish-route';
+import { closeSpan } from './listening-outbox';
 import {
   cutListeningSpanNow,
   flushHistoryOnHide,
@@ -151,6 +193,7 @@ import {
   saveLoadedPlace,
   selectBookLength,
   standByPlace,
+  teardownBeforeTokenRevoke,
   usePlayer,
 } from './store';
 /* eslint-enable import/first */
@@ -248,6 +291,9 @@ beforeEach(() => {
   jest.useFakeTimers();
   mockClosed.length = 0;
   mockAppended.length = 0;
+  mockMirrorUpdates.length = 0;
+  mockGeneration = 0;
+  mockAppendInTurn.mockImplementation(appendedInTurn);
   mockSync = true;
   mockStay = false;
   mockReadMirror.mockResolvedValue({ ack_version: 41 });
@@ -450,6 +496,54 @@ describe('the replay guard on the PUT path', () => {
 });
 
 describe('with listening_sync', () => {
+  // A close with an event waiting its turn behind it (a finish, a paused move) leaves the
+  // send to that event's caller, so both go in one batch rather than two requests.
+  it('a close with an event waiting behind it leaves the send to that event', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    mockFlushOutbox.mockClear();
+    mockWaitingInTurn = true;
+    try {
+      pushSnapshot(snap('paused', 0, 10));
+      await settle();
+    } finally {
+      mockWaitingInTurn = false;
+    }
+    expect(mockClosed).toHaveLength(1);
+    expect(mockFlushOutbox).not.toHaveBeenCalled();
+  });
+
+  // The stop's close waits its turn into the outbox: sent at once, the sign-out's send
+  // found the outbox without the last span, which landed after the token was revoked.
+  it('a sign-out sends the outbox only once the close of its stop has had its turn', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    mockFlushOutbox.mockClear();
+    const order: string[] = [];
+    let pass: () => void = () => {};
+    mockAppendInTurn.mockImplementationOnce(async (_cid, events) => {
+      order.push(`turn ${events.length}`);
+      await new Promise<void>((r) => (pass = r));
+    });
+    mockFlushOutbox.mockImplementation(async () => void order.push('flush'));
+    try {
+      const leaving = teardownBeforeTokenRevoke('c1');
+      await settle();
+      expect(mockClosed).toHaveLength(1);
+      // Waiting behind the close (which sends by itself when nothing waits behind it); the
+      // sign-out's own send has not gone.
+      expect(order.at(-1)).toBe('turn 0');
+      pass();
+      await leaving;
+      expect(order.slice(order.indexOf('turn 0'))).toEqual(['turn 0', 'flush']);
+    } finally {
+      pass();
+      mockFlushOutbox.mockImplementation(async () => {});
+    }
+  });
+
   it('a play to a pause is one span with both file places, and no PUT and no POST /history', async () => {
     await start();
     pushSnapshot(snap('playing', 0, 5));
@@ -729,6 +823,13 @@ describe('with listening_sync', () => {
     expect(mockAppended).toEqual([
       expect.objectContaining({ kind: 'unfinish', library_id: 2, path: folder, base_version: 41 }),
     ]);
+    // In turn: behind a finish of the book still waiting its own (`appendInTurn`).
+    expect(mockAppendInTurn).toHaveBeenCalledWith(
+      'c1',
+      [expect.objectContaining({ kind: 'unfinish' })],
+      expect.any(Function),
+    );
+    expect(mockFlushOutbox).toHaveBeenCalledWith('c1');
     expect(mockClosed.map((s) => s.start)).toEqual(['restart']);
     // Resumed from the server's row: its version is acknowledged.
     expect(mockAckVersion).toHaveBeenCalledWith('c1', 2, folder, 9, expect.anything());
@@ -747,71 +848,61 @@ describe('with listening_sync', () => {
   });
 
   // server#359: a 12 s book's finish was sent before its only span, in a batch of its own.
-  it('a short book ends: its span goes into the outbox before the finish, then one send', async () => {
+  // fe#258: the finish then waited in memory for the close to land, where neither a kill
+  // nor the page's keepalive saw it; now it is the outbox's at once, behind the close.
+  it('a short book ends: its span closes, then the finish goes to the outbox behind it at once', async () => {
     const order: string[] = [];
-    (closeSpan as jest.Mock).mockImplementationOnce(async (closing: OpenSpan) => {
-      await settle(6); // the close waits its turn (the open-span lock, the base read)
+    let land = () => {};
+    (closeSpan as jest.Mock).mockImplementationOnce((closing: OpenSpan) => {
+      order.push('close');
       mockClosed.push(structuredClone(closing));
-      order.push('listen');
+      return new Promise<void>((resolve) => (land = resolve));
     });
-    (appendEvents as jest.Mock).mockImplementationOnce(
-      async (_cid: string, events: ListeningEvent[]) => {
-        mockAppended.push(...events);
-        order.push(...events.map((e) => e.kind));
-      },
-    );
-    mockFlushOutbox.mockImplementation(async () => {
-      order.push('flush');
+    mockAppendInTurn.mockImplementationOnce(async (...a) => {
+      order.push(...a[1].map((e) => e.kind));
+      await appendedInTurn(...a);
     });
-    try {
-      await start();
-      pushSnapshot(snap('playing', 0, 0));
-      await settle();
-      jest.advanceTimersByTime(12_000);
-      pushSnapshot(snap('ended', 1, 50));
-      await settle(20);
-      expect(order).toEqual(['listen', 'finish', 'flush']);
-      expect(mockAppended).toEqual([
-        expect.objectContaining({ kind: 'finish', library_id: 2, path: folder, base_version: 41 }),
-      ]);
-      // The finish is dated at or after the span's end.
-      const finish = mockAppended[0] as { at: string };
-      expect(Date.parse(finish.at)).toBeGreaterThanOrEqual(Date.parse(mockClosed[0].endedAt));
-    } finally {
-      mockFlushOutbox.mockImplementation(async () => {});
-    }
+    await start();
+    pushSnapshot(snap('playing', 0, 0));
+    await settle();
+    jest.advanceTimersByTime(12_000);
+    pushSnapshot(snap('ended', 1, 50));
+    await settle(20);
+    // The close has not landed: the finish waits behind it in the outbox, not here.
+    expect(order).toEqual(['close', 'finish']);
+    land();
+    await settle();
+    expect(mockAppended).toEqual([
+      expect.objectContaining({ kind: 'finish', library_id: 2, path: folder, base_version: 41 }),
+    ]);
+    // The finish is dated at or after the span's end.
+    const finish = mockAppended[0] as { at: string };
+    expect(Date.parse(finish.at)).toBeGreaterThanOrEqual(Date.parse(mockClosed[0].endedAt));
+    expect(mockFlushOutbox).toHaveBeenCalledWith('c1');
   });
 
   // The web reports `paused` for the last file before `ended`: that pause's close was still
   // on its way into the outbox when the end's finish was appended, and went after it.
-  it('a close still on its way at the end goes before the finish, in one send', async () => {
+  it('a close still on its way at the end goes before the finish', async () => {
     const order: string[] = [];
-    (closeSpan as jest.Mock).mockImplementationOnce(async (closing: OpenSpan) => {
-      await settle(6);
+    (closeSpan as jest.Mock).mockImplementationOnce((closing: OpenSpan) => {
+      order.push('close');
       mockClosed.push(structuredClone(closing));
-      order.push('listen');
+      return new Promise<void>(() => {}); // never lands while the finish is handed over
     });
-    (appendEvents as jest.Mock).mockImplementationOnce(
-      async (_cid: string, events: ListeningEvent[]) => {
-        mockAppended.push(...events);
-        order.push(...events.map((e) => e.kind));
-      },
-    );
-    mockFlushOutbox.mockImplementation(async () => {
-      order.push('flush');
+    mockAppendInTurn.mockImplementationOnce(async (...a) => {
+      order.push(...a[1].map((e) => e.kind));
+      await appendedInTurn(...a);
     });
-    try {
-      await start();
-      pushSnapshot(snap('playing', 0, 0));
-      await settle();
-      jest.advanceTimersByTime(12_000);
-      pushSnapshot(snap('paused', 1, 50));
-      pushSnapshot(snap('ended', 1, 50));
-      await settle(30);
-      expect(order).toEqual(['listen', 'finish', 'flush']);
-    } finally {
-      mockFlushOutbox.mockImplementation(async () => {});
-    }
+    await start();
+    pushSnapshot(snap('playing', 0, 0));
+    await settle();
+    jest.advanceTimersByTime(12_000);
+    pushSnapshot(snap('paused', 1, 50));
+    pushSnapshot(snap('ended', 1, 50));
+    await settle(30);
+    expect(order).toEqual(['close', 'finish']);
+    expect(mockClosed).toHaveLength(1);
   });
 
   it('a finish still goes when its span could not be stored', async () => {
@@ -851,17 +942,23 @@ describe('with listening_sync', () => {
       jest.advanceTimersByTime(4_000);
       pushSnapshot(snap('playing', 0, 34));
       mockReadMirror.mockResolvedValue({ ack_version: 57 });
-      // The span closing ahead of it still on its way into the outbox: the Stay goes after it.
-      let closed = () => {};
+      // The span closing ahead of it goes into the outbox first: the Stay is handed over
+      // after it, to wait its turn behind it there (`appendInTurn`).
+      const order: string[] = [];
       (closeSpan as jest.Mock).mockImplementationOnce(async (span: OpenSpan) => {
-        await new Promise<void>((resolve) => (closed = resolve));
+        order.push('close');
         mockClosed.push(structuredClone(span));
+      });
+      mockAppendInTurn.mockImplementationOnce(async (...a) => {
+        order.push('stay');
+        await appendedInTurn(...a);
       });
       standByPlace();
       await settle();
-      expect(mockAppended).toEqual([]);
-      closed();
-      await settle();
+      expect(order).toEqual(['close', 'stay']);
+      // The copy waiting its turn (the web's `pagehide` sends it) carries the closed span's
+      // base, not 0: on 0 the server read the Stay as made before every write it holds.
+      expect(mockAppendInTurn.mock.calls[0][1][0]).toMatchObject({ base_version: 41 });
       expect(mockAppended).toHaveLength(1);
       expect(mockAppended[0]).toMatchObject({
         kind: 'listen',
@@ -1115,6 +1212,170 @@ describe('Mark as finished outside the player (finish-route)', () => {
     expect(left).toBe(true);
   });
 
+  // FE-1: the same race as `stop()`. The unload's reset came before the load landed in the
+  // engine, which then stayed loaded with the book just marked finished.
+  it('marked finished while its files load: the engine is reset once the load lands', async () => {
+    let loaded = () => {};
+    (mockSvc.load as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (loaded = resolve)),
+    );
+    const starting = usePlayer.getState().playBook('c1', 2, book, chapters);
+    await settle();
+    expect(usePlayer.getState().nowPlaying?.path).toBe(folder);
+    await leaveFinishedBook(ref);
+    (mockSvc.reset as jest.Mock).mockClear();
+    loaded();
+    await starting;
+    await settle();
+    expect(mockSvc.reset).toHaveBeenCalledTimes(1);
+    expect(mockSvc.play).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+  });
+
+  it('marked finished while its loaded start sets the speed: the start plays nothing', async () => {
+    let rateSet = () => {};
+    (mockSvc.setRate as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (rateSet = resolve)),
+    );
+    const starting = usePlayer.getState().playBook('c1', 2, book, chapters);
+    await settle();
+    expect(mockSvc.setRate).toHaveBeenCalled();
+    await leaveFinishedBook(ref);
+    rateSet();
+    await starting;
+    await settle();
+    expect(mockSvc.play).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+  });
+
+  it('marked finished while its start looks up the place: the start loads nothing', async () => {
+    let looked: (r: ResumeLookup) => void = () => {};
+    mockLoadInitialProgress.mockImplementationOnce(
+      () => new Promise<ResumeLookup>((resolve) => (looked = resolve)),
+    );
+    const starting = usePlayer.getState().playBook('c1', 2, book, chapters);
+    await settle();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+    await leaveFinishedBook(ref);
+    looked({ kind: 'empty' });
+    await starting;
+    await settle();
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    expect(mockSvc.play).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+  });
+
+  // The called-off start reset the engine (and dropped the intent to play) of a book started
+  // after the Mark, which had loaded and played while its place was still looked up.
+  it('a start called off after another book has taken the player leaves that book playing', async () => {
+    let looked: (r: ResumeLookup) => void = () => {};
+    mockLoadInitialProgress.mockImplementationOnce(
+      () => new Promise<ResumeLookup>((resolve) => (looked = resolve)),
+    );
+    const starting = usePlayer.getState().playBook('c1', 2, book, chapters);
+    await settle();
+    await leaveFinishedBook(ref);
+    await usePlayer
+      .getState()
+      .playBook('c1', 2, { ...book, rel_path: 'Other/Book', title: 'Other' }, undefined);
+    await settle();
+    expect(usePlayer.getState().nowPlaying?.path).toBe('Other/Book');
+    (mockSvc.reset as jest.Mock).mockClear();
+    looked({ kind: 'empty' });
+    await starting;
+    await settle();
+    expect(mockSvc.reset).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying?.path).toBe('Other/Book');
+  });
+
+  it("another book's Mark as finished leaves a start on its way alone", async () => {
+    let looked: (r: ResumeLookup) => void = () => {};
+    mockLoadInitialProgress.mockImplementationOnce(
+      () => new Promise<ResumeLookup>((resolve) => (looked = resolve)),
+    );
+    const starting = usePlayer.getState().playBook('c1', 2, book, chapters);
+    await settle();
+    await leaveFinishedBook({ ...ref, path: 'Other/Book' });
+    looked({ kind: 'empty' });
+    await starting;
+    await settle();
+    expect(mockSvc.load).toHaveBeenCalledTimes(1);
+    expect(mockSvc.play).toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying?.path).toBe(folder);
+  });
+
+  // FE-1: unloaded first, a finish (a progress edit) that then failed left the listening
+  // stopped for nothing.
+  it('a finish that failed loads the book it left again, paused where it was', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('playing', 0, 9));
+    await leaveFinishedBook(ref);
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+    (mockSvc.load as jest.Mock).mockClear();
+    (mockSvc.play as jest.Mock).mockClear();
+    // Its resume finds the place saved as it was left (whole-book 9 s: the first file).
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: row({ position: 9, version: 9, device_id: 'phone' }),
+    });
+    await reloadLeftBook(ref);
+    await settle();
+    expect(usePlayer.getState().nowPlaying?.path).toBe(folder);
+    expect((mockSvc.load as jest.Mock).mock.calls[0].slice(1, 3)).toEqual([0, 9]);
+    expect(mockSvc.play).not.toHaveBeenCalled();
+    // Resumed there, not a `jump` to it: the next play here never sends the place over one
+    // another device reached meanwhile.
+    pushSnapshot(snap('playing', 0, 9));
+    await settle();
+    pushSnapshot(snap('paused', 0, 12));
+    await settle();
+    expect(mockClosed.at(-1)?.start).toBe('resume');
+    // Once only: a second failure has nothing left to load.
+    await usePlayer.getState().stop();
+    (mockSvc.load as jest.Mock).mockClear();
+    await reloadLeftBook(ref);
+    expect(mockSvc.load).not.toHaveBeenCalled();
+  });
+
+  it('a finish that failed after another book was loaded leaves that book playing', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    await leaveFinishedBook(ref);
+    await usePlayer
+      .getState()
+      .playBook('c1', 2, { ...book, rel_path: 'Other/Book', title: 'Other' }, undefined);
+    await settle();
+    (mockSvc.load as jest.Mock).mockClear();
+    await reloadLeftBook(ref);
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying?.path).toBe('Other/Book');
+  });
+
+  it("a finish that failed while another book's start is on its way loads nothing", async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    await leaveFinishedBook(ref);
+    let looked: (r: ResumeLookup) => void = () => {};
+    mockLoadInitialProgress.mockImplementationOnce(
+      () => new Promise<ResumeLookup>((resolve) => (looked = resolve)),
+    );
+    const starting = usePlayer
+      .getState()
+      .playBook('c1', 2, { ...book, rel_path: 'Other/Book', title: 'Other' }, undefined);
+    await settle();
+    (mockSvc.load as jest.Mock).mockClear();
+    await reloadLeftBook(ref);
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    looked({ kind: 'empty' });
+    await starting;
+    await settle();
+    expect(usePlayer.getState().nowPlaying?.path).toBe('Other/Book');
+  });
+
   it('another book loaded plays on', async () => {
     await start();
     pushSnapshot(snap('playing', 0, 5));
@@ -1162,34 +1423,137 @@ describe('Mark as finished outside the player (finish-route)', () => {
       updated_at: '2026-01-01T00:00:00Z',
       ack_version: 7,
     };
-    mockReadMirror.mockResolvedValueOnce(before);
+    mockReadMirror.mockResolvedValue(before);
     try {
       await recordFinishEvent({ ...ref, path: 'Other/Book' });
       expect(mockWriteMirror).toHaveBeenLastCalledWith(
         expect.objectContaining({ path: 'Other/Book', finished: true }),
       );
-      // The mirror holds the finish's record by the Undo.
-      const finishedRec = mockWriteMirror.mock.calls.at(-1)?.[0] as { updated_at: string };
-      mockReadMirror.mockResolvedValueOnce(finishedRec);
-      const edit = jest.fn(async () => true);
-      await expect(undoFinish(undoRef, edit)).resolves.toBe(true);
+      // The mirror holds the finish's record by the Undo, acknowledged since.
+      const finishedRec = {
+        ...(mockWriteMirror.mock.calls.at(-1)?.[0] as { updated_at: string }),
+        ack_version: 9,
+      };
+      mockReadMirror.mockResolvedValue(finishedRec);
+      const writes = mockWriteMirror.mock.calls.length;
+      const edit = jest.fn(async () => {});
+      await expect(undoFinish(undoRef, edit)).resolves.toBe('undone');
       expect(mockWithdraw).toHaveBeenCalledWith('c1', 2, 'Other/Book');
       expect(edit).not.toHaveBeenCalled();
       // Stamped just after the finish it replaces: the mirror refuses an older record, and a
       // read of the finished row still on its way, stamped as the finish, loses to it (fe#258).
       const finishedAt = finishedRec.updated_at;
       const after = new Date(Date.parse(finishedAt) + 1).toISOString();
-      // Its Sync v2 fields are left to the mirror's own (an ack since the finish is newer).
-      expect(mockWriteMirror).toHaveBeenLastCalledWith({
-        ...before,
-        ack_version: undefined,
-        answered: undefined,
-        updated_at: after,
-      });
+      // Under the mirror's lock (`updateMirror`), never a write from a read made outside it;
+      // its Sync v2 fields are the mirror's own (the ack since the finish is newer).
+      expect(mockWriteMirror).toHaveBeenCalledTimes(writes);
+      expect(mockMirrorUpdates).toEqual([{ ...before, ack_version: 9, updated_at: after }]);
       expect(after > finishedAt && finishedAt > before.updated_at).toBe(true);
+      // A read of the finished row still on its way is held off (fe#258, fe#272).
+      expect(mockNoteUndone).toHaveBeenCalledWith('c1', 2, 'Other/Book');
       expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
         queryKey: qk.progress('c1', 2, 'Other/Book'),
       });
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
+  // The record before a finish is kept for its Undo, and stays once the toast is gone: a
+  // Mark as not finished later put the mirror back to that old place, while its edit set
+  // the server to its own.
+  it('Mark as not finished goes to its own place, not the record before an earlier finish', async () => {
+    const before = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'Other/Book',
+      position: 48,
+      duration: 100,
+      finished: false,
+      playback_speed: 1,
+      device_id: 'dev-1',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+    mockReadMirror.mockResolvedValue(before);
+    try {
+      mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      const finishedRec = mockWriteMirror.mock.calls.at(-1)?.[0] as { updated_at: string };
+      mockReadMirror.mockResolvedValue(finishedRec);
+      const edit = jest.fn(async () => {});
+      await expect(undoFinish({ ...undoRef, position: 0, atPosition: true }, edit)).resolves.toBe(
+        'undone',
+      );
+      expect(edit).toHaveBeenCalledTimes(1);
+      expect(mockMirrorUpdates.at(-1)).toMatchObject({ finished: false, position: 0 });
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
+  // An offline Mark as finished, then Mark as not finished: the finish never reached the
+  // server, which kept the place before it, while the mirror went to the place asked for (the
+  // start, for a book read finished at its end) with no edit to put the server there.
+  describe('Mark as not finished of a finish that never left', () => {
+    const before = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'Other/Book',
+      position: 48,
+      duration: 100,
+      finished: false,
+      playback_speed: 1,
+      device_id: 'dev-1',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+    const notFinished = { ...undoRef, position: 0, atPosition: true };
+    beforeEach(async () => {
+      mockReadMirror.mockResolvedValue(before);
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+    });
+    afterEach(() => mockReadMirror.mockImplementation(async () => null));
+
+    it('the mirror goes back to the place the server holds, with no edit', async () => {
+      const finishedRec = mockWriteMirror.mock.calls.at(-1)?.[0] as { updated_at: string };
+      mockReadMirror.mockResolvedValue(finishedRec);
+      const edit = jest.fn(async () => {});
+      await expect(undoFinish(notFinished, edit)).resolves.toBe('undone');
+      expect(edit).not.toHaveBeenCalled();
+      expect(mockMirrorUpdates.at(-1)).toMatchObject({ finished: false, position: 48 });
+    });
+
+    // Another tab's finish (or one after a reload): the mirror holds a finished record this
+    // device did not write, so the place before it is not known here.
+    it('one this device does not know the place before: the edit, then its own place', async () => {
+      mockReadMirror.mockResolvedValue({
+        ...before,
+        position: 100,
+        finished: true,
+        updated_at: '2026-01-03T00:00:00Z',
+      });
+      const edit = jest.fn(async () => {});
+      await expect(undoFinish(notFinished, edit)).resolves.toBe('undone');
+      expect(edit).toHaveBeenCalledTimes(1);
+      expect(mockMirrorUpdates.at(-1)).toMatchObject({ finished: false, position: 0 });
+    });
+  });
+
+  // Its stored copy for the other tabs behind a lock that may refuse (Web Locks): the hold
+  // stays in this tab, and the record still goes back.
+  it('Undo whose cross-tab hold could not be stored: the mirror still goes back', async () => {
+    mockReadMirror.mockResolvedValue(null);
+    try {
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      const finishedRec = mockWriteMirror.mock.calls.at(-1)?.[0] as { updated_at: string };
+      mockReadMirror.mockResolvedValue(finishedRec);
+      mockNoteUndone.mockRejectedValueOnce(new Error('lock refused'));
+      await expect(
+        undoFinish(
+          undoRef,
+          jest.fn(async () => {}),
+        ),
+      ).resolves.toBe('undone');
+      expect(mockMirrorUpdates.at(-1)).toMatchObject({ finished: false, position: 48 });
     } finally {
       mockReadMirror.mockImplementation(async () => null);
     }
@@ -1205,31 +1569,31 @@ describe('Mark as finished outside the player (finish-route)', () => {
       finished: true,
       device_id: 'dev-1',
       updated_at: '2026-01-02T00:00:00Z',
+      file: 'Other/Book/9.mp3',
+      file_pos: 50,
     };
     try {
-      mockReadMirror.mockResolvedValueOnce(null);
+      mockReadMirror.mockResolvedValue(null);
       await recordFinishEvent({ ...ref, path: 'Other/Book' });
-      mockReadMirror.mockResolvedValueOnce(finishedRec);
+      mockReadMirror.mockResolvedValue(finishedRec);
       await undoFinish(
         undoRef,
-        jest.fn(async () => true),
+        jest.fn(async () => {}),
       );
-      expect(mockWriteMirror).toHaveBeenLastCalledWith({
-        ...finishedRec,
-        finished: false,
-        position: 48,
-        updated_at: '2026-01-02T00:00:00.001Z',
-      });
+      // At the place before it, with no file place: the finished record's was the end's.
+      const { file: _file, file_pos: _filePos, ...rest } = finishedRec;
+      expect(mockMirrorUpdates).toEqual([
+        { ...rest, finished: false, position: 48, updated_at: '2026-01-02T00:00:00.001Z' },
+      ]);
       // A place saved since the finish is not undone.
-      mockReadMirror.mockResolvedValueOnce(null);
+      mockReadMirror.mockResolvedValue(null);
       await recordFinishEvent({ ...ref, path: 'Other/Book' });
-      const writes = mockWriteMirror.mock.calls.length;
-      mockReadMirror.mockResolvedValueOnce({ ...finishedRec, finished: false, position: 70 });
+      mockReadMirror.mockResolvedValue({ ...finishedRec, finished: false, position: 70 });
       await undoFinish(
         undoRef,
-        jest.fn(async () => true),
+        jest.fn(async () => {}),
       );
-      expect(mockWriteMirror).toHaveBeenCalledTimes(writes);
+      expect(mockMirrorUpdates).toHaveLength(1);
     } finally {
       mockReadMirror.mockImplementation(async () => null);
     }
@@ -1249,7 +1613,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
       device_id: 'dev-1',
       updated_at: '2026-01-01T00:00:00Z',
     };
-    mockReadMirror.mockResolvedValueOnce(before);
+    mockReadMirror.mockResolvedValue(before);
     try {
       mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
       await recordFinishEvent({ ...ref, path: 'Other/Book' });
@@ -1260,18 +1624,16 @@ describe('Mark as finished outside the player (finish-route)', () => {
         ...(mockWriteMirror.mock.calls.at(-1)?.[0] as object),
         updated_at: '2999-01-01T00:00:00.000Z',
       };
-      mockReadMirror.mockResolvedValueOnce(echo);
-      const edit = jest.fn(async () => true);
-      await expect(undoFinish(undoRef, edit)).resolves.toBe(true);
+      mockReadMirror.mockResolvedValue(echo);
+      const edit = jest.fn(async () => {});
+      await expect(undoFinish(undoRef, edit)).resolves.toBe('undone');
       expect(edit).toHaveBeenCalledTimes(1);
-      expect(mockWriteMirror).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          path: 'Other/Book',
-          finished: false,
-          position: 48,
-          updated_at: '2999-01-01T00:00:00.001Z',
-        }),
-      );
+      expect(mockMirrorUpdates.at(-1)).toMatchObject({
+        path: 'Other/Book',
+        finished: false,
+        position: 48,
+        updated_at: '2999-01-01T00:00:00.001Z',
+      });
     } finally {
       mockReadMirror.mockImplementation(async () => null);
     }
@@ -1289,21 +1651,76 @@ describe('Mark as finished outside the player (finish-route)', () => {
       device_id: 'dev-1',
       updated_at: '2026-01-01T00:00:00Z',
     };
-    mockReadMirror.mockResolvedValueOnce(before);
+    mockReadMirror.mockResolvedValue(before);
     try {
       mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
       await recordFinishEvent({ ...ref, path: 'Other/Book' });
       const writes = mockWriteMirror.mock.calls.length;
-      mockReadMirror.mockResolvedValueOnce({
+      mockReadMirror.mockResolvedValue({
         ...before,
         position: 70,
         updated_at: '2999-01-01T00:00:00.000Z',
       });
       await undoFinish(
         undoRef,
-        jest.fn(async () => true),
+        jest.fn(async () => {}),
       );
       expect(mockWriteMirror).toHaveBeenCalledTimes(writes);
+      expect(mockMirrorUpdates).toEqual([]);
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
+  // The mirror is written finished before the finish has had its turn: left so when the
+  // finish was never queued, the book loaded again after the failure started over at 0.
+  it('a finish that could not be queued: the mirror goes back to the record before it', async () => {
+    const before = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'Other/Book',
+      position: 48,
+      duration: 100,
+      finished: false,
+      playback_speed: 1.2,
+      device_id: 'dev-1',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+    mockReadMirror.mockResolvedValue(before);
+    mockWriteMirror.mockImplementationOnce(async (rec: unknown) => {
+      mockReadMirror.mockResolvedValue(rec);
+    });
+    mockAppendInTurn.mockImplementationOnce(async () => {
+      throw new Error('no turn');
+    });
+    try {
+      await expect(recordFinishEvent({ ...ref, path: 'Other/Book' })).rejects.toThrow('no turn');
+      const finished = mockWriteMirror.mock.calls.at(-1)?.[0] as { updated_at: string };
+      expect(finished).toMatchObject({ path: 'Other/Book', finished: true });
+      const after = new Date(Date.parse(finished.updated_at) + 1).toISOString();
+      expect(mockMirrorUpdates).toEqual([{ ...before, updated_at: after }]);
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
+  // With no record before the finish there was nothing to put back, and the book stayed
+  // finished on this device with no finish queued.
+  it('a finish that could not be queued on a book with no record: its record goes', async () => {
+    mockReadMirror.mockResolvedValue(null);
+    mockWriteMirror.mockImplementationOnce(async (rec: unknown) => {
+      mockReadMirror.mockResolvedValue(rec);
+    });
+    mockAppendInTurn.mockImplementationOnce(async () => {
+      throw new Error('no turn');
+    });
+    try {
+      await expect(recordFinishEvent({ ...ref, path: 'Other/Book' })).rejects.toThrow('no turn');
+      expect(mockWriteMirror.mock.calls.at(-1)?.[0]).toMatchObject({
+        path: 'Other/Book',
+        finished: true,
+      });
+      expect(mockMirrorUpdates).toEqual([null]);
     } finally {
       mockReadMirror.mockImplementation(async () => null);
     }
@@ -1313,13 +1730,46 @@ describe('Mark as finished outside the player (finish-route)', () => {
     mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
     await recordFinishEvent({ ...ref, path: 'Other/Book' });
     const writes = mockWriteMirror.mock.calls.length;
+    mockReadMirror.mockResolvedValueOnce({ finished: true, updated_at: '2026-01-02T00:00:00Z' });
     await expect(
       undoFinish(
         undoRef,
-        jest.fn(async () => false),
+        jest.fn(async () => {
+          throw new Error('refused');
+        }),
       ),
-    ).resolves.toBe(false);
+    ).rejects.toThrow('refused');
     expect(mockWriteMirror).toHaveBeenCalledTimes(writes);
+    expect(mockUpdateMirror).not.toHaveBeenCalled();
+  });
+
+  // fe#258: a sign-out while the Mark or its Undo was on its way left a record of the old
+  // sign-in in the mirror, which stood for the next sign-in to the same account.
+  it('signed out while the finish was recorded: no mirror record, nothing appended', async () => {
+    // Every read of the mirror waits (the finish's base and the record before it alike).
+    let read: (v: unknown) => void = () => {};
+    const held = new Promise((resolve) => (read = resolve));
+    mockReadMirror.mockImplementation(() => held);
+    const recording = recordFinishEvent({ ...ref, path: 'Other/Book' });
+    await settle();
+    mockGeneration = 1; // the connection removed
+    read(null);
+    await recording;
+    expect(mockWriteMirror).not.toHaveBeenCalled();
+    // The finish was handed over before the sign-out: the outbox drops it for the sign-in
+    // it was made in (its own test), as it does a close.
+    expect(mockAppendInTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it('signed out while the Undo was out: the mirror is left alone', async () => {
+    mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
+    await recordFinishEvent({ ...ref, path: 'Other/Book' });
+    mockReadMirror.mockResolvedValueOnce({ finished: true, updated_at: '2026-01-02T00:00:00Z' });
+    await undoFinish(undoRef, async () => {
+      mockGeneration = 1;
+    });
+    expect(mockUpdateMirror).not.toHaveBeenCalled();
+    expect(mockNoteUndone).not.toHaveBeenCalled();
   });
 
   // Marked finished from its page while loaded and paused, then undone: the player's own
@@ -1334,7 +1784,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
     await recordFinishEvent(ref);
     await undoFinish(
       { connectionId: 'c1', libraryId: 2, path: folder, position: 9 },
-      jest.fn(async () => true),
+      jest.fn(async () => {}),
     );
     mockAppended.length = 0;
     usePlayer.getState().finishBook();

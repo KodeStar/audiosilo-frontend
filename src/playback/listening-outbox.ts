@@ -88,7 +88,7 @@ export type { OpenSpan, SpanEnd } from './open-span-doc';
  *   one still standing past its time was left by a tab that went with its request: the
  *   server may hold the finish.
  * - `maybeReached`: a request carried it while its server looked reachable and got no
- *   answer, so the server may hold it (`serverMayHold`).
+ *   answer, so the server may hold it (`carried`).
  */
 export type OutboxEntry = {
   connectionId: string;
@@ -299,17 +299,24 @@ async function readOutbox(): Promise<OutboxEntry[]> {
   return outboxCache;
 }
 
-async function writeOutbox(next: OutboxEntry[]): Promise<void> {
+/** Write the outbox; resolves to whether storage holds it now (false: the write failed,
+ * so this tab's copy holds a change storage does not, `outboxUnsaved`). True also while the
+ * stored outbox was never read: nothing is written over it then, and what this launch
+ * holds is in its copy alone. */
+async function writeOutbox(next: OutboxEntry[]): Promise<boolean> {
   outboxCache = next;
+  let stored = true;
   if (outboxRead) {
     try {
       await setItemStrict(OUTBOX_KEY, next);
       outboxUnsaved = false;
     } catch {
       outboxUnsaved = true;
+      stored = false;
     }
   }
   notify();
+  return stored;
 }
 
 /**
@@ -349,22 +356,121 @@ function currentOutbox(): Promise<OutboxEntry[]> {
   return outboxRead && outboxCache ? Promise.resolve(outboxCache) : withOutboxLock(readOutbox);
 }
 
-/** Append events (already closed: immutable from here) to a connection's outbox. */
-export async function appendEvents(connectionId: string, given: ListeningEvent[]): Promise<void> {
+/** Append events (already closed: immutable from here) to a connection's outbox. `since`:
+ * the connection's sign-in (`connectionGeneration`) the events belong to, when they were
+ * made before an await: nothing is appended once it was signed out since. */
+export async function appendEvents(
+  connectionId: string,
+  given: ListeningEvent[],
+  since?: number,
+): Promise<void> {
   const events = given.filter(eventIsFinite);
   if (events.length < given.length) console.warn('[listening] dropped an event with no place');
-  await appendEntries(events.map((event) => ({ connectionId, event })));
+  await appendEntries(
+    events.map((event) => ({ connectionId, event })),
+    since,
+  );
 }
 
-/** Append entries (none already there, by event id) to the outbox. */
-async function appendEntries(entries: OutboxEntry[]): Promise<void> {
+/** Append entries (none already there, by event id) to the outbox: at the end, or before
+ * the first entry `before` names (a finish put back where it was: `withdrawFinish`).
+ * Nothing when `since` is not the entries' connection's sign-in any more (checked under
+ * the lock, so the removal's purge, queued behind it or ahead of it, never misses one). */
+async function appendEntries(
+  entries: OutboxEntry[],
+  since?: number,
+  before?: (queue: OutboxEntry[], entry: OutboxEntry) => number,
+): Promise<void> {
   if (entries.length === 0) return;
   await withOutboxLock(async () => {
+    if (since !== undefined && entries.some((e) => connectionGeneration(e.connectionId) !== since))
+      return;
     const queue = await readOutbox();
     const have = new Set(queue.map((e) => e.event.id));
     const add = entries.filter((e) => !have.has(e.event.id));
-    if (add.length > 0) await writeOutbox([...queue, ...add]);
+    if (add.length === 0) return;
+    const next = [...queue];
+    for (const entry of add) {
+      const at = before ? before(next, entry) : -1;
+      next.splice(at < 0 ? next.length : at, 0, entry);
+    }
+    await writeOutbox(next);
   });
+}
+
+/** How many times each connection was removed (signed out) this launch: an event made
+ * before a removal and appended after it would outlive the purge and be sent once the same
+ * account signs in again (the same connection id). A caller that awaits between making an
+ * event and appending it reads this first and passes it on (`since`). */
+const removals = new Map<string, number>();
+
+/** `connectionId`'s sign-in, as the number of its removals this launch (`since`). */
+export function connectionGeneration(connectionId: string): number {
+  return removals.get(connectionId) ?? 0;
+}
+
+/**
+ * Append `events` behind every close queued before them (`closeSpan`) and every other event
+ * appended this way: the outbox's order is the order a sync sends, so a book's last span
+ * goes before its `finish` (server#359: a 12 s book's finish went first, found no session
+ * to mark, and the span then opened one that stayed unfinished), and a paused move after
+ * the close of the span before it. Waiting from the call, they are in `queued`, so the web's
+ * `pagehide` carries them too, as it carries the closes ahead of them (a page going, or an
+ * app killed, while the close waited its turn otherwise lost the finish with it).
+ * `baseVersion` gives each its `base_version` as it is appended (read then: what was
+ * acknowledged by the closes ahead of it). The copy waiting takes it too, read at the call
+ * (the web's storage answers before the page can go), when that is past the one it was made
+ * with: a move made with no span closed ahead of it was made with none, and base 0 is a
+ * place this device never saw to the server, which then keeps the further place over a move
+ * back or a Stay (and the copy appended later, the same id, is a `duplicate`).
+ */
+export async function appendInTurn(
+  connectionId: string,
+  events: ListeningEvent[],
+  baseVersion?: () => Promise<number | undefined>,
+): Promise<void> {
+  appendsInTurn.set(connectionId, (appendsInTurn.get(connectionId) ?? 0) + 1);
+  try {
+    if (baseVersion) {
+      void baseVersion()
+        .catch(() => undefined)
+        .then((base) => {
+          if (base === undefined) return;
+          for (const event of events) {
+            // Still waiting (in its place in the order: a key set again keeps it).
+            if (!queued.has(event.id) || (event.base_version ?? 0) >= base) continue;
+            queued.set(event.id, { connectionId, event: { ...event, base_version: base } });
+          }
+        });
+    }
+    await inTurn(connectionId, events, async (since) => {
+      const base = baseVersion ? await baseVersion().catch(() => undefined) : undefined;
+      const final = base === undefined ? events : events.map((e) => ({ ...e, base_version: base }));
+      await appendEvents(connectionId, final, since);
+    });
+  } finally {
+    const left = (appendsInTurn.get(connectionId) ?? 1) - 1;
+    if (left > 0) appendsInTurn.set(connectionId, left);
+    else appendsInTurn.delete(connectionId);
+  }
+}
+
+/** Run `op` in its turn (`spanOps`, after a crashed tab's span is recovered), with `events`
+ * waiting in `queued` until it ends, so the web's `pagehide` carries them meanwhile. `op`
+ * gets the connection's sign-in at the call (`since`): what it appends belongs to that one. */
+async function inTurn(
+  connectionId: string,
+  events: ListeningEvent[],
+  op: (since: number) => Promise<void>,
+): Promise<void> {
+  const since = connectionGeneration(connectionId);
+  for (const event of events) queued.set(event.id, { connectionId, event });
+  try {
+    await recoverOpenSpan();
+    await spanOps(() => op(since));
+  } finally {
+    for (const event of events) queued.delete(event.id);
+  }
 }
 
 /** The events waiting for `connectionId` (all connections when absent), oldest first. */
@@ -562,21 +668,30 @@ async function baseAtClose(span: OpenSpan): Promise<number | undefined> {
   return acked === undefined ? span.baseVersion : Math.max(span.baseVersion ?? 0, acked);
 }
 
-/** Append `span`'s event, when it says something (on the base acknowledged by now). */
-async function appendClosed(span: OpenSpan, event?: ListeningSpanEvent): Promise<void> {
+/** Append `span`'s event, when it says something (on the base acknowledged by now), for
+ * the sign-in `since` when given (`appendEvents`). */
+async function appendClosed(
+  span: OpenSpan,
+  event?: ListeningSpanEvent,
+  since?: number,
+): Promise<void> {
   if (!spanSaysSomething(span)) return;
   const closed = event ?? spanToEvent({ ...span, baseVersion: await baseAtClose(span) });
-  await appendEvents(span.connectionId, [closed]);
+  await appendEvents(span.connectionId, [closed], since);
 }
 
 /** Append `span`'s event (when it says something) and clear this tab's stored open span,
  * if any. Run inside `spanOps`. A span that went on under a new id (`wentOn`), or whose last
  * stored copy another tab took (`takenFrom`), closes as what played since. */
-async function closeInto(span: OpenSpan, event?: ListeningSpanEvent): Promise<void> {
+async function closeInto(
+  span: OpenSpan,
+  event?: ListeningSpanEvent,
+  since?: number,
+): Promise<void> {
   const current = asStored(span);
   const taken = openSpanStored ? takenFrom(await readSpans(), current) : null;
   const closing = taken ? goingOnFrom(current, taken) : current;
-  await appendClosed(closing, closing === span ? event : undefined);
+  await appendClosed(closing, closing === span ? event : undefined, since);
   if (wentOn && (wentOn.from === span.id || wentOn.span.id === span.id)) wentOn = null;
   if (!openSpanStored) return;
   await writeSpans((await readSpans()).filter((s) => s.owner !== tabId));
@@ -591,20 +706,26 @@ async function closeInto(span: OpenSpan, event?: ListeningSpanEvent): Promise<vo
  * caller made it already (the web's `pagehide` sends it at once).
  */
 export async function closeSpan(span: OpenSpan, event?: ListeningSpanEvent): Promise<void> {
-  const waiting = spanSaysSomething(span) ? (event ?? spanToEvent(span)) : null;
-  if (waiting) queuedCloses.set(waiting.id, { connectionId: span.connectionId, event: waiting });
-  try {
-    await recoverOpenSpan();
-    await spanOps(() => closeInto(span, event));
-  } finally {
-    if (waiting) queuedCloses.delete(waiting.id);
-  }
+  const waiting = spanSaysSomething(span) ? [event ?? spanToEvent(span)] : [];
+  // Signed out before its turn: the span is the removed sign-in's, never appended after it.
+  await inTurn(span.connectionId, waiting, (since) => closeInto(span, event, since));
 }
 
-/** Closes still waiting their turn (`closeSpan`), by event id. The web's `pagehide` sends
- * them too: a close queued behind a lock may never run once the page is going (a
- * `localStorage` lease waits on a timer, which an unloading page never fires). */
-const queuedCloses = new Map<string, OutboxEntry>();
+/** `appendInTurn` calls still waiting their turn, by connection (`waitingInTurn`). */
+const appendsInTurn = new Map<string, number>();
+
+/** Whether events appended in turn (`appendInTurn`) for `connectionId` still wait: a send
+ * now would leave them for a second request, which their caller makes once they are in.
+ * Not a close (`closeSpan`): the page's own going queues one that nothing sends after. */
+export function waitingInTurn(connectionId: string): boolean {
+  return appendsInTurn.has(connectionId);
+}
+
+/** Closes (`closeSpan`) and the events behind them (`appendInTurn`) still waiting their
+ * turn, by event id, in the order they came. The web's `pagehide` sends them too: one queued
+ * behind a lock may never run once the page is going (a `localStorage` lease waits on a
+ * timer, which an unloading page never fires). */
+const queued = new Map<string, OutboxEntry>();
 
 /** This tab's stored open span (tests), else the first one stored. */
 export async function storedOpenSpan(): Promise<OpenSpan | null> {
@@ -750,7 +871,7 @@ const sendingNow = new Map<string, Promise<unknown>>();
 const withdrawn = new Set<string>();
 /** Finish events a request carried while their server looked reachable and that got no
  * answer: the request may have arrived and only its answer been lost, so the server may
- * hold them (`serverMayHold`). This launch's only (an Undo is a toast of the launch that
+ * hold them (`carried`). This launch's only (an Undo is a toast of the launch that
  * marked the book). Never forgotten on an answer: an answered finish has left the outbox, so
  * nothing reads its mark, and one put back after a failed edit still takes the edit. This
  * tab's own; on the web the stored entry says it too (`OutboxEntry.maybeReached`), for the
@@ -897,13 +1018,36 @@ async function sending<T>(
       for (const id of lost) maybeReached.add(id);
       return markSettled(marked, lost);
     });
-  for (const e of live) sendingNow.set(e.event.id, settled);
+  const release = markSending(live, settled);
   try {
     return await run;
   } finally {
     await settled;
-    for (const e of live) if (sendingNow.get(e.event.id) === settled) sendingNow.delete(e.event.id);
+    release();
   }
+}
+
+/** Mark `entries` out from this tab until `settled` (`sendingNow`); returns the release
+ * (called once `settled` has), which clears only the marks still this request's. An entry
+ * another request still carries (a flush's as the page hides, the keepalive's as a flush
+ * follows) stays out until both have ended: released with the first, a withdrawal took a
+ * finish back from under the other, which could then land it after the Undo's edit. */
+function markSending(entries: OutboxEntry[], settled: Promise<unknown>): () => void {
+  const marks = entries.map((e) => {
+    const other = sendingNow.get(e.event.id);
+    const mark = other ? Promise.allSettled([other, settled]) : settled;
+    sendingNow.set(e.event.id, mark);
+    return [e.event.id, mark] as const;
+  });
+  return () => {
+    for (const [id, mark] of marks) {
+      const clear = () => {
+        if (sendingNow.get(id) === mark) sendingNow.delete(id);
+      };
+      if (mark === settled) clear();
+      else void mark.then(clear);
+    }
+  };
 }
 
 /** Resolves at the next change of the outbox (this tab's write, or another tab's through
@@ -924,32 +1068,33 @@ function outboxChanged(ms: number): Promise<void> {
 export type Withdrawal = {
   /** A finish that never reached the server was taken back (an offline Mark as finished),
    * so the Undo is complete here, with no progress edit. Never true while the server may
-   * hold the finish and can be asked (`serverMayHold`): the Undo then takes its edit. */
+   * hold the finish (`carried`): the Undo then takes its edit. */
   unsent: boolean;
-  /** For an edit that failed: the events go back and are sent. */
+  /** Nothing was taken back: a request carried the finish with no answer, so the server may
+   * hold it, and its server looks down now, so no edit can undo it there. The Undo fails
+   * (fe#258): done on this device alone, the book stayed finished on a server that had it,
+   * which then won on reconnect. */
+  unreachable?: true;
+  /** For an edit that failed: the events go back where they were and are sent. */
   restore: () => Promise<void>;
 };
 
-/**
- * Whether the Undo of the finish `entry` needs its progress edit although no answer to it ever
- * came: a request carried it while its server looked reachable (`maybeReached`), so it may
- * have arrived with only its answer lost, and the server looks reachable now, so the edit
- * can be made. With the server down no edit can be made, and the likeliest reading of a
- * request with no answer is one that never left: the Undo is then done on this device, as
- * for a finish no request carried.
- */
-function serverMayHold(connectionId: string, entry: OutboxEntry): boolean {
-  // An `out` mark on a finish taken back has run out (a live one is waited for): the tab
-  // that sent it went with its request.
-  const carried = maybeReached.has(entry.event.id) || !!entry.maybeReached || !!entry.out;
-  return carried && looksReachable(connectionId);
+/** Whether a request carried the finish `entry` with no answer (`maybeReached`, this tab's
+ * or the stored mark), or an `out` mark on it ran out (a live one is waited for): the tab
+ * that sent it went with its request. The server may hold it. */
+function carried(entry: OutboxEntry): boolean {
+  return maybeReached.has(entry.event.id) || !!entry.maybeReached || !!entry.out;
 }
+
+/** A finish taken back, and the events that were ahead of it then (where it goes back to). */
+type Taken = { entry: OutboxEntry; after: ReadonlySet<string> };
 
 /**
  * Take a book's waiting `finish` events out of the outbox, before an Undo's progress edit
  * (fe#208): a finish sent after the edit would finish the book again. One whose request is
  * out is waited for (answered, the server has it and the edit comes after it; unanswered,
- * it is taken back).
+ * it is taken back). Rejects, taking nothing, when storage would not hold the removal: the
+ * finish would be sent after a restart, over the edit.
  *
  * Across the tabs of the web player the same holds through the stored outbox, which every
  * tab reads under its lock (fe#123): a send in another tab marked the finish as out there
@@ -957,23 +1102,25 @@ function serverMayHold(connectionId: string, entry: OutboxEntry): boolean {
  * finds the finish gone and leaves it out of its request, and what another tab's request
  * carried with no answer is read from its `maybeReached` mark.
  *
- * A finish taken back counts as unsent only when the server cannot hold it or cannot be
- * asked (`serverMayHold`). Counted as unsent after a lost answer, the Undo was done on this
- * device alone and the book stayed finished on the server; the edit unfinishes it whether
- * the request arrived or not, and a failed edit puts the finish back (`restore`; sent again
- * it is a `duplicate` when the server had it).
+ * A finish taken back counts as unsent only when no request carried it with no answer
+ * (`carried`). One that a request did carry may be on the server: with its server
+ * reachable the edit unfinishes the book whether the request arrived or not, and a failed
+ * edit puts the finish back (`restore`; sent again it is a `duplicate` when the server had
+ * it); with its server down nothing is taken back and the Undo fails (`unreachable`).
  */
 export async function withdrawFinish(
   connectionId: string,
   libraryId: number,
   path: string,
 ): Promise<Withdrawal> {
+  // The sign-in the finish belongs to: one signed out meanwhile gets nothing put back.
+  const since = connectionGeneration(connectionId);
   const isMine = (e: OutboxEntry) =>
     e.connectionId === connectionId &&
     e.event.kind === 'finish' &&
     e.event.library_id === libraryId &&
     e.event.path === path;
-  const taken: OutboxEntry[] = [];
+  const taken: Taken[] = [];
   // The finishes waited for: one not taken back after was answered (the server has it).
   const waitedFor = new Set<string>();
   for (;;) {
@@ -991,28 +1138,53 @@ export async function withdrawFinish(
         // needs the lock).
         return { out: here ? sendingNow.get(here.event.id) : outboxChanged(OUT_POLL_MS) };
       }
+      if (mine.some(carried) && !looksReachable(connectionId)) return { down: true as const };
+      if (mine.length === 0) return null;
+      // Before the write: a send that read the outbox before this leaves them out.
       for (const e of mine) withdrawn.add(e.event.id);
-      taken.push(...mine);
-      if (mine.length > 0) await writeOutbox(queue.filter((e) => !isMine(e)));
+      if (!(await writeOutbox(queue.filter((e) => !isMine(e))))) {
+        for (const e of mine) withdrawn.delete(e.event.id);
+        await writeOutbox(queue);
+        throw new Error('the outbox could not store the withdrawal');
+      }
+      for (const entry of mine) {
+        const at = queue.indexOf(entry);
+        taken.push({ entry, after: new Set(queue.slice(0, at).map((e) => e.event.id)) });
+      }
       return null;
     });
     if (!wait) break;
+    if ('down' in wait) {
+      return { unsent: false, unreachable: true, restore: () => Promise.resolve() };
+    }
     await wait.out;
   }
-  const answered = [...waitedFor].some((id) => !taken.some((e) => e.event.id === id));
-  const held = taken.some((e) => serverMayHold(connectionId, e));
+  const answered = [...waitedFor].some((id) => !taken.some((t) => t.entry.event.id === id));
+  // One a request carried may be on the server, which looked reachable as it was taken
+  // (else nothing was: `unreachable`), so the Undo takes its edit. Not asked again here: the
+  // server marked down since, the Undo was done on this device alone (fe#258).
+  const held = taken.some((t) => carried(t.entry));
   return {
     unsent: taken.length > 0 && !answered && !held,
     restore: async () => {
       if (taken.length === 0) return;
-      for (const e of taken) withdrawn.delete(e.event.id);
-      // Back without a send's mark; what the server may hold stays marked for every tab.
+      for (const t of taken) withdrawn.delete(t.entry.event.id);
+      const after = new Map(taken.map((t) => [t.entry.event.id, t.after]));
+      // Back where it was, ahead of what came after it then and since (listens made after
+      // the Mark, an unfinish and a restart): put back at the end it finished the book
+      // again over them. Without a send's mark; what the server may hold stays marked for
+      // every tab.
       await appendEntries(
-        taken.map(({ event, maybeReached: reached, out }) => ({
+        taken.map(({ entry: { event, maybeReached: reached, out } }) => ({
           connectionId,
           event,
           ...(reached || out ? { maybeReached: true as const } : {}),
         })),
+        since,
+        (queue, entry) => {
+          const ahead = after.get(entry.event.id) ?? new Set<string>();
+          return queue.findIndex((e) => !ahead.has(e.event.id));
+        },
       );
       void flushOutbox(connectionId);
     },
@@ -1494,8 +1666,8 @@ async function rollBack(connectionId: string, client: ApiClient): Promise<void> 
 // --- The web page going ------------------------------------------------------------------
 
 /**
- * Web `pagehide`: send what waits (the outbox, the closes still queued: `queuedCloses`;
- * plus `extra`, the span closed this moment) in one
+ * Web `pagehide`: send what waits (the outbox, the closes and the events behind them still
+ * queued: `queued`; plus `extra`, the span closed this moment) in one
  * keepalive request per connection, as much as fits in `KEEPALIVE_BYTES`. Synchronous up to
  * the requests (the page is going); an answer that still arrives is applied as usual, and
  * anything unanswered stays in the outbox (a resend is a `duplicate`).
@@ -1504,14 +1676,22 @@ export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
   if (!sessionReady()) return;
   const byConnection = new Map<string, OutboxEntry[]>();
   const seen = new Set<string>();
-  const waiting = [...(outboxCache ?? []), ...queuedCloses.values(), ...extra];
+  const waiting = [...(outboxCache ?? []), ...queued.values(), ...extra];
   // Read for a finish only: nothing else is checked against it or marked in it.
   const stored = waiting.some((e) => e.event.kind === 'finish') ? storedOutboxNow() : null;
   const storedIds = stored && new Set(stored.entries.map((e) => e.event.id));
   for (const entry of waiting) {
     if (seen.has(entry.event.id)) continue;
     // A finish another tab took back a moment ago (its Undo), before this tab's copy heard.
-    if (entry.event.kind === 'finish' && storedIds && !storedIds.has(entry.event.id)) continue;
+    // Not one still waiting its turn here (`queued`): it was never stored to be taken back.
+    if (
+      entry.event.kind === 'finish' &&
+      storedIds &&
+      !storedIds.has(entry.event.id) &&
+      !queued.has(entry.event.id)
+    ) {
+      continue;
+    }
     seen.add(entry.event.id);
     const list = byConnection.get(entry.connectionId) ?? [];
     list.push(entry);
@@ -1526,7 +1706,7 @@ export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
     const leaving = finishesLeaving(fit);
     for (const id of leaving) maybeReached.add(id);
     if (stored && leaving.length > 0) markOutNow(stored.storage, leaving);
-    void client
+    const settled = client
       .syncListening(
         syncBody(
           cid,
@@ -1537,6 +1717,10 @@ export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
       )
       .then((answer) => applyAnswer(cid, fit, answer))
       .catch(() => undefined);
+    // Out from this tab until it ends, as a flush's request is (`sending`): a page that
+    // was only hidden comes back (the back-forward cache) with the request still out, and
+    // an Undo then waits for its answer rather than taking the finish back from under it.
+    void settled.then(markSending(fit, settled));
   }
 }
 
@@ -1615,6 +1799,8 @@ export function onOutboxChange(listener: () => void): () => void {
 // Removing a connection orphans its listening (signing in again starts from the server's
 // record), like its queued saves: drop its events, its open span and its sync state.
 onConnectionRemoved(async (id) => {
+  // First, before any await: what was made for this sign-in is not appended from here.
+  removals.set(id, connectionGeneration(id) + 1);
   chunkSizes.delete(id);
   rolledBack.delete(id);
   await Promise.all([
@@ -1639,7 +1825,9 @@ export function resetOutboxForTests(): void {
   openSpanStored = false;
   lastStored = null;
   wentOn = null;
-  queuedCloses.clear();
+  queued.clear();
+  appendsInTurn.clear();
+  removals.clear();
   tabId = randomUUID();
   if (staleCheck) clearTimeout(staleCheck);
   staleCheck = null;

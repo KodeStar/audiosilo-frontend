@@ -30,13 +30,19 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
-import { toast } from '@/components/ui/toast';
+import { dismissToast, toast } from '@/components/ui/toast';
 import { playFailedToast } from '@/components/player/play-failed';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import type { PendingEpisodeFetch } from '@/playback/episode-fetch';
-import { finishTakesEvent, leaveFinishedBook, undoFinish } from '@/playback/finish-route';
+import {
+  finishTakesEvent,
+  leaveFinishedBook,
+  reloadLeftBook,
+  undoFinish,
+} from '@/playback/finish-route';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
+import { useLatestRef } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 import { useSendToWatch } from '@/watch/use-watch';
@@ -60,6 +66,9 @@ export type BookAction<K extends string = string> = {
   destructive?: boolean;
   group?: boolean;
 };
+
+/** How long a Mark as finished waits on its server before a toast says it is on its way. */
+const PENDING_TOAST_MS = 600;
 
 /** The download item by the book's download state. */
 const DOWNLOAD_ACTION = {
@@ -160,9 +169,30 @@ export function useBookActions(
     toast({ title: t('library.bookActions.failed') });
   };
 
-  const setFinished = async (finished: boolean, position?: number) => {
+  const ref = { connectionId, libraryId, path };
+  // The progress of the latest render: a Retry of Mark as not finished, pressed later, takes
+  // its place from the progress read since, not the one the failed tap saw (another device
+  // may have moved the book).
+  const latestProgress = useLatestRef(progress);
+
+  // Mark the book finished by the route its server takes; resolves to whether it was. A
+  // server that takes listening events: a `finish` event, offline too (fe#208), in the outbox
+  // behind the close of the span the book was left with. Never a progress edit there: sent
+  // over HTTP beside the outbox, it reached the server before that span did. An older server
+  // with progress edits: the edit (no span waits there, and Undo is an edit too); one without:
+  // the offline-aware save at the book's end.
+  const recordFinished = async (): Promise<boolean> => {
     try {
-      await edit.mutateAsync({ libraryId, path, edit: { finished, position } });
+      if (progressEdit === true && !finishTakesEvent(connectionId)) {
+        await edit.mutateAsync({ libraryId, path, edit: { finished: true } });
+      } else {
+        await markFinished.mutateAsync({
+          libraryId,
+          path,
+          position: book.duration,
+          duration: book.duration,
+        });
+      }
       return true;
     } catch (e) {
       failed(e);
@@ -170,48 +200,82 @@ export function useBookActions(
     }
   };
 
+  // Not finished, at `position` (the Undo of Mark as finished, and Mark as not finished);
+  // resolves to whether it was. A finish event still waiting in the outbox is taken back
+  // before the edit (fe#208): sent after it, it finished the book again. One the server may
+  // hold while it looks down can't be undone (fe#258): the book stays finished, and a toast
+  // titled `unreachable` offers `retry`. `atPosition` for Mark as not finished: this device's
+  // record goes to `position`, not to the one before a finish marked earlier.
+  const unfinish = async (
+    position: number,
+    unreachable: string,
+    retry: () => void,
+    atPosition?: boolean,
+  ): Promise<boolean> => {
+    const outcome = await undoFinish({ ...ref, position, atPosition }, () =>
+      edit.mutateAsync({ libraryId, path, edit: { finished: false, position } }),
+    ).catch((e: unknown) => {
+      failed(e);
+      return null;
+    });
+    if (outcome === 'unreachable') {
+      toast({
+        title: unreachable,
+        description: book.title,
+        action: { label: t('common.retry'), onPress: retry },
+      });
+    }
+    return outcome === 'undone';
+  };
+
+  // Finished again (the Undo of Mark as not finished), the loaded book (or one starting)
+  // stopped and unloaded first, its place saved (fe#258); a finish that failed loads it
+  // again where it was (FE-1): left unloaded, the failure stopped the listening for nothing.
+  const finishAgain = async () => {
+    await leaveFinishedBook(ref);
+    if (!(await recordFinished())) await reloadLeftBook(ref);
+  };
+
   const onFinish = async () => {
+    // A finish that waits on its server says so (FE-1): the menu has closed, and nothing
+    // else shows the request. Only when it is slow, so a quick one shows one toast.
+    let pending: number | null = null;
+    const slow = setTimeout(() => {
+      pending = toast({ title: t('library.bookActions.markingFinished'), duration: 15_000 });
+    }, PENDING_TOAST_MS);
+    const settled = () => {
+      clearTimeout(slow);
+      if (pending !== null) dismissToast(pending);
+    };
     // The loaded book stops first, its place saved before the finish (fe#258). That place is
     // the one Undo goes back to: the page's progress was read before that listening, and with
     // the book unloaded no later save moves an Undo there.
-    const left = await leaveFinishedBook({ connectionId, libraryId, path });
+    const left = await leaveFinishedBook(ref);
     const before = left ?? progress?.position ?? 0;
     // Undo is a progress edit (`progress_edit`): the only way to mark a book not finished
     // at the place it had.
     const canUndo = progressEdit === true;
+    const undo = () => void unfinish(before, t('library.bookActions.undoUnreachable'), undo);
     const done = () =>
       toast({
         title: t('library.bookActions.markedFinished'),
         description: book.title,
-        action: canUndo
-          ? {
-              label: t('queue.undo'),
-              // The finish event, if still waiting, is taken back before the edit (fe#208).
-              onPress: () =>
-                void undoFinish({ connectionId, libraryId, path, position: before }, () =>
-                  setFinished(false, before),
-                ),
-            }
-          : undefined,
+        action: canUndo ? { label: t('queue.undo'), onPress: undo } : undefined,
       });
-    if (canUndo && !finishTakesEvent(connectionId)) {
-      if (await setFinished(true)) done();
-      return;
-    }
-    // A server that takes listening events: a `finish` event, offline too (fe#208). An
-    // older server without progress edits: the offline-aware save at the book's end.
-    markFinished.mutate(
-      { libraryId, path, position: book.duration, duration: book.duration },
-      { onSuccess: done, onError: failed },
-    );
+    const ok = await recordFinished().finally(settled);
+    if (ok) done();
+    else await reloadLeftBook(ref);
   };
 
   const onUnfinish = async () => {
-    if (!(await setFinished(false, unfinishedPosition(progress, book.duration)))) return;
+    const position = unfinishedPosition(latestProgress.current, book.duration);
+    const unreachable = t('library.bookActions.unfinishUnreachable');
+    if (!(await unfinish(position, unreachable, () => void onUnfinish(), true))) return;
     toast({
       title: t('library.bookActions.markedUnfinished'),
       description: book.title,
-      action: { label: t('queue.undo'), onPress: () => void setFinished(true) },
+      // Finished again: a book started since stops first, as on Mark as finished (FE-1).
+      action: { label: t('queue.undo'), onPress: () => void finishAgain() },
     });
   };
 

@@ -4,7 +4,11 @@ import { Platform, Text } from 'react-native';
 import type { Book, Progress } from '@/api/types';
 
 const mockToast = jest.fn();
-jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
+const mockDismissToast = jest.fn();
+jest.mock('@/components/ui/toast', () => ({
+  toast: (o: unknown) => mockToast(o),
+  dismissToast: (id: number) => mockDismissToast(id),
+}));
 
 let mockCaps: Record<string, boolean | undefined> = {};
 const mockEdit = jest.fn();
@@ -25,7 +29,7 @@ jest.mock('@/api/hooks', () => {
     useCapability: (flag: string) => mockCaps[flag],
     useIsPodcastLibrary: () => mockPodcastLibrary,
     useEditProgress: () => ({ mutateAsync: mockEdit }),
-    useMarkFinished: () => ({ mutate: mockMarkFinished }),
+    useMarkFinished: () => ({ mutateAsync: mockMarkFinished }),
   };
 });
 let mockQueueSupported = true;
@@ -62,15 +66,22 @@ const mockUndoRefs: unknown[] = [];
 const mockSteps: string[] = [];
 // The place the loaded book's leave saved (undefined: not the loaded book).
 let mockLeftAt: number | undefined;
+// How the Undo ends when its finish may be on a server that looks down (fe#258).
+let mockUnreachable = false;
 jest.mock('@/playback/finish-route', () => ({
   finishTakesEvent: () => mockTakesEvent,
   leaveFinishedBook: async (ref: { path: string }) => {
     mockSteps.push(`leave ${ref.path}`);
     return mockLeftAt;
   },
-  undoFinish: (ref: unknown, edit: () => Promise<boolean>) => {
+  reloadLeftBook: async (ref: { path: string }) => {
+    mockSteps.push(`reload ${ref.path}`);
+  },
+  undoFinish: async (ref: unknown, edit: () => Promise<unknown>) => {
     mockUndoRefs.push(ref);
-    return edit();
+    if (mockUnreachable) return 'unreachable';
+    await edit();
+    return 'undone';
   },
 }));
 // The player's fetch of an episode (`useEpisodeFetch`'s `pending`), which the menu reads.
@@ -151,10 +162,13 @@ describe('useBookActions', () => {
     mockCaps = { ...ALL };
     mockTakesEvent = false;
     mockLeftAt = undefined;
+    mockUnreachable = false;
+    mockSteps.length = 0;
     mockQueueSupported = true;
     mockDownloadsSupported = true;
     [
       mockToast,
+      mockDismissToast,
       mockEdit,
       mockMarkFinished,
       mockQueue,
@@ -228,7 +242,7 @@ describe('useBookActions', () => {
       mockSteps.length = 0;
       mockTakesEvent = takesEvent;
       mockEdit.mockImplementation(async () => mockSteps.push('edit'));
-      mockMarkFinished.mockImplementation(() => mockSteps.push('mark'));
+      mockMarkFinished.mockImplementation(async () => mockSteps.push('mark'));
       const { find } = await actions(book(), progress());
       await act(async () => find('finish')!.onPress());
       expect(mockSteps).toEqual(['leave Author/Series/01 - Book', route]);
@@ -258,9 +272,7 @@ describe('useBookActions', () => {
     });
 
     it('marks finished as the event, with an Undo through a progress edit', async () => {
-      mockMarkFinished.mockImplementation((_p: unknown, o: { onSuccess: () => void }) =>
-        o.onSuccess(),
-      );
+      mockMarkFinished.mockResolvedValue(undefined);
       const { find } = await actions(book(), progress({ position: 900 }));
       await act(async () => find('finish')!.onPress());
       expect(mockEdit).not.toHaveBeenCalled();
@@ -286,25 +298,224 @@ describe('useBookActions', () => {
 
     it('without progress edits: the event, and no Undo', async () => {
       mockCaps = { collections: true, progress_edit: false };
-      mockMarkFinished.mockImplementation((_p: unknown, o: { onSuccess: () => void }) =>
-        o.onSuccess(),
-      );
+      mockMarkFinished.mockResolvedValue(undefined);
       const { find } = await actions(book(), progress());
       await act(async () => find('finish')!.onPress());
       expect(mockMarkFinished).toHaveBeenCalled();
       expect(mockToast.mock.calls.at(-1)![0].action).toBeUndefined();
     });
+
+    // fe#258 (4a): the finish may be on a server that can't be asked now; the Undo says so
+    // rather than undoing it on this device alone.
+    it('an Undo the server could not take says so; the book stays finished', async () => {
+      mockMarkFinished.mockResolvedValue(undefined);
+      const { find } = await actions(book(), progress({ position: 900 }));
+      await act(async () => find('finish')!.onPress());
+      mockUnreachable = true;
+      await act(async () => mockToast.mock.calls.at(-1)![0].action.onPress());
+      expect(mockEdit).not.toHaveBeenCalled();
+      const said = mockToast.mock.calls.at(-1)![0];
+      expect(said).toMatchObject({
+        title: "Can't undo while the server can't be reached. Try again once it's back.",
+        description: 'Book',
+        action: { label: 'Retry' },
+      });
+      // Retry runs the Undo again: with the server back it goes through.
+      mockUnreachable = false;
+      mockUndoRefs.length = 0;
+      await act(async () => said.action.onPress());
+      expect(mockUndoRefs).toEqual([
+        { connectionId: 'c', libraryId: 1, path: 'Author/Series/01 - Book', position: 900 },
+      ]);
+      expect(mockEdit).toHaveBeenLastCalledWith({
+        libraryId: 1,
+        path: 'Author/Series/01 - Book',
+        edit: { finished: false, position: 900 },
+      });
+    });
+
+    // FE-1: the book it unloaded stayed unloaded after a finish that failed.
+    it('a finish event that failed loads the book it left again', async () => {
+      mockMarkFinished.mockRejectedValue(new Error('storage'));
+      const { find } = await actions(book(), progress());
+      await act(async () => find('finish')!.onPress());
+      expect(mockSteps).toEqual([
+        'leave Author/Series/01 - Book',
+        'reload Author/Series/01 - Book',
+      ]);
+      expect(mockToast.mock.calls.at(-1)![0].title).toBe("Couldn't update this book. Try again.");
+    });
+  });
+
+  it('an edit marking finished that failed loads the book it left again (FE-1)', async () => {
+    mockEdit.mockRejectedValue(new Error('offline'));
+    const { find } = await actions(book(), progress());
+    await act(async () => find('finish')!.onPress());
+    expect(mockSteps).toEqual(['leave Author/Series/01 - Book', 'reload Author/Series/01 - Book']);
+    expect(mockToast).toHaveBeenCalledTimes(1);
+    expect(mockToast.mock.calls[0][0].title).toBe("Couldn't update this book. Try again.");
+  });
+
+  // FE-1: the Mark waited on its request with nothing shown (the menu had closed).
+  it('a slow Mark as finished says it is on its way, and the toast goes once it is done', async () => {
+    jest.useFakeTimers();
+    try {
+      let done = () => {};
+      mockEdit.mockImplementation(() => new Promise<void>((resolve) => (done = resolve)));
+      mockToast.mockReturnValue(7);
+      const { find } = await actions(book(), progress());
+      let pressed: Promise<void> = Promise.resolve();
+      await act(async () => {
+        pressed = Promise.resolve(find('finish')!.onPress());
+      });
+      expect(mockToast).not.toHaveBeenCalled();
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      expect(mockToast.mock.calls[0][0].title).toBe('Marking as finished...');
+      await act(async () => {
+        done();
+        await pressed;
+      });
+      expect(mockDismissToast).toHaveBeenCalledWith(7);
+      expect(mockToast.mock.calls.at(-1)![0].title).toBe('Marked as finished');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('a quick Mark as finished shows only its result', async () => {
+    jest.useFakeTimers();
+    try {
+      mockEdit.mockResolvedValue(progress({ finished: true }));
+      const { find } = await actions(book(), progress());
+      await act(async () => find('finish')!.onPress());
+      await act(async () => {
+        jest.advanceTimersByTime(5_000);
+      });
+      expect(mockToast.mock.calls.map((c) => c[0].title)).toEqual(['Marked as finished']);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // FE-1: finished again by the Undo, a book started since played on past its finish.
+  it("Mark as not finished's Undo stops a book started since before it finishes it again", async () => {
+    mockEdit.mockImplementation(async (v: { edit: { finished: boolean } }) => {
+      if (v.edit.finished) mockSteps.push('finish');
+    });
+    const { find } = await actions(book(), progress({ finished: true, position: 3 * H }));
+    await act(async () => find('finish')!.onPress());
+    await act(async () => mockToast.mock.calls.at(-1)![0].action.onPress());
+    expect(mockSteps).toEqual(['leave Author/Series/01 - Book', 'finish']);
+  });
+
+  // On a server that takes listening events the finish goes as an event, behind the close of
+  // the span the book was left with: a progress edit, sent beside the outbox, reached the
+  // server before that span did.
+  it("Mark as not finished's Undo is a finish event where the server takes one", async () => {
+    mockTakesEvent = true;
+    mockEdit.mockImplementation(async (v: { edit: { finished: boolean } }) => {
+      mockSteps.push(v.edit.finished ? 'edit finished' : 'edit unfinished');
+    });
+    mockMarkFinished.mockImplementation(async () => mockSteps.push('mark'));
+    const { find } = await actions(book(), progress({ finished: true, position: 3 * H }));
+    await act(async () => find('finish')!.onPress());
+    await act(async () => mockToast.mock.calls.at(-1)![0].action.onPress());
+    expect(mockSteps).toEqual(['edit unfinished', 'leave Author/Series/01 - Book', 'mark']);
+    expect(mockMarkFinished).toHaveBeenCalledWith({
+      libraryId: 1,
+      path: 'Author/Series/01 - Book',
+      position: 3 * H,
+      duration: 3 * H,
+    });
+  });
+
+  it("a finish event that failed on Mark as not finished's Undo loads the book again", async () => {
+    mockTakesEvent = true;
+    mockEdit.mockResolvedValue(progress());
+    mockMarkFinished.mockRejectedValue(new Error('storage'));
+    const { find } = await actions(book(), progress({ finished: true, position: 3 * H }));
+    await act(async () => find('finish')!.onPress());
+    await act(async () => mockToast.mock.calls.at(-1)![0].action.onPress());
+    expect(mockSteps).toEqual(['leave Author/Series/01 - Book', 'reload Author/Series/01 - Book']);
+    expect(mockToast.mock.calls.at(-1)![0].title).toBe("Couldn't update this book. Try again.");
   });
 
   it('marks a book finished at its end not finished from the start', async () => {
     mockEdit.mockResolvedValue(progress());
     const { find } = await actions(book(), progress({ finished: true, position: 3 * H }));
     expect(find('finish')!.label).toBe('Mark as not finished');
+    mockUndoRefs.length = 0;
     await act(async () => find('finish')!.onPress());
+    // Through `undoFinish`: a finish still waiting in the outbox is taken back before the
+    // edit, else sent after it, it finished the book again.
+    expect(mockUndoRefs).toEqual([
+      {
+        connectionId: 'c',
+        libraryId: 1,
+        path: 'Author/Series/01 - Book',
+        position: 0,
+        atPosition: true,
+      },
+    ]);
     expect(mockEdit).toHaveBeenCalledWith({
       libraryId: 1,
       path: 'Author/Series/01 - Book',
       edit: { finished: false, position: 0 },
+    });
+    expect(mockToast.mock.calls.at(-1)![0].title).toBe('Marked as not finished');
+  });
+
+  // fe#258: the finish may be on a server that can't be asked now, as for an Undo.
+  it('a Mark as not finished the server could not take says so, with a Retry', async () => {
+    mockUnreachable = true;
+    const { find } = await actions(book(), progress({ finished: true, position: 3 * H }));
+    await act(async () => find('finish')!.onPress());
+    expect(mockEdit).not.toHaveBeenCalled();
+    const said = mockToast.mock.calls.at(-1)![0];
+    expect(said).toMatchObject({
+      title:
+        "Can't mark as not finished while the server can't be reached. Try again once it's back.",
+      description: 'Book',
+      action: { label: 'Retry' },
+    });
+    mockUnreachable = false;
+    mockEdit.mockResolvedValue(progress());
+    await act(async () => said.action.onPress());
+    expect(mockEdit).toHaveBeenCalledWith({
+      libraryId: 1,
+      path: 'Author/Series/01 - Book',
+      edit: { finished: false, position: 0 },
+    });
+    expect(mockToast.mock.calls.at(-1)![0].title).toBe('Marked as not finished');
+  });
+
+  // The Retry is pressed later: the place it unfinishes at is the progress read since, not
+  // the one the failed tap saw.
+  it('a Mark as not finished Retry takes the progress of the latest render', async () => {
+    mockUnreachable = true;
+    const target = (p: Progress) => ({
+      connectionId: 'c',
+      libraryId: 1,
+      book: book(),
+      progress: p,
+    });
+    const dialogs = { openCollect: jest.fn(), confirmRemove: jest.fn() };
+    const { result, rerender } = await renderHook(
+      (p: Progress) => useBookActions(target(p), dialogs),
+      { initialProps: progress({ finished: true, position: 3 * H }) },
+    );
+    await act(async () => result.current.find((a) => a.key === 'finish')!.onPress());
+    const said = mockToast.mock.calls.at(-1)![0];
+    await rerender(progress({ finished: true, position: H }));
+    mockUnreachable = false;
+    mockEdit.mockResolvedValue(progress());
+    await act(async () => said.action.onPress());
+    expect(mockEdit).toHaveBeenCalledWith({
+      libraryId: 1,
+      path: 'Author/Series/01 - Book',
+      edit: { finished: false, position: H },
     });
   });
 

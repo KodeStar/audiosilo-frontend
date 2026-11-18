@@ -2293,10 +2293,24 @@ media GETs only.
     plays before a span opens is in no listening event. The keep never moves the span's end back (a
     native move's landed place reached the store before the move; the native service now holds
     it back, fe#211); a save and the loop's cut take where the engine is (applying that rule
-    there froze the span after a seek back or a hot-swap to another file order). The end's `finish` goes into the outbox only after the last span's close has landed
-    there, then one send (`finishAfter`, server#359: a 12 s book's finish went first and found
-    no session to mark); a close already on its way (the web's `paused` before `ended`) is
-    waited for too and leaves its send to the finish (`closesInFlight`). The book page's Mark as finished is a `finish` event too on such a
+    there froze the span after a seek back or a hot-swap to another file order). The end's `finish` goes into the outbox behind the last span's close
+    (`finishAfter`, server#359: a 12 s book's finish went first and found no session to mark),
+    and behind a close already on its way (the web's `paused` before `ended`): the order is
+    the outbox's (`appendInTurn`: in its turn behind every close queued before it, the same
+    turn `closeSpan` takes, so a paused move's still span (`sendStill`) goes behind its close
+    too), and from the call both wait there in memory (`queued`), where the page's keepalive
+    carries them; the store holds nothing back meanwhile (fe#258: a finish waiting in the
+    store for its close to land was lost to a kill or a page going). The copy waiting takes
+    the acknowledged version read at the call when that is past the base it was made with
+    (a move made paused with no span open was made with none, and on base 0 the server keeps
+    the further place over a move back or a Stay; the copy appended after is then a
+    `duplicate`). A sign-out sends the outbox only once the close of its stop has had its
+    turn (`teardownBeforeTokenRevoke`: sent at once, the last span landed after the token
+    was revoked and went with the purge). A close or an event made
+    for a connection and appended after an await is dropped once that connection was removed
+    meanwhile (`connectionGeneration`, bumped first thing in the outbox's removal purge: the
+    same account signing in again has the same connection id, and an orphan appended after the
+    purge was sent then); the store's mirror writes for a finish and its Undo check it too. The book page's Mark as finished is a `finish` event too on such a
     server (`finish-route.ts`, which the store registers: the hooks can't import it; the loaded
     book stops and unloads first on every route, as its own end does (`leaveFinishedBook`,
     fe#258: its place saved and its span closed ahead of the finish; left loaded it went on
@@ -2306,22 +2320,57 @@ media GETs only.
     waits in the outbox,
     so `useMarkFinished` runs whatever the online flag says, `networkMode: 'always'`;
     Undo is a progress edit, sent only after `undoFinish` took the book's waiting finish
-    back out of the outbox (`withdrawFinish`; one whose request is out is waited for, and a
-    failed edit puts it back): sent after the edit it would finish the book again. A finish
+    back out of the outbox (`withdrawFinish`; one whose request is out is waited for, the
+    page's keepalive request included (`sendingNow`: a page only hidden comes back from the
+    back-forward cache with it still out), and a failed edit puts it back where it was,
+    ahead of what was appended after it: put back at the end it finished the book again over
+    a later unfinish and restart): sent after the edit it would finish the book again. A
+    withdrawal storage would not keep (`writeOutbox` says) takes nothing and fails the Undo,
+    with no edit: the finish would be sent after a restart. A finish
     taken back that never reached the server (an offline Mark as finished) needs no edit:
     the Undo is done here, the mirror back to its record before the finish
     (`unrecordFinish`). One a request carried with no answer while its server looked
     reachable (`gotNoAnswer`: a timeout, a dropped connection, a gateway that lost the
     server (502, 504, Cloudflare's 520 and 524), a 2xx that could not be read; and the
     page's keepalive send) may be on the server, its answer lost: while the server looks
-    reachable now it is not `unsent` (`serverMayHold`), so the Undo takes the edit, which
+    reachable as it is taken it is not `unsent` (`carried`), so the Undo takes the edit, which
     unfinishes the book either way, and a failed edit puts the finish back. With the server
-    down no edit can be made, and that Undo is done here too. After an edit that went
-    through the mirror goes back as well (`unrecordFinish`: the edit's answer only reaches
+    down no edit can be made: nothing is taken back and the Undo fails with a toast
+    (`Withdrawal.unreachable`, `undoFinish`'s `'unreachable'`; fe#258: done on this device
+    alone, a finish the server did hold won on reconnect), which offers Retry (the Undo run
+    again). Mark as not finished takes the same route at its own place (`unfinish` in
+    `book-actions.tsx`, through `undoFinish`): a finish still waiting is taken back before its
+    edit, and with the server down it fails the same way. One taken back unsent is undone
+    here as an Undo is, the mirror back to its record before the finish, not at its own place:
+    the server never got the finish and keeps that place, and no edit put it at the other
+    (the two disagreed until the next read). Only while this device knows that record
+    (`knowsPlaceBefore`: the mirror still holds the finish's own record; not after a reload,
+    nor for another tab's finish): else it takes the edit at its own place, as for a finish
+    the server has, and an edit that fails (offline) puts the finish back. On a server
+    without `listening_sync` nothing waits to be taken back and both take the edit, then
+    the same mirror change and hold below. After an edit that went
+    through the mirror goes back as well (`unrecordFinish`, under the mirror's lock,
+    `updateMirror`: the edit's answer only reaches
     the query caches, and the finished record would start the book again at 0 on the next
     offline Play; the record put back is stamped as the finished one it replaces, which for
     a downloaded book may be the server's row for the finish, newer than the finish's own
-    time); fe#208). An event never claims more than 23 h of wall clock
+    time, and for a minute the mirror takes no finished record of the book stamped before the
+    Undo, `noteUndoneFinish`: the finish's own refresh, landing after it with the server's
+    later stamp, finished it again; in every tab of the web player, through storage, as the
+    tabs write one mirror, under one lock across them, `tabLock`: a lock per tab let one tab
+    write its read of the whole mirror over another tab's change); fe#208). The loaded book is left before any route
+    records the finish (`leaveFinishedBook`), and a start of it still on its way is called off
+    (a load that lands after the unload is reset, `stop()`'s race too); a finish or a
+    progress edit that then fails loads it again, paused where it was (`reloadLeftBook`), and
+    the page shows a toast while a slow one waits on its server. A `finish` event that could
+    not be queued puts the mirror back to its record before the finish first, or removes the
+    finish's own record when the book had none (`updateMirror` changing it to null)
+    (`recordFinish`: read finished, the book loaded again started over at 0). Undo of Mark as not
+    finished leaves a book started since the same way, then finishes it again by the route
+    Mark as finished takes (`recordFinished` in `book-actions.tsx`): a `finish` event where
+    the server takes one, behind the close of the span the book was left with, never a
+    progress edit there (sent over HTTP beside the outbox, it reached the server before that
+    span did); the edit on an older server with `progress_edit`. An event never claims more than 23 h of wall clock
     (`MAX_EVENT_SPAN_MS`, timers that stood still). Each end carries whole-book seconds and its file and in-file seconds;
     `duration` is the audio's own length (`BookQueue.audio`, never a timeline a chapter
     overhangs: the server refuses a span more than 10 s off, `duration_mismatch`); a place that

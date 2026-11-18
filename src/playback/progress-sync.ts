@@ -6,12 +6,14 @@ import { downloadEndsBefore } from '@/downloads/kept-offline';
 import { identityMovePending } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { serialQueue } from '@/lib/serial-queue';
+import { tabLock } from '@/lib/tab-lock';
 import { getItem, setItem } from '@/lib/storage';
 import {
   LISTENING_OPEN_SPAN_KEY,
   LISTENING_OUTBOX_KEY,
   PROGRESS_MIRROR_KEY as MIRROR_KEY,
   PROGRESS_QUEUE_KEY as QUEUE_KEY,
+  isRecord,
 } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
 import { shallow } from 'zustand/shallow';
@@ -655,8 +657,10 @@ export async function mirrorIsNewest(
   return localTimeOf(record, skew) >= Date.parse(place.updated_at) - ahead;
 }
 
-// Serialize mirror read-modify-write so concurrent saves can't clobber each other.
-const withMirrorLock = serialQueue();
+// The mirror's read-modify-writes one at a time, in this tab and across tabs (`tabLock`): the
+// tabs of the web player write one mirror, and a per-tab queue let one tab write its read of
+// the whole mirror over another tab's change made meanwhile.
+const withMirrorLock = tabLock(MIRROR_KEY);
 
 /** Upsert the durable mirror, keeping the newest record by `updated_at` (a server row's by
  * this device's clock: `localTimeOf`). The Sync v2
@@ -674,11 +678,16 @@ export async function writeMirrors(saves: readonly ProgressSave[]): Promise<void
   if (saves.length === 0) return;
   await withMirrorLock(async () => {
     const map = await readMirrorMap();
+    // Only a finished record can be one an Undo undid (`noteUndoneFinish`), here or in
+    // another tab.
+    const shared = saves.some((s) => s.finished) ? await readUndoneFinishes() : {};
     let changed = false;
     for (const save of saves) {
       const key = contentKey(save.connectionId, save.libraryId, save.path);
       const existing = map[key];
-      const skew = existing ? await knownSkew(save.connectionId) : 0;
+      const undone = save.finished ? latestUndo(undoneFinishes.get(key), shared[key]) : undefined;
+      const skew = existing || undone !== undefined ? await knownSkew(save.connectionId) : 0;
+      if (undone !== undefined && undoneBy(key, undone, save, skew)) continue;
       if (!existing || localTimeOf(save, skew) >= localTimeOf(existing, skew)) {
         const { guard: _guard, guard_session: _session, ...record } = save;
         const next = mergeKept(record, existing, skew);
@@ -690,6 +699,86 @@ export async function writeMirrors(saves: readonly ProgressSave[]): Promise<void
     }
     if (changed) await setItem(MIRROR_KEY, map);
   });
+}
+
+/** How long an Undo of a finish holds off its finished record (`noteUndoneFinish`): past a
+ * read's 15 s timeout and the write of its answer. */
+const UNDONE_FINISH_HOLD_MS = 60_000;
+/** The books whose finish was undone here lately (`noteUndoneFinish`), with the time (ms,
+ * this device's clock) of each Undo. This launch's, and stored (`UNDONE_FINISHES_KEY`) for
+ * the other tabs of the web player. */
+const undoneFinishes = new Map<string, number>();
+/** The undone finishes every tab of the web player reads (`noteUndoneFinish`), keyed by
+ * `contentKey`, each with the time of its Undo: the tabs write one mirror, and another
+ * tab's read of the finished row, held off only in the tab that made the Undo, finished it
+ * again. Every tab goes by the device's clock. One past the hold is dropped at the next
+ * Undo. */
+const UNDONE_FINISHES_KEY = 'audiosilo.undoneFinishes';
+
+/** The stored undone finishes (`UNDONE_FINISHES_KEY`); anything else stored there is none. */
+async function readUndoneFinishes(): Promise<Record<string, number>> {
+  const stored = await getItem<unknown>(UNDONE_FINISHES_KEY);
+  const out: Record<string, number> = {};
+  if (!isRecord(stored)) return out;
+  for (const [key, at] of Object.entries(stored)) {
+    if (typeof at === 'number' && Number.isFinite(at)) out[key] = at;
+  }
+  return out;
+}
+
+/** The later of two Undo times, either unknown. */
+function latestUndo(a: number | undefined, b: number | undefined): number | undefined {
+  return a === undefined ? b : b === undefined ? a : Math.max(a, b);
+}
+
+// One write of the stored undone finishes at a time, in this tab and across tabs (`tabLock`).
+const withUndoneLock = tabLock(UNDONE_FINISHES_KEY);
+
+/**
+ * A Mark as finished was undone (`unrecordFinish` in the store): for a while
+ * (`UNDONE_FINISH_HOLD_MS`) the mirror takes no finished record of the book stamped before
+ * the Undo (by this device's clock, `localTimeOf`). A read of the server's row that was on
+ * its way as the Undo was made (the finish's own refresh, fe#272) lands after it with the
+ * row for the finish, which the server stamped later than the finished record the Undo
+ * replaced: by the newest-wins rule alone it finished the mirror again, and the next
+ * offline Play started the book again at 0, until the next read (fe#258). A finish made
+ * after the Undo (the end, another device's, Mark as finished again) is stamped after it.
+ */
+export async function noteUndoneFinish(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  at = Date.now(),
+): Promise<void> {
+  const current = (when: number) => at - when <= UNDONE_FINISH_HOLD_MS;
+  for (const [key, when] of undoneFinishes) {
+    if (!current(when)) undoneFinishes.delete(key);
+  }
+  const key = contentKey(connectionId, libraryId, path);
+  undoneFinishes.set(key, at);
+  // Held off in the other tabs too: the mirror is theirs as well (web), and one of them may
+  // read the finished row after the Undo.
+  await withUndoneLock(async () => {
+    const stored = await readUndoneFinishes();
+    const next: Record<string, number> = { [key]: at };
+    for (const [other, when] of Object.entries(stored)) {
+      if (other !== key && current(when)) next[other] = when;
+    }
+    await setItem(UNDONE_FINISHES_KEY, next);
+  });
+}
+
+/** Whether `save` (a finished record) is one the Undo at `at` of `key`'s finish undid (one
+ * stamped before it, while the Undo holds); a hold run out is forgotten. */
+function undoneBy(key: string, at: number, save: ProgressSave, skewMs: number): boolean {
+  // One dated ahead of now (the clock set back since; a stored one outlives a reload) would
+  // hold every finish off until the clock caught up: forgotten too.
+  const age = Date.now() - at;
+  if (age < 0 || age > UNDONE_FINISH_HOLD_MS) {
+    undoneFinishes.delete(key);
+    return false;
+  }
+  return localTimeOf(save, skewMs) < at;
 }
 
 /** `save` with what the mirror keeps across records (see `writeMirror`), its server's clock
@@ -719,12 +808,14 @@ function mergeKept(
 /**
  * Change a book's mirror record in place (Sync v2: its acknowledged version, the offers
  * answered), creating it from `row` when there is none yet. Nothing when there is neither.
+ * A change to null removes the record (a finish that was never queued, on a book with no
+ * record before it: `recordFinish` in the store).
  */
 export async function updateMirror(
   connectionId: string,
   libraryId: number,
   path: string,
-  change: (save: ProgressSave) => ProgressSave,
+  change: (save: ProgressSave) => ProgressSave | null,
   row?: Progress | null,
 ): Promise<void> {
   await withMirrorLock(async () => {
@@ -733,8 +824,9 @@ export async function updateMirror(
     const base = map[key] ?? (row ? progressToSave(connectionId, libraryId, path, row) : null);
     if (!base) return;
     const next = change(base);
-    if (next === map[key]) return; // unchanged (an acknowledgement already known)
-    map[key] = next;
+    if (next === (map[key] ?? null)) return; // unchanged (an acknowledgement already known)
+    if (next) map[key] = next;
+    else delete map[key];
     await setItem(MIRROR_KEY, map);
   });
 }

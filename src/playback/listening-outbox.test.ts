@@ -52,7 +52,9 @@ import { onConnectionRemoved } from '@/stores/session';
 
 import {
   appendEvents,
+  appendInTurn,
   clockSkewOf,
+  connectionGeneration,
   closeSpan,
   eventIsFinite,
   COULD_NOT_SYNC_KEEP_MS,
@@ -85,6 +87,7 @@ import {
   unsentListens,
   usesListeningStay,
   usesListeningSync,
+  waitingInTurn,
   withdrawFinish,
 } from './listening-outbox';
 import {
@@ -374,6 +377,45 @@ describe('the outbox', () => {
     (reachability.isReachable as jest.Mock).mockReturnValue(false);
     expect(await pendingSaves('c1')).toEqual({ saves: 0, listens: 3, events: 3 });
     expect(await pendingSaves()).toEqual({ saves: 0, listens: 4, events: 4 });
+  });
+
+  // fe#258: a close or a finish on its way as the connection was removed was appended
+  // after the purge, and sent once the same account signed in again.
+  it('removing a connection: what was on its way for it is not appended after', async () => {
+    await recoverOpenSpan();
+    const before = connectionGeneration('c1');
+    const closing = closeSpan(span({ id: 'late-close' }));
+    const finishing = appendInTurn('c1', [
+      { id: 'late-finish', kind: 'finish', library_id: 3, path: 'Author/Book', at: 'x' },
+    ]);
+    const removing = Promise.all(purges.map((purge) => purge('c1')));
+    expect(connectionGeneration('c1')).toBe(before + 1);
+    await Promise.all([closing, finishing, removing]);
+    expect(await outboxEvents('c1')).toEqual([]);
+    // Signed in again: its own events go in as ever.
+    await closeSpan(span({ id: 'next' }));
+    expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['next']);
+  });
+
+  it('an event waiting its turn shows in waitingInTurn for its connection only', async () => {
+    await recoverOpenSpan();
+    const finishing = appendInTurn('c1', [
+      { id: 'in-turn', kind: 'finish', library_id: 3, path: 'Author/Book', at: 'x' },
+    ]);
+    expect(waitingInTurn('c1')).toBe(true);
+    expect(waitingInTurn('c2')).toBe(false);
+    await finishing;
+    expect(waitingInTurn('c1')).toBe(false);
+    expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['in-turn']);
+  });
+
+  // The page going queues a close that nothing sends after: counted, a close finishing
+  // meanwhile left its send to it, and both waited for the next save tick.
+  it('a close waiting its turn alone is not an event waiting in turn', async () => {
+    await recoverOpenSpan();
+    const closing = closeSpan(span({ id: 'close-only' }));
+    expect(waitingInTurn('c1')).toBe(false);
+    await closing;
   });
 
   it('removing a connection purges its events, open span and sync state', async () => {
@@ -1015,6 +1057,24 @@ describe('flushOutbox', () => {
       expect(await outboxEvents('c1')).toEqual([]);
     });
 
+    // Asked again after the take, a server marked down in between made the Undo one of this
+    // device alone, over a finish the server may hold (fe#258).
+    it('a carried finish taken while its server looked reachable still takes the edit', async () => {
+      await appendEvents('c1', [finish('f')]);
+      client(async () => {
+        throw new ApiError(504, 'gateway timeout');
+      });
+      await flushOutbox('c1');
+      (reachability.isReachable as jest.Mock).mockReturnValueOnce(true).mockReturnValue(false);
+      try {
+        const taken = await withdrawFinish('c1', 3, 'Author/Book');
+        expect(taken).toMatchObject({ unsent: false });
+        expect(taken.unreachable).toBeUndefined();
+      } finally {
+        (reachability.isReachable as jest.Mock).mockReturnValue(true);
+      }
+    });
+
     it('a gateway that gave up waiting (504) is no answer from the server either', async () => {
       await appendEvents('c1', [finish('f')]);
       client(async () => {
@@ -1039,7 +1099,9 @@ describe('flushOutbox', () => {
       },
     );
 
-    it('the server down by the Undo: no edit can be made, so it is undone here', async () => {
+    // fe#258 (4a): undone here, a finish whose request did arrive stayed on the server,
+    // which then won on reconnect. The Undo fails instead, the finish left as it was.
+    it('the server down by the Undo: no edit can be made, so the Undo fails, nothing taken', async () => {
       await appendEvents('c1', [finish('f')]);
       client(async () => {
         throw new TypeError('Failed to fetch');
@@ -1049,11 +1111,63 @@ describe('flushOutbox', () => {
       (reachability.isReachable as jest.Mock).mockReturnValue(false);
       try {
         const taken = await withdrawFinish('c1', 3, 'Author/Book');
-        expect(taken.unsent).toBe(true);
-        expect(await outboxEvents('c1')).toEqual([]);
+        expect(taken).toMatchObject({ unsent: false, unreachable: true });
+        expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['f']);
       } finally {
         (reachability.isReachable as jest.Mock).mockReturnValue(true);
       }
+      // Back: the Undo takes the finish and its edit.
+      const taken = await withdrawFinish('c1', 3, 'Author/Book');
+      expect(taken).toMatchObject({ unsent: false });
+      expect(taken.unreachable).toBeUndefined();
+      expect(await outboxEvents('c1')).toEqual([]);
+    });
+
+    // fe#258: counted as taken, the finish storage still held was sent after a restart, over
+    // the Undo's edit.
+    it('a withdrawal storage would not keep takes nothing and fails', async () => {
+      await appendEvents('c1', [listen('a'), finish('f')]);
+      jest.spyOn(AsyncStorage, 'setItem').mockRejectedValueOnce(new Error('quota'));
+      await expect(withdrawFinish('c1', 3, 'Author/Book')).rejects.toThrow();
+      expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['a', 'f']);
+      const stored = (
+        JSON.parse((await AsyncStorage.getItem(OUTBOX))!) as { event: { id: string } }[]
+      ).map((e) => e.event.id);
+      expect(stored).toEqual(['a', 'f']);
+      // Not withdrawn: a send leaves it in.
+      const c = client(async (body) => answer(body));
+      await flushOutbox('c1');
+      expect(sent(c).flatMap((b) => b.events.map((e) => e.id))).toEqual(['a', 'f']);
+    });
+
+    // fe#258: put back at the end, the finish went after what was listened to since (an
+    // unfinish and a restart included), and finished the book again over them.
+    it('an edit that failed puts the finish back where it was, ahead of what came since', async () => {
+      await appendEvents('c1', [listen('a'), finish('f'), listen('b')]);
+      const taken = await withdrawFinish('c1', 3, 'Author/Book');
+      await appendEvents('c1', [listen('c')]);
+      await taken.restore();
+      expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['a', 'f', 'b', 'c']);
+    });
+
+    it('put back with everything ahead of it sent: first', async () => {
+      await appendEvents('c1', [listen('a'), finish('f')]);
+      const taken = await withdrawFinish('c1', 3, 'Author/Book');
+      client(async (body) => answer(body));
+      await flushOutbox('c1');
+      await appendEvents('c1', [listen('c')]);
+      await taken.restore();
+      expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['f', 'c']);
+    });
+
+    // fe#258: put back after a sign-out, the finish outlived the purge and was sent once
+    // the same account signed in again.
+    it('signed out before an edit failed: nothing is put back', async () => {
+      await appendEvents('c1', [finish('f')]);
+      const taken = await withdrawFinish('c1', 3, 'Author/Book');
+      for (const purge of purges) await purge('c1');
+      await taken.restore();
+      expect(await outboxEvents('c1')).toEqual([]);
     });
 
     it('a finish whose send could not leave (its server marked down) is unsent', async () => {
@@ -1086,11 +1200,78 @@ describe('flushOutbox', () => {
       expect(await outboxEvents('c1')).toEqual([]);
     });
 
-    it('a finish the page sent as it went may be on the server (its answer may never be seen)', async () => {
+    // fe#258: a page only hidden comes back (the back-forward cache) with its keepalive
+    // request still out; the Undo took the finish back from under it.
+    it("an Undo waits for the page's keepalive send: answered, the server has it", async () => {
       await appendEvents('c1', [finish('f')]);
-      client(() => new Promise(() => {}));
+      let release: () => void = () => {};
+      const gate = new Promise<void>((r) => (release = r));
+      client(async (body) => {
+        await gate;
+        return answer(body);
+      });
       sendOnPageHide([], 'dev');
-      expect((await withdrawFinish('c1', 3, 'Author/Book')).unsent).toBe(false);
+      let done = false;
+      const withdrawing = withdrawFinish('c1', 3, 'Author/Book').then((w) => {
+        done = true;
+        return w;
+      });
+      await tick();
+      expect(done).toBe(false);
+      release();
+      const taken = await withdrawing;
+      expect(taken.unsent).toBe(false);
+      expect(await outboxEvents('c1')).toEqual([]);
+    });
+
+    it('a finish the page sent as it went, with no answer, may be on the server', async () => {
+      await appendEvents('c1', [finish('f')]);
+      let fail: (e: Error) => void = () => {};
+      client(() => new Promise((_r, reject) => (fail = reject)));
+      sendOnPageHide([], 'dev');
+      const withdrawing = withdrawFinish('c1', 3, 'Author/Book');
+      fail(new TypeError('Failed to fetch'));
+      const taken = await withdrawing;
+      expect(taken.unsent).toBe(false);
+      expect(await outboxEvents('c1')).toEqual([]);
+    });
+
+    // The keepalive's mark replaced the flush's: ended first (refused at once), it released
+    // the finish while the flush's request still carried it, and once the page's stored
+    // mark ran out (`PAGE_HIDE_MARK_MS`, before a slow request's timeout) the Undo took it
+    // back from under that request, which could then land it after the edit.
+    it("an Undo waits for a flush's request still out when the page's keepalive ends first", async () => {
+      await appendEvents('c1', [finish('f')]);
+      let release: () => void = () => {};
+      const gate = new Promise<void>((r) => (release = r));
+      const c = client(async (body) => {
+        if (c.syncListening.mock.calls.length > 1) throw new TypeError('Failed to fetch');
+        await gate;
+        return answer(body);
+      });
+      const flushing = flushOutbox('c1');
+      while (c.syncListening.mock.calls.length === 0) await tick();
+      sendOnPageHide([], 'dev');
+      await tick();
+      // Every stored `out` mark has run out by the Undo: only this tab's memory holds it.
+      const later = Date.now() + 60_000;
+      const now = jest.spyOn(Date, 'now').mockReturnValue(later);
+      try {
+        let done = false;
+        const withdrawing = withdrawFinish('c1', 3, 'Author/Book').then((w) => {
+          done = true;
+          return w;
+        });
+        await tick();
+        expect(done).toBe(false);
+        release();
+        const [, taken] = await Promise.all([flushing, withdrawing]);
+        // Answered by the flush's request: the server has it, so the Undo takes its edit.
+        expect(taken.unsent).toBe(false);
+        expect(await outboxEvents('c1')).toEqual([]);
+      } finally {
+        now.mockRestore();
+      }
     });
   });
 
@@ -1888,6 +2069,124 @@ describe('open spans of several web tabs', () => {
     expect(event.id).not.toBe('mine');
   });
 
+  // fe#258: the finish waited in the store's memory for its span's close to land, where a
+  // kill or the page going lost it (the server unfinished, this device finished).
+  it('an event appended in turn lands behind a close queued before it, on its base then', async () => {
+    await recoverOpenSpan();
+    let release: () => void = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    // The close waits its turn behind the base read of the span before it.
+    const order: string[] = [];
+    const closing = closeSpan(span({ id: 'close' })).then(() => order.push('close'));
+    const finishing = appendInTurn(
+      'c1',
+      [{ id: 'fin', kind: 'finish', library_id: 3, path: 'Author/Book', at: 'x' }],
+      async () => {
+        await held;
+        return 57;
+      },
+    ).then(() => order.push('finish'));
+    release();
+    await Promise.all([closing, finishing]);
+    expect(order).toEqual(['close', 'finish']);
+    const events = (await outboxEvents('c1')).map((e) => e.event);
+    expect(events.map((e) => e.id)).toEqual(['close', 'fin']);
+    expect(events[1]).toMatchObject({ base_version: 57 });
+  });
+
+  // A Mark as finished, then Play at once: the unfinish of the restart came in by a plain
+  // append, overtook the finish still waiting behind its close, and the book ended finished.
+  it('an unfinish appended in turn lands behind a finish still waiting its turn', async () => {
+    await recoverOpenSpan();
+    let release: () => void = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    const closing = closeSpan(span({ id: 'close' }));
+    const finishing = appendInTurn(
+      'c1',
+      [{ id: 'fin', kind: 'finish', library_id: 3, path: 'Author/Book', at: 'x' }],
+      async () => {
+        await held;
+        return 57;
+      },
+    );
+    const unfinishing = appendInTurn('c1', [
+      { id: 'unfin', kind: 'unfinish', library_id: 3, path: 'Author/Book', at: 'y' },
+    ]);
+    release();
+    await Promise.all([closing, finishing, unfinishing]);
+    expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['close', 'fin', 'unfin']);
+  });
+
+  it('the page going carries a finish still waiting behind its close', async () => {
+    await recoverOpenSpan();
+    const c = client(async (body) => answer(body));
+    const closing = closeSpan(span({ id: 'queued' }));
+    const finishing = appendInTurn('c1', [
+      { id: 'fin', kind: 'finish', library_id: 3, path: 'Author/Book', at: 'x' },
+    ]);
+    sendOnPageHide([], 'dev');
+    expect(sent(c).map((b) => b.events.map((e) => e.id))).toEqual([['queued', 'fin']]);
+    await Promise.all([closing, finishing]);
+  });
+
+  // A move made while paused with no span open had no closed span to take a base from: its
+  // copy waiting went with base 0, which the server reads as a place this device never saw
+  // (the further place kept over a move back or a Stay), and the copy appended after, the
+  // same id, was a `duplicate`.
+  it('the page going carries a waiting move on the base read at the call, never 0', async () => {
+    await recoverOpenSpan();
+    const c = client(async (body) => answer(body));
+    let release: () => void = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    // Something ahead holds the turn.
+    const ahead = appendInTurn(
+      'c1',
+      [{ id: 'ahead', kind: 'unfinish', library_id: 3, path: 'Author/Book', at: 'x' }],
+      () => held.then(() => undefined),
+    );
+    const move = spanToEvent({ ...span({ id: 'move', start: 'moved_back' }), baseVersion: 0 });
+    const moving = appendInTurn('c1', [move], async () => 41);
+    try {
+      // The base read lands before the page can go (the web's storage answers in the same
+      // turn).
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      sendOnPageHide([], 'dev');
+      const events = sent(c)[0].events;
+      expect(events.map((e) => e.id)).toEqual(['ahead', 'move']);
+      expect(events[1]).toMatchObject({ base_version: 41 });
+    } finally {
+      release();
+      await Promise.all([ahead, moving]);
+    }
+    expect((await outboxEvents('c1')).at(-1)?.event).toMatchObject({
+      id: 'move',
+      base_version: 41,
+    });
+  });
+
+  it('a waiting copy made on a later base than the one read keeps its own', async () => {
+    await recoverOpenSpan();
+    const c = client(async (body) => answer(body));
+    let release: () => void = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    const ahead = appendInTurn(
+      'c1',
+      [{ id: 'ahead', kind: 'unfinish', library_id: 3, path: 'Author/Book', at: 'x' }],
+      () => held.then(() => undefined),
+    );
+    const move = spanToEvent({ ...span({ id: 'move', start: 'jump' }), baseVersion: 41 });
+    // A mirror that could not be read gives 0.
+    const moving = appendInTurn('c1', [move], async () => 0);
+    try {
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      sendOnPageHide([], 'dev');
+      expect(sent(c)[0].events[1]).toMatchObject({ id: 'move', base_version: 41 });
+    } finally {
+      release();
+      await Promise.all([ahead, moving]);
+    }
+  });
+
   it('the page going sends the closes still queued behind the lock too', async () => {
     await recoverOpenSpan();
     const c = client(async (body) => answer(body));
@@ -1959,6 +2258,21 @@ describe('a plain-http web player (no Web Locks)', () => {
     );
     // Released when done.
     expect(leases.has(`audiosilo-lock:${OUTBOX}`)).toBe(false);
+  });
+
+  // A finish waiting its turn is in no stored outbox yet: it is not one another tab took
+  // back.
+  it('the page going carries a finish still waiting its turn', async () => {
+    await appendEvents('c1', [listen('a')]);
+    await recoverOpenSpan();
+    const c = client(async (body) => answer(body));
+    const closing = closeSpan(span({ id: 'queued' }));
+    const finishing = appendInTurn('c1', [
+      { id: 'fin', kind: 'finish', library_id: 3, path: 'Author/Book', at: 'x' },
+    ]);
+    sendOnPageHide([], 'dev');
+    expect(sent(c).map((b) => b.events.map((e) => e.id))).toEqual([['a', 'queued', 'fin']]);
+    await Promise.all([closing, finishing]);
   });
 
   it('the sync state takes its lease too', async () => {

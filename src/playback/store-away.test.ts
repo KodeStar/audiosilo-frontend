@@ -110,6 +110,7 @@ jest.mock('./listening-outbox', () => {
     finishEvent: actual.finishEvent,
     newEventId: actual.newEventId,
     usesListeningSync: () => mockSync,
+    waitingInTurn: () => false,
     closeSpan: jest.fn(async (_span: OpenSpan) => {
       mockCuts.push(Date.now());
     }),

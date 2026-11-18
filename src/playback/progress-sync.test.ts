@@ -22,6 +22,7 @@ import {
   positionOn,
   withLocalPlaces,
   noteClockSkew,
+  noteUndoneFinish,
   pendingSaveCount,
   type LocalPlaces,
   type PlacedProgress,
@@ -33,6 +34,7 @@ import {
   resumeLookupOf,
   saveProgress,
   serverRowOf,
+  updateMirror,
   writeMirror,
 } from '@/playback/progress-sync';
 import { provideStoredSkews } from '@/playback/stored-skews';
@@ -860,6 +862,20 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
     await AsyncStorage.clear();
   });
 
+  /** Another tab: its own copy of the module (its own memory) over the same storage. */
+  const otherTab = () => {
+    let other!: typeof import('@/playback/progress-sync');
+    jest.isolateModules(() => {
+      jest.doMock('@react-native-async-storage/async-storage', () => ({
+        __esModule: true,
+        default: AsyncStorage,
+      }));
+      /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+      other = require('@/playback/progress-sync') as typeof import('@/playback/progress-sync');
+    });
+    return other;
+  };
+
   const filed = {
     ...save,
     position: 3600,
@@ -945,6 +961,132 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
     const m = await readMirrorOf('c1', 1, 'A/Book');
     expect(m).not.toHaveProperty('file');
     expect(m?.ack_version).toBe(7);
+  });
+
+  // A finish never queued on a book with no record before it (`recordFinish`): its record
+  // goes, and only the book's.
+  it('updateMirror removes a record changed to null', async () => {
+    await writeMirror({ ...save, finished: true, updated_at: '2026-01-04T00:00:00Z' });
+    await writeMirror({ ...save, path: 'B/Book', updated_at: '2026-01-04T00:00:00Z' });
+    await updateMirror('c1', 1, 'A/Book', () => null);
+    expect(await readMirrorOf('c1', 1, 'A/Book')).toBeNull();
+    expect(await readMirrorOf('c1', 1, 'B/Book')).toMatchObject({ path: 'B/Book' });
+  });
+
+  // fe#258 (fe#272's partial fix): a read of the server's row on its way as the Undo was
+  // made landed after it with the finished row, stamped later than the record the Undo put
+  // back, and finished the mirror again.
+  describe('a finish undone here (noteUndoneFinish)', () => {
+    const undoneAt = Date.parse('2026-01-05T00:00:00Z');
+    const unfinished = { ...save, position: 48, updated_at: '2026-01-04T00:00:00.001Z' };
+    const finishedRow = { ...save, position: 100, finished: true, server_clock: true as const };
+
+    it('holds off a finished record stamped before the Undo, not one after it', async () => {
+      await writeMirror(unfinished);
+      await noteUndoneFinish('c1', 1, 'A/Book', undoneAt);
+      const now = jest.spyOn(Date, 'now').mockReturnValue(undoneAt + 5_000);
+      try {
+        await writeMirror({ ...finishedRow, updated_at: '2026-01-04T23:59:59Z' });
+        expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ finished: false });
+        // A place, unfinished, goes in as ever; so does a finish made after the Undo.
+        await writeMirror({ ...save, position: 60, updated_at: '2026-01-04T23:59:59Z' });
+        expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ position: 60 });
+        await writeMirror({ ...finishedRow, updated_at: '2026-01-05T00:00:01Z' });
+        expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ finished: true });
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it('only for a while: past the hold the newest record wins again', async () => {
+      await writeMirror(unfinished);
+      await noteUndoneFinish('c1', 1, 'A/Book', undoneAt);
+      const now = jest.spyOn(Date, 'now').mockReturnValue(undoneAt + 61_000);
+      try {
+        await writeMirror({ ...finishedRow, updated_at: '2026-01-04T23:59:59Z' });
+        expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ finished: true });
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    // The clock set back since the Undo (a stored hold outlives a reload): a hold dated
+    // ahead of now held every finish off until the clock caught up.
+    it('forgets a hold dated ahead of now', async () => {
+      await writeMirror(unfinished);
+      await noteUndoneFinish('c1', 1, 'A/Book', undoneAt);
+      const now = jest.spyOn(Date, 'now').mockReturnValue(undoneAt - 10 * 60_000);
+      try {
+        await writeMirror({ ...finishedRow, updated_at: '2026-01-04T23:59:59Z' });
+        expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ finished: true });
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    // Web: every tab writes the one mirror, and a hold in the Undo's tab alone let another
+    // tab's read of the finished row finish it again.
+    it("holds off another tab's finished record too", async () => {
+      await writeMirror(unfinished);
+      const other = otherTab();
+      await noteUndoneFinish('c1', 1, 'A/Book', undoneAt);
+      const now = jest.spyOn(Date, 'now').mockReturnValue(undoneAt + 5_000);
+      try {
+        await other.writeMirror({ ...finishedRow, updated_at: '2026-01-04T23:59:59Z' });
+        expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ finished: false });
+        // Past the hold there too, the newest record wins again.
+        now.mockReturnValue(undoneAt + 61_000);
+        await other.writeMirror({ ...finishedRow, updated_at: '2026-01-04T23:59:59Z' });
+        expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ finished: true });
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it("another book's finished record is not held off", async () => {
+      await noteUndoneFinish('c1', 1, 'A/Book', undoneAt);
+      const now = jest.spyOn(Date, 'now').mockReturnValue(undoneAt + 5_000);
+      try {
+        await writeMirror({ ...finishedRow, path: 'B/Book', updated_at: '2026-01-04T00:00:00Z' });
+        expect(await readMirrorOf('c1', 1, 'B/Book')).toMatchObject({ finished: true });
+      } finally {
+        now.mockRestore();
+      }
+    });
+  });
+
+  // Web: the tabs write one mirror, each reading it whole and writing it back. With a lock
+  // per tab, two tabs both read it before either wrote, and the later write lost the other
+  // tab's record.
+  describe('two tabs writing the mirror at once', () => {
+    const nav = globalThis.navigator as { locks?: unknown };
+    afterEach(() => {
+      delete nav.locks;
+    });
+
+    it("never writes over the other tab's record (the browser's Web Locks)", async () => {
+      // One browser's Web Locks: a job per name at a time, whichever tab asks.
+      const chains = new Map<string, Promise<unknown>>();
+      const request = (name: string, job: () => Promise<unknown>) => {
+        const run = (chains.get(name) ?? Promise.resolve()).then(job);
+        chains.set(
+          name,
+          run.catch(() => undefined),
+        );
+        return run;
+      };
+      Object.defineProperty(nav, 'locks', { configurable: true, value: { request } });
+      const other = otherTab();
+      await Promise.all([
+        writeMirror({ ...save, path: 'A/One' }),
+        other.writeMirror({ ...save, path: 'B/Two' }),
+        updateMirror('c1', 1, 'C/Three', (r) => r, makeProgress({ position: 7 })),
+        other.writeMirror({ ...save, path: 'D/Four' }),
+      ]);
+      for (const path of ['A/One', 'B/Two', 'C/Three', 'D/Four']) {
+        expect(await readMirrorOf('c1', 1, path)).not.toBeNull();
+      }
+    });
   });
 
   // fe#208: the echo is stamped in server time, the capture in this device's time.
