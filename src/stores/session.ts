@@ -288,7 +288,8 @@ export function onConnectionRemovedInOtherTab(
  * Another tab removed the connection `message.removed` (its token, calendar link and proxy
  * headers already deleted there, the stored list written): this tab drops it from its list
  * (not written again: that tab wrote it) and runs the removal's cleanups. Nothing when its
- * token is stored again (signed in again since, there or here), or cannot be read.
+ * token is stored again (signed in again since, there or here), or cannot be read; and no
+ * cleanups when it is stored again by the time this tab stopped playing.
  */
 async function removedInOtherTab(message: RemovalMessage): Promise<void> {
   const id = message?.removed;
@@ -300,6 +301,9 @@ async function removedInOtherTab(message: RemovalMessage): Promise<void> {
     useSession.setState({ connections: next, ...mirror(next, nextDefault) });
   }
   await runEach(otherTabRemovalSteps, [id], 'other-tab removal step');
+  // Signed in again while this tab stopped (the stop waits its turn into the outbox): what
+  // is stored of the connection now is the new sign-in's, in every tab, not this purge's.
+  if ((await getSecure(tokenKey(id))) !== null) return;
   await runEach(removalCleanups, [id], 'connection-removed cleanup');
 }
 
@@ -574,6 +578,8 @@ export const useSession = create<SessionState>()((set, get) => ({
   user: null,
 
   hydrate: async () => {
+    // Web: the other tabs' removals are heard from the launch on (`removedInOtherTab`).
+    listenForRemovals();
     try {
       // Strict: a list that could not be read is a failed hydrate (retried, and nothing
       // reconciles against it), never "no connections" (`getItem` would answer null).
@@ -581,8 +587,6 @@ export const useSession = create<SessionState>()((set, get) => ({
         getItemStrict<PersistedConnection[]>(CONNECTIONS_KEY),
         getItemStrict<string>(DEFAULT_KEY),
       ]);
-    // Web: the other tabs' removals are heard from the launch on (`removedInOtherTab`).
-    listenForRemovals();
 
       if (meta && meta.length) {
         // The proxy headers only for a connection marked as having them; a read of them

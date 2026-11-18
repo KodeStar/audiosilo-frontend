@@ -115,6 +115,25 @@ describe('a connection removed in another tab (web)', () => {
     expect(cleanup).not.toHaveBeenCalled();
   });
 
+  // The stop waits its turn into the outbox (a lock the tabs share): a sign-in to the same
+  // account meanwhile, and what it stored since (a download, its listening), is not purged.
+  it('purges nothing once signed in again while this tab stopped playing', async () => {
+    const { a, b, alex } = await twoTabs();
+    const cleanup = jest.fn();
+    a.onConnectionRemoved(cleanup);
+    a.onConnectionRemovedInOtherTab(async () => {
+      await b.useSession.getState().setSession({
+        serverUrl: 'https://s',
+        serverId: 'srv',
+        token: 'ta2',
+        user: mkUser(1, 'alex'),
+      });
+    });
+    await b.useSession.getState().removeConnection(alex);
+    await settle();
+    expect(cleanup).not.toHaveBeenCalled();
+  });
+
   // The web build's static render imports the store in Node, where an open
   // `BroadcastChannel` keeps the export's process from exiting.
   it('opens the channel at the launch (hydrate), never at import', async () => {
