@@ -12,8 +12,8 @@ import android.content.Context
  */
 data class LivePlace(
   val book: BookRef,
-  /** The file's library-relative path ([LoadedFiles.pathOf]); null when its media id has
-   * another shape (then [fileIndex] alone names it). */
+  /** The file's library-relative path ([MediaItems.relPathOf]); null when its item has none
+   * (then [fileIndex] alone names it). */
   val relPath: String?,
   val fileIndex: Int,
   /** Seconds in that file. */
@@ -33,7 +33,7 @@ data class LivePlace(
 fun CarPlaySpec.at(live: LivePlace?): CarPlaySpec {
   if (live == null || live.book != book || savedAfter(live)) return this
   val index = if (live.relPath != null) {
-    tracks.indexOfFirst { LoadedFiles.pathOf(it.id, clip = false) == live.relPath }
+    tracks.indexOfFirst { it.relPath == live.relPath }
   } else {
     live.fileIndex
   }
@@ -41,8 +41,19 @@ fun CarPlaySpec.at(live: LivePlace?): CarPlaySpec {
   return copy(startIndex = index, positionInTrack = live.position.coerceAtLeast(0.0))
 }
 
-/** JS saved this spec's place after [live] was saved; a spec with no time never was. */
-private fun CarPlaySpec.savedAfter(live: LivePlace) = placeSavedAt != null && placeSavedAt > live.savedAt
+/** JS saved this spec's place after [live] was saved, by more than [margin]; a spec with no
+ * time never was. */
+private fun CarPlaySpec.savedAfter(live: LivePlace, margin: Long = 0L) =
+  placeSavedAt != null && placeSavedAt > live.savedAt + margin
+
+/**
+ * How much later JS's place on ANOTHER book must be to win over the engine's book
+ * ([resumable]). The live place is stamped by this device's clock; JS's place may be a server's
+ * time brought onto it by a measured skew (another device's listen), which is only as good as
+ * the measure (JS rebuilds a spec only when its skew moves by more, `SKEW_SLACK_MS`). Inside
+ * the margin the engine's book wins, as when either time is missing.
+ */
+const val CLOCK_MARGIN_MS = 2_000L
 
 /**
  * What a playback resumption starts (a headset, Bluetooth or the car's play with nothing
@@ -53,8 +64,9 @@ private fun CarPlaySpec.savedAfter(live: LivePlace) = placeSavedAt != null && pl
  * and saved its place after the live place was saved, that book resumes at its own place (a
  * dead process's book is older than the one JS played since). When either time is missing the
  * live place's book wins, as a pause in a cold runtime away from every server writes no
- * snapshot. A live place exists only for a book the engine still holds or held when the process
- * died: a stop, the end of the book and the app's own load of a queue drop it
+ * snapshot, and so does a time within the clocks' margin ([CLOCK_MARGIN_MS]). A live place
+ * exists only for a book the engine still holds or held when the process died: a stop, the
+ * end of the book and the app's own load of a queue drop it
  * ([LivePlaceRecorder]), so a stopped or finished book still never resumes. When JS named none
  * (a book stopped or finished here, offered before kids mode changed, or no longer the person
  * listening's), nothing resumes, whatever the engine last held.
@@ -64,7 +76,7 @@ fun CarSnapshot.resumable(live: LivePlace?): CarItem? {
   if (live == null || (namesResume && resume == null)) return named
   val namedPlay = named?.play
   val namedIsNewer = namedPlay != null && namedPlay.book != live.book && live.savedAt > 0L &&
-    namedPlay.savedAfter(live)
+    namedPlay.savedAfter(live, CLOCK_MARGIN_MS)
   if (namedIsNewer) return named
   for (tab in tabs) for (item in tab.items) {
     val play = item.play ?: continue
@@ -114,6 +126,13 @@ object LivePlaceStore {
 
   fun clear(context: Context) {
     prefs(context).edit().clear().apply()
+  }
+
+  /** Starts reading the file in the background (Android loads a prefs file on its own thread
+   * once it is first asked for), so a later [get] on the main thread (a car tap, the media
+   * button start's placeholder) finds it read instead of waiting on the disk. */
+  fun preload(context: Context) {
+    prefs(context)
   }
 
   private fun prefs(context: Context) =

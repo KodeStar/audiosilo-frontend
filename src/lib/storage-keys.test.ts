@@ -18,6 +18,7 @@ describe('storage keys', () => {
       OFFLINE_SERVERS_KEY: 'audiosilo.offlineServers',
       STARTUP_CACHE_KEY: 'audiosilo.startupCache',
       CAR_BOOKMARKS_KEY: 'audiosilo.carBookmarks',
+      CAR_RESUMABLE_KEY: 'audiosilo.carResumable',
       CAR_SNAPSHOT_WRITTEN_KEY: 'audiosilo.carSnapshotWritten',
       LIBRARY_SELECTION_KEY: 'audiosilo.librarySelection',
       TIME_SAVED_KEY: 'audiosilo.timeSaved',

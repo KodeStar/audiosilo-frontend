@@ -171,7 +171,7 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
     startPositionMs: Long,
   ): ListenableFuture<MediaItemsWithStartPosition> {
     if (PlayerBridge.isAppController(controller)) {
-      service.onAppLoad()
+      service.onAppLoad(MediaItems.bookOf(mediaItems.firstOrNull()))
       return Futures.immediateFuture(MediaItemsWithStartPosition(mediaItems, startIndex, startPositionMs))
     }
     val single = mediaItems.singleOrNull()
@@ -221,7 +221,12 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
       "resumption from ${service.describe(controller)}: forPlayback=$isForPlayback, item=${MediaKeyLog.ref(item?.id)}"
     }
     if (!isForPlayback) {
-      return item?.play?.let { Futures.immediateFuture(MediaItems.startPositionOf(it)) } ?: nothingToResume()
+      return item?.play?.let {
+        val queue = MediaItems.startPositionOf(it, ArtworkProvider.authority(service))
+        // The card loads the cover's URI itself (Media3 sends a browse item no bitmap): let it.
+        service.grantItemArtwork(controller.packageName, queue.mediaItems.firstOrNull())
+        Futures.immediateFuture(queue)
+      } ?: nothingToResume()
     }
     return service.watchResumption(
       item?.let { service.playFromCar(it, requirePlaySpec = true) } ?: nothingToResume(),

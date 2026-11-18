@@ -30,9 +30,10 @@ export type CarNative = {
   /** The car asked to play a book (its car item id) that native can't start alone. */
   onPlayRequest: (handler: (id: string) => void) => () => void;
   /** Android: a play request is over without the book loading (native's wait ran out, or
-   * another play took its place), so a start of it still on its way must not play (fe#252
-   * follow-up). Never fires on iOS or an older binary. */
-  onPlayCancel: (handler: (id: string) => void) => () => void;
+   * another play took its place: `replaced`, false from a binary that does not say), so a start
+   * of it still on its way must not play (fe#252 follow-up), nor load when replaced (fe#350).
+   * Never fires on iOS or an older binary. */
+  onPlayCancel: (handler: (id: string, replaced: boolean) => void) => () => void;
   /** A bookmark button outside the app was pressed (CarPlay's Now Playing button, the
    * Android notification / Android Auto) while JS runs: the engine's place at the press
    * (file index + seconds in that file) of the book it has loaded, and that book when the

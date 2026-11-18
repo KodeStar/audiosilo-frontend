@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { ApiClient, ApiError } from '@/api/client';
+import { ApiClient, ApiError, TimeoutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import * as reachability from '@/api/reachability';
 import type { Progress } from '@/api/types';
@@ -527,6 +527,81 @@ describe('progress-sync', () => {
     const api = fakeGetApi(() => Promise.resolve(null));
     const r = await loadInitialProgress(api, 'c1', 1, 'A/Book');
     expect(r).toEqual({ kind: 'empty' });
+  });
+
+  // The device run: a frozen server held a downloaded book's car start for the whole request
+  // timeout, past the car's own wait.
+  it("loadInitialProgress: a wait bounds the server's read, then the mirror stands", async () => {
+    await saveProgress(
+      fakeApi(() => Promise.resolve()),
+      { ...save, position: 75 },
+    );
+    // A frozen server, behind the client's own timeout (which rejects as the client does).
+    const frozen = {
+      getProgress: jest.fn(
+        () =>
+          new Promise<Progress | null>((_, reject) => {
+            setTimeout(() => reject(new TimeoutError(15_000)), 15_000);
+          }),
+      ),
+    } as unknown as ApiClient;
+    jest.useFakeTimers();
+    try {
+      const lookup = loadInitialProgress(frozen, 'c1', 1, 'A/Book', 3_000);
+      await jest.advanceTimersByTimeAsync(3_000);
+      const r = await lookup;
+      expect(r).toEqual({
+        kind: 'progress',
+        progress: expect.objectContaining({ position: 75 }),
+        unchecked: true,
+        late: expect.any(Promise),
+      });
+      // The slow server is checked at the wait (a `TimeoutError` is what `noteFailure` reads
+      // as no answer); the read goes on, and its failure says nothing late.
+      expect(reachability.noteFailure).toHaveBeenCalledWith('c1', expect.any(TimeoutError));
+      await jest.advanceTimersByTimeAsync(12_000);
+      await expect(r.late).resolves.toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // The review: a server answering after the wait left the book at this device's older place
+  // until the next place check.
+  it('loadInitialProgress: a server answering after the wait is told late, with the mirror as it stood', async () => {
+    await saveProgress(
+      fakeApi(() => Promise.resolve()),
+      { ...save, position: 75 },
+    );
+    let answer: (p: Progress | null) => void = () => {};
+    const slow = {
+      getProgress: jest.fn(() => new Promise<Progress | null>((resolve) => (answer = resolve))),
+    } as unknown as ApiClient;
+    jest.useFakeTimers();
+    try {
+      const lookup = loadInitialProgress(slow, 'c1', 1, 'A/Book', 3_000);
+      await jest.advanceTimersByTimeAsync(3_000);
+      const r = await lookup;
+      expect(r.kind).toBe('progress');
+      // The session saves on meanwhile: the late answer keeps the record the start read.
+      await saveProgress(
+        fakeApi(() => Promise.resolve()),
+        { ...save, position: 90 },
+      );
+      answer(makeProgress({ position: 400, device_id: 'other' }));
+      await expect(r.late).resolves.toEqual({
+        server: expect.objectContaining({ position: 400 }),
+        mirror: expect.objectContaining({ position: 75 }),
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("loadInitialProgress: a server answering inside the wait is the server's place", async () => {
+    const api = fakeGetApi(() => Promise.resolve(makeProgress({ position: 60 })));
+    const r = await loadInitialProgress(api, 'c1', 1, 'A/Book', 3_000);
+    expect(r).toEqual({ kind: 'progress', progress: expect.objectContaining({ position: 60 }) });
   });
 
   it('loadInitialProgress: falls back to the mirror when the server is unreachable', async () => {

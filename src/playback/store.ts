@@ -79,6 +79,7 @@ import {
   flushQueue,
   getDeviceId,
   guardSettled,
+  type LatePlace,
   loadInitialProgress,
   mirrorIsNewest,
   mirrorTimeOf,
@@ -178,6 +179,12 @@ let yieldedAttempt = -1;
 /** Pending stall→error timer and its deadline (see armStallWatchdog). */
 let stallTimer: ReturnType<typeof setTimeout> | null = null;
 let stallDeadline: number | null = null;
+/** Until when a `playing` report may be older than the stall watchdog's pause (`fireStallWatchdog`):
+ * sent before the pause reached the engine, and the pause wins. A time, not the pause's
+ * promise: Android's resolves before the engine has paused. */
+let stallPauseUntil = 0;
+/** How long the engine's reports sent before the watchdog's pause can take to arrive. */
+const STALL_PAUSE_FENCE_MS = 1_000;
 /** The whole-book position the current book resumed from, kept as a running high-water
  * mark. `persist` refuses to save a position far below this unless the user deliberately
  * seeked back (which lowers it) - so a slipped-through restart-at-0 can never overwrite
@@ -401,6 +408,10 @@ function lastPlayRequestFor(ref: ContentRef): PlayRequest | null {
 
 const MIN_HISTORY_MS = 20_000; // ignore listening spans shorter than this
 const STALL_GRACE_MS = 3_000; // a 'loading' that outlasts this is treated as a dead stream
+/** How long a downloaded book waits for its server's place before it starts from this
+ * device's records (`loadInitialProgress`): with the wait for its item and chapters
+ * (`FRESH_SOURCE_WAIT_MS`, 3 s) well inside a car's 10 s wait for a start. */
+export const DOWNLOADED_PLACE_WAIT_MS = 3_000;
 
 // The periodic save's two paces (`saveIntervalMs`, perf P4). The server derives listening
 // sessions from these saves and the spans cut with them (audiosilo-server
@@ -533,6 +544,7 @@ type PlayerState = {
     startTrack?: number,
     startSpeed?: number,
     wanted?: () => boolean,
+    superseded?: () => boolean,
   ) => Promise<void>;
   toggle: () => Promise<void>;
   pause: () => Promise<void>;
@@ -2269,12 +2281,39 @@ function fireStallWatchdog() {
   clearPlaybackIntent();
   usePlayer.setState({ snapshot: { ...snapshot, state: 'error' } });
   haltAndPersist();
+  // The engine stops waiting to play too: left buffering, it would start on its own once the
+  // server answered again, with the listener told playback had stopped. Only a press (Retry,
+  // play, the car, a headset) plays from here. Its report of the pause is held by the error,
+  // and so is a `playing` it sent before the pause reached it (`stallPauseUntil`).
+  stallPauseUntil = Date.now() + STALL_PAUSE_FENCE_MS;
+  void service?.pause().catch(() => undefined);
+}
+
+/**
+ * The engine was asked to play (Android: its playWhenReady turned on), told before the state
+ * that comes with it. One the store asked for is already followed (`wantsPlayback`). One from
+ * outside the app (the car, a headset, the notification) after playback stopped in `error` is
+ * followed from here like a press in the app: `loading`, the stall watchdog, and `error`
+ * ("Playback stopped") with the engine paused again when it never plays. Unfollowed, its
+ * `loading` was held by the error, so it could hang with nothing said, or start whenever the
+ * server answered. Not while a start of the store's is on its way (it owns the next play), nor
+ * for a faulted engine (stopped again as it plays) or a book whose place could not be looked up
+ * (its engine holds nothing of it).
+ */
+function playAskedFromOutside() {
+  if (wantsPlayback || startsInFlight > 0 || resumeLookupFailed || loadedFaulted()) return;
+  const { snapshot, nowPlaying, loadingBook } = usePlayer.getState();
+  if (snapshot.state !== 'error' || !nowPlaying || loadingBook) return;
+  beginPlaybackAttempt();
 }
 
 /** Begin a playback attempt: we intend to play, we're "connecting" until the engine
  * reaches `playing`, and the stall watchdog is ticking from now (a dead/slow-to-start
  * stream surfaces an error after the grace, matching the old native behavior). */
 function beginPlaybackAttempt() {
+  // A play of its own from here: what the engine reports next is of it, not of a stalled
+  // attempt's pause.
+  stallPauseUntil = 0;
   playAttempts++;
   playAskedAt = Date.now();
   wantsPlayback = true;
@@ -2377,10 +2416,16 @@ function beginHistory() {
 function endHistory({ leaving = false }: { leaving?: boolean } = {}) {
   const start = historyStart;
   historyStart = null;
-  if (!start || !apiRef || Date.now() - start.at < MIN_HISTORY_MS) return;
+  if (!start || Date.now() - start.at < MIN_HISTORY_MS) return;
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (!np) return;
+  // A switch takes the next book's client before that book is `nowPlaying` (`switchBook`), as
+  // `persist` reads it: a span of the book still named goes to its own server, also when the
+  // next book has no client (a download whose connection is gone).
+  const api =
+    apiRefFor !== null && apiRefFor !== np.connectionId ? resolveClient(np.connectionId) : apiRef;
+  if (!api) return;
   // Listening spans are best-effort; don't fire at a server we know is unreachable
   // (reachability is per-connection, so key it on the playing book's own server).
   if (!isReachable(np.connectionId)) return;
@@ -2388,7 +2433,7 @@ function endHistory({ leaving = false }: { leaving?: boolean } = {}) {
   // them from the listening's start (`tickListeningSpan` ends a PUT path's history where a
   // span opens) and still does (not rolled back since).
   if (start.sync && usesListeningSync(np.connectionId)) return;
-  void apiRef
+  void api
     .addHistory(
       np.libraryId,
       np.path,
@@ -2570,6 +2615,13 @@ async function createService(): Promise<PlaybackService> {
     else if (state === 'loading' && !wantsPlayback && !startingPlayback) state = 'paused';
     const reported: PlaybackSnapshot = state === raw.state ? raw : { ...raw, state };
     const prev = usePlayer.getState().snapshot;
+    // The watchdog's pause reached the engine (iOS, the web: it reports itself paused, after
+    // whatever it sent before the pause): a `playing` from here is a new play (the car, a
+    // headset), never an older report, so the fence below ends. Not on Android, whose pause of
+    // a buffering engine reads `loading`; a play from outside says so there (`onPlayAsked`).
+    if (stallPauseUntil > 0 && raw.state === 'paused' && Platform.OS !== 'android') {
+      stallPauseUntil = 0;
+    }
     // After the stall watchdog (or an engine error) surfaces an `error`, the engine
     // keeps re-reporting around the dead stream - iOS: frozen `onProgress` ticks
     // carrying `loading`; Android: `onPlayerError` then `STATE_IDLE` → `idle`, plus its
@@ -2577,10 +2629,19 @@ async function createService(): Promise<PlaybackService> {
     // to a spinner/play button (the flash→spinner loop seen on Android). So once we're
     // in `error` and NOT retrying, hold it against EVERY re-report except a genuine
     // recovery (`playing`). It's released by the user retrying (wantsPlayback flips true
-    // → this guard is skipped) or the stream actually resuming. Enumerating the "noisy"
+    // → this guard is skipped) or a play from outside the app (the lock screen, the car, a
+    // headset), never by the stream coming back on its own: the watchdog pauses the engine,
+    // and a failed Android engine stays idle until a press. Enumerating the "noisy"
     // states bit us repeatedly (loading, ready, idle, paused…); suppress-all-but-playing
     // is the robust rule.
     if (prev.state === 'error' && !wantsPlayback && reported.state !== 'playing') {
+      return;
+    }
+    // Nor a `playing` sent just before the watchdog's pause reached the engine: the pause
+    // wins, and is asked again (a play pressed outside the app in that moment, on an engine
+    // that does not say so, `onPlayAsked`, is pressed again).
+    if (reported.state === 'playing' && !wantsPlayback && Date.now() < stallPauseUntil) {
+      void svc.pause().catch(() => undefined);
       return;
     }
     let snapshot = throughSwap(reported, prev);
@@ -2731,6 +2792,8 @@ async function createService(): Promise<PlaybackService> {
   // stopped (fe#211). The save made as it stopped (`haltAndPersist`) has the place before
   // the jump, so the place is saved again, once the engine's event is over.
   svc.onLanded?.(() => void Promise.resolve().then(() => persist()));
+  // Native (Android): a play asked of the engine from outside the app is followed as a press.
+  svc.onPlayAsked?.(playAskedFromOutside);
   // Native: the OS changed the speed and the engine already runs at it. Only a speed
   // outside the app's range goes back to the engine, clamped.
   svc.onRateChange?.((raw) => {
@@ -2767,6 +2830,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     startTrack,
     startSpeed,
     wanted,
+    superseded,
   ) => {
     // Only the person listening's books (Phase 8, `mayActFor`): every way a book starts
     // comes through here, so none can save to another person's account.
@@ -2804,10 +2868,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       const request = { connectionId, libraryId, book, chapterData };
       switchBook(api, request);
       // Called off (a car play its native side gave up on) with another start made since
-      // (the play that took its place, the listener's own tap): that one owns the player, so
-      // this one loads nothing over it. Called off with the player still its own, it goes on
-      // to load, paused (below): the previous book's saves and span already ended above.
-      const replaced = () => !!wanted && !wanted() && lastPlayRequest !== request;
+      // (the play that took its place, the listener's own tap), or for a play native made in
+      // its place (`superseded`: the car's tap on the loaded book, fe#350): that one owns the
+      // player, so this one loads nothing over it (the car takes the engine's book back). Called
+      // off with the player still its own (its wait ran out), it goes on to load, paused
+      // (below): the previous book's saves and span already ended above.
+      const replaced = () =>
+        (!!wanted && !wanted() && lastPlayRequest !== request) || !!superseded?.();
       // Marked finished while it started (`leaveFinishedBook`): it loads nothing, and the
       // engine is left with nothing (the previous book's place and span ended above), so the
       // book just finished is never heard, nor left loaded.
@@ -2875,10 +2942,25 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       let speed = clampRate(askedSpeed ? startSpeed : defaultRate);
       // The replay guard (fe#198): set below when the resume could not be checked.
       let unchecked = false;
+      // The server's place still to come for a downloaded book that stopped waiting for it.
+      let late: Promise<LatePlace | null> | undefined;
       if (startBookPosition === undefined && startTrack === undefined) {
-        const r = await loadInitialProgress(api, connectionId, libraryId, book.rel_path);
+        // A downloaded book never waits long on its server: not asked at all when it is known
+        // to be unreachable, else for `DOWNLOADED_PLACE_WAIT_MS` (a frozen server held a car's
+        // start for the whole request timeout, and the car gave up on it). Started from this
+        // device's records, as offline: its saves go guarded (`unchecked`, fe#198). A server
+        // that answers later is followed once the book is loaded (`followLatePlace`).
+        const placeApi = dl && (!isDeviceOnline() || !isReachable(connectionId)) ? null : api;
+        const r = await loadInitialProgress(
+          placeApi,
+          connectionId,
+          libraryId,
+          book.rel_path,
+          dl ? DOWNLOADED_PLACE_WAIT_MS : undefined,
+        );
         if (!current() || replaced()) return;
         if (markedFinished()) return await callOff(svc, request);
+        late = r.late;
         // Not reached (a downloaded book's 'failed' starts at 0), or resumed behind it.
         unchecked = r.kind === 'failed' || (r.kind === 'progress' && !!r.unchecked);
         if (r.kind === 'progress') {
@@ -3017,6 +3099,9 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         return;
       }
       placed = true;
+      // The engine holds this book at its place now: a place its server answers with later
+      // (another device's, newer) is moved to or offered from here.
+      if (late) followLatePlace(late, key);
       // A download that landed before this book was the store's (while its place was looked
       // up) was seen by nothing: the book streams, and is swapped in as this start ends.
       if (!dl && downloadedEntryOf(ref)) swapDue = key;
@@ -3387,6 +3472,37 @@ export function holdSaves(): (opts?: { flush?: boolean }) => void {
 
 /** The listener's own moves so far (`localMoves`). */
 export const localMoveCount = (): number => localMoves;
+
+/** The listener told of a downloaded book's late place (`onLatePlace`). */
+let latePlaceListener: ((bookKey: string, late: LatePlace, moves: number) => unknown) | null = null;
+
+/** Be told when a downloaded book that started without its server's place (the server had
+ * not answered within `DOWNLOADED_PLACE_WAIT_MS`) gets that place after all (one listener:
+ * `place-reconcile.ts`, which applies its rule to it as to a check's answer). Told only while
+ * the book is still the loaded one and the listener has not moved in it since its load
+ * landed (`moves`, the `localMoveCount` then, for the listener to check again after its own
+ * awaits). Returns the unsubscribe. */
+export function onLatePlace(
+  listener: (bookKey: string, late: LatePlace, moves: number) => unknown,
+): () => void {
+  latePlaceListener = listener;
+  return () => {
+    if (latePlaceListener === listener) latePlaceListener = null;
+  };
+}
+
+/** Tell the late place listener of `late`, the server's answer for the book `key` just loaded,
+ * when it comes and nothing has moved the book since (a seek of the listener's own, another
+ * book, a start again: each counts in `localMoves`). */
+function followLatePlace(late: Promise<LatePlace | null>, key: string) {
+  const moves = localMoves;
+  void late.then((answer) => {
+    if (!answer || localMoves !== moves) return;
+    const now = usePlayer.getState();
+    if (selectBookKey(now) !== key || now.loadingBook) return;
+    void latePlaceListener?.(key, answer, moves);
+  });
+}
 
 /** Be told when the loaded book is played again after `LONG_PAUSE_MS` or more of pause
  * (one listener: `place-reconcile.ts`). Called synchronously from the engine

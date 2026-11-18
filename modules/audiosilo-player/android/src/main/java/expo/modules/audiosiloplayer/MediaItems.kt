@@ -22,7 +22,11 @@ data class TrackSpec(
   val artwork: String?,
   /** Seconds, 0 when unknown. */
   val duration: Double,
-)
+) {
+  /** The file's library-relative path, from the id JS names the track with
+   * (`<libraryId>:<relPath>`, `trackIdOf`), or null when the id has another shape. */
+  val relPath: String? get() = LoadedFiles.pathOf(id)
+}
 
 /** One chapter clip, the twin of the JS `NativeChapter` (`endInFile <= 0` = to the file's end). */
 data class ClipSpec(
@@ -59,6 +63,9 @@ object MediaItems {
   /** The book's title (a track's `title` is the book's; a clip's item title is the chapter's),
    * used as the playlist (queue) title the car shows above the chapter list. */
   const val KEY_BOOK_TITLE = "audiosilo.book.title"
+  /** The library-relative path of the file the item plays ([TrackSpec.relPath]), so nothing
+   * reads it back out of the media id (a clip's id adds `#<startInFile>` to it, fe#172). */
+  const val KEY_REL_PATH = "audiosilo.relPath"
 
   /**
    * The queue for one book: chapter clips when [clips] is non-empty (the lock screen gets a
@@ -109,10 +116,22 @@ object MediaItems {
     return BuiltQueue(items, itemIndex.coerceIn(0, maxOf(0, items.size - 1)), itemPosMs)
   }
 
-  /** A downloaded book's play spec as the queue Media3 starts (a car play, a resumption). */
-  fun startPositionOf(spec: CarPlaySpec): MediaItemsWithStartPosition {
-    val queue = buildQueue(spec.tracks, spec.clips, spec.book, spec.startIndex, spec.positionInTrack)
+  /** A downloaded book's play spec as the queue Media3 starts (a car play, a resumption). Its
+   * cover file goes as the artwork provider's URI for [artworkAuthority], which the car can
+   * open ([ArtworkProvider.itemArtwork]). */
+  fun startPositionOf(spec: CarPlaySpec, artworkAuthority: String): MediaItemsWithStartPosition {
+    val tracks = withItemArtwork(spec.tracks, artworkAuthority)
+    val queue = buildQueue(tracks, spec.clips, spec.book, spec.startIndex, spec.positionInTrack)
     return MediaItemsWithStartPosition(queue.items, queue.index, queue.positionMs)
+  }
+
+  /** [tracks] with each cover as a loaded item may carry it ([ArtworkProvider.itemArtwork], for
+   * [artworkAuthority]). Every track of a book shares its cover: each is converted once. */
+  fun withItemArtwork(tracks: List<TrackSpec>, artworkAuthority: String): List<TrackSpec> {
+    val shared = HashMap<String, String>()
+    return tracks.map { t ->
+      t.artwork?.let { a -> t.copy(artwork = shared.getOrPut(a) { ArtworkProvider.itemArtwork(a, artworkAuthority) }) } ?: t
+    }
   }
 
   /** A whole-file item (a multi-file book without chapter clips). */
@@ -121,8 +140,8 @@ object MediaItems {
       .setTitle(t.title)
       .setArtist(t.artist ?: "")
       .setAlbumTitle(t.album ?: t.title)
-      .setExtras(extras(fileIndex, 0.0, 0.0, t.duration, clip = false, book = book, title = t.title))
-      .apply { t.artwork?.let { setArtworkUri(Uri.parse(it)) } }
+      .setExtras(extras(fileIndex, 0.0, 0.0, t.duration, clip = false, book = book, track = t))
+      .apply { artworkUriOf(t)?.let { setArtworkUri(it) } }
       .build()
     return MediaItem.Builder()
       .setUri(t.url)
@@ -141,9 +160,9 @@ object MediaItems {
       .setArtist(t.artist ?: "")
       .setAlbumTitle(t.album ?: t.title)
       .setExtras(
-        extras(clip.fileIndex, clip.startInFile, clip.endInFile, t.duration, clip = true, book = book, title = t.title),
+        extras(clip.fileIndex, clip.startInFile, clip.endInFile, t.duration, clip = true, book = book, track = t),
       )
-      .apply { t.artwork?.let { setArtworkUri(Uri.parse(it)) } }
+      .apply { artworkUriOf(t)?.let { setArtworkUri(it) } }
       .build()
     val clipping = MediaItem.ClippingConfiguration.Builder()
       .setStartPositionMs((clip.startInFile * 1000).toLong())
@@ -157,6 +176,14 @@ object MediaItems {
       .build()
   }
 
+  /** The artwork URI an item carries, which Media3 hands to every controller and the platform
+   * session: never a server URL, whose query holds the media token (fe#349). The module and a
+   * play spec name a streamed cover by its token-free URI and a cover file by the artwork
+   * provider's ([ArtworkProvider.itemArtwork]), so this only stops a URL that came some
+   * other way. */
+  private fun artworkUriOf(t: TrackSpec): Uri? =
+    t.artwork?.takeUnless(RemoteArtwork::isRemote)?.let(Uri::parse)
+
   private fun extras(
     fileIndex: Int,
     startInFile: Double,
@@ -164,14 +191,15 @@ object MediaItems {
     fileDuration: Double,
     clip: Boolean,
     book: BookRef?,
-    title: String,
+    track: TrackSpec,
   ) = Bundle().apply {
     putInt(KEY_FILE_INDEX, fileIndex)
     putDouble(KEY_START_IN_FILE, startInFile)
     putDouble(KEY_END_IN_FILE, endInFile)
     putDouble(KEY_FILE_DURATION, fileDuration)
     putBoolean(KEY_CLIP, clip)
-    putString(KEY_BOOK_TITLE, title)
+    putString(KEY_BOOK_TITLE, track.title)
+    track.relPath?.let { putString(KEY_REL_PATH, it) }
     if (book != null) {
       putString(KEY_CONNECTION, book.connectionId)
       putLong(KEY_LIBRARY, book.libraryId)
@@ -212,8 +240,9 @@ object MediaItems {
     return BookRef(connection, e.getLong(KEY_LIBRARY), path)
   }
 
-  /** The library-relative path of the file an item plays ([LoadedFiles.pathOf]), or null. */
-  fun relPathOf(item: MediaItem): String? = LoadedFiles.pathOf(item.mediaId, entryOf(item)?.clip ?: false)
+  /** The library-relative path of the file an item plays ([KEY_REL_PATH]), or null (an item
+   * without our extras, or a track id of another shape). */
+  fun relPathOf(item: MediaItem?): String? = item?.mediaMetadata?.extras?.getString(KEY_REL_PATH)
 }
 
 /**
@@ -291,22 +320,20 @@ fun Player.mediaItems(): List<MediaItem> = List(mediaItemCount) { getMediaItemAt
 /**
  * The book-relative paths of a loaded queue's FILES, in file-index order (fe#134), so JS can
  * map the service's track index through the order the service really plays instead of the
- * manifest's. JS names each track `<libraryId>:<relPath>` (`book-queue.ts`); a chapter clip's
- * item adds `#<startInFile>` to it ([MediaItems.toClipItem]). Null when an id has another
- * shape, two items of one file disagree, or a file index has no item: JS then keeps its own
- * order. Pure Kotlin (unit-tested on the JVM).
+ * manifest's. Each item carries its file's path in its extras ([MediaItems.KEY_REL_PATH], fe#172).
+ * Null when an item has no path, two items of one file disagree, or a file index has no item:
+ * JS then keeps its own order. Pure Kotlin (unit-tested on the JVM).
  */
 object LoadedFiles {
-  data class Item(val mediaId: String, val fileIndex: Int, val clip: Boolean)
+  /** One item of the queue: the path of the file it plays (null when unknown) and its index. */
+  data class Item(val path: String?, val fileIndex: Int)
 
-  /** The library-relative path one item plays (its media id less the library id and a clip's
-   * `#<startInFile>`), or null when the id has another shape. */
-  fun pathOf(mediaId: String, clip: Boolean): String? {
-    // A path may hold a '#' or a ':' itself: only the clip's own suffix and the library id go.
-    val id = if (clip) mediaId.substringBeforeLast('#', missingDelimiterValue = "") else mediaId
-    val colon = id.indexOf(':')
-    if (colon <= 0 || colon == id.length - 1) return null
-    return id.substring(colon + 1)
+  /** The library-relative path a track id names (JS's `<libraryId>:<relPath>`), or null when
+   * the id has another shape. A path may hold a ':' itself: only the library id goes. */
+  fun pathOf(trackId: String): String? {
+    val colon = trackId.indexOf(':')
+    if (colon <= 0 || colon == trackId.length - 1) return null
+    return trackId.substring(colon + 1)
   }
 
   fun paths(items: List<Item>): List<String>? {
@@ -314,7 +341,7 @@ object LoadedFiles {
     val byIndex = HashMap<Int, String>()
     for (item in items) {
       if (item.fileIndex < 0) return null
-      val path = pathOf(item.mediaId, item.clip) ?: return null
+      val path = item.path ?: return null
       val known = byIndex.put(item.fileIndex, path)
       if (known != null && known != path) return null
     }
@@ -326,8 +353,7 @@ object LoadedFiles {
   fun of(player: Player): List<String>? =
     paths(
       player.mediaItems().mapIndexed { i, item ->
-        val entry = MediaItems.entryOf(item)
-        Item(item.mediaId, entry?.fileIndex ?: i, entry?.clip ?: false)
+        Item(MediaItems.relPathOf(item), MediaItems.entryOf(item)?.fileIndex ?: i)
       },
     )
 }

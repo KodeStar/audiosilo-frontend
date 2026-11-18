@@ -272,6 +272,14 @@ export interface PlaybackService {
    */
   onLanded?(handler: (() => void) | null): void;
   /**
+   * Native (Android): the engine was asked to play, by the app or from outside it (the car, a
+   * headset, the notification), told before the state that comes with it. The store follows
+   * one from outside after playback stopped in `error` as a press (`playAskedFromOutside`).
+   * Optional: iOS and the web never tell, nor an Android binary older than the
+   * `playWhenReady` on its `onState`.
+   */
+  onPlayAsked?(handler: (() => void) | null): void;
+  /**
    * For the store's `adoptLoaded`: where an engine this bridge did NOT load is now (a
    * queue the Android playback service loaded itself, for the car or before the app's JS
    * restarted). Seeds the bridge's merged snapshot WITHOUT emitting, so the next event it

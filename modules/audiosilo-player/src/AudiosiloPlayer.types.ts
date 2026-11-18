@@ -25,7 +25,9 @@ export type NativeChapter = {
 
 export type NativeState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended' | 'error';
 
-export type StateEvent = { state: NativeState };
+/** `playWhenReady` (Android only): whether the engine wants to play, so the app hears of a
+ * play asked from outside it (the car, a headset). Absent on iOS and on older binaries. */
+export type StateEvent = { state: NativeState; playWhenReady?: boolean };
 /** Position/duration within the current track, in seconds. `silenceSaved` (Android only):
  * book seconds removed by Smart speed since the app's process started, summed over every
  * player the service builds, so it never goes down. Absent on iOS (no Smart speed there) and on
@@ -64,8 +66,10 @@ export type CarConnectionEvent = { connected: boolean };
 export type CarPlayRequestEvent = { id: string };
 
 /** Android: a car play JS received is over without its load (the service's 10 s wait ran
- * out, or another play took its place). Never sent by iOS or an older binary. */
-export type CarPlayCancelEvent = { id: string };
+ * out, or another play took its place). Never sent by iOS or an older binary. `replaced`:
+ * another play took its place (the car's tap on another book, or on the loaded book, which
+ * plays on), so a start of it loads nothing (fe#350); absent from a binary before it. */
+export type CarPlayCancelEvent = { id: string; replaced?: boolean };
 
 /** A book's identity: path is the identity, scoped by connection (never a DB id). */
 export type BookRef = { connectionId: string; libraryId: number; path: string };

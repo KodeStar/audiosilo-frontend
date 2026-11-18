@@ -21,15 +21,21 @@ interface PlayerEventSink {
    * another shape). */
   fun remoteBookmark(fileIndex: Int, position: Double, book: BookRef?, relPath: String?)
 
+  /** The engine failed (a stream that could not be read). Controllers see it stopped, not
+   * failed ([AudiobookPlayer.failed]), so this is how the app hears of it. */
+  fun playerFailed()
+
   /** Android Auto (or Automotive) connected or disconnected. */
   fun carConnection(connected: Boolean)
 
   /** The car asked to play a book that JS must start. */
   fun carPlayRequest(id: String)
 
-  /** A car play JS received is over without its load (timed out, or another play took its
-   * place): JS must not start it any more. */
-  fun carPlayCancel(id: String)
+  /** A car play JS received is over without its load: timed out, or another play took its
+   * place ([replaced]: the car's tap on another book, or on the loaded book, which plays on).
+   * JS must not start it any more; one [replaced] must not load either (fe#350). A play that
+   * timed out is told again, [replaced], when another play is made before its load. */
+  fun carPlayCancel(id: String, replaced: Boolean)
 
   /** True while JS listens for bookmarks (else the service stores them as pending). */
   val observingBookmarks: Boolean
@@ -72,12 +78,13 @@ object PlayerBridge {
   val jsListening: Boolean get() = sink?.observingCar == true
 
   /** The car play [id] is over without the app's load. Never delivered: it is dropped here.
-   * Delivered: JS is told, so a start still on its way loads paused instead of playing. */
-  fun cancelCarPlay(id: String) {
+   * Delivered: JS is told, so a start still on its way loads paused instead of playing, or
+   * loads nothing when another play [replaced] it. */
+  fun cancelCarPlay(id: String, replaced: Boolean) {
     val delivered = pendingCarPlayId != id
     pendingCarPlayId = null
     val s = sink
-    if (delivered && s != null && s.observingCar) s.carPlayCancel(id)
+    if (delivered && s != null && s.observingCar) s.carPlayCancel(id, replaced)
   }
 
   /**

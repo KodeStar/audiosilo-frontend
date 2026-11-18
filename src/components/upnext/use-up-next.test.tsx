@@ -254,6 +254,7 @@ describe('usePlayNow', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
     );
     expect(mockDrop).toHaveBeenCalledWith('c', 1, 'B', 'B');
   });

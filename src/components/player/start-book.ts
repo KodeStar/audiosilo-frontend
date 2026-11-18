@@ -135,6 +135,10 @@ export type StartHow = {
    * slow server holds the start. Called off before the load, nothing starts (an episode
    * handed to its fetch included, which ends); after it, the book stays loaded, paused. */
   wanted?: () => boolean;
+  /** Called off for a play that took its place (the car's tap on the loaded book, which its
+   * native side played on, fe#350): asked with `wanted`, and once it says yes the start loads
+   * nothing, as for a start of another book made since (the last tap wins). */
+  superseded?: () => boolean;
 };
 
 /** Whether `book` is an episode its server must fetch before it plays (`podcast_fetch`
@@ -216,6 +220,7 @@ async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): 
       opts.track,
       opts.speed,
       how.wanted,
+      how.superseded,
     );
   // The book you're on is not up next any more (Up next's own Play now does the same):
   // a queued book started from its page, a browse row or the car leaves the queue, once it

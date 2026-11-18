@@ -22,6 +22,7 @@ import {
   GUARD_SLACK_S,
   ignoreOffer,
   onHeldSave,
+  type LatePlace,
   placeKey,
   readMirror,
   type ProgressSave,
@@ -30,6 +31,7 @@ import {
   holdSaves,
   localMoveCount,
   type NowPlaying,
+  onLatePlace,
   onPickedUpAgain,
   saveLoadedPlace,
   selectBookKey,
@@ -55,6 +57,8 @@ import {
  *   playing, so the move comes as early as the answer does.
  * While the check is out the store holds its saves (`holdSaves`), so the stale place is
  * never written; the hold ends with the check, or by itself after 5 seconds.
+ * - a downloaded book started without its server's place (it did not answer within the
+ *   start's wait) gets it when the server answers after all (`onLatePlace`, `applyLatePlace`).
  *
  * It moves only when the server's record was written by another device (`device_id`, which
  * the server stores per record), is newer than this device's own last save of the book
@@ -315,27 +319,8 @@ async function checkLoadedPlace(np: NowPlaying, bookKey: string, client: ApiClie
       getDeviceId(),
       readMirror(np.connectionId, np.libraryId, np.path),
     ]);
-    const now = usePlayer.getState();
-    // Another book, or the listener moved meanwhile: theirs wins.
-    if (selectBookKey(now) !== bookKey || localMoveCount() !== moves || abort.signal.aborted) {
-      return;
-    }
-    const from = selectBookPosition(now);
-    const to = placeToMoveTo({ server, deviceId, mirror, enginePosition: from });
-    if (to === null) {
-      // Sync v2: a place another device left that the server did not move to is offered.
-      await offerLoadedPlace(bookKey, server, deviceId, mirror);
-      return;
-    }
-    moved = true;
-    // The row it moved to is the place this device has now seen (Sync v2's ack).
-    if (server && server.version > 0) {
-      void ackVersion(np.connectionId, np.libraryId, np.path, server.version, server).catch(
-        () => undefined,
-      );
-    }
-    await now.seekBook(to);
-    tell(bookKey, from, to);
+    if (abort.signal.aborted) return;
+    moved = await moveOrOffer(np, bookKey, moves, server, deviceId, mirror);
   } catch {
     // Unreachable, refused or too slow: stay where the engine is; the saves go on.
   } finally {
@@ -344,6 +329,85 @@ async function checkLoadedPlace(np: NowPlaying, bookKey: string, client: ApiClie
     // have reported the move yet: the next save comes from the engine itself.
     release({ flush: !moved });
   }
+}
+
+/**
+ * The reconcile's rule over the server's answer for the loaded book: moved to another
+ * device's newer place (`placeToMoveTo`), else offered one (`offerLoadedPlace`). Not when
+ * another book is loaded, nor once the listener moved since `moves` (theirs wins). Resolves
+ * true when it moved.
+ */
+async function moveOrOffer(
+  np: NowPlaying,
+  bookKey: string,
+  moves: number,
+  server: Progress | null,
+  deviceId: string,
+  mirror: ProgressSave | null,
+): Promise<boolean> {
+  const now = usePlayer.getState();
+  if (selectBookKey(now) !== bookKey || localMoveCount() !== moves) return false;
+  // A book that played to its end stays there: its finish is already sent.
+  if (now.snapshot.state === 'ended') return false;
+  const from = selectBookPosition(now);
+  const to = placeToMoveTo({ server, deviceId, mirror, enginePosition: from });
+  if (to === null) {
+    // Sync v2: a place another device left that the server did not move to is offered.
+    await offerLoadedPlace(bookKey, server, deviceId, mirror);
+    return false;
+  }
+  // The row it moved to is the place this device has now seen (Sync v2's ack).
+  if (server && server.version > 0) {
+    void ackVersion(np.connectionId, np.libraryId, np.path, server.version, server).catch(
+      () => undefined,
+    );
+  }
+  await now.seekBook(to);
+  tell(bookKey, from, to);
+  return true;
+}
+
+/**
+ * A downloaded book that started without its server's place (`onLatePlace`: the server had
+ * not answered within the start's wait) gets it after all: the same rule as a check's answer,
+ * weighed against this device's record as the start read it (`LatePlace.mirror`: the
+ * session's own saves since are of the older place it started from, and would always read as
+ * newer). A seek of the listener's own made meanwhile wins, and so does an offer of the same
+ * row shown or answered since (Jump, Stay or ignored: `answeredSince`), which the move would
+ * otherwise overrule. Never throws.
+ */
+async function applyLatePlace(
+  bookKey: string,
+  { server, mirror }: LatePlace,
+  moves: number,
+): Promise<void> {
+  const np = usePlayer.getState().nowPlaying;
+  if (!np) return;
+  try {
+    const [deviceId, current] = await Promise.all([
+      getDeviceId(),
+      readMirror(np.connectionId, np.libraryId, np.path),
+    ]);
+    if (answeredSince(bookKey, server, current)) return;
+    await moveOrOffer(np, bookKey, moves, server, deviceId, mirror);
+  } catch {
+    // Stays where it is; the saves go on (guarded: the start was not checked, fe#198).
+  }
+}
+
+/** True when the listener has already been offered `row` (this launch, `shownOffers`) or has
+ * answered it (`current`, this device's record now: its version acknowledged, or its key
+ * noted), so a late answer of the same row neither moves the book nor offers it again. */
+function answeredSince(
+  bookKey: string,
+  row: Progress | null,
+  current: Pick<ProgressSave, 'ack_version' | 'answered'> | null,
+): boolean {
+  if (!row) return false;
+  const key = placeKey(row);
+  if (shownOffers.has(`${bookKey}|${key}`)) return true;
+  if (current?.answered?.includes(key)) return true;
+  return row.version > 0 && (current?.ack_version ?? 0) >= row.version;
 }
 
 /** "Picked up your place from another device: Chapter 12, 2:13" (into the chapter) with Undo, shown
@@ -408,6 +472,8 @@ export const startPlaceReconcile = sharedStart(runPlaceReconcile);
 function runPlaceReconcile(): () => void {
   const stops: (() => void)[] = [];
   stops.push(onPickedUpAgain(() => reconcileLoadedPlace('picked-up')));
+  // A downloaded book whose server answered only after it started.
+  stops.push(onLatePlace(applyLatePlace));
   // On the foreground, once the address runner has checked the network: a home address
   // checked on the network the device was on before it was suspended goes first.
   stops.push(

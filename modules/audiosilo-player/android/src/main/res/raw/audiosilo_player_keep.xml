@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keeps the car's placeholder cover (res/drawable-nodpi/audiosilo_car_cover.png) through
+     release resource shrinking: a browse row names it by an `android.resource` URI built from
+     its name (ArtworkProvider.browseArtwork), so nothing in the app refers to it by id. A file
+     of its own under res/raw, as audiosilo-watch's keep file explains. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+  tools:keep="@drawable/audiosilo_car_cover" />

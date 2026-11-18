@@ -26,7 +26,7 @@ const mockNative = {
   consumePendingBookmarks: jest.fn(async (): Promise<unknown[]> => []),
   connection: null as ((connected: boolean) => void) | null,
   playRequest: null as ((id: string) => void) | null,
-  playCancel: null as ((id: string) => void) | null,
+  playCancel: null as ((id: string, replaced?: boolean) => void) | null,
   bookmark: null as MockBookmarkHandler | null,
   onConnection: jest.fn((h: (connected: boolean) => void) => {
     mockNative.connection = h;
@@ -40,7 +40,7 @@ const mockNative = {
       mockNative.playRequest = null;
     };
   }),
-  onPlayCancel: jest.fn((h: (id: string) => void) => {
+  onPlayCancel: jest.fn((h: (id: string, replaced?: boolean) => void) => {
     mockNative.playCancel = h;
     return () => {
       mockNative.playCancel = null;
@@ -79,7 +79,7 @@ jest.mock('@/cast/cast-session', () => ({ endCastForCar: () => mockEndCastForCar
 
 const mockStartBookInPlace = jest.fn(async (..._a: unknown[]) => true);
 /** How the car starts a book: one its native side can still call off (`StartHow.wanted`). */
-const carStart = { wanted: expect.any(Function) };
+const carStart = { wanted: expect.any(Function), superseded: expect.any(Function) };
 jest.mock('@/components/player/start-book', () => ({
   startBookInPlace: (...a: unknown[]) => mockStartBookInPlace(...a),
 }));
@@ -193,11 +193,13 @@ import { queryClient } from '@/api/provider';
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 import { bootstrapPlayback } from '@/lib/bootstrap';
+import i18n, { ensureLanguage } from '@/i18n';
 import { setConnectionAliases } from '@/lib/connection-id';
 import * as store from '@/playback/store';
 import { useLibrarySelection } from '@/stores/library-selection';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession, type Connection } from '@/stores/session';
+import { useSettings } from '@/stores/settings';
 import * as storage from '@/lib/storage';
 import { getItem, setItem } from '@/lib/storage';
 
@@ -1281,6 +1283,62 @@ describe('the resumable snapshot (Android, fe#251)', () => {
     expect(await getItem('audiosilo.carResumable')).toBeNull();
   });
 
+  // fe#350: a headset's play after a kill starts with the labels, speed and chapters the
+  // listener has now.
+  it('is written again on a language, speed or chapter interval change', async () => {
+    const settings = useSettings.getState();
+    stop = startCarSync();
+    await settle();
+    usePlayer.setState(loaded('paused', 1, 30));
+    await flushPromises();
+    const writes = () => mockNative.setSnapshot.mock.calls.length;
+    const before = writes();
+    try {
+      await ensureLanguage('de');
+      await i18n.changeLanguage('de');
+      await flushPromises();
+      expect(writes()).toBe(before + 1);
+      expect(lastSnapshot().labels.unavailable).toBe(
+        'Dieses Buch kann gerade nicht abgespielt werden',
+      );
+
+      // E (not the paused book) starts at the default speed.
+      useSettings.setState({ defaultRate: 1.75 });
+      await flushPromises();
+      expect(writes()).toBe(before + 2);
+      const e = tab(lastSnapshot(), 'downloads')!.items.find((i) => i.book.path === 'E')!;
+      expect(e.play!.rate).toBe(1.75);
+
+      jest.mocked(playSpec).mockClear();
+      useSettings.setState({ virtualChapterInterval: settings.virtualChapterInterval + 600 });
+      await flushPromises();
+      expect(jest.mocked(playSpec).mock.calls.map((c) => c[4])).toContain(
+        settings.virtualChapterInterval + 600,
+      );
+    } finally {
+      await i18n.changeLanguage('en');
+      useSettings.setState({
+        defaultRate: settings.defaultRate,
+        virtualChapterInterval: settings.virtualChapterInterval,
+      });
+    }
+  });
+
+  // fe#350: native refused the write, so it still holds the book it had: nothing keeps the
+  // new one for the next launch.
+  it('keeps no book for the next launch when native refuses the write', async () => {
+    stop = startCarSync();
+    await settle();
+    mockNative.setSnapshot.mockResolvedValueOnce(false);
+    usePlayer.setState(loaded('paused', 1, 30));
+    await flushPromises();
+    expect(await getItem('audiosilo.carResumable')).toBeNull();
+    // The next write lands, and the book is kept.
+    usePlayer.setState(loaded('paused', 0, 40));
+    await flushPromises();
+    expect(await getItem('audiosilo.carResumable')).toMatchObject({ path: 'D' });
+  });
+
   it('is written again when the paused book moves, at its new place', async () => {
     stop = startCarSync();
     await settle();
@@ -1693,6 +1751,164 @@ describe('play requests', () => {
     mockNative.playRequest?.(carItemId(ref));
     await settle();
     expect(how.wanted()).toBe(true);
+  });
+
+  // fe#350: the car taps X (a slow server holds its start), then the loaded book P, which
+  // native plays on in X's place: X loads nothing, and the store takes P back.
+  describe('a request another play replaced (the last tap wins)', () => {
+    const loadedP = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'P',
+      trackIndex: 0,
+      position: 12,
+      rate: 1,
+      playing: true,
+    };
+    /** A start that holds until `finish`: a started one switched the store to its book. */
+    let finish: (v: boolean) => void = () => undefined;
+    const holdStart = () =>
+      mockStartBookInPlace.mockImplementationOnce(
+        () =>
+          new Promise<boolean>((r) => {
+            finish = (v) => {
+              if (v) usePlayer.setState({ nowPlaying: { ...ref, queue: { offsets: [0] } } });
+              r(v);
+            };
+          }),
+      );
+
+    beforeEach(() => {
+      // Native gives up on a car play on Android only (CarPlay keeps no wait of its own).
+      Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    });
+
+    it('is superseded, not just unwanted, and the store adopts the book the engine plays', async () => {
+      stop = startCarSync();
+      await settle();
+      holdStart();
+      mockNative.playRequest?.(carItemId(ref));
+      await settle();
+      const how = mockStartBookInPlace.mock.calls[0][2] as {
+        wanted: () => boolean;
+        superseded: () => boolean;
+      };
+      expect(how.superseded()).toBe(false);
+      mockNative.playCancel?.(carItemId(ref), true);
+      expect(how.wanted()).toBe(false);
+      expect(how.superseded()).toBe(true);
+
+      mockNative.getLoadedBook.mockResolvedValue(loadedP);
+      usePlayer.getState().adoptLoaded.mockClear();
+      finish(true);
+      await settle();
+      expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loadedP, expect.any(Function));
+    });
+
+    // Its wait ran out (it would load paused), then the car tapped the loaded book before it
+    // loaded: native says replaced after all, so it loads nothing over the book just asked for.
+    it('is superseded when its wait ran out and another play was made before its load', async () => {
+      stop = startCarSync();
+      await settle();
+      holdStart();
+      mockNative.playRequest?.(carItemId(ref));
+      await settle();
+      const how = mockStartBookInPlace.mock.calls[0][2] as {
+        wanted: () => boolean;
+        superseded: () => boolean;
+      };
+      mockNative.playCancel?.(carItemId(ref), false);
+      expect(how.wanted()).toBe(false);
+      expect(how.superseded()).toBe(false);
+      mockNative.playCancel?.(carItemId(ref), true);
+      expect(how.superseded()).toBe(true);
+
+      mockNative.getLoadedBook.mockResolvedValue(loadedP);
+      usePlayer.getState().adoptLoaded.mockClear();
+      finish(true);
+      await settle();
+      expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loadedP, expect.any(Function));
+    });
+
+    // Called off while its place was looked up: the store never named X (`playBook` sets the
+    // book after the lookup), yet X's switch let P's saves, save loop and span go. P, the book
+    // the store still names and the engine plays, is taken back all the same.
+    it('takes the engine book back when the store still names it (called off in its lookup)', async () => {
+      usePlayer.setState({
+        nowPlaying: { ...loadedP, queue: { offsets: [0] } },
+        snapshot: { state: 'playing', trackIndex: 0, position: 12, duration: 100, rate: 1 },
+      });
+      stop = startCarSync();
+      await settle();
+      mockStartBookInPlace.mockImplementationOnce(() => new Promise<boolean>((r) => (finish = r)));
+      mockNative.playRequest?.(carItemId(ref));
+      await settle();
+      mockNative.playCancel?.(carItemId(ref), true);
+      mockNative.getLoadedBook.mockResolvedValue(loadedP);
+      usePlayer.getState().adoptLoaded.mockClear();
+      finish(true);
+      await settle();
+      expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loadedP, expect.any(Function));
+    });
+
+    it('adopts nothing for a timed-out one, nor when the engine holds the book that gave way', async () => {
+      stop = startCarSync();
+      await settle();
+      mockNative.getLoadedBook.mockResolvedValue(loadedP);
+      usePlayer.getState().adoptLoaded.mockClear();
+      // Its wait ran out (not replaced): it loads paused, and the store keeps it.
+      holdStart();
+      mockNative.playRequest?.(carItemId(ref));
+      await settle();
+      mockNative.playCancel?.(carItemId(ref), false);
+      finish(true);
+      await settle();
+      expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
+
+      // Replaced during its own load: the engine holds it (paused), and it stays.
+      mockNative.getLoadedBook.mockResolvedValue({ ...loadedP, path: ref.path });
+      holdStart();
+      mockNative.playRequest?.(carItemId(ref));
+      await settle();
+      mockNative.playCancel?.(carItemId(ref), true);
+      finish(true);
+      await settle();
+      expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
+
+      // A start that never began (called off before its book was read) switched nothing.
+      mockNative.getLoadedBook.mockResolvedValue(loadedP);
+      holdStart();
+      mockNative.playRequest?.(carItemId(ref));
+      await settle();
+      mockNative.playCancel?.(carItemId(ref), true);
+      finish(false);
+      await settle();
+      expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
+    });
+  });
+
+  // An item of a snapshot written before the identity migration names the old connection id:
+  // a start of it and of the new id's item are one start (joined by book), so a request under
+  // either id takes the other's mark off.
+  it('a request under another id of the same book revives the start it joins', async () => {
+    setConnectionAliases({ srv: 'c1' });
+    try {
+      stop = startCarSync();
+      const legacy = carItemId({ ...ref, connectionId: 'srv' });
+      mockNative.playRequest?.(legacy);
+      await settle();
+      const how = mockStartBookInPlace.mock.calls[0][2] as { wanted: () => boolean };
+      mockNative.playCancel?.(legacy, true);
+      expect(how.wanted()).toBe(false);
+      mockNative.playRequest?.(carItemId(ref));
+      await settle();
+      expect(how.wanted()).toBe(true);
+      // And a cancel under the new id reaches the start made under the old one.
+      mockNative.playCancel?.(carItemId(ref), false);
+      expect(how.wanted()).toBe(false);
+    } finally {
+      setConnectionAliases({});
+    }
   });
 
   // The sync stopping (the root layout gone while the runtime lives on) forgot the mark, so a

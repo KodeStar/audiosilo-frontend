@@ -3,7 +3,7 @@ import type { AppStateStatus } from 'react-native';
 import { beginNetworkCheck, endNetworkCheck } from '@/api/address-route';
 import type { Book, ListeningSyncResponse, Progress } from '@/api/types';
 
-import type { ProgressSave, ResumeLookup } from './progress-sync';
+import type { InitialPlace, LatePlace, ProgressSave } from './progress-sync';
 import type { PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
 
 // The real store and the real reconcile over a fake engine, a fake server answer and this
@@ -35,7 +35,7 @@ const mockSvc = {
 jest.mock('./service', () => ({ createPlaybackService: () => mockSvc }));
 
 const mockSaveProgress = jest.fn(async (..._args: unknown[]) => {});
-const mockLoadInitialProgress = jest.fn(async (..._a: unknown[]): Promise<ResumeLookup> => ({
+const mockLoadInitialProgress = jest.fn(async (..._a: unknown[]): Promise<InitialPlace> => ({
   kind: 'empty',
 }));
 let mockMirror: ProgressSave | null = null;
@@ -719,6 +719,97 @@ describe('and when it stays where it is', () => {
     expect(seeks()).toEqual([700]);
     // The seek's own save was held; the release saves the listener's place.
     expect(saved()).toEqual([700]);
+  });
+});
+
+// The review: a downloaded book whose server answered after the start's wait began from this
+// device's older place and stayed there until the next place check.
+describe('a downloaded book whose server answered only after it started', () => {
+  /** Started from this device's place (100 s) while the server's read was still out; it
+   * plays on, saving that older place meanwhile (the mirror's newest own save). Returns the
+   * late answer's settle. */
+  async function startedWithoutItsServer() {
+    let answer: (late: LatePlace | null) => void = () => {};
+    const late = new Promise<LatePlace | null>((resolve) => (answer = resolve));
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: record({
+        position: 100,
+        version: 0,
+        device_id: 'this-device',
+        updated_at: '2026-10-08T09:00:00Z',
+      }),
+      unchecked: true,
+      late,
+    });
+    await usePlayer.getState().playBook('c1', 2, BOOK, undefined);
+    pushSnapshot(snap('playing', 100));
+    await settle();
+    mockMirror = mirrorAt('2026-10-08T12:00:00Z', 110);
+    jest.clearAllMocks();
+    // The mirror as the start read it: this device's save from before the other device's.
+    return () => answer({ server: record(), mirror: mirrorAt('2026-10-08T09:00:00Z', 100) });
+  }
+
+  it("moves to another device's newer place when the answer comes, and says so with Undo", async () => {
+    const answer = await startedWithoutItsServer();
+    expect(seeks()).toEqual([]);
+    answer();
+    await settle();
+    expect(seeks()).toEqual([400]);
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Picked up your place from another device',
+        action: expect.objectContaining({ label: 'Undo' }),
+      }),
+    );
+    expect(mockAckVersion).toHaveBeenCalledWith('c1', 2, 'A/Book.m4b', 3, expect.anything());
+  });
+
+  it("the listener's own seek made meanwhile wins", async () => {
+    const answer = await startedWithoutItsServer();
+    await usePlayer.getState().seekBook(700);
+    answer();
+    await settle();
+    expect(seeks()).toEqual([700]);
+    expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  // The review: Stay on an offer of the same row (the sync's answer) made meanwhile was
+  // overruled by the late answer's move.
+  it('an offer of the same row answered meanwhile stands: no move', async () => {
+    const answer = await startedWithoutItsServer();
+    mockMirror = { ...mirrorAt('2026-10-08T12:00:00Z', 110), ack_version: 3 };
+    answer();
+    await settle();
+    expect(seeks()).toEqual([]);
+    expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it('a book that played to its end meanwhile stays there', async () => {
+    const answer = await startedWithoutItsServer();
+    pushSnapshot(snap('ended', 1000));
+    await settle();
+    answer();
+    await settle();
+    expect(seeks()).toEqual([]);
+    expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it('stays when the server holds nothing newer of another device', async () => {
+    let answer: (late: LatePlace | null) => void = () => {};
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'empty',
+      late: new Promise<LatePlace | null>((resolve) => (answer = resolve)),
+    });
+    await usePlayer.getState().playBook('c1', 2, BOOK, undefined);
+    pushSnapshot(snap('playing', 0));
+    await settle();
+    jest.clearAllMocks();
+    answer({ server: record({ device_id: 'this-device' }), mirror: null });
+    await settle();
+    expect(seeks()).toEqual([]);
+    expect(mockToast).not.toHaveBeenCalled();
   });
 });
 

@@ -17,7 +17,12 @@ type TrackPlace = (trackIndex: number, positionInTrack: number) => void;
 let remoteMove: TrackPlace | null = null;
 let rateChange: ((rate: number) => void) | null = null;
 let silenceSaved: ((total: number) => void) | null = null;
+/** Android's word that the engine was asked to play (`onPlayAsked`). */
+let playAsked: (() => void) | null = null;
 const mockSvc = {
+  onPlayAsked: jest.fn((handler: (() => void) | null) => {
+    playAsked = handler;
+  }),
   onRemoteSeek: jest.fn((handler: ((positionInTrack: number) => void) | null) => {
     remoteSeek = handler;
   }),
@@ -153,6 +158,7 @@ import { useSleepTimer } from './sleep-timer';
 import { useReachability } from '@/api/reachability';
 import { AutoplayBlockedError, PlaybackStartError } from './types';
 import {
+  DOWNLOADED_PLACE_WAIT_MS,
   flushHistoryOnHide,
   holdSaves,
   LONG_PAUSE_MS,
@@ -674,7 +680,41 @@ describe('stall watchdog promotes a stuck loading to error', () => {
     expect(usePlayer.getState().snapshot.state).toBe('error');
   });
 
-  it('lets a genuine recovery (playing) clear the error', async () => {
+  // The device run (fe#158): the stop said "Playback stopped" while the engine went on
+  // buffering, and it started by itself once the server answered again.
+  it('stops the engine when it fires, so nothing plays without a press', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    pushSnapshot(snap('loading', 50));
+    await Promise.resolve();
+    jest.mocked(mockSvc.pause).mockClear();
+    jest.advanceTimersByTime(3_000);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+    // The engine's report of that pause is held by the error.
+    pushSnapshot(snap('paused', 50));
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+  });
+
+  it('never stops the engine for an attempt that played in time', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    pushSnapshot(snap('loading', 50));
+    await Promise.resolve();
+    jest.mocked(mockSvc.pause).mockClear();
+    pushSnapshot(snap('playing', 51));
+    await Promise.resolve();
+    jest.advanceTimersByTime(5_000);
+    await Promise.resolve();
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+  });
+
+  it('lets a play from outside the app (playing) clear the error', async () => {
     await startBook(makeBook(), 0);
     pushSnapshot(snap('playing', 50));
     await Promise.resolve();
@@ -685,11 +725,103 @@ describe('stall watchdog promotes a stuck loading to error', () => {
     await Promise.resolve();
     expect(usePlayer.getState().snapshot.state).toBe('error');
 
-    // The stream comes back on its own → the engine reports 'playing', which is not a
-    // stall re-report, so it clears the error.
+    // The lock screen or the car plays the paused engine → it reports 'playing', which is
+    // not a stall re-report, so it clears the error. (A moment after the stop: one reported
+    // at once may be from before its pause, below.)
+    jest.advanceTimersByTime(1_000);
     pushSnapshot(snap('playing', 50));
     await Promise.resolve();
     expect(usePlayer.getState().snapshot.state).toBe('playing');
+  });
+
+  /** Started, then stalled into the watchdog's error, the engine paused by it. */
+  async function stalledIntoError() {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    pushSnapshot(snap('loading', 50));
+    await Promise.resolve();
+    jest.advanceTimersByTime(3_000);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    jest.mocked(mockSvc.pause).mockClear();
+  }
+
+  // The review (fe#157): a car or headset play after the error was held by it, so it could
+  // hang with nothing said, or start whenever the server answered.
+  it('follows a play asked from outside the app after the error like a press', async () => {
+    await stalledIntoError();
+    jest.advanceTimersByTime(1_000);
+    playAsked?.();
+    pushSnapshot(snap('loading', 50));
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('loading');
+    // It never plays: the same stop, the engine paused again.
+    jest.advanceTimersByTime(3_000);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+  });
+
+  it('a play asked from outside that plays in time just plays', async () => {
+    await stalledIntoError();
+    playAsked?.();
+    pushSnapshot(snap('loading', 50));
+    await Promise.resolve();
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    jest.advanceTimersByTime(5_000);
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('playing');
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+  });
+
+  it('a play the engine was asked for outside an error adds no watchdog of its own', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    await usePlayer.getState().pause();
+    pushSnapshot(snap('paused', 50));
+    await Promise.resolve();
+    jest.mocked(mockSvc.pause).mockClear();
+    playAsked?.();
+    pushSnapshot(snap('loading', 50));
+    await Promise.resolve();
+    jest.advanceTimersByTime(5_000);
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('paused');
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+  });
+
+  // The review: the engine's `playing` sent just before the watchdog's pause reached it read
+  // as a recovery, and "Playback stopped" was gone.
+  it("a playing reported just after the watchdog's pause is older than it: the pause wins", async () => {
+    await stalledIntoError();
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+    // A press of the listener's own plays at once.
+    await usePlayer.getState().retry();
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('playing');
+  });
+
+  // The review: iOS says nothing of a play asked from outside, so a car or headset play right
+  // after the stop was paused again as an older report. Once the engine reports the pause, a
+  // `playing` is a new play.
+  it('a playing after the engine reported the pause is a play from outside (iOS)', async () => {
+    await stalledIntoError();
+    pushSnapshot(snap('paused', 50));
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('playing');
+    expect(mockSvc.pause).not.toHaveBeenCalled();
   });
 
   it('re-arms after a retry that also stalls', async () => {
@@ -1227,7 +1359,11 @@ describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
 
 describe('connection scoping', () => {
   describe("finding 11: a switch to another server's book saves the previous book through its own server", () => {
-    const client2 = { ...fakeClient, coverUrl: () => 'c2-cover' };
+    const client2 = {
+      ...fakeClient,
+      coverUrl: () => 'c2-cover',
+      addHistory: jest.fn(async () => {}),
+    };
     const playing = () => {
       pushSnapshot(snap('playing', 40));
     };
@@ -1281,6 +1417,74 @@ describe('connection scoping', () => {
         expect.objectContaining({ connectionId: 'c1', position: 45 }),
       );
       expect(mockSaveProgress).not.toHaveBeenCalledWith(client2, expect.anything());
+      resume({ kind: 'empty' });
+      await starting;
+    });
+
+    it('a listening span of the previous book before the next one loads goes to its server', async () => {
+      await startBook(makeBook(), 0, 'c1');
+      playing();
+      const { resume, starting } = await startOnOtherServer();
+      client2.addHistory.mockClear();
+      const addHistory = fakeClient.addHistory as jest.Mock;
+      addHistory.mockClear();
+      // The old book, paused and played again from the lock screen, pauses once more: a span
+      // long enough to keep.
+      pushSnapshot(snap('paused', 45));
+      pushSnapshot(snap('playing', 45));
+      jest.advanceTimersByTime(45_000);
+      pushSnapshot(snap('paused', 90));
+      await flushMicrotasks();
+      expect(addHistory).toHaveBeenCalledWith(
+        2,
+        'A/Book.m4b',
+        expect.objectContaining({ from_pos: 45 }),
+        expect.anything(),
+      );
+      expect(client2.addHistory).not.toHaveBeenCalled();
+      resume({ kind: 'empty' });
+      await starting;
+    });
+
+    // The next book is a download whose connection is gone, so the switch holds no client at
+    // all: the span of the book still playing is its own server's all the same.
+    it('a listening span of the previous book is kept when the next book has no client', async () => {
+      await startBook(makeBook(), 0, 'c1');
+      playing();
+      const other = makeBook({ rel_path: 'B/Other.m4b' });
+      const entry: DownloadEntry = {
+        connectionId: 'c2',
+        libraryId: 2,
+        path: other.rel_path,
+        title: 'Other',
+        status: 'downloaded',
+        progress: 1,
+        bytes: 0,
+        totalBytes: 0,
+        manifest: {
+          book: other,
+          chapters: null,
+          files: [{ relPath: other.rel_path, localUri: 'file:///dl/other.m4b' }],
+          coverUri: null,
+          savedAt: '2026-01-01T00:00:00Z',
+        },
+      };
+      useDownloads.setState({ entries: { [`c2:2:${other.rel_path}`]: entry } });
+      mockResolveClient.mockImplementation((cid: string) => (cid === 'c2' ? null : fakeClient));
+      const { resume, starting } = await startOnOtherServer();
+      const addHistory = fakeClient.addHistory as jest.Mock;
+      addHistory.mockClear();
+      pushSnapshot(snap('paused', 45));
+      pushSnapshot(snap('playing', 45));
+      jest.advanceTimersByTime(45_000);
+      pushSnapshot(snap('paused', 90));
+      await flushMicrotasks();
+      expect(addHistory).toHaveBeenCalledWith(
+        2,
+        'A/Book.m4b',
+        expect.objectContaining({ from_pos: 45 }),
+        expect.anything(),
+      );
       resume({ kind: 'empty' });
       await starting;
     });
@@ -2597,6 +2801,49 @@ describe('plays a downloaded book whose connection is gone', () => {
       connectionId: 'gone',
       position: 50,
     });
+  });
+
+  // The device run: a frozen server held a downloaded book's car start for its whole request
+  // timeout, past the car's 10 s wait, and the book loaded paused.
+  it("waits on its server's place only briefly, and not at all when it is unreachable", async () => {
+    seedDownloaded('c1');
+    try {
+      await usePlayer.getState().playBook('c1', 2, makeBook(), undefined);
+      expect(mockLoadInitialProgress).toHaveBeenLastCalledWith(
+        fakeClient,
+        'c1',
+        2,
+        'A/Book.m4b',
+        DOWNLOADED_PLACE_WAIT_MS,
+      );
+      useReachability.setState({ online: { c1: false } });
+      await usePlayer.getState().playBook('c1', 2, makeBook(), undefined);
+      expect(mockLoadInitialProgress).toHaveBeenLastCalledWith(
+        null,
+        'c1',
+        2,
+        'A/Book.m4b',
+        DOWNLOADED_PLACE_WAIT_MS,
+      );
+    } finally {
+      useReachability.setState({ online: {} });
+    }
+  });
+
+  it('a streamed book still waits for its server (its place has nowhere else to come from)', async () => {
+    useReachability.setState({ online: { c1: false } });
+    try {
+      await usePlayer.getState().playBook('c1', 2, makeBook(), undefined);
+      expect(mockLoadInitialProgress).toHaveBeenLastCalledWith(
+        fakeClient,
+        'c1',
+        2,
+        'A/Book.m4b',
+        undefined,
+      );
+    } finally {
+      useReachability.setState({ online: {} });
+    }
   });
 
   it('still bails when the connection is gone AND the book is not downloaded (streaming needs a client)', async () => {

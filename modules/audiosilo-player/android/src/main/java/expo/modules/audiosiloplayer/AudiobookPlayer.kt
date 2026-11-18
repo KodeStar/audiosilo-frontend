@@ -4,6 +4,7 @@ import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 
@@ -43,6 +44,15 @@ interface AudiobookPlayerHooks {
  *    auto-rewind inside [play] ([internal]), Smart speed's silence skips and a file/clip
  *    advancing at its end (neither calls a seek method on this wrapper).
  *  - **Remote speed**: a controller other than the app changing the speed is reported too.
+ *  - **A failed engine reads as stopped** (fe#157): idle with an error, its getters read ready
+ *    with no error ([failed], [getPlaybackState], [getPlayerError]), and the service clears
+ *    its playWhenReady, so the platform session (built from the getters) says paused with
+ *    play available (Media3 controllers hear the engine's own idle, as the session copies a
+ *    state change's argument, with no error, and paused). A fatal error on the platform
+ *    session (Android's error state) made Android Auto drop its controls: only a hardware
+ *    play key could start the book again. A play prepares the failed engine again first ([prepareIfFailed]): the session, shown a ready player, never
+ *    does. The service tells the app (`PlayerEventSink.playerFailed`) and the car (a
+ *    non-fatal session error, in the listener's language) itself.
  */
 class AudiobookPlayer(player: Player, private val hooks: AudiobookPlayerHooks) : ForwardingPlayer(player) {
   private var pausedAt: Long = 0L
@@ -63,6 +73,23 @@ class AudiobookPlayer(player: Player, private val hooks: AudiobookPlayerHooks) :
    * playlist and rebuffer from scratch. The next identical set is skipped instead.
    */
   var absorbIdenticalSet = false
+
+  /** The engine failed: idle with an error and a queue still loaded. Shown to controllers as
+   * stopped, ready to play again (see the class doc). */
+  val failed: Boolean
+    get() = super.getPlaybackState() == Player.STATE_IDLE && super.getPlayerError() != null && mediaItemCount > 0
+
+  override fun getPlaybackState(): Int = if (failed) Player.STATE_READY else super.getPlaybackState()
+
+  override fun getPlayerError(): PlaybackException? = if (failed) null else super.getPlayerError()
+
+  /** Prepares a [failed] engine again (at its place), so the play that follows plays. True
+   * when it did. */
+  fun prepareIfFailed(): Boolean {
+    if (!failed) return false
+    super.prepare()
+    return true
+  }
 
   override fun getAvailableCommands(): Player.Commands {
     val base = super.getAvailableCommands()
@@ -91,6 +118,7 @@ class AudiobookPlayer(player: Player, private val hooks: AudiobookPlayerHooks) :
       if (rewind > 500) internal { seekBackBy(rewind) }
     }
     pausedAt = 0L
+    prepareIfFailed()
     super.play()
   }
 

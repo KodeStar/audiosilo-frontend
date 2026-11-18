@@ -9,7 +9,6 @@ import android.os.Looper
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
@@ -62,6 +61,19 @@ class ConfigRecord : Record {
   /** Absent from an older JS bundle (then the effects are left alone). */
   @Field var smartSpeed: Boolean? = null
   @Field var voiceBoost: Boolean? = null
+}
+
+/**
+ * When the module's 1 s progress loop runs. Only while the engine plays, or buffers on its way
+ * to playing: a paused audiobook can sit for hours, and a sample a second would wake JS for no
+ * change (battery). The buffering ticks are the stall watchdog's heartbeat (fe#158): Android
+ * pauses JS timers with the screen off, so the store checks the watchdog's deadline on every
+ * engine event, and a dead stream that buffers with no event would only reach `error` once the
+ * app came back. Pure (unit-tested on the JVM).
+ */
+object ProgressTicks {
+  fun wanted(isPlaying: Boolean, playWhenReady: Boolean, playbackState: Int): Boolean =
+    isPlaying || (playWhenReady && playbackState == Player.STATE_BUFFERING)
 }
 
 /**
@@ -122,6 +134,11 @@ class AudiosiloPlayerModule : Module() {
       sendEvent("onRemoteBookmark", place + named)
     }
 
+    override fun playerFailed() {
+      // The service has just stopped it wanting to play (`onEngineFailed`).
+      sendEvent("onState", mapOf("state" to "error", "playWhenReady" to false))
+    }
+
     override fun carConnection(connected: Boolean) {
       if (observingCarConnection) sendEvent("onCarConnection", mapOf("connected" to connected))
     }
@@ -130,8 +147,8 @@ class AudiosiloPlayerModule : Module() {
       sendEvent("onCarPlayRequest", mapOf("id" to id))
     }
 
-    override fun carPlayCancel(id: String) {
-      sendEvent("onCarPlayCancel", mapOf("id" to id))
+    override fun carPlayCancel(id: String, replaced: Boolean) {
+      sendEvent("onCarPlayCancel", mapOf("id" to id, "replaced" to replaced))
     }
 
     override val observingBookmarks: Boolean get() = this@AudiosiloPlayerModule.observingBookmarks
@@ -242,9 +259,14 @@ class AudiosiloPlayerModule : Module() {
         val authed = tracks.firstOrNull { !it.headers.isNullOrEmpty() }
         AuthHolder.set(authed?.headers, authed?.url)
         lastTrackIndex = -1
-        val specs = tracks.map {
-          TrackSpec(it.id, it.url, it.title, it.album, it.artist, it.artwork, it.duration ?: 0.0)
-        }
+        // A streamed cover's URL carries the media token: the items name it by a token-free
+        // URI that only the service's bitmap loader resolves (RemoteArtwork, fe#349). A
+        // downloaded cover file goes as the artwork provider's URI, which the car can open
+        // (LocalArtwork).
+        val specs = MediaItems.withItemArtwork(
+          tracks.map { TrackSpec(it.id, it.url, it.title, it.album, it.artist, it.artwork, it.duration ?: 0.0) },
+          ArtworkProvider.authority(context),
+        )
         val clips = chapters.orEmpty().map { ClipSpec(it.fileIndex, it.startInFile, it.endInFile, it.title) }
         val ref = book?.takeIf { it.connectionId.isNotEmpty() && it.path.isNotEmpty() }
           ?.let { BookRef(it.connectionId, it.libraryId.toLong(), it.path) }
@@ -475,8 +497,9 @@ class AudiosiloPlayerModule : Module() {
         // read its mapping from the items, not from a load this module never made.
         timelineMap = timelineOf(c.mediaItems())
         // The loop is play-state-driven (onIsPlayingChanged). If we reconnected to a
-        // service that is already playing, kick it off now since no transition will fire.
-        if (c.isPlaying) startProgressLoop()
+        // service that is already playing (or buffering to play), kick it off now since no
+        // transition will fire.
+        syncProgressLoop(c)
         waiters.forEach { it(null) }
       } catch (e: Exception) {
         controllerFuture = null
@@ -502,21 +525,22 @@ class AudiosiloPlayerModule : Module() {
   private fun attachListener(c: MediaController) {
     c.addListener(object : Player.Listener {
       override fun onPlaybackStateChanged(playbackState: Int) {
-        if (!replacing) emitState()
+        if (replacing) return
+        emitState()
+        syncProgressLoop(c)
       }
       override fun onIsPlayingChanged(isPlaying: Boolean) {
         if (replacing) return
         emitState()
-        // Tick progress only while actually playing - a paused audiobook can sit for hours,
-        // and emitting every second wakes JS for no position change (battery). Emit one
-        // final sample on pause; paused seeks still report via onPositionDiscontinuity.
-        if (isPlaying) startProgressLoop() else {
-          emitProgress()
-          stopProgressLoop()
-        }
+        // Emit one final sample on pause; paused seeks still report via
+        // onPositionDiscontinuity.
+        if (!isPlaying) emitProgress()
+        syncProgressLoop(c)
       }
       override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-        if (!replacing) emitState()
+        if (replacing) return
+        emitState()
+        syncProgressLoop(c)
       }
       override fun onTimelineChanged(timeline: Timeline, reason: Int) {
         // A queue set by anyone (this module, the car, playback resumption): its items carry
@@ -543,10 +567,8 @@ class AudiosiloPlayerModule : Module() {
         // same file; emitTrackChange dedupes, so this only fires when the file changes.
         emitTrackChange(timelineMap.itemToFile(c.currentMediaItemIndex, 0L).first)
       }
-
-      override fun onPlayerError(error: PlaybackException) {
-        sendEvent("onState", mapOf("state" to "error"))
-      }
+      // A failed engine reaches JS from the service (`PlayerEventSink.playerFailed`): the
+      // session shows it to controllers as stopped, with no error (fe#157).
     })
   }
 
@@ -570,7 +592,9 @@ class AudiosiloPlayerModule : Module() {
       Player.STATE_ENDED -> "ended"
       else -> "idle"
     }
-    sendEvent("onState", mapOf("state" to state))
+    // playWhenReady: JS follows a play asked from outside the app (the car, a headset) after
+    // playback stopped in error, whose state alone (`loading`) it holds (fe#157).
+    sendEvent("onState", mapOf("state" to state, "playWhenReady" to c.playWhenReady))
   }
 
   private fun emitTrackChange(index: Int) {
@@ -596,6 +620,15 @@ class AudiosiloPlayerModule : Module() {
       "onProgress",
       mapOf("position" to position, "duration" to duration, "silenceSaved" to AudioEffects.silenceSavedSeconds),
     )
+  }
+
+  /** Runs the 1 s loop while [ProgressTicks.wanted] says so, else stops it. */
+  private fun syncProgressLoop(c: MediaController) {
+    if (ProgressTicks.wanted(c.isPlaying, c.playWhenReady, c.playbackState)) {
+      if (progressRunnable == null) startProgressLoop()
+    } else {
+      stopProgressLoop()
+    }
   }
 
   private fun startProgressLoop() {
