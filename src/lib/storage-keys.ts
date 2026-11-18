@@ -44,6 +44,9 @@ export const STARTUP_CACHE_KEY = 'audiosilo.startupCache';
 export const CAR_BOOKMARKS_KEY = 'audiosilo.carBookmarks';
 /** Native keeps the car snapshot it was last handed; this says one was. */
 export const CAR_SNAPSHOT_WRITTEN_KEY = 'audiosilo.carSnapshotWritten';
+/** The book a playback resumption is offered (`src/car/car-controller.ts`), kept across
+ * launches: a book ref with its `connectionId` (read through the aliases) and a kids flag. */
+export const CAR_RESUMABLE_KEY = 'audiosilo.carResumable';
 /** `{ selection: { connectionId, libraryId } }`. */
 export const LIBRARY_SELECTION_KEY = 'audiosilo.librarySelection';
 /** `{ lifetime, books }`, books keyed by `contentKey`. */

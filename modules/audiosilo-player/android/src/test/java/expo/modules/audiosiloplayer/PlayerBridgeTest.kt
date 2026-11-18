@@ -10,13 +10,13 @@ import org.junit.Test
 class PlayerBridgeTest {
   private class Sink(override val observingCar: Boolean) : PlayerEventSink {
     val requests = ArrayList<String>()
-    val cancels = ArrayList<String>()
+    val cancels = ArrayList<Pair<String, Boolean>>()
     override fun remoteMove(fileIndex: Int, position: Double) = Unit
     override fun rateChange(rate: Double) = Unit
     override fun remoteBookmark(fileIndex: Int, position: Double, book: BookRef?, relPath: String?) = Unit
     override fun carConnection(connected: Boolean) = Unit
     override fun carPlayRequest(id: String) { requests.add(id) }
-    override fun carPlayCancel(id: String) { cancels.add(id) }
+    override fun carPlayCancel(id: String, replaced: Boolean) { cancels.add(id to replaced) }
     override val observingBookmarks = false
   }
 
@@ -31,9 +31,19 @@ class PlayerBridgeTest {
     val sink = Sink(observingCar = true)
     PlayerBridge.sink = sink
     PlayerBridge.requestCarPlay("book:A")
-    PlayerBridge.cancelCarPlay("book:A")
+    PlayerBridge.cancelCarPlay("book:A", replaced = false)
     assertEquals(listOf("book:A"), sink.requests)
-    assertEquals(listOf("book:A"), sink.cancels)
+    assertEquals(listOf("book:A" to false), sink.cancels)
+  }
+
+  // fe#350: a play another took the place of (the car's re-tap of the loaded book) says so, and
+  // JS then loads nothing for it: the last tap wins.
+  @Test fun aReplacedPlaySaysSo() {
+    val sink = Sink(observingCar = true)
+    PlayerBridge.sink = sink
+    PlayerBridge.requestCarPlay("book:X")
+    PlayerBridge.cancelCarPlay("book:X", replaced = true)
+    assertEquals(listOf("book:X" to true), sink.cancels)
   }
 
   // Never delivered (JS not listening yet): dropped here, so a JS that listens later never
@@ -43,7 +53,7 @@ class PlayerBridgeTest {
     PlayerBridge.sink = sink
     PlayerBridge.requestCarPlay("book:A")
     assertEquals("book:A", PlayerBridge.pendingCarPlayId)
-    PlayerBridge.cancelCarPlay("book:A")
+    PlayerBridge.cancelCarPlay("book:A", replaced = true)
     assertNull(PlayerBridge.pendingCarPlayId)
     assertTrue(sink.cancels.isEmpty())
   }

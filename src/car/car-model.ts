@@ -43,6 +43,9 @@ export type CarLabels = {
   signedOut: string;
   /** A play request that failed or timed out. */
   unavailable: string;
+  /** Android: the error a car shows when the engine fails mid-play, in place of Media3's own
+   * English text (fe#157). The player's own error line. */
+  playbackError: string;
 };
 
 /** How a downloaded book starts on Android with no JS running: file URLs only, no headers,
@@ -154,6 +157,7 @@ export function carLabels(t: TFunction): CarLabels {
     empty: t('car.empty'),
     signedOut: t('car.signedOut'),
     unavailable: t('car.unavailable'),
+    playbackError: t('player.full.errorLine'),
   };
 }
 

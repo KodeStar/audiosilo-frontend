@@ -58,6 +58,7 @@ import { serialQueue } from '@/lib/serial-queue';
 import { getItem, setItem } from '@/lib/storage';
 import {
   CAR_BOOKMARKS_KEY as RETRY_KEY,
+  CAR_RESUMABLE_KEY as RESUMABLE_KEY,
   CAR_SNAPSHOT_WRITTEN_KEY as WRITTEN_KEY,
 } from '@/lib/storage-keys';
 import { onForeground } from '@/lib/when-active';
@@ -199,19 +200,21 @@ let carSeenRead: Promise<void> = Promise.resolve();
 
 // --- Reading what the app knows ---------------------------------------------------------
 
-/** The build under way is a resumption's (`writeForResumption`: a pause, a stop or another
- * book with no car connected): its reads take what the cache holds, however old, and ask a
- * server only for what it has never held, so the write never waits on a server (whose
- * request timeout is a JS timer Android holds in the background). Builds are serialized
- * (`snapshotWrites`) and only they read, so one flag serves. */
-let cachedBuild = false;
+/** How a build reads what the app knows, handed down from the build to every read. `fresh`:
+ * the server's answer when the cache is stale. `cached`: a resumption's build
+ * (`writeForResumption`: a pause, a stop or another book with no car connected) takes what
+ * the cache holds, however old, and asks a server only for what it has never held, so the
+ * write never waits on a server (whose request timeout is a JS timer Android holds in the
+ * background). */
+type ReadMode = 'fresh' | 'cached';
 
 /** A read that always settles: the server's answer when fresh enough or reachable, else what
  * the cache last held, else undefined (offline with nothing cached). */
 async function read<T, K extends QueryKey>(
   options: FetchQueryOptions<T, Error, T, K>,
+  reads: ReadMode,
 ): Promise<T | undefined> {
-  if (cachedBuild) {
+  if (reads === 'cached') {
     const cached = queryClient.getQueryData<T>(options.queryKey);
     if (cached !== undefined) return cached;
   }
@@ -224,25 +227,25 @@ async function read<T, K extends QueryKey>(
 
 /** A book's item: the downloaded copy's (no network), else through the query cache. Only the
  * item (no chapters, unlike `bookSourceOf`): a list row needs no timeline. */
-async function itemOf(ref: BookRef): Promise<Book | null> {
+async function itemOf(ref: BookRef, reads: ReadMode): Promise<Book | null> {
   const dl = downloadedEntryOf(ref);
   if (dl) return dl.manifest.book;
   const client = resolveClient(ref.connectionId);
   if (!client) return null;
   return (
-    (await read({
-      ...itemQuery(ref.connectionId, client, ref.libraryId, ref.path),
-      staleTime: ITEM_STALE_MS,
-    })) ?? null
+    (await read(
+      { ...itemQuery(ref.connectionId, client, ref.libraryId, ref.path), staleTime: ITEM_STALE_MS },
+      reads,
+    )) ?? null
   );
 }
 
 /** The progress rows of `conns` (the person listening's servers), and which servers' rows are
  * known (read now or cached): only those can stand in for the server in a resume lookup.
- * `cachedOnly`: what the query cache holds, with no request. */
+ * `cacheOnly`: what the query cache holds, with no request. */
 async function progressRows(
   conns: readonly Connection[],
-  cachedOnly = false,
+  reads: ReadMode | 'cacheOnly',
 ): Promise<{ rows: SourcedProgress[]; known: Set<string> }> {
   const known = new Set<string>();
   const lists = await Promise.all(
@@ -250,9 +253,10 @@ async function progressRows(
       const client = resolveClient(c.id);
       if (!client) return [];
       const query = { ...allProgressQuery(c.id, client), staleTime: LIST_STALE_MS };
-      const rows = cachedOnly
-        ? queryClient.getQueryData<Progress[]>(query.queryKey)
-        : await read(query);
+      const rows =
+        reads === 'cacheOnly'
+          ? queryClient.getQueryData<Progress[]>(query.queryKey)
+          : await read(query, reads);
       if (!rows) return [];
       known.add(c.id);
       return rows.map((p): SourcedProgress => ({
@@ -273,21 +277,25 @@ function progressLookup(rows: readonly SourcedProgress[]): (ref: BookRef) => Pro
 }
 
 /** A server's flags, or null when they can't be known: the cached ones at once in a
- * resumption's build (`cachedBuild`), else `fetchCapabilities` (which already falls back to
- * the cached flags; it rejects only when none). */
+ * resumption's build (`cached`), else `fetchCapabilities` (which already falls back to the
+ * cached flags; it rejects only when none). */
 async function capabilitiesOf(
   cid: string,
   client: NonNullable<ReturnType<typeof resolveClient>>,
+  reads: ReadMode,
 ): Promise<Capabilities | null> {
-  const cached = cachedBuild
-    ? queryClient.getQueryData<ServerInfo>(qk.server(cid))?.capabilities
-    : undefined;
+  const cached =
+    reads === 'cached'
+      ? queryClient.getQueryData<ServerInfo>(qk.server(cid))?.capabilities
+      : undefined;
   return cached ?? (await fetchCapabilities(cid, client).catch(() => null));
 }
 
 /** The Up next queue the app shows (`queueConnectionId`: the loaded book's server, else the
  * default, else the first), or null when that server keeps none (no `queue`). */
-async function upNextEntries(): Promise<{ cid: string; entries: QueueEntry[] } | null> {
+async function upNextEntries(
+  reads: ReadMode,
+): Promise<{ cid: string; entries: QueueEntry[] } | null> {
   const cid = queueConnectionId(
     usePlayer.getState().nowPlaying?.connectionId,
     useSession.getState().defaultConnectionId,
@@ -295,9 +303,9 @@ async function upNextEntries(): Promise<{ cid: string; entries: QueueEntry[] } |
   );
   const client = cid ? resolveClient(cid) : null;
   if (!cid || !client) return null;
-  const caps = await capabilitiesOf(cid, client);
+  const caps = await capabilitiesOf(cid, client, reads);
   if (!caps?.queue) return null;
-  const entries = await read({ ...queueQuery(cid, client), staleTime: LIST_STALE_MS });
+  const entries = await read({ ...queueQuery(cid, client), staleTime: LIST_STALE_MS }, reads);
   return { cid, entries: entries ?? [] };
 }
 
@@ -310,12 +318,12 @@ let carListed: LibrarySelection | null = null;
  * signed-in server's library list; with no pick, what the car listed last this drive while
  * it stands, else the library the app shows, else the first server that could be read
  * (`resolveCarLibrary`: the car has no state to show for one it waits on). */
-async function selectedLibrary(): Promise<LibrarySelection | null> {
+async function selectedLibrary(reads: ReadMode): Promise<LibrarySelection | null> {
   const groups = await Promise.all(
     profileConnections().map(async (c): Promise<LibraryGroup> => {
       const client = resolveClient(c.id);
       const libs = client
-        ? await read({ ...librariesQuery(c.id, client), staleTime: LIST_STALE_MS })
+        ? await read({ ...librariesQuery(c.id, client), staleTime: LIST_STALE_MS }, reads)
         : undefined;
       return {
         connectionId: c.id,
@@ -332,16 +340,19 @@ async function selectedLibrary(): Promise<LibrarySelection | null> {
 }
 
 /** The selected library's books, recently added first. */
-async function libraryBooks(): Promise<{ cid: string; books: Book[] } | null> {
-  const lib = await selectedLibrary();
+async function libraryBooks(reads: ReadMode): Promise<{ cid: string; books: Book[] } | null> {
+  const lib = await selectedLibrary(reads);
   const client = lib ? resolveClient(lib.connectionId) : null;
   if (!lib || !client) return null;
-  const page = await read({
-    queryKey: qk.carLibrary(lib.connectionId, lib.libraryId),
-    queryFn: () =>
-      client.listBooks(lib.libraryId, { sort: 'recent', limit: CAR_TAB_LIMITS.library }),
-    staleTime: LIST_STALE_MS,
-  });
+  const page = await read(
+    {
+      queryKey: qk.carLibrary(lib.connectionId, lib.libraryId),
+      queryFn: () =>
+        client.listBooks(lib.libraryId, { sort: 'recent', limit: CAR_TAB_LIMITS.library }),
+      staleTime: LIST_STALE_MS,
+    },
+    reads,
+  );
   return { cid: lib.connectionId, books: page?.books ?? [] };
 }
 
@@ -371,12 +382,13 @@ const unreadable = async () => null;
 async function memberCollections(
   conn: Connection,
   client: NonNullable<ReturnType<typeof resolveClient>>,
+  reads: ReadMode,
 ): Promise<{ has: boolean | undefined; list: Collection[] | undefined }> {
   if (!conn.user.managed_by) return { has: undefined, list: undefined };
-  const caps = await capabilitiesOf(conn.id, client);
+  const caps = await capabilitiesOf(conn.id, client, reads);
   const has = caps ? !!caps.collections : undefined;
   const list = has
-    ? await read({ ...collectionsQuery(conn.id, client), staleTime: LIST_STALE_MS })
+    ? await read({ ...collectionsQuery(conn.id, client), staleTime: LIST_STALE_MS }, reads)
     : undefined;
   return { has, list };
 }
@@ -390,7 +402,11 @@ async function memberCollections(
  * (`buildAndWrite`): the libraries alongside the collections, then the shared collections'
  * items or the library's page.
  */
-async function readKidsShelf(conn: Connection, kids: KidsSettings): Promise<KidsShelfRead> {
+async function readKidsShelf(
+  conn: Connection,
+  kids: KidsSettings,
+  reads: ReadMode,
+): Promise<KidsShelfRead> {
   const client = resolveClient(conn.id);
   if (!client) {
     return {
@@ -400,8 +416,8 @@ async function readKidsShelf(conn: Connection, kids: KidsSettings): Promise<Kids
     };
   }
   const [libraries, collections] = await Promise.all([
-    read({ ...librariesQuery(conn.id, client), staleTime: LIST_STALE_MS }),
-    memberCollections(conn, client),
+    read({ ...librariesQuery(conn.id, client), staleTime: LIST_STALE_MS }, reads),
+    memberCollections(conn, client, reads),
   ]);
   const mode = kidsShelfMode(conn.user, collections.has, collections.list);
   if (mode === 'unknown') return { mode, library: null, shelf: unreadable };
@@ -411,7 +427,7 @@ async function readKidsShelf(conn: Connection, kids: KidsSettings): Promise<Kids
   if (mode === 'collections') {
     const shared = kidsCollections(collections.list ?? [], conn.user);
     const details = await mapLimit(shared, ITEM_CONCURRENCY, (c) =>
-      read({ ...collectionQuery(conn.id, client, c.id), staleTime: LIST_STALE_MS }),
+      read({ ...collectionQuery(conn.id, client, c.id), staleTime: LIST_STALE_MS }, reads),
     );
     if (details.every((d) => d === undefined)) return { mode, library: null, shelf: unreadable };
     return {
@@ -423,11 +439,14 @@ async function readKidsShelf(conn: Connection, kids: KidsSettings): Promise<Kids
   }
   const lib = kidsLibrary(libraries, conn.id, kids);
   if (!lib) return { mode, library: null, shelf: async () => [] };
-  const page = await read({
-    queryKey: kidsLibraryKey(conn.id, lib.id),
-    queryFn: () => client.listBooks(lib.id, { limit: CAR_TAB_LIMITS.library }),
-    staleTime: LIST_STALE_MS,
-  });
+  const page = await read(
+    {
+      queryKey: kidsLibraryKey(conn.id, lib.id),
+      queryFn: () => client.listBooks(lib.id, { limit: CAR_TAB_LIMITS.library }),
+      staleTime: LIST_STALE_MS,
+    },
+    reads,
+  );
   // Its page unreadable (offline, nothing cached): the library is still known, so the
   // downloads offered instead are that library's only, as kids mode's own.
   if (!page) return { mode, library: lib, shelf: unreadable };
@@ -438,7 +457,7 @@ async function readKidsShelf(conn: Connection, kids: KidsSettings): Promise<Kids
       const continuing = await mapLimit(
         kidsContinuePaths(progress, lib.id),
         ITEM_CONCURRENCY,
-        (path) => itemOf({ connectionId: conn.id, libraryId: lib.id, path }),
+        (path) => itemOf({ connectionId: conn.id, libraryId: lib.id, path }, reads),
       );
       return kidsShelf(
         continuing.filter((b): b is Book => b !== null),
@@ -616,10 +635,12 @@ function pausedPlaceOf(player: PlayerState, live: LivePlace | null): PausedPlace
 
 /**
  * Builds the snapshot of `input` (the date and the labels added) and hands it to native when
- * its body changed. False when the person listening changed while it was built (nothing is
- * written then). `full`: the car's own snapshot, the one a build with no readable list
- * leaves alone once written (`WRITTEN_KEY`); the minimal resumable one is never that, so the
- * first car's build replaces it offline too.
+ * its body changed. True when native holds this body (written now, or unchanged); false when
+ * the person listening changed while it was built (nothing is written then) or native refused
+ * the write, so nothing that follows a write (the kept resumable book, the cover prune) acts on
+ * a snapshot native does not have. `full`: the car's own snapshot, the one a build with no
+ * readable list leaves alone once written (`WRITTEN_KEY`); the minimal resumable one is never
+ * that, so the first car's build replaces it offline too.
  */
 async function handOver(
   owner: string,
@@ -640,11 +661,11 @@ async function handOver(
   // Serialized once: the body is what is compared, and the date goes in front of it.
   if (snapshotOwner() !== owner) return false;
   const bodyJson = JSON.stringify(body);
+  if (bodyJson === lastBody) return true;
   if (
-    bodyJson !== lastBody &&
-    (await carNative.setSnapshot(
+    await carNative.setSnapshot(
       `{"generatedAt":${JSON.stringify(generatedAt)},${bodyJson.slice(1)}`,
-    ))
+    )
   ) {
     lastBody = bodyJson;
     if (ownerStored !== owner) {
@@ -655,8 +676,9 @@ async function handOver(
       wroteBefore = true;
       void setItem(WRITTEN_KEY, true);
     }
+    return true;
   }
-  return true;
+  return false;
 }
 
 /** The downloaded books of `conns` (the person listening's servers), as the car lists them. */
@@ -688,7 +710,6 @@ function uniqueBooks(books: CarSnapshotInput['books']): Map<string, CarBook> {
  * read) with whether it was offered to a kids profile: a launch that loads no book offers it
  * again, so opening the app after a kill without playing never takes away what a headset's
  * play resumes. */
-const RESUMABLE_KEY = 'audiosilo.carResumable';
 type KeptBook = BookRef & { kids?: boolean };
 let resumableRef: KeptBook | null | undefined;
 /** The player has held a book in this runtime: from then on only the loaded book is offered,
@@ -752,7 +773,7 @@ async function buildResumable(): Promise<void> {
   const live = livePlaceOf(player);
   const offered = await resumableBook(player, live);
   const kids = !!activeProfile()?.kids;
-  const { rows, known } = await progressRows(conns, true);
+  const { rows, known } = await progressRows(conns, 'cacheOnly');
   const progressOf = progressLookup(rows);
   const listed: CarBook[] = offered
     ? [
@@ -785,7 +806,7 @@ async function buildResumable(): Promise<void> {
   if (handed) await keepResumable(offered);
 }
 
-async function buildAndWrite(): Promise<void> {
+async function buildAndWrite(reads: ReadMode): Promise<void> {
   const owner = snapshotOwner();
   // The session's connections never loaded (a locked keychain at a CarPlay launch): the
   // snapshot native kept is better than a signed-out one (its downloads still play).
@@ -809,12 +830,12 @@ async function buildAndWrite(): Promise<void> {
     : null;
   const kidsConn = conns.find((c) => c.id === kidsCid) ?? null;
   // The kids shelf reads alongside the progress (only the stories in progress wait for it).
-  const kidsRead = signedIn && kids && kidsConn ? readKidsShelf(kidsConn, kids) : null;
+  const kidsRead = signedIn && kids && kidsConn ? readKidsShelf(kidsConn, kids, reads) : null;
   const [{ rows, known }, queue, library] = !signedIn
     ? [{ rows: [], known: new Set<string>() }, null, null]
     : kids
-      ? [await progressRows(kidsConn ? [kidsConn] : []), null, null]
-      : await Promise.all([progressRows(conns), upNextEntries(), libraryBooks()]);
+      ? [await progressRows(kidsConn ? [kidsConn] : [], reads), null, null]
+      : await Promise.all([progressRows(conns, reads), upNextEntries(reads), libraryBooks(reads)]);
   // Signed in, yet no server's list could be read or found cached (a fresh runtime away from
   // every server: the car's offline case): the snapshot native kept from last time is better
   // than one with empty lists, and its covers are still wanted. Nothing is written or pruned
@@ -828,7 +849,7 @@ async function buildAndWrite(): Promise<void> {
 
   const books: CarSnapshotInput['books'] = kids
     ? await kidsBooks(kidsConn, kids, await kidsRead, rows, live, progressOf)
-    : await everyoneBooks(rows, live, queue, library, conns, progressOf);
+    : await everyoneBooks(rows, live, queue, library, conns, progressOf, reads);
 
   // Every book any tab lists, once: its play spec (downloaded only) and its cover.
   const all = uniqueBooks(books);
@@ -903,12 +924,17 @@ async function everyoneBooks(
   library: { cid: string; books: Book[] } | null,
   conns: readonly Connection[],
   progressOf: (ref: BookRef) => Progress | null,
+  reads: ReadMode,
 ): Promise<CarSnapshotInput['books']> {
   const continuing = continueRefs(rows, live?.ref ?? null);
   const continueBooks = await mapLimit(
     continuing,
     ITEM_CONCURRENCY,
-    async ({ ref, progress }): Promise<CarBook> => ({ ref, book: await itemOf(ref), progress }),
+    async ({ ref, progress }): Promise<CarBook> => ({
+      ref,
+      book: await itemOf(ref, reads),
+      progress,
+    }),
   );
   const upNextBooks: CarBook[] | null = queue
     ? queue.entries.map((e) => {
@@ -972,7 +998,7 @@ function request(soon: boolean): void {
  * right after that one, with no timer either. */
 let resumptionAgain = false;
 
-/** Builds and writes the full snapshot; `cached`: a resumption's (`cachedBuild`). */
+/** Builds and writes the full snapshot; `cached`: a resumption's (`ReadMode`). */
 async function write(cached = false): Promise<void> {
   timer = null;
   writing = true;
@@ -981,14 +1007,7 @@ async function write(cached = false): Promise<void> {
     // as the listener registers (the root layout's path doesn't wait for them) would write a
     // signed-out snapshot over the good one and prune every cover it no longer names.
     await bootstrapPlayback();
-    await snapshotWrites(async () => {
-      cachedBuild = cached;
-      try {
-        await buildAndWrite();
-      } finally {
-        cachedBuild = false;
-      }
-    });
+    await snapshotWrites(() => buildAndWrite(cached ? 'cached' : 'fresh'));
   } catch (err) {
     console.warn('[car] snapshot failed', err);
   } finally {
@@ -1012,7 +1031,7 @@ async function write(cached = false): Promise<void> {
 }
 
 /** Android, a car met before and none connected now: the full snapshot for a resumption (a
- * pause, a stop, another book), at once and from the cache (`cachedBuild`), never on a timer
+ * pause, a stop, another book), at once and from the cache (`ReadMode`), never on a timer
  * (Android holds the JS timers in the background, where a headset or lock-screen pause
  * happens) nor after a server read. No car shows it, so `MIN_GAP_MS` does not apply. */
 function writeForResumption(): void {
@@ -1059,21 +1078,38 @@ function resumableChanged(): void {
 // --- Play requests ------------------------------------------------------------------------
 
 /**
- * The car item ids of play requests native gave up on (`onCarPlayCancel`): its wait for the
- * load ran out (a slow or frozen server holding the start), or another play took its place.
- * Android released a media button start's foreground service then, so a start that went on to
- * play would be heard in the background with no notification and no controls: one still on
- * its way stops before the load, or loads paused (`StartHow.wanted`), and an episode still
- * being fetched for it never starts (`requestEpisodeFetch`). A new request for the same item
- * takes the mark off, so a start it joins plays again. Kept when the sync stops (`teardown`):
- * a start called off before it is still on its way, and must not read as wanted again.
+ * The car item ids of play requests native gave up on (`onCarPlayCancel`), each with whether
+ * another play took its place (the car's tap on another book, or on the loaded book, which
+ * native played on) rather than its wait for the load running out (a slow or frozen server
+ * holding the start). Android released a media button start's foreground service then, so a
+ * start that went on to play would be heard in the background with no notification and no
+ * controls: one still on its way stops before the load, or loads paused (`StartHow.wanted`),
+ * and an episode still being fetched for it never starts (`requestEpisodeFetch`). One another
+ * play replaced loads nothing (`StartHow.superseded`, fe#350: the last tap wins). A new
+ * request for the same book takes the mark off, so a start it joins plays again. Kept when
+ * the sync stops (`teardown`): a start called off before it is still on its way, and must not
+ * read as wanted again.
  */
-const cancelledPlays = new Set<string>();
+const cancelledPlays = new Map<string, boolean>();
+
+/** The marks (`cancelledPlays`) on `id`'s book: its own, and one under another id of the same
+ * book (an item of a snapshot written before the identity migration names the old connection
+ * id), which a start of either joins (`startBookInPlace` joins by book). */
+function marksOn(id: string): string[] {
+  const ref = parseCarItemId(id);
+  const key = ref ? contentKeyOf(ref) : null;
+  return [...cancelledPlays.keys()].filter((mark) => {
+    if (mark === id) return true;
+    const other = key === null ? null : parseCarItemId(mark);
+    return other !== null && contentKeyOf(other) === key;
+  });
+}
 
 /** The car asked to play a book (its item id). */
 export async function handleCarPlayRequest(id: string): Promise<void> {
-  cancelledPlays.delete(id);
-  const wanted = () => !cancelledPlays.has(id);
+  for (const mark of marksOn(id)) cancelledPlays.delete(mark);
+  const wanted = () => marksOn(id).length === 0;
+  const superseded = () => marksOn(id).some((mark) => cancelledPlays.get(mark) === true);
   if (!parseCarItemId(id)) {
     console.warn('[car] not a car item id', id);
     return;
@@ -1111,12 +1147,37 @@ export async function handleCarPlayRequest(id: string): Promise<void> {
   if (!wanted()) return;
   // An item of a snapshot written before a switch may name another person's book: the
   // start refuses it (`mayActFor`), quietly.
+  let started = false;
   try {
-    if (!(await startBookInPlace(ref, {}, { wanted })) && wanted()) {
+    started = await startBookInPlace(ref, {}, { wanted, superseded });
+    if (!started && wanted()) {
       console.warn("[car] the book can't start here (no connection, or another person's)");
     }
   } catch (err) {
     console.warn('[car] the book could not start', err);
+  }
+  // Gave way to a play native made in its place (fe#350): the store takes the engine's book
+  // back, which this start's switch let go of (its saves' server, its listening span).
+  if (started && superseded()) await retakeLoaded(ref);
+}
+
+/**
+ * A car start that gave way before its load to a play native made in its place (the car's tap
+ * on the loaded book, which plays on): the store adopts the book the engine holds again
+ * (`adoptLoaded`), as it does a book the service started. Nothing when the engine holds the
+ * book that gave way (called off during its own load: it stays loaded, paused) or none.
+ */
+async function retakeLoaded(gaveWay: BookRef): Promise<void> {
+  try {
+    const loaded = await carNative.getLoadedBook();
+    if (!loaded) return;
+    const engine = { ...loaded, connectionId: resolveConnectionId(loaded.connectionId) };
+    if (contentKeyOf(engine) === contentKeyOf(gaveWay)) return;
+    if (await usePlayer.getState().adoptLoaded(loaded, () => carNative.getLoadedBook())) {
+      request(true);
+    }
+  } catch (err) {
+    console.warn('[car] taking the loaded book back failed', err);
   }
 }
 
@@ -1482,7 +1543,7 @@ export function startCarSync(): () => void {
   stops = [
     carNative.onConnection(onConnection),
     carNative.onPlayRequest((id) => void handleCarPlayRequest(id)),
-    carNative.onPlayCancel((id) => void cancelledPlays.add(id)),
+    carNative.onPlayCancel((id, replaced) => void cancelledPlays.set(id, replaced)),
     carNative.onBookmark(onBookmarkPressed),
     usePlayer.subscribe((s, prev) => {
       if (s.nowPlaying || prev.nowPlaying) loadedHere = true;
@@ -1531,8 +1592,16 @@ export function startCarSync(): () => void {
     useLibrarySelection.subscribe((s, prev) => {
       if (s.selection !== prev.selection) request(false);
     }),
+    // The speed and the chapter interval a downloaded book's play spec starts with: the
+    // resumable snapshot's too, so a headset's play after a kill uses the new ones.
     useSettings.subscribe((s, prev) => {
-      if (s.defaultRate !== prev.defaultRate) request(false);
+      if (
+        s.defaultRate !== prev.defaultRate ||
+        s.virtualChapterInterval !== prev.virtualChapterInterval
+      ) {
+        request(false);
+        resumableChanged();
+      }
     }),
     queryClient.getQueryCache().subscribe((event) => {
       if (event.type !== 'updated' || event.action.type !== 'success') return;
@@ -1543,7 +1612,11 @@ export function startCarSync(): () => void {
       }
     }),
     (() => {
-      const onLanguage = () => request(true);
+      // The labels, the resumable snapshot's included (the placeholder's and the car's text).
+      const onLanguage = () => {
+        request(true);
+        resumableChanged();
+      };
       i18n.on('languageChanged', onLanguage);
       return () => i18n.off('languageChanged', onLanguage);
     })(),
@@ -1606,5 +1679,4 @@ export function forgetCarSync() {
   carSeenRead = Promise.resolve();
   resumableRef = undefined;
   loadedHere = false;
-  cachedBuild = false;
 }

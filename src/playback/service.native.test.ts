@@ -83,6 +83,18 @@ describe('the native engine, Phase 6 events', () => {
     expect(handler.mock.calls).toEqual([[3.5]]);
     expect(svc.getSnapshot().position).toBe(6);
   });
+
+  // fe#158: Android ticks while it buffers on its way to playing, the stall watchdog's
+  // heartbeat with the screen off (the store checks its deadline on every snapshot).
+  it('hands every tick while loading to its listeners, never held', async () => {
+    const svc = await setUp();
+    const heard: string[] = [];
+    svc.subscribe((s) => heard.push(`${s.state}@${s.position}`));
+    send('onState', { state: 'loading' });
+    send('onProgress', { position: 12, duration: 100 });
+    send('onProgress', { position: 12, duration: 100 });
+    expect(heard).toEqual(['loading@0', 'loading@12', 'loading@12']);
+  });
 });
 
 describe("the native engine's load", () => {

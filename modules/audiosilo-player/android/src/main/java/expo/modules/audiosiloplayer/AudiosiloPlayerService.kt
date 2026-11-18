@@ -189,6 +189,8 @@ class AudiosiloPlayerService : MediaLibraryService() {
    * load, when JS was past stopping it, never completes the play that took its place
    * ([PlayerBridge.completesCarPlay]). */
   private var calledOff: BookRef? = null
+  /** The book of the car play last given up on, until the app's next load ([onAppLoad]). */
+  private var lateLoad: BookRef? = null
   /** A car play that timed out. One made during a media button start ends that start too
    * ([playFromCar] watches every pending play, fe#252). */
   private val pendingTimeout = Runnable { failPendingPlay() }
@@ -220,6 +222,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     // The car snapshot is read off the main thread; until it is in, the buttons carry their
     // English labels (as before the first snapshot), and the layout is re-set once it is.
     CarSnapshotStore.preload(this) { handler.post { refreshLayout() } }
+    LivePlaceStore.preload(this)
     // A service started without JS (the car, playback resumption) uses the listener's last
     // auto-rewind and skip intervals; the module's setConfig updates them whenever JS runs.
     PlayerConfig.restore(this)
@@ -281,10 +284,15 @@ class AudiosiloPlayerService : MediaLibraryService() {
     // its non-daemon thread when the service dies.
     val executor = Executors.newSingleThreadExecutor()
     bitmapExecutor = executor
+    // A streamed cover is named by a token-free content URI (ArtworkProvider.shareable,
+    // fe#349): the loader alone turns it back into the server URL it stands for.
+    val artworkSourceFactory = ResolvingDataSource.Factory(dataSourceFactory) { dataSpec ->
+      ArtworkProvider.resolveRemote(this, dataSpec.uri)?.let(dataSpec::withUri) ?: dataSpec
+    }
     val bitmapLoader = CacheBitmapLoader(
       DataSourceBitmapLoader.Builder(this)
         .setExecutorService(MoreExecutors.listeningDecorator(executor))
-        .setDataSourceFactory(dataSourceFactory)
+        .setDataSourceFactory(artworkSourceFactory)
         .build(),
     )
 
@@ -437,6 +445,10 @@ class AudiosiloPlayerService : MediaLibraryService() {
     }
 
     override fun requester(): String? = mediaSession?.controllerForCurrentRequest?.let(::describe)
+
+    // peek: the session asks on the main thread, never a disk read there (the snapshot is
+    // preloaded in onCreate).
+    override fun errorMessage(): String? = CarSnapshotStore.peek()?.labels?.playbackError
   }
 
   /** A controller as [MediaKeyLog] shows it: its package, Media3 or legacy, and our role for it. */
@@ -482,7 +494,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     // The file by its path too (fe#185): JS may reload the book in another file order (an
     // adoption in the download's order) before it reads the press, and the index alone would
     // then name another file.
-    val relPath = item?.let(MediaItems::relPathOf)
+    val relPath = MediaItems.relPathOf(item)
     val sink = PlayerBridge.sink
     if (sink != null && sink.observingBookmarks) {
       // With its book: JS may not have adopted the book the engine plays yet (a car start
@@ -789,14 +801,21 @@ class AudiosiloPlayerService : MediaLibraryService() {
     return playFromCar(first, requirePlaySpec = false)
   }
 
-  /** The module's `load` arrived (the app's controller set a queue). Completes a pending car
-   * play with that queue; the identical re-set Media3 then makes is absorbed by the player.
-   * Never with the late load of the play called off for it (JS loads that one paused): the
-   * pending play still waits for its own load, or its timeout. */
-  internal fun onAppLoad() {
+  /** The module's `load` of [book] arrived (the app's controller set a queue). Completes a
+   * pending car play with that queue; the identical re-set Media3 then makes is absorbed by the
+   * player. Never with the late load of the play called off for it (JS loads that one paused):
+   * the pending play still waits for its own load, or its timeout. */
+  internal fun onAppLoad(book: BookRef?) {
     // The book the app loads is the one the snapshot names, at the place JS gave it, until it
     // plays or moves: the place kept for the queue it replaces is not this one's.
     livePlaces?.drop()
+    // The next load after a call-off may be the called-off play's own, which JS loads paused: it
+    // goes in paused, so it is never heard for the moment before JS's pause lands (Media3
+    // pressed play on the player when that play failed). Any other load comes first only when
+    // JS started something else, and then JS never loads the called-off book.
+    val late = lateLoad
+    lateLoad = null
+    if (book != null && book == late && book != pendingPlay?.book) player?.playWhenReady = false
     if (pendingPlay == null) return
     // Posted: the app's items are applied right after this callback returns.
     handler.post {
@@ -826,17 +845,20 @@ class AudiosiloPlayerService : MediaLibraryService() {
    * ([PlayerBridge.cancelCarPlay]): played later, after a media button start was released, it
    * would play in the background with no foreground notification and no controls. */
   private fun failPendingPlay(notify: Boolean = true) {
-    if (!endPendingPlay("The car play request timed out")) return
+    // Not told: another play took its place (the car's tap on another book, or the loaded one).
+    if (!endPendingPlay("The car play request timed out", replaced = !notify)) return
     if (notify) sendUnavailable()
   }
 
-  /** Fails the pending car play with [error] and tells JS to drop it; false with none. */
-  private fun endPendingPlay(error: String): Boolean {
+  /** Fails the pending car play with [error] and tells JS to drop it ([replaced]: another
+   * play took its place); false with none. */
+  private fun endPendingPlay(error: String, replaced: Boolean): Boolean {
     handler.removeCallbacks(pendingTimeout)
     val pending = pendingPlay ?: return false
     pendingPlay = null
     calledOff = pending.book
-    PlayerBridge.cancelCarPlay(pending.id)
+    lateLoad = pending.book
+    PlayerBridge.cancelCarPlay(pending.id, replaced)
     pending.future.setException(IllegalStateException(error))
     return true
   }
@@ -891,7 +913,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
     // A car request JS never received dies with the service: delivered to a JS that starts
     // listening later (the car long gone), it would start the book on the phone. One it did
     // receive is dropped there too.
-    endPendingPlay("Service stopped")
+    endPendingPlay("Service stopped", replaced = false)
     PlayerBridge.pendingCarPlayId = null
     carMonitor?.stop()
     carMonitor = null

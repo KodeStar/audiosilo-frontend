@@ -64,8 +64,10 @@ export type CarConnectionEvent = { connected: boolean };
 export type CarPlayRequestEvent = { id: string };
 
 /** Android: a car play JS received is over without its load (the service's 10 s wait ran
- * out, or another play took its place). Never sent by iOS or an older binary. */
-export type CarPlayCancelEvent = { id: string };
+ * out, or another play took its place). Never sent by iOS or an older binary. `replaced`:
+ * another play took its place (the car's tap on another book, or on the loaded book, which
+ * plays on), so a start of it loads nothing (fe#350); absent from a binary before it. */
+export type CarPlayCancelEvent = { id: string; replaced?: boolean };
 
 /** A book's identity: path is the identity, scoped by connection (never a DB id). */
 export type BookRef = { connectionId: string; libraryId: number; path: string };

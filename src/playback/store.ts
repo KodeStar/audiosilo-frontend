@@ -533,6 +533,7 @@ type PlayerState = {
     startTrack?: number,
     startSpeed?: number,
     wanted?: () => boolean,
+    superseded?: () => boolean,
   ) => Promise<void>;
   toggle: () => Promise<void>;
   pause: () => Promise<void>;
@@ -2767,6 +2768,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     startTrack,
     startSpeed,
     wanted,
+    superseded,
   ) => {
     // Only the person listening's books (Phase 8, `mayActFor`): every way a book starts
     // comes through here, so none can save to another person's account.
@@ -2804,10 +2806,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       const request = { connectionId, libraryId, book, chapterData };
       switchBook(api, request);
       // Called off (a car play its native side gave up on) with another start made since
-      // (the play that took its place, the listener's own tap): that one owns the player, so
-      // this one loads nothing over it. Called off with the player still its own, it goes on
-      // to load, paused (below): the previous book's saves and span already ended above.
-      const replaced = () => !!wanted && !wanted() && lastPlayRequest !== request;
+      // (the play that took its place, the listener's own tap), or for a play native made in
+      // its place (`superseded`: the car's tap on the loaded book, fe#350): that one owns the
+      // player, so this one loads nothing over it (the car takes the engine's book back). Called
+      // off with the player still its own (its wait ran out), it goes on to load, paused
+      // (below): the previous book's saves and span already ended above.
+      const replaced = () =>
+        (!!wanted && !wanted() && lastPlayRequest !== request) || !!superseded?.();
       // Marked finished while it started (`leaveFinishedBook`): it loads nothing, and the
       // engine is left with nothing (the previous book's place and span ended above), so the
       // book just finished is never heard, nor left loaded.

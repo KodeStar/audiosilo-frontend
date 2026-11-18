@@ -140,8 +140,13 @@ describe('car-native: a car play native gave up on', () => {
     const cancelled = jest.fn();
     carNative.onPlayCancel(cancelled);
     mockHandlers.get('onCarPlayCancel')!({ id: 'book:c1/2/A' });
+    mockHandlers.get('onCarPlayCancel')!({ id: 'book:c1/2/B', replaced: true });
     mockHandlers.get('onCarPlayCancel')!({});
-    expect(cancelled.mock.calls).toEqual([['book:c1/2/A']]);
+    // A binary before fe#350 never says whether another play replaced it: false.
+    expect(cancelled.mock.calls).toEqual([
+      ['book:c1/2/A', false],
+      ['book:c1/2/B', true],
+    ]);
   });
 
   it('iOS never listens: its module declares no such event', () => {

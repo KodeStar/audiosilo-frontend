@@ -131,6 +131,7 @@ describe('carLabels', () => {
       empty: 'Nothing here yet',
       signedOut: 'Connect a server in AudioSilo to listen in the car',
       unavailable: "This book can't play right now",
+      playbackError: 'Playback stopped. Your place is saved.',
     });
   });
 });

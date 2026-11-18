@@ -264,6 +264,43 @@ describe('a start that is no longer wanted', () => {
     await usePlayer.getState().stop();
   });
 
+  // Called off for a play native made in its place (fe#350: the car's tap on the book the
+  // player already holds, the last tap wins), no other start made here: the player is that
+  // play's, so this one loads nothing over it, not even paused.
+  it('loads nothing when native played another book in its place', async () => {
+    const { loadInitialProgress } = jest.requireMock('./progress-sync') as {
+      loadInitialProgress: jest.Mock;
+    };
+    let answer!: (v: unknown) => void;
+    loadInitialProgress.mockImplementationOnce(() => new Promise((r) => (answer = r)));
+    let wanted = true;
+    let superseded = false;
+    const late = usePlayer.getState().playBook(
+      'c1',
+      2,
+      book('GaveWay'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => wanted,
+      () => superseded,
+    );
+    await flush(30);
+    finishSetup(); // the bridge's setup, when this test runs on its own
+    await flush(30);
+    const load = mockSvc.load as jest.Mock;
+    load.mockClear();
+    (mockSvc.play as jest.Mock).mockClear();
+    wanted = false;
+    superseded = true;
+    answer({ kind: 'empty' });
+    await late;
+    expect(load).not.toHaveBeenCalled();
+    expect(mockSvc.play).not.toHaveBeenCalled();
+    await usePlayer.getState().stop();
+  });
+
   it('plays as before while it is wanted', async () => {
     (mockSvc.play as jest.Mock).mockClear();
     (mockSvc.pause as jest.Mock).mockClear();

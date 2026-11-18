@@ -171,7 +171,7 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
     startPositionMs: Long,
   ): ListenableFuture<MediaItemsWithStartPosition> {
     if (PlayerBridge.isAppController(controller)) {
-      service.onAppLoad()
+      service.onAppLoad(MediaItems.bookOf(mediaItems.firstOrNull()))
       return Futures.immediateFuture(MediaItemsWithStartPosition(mediaItems, startIndex, startPositionMs))
     }
     val single = mediaItems.singleOrNull()

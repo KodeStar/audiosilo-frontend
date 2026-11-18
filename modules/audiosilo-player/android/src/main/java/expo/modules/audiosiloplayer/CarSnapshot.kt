@@ -55,6 +55,9 @@ data class CarLabels(
   val unavailable: String,
   val bookmark: String,
   val bookmarkSaved: String,
+  /** The error a car shows when playback fails (fe#157); empty from an older snapshot, which
+   * leaves Media3's own message. */
+  val playbackError: String = "",
 )
 
 /** The car snapshot JS writes through `setCarSnapshot` (built by `src/car/car-model.ts`). */
@@ -107,11 +110,15 @@ class CarSnapshot(
       return path?.let { File(it) }
     }
 
+    /** The first 16 bytes of the path's SHA-256, as lowercase hex. */
+    fun artworkKey(file: File): String = opaqueKey(file.absolutePath)
+
     private val HEX = "0123456789abcdef".toCharArray()
 
-    /** The first 16 bytes of the path's SHA-256, as lowercase hex. */
-    fun artworkKey(file: File): String {
-      val digest = MessageDigest.getInstance("SHA-256").digest(file.absolutePath.toByteArray())
+    /** The first 16 bytes of [text]'s SHA-256, as lowercase hex: an artwork URI's key, which
+     * names a cover without giving away its path or URL ([RemoteArtwork]). */
+    fun opaqueKey(text: String): String {
+      val digest = MessageDigest.getInstance("SHA-256").digest(text.toByteArray())
       val out = CharArray(32)
       for (i in 0 until 16) {
         val b = digest[i].toInt() and 0xFF
@@ -130,6 +137,7 @@ class CarSnapshot(
         unavailable = l.optString("unavailable"),
         bookmark = l.optString("bookmark"),
         bookmarkSaved = l.optString("bookmarkSaved"),
+        playbackError = l.optString("playbackError"),
       )
       val tabs = ArrayList<CarTab>()
       val tabArr = root.optJSONArray("tabs") ?: JSONArray()

@@ -89,7 +89,7 @@ export const carNative: CarNative = {
   onPlayCancel(handler) {
     if (!available || Platform.OS !== 'android') return () => undefined;
     const sub = AudiosiloPlayer.addListener('onCarPlayCancel', (e) => {
-      if (typeof e?.id === 'string') handler(e.id);
+      if (typeof e?.id === 'string') handler(e.id, e.replaced === true);
     });
     return () => sub.remove();
   },

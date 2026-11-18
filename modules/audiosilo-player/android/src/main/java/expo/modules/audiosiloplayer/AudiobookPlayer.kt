@@ -4,6 +4,7 @@ import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 
@@ -21,6 +22,10 @@ interface AudiobookPlayerHooks {
 
   /** Who sent the Player call in progress, for [MediaKeyLog] only (null when unknown). */
   fun requester(): String? = null
+
+  /** The message a failed player shows controllers, in the listener's language; null keeps
+   * the engine's own. */
+  fun errorMessage(): String? = null
 }
 
 /**
@@ -43,6 +48,9 @@ interface AudiobookPlayerHooks {
  *    auto-rewind inside [play] ([internal]), Smart speed's silence skips and a file/clip
  *    advancing at its end (neither calls a seek method on this wrapper).
  *  - **Remote speed**: a controller other than the app changing the speed is reported too.
+ *  - **Error text**: a failed player's error, as the session shows it to Android Auto and the
+ *    system (the platform session's error state), carries the listener's language's message
+ *    in place of ExoPlayer's English one ([getPlayerError], fe#157).
  */
 class AudiobookPlayer(player: Player, private val hooks: AudiobookPlayerHooks) : ForwardingPlayer(player) {
   private var pausedAt: Long = 0L
@@ -63,6 +71,22 @@ class AudiobookPlayer(player: Player, private val hooks: AudiobookPlayerHooks) :
    * playlist and rebuffer from scratch. The next identical set is skipped instead.
    */
   var absorbIdenticalSet = false
+
+  /** The last error [getPlayerError] gave, and the engine's error and message it was made
+   * from: the session asks on every state update, and one error stays one object. */
+  private var shownError: Triple<PlaybackException, String, PlaybackException>? = null
+
+  /** The engine's error with the listener's language's message ([AudiobookPlayerHooks.errorMessage]):
+   * the session builds the platform session's error state from this (what Android Auto shows).
+   * The code, the cause and the extras stay the engine's. */
+  override fun getPlayerError(): PlaybackException? {
+    val error = super.getPlayerError() ?: return null
+    val message = hooks.errorMessage()?.ifEmpty { null } ?: return error
+    shownError?.let { (from, text, shown) -> if (from === error && text == message) return shown }
+    val shown = PlaybackException(message, error.cause, error.errorCode, error.extras)
+    shownError = Triple(error, message, shown)
+    return shown
+  }
 
   override fun getAvailableCommands(): Player.Commands {
     val base = super.getAvailableCommands()

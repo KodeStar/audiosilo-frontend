@@ -139,6 +139,7 @@ describe('startBookInPlace', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
     );
     // The resume lookup restores the saved speed itself.
     expect(mockSetRate).not.toHaveBeenCalled();
@@ -217,6 +218,7 @@ describe('startBookInPlace', () => {
       undefined,
       1.25,
       undefined,
+      undefined,
     );
     // Not a second speed change once the book is already playing (an audible flip).
     expect(mockSetRate).not.toHaveBeenCalled();
@@ -231,6 +233,7 @@ describe('startBookInPlace', () => {
       expect.anything(),
       undefined,
       2,
+      undefined,
       undefined,
       undefined,
     );
@@ -259,6 +262,7 @@ describe('startBookInPlace', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
     );
   });
 
@@ -275,6 +279,7 @@ describe('startBookInPlace', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
     );
   });
 
@@ -287,6 +292,7 @@ describe('startBookInPlace', () => {
       2,
       { rel_path: target.path, title: 'From the download' },
       { chapters: [], files: [], from: 'download' },
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -309,6 +315,7 @@ describe('startBookInPlace', () => {
         undefined,
         undefined,
         undefined,
+        undefined,
       );
     } finally {
       jest.useRealTimers();
@@ -323,6 +330,7 @@ describe('startBookInPlace', () => {
       2,
       { rel_path: target.path, title: 'From the download' },
       { chapters: [], files: [], from: 'download' },
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -411,6 +419,14 @@ describe('startBookInPlace', () => {
     const wanted = () => true;
     await startBookInPlace(target, {}, { wanted });
     expect(mockPlayBook.mock.calls[0][7]).toBe(wanted);
+  });
+
+  // fe#350: a car play another play replaced (the car's tap on the loaded book) loads nothing.
+  it('hands playBook the replaced check too', async () => {
+    const wanted = () => true;
+    const superseded = () => false;
+    await startBookInPlace(target, {}, { wanted, superseded });
+    expect(mockPlayBook.mock.calls[0][8]).toBe(superseded);
   });
 
   it("never joins a start that may be called off with one that may not (the car's and a tap)", async () => {

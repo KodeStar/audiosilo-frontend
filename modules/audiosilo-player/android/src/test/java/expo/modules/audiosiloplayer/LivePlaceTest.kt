@@ -86,12 +86,23 @@ class LivePlaceTest {
   // A dead process left the engine on B; JS later played A and named it with a newer place.
   // A resumes at JS's place, not the engine's older book.
   @Test fun aNewerNamedBookBeatsAnOlderLivePlaceOnAnotherBook() {
-    val item = snapshot("book:A", savedAt = 2_000L).resumable(live("B", savedAt = 1_000L))
+    val item = snapshot("book:A", savedAt = 1_000L + CLOCK_MARGIN_MS + 1_000L).resumable(live("B", savedAt = 1_000L))
     assertEquals("book:A", item?.id)
     assertEquals(0, item?.play?.startIndex)
     assertEquals(30.0, item!!.play!!.positionInTrack, 0.0)
     // Saved at the same time is not later: the engine's book stays.
     assertEquals("book:B", snapshot("book:A", savedAt = 1_000L).resumable(live("B", savedAt = 1_000L))?.id)
+  }
+
+  // fe#350: JS's time may be a server's brought onto this device's clock by a measured skew:
+  // within the clocks' margin across books the engine's book stays, past it JS's book wins.
+  @Test fun anotherBookMustBeNewerByMoreThanTheClockMargin() {
+    val live = live("B", savedAt = 10_000L)
+    assertEquals("book:B", snapshot("book:A", savedAt = 10_000L + CLOCK_MARGIN_MS).resumable(live)?.id)
+    assertEquals("book:A", snapshot("book:A", savedAt = 10_001L + CLOCK_MARGIN_MS).resumable(live)?.id)
+    // On the same book the later place wins with no margin (the spec's own place, [at]).
+    val sameBook = snapshot("book:A", savedAt = 10_001L).resumable(live("A", savedAt = 10_000L))
+    assertEquals(30.0, sameBook!!.play!!.positionInTrack, 0.0)
   }
 
   // Either time missing (a snapshot from before the times, a live place never stamped): the
