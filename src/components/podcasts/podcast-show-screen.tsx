@@ -179,8 +179,9 @@ function ShowPage({
 }
 
 /** The show's head: cover, title, author, the episode count, Private feed, Follow and
- * Check for new episodes, a failed last check, the description (collapsed past a few
- * lines) and the order. */
+ * Check for new episodes, a failed last check (or, in its place, a private feed's missing
+ * address: `status.secret_missing`), the description (collapsed past a few lines) and the
+ * order. */
 function ShowHero({
   connectionId,
   show,
