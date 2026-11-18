@@ -2014,12 +2014,14 @@ function engineFault(
     prev.state !== 'ended' &&
     (s.state === 'ended' || inside) &&
     endsShortOfBook(np.queue, s.trackIndex, s.position);
+  // A run already held was one while it played: a pause made during the wait never makes
+  // its later file the place.
   const rolled =
     !short &&
     !asked.playing &&
     inside &&
     s.trackIndex > asked.trackIndex &&
-    (wantsPlayback || startingPlayback);
+    (asked.held !== null || wantsPlayback || startingPlayback);
   if (rolled) {
     const now = Date.now();
     const held = asked.held ?? { since: now, report: s, timer: null, due: false };

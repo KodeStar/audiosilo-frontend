@@ -3831,6 +3831,24 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     expect(lastLoad()).toEqual([0, 30]);
   });
 
+  it('a pause during the wait never makes the later file the place', async () => {
+    await resume(30);
+    pushSnapshot(snap('playing', 0.4, { trackIndex: 1, duration: short }));
+    mockSaveProgress.mockClear();
+    await usePlayer.getState().pause();
+    pushSnapshot(snap('paused', 0.5, { trackIndex: 1, duration: short }));
+    jest.advanceTimersByTime(FAULT_HOLD_MS);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'error',
+      trackIndex: 0,
+      position: 30,
+    });
+    expect(
+      mockSaveProgress.mock.calls.some((c) => (c[1] as { file?: string }).file === files[1]),
+    ).toBe(false);
+  });
+
   it('a lock-screen move on a faulted book is where a Retry reloads it', async () => {
     await resume(30);
     ranOff();
