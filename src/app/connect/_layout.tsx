@@ -77,7 +77,12 @@ export default function ConnectLayout() {
     setPassWaiting(passWaits);
     setHeld(null);
   }
-  const refused = known && kids && !kidsConnectAllowed() && !passWaits;
+  // A page restored from the browser's cache ended the pass it came back with (below). Held as
+  // state, since the gate must change with something this render holds: the built app (the
+  // React Compiler, CONVENTIONS.md "Cache reads at render") works `refused` out again only then,
+  // never because the pass in `connect-intent` changed and something rendered the layout again.
+  const [passEnded, setPassEnded] = useState(false);
+  const refused = known && kids && !passWaits && (passEnded || !kidsConnectAllowed());
   // Kids mode was on as the flow opened (the first render that can tell): a link, not a
   // sign-in that turned it on. Follows the render (React's way to keep state in step).
   const [openedInKids, setOpenedInKids] = useState<boolean | null>(null);
@@ -99,13 +104,12 @@ export default function ConnectLayout() {
   // browser's back/forward cache, memory and all: the grown-up's pass through kids mode it left
   // with would run the flow for a child, with no sign-in's finish to wait on (audiosilo#202). A
   // page load forgets the pass, and so does a restore: kids mode then takes the flow back.
-  const [, setRestored] = useState(0);
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
     const onShow = (e: PageTransitionEvent) => {
       if (!e.persisted || !kidsConnectAllowed()) return;
       endConnectFlow();
-      setRestored((n) => n + 1);
+      setPassEnded(true);
     };
     window.addEventListener('pageshow', onShow);
     return () => window.removeEventListener('pageshow', onShow);

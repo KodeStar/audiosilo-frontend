@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
+import { withReactCompiler } from '@/testing/react-compiler';
 import { seedProfile } from '@/testing/seed-profile';
 
 // The flow's screens, as the layout's Stack: whatever renders here would run (a pairing
@@ -180,6 +181,25 @@ describe("a page restored from the browser's cache", () => {
     expect(store.size).toBe(0);
   });
 
+  // As the app builds it: the React Compiler memoises what the render reads against its
+  // inputs, so the gate must change with something the render holds (Jest leaves it off).
+  it('takes the flow back in the built app too, compiled', async () => {
+    const { default: Compiled } = withReactCompiler<typeof import('@/app/connect/_layout')>(
+      require,
+      '../../app/connect/_layout',
+    );
+    seedProfile({ kids: true });
+    openAddSomeone();
+    const view = await render(<Compiled />);
+    expect(screen.getByText('connect flow')).toBeTruthy();
+    await show(true);
+    expect(kidsConnectAllowed()).toBe(false);
+    expect(screen.queryByText('connect flow')).toBeNull();
+    expect(mockDismissTo).toHaveBeenCalledWith('/kids');
+    await view.unmount();
+    expect(shown).toHaveLength(0);
+  });
+
   it("keeps a grown-up's flow running", async () => {
     seedProfile();
     setConnectForNewProfile(true);
@@ -273,6 +293,25 @@ describe("a single sign-on's return (a page load, fe#310)", () => {
     expect(kidsConnectAllowed()).toBe(false);
     expect(screen.queryByText('connect flow')).toBeNull();
     expect(mockDismissTo).toHaveBeenCalledWith('/kids');
+  });
+
+  // As the app builds it (the React Compiler): the gate follows the pass as it is settled.
+  it.each([
+    ['given', true],
+    ['refused', false],
+  ])('follows a pass %s in the built app too, compiled', async (_, given) => {
+    const { default: Compiled } = withReactCompiler<typeof import('@/app/connect/_layout')>(
+      require,
+      '../../app/connect/_layout',
+    );
+    leaveForProvider();
+    mockReturning = true;
+    await render(<Compiled />);
+    expect(screen.getByText('connect flow')).toBeTruthy();
+    await act(async () => void settleOidcPass(given ? { intent: tag } : {}));
+    expect(kidsConnectAllowed()).toBe(given);
+    expect(!!screen.queryByText('connect flow')).toBe(given);
+    expect(mockDismissTo).toHaveBeenCalledTimes(given ? 0 : 1);
   });
 
   // The app's first render is a transition, and one thrown away runs the layout's first
