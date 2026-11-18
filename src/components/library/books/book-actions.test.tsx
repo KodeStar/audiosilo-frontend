@@ -314,9 +314,23 @@ describe('useBookActions', () => {
       mockUnreachable = true;
       await act(async () => mockToast.mock.calls.at(-1)![0].action.onPress());
       expect(mockEdit).not.toHaveBeenCalled();
-      expect(mockToast.mock.calls.at(-1)![0]).toMatchObject({
+      const said = mockToast.mock.calls.at(-1)![0];
+      expect(said).toMatchObject({
         title: "Can't undo while the server can't be reached. Try again once it's back.",
         description: 'Book',
+        action: { label: 'Retry' },
+      });
+      // Retry runs the Undo again: with the server back it goes through.
+      mockUnreachable = false;
+      mockUndoRefs.length = 0;
+      await act(async () => said.action.onPress());
+      expect(mockUndoRefs).toEqual([
+        { connectionId: 'c', libraryId: 1, path: 'Author/Series/01 - Book', position: 900 },
+      ]);
+      expect(mockEdit).toHaveBeenLastCalledWith({
+        libraryId: 1,
+        path: 'Author/Series/01 - Book',
+        edit: { finished: false, position: 900 },
       });
     });
 
@@ -432,12 +446,42 @@ describe('useBookActions', () => {
     mockEdit.mockResolvedValue(progress());
     const { find } = await actions(book(), progress({ finished: true, position: 3 * H }));
     expect(find('finish')!.label).toBe('Mark as not finished');
+    mockUndoRefs.length = 0;
     await act(async () => find('finish')!.onPress());
+    // Through `undoFinish`: a finish still waiting in the outbox is taken back before the
+    // edit, else sent after it, it finished the book again.
+    expect(mockUndoRefs).toEqual([
+      { connectionId: 'c', libraryId: 1, path: 'Author/Series/01 - Book', position: 0 },
+    ]);
     expect(mockEdit).toHaveBeenCalledWith({
       libraryId: 1,
       path: 'Author/Series/01 - Book',
       edit: { finished: false, position: 0 },
     });
+    expect(mockToast.mock.calls.at(-1)![0].title).toBe('Marked as not finished');
+  });
+
+  // fe#258: the finish may be on a server that can't be asked now, as for an Undo.
+  it('a Mark as not finished the server could not take says so, with a Retry', async () => {
+    mockUnreachable = true;
+    const { find } = await actions(book(), progress({ finished: true, position: 3 * H }));
+    await act(async () => find('finish')!.onPress());
+    expect(mockEdit).not.toHaveBeenCalled();
+    const said = mockToast.mock.calls.at(-1)![0];
+    expect(said).toMatchObject({
+      title: "Can't mark as not finished while the server can't be reached. Try again once it's back.",
+      description: 'Book',
+      action: { label: 'Retry' },
+    });
+    mockUnreachable = false;
+    mockEdit.mockResolvedValue(progress());
+    await act(async () => said.action.onPress());
+    expect(mockEdit).toHaveBeenCalledWith({
+      libraryId: 1,
+      path: 'Author/Series/01 - Book',
+      edit: { finished: false, position: 0 },
+    });
+    expect(mockToast.mock.calls.at(-1)![0].title).toBe('Marked as not finished');
   });
 
   it('offers no way back on a server that cannot edit progress', async () => {

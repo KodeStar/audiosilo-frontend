@@ -2337,7 +2337,10 @@ media GETs only.
     unfinishes the book either way, and a failed edit puts the finish back. With the server
     down no edit can be made: nothing is taken back and the Undo fails with a toast
     (`Withdrawal.unreachable`, `undoFinish`'s `'unreachable'`; fe#258: done on this device
-    alone, a finish the server did hold won on reconnect). After an edit that went
+    alone, a finish the server did hold won on reconnect), which offers Retry (the Undo run
+    again). Mark as not finished takes the same route at its own place (`unfinish` in
+    `book-actions.tsx`, through `undoFinish`): a finish still waiting is taken back before its
+    edit, and with the server down it fails the same way. After an edit that went
     through the mirror goes back as well (`unrecordFinish`, under the mirror's lock,
     `updateMirror`: the edit's answer only reaches
     the query caches, and the finished record would start the book again at 0 on the next

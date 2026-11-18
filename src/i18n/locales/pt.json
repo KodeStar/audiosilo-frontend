@@ -1012,6 +1012,7 @@
       "markedUnfinished": "Marcado como não terminado",
       "markingFinished": "A marcar como terminado...",
       "undoUnreachable": "Não é possível anular enquanto o servidor estiver inacessível. Tenta novamente quando voltar.",
+      "unfinishUnreachable": "Não é possível marcar como não terminado enquanto o servidor estiver inacessível. Tenta novamente quando voltar.",
       "downloading": "A transferir para ouvir offline",
       "downloadRemoved": "Download removido",
       "failed": "Não foi possível atualizar este livro. Tenta novamente.",

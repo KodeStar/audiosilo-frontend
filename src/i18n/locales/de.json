@@ -1012,6 +1012,7 @@
       "markedUnfinished": "Als nicht abgeschlossen markiert",
       "markingFinished": "Wird als abgeschlossen markiert...",
       "undoUnreachable": "Rückgängig geht nicht, solange der Server nicht erreichbar ist. Versuche es noch einmal, sobald er wieder da ist.",
+      "unfinishUnreachable": "Kann nicht als nicht abgeschlossen markiert werden, solange der Server nicht erreichbar ist. Versuche es noch einmal, sobald er wieder da ist.",
       "downloading": "Wird für offline heruntergeladen",
       "downloadRemoved": "Download entfernt",
       "failed": "Das Buch konnte nicht aktualisiert werden. Versuche es noch einmal.",

@@ -1012,6 +1012,7 @@
       "markedUnfinished": "Marcado como no terminado",
       "markingFinished": "Marcando como terminado...",
       "undoUnreachable": "No se puede deshacer mientras no se pueda acceder al servidor. Inténtalo de nuevo cuando vuelva.",
+      "unfinishUnreachable": "No se puede marcar como no terminado mientras no se pueda acceder al servidor. Inténtalo de nuevo cuando vuelva.",
       "downloading": "Descargando para escuchar sin conexión",
       "downloadRemoved": "Descarga quitada",
       "failed": "No se pudo actualizar este libro. Inténtalo de nuevo.",
