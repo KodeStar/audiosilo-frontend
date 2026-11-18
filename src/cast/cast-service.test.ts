@@ -586,6 +586,166 @@ describe('CastPlaybackService', () => {
       expect(t.svc.getSnapshot()).toMatchObject({ state: 'loading', trackIndex: 1, position: 42 });
     });
 
+    it('a load answered before the receiver tried its file: the file it skips on to is no place, and it plays on once reloaded', async () => {
+      // Android answers a queue load at once. Resume at Part 2 0:20 with an ended token: the
+      // receiver is refused Part 2, says it is idle on Part 3 between items, then the error.
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      await t.svc.load(TRACKS, 1, 20, [], BOOK);
+      await t.svc.play();
+      expect(t.remote.play).toHaveBeenCalledTimes(1);
+      const from = t.snaps.length;
+      // The receiver's first tick, at 0 on its way to the asked place.
+      t.progress(0);
+      expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 20 });
+      t.status({ playerState: 'idle', contentId: t.url(1), position: 0 });
+      t.status({ playerState: 'idle', contentId: t.url(2), position: 0 });
+      // The store faults an engine that reports a later file before the asked one played.
+      expect(t.snaps.slice(from).some((s) => s.trackIndex !== 1)).toBe(false);
+      expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 20 });
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(2), position: 0 });
+      await flush();
+      expect(m.asks).toEqual([undefined, true]);
+      expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 1, startTime: 20, autoplay: true });
+      expect(t.url(1)).toContain('token=CAST1');
+      t.status({ playerState: 'playing', contentId: t.url(1), position: 20 });
+      expect(t.remote.pause).not.toHaveBeenCalled();
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 1, position: 20 });
+      expect(t.snaps.slice(from).some((s) => s.trackIndex !== 1 || s.state === 'error')).toBe(
+        false,
+      );
+    });
+
+    it('a file the receiver stalled on, refused, then skipped past: the reload goes back to it', async () => {
+      // Landed paused on Part 1; the play needs bytes the ended token is refused for. The
+      // receiver buffers there (it retries for half a minute), then skips through the later
+      // files it is refused too and says the error on the last.
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 0 });
+      t.tick(25_000);
+      await t.svc.play();
+      t.status({ playerState: 'buffering', contentId: t.url(0), position: 0 });
+      t.tick(33_000);
+      t.progress(0);
+      const from = t.snaps.length;
+      t.status({ playerState: 'idle', contentId: t.url(1), position: 0 });
+      t.status({ playerState: 'playing', contentId: t.url(1), position: 0 });
+      t.tick(1_000);
+      t.progress(1);
+      t.status({ playerState: 'idle', contentId: t.url(2), position: 0 });
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(2), position: 0 });
+      await flush();
+      expect(m.asks).toEqual([undefined, true]);
+      expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 0, startTime: 0, autoplay: true });
+      expect(t.snaps.slice(from).some((s) => s.trackIndex !== 0)).toBe(false);
+    });
+
+    it('a later file while the receiver buffers that no error follows is a move, followed', async () => {
+      // The TV remote's next while the file buffers: no error comes, and the next status there
+      // after the window is the book's place.
+      const t = setup();
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 30 });
+      t.tick(20_000);
+      await t.svc.play();
+      t.status({ playerState: 'buffering', contentId: t.url(0), position: 30 });
+      t.tick(2_000);
+      t.status({ playerState: 'playing', contentId: t.url(1), position: 0 });
+      t.tick(9_000);
+      t.status({ playerState: 'playing', contentId: t.url(1), position: 9 });
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 1, position: 9 });
+      expect(t.moves.at(-1)).toEqual([1, 9]);
+    });
+
+    it('a later file held after a stall with no status since: the first tick after the window reads the status', async () => {
+      // The receiver sends no status while it simply plays: a tick of the later file near the
+      // stalled place would otherwise read as the stalled file going on.
+      const t = setup();
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 8 });
+      t.tick(20_000);
+      await t.svc.play();
+      t.status({ playerState: 'buffering', contentId: t.url(0), position: 8 });
+      t.tick(2_000);
+      t.status({ playerState: 'playing', contentId: t.url(1), position: 0 });
+      t.tick(9_000);
+      (t.remote.readStatus as jest.Mock).mockResolvedValueOnce({
+        playerState: 'playing',
+        contentId: t.url(1),
+        position: 9,
+        rate: 1,
+      });
+      t.progress(9);
+      await flush();
+      expect(t.remote.readStatus).toHaveBeenCalled();
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 1, position: 9 });
+    });
+
+    it('a seek while a later file is held after a stall reloads the file the book is on', async () => {
+      const t = setup();
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 30 });
+      t.tick(20_000);
+      await t.svc.play();
+      t.status({ playerState: 'buffering', contentId: t.url(0), position: 30 });
+      t.tick(2_000);
+      t.status({ playerState: 'playing', contentId: t.url(1), position: 0 });
+      await t.svc.seekTo(60);
+      expect(t.remote.seek).not.toHaveBeenCalled();
+      expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 0, startTime: 60 });
+    });
+
+    it('a queue sent after a stall ends it: a run-on from the reloaded file is followed', async () => {
+      const t = setup();
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 30 });
+      t.tick(20_000);
+      await t.svc.play();
+      t.status({ playerState: 'buffering', contentId: t.url(0), position: 30 });
+      t.tick(2_000);
+      // The same file asked again from this phone (a jump to it), landed while in flight.
+      const answer = holdLoad(t);
+      const skip = t.svc.skipToTrack(0, 50);
+      t.status({ playerState: 'playing', contentId: t.url(0), position: 50 });
+      answer();
+      await skip;
+      t.tick(3_000);
+      t.status({ playerState: 'playing', contentId: t.url(1), position: 1 });
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 1, position: 1 });
+    });
+
+    it('a later file long after the receiver began to buffer is a move, followed at once', async () => {
+      // No receiver retries that long: the stall is no word on where the book is.
+      const t = setup();
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 30 });
+      t.tick(20_000);
+      await t.svc.play();
+      t.status({ playerState: 'buffering', contentId: t.url(0), position: 30 });
+      t.tick(70_000);
+      t.status({ playerState: 'playing', contentId: t.url(1), position: 4 });
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 1, position: 4 });
+    });
+
+    it('an idle status before the error is no place: the reload starts where it was playing', async () => {
+      // Played from its buffer, then the receiver retried the ended token, went idle at 0 and
+      // said the error.
+      const m = minting();
+      const t = setup({ prepare: m.prepare });
+      await t.svc.load(TRACKS, 2, 0, [], BOOK);
+      await t.svc.play();
+      t.status({ playerState: 'playing', contentId: t.url(2), position: 1 });
+      t.tick(5_000);
+      t.progress(6);
+      t.status({ playerState: 'idle', contentId: t.url(2), position: 0 });
+      expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 2, position: 6 });
+      t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(2), position: 0 });
+      await flush();
+      expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 2, startTime: 6, autoplay: true });
+    });
+
     it('a paused receiver reloaded after an error stays paused', async () => {
       const m = minting();
       const t = setup({ prepare: m.prepare });
@@ -1135,12 +1295,12 @@ describe('CastPlaybackService', () => {
           startTime: 20,
           autoplay: false,
         });
-        // The play goes to the receiver's old media, which the load replaces.
+        // Not sent to the receiver's old media, which the load replaces: it would be lost.
         await t.svc.play();
-        expect(t.remote.play).toHaveBeenCalledTimes(1);
+        expect(t.remote.play).not.toHaveBeenCalled();
         answer();
         await flush();
-        expect(t.remote.play).toHaveBeenCalledTimes(2);
+        expect(t.remote.play).toHaveBeenCalledTimes(1);
         expect(t.svc.getSnapshot().state).not.toBe('paused');
       });
 
@@ -1703,6 +1863,407 @@ describe('CastPlaybackService', () => {
         t.status({ playerState: 'playing', contentId: t.url(0), position: 0 });
         expect(t.snaps.slice(from).filter((s) => s.trackIndex !== 0)).toEqual([]);
         expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 0 });
+      });
+
+      it('a resume refused after its load answered ends playing at the asked place', async () => {
+        // Device log 20:38:48 (Pixel 6a, Default Media Receiver): Resume chapter 3 at 0:20 with
+        // the cached token ended. Android answers the load as the receiver takes it, so the
+        // errors come once it answered: the reload goes out paused (the store's play comes
+        // after its speed is set), and the receiver lands it PAUSED at 19.9.
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        const first = holdLoad(t);
+        const loading = t.svc.load(TRACKS, 1, 20, [], BOOK);
+        await flush();
+        const old = t.remote.loads.at(-1)!.items.map((i) => i.url);
+        t.status({ playerState: 'idle', idleReason: null, contentId: old[1], position: 0 });
+        first();
+        await loading;
+        const reload = holdLoad(t);
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: old[2], position: 0 });
+        await flush();
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: old[2], position: 0 });
+        expect(m.asks).toEqual([undefined, true]);
+        expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 1, startTime: 20 });
+        // The store's play, while the reload is on its way: nothing for the media it replaces.
+        await t.svc.play();
+        expect(t.remote.play).not.toHaveBeenCalled();
+        t.status({ playerState: 'idle', idleReason: null, contentId: t.url(1), position: 0 });
+        t.status({ playerState: 'buffering', contentId: t.url(1), position: 0 });
+        reload();
+        await flush();
+        // A play sent as the reload answered, while the receiver still loaded the file, is lost:
+        // the paused landing is sent the play again.
+        const sent = (t.remote.play as jest.Mock).mock.calls.length;
+        t.status({ playerState: 'paused', contentId: t.url(1), position: 19.9 });
+        expect(t.remote.play).toHaveBeenCalledTimes(sent + 1);
+        t.status({ playerState: 'playing', contentId: t.url(1), position: 19.9 });
+        expect(t.svc.getSnapshot()).toMatchObject({
+          state: 'playing',
+          trackIndex: 1,
+          position: 19.9,
+        });
+        expect(t.snaps.some((s) => s.state === 'error')).toBe(false);
+        expect(m.asks).toEqual([undefined, true]);
+      });
+
+      it('a paused landing of a load the phone keeps paused is left paused', async () => {
+        const t = setup();
+        await t.svc.load(TRACKS, 1, 20, [], BOOK);
+        t.status({ playerState: 'paused', contentId: t.url(1), position: 20 });
+        expect(t.remote.play).not.toHaveBeenCalled();
+        expect(t.svc.getSnapshot()).toMatchObject({ state: 'paused', position: 20 });
+      });
+
+      describe('a recast onto an earlier file, the receiver still on a later one', () => {
+        // Device log 20:34:45, 20:36:50, 20:48:53: Stop casting left the TV on Part 3 (playing)
+        // or Part 2 (paused); the phone went back to Part 1 and cast again with a token that
+        // still plays. The new session's first status reaches the phone once the load is on
+        // its way, and names the media from before.
+        const before = [
+          { playerState: 'playing' as const, index: 2, position: 37 },
+          { playerState: 'paused' as const, index: 1, position: 62.3 },
+        ];
+        for (const b of before) {
+          for (const answered of [false, true]) {
+            it(`mints nothing: ${b.playerState} on file ${b.index}, ${answered ? 'after' : 'before'} the load answered`, async () => {
+              const m = minting();
+              const t = setup({ prepare: m.prepare });
+              const answer = holdLoad(t);
+              const recast = t.svc.load(TRACKS, 0, 30, [], BOOK);
+              await flush();
+              if (answered) {
+                answer();
+                await recast;
+              }
+              t.status({
+                playerState: b.playerState,
+                contentId: t.url(b.index),
+                position: b.position,
+              });
+              t.status({
+                playerState: 'idle',
+                idleReason: 'interrupted',
+                contentId: t.url(b.index),
+                position: 0,
+              });
+              t.status({ playerState: 'buffering', contentId: t.url(b.index), position: 0 });
+              t.status({ playerState: 'paused', contentId: t.url(0), position: 30 });
+              answer();
+              await recast;
+              await flush();
+              expect(m.asks).toEqual([undefined]);
+              expect(t.remote.loads).toHaveLength(1);
+              expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 0, position: 30 });
+              expect(t.snaps.filter((s) => s.trackIndex !== 0)).toEqual([]);
+            });
+          }
+        }
+
+        it('still a refusal: the later file played from its start once the old media stopped', async () => {
+          const m = minting();
+          const t = setup({ prepare: m.prepare });
+          const answer = holdLoad(t);
+          const recast = t.svc.load(TRACKS, 0, 30, [], BOOK);
+          await flush();
+          t.status({ playerState: 'playing', contentId: t.url(2), position: 37 });
+          t.status({
+            playerState: 'idle',
+            idleReason: 'interrupted',
+            contentId: t.url(2),
+            position: 0,
+          });
+          // Refused Part 1 and Part 2 (no error reached the phone), it plays its cached Part 3.
+          t.status({ playerState: 'playing', contentId: t.url(2), position: 0 });
+          answer();
+          await recast;
+          await flush();
+          expect(m.asks).toEqual([undefined, true]);
+          expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 0, startTime: 30 });
+          expect(t.url(0)).toContain('token=CAST1');
+        });
+
+        it("the old media's play state is no word on the book's, once the load answered", async () => {
+          // Recast paused: the old media playing on Part 3 must not have the landing played.
+          const t = setup();
+          await t.svc.load(TRACKS, 0, 30, [], BOOK);
+          t.status({ playerState: 'playing', contentId: t.url(2), position: 37 });
+          t.status({
+            playerState: 'idle',
+            idleReason: 'interrupted',
+            contentId: t.url(2),
+            position: 0,
+          });
+          t.status({ playerState: 'paused', contentId: t.url(0), position: 30 });
+          await flush();
+          expect(t.remote.play).not.toHaveBeenCalled();
+          // Recast playing: the old media paused on Part 2 must not drop the play.
+          const u = setup();
+          await u.svc.load(TRACKS, 0, 30, [], BOOK);
+          await u.svc.play();
+          u.status({ playerState: 'paused', contentId: u.url(1), position: 62.3 });
+          u.status({ playerState: 'paused', contentId: u.url(0), position: 30 });
+          await flush();
+          expect(u.remote.play).toHaveBeenCalledTimes(2);
+        });
+
+        it("onto the same file: the old media's late interrupted stop is no reload", async () => {
+          const t = setup();
+          await t.svc.load(TRACKS, 0, 30, [], BOOK);
+          await t.svc.play();
+          t.status({
+            playerState: 'idle',
+            idleReason: 'interrupted',
+            contentId: t.url(0),
+            position: 0,
+          });
+          t.status({ playerState: 'paused', contentId: t.url(0), position: 30 });
+          await flush();
+          // The lost play is sent again, and the next play needs no new queue.
+          expect(t.remote.play).toHaveBeenCalledTimes(2);
+          await t.svc.play();
+          expect(t.remote.loads).toHaveLength(1);
+        });
+
+        it('the old media going on to its next file is no refusal', async () => {
+          const m = minting();
+          const t = setup({ prepare: m.prepare });
+          const answer = holdLoad(t);
+          const recast = t.svc.load(TRACKS, 0, 30, [], BOOK);
+          await flush();
+          t.status({
+            playerState: 'idle',
+            idleReason: 'finished',
+            contentId: t.url(1),
+            position: 0,
+          });
+          t.status({ playerState: 'playing', contentId: t.url(2), position: 0.5 });
+          answer();
+          await recast;
+          await flush();
+          expect(m.asks).toEqual([undefined]);
+        });
+      });
+
+      it("a recast sent again after a slow mint still takes the old media's statuses for it", async () => {
+        // The first token was refused; the mint took longer than a move's window, so the queue
+        // sent again chains on nothing and must still not know where the receiver was.
+        let release: () => void = () => {};
+        let minted = 0;
+        const asks: (boolean | undefined)[] = [];
+        const prepare: PrepareCast = async (tracks, book, opts) => {
+          asks.push(opts?.freshToken);
+          if (opts?.freshToken) {
+            minted++;
+            await new Promise<void>((resolve) => {
+              release = resolve;
+            });
+          }
+          const token = `CAST${minted}`;
+          return {
+            items: buildCastItems(
+              tracks,
+              book,
+              {
+                streamUrl: (_l: number, path: string) =>
+                  `https://h/stream?path=${path}&token=${token}`,
+                coverUrl: () => `https://h/cover?token=${token}`,
+              },
+              false,
+            ),
+          };
+        };
+        const t = setup({ prepare });
+        (t.remote.load as jest.Mock).mockRejectedValueOnce(new Error('LOAD_FAILED'));
+        const recast = t.svc.load(TRACKS, 0, 30, [], BOOK);
+        await flush();
+        t.tick(9_000);
+        release();
+        await recast;
+        await flush();
+        expect(asks).toEqual([undefined, true]);
+        // The TV's media from before, still playing Part 3, then the queue landing paused.
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 37 });
+        t.status({ playerState: 'paused', contentId: t.url(0), position: 30 });
+        await flush();
+        expect(t.svc.getSnapshot()).toMatchObject({ trackIndex: 0, position: 30 });
+        expect(t.snaps.filter((s) => s.trackIndex !== 0)).toEqual([]);
+        expect(t.remote.play).not.toHaveBeenCalled();
+        expect(t.remote.load).toHaveBeenCalledTimes(2);
+      });
+
+      describe('a recast of another book, the receiver still on the old one', () => {
+        const other = { ...BOOK, path: 'X/Y' };
+        const theirs = (i: number) => `https://h/stream?path=X/Y/0${i}.mp3&token=CAST0`;
+
+        it("the old book's late statuses are not another sender's", async () => {
+          // They reach the phone once the load answered. Taken as another sender's media, this
+          // book's own landing was ignored from then on: paused here, playing on the TV, and no
+          // pause reached it.
+          const t = setup();
+          await t.svc.load(TRACKS, 0, 30, [], BOOK);
+          await t.svc.play();
+          t.status({ playerState: 'playing', contentId: theirs(2), book: other, position: 37 });
+          t.status({
+            playerState: 'idle',
+            idleReason: 'interrupted',
+            contentId: theirs(2),
+            book: other,
+            position: 0,
+          });
+          t.status({ playerState: 'buffering', contentId: theirs(2), book: other, position: 0 });
+          expect(t.svc.getSnapshot()).toMatchObject({
+            state: 'ready',
+            trackIndex: 0,
+            position: 30,
+          });
+          // The queue lands paused: the play lost while the receiver took it is sent again.
+          t.status({ playerState: 'paused', contentId: t.url(0), book: BOOK, position: 30 });
+          await flush();
+          expect(t.remote.play).toHaveBeenCalledTimes(2);
+          t.status({ playerState: 'playing', contentId: t.url(0), book: BOOK, position: 30 });
+          expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', position: 30 });
+          await t.svc.pause();
+          expect(t.remote.pause).toHaveBeenCalledTimes(1);
+          // Once this book landed, another book on the receiver is another sender's again.
+          t.tick(10_000);
+          t.status({ playerState: 'playing', contentId: theirs(0), book: other, position: 5 });
+          await t.svc.pause();
+          expect(t.remote.pause).toHaveBeenCalledTimes(1);
+        });
+
+        it('a later file of this book played is a refusal, whatever the old book was on', async () => {
+          const m = minting();
+          const t = setup({ prepare: m.prepare });
+          const answer = holdLoad(t);
+          const recast = t.svc.load(TRACKS, 0, 30, [], BOOK);
+          await flush();
+          t.status({ playerState: 'playing', contentId: theirs(2), book: other, position: 37 });
+          // Refused Part 1 and Part 2 (no error reached the phone), it plays Part 3.
+          t.status({ playerState: 'playing', contentId: t.url(2), position: 0 });
+          answer();
+          await recast;
+          await flush();
+          expect(m.asks).toEqual([undefined, true]);
+          expect(t.remote.loads.at(-1)).toMatchObject({ startIndex: 0, startTime: 30 });
+        });
+      });
+
+      it('the old media ending a file once the load answered moves nothing', async () => {
+        // Followed, the end of its last file put the book there, stopped, and the end of an
+        // earlier one moved the place meant to the next file, so the queue's own landing was
+        // taken for the old media and its play never sent again.
+        const t = setup();
+        await t.svc.load(TRACKS, 0, 30, [], BOOK);
+        await t.svc.play();
+        t.status({ playerState: 'idle', idleReason: 'finished', contentId: t.url(2), position: 0 });
+        t.status({ playerState: 'idle', idleReason: 'finished', contentId: t.url(1), position: 0 });
+        t.status({ playerState: 'playing', contentId: t.url(2), position: 0.5 });
+        expect(t.svc.getSnapshot()).toMatchObject({ state: 'ready', trackIndex: 0, position: 30 });
+        t.status({ playerState: 'paused', contentId: t.url(0), position: 30 });
+        await flush();
+        expect(t.remote.play).toHaveBeenCalledTimes(2);
+        expect(t.snaps.filter((s) => s.trackIndex !== 0)).toEqual([]);
+        // The next play needs no new queue.
+        await t.svc.play();
+        expect(t.remote.loads).toHaveLength(1);
+      });
+
+      it("a pause read long after a landing nobody saw is the receiver's word", async () => {
+        // An iPhone suspended as the cast began: the landing went unseen, and the TV remote
+        // paused the book since. Back in the app, the read must not play it again.
+        const t = setup();
+        await t.svc.load(TRACKS, 0, 30, [], BOOK);
+        await t.svc.play();
+        t.tick(60_000);
+        (t.remote.readStatus as jest.Mock).mockResolvedValueOnce({
+          playerState: 'paused',
+          contentId: t.url(0),
+          position: 75,
+          rate: 1,
+        });
+        await t.svc.refresh();
+        await flush();
+        expect(t.remote.play).toHaveBeenCalledTimes(1);
+        expect(t.svc.getSnapshot()).toMatchObject({ state: 'paused', position: 75 });
+      });
+
+      it('a play held while a load is on its way is sent once the hold runs out', async () => {
+        // A load the receiver never answers must not keep every play from it for good.
+        const t = setup();
+        holdLoad(t);
+        void t.svc.load(TRACKS, 0, 30, [], BOOK);
+        await flush();
+        await t.svc.play();
+        expect(t.remote.play).not.toHaveBeenCalled();
+        t.tick(30_000);
+        await t.svc.play();
+        expect(t.remote.play).toHaveBeenCalledTimes(1);
+      });
+
+      it('a seek before a paused landing still has the play sent again', async () => {
+        const t = setup();
+        await t.svc.load(TRACKS, 0, 30, [], BOOK);
+        await t.svc.play();
+        await t.svc.seekTo(40);
+        t.status({ playerState: 'paused', contentId: t.url(0), position: 40 });
+        await flush();
+        expect(t.remote.play).toHaveBeenCalledTimes(2);
+      });
+
+      it('a paused landing read (refresh) before it was sent still has the play sent again', async () => {
+        const t = setup();
+        await t.svc.load(TRACKS, 0, 30, [], BOOK);
+        await t.svc.play();
+        (t.remote.readStatus as jest.Mock).mockResolvedValueOnce({
+          playerState: 'paused',
+          contentId: t.url(0),
+          position: 30,
+          rate: 1,
+        });
+        await t.svc.refresh();
+        await flush();
+        expect(t.remote.play).toHaveBeenCalledTimes(2);
+      });
+
+      it("a play while the load is on its way sends no second queue for the old media's stop", async () => {
+        const t = setup();
+        const answer = holdLoad(t);
+        const loading = t.svc.load(TRACKS, 0, 30, [], BOOK);
+        await flush();
+        t.status({
+          playerState: 'idle',
+          idleReason: 'interrupted',
+          contentId: t.url(2),
+          position: 0,
+        });
+        await t.svc.play();
+        answer();
+        await loading;
+        await flush();
+        expect(t.remote.loads).toHaveLength(1);
+        expect(t.remote.play).toHaveBeenCalledTimes(1);
+      });
+
+      it('a play while a load is on its way reaches a receiver that refused it with no mint due', async () => {
+        const m = minting();
+        const t = setup({ prepare: m.prepare });
+        await t.svc.load(TRACKS, 0, 30, [], BOOK);
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+        await flush();
+        expect(m.asks).toEqual([undefined, true]);
+        // A Retry within the minute, refused while on its way, a play asked meanwhile.
+        const answer = holdLoad(t);
+        const retry = t.svc.load(TRACKS, 0, 30, [], BOOK);
+        await flush();
+        await t.svc.play();
+        expect(t.remote.play).not.toHaveBeenCalled();
+        t.status({ playerState: 'idle', idleReason: 'error', contentId: t.url(0), position: 0 });
+        answer();
+        await retry;
+        await flush();
+        expect(m.asks).toEqual([undefined, true, undefined]);
+        expect(t.remote.play).toHaveBeenCalledTimes(1);
       });
     });
 

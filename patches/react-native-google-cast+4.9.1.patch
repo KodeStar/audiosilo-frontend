@@ -1,0 +1,131 @@
+diff --git a/node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/RNGCExpandedControllerActivity.java b/node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/RNGCExpandedControllerActivity.java
+index 5291345..17823b0 100644
+--- a/node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/RNGCExpandedControllerActivity.java
++++ b/node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/RNGCExpandedControllerActivity.java
+@@ -1,9 +1,15 @@
+ package com.reactnative.googlecast;
+ 
+ import android.view.Menu;
++import android.view.MenuItem;
++
++import androidx.core.view.ActionProvider;
++import androidx.core.view.MenuItemCompat;
++import androidx.mediarouter.app.MediaRouteActionProvider;
+ 
+ import com.google.android.gms.cast.framework.CastButtonFactory;
+ import com.google.android.gms.cast.framework.media.widget.ExpandedControllerActivity;
++import com.reactnative.googlecast.components.RNGCStopCastingDialogFactory;
+ 
+ public class RNGCExpandedControllerActivity
+   extends ExpandedControllerActivity {
+@@ -12,7 +18,12 @@ public class RNGCExpandedControllerActivity
+   public boolean onCreateOptionsMenu(Menu menu) {
+     super.onCreateOptionsMenu(menu);
+     getMenuInflater().inflate(R.menu.cast_expanded_controller_menu, menu);
+-    CastButtonFactory.setUpMediaRouteButton(this, menu, R.id.media_route_menu_item);
++    MenuItem item = CastButtonFactory.setUpMediaRouteButton(this, menu, R.id.media_route_menu_item);
++    // AudioSilo: the dialog's Stop casting stops the receiver too (RNGCStopCastingDialogFactory).
++    ActionProvider provider = MenuItemCompat.getActionProvider(item);
++    if (provider instanceof MediaRouteActionProvider) {
++      ((MediaRouteActionProvider) provider).setDialogFactory(new RNGCStopCastingDialogFactory());
++    }
+     return true;
+   }
+ }
+diff --git a/node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/components/RNGCStopCastingDialogFactory.java b/node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/components/RNGCStopCastingDialogFactory.java
+new file mode 100644
+index 0000000..ca1d27e
+--- /dev/null
++++ b/node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/components/RNGCStopCastingDialogFactory.java
+@@ -0,0 +1,78 @@
++package com.reactnative.googlecast.components;
++
++import android.content.Context;
++import android.os.Bundle;
++import android.util.Log;
++import android.view.View;
++import androidx.annotation.NonNull;
++import androidx.annotation.Nullable;
++import androidx.mediarouter.app.MediaRouteControllerDialog;
++import androidx.mediarouter.app.MediaRouteControllerDialogFragment;
++import androidx.mediarouter.app.MediaRouteDialogFactory;
++import androidx.mediarouter.media.MediaRouter;
++import com.google.android.gms.cast.framework.CastContext;
++import com.google.android.gms.cast.framework.SessionManager;
++import com.reactnative.googlecast.api.RNGCCastContext;
++
++/**
++ * AudioSilo: the Cast dialog's "Stop casting" ends the session AND stops the receiver's app.
++ *
++ * The stock dialog only unselects the route (MediaRouter.UNSELECT_REASON_STOPPED), which the
++ * Cast SDK turns into an end that leaves the receiver playing. The global
++ * CastOptions.setStopReceiverApplicationWhenEndingSession(true) would stop it, but the SDK
++ * applies that option to every end, including the one it makes itself when the phone's Wi-Fi
++ * drops and MediaRouter loses the route: a network blip must never stop the TV. So the option
++ * stays off and this button asks for the stop itself, as the notification's stop does
++ * (MediaIntentReceiver.ACTION_STOP_CASTING, endCurrentSession(true)).
++ */
++public class RNGCStopCastingDialogFactory extends MediaRouteDialogFactory {
++
++  @NonNull
++  @Override
++  public MediaRouteControllerDialogFragment onCreateControllerDialogFragment() {
++    return new ControllerDialogFragment();
++  }
++
++  public static class ControllerDialogFragment extends MediaRouteControllerDialogFragment {
++    @NonNull
++    @Override
++    public MediaRouteControllerDialog onCreateControllerDialog(
++        @NonNull Context context, @Nullable Bundle savedInstanceState) {
++      return new ControllerDialog(context);
++    }
++  }
++
++  public static class ControllerDialog extends MediaRouteControllerDialog {
++    public ControllerDialog(@NonNull Context context) {
++      super(context);
++    }
++
++    @Override
++    protected void onCreate(Bundle savedInstanceState) {
++      super.onCreate(savedInstanceState);
++      // MediaRouteControllerDialog's stop button (its BUTTON_STOP_RES_ID).
++      View stop = findViewById(android.R.id.button1);
++      if (stop == null) {
++        // mediarouter moved its button: the stock Stop casting leaves the receiver playing.
++        Log.w("RNGCStopCasting", "no Stop casting button (android.R.id.button1) in the Cast dialog");
++        return;
++      }
++      stop.setOnClickListener(v -> {
++        if (!stopCasting(getContext()) && getRoute().isSelected()) {
++          MediaRouter.getInstance(getContext()).unselect(MediaRouter.UNSELECT_REASON_STOPPED);
++        }
++        dismiss();
++      });
++    }
++  }
++
++  /** End the current Cast session and stop its receiver app; false when there is none. */
++  static boolean stopCasting(Context context) {
++    CastContext castContext = RNGCCastContext.getSharedInstance(context);
++    if (castContext == null) return false;
++    SessionManager sessionManager = castContext.getSessionManager();
++    if (sessionManager.getCurrentCastSession() == null) return false;
++    sessionManager.endCurrentSession(true);
++    return true;
++  }
++}
+diff --git a/node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/components/RNGoogleCastButtonManager.java b/node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/components/RNGoogleCastButtonManager.java
+index 612a876..27381d3 100644
+--- a/node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/components/RNGoogleCastButtonManager.java
++++ b/node_modules/react-native-google-cast/android/src/main/java/com/reactnative/googlecast/components/RNGoogleCastButtonManager.java
+@@ -61,6 +61,8 @@ public class RNGoogleCastButtonManager
+     try {
+       CastContext.getSharedInstance(context);
+       CastButtonFactory.setUpMediaRouteButton(context, button);
++      // AudioSilo: the dialog's Stop casting stops the receiver too (RNGCStopCastingDialogFactory).
++      button.setDialogFactory(new RNGCStopCastingDialogFactory());
+     } catch (Exception e) {
+     }
+ 

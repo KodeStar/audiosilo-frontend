@@ -1,6 +1,12 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FlatList, Platform, View } from 'react-native';
+import {
+  FlatList,
+  type LayoutChangeEvent,
+  Platform,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
@@ -30,6 +36,25 @@ const ROW_MAX_SCALE = 3.2;
 export function chapterRowHeight(scale: number): number {
   return scaleCapped(ROW_H, scale, ROW_MAX_SCALE);
 }
+
+/**
+ * The row a virtualized chapter list opens at (`initialScrollIndex`): `want`, when the rows
+ * from it on fill a window's height, so the list can scroll that far. Otherwise none: a list
+ * too short for it renders from that row and never fills in the rows above it, which stay
+ * blank and untappable (FlatList on Android: Part 1 of a four-file book opened on Part 4).
+ * The list then opens at its top and scrolls to the row once laid out (`ChaptersPanel`).
+ */
+export function openingIndex(
+  want: number,
+  count: number,
+  rowHeight: number,
+  windowHeight: number,
+): number | undefined {
+  return want > 0 && (count - want) * rowHeight >= windowHeight ? want : undefined;
+}
+
+/** The list's bottom padding. */
+const LIST_PAD_BOTTOM = 12;
 
 type RowProps = {
   index: number;
@@ -138,6 +163,13 @@ export function ChaptersPanel({
   const rate = usePlayer((s) => s.rate);
   const scale = useFontScale();
   const rowHeight = chapterRowHeight(scale);
+  const { height: windowHeight } = useWindowDimensions();
+  const list = useRef<FlatList<string>>(null);
+  /** The list (this mount of it) once it was first laid out, when one that opened at its top
+   * is scrolled to the current row (`openingIndex`): one that mounts again (the panel stayed
+   * while its book came and went) is placed again; a later layout of the same one (a
+   * rotation, a resized column) never is, wherever the playhead has got to. */
+  const placed = useRef<FlatList<string> | null>(null);
   const seekBook = usePlayer((s) => s.seekBook);
   const goToTrack = usePlayer((s) => s.goToTrack);
 
@@ -193,16 +225,30 @@ export function ChaptersPanel({
   );
 
   if (!virtualized) return <View>{labels.map((_, i) => render(i))}</View>;
+  const want = Math.max(0, Math.min(current - 2, labels.length - 1));
+  const opening = openingIndex(want, labels.length, rowHeight, windowHeight);
+  // Opened at its top: scrolled to the row as far as the list goes, once, when first laid out.
+  const onLayout = (e: LayoutChangeEvent) => {
+    if (!list.current || placed.current === list.current) return;
+    placed.current = list.current;
+    if (opening !== undefined) return;
+    const room = labels.length * rowHeight + LIST_PAD_BOTTOM - e.nativeEvent.layout.height;
+    const offset = Math.min(want * rowHeight, Math.max(0, room));
+    if (offset > 0) list.current?.scrollToOffset({ offset, animated: false });
+  };
   return (
     <FlatList
+      ref={list}
+      testID="chapters-list"
       data={labels}
       // The rows' words follow the playhead; the labels alone never change.
       extraData={`${position}|${current}|${rate}`}
       keyExtractor={(_, i) => String(i)}
-      initialScrollIndex={Math.max(0, Math.min(current - 2, labels.length - 1))}
+      initialScrollIndex={opening}
       getItemLayout={(_, index) => ({ length: rowHeight, offset: rowHeight * index, index })}
       onScrollToIndexFailed={() => {}}
-      contentContainerStyle={{ paddingBottom: 12 }}
+      onLayout={onLayout}
+      contentContainerStyle={{ paddingBottom: LIST_PAD_BOTTOM }}
       renderItem={({ index }) => render(index)}
     />
   );

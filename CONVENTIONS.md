@@ -3527,7 +3527,20 @@ on first need). NOT device-verified (no Cast device yet).
   the other: the router emits `paused` at the handed-over place (the store saves it); a cast
   started while playing plays on, and the phone never plays by itself when a cast ends.
   `startCastSync` (the root's services, `root-services-impl.tsx`) follows the driver's session events; `endCastForCar` and
-  `stopCasting` end a session from the app.
+  `stopCasting` end a session from the app. A user's Stop casting stops the receiver's app (from
+  the app, the Cast dialog or the notification), so the TV never plays on while the book comes
+  back paused; a network drop never does. iOS: `stopReceiverApplicationWhenEndingSession`
+  (`withCast.js`; a Wi-Fi drop suspends the session and the SDK resumes it). Android: not that
+  option, since the SDK ends (not suspends) the session when the Wi-Fi drops and MediaRouter
+  loses the route, and would stop the TV then too (so `ReconnectionService` has nothing to
+  resume either): `patches/react-native-google-cast+4.9.1.patch` gives both Cast buttons (the
+  library's `CastButton` and the expanded controller's) a dialog whose Stop casting calls
+  `endCurrentSession(true)` (`RNGCStopCastingDialogFactory`; it finds the button by
+  mediarouter's internal `android.R.id.button1`: re-check it when the cast-framework pin
+  moves), and the
+  notification's stop is `ACTION_STOP_CASTING`; `withCast.test.ts` fails if the patch is lost.
+  A stop from outside the app (the system output switcher, Google Home) is not covered and
+  likely leaves the TV playing (not device-checked).
 - **The receiver never gets the session token**: `prepareCast` builds the queue with cast tokens
   (`POST /cast/token`, book-scoped, 24 h; `castTokens` caches one per book until an hour before it
   expires, drops expired ones and forgets a removed connection's), on the connection's address in
@@ -3558,8 +3571,27 @@ on first need). NOT device-verified (no Cast device yet).
   `ASKED_MOVE_MS` of the move once it answered (later, a file it played unseen may have run on). Not
   the file the receiver was on when the move was asked, at or past where it was then (`Intent.from`:
   the replaced media playing on; a move asked within `ASKED_MOVE_MS` of the last one, before it
-  landed, keeps where that one left from). A status in flight naming the asked file's URL as sent,
-  playing or paused, lands it, and its token counts as played. Not a status or error of the queue that load replaces
+  landed, keeps where that one left from). A session's first book (a cast started or recast,
+  `Intent.from` null) does not know where the receiver was: its media from before can be on any
+  file, playing or paused, and its first status can reach the phone once the queue is on its way,
+  so anything before the receiver says that media is gone (any idle but a file's `finished`, its
+  `interrupted` stop included, or a status naming the asked file: `replacedGone`) is no refusal;
+  once the load answered, that media's settled statuses on another file are no place and no word
+  on the play state, and its late stop (`replacedStop`: an `interrupted` on any file, or another
+  file's stop) is no place, and no reload; nor is the end of a file of it there (`replacedEnd`:
+  followed, it would move the place meant to the next file, and the queue's own landing would be
+  taken for the old media). A status in flight naming the asked file's URL as sent,
+  playing or paused, lands it, and its token counts as played. A play asked for while a queue of
+  ours (or its mint) is on its way is not sent to the receiver, nor does it send a second queue
+  (for at most `PLAY_HOLD_MS`, 25 s, so a load never answered holds no play for good):
+  the queue goes out playing, or is played once it answers (a load refused with no mint due
+  included), and a queue that lands paused while a play stands (a seek made before it landed
+  included, sent or read) is played then
+  (`settleLanding`; that landing is no word from the receiver on the play state, for at most
+  `PLAY_HOLD_MS` after the move: a pause read long after a landing nobody saw, an iPhone
+  suspended as the cast began, is the receiver's and is never played over): a play that
+  reached the receiver while it still took the queue is lost, which left a resume after a mint
+  paused at its place with the stall watchdog's "Playback stopped". Not a status or error of the queue that load replaces
   (`ofReplacedQueue`: one naming a URL with the token before the mint), nor one read (`refresh`):
   read before the queue was sent it is dropped, and an error read while it is on its way refuses
   nothing. A queue sent puts the snapshot at the place it asks for at once, as a
@@ -3582,8 +3614,12 @@ on first need). NOT device-verified (no Cast device yet).
   driver drops a start reported after its session ended.
 - **Foreign media** is told by stream address (`streamIdentity`: the route and its `path` /
   `transcode`, whatever base, token or `t=`): another sender's book or another app's media on the
-  receiver is ignored (never paused, stopped or saved as ours) until this device loads again. On
-  the web only the tab that started a session follows it (`sessionStorage`; other tabs leave
+  receiver is ignored (never paused, stopped or saved as ours) until this device loads again.
+  Not the book a queue of ours replaces: its statuses are dropped while that queue is on its way
+  and, once it answered, until its place lands (for at most `ASKED_MOVE_MS`; a recast of another
+  book, whose first statuses reach the phone late and, taken as another sender's, would have
+  this book's own ignored), and they say the media from before is another book (`replacedGone`).
+  On the web only the tab that started a session follows it (`sessionStorage`; other tabs leave
   the origin's session without stopping the receiver).
 - **Transcoded streams** can't seek on the receiver: a seek or a jump to another file reloads
   the queue from there (`&t=`, the offset added back to every place read); an idle `finished`
@@ -3692,7 +3728,11 @@ tokens, type and components; its section 17 maps them onto these files.
   guards it. RNW is pinned exactly to the patch's version (0.21.4, the patch file named for it)
   and ignored by Dependabot: an RNW upgrade renames and regenerates the patch
   (`npx patch-package react-native-web`) or drops it once upstream fixes it; a patch that no
-  longer applies fails the install.
+  longer applies fails the install. `react-native-google-cast+<ver>.patch` gives the library's
+  Android Cast buttons (its `CastButton` and the expanded controller's) a dialog whose Stop
+  casting also stops the receiver's app (`RNGCStopCastingDialogFactory`, the Cast section
+  above); the library is pinned exactly (4.9.1) and ignored by Dependabot the same way, and
+  `plugins/withCast.test.ts` fails when the installed library lacks the factory or its wiring.
 - **Expo SDK pins, and one copy of each native module.** The SDK decides the versions of its
   native modules, react and react-native (`node_modules/expo/bundledNativeModules.json`). CI
   runs `npx expo install --check`, which fails on any drift; move them only with
