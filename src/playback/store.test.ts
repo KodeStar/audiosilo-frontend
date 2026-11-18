@@ -3654,11 +3654,16 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     await flushMicrotasks();
     (mockSvc.skipToTrack as jest.Mock).mockRejectedValueOnce(new Error('refused'));
     await expect(usePlayer.getState().seekInTrack(60)).rejects.toThrow('refused');
-    // The engine is still where it faulted: its play is not taken, and is stopped again.
+    // The engine is still where it faulted: its play is not taken, and is stopped again, and
+    // the place shown is still the one it faulted at.
     (mockSvc.pause as jest.Mock).mockClear();
     pushSnapshot(snap('playing', 1.4, { trackIndex: 1, duration: short }));
     await flushMicrotasks();
-    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', trackIndex: 0 });
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'error',
+      trackIndex: 0,
+      position: 30,
+    });
     expect(mockSvc.pause).toHaveBeenCalled();
     // And the next move still puts the engine in the snapshot's file by its index.
     await usePlayer.getState().seekInTrack(60);
@@ -4196,6 +4201,88 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     });
     await usePlayer.getState().retry();
     expect(lastLoad()).toEqual([0, 80]);
+  });
+
+  it('a skip on a faulted book, then a lock-screen move, are where a Retry reloads it', async () => {
+    await resume(30);
+    ranOff();
+    await flushMicrotasks();
+    mockSaveProgress.mockClear();
+    // +30 past the engine's measure: it clamps the seek to its end and takes it, so the book
+    // is no longer faulted, only in error, and the engine's reports are held off.
+    await usePlayer.getState().skipSeconds(30);
+    pushSnapshot(snap('paused', short, { trackIndex: 0, duration: short }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'error',
+      trackIndex: 0,
+      position: 60,
+      duration: 139.42,
+    });
+    expect(savedPositions().at(-1)).toBe(60);
+    // The lock screen's previous then moves the engine to the file's start.
+    remoteMove!(0, 0);
+    pushSnapshot(snap('paused', 0, { trackIndex: 0, duration: short }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'error',
+      trackIndex: 0,
+      position: 0,
+    });
+    await usePlayer.getState().retry();
+    expect(lastLoad()).toEqual([0, 0]);
+  });
+
+  it('a next on a faulted book shows, saves and reloads at the next file', async () => {
+    await resume(30);
+    ranOff();
+    await flushMicrotasks();
+    mockSaveProgress.mockClear();
+    await usePlayer.getState().goToTrack(1);
+    expect(mockSvc.skipToTrack).toHaveBeenLastCalledWith(1, 0);
+    pushSnapshot(snap('paused', 0, { trackIndex: 1, duration: short }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'error',
+      trackIndex: 1,
+      position: 0,
+      duration: 138.69,
+    });
+    // The place saved is the one shown.
+    expect(savedPositions().at(-1)).toBe(lengths[0]);
+    // A scrub there moves within the next file.
+    await usePlayer.getState().seekInTrack(20);
+    expect(mockSvc.seekTo).toHaveBeenLastCalledWith(20);
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 20 });
+    await usePlayer.getState().retry();
+    expect(lastLoad()).toEqual([1, 20]);
+  });
+
+  it('a move on a faulted book the listener moved on from before it landed shows nothing', async () => {
+    await resume(30);
+    ranOff();
+    await flushMicrotasks();
+    let take: () => void = () => undefined;
+    (mockSvc.skipToTrack as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (take = resolve)),
+    );
+    const next = usePlayer.getState().goToTrack(1);
+    await flushMicrotasks();
+    // The lock screen moves on meanwhile: its place stands once the next lands.
+    remoteMove!(0, 80);
+    take();
+    await next;
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 0, position: 80 });
+  });
+
+  it('a move on a book that is not in error leaves its place to the engine', async () => {
+    await resume(30);
+    pushSnapshot(snap('paused', 30, { trackIndex: 0 }));
+    await usePlayer.getState().goToTrack(1);
+    // Nothing reported yet: the snapshot is still the engine's last place.
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 0, position: 30 });
+    pushSnapshot(snap('paused', 0, { trackIndex: 1 }));
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 0 });
   });
 
   it("a Cast checkpoint of a faulted book's place is not the book's place", async () => {

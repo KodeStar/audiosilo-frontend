@@ -2138,7 +2138,12 @@ media GETs only.
   press. The pause has landed once its call resolved and the engine told `paused` or `ended`
   (`faultPause`): the call alone does not say so, since a native one resolves before its engine
   has paused, and the web's pause tells the place once more first, each report still a `playing`
-  one. A lock-screen move is the place it shows and reloads at, a Cast checkpoint
+  one. A move on a faulted book, or on any book in error (`reportsUnheard`: the error hold
+  keeps the engine's reports off the snapshot), is the place it shows, saves and reloads at
+  (`showPlace`): the listener's from the lock screen at once, and an in-app seek, skip or
+  track jump once the engine took it (`listenerMove`; not a refused one, nor one the listener
+  moved on from meanwhile), even one the engine took clamped at its short measure (which ends
+  the fault but not the error). A Cast checkpoint
   (`onRemoteMove`'s `checkpoint`, as iOS suspends the app) never is, nor calls off a held run. A
   fault outlives the download hot-swap's new `NowPlaying` (`commitLocalSwap`): a press still
   reloads. So does an ask still standing, in the same file of the download's queue (`moveAsk`),

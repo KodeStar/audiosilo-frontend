@@ -1934,6 +1934,22 @@ const stoppedState = (state: PlaybackState) => state === 'paused' || state === '
 /** Has the loaded book's engine faulted (`faultedBook`)? */
 const loadedFaulted = () => faultedBook !== null && faultedBook === usePlayer.getState().nowPlaying;
 
+/** Do the engine's reports stay off the loaded book's snapshot: its engine faulted
+ * (`faultedBook`), or the snapshot is an error only a play replaces (`onReport`'s error
+ * hold)? A move made then shows its place itself (`showPlace`: `listenerMove`,
+ * `onRemoteMove`): the place saved, the screen and a Retry's reload all follow it, never the
+ * place the error was at. */
+const reportsUnheard = () =>
+  loadedFaulted() || (usePlayer.getState().snapshot.state === 'error' && !wantsPlayback);
+
+/** The snapshot shows `(trackIndex, position)` of `np`'s queue, its state kept, at the file's
+ * server length (the engine's may be a short measure). */
+function showPlace(np: NowPlaying, trackIndex: number, position: number) {
+  const { snapshot } = usePlayer.getState();
+  const duration = fileDurationOf(np.queue, trackIndex, 0);
+  usePlayer.setState({ snapshot: { ...snapshot, trackIndex, position, duration } });
+}
+
 /** The ask the store gave up on before its engine call settled (`withdrawAsk`: a move to
  * another tab's place past `TAB_MOVE_MAX_MS`), while no ask has stood since. Its call may still
  * be refused, the engine then still where it faulted: a fault it called off stands again
@@ -2019,6 +2035,25 @@ function engineMove<T>(
   if (!np) return move();
   const ask = askEngineTo(np, trackIndex, position);
   return engineTakes(ask, move());
+}
+
+/** `engineMove` for the listener's own move in the app (a seek, a skip, a track jump). On a
+ * book whose engine reports don't reach its snapshot (`reportsUnheard`) the move shows its
+ * place itself (`showPlace`) once the engine took it, so the screen, the place saved and a
+ * Retry's reload follow it: not when the engine refused it (it is still where the book shows),
+ * nor once the listener moved again meanwhile, another book loaded or a play began. */
+async function listenerMove<T>(
+  np: NowPlaying | null,
+  trackIndex: number,
+  position: number,
+  move: () => Promise<T>,
+): Promise<T> {
+  const unheard = reportsUnheard();
+  const moves = localMoves;
+  const taken = await engineMove(np, trackIndex, position, move);
+  const still = np !== null && usePlayer.getState().nowPlaying === np && localMoves === moves;
+  if (unheard && still && reportsUnheard()) showPlace(np, trackIndex, position);
+  return taken;
 }
 
 /** The store gave up on `ask`'s move (`moveToTabPlace`): it no longer stands. Left standing,
@@ -2889,7 +2924,8 @@ async function createService(): Promise<PlaybackService> {
     // headset), never by the stream coming back on its own: the watchdog pauses the engine,
     // and a failed Android engine stays idle until a press. Enumerating the "noisy"
     // states bit us repeatedly (loading, ready, idle, paused…); suppress-all-but-playing
-    // is the robust rule.
+    // is the robust rule. A move made meanwhile shows its own place (`reportsUnheard`), as
+    // the engine's report of it is held off here too.
     if (prev.state === 'error' && !wantsPlayback && reported.state !== 'playing') {
       return;
     }
@@ -3076,15 +3112,10 @@ async function createService(): Promise<PlaybackService> {
     // The listener's own move: no ask of the store's stands (`askedPlace`), and a run into a
     // later file held for it was this move.
     setAsk(null);
-    // A faulted engine's reports are not heard (`loadedFaulted`): the move's place is the one
-    // the book shows, so a Retry or a press reloads there, not at the place it faulted at.
-    if (np && loadedFaulted()) {
-      const { snapshot } = usePlayer.getState();
-      const duration = fileDurationOf(np.queue, trackIndex, 0);
-      usePlayer.setState({
-        snapshot: { ...snapshot, trackIndex, position: positionInTrack, duration },
-      });
-    }
+    // A faulted engine's reports, or an errored book's, are not heard (`reportsUnheard`): the
+    // move's place is the one the book shows, so a Retry or a press reloads there, not at the
+    // place the error was at.
+    if (np && reportsUnheard()) showPlace(np, trackIndex, positionInTrack);
     userMoved(np ? toBookPosition(np.queue.offsets, trackIndex, positionInTrack) : undefined);
     // The engine has moved already: the span ends where it was last seen (paused, where it
     // was is not known, so no move is taken for one that moves nowhere).
@@ -3613,7 +3644,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     // A faulted engine sits in another file than the snapshot's (`engineFault`): it is put in
     // the target's by its index, never sought within whatever file it is in.
     const faulted = loadedFaulted();
-    await engineMove(np, target.index, target.positionInTrack, () =>
+    await listenerMove(np, target.index, target.positionInTrack, () =>
       target.index === get().snapshot.trackIndex && !faulted
         ? svc.seekTo(target.positionInTrack)
         : svc.skipToTrack(target.index, target.positionInTrack),
@@ -3632,7 +3663,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     userMoved(np ? toBookPosition(np.queue.offsets, trackIndex, pos) : undefined);
     // A faulted engine sits in another file than the snapshot's (`engineFault`): put in it.
     const faulted = loadedFaulted();
-    await engineMove(np, trackIndex, pos, () =>
+    await listenerMove(np, trackIndex, pos, () =>
       faulted ? svc.skipToTrack(trackIndex, pos) : svc.seekTo(pos),
     );
     void persist();
@@ -3645,7 +3676,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     const svc = await ensureService();
     moveListeningSpan(endAt(np, i, 0));
     userMoved(toBookPosition(np.queue.offsets, i, 0));
-    await engineMove(np, i, 0, () => svc.skipToTrack(i, 0));
+    await listenerMove(np, i, 0, () => svc.skipToTrack(i, 0));
     void persist();
   },
 
