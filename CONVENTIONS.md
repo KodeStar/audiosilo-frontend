@@ -121,7 +121,9 @@ can never log anyone out (`{ authReset, cacheReset }`):
   every chunk they name, transitively; the shell cached once its own files are in), at install and when the app asks (`askPrecache`, 5 s after load), so a page never
   opened online still boots offline. Once a build is complete, the one before it stays one
   deploy longer (a tab still running it opens its pages from those files), older files go, and
-  so does every page an earlier build cached (offline it falls back to the shell). The worker
+  so does every page an earlier build cached (offline it falls back to the shell); a page whose
+  address carries a one-time value (a pairing link's `token`, a single sign-on return's `flow`)
+  is never cached at all (`UNKEPT_PAGE_PARAMS`). The worker
   is registered under its build's name (`sw.js?build=`, the entry's and the shared chunk's:
   `buildId`; the entry does not name `__common`), so each deploy installs a new one: Chrome
   keeps the compiled code of scripts a worker caches while installing, which is most of a warm

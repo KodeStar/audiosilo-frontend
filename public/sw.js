@@ -22,6 +22,11 @@ const MEDIA_CACHE = 'audiosilo-media-v1'; // keep in sync with engine.web.ts
 // The media-auth query param (keep in sync with client.ts `mediaTokenQuery`): its
 // presence marks a token-bearing URL that must never be written into Cache Storage.
 const TOKEN_PARAM = 'token';
+// A page address carrying any of these is never written into Cache Storage either: a pairing
+// link's token, and the key of a single sign-on's flow its return names
+// (`/connect?oidc=1&flow=<key>`, server#406). Each is one-time, so a kept copy would only hold
+// the value (one more page per sign-in), and offline such a page boots from the app shell.
+const UNKEPT_PAGE_PARAMS = [TOKEN_PARAM, 'flow'];
 
 // Registered with `?dev=1` under the Metro dev server. In dev we only serve offline
 // media (so downloads are testable via `npm run web`) and never cache the app shell,
@@ -153,8 +158,12 @@ async function handleNavigation(request, shellFallback = true) {
   try {
     const fresh = await fetch(request);
     // Only cache a good response as the app shell - caching a transient 5xx would
-    // then be served for offline navigations instead of the shell fallback.
-    if (fresh.ok) cache.put(request, fresh.clone());
+    // then be served for offline navigations instead of the shell fallback - and never
+    // under an address carrying a one-time value (`UNKEPT_PAGE_PARAMS`).
+    const { searchParams } = new URL(request.url);
+    if (fresh.ok && !UNKEPT_PAGE_PARAMS.some((p) => searchParams.has(p))) {
+      cache.put(request, fresh.clone());
+    }
     return fresh;
   } catch {
     return (
