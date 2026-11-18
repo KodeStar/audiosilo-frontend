@@ -3648,6 +3648,23 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     expect(mockSvc.seekTo).toHaveBeenLastCalledWith(40);
   });
 
+  it('a move the engine refuses leaves a faulted book faulted', async () => {
+    await resume(30);
+    ranOff();
+    await flushMicrotasks();
+    (mockSvc.skipToTrack as jest.Mock).mockRejectedValueOnce(new Error('refused'));
+    await expect(usePlayer.getState().seekInTrack(60)).rejects.toThrow('refused');
+    // The engine is still where it faulted: its play is not taken, and is stopped again.
+    (mockSvc.pause as jest.Mock).mockClear();
+    pushSnapshot(snap('playing', 1.4, { trackIndex: 1, duration: short }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', trackIndex: 0 });
+    expect(mockSvc.pause).toHaveBeenCalled();
+    // And the next move still puts the engine in the snapshot's file by its index.
+    await usePlayer.getState().seekInTrack(60);
+    expect(mockSvc.skipToTrack).toHaveBeenLastCalledWith(0, 60);
+  });
+
   it('a seek back the engine never took stands no longer once it plays on where it was', async () => {
     // Three files: the engine stays in the second, and goes on into the third by itself.
     const paths = [...files, 'A/Vbr/03.mp3'];

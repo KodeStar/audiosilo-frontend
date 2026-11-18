@@ -1845,6 +1845,9 @@ let atPartialEnd = false;
  * (`at`) no such tick is out any more, so its file shows the engine played on as a landed
  * one's does.
  *
+ * `fault`: the faulted book (`faultedBook`) the ask called off. An engine that refuses the
+ * move (`engineTakes`) is still where it faulted, so the fault stands again.
+ *
  * `playing`: the engine reported the asked file `PLAYING_PAST` beyond the asked place, so it
  * holds that place in its measure (one run off a short measure reports at most its own end,
  * short of the place) and a later file from then on is a move, not a run off its end: the
@@ -1867,6 +1870,7 @@ type EngineAsk = {
   position: number;
   at: number;
   landed: boolean;
+  fault: NowPlaying | null;
   playing: boolean;
   held: {
     since: number;
@@ -1932,6 +1936,7 @@ function askEngineTo(np: NowPlaying, trackIndex: number, position: number): Engi
     position,
     at: Date.now(),
     landed: false,
+    fault: faultedBook,
     playing: false,
     held: null,
     before,
@@ -1944,13 +1949,15 @@ function askEngineTo(np: NowPlaying, trackIndex: number, position: number): Engi
 
 /** `move` is the engine call that makes `ask`'s move: once it resolves the engine took it
  * (`EngineAsk.landed`); one that rejects was refused, and its ask stands no longer
- * (`withdrawAsk`). */
+ * (`withdrawAsk`), while a fault it called off stands again (`EngineAsk.fault`): the engine
+ * is still where it faulted. */
 async function engineTakes<T>(ask: EngineAsk, move: Promise<T>): Promise<T> {
   try {
     const taken = await move;
     if (askedPlace === ask) ask.landed = true;
     return taken;
   } catch (err) {
+    if (askedPlace === ask && faultedBook === null) faultedBook = ask.fault;
     withdrawAsk(ask);
     throw err;
   }
@@ -1987,6 +1994,7 @@ function moveAsk(from: NowPlaying, to: NowPlaying, lost: { trackIndex: number; p
   const onto = (i: number) => trackIndexById(to.queue, from.queue.tracks[i]?.id);
   const at = onto(ask.trackIndex);
   ask.np = to;
+  if (ask.fault === from) ask.fault = to;
   ask.trackIndex = at >= 0 ? at : lost.trackIndex;
   if (at < 0) ask.position = lost.position;
   ask.before = ask.before >= 0 ? onto(ask.before) : -1;
