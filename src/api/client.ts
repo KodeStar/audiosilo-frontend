@@ -430,8 +430,9 @@ export class NetworkError extends TypeError {
 }
 
 /** What a proxy or Cloudflare answers for a server behind it that is down or did not
- * answer in time (502, 503, 504, Cloudflare's 520 to 524). */
-const SERVER_AWAY = new Set([502, 503, 504, 520, 521, 522, 523, 524]);
+ * answer in time (502, 504, Cloudflare's 520 to 524). Not a 503: the server's own answer
+ * when it is busy (its request timeout, a restart), and it was reached. */
+const SERVER_AWAY = new Set([502, 504, 520, 521, 522, 523, 524]);
 
 /** Whether a failed request got no answer from its server: our timeout, or the fetch
  * itself rejecting (a `TypeError`: the client's `NetworkError` on every platform, the
@@ -445,7 +446,8 @@ export function isUnreachableError(e: unknown): boolean {
  * Whether a failed request found its server away rather than refused: no answer
  * (`isUnreachableError`), or a gateway answering for a server that is down (`SERVER_AWAY`).
  * For what a failure tells the listener: the first request after a server died fails so
- * before reachability has noticed.
+ * before reachability has noticed. A busy server's 503 is the request's own failure, said
+ * as any other ("Couldn't update this book. Try again."), never "can't be reached".
  */
 export function isServerAwayError(e: unknown): boolean {
   return isUnreachableError(e) || (e instanceof ApiError && SERVER_AWAY.has(e.status));

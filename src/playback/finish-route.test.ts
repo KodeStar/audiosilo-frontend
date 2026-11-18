@@ -81,6 +81,17 @@ describe('undoFinish', () => {
     expect(steps).toEqual(['withdraw c1 3 Author/Book', 'edit', 'restore']);
   });
 
+  // The server's own 503 (busy: its request timeout, a restart) is an answer: it was
+  // reached, so the Undo fails as an edit does, never as "can't be reached".
+  it("an edit a busy server answered with a 503 is the edit's failure, not unreachable", async () => {
+    const busy = async () => {
+      steps.push('edit');
+      throw new ApiError(503, 'request timed out');
+    };
+    await expect(undoFinish(ref, busy)).rejects.toThrow('request timed out');
+    expect(steps).toEqual(['withdraw c1 3 Author/Book', 'edit', 'restore']);
+  });
+
   it("an edit the server refused is still the edit's failure", async () => {
     const refused = async () => {
       throw new ApiError(500, 'boom');
