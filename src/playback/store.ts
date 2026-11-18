@@ -1845,8 +1845,9 @@ let atPartialEnd = false;
  * (`at`) no such tick is out any more, so its file shows the engine played on as a landed
  * one's does.
  *
- * `faulted`: the ask called off its book's fault (`faultedBook`). An engine that refuses the
- * move (`engineTakes`) is still where it faulted, so the fault stands again.
+ * `faulted`: the ask called off its book's fault (`faultedBook`), or replaced an ask that did
+ * before it landed. An engine that refuses the move (`engineTakes`) is still where it faulted,
+ * so the fault stands again; the replaced ask taken after all clears it.
  *
  * `playing`: the engine reported the asked file `PLAYING_PAST` beyond the asked place, so it
  * holds that place in its measure (one run off a short measure reports at most its own end,
@@ -1947,13 +1948,16 @@ function dropHeld(ask: EngineAsk) {
  * whose move can be refused (`withdrawAsk`). */
 function askEngineTo(np: NowPlaying, trackIndex: number, position: number): EngineAsk {
   const before = askedPlace?.np === np ? askedPlace.trackIndex : -1;
+  // An ask this one replaces before it landed may have called the fault off: the engine may
+  // still be where it faulted, so the fault stands again if this one is refused too.
+  const pending = askedPlace?.np === np && !askedPlace.landed ? askedPlace : null;
   const ask: EngineAsk = {
     np,
     trackIndex,
     position,
     at: Date.now(),
     landed: false,
-    faulted: faultedBook === np,
+    faulted: faultedBook === np || (pending?.faulted ?? false),
     playing: false,
     held: null,
     before,
@@ -1972,6 +1976,9 @@ async function engineTakes<T>(ask: EngineAsk, move: Promise<T>): Promise<T> {
   try {
     const taken = await move;
     if (askedPlace === ask) ask.landed = true;
+    // Replaced, yet taken: the engine left the place it faulted at, so a later ask of the book
+    // that inherited the fault (`askEngineTo`) no longer brings it back when refused.
+    else if (ask.faulted && askedPlace?.np === ask.np) askedPlace.faulted = false;
     return taken;
   } catch (err) {
     if (askedPlace === ask && ask.faulted && faultedBook === null) faultedBook = ask.np;

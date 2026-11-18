@@ -3665,6 +3665,27 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     expect(mockSvc.skipToTrack).toHaveBeenLastCalledWith(0, 60);
   });
 
+  it('two moves the engine refuses, the second made before the first settled, leave the fault', async () => {
+    await resume(30);
+    ranOff();
+    await flushMicrotasks();
+    let refuseFirst: (e: Error) => void = () => undefined;
+    (mockSvc.skipToTrack as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((_, reject) => (refuseFirst = reject)),
+    );
+    const first = usePlayer.getState().seekInTrack(60);
+    await flushMicrotasks();
+    (mockSvc.seekTo as jest.Mock).mockRejectedValueOnce(new Error('refused'));
+    await expect(usePlayer.getState().seekInTrack(40)).rejects.toThrow('refused');
+    refuseFirst(new Error('refused'));
+    await expect(first).rejects.toThrow('refused');
+    (mockSvc.pause as jest.Mock).mockClear();
+    pushSnapshot(snap('playing', 1.4, { trackIndex: 1, duration: short }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', trackIndex: 0 });
+    expect(mockSvc.pause).toHaveBeenCalled();
+  });
+
   describe('on iOS, a remote move into a later file at a place in it', () => {
     /** Resumed at 30 s, still buffering there; the lock screen's next chapter, 45 s into
      * file 2: iOS tells the file at 0, then the place, and `onRemoteMove` only once the
