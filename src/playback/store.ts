@@ -1320,6 +1320,8 @@ async function recordFinish(ref: FinishRef): Promise<void> {
   const at = new Date().toISOString();
   if (loaded) finishSent = contentKeyOf(ref);
   const queued = finishAfter(closing, ref, at, () => refreshAfterFinish(ref));
+  // Awaited below, after the mirror: one that failed meanwhile is not an unhandled rejection.
+  void queued.catch(() => undefined);
   // The book page gives no speed: the book's own stays in the mirror (an offline Listen
   // again reads it), never 1x.
   const prior = await readMirror(ref.connectionId, ref.libraryId, ref.path).catch(() => null);
