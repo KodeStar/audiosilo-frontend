@@ -401,6 +401,10 @@ function lastPlayRequestFor(ref: ContentRef): PlayRequest | null {
 
 const MIN_HISTORY_MS = 20_000; // ignore listening spans shorter than this
 const STALL_GRACE_MS = 3_000; // a 'loading' that outlasts this is treated as a dead stream
+/** How long a downloaded book waits for its server's place before it starts from this
+ * device's records (`loadInitialProgress`): with the wait for its item and chapters
+ * (`FRESH_SOURCE_WAIT_MS`, 3 s) well inside a car's 10 s wait for a start. */
+export const DOWNLOADED_PLACE_WAIT_MS = 3_000;
 
 // The periodic save's two paces (`saveIntervalMs`, perf P4). The server derives listening
 // sessions from these saves and the spans cut with them (audiosilo-server
@@ -2893,7 +2897,18 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // The replay guard (fe#198): set below when the resume could not be checked.
       let unchecked = false;
       if (startBookPosition === undefined && startTrack === undefined) {
-        const r = await loadInitialProgress(api, connectionId, libraryId, book.rel_path);
+        // A downloaded book never waits long on its server: not asked at all when it is known
+        // to be unreachable, else for `DOWNLOADED_PLACE_WAIT_MS` (a frozen server held a car's
+        // start for the whole request timeout, and the car gave up on it). Started from this
+        // device's records, as offline: its saves go guarded (`unchecked`, fe#198).
+        const placeApi = dl && (!isDeviceOnline() || !isReachable(connectionId)) ? null : api;
+        const r = await loadInitialProgress(
+          placeApi,
+          connectionId,
+          libraryId,
+          book.rel_path,
+          dl ? DOWNLOADED_PLACE_WAIT_MS : undefined,
+        );
         if (!current() || replaced()) return;
         if (markedFinished()) return await callOff(svc, request);
         // Not reached (a downloaded book's 'failed' starts at 0), or resumed behind it.

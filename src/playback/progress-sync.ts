@@ -7,6 +7,7 @@ import { identityMovePending } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { serialQueue } from '@/lib/serial-queue';
 import { tabLock } from '@/lib/tab-lock';
+import { withTimeout } from '@/lib/with-timeout';
 import { getItem, setItem } from '@/lib/storage';
 import {
   LISTENING_OPEN_SPAN_KEY,
@@ -236,11 +237,19 @@ export async function pendingSaveCount(connectionId?: string): Promise<number> {
   return saves + listens;
 }
 
+/**
+ * Where a book resumes: its server's row (written into the mirror) weighed against this
+ * device's own records (`resumeLookupOf`). `waitMs` bounds the server's read (a downloaded
+ * book, which starts from this device's records when its server is slow: a frozen server held
+ * a car's start for the whole request timeout, past the car's own wait); a read that outlasts
+ * it counts as a failed one, which only asks for a reachability check.
+ */
 export async function loadInitialProgress(
   api: ApiClient | null,
   connectionId: string,
   libraryId: number,
   path: string,
+  waitMs?: number,
 ): Promise<ResumeLookup> {
   let serverOk = false;
   let server: Progress | null = null;
@@ -248,8 +257,11 @@ export async function loadInitialProgress(
   // failed to hydrate). There's no server to ask, so skip the fetch and resume from the
   // durable mirror / offline queue below - exactly the unreachable-server path.
   if (api) {
+    const abort = waitMs === undefined ? undefined : new AbortController();
     try {
-      server = await api.getProgress(libraryId, path); // null = HTTP 200, no record (new book)
+      // null = HTTP 200, no record (new book)
+      const read = api.getProgress(libraryId, path, abort?.signal);
+      server = waitMs === undefined ? await read : await withTimeout(read, waitMs, 'slow server');
       serverOk = true;
     } catch (e) {
       // Reachability is per-connection, so report the failure against THIS book's own
@@ -258,6 +270,9 @@ export async function loadInitialProgress(
       // The local mirror/queue fallback below keys off `serverOk`, not this call.
       if (e instanceof ApiError) noteSuccess(connectionId);
       else noteFailure(connectionId, e);
+    } finally {
+      // A read past its wait is not left holding a connection to a frozen server.
+      abort?.abort();
     }
   }
   // Cache the authoritative server value so a later offline resume has it (keep-newest,

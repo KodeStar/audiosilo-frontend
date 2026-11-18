@@ -153,6 +153,7 @@ import { useSleepTimer } from './sleep-timer';
 import { useReachability } from '@/api/reachability';
 import { AutoplayBlockedError, PlaybackStartError } from './types';
 import {
+  DOWNLOADED_PLACE_WAIT_MS,
   flushHistoryOnHide,
   holdSaves,
   LONG_PAUSE_MS,
@@ -2703,6 +2704,49 @@ describe('plays a downloaded book whose connection is gone', () => {
       connectionId: 'gone',
       position: 50,
     });
+  });
+
+  // The device run: a frozen server held a downloaded book's car start for its whole request
+  // timeout, past the car's 10 s wait, and the book loaded paused.
+  it("waits on its server's place only briefly, and not at all when it is unreachable", async () => {
+    seedDownloaded('c1');
+    try {
+      await usePlayer.getState().playBook('c1', 2, makeBook(), undefined);
+      expect(mockLoadInitialProgress).toHaveBeenLastCalledWith(
+        fakeClient,
+        'c1',
+        2,
+        'A/Book.m4b',
+        DOWNLOADED_PLACE_WAIT_MS,
+      );
+      useReachability.setState({ online: { c1: false } });
+      await usePlayer.getState().playBook('c1', 2, makeBook(), undefined);
+      expect(mockLoadInitialProgress).toHaveBeenLastCalledWith(
+        null,
+        'c1',
+        2,
+        'A/Book.m4b',
+        DOWNLOADED_PLACE_WAIT_MS,
+      );
+    } finally {
+      useReachability.setState({ online: {} });
+    }
+  });
+
+  it('a streamed book still waits for its server (its place has nowhere else to come from)', async () => {
+    useReachability.setState({ online: { c1: false } });
+    try {
+      await usePlayer.getState().playBook('c1', 2, makeBook(), undefined);
+      expect(mockLoadInitialProgress).toHaveBeenLastCalledWith(
+        fakeClient,
+        'c1',
+        2,
+        'A/Book.m4b',
+        undefined,
+      );
+    } finally {
+      useReachability.setState({ online: {} });
+    }
   });
 
   it('still bails when the connection is gone AND the book is not downloaded (streaming needs a client)', async () => {

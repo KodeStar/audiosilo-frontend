@@ -529,6 +529,43 @@ describe('progress-sync', () => {
     expect(r).toEqual({ kind: 'empty' });
   });
 
+  // The device run: a frozen server held a downloaded book's car start for the whole request
+  // timeout, past the car's own wait.
+  it("loadInitialProgress: a wait bounds the server's read, then the mirror stands", async () => {
+    await saveProgress(
+      fakeApi(() => Promise.resolve()),
+      { ...save, position: 75 },
+    );
+    let signal: AbortSignal | undefined;
+    const frozen = {
+      getProgress: jest.fn((_lib: number, _path: string, s?: AbortSignal) => {
+        signal = s;
+        return new Promise<Progress | null>(() => {});
+      }),
+    } as unknown as ApiClient;
+    jest.useFakeTimers();
+    try {
+      const lookup = loadInitialProgress(frozen, 'c1', 1, 'A/Book', 3_000);
+      await jest.advanceTimersByTimeAsync(3_000);
+      await expect(lookup).resolves.toEqual({
+        kind: 'progress',
+        progress: expect.objectContaining({ position: 75 }),
+        unchecked: true,
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+    // The read is called off, and the slow server only asked to be checked.
+    expect(signal?.aborted).toBe(true);
+    expect(reachability.noteFailure).toHaveBeenCalledWith('c1', expect.any(Error));
+  });
+
+  it("loadInitialProgress: a server answering inside the wait is the server's place", async () => {
+    const api = fakeGetApi(() => Promise.resolve(makeProgress({ position: 60 })));
+    const r = await loadInitialProgress(api, 'c1', 1, 'A/Book', 3_000);
+    expect(r).toEqual({ kind: 'progress', progress: expect.objectContaining({ position: 60 }) });
+  });
+
   it('loadInitialProgress: falls back to the mirror when the server is unreachable', async () => {
     // Seed the mirror via a save, then make the fetch throw (offline/5xx).
     await saveProgress(
