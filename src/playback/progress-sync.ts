@@ -818,10 +818,9 @@ export async function updateMirror(
     const base = map[key] ?? (row ? progressToSave(connectionId, libraryId, path, row) : null);
     if (!base) return;
     const next = change(base);
-    if (next === map[key]) return; // unchanged (an acknowledgement already known)
+    if (next === (map[key] ?? null)) return; // unchanged (an acknowledgement already known)
     if (next) map[key] = next;
-    else if (key in map) delete map[key];
-    else return;
+    else delete map[key];
     await setItem(MIRROR_KEY, map);
   });
 }
