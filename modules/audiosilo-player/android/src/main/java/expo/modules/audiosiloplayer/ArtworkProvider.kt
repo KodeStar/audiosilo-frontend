@@ -34,8 +34,10 @@ class ArtworkProvider : ContentProvider() {
   override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
     if (mode != "r") throw SecurityException("Read only")
     val ctx = context ?: throw FileNotFoundException(uri.toString())
-    val key = uri.lastPathSegment ?: throw FileNotFoundException(uri.toString())
-    val file = CarSnapshotStore.get(ctx)?.artworkByKey?.get(key)
+    // Only `art/<key>` ([uriFor]): a `remote` URI, or any other path, never names a file.
+    val segments = uri.pathSegments
+    if (segments.size != 2 || segments[0] != ART) throw FileNotFoundException(uri.toString())
+    val file = CarSnapshotStore.get(ctx)?.artworkByKey?.get(segments[1])
       ?: throw FileNotFoundException(uri.toString())
     if (!isInsideAppStorage(ctx, file) || !file.isFile) throw FileNotFoundException(uri.toString())
     return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
