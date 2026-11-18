@@ -1736,7 +1736,10 @@ media GETs only.
   passed only when the binary also has `getLoadedBook` (`moduleTakesBook` in
   `service.native.ts`; the two ship together), the way `setVolume` is detected, and the car seam
   (`src/car/car-native*.ts`) answers null / `[]` and never fires on an older binary. Events need
-  no detection (an older binary never sends them).
+  no detection (an older binary never sends them). The app has no `expo-updates`, so in practice
+  a JS bundle only runs on the binary it shipped in: the checks above stay, but a change to how
+  an existing call settles (fe#351's moves resolving once the engine took them) needs no marker
+  and no JS fallback for an older binary.
 - **Remote moves vs the resume floor.** The `resumeFloor` save guard (below) lowers only for a
   deliberate move, and the lock screen, a headset, CarPlay and Android Auto (their chapter lists
   too) move the engine without the JS asking. The module reports those as `onRemoteMove
@@ -2088,9 +2091,10 @@ media GETs only.
   ask) has landed once that call resolves
   (reports from then on are from after the move: the native module resolves `load`, `seekTo`
   and `skipToTrack` once the engine took the move, iOS in AVPlayer's seek completion, Android
-  at the controller's seek discontinuity (`MoveLandings`), and marks it with
-  `resolvesOnLanding`; on an older binary without it `service.native.ts` drops a tick far from
-  the asked place, in its file, until one near it or `SETTLE_MAX_MS`), and a call that
+  at the seek discontinuity its own call reported (`MoveLandings`); a seek the controller
+  never reported within a second rejects, as a refused one does. No old-binary fallback: the
+  app has no `expo-updates`, so a JS bundle only ever runs on the binary it shipped with, and a
+  native change to how a call settles needs no feature marker), and a call that
   rejects withdraws it, a fault it called off standing again (`EngineAsk.faulted`). The ask
   stands until the engine has played on `PLAYED_ON` seconds from it in its file (counted only
   once landed: a tick sent before a seek back took is past the asked place), moved on into a

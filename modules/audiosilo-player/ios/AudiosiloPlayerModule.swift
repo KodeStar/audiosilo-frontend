@@ -106,10 +106,6 @@ public class AudiosiloPlayerModule: Module {
       }
     }
 
-    // Present: the moves above resolve once taken. JS feature-detects it; an older binary
-    // resolves them before the engine took them.
-    Function("resolvesOnLanding") { () -> Bool in true }
-
     AsyncFunction("play") { [weak self] in onMain { self?.engine?.play() } }
     AsyncFunction("pause") { [weak self] in onMain { self?.engine?.pause() } }
     AsyncFunction("seekTo") { [weak self] (seconds: Double, promise: Promise) in

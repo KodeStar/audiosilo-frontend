@@ -256,10 +256,10 @@ class AudiosiloPlayerModule : Module() {
       }
     }
 
-    // Present: `load`, `seekTo` and `skipToTrack` resolve once the move took (fe#351). JS
-    // feature-detects it; an older binary resolves them as soon as their post is queued.
-    Function("resolvesOnLanding") { true }
-
+    // `load`, `seekTo` and `skipToTrack` resolve once the move took (fe#351): the store counts
+    // its ask as landed then. JS and this module always ship together (no over-the-air
+    // updates), so no older binary that resolves sooner is ever asked.
+    //
     // Resolves once the controller holds the new queue at its place (`setMediaItems` sets it at
     // once): every progress sample sent from then on is the new queue's.
     AsyncFunction("load") { tracks: List<TrackRecord>, startIndex: Int, position: Double, chapters: List<ChapterRecord>?, book: BookRecord?, promise: Promise ->
