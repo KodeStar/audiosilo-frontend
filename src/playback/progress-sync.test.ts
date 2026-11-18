@@ -35,6 +35,7 @@ import {
   saveProgress,
   serverRowOf,
   updateMirror,
+  writeFinishedMirror,
   writeMirror,
 } from '@/playback/progress-sync';
 import { provideStoredSkews } from '@/playback/stored-skews';
@@ -1818,5 +1819,66 @@ describe('the legacy queue across tabs', () => {
     answer();
     await flushing;
     expect(await readQueue()).toEqual([newer]);
+  });
+});
+
+// fe#258's follow-up: the record a Mark as finished replaced rides on the finished record, so
+// the Undo of a finish that never left decides by the record it changes, under the mirror's
+// lock, in any tab and after a reload.
+describe('the place before a finish (writeFinishedMirror)', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  const place = { ...save, position: 48, updated_at: '2026-01-01T00:00:00Z' };
+  const finish = { ...save, position: 100, finished: true, updated_at: '2026-01-02T00:00:00Z' };
+
+  it('carries the place it replaced; a later record does not keep it', async () => {
+    await writeMirror(place);
+    await writeFinishedMirror(finish);
+    expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({
+      finished: true,
+      before: { position: 48, finished: false, updated_at: place.updated_at },
+    });
+    // The server's row for the finish read back: not this device's Mark.
+    await writeMirror({ ...finish, updated_at: '2026-01-02T00:00:01Z', server_clock: true });
+    expect(await readMirrorOf('c1', 1, 'A/Book')).not.toHaveProperty('before');
+  });
+
+  it('a finish marked again carries the place the first one did; none over no place', async () => {
+    await writeMirror(place);
+    await writeFinishedMirror(finish);
+    await writeFinishedMirror({ ...finish, updated_at: '2026-01-03T00:00:00Z' });
+    expect((await readMirrorOf('c1', 1, 'A/Book'))?.before).toMatchObject({ position: 48 });
+    await writeFinishedMirror({ ...finish, path: 'B/Other' });
+    expect(await readMirrorOf('c1', 1, 'B/Other')).not.toHaveProperty('before');
+  });
+});
+
+// On plain http the mirror's lock is a lease that costs each job a wait (30 ms or more): the
+// writes asked while one waits share its read and write.
+describe('mirror writes asked together', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  const mirrorWrites = () =>
+    (AsyncStorage.setItem as jest.Mock).mock.calls.filter(([key]) => key === MIRROR_KEY).length;
+
+  it('are written once', async () => {
+    const before = mirrorWrites();
+    await Promise.all(
+      ['A', 'B', 'C', 'D', 'E'].map((p) => writeMirror({ ...save, path: `${p}/Book` })),
+    );
+    expect(mirrorWrites() - before).toBe(1);
+    expect(Object.keys(await readMirror())).toHaveLength(5);
+  });
+
+  it('never ahead of a change of the mirror asked before them', async () => {
+    const first = writeMirror(save);
+    const removed = updateMirror('c1', 1, 'A/Book', () => null);
+    const again = writeMirror({ ...save, position: 20, updated_at: '2026-01-02T00:00:00Z' });
+    await Promise.all([first, removed, again]);
+    expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ position: 20 });
   });
 });

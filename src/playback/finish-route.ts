@@ -58,10 +58,10 @@ type FinishRecorder = {
   /** An undone finish leaves this device: its record goes back to the place before it
    * (`ref.position`), unfinished; nothing when `connectionId` was signed out since `since`. */
   unrecord: (ref: UndoRef, since: number) => Promise<void>;
-  /** Whether this device still holds the book's record from before its waiting finish (its
-   * mirror holds that finish's own record, and the one before it was a place, unfinished):
-   * the place the server still holds while the finish has not reached it. */
-  knowsPlaceBefore: (ref: FinishBook) => Promise<boolean>;
+  /** A finish that never reached the server was taken back: this device's record goes back
+   * to the one before it, the place the server still holds, when its mirror holds the
+   * finish's record carrying that place (decided as it is changed). Resolves whether it did. */
+  restoreBefore: (ref: FinishBook, since: number) => Promise<boolean>;
 };
 
 /** The book an Undo unfinishes, and the place it goes back to. */
@@ -141,9 +141,14 @@ export async function undoFinish(ref: UndoRef, edit: () => Promise<unknown>): Pr
   const taken = await r.withdraw(ref.connectionId, ref.libraryId, ref.path);
   if (taken.unreachable) return 'unreachable';
   // Never reached the server, which still holds the place before: back there, no edit.
-  if (taken.unsent && (!ref.atPosition || (await r.knowsPlaceBefore(ref).catch(() => false)))) {
-    await r.unrecord({ ...ref, atPosition: false }, since).catch(() => undefined);
-    return 'undone';
+  // Where this device does not know that place (a reload, another tab's finish), the Undo of
+  // a Mark goes to its own place, no edit either; Mark as not finished takes the edit.
+  if (taken.unsent) {
+    if (await r.restoreBefore(ref, since).catch(() => false)) return 'undone';
+    if (!ref.atPosition) {
+      await r.unrecord(ref, since).catch(() => undefined);
+      return 'undone';
+    }
   }
   try {
     await edit();

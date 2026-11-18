@@ -85,10 +85,10 @@ import {
   mirrorTimeOf,
   noteUndoneFinish,
   type PlacedProgress,
-  type ProgressSave,
   readMirror,
   saveProgress,
   updateMirror,
+  writeFinishedMirror,
   writeMirror,
 } from './progress-sync';
 import { listenerSettings } from './listener-settings';
@@ -1340,8 +1340,7 @@ async function recordFinish(ref: FinishRef): Promise<void> {
   const speed = ref.playback_speed ?? prior?.playback_speed;
   const id = deviceId || (await getDeviceId());
   if (connectionGeneration(ref.connectionId) === since) {
-    beforeFinish.set(contentKeyOf(ref), { prior, at, deviceId: id });
-    await writeMirror(finishedSave({ ...ref, playback_speed: speed }, id, at)).catch(
+    await writeFinishedMirror(finishedSave({ ...ref, playback_speed: speed }, id, at)).catch(
       () => undefined,
     );
   }
@@ -1352,7 +1351,7 @@ async function recordFinish(ref: FinishRef): Promise<void> {
     // finish, as on an Undo of a finish that never left, and the player's end may send one.
     // Left finished, the book loaded again after the failure (`reloadLeftBook`) started
     // over at 0, and its next play sent that restart over the place the server holds.
-    if (prior && !prior.finished) await unrecordFinish({ ...ref, position: prior.position }, since);
+    if (prior && !prior.finished) await restorePlaceBefore(ref, since);
     // No record before it: the finish's own record goes (only it: one written since stands).
     else if (!prior && connectionGeneration(ref.connectionId) === since) {
       await updateMirror(ref.connectionId, ref.libraryId, ref.path, (now) =>
@@ -1360,7 +1359,6 @@ async function recordFinish(ref: FinishRef): Promise<void> {
       ).catch(() => undefined);
       invalidateFinishedProgress(queryClient, ref.connectionId, ref.libraryId, ref.path);
     }
-    beforeFinish.delete(contentKeyOf(ref));
     if (finishSent === contentKeyOf(ref)) finishSent = null;
     throw e;
   }
@@ -1452,39 +1450,46 @@ async function reloadLeftBook(ref: ContentRef): Promise<void> {
     );
 }
 
-/** Each book's mirror record before its Mark as finished (`recordFinish`), for its Undo
- * (`unrecordFinish`), with the finish's own record (its time and device). */
-const beforeFinish = new Map<
-  string,
-  { prior: ProgressSave | null; at: string; deviceId: string }
->();
-
-/** Whether this device knows the place before the book's waiting finish
- * (`knowsPlaceBefore` in `finish-route.ts`): the record before it was a place, unfinished,
- * and the mirror still holds the finish's own record. Not after a reload (none kept), nor
- * for another tab's finish or one marked since (the mirror holds that one). */
-async function knowsPlaceBefore(ref: ContentRef): Promise<boolean> {
-  const before = beforeFinish.get(contentKeyOf(ref));
-  if (!before?.prior || before.prior.finished) return false;
-  const now = await readMirror(ref.connectionId, ref.libraryId, ref.path);
-  return !!now?.finished && now.updated_at === before.at && now.device_id === before.deviceId;
+/**
+ * A Mark as finished that never reached the server was undone (`undoFinish`: taken back from
+ * the outbox unsent; or never queued, `recordFinish`): the mirror goes back to the record
+ * the finish replaced (`ProgressSave.before`, `writeFinishedMirror`), the place the server
+ * still holds, with its own stamp: a place another device saved after it, read from the
+ * server next, is newer and wins. Resolves whether it did: only while the mirror holds a
+ * finished record carrying that place, decided under the mirror's lock (`updateMirror`), so
+ * another tab's finish or a place saved since is never undone from a look taken before it.
+ * Nothing once the connection was signed out since the Undo began (`since`).
+ */
+async function restorePlaceBefore(ref: ContentRef, since: number): Promise<boolean> {
+  if (connectionGeneration(ref.connectionId) !== since) return false;
+  let restored = false;
+  // Its lock refused (Web Locks): held off in this tab alone, and the record still goes back.
+  await noteUndoneFinish(ref.connectionId, ref.libraryId, ref.path).catch(() => undefined);
+  await updateMirror(ref.connectionId, ref.libraryId, ref.path, (now) => {
+    if (!now.finished || !now.before || now.before.finished) return now;
+    restored = true;
+    // Its Sync v2 fields stay the mirror's own: an ack since is newer.
+    return { ...now.before, ack_version: now.ack_version, answered: now.answered };
+  }).catch(() => undefined);
+  if (!restored) return false;
+  if (finishSent === contentKeyOf(ref)) finishSent = null;
+  invalidateFinishedProgress(queryClient, ref.connectionId, ref.libraryId, ref.path);
+  return true;
 }
 
 /**
- * A Mark as finished was undone (`undoFinish`: its finish taken back from the outbox unsent,
- * or the progress edit that unfinished it on the server went through): the mirror goes back
- * to its record before the finish (else this device's at `ref.position`, unfinished), and
- * the player's end may send a finish again. Under the mirror's lock (`updateMirror`), so a
- * read of the server's row landing meanwhile never writes between the look and the change;
- * one still on its way lands after, and the mirror holds off a finished record stamped
- * before the Undo for a while (`noteUndoneFinish`). Nothing once the connection was signed
- * out since the Undo began (`since`).
+ * A Mark as finished was undone by the progress edit that unfinished it on the server
+ * (`undoFinish`), or one never sent had no place before it to go back to: the mirror goes
+ * back to the record before the finish (`ProgressSave.before`; not for Mark as not
+ * finished, `atPosition`), else to this device's at `ref.position`, unfinished, and the
+ * player's end may send a finish again. Under the mirror's lock (`updateMirror`), so a read
+ * of the server's row landing meanwhile never writes between the look and the change; one
+ * still on its way lands after, and the mirror holds off a finished record stamped before
+ * the Undo for a while (`noteUndoneFinish`). Nothing once the connection was signed out
+ * since the Undo began (`since`).
  */
 async function unrecordFinish(ref: UndoRef, since: number): Promise<void> {
-  const key = contentKeyOf(ref);
-  const prior = ref.atPosition ? undefined : beforeFinish.get(key)?.prior;
-  beforeFinish.delete(key);
-  if (finishSent === key) finishSent = null;
+  if (finishSent === contentKeyOf(ref)) finishSent = null;
   if (connectionGeneration(ref.connectionId) !== since) return;
   // Its lock refused (Web Locks): held off in this tab alone, and the record still goes back.
   await noteUndoneFinish(ref.connectionId, ref.libraryId, ref.path).catch(() => undefined);
@@ -1503,12 +1508,13 @@ async function unrecordFinish(ref: UndoRef, since: number): Promise<void> {
     const stamp = Date.parse(now.updated_at);
     const at = Number.isFinite(stamp) ? new Date(stamp + 1).toISOString() : now.updated_at;
     const kept = { ack_version: now.ack_version, answered: now.answered };
+    const prior = ref.atPosition ? undefined : now.before;
     // By the clock of the stamp it took (`localTimeOf`): `now`'s `server_clock`.
     if (prior && !prior.finished) {
       return { ...prior, ...kept, server_clock: now.server_clock, updated_at: at };
     }
     // The finished record at the place before it: its file place was the book's end.
-    const { file: _file, file_pos: _filePos, ...rest } = now;
+    const { file: _file, file_pos: _filePos, before: _before, ...rest } = now;
     return { ...rest, finished: false, position: ref.position, updated_at: at };
   }).catch(() => undefined);
   invalidateFinishedProgress(queryClient, ref.connectionId, ref.libraryId, ref.path);
@@ -1522,7 +1528,7 @@ setFinishRecorder({
   record: recordFinish,
   withdraw: withdrawFinish,
   unrecord: unrecordFinish,
-  knowsPlaceBefore,
+  restoreBefore: restorePlaceBefore,
 });
 
 /**

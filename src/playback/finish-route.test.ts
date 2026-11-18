@@ -28,7 +28,10 @@ describe('undoFinish', () => {
           `unrecord at ${r.position}${r.atPosition ? ' (own place)' : ''} for sign-in ${since}`,
         );
       },
-      knowsPlaceBefore: async () => knowsBefore,
+      restoreBefore: async (_r, since) => {
+        if (knowsBefore) steps.push(`back to the place before for sign-in ${since}`);
+        return knowsBefore;
+      },
       ...over,
     });
 
@@ -63,6 +66,14 @@ describe('undoFinish', () => {
 
   it('a finish that never left (offline): undone here, no edit, never put back', async () => {
     unsent = true;
+    knowsBefore = true;
+    await expect(undoFinish(ref, edit(false))).resolves.toBe('undone');
+    expect(steps).toEqual(['withdraw c1 3 Author/Book', 'back to the place before for sign-in 0']);
+  });
+
+  // A reload since, or another tab's finish: the place before is not known here.
+  it('a finish that never left, the place before it not known: its own place, no edit', async () => {
+    unsent = true;
     await expect(undoFinish(ref, edit(false))).resolves.toBe('undone');
     expect(steps).toEqual(['withdraw c1 3 Author/Book', 'unrecord at 48 for sign-in 0']);
   });
@@ -78,7 +89,10 @@ describe('undoFinish', () => {
     it('this device knowing the place before it: back there, as the server is, with no edit', async () => {
       knowsBefore = true;
       await expect(undoFinish(own, edit(false))).resolves.toBe('undone');
-      expect(steps).toEqual(['withdraw c1 3 Author/Book', 'unrecord at 48 for sign-in 0']);
+      expect(steps).toEqual([
+        'withdraw c1 3 Author/Book',
+        'back to the place before for sign-in 0',
+      ]);
     });
 
     it('not knowing it (a reload, another tab): the edit puts the server at the place asked', async () => {

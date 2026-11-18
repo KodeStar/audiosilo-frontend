@@ -98,6 +98,9 @@ export type ProgressSave = {
    * one of its saves is PUT, a replay from the queue too, the session's guard is lifted
    * (`guardSettled`). Saves and the queue only. */
   guard_session?: string;
+  /** On the record of this device's Mark as finished (`writeFinishedMirror`): the record it
+   * replaced, a place (unfinished). Mirror only; never kept across records. */
+  before?: ProgressSave;
 };
 
 /**
@@ -705,7 +708,23 @@ export async function mirrorIsNewest(
 // The mirror's read-modify-writes one at a time, in this tab and across tabs (`tabLock`): the
 // tabs of the web player write one mirror, and a per-tab queue let one tab write its read of
 // the whole mirror over another tab's change made meanwhile.
-const withMirrorLock = tabLock(MIRROR_KEY);
+const mirrorLock = tabLock(MIRROR_KEY);
+
+/** One write of records into the mirror (`writeMirrors`); `before`: the record of this
+ * device's Mark as finished (`writeFinishedMirror`). */
+type MirrorWrite = { save: ProgressSave; before?: true };
+
+/** The writes waiting together for the mirror's lock, until their job starts: a write asked
+ * meanwhile joins them, so the writes of one tick (and of a wait for the lock: on plain http
+ * a lease, a wait of 30 ms or more each) share one read and one write. */
+let waitingWrites: { writes: MirrorWrite[]; done: Promise<void> } | null = null;
+
+/** Any other change of the mirror under its lock: after the writes waiting (none asked after
+ * it joins them). */
+function withMirrorLock<T>(job: () => Promise<T>): Promise<T> {
+  waitingWrites = null;
+  return mirrorLock(job);
+}
 
 /** Upsert the durable mirror, keeping the newest record by `updated_at` (a server row's by
  * this device's clock: `localTimeOf`). The Sync v2
@@ -718,32 +737,67 @@ export function writeMirror(save: ProgressSave): Promise<void> {
 
 /** `writeMirror` for many records at once: one read and at most one write of the mirror
  * (Home's progress list, fe#198), none when every record is already there as it is (the
- * list read again with no place moved). */
-export async function writeMirrors(saves: readonly ProgressSave[]): Promise<void> {
-  if (saves.length === 0) return;
-  await withMirrorLock(async () => {
-    const map = await readMirrorMap();
-    // Only a finished record can be one an Undo undid (`noteUndoneFinish`), here or in
-    // another tab.
-    const shared = saves.some((s) => s.finished) ? await readUndoneFinishes() : {};
-    let changed = false;
-    for (const save of saves) {
-      const key = contentKey(save.connectionId, save.libraryId, save.path);
-      const existing = map[key];
-      const undone = save.finished ? latestUndo(undoneFinishes.get(key), shared[key]) : undefined;
-      const skew = existing || undone !== undefined ? await knownSkew(save.connectionId) : 0;
-      if (undone !== undefined && undoneBy(key, undone, save, skew)) continue;
-      if (!existing || localTimeOf(save, skew) >= localTimeOf(existing, skew)) {
-        const { guard: _guard, guard_session: _session, ...record } = save;
-        const next = mergeKept(record, existing, skew);
-        // The same fields (an array kept across records is the same array): no write.
-        if (existing && shallow(next, existing)) continue;
-        map[key] = next;
-        changed = true;
-      }
-    }
-    if (changed) await setItem(MIRROR_KEY, map);
+ * list read again with no place moved). Writes asked while these wait for the lock join
+ * them (`waitingWrites`). */
+export function writeMirrors(saves: readonly ProgressSave[]): Promise<void> {
+  return queueMirrorWrites(saves.map((save) => ({ save })));
+}
+
+/**
+ * The record of this device's Mark as finished (`save`, finished): written as `writeMirror`
+ * writes, and carrying the record it replaces when that is a place, unfinished (`before`;
+ * one finishing a finish of this device's again carries the one that finish carried). The
+ * Undo of a finish that never reached the server goes back there (`restorePlaceBefore` in
+ * the store), deciding by the record it changes under the mirror's lock: a reload, and
+ * another tab's finish, see the same record.
+ */
+export function writeFinishedMirror(save: ProgressSave): Promise<void> {
+  return queueMirrorWrites([{ save, before: true }]);
+}
+
+function queueMirrorWrites(writes: MirrorWrite[]): Promise<void> {
+  if (writes.length === 0) return Promise.resolve();
+  if (waitingWrites) {
+    waitingWrites.writes.push(...writes);
+    return waitingWrites.done;
+  }
+  const batch = { writes, done: Promise.resolve() };
+  waitingWrites = batch;
+  batch.done = mirrorLock(() => {
+    if (waitingWrites === batch) waitingWrites = null;
+    return applyMirrorWrites(batch.writes);
   });
+  return batch.done;
+}
+
+/** `writeMirrors`' read, merge and write of the mirror. Holding the mirror's lock. */
+async function applyMirrorWrites(writes: readonly MirrorWrite[]): Promise<void> {
+  const map = await readMirrorMap();
+  // Only a finished record can be one an Undo undid (`noteUndoneFinish`), here or in
+  // another tab.
+  const shared = writes.some((w) => w.save.finished) ? await readUndoneFinishes() : {};
+  let changed = false;
+  for (const { save, before } of writes) {
+    const key = contentKey(save.connectionId, save.libraryId, save.path);
+    const existing = map[key];
+    const undone = save.finished ? latestUndo(undoneFinishes.get(key), shared[key]) : undefined;
+    const skew = existing || undone !== undefined ? await knownSkew(save.connectionId) : 0;
+    if (undone !== undefined && undoneBy(key, undone, save, skew)) continue;
+    if (!existing || localTimeOf(save, skew) >= localTimeOf(existing, skew)) {
+      const { guard: _guard, guard_session: _session, before: _before, ...record } = save;
+      const next = mergeKept(record, existing, skew);
+      const prior = before && existing && (existing.finished ? existing.before : existing);
+      if (prior) {
+        const { before: _nested, ...place } = prior;
+        next.before = place;
+      }
+      // The same fields (an array kept across records is the same array): no write.
+      if (existing && shallow(next, existing)) continue;
+      map[key] = next;
+      changed = true;
+    }
+  }
+  if (changed) await setItem(MIRROR_KEY, map);
 }
 
 /** How long an Undo of a finish holds off its finished record (`noteUndoneFinish`): past a

@@ -2361,8 +2361,13 @@ media GETs only.
     withdrawal storage would not keep (`writeOutbox` says) takes nothing and fails the Undo,
     with no edit: the finish would be sent after a restart. A finish
     taken back that never reached the server (an offline Mark as finished) needs no edit:
-    the Undo is done here, the mirror back to its record before the finish
-    (`unrecordFinish`). One a request carried with no answer while its server looked
+    the Undo is done here, the mirror back to its record before the finish as it was, its own
+    stamp (`restorePlaceBefore`: the finish's record carries it, `ProgressSave.before`,
+    written by `writeFinishedMirror`; decided by the record under the mirror's lock, so a
+    reload and another tab see it, another tab's finish or a place saved since is never undone
+    from an earlier look, and a place another device saved after it, read next, is newer and
+    wins; a finished record without it, the server's row read back since, goes to the Undo's
+    own place). One a request carried with no answer while its server looked
     reachable (`gotNoAnswer`: a timeout, a dropped connection, a gateway that lost the
     server (502, 504, Cloudflare's 520 and 524), a 2xx that could not be read; and the
     page's keepalive send) may be on the server, its answer lost: while the server looks
@@ -2376,13 +2381,14 @@ media GETs only.
     edit, and with the server down it fails the same way. One taken back unsent is undone
     here as an Undo is, the mirror back to its record before the finish, not at its own place:
     the server never got the finish and keeps that place, and no edit put it at the other
-    (the two disagreed until the next read). Only while this device knows that record
-    (`knowsPlaceBefore`: the mirror still holds the finish's own record; not after a reload,
-    nor for another tab's finish): else it takes the edit at its own place, as for a finish
+    (the two disagreed until the next read). Only while the mirror's finished record carries
+    that place (`restorePlaceBefore` resolves whether it did): else it takes the edit at its
+    own place, as for a finish
     the server has, and an edit that fails (offline) puts the finish back. On a server
     without `listening_sync` nothing waits to be taken back and both take the edit, then
     the same mirror change and hold below. After an edit that went
-    through the mirror goes back as well (`unrecordFinish`, under the mirror's lock,
+    through the mirror goes back as well (`unrecordFinish`, to the record the finished one
+    carries, else the Undo's place, under the mirror's lock,
     `updateMirror`: the edit's answer only reaches
     the query caches, and the finished record would start the book again at 0 on the next
     offline Play; the record put back is stamped as the finished one it replaces, which for
@@ -2391,7 +2397,9 @@ media GETs only.
     Undo, `noteUndoneFinish`: the finish's own refresh, landing after it with the server's
     later stamp, finished it again; in every tab of the web player, through storage, as the
     tabs write one mirror, under one lock across them, `tabLock`: a lock per tab let one tab
-    write its read of the whole mirror over another tab's change); fe#208). The loaded book is left before any route
+    write its read of the whole mirror over another tab's change; the writes asked while one
+    waits for that lock join it, `waitingWrites`, one read and one write for them all: on
+    plain http each job pays the lease's wait); fe#208). The loaded book is left before any route
     records the finish (`leaveFinishedBook`), and a start of it still on its way is called off
     (a load that lands after the unload is reset, `stop()`'s race too); a finish or a
     progress edit that then fails loads it again, paused where it was (`reloadLeftBook`), and
