@@ -871,7 +871,9 @@ export function followUndoneFinishes(raw: string | null): void {
     return;
   }
   const now = Date.now();
-  for (const [key, at] of Object.entries(undoneFinishesIn(stored))) {
+  const current = undoneFinishesIn(stored);
+  for (const key of undoneSeen.keys()) if (!(key in current)) undoneSeen.delete(key);
+  for (const [key, at] of Object.entries(current)) {
     if (undoneSeen.get(key) === at) continue;
     undoneSeen.set(key, at);
     undoneFollowed.set(key, now + UNDONE_FOLLOW_MS);
