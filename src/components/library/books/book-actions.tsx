@@ -42,6 +42,7 @@ import {
 } from '@/playback/finish-route';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
+import { useLatestRef } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 import { useSendToWatch } from '@/watch/use-watch';
@@ -169,6 +170,10 @@ export function useBookActions(
   };
 
   const ref = { connectionId, libraryId, path };
+  // The progress of the latest render: a Retry of Mark as not finished, pressed later, takes
+  // its place from the progress read since, not the one the failed tap saw (another device
+  // may have moved the book).
+  const latestProgress = useLatestRef(progress);
 
   // Mark the book finished by the route its server takes; resolves to whether it was. A
   // server that takes listening events: a `finish` event, offline too (fe#208), in the outbox
@@ -261,7 +266,7 @@ export function useBookActions(
   };
 
   const onUnfinish = async () => {
-    const position = unfinishedPosition(progress, book.duration);
+    const position = unfinishedPosition(latestProgress.current, book.duration);
     const unreachable = t('library.bookActions.unfinishUnreachable');
     if (!(await unfinish(position, unreachable, () => void onUnfinish()))) return;
     toast({

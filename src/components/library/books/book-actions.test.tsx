@@ -485,6 +485,34 @@ describe('useBookActions', () => {
     expect(mockToast.mock.calls.at(-1)![0].title).toBe('Marked as not finished');
   });
 
+  // The Retry is pressed later: the place it unfinishes at is the progress read since, not
+  // the one the failed tap saw.
+  it('a Mark as not finished Retry takes the progress of the latest render', async () => {
+    mockUnreachable = true;
+    const target = (p: Progress) => ({
+      connectionId: 'c',
+      libraryId: 1,
+      book: book(),
+      progress: p,
+    });
+    const dialogs = { openCollect: jest.fn(), confirmRemove: jest.fn() };
+    const { result, rerender } = await renderHook(
+      (p: Progress) => useBookActions(target(p), dialogs),
+      { initialProps: progress({ finished: true, position: 3 * H }) },
+    );
+    await act(async () => result.current.find((a) => a.key === 'finish')!.onPress());
+    const said = mockToast.mock.calls.at(-1)![0];
+    await rerender(progress({ finished: true, position: H }));
+    mockUnreachable = false;
+    mockEdit.mockResolvedValue(progress());
+    await act(async () => said.action.onPress());
+    expect(mockEdit).toHaveBeenCalledWith({
+      libraryId: 1,
+      path: 'Author/Series/01 - Book',
+      edit: { finished: false, position: H },
+    });
+  });
+
   it('offers no way back on a server that cannot edit progress', async () => {
     mockCaps = { collections: true, progress_edit: false };
     const { find } = await actions(book(), progress({ finished: true }));
