@@ -1684,6 +1684,18 @@ describe("a single sign-on's return (?oidc=1)", () => {
       expect(useSession.getState().connections).toEqual([]);
     });
 
+    // The screen stays under the flow a password sign-in finishes on (back from "Your
+    // library is ready."): the single sign-on must not be finished there too.
+    it('drops Try again once the card leaves for a password sign-in', async () => {
+      mockApi.oidcFinish.mockRejectedValueOnce(new ApiError(500, 'boom'));
+      await render(<ConnectStart />);
+      await waitFor(() => expect(screen.getByTestId('oidc-try-again')).toBeTruthy());
+      await fireEvent.press(screen.getByText('Sign in'));
+      expect(mockPush).toHaveBeenCalled();
+      expect(screen.queryByTestId('oidc-try-again')).toBeNull();
+      expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
+    });
+
     it("waits out a 429's Retry-After before Try again sends it", async () => {
       jest.useFakeTimers();
       try {

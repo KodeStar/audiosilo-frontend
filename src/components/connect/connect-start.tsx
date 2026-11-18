@@ -346,7 +346,10 @@ export function ConnectStart() {
   // A book the signed-out visit was opening (`signedOutHref`) goes along, so the sign-in
   // ends on it (frontend#129). A pairing link's book goes through `pair` instead.
   const returnBook = token ? null : parseConnectBook({ book, path });
-  const goSignIn = (name: string) =>
+  // Leaving for another sign-in drops a single sign-on's Try again: the screen stays under the
+  // flow (back from "Your library is ready."), where it must not finish that sign-in too.
+  const goSignIn = (name: string) => {
+    setOidcRetry(null);
     router.push({
       pathname: '/connect/sign-in',
       params: {
@@ -354,6 +357,7 @@ export function ConnectStart() {
         ...(returnBook ? connectBookParams(returnBook) : {}),
       },
     });
+  };
 
   // The served player's own server's card: ask it who it is, as typed (the card shows,
   // nothing goes on by itself; an origin has its scheme, so there is no http retry). The ask
@@ -496,6 +500,7 @@ export function ConnectStart() {
   };
 
   const onTryDemo = async (base: string, name: string) => {
+    setOidcRetry(null);
     setDemoError(null);
     setDemoLoading(true);
     try {
@@ -539,7 +544,10 @@ export function ConnectStart() {
       return;
     }
     if (scan) void pairLink(scan);
-    else if (invite) beginInviteSignIn(invite, () => router.push('/connect/sign-in'));
+    else if (invite) {
+      setOidcRetry(null);
+      beginInviteSignIn(invite, () => router.push('/connect/sign-in'));
+    }
   };
 
   const connecting = pairing || oidcFinishing;
