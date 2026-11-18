@@ -2109,7 +2109,8 @@ media GETs only.
   target's file by its index (`skipToTrack`). An ask the engine never took stands no longer:
   one whose move it refused (`withdrawAsk`, `engineTakes`), and one whose engine has moved
   `PLAYED_ON` seconds in the other file since (left standing, its next file, minutes on, read
-  as a run off the asked one). A faulted book: a press reloads it, as Retry does; a play the
+  as a run off the asked one). Nor does one whose call has not settled `ASK_SETTLE_MAX_MS`
+  on once its engine has played `PLAYED_ON` on in its file. A faulted book: a press reloads it, as Retry does; a play the
   engine goes on with until the fault's pause lands (its call resolved) is paused again, and one
   after it is the listener's (the lock screen, a headset, the car), which reloads like a press
   (`faultStopped`); a lock-screen move is the place it shows and reloads at, a Cast checkpoint

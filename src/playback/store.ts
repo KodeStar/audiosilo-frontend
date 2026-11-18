@@ -1839,7 +1839,9 @@ let atPartialEnd = false;
  * before it is out by then). Only a landed ask's file can show that the engine played on from
  * it: a progress tick sent before a seek back of `PLAYED_ON` or more took is still in that file,
  * past the asked place. And only before the ask lands can a report from another file be one
- * from before the move (`engineFault`).
+ * from before the move (`engineFault`). A call that never settles (a Cast receiver that never
+ * answers) leaves its ask unlanded: `ASK_SETTLE_MAX_MS` after the ask (`at`) no such tick is
+ * out any more, so its file shows the engine played on as a landed one's does.
  *
  * `playing`: the engine reported the asked file `PLAYING_PAST` beyond the asked place, so it
  * holds that place in its measure (one run off a short measure reports at most its own end,
@@ -1861,6 +1863,7 @@ type EngineAsk = {
   np: NowPlaying;
   trackIndex: number;
   position: number;
+  at: number;
   landed: boolean;
   playing: boolean;
   held: {
@@ -1875,6 +1878,8 @@ type EngineAsk = {
 let askedPlace: EngineAsk | null = null;
 const PLAYED_ON = 3;
 const PLAYING_PAST = 0.5;
+/** Longer than an engine move takes to settle when it does (`EngineAsk.at`). */
+export const ASK_SETTLE_MAX_MS = 10_000;
 /** How long a run into a later file waits for its `onRemoteMove` before it is a fault
  * (`EngineAsk.held`): Android's module sends the move at most 300 ms after the file change, the
  * same wait as the native service's for a jumped tick (`LANDING_HOLD_MS`). */
@@ -1911,6 +1916,7 @@ function askEngineTo(np: NowPlaying, trackIndex: number, position: number): Engi
     np,
     trackIndex,
     position,
+    at: Date.now(),
     landed: false,
     playing: false,
     held: null,
@@ -1993,11 +1999,12 @@ function engineFault(
   if (s.trackIndex === asked.trackIndex) {
     // In the asked file: nothing ran off it (a report of a later file was from before).
     dropHeld(asked);
-    if (asked.landed && s.position >= asked.position + PLAYED_ON) {
+    const after = asked.landed || Date.now() - asked.at >= ASK_SETTLE_MAX_MS;
+    if (after && s.position >= asked.position + PLAYED_ON) {
       setAsk(null);
       return null;
     }
-    if (asked.landed && s.position > asked.position + PLAYING_PAST) asked.playing = true;
+    if (after && s.position > asked.position + PLAYING_PAST) asked.playing = true;
   } else if (!asked.landed && (s.trackIndex === prev.trackIndex || s.trackIndex === asked.before)) {
     const first = asked.elsewhere;
     if (first?.trackIndex !== s.trackIndex) {

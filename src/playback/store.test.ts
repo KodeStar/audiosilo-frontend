@@ -158,6 +158,7 @@ import { useSleepTimer } from './sleep-timer';
 import { useReachability } from '@/api/reachability';
 import { AutoplayBlockedError, PlaybackStartError } from './types';
 import {
+  ASK_SETTLE_MAX_MS,
   DOWNLOADED_PLACE_WAIT_MS,
   FAULT_HOLD_MS,
   flushHistoryOnHide,
@@ -3889,6 +3890,21 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
       position: 30,
     });
     expect(mockSvc.pause).toHaveBeenCalled();
+  });
+
+  it('a seek whose call never settles is no fault once the engine has played on from it', async () => {
+    await resume(30);
+    pushSnapshot(snap('playing', 31, { trackIndex: 0 }));
+    (mockSvc.seekTo as jest.Mock).mockImplementationOnce(() => new Promise<void>(() => {}));
+    void usePlayer.getState().seekInTrack(50);
+    await flushMicrotasks();
+    jest.setSystemTime(Date.now() + ASK_SETTLE_MAX_MS);
+    pushSnapshot(snap('playing', 60, { trackIndex: 0 }));
+    pushSnapshot(snap('playing', 139, { trackIndex: 0 }));
+    pushSnapshot(snap('playing', 0.4, { trackIndex: 1 }));
+    jest.advanceTimersByTime(FAULT_HOLD_MS);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'playing', trackIndex: 1 });
   });
 
   it('a lock-screen move on a faulted book is where a Retry reloads it', async () => {
