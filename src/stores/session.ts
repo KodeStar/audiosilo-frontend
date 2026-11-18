@@ -259,8 +259,11 @@ export function setRemovalChannelForTests(
   listenForRemovals();
 }
 
+/** Hear the other tabs' removals (`removedInOtherTab`): once, from the launch's `hydrate`.
+ * Never at import: the web build's static render imports this module in Node, where an open
+ * `BroadcastChannel` keeps the export's process from exiting. */
 function listenForRemovals(): void {
-  removalListening =
+  removalListening ??=
     removalChannel()?.subscribe((m) => void removedInOtherTab(m).catch(() => {})) ?? null;
 }
 
@@ -575,6 +578,8 @@ export const useSession = create<SessionState>()((set, get) => ({
         getItemStrict<PersistedConnection[]>(CONNECTIONS_KEY),
         getItemStrict<string>(DEFAULT_KEY),
       ]);
+    // Web: the other tabs' removals are heard from the launch on (`removedInOtherTab`).
+    listenForRemovals();
 
       if (meta && meta.length) {
         // The proxy headers only for a connection marked as having them; a read of them
@@ -887,6 +892,3 @@ export function connectProxyHeaders(url: string, ownId?: string): ProxyHeaders |
   }
   return connections.find((c) => c.proxyHeaders?.origin === origin)?.proxyHeaders ?? null;
 }
-
-// Web: hear the other tabs' removals from the start (`removedInOtherTab`).
-listenForRemovals();

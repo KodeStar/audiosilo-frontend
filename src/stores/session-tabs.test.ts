@@ -115,6 +115,41 @@ describe('a connection removed in another tab (web)', () => {
     expect(cleanup).not.toHaveBeenCalled();
   });
 
+  // The web build's static render imports the store in Node, where an open
+  // `BroadcastChannel` keeps the export's process from exiting.
+  it('opens the channel at the launch (hydrate), never at import', async () => {
+    const opened: string[] = [];
+    class Channel {
+      constructor(name: string) {
+        opened.push(name);
+      }
+      addEventListener() {}
+      removeEventListener() {}
+      postMessage() {}
+    }
+    const globals = globalThis as { BroadcastChannel?: unknown };
+    const real = globals.BroadcastChannel;
+    const os = Platform.OS;
+    globals.BroadcastChannel = Channel;
+    Platform.OS = 'web';
+    try {
+      let tab!: Session;
+      jest.isolateModules(() => {
+        /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+        tab = require('@/stores/session') as Session;
+      });
+      expect(opened).toEqual([]);
+      await tab.useSession.getState().hydrate();
+      expect(opened).toEqual([REMOVAL_CHANNEL]);
+      // Once: a later hydrate (a retry) listens on the same channel.
+      await tab.useSession.getState().hydrate();
+      expect(opened).toEqual([REMOVAL_CHANNEL]);
+    } finally {
+      Platform.OS = os;
+      globals.BroadcastChannel = real;
+    }
+  });
+
   it('the removing tab runs its own cleanups once, not again on its own word', async () => {
     const { b, alex } = await twoTabs();
     const cleanup = jest.fn();
