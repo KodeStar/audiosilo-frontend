@@ -71,6 +71,12 @@ class ArtworkProvider : ContentProvider() {
     fun browseArtwork(authority: String, packageName: String, artworkKey: String?): String =
       artworkKey?.let { uriString(authority, it) } ?: "android.resource://$packageName/drawable/$PLACEHOLDER"
 
+    /** The key a browse row's cover is served under ([CarItem.artworkKey]) while its file is
+     * there, else null (the bundled [PLACEHOLDER]): a snapshot can outlive its cover file (a
+     * download removed, the car artwork folder cleared), and Android Auto drew a warning
+     * triangle for a URI the provider could not open. */
+    fun browseArtworkKey(item: CarItem): String? = item.artworkKey?.takeIf { item.artworkFile?.isFile == true }
+
     /** [raw], a loaded item's artwork, as the item may carry it: a server URL as its token-free
      * URI ([RemoteArtwork]), a cover file the app wrote (a download's) as this provider's URI,
      * which the car can open once granted ([LocalArtwork]), anything else as it is. */

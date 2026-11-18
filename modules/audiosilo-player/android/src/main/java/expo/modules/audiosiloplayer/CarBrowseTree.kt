@@ -99,11 +99,12 @@ object CarBrowseTree {
         if (item.downloaded) MediaConstants.EXTRAS_VALUE_STATUS_DOWNLOADED else MediaConstants.EXTRAS_VALUE_STATUS_NOT_DOWNLOADED,
       )
     }
-    // A book with no cover shows the bundled one: with none, Android Auto drew a warning
-    // triangle. Only the provider's URIs need a grant.
+    // A book with no cover, or whose cover file is gone, shows the bundled one: with none,
+    // Android Auto drew a warning triangle. Only the provider's URIs need a grant.
+    val key = ArtworkProvider.browseArtworkKey(item)
     val artwork = Uri.parse(
-      ArtworkProvider.browseArtwork(ArtworkProvider.authority(context), context.packageName, item.artworkKey),
-    ).also { if (item.artworkKey != null) grant(it) }
+      ArtworkProvider.browseArtwork(ArtworkProvider.authority(context), context.packageName, key),
+    ).also { if (key != null) grant(it) }
     return MediaItem.Builder()
       .setMediaId(item.id)
       .setMediaMetadata(

@@ -2794,9 +2794,9 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   (`ArtworkProvider.itemArtwork`, `LocalArtwork`), granted to each connected car and System UI
   (`grantPlayingArtwork`) and to the resumption card's asker (`onPlaybackResumption`): they load
   the item's artwork URI themselves (the car always; System UI when it has no bitmap, which a
-  browse item never carries) and could not read the `file://` URI. A book with no cover shows the bundled `audiosilo_car_cover` in the
-  browse lists (an `android.resource` URI, no grant; with none the car drew a warning
-  triangle). A streamed book's cover URL carries the media token, so a loaded
+  browse item never carries) and could not read the `file://` URI. A book with no cover, or whose cover file is gone (`browseArtworkKey`), shows the bundled
+  `audiosilo_car_cover` in the browse lists (an `android.resource` URI, no grant; with none, or
+  with a URI the provider cannot open, the car drew a warning triangle). A streamed book's cover URL carries the media token, so a loaded
   item names it as `audiosilo-artwork://remote/<key>` (a hash of the URL, `RemoteArtwork`,
   fe#349): only the service's own bitmap loader turns it back into the URL. Its scheme is
   the app's own, never `content`: the provider does not serve it, and the car and the lock
