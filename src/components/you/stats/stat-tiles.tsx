@@ -133,8 +133,8 @@ export function GoalTile({
   const setGoal = useSetListeningGoal(cid);
   const clearGoal = useClearListeningGoal(cid);
   const failed = (e: unknown) => {
-    if (!(e instanceof CapabilityError))
-      toast({ title: failureTitle(e, t('stats.goal.saveFailed')) });
+    if (e instanceof CapabilityError) return;
+    toast({ title: failureTitle(e, t('stats.goal.saveFailed')) });
   };
   const save = (books: number) => setGoal.mutate(books, { onError: failed });
   // While a step is on its way, show (and step on from) the value asked for.

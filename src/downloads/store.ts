@@ -1667,17 +1667,17 @@ function askOwnerToStop(key: string, ask: StopRequest): boolean {
 function stopAsked(ask: StopRequest): void {
   if (typeof ask?.connectionId !== 'string') return;
   const state = useDownloads.getState();
+  const runsHere = (key: string) => inProgress(state.entries[key]) && !state.elsewhere[key];
   if ('connectionRemoved' in ask) {
     if (ask.connectionRemoved !== true) return;
     for (const [key, e] of Object.entries(state.entries)) {
-      if (e.connectionId !== ask.connectionId || !inProgress(e) || state.elsewhere[key]) continue;
+      if (e.connectionId !== ask.connectionId || !runsHere(key)) continue;
       void state.remove(e.connectionId, e.libraryId, e.path).catch(() => {});
     }
     return;
   }
   if (typeof ask.path !== 'string' || typeof ask.libraryId !== 'number') return;
-  const key = downloadKey(ask.connectionId, ask.libraryId, ask.path);
-  if (!inProgress(state.entries[key]) || state.elsewhere[key]) return;
+  if (!runsHere(downloadKey(ask.connectionId, ask.libraryId, ask.path))) return;
   if (ask.remove) void state.remove(ask.connectionId, ask.libraryId, ask.path).catch(() => {});
   else state.cancel(ask.connectionId, ask.libraryId, ask.path);
 }
@@ -2417,10 +2417,14 @@ async function runOne(key: string) {
   }
 }
 
-/** The removed connections' downloads (`removed` of each purge): never shown here again from
- * another tab's save of them (that tab may not know of the removal). */
-const removals: ((e: DownloadEntry) => boolean)[] = [];
-const ofRemovedConnection = (e: DownloadEntry) => removals.some((removed) => removed(e));
+/** When each removed connection was last removed here: its downloads saved before then are
+ * never shown here again from another tab's save of them (that tab may not know of the
+ * removal). A later removal covers an earlier one. */
+const removals = new Map<string, string>();
+const ofRemovedConnection = (e: DownloadEntry) => {
+  const removedAt = removals.get(e.connectionId);
+  return removedAt !== undefined && !(e.manifest.savedAt > removedAt);
+};
 
 // Removing a connection purges its downloads: abort any in-flight transfer, delete the
 // files, and drop the entries (signing out of an account takes its downloads with it;
@@ -2433,22 +2437,22 @@ onConnectionRemoved(async (id) => {
   // connection made since (signed in again: the same `<server>.<user>` id) is not this purge's.
   const removedAt = new Date().toISOString();
   const removed = (e: DownloadEntry) => e.connectionId === id && !(e.manifest.savedAt > removedAt);
-  removals.push(removed);
+  removals.set(id, removedAt);
   // Web: the connection's downloads another tab is running (it holds their lock,
   // `tab-owner.ts`) are that tab's to stop: their folders are being written there. That tab
   // is asked to remove them, and each goes from the registry here once it let it go
   // (`purgeWhenLeft`).
-  const away = [...(await downloadsRunningElsewhere())].filter((key) => isKeyOf(key, id));
+  const away = new Set([...(await downloadsRunningElsewhere())].filter((key) => isKeyOf(key, id)));
   const state = useDownloads.getState();
   const doomed = Object.entries(state.entries).filter(([, e]) => e.connectionId === id);
-  const mine = doomed.filter(([key]) => !away.includes(key));
+  const mine = doomed.filter(([key]) => !away.has(key));
   if (doomed.length > 0) {
     const next = { ...state.entries };
     for (const [key] of doomed) delete next[key];
     for (const [key] of mine) stopRun(key);
     // The other tab's are not this tab's to save either way: its save of their end, or of
     // their removal, stands.
-    known = without(known, away);
+    known = without(known, [...away]);
     useDownloads.setState({
       entries: next,
       elsewhere: without(
@@ -2457,12 +2461,12 @@ onConnectionRemoved(async (id) => {
       ),
     });
   }
-  if (away.length > 0) stopChannel()?.post({ connectionId: id, connectionRemoved: true });
-  for (const key of away) void purgeWhenLeft(key);
+  if (away.size > 0) stopChannel()?.post({ connectionId: id, connectionRemoved: true });
+  for (const key of away) void purgeWhenLeft(key).catch(() => {});
   await removeEntryFiles(mine.map(([, e]) => e));
   // The stored registry is every tab's: the connection's downloads this tab did not hold
   // (another tab's, finished) go from it too, and then their files (`persist`).
-  await persist((e) => removed(e) && !away.includes(contentKeyOf(e)));
+  await persist((e) => removed(e) && !away.has(contentKeyOf(e)));
 });
 
 /**

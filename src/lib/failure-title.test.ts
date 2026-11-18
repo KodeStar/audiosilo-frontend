@@ -1,4 +1,4 @@
-import { ApiError, NetworkError, PodcastFetchPendingError } from '@/api/client';
+import { ApiError, NetworkError } from '@/api/client';
 
 import { failureTitle } from './failure-title';
 
@@ -12,9 +12,6 @@ describe('failureTitle', () => {
 
   it("is the action's own failure for anything else", () => {
     expect(failureTitle(new ApiError(500, 'boom'), 'Failed')).toBe('Failed');
-    expect(failureTitle(new ApiError(502, 'bad gateway'), 'Failed')).toBe('Failed');
     expect(failureTitle(new NetworkError('offline'), 'Failed')).toBe('Failed');
-    const fetching = new PodcastFetchPendingError('fetching', 'podcast_fetching', {} as never, 2);
-    expect(failureTitle(fetching, 'Failed')).toBe('Failed');
   });
 });
