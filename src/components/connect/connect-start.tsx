@@ -177,18 +177,21 @@ export function ConnectStart() {
   // more, so Try again goes and the reason is the refusal's: only Sign in again is left.
   useEffect(() => {
     if (!oidcRetry) return;
-    const timers = [
-      setTimeout(
-        () => {
-          setOidcRetry(null);
-          fail(t('connect.oidc.errors.expired'));
-        },
-        Math.max(0, oidcRetry.doneBy - Date.now()),
-      ),
-    ];
-    if (oidcRetry.waitMs > 0)
-      timers.push(setTimeout(() => setOidcRetry({ ...oidcRetry, waitMs: 0 }), oidcRetry.waitMs));
-    return () => timers.forEach(clearTimeout);
+    const expire = setTimeout(
+      () => {
+        setOidcRetry(null);
+        fail(t('connect.oidc.errors.expired'));
+      },
+      Math.max(0, oidcRetry.doneBy - Date.now()),
+    );
+    const wait =
+      oidcRetry.waitMs > 0
+        ? setTimeout(() => setOidcRetry({ ...oidcRetry, waitMs: 0 }), oidcRetry.waitMs)
+        : undefined;
+    return () => {
+      clearTimeout(expire);
+      clearTimeout(wait);
+    };
   }, [oidcRetry, fail, t]);
   const [oidcFinishing, setOidcFinishing] = useState(false);
   // The reconnect the code that opened this screen continues (scanned from a reconnect's

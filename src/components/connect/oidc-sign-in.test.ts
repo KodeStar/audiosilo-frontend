@@ -2,7 +2,13 @@ import { ApiError, NetworkError } from '@/api/client';
 import type { ServerInfo } from '@/api/types';
 import i18n from '@/i18n';
 
-import { oidcButtonName, oidcFinishText, oidcRetryWait, oidcReturnOnLoad } from './oidc-sign-in';
+import {
+  OIDC_DONE_MS,
+  oidcButtonName,
+  oidcFinishText,
+  oidcRetryWait,
+  oidcReturnOnLoad,
+} from './oidc-sign-in';
 
 // The player the server serves at /web: its own origin, else (native, Metro dev) none.
 let mockServed: string | null = null;
@@ -129,7 +135,7 @@ describe('oidcRetryWait', () => {
     ['a 429 with Retry-After', new ApiError(429, 'slow down', undefined, 30), 30_000],
     ["a proxy's 408", new ApiError(408, 'request timeout'), 0],
   ] as const)('lets %s go again', (_, e, ms) => {
-    expect(oidcRetryWait(e)).toBe(ms);
+    expect(oidcRetryWait(e, OIDC_DONE_MS)).toBe(ms);
   });
 
   it.each([
@@ -140,7 +146,7 @@ describe('oidcRetryWait', () => {
     // The lockout's minutes outlive the done cookie's one (`OIDC_DONE_MS`).
     ['a 429 asking a wait past the done cookie', new ApiError(429, 'slow', undefined, 300)],
   ] as const)('never lets %s go again', (_, e) => {
-    expect(oidcRetryWait(e)).toBeUndefined();
+    expect(oidcRetryWait(e, OIDC_DONE_MS)).toBeUndefined();
   });
 
   // What is left of the done cookie's minute: none left, nothing goes again; a wait must end

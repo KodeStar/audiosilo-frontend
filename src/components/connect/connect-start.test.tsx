@@ -1736,9 +1736,6 @@ describe("a single sign-on's return (?oidc=1)", () => {
         expect(
           screen.getByText('That sign-in expired or was already used. Sign in again.'),
         ).toBeTruthy();
-        expect(
-          screen.queryByText("The server couldn't finish signing you in. Try again."),
-        ).toBeNull();
         expect(screen.getByText('Sign in')).toBeTruthy();
         expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
       } finally {

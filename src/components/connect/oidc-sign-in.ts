@@ -82,7 +82,7 @@ export const OIDC_DONE_MS = 60_000;
  * the done cookie's minute is over (`leftMs`, what is left of `OIDC_DONE_MS`), nor for a wait
  * that outlasts it (a lockout's 15 minutes): the sign-in can't outlive it.
  */
-export function oidcRetryWait(e: unknown, leftMs = OIDC_DONE_MS): number | undefined {
+export function oidcRetryWait(e: unknown, leftMs: number): number | undefined {
   if (leftMs <= 0) return undefined;
   if (!(e instanceof ApiError)) return 0;
   if (e.status >= 500 || e.status === 408) return 0;
