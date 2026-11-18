@@ -179,6 +179,12 @@ let yieldedAttempt = -1;
 /** Pending stall→error timer and its deadline (see armStallWatchdog). */
 let stallTimer: ReturnType<typeof setTimeout> | null = null;
 let stallDeadline: number | null = null;
+/** Until when a `playing` report may be older than the stall watchdog's pause (`fireStallWatchdog`):
+ * sent before the pause reached the engine, and the pause wins. A time, not the pause's
+ * promise: Android's resolves before the engine has paused. */
+let stallPauseUntil = 0;
+/** How long the engine's reports sent before the watchdog's pause can take to arrive. */
+const STALL_PAUSE_FENCE_MS = 1_000;
 /** The whole-book position the current book resumed from, kept as a running high-water
  * mark. `persist` refuses to save a position far below this unless the user deliberately
  * seeked back (which lowers it) - so a slipped-through restart-at-0 can never overwrite
@@ -2277,14 +2283,37 @@ function fireStallWatchdog() {
   haltAndPersist();
   // The engine stops waiting to play too: left buffering, it would start on its own once the
   // server answered again, with the listener told playback had stopped. Only a press (Retry,
-  // play, the car, a headset) plays from here. Its report of the pause is held by the error.
+  // play, the car, a headset) plays from here. Its report of the pause is held by the error,
+  // and so is a `playing` it sent before the pause reached it (`stallPauseUntil`).
+  stallPauseUntil = Date.now() + STALL_PAUSE_FENCE_MS;
   void service?.pause().catch(() => undefined);
+}
+
+/**
+ * The engine was asked to play (Android: its playWhenReady turned on), told before the state
+ * that comes with it. One the store asked for is already followed (`wantsPlayback`). One from
+ * outside the app (the car, a headset, the notification) after playback stopped in `error` is
+ * followed from here like a press in the app: `loading`, the stall watchdog, and `error`
+ * ("Playback stopped") with the engine paused again when it never plays. Unfollowed, its
+ * `loading` was held by the error, so it could hang with nothing said, or start whenever the
+ * server answered. Not while a start of the store's is on its way (it owns the next play), nor
+ * for a faulted engine (stopped again as it plays) or a book whose place could not be looked up
+ * (its engine holds nothing of it).
+ */
+function playAskedFromOutside() {
+  if (wantsPlayback || startsInFlight > 0 || resumeLookupFailed || loadedFaulted()) return;
+  const { snapshot, nowPlaying, loadingBook } = usePlayer.getState();
+  if (snapshot.state !== 'error' || !nowPlaying || loadingBook) return;
+  beginPlaybackAttempt();
 }
 
 /** Begin a playback attempt: we intend to play, we're "connecting" until the engine
  * reaches `playing`, and the stall watchdog is ticking from now (a dead/slow-to-start
  * stream surfaces an error after the grace, matching the old native behavior). */
 function beginPlaybackAttempt() {
+  // A play of its own from here: what the engine reports next is of it, not of a stalled
+  // attempt's pause.
+  stallPauseUntil = 0;
   playAttempts++;
   playAskedAt = Date.now();
   wantsPlayback = true;
@@ -2601,6 +2630,13 @@ async function createService(): Promise<PlaybackService> {
     if (prev.state === 'error' && !wantsPlayback && reported.state !== 'playing') {
       return;
     }
+    // Nor a `playing` sent just before the watchdog's pause reached the engine: the pause
+    // wins, and is asked again (a play pressed outside the app in that moment, on an engine
+    // that does not say so, `onPlayAsked`, is pressed again).
+    if (reported.state === 'playing' && !wantsPlayback && Date.now() < stallPauseUntil) {
+      void svc.pause().catch(() => undefined);
+      return;
+    }
     let snapshot = throughSwap(reported, prev);
     // The file's length is the server's where the engine measured it short, and an engine that
     // went where the book is not stops there as an error (`engineFault`). Not for a report
@@ -2749,6 +2785,8 @@ async function createService(): Promise<PlaybackService> {
   // stopped (fe#211). The save made as it stopped (`haltAndPersist`) has the place before
   // the jump, so the place is saved again, once the engine's event is over.
   svc.onLanded?.(() => void Promise.resolve().then(() => persist()));
+  // Native (Android): a play asked of the engine from outside the app is followed as a press.
+  svc.onPlayAsked?.(playAskedFromOutside);
   // Native: the OS changed the speed and the engine already runs at it. Only a speed
   // outside the app's range goes back to the engine, clamped.
   svc.onRateChange?.((raw) => {

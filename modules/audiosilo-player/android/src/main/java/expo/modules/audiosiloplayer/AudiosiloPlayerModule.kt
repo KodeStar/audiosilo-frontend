@@ -135,7 +135,8 @@ class AudiosiloPlayerModule : Module() {
     }
 
     override fun playerFailed() {
-      sendEvent("onState", mapOf("state" to "error"))
+      // The service has just stopped it wanting to play (`onEngineFailed`).
+      sendEvent("onState", mapOf("state" to "error", "playWhenReady" to false))
     }
 
     override fun carConnection(connected: Boolean) {
@@ -591,7 +592,9 @@ class AudiosiloPlayerModule : Module() {
       Player.STATE_ENDED -> "ended"
       else -> "idle"
     }
-    sendEvent("onState", mapOf("state" to state))
+    // playWhenReady: JS follows a play asked from outside the app (the car, a headset) after
+    // playback stopped in error, whose state alone (`loading`) it holds (fe#157).
+    sendEvent("onState", mapOf("state" to state, "playWhenReady" to c.playWhenReady))
   }
 
   private fun emitTrackChange(index: Int) {

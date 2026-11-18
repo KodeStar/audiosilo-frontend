@@ -67,6 +67,9 @@ class NativePlaybackService implements PlaybackService {
   private rateChange: ((rate: number) => void) | null = null;
   private silenceSaved: ((totalSeconds: number) => void) | null = null;
   private landed: (() => void) | null = null;
+  private playAsked: (() => void) | null = null;
+  /** The engine's playWhenReady as its last `onState` told it (Android), else null. */
+  private playWhenReady: boolean | null = null;
   private held: HeldTick | null = null;
   /** The last progress tick the snapshot took in this stretch of playing, and when. Always
    * of the snapshot's file: a new file starts the measure afresh (`update`). */
@@ -202,7 +205,15 @@ class NativePlaybackService implements PlaybackService {
   async setup() {
     if (this.setupDone) return;
     this.subscriptions.push(
-      AudiosiloPlayer.addListener('onState', ({ state }) => this.update({ state })),
+      AudiosiloPlayer.addListener('onState', ({ state, playWhenReady }) => {
+        // Android: the engine turned to wanting to play (asked by anyone), told first.
+        if (typeof playWhenReady === 'boolean') {
+          const asked = playWhenReady && this.playWhenReady === false;
+          this.playWhenReady = playWhenReady;
+          if (asked) this.playAsked?.();
+        }
+        this.update({ state });
+      }),
       AudiosiloPlayer.addListener('onProgress', ({ position, duration, silenceSaved }) => {
         this.progress(position, duration);
         // Absent on binaries older than Smart Speed.
@@ -331,6 +342,9 @@ class NativePlaybackService implements PlaybackService {
   }
   onLanded(handler: (() => void) | null) {
     this.landed = handler;
+  }
+  onPlayAsked(handler: (() => void) | null) {
+    this.playAsked = handler;
   }
   adoptPlace(snapshot: PlaybackSnapshot) {
     // No emit: the store sets its own snapshot when it adopts; this only makes the next

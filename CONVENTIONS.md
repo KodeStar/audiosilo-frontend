@@ -1829,7 +1829,10 @@ media GETs only.
   with no error (the session copies a state change's argument). A play prepares it again
   first (`prepareIfFailed`); the app hears of the failure from the service
   (`PlayerEventSink.playerFailed`), and the car shows `labels.playbackError` as a non-fatal
-  session error.
+  session error. Every `onState` carries the engine's `playWhenReady`, so JS hears a play
+  asked from outside the app (`onPlayAsked`) and follows one made after playback stopped in
+  `error` as a press (`playAskedFromOutside`: `loading`, the stall watchdog, "Playback
+  stopped"); its `loading` alone is held by the error.
   - **A long MP4-family file plays as one whole-file item** (fe#194, `ClipBudget` in
     `MediaItems.kt`): Media3's `Mp4Extractor` keeps the file's whole sample table on the Java
     heap (about 33 bytes per AAC frame: ~120 MB for a 23.5 h m4b), and every clip is its own
@@ -2632,7 +2635,9 @@ media GETs only.
   still reads as `paused`.
 - The synthesized `error` is also **held** against the engine's continued re-reports:
   `subscribe` drops EVERY incoming state except `playing` while `prev` is `error` and no
-  retry is in flight. This is suppress-all-but-`playing`, not an allow-list - enumerating
+  retry is in flight (nor a `playing` within `STALL_PAUSE_FENCE_MS` of the watchdog's own
+  pause: sent before the pause reached the engine, it is older, and the engine is paused
+  again). This is suppress-all-but-`playing`, not an allow-list - enumerating
   the noisy states bit us repeatedly (iOS frozen `onProgress` ticks carrying `loading`;
   Android `onPlayerError` → `STATE_IDLE` → `idle` plus its own ticks → a flash→spinner
   loop). It's released by a retry (`wantsPlayback` true) or a genuine `playing`. The
@@ -2641,6 +2646,12 @@ media GETs only.
   (the watchdog is then a backstop for a buffer that never resolves). Recovery is
   `retry()` (reloads the track - a dead source can't resume via `play()` alone). Keep this
   one place; don't re-add a native timer.
+- **After "Playback stopped" nothing resumes by itself, on every platform** (fe#158): the
+  watchdog pauses the engine as it surfaces the `error`, on iOS and the web too, so a stream
+  that comes back after a short outage stays paused and the listener presses Play (or Retry,
+  the car, a headset). Left buffering, the engine started on its own whenever the server
+  answered again, with the listener told playback had stopped. A deliberate call: do not
+  make the pause Android-only.
 - **A browser autoplay refusal is a pause, not an error.** A cold `/player` deep link has
   no user gesture, so `audio.play()` rejects with `NotAllowedError`. `service.web.ts`
   reports exactly that as `AutoplayBlockedError` (`types.ts`) with its snapshot `paused`;

@@ -17,7 +17,12 @@ type TrackPlace = (trackIndex: number, positionInTrack: number) => void;
 let remoteMove: TrackPlace | null = null;
 let rateChange: ((rate: number) => void) | null = null;
 let silenceSaved: ((total: number) => void) | null = null;
+/** Android's word that the engine was asked to play (`onPlayAsked`). */
+let playAsked: (() => void) | null = null;
 const mockSvc = {
+  onPlayAsked: jest.fn((handler: (() => void) | null) => {
+    playAsked = handler;
+  }),
   onRemoteSeek: jest.fn((handler: ((positionInTrack: number) => void) | null) => {
     remoteSeek = handler;
   }),
@@ -721,7 +726,85 @@ describe('stall watchdog promotes a stuck loading to error', () => {
     expect(usePlayer.getState().snapshot.state).toBe('error');
 
     // The lock screen or the car plays the paused engine → it reports 'playing', which is
-    // not a stall re-report, so it clears the error.
+    // not a stall re-report, so it clears the error. (A moment after the stop: one reported
+    // at once may be from before its pause, below.)
+    jest.advanceTimersByTime(1_000);
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('playing');
+  });
+
+  /** Started, then stalled into the watchdog's error, the engine paused by it. */
+  async function stalledIntoError() {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    pushSnapshot(snap('loading', 50));
+    await Promise.resolve();
+    jest.advanceTimersByTime(3_000);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    jest.mocked(mockSvc.pause).mockClear();
+  }
+
+  // The review (fe#157): a car or headset play after the error was held by it, so it could
+  // hang with nothing said, or start whenever the server answered.
+  it('follows a play asked from outside the app after the error like a press', async () => {
+    await stalledIntoError();
+    jest.advanceTimersByTime(1_000);
+    playAsked?.();
+    pushSnapshot(snap('loading', 50));
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('loading');
+    // It never plays: the same stop, the engine paused again.
+    jest.advanceTimersByTime(3_000);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+  });
+
+  it('a play asked from outside that plays in time just plays', async () => {
+    await stalledIntoError();
+    playAsked?.();
+    pushSnapshot(snap('loading', 50));
+    await Promise.resolve();
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    jest.advanceTimersByTime(5_000);
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('playing');
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+  });
+
+  it('a play the engine was asked for outside an error adds no watchdog of its own', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    await usePlayer.getState().pause();
+    pushSnapshot(snap('paused', 50));
+    await Promise.resolve();
+    jest.mocked(mockSvc.pause).mockClear();
+    playAsked?.();
+    pushSnapshot(snap('loading', 50));
+    await Promise.resolve();
+    jest.advanceTimersByTime(5_000);
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('paused');
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+  });
+
+  // The review: the engine's `playing` sent just before the watchdog's pause reached it read
+  // as a recovery, and "Playback stopped" was gone.
+  it("a playing reported just after the watchdog's pause is older than it: the pause wins", async () => {
+    await stalledIntoError();
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+    // A press of the listener's own plays at once.
+    await usePlayer.getState().retry();
     pushSnapshot(snap('playing', 50));
     await Promise.resolve();
     expect(usePlayer.getState().snapshot.state).toBe('playing');

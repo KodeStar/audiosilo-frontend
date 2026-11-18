@@ -95,6 +95,37 @@ describe('the native engine, Phase 6 events', () => {
     send('onProgress', { position: 12, duration: 100 });
     expect(heard).toEqual(['loading@0', 'loading@12', 'loading@12']);
   });
+
+  // fe#157: a car or headset play after an error reaches the store as one, before its state.
+  it('tells the store when Android turns to wanting to play, before the state', async () => {
+    const svc = await setUp();
+    const heard: string[] = [];
+    svc.subscribe((s) => heard.push(s.state));
+    let heardWhenAsked: string[] | null = null;
+    const handler = jest.fn(() => {
+      heardWhenAsked = [...heard];
+    });
+    svc.onPlayAsked!(handler);
+    send('onState', { state: 'error', playWhenReady: false });
+    send('onState', { state: 'loading', playWhenReady: false });
+    expect(handler).not.toHaveBeenCalled();
+    send('onState', { state: 'loading', playWhenReady: true });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(heardWhenAsked).toEqual(['error', 'loading']);
+    // Still wanting to: no new ask.
+    send('onState', { state: 'playing', playWhenReady: true });
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells no ask without a playWhenReady to compare (iOS, an older binary, the first state)', async () => {
+    const svc = await setUp();
+    const handler = jest.fn();
+    svc.onPlayAsked!(handler);
+    send('onState', { state: 'loading', playWhenReady: true });
+    send('onState', { state: 'paused' });
+    send('onState', { state: 'playing' });
+    expect(handler).not.toHaveBeenCalled();
+  });
 });
 
 describe("the native engine's load", () => {

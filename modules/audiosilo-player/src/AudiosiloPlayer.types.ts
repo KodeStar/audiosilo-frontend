@@ -25,7 +25,9 @@ export type NativeChapter = {
 
 export type NativeState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended' | 'error';
 
-export type StateEvent = { state: NativeState };
+/** `playWhenReady` (Android only): whether the engine wants to play, so the app hears of a
+ * play asked from outside it (the car, a headset). Absent on iOS and on older binaries. */
+export type StateEvent = { state: NativeState; playWhenReady?: boolean };
 /** Position/duration within the current track, in seconds. `silenceSaved` (Android only):
  * book seconds removed by Smart speed since the app's process started, summed over every
  * player the service builds, so it never goes down. Absent on iOS (no Smart speed there) and on
