@@ -68,6 +68,7 @@ const mockUpdateMirror = jest.fn(
   },
 );
 const mockNoteUndone = jest.fn(async (..._a: unknown[]) => {});
+const mockTellUndone = jest.fn((..._a: unknown[]) => {});
 // Each Mark as finished's record as the mirror keeps it (`writeFinishedMirror`): the save,
 // carrying the record it replaced (`mockReadMirror`'s) when that was a place, or what the
 // finished record it replaced carried. Its write is `mockWriteMirror`'s too.
@@ -104,6 +105,7 @@ jest.mock('./progress-sync', () => ({
   updateMirror: (cid: string, lib: number, path: string, change: (r: never) => unknown) =>
     mockUpdateMirror(cid, lib, path, change),
   noteUndoneFinish: (...a: unknown[]) => mockNoteUndone(...a),
+  tellUndoneElsewhere: (...a: unknown[]) => mockTellUndone(...a),
   guardSettled: (id: string) => mockSettled.has(id),
   // No clock skew is known here: the two stamps as they are.
   mirrorIsNewest: async (record: { updated_at: string }, place: { updated_at: string }) =>
@@ -1473,6 +1475,9 @@ describe('Mark as finished outside the player (finish-route)', () => {
       expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
         queryKey: qk.progress('c1', 2, 'Other/Book'),
       });
+      // The other tabs are told once the record went back, so they read it again.
+      expect(mockTellUndone).toHaveBeenCalledTimes(1);
+      expect(mockTellUndone).toHaveBeenCalledWith(expect.objectContaining({ path: 'Other/Book' }));
     } finally {
       mockReadMirror.mockImplementation(async () => null);
     }

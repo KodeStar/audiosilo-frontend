@@ -87,6 +87,7 @@ import {
   type PlacedProgress,
   readMirror,
   saveProgress,
+  tellUndoneElsewhere,
   updateMirror,
   writeFinishedMirror,
   writeMirror,
@@ -1474,6 +1475,7 @@ async function restorePlaceBefore(ref: ContentRef, since: number): Promise<boole
   if (!restored) return false;
   if (finishSent === contentKeyOf(ref)) finishSent = null;
   invalidateFinishedProgress(queryClient, ref.connectionId, ref.libraryId, ref.path);
+  tellUndoneElsewhere(ref);
   return true;
 }
 
@@ -1518,6 +1520,7 @@ async function unrecordFinish(ref: UndoRef, since: number): Promise<void> {
     return { ...rest, finished: false, position: ref.position, updated_at: at };
   }).catch(() => undefined);
   invalidateFinishedProgress(queryClient, ref.connectionId, ref.libraryId, ref.path);
+  tellUndoneElsewhere(ref);
 }
 
 setFinishRecorder({

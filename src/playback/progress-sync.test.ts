@@ -23,6 +23,7 @@ import {
   withLocalPlaces,
   noteClockSkew,
   noteUndoneFinish,
+  onFinishUndoneElsewhere,
   pendingSaveCount,
   type LocalPlaces,
   type PlacedProgress,
@@ -34,6 +35,8 @@ import {
   resumeLookupOf,
   saveProgress,
   serverRowOf,
+  setUndoneChannelForTests,
+  tellUndoneElsewhere,
   updateMirror,
   writeFinishedMirror,
   writeMirror,
@@ -1884,51 +1887,40 @@ describe('mirror writes asked together', () => {
 });
 
 // fe#258's follow-up: after an Undo in one tab, another tab kept showing the book finished
-// ("Listen again") until clicked. The Undo reaches it through storage.
+// ("Listen again") until clicked. The undoing tab tells the others on a tab channel.
 describe('a finish undone in another tab', () => {
-  beforeEach(async () => {
-    await AsyncStorage.clear();
+  afterEach(() => setUndoneChannelForTests(undefined));
+
+  it('is posted on the channel and heard by its subscribers', () => {
+    const listeners = new Set<(ref: unknown) => void>();
+    const posted: unknown[] = [];
+    setUndoneChannelForTests({
+      post: (message) => {
+        posted.push(message);
+        for (const l of listeners) l(message);
+      },
+      subscribe: (listener) => {
+        listeners.add(listener as (ref: unknown) => void);
+        return () => listeners.delete(listener as (ref: unknown) => void);
+      },
+    });
+    const told: unknown[] = [];
+    const stop = onFinishUndoneElsewhere((ref) => told.push(ref));
+    const ref = { connectionId: 'c1', libraryId: 4, path: 'Author/Book: Two' };
+    tellUndoneElsewhere({ ...ref, position: 12 } as typeof ref);
+    // Only the book goes out.
+    expect(posted).toEqual([ref]);
+    expect(told).toEqual([ref]);
+    stop();
+    tellUndoneElsewhere(ref);
+    expect(told).toHaveLength(1);
   });
 
-  const otherTab = () => {
-    let other!: typeof import('@/playback/progress-sync');
-    jest.isolateModules(() => {
-      jest.doMock('@react-native-async-storage/async-storage', () => ({
-        __esModule: true,
-        default: AsyncStorage,
-      }));
-      /* eslint-disable-next-line @typescript-eslint/no-require-imports */
-      other = require('@/playback/progress-sync') as typeof import('@/playback/progress-sync');
-    });
-    return other;
-  };
-
-  it('is told to the other tab as it is stored, and again as the mirror changes for a while', async () => {
-    const other = otherTab();
-    const told: unknown[] = [];
-    const stop = other.onFinishUndoneElsewhere((ref) => told.push(ref));
-    const at = Date.now();
-    await noteUndoneFinish('c1', 4, 'Author/Book: Two', at);
-    const stored = await AsyncStorage.getItem('audiosilo.undoneFinishes');
-    other.followUndoneFinishes(stored);
-    const ref = { connectionId: 'c1', libraryId: 4, path: 'Author/Book: Two' };
-    expect(told).toEqual([ref]);
-    // The same Undo again (another key's change): not told twice.
-    other.followUndoneFinishes(stored);
-    expect(told).toHaveLength(1);
-    // The Undo's change of the mirror lands after it.
-    other.followMirrorChange();
-    expect(told).toEqual([ref, ref]);
-    const later = jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 6_000);
-    try {
-      other.followMirrorChange();
-      expect(told).toHaveLength(2);
-    } finally {
-      later.mockRestore();
-    }
-    stop();
-    await noteUndoneFinish('c1', 4, 'Author/Book: Two', at + 1);
-    other.followUndoneFinishes(await AsyncStorage.getItem('audiosilo.undoneFinishes'));
-    expect(told).toHaveLength(2);
+  it('is nothing without a channel (off the web)', () => {
+    setUndoneChannelForTests(null);
+    expect(() =>
+      tellUndoneElsewhere({ connectionId: 'c1', libraryId: 1, path: 'A' }),
+    ).not.toThrow();
+    expect(typeof onFinishUndoneElsewhere(() => {})).toBe('function');
   });
 });

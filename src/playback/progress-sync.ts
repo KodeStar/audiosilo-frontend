@@ -4,8 +4,9 @@ import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { Progress } from '@/api/types';
 import { downloadEndsBefore } from '@/downloads/kept-offline';
 import { identityMovePending } from '@/lib/connection-id';
-import { bookOfKey, contentKey } from '@/lib/content-key';
+import { contentKey } from '@/lib/content-key';
 import { replayQueue, type Route } from '@/lib/queue-claims';
+import { tabChannel, type TabChannel } from '@/lib/tab-channel';
 import { tabLock } from '@/lib/tab-lock';
 import { getItem, setItem } from '@/lib/storage';
 import { withTimeout } from '@/lib/with-timeout';
@@ -829,78 +830,35 @@ function undoneFinishesIn(stored: unknown): Record<string, number> {
   return out;
 }
 
-type BookRefListener = (ref: { connectionId: string; libraryId: number; path: string }) => void;
-const undoneElsewhereListeners = new Set<BookRefListener>();
+type BookRef = { connectionId: string; libraryId: number; path: string };
 
-/** Be told of a finish another tab of the web player undid (its Undo, or Mark as not
- * finished): this tab's pages still show the book finished until they read it again.
- * Told as the Undo is stored and again as the mirror changes in the next few seconds (the
- * Undo's own change of it lands after). Returns the unsubscribe. */
-export function onFinishUndoneElsewhere(listener: BookRefListener): () => void {
-  undoneElsewhereListeners.add(listener);
-  return () => undoneElsewhereListeners.delete(listener);
+/** The channel a tab tells the others of a finish it undid on (`tellUndoneElsewhere`). */
+const UNDONE_CHANNEL = 'audiosilo-undone-finish';
+let undoneTabs: TabChannel<BookRef> | null | undefined;
+/** The channel, opened on first use (null off the web). */
+const undoneChannel = () =>
+  undoneTabs === undefined ? (undoneTabs = tabChannel<BookRef>(UNDONE_CHANNEL)) : undoneTabs;
+
+/** Test-only: the channel `tellUndoneElsewhere` and `onFinishUndoneElsewhere` use. */
+export function setUndoneChannelForTests(channel: TabChannel<BookRef> | null | undefined): void {
+  undoneTabs = channel;
 }
 
-/** How long after another tab's Undo this tab tells its listeners of each change of the
- * mirror: the Undo's change of the mirror comes after the Undo is stored. */
-const UNDONE_FOLLOW_MS = 5_000;
-/** Each undone finish seen in the stored ones, by key: its time. */
-const undoneSeen = new Map<string, number>();
-/** The books another tab undid a finish of lately, by key: until when this tab follows. */
-const undoneFollowed = new Map<string, number>();
-
-function tellUndoneElsewhere(key: string): void {
-  const ref = bookOfKey(key);
-  if (!ref) return;
-  for (const listener of undoneElsewhereListeners) {
-    try {
-      listener(ref);
-    } catch {
-      // One listener's failure is not the others'.
-    }
-  }
-}
-
-/** Another tab stored the undone finishes (the web's `storage` event, `raw` the new value):
- * each Undo not seen yet is told, and followed (`followMirrorChange`). */
-export function followUndoneFinishes(raw: string | null): void {
-  let stored: unknown;
-  try {
-    stored = raw ? JSON.parse(raw) : null;
-  } catch {
-    return;
-  }
-  const now = Date.now();
-  const current = undoneFinishesIn(stored);
-  for (const key of undoneSeen.keys()) if (!(key in current)) undoneSeen.delete(key);
-  for (const [key, at] of Object.entries(current)) {
-    if (undoneSeen.get(key) === at) continue;
-    undoneSeen.set(key, at);
-    undoneFollowed.set(key, now + UNDONE_FOLLOW_MS);
-    tellUndoneElsewhere(key);
-  }
-}
-
-/** Another tab changed the mirror: the books it undid a finish of lately are told again. */
-export function followMirrorChange(): void {
-  const now = Date.now();
-  for (const [key, until] of undoneFollowed) {
-    if (until < now) undoneFollowed.delete(key);
-    else tellUndoneElsewhere(key);
-  }
-}
-
-const win = globalThis as {
-  addEventListener?: (
-    type: 'storage',
-    listener: (e: { key: string | null; newValue: string | null }) => void,
-  ) => void;
-};
-if (typeof win.addEventListener === 'function') {
-  win.addEventListener('storage', (e) => {
-    if (e.key === UNDONE_FINISHES_KEY) followUndoneFinishes(e.newValue);
-    else if (e.key === MIRROR_KEY && undoneFollowed.size > 0) followMirrorChange();
+/** Tell the other tabs of the web player that this one undid `ref`'s finish (its Undo, or
+ * Mark as not finished), once its mirror record went back: their pages still show the book
+ * finished until they read it again. */
+export function tellUndoneElsewhere(ref: BookRef): void {
+  undoneChannel()?.post({
+    connectionId: ref.connectionId,
+    libraryId: ref.libraryId,
+    path: ref.path,
   });
+}
+
+/** Be told of a finish another tab of the web player undid (`tellUndoneElsewhere`).
+ * Returns the unsubscribe. */
+export function onFinishUndoneElsewhere(listener: (ref: BookRef) => void): () => void {
+  return undoneChannel()?.subscribe(listener) ?? (() => {});
 }
 
 /** The later of two Undo times, either unknown. */
