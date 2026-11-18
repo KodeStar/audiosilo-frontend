@@ -78,21 +78,28 @@ export const OIDC_DONE_MS = 60_000;
  * server kept the sign-in (its done cookie) for no answer at all, a 408 (a proxy's timeout,
  * as `pairFailure` and `isRefusedForGood` read it), a 5xx (server#406: nothing was spent)
  * and a 429 (after its `Retry-After`, none being no wait). Never a refusal of the sign-in (a
- * 401, a 403, a 400): the cookie is gone, or the request itself is wrong. A wait past the
- * done cookie's minute (`OIDC_DONE_MS`, a lockout's 15 minutes) is none: the sign-in can't
- * outlive it.
+ * 401, a 403, a 400): the cookie is gone, or the request itself is wrong. None either once
+ * the done cookie's minute is over (`leftMs`, what is left of `OIDC_DONE_MS`), nor for a wait
+ * that outlasts it (a lockout's 15 minutes): the sign-in can't outlive it.
  */
-export function oidcRetryWait(e: unknown): number | undefined {
+export function oidcRetryWait(e: unknown, leftMs = OIDC_DONE_MS): number | undefined {
+  if (leftMs <= 0) return undefined;
   if (!(e instanceof ApiError)) return 0;
   if (e.status >= 500 || e.status === 408) return 0;
   if (e.status !== 429) return undefined;
   const ms = (e.retryAfterSeconds ?? 0) * 1000;
-  return ms < OIDC_DONE_MS ? ms : undefined;
+  return ms < leftMs ? ms : undefined;
 }
 
 /** The same finish sent again (`finishOidcSignIn`'s, with its flow, book and reconnect, all
- * in memory only), offered as Try again once `waitMs` has passed. */
-export type OidcFinishRetry = { waitMs: number; run: () => Promise<OidcFinishFailure | null> };
+ * in memory only), offered as Try again once `waitMs` has passed and until `doneBy` (epoch
+ * ms: the done cookie's minute from the provider's return, `OIDC_DONE_MS`), when the server
+ * holds the sign-in no more. */
+export type OidcFinishRetry = {
+  waitMs: number;
+  doneBy: number;
+  run: () => Promise<OidcFinishFailure | null>;
+};
 
 /** A finish that failed on the screen: why, in words, and the retry the server left room
  * for (`oidcRetryWait`), none once the sign-in is refused. */
@@ -107,9 +114,10 @@ export type OidcFinishFailure = { message: string; retry?: OidcFinishRetry };
  * with (`takeOidcResumed`, taken once: a retry keeps them). Resolves null once the flow
  * has moved on, else why it failed in words (`oidcFinishText`; a session this device then
  * couldn't keep, `notKept`, as the sign-in is spent) and, when the server kept the sign-in
- * (`oidcRetryWait`: no answer, a 408, a 5xx, a 429) and no pass waits, the same finish to
- * send again (`retry`). The flow's key lives in that closure only, never the address,
- * storage or a log, and goes with it once the finish succeeds or is refused. `live`: whether
+ * (`oidcRetryWait`: no answer, a 408, a 5xx, a 429, within the done cookie's minute) and no
+ * pass waits, the same finish to send again (`retry`). The flow's key lives in that closure
+ * only, never the address, storage or a log, and goes with it once the finish succeeds or is
+ * refused. `live`: whether
  * the connect screen is still up. A session that answers once it has gone, or that
  * `finishConnect` did not store, is signed out again (best effort), never kept: nothing would
  * use it, and it would stay on the server as a device (fe#310).
@@ -134,6 +142,8 @@ export async function finishOidcSignIn(
   live: () => boolean,
   flow?: string,
 ): Promise<OidcFinishFailure | null> {
+  // The provider's return loaded this page just now: the done cookie's minute runs from here.
+  const doneBy = Date.now() + OIDC_DONE_MS;
   const { book, reconnectId } = takeOidcResumed(origin);
   // A reconnect's finish goes out with its own proxy headers, as its password sign-in
   // would (`connectClientFor(server, _, reconnectId)`), never another person's.
@@ -160,9 +170,11 @@ export async function finishOidcSignIn(
         toast({ title: why });
         return null;
       }
-      const waitMs = oidcRetryWait(e);
+      const waitMs = oidcRetryWait(e, doneBy - Date.now());
       const message = oidcFinishText(e, t, waitMs !== undefined);
-      return waitMs === undefined ? { message } : { message, retry: { waitMs, run: attempt } };
+      return waitMs === undefined
+        ? { message }
+        : { message, retry: { waitMs, doneBy, run: attempt } };
     }
     // A session nothing keeps is signed out again (best effort): it would stay on the server
     // as a device.

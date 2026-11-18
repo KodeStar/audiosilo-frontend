@@ -99,7 +99,8 @@ import { useLinkPairing } from './use-pairing';
  * (`finishOidcSignIn`, with the `flow` the return names), the params queued off the address
  * before the finish is sent so a reload never tries it again; a failure says why above its
  * own server's card, as a dead pairing link does, with Try again when the server kept the
- * sign-in (`oidcRetryWait`): the same finish, from memory.
+ * sign-in (`oidcRetryWait`): the same finish, from memory, until the server's done cookie's
+ * minute is over (`OIDC_DONE_MS`).
  */
 export function ConnectStart() {
   const { t } = useTranslation();
@@ -171,12 +172,24 @@ export function ConnectStart() {
   // Try again sends it once its `waitMs` is down to 0, and the finish runs meanwhile
   // (`oidcFinishing`) as the first did, under "Connecting".
   const [oidcRetry, setOidcRetry] = useState<OidcFinishRetry | null>(null);
-  // The wait runs while this retry is the one offered: dropping it (or the screen) ends it.
+  // The wait, and the done cookie's minute (`doneBy`), run while this retry is the one offered:
+  // dropping it (or the screen) ends them. Past the minute the server holds the sign-in no
+  // more, so Try again goes and the reason is the refusal's: only Sign in again is left.
   useEffect(() => {
-    if (!oidcRetry?.waitMs) return;
-    const id = setTimeout(() => setOidcRetry({ ...oidcRetry, waitMs: 0 }), oidcRetry.waitMs);
-    return () => clearTimeout(id);
-  }, [oidcRetry]);
+    if (!oidcRetry) return;
+    const timers = [
+      setTimeout(
+        () => {
+          setOidcRetry(null);
+          fail(t('connect.oidc.errors.expired'));
+        },
+        Math.max(0, oidcRetry.doneBy - Date.now()),
+      ),
+    ];
+    if (oidcRetry.waitMs > 0)
+      timers.push(setTimeout(() => setOidcRetry({ ...oidcRetry, waitMs: 0 }), oidcRetry.waitMs));
+    return () => timers.forEach(clearTimeout);
+  }, [oidcRetry, fail, t]);
   const [oidcFinishing, setOidcFinishing] = useState(false);
   // The reconnect the code that opened this screen continues (scanned from a reconnect's
   // sign-in step, `holdScanReconnect`): taken once, and only that code's (Try again too),

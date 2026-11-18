@@ -142,4 +142,21 @@ describe('oidcRetryWait', () => {
   ] as const)('never lets %s go again', (_, e) => {
     expect(oidcRetryWait(e)).toBeUndefined();
   });
+
+  // What is left of the done cookie's minute: none left, nothing goes again; a wait must end
+  // within what is left.
+  it.each([
+    ['no answer, the minute over', new NetworkError(new Error('offline')), 0, undefined],
+    ['a 500, the minute over', new ApiError(500, 'boom'), -5, undefined],
+    ['a 500, a second left', new ApiError(500, 'boom'), 1_000, 0],
+    [
+      'a 429 waiting past what is left',
+      new ApiError(429, 'slow', undefined, 30),
+      20_000,
+      undefined,
+    ],
+    ['a 429 waiting within what is left', new ApiError(429, 'slow', undefined, 10), 20_000, 10_000],
+  ] as const)('reads %s', (_, e, left, ms) => {
+    expect(oidcRetryWait(e, left)).toBe(ms);
+  });
 });

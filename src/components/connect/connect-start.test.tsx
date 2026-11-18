@@ -14,6 +14,7 @@ import { ConnectStart } from './connect-start';
 import { renderConnect as render } from './connect-testing';
 import { holdScanReconnect, openScanner, takeScanFor } from './invite-handoff';
 import { dropOidcIntent, resumeOidcIntent, takeOidcResumed } from './oidc-intent';
+import { OIDC_DONE_MS } from './oidc-sign-in';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -1714,6 +1715,56 @@ describe("a single sign-on's return (?oidc=1)", () => {
         await fireEvent.press(screen.getByTestId('oidc-try-again'));
         await waitFor(() => expect(mockReplace).toHaveBeenCalled());
         expect(mockApi.oidcFinish).toHaveBeenLastCalledWith('Test device', undefined, FLOW);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    // The server holds the sign-in for its done cookie's minute from the provider's return
+    // (`OIDC_DONE_MS`): past it Try again could only fail, so it goes, and the reason is the
+    // refusal's, leaving Sign in again.
+    it("drops Try again once the done cookie's minute is over", async () => {
+      jest.useFakeTimers();
+      try {
+        mockApi.oidcFinish.mockRejectedValueOnce(new ApiError(500, 'boom'));
+        await render(<ConnectStart />);
+        await waitFor(() => expect(screen.getByTestId('oidc-try-again')).toBeTruthy());
+        await act(async () => jest.advanceTimersByTime(OIDC_DONE_MS - 1_000));
+        expect(screen.getByTestId('oidc-try-again')).toBeTruthy();
+        await act(async () => jest.advanceTimersByTime(1_000));
+        expect(screen.queryByTestId('oidc-try-again')).toBeNull();
+        expect(
+          screen.getByText('That sign-in expired or was already used. Sign in again.'),
+        ).toBeTruthy();
+        expect(
+          screen.queryByText("The server couldn't finish signing you in. Try again."),
+        ).toBeNull();
+        expect(screen.getByText('Sign in')).toBeTruthy();
+        expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it("drops a 429's Try again whose wait ends past the done cookie's minute", async () => {
+      jest.useFakeTimers();
+      try {
+        // The first finish takes 40 s to answer: its 30 s wait would end 70 s after the return.
+        mockApi.oidcFinish.mockImplementationOnce(
+          () =>
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new ApiError(429, 'slow down', undefined, 30)), 40_000),
+            ),
+        );
+        await render(<ConnectStart />);
+        await act(async () => jest.advanceTimersByTime(40_000));
+        await waitFor(() =>
+          expect(
+            screen.getByText('Too many tries from this network. Try again in 1 minute.'),
+          ).toBeTruthy(),
+        );
+        expect(screen.queryByTestId('oidc-try-again')).toBeNull();
+        expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
       } finally {
         jest.useRealTimers();
       }
