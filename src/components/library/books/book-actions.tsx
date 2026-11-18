@@ -226,29 +226,28 @@ export function useBookActions(
         description: book.title,
         action: canUndo ? { label: t('queue.undo'), onPress: () => void undo() } : undefined,
       });
+    let ok = false;
     try {
       if (canUndo && !finishTakesEvent(connectionId)) {
-        const ok = await setFinished(true);
-        settled();
-        if (ok) done();
-        else await reloadLeftBook(ref);
-        return;
+        ok = await setFinished(true);
+      } else {
+        // A server that takes listening events: a `finish` event, offline too (fe#208). An
+        // older server without progress edits: the offline-aware save at the book's end.
+        await markFinished.mutateAsync({
+          libraryId,
+          path,
+          position: book.duration,
+          duration: book.duration,
+        });
+        ok = true;
       }
-      // A server that takes listening events: a `finish` event, offline too (fe#208). An
-      // older server without progress edits: the offline-aware save at the book's end.
-      await markFinished.mutateAsync({
-        libraryId,
-        path,
-        position: book.duration,
-        duration: book.duration,
-      });
-      settled();
-      done();
     } catch (e) {
-      settled();
       failed(e);
-      await reloadLeftBook(ref);
+    } finally {
+      settled();
     }
+    if (ok) done();
+    else await reloadLeftBook(ref);
   };
 
   const onUnfinish = async () => {

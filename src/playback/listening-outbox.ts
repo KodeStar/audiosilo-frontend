@@ -425,15 +425,26 @@ export async function appendInTurn(
   events: ListeningEvent[],
   baseVersion?: () => Promise<number | undefined>,
 ): Promise<void> {
+  await inTurn(connectionId, events, async (since) => {
+    const base = baseVersion ? await baseVersion().catch(() => undefined) : undefined;
+    const final = base === undefined ? events : events.map((e) => ({ ...e, base_version: base }));
+    await appendEvents(connectionId, final, since);
+  });
+}
+
+/** Run `op` in its turn (`spanOps`, after a crashed tab's span is recovered), with `events`
+ * waiting in `queued` until it ends, so the web's `pagehide` carries them meanwhile. `op`
+ * gets the connection's sign-in at the call (`since`): what it appends belongs to that one. */
+async function inTurn(
+  connectionId: string,
+  events: ListeningEvent[],
+  op: (since: number) => Promise<void>,
+): Promise<void> {
   const since = connectionGeneration(connectionId);
   for (const event of events) queued.set(event.id, { connectionId, event });
   try {
     await recoverOpenSpan();
-    await spanOps(async () => {
-      const base = baseVersion ? await baseVersion().catch(() => undefined) : undefined;
-      const final = base === undefined ? events : events.map((e) => ({ ...e, base_version: base }));
-      await appendEvents(connectionId, final, since);
-    });
+    await spanOps(() => op(since));
   } finally {
     for (const event of events) queued.delete(event.id);
   }
@@ -672,16 +683,9 @@ async function closeInto(
  * caller made it already (the web's `pagehide` sends it at once).
  */
 export async function closeSpan(span: OpenSpan, event?: ListeningSpanEvent): Promise<void> {
+  const waiting = spanSaysSomething(span) ? [event ?? spanToEvent(span)] : [];
   // Signed out before its turn: the span is the removed sign-in's, never appended after it.
-  const since = connectionGeneration(span.connectionId);
-  const waiting = spanSaysSomething(span) ? (event ?? spanToEvent(span)) : null;
-  if (waiting) queued.set(waiting.id, { connectionId: span.connectionId, event: waiting });
-  try {
-    await recoverOpenSpan();
-    await spanOps(() => closeInto(span, event, since));
-  } finally {
-    if (waiting) queued.delete(waiting.id);
-  }
+  await inTurn(span.connectionId, waiting, (since) => closeInto(span, event, since));
 }
 
 /** Closes (`closeSpan`) and the events behind them (`appendInTurn`) still waiting their
@@ -981,13 +985,23 @@ async function sending<T>(
       for (const id of lost) maybeReached.add(id);
       return markSettled(marked, lost);
     });
-  for (const e of live) sendingNow.set(e.event.id, settled);
+  const release = markSending(live, settled);
   try {
     return await run;
   } finally {
     await settled;
-    for (const e of live) if (sendingNow.get(e.event.id) === settled) sendingNow.delete(e.event.id);
+    release();
   }
+}
+
+/** Mark `entries` out from this tab until `settled` (`sendingNow`); returns the release,
+ * which clears only the marks still this request's. */
+function markSending(entries: OutboxEntry[], settled: Promise<unknown>): () => void {
+  for (const e of entries) sendingNow.set(e.event.id, settled);
+  return () => {
+    for (const e of entries)
+      if (sendingNow.get(e.event.id) === settled) sendingNow.delete(e.event.id);
+  };
 }
 
 /** Resolves at the next change of the outbox (this tab's write, or another tab's through
@@ -1667,11 +1681,7 @@ export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
     // Out from this tab until it ends, as a flush's request is (`sending`): a page that
     // was only hidden comes back (the back-forward cache) with the request still out, and
     // an Undo then waits for its answer rather than taking the finish back from under it.
-    for (const e of fit) sendingNow.set(e.event.id, settled);
-    void settled.then(() => {
-      for (const e of fit)
-        if (sendingNow.get(e.event.id) === settled) sendingNow.delete(e.event.id);
-    });
+    void settled.then(markSending(fit, settled));
   }
 }
 

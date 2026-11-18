@@ -678,7 +678,8 @@ export async function writeMirrors(saves: readonly ProgressSave[]): Promise<void
     for (const save of saves) {
       const key = contentKey(save.connectionId, save.libraryId, save.path);
       const existing = map[key];
-      const undone = undoneFinishes.get(key);
+      // Only a finished record can be one an Undo undid (`noteUndoneFinish`).
+      const undone = save.finished ? undoneFinishes.get(key) : undefined;
       const skew = existing || undone !== undefined ? await knownSkew(save.connectionId) : 0;
       if (undone !== undefined && undoneBy(key, undone, save, skew)) continue;
       if (!existing || localTimeOf(save, skew) >= localTimeOf(existing, skew)) {
@@ -718,17 +719,20 @@ export function noteUndoneFinish(
   path: string,
   at = Date.now(),
 ): void {
+  for (const [key, when] of undoneFinishes) {
+    if (at - when > UNDONE_FINISH_HOLD_MS) undoneFinishes.delete(key);
+  }
   undoneFinishes.set(contentKey(connectionId, libraryId, path), at);
 }
 
-/** Whether `save` is a finished record the Undo at `at` of `key`'s finish undid (one
+/** Whether `save` (a finished record) is one the Undo at `at` of `key`'s finish undid (one
  * stamped before it, while the Undo holds); a hold run out is forgotten. */
 function undoneBy(key: string, at: number, save: ProgressSave, skewMs: number): boolean {
   if (Date.now() - at > UNDONE_FINISH_HOLD_MS) {
     undoneFinishes.delete(key);
     return false;
   }
-  return save.finished && localTimeOf(save, skewMs) < at;
+  return localTimeOf(save, skewMs) < at;
 }
 
 /** `save` with what the mirror keeps across records (see `writeMirror`), its server's clock

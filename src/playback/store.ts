@@ -398,10 +398,10 @@ type PlayRequest = {
 /** Captured so `retry()` can re-run the resume path after a lookup failure. */
 let lastPlayRequest: PlayRequest | null = null;
 
-/** `lastPlayRequest` when it was a start of `np`'s book, else null. */
-function lastPlayRequestFor(np: NowPlaying): PlayRequest | null {
+/** `lastPlayRequest` when it was a start of `ref`'s book, else null. */
+function lastPlayRequestFor(ref: ContentRef): PlayRequest | null {
   const r = lastPlayRequest;
-  return r && contentKey(r.connectionId, r.libraryId, r.book.rel_path) === contentKeyOf(np)
+  return r && contentKey(r.connectionId, r.libraryId, r.book.rel_path) === contentKeyOf(ref)
     ? r
     : null;
 }
@@ -1335,11 +1335,7 @@ async function recordFinish(ref: FinishRef): Promise<void> {
 
 /** The book a Mark as finished stopped and unloaded (`leaveFinishedBook`), the start it was
  * loaded by and the place it was left at: for a finish that then failed (`reloadLeftBook`). */
-let leftForFinish: {
-  key: string;
-  request: PlayRequest;
-  position: number | undefined;
-} | null = null;
+let leftForFinish: { request: PlayRequest; position: number | undefined } | null = null;
 
 /** A start of a book the listener marked finished while it was on its way
  * (`leaveFinishedBook`): it loads nothing (`playBook`). */
@@ -1362,10 +1358,8 @@ let finishedStart: PlayRequest | null = null;
 function leaveFinishedBook(ref: ContentRef): Promise<number | undefined> {
   const { nowPlaying: np, rate } = usePlayer.getState();
   leftForFinish = null;
-  const starting = lastPlayRequest;
-  if (starting && startsInFlight > 0 && sameBook(requestRef(starting), ref)) {
-    finishedStart = starting;
-  }
+  const starting = startsInFlight > 0 ? lastPlayRequestFor(ref) : null;
+  if (starting) finishedStart = starting;
   if (!np || !sameBook(np, ref)) return Promise.resolve(undefined);
   const request = lastPlayRequestFor(np);
   clearPlaybackIntent();
@@ -1377,7 +1371,7 @@ function leaveFinishedBook(ref: ContentRef): Promise<number | undefined> {
   usePlayer.setState({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate } });
   void service?.reset();
   return saved.then((position) => {
-    leftForFinish = request ? { key: contentKeyOf(ref), request, position } : null;
+    leftForFinish = request ? { request, position } : null;
     return position;
   });
 }
@@ -1386,16 +1380,12 @@ function leaveFinishedBook(ref: ContentRef): Promise<number | undefined> {
  * anything: no intent to play, the engine reset (it may still hold the book played before),
  * and nothing loaded unless another start has taken the player since. */
 async function callOff(svc: PlaybackService, request: PlayRequest): Promise<void> {
+  finishedStart = null;
   clearPlaybackIntent();
   await svc.reset();
   if (lastPlayRequest !== request) return;
   const { rate } = usePlayer.getState();
   usePlayer.setState({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate } });
-}
-
-/** The book a request starts. */
-function requestRef(r: PlayRequest): ContentRef {
-  return { connectionId: r.connectionId, libraryId: r.libraryId, path: r.book.rel_path };
 }
 
 /**
@@ -1406,8 +1396,9 @@ function requestRef(r: PlayRequest): ContentRef {
 async function reloadLeftBook(ref: ContentRef): Promise<void> {
   const left = leftForFinish;
   leftForFinish = null;
-  if (!left || left.key !== contentKeyOf(ref) || usePlayer.getState().nowPlaying) return;
+  if (!left || usePlayer.getState().nowPlaying) return;
   const { connectionId, libraryId, book, chapterData } = left.request;
+  if (contentKey(connectionId, libraryId, book.rel_path) !== contentKeyOf(ref)) return;
   await usePlayer
     .getState()
     .playBook(
