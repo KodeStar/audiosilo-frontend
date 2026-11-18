@@ -3882,6 +3882,24 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     expect(lastLoad()).toEqual([0, 30]);
   });
 
+  it('the web waits for no move: a run off the asked file stops at once', async () => {
+    const os = Platform.OS;
+    Platform.OS = 'web';
+    try {
+      await resume(30);
+      // Nothing but the store's own asks changes the file there: no `onRemoteMove` can follow.
+      pushSnapshot(snap('playing', 0.4, { trackIndex: 1, duration: short }));
+      expect(usePlayer.getState().snapshot).toMatchObject({
+        state: 'error',
+        trackIndex: 0,
+        position: 30,
+      });
+      expect(mockSvc.pause).toHaveBeenCalled();
+    } finally {
+      Platform.OS = os;
+    }
+  });
+
   it("a headset's next before the engine played on is no fault, its move told after the file", async () => {
     await resume(30);
     pushSnapshot(snap('loading', 30, { trackIndex: 0 })); // still buffering at the resumed place

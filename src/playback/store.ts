@@ -1882,8 +1882,14 @@ const PLAYING_PAST = 0.5;
 export const ASK_SETTLE_MAX_MS = 10_000;
 /** How long a run into a later file waits for its `onRemoteMove` before it is a fault
  * (`EngineAsk.held`): Android's module sends the move at most 300 ms after the file change, the
- * same wait as the native service's for a jumped tick (`LANDING_HOLD_MS`). */
+ * same wait as the native service's for a jumped tick (`LANDING_HOLD_MS`), and iOS tells the
+ * file and the move in two events, the file first. Not on the web (`faultHoldMs`). */
 export const FAULT_HOLD_MS = 600;
+/** The wait this platform needs. None on the web: nothing there moves the engine into another
+ * file but the store's own asks (Media Session has no track handlers and its scrubber stays in
+ * the file; a Cast receiver's move is told before its place, `cast-service.ts`), so a later
+ * file under a standing ask is a run off it, paused at once, not 600 ms into the wrong file. */
+const faultHoldMs = () => (Platform.OS === 'web' ? 0 : FAULT_HOLD_MS);
 /** The book whose engine faulted (`engineFault`): its reports are dropped, and a play the
  * engine makes by itself is paused again, until the store asks it for a place again.
  * `faultPause`: the fault's pause, one record per fault. It has landed once its call resolved
@@ -2058,7 +2064,7 @@ function engineFault(
     const now = Date.now();
     const held = asked.held ?? { since: now, report: s, timer: null, due: false };
     asked.held = held;
-    if (!held.due && now - held.since < FAULT_HOLD_MS) return 'hold';
+    if (!held.due && now - held.since < faultHoldMs()) return 'hold';
   } else if (!short) {
     // Not a run off the asked file after all: a run held for one is called off.
     dropHeld(asked);

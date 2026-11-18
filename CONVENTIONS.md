@@ -2099,10 +2099,12 @@ media GETs only.
   reads as the book finished (the credits, `finishBook`'s `finished: true`, Sync v2's
   `finish`): a Retry or a seek past the engine's end never finishes a book. An end while a
   start shows its spinner is one too, from an ask inside its file, at once (not the stall
-  watchdog's error later). The later file waits `FAULT_HOLD_MS` first, its reports held back:
-  a headset or car next soon after a paused scrub or while buffering reaches the store the
-  same way, and Android tells its `onRemoteMove` up to 300 ms after the file change; that move,
-  or a report back in the asked file, calls the fault off (a pause meanwhile does not). Before
+  watchdog's error later). On the native engines the later file waits `FAULT_HOLD_MS` first,
+  its reports held back: a headset or car next soon after a paused scrub or while buffering
+  reaches the store the same way, Android tells its `onRemoteMove` up to 300 ms after the file
+  change, and iOS sends the file and the move as two events; that move, or a report back in
+  the asked file, calls the fault off (a pause meanwhile does not). The web waits for nothing
+  (`faultHoldMs`): only the store's own asks change the file there. Before
   the ask lands, neither is a report still in the file the store last showed (a progress tick
   or a Cast status from before a move back landed) or in the file of an ask this one replaced
   before the engine reported it; once landed, a later file is the engine's own (a move back
