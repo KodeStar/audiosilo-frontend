@@ -2327,7 +2327,7 @@ media GETs only.
     reachable (`gotNoAnswer`: a timeout, a dropped connection, a gateway that lost the
     server (502, 504, Cloudflare's 520 and 524), a 2xx that could not be read; and the
     page's keepalive send) may be on the server, its answer lost: while the server looks
-    reachable now it is not `unsent` (`serverMayHold`), so the Undo takes the edit, which
+    reachable as it is taken it is not `unsent` (`carried`), so the Undo takes the edit, which
     unfinishes the book either way, and a failed edit puts the finish back. With the server
     down no edit can be made: nothing is taken back and the Undo fails with a toast
     (`Withdrawal.unreachable`, `undoFinish`'s `'unreachable'`; fe#258: done on this device

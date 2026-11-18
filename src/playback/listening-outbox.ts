@@ -88,7 +88,7 @@ export type { OpenSpan, SpanEnd } from './open-span-doc';
  *   one still standing past its time was left by a tab that went with its request: the
  *   server may hold the finish.
  * - `maybeReached`: a request carried it while its server looked reachable and got no
- *   answer, so the server may hold it (`serverMayHold`).
+ *   answer, so the server may hold it (`carried`).
  */
 export type OutboxEntry = {
   connectionId: string;
@@ -845,7 +845,7 @@ const sendingNow = new Map<string, Promise<unknown>>();
 const withdrawn = new Set<string>();
 /** Finish events a request carried while their server looked reachable and that got no
  * answer: the request may have arrived and only its answer been lost, so the server may
- * hold them (`serverMayHold`). This launch's only (an Undo is a toast of the launch that
+ * hold them (`carried`). This launch's only (an Undo is a toast of the launch that
  * marked the book). Never forgotten on an answer: an answered finish has left the outbox, so
  * nothing reads its mark, and one put back after a failed edit still takes the edit. This
  * tab's own; on the web the stored entry says it too (`OutboxEntry.maybeReached`), for the
@@ -1029,7 +1029,7 @@ function outboxChanged(ms: number): Promise<void> {
 export type Withdrawal = {
   /** A finish that never reached the server was taken back (an offline Mark as finished),
    * so the Undo is complete here, with no progress edit. Never true while the server may
-   * hold the finish and can be asked (`serverMayHold`): the Undo then takes its edit. */
+   * hold the finish (`carried`): the Undo then takes its edit. */
   unsent: boolean;
   /** Nothing was taken back: a request carried the finish with no answer, so the server may
    * hold it, and its server looks down now, so no edit can undo it there. The Undo fails
@@ -1045,16 +1045,6 @@ export type Withdrawal = {
  * that sent it went with its request. The server may hold it. */
 function carried(entry: OutboxEntry): boolean {
   return maybeReached.has(entry.event.id) || !!entry.maybeReached || !!entry.out;
-}
-
-/**
- * Whether the Undo of the finish `entry` needs its progress edit although no answer to it ever
- * came: a request carried it while its server looked reachable (`carried`), so it may have
- * arrived with only its answer lost, and the server looks reachable now, so the edit can be
- * made. With the server down the Undo fails instead (`Withdrawal.unreachable`).
- */
-function serverMayHold(connectionId: string, entry: OutboxEntry): boolean {
-  return carried(entry) && looksReachable(connectionId);
 }
 
 /** A finish taken back, and the events that were ahead of it then (where it goes back to). */
@@ -1131,7 +1121,10 @@ export async function withdrawFinish(
     await wait.out;
   }
   const answered = [...waitedFor].some((id) => !taken.some((t) => t.entry.event.id === id));
-  const held = taken.some((t) => serverMayHold(connectionId, t.entry));
+  // One a request carried may be on the server, which looked reachable as it was taken
+  // (else nothing was: `unreachable`), so the Undo takes its edit. Not asked again here: the
+  // server marked down since, the Undo was done on this device alone (fe#258).
+  const held = taken.some((t) => carried(t.entry));
   return {
     unsent: taken.length > 0 && !answered && !held,
     restore: async () => {

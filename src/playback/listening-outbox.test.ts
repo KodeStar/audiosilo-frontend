@@ -1048,6 +1048,24 @@ describe('flushOutbox', () => {
       expect(await outboxEvents('c1')).toEqual([]);
     });
 
+    // Asked again after the take, a server marked down in between made the Undo one of this
+    // device alone, over a finish the server may hold (fe#258).
+    it('a carried finish taken while its server looked reachable still takes the edit', async () => {
+      await appendEvents('c1', [finish('f')]);
+      client(async () => {
+        throw new ApiError(504, 'gateway timeout');
+      });
+      await flushOutbox('c1');
+      (reachability.isReachable as jest.Mock).mockReturnValueOnce(true).mockReturnValue(false);
+      try {
+        const taken = await withdrawFinish('c1', 3, 'Author/Book');
+        expect(taken).toMatchObject({ unsent: false });
+        expect(taken.unreachable).toBeUndefined();
+      } finally {
+        (reachability.isReachable as jest.Mock).mockReturnValue(true);
+      }
+    });
+
     it('a gateway that gave up waiting (504) is no answer from the server either', async () => {
       await appendEvents('c1', [finish('f')]);
       client(async () => {
