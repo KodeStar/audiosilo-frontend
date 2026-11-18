@@ -30,7 +30,7 @@ class ArtworkProvider : ContentProvider() {
   override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
     if (mode != "r") throw SecurityException("Read only")
     val ctx = context ?: throw FileNotFoundException(uri.toString())
-    // Only `art/<key>` ([uriFor]): any other path never names a file.
+    // Only `art/<key>` ([uriString]): any other path never names a file.
     val segments = uri.pathSegments
     if (segments.size != 2 || segments[0] != ART) throw FileNotFoundException(uri.toString())
     val file = CarSnapshotStore.get(ctx)?.artworkByKey?.get(segments[1])
@@ -57,15 +57,19 @@ class ArtworkProvider : ContentProvider() {
   companion object {
     fun authority(context: Context) = "${context.packageName}.audiosilo.artwork"
 
-    /** The content URI for a snapshot item's artwork key ([CarItem.artworkKey]), or null when
-     * it has none. */
-    fun uriFor(context: Context, artworkKey: String?): Uri? {
-      artworkKey ?: return null
-      return Uri.parse(uriString(authority(context), artworkKey))
-    }
-
-    /** [uriFor] as a string, for [authority]: pure Kotlin. Keys are hex, nothing to escape. */
+    /** The content URI for an artwork key ([CarItem.artworkKey], [LocalArtwork]) of
+     * [authority]. Keys are hex, nothing to escape. */
     fun uriString(authority: String, artworkKey: String): String = "content://$authority/$ART/$artworkKey"
+
+    /** The bundled cover a browse row shows for a book with none (Android Auto drew a warning
+     * triangle for an item with no artwork). */
+    const val PLACEHOLDER = "audiosilo_car_cover"
+
+    /** A browse row's artwork: the provider's URI for its cover's [artworkKey], else the
+     * bundled [PLACEHOLDER] of [packageName] (an `android.resource` URI, which the car opens
+     * with no grant). */
+    fun browseArtwork(authority: String, packageName: String, artworkKey: String?): String =
+      artworkKey?.let { uriString(authority, it) } ?: "android.resource://$packageName/drawable/$PLACEHOLDER"
 
     /** [raw], a loaded item's artwork, as the item may carry it: a server URL as its token-free
      * URI ([RemoteArtwork]), a cover file the app wrote (a download's) as this provider's URI,
