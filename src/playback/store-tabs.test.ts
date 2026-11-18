@@ -1290,17 +1290,22 @@ describe.each([
       }
     });
 
-    // fe#351: the move called off a fault (the seek made before it never settled), so once it
-    // was given up a refusal that came later left the engine playing where it faulted.
-    it('a move there refused after it was given up brings back the fault it called off', async () => {
+    // fe#351: a seek on the faulted book called the fault off and never settled. A's press on
+    // the book, still in error, reloads it at the place B left (`retry`, as for any book in
+    // error), so no move there is given up on, and the seek refused later brings no fault back
+    // over the reload.
+    it('a press on the book in error with a move out reloads at the place another tab left', async () => {
       mockMirror.on = true;
       await a.start(30, 'c1', parts);
       await sleep(10);
       a.engine.runOff(1, 0.4); // file 1 measured short: the engine ran on into file 2
       await until(() => a.player().snapshot.state === 'error', 'A to fault');
-      // A seek on the faulted book calls the fault off; the engine never settles it.
-      a.engine.svc.skipToTrack.mockImplementationOnce(() => new Promise<void>(() => {}));
-      void a.player().seekInTrack(60);
+      // A seek on the faulted book calls the fault off; the engine refuses it only later.
+      let refuse: (e: Error) => void = () => {};
+      a.engine.svc.skipToTrack.mockImplementationOnce(
+        () => new Promise<void>((_, reject) => (refuse = reject)),
+      );
+      const seek = a.player().seekInTrack(60);
       await sleep(10);
       // B plays the book on to 605 and stops there.
       await b.start(600, 'c1', parts);
@@ -1309,30 +1314,17 @@ describe.each([
       await b.save();
       await b.player().pause();
       await sleep(40);
-      const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
-      let refuse: (e: Error) => void = () => {};
-      const refused = () => new Promise<void>((_, reject) => (refuse = reject));
-      a.engine.svc.seekTo.mockImplementationOnce(refused);
-      a.engine.svc.skipToTrack.mockImplementationOnce(refused);
-      const shortened = shortenTabMoveBound();
-      try {
-        // A's press moves to B's place, a move given up on after the bound (20 ms here).
-        await a.player().toggle();
-        shortened.mockRestore();
-        expect(
-          a.engine.svc.seekTo.mock.calls.length + a.engine.svc.skipToTrack.mock.calls.length,
-        ).toBeGreaterThan(1);
-        refuse(new Error('refused'));
-        await sleep(10);
-        a.engine.svc.pause.mockClear();
-        a.engine.at(1.4); // still where it faulted, playing on
-        await sleep(10);
-        expect(a.engine.svc.pause).toHaveBeenCalled();
-        expect(a.player().snapshot.position).not.toBe(1.4);
-      } finally {
-        shortened.mockRestore();
-        warned.mockRestore();
-      }
+      a.engine.svc.load.mockClear();
+      await a.player().toggle();
+      expect(a.engine.svc.load.mock.lastCall?.slice(1, 3)).toEqual([0, 605]);
+      expect(a.player().snapshot.state).toBe('playing');
+      refuse(new Error('refused'));
+      await expect(seek).rejects.toThrow('refused');
+      a.engine.svc.pause.mockClear();
+      a.engine.at(610); // playing on from the reload
+      await sleep(10);
+      expect(a.engine.svc.pause).not.toHaveBeenCalled();
+      expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 610 });
     });
 
     // A move given up on (not refused) can still land. Left as it was, the floor put back at

@@ -3526,9 +3526,11 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         if (!(await playOnPastPart(true))) tellPartialEnd();
         return;
       }
-      // A faulted engine is never just resumed (it sits where the book is not): the press
-      // reloads the book at its place, as Retry does.
-      if (loadedFaulted()) {
+      // A faulted engine is never just resumed (it sits where the book is not), nor one in
+      // error (a dead stream; or the engine took a move clamped at its short measure, and
+      // the book shows the place asked for, `showPlace`): the press reloads the book at its
+      // place, as Retry does.
+      if (loadedFaulted() || st === 'error') {
         await get().retry();
         return;
       }

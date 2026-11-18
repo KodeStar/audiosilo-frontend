@@ -4285,6 +4285,20 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 0 });
   });
 
+  it('a play press on a book in error after a clamped skip reloads at the place shown', async () => {
+    await resume(30);
+    ranOff();
+    await flushMicrotasks();
+    // The engine takes the skip clamped at its short measure: in error, no longer faulted.
+    await usePlayer.getState().skipSeconds(30);
+    pushSnapshot(snap('paused', short, { trackIndex: 0, duration: short }));
+    await flushMicrotasks();
+    (mockSvc.load as jest.Mock).mockClear();
+    // Play (the Up next card, the command palette), not Retry: never the engine from its end.
+    await usePlayer.getState().toggle();
+    expect(lastLoad()).toEqual([0, 60]);
+  });
+
   it("a Cast checkpoint of a faulted book's place is not the book's place", async () => {
     await resume(30);
     ranOff();
