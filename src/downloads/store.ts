@@ -1204,6 +1204,8 @@ function persist(drop?: (entry: DownloadEntry) => boolean): Promise<DownloadEntr
   if (!drop && !changedSinceKnown(useDownloads.getState().entries)) return Promise.resolve([]);
   return withRegistryLock(async () => {
     const live = useDownloads.getState().entries;
+    // A save that waited behind another: that one wrote these changes too.
+    if (!drop && !changedSinceKnown(live)) return [];
     const raw = await getItemStrict<unknown>(DOWNLOADS_KEY).catch(() => undefined);
     if (raw === undefined) return [];
     const saved: Registry = isRecord(raw) ? (raw as Registry) : {};
@@ -1258,6 +1260,19 @@ export function followStoredRegistry(raw: string | null): void {
   followStored(parsed);
 }
 
+/** Each entry as JSON, kept with the entry (an entry is never changed in place). */
+const entryText = new WeakMap<DownloadEntry, string>();
+function textOf(entry: DownloadEntry): string {
+  let text = entryText.get(entry);
+  if (text === undefined) entryText.set(entry, (text = JSON.stringify(entry)));
+  return text;
+}
+
+/** Whether this tab's entry is the stored one, field for field. Not by `savedAt` alone: the
+ * other tab changes a finished download without a new one (its chapters taken from the
+ * server, its read-along map, its kept metadata, a file found gone). */
+const sameStored = (mine: DownloadEntry, theirs: DownloadEntry) => textOf(mine) === textOf(theirs);
+
 /** `followStoredRegistry` over the stored registry as read (anything but a record: nothing). */
 function followStored(parsed: unknown): void {
   if (hydrating || !useDownloads.getState().hydrated || !isRecord(parsed)) return;
@@ -1274,14 +1289,15 @@ function followStored(parsed: unknown): void {
     const mine = live[key];
     const theirs = stored[key];
     if (theirs?.status === 'downloaded') {
-      if (mine?.status === 'downloaded' && mine.manifest.savedAt === theirs.manifest.savedAt)
-        continue;
+      if (mine?.status === 'downloaded' && sameStored(mine, theirs)) continue;
       next[key] = nextKnown[key] = theirs;
       seedQueryCache(theirs.connectionId, theirs.libraryId, theirs.path, theirs.manifest);
       changed = true;
     } else if (!theirs && mine?.status === 'downloaded') {
       delete next[key];
       delete nextKnown[key];
+      // As this tab's own `remove`: its seeded item and chapters are no longer kept for good.
+      releaseOfflineBook(mine.connectionId, mine.libraryId, mine.path);
       changed = true;
     }
   }

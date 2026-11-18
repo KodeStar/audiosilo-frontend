@@ -32,6 +32,7 @@ jest.mock('@/api/server-snapshots', () => ({
   seedServerSnapshot: () => {},
   saveServerSnapshot: async () => {},
 }));
+const mockRelease = jest.fn();
 jest.mock('@/downloads/offline-meta', () => ({
   canMatch: () => false,
   captureOfflineMeta: async () => null,
@@ -42,7 +43,7 @@ jest.mock('@/downloads/offline-meta', () => ({
   seedQuery: () => {},
   serverHasMetadata: async () => false,
   whenSessionReady: async () => {},
-  releaseOfflineBook: () => {},
+  releaseOfflineBook: (...a: unknown[]) => mockRelease(...a),
 }));
 jest.mock('@/reader/ebook-file', () => ({ cachedEbookUri: async () => null }));
 jest.mock('@/downloads/readalong-file', () => ({
@@ -186,8 +187,11 @@ describe('two tabs downloading (web)', () => {
 
     // Removed in tab A: gone in tab B too, and tab B's next save leaves it out.
     await a.useDownloads.getState().remove('c1', 2, 'X/Book');
+    mockRelease.mockClear();
     b.followStoredRegistry(await rawStored());
     expect(entryOf(b, 'X/Book')).toBeUndefined();
+    // Its seeded item and chapters are no longer kept for good here either.
+    expect(mockRelease).toHaveBeenCalledWith('c1', 2, 'X/Book');
     await b.useDownloads.getState().download('c1', 2, book('Y/Book'));
     await settle();
     expect(Object.keys(await stored())).toEqual([b.downloadKey('c1', 2, 'Y/Book')]);
@@ -281,4 +285,23 @@ describe('two tabs downloading (web)', () => {
     await Promise.all(purgesOfA.map((purge) => purge('c1')));
     expect(await stored()).toEqual({});
   });
+});
+
+// A finished download changes without a new `savedAt`: the other tab took its chapters from
+// the server, its read-along map, its kept metadata.
+it("follows another tab's change of a finished download that kept its savedAt", async () => {
+  const a = openTab();
+  const b = openTab();
+  await Promise.all([a.useDownloads.getState().hydrate(), b.useDownloads.getState().hydrate()]);
+  await a.useDownloads.getState().download('c1', 2, book('X/Book'));
+  await settle();
+  b.followStoredRegistry(await rawStored());
+  const key = a.downloadKey('c1', 2, 'X/Book');
+  const saved = await stored();
+  const chapters = { chapters: [], duration: 60, source: 'community' };
+  const changed = { ...saved[key], manifest: { ...saved[key].manifest, chapters } };
+  await AsyncStorage.setItem(KEY, JSON.stringify({ [key]: changed }));
+  b.followStoredRegistry(await rawStored());
+  expect(entryOf(b, 'X/Book')?.manifest.savedAt).toBe(saved[key].manifest.savedAt);
+  expect(entryOf(b, 'X/Book')?.manifest.chapters).toEqual(chapters);
 });
