@@ -3740,6 +3740,41 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     expect(lastLoad()).toEqual([0, 30]);
   });
 
+  it("the download swap's load is an ask too: a run off the local file stops at the place", async () => {
+    await resume(30);
+    pushSnapshot(snap('playing', 30.2, { trackIndex: 0 }));
+    pushSnapshot(snap('playing', 50, { trackIndex: 0 })); // played on: no ask stands
+    downloadLands();
+    await flushMicrotasks();
+    expect(lastLoad()).toEqual([0, 50]);
+    expect(usePlayer.getState().nowPlaying?.queue.tracks[0].url).toBe('file:///dl/0.mp3');
+    // The engine measured the download's file 1 at 29.9 s as well: on into file 2.
+    ranOff();
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'error',
+      trackIndex: 0,
+      position: 50,
+    });
+    (mockSvc.load as jest.Mock).mockClear();
+    await usePlayer.getState().toggle();
+    expect(lastLoad()).toEqual([0, 50]);
+  });
+
+  it("a file played on from the download swap's place goes on into the next one", async () => {
+    await resume(30);
+    pushSnapshot(snap('playing', 50, { trackIndex: 0 }));
+    downloadLands();
+    await flushMicrotasks();
+    pushSnapshot(snap('playing', 50.6, { trackIndex: 0 }));
+    pushSnapshot(snap('playing', 139, { trackIndex: 0 }));
+    pushSnapshot(snap('playing', 0.4, { trackIndex: 1 }));
+    jest.advanceTimersByTime(FAULT_HOLD_MS);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'playing', trackIndex: 1 });
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+  });
+
   it("an ask still standing stands on the download's queue once a gapless swap commits", async () => {
     const web = mockSvc as unknown as { swapTo?: jest.Mock };
     web.swapTo = jest.fn(async () => 'swapped');

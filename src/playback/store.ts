@@ -4008,13 +4008,14 @@ async function switchCurrentBookToLocal() {
       // A play goes on through the load as a start's does: iOS's `load` pauses the player,
       // and that pause must read as the load's, not the listener's (`reloadAdopted`).
       if (wasPlaying) beginPlaybackAttempt();
-      await svc.load(
-        queue.tracks,
-        index,
-        positionInTrack,
-        queue.chapterClips,
-        bookRefOf(nowPlaying),
-      );
+      const load = () =>
+        svc.load(queue.tracks, index, positionInTrack, queue.chapterClips, bookRefOf(nowPlaying));
+      // The load puts the engine at the place afresh, as a Retry does, and an engine that
+      // measures the download's file short runs off it the same way: it is asked for the
+      // place, in the queue the store holds until the commit (which moves the ask with the
+      // place, `moveAsk`). Not a faulted book's: its fault stands, and an ask would end it.
+      const asks = usePlayer.getState().nowPlaying === nowPlaying && faultedBook !== nowPlaying;
+      await (asks ? engineMove(nowPlaying, snapshot.trackIndex, snapshot.position, load) : load());
       // Committed before the rate and the play, so the play's `playing` (and the save loop
       // it starts) reads the engine's index through the download's queue.
       const committed = commitLocalSwap(nowPlaying, swap);
