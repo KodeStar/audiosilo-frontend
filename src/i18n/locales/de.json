@@ -500,8 +500,11 @@
         "notKept": "Du hast dich angemeldet, aber dieses Gerät konnte die Anmeldung nicht speichern. Melde dich erneut an.",
         "notThisTrip": "Diese Anmeldung wurde nicht auf diesem Gerät gestartet und daher nicht gespeichert. Melde dich erneut an.",
         "needsUpdate": "Dieser Server muss aktualisiert werden, bevor im Kindermodus jemand per Single Sign-on hinzugefügt werden kann. Die Anmeldung wurde daher nicht gespeichert. Aktualisiere den Server oder melde dich auf andere Weise an.",
-        "failed": "Die Anmeldung wurde nicht abgeschlossen. Melde dich erneut an."
-      }
+        "failed": "Die Anmeldung wurde nicht abgeschlossen. Melde dich erneut an.",
+        "reachRetry": "Der Server war nicht erreichbar, um die Anmeldung abzuschließen. Prüfe deine Verbindung und versuch es noch einmal.",
+        "failedRetry": "Der Server konnte die Anmeldung nicht abschließen. Versuch es noch einmal."
+      },
+      "tryAgain": "Erneut versuchen"
     },
     "scan": {
       "closeLabel": "Scanner schließen",

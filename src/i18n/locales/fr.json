@@ -500,8 +500,11 @@
         "notKept": "Vous êtes connecté, mais cet appareil n'a pas pu garder la connexion. Connectez-vous à nouveau.",
         "notThisTrip": "Cette connexion n'a pas été lancée sur cet appareil, elle n'a donc pas été gardée. Connectez-vous à nouveau.",
         "needsUpdate": "Ce serveur doit être mis à jour pour qu'on puisse ajouter quelqu'un depuis le mode enfant avec l'authentification unique. La connexion n'a donc pas été gardée. Mettez le serveur à jour ou connectez-vous autrement.",
-        "failed": "La connexion n'a pas abouti. Connectez-vous à nouveau."
-      }
+        "failed": "La connexion n'a pas abouti. Connectez-vous à nouveau.",
+        "reachRetry": "Impossible de joindre le serveur pour terminer la connexion. Vérifiez votre connexion, puis réessayez.",
+        "failedRetry": "Le serveur n'a pas pu terminer la connexion. Réessayez."
+      },
+      "tryAgain": "Réessayer"
     },
     "scan": {
       "closeLabel": "Fermer le scanner",

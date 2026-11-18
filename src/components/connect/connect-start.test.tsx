@@ -1591,9 +1591,14 @@ describe("a single sign-on's return (?oidc=1)", () => {
       "There's no sign-in to finish in this browser. Sign in again.",
     ],
     [
-      'no answer',
-      new TypeError('Failed to fetch'),
-      'Could not reach the server to finish signing in. Sign in again.',
+      'a sign-in that expired or was used',
+      new ApiError(401, 'x', 'oidc_sign_in_expired'),
+      'That sign-in expired or was already used. Sign in again.',
+    ],
+    [
+      'a request the server refused',
+      new ApiError(400, 'invalid request'),
+      "Signing in didn't finish. Sign in again.",
     ],
   ])("says why on its own server's card for %s, once", async (_, error, words) => {
     mockApi.oidcFinish.mockRejectedValue(error);
@@ -1614,6 +1619,154 @@ describe("a single sign-on's return (?oidc=1)", () => {
       pathname: '/connect/sign-in',
       params: { serverName: 'Hearthside' },
     });
+  });
+
+  // The server keeps the sign-in (its done cookie) on no answer, a 5xx and a 429 (server#406),
+  // so the screen offers the same finish again, from memory: the address it came back on
+  // never sends it again.
+  describe('with Try again for a sign-in the server kept', () => {
+    const FLOW = 'aZ09-_aZ09-_aZ09';
+    beforeEach(() => {
+      mockParams = { oidc: '1', flow: FLOW };
+      mockApi.serverInfo.mockResolvedValue(info());
+    });
+
+    it.each([
+      ['a 500', new ApiError(500, 'boom'), "The server couldn't finish signing you in. Try again."],
+      [
+        'no answer',
+        new TypeError('Failed to fetch'),
+        'Could not reach the server to finish signing in. Check your connection and try again.',
+      ],
+    ])('finishes on Try again after %s, naming the same flow', async (_, error, words) => {
+      mockApi.oidcFinish
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce({ token: 'session', server_id: 'srv-1', user });
+      await render(<ConnectStart />);
+      await waitFor(() => expect(screen.getByText(words)).toBeTruthy());
+      expect(screen.getByText('Found Hearthside')).toBeTruthy();
+      expect(mockReplace).not.toHaveBeenCalled();
+      await fireEvent.press(screen.getByTestId('oidc-try-again'));
+      await waitFor(() =>
+        expect(mockReplace).toHaveBeenCalledWith({
+          pathname: '/connect/ready',
+          params: { connection: 'srv-1.1' },
+        }),
+      );
+      expect(mockApi.oidcFinish.mock.calls).toEqual([
+        ['Test device', undefined, FLOW],
+        ['Test device', undefined, FLOW],
+      ]);
+      expect(conn()).toMatchObject({ id: 'srv-1.1', token: 'session' });
+      // The params left the address once each way, before the first finish: the retry put
+      // nothing back.
+      expect(mockNavSetParams.mock.calls).toStrictEqual([[{ oidc: undefined, flow: undefined }]]);
+      expect(mockSetParams.mock.calls).toStrictEqual([[{ oidc: undefined, flow: undefined }]]);
+    });
+
+    it('offers no Try again once the server refuses the sign-in (401), only Sign in again', async () => {
+      mockApi.oidcFinish
+        .mockRejectedValueOnce(new ApiError(500, 'boom'))
+        .mockRejectedValueOnce(new ApiError(401, 'x', 'oidc_sign_in_expired'));
+      await render(<ConnectStart />);
+      await waitFor(() => expect(screen.getByTestId('oidc-try-again')).toBeTruthy());
+      await fireEvent.press(screen.getByTestId('oidc-try-again'));
+      await waitFor(() =>
+        expect(
+          screen.getByText('That sign-in expired or was already used. Sign in again.'),
+        ).toBeTruthy(),
+      );
+      expect(screen.queryByTestId('oidc-try-again')).toBeNull();
+      expect(screen.getByText('Sign in')).toBeTruthy();
+      expect(mockApi.oidcFinish).toHaveBeenCalledTimes(2);
+      expect(useSession.getState().connections).toEqual([]);
+    });
+
+    it('offers none for a 401 at the first try', async () => {
+      mockApi.oidcFinish.mockRejectedValue(new ApiError(401, 'x', 'oidc_no_sign_in'));
+      await render(<ConnectStart />);
+      await waitFor(() => expect(screen.getByText('Found Hearthside')).toBeTruthy());
+      expect(
+        screen.getByText("There's no sign-in to finish in this browser. Sign in again."),
+      ).toBeTruthy();
+      expect(screen.queryByTestId('oidc-try-again')).toBeNull();
+    });
+
+    it("waits out a 429's Retry-After before Try again sends it", async () => {
+      jest.useFakeTimers();
+      try {
+        mockApi.oidcFinish
+          .mockRejectedValueOnce(new ApiError(429, 'slow down', undefined, 30))
+          .mockResolvedValueOnce({ token: 'session', server_id: 'srv-1', user });
+        await render(<ConnectStart />);
+        await waitFor(() => expect(screen.getByTestId('oidc-try-again')).toBeTruthy());
+        expect(
+          screen.getByText('Too many tries from this network. Try again in 1 minute.'),
+        ).toBeTruthy();
+        // Not yet: pressed during the wait, it sends nothing.
+        await fireEvent.press(screen.getByTestId('oidc-try-again'));
+        expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
+        await act(async () => jest.advanceTimersByTime(30_000));
+        await fireEvent.press(screen.getByTestId('oidc-try-again'));
+        await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+        expect(mockApi.oidcFinish).toHaveBeenLastCalledWith('Test device', undefined, FLOW);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('keeps the flow key out of every store and log while it offers Try again', async () => {
+      const SecureStore = jest.requireMock('expo-secure-store');
+      const kept: unknown[] = [];
+      const web = { setItem: jest.fn((...a: unknown[]) => kept.push(a)) };
+      const had = { session: globalThis.sessionStorage, local: globalThis.localStorage };
+      Object.assign(globalThis, { sessionStorage: web, localStorage: web });
+      const logs = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
+        jest.spyOn(console, m).mockImplementation(() => {}),
+      );
+      try {
+        mockApi.oidcFinish
+          .mockRejectedValueOnce(new ApiError(500, 'boom'))
+          .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+        await render(<ConnectStart />);
+        await waitFor(() => expect(screen.getByTestId('oidc-try-again')).toBeTruthy());
+        await fireEvent.press(screen.getByTestId('oidc-try-again'));
+        await waitFor(() => expect(mockApi.oidcFinish).toHaveBeenCalledTimes(2));
+        await waitFor(() => expect(screen.getByTestId('oidc-try-again')).toBeTruthy());
+        // Sent with each finish, and nowhere else.
+        expect(mockApi.oidcFinish).toHaveBeenLastCalledWith('Test device', undefined, FLOW);
+        const written = JSON.stringify([
+          (AsyncStorage.setItem as jest.Mock).mock.calls,
+          (AsyncStorage.setMany as jest.Mock).mock.calls,
+          (SecureStore.setItemAsync as jest.Mock).mock.calls,
+          kept,
+          logs.map((l) => l.mock.calls),
+        ]);
+        expect(written).not.toContain(FLOW);
+      } finally {
+        Object.assign(globalThis, { sessionStorage: had.session, localStorage: had.local });
+        logs.forEach((l) => l.mockRestore());
+      }
+    });
+  });
+
+  it('offers no Try again to a pass through kids mode it refused', async () => {
+    seedProfile({ kids: true });
+    const settled = jest.fn();
+    resumeOidcIntent({ newPerson: true, grownUpFromKids: true, tag: 'ab'.repeat(32) }, settled);
+    try {
+      mockApi.oidcFinish.mockRejectedValue(new ApiError(500, 'boom'));
+      mockApi.serverInfo.mockResolvedValue(info());
+      await render(<ConnectStart />);
+      await waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
+      expect(mockToast).toHaveBeenCalledWith({ title: "Signing in didn't finish. Sign in again." });
+      expect(screen.queryByTestId('oidc-try-again')).toBeNull();
+      expect(kidsConnectAllowed()).toBe(false);
+    } finally {
+      dropOidcIntent();
+      endConnectFlow();
+      await act(async () => resetProfilesForTests());
+    }
   });
 
   it("says a session this device couldn't keep is spent, and signs it out", async () => {

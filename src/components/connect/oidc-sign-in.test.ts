@@ -2,7 +2,7 @@ import { ApiError, NetworkError } from '@/api/client';
 import type { ServerInfo } from '@/api/types';
 import i18n from '@/i18n';
 
-import { oidcButtonName, oidcFinishText, oidcReturnOnLoad } from './oidc-sign-in';
+import { oidcButtonName, oidcFinishText, oidcRetryWait, oidcReturnOnLoad } from './oidc-sign-in';
 
 // The player the server serves at /web: its own origin, else (native, Metro dev) none.
 let mockServed: string | null = null;
@@ -104,5 +104,38 @@ describe('oidcFinishText', () => {
       t('connect.signIn.errors.wait', { count: 10 }),
     );
     expect(oidcFinishText(new ApiError(429, 'slow down'), t)).toBe(t('common.tooManyTries'));
+  });
+
+  // With Try again offered (`oidcRetryWait`), no answer and a 5xx say to try again, never to
+  // sign in again; a refusal reads as it does without one.
+  it.each([
+    [new NetworkError(new Error('offline')), 'connect.oidc.errors.reachRetry'],
+    [new ApiError(500, 'boom'), 'connect.oidc.errors.failedRetry'],
+    [new ApiError(503, 'busy'), 'connect.oidc.errors.failedRetry'],
+    [new ApiError(400, 'invalid request'), 'connect.oidc.errors.failed'],
+    [new ApiError(401, 'no', 'oidc_no_sign_in'), 'connect.oidc.errors.noSignIn'],
+  ] as const)('words %p as one to try again', (e, key) => {
+    expect(oidcFinishText(e, t, true)).toBe(t(key));
+  });
+});
+
+describe('oidcRetryWait', () => {
+  it.each([
+    ['no answer', new NetworkError(new Error('offline')), 0],
+    ['a 500', new ApiError(500, 'boom'), 0],
+    ['a 502 from a proxy', new ApiError(502, 'bad gateway'), 0],
+    ['a 429 with no Retry-After', new ApiError(429, 'slow down'), 0],
+    ['a 429 with Retry-After', new ApiError(429, 'slow down', undefined, 30), 30_000],
+  ] as const)('lets %s go again', (_, e, ms) => {
+    expect(oidcRetryWait(e)).toBe(ms);
+  });
+
+  it.each([
+    ['a 400', new ApiError(400, 'invalid request')],
+    ['a 401', new ApiError(401, 'x', 'oidc_sign_in_expired')],
+    ['a 403', new ApiError(403, 'x', 'oidc_intent_mismatch')],
+    ['a 429 asking a wait past the trip itself', new ApiError(429, 'slow', undefined, 3600)],
+  ] as const)('never lets %s go again', (_, e) => {
+    expect(oidcRetryWait(e)).toBeUndefined();
   });
 });

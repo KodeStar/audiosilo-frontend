@@ -427,7 +427,9 @@ and `ConnectStart` takes the params off first (the screen's own `useNavigation()
 runs at mount), then `POST /auth/oidc/finish` naming the `flow` (so two tabs back at once each
 finish their own sign-in, server#406; none from a server before the key) (`finishOidcSignIn`, the
 exchange's answer) and `finishConnect`; a failure is worded above the served card
-(`oidcFinishText`), and a session that answers once the screen has gone is signed out again, never
+(`oidcFinishText`), with Try again when the server kept the sign-in (`oidcRetryWait`: no answer,
+a 5xx, a 429 once its `Retry-After` is over; the same finish from memory, its flow key never in
+the address, storage or a log; never for a refusal, nor while a kids-mode pass waits), and a session that answers once the screen has gone is signed out again, never
 kept. Nothing in memory survives the page load, so what the flow is for (a grown-up's pass through
 kids mode, "Add someone", a signed-out visit's book) goes through the tab's `sessionStorage`
 (`oidc-intent.ts`, fe#310): the step writes it as it leaves (`holdOidcIntent`), and the connect

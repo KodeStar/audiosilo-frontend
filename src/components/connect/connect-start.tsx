@@ -58,7 +58,14 @@ import {
   useHandoff,
 } from './invite-handoff';
 import { settleOidcPass } from './oidc-intent';
-import { finishOidcSignIn, oidcFlowKey, oidcReturnCleared, oidcReturnOrigin } from './oidc-sign-in';
+import {
+  finishOidcSignIn,
+  type OidcFinishFailure,
+  type OidcFinishRetry,
+  oidcFlowKey,
+  oidcReturnCleared,
+  oidcReturnOrigin,
+} from './oidc-sign-in';
 import { ProxyHeadersEditor } from './proxy-headers-editor';
 import { draftOf, draftToSet, type HeaderDraftRow } from './proxy-headers-model';
 import { useLinkPairing } from './use-pairing';
@@ -91,7 +98,8 @@ import { useLinkPairing } from './use-pairing';
  * (server#235, started on the sign-in step): the sign-in is finished at once
  * (`finishOidcSignIn`, with the `flow` the return names), the params queued off the address
  * before the finish is sent so a reload never tries it again; a failure says why above its
- * own server's card, as a dead pairing link does.
+ * own server's card, as a dead pairing link does, with Try again when the server kept the
+ * sign-in (no answer, a 5xx, a 429 once its wait is over): the same finish, from memory.
  */
 export function ConnectStart() {
   const { t } = useTranslation();
@@ -159,6 +167,16 @@ export function ConnectStart() {
   const { pairing, error: pairError, fail, pair, clear: clearPairError } = useLinkPairing(linkFlow);
   // A pairing link that failed for a reason that can pass (`PairOutcome` `temporary`).
   const [retryLink, setRetryLink] = useState<PairingScan | null>(null);
+  // A single sign-on's finish the server kept the sign-in for (`OidcFinishFailure.retry`):
+  // Try again sends it once `ready` (its `Retry-After` over), and the finish runs meanwhile
+  // (`oidcFinishing`) as the first did, under "Connecting".
+  const [oidcRetry, setOidcRetry] = useState<{
+    run: OidcFinishRetry['run'];
+    ready: boolean;
+  } | null>(null);
+  const oidcRetryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(oidcRetryTimer.current), []);
+  const [oidcFinishing, setOidcFinishing] = useState(false);
   // The reconnect the code that opened this screen continues (scanned from a reconnect's
   // sign-in step, `holdScanReconnect`): taken once, and only that code's (Try again too),
   // never a link pasted or opened later (`useHandoff`).
@@ -201,6 +219,8 @@ export function ConnectStart() {
   // busy, failing or not answering) keeps its token for a reload, and offers Try again.
   const pairLink = async (scan: PairingScan) => {
     setRetryLink(null);
+    // A single sign-on's Try again is about that sign-in, not this link.
+    setOidcRetry(null);
     // The scanned code's reconnect, and still only for one of that connection's own
     // addresses: a link carrying the same token for another address re-pairs nothing.
     const outcome = await pair(
@@ -249,7 +269,7 @@ export function ConnectStart() {
   }, [token, server, home, away, sid, book, path, uid, pair, fail]);
 
   // A single sign-on's return: finish it once, with `?oidc=1` queued off the address before
-  // the finish is sent (the cookie goes with the first try, so a reload could only fail). A
+  // the finish is sent (a reload must not send it again: only Try again does, from memory). A
   // failure shows its own server's card under the reason, as a dead pairing link does; a
   // screen gone before the answer keeps no session (`finishOidcSignIn`'s `live`).
   const oidcStarted = useRef(false);
@@ -267,16 +287,43 @@ export function ConnectStart() {
     }
     oidcStarted.current = true;
     navigation.setParams(oidcReturnCleared);
-    void finishOidcSignIn(oidcOrigin, t, () => mounted.current, oidcFlow).then((message) => {
-      if (message === null || !mounted.current) return;
+    void finishOidcSignIn(oidcOrigin, t, () => mounted.current, oidcFlow).then((failure) => {
+      if (failure === null || !mounted.current) return;
       // A backstop once settled, when the navigators surely listen: the reason must not sit
       // under an address that would try the finish again.
       router.setParams(oidcReturnCleared);
-      fail(message);
+      oidcFailed(failure);
       showServedCard(oidcOrigin);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // A failed finish says why, and offers its retry when the server left room for one (its
+  // wait, a 429's `Retry-After`, over first). None: the sign-in is refused, so Sign in again.
+  const oidcFailed = ({ message, retry }: OidcFinishFailure) => {
+    fail(message);
+    clearTimeout(oidcRetryTimer.current);
+    setOidcRetry(retry ? { run: retry.run, ready: retry.waitMs <= 0 } : null);
+    if (retry && retry.waitMs > 0) {
+      oidcRetryTimer.current = setTimeout(
+        () => setOidcRetry((r) => r && { ...r, ready: true }),
+        retry.waitMs,
+      );
+    }
+  };
+  const retryOidc = () => {
+    if (!oidcRetry?.ready) return;
+    const { run } = oidcRetry;
+    setOidcRetry(null);
+    clearPairError();
+    setOidcFinishing(true);
+    void run().then((failure) => {
+      // Signed in: the flow moves on, still under "Connecting".
+      if (failure === null || !mounted.current) return;
+      setOidcFinishing(false);
+      oidcFailed(failure);
+    });
+  };
 
   // The served player: ask its own server who it is, once.
   useEffect(() => {
@@ -341,6 +388,7 @@ export function ConnectStart() {
   // its Try again are about the link, not this address, and go (fe#159).
   const moveOn = () => {
     setRetryLink(null);
+    setOidcRetry(null);
     clearPairError();
   };
 
@@ -500,16 +548,17 @@ export function ConnectStart() {
     else if (invite) beginInviteSignIn(invite, () => router.push('/connect/sign-in'));
   };
 
-  if (served === 'pending' || pairing) {
+  const connecting = pairing || oidcFinishing;
+  if (served === 'pending' || connecting) {
     return (
       <ConnectFrame>
         <View className="items-center gap-4" accessibilityLiveRegion="polite">
           <Logo size={56} />
           <Spinner size="large" />
           <Text variant="muted">
-            {pairing ? t('connect.server.connecting') : t('onboarding.start.finding')}
+            {connecting ? t('connect.server.connecting') : t('onboarding.start.finding')}
           </Text>
-          {pairing ? null : (
+          {connecting ? null : (
             <Button
               variant="ghost"
               title={t('common.cancel')}
@@ -577,6 +626,16 @@ export function ConnectStart() {
           title={t('connect.server.pairingTryAgain')}
           onPress={() => void pairLink(retryLink)}
           testID="pairing-try-again"
+        />
+      ) : null}
+      {pairError && oidcRetry ? (
+        <Button
+          variant="outline"
+          icon="rotate"
+          title={t('connect.oidc.tryAgain')}
+          disabled={!oidcRetry.ready}
+          onPress={retryOidc}
+          testID="oidc-try-again"
         />
       ) : null}
       {/* The app's first action is the QR (fe#264): the console's Pair a device or an invite
