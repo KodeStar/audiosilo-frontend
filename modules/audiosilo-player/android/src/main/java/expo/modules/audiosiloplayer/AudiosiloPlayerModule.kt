@@ -325,15 +325,13 @@ class AudiosiloPlayerModule : Module() {
       // maps to (clip item, clip-relative position).
       moveOnMain(promise) { c ->
         val map = timelineMap
-        val target = if (map.clipped) {
+        if (map.clipped) {
           val fileIndex = map.itemToFile(c.currentMediaItemIndex, 0L).first
           val (idx, ms) = map.fileToItem(fileIndex, seconds)
           MoveLandings.Target(idx, ms)
         } else {
           MoveLandings.Target(c.currentMediaItemIndex, (seconds * 1000).toLong())
         }
-        c.seekTo(target.item, target.positionMs)
-        target
       }
     }
 
@@ -341,14 +339,12 @@ class AudiosiloPlayerModule : Module() {
       // `index` is a FILE index; map it to the clip item that starts that file/position.
       moveOnMain(promise) { c ->
         val map = timelineMap
-        val target = if (map.clipped) {
+        if (map.clipped) {
           val (idx, ms) = map.fileToItem(index, seconds)
           MoveLandings.Target(idx, ms)
         } else {
           MoveLandings.Target(index, (seconds * 1000).toLong())
         }
-        c.seekTo(target.item, target.positionMs)
-        target
       }
     }
 
@@ -592,10 +588,11 @@ class AudiosiloPlayerModule : Module() {
     })
   }
 
-  /** Make a JS move on the main thread with the controller, resolving [promise] once it landed
-   * ([MoveLandings]), or at once with no controller. A move the controller never took rejects
-   * (`ERR_MOVE_NOT_TAKEN`): the store reads it as refused, the engine still where it was. */
-  private fun moveOnMain(promise: Promise, move: (MediaController) -> MoveLandings.Target) {
+  /** Seek the controller on the main thread to the place [target] gives for it, resolving
+   * [promise] once the seek landed ([MoveLandings]), or at once with no controller. A seek the
+   * controller never took rejects (`ERR_MOVE_NOT_TAKEN`): the store reads it as refused, the
+   * engine still where it was. */
+  private fun moveOnMain(promise: Promise, target: (MediaController) -> MoveLandings.Target) {
     handler.post {
       val c = controller ?: return@post promise.resolve(null)
       landings.run(
@@ -607,7 +604,7 @@ class AudiosiloPlayerModule : Module() {
           }
         },
         { MoveLandings.Target(c.currentMediaItemIndex, c.currentPosition) },
-      ) { move(c) }
+      ) { target(c).also { c.seekTo(it.item, it.positionMs) } }
     }
   }
 
