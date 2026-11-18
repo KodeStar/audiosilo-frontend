@@ -712,7 +712,7 @@ export class CastPlaybackService implements PlaybackService {
   ): { trackIndex: number; position: number } | null {
     const on = this.snapshot.trackIndex;
     if (index <= on) {
-      const buffering = status.playerState === 'buffering' || status.playerState === 'loading';
+      const buffering = status.playerState !== 'idle' && !isSettled(status);
       if (!buffering || index < on) this.stalling = null;
       else if (this.stalling?.trackIndex !== on) this.stalling = { trackIndex: on, at: this.now() };
       this.stallSkip = null;
@@ -721,7 +721,7 @@ export class CastPlaybackService implements PlaybackService {
     const want = this.intended;
     const stalled = this.stalling?.trackIndex === on && this.now() - this.stalling.at < STALL_MS;
     const ended = status.playerState === 'idle' && status.idleReason === 'finished';
-    if (!this.stallSkip && stalled && want?.landed && want.trackIndex === on && !ended) {
+    if (stalled && want?.landed && want.trackIndex === on && !ended) {
       this.stallSkip = { trackIndex: on, position: this.snapshot.position, at: this.now() };
     }
     this.stalling = null;
@@ -1101,9 +1101,10 @@ export class CastPlaybackService implements PlaybackService {
       loaded && index !== null && this.loadsInFlight === 0 && !read
         ? this.stalledPlace(status, index)
         : null;
-    const stalledError = status.playerState === 'idle' && status.idleReason === 'error';
-    if (stalled && !stalledError) return;
-    if (stalled) this.stallSkip = null;
+    if (stalled) {
+      if (status.playerState !== 'idle' || status.idleReason !== 'error') return;
+      this.stallSkip = null;
+    }
     // Once a queue of ours answered, the media it replaced playing or paused on, on another
     // file (`replacedMedia`), or ending a file there (`replacedEnd`): no place (below), and no
     // word on this book's play state either (its `playing` would have the queue's paused
@@ -1138,10 +1139,11 @@ export class CastPlaybackService implements PlaybackService {
     });
     const offset = loaded?.offsets[trackIndex] ?? 0;
     const duration = loaded?.tracks[trackIndex]?.duration ?? this.snapshot.duration;
-    let position =
-      Number.isFinite(status.position) && !this.idleAtZero(status, trackIndex) && !stalled
+    let position = stalled
+      ? stalled.position
+      : Number.isFinite(status.position) && !this.idleAtZero(status, trackIndex)
         ? status.position + offset
-        : (stalled?.position ?? this.snapshot.position);
+        : this.snapshot.position;
     if (loaded && index !== null && this.loadsInFlight === 0 && !stalled) {
       // As in flight (`skippedPast`), once the load answered: only just after the move, as a
       // file the receiver played unseen may have run on into the next by now.
