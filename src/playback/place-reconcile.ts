@@ -347,6 +347,8 @@ async function moveOrOffer(
 ): Promise<boolean> {
   const now = usePlayer.getState();
   if (selectBookKey(now) !== bookKey || localMoveCount() !== moves) return false;
+  // A book that played to its end stays there: its finish is already sent.
+  if (now.snapshot.state === 'ended') return false;
   const from = selectBookPosition(now);
   const to = placeToMoveTo({ server, deviceId, mirror, enginePosition: from });
   if (to === null) {
@@ -370,7 +372,9 @@ async function moveOrOffer(
  * not answered within the start's wait) gets it after all: the same rule as a check's answer,
  * weighed against this device's record as the start read it (`LatePlace.mirror`: the
  * session's own saves since are of the older place it started from, and would always read as
- * newer). A seek of the listener's own made meanwhile wins. Never throws.
+ * newer). A seek of the listener's own made meanwhile wins, and so does an offer of the same
+ * row shown or answered since (Jump, Stay or ignored: `answeredSince`), which the move would
+ * otherwise overrule. Never throws.
  */
 async function applyLatePlace(
   bookKey: string,
@@ -380,10 +384,30 @@ async function applyLatePlace(
   const np = usePlayer.getState().nowPlaying;
   if (!np) return;
   try {
-    await moveOrOffer(np, bookKey, moves, server, await getDeviceId(), mirror);
+    const [deviceId, current] = await Promise.all([
+      getDeviceId(),
+      readMirror(np.connectionId, np.libraryId, np.path),
+    ]);
+    if (answeredSince(bookKey, server, current)) return;
+    await moveOrOffer(np, bookKey, moves, server, deviceId, mirror);
   } catch {
     // Stays where it is; the saves go on (guarded: the start was not checked, fe#198).
   }
+}
+
+/** True when the listener has already been offered `row` (this launch, `shownOffers`) or has
+ * answered it (`current`, this device's record now: its version acknowledged, or its key
+ * noted), so a late answer of the same row neither moves the book nor offers it again. */
+function answeredSince(
+  bookKey: string,
+  row: Progress | null,
+  current: Pick<ProgressSave, 'ack_version' | 'answered'> | null,
+): boolean {
+  if (!row) return false;
+  const key = placeKey(row);
+  if (shownOffers.has(`${bookKey}|${key}`)) return true;
+  if (current?.answered?.includes(key)) return true;
+  return row.version > 0 && (current?.ack_version ?? 0) >= row.version;
 }
 
 /** "Picked up your place from another device: Chapter 12, 2:13" (into the chapter) with Undo, shown

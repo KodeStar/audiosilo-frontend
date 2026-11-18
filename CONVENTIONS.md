@@ -2797,7 +2797,8 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   answers after the wait gets the place reconcile's rule once the book is loaded
   (`onLatePlace`, `applyLatePlace`: moved to another device's newer place with Undo, or offered
   it on Sync v2), weighed against this device's record as the start read it, and a seek of the
-  listener's own made meanwhile wins.
+  listener's own made meanwhile wins, as does an offer of the same row shown or answered
+  since (`answeredSince`), and a book played to its end stays there.
 - **Auto sleep stays off in the car**: `car-connection.ts` (`isCarConnected`, written by the
   car sync and, on iOS, by the car start in `register-car-task.ios.ts`) is read by
   `auto-sleep-controller.ts`, so the nightly timer never pauses a driver. It is its own module

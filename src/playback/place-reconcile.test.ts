@@ -775,6 +775,27 @@ describe('a downloaded book whose server answered only after it started', () => 
     expect(mockToast).not.toHaveBeenCalled();
   });
 
+  // The review: Stay on an offer of the same row (the sync's answer) made meanwhile was
+  // overruled by the late answer's move.
+  it('an offer of the same row answered meanwhile stands: no move', async () => {
+    const answer = await startedWithoutItsServer();
+    mockMirror = { ...mirrorAt('2026-10-08T12:00:00Z', 110), ack_version: 3 };
+    answer();
+    await settle();
+    expect(seeks()).toEqual([]);
+    expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it('a book that played to its end meanwhile stays there', async () => {
+    const answer = await startedWithoutItsServer();
+    pushSnapshot(snap('ended', 1000));
+    await settle();
+    answer();
+    await settle();
+    expect(seeks()).toEqual([]);
+    expect(mockToast).not.toHaveBeenCalled();
+  });
+
   it('stays when the server holds nothing newer of another device', async () => {
     let answer: (late: LatePlace | null) => void = () => {};
     mockLoadInitialProgress.mockResolvedValueOnce({
