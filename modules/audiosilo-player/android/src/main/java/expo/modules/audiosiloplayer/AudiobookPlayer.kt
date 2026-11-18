@@ -7,6 +7,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 
 /** What [AudiobookPlayer] asks of its service (the session knows who sent a command). */
 interface AudiobookPlayerHooks {
@@ -79,6 +80,7 @@ class AudiobookPlayer(player: Player, private val hooks: AudiobookPlayerHooks) :
   /** The engine's error with the listener's language's message ([AudiobookPlayerHooks.errorMessage]):
    * the session builds the platform session's error state from this (what Android Auto shows).
    * The code, the cause and the extras stay the engine's. */
+  @androidx.annotation.OptIn(UnstableApi::class)
   override fun getPlayerError(): PlaybackException? {
     val error = super.getPlayerError() ?: return null
     val message = hooks.errorMessage()?.ifEmpty { null } ?: return error
