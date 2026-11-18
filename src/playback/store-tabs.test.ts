@@ -200,6 +200,9 @@ function makeEngine() {
     svc: svc as typeof svc & PlaybackService,
     /** The engine plays on to `position` (seconds into the file). */
     at: (position: number) => push({ position }),
+    /** The engine goes on into a later file by itself, at `position` in it (a run off the end
+     * of a file it measured short). */
+    runOff: (trackIndex: number, position: number) => push({ trackIndex, position }),
     /** The playing file plays to its end and the next one (`trackIndex`) loads and plays on, as
      * the web engine does it: `loading`, then `playing`, with nothing pressed. */
     advance: (trackIndex: number) => {
@@ -1047,6 +1050,15 @@ describe.each([
   });
 
   describe('a tab another tab has played past', () => {
+    /** The 5 s bound (`TAB_MOVE_MAX_MS`) runs out in 20 ms; every other timer is real. */
+    function shortenTabMoveBound() {
+      const realTimeout = globalThis.setTimeout;
+      return jest
+        .spyOn(globalThis, 'setTimeout')
+        .mockImplementation(((fn: () => void, ms?: number) =>
+          realTimeout(fn, ms === 5_000 ? 20 : ms)) as typeof setTimeout);
+    }
+
     it('plays again from where the other tab left the same book, in one span from there', async () => {
       await playedPast(a, b);
       b.engine.at(90);
@@ -1254,12 +1266,7 @@ describe.each([
       b.engine.at(90);
       await b.save();
       const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
-      // The 5 s bound (`TAB_MOVE_MAX_MS`) runs out in a moment; every other timer is real.
-      const realTimeout = globalThis.setTimeout;
-      const shortened = jest
-        .spyOn(globalThis, 'setTimeout')
-        .mockImplementation(((fn: () => void, ms?: number) =>
-          realTimeout(fn, ms === 5_000 ? 20 : ms)) as typeof setTimeout);
+      const shortened = shortenTabMoveBound();
       try {
         a.engine.svc.seekTo.mockImplementationOnce(() => new Promise<void>(() => {}));
         await a.engine.svc.play(); // no press in the page: the engine plays from 30
@@ -1283,6 +1290,43 @@ describe.each([
       }
     });
 
+    // fe#351: a seek on the faulted book called the fault off and never settled. A's press on
+    // the book, still in error, reloads it at the place B left (`retry`, as for any book in
+    // error), so no move there is given up on, and the seek refused later brings no fault back
+    // over the reload.
+    it('a press on the book in error with a move out reloads at the place another tab left', async () => {
+      mockMirror.on = true;
+      await a.start(30, 'c1', parts);
+      await sleep(10);
+      a.engine.runOff(1, 0.4); // file 1 measured short: the engine ran on into file 2
+      await until(() => a.player().snapshot.state === 'error', 'A to fault');
+      // A seek on the faulted book calls the fault off; the engine refuses it only later.
+      let refuse: (e: Error) => void = () => {};
+      a.engine.svc.skipToTrack.mockImplementationOnce(
+        () => new Promise<void>((_, reject) => (refuse = reject)),
+      );
+      const seek = a.player().seekInTrack(60);
+      await sleep(10);
+      // B plays the book on to 605 and stops there.
+      await b.start(600, 'c1', parts);
+      await sleep(10);
+      b.engine.at(605);
+      await b.save();
+      await b.player().pause();
+      await sleep(40);
+      a.engine.svc.load.mockClear();
+      await a.player().toggle();
+      expect(a.engine.svc.load.mock.lastCall?.slice(1, 3)).toEqual([0, 605]);
+      expect(a.player().snapshot.state).toBe('playing');
+      refuse(new Error('refused'));
+      await expect(seek).rejects.toThrow('refused');
+      a.engine.svc.pause.mockClear();
+      a.engine.at(610); // playing on from the reload
+      await sleep(10);
+      expect(a.engine.svc.pause).not.toHaveBeenCalled();
+      expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 610 });
+    });
+
     // A move given up on (not refused) can still land. Left as it was, the floor put back at
     // the place the engine had refused every save of a landing far behind it, and the span
     // opened at that place ran on over the audio in between.
@@ -1299,11 +1343,7 @@ describe.each([
               };
             }),
         );
-        const realTimeout = globalThis.setTimeout;
-        const shortened = jest
-          .spyOn(globalThis, 'setTimeout')
-          .mockImplementation(((fn: () => void, ms?: number) =>
-            realTimeout(fn, ms === 5_000 ? 20 : ms)) as typeof setTimeout);
+        const shortened = shortenTabMoveBound();
         return { land: () => land(), restore: () => shortened.mockRestore() };
       }
 

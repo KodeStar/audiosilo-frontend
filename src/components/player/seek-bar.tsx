@@ -9,6 +9,7 @@ import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { useSliderControl } from '@/components/ui/use-slider-control';
 import { formatClock, formatDuration, formatWallClock } from '@/lib/format';
+import { quietly } from '@/lib/quietly';
 import { linesFor, scaleCapped, useFontScale, useLargeText } from '@/lib/text-scale';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
@@ -417,7 +418,7 @@ export function PlayerSeekBar({
         textureKey={seekTextureKey(bookKey, segment.perTrack ? -1 - trackIndex : segment.start)}
         bookmarks={inSegment}
         bookOffset={segment.perTrack ? undefined : segment.start}
-        onStep={(dir) => void skipSeconds(dir === 1 ? skipForward : -skipBackward)}
+        onStep={(dir) => quietly(skipSeconds(dir === 1 ? skipForward : -skipBackward))}
         accessibilityLabel={t(SEGMENT_LABEL[kind])}
         bars={bars}
         scale={scale}

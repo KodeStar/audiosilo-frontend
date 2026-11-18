@@ -1,6 +1,7 @@
 import { AppState } from 'react-native';
 import { create } from 'zustand';
 
+import { quietly } from '@/lib/quietly';
 import { ticker } from '@/lib/ticker';
 
 import { selectBookKey, selectBookPosition, usePlayer } from './store';
@@ -186,7 +187,7 @@ export function undoJump(): number | null {
     until: Date.now() + UNDO_LANDING_WINDOW_MS,
   };
   clearJumpUndo();
-  void player.seekBook(jump.from);
+  quietly(player.seekBook(jump.from));
   return jump.from;
 }
 

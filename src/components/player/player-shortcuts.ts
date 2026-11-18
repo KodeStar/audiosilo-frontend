@@ -5,6 +5,7 @@ import { dismissToast, toast } from '@/components/ui/toast';
 import { editBookmarkRequest } from '@/lib/annotation-request';
 import { formatClock } from '@/lib/format';
 import type { ShortcutKey } from '@/lib/keyboard';
+import { quietly } from '@/lib/quietly';
 import { noteInteraction } from '@/playback/last-interaction';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
@@ -181,10 +182,10 @@ export function runPlayerShortcut(action: PlayerShortcut, env: ShortcutEnv): boo
       void (player.snapshot.state === 'error' ? player.retry() : player.toggle());
       return true;
     case 'back':
-      void player.skipSeconds(-skipBackward);
+      quietly(player.skipSeconds(-skipBackward));
       return true;
     case 'forward':
-      void player.skipSeconds(skipForward);
+      quietly(player.skipSeconds(skipForward));
       return true;
     case 'previousChapter':
       stepSegment(player, -1);

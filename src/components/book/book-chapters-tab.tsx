@@ -22,6 +22,7 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock, formatDuration } from '@/lib/format';
 import { percentHeard } from '@/lib/progress-view';
+import { quietly } from '@/lib/quietly';
 import { cn } from '@/lib/utils';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectBookPosition, usePlayer } from '@/playback/store';
@@ -232,7 +233,7 @@ function WholeBook({
   const position = live >= 0 ? live : savedPosition;
   const onSeek = (p: number) => {
     const at = scrubTarget(p, total);
-    if (loaded) void seekBook(at);
+    if (loaded) quietly(seekBook(at));
     else onJump({ position: at });
   };
   const onStep = (dir: 1 | -1) => {

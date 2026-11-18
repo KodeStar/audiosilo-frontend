@@ -252,9 +252,12 @@ export interface PlaybackService {
    * the listener's own move (it lowers the resume floor). Not called for moves the JS asked
    * for, auto-rewind, Smart speed's skips, or a file running on into the next. Optional: the
    * web routes its OS seeks through `onRemoteSeek` instead (its engine has not moved yet when
-   * the OS asks).
+   * the OS asks). `checkpoint`: no move at all, the engine's place told so the store saves it
+   * now (Cast, as iOS suspends the app: `RoutedService.checkpoint`).
    */
-  onRemoteMove?(handler: ((trackIndex: number, positionInTrack: number) => void) | null): void;
+  onRemoteMove?(
+    handler: ((trackIndex: number, positionInTrack: number, checkpoint?: boolean) => void) | null,
+  ): void;
   /** Native: the OS changed the speed (CarPlay's rate button, iOS's rate command, an
    * Android controller) and the engine already applied it. Optional. */
   onRateChange?(handler: ((rate: number) => void) | null): void;
@@ -279,6 +282,18 @@ export interface PlaybackService {
    * `playWhenReady` on its `onState`.
    */
   onPlayAsked?(handler: (() => void) | null): void;
+  /**
+   * The service loaded the book into an engine by itself, at `(trackIndex, positionInTrack)`:
+   * the Cast route switch putting it back on the phone as a session ends, or when it can't be
+   * cast (`RoutedPlaybackService`). `loaded` settles as that load does. The store did not ask
+   * for this move, so it is told of it, and counts it as an ask of its own (`askedPlace`): the
+   * phone's engine can measure a file short on this load as on any other. Optional: only the
+   * route switch loads by itself.
+   */
+  onOwnLoad?(
+    handler:
+      ((trackIndex: number, positionInTrack: number, loaded: Promise<unknown>) => void) | null,
+  ): void;
   /**
    * For the store's `adoptLoaded`: where an engine this bridge did NOT load is now (a
    * queue the Android playback service loaded itself, for the car or before the app's JS

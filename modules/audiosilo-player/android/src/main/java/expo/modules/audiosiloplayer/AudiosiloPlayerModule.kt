@@ -110,6 +110,12 @@ class AudiosiloPlayerModule : Module() {
   private var pendingRemoteMove: Pair<Int, Double>? = null
   private val remoteMoveFallback = Runnable { flushRemoteMove() }
 
+  /** The JS seeks waiting for the controller to report their new place (fe#351). */
+  private val landings = MoveLandings(
+    schedule = { r, ms -> handler.postDelayed(r, ms) },
+    cancel = { r -> handler.removeCallbacks(r) },
+  )
+
   @Volatile private var observingBookmarks = false
   @Volatile private var observingCar = false
   @Volatile private var observingCarConnection = false
@@ -250,9 +256,15 @@ class AudiosiloPlayerModule : Module() {
       }
     }
 
-    AsyncFunction("load") { tracks: List<TrackRecord>, startIndex: Int, position: Double, chapters: List<ChapterRecord>?, book: BookRecord? ->
+    // `load`, `seekTo` and `skipToTrack` resolve once the move took (fe#351): the store counts
+    // its ask as landed then. JS and this module always ship together (no over-the-air
+    // updates), so no older binary that resolves sooner is ever asked.
+    //
+    // Resolves once the controller holds the new queue at its place (`setMediaItems` sets it at
+    // once): every progress sample sent from then on is the new queue's.
+    AsyncFunction("load") { tracks: List<TrackRecord>, startIndex: Int, position: Double, chapters: List<ChapterRecord>?, book: BookRecord?, promise: Promise ->
       handler.post {
-        val c = controller ?: return@post
+        val c = controller ?: return@post promise.resolve(null)
         // A remote move not reported yet belongs to the queue this load replaces.
         dropRemoteMove()
         // Every streamed track in a book shares the same auth header, for its server.
@@ -293,6 +305,7 @@ class AudiosiloPlayerModule : Module() {
         c.setMediaItems(queue.items, queue.index, queue.positionMs)
         c.prepare()
         emitTrackChange(startIndex) // emit the FILE index the JS store expects
+        promise.resolve(null)
       }
     }
 
@@ -306,32 +319,31 @@ class AudiosiloPlayerModule : Module() {
       handler.post { controller?.pause() }
     }
 
-    AsyncFunction("seekTo") { seconds: Double ->
+    // The two moves resolve once the controller reported the new place ([MoveLandings]).
+    AsyncFunction("seekTo") { seconds: Double, promise: Promise ->
       // `seconds` is file-relative (the store's per-track position). In chapter mode it
       // maps to (clip item, clip-relative position).
-      handler.post {
-        val c = controller ?: return@post
+      moveOnMain(promise) { c ->
         val map = timelineMap
         if (map.clipped) {
           val fileIndex = map.itemToFile(c.currentMediaItemIndex, 0L).first
           val (idx, ms) = map.fileToItem(fileIndex, seconds)
-          c.seekTo(idx, ms)
+          MoveLandings.Target(idx, ms)
         } else {
-          c.seekTo((seconds * 1000).toLong())
+          MoveLandings.Target(c.currentMediaItemIndex, (seconds * 1000).toLong())
         }
       }
     }
 
-    AsyncFunction("skipToTrack") { index: Int, seconds: Double ->
+    AsyncFunction("skipToTrack") { index: Int, seconds: Double, promise: Promise ->
       // `index` is a FILE index; map it to the clip item that starts that file/position.
-      handler.post {
-        val c = controller ?: return@post
+      moveOnMain(promise) { c ->
         val map = timelineMap
         if (map.clipped) {
           val (idx, ms) = map.fileToItem(index, seconds)
-          c.seekTo(idx, ms)
+          MoveLandings.Target(idx, ms)
         } else {
-          c.seekTo(index, (seconds * 1000).toLong())
+          MoveLandings.Target(index, (seconds * 1000).toLong())
         }
       }
     }
@@ -560,6 +572,10 @@ class AudiosiloPlayerModule : Module() {
         if (reason == Player.DISCONTINUITY_REASON_SILENCE_SKIP || replacing) return
         emitProgress()
         flushRemoteMove()
+        // A JS seek resolves only now, its new place sent first; only its own seek does.
+        if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+          landings.landed(newPosition.mediaItemIndex, newPosition.positionMs)
+        }
       }
       override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         if (replacing) return
@@ -570,6 +586,26 @@ class AudiosiloPlayerModule : Module() {
       // A failed engine reaches JS from the service (`PlayerEventSink.playerFailed`): the
       // session shows it to controllers as stopped, with no error (fe#157).
     })
+  }
+
+  /** Seek the controller on the main thread to the place [target] gives for it, resolving
+   * [promise] once the seek landed ([MoveLandings]), or at once with no controller. A seek the
+   * controller never took rejects (`ERR_MOVE_NOT_TAKEN`): the store reads it as refused, the
+   * engine still where it was. */
+  private fun moveOnMain(promise: Promise, target: (MediaController) -> MoveLandings.Target) {
+    handler.post {
+      val c = controller ?: return@post promise.resolve(null)
+      landings.run(
+        { taken ->
+          if (taken) {
+            promise.resolve(null)
+          } else {
+            promise.reject("ERR_MOVE_NOT_TAKEN", "The player did not take the move", null)
+          }
+        },
+        { MoveLandings.Target(c.currentMediaItemIndex, c.currentPosition) },
+      ) { target(c).also { c.seekTo(it.item, it.positionMs) } }
+    }
   }
 
   private fun dropRemoteMove() {

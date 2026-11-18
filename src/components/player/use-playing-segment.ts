@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 
+import { quietly } from '@/lib/quietly';
 import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
 
 import { currentSegment, scrubTarget, type Segment } from './transport';
@@ -87,7 +88,7 @@ export function usePlayingSegment(
     [bookmarks, perTrack, start, length],
   );
   const onSeek = useCallback(
-    (p: number) => (perTrack ? void seekInTrack(p) : void seekBook(scrubTarget(start + p, total))),
+    (p: number) => quietly(perTrack ? seekInTrack(p) : seekBook(scrubTarget(start + p, total))),
     [perTrack, start, total, seekBook, seekInTrack],
   );
   return { segment, kind, elapsed, onSeek, bookmarks: inSegment };

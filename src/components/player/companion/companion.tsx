@@ -9,6 +9,7 @@ import { NotesSection } from '@/components/library/notes-section';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Text } from '@/components/ui/text';
+import { quietly } from '@/lib/quietly';
 import { cn } from '@/lib/utils';
 import { usePlayer } from '@/playback/store';
 
@@ -60,7 +61,7 @@ function OwnSection({
 }) {
   const { t } = useTranslation();
   const seekBook = usePlayer((s) => s.seekBook);
-  const onJump = (p: number) => void seekBook(p);
+  const onJump = (p: number) => quietly(seekBook(p));
   const { connectionId, libraryId, path } = target;
   if (tab === 'bookmarks')
     return (

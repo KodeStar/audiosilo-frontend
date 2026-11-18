@@ -18,6 +18,7 @@ import { PlayButton } from '@/components/player/transport-controls';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { MINI_TITLE_CLASS, Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
+import { quietly } from '@/lib/quietly';
 import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -122,7 +123,7 @@ export function AccessoryPlayer() {
         <SkipButton
           direction="back"
           seconds={skipBackward}
-          onPress={() => void skipSeconds(-skipBackward)}
+          onPress={() => quietly(skipSeconds(-skipBackward))}
           color={themed.foreground}
           fontSize={12}
           hitSlop={slopTo44(2.5)}

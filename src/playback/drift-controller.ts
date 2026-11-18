@@ -5,6 +5,7 @@ import { FELL_ASLEEP_LABEL } from '@/api/bookmark-labels';
 import { addBookmark } from '@/api/hooks';
 import { toast } from '@/components/ui/toast';
 import { formatWallClock } from '@/lib/format';
+import { quietly } from '@/lib/quietly';
 import { whenActive } from '@/lib/when-active';
 
 import { driftOffer, saveDrift, takeDrift, type DriftRecord } from './drift';
@@ -173,7 +174,7 @@ function showPrompt(bookKey: string, record: DriftRecord) {
       onPress: () => {
         // Only into the book it was offered for.
         if (selectBookKey(usePlayer.getState()) === bookKey) {
-          void usePlayer.getState().seekBook(offer.jumpTo);
+          quietly(usePlayer.getState().seekBook(offer.jumpTo));
         }
       },
     },
