@@ -3741,6 +3741,22 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
       await flushMicrotasks();
       expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', trackIndex: 0 });
     });
+
+    it('a run off whose ticks reach JS in a burst still stops after the fault hold', async () => {
+      // JS was busy: ten seconds of the run's ticks, a second of the media apart, come at once.
+      await resume(30);
+      pushSnapshot(snap('playing', 0, { trackIndex: 1, duration: short }));
+      for (let p = 1; p <= 10; p++) {
+        pushSnapshot(snap('playing', p, { trackIndex: 1, duration: short }));
+      }
+      jest.advanceTimersByTime(FAULT_HOLD_MS);
+      await flushMicrotasks();
+      expect(usePlayer.getState().snapshot).toMatchObject({
+        state: 'error',
+        trackIndex: 0,
+        position: 30,
+      });
+    });
   });
 
   it('a seek back the engine never took stands no longer once it plays on where it was', async () => {

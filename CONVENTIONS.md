@@ -2113,7 +2113,8 @@ media GETs only.
   reaches the store the same way, Android tells its `onRemoteMove` up to 300 ms after the file
   change, and iOS sends the file and the move as two events (a move into a later file at a
   place in it, which iOS reports at once but tells as a move only when its deferred seek
-  lands, waits up to `ASK_SETTLE_MAX_MS`: `heldMove`); that move, or a report back in
+  lands, waits up to `ASK_SETTLE_MAX_MS`: `heldMove`, which reads it from the place jumping between
+  two reports, never from when they reach JS, so a burst of a run's queued ticks is no move); that move, or a report back in
   the asked file, calls the fault off (a pause meanwhile does not). The web waits for nothing
   (`faultHoldMs`): only the store's own asks change the file there. Before
   the ask lands, neither is a report still in the file the store last showed (a progress tick

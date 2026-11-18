@@ -1900,19 +1900,21 @@ export const FAULT_HOLD_MS = 600;
  * the file; a Cast receiver's move is told before its place, `cast-service.ts`), so a later
  * file under a standing ask is a run off it, paused at once, not 600 ms into the wrong file. */
 const faultHoldMs = () => (Platform.OS === 'web' ? 0 : FAULT_HOLD_MS);
-/** How far into a later file a run off the asked one can be when reported, beyond what it
- * played since the hold began (`EngineAsk.held`): iOS tells the new file at 0, its ticks
- * after. */
-const RUN_ON_SLACK_S = 1;
-/** Does `s`, a report of a later file held since `since`, place the engine past what a run
- * into that file explains? Only iOS's remote move does so: a lock-screen, headset or car
- * move into a later file at a non-zero place tells the file and that place at once, and
- * `onRemoteMove` only once the deferred seek lands, which on a slow stream is longer than
- * `FAULT_HOLD_MS`. Android tells the move within 300 ms whatever the place. */
-function heldMove(s: PlaybackSnapshot, since: number, now: number): boolean {
+/** How far one report of a run into a later file can be past the one before it
+ * (`EngineAsk.held`): iOS tells the new file at 0, then ticks a second of the media's own time
+ * apart (whatever the speed), and a second more for a tick told off that beat. */
+const RUN_ON_STEP_S = 2;
+/** Does `s`, a report of a later file, place the engine past what a run into that file
+ * explains, from `last`, the run's report before it (null for its first)? Only iOS's remote
+ * move does so: a lock-screen, headset or car move into a later file at a non-zero place tells
+ * the file and that place at once, and `onRemoteMove` only once the deferred seek lands, which
+ * on a slow stream is longer than `FAULT_HOLD_MS`. Android tells the move within 300 ms
+ * whatever the place. Measured by the engine's own clock, the place from report to report,
+ * never by when the reports reach JS: a run's ticks queued while JS was busy come in a burst. */
+function heldMove(s: PlaybackSnapshot, last: PlaybackSnapshot | null): boolean {
   if (Platform.OS !== 'ios') return false;
-  const played = ((now - since) / 1000) * (usePlayer.getState().rate || 1);
-  return s.position > played + RUN_ON_SLACK_S;
+  const from = last?.trackIndex === s.trackIndex ? last.position : 0;
+  return s.position - from > RUN_ON_STEP_S;
 }
 /** The book whose engine faulted (`engineFault`): its reports are dropped, and a play the
  * engine makes by itself is paused again, until the store asks it for a place again.
@@ -2095,6 +2097,8 @@ function engineFault(
     (asked.held !== null || wantsPlayback || startingPlayback);
   if (rolled) {
     const now = Date.now();
+    // The run's report before this one (`holdFault` keeps the latest), none for its first.
+    const last = asked.held?.report ?? null;
     const held = asked.held ?? {
       since: now,
       report: s,
@@ -2104,7 +2108,7 @@ function engineFault(
     };
     asked.held = held;
     // A move's deferred seek may land as late as any engine move settles.
-    if (heldMove(s, held.since, now)) held.until = held.since + ASK_SETTLE_MAX_MS;
+    if (heldMove(s, last)) held.until = held.since + ASK_SETTLE_MAX_MS;
     if (!held.due && now < held.until) return 'hold';
   } else if (!short) {
     // Not a run off the asked file after all: a run held for one is called off.
