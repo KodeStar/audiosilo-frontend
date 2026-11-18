@@ -16,6 +16,7 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
@@ -282,6 +283,9 @@ class AudiosiloPlayerService : MediaLibraryService() {
 
       // Registered before the session's own listener, so this runs first.
       override fun onPlayerError(error: PlaybackException) = onEngineFailed(exo, error)
+
+      // A new queue (or another item of it) may name another cover: the car may open it.
+      override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = grantPlayingArtwork()
     })
     val audiobookPlayer = AudiobookPlayer(exo, PlayerHooks())
     player = audiobookPlayer
@@ -522,6 +526,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
       // A (re)connecting car may be a restarted Auto app, whose URI grants went with it.
       artworkGrants.clear()
       carControllers.add(controller)
+      grantPlayingArtwork()
       updateCarConnection()
     }
   }
@@ -595,6 +600,15 @@ class AudiosiloPlayerService : MediaLibraryService() {
       artworkGrants.remove(grant)
       Log.w(TAG, "Could not grant artwork to ${browser.packageName}", e)
     }
+  }
+
+  /** Lets every connected car open the loaded item's cover, when it is one the artwork provider
+   * serves (a downloaded book's, [LocalArtwork]): the car loads the playing item's artwork URI
+   * itself. A streamed cover's URI is the app's own, which no grant opens. */
+  private fun grantPlayingArtwork() {
+    val uri = player?.currentMediaItem?.mediaMetadata?.artworkUri ?: return
+    if (uri.scheme != "content" || uri.authority != ArtworkProvider.authority(this)) return
+    for (car in carControllers) grantArtwork(car, uri)
   }
 
   /**
@@ -748,7 +762,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
       giveWayTo(null)
       // The book the engine was last heard on starts where it was (a crash since its last
       // snapshot write): a car tap's spec holds the place JS last wrote.
-      val queue = MediaItems.startPositionOf(spec.at(LivePlaceStore.get(this)))
+      val queue = MediaItems.startPositionOf(spec.at(LivePlaceStore.get(this)), ArtworkProvider.authority(this))
       // Every track of a play spec is a local file: no auth headers.
       AuthHolder.clear()
       player?.internal { player?.setPlaybackParameters(PlaybackParameters(spec.rate.toFloat(), 1.0f)) }

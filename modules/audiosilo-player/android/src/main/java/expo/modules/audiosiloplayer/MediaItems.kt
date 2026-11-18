@@ -116,9 +116,14 @@ object MediaItems {
     return BuiltQueue(items, itemIndex.coerceIn(0, maxOf(0, items.size - 1)), itemPosMs)
   }
 
-  /** A downloaded book's play spec as the queue Media3 starts (a car play, a resumption). */
-  fun startPositionOf(spec: CarPlaySpec): MediaItemsWithStartPosition {
-    val queue = buildQueue(spec.tracks, spec.clips, spec.book, spec.startIndex, spec.positionInTrack)
+  /** A downloaded book's play spec as the queue Media3 starts (a car play, a resumption). Its
+   * cover file goes as the artwork provider's URI for [artworkAuthority], which the car can
+   * open ([ArtworkProvider.itemArtwork]). */
+  fun startPositionOf(spec: CarPlaySpec, artworkAuthority: String): MediaItemsWithStartPosition {
+    val tracks = spec.tracks.map { t ->
+      t.artwork?.let { t.copy(artwork = ArtworkProvider.itemArtwork(it, artworkAuthority)) } ?: t
+    }
+    val queue = buildQueue(tracks, spec.clips, spec.book, spec.startIndex, spec.positionInTrack)
     return MediaItemsWithStartPosition(queue.items, queue.index, queue.positionMs)
   }
 
@@ -165,9 +170,10 @@ object MediaItems {
   }
 
   /** The artwork URI an item carries, which Media3 hands to every controller and the platform
-   * session: never a server URL, whose query holds the media token (fe#349). The module names
-   * a streamed cover by its token-free URI ([RemoteArtwork.shareable]) and a play
-   * spec holds files only, so this only stops a URL that came some other way. */
+   * session: never a server URL, whose query holds the media token (fe#349). The module and a
+   * play spec name a streamed cover by its token-free URI and a cover file by the artwork
+   * provider's ([ArtworkProvider.itemArtwork]), so this only stops a URL that came some
+   * other way. */
   private fun artworkUriOf(t: TrackSpec): Uri? =
     t.artwork?.takeUnless(RemoteArtwork::isRemote)?.let(Uri::parse)
 

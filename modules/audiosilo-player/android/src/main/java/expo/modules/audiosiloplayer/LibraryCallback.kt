@@ -221,7 +221,9 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
       "resumption from ${service.describe(controller)}: forPlayback=$isForPlayback, item=${MediaKeyLog.ref(item?.id)}"
     }
     if (!isForPlayback) {
-      return item?.play?.let { Futures.immediateFuture(MediaItems.startPositionOf(it)) } ?: nothingToResume()
+      return item?.play?.let {
+        Futures.immediateFuture(MediaItems.startPositionOf(it, ArtworkProvider.authority(service)))
+      } ?: nothingToResume()
     }
     return service.watchResumption(
       item?.let { service.playFromCar(it, requirePlaySpec = true) } ?: nothingToResume(),

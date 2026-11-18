@@ -46,8 +46,8 @@
       </intent-filter>
     </receiver>
 
-    <!-- Car cover art: serves only files the current car snapshot names; read access is
-         granted per URI to the browsing app. -->
+    <!-- Car cover art: serves only files the current car snapshot or the loaded queue names;
+         read access is granted per URI to the car's app. -->
     <provider
       android:name="expo.modules.audiosiloplayer.ArtworkProvider"
       android:authorities="${applicationId}.audiosilo.artwork"

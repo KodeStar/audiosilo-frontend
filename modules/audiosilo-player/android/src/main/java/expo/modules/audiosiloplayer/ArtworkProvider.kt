@@ -13,11 +13,12 @@ import java.io.FileNotFoundException
  * Serves the car's cover art (`content://${applicationId}.audiosilo.artwork/art/<key>`).
  *
  * Android Auto runs in another app (and the car head unit), so it can't read our `file://`
- * covers: browse items need a content URI it can open. The provider serves ONLY files the
- * current car snapshot names, looked up by an opaque key (a hash of the path, see
- * [CarSnapshot.artworkKey]); a URI can't name any other file, and a cover the snapshot no longer
- * names stops being served. Not exported: the service grants read access per URI to the
- * browsing controller's package (`grantUriPermission`, `android:grantUriPermissions`).
+ * covers: browse items and the loaded book's items need a content URI it can open. The
+ * provider serves ONLY files the current car snapshot names or the loaded queue's items name
+ * ([LocalArtwork]), looked up by an opaque key (a hash of the path, see
+ * [CarSnapshot.artworkKey]); a URI can't name any other file, and a cover neither names any
+ * more stops being served. Not exported: the service grants read access per URI to the car's
+ * package (`grantUriPermission`, `android:grantUriPermissions`).
  *
  * A streamed book's cover is never served here: its URL carries the media token, and no other
  * app may fetch with it. An item names it by a URI of the app's own ([RemoteArtwork]), and
@@ -33,6 +34,7 @@ class ArtworkProvider : ContentProvider() {
     val segments = uri.pathSegments
     if (segments.size != 2 || segments[0] != ART) throw FileNotFoundException(uri.toString())
     val file = CarSnapshotStore.get(ctx)?.artworkByKey?.get(segments[1])
+      ?: LocalArtwork.fileFor(segments[1])
       ?: throw FileNotFoundException(uri.toString())
     if (!isInsideAppStorage(ctx, file) || !file.isFile) throw FileNotFoundException(uri.toString())
     return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
@@ -59,12 +61,19 @@ class ArtworkProvider : ContentProvider() {
      * it has none. */
     fun uriFor(context: Context, artworkKey: String?): Uri? {
       artworkKey ?: return null
-      return Uri.Builder()
-        .scheme("content")
-        .authority(authority(context))
-        .appendPath(ART)
-        .appendPath(artworkKey)
-        .build()
+      return Uri.parse(uriString(authority(context), artworkKey))
+    }
+
+    /** [uriFor] as a string, for [authority]: pure Kotlin. Keys are hex, nothing to escape. */
+    fun uriString(authority: String, artworkKey: String): String = "content://$authority/$ART/$artworkKey"
+
+    /** [raw], a loaded item's artwork, as the item may carry it: a server URL as its token-free
+     * URI ([RemoteArtwork]), a cover file the app wrote (a download's) as this provider's URI,
+     * which the car can open once granted ([LocalArtwork]), anything else as it is. */
+    fun itemArtwork(raw: String, authority: String): String {
+      if (RemoteArtwork.isRemote(raw)) return RemoteArtwork.shareable(raw)
+      val file = LocalArtwork.fileOf(raw) ?: return raw
+      return uriString(authority, LocalArtwork.register(file))
     }
 
     private const val ART = "art"
@@ -130,4 +139,47 @@ object RemoteArtwork {
   /** The URL kept under [key], or null. */
   @Synchronized
   fun urlFor(key: String): String? = urls[key]
+}
+
+/**
+ * The cover files the loaded queue's items name ([ArtworkProvider.itemArtwork]): a downloaded
+ * book's own cover, which may be in no car snapshot (a book started on the phone). Android Auto
+ * could not read the `file://` URI the items carried (it loads covers itself, from another
+ * app); the provider serves these too, by the key the snapshot would give the same file, so the
+ * car's grant for a browse row covers the playing book as well.
+ *
+ * Kept in memory, the last [MAX] (every item of a book shares its cover): a new process loads
+ * its queue again. Pure Kotlin (unit-tested on the JVM).
+ */
+object LocalArtwork {
+  const val MAX = 8
+
+  private val files = object : LinkedHashMap<String, File>(MAX, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, File>?) = size > MAX
+  }
+
+  /** The file a `file://` URI or a bare absolute path names, else null (a content URI, a
+   * server URL, anything unreadable). */
+  fun fileOf(raw: String): File? {
+    if (raw.startsWith("/")) return File(raw)
+    if (!raw.startsWith("file:", ignoreCase = true)) return null
+    val path = try {
+      java.net.URI(raw).path
+    } catch (e: java.net.URISyntaxException) {
+      null
+    }
+    return path?.takeIf { it.isNotEmpty() }?.let(::File)
+  }
+
+  /** Keeps [file] and returns its key ([CarSnapshot.artworkKey]). */
+  @Synchronized
+  fun register(file: File): String {
+    val key = CarSnapshot.artworkKey(file)
+    files[key] = file
+    return key
+  }
+
+  /** The file kept under [key], or null. */
+  @Synchronized
+  fun fileFor(key: String): File? = files[key]
 }
