@@ -659,6 +659,30 @@ describe('CastPlaybackService', () => {
       expect(t.moves.at(-1)).toEqual([1, 9]);
     });
 
+    it('a later file held after a stall with no status since: the first tick after the window reads the status', async () => {
+      // The receiver sends no status while it simply plays: a tick of the later file near the
+      // stalled place would otherwise read as the stalled file going on.
+      const t = setup();
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 8 });
+      t.tick(20_000);
+      await t.svc.play();
+      t.status({ playerState: 'buffering', contentId: t.url(0), position: 8 });
+      t.tick(2_000);
+      t.status({ playerState: 'playing', contentId: t.url(1), position: 0 });
+      t.tick(9_000);
+      (t.remote.readStatus as jest.Mock).mockResolvedValueOnce({
+        playerState: 'playing',
+        contentId: t.url(1),
+        position: 9,
+        rate: 1,
+      });
+      t.progress(9);
+      await flush();
+      expect(t.remote.readStatus).toHaveBeenCalled();
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 1, position: 9 });
+    });
+
     it('a seek while a later file is held after a stall reloads the file the book is on', async () => {
       const t = setup();
       await t.svc.load(TRACKS, 0, 0, [], BOOK);

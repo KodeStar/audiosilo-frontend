@@ -1294,6 +1294,14 @@ export class CastPlaybackService implements PlaybackService {
     ) {
       return;
     }
+    // The window on a later file after a stall ended with no error and no status since (the
+    // receiver sends none while it simply plays): its status says which file it plays, as a tick
+    // can't, and a tick near the stalled place would read as that file going on.
+    if (this.stallSkip) {
+      this.stallSkip = null;
+      void this.refresh();
+      return;
+    }
     const offset = this.loaded.offsets[this.snapshot.trackIndex] ?? 0;
     const next = position + offset;
     if (
