@@ -224,7 +224,11 @@ function ShowHero({
               </Badge>
             ) : null}
           </View>
-          {show.status.error ? (
+          {show.status.secret_missing ? (
+            <Text variant="caption" testID="podcast-secret-missing">
+              {t('podcasts.show.secretMissing')}
+            </Text>
+          ) : show.status.error ? (
             <Text variant="caption" testID="podcast-last-check-failed">
               {t('podcasts.show.lastCheckFailed')}
             </Text>
