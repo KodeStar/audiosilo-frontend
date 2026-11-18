@@ -1845,7 +1845,7 @@ let atPartialEnd = false;
  * (`at`) no such tick is out any more, so its file shows the engine played on as a landed
  * one's does.
  *
- * `fault`: the faulted book (`faultedBook`) the ask called off. An engine that refuses the
+ * `faulted`: the ask called off its book's fault (`faultedBook`). An engine that refuses the
  * move (`engineTakes`) is still where it faulted, so the fault stands again.
  *
  * `playing`: the engine reported the asked file `PLAYING_PAST` beyond the asked place, so it
@@ -1858,8 +1858,9 @@ let atPartialEnd = false;
  * own next as often (a headset press soon after a paused scrub or while it buffered), which
  * Android tells up to 300 ms after the file change, so the fault waits `FAULT_HOLD_MS` for that
  * `onRemoteMove`, the engine's reports held back meanwhile. `report`: the latest, which decides
- * it when no other comes in time (`timer`; `due` once it fired). `move`: a report placed it
- * where no run off the asked file reaches (`heldMs`), so it waits longer.
+ * it when no other comes in time (`timer`, at `until`; `due` once it fired). `until` moves
+ * out to `ASK_SETTLE_MAX_MS` once a report places the engine where no run off the asked file
+ * reaches (`heldMove`).
  *
  * `before`: the file of the ask this one took the place of while that still stood (else -1),
  * whose move the engine may report yet. `elsewhere`: the engine's first report from another
@@ -1871,14 +1872,14 @@ type EngineAsk = {
   position: number;
   at: number;
   landed: boolean;
-  fault: NowPlaying | null;
+  faulted: boolean;
   playing: boolean;
   held: {
     since: number;
     report: PlaybackSnapshot;
     timer: ReturnType<typeof setTimeout> | null;
     due: boolean;
-    move: boolean;
+    until: number;
   } | null;
   before: number;
   elsewhere: { trackIndex: number; position: number } | null;
@@ -1912,10 +1913,6 @@ function heldMove(s: PlaybackSnapshot, since: number, now: number): boolean {
   const played = ((now - since) / 1000) * (usePlayer.getState().rate || 1);
   return s.position > played + RUN_ON_SLACK_S;
 }
-/** How long `held` waits for its `onRemoteMove`: a move's deferred seek may land as late as
- * any engine move settles (`ASK_SETTLE_MAX_MS`), a run's report only `faultHoldMs`. */
-const heldMs = (held: NonNullable<EngineAsk['held']>) =>
-  held.move ? ASK_SETTLE_MAX_MS : faultHoldMs();
 /** The book whose engine faulted (`engineFault`): its reports are dropped, and a play the
  * engine makes by itself is paused again, until the store asks it for a place again.
  * `faultPause`: the fault's pause, one record per fault. It has landed once its call resolved
@@ -1956,7 +1953,7 @@ function askEngineTo(np: NowPlaying, trackIndex: number, position: number): Engi
     position,
     at: Date.now(),
     landed: false,
-    fault: faultedBook,
+    faulted: faultedBook === np,
     playing: false,
     held: null,
     before,
@@ -1969,7 +1966,7 @@ function askEngineTo(np: NowPlaying, trackIndex: number, position: number): Engi
 
 /** `move` is the engine call that makes `ask`'s move: once it resolves the engine took it
  * (`EngineAsk.landed`); one that rejects was refused, and its ask stands no longer
- * (`withdrawAsk`), while a fault it called off stands again (`EngineAsk.fault`): the engine
+ * (`withdrawAsk`), while a fault it called off stands again (`EngineAsk.faulted`): the engine
  * is still where it faulted. */
 async function engineTakes<T>(ask: EngineAsk, move: Promise<T>): Promise<T> {
   try {
@@ -1977,7 +1974,7 @@ async function engineTakes<T>(ask: EngineAsk, move: Promise<T>): Promise<T> {
     if (askedPlace === ask) ask.landed = true;
     return taken;
   } catch (err) {
-    if (askedPlace === ask && faultedBook === null) faultedBook = ask.fault;
+    if (askedPlace === ask && ask.faulted && faultedBook === null) faultedBook = ask.np;
     withdrawAsk(ask);
     throw err;
   }
@@ -2014,7 +2011,6 @@ function moveAsk(from: NowPlaying, to: NowPlaying, lost: { trackIndex: number; p
   const onto = (i: number) => trackIndexById(to.queue, from.queue.tracks[i]?.id);
   const at = onto(ask.trackIndex);
   ask.np = to;
-  if (ask.fault === from) ask.fault = to;
   ask.trackIndex = at >= 0 ? at : lost.trackIndex;
   if (at < 0) ask.position = lost.position;
   ask.before = ask.before >= 0 ? onto(ask.before) : -1;
@@ -2092,10 +2088,17 @@ function engineFault(
     (asked.held !== null || wantsPlayback || startingPlayback);
   if (rolled) {
     const now = Date.now();
-    const held = asked.held ?? { since: now, report: s, timer: null, due: false, move: false };
+    const held = asked.held ?? {
+      since: now,
+      report: s,
+      timer: null,
+      due: false,
+      until: now + faultHoldMs(),
+    };
     asked.held = held;
-    if (heldMove(s, held.since, now)) held.move = true;
-    if (!held.due && now - held.since < heldMs(held)) return 'hold';
+    // A move's deferred seek may land as late as any engine move settles.
+    if (heldMove(s, held.since, now)) held.until = held.since + ASK_SETTLE_MAX_MS;
+    if (!held.due && now < held.until) return 'hold';
   } else if (!short) {
     // Not a run off the asked file after all: a run held for one is called off.
     dropHeld(asked);
@@ -3002,22 +3005,17 @@ async function createService(): Promise<PlaybackService> {
     const held = ask?.held;
     if (!ask || !held) return;
     held.report = raw;
-    if (held.timer) return;
-    // Armed again while a later report made the wait longer (`heldMs`).
-    const wait = (ms: number) =>
-      setTimeout(() => {
-        held.timer = null;
+    // Armed afresh on each report: a later one may have moved `until` out.
+    if (held.timer) clearTimeout(held.timer);
+    held.timer = setTimeout(
+      () => {
         if (askedPlace !== ask || ask.held !== held) return;
         if (usePlayer.getState().nowPlaying !== ask.np) return;
-        const left = held.since + heldMs(held) - Date.now();
-        if (left > 0) {
-          held.timer = wait(left);
-          return;
-        }
         held.due = true;
         onReport(held.report);
-      }, ms);
-    held.timer = wait(Math.max(0, held.since + heldMs(held) - Date.now()));
+      },
+      Math.max(0, held.until - Date.now()),
+    );
   };
   svc.subscribe(onReport);
   // The OS media controls' seeks (web Media Session) go through the store's own seek,

@@ -3694,8 +3694,15 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     });
 
     it('is a fault once no move came within the settle bound', async () => {
-      await moveIntoFile2();
-      jest.advanceTimersByTime(ASK_SETTLE_MAX_MS);
+      // Started playing at the asked place (no stall), not yet played on from it.
+      await resume(30);
+      pushSnapshot(snap('playing', 30.2, { trackIndex: 0 }));
+      pushSnapshot(snap('loading', 0, { trackIndex: 1 }));
+      pushSnapshot(snap('loading', 45, { trackIndex: 1 }));
+      jest.advanceTimersByTime(ASK_SETTLE_MAX_MS - 1);
+      await flushMicrotasks();
+      expect(usePlayer.getState().snapshot.state).not.toBe('error');
+      jest.advanceTimersByTime(1);
       await flushMicrotasks();
       expect(usePlayer.getState().snapshot).toMatchObject({
         state: 'error',
