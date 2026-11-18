@@ -2016,11 +2016,13 @@ media GETs only.
   and `persist` holds off, so a saved book is never fetched over, put back after a remove,
   or saved over by the live entries. **The web's tabs share one registry** (fe#258's
   follow-up): `persist` writes only the entries this tab changed since it last wrote or read
-  them (`known`, compared by object), into the stored registry read again under `tabLock`
-  (a tab that wrote all its entries lost every download another tab made meanwhile), and a
-  tab follows the others' finished downloads and removals through the `storage` event
-  (`followStoredRegistry`; never a book it is running or changed since, nor a download on
-  its way, which is the other tab's to show and stop). A removed connection's purge takes
+  them (`known`, compared by object; the launch's read knows an entry it kept as stored by
+  its live copy, so a reload never writes back what another tab changed meanwhile), into the
+  stored registry read again under `tabLock` (a tab that wrote all its entries lost every
+  download another tab made meanwhile), and a tab follows the others' finished downloads and
+  removals through the `storage` event, and once after its launch's read
+  (`followStoredRegistry`; never a book it is running or changed since, a removal waiting to
+  be saved included, nor a download on its way, which is the other tab's to show and stop). A removed connection's purge takes
   the other tabs' downloads of it from the stored registry too, then their files. **Files are stored
   per-connection**: native `downloads/<connectionId>/<libraryId>/<slug>/`, web Cache API
   `/_offline/<connectionId>/<libraryId>/<slug>/`; the registry keys on
@@ -2208,7 +2210,8 @@ media GETs only.
   fetch), and the offline queue by `updated_at` (shared by the web's tabs: its changes take
   `tabLock`, and a replay claims the saves it sends under it and sends them with it released,
   `replayQueue` in `src/lib/queue-claims.ts`: a plain-http lease runs out in 5 s, a replay can
-  take longer; a claim left by a tab that went runs out in 2 minutes). `playBook` resumes from `progress`; on
+  take longer; a claim left by a tab that went runs out in 2 minutes; a tab's own replays go
+  one at a time, `withReplayTurn`, so a sign-out's or a reconnect's flush waits for one out). `playBook` resumes from `progress`; on
   `failed` for a **streaming** book it sets an `error` (retry re-runs the lookup) instead
   of silently starting at 0; `empty`/downloaded-`failed` start at 0 (genuinely new). A
   **save guard** (`resumeFloor` in `store.ts`) refuses to persist a position far below
@@ -2402,9 +2405,9 @@ media GETs only.
     write its read of the whole mirror over another tab's change; the writes asked while one
     waits for that lock join it, `waitingWrites`, one read and one write for them all: on
     plain http each job pays the lease's wait); the other tabs' pages read the book again
-    as the Undo is stored and as the mirror changes in the next 5 s, `onFinishUndoneElsewhere`
-    through the `storage` event, `startUndoneElsewhere` among the root's services: they showed
-    "Listen again" until clicked; fe#208). The loaded book is left before any route
+    once the undoing tab's mirror record went back, told on a tab channel
+    (`tellUndoneElsewhere`, heard by `onFinishUndoneElsewhere`, `startUndoneElsewhere` among
+    the root's services): they showed "Listen again" until clicked; fe#208). The loaded book is left before any route
     records the finish (`leaveFinishedBook`), and a start of it still on its way is called off
     (a load that lands after the unload is reset, `stop()`'s race too); a finish or a
     progress edit that then fails loads it again, paused where it was (`reloadLeftBook`), and
