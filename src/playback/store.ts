@@ -6,14 +6,7 @@ import { resolveClient } from '@/api/connection-clients';
 import { invalidateFinishedProgress, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
-import type {
-  Book,
-  Chapter,
-  ChaptersResponse,
-  ListeningEvent,
-  ListeningStart,
-  Progress,
-} from '@/api/types';
+import type { Book, Chapter, ChaptersResponse, ListeningStart, Progress } from '@/api/types';
 import {
   adoptStartedChapters,
   downloadedEntryOf,
@@ -59,7 +52,6 @@ import {
 import { engineTick, engineTicker } from './engine-ticks';
 import { type FinishRef, finishedSave, setFinishRecorder, type UndoRef } from './finish-route';
 import {
-  appendEvents,
   appendInTurn,
   closeSpan,
   connectionGeneration,
@@ -1029,11 +1021,6 @@ function spanAt(
   };
 }
 
-/** Put events in a connection's outbox, then send. */
-function emit(connectionId: string, events: ListeningEvent[]): void {
-  void appendEvents(connectionId, events).then(() => flushOutbox(connectionId));
-}
-
 /** Open a span at `at` (else where the engine is) when the loaded book's server takes
  * listening events and none is open. */
 function openListeningSpan(at?: SpanEnd) {
@@ -1059,12 +1046,17 @@ function openListeningSpan(at?: SpanEnd) {
   if (finishSent === contentKeyOf(np)) finishSent = null;
   void baseVersionOf(np).then((base) => {
     opened.baseVersion = base;
-    // A finished book started again: unfinished first, then the span from 0.
-    if (unfinishDue) {
-      unfinishDue = false;
-      emit(np.connectionId, [finishEvent('unfinish', np, now, base)]);
-    }
   });
+  // A finished book started again: unfinished first, then the span from 0. In turn
+  // (`appendInTurn`), behind a finish still waiting its own (a Mark as finished, then Play at
+  // once): overtaking it, the unfinish went first and the book ended finished.
+  if (unfinishDue) {
+    unfinishDue = false;
+    const unfinish = finishEvent('unfinish', np, now);
+    void appendInTurn(np.connectionId, [unfinish], () => baseVersionOf(np))
+      .catch(() => undefined)
+      .then(() => flushOutbox(np.connectionId));
+  }
 }
 
 /**

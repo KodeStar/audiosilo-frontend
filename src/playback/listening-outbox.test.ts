@@ -2029,6 +2029,29 @@ describe('open spans of several web tabs', () => {
     expect(events[1]).toMatchObject({ base_version: 57 });
   });
 
+  // A Mark as finished, then Play at once: the unfinish of the restart came in by a plain
+  // append, overtook the finish still waiting behind its close, and the book ended finished.
+  it('an unfinish appended in turn lands behind a finish still waiting its turn', async () => {
+    await recoverOpenSpan();
+    let release: () => void = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    const closing = closeSpan(span({ id: 'close' }));
+    const finishing = appendInTurn(
+      'c1',
+      [{ id: 'fin', kind: 'finish', library_id: 3, path: 'Author/Book', at: 'x' }],
+      async () => {
+        await held;
+        return 57;
+      },
+    );
+    const unfinishing = appendInTurn('c1', [
+      { id: 'unfin', kind: 'unfinish', library_id: 3, path: 'Author/Book', at: 'y' },
+    ]);
+    release();
+    await Promise.all([closing, finishing, unfinishing]);
+    expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['close', 'fin', 'unfin']);
+  });
+
   it('the page going carries a finish still waiting behind its close', async () => {
     await recoverOpenSpan();
     const c = client(async (body) => answer(body));

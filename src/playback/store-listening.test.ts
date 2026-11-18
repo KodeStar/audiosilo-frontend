@@ -792,6 +792,13 @@ describe('with listening_sync', () => {
     expect(mockAppended).toEqual([
       expect.objectContaining({ kind: 'unfinish', library_id: 2, path: folder, base_version: 41 }),
     ]);
+    // In turn: behind a finish of the book still waiting its own (`appendInTurn`).
+    expect(mockAppendInTurn).toHaveBeenCalledWith(
+      'c1',
+      [expect.objectContaining({ kind: 'unfinish' })],
+      expect.any(Function),
+    );
+    expect(mockFlushOutbox).toHaveBeenCalledWith('c1');
     expect(mockClosed.map((s) => s.start)).toEqual(['restart']);
     // Resumed from the server's row: its version is acknowledged.
     expect(mockAckVersion).toHaveBeenCalledWith('c1', 2, folder, 9, expect.anything());
