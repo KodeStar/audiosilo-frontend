@@ -1989,7 +1989,9 @@ async function engineTakes<T>(ask: EngineAsk, move: Promise<T>): Promise<T> {
     // that inherited the fault (`askEngineTo`), or one given up on since, no longer brings it
     // back when refused.
     else if (ask.faulted) {
-      for (const later of [askedPlace, givenUpAsk]) if (later?.np === ask.np) later.faulted = false;
+      // At most one of the two is set: `withdrawAsk` keeps one only once none stands.
+      const later = askedPlace ?? givenUpAsk;
+      if (later?.np === ask.np) later.faulted = false;
     }
     return taken;
   } catch (err) {
@@ -1997,15 +1999,13 @@ async function engineTakes<T>(ask: EngineAsk, move: Promise<T>): Promise<T> {
     // engine is where it faulted. Not for a book no longer loaded (the player closed, another
     // book started): its fault went with it.
     const standing = askedPlace === ask || givenUpAsk === ask;
-    if (standing && ask.faulted && faultedBook === null && isLoaded(ask.np)) faultedBook = ask.np;
-    if (askedPlace === ask) setAsk(null);
-    else if (givenUpAsk === ask) givenUpAsk = null;
+    const loaded = usePlayer.getState().nowPlaying === ask.np;
+    if (standing && ask.faulted && faultedBook === null && loaded) faultedBook = ask.np;
+    // `setAsk` clears `givenUpAsk` too.
+    if (standing) setAsk(null);
     throw err;
   }
 }
-
-/** Is `np` the book loaded now? */
-const isLoaded = (np: NowPlaying) => usePlayer.getState().nowPlaying === np;
 
 /** The store asks the engine for `(trackIndex, position)` of `np`'s queue, and `move` is the
  * engine call that makes it (`engineTakes`). With no book loaded there is nothing to ask. */

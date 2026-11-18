@@ -1050,6 +1050,15 @@ describe.each([
   });
 
   describe('a tab another tab has played past', () => {
+    /** The 5 s bound (`TAB_MOVE_MAX_MS`) runs out in 20 ms; every other timer is real. */
+    function shortenTabMoveBound() {
+      const realTimeout = globalThis.setTimeout;
+      return jest
+        .spyOn(globalThis, 'setTimeout')
+        .mockImplementation(((fn: () => void, ms?: number) =>
+          realTimeout(fn, ms === 5_000 ? 20 : ms)) as typeof setTimeout);
+    }
+
     it('plays again from where the other tab left the same book, in one span from there', async () => {
       await playedPast(a, b);
       b.engine.at(90);
@@ -1257,12 +1266,7 @@ describe.each([
       b.engine.at(90);
       await b.save();
       const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
-      // The 5 s bound (`TAB_MOVE_MAX_MS`) runs out in a moment; every other timer is real.
-      const realTimeout = globalThis.setTimeout;
-      const shortened = jest
-        .spyOn(globalThis, 'setTimeout')
-        .mockImplementation(((fn: () => void, ms?: number) =>
-          realTimeout(fn, ms === 5_000 ? 20 : ms)) as typeof setTimeout);
+      const shortened = shortenTabMoveBound();
       try {
         a.engine.svc.seekTo.mockImplementationOnce(() => new Promise<void>(() => {}));
         await a.engine.svc.play(); // no press in the page: the engine plays from 30
@@ -1310,11 +1314,7 @@ describe.each([
       const refused = () => new Promise<void>((_, reject) => (refuse = reject));
       a.engine.svc.seekTo.mockImplementationOnce(refused);
       a.engine.svc.skipToTrack.mockImplementationOnce(refused);
-      const realTimeout = globalThis.setTimeout;
-      const shortened = jest
-        .spyOn(globalThis, 'setTimeout')
-        .mockImplementation(((fn: () => void, ms?: number) =>
-          realTimeout(fn, ms === 5_000 ? 20 : ms)) as typeof setTimeout);
+      const shortened = shortenTabMoveBound();
       try {
         // A's press moves to B's place, a move given up on after the bound (20 ms here).
         await a.player().toggle();
@@ -1351,11 +1351,7 @@ describe.each([
               };
             }),
         );
-        const realTimeout = globalThis.setTimeout;
-        const shortened = jest
-          .spyOn(globalThis, 'setTimeout')
-          .mockImplementation(((fn: () => void, ms?: number) =>
-            realTimeout(fn, ms === 5_000 ? 20 : ms)) as typeof setTimeout);
+        const shortened = shortenTabMoveBound();
         return { land: () => land(), restore: () => shortened.mockRestore() };
       }
 
