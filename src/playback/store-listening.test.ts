@@ -99,6 +99,8 @@ const mockFlushOutbox = jest.fn(async (..._a: unknown[]) => {});
 const mockStoreOpenSpan = jest.fn(async (..._a: unknown[]): Promise<OpenSpan | null> => null);
 // The sign-in each connection is on (`connectionGeneration`).
 let mockGeneration = 0;
+// Whether events wait their turn behind a close (`waitingInTurn`).
+let mockWaitingInTurn = false;
 /** `appendInTurn` as the outbox does it, less the turn: the base read, then appended. */
 async function appendedInTurn(
   _cid: string,
@@ -133,6 +135,7 @@ jest.mock('./listening-outbox', () => {
       base?: () => Promise<number | undefined>,
     ) => mockAppendInTurn(cid, events, base),
     connectionGeneration: () => mockGeneration,
+    waitingInTurn: () => mockWaitingInTurn,
     flushOutbox: (...a: unknown[]) => mockFlushOutbox(...a),
     sendOnPageHide: (...a: unknown[]) => mockSendOnPageHide(...a),
     withdrawFinish: (...a: unknown[]) => mockWithdraw(...a),
@@ -492,6 +495,24 @@ describe('the replay guard on the PUT path', () => {
 });
 
 describe('with listening_sync', () => {
+  // A close with an event waiting its turn behind it (a finish, a paused move) leaves the
+  // send to that event's caller, so both go in one batch rather than two requests.
+  it('a close with an event waiting behind it leaves the send to that event', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    mockFlushOutbox.mockClear();
+    mockWaitingInTurn = true;
+    try {
+      pushSnapshot(snap('paused', 0, 10));
+      await settle();
+    } finally {
+      mockWaitingInTurn = false;
+    }
+    expect(mockClosed).toHaveLength(1);
+    expect(mockFlushOutbox).not.toHaveBeenCalled();
+  });
+
   it('a play to a pause is one span with both file places, and no PUT and no POST /history', async () => {
     await start();
     pushSnapshot(snap('playing', 0, 5));

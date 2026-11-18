@@ -77,6 +77,7 @@ import {
   storeOpenSpan,
   usesListeningStay,
   usesListeningSync,
+  waitingInTurn,
   withdrawFinish,
 } from './listening-outbox';
 import {
@@ -1078,7 +1079,10 @@ function closeListeningSpan(opts: { at?: SpanEnd; endedAt?: number } = {}): Open
   // finish, a paused move) goes after it.
   void closeSpan(closing)
     .catch(() => undefined)
-    .finally(() => void flushOutbox(cid));
+    // An event behind it (a finish, a paused move) sends both, in one batch, once it is in.
+    .finally(() => {
+      if (!waitingInTurn(cid)) void flushOutbox(cid);
+    });
   return closing;
 }
 

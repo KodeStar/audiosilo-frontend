@@ -87,6 +87,7 @@ import {
   unsentListens,
   usesListeningStay,
   usesListeningSync,
+  waitingInTurn,
   withdrawFinish,
 } from './listening-outbox';
 import {
@@ -394,6 +395,18 @@ describe('the outbox', () => {
     // Signed in again: its own events go in as ever.
     await closeSpan(span({ id: 'next' }));
     expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['next']);
+  });
+
+  it('an event waiting its turn shows in waitingInTurn for its connection only', async () => {
+    await recoverOpenSpan();
+    const finishing = appendInTurn('c1', [
+      { id: 'in-turn', kind: 'finish', library_id: 3, path: 'Author/Book', at: 'x' },
+    ]);
+    expect(waitingInTurn('c1')).toBe(true);
+    expect(waitingInTurn('c2')).toBe(false);
+    await finishing;
+    expect(waitingInTurn('c1')).toBe(false);
+    expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['in-turn']);
   });
 
   it('removing a connection purges its events, open span and sync state', async () => {

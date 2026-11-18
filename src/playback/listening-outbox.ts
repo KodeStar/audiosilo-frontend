@@ -688,6 +688,13 @@ export async function closeSpan(span: OpenSpan, event?: ListeningSpanEvent): Pro
   await inTurn(span.connectionId, waiting, (since) => closeInto(span, event, since));
 }
 
+/** Whether events for `connectionId` still wait their turn (`queued`): a send now would
+ * leave them for a second request, which the call that queued them makes once they are in. */
+export function waitingInTurn(connectionId: string): boolean {
+  for (const e of queued.values()) if (e.connectionId === connectionId) return true;
+  return false;
+}
+
 /** Closes (`closeSpan`) and the events behind them (`appendInTurn`) still waiting their
  * turn, by event id, in the order they came. The web's `pagehide` sends them too: one queued
  * behind a lock may never run once the page is going (a `localStorage` lease waits on a
