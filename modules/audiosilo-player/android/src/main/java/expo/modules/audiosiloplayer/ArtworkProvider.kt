@@ -76,7 +76,7 @@ class ArtworkProvider : ContentProvider() {
      * which the car can open once granted ([LocalArtwork]), anything else as it is. */
     fun itemArtwork(raw: String, authority: String): String {
       if (RemoteArtwork.isRemote(raw)) return RemoteArtwork.shareable(raw)
-      val file = LocalArtwork.fileOf(raw) ?: return raw
+      val file = CarSnapshot.artworkFile(raw) ?: return raw
       return uriString(authority, LocalArtwork.register(file))
     }
 
@@ -160,19 +160,6 @@ object LocalArtwork {
 
   private val files = object : LinkedHashMap<String, File>(MAX, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, File>?) = size > MAX
-  }
-
-  /** The file a `file://` URI or a bare absolute path names, else null (a content URI, a
-   * server URL, anything unreadable). */
-  fun fileOf(raw: String): File? {
-    if (raw.startsWith("/")) return File(raw)
-    if (!raw.startsWith("file:", ignoreCase = true)) return null
-    val path = try {
-      java.net.URI(raw).path
-    } catch (e: java.net.URISyntaxException) {
-      null
-    }
-    return path?.takeIf { it.isNotEmpty() }?.let(::File)
   }
 
   /** Keeps [file] and returns its key ([CarSnapshot.artworkKey]). */

@@ -120,11 +120,18 @@ object MediaItems {
    * cover file goes as the artwork provider's URI for [artworkAuthority], which the car can
    * open ([ArtworkProvider.itemArtwork]). */
   fun startPositionOf(spec: CarPlaySpec, artworkAuthority: String): MediaItemsWithStartPosition {
-    val tracks = spec.tracks.map { t ->
-      t.artwork?.let { t.copy(artwork = ArtworkProvider.itemArtwork(it, artworkAuthority)) } ?: t
-    }
+    val tracks = withItemArtwork(spec.tracks, artworkAuthority)
     val queue = buildQueue(tracks, spec.clips, spec.book, spec.startIndex, spec.positionInTrack)
     return MediaItemsWithStartPosition(queue.items, queue.index, queue.positionMs)
+  }
+
+  /** [tracks] with each cover as a loaded item may carry it ([ArtworkProvider.itemArtwork], for
+   * [artworkAuthority]). Every track of a book shares its cover: each is converted once. */
+  fun withItemArtwork(tracks: List<TrackSpec>, artworkAuthority: String): List<TrackSpec> {
+    val shared = HashMap<String, String>()
+    return tracks.map { t ->
+      t.artwork?.let { a -> t.copy(artwork = shared.getOrPut(a) { ArtworkProvider.itemArtwork(a, artworkAuthority) }) } ?: t
+    }
   }
 
   /** A whole-file item (a multi-file book without chapter clips). */

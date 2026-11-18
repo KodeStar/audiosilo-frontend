@@ -1,7 +1,6 @@
 package expo.modules.audiosiloplayer
 
 import android.content.Context
-import android.net.Uri
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
@@ -103,11 +102,20 @@ class CarSnapshot(
     (if (namesResume) resume?.let(::find) else firstContinue())?.takeIf { it.play != null }
 
   companion object {
+    /** The file a `file://` URI or a bare absolute path names, else null (a content URI, a
+     * server URL, anything else). Pure Kotlin (unit-tested on the JVM): a snapshot's covers and
+     * a loaded item's ([ArtworkProvider.itemArtwork]) read the same. */
     fun artworkFile(uri: String?): File? {
       if (uri.isNullOrEmpty()) return null
-      val parsed = Uri.parse(uri)
-      val path = if (parsed.scheme == "file") parsed.path else if (parsed.scheme == null) uri else null
-      return path?.let { File(it) }
+      if (uri.startsWith("/")) return File(uri)
+      if (!uri.startsWith("file:", ignoreCase = true)) return null
+      val path = try {
+        java.net.URI(uri).path
+      } catch (e: java.net.URISyntaxException) {
+        // Not escaped (a space in a folder name): the path as it is spelled.
+        uri.substring("file://".length.coerceAtMost(uri.length)).takeIf { it.startsWith("/") }
+      }
+      return path?.takeIf { it.isNotEmpty() }?.let(::File)
     }
 
     /** The first 16 bytes of the path's SHA-256, as lowercase hex. */

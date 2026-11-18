@@ -31,7 +31,9 @@ class LocalArtworkTest {
   }
 
   @Test fun anEscapedFileUriNamesTheFileItSpells() {
-    assertEquals(File("/data/a b/cover.jpg"), LocalArtwork.fileOf("file:///data/a%20b/cover.jpg"))
+    assertEquals(File("/data/a b/cover.jpg"), CarSnapshot.artworkFile("file:///data/a%20b/cover.jpg"))
+    // Unescaped, it is still the file it spells.
+    assertEquals(File("/data/a b/cover.jpg"), CarSnapshot.artworkFile("file:///data/a b/cover.jpg"))
   }
 
   @Test fun aStreamedCoverStaysTheAppsOwnUri() {
@@ -42,8 +44,8 @@ class LocalArtworkTest {
   @Test fun anythingElseGoesOutAsItIs() {
     val content = "content://$authority/art/0123456789abcdef0123456789abcdef"
     assertEquals(content, ArtworkProvider.itemArtwork(content, authority))
-    assertNull(LocalArtwork.fileOf(content))
-    assertNull(LocalArtwork.fileOf("file:"))
+    assertNull(CarSnapshot.artworkFile(content))
+    assertNull(CarSnapshot.artworkFile("file:"))
   }
 
   @Test fun onlyTheNewestCoversAreServed() {
