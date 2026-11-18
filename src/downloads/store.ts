@@ -22,7 +22,7 @@ import {
 import type { ApiClient } from '@/api/client';
 import type { Book, ChaptersResponse, Progress } from '@/api/types';
 import { identityMovePending } from '@/lib/connection-id';
-import { contentKey, contentKeyOf } from '@/lib/content-key';
+import { contentKey, contentKeyOf, isKeyOf } from '@/lib/content-key';
 import { mapLimit } from '@/lib/map-limit';
 import { canAutoDownload } from '@/lib/network';
 import { sharedStart } from '@/lib/shared-start';
@@ -1495,6 +1495,9 @@ function followStored(parsed: unknown): void {
     if (live[key] !== known[key]) continue;
     const mine = live[key];
     const theirs = stored[key];
+    // A removed connection's (`removals`): the other tab's save or removal of it changes
+    // nothing here.
+    if (theirs && ofRemovedConnection(theirs)) continue;
     if (theirs?.status === 'downloaded') {
       if (mine?.status === 'downloaded' && sameStored(mine, theirs)) continue;
       next[key] = nextKnown[key] = theirs;
@@ -1554,6 +1557,7 @@ async function followStarted(keys: readonly string[]): Promise<void> {
   for (const key of keys) {
     const theirs = stored[key];
     if (!away.has(key) || !inProgress(theirs) || elsewhere[key]) continue;
+    if (ofRemovedConnection(theirs)) continue;
     if (controllers.has(key) || queue.includes(key) || isWaiting(key)) continue;
     if (live[key] !== known[key]) continue;
     next[key] = nextKnown[key] = theirs;
@@ -1620,8 +1624,11 @@ async function ownerLeft(key: string): Promise<void> {
   if (revived?.serverFetch) resumeEpisodeWaits();
 }
 
-/** What a tab asks the tab running a download to do with it (`askOwnerToStop`). */
-type StopRequest = { connectionId: string; libraryId: number; path: string; remove: boolean };
+/** What a tab asks the tab running a download to do with it (`askOwnerToStop`), or with every
+ * download of a connection it removed (`connectionRemoved`). */
+type StopRequest =
+  | { connectionId: string; libraryId: number; path: string; remove: boolean }
+  | { connectionId: string; connectionRemoved: true };
 
 /** The channel a tab asks another to stop its download on. */
 const STOP_CHANNEL = 'audiosilo-download-stop';
@@ -1654,11 +1661,21 @@ function askOwnerToStop(key: string, ask: StopRequest): boolean {
   return true;
 }
 
-/** Another tab asked for a download to be stopped: done when this tab is running it. */
+/** Another tab asked for a download to be stopped: done when this tab is running it. A
+ * connection removed there: each of its downloads this tab runs is removed (that tab drops
+ * the rest, and these from the registry once this one let them go). */
 function stopAsked(ask: StopRequest): void {
-  if (typeof ask?.connectionId !== 'string' || typeof ask.path !== 'string') return;
-  if (typeof ask.libraryId !== 'number') return;
+  if (typeof ask?.connectionId !== 'string') return;
   const state = useDownloads.getState();
+  if ('connectionRemoved' in ask) {
+    if (ask.connectionRemoved !== true) return;
+    for (const [key, e] of Object.entries(state.entries)) {
+      if (e.connectionId !== ask.connectionId || !inProgress(e) || state.elsewhere[key]) continue;
+      void state.remove(e.connectionId, e.libraryId, e.path).catch(() => {});
+    }
+    return;
+  }
+  if (typeof ask.path !== 'string' || typeof ask.libraryId !== 'number') return;
   const key = downloadKey(ask.connectionId, ask.libraryId, ask.path);
   if (!inProgress(state.entries[key]) || state.elsewhere[key]) return;
   if (ask.remove) void state.remove(ask.connectionId, ask.libraryId, ask.path).catch(() => {});
@@ -2400,6 +2417,11 @@ async function runOne(key: string) {
   }
 }
 
+/** The removed connections' downloads (`removed` of each purge): never shown here again from
+ * another tab's save of them (that tab may not know of the removal). */
+const removals: ((e: DownloadEntry) => boolean)[] = [];
+const ofRemovedConnection = (e: DownloadEntry) => removals.some((removed) => removed(e));
+
 // Removing a connection purges its downloads: abort any in-flight transfer, delete the
 // files, and drop the entries (signing out of an account takes its downloads with it;
 // nothing else would ever reach them).
@@ -2410,27 +2432,52 @@ onConnectionRemoved(async (id) => {
   // The drop can wait across saves storage refused (`dropsWaiting`): a download of the same
   // connection made since (signed in again: the same `<server>.<user>` id) is not this purge's.
   const removedAt = new Date().toISOString();
-  const entries = useDownloads.getState().entries;
-  const doomed = Object.entries(entries).filter(([, e]) => e.connectionId === id);
+  const removed = (e: DownloadEntry) => e.connectionId === id && !(e.manifest.savedAt > removedAt);
+  removals.push(removed);
+  // Web: the connection's downloads another tab is running (it holds their lock,
+  // `tab-owner.ts`) are that tab's to stop: their folders are being written there. That tab
+  // is asked to remove them, and each goes from the registry here once it let it go
+  // (`purgeWhenLeft`).
+  const away = [...(await downloadsRunningElsewhere())].filter((key) => isKeyOf(key, id));
+  const state = useDownloads.getState();
+  const doomed = Object.entries(state.entries).filter(([, e]) => e.connectionId === id);
+  const mine = doomed.filter(([key]) => !away.includes(key));
   if (doomed.length > 0) {
-    const next = { ...entries };
-    for (const [key] of doomed) {
-      stopRun(key);
-      delete next[key];
-    }
+    const next = { ...state.entries };
+    for (const [key] of doomed) delete next[key];
+    for (const [key] of mine) stopRun(key);
+    // The other tab's are not this tab's to save either way: its save of their end, or of
+    // their removal, stands.
+    known = without(known, away);
     useDownloads.setState({
       entries: next,
       elsewhere: without(
-        useDownloads.getState().elsewhere,
+        state.elsewhere,
         doomed.map(([key]) => key),
       ),
     });
   }
-  await removeEntryFiles(doomed.map(([, e]) => e));
+  if (away.length > 0) stopChannel()?.post({ connectionId: id, connectionRemoved: true });
+  for (const key of away) void purgeWhenLeft(key);
+  await removeEntryFiles(mine.map(([, e]) => e));
   // The stored registry is every tab's: the connection's downloads this tab did not hold
-  // (another tab's) go from it too, and then their files (`persist`).
-  await persist((e) => e.connectionId === id && !(e.manifest.savedAt > removedAt));
+  // (another tab's, finished) go from it too, and then their files (`persist`).
+  await persist((e) => removed(e) && !away.includes(contentKeyOf(e)));
 });
+
+/**
+ * A removed connection's download another tab was running (`key`): once that tab let it go
+ * (it removed it, as asked; it ended first; or it closed), what the registry still holds of
+ * it goes, and its files with it (`persist`'s drop of an entry this tab does not hold). By
+ * key, not by `savedAt`: a download that ended there was saved again as it ended, after the
+ * removal. Unless this tab has a download of the book again (signed in again meanwhile).
+ */
+async function purgeWhenLeft(key: string): Promise<void> {
+  await whenDownloadLeft(key);
+  // Taken up again there meanwhile (a retry): still that tab's.
+  if ((await downloadsRunningElsewhere()).has(key)) return purgeWhenLeft(key);
+  await persist((e) => contentKeyOf(e) === key && !useDownloads.getState().entries[key]);
+}
 
 // --- selectors -------------------------------------------------------------
 

@@ -686,6 +686,66 @@ describe('a download running in another tab (web, Web Locks)', () => {
     expect((await stored())[KEY_X]?.status).toBe('error');
   });
 
+  /** Tab B, launched, with the purges it registers for a removed connection. */
+  async function removingTab(): Promise<{ b: Store; removeC1: () => Promise<unknown> }> {
+    const before = mockRemovalPurges.length;
+    const b = await launchTab();
+    const purges = mockRemovalPurges.slice(before);
+    return { b, removeC1: () => Promise.all(purges.map((purge) => purge('c1'))) };
+  }
+
+  // Removing its connection in another tab deleted its folder under the transfer, and the
+  // tab running it wrote its entry back with its next save.
+  it('removing its connection in another tab: the tab running it removes it', async () => {
+    const a = await downloadingTab();
+    const { b, removeC1 } = await removingTab();
+    expect(b.useDownloads.getState().elsewhere[KEY_X]).toBe(true);
+    await removeC1();
+    await settle();
+    expect(entryOf(a, 'X/Book')).toBeUndefined();
+    expect(entryOf(b, 'X/Book')).toBeUndefined();
+    expect(await stored()).toEqual({});
+    expect(locks.names()).not.toContain(LOCK_X);
+    expect(mockRemoveBook).toHaveBeenCalledWith('c1', 2, 'X/Book');
+  });
+
+  it('a tab running it that does not answer keeps its folder until it ends there', async () => {
+    const a = await downloadingTab();
+    // Tab A hears no request (a tab of an older build).
+    a.setDownloadStopChannelForTests(null);
+    const { b, removeC1 } = await removingTab();
+    await removeC1();
+    await settle();
+    expect(mockRemoveBook).not.toHaveBeenCalled();
+    expect(entryOf(b, 'X/Book')).toBeUndefined();
+    expect((await stored())[KEY_X]?.status).toBe('downloading');
+    // Tab A's saves of it are not shown here again: the connection is gone.
+    b.followStoredRegistry(await rawStored());
+    await settle();
+    expect(entryOf(b, 'X/Book')).toBeUndefined();
+    expect(b.useDownloads.getState().elsewhere).toEqual({});
+    // It ends in tab A: then its entry and its files go.
+    finish();
+    await settle();
+    expect(entryOf(a, 'X/Book')?.status).toBe('downloaded');
+    expect(locks.names()).not.toContain(LOCK_X);
+    expect(await stored()).toEqual({});
+    expect(mockRemoveBook).toHaveBeenCalledWith('c1', 2, 'X/Book');
+  });
+
+  it('a tab running it that closes meanwhile: its entry and files go then', async () => {
+    const a = await downloadingTab();
+    a.setDownloadStopChannelForTests(null);
+    const { removeC1 } = await removingTab();
+    await removeC1();
+    await settle();
+    expect(mockRemoveBook).not.toHaveBeenCalled();
+    locks.close(LOCK_X);
+    await settle();
+    expect(await stored()).toEqual({});
+    expect(mockRemoveBook).toHaveBeenCalledWith('c1', 2, 'X/Book');
+  });
+
   it('without Web Locks a tab cannot tell: cut short, as before', async () => {
     const a = await downloadingTab();
     Object.defineProperty(nav, 'locks', { configurable: true, value: undefined });

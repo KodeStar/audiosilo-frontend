@@ -2049,7 +2049,12 @@ media GETs only.
   an entry is nobody's only when it reads the same on both sides of a look that found no
   holder. Without Web Locks (plain http) a tab cannot tell, and a download on its way reads
   as cut short on reload, as before. A removed connection's purge takes
-  the other tabs' downloads of it from the stored registry too, then their files. **Files are stored
+  the other tabs' finished downloads of it from the stored registry too, then their files. One
+  another tab is running (its lock held) is that tab's: its folder is never touched from here;
+  that tab is asked on the tab channel to remove the connection's downloads it runs
+  (`connectionRemoved`), and once it let each go (removed, ended first, or the tab closed)
+  what the registry still holds of it goes, files too (`purgeWhenLeft`). Meanwhile its saves
+  are not followed here (`removals`). **Files are stored
   per-connection**: native `downloads/<connectionId>/<libraryId>/<slug>/`, web Cache API
   `/_offline/<connectionId>/<libraryId>/<slug>/`; the registry keys on
   `downloadKey(connectionId, libraryId, path)`. Pre-scoping downloads (from before the
