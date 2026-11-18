@@ -3816,6 +3816,10 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
 
   it('a play from the lock screen once the faulted engine stopped reloads the book', async () => {
     await resume(30);
+    let landPause!: () => void;
+    (mockSvc.pause as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (landPause = resolve)),
+    );
     ranOff();
     await flushMicrotasks();
     (mockSvc.load as jest.Mock).mockClear();
@@ -3823,12 +3827,34 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     pushSnapshot(snap('playing', 1.2, { trackIndex: 1, duration: short }));
     await flushMicrotasks();
     expect(mockSvc.load).not.toHaveBeenCalled();
+    landPause();
+    await flushMicrotasks();
     pushSnapshot(snap('paused', 1.3, { trackIndex: 1, duration: short }));
     // The lock screen's play: a press, which reloads the book at its place.
     pushSnapshot(snap('playing', 1.3, { trackIndex: 1, duration: short }));
     await flushMicrotasks();
     expect(mockSvc.load).toHaveBeenCalledTimes(1);
     expect(lastLoad()).toEqual([0, 30]);
+  });
+
+  it("a faulted engine done buffering before the fault's pause lands is no play of the listener's", async () => {
+    await resume(30);
+    let landPause!: () => void;
+    (mockSvc.pause as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (landPause = resolve)),
+    );
+    // Still buffering the next file when the wait is over: the fault is a `loading` one.
+    pushSnapshot(snap('loading', 0, { trackIndex: 1, duration: short }));
+    jest.advanceTimersByTime(FAULT_HOLD_MS);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    (mockSvc.load as jest.Mock).mockClear();
+    pushSnapshot(snap('playing', 0.1, { trackIndex: 1, duration: short }));
+    await flushMicrotasks();
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    landPause();
+    await flushMicrotasks();
+    expect(mockSvc.load).not.toHaveBeenCalled();
   });
 
   it('a pause during the wait never makes the later file the place', async () => {

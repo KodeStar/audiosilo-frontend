@@ -1881,11 +1881,12 @@ const PLAYING_PAST = 0.5;
 export const FAULT_HOLD_MS = 600;
 /** The book whose engine faulted (`engineFault`): its reports are dropped, and a play the
  * engine makes by itself is paused again, until the store asks it for a place again.
- * `faultStopped`: the faulted engine has reported something other than `playing` since, so a
- * `playing` from then on is the listener's own (the lock screen, a headset, the car), never
- * the engine still playing on until the fault's pause lands. */
+ * `faultStopped`: the fault's pause has landed (its call resolved; `faults` numbers the fault it
+ * was asked for), so a `playing` from then on is the listener's own (the lock screen, a
+ * headset, the car), never the engine still playing on, or done buffering, before it lands. */
 let faultedBook: NowPlaying | null = null;
 let faultStopped = false;
+let faults = 0;
 /** Has the loaded book's engine faulted (`faultedBook`)? */
 const loadedFaulted = () => faultedBook !== null && faultedBook === usePlayer.getState().nowPlaying;
 
@@ -2731,13 +2732,10 @@ async function createService(): Promise<PlaybackService> {
     // start, a `ready` while intending to play is also a spinner.
     // A faulted engine (`engineFault`) is not heard from until the store asks it for a place
     // again (`askEngineTo`: a Retry, or a press, which reloads). A play it goes on with until
-    // the fault's pause lands is stopped again; one after it stopped is the listener's own (the
+    // the fault's pause lands is stopped again; one after it landed is the listener's own (the
     // lock screen, a headset, the car), which reloads the book at its place, as a press does.
     if (loadedFaulted()) {
-      if (raw.state !== 'playing') {
-        faultStopped = true;
-        return;
-      }
+      if (raw.state !== 'playing') return;
       void svc.pause().catch(() => undefined);
       if (faultStopped) {
         faultStopped = false;
@@ -2808,8 +2806,14 @@ async function createService(): Promise<PlaybackService> {
         return;
       }
       if (fault) {
-        void svc.pause().catch(() => undefined);
-        faultStopped = raw.state !== 'playing';
+        const seq = ++faults;
+        faultStopped = false;
+        void svc.pause().then(
+          () => {
+            if (seq === faults) faultStopped = true;
+          },
+          () => undefined,
+        );
         snapshot = fault;
       } else {
         const duration = fileDurationOf(np.queue, snapshot.trackIndex, snapshot.duration);

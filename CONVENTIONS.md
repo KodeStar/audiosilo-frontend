@@ -2099,25 +2099,26 @@ media GETs only.
   watchdog's error later). The later file waits `FAULT_HOLD_MS` first, its reports held back:
   a headset or car next soon after a paused scrub or while buffering reaches the store the
   same way, and Android tells its `onRemoteMove` up to 300 ms after the file change; that move,
-  or a report back in the asked file, calls the fault off. Before the ask lands, neither is a
-  report still in the file the store last showed (a progress tick or a Cast status from before
-  a move back landed) or in the file of an ask this one replaced before the engine reported
-  it; once landed, a later file is the engine's own (a move back past a short measure runs on
-  into the file the store showed). Nor is an `ended` the store already showed (a seek or a
-  track jump on a book that ended re-reports it, the services keeping their last state). A
-  seek or a track jump on a faulted book puts the engine in the target's file by its index
-  (`skipToTrack`). An ask the engine never took stands no longer: one whose move it refused
-  (`withdrawAsk`, `engineTakes`), and one whose engine has moved `PLAYED_ON` seconds in the
-  other file since (left standing, its next file, minutes on, read as a run off the asked
-  one). A faulted book: a press reloads it, as Retry does; a play the engine goes on with until
-  the fault's pause lands is paused again, and one after it stopped is the listener's (the lock
-  screen, a headset, the car), which reloads like a press (`faultStopped`); a lock-screen move
-  is the place it shows and reloads at. A fault outlives the download hot-swap's new
-  `NowPlaying` (`commitLocalSwap`): a press still reloads. A start whose load rejects shows the
-  place it asked for in its error state at once (Retry loads there), never the snapshot it had.
-  Once the engine has played on, its moves and its end are the book's, as for any book: a
-  server length can overestimate the audio (ffprobe's bitrate estimate for a header-less VBR
-  file), and the listener who played to the real end has finished.
+  or a report back in the asked file, calls the fault off (a pause meanwhile does not). Before
+  the ask lands, neither is a report still in the file the store last showed (a progress tick
+  or a Cast status from before a move back landed) or in the file of an ask this one replaced
+  before the engine reported it; once landed, a later file is the engine's own (a move back
+  past a short measure runs on into the file the store showed). Nor is an `ended` the store
+  already showed (a seek or a track jump on a book that ended re-reports it, the services
+  keeping their last state). A seek or a track jump on a faulted book puts the engine in the
+  target's file by its index (`skipToTrack`). An ask the engine never took stands no longer:
+  one whose move it refused (`withdrawAsk`, `engineTakes`), and one whose engine has moved
+  `PLAYED_ON` seconds in the other file since (left standing, its next file, minutes on, read
+  as a run off the asked one). A faulted book: a press reloads it, as Retry does; a play the
+  engine goes on with until the fault's pause lands (its call resolved) is paused again, and one
+  after it is the listener's (the lock screen, a headset, the car), which reloads like a press
+  (`faultStopped`); a lock-screen move is the place it shows and reloads at. A fault outlives
+  the download hot-swap's new `NowPlaying` (`commitLocalSwap`): a press still reloads. A start
+  whose load rejects shows the place it asked for in its error state at once (Retry loads
+  there), never the snapshot it had. Once the engine has played on, its moves and its end are
+  the book's, as for any book: a server length can overestimate the audio (ffprobe's bitrate
+  estimate for a header-less VBR file), and the listener who played to the real end has
+  finished.
 - **Start playback only after chapters/files have loaded** (the player gates on
   `useChapters` settling) - starting early made multi-file books stream the folder
   path (MediaToolbox `-12864`) and lose chapter info.
