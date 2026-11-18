@@ -2395,6 +2395,12 @@ async function runOne(key: string) {
 // files, and drop the entries (signing out of an account takes its downloads with it;
 // nothing else would ever reach them).
 onConnectionRemoved(async (id) => {
+  // Before the launch's read the live entries are not the registry: the read would merge the
+  // connection's stored downloads back in after this purge, live and unsaved.
+  if (hydrating) await hydrating;
+  // The drop can wait across saves storage refused (`dropsWaiting`): a download of the same
+  // connection made since (signed in again: the same `<server>.<user>` id) is not this purge's.
+  const removedAt = new Date().toISOString();
   const entries = useDownloads.getState().entries;
   const doomed = Object.entries(entries).filter(([, e]) => e.connectionId === id);
   if (doomed.length > 0) {
@@ -2414,7 +2420,7 @@ onConnectionRemoved(async (id) => {
   await removeEntryFiles(doomed.map(([, e]) => e));
   // The stored registry is every tab's: the connection's downloads this tab did not hold
   // (another tab's) go from it too, and then their files (`persist`).
-  await persist((e) => e.connectionId === id);
+  await persist((e) => e.connectionId === id && !(e.manifest.savedAt > removedAt));
 });
 
 // --- selectors -------------------------------------------------------------

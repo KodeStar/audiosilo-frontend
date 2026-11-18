@@ -360,6 +360,36 @@ describe('two tabs downloading (web)', () => {
     expect(mockRemoveBook).toHaveBeenCalledWith('c1', 2, 'Y/Book');
   });
 
+  it('a download of a removed connection made since is not taken by its waiting drop', async () => {
+    const a = openTab();
+    const purgesOfA = [...mockRemovalPurges];
+    const b = openTab();
+    await Promise.all([a.useDownloads.getState().hydrate(), b.useDownloads.getState().hydrate()]);
+    await b.useDownloads.getState().download('c1', 2, book('Y/Book'));
+    await settle();
+    mockRemoveBook.mockClear();
+    const getItem = AsyncStorage.getItem as jest.Mock;
+    const read = getItem.getMockImplementation()!;
+    getItem.mockImplementation(async (key: string) => {
+      if (key === KEY) throw new Error('storage');
+      return read(key);
+    });
+    try {
+      await Promise.all(purgesOfA.map((purge) => purge('c1')));
+      // Signed in again (the same connection id): a new download, still not saved.
+      await settle();
+      await a.useDownloads.getState().download('c1', 2, book('Z/Book'));
+      await settle();
+      expect(entryOf(a, 'Z/Book')?.status).toBe('downloaded');
+    } finally {
+      getItem.mockImplementation(read);
+    }
+    await new Promise((r) => setTimeout(r, 1_100));
+    expect(Object.keys(await stored())).toEqual([a.downloadKey('c1', 2, 'Z/Book')]);
+    expect(mockRemoveBook).not.toHaveBeenCalledWith('c1', 2, 'Z/Book');
+    expect(mockRemoveBook).toHaveBeenCalledWith('c1', 2, 'Y/Book');
+  });
+
   it('the page going writes what this tab changed at once, its save still on its way', async () => {
     const seeded = openTab();
     await seeded.useDownloads.getState().hydrate();
