@@ -659,6 +659,25 @@ describe('CastPlaybackService', () => {
       expect(t.moves.at(-1)).toEqual([1, 9]);
     });
 
+    it('a queue sent after a stall ends it: a run-on from the reloaded file is followed', async () => {
+      const t = setup();
+      await t.svc.load(TRACKS, 0, 0, [], BOOK);
+      t.status({ playerState: 'paused', contentId: t.url(0), position: 30 });
+      t.tick(20_000);
+      await t.svc.play();
+      t.status({ playerState: 'buffering', contentId: t.url(0), position: 30 });
+      t.tick(2_000);
+      // The same file asked again from this phone (a jump to it), landed while in flight.
+      const answer = holdLoad(t);
+      const skip = t.svc.skipToTrack(0, 50);
+      t.status({ playerState: 'playing', contentId: t.url(0), position: 50 });
+      answer();
+      await skip;
+      t.tick(3_000);
+      t.status({ playerState: 'playing', contentId: t.url(1), position: 1 });
+      expect(t.svc.getSnapshot()).toMatchObject({ state: 'playing', trackIndex: 1, position: 1 });
+    });
+
     it('a later file long after the receiver began to buffer is a move, followed at once', async () => {
       // No receiver retries that long: the stall is no word on where the book is.
       const t = setup();

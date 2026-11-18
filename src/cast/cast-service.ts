@@ -976,6 +976,9 @@ export class CastPlaybackService implements PlaybackService {
     loaded.offsets = items.map((_, n) => (n === i ? start.offset : 0));
     this.askMove();
     this.intend(i, position, { fresh, queued: true });
+    // A queue of ours is the book's place from now: no stall from before it holds a later file.
+    this.stalling = null;
+    this.stallSkip = null;
     // The place asked for is the book's from now, as a local engine's file load shows it: until
     // the receiver lands it, its statuses and ticks are the media this queue replaces
     // (`holdingAsked`), whose place must never be saved or end a listening span.
