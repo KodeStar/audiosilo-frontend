@@ -2637,7 +2637,8 @@ media GETs only.
   `subscribe` drops EVERY incoming state except `playing` while `prev` is `error` and no
   retry is in flight (nor a `playing` within `STALL_PAUSE_FENCE_MS` of the watchdog's own
   pause: sent before the pause reached the engine, it is older, and the engine is paused
-  again). This is suppress-all-but-`playing`, not an allow-list - enumerating
+  again; on iOS and the web the fence ends once the engine reports itself `paused`, so a car
+  or headset play right after the stop plays). This is suppress-all-but-`playing`, not an allow-list - enumerating
   the noisy states bit us repeatedly (iOS frozen `onProgress` ticks carrying `loading`;
   Android `onPlayerError` → `STATE_IDLE` → `idle` plus its own ticks → a flash→spinner
   loop). It's released by a retry (`wantsPlayback` true) or a genuine `playing`. The

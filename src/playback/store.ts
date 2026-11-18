@@ -2615,6 +2615,13 @@ async function createService(): Promise<PlaybackService> {
     else if (state === 'loading' && !wantsPlayback && !startingPlayback) state = 'paused';
     const reported: PlaybackSnapshot = state === raw.state ? raw : { ...raw, state };
     const prev = usePlayer.getState().snapshot;
+    // The watchdog's pause reached the engine (iOS, the web: it reports itself paused, after
+    // whatever it sent before the pause): a `playing` from here is a new play (the car, a
+    // headset), never an older report, so the fence below ends. Not on Android, whose pause of
+    // a buffering engine reads `loading`; a play from outside says so there (`onPlayAsked`).
+    if (stallPauseUntil > 0 && raw.state === 'paused' && Platform.OS !== 'android') {
+      stallPauseUntil = 0;
+    }
     // After the stall watchdog (or an engine error) surfaces an `error`, the engine
     // keeps re-reporting around the dead stream - iOS: frozen `onProgress` ticks
     // carrying `loading`; Android: `onPlayerError` then `STATE_IDLE` → `idle`, plus its

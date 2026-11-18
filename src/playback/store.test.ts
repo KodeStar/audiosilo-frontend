@@ -810,6 +810,20 @@ describe('stall watchdog promotes a stuck loading to error', () => {
     expect(usePlayer.getState().snapshot.state).toBe('playing');
   });
 
+  // The review: iOS says nothing of a play asked from outside, so a car or headset play right
+  // after the stop was paused again as an older report. Once the engine reports the pause, a
+  // `playing` is a new play.
+  it('a playing after the engine reported the pause is a play from outside (iOS)', async () => {
+    await stalledIntoError();
+    pushSnapshot(snap('paused', 50));
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('playing');
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+  });
+
   it('re-arms after a retry that also stalls', async () => {
     await startBook(makeBook(), 0);
     pushSnapshot(snap('playing', 40));
