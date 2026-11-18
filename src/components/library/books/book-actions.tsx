@@ -30,11 +30,16 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
-import { toast } from '@/components/ui/toast';
+import { dismissToast, toast } from '@/components/ui/toast';
 import { playFailedToast } from '@/components/player/play-failed';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import type { PendingEpisodeFetch } from '@/playback/episode-fetch';
-import { finishTakesEvent, leaveFinishedBook, undoFinish } from '@/playback/finish-route';
+import {
+  finishTakesEvent,
+  leaveFinishedBook,
+  reloadLeftBook,
+  undoFinish,
+} from '@/playback/finish-route';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
@@ -60,6 +65,9 @@ export type BookAction<K extends string = string> = {
   destructive?: boolean;
   group?: boolean;
 };
+
+/** How long a Mark as finished waits on its server before a toast says it is on its way. */
+const PENDING_TOAST_MS = 600;
 
 /** The download item by the book's download state. */
 const DOWNLOAD_ACTION = {
@@ -170,40 +178,77 @@ export function useBookActions(
     }
   };
 
+  const ref = { connectionId, libraryId, path };
+
+  // Marked finished by a progress edit (`progress_edit`), the loaded book (or one starting)
+  // stopped and unloaded first, its place saved (fe#258); an edit that failed loads it
+  // again where it was (FE-1): left unloaded, the failure stopped the listening for nothing.
+  const finishByEdit = async () => {
+    await leaveFinishedBook(ref);
+    if (!(await setFinished(true))) await reloadLeftBook(ref);
+  };
+
   const onFinish = async () => {
+    // A finish that waits on its server says so (FE-1): the menu has closed, and nothing
+    // else shows the request. Only when it is slow, so a quick one shows one toast.
+    let pending: number | null = null;
+    const slow = setTimeout(() => {
+      pending = toast({ title: t('library.bookActions.markingFinished'), duration: 15_000 });
+    }, PENDING_TOAST_MS);
+    const settled = () => {
+      clearTimeout(slow);
+      if (pending !== null) dismissToast(pending);
+    };
     // The loaded book stops first, its place saved before the finish (fe#258). That place is
     // the one Undo goes back to: the page's progress was read before that listening, and with
     // the book unloaded no later save moves an Undo there.
-    const left = await leaveFinishedBook({ connectionId, libraryId, path });
+    const left = await leaveFinishedBook(ref);
     const before = left ?? progress?.position ?? 0;
     // Undo is a progress edit (`progress_edit`): the only way to mark a book not finished
     // at the place it had.
     const canUndo = progressEdit === true;
+    const undo = async () => {
+      // The finish event, if still waiting, is taken back before the edit (fe#208).
+      const outcome = await undoFinish({ ...ref, position: before }, () =>
+        edit.mutateAsync({ libraryId, path, edit: { finished: false, position: before } }),
+      ).catch((e: unknown) => {
+        failed(e);
+        return null;
+      });
+      // The finish may be on a server that can't be asked now (fe#258): it stays finished.
+      if (outcome === 'unreachable') {
+        toast({ title: t('library.bookActions.undoUnreachable'), description: book.title });
+      }
+    };
     const done = () =>
       toast({
         title: t('library.bookActions.markedFinished'),
         description: book.title,
-        action: canUndo
-          ? {
-              label: t('queue.undo'),
-              // The finish event, if still waiting, is taken back before the edit (fe#208).
-              onPress: () =>
-                void undoFinish({ connectionId, libraryId, path, position: before }, () =>
-                  setFinished(false, before),
-                ),
-            }
-          : undefined,
+        action: canUndo ? { label: t('queue.undo'), onPress: () => void undo() } : undefined,
       });
-    if (canUndo && !finishTakesEvent(connectionId)) {
-      if (await setFinished(true)) done();
-      return;
+    try {
+      if (canUndo && !finishTakesEvent(connectionId)) {
+        const ok = await setFinished(true);
+        settled();
+        if (ok) done();
+        else await reloadLeftBook(ref);
+        return;
+      }
+      // A server that takes listening events: a `finish` event, offline too (fe#208). An
+      // older server without progress edits: the offline-aware save at the book's end.
+      await markFinished.mutateAsync({
+        libraryId,
+        path,
+        position: book.duration,
+        duration: book.duration,
+      });
+      settled();
+      done();
+    } catch (e) {
+      settled();
+      failed(e);
+      await reloadLeftBook(ref);
     }
-    // A server that takes listening events: a `finish` event, offline too (fe#208). An
-    // older server without progress edits: the offline-aware save at the book's end.
-    markFinished.mutate(
-      { libraryId, path, position: book.duration, duration: book.duration },
-      { onSuccess: done, onError: failed },
-    );
   };
 
   const onUnfinish = async () => {
@@ -211,7 +256,8 @@ export function useBookActions(
     toast({
       title: t('library.bookActions.markedUnfinished'),
       description: book.title,
-      action: { label: t('queue.undo'), onPress: () => void setFinished(true) },
+      // Finished again: a book started since stops first, as on Mark as finished (FE-1).
+      action: { label: t('queue.undo'), onPress: () => void finishByEdit() },
     });
   };
 

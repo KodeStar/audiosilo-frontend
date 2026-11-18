@@ -678,7 +678,9 @@ export async function writeMirrors(saves: readonly ProgressSave[]): Promise<void
     for (const save of saves) {
       const key = contentKey(save.connectionId, save.libraryId, save.path);
       const existing = map[key];
-      const skew = existing ? await knownSkew(save.connectionId) : 0;
+      const undone = undoneFinishes.get(key);
+      const skew = existing || undone !== undefined ? await knownSkew(save.connectionId) : 0;
+      if (undone !== undefined && undoneBy(key, undone, save, skew)) continue;
       if (!existing || localTimeOf(save, skew) >= localTimeOf(existing, skew)) {
         const { guard: _guard, guard_session: _session, ...record } = save;
         const next = mergeKept(record, existing, skew);
@@ -690,6 +692,43 @@ export async function writeMirrors(saves: readonly ProgressSave[]): Promise<void
     }
     if (changed) await setItem(MIRROR_KEY, map);
   });
+}
+
+/** How long an Undo of a finish holds off its finished record (`noteUndoneFinish`): past a
+ * read's 15 s timeout and the write of its answer. */
+const UNDONE_FINISH_HOLD_MS = 60_000;
+/** The books whose finish was undone here lately (`noteUndoneFinish`), with the time (ms,
+ * this device's clock) of each Undo. This launch's only: an Undo is a toast of the launch
+ * that marked the book. */
+const undoneFinishes = new Map<string, number>();
+
+/**
+ * A Mark as finished was undone (`unrecordFinish` in the store): for a while
+ * (`UNDONE_FINISH_HOLD_MS`) the mirror takes no finished record of the book stamped before
+ * the Undo (by this device's clock, `localTimeOf`). A read of the server's row that was on
+ * its way as the Undo was made (the finish's own refresh, fe#272) lands after it with the
+ * row for the finish, which the server stamped later than the finished record the Undo
+ * replaced: by the newest-wins rule alone it finished the mirror again, and the next
+ * offline Play started the book again at 0, until the next read (fe#258). A finish made
+ * after the Undo (the end, another device's, Mark as finished again) is stamped after it.
+ */
+export function noteUndoneFinish(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  at = Date.now(),
+): void {
+  undoneFinishes.set(contentKey(connectionId, libraryId, path), at);
+}
+
+/** Whether `save` is a finished record the Undo at `at` of `key`'s finish undid (one
+ * stamped before it, while the Undo holds); a hold run out is forgotten. */
+function undoneBy(key: string, at: number, save: ProgressSave, skewMs: number): boolean {
+  if (Date.now() - at > UNDONE_FINISH_HOLD_MS) {
+    undoneFinishes.delete(key);
+    return false;
+  }
+  return save.finished && localTimeOf(save, skewMs) < at;
 }
 
 /** `save` with what the mirror keeps across records (see `writeMirror`), its server's clock

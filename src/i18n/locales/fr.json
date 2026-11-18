@@ -1010,6 +1010,8 @@
       "moreInSeries": "Plus dans cette série",
       "markedFinished": "Marqué comme terminé",
       "markedUnfinished": "Marqué comme non terminé",
+      "markingFinished": "Marquage comme terminé...",
+      "undoUnreachable": "Impossible d'annuler tant que le serveur est injoignable. Réessaie quand il sera de retour.",
       "downloading": "Téléchargement pour hors ligne",
       "downloadRemoved": "Téléchargement supprimé",
       "failed": "Impossible de mettre à jour ce livre. Réessaie.",

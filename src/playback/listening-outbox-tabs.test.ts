@@ -235,13 +235,18 @@ describe("an Undo in one tab and another tab's send (withdrawFinish across tabs)
     expect((await a.withdrawFinish('c1', 3, 'Author/Book')).unsent).toBe(false);
   });
 
-  it('with the server down by the Undo no edit can be made: undone here, as in one tab', async () => {
+  // fe#258 (4a): undone here, a finish another tab's request did deliver stayed on the
+  // server and won on reconnect.
+  it('with the server down by the Undo no edit can be made: the Undo fails, as in one tab', async () => {
     await a.appendEvents('c1', [finish('f')]);
     b.sync(lost);
     await b.flushOutbox('c1');
     mockReachable = false;
-    expect((await a.withdrawFinish('c1', 3, 'Author/Book')).unsent).toBe(true);
-    expect(storedIds()).toEqual([]);
+    expect(await a.withdrawFinish('c1', 3, 'Author/Book')).toMatchObject({
+      unsent: false,
+      unreachable: true,
+    });
+    expect(storedIds()).toEqual(['f']);
   });
 
   it("the server's own refusal in another tab stores nothing: unsent", async () => {

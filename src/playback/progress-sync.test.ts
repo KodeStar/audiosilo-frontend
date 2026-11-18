@@ -22,6 +22,7 @@ import {
   positionOn,
   withLocalPlaces,
   noteClockSkew,
+  noteUndoneFinish,
   pendingSaveCount,
   type LocalPlaces,
   type PlacedProgress,
@@ -945,6 +946,55 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
     const m = await readMirrorOf('c1', 1, 'A/Book');
     expect(m).not.toHaveProperty('file');
     expect(m?.ack_version).toBe(7);
+  });
+
+  // fe#258 (fe#272's partial fix): a read of the server's row on its way as the Undo was
+  // made landed after it with the finished row, stamped later than the record the Undo put
+  // back, and finished the mirror again.
+  describe('a finish undone here (noteUndoneFinish)', () => {
+    const undoneAt = Date.parse('2026-01-05T00:00:00Z');
+    const unfinished = { ...save, position: 48, updated_at: '2026-01-04T00:00:00.001Z' };
+    const finishedRow = { ...save, position: 100, finished: true, server_clock: true as const };
+
+    it('holds off a finished record stamped before the Undo, not one after it', async () => {
+      await writeMirror(unfinished);
+      noteUndoneFinish('c1', 1, 'A/Book', undoneAt);
+      const now = jest.spyOn(Date, 'now').mockReturnValue(undoneAt + 5_000);
+      try {
+        await writeMirror({ ...finishedRow, updated_at: '2026-01-04T23:59:59Z' });
+        expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ finished: false });
+        // A place, unfinished, goes in as ever; so does a finish made after the Undo.
+        await writeMirror({ ...save, position: 60, updated_at: '2026-01-04T23:59:59Z' });
+        expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ position: 60 });
+        await writeMirror({ ...finishedRow, updated_at: '2026-01-05T00:00:01Z' });
+        expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ finished: true });
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it('only for a while: past the hold the newest record wins again', async () => {
+      await writeMirror(unfinished);
+      noteUndoneFinish('c1', 1, 'A/Book', undoneAt);
+      const now = jest.spyOn(Date, 'now').mockReturnValue(undoneAt + 61_000);
+      try {
+        await writeMirror({ ...finishedRow, updated_at: '2026-01-04T23:59:59Z' });
+        expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ finished: true });
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it("another book's finished record is not held off", async () => {
+      noteUndoneFinish('c1', 1, 'A/Book', undoneAt);
+      const now = jest.spyOn(Date, 'now').mockReturnValue(undoneAt + 5_000);
+      try {
+        await writeMirror({ ...finishedRow, path: 'B/Book', updated_at: '2026-01-04T00:00:00Z' });
+        expect(await readMirrorOf('c1', 1, 'B/Book')).toMatchObject({ finished: true });
+      } finally {
+        now.mockRestore();
+      }
+    });
   });
 
   // fe#208: the echo is stamped in server time, the capture in this device's time.
