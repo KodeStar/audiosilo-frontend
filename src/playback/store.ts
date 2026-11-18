@@ -1934,13 +1934,15 @@ const stoppedState = (state: PlaybackState) => state === 'paused' || state === '
 /** Has the loaded book's engine faulted (`faultedBook`)? */
 const loadedFaulted = () => faultedBook !== null && faultedBook === usePlayer.getState().nowPlaying;
 
+/** Is the snapshot an error only a play replaces: no play wanted, so `onReport` holds it
+ * against every report but a `playing` one? */
+const errorHeld = () => usePlayer.getState().snapshot.state === 'error' && !wantsPlayback;
+
 /** Do the engine's reports stay off the loaded book's snapshot: its engine faulted
- * (`faultedBook`), or the snapshot is an error only a play replaces (`onReport`'s error
- * hold)? A move made then shows its place itself (`showPlace`: `listenerMove`,
- * `onRemoteMove`): the place saved, the screen and a Retry's reload all follow it, never the
- * place the error was at. */
-const reportsUnheard = () =>
-  loadedFaulted() || (usePlayer.getState().snapshot.state === 'error' && !wantsPlayback);
+ * (`faultedBook`), or its error is held (`errorHeld`)? A move made then shows its place itself
+ * (`showPlace`: `listenerMove`, `onRemoteMove`): the place saved, the screen and a Retry's
+ * reload all follow it, never the place the error was at. */
+const reportsUnheard = () => loadedFaulted() || errorHeld();
 
 /** The snapshot shows `(trackIndex, position)` of `np`'s queue, its state kept, at the file's
  * server length (the engine's may be a short measure). */
@@ -2924,9 +2926,8 @@ async function createService(): Promise<PlaybackService> {
     // headset), never by the stream coming back on its own: the watchdog pauses the engine,
     // and a failed Android engine stays idle until a press. Enumerating the "noisy"
     // states bit us repeatedly (loading, ready, idle, paused…); suppress-all-but-playing
-    // is the robust rule. A move made meanwhile shows its own place (`reportsUnheard`), as
-    // the engine's report of it is held off here too.
-    if (prev.state === 'error' && !wantsPlayback && reported.state !== 'playing') {
+    // is the robust rule. A move made meanwhile shows its own place (`reportsUnheard`).
+    if (errorHeld() && reported.state !== 'playing') {
       return;
     }
     // Nor a `playing` sent just before the watchdog's pause reached the engine: the pause
