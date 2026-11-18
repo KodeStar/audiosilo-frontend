@@ -925,6 +925,9 @@ describe('with listening_sync', () => {
       standByPlace();
       await settle();
       expect(order).toEqual(['close', 'stay']);
+      // The copy waiting its turn (the web's `pagehide` sends it) carries the closed span's
+      // base, not 0: on 0 the server read the Stay as made before every write it holds.
+      expect(mockAppendInTurn.mock.calls[0][1][0]).toMatchObject({ base_version: 41 });
       expect(mockAppended).toHaveLength(1);
       expect(mockAppended[0]).toMatchObject({
         kind: 'listen',

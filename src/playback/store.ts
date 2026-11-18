@@ -1227,17 +1227,20 @@ function moveListeningSpan(target: SpanEnd | null, opts: { from?: SpanEnd | null
     openListeningSpan(target);
     return;
   }
-  sendStill(np, target, reason);
+  sendStill(np, target, reason, closed?.baseVersion);
 }
 
 /** A move made while paused, or a Stay (`start`, to `at`): sent at once as a span of its own
  * that moved nowhere (the place syncs as a PUT did), and the next span begins with the same
- * reason (a Stay's as a `jump`: `carriedStart`). */
-function sendStill(np: NowPlaying, at: SpanEnd, start: ListeningStart) {
+ * reason (a Stay's as a `jump`: `carriedStart`). `base`: the base of the span just closed
+ * (`closeListeningSpan`), for the copy waiting its turn. */
+function sendStill(np: NowPlaying, at: SpanEnd, start: ListeningStart, base?: number) {
   const now = new Date().toISOString();
   // After the span a close just ended (still on its way into the outbox, `closeSpan` waits
-  // its turn): the outbox's order is the order a sync sends (`appendInTurn`).
-  const event = spanToEvent(spanAt(np, at, start, now));
+  // its turn): the outbox's order is the order a sync sends (`appendInTurn`). The copy
+  // waiting meanwhile carries the closed span's base, which the web's `pagehide` sends: on
+  // base 0 the server read a `moved_back` or a `stay` as made before every write it holds.
+  const event = spanToEvent(spanAt(np, at, start, now, base));
   void appendInTurn(np.connectionId, [event], () => baseVersionOf(np))
     .catch(() => undefined)
     .then(() => flushOutbox(np.connectionId));
@@ -1494,7 +1497,7 @@ export function standByPlace(): void {
   if (np && here) {
     // The open span (a playing one, or one a stall left open) ends where the Stay is.
     const closed = closeListeningSpan({ at: here });
-    sendStill(np, here, start);
+    sendStill(np, here, start, closed?.baseVersion);
     if (playing && closed) openListeningSpan(here);
     return;
   }
