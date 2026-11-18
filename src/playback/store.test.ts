@@ -3849,6 +3849,22 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     ).toBe(false);
   });
 
+  it('the next report decides a run held while the timers are paused (Android background)', async () => {
+    await resume(30);
+    pushSnapshot(snap('loading', 0, { trackIndex: 1, duration: short }));
+    expect(usePlayer.getState().snapshot.state).not.toBe('error');
+    // The hold's timer never fires; the clock goes on.
+    jest.setSystemTime(Date.now() + FAULT_HOLD_MS);
+    pushSnapshot(snap('playing', 0.2, { trackIndex: 1, duration: short }));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'error',
+      trackIndex: 0,
+      position: 30,
+    });
+    expect(mockSvc.pause).toHaveBeenCalled();
+  });
+
   it('a lock-screen move on a faulted book is where a Retry reloads it', async () => {
     await resume(30);
     ranOff();
