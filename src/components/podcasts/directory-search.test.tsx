@@ -359,6 +359,22 @@ describe('DirectorySearch', () => {
     expect(screen.getByText('Following')).toBeTruthy();
   });
 
+  it('reads Following once the listener follows a show whose Follow here had failed', async () => {
+    mockSearch = { data: { provider: 'itunes', query: 'h', country: 'GB', results: [result()] } };
+    mockFollow.mockResolvedValueOnce({ state: 'subscribing', request: { id: 3 } });
+    mockRequests = [{ id: 3, state: 'failed', library_id: 7, show_path: null }];
+    await mount();
+    await search('history');
+    await fireEvent.press(screen.getByRole('button', { name: 'Follow History Hour' }));
+    expect(await screen.findByTestId('discovery-result-failed')).toBeTruthy();
+    // Followed by its address (the page's own form) after that: the list has the show.
+    mockShows = [podcastShow({ library_id: 7, path: 'History Hour', feed_url: result().feed_url })];
+    await fireEvent.changeText(screen.getByTestId('directory-search-input'), 'history ');
+    expect(screen.queryByTestId('discovery-result-failed')).toBeNull();
+    expect(screen.getByText('Following')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Follow History Hour' })).toBeNull();
+  });
+
   it('toasts why a follow was refused', async () => {
     mockSearch = { data: { provider: 'itunes', query: 'h', country: 'GB', results: [result()] } };
     mockFollow.mockRejectedValue(new ApiError(429, 'busy', 'too_many_requests'));

@@ -97,11 +97,16 @@ export function DirectorySearch({
         for (const [i, address] of feedAddressesOf(show.feed_url).entries())
           if (i === 0 || !(address in live))
             live[address] = { kind: 'following', libraryId: show.library_id, path: show.path };
-    // What a Follow on this page did is newer than the list.
+    // What a Follow on this page did is newer than the list. One that ended without adding
+    // the show says nothing against a list that has it: the listener follows it now (by its
+    // address above, after that).
     for (const [feedUrl, outcome] of Object.entries(outcomes)) {
       const end = outcome.kind === 'adding' ? requestEnd(requests, outcome.requestId) : null;
       if (end?.kind === 'unknown') continue;
-      live[feedUrl] = end ?? outcome;
+      const now = end ?? outcome;
+      const notAdded = now.kind === 'failed' || now.kind === 'cancelled';
+      if (notAdded && live[feedUrl]?.kind === 'following') continue;
+      live[feedUrl] = now;
     }
     return live;
   }, [outcomes, requests, shows]);
