@@ -6,6 +6,7 @@ import { downloadEndsBefore } from '@/downloads/kept-offline';
 import { identityMovePending } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { serialQueue } from '@/lib/serial-queue';
+import { tabLock } from '@/lib/tab-lock';
 import { getItem, setItem } from '@/lib/storage';
 import {
   LISTENING_OPEN_SPAN_KEY,
@@ -728,8 +729,8 @@ function latestUndo(a: number | undefined, b: number | undefined): number | unde
   return a === undefined ? b : b === undefined ? a : Math.max(a, b);
 }
 
-// One write of the stored undone finishes at a time (in this tab).
-const withUndoneLock = serialQueue();
+// One write of the stored undone finishes at a time, in this tab and across tabs (`tabLock`).
+const withUndoneLock = tabLock(UNDONE_FINISHES_KEY);
 
 /**
  * A Mark as finished was undone (`unrecordFinish` in the store): for a while
