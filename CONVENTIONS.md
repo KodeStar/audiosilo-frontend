@@ -1055,9 +1055,10 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   book, durable mirror, 4xx dropped but a 408 or a 429, which is queued (`isRefusedForGood`),
   replay through each save's connection) plus `base_version`:
   the last version this device acknowledged, always sent (0 only when no row was ever seen).
-  Every send, the queue's replays and the open reader's saves alike, and every queue change go
-  through one lock (`withQueueLock`, fe#173), and a sent save drops a queued one of the book made
-  before it. The open reader's saves go one at a time (`saveReaderPlace`): one captured on 0 is
+  Every send, the queue's replays and the open reader's saves alike, goes one at a time in the
+  tab (`withSendTurn`, fe#173), and a sent save drops a queued one of the book made before it.
+  The mirror and the stored queue are every tab's: their read-modify-writes take `tabLock`
+  (storage only), and a replay claims what it sends (`replayQueue`, as the legacy queue). The open reader's saves go one at a time (`saveReaderPlace`): one captured on 0 is
   sent on the version an answer to this device's own save acknowledged meanwhile, since two on 0
   would diverge from each other; never on one adopted meanwhile (the mirror's `own`), so a page
   captured before a Jump never applies on the place jumped to. An
@@ -2204,7 +2205,10 @@ media GETs only.
 - **Never restart an in-progress book from 0.** `loadInitialProgress` returns a
   discriminated `ResumeLookup` (`progress`/`empty`/`failed`) reconciling the server, a
   **durable local mirror** (`writeMirror`, never pruned on sync - survives a flaky resume
-  fetch), and the offline queue by `updated_at`. `playBook` resumes from `progress`; on
+  fetch), and the offline queue by `updated_at` (shared by the web's tabs: its changes take
+  `tabLock`, and a replay claims the saves it sends under it and sends them with it released,
+  `replayQueue` in `src/lib/queue-claims.ts`: a plain-http lease runs out in 5 s, a replay can
+  take longer; a claim left by a tab that went runs out in 2 minutes). `playBook` resumes from `progress`; on
   `failed` for a **streaming** book it sets an `error` (retry re-runs the lookup) instead
   of silently starting at 0; `empty`/downloaded-`failed` start at 0 (genuinely new). A
   **save guard** (`resumeFloor` in `store.ts`) refuses to persist a position far below

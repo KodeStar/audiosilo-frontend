@@ -5,7 +5,7 @@ import type { Progress } from '@/api/types';
 import { downloadEndsBefore } from '@/downloads/kept-offline';
 import { identityMovePending } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
-import { serialQueue } from '@/lib/serial-queue';
+import { replayQueue, type Route } from '@/lib/queue-claims';
 import { tabLock } from '@/lib/tab-lock';
 import { getItem, setItem } from '@/lib/storage';
 import { withTimeout } from '@/lib/with-timeout';
@@ -1152,10 +1152,12 @@ function putBody(save: ProgressSave) {
   };
 }
 
-// Serialize all read-modify-write access to the queue so a flush and a
-// concurrent save (or two overlapping flushes) can't clobber each other's writes
-// and drop queued saves (review finding F4).
-const withQueueLock = serialQueue();
+// The queue's read-modify-writes one at a time, in this tab and across tabs (`tabLock`): the
+// tabs of the web player share one queue, and a lock per tab let one tab's replay write
+// its read of the queue over a save another tab queued meanwhile. Storage only: a replay
+// sends outside it (`replayQueue`), since on plain http the lock is a lease of a few
+// seconds and a replay can take longer.
+const withQueueLock = tabLock(QUEUE_KEY);
 
 async function enqueue(save: ProgressSave): Promise<void> {
   await withQueueLock(async () => {
@@ -1214,42 +1216,40 @@ async function flushGroup(
   return remaining;
 }
 
+/** `replayQueue` over the legacy queue: claimed under its lock, sent outside it. */
+function replaySaves(route: (cid: string) => Route<ApiClient>): Promise<void> {
+  return replayQueue<ProgressSave, ApiClient>({
+    lock: withQueueLock,
+    read: readQueue,
+    write: writeQueue,
+    connectionOf: (s) => s.connectionId,
+    keyOf: (s) => `${contentKey(s.connectionId, s.libraryId, s.path)}|${s.updated_at}`,
+    route,
+    send: flushGroup,
+  });
+}
+
 /**
  * Replay queued saves (call on reconnect / app open / after a successful save). Each
  * entry replays through ITS OWN connection's client, so a save captured on server B
  * can never be written to server A. Grouped by connection preserving order; the
  * groups run concurrently (they touch disjoint servers), so one dead/slow server
- * can't delay every other server's replay by its full timeout.
+ * can't delay every other server's replay by its full timeout. Saves another tab is
+ * replaying are left to it (`replayQueue`).
  */
 export async function flushQueue(): Promise<void> {
   // Load-bearing guard: a flush racing session hydrate would resolve every entry's
   // client to null (the connection list is still empty) and drop the whole queue as
   // unroutable. Wait until the session is ready so entries route to a real client.
   if (!sessionReady()) return;
-  await withQueueLock(async () => {
-    const queue = await readQueue();
-    if (queue.length === 0) return;
-
-    // Group by connection, preserving order.
-    const groups = new Map<string, ProgressSave[]>();
-    for (const save of queue) {
-      const g = groups.get(save.connectionId);
-      if (g) g.push(save);
-      else groups.set(save.connectionId, [save]);
-    }
-
-    const remainingByGroup = await Promise.all(
-      [...groups].map(async ([cid, saves]) => {
-        if (!isReachable(cid)) return saves; // this server known down; keep its saves queued
-        const client = resolveClient(cid);
-        // A connection removed: unroutable, drop the whole group. Not while an identity
-        // move is on its way (`identityMovePending`): the id can be one the documents
-        // moved and the connections don't show yet, so the saves wait for that launch.
-        if (!client) return identityMovePending() ? saves : [];
-        return flushGroup(cid, client, saves);
-      }),
-    );
-    await writeQueue(remainingByGroup.flat(), queue.length);
+  await replaySaves((cid) => {
+    if (!isReachable(cid)) return 'keep'; // this server known down; keep its saves queued
+    const client = resolveClient(cid);
+    // A connection removed: unroutable, drop the whole group. Not while an identity
+    // move is on its way (`identityMovePending`): the id can be one the documents
+    // moved and the connections don't show yet, so the saves wait for that launch.
+    if (!client) return identityMovePending() ? 'keep' : 'drop';
+    return { send: client };
   });
 }
 
@@ -1269,14 +1269,7 @@ export async function flushConnection(connectionId: string): Promise<void> {
   if (!sessionReady()) return;
   const client = resolveClient(connectionId);
   if (!client) return; // already gone - nothing routable to flush
-  await withQueueLock(async () => {
-    const queue = await readQueue();
-    const mine = queue.filter((s) => s.connectionId === connectionId);
-    if (mine.length === 0) return;
-    const others = queue.filter((s) => s.connectionId !== connectionId);
-    const remaining = await flushGroup(connectionId, client, mine);
-    await writeQueue([...others, ...remaining], queue.length);
-  });
+  await replaySaves((cid) => (cid === connectionId ? { send: client } : 'keep'));
 }
 
 // Removing a connection orphans its scoped state (signing in again starts from the

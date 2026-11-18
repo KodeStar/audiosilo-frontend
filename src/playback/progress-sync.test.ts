@@ -1684,3 +1684,139 @@ describe('the replay guard on the legacy PUT path (fe#198)', () => {
     });
   });
 });
+
+// The web player's tabs share one legacy queue. A lock per tab let one tab's replay write
+// its read of the queue over a save another tab queued meanwhile; a lock across tabs held
+// over the replay's requests outlived a plain-http lease (5 s). A replay now claims what it
+// sends under the lock, sends with no lock held, and settles under it again.
+describe('the legacy queue across tabs', () => {
+  const nav = globalThis.navigator as { locks?: unknown };
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    jest.clearAllMocks();
+    reachable.mockReset().mockReturnValue(true);
+    mockResolveClient.mockReset().mockReturnValue(null);
+    mockSessionReady.mockReset().mockReturnValue(true);
+    // One browser's Web Locks: a job per name at a time, whichever tab asks.
+    const chains = new Map<string, Promise<unknown>>();
+    const request = (name: string, job: () => Promise<unknown>) => {
+      const run = (chains.get(name) ?? Promise.resolve()).then(job);
+      chains.set(
+        name,
+        run.catch(() => undefined),
+      );
+      return run;
+    };
+    Object.defineProperty(nav, 'locks', { configurable: true, value: { request } });
+  });
+  afterEach(() => {
+    delete nav.locks;
+  });
+
+  /** Another tab: its own copy of the module over the same storage and the same seams. */
+  const otherTab = () => {
+    let other!: typeof import('@/playback/progress-sync');
+    jest.isolateModules(() => {
+      jest.doMock('@react-native-async-storage/async-storage', () => ({
+        __esModule: true,
+        default: AsyncStorage,
+      }));
+      jest.doMock('@/api/connection-clients', () => ({
+        resolveClient: mockResolveClient,
+        sessionReady: mockSessionReady,
+      }));
+      jest.doMock('@/api/reachability', () => reachability);
+      /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+      other = require('@/playback/progress-sync') as typeof import('@/playback/progress-sync');
+    });
+    return other;
+  };
+
+  /** A PUT that waits until `answer` is called. */
+  function slowApi() {
+    let answer!: () => void;
+    const answered = new Promise<void>((r) => (answer = r));
+    const api = {
+      saveProgress: jest.fn(() => answered),
+      getProgress: jest.fn(async () => null),
+    } as unknown as ApiClient;
+    return { api, answer: () => answer() };
+  }
+
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const queued = { ...save, path: 'B/Other', updated_at: '2026-01-02T00:00:00Z' };
+
+  it("keeps a save another tab queued while this tab's replay was out", async () => {
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save]));
+    const { api, answer } = slowApi();
+    routeClients({ c1: api });
+    const flushing = flushQueue();
+    await tick();
+    expect(api.saveProgress).toHaveBeenCalledTimes(1);
+    // Tab B goes offline mid-replay and queues its own save; the lock is free for it.
+    reachable.mockReturnValue(false);
+    await expect(
+      otherTab().saveProgress(
+        fakeApi(async () => {}),
+        queued,
+      ),
+    ).resolves.toBe('queued');
+    answer();
+    await flushing;
+    expect(await readQueue()).toEqual([queued]);
+  });
+
+  it("does not send a save another tab's replay is sending; one that failed there is sent later", async () => {
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save]));
+    const { api } = slowApi();
+    let refuse!: () => void;
+    (api.saveProgress as jest.Mock).mockImplementation(
+      () => new Promise((_, reject) => (refuse = () => reject(new TypeError('Failed to fetch')))),
+    );
+    routeClients({ c1: api });
+    const flushing = flushQueue();
+    await tick();
+    const other = otherTab();
+    await other.flushQueue();
+    expect(api.saveProgress).toHaveBeenCalledTimes(1);
+    // The replay out fails: the save stays queued, unclaimed, and the next replay sends it.
+    refuse();
+    await flushing;
+    expect(await readQueue()).toEqual([save]);
+    (api.saveProgress as jest.Mock).mockImplementation(async () => {});
+    await other.flushQueue();
+    expect(api.saveProgress).toHaveBeenCalledTimes(2);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('replays the saves of a tab that went away with them claimed, once its claim ran out', async () => {
+    const claim = { id: 'gone', until: Date.now() + 60_000 };
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([{ ...save, claim }]));
+    const api = fakeApi(async () => {});
+    routeClients({ c1: api });
+    await flushQueue();
+    expect(api.saveProgress).not.toHaveBeenCalled();
+    await AsyncStorage.setItem(
+      QUEUE_KEY,
+      JSON.stringify([{ ...save, claim: { ...claim, until: Date.now() - 1 } }]),
+    );
+    await flushQueue();
+    expect(api.saveProgress).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('a save queued again while its older copy is out leaves the newer one queued', async () => {
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save]));
+    const { api, answer } = slowApi();
+    routeClients({ c1: api });
+    const flushing = flushConnection('c1');
+    await tick();
+    reachable.mockReturnValue(false);
+    const newer = { ...save, position: 40, updated_at: '2026-01-03T00:00:00Z' };
+    await saveProgress(api, newer);
+    answer();
+    await flushing;
+    expect(await readQueue()).toEqual([newer]);
+  });
+});
