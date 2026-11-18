@@ -2129,6 +2129,64 @@ describe('open spans of several web tabs', () => {
     await Promise.all([closing, finishing]);
   });
 
+  // A move made while paused with no span open had no closed span to take a base from: its
+  // copy waiting went with base 0, which the server reads as a place this device never saw
+  // (the further place kept over a move back or a Stay), and the copy appended after, the
+  // same id, was a `duplicate`.
+  it('the page going carries a waiting move on the base read at the call, never 0', async () => {
+    await recoverOpenSpan();
+    const c = client(async (body) => answer(body));
+    let release: () => void = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    // Something ahead holds the turn.
+    const ahead = appendInTurn(
+      'c1',
+      [{ id: 'ahead', kind: 'unfinish', library_id: 3, path: 'Author/Book', at: 'x' }],
+      () => held.then(() => undefined),
+    );
+    const move = spanToEvent({ ...span({ id: 'move', start: 'moved_back' }), baseVersion: 0 });
+    const moving = appendInTurn('c1', [move], async () => 41);
+    try {
+      // The base read lands before the page can go (the web's storage answers in the same
+      // turn).
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      sendOnPageHide([], 'dev');
+      const events = sent(c)[0].events;
+      expect(events.map((e) => e.id)).toEqual(['ahead', 'move']);
+      expect(events[1]).toMatchObject({ base_version: 41 });
+    } finally {
+      release();
+      await Promise.all([ahead, moving]);
+    }
+    expect((await outboxEvents('c1')).at(-1)?.event).toMatchObject({
+      id: 'move',
+      base_version: 41,
+    });
+  });
+
+  it('a waiting copy made on a later base than the one read keeps its own', async () => {
+    await recoverOpenSpan();
+    const c = client(async (body) => answer(body));
+    let release: () => void = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    const ahead = appendInTurn(
+      'c1',
+      [{ id: 'ahead', kind: 'unfinish', library_id: 3, path: 'Author/Book', at: 'x' }],
+      () => held.then(() => undefined),
+    );
+    const move = spanToEvent({ ...span({ id: 'move', start: 'jump' }), baseVersion: 41 });
+    // A mirror that could not be read gives 0.
+    const moving = appendInTurn('c1', [move], async () => 0);
+    try {
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      sendOnPageHide([], 'dev');
+      expect(sent(c)[0].events[1]).toMatchObject({ id: 'move', base_version: 41 });
+    } finally {
+      release();
+      await Promise.all([ahead, moving]);
+    }
+  });
+
   it('the page going sends the closes still queued behind the lock too', async () => {
     await recoverOpenSpan();
     const c = client(async (body) => answer(body));

@@ -2300,7 +2300,11 @@ media GETs only.
     turn `closeSpan` takes, so a paused move's still span (`sendStill`) goes behind its close
     too), and from the call both wait there in memory (`queued`), where the page's keepalive
     carries them; the store holds nothing back meanwhile (fe#258: a finish waiting in the
-    store for its close to land was lost to a kill or a page going). A close or an event made
+    store for its close to land was lost to a kill or a page going). The copy waiting takes
+    the acknowledged version read at the call when that is past the base it was made with
+    (a move made paused with no span open was made with none, and on base 0 the server keeps
+    the further place over a move back or a Stay; the copy appended after is then a
+    `duplicate`). A close or an event made
     for a connection and appended after an await is dropped once that connection was removed
     meanwhile (`connectionGeneration`, bumped first thing in the outbox's removal purge: the
     same account signing in again has the same connection id, and an orphan appended after the

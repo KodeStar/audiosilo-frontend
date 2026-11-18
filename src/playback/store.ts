@@ -1240,6 +1240,8 @@ function sendStill(np: NowPlaying, at: SpanEnd, start: ListeningStart, base?: nu
   // its turn): the outbox's order is the order a sync sends (`appendInTurn`). The copy
   // waiting meanwhile carries the closed span's base, which the web's `pagehide` sends: on
   // base 0 the server read a `moved_back` or a `stay` as made before every write it holds.
+  // With no span closed (paused with none open) the outbox gives that copy the base it
+  // reads at the call.
   const event = spanToEvent(spanAt(np, at, start, now, base));
   void appendInTurn(np.connectionId, [event], () => baseVersionOf(np))
     .catch(() => undefined)

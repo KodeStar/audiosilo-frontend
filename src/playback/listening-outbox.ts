@@ -418,7 +418,11 @@ export function connectionGeneration(connectionId: string): number {
  * `pagehide` carries them too, as it carries the closes ahead of them (a page going, or an
  * app killed, while the close waited its turn otherwise lost the finish with it).
  * `baseVersion` gives each its `base_version` as it is appended (read then: what was
- * acknowledged by the closes ahead of it); the copy waiting carries the one it was made with.
+ * acknowledged by the closes ahead of it). The copy waiting takes it too, read at the call
+ * (the web's storage answers before the page can go), when that is past the one it was made
+ * with: a move made with no span closed ahead of it was made with none, and base 0 is a
+ * place this device never saw to the server, which then keeps the further place over a move
+ * back or a Stay (and the copy appended later, the same id, is a `duplicate`).
  */
 export async function appendInTurn(
   connectionId: string,
@@ -427,6 +431,18 @@ export async function appendInTurn(
 ): Promise<void> {
   appendsInTurn.set(connectionId, (appendsInTurn.get(connectionId) ?? 0) + 1);
   try {
+    if (baseVersion) {
+      void baseVersion()
+        .catch(() => undefined)
+        .then((base) => {
+          if (base === undefined) return;
+          for (const event of events) {
+            // Still waiting (in its place in the order: a key set again keeps it).
+            if (!queued.has(event.id) || (event.base_version ?? 0) >= base) continue;
+            queued.set(event.id, { connectionId, event: { ...event, base_version: base } });
+          }
+        });
+    }
     await inTurn(connectionId, events, async (since) => {
       const base = baseVersion ? await baseVersion().catch(() => undefined) : undefined;
       const final = base === undefined ? events : events.map((e) => ({ ...e, base_version: base }));
