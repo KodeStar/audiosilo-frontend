@@ -3906,6 +3906,21 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     expect(lastLoad()).toEqual([0, 80]);
   });
 
+  it('a start whose load fails leaves a later start of the same book its place and its play', async () => {
+    let failFirst!: (e: Error) => void;
+    (mockSvc.load as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((_, reject) => (failFirst = reject)),
+    );
+    const first = resume(30).catch(() => undefined);
+    await flushMicrotasks(30);
+    await resume(100); // a chapter tap while the first load is out
+    failFirst(new Error('superseded'));
+    await first;
+    expect(usePlayer.getState().snapshot.state).not.toBe('error');
+    pushSnapshot(snap('playing', 100.4, { trackIndex: 0 }));
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'playing', position: 100.4 });
+  });
+
   it('a start whose load fails shows the place it asked for, in its error state', async () => {
     (mockSvc.load as jest.Mock).mockRejectedValueOnce(new Error('no engine'));
     await expect(resume(lengths[0] + 40)).rejects.toThrow('no engine');

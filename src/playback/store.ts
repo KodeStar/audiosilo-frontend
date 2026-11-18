@@ -3265,7 +3265,9 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         // Nothing plays: the book shows the place its start asked for, where a Retry loads it
         // (`resumeFloor`), in its error state at once. Never the snapshot it had, which is
         // another book's place, or Part 1 at 0:00 for the first book since the app opened.
-        if (current() && selectBookKey(get()) === key) {
+        // Not once another start took the player (a chapter tap of this same book): its intent
+        // and its place stand.
+        if (current() && get().nowPlaying === nowPlaying) {
           clearPlaybackIntent();
           set({
             snapshot: {
