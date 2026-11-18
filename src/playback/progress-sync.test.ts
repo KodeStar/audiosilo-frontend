@@ -996,6 +996,20 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
       }
     });
 
+    // The clock set back since the Undo (a stored hold outlives a reload): a hold dated
+    // ahead of now held every finish off until the clock caught up.
+    it('forgets a hold dated ahead of now', async () => {
+      await writeMirror(unfinished);
+      await noteUndoneFinish('c1', 1, 'A/Book', undoneAt);
+      const now = jest.spyOn(Date, 'now').mockReturnValue(undoneAt - 10 * 60_000);
+      try {
+        await writeMirror({ ...finishedRow, updated_at: '2026-01-04T23:59:59Z' });
+        expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ finished: true });
+      } finally {
+        now.mockRestore();
+      }
+    });
+
     // Web: every tab writes the one mirror, and a hold in the Undo's tab alone let another
     // tab's read of the finished row finish it again.
     it("holds off another tab's finished record too", async () => {

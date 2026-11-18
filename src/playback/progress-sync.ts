@@ -769,7 +769,10 @@ export async function noteUndoneFinish(
 /** Whether `save` (a finished record) is one the Undo at `at` of `key`'s finish undid (one
  * stamped before it, while the Undo holds); a hold run out is forgotten. */
 function undoneBy(key: string, at: number, save: ProgressSave, skewMs: number): boolean {
-  if (Date.now() - at > UNDONE_FINISH_HOLD_MS) {
+  // One dated ahead of now (the clock set back since; a stored one outlives a reload) would
+  // hold every finish off until the clock caught up: forgotten too.
+  const age = Date.now() - at;
+  if (age < 0 || age > UNDONE_FINISH_HOLD_MS) {
     undoneFinishes.delete(key);
     return false;
   }
