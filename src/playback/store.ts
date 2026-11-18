@@ -1333,7 +1333,18 @@ async function recordFinish(ref: FinishRef): Promise<void> {
       () => undefined,
     );
   }
-  await queued;
+  try {
+    await queued;
+  } catch (e) {
+    // Never queued, so never sent: this device's record goes back to the one before the
+    // finish, as on an Undo of a finish that never left, and the player's end may send one.
+    // Left finished, the book loaded again after the failure (`reloadLeftBook`) started
+    // over at 0, and its next play sent that restart over the place the server holds.
+    if (prior && !prior.finished) await unrecordFinish({ ...ref, position: prior.position }, since);
+    beforeFinish.delete(contentKeyOf(ref));
+    if (finishSent === contentKeyOf(ref)) finishSent = null;
+    throw e;
+  }
 }
 
 /** The start of the book a Mark as finished stopped and unloaded (`leaveFinishedBook`), once

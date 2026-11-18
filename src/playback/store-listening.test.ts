@@ -1572,6 +1572,38 @@ describe('Mark as finished outside the player (finish-route)', () => {
     }
   });
 
+  // The mirror is written finished before the finish has had its turn: left so when the
+  // finish was never queued, the book loaded again after the failure started over at 0.
+  it('a finish that could not be queued: the mirror goes back to the record before it', async () => {
+    const before = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'Other/Book',
+      position: 48,
+      duration: 100,
+      finished: false,
+      playback_speed: 1.2,
+      device_id: 'dev-1',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+    mockReadMirror.mockResolvedValue(before);
+    mockWriteMirror.mockImplementationOnce(async (rec: unknown) => {
+      mockReadMirror.mockResolvedValue(rec);
+    });
+    mockAppendInTurn.mockImplementationOnce(async () => {
+      throw new Error('no turn');
+    });
+    try {
+      await expect(recordFinishEvent({ ...ref, path: 'Other/Book' })).rejects.toThrow('no turn');
+      const finished = mockWriteMirror.mock.calls.at(-1)?.[0] as { updated_at: string };
+      expect(finished).toMatchObject({ path: 'Other/Book', finished: true });
+      const after = new Date(Date.parse(finished.updated_at) + 1).toISOString();
+      expect(mockMirrorUpdates).toEqual([{ ...before, updated_at: after }]);
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
   it('Undo whose edit failed: the mirror keeps the finish (it is sent again)', async () => {
     mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
     await recordFinishEvent({ ...ref, path: 'Other/Book' });
