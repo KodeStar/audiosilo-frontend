@@ -1187,6 +1187,8 @@ function persist(drop?: (entry: DownloadEntry) => boolean): Promise<DownloadEntr
     pendingSave.watch.remove();
     pendingSave = null;
   }
+  // Nothing changed here and nothing to drop: no lock taken, the registry not read.
+  if (!drop && !changedSinceKnown(useDownloads.getState().entries)) return Promise.resolve([]);
   return withRegistryLock(async () => {
     const live = useDownloads.getState().entries;
     const raw = await getItemStrict<unknown>(DOWNLOADS_KEY).catch(() => undefined);
@@ -1218,6 +1220,12 @@ function persist(drop?: (entry: DownloadEntry) => boolean): Promise<DownloadEntr
     known = live;
     return dropped;
   });
+}
+
+/** Whether `live` differs from what this tab last wrote or read (`known`). */
+function changedSinceKnown(live: Registry): boolean {
+  const keys = Object.keys(live);
+  return keys.length !== Object.keys(known).length || keys.some((key) => live[key] !== known[key]);
 }
 
 /**
