@@ -1968,6 +1968,24 @@ function withdrawAsk(ask: EngineAsk) {
   if (askedPlace === ask) setAsk(null);
 }
 
+/** The ask standing for `from` stands for `to` from here, the same book on another queue (the
+ * download hot-swap's commit, `commitLocalSwap`): in the same file, as the store's place moves
+ * (`ontoQueue`), and at `lost` for a file that queue lacks. Left on `from` it would stand for
+ * nothing: a run off its file, one held for the listener's move included (`EngineAsk.held`),
+ * would be taken as the book's place. */
+function moveAsk(from: NowPlaying, to: NowPlaying, lost: { trackIndex: number; position: number }) {
+  const ask = askedPlace;
+  if (ask?.np !== from) return;
+  const onto = (i: number) => trackIndexById(to.queue, from.queue.tracks[i]?.id);
+  const at = onto(ask.trackIndex);
+  ask.np = to;
+  ask.trackIndex = at >= 0 ? at : lost.trackIndex;
+  if (at < 0) ask.position = lost.position;
+  ask.before = ask.before >= 0 ? onto(ask.before) : -1;
+  const seen = ask.elsewhere ? onto(ask.elsewhere.trackIndex) : -1;
+  ask.elsewhere = ask.elsewhere && seen >= 0 ? { ...ask.elsewhere, trackIndex: seen } : null;
+}
+
 /**
  * The engine report `s` as an `error` at the asked place, when the engine went where the book
  * is not before it played on from the store's last ask (`askedPlace`): on to a later file from
@@ -3875,6 +3893,8 @@ function commitLocalSwap(nowPlaying: NowPlaying, swap: LocalSwap): NowPlaying | 
   // A faulted engine is still one on the download's queue (`engineFault`): the swap put it at
   // the place the store shows, and a press must still reload it there, never just resume it.
   if (faultedBook === nowPlaying) faultedBook = committed;
+  // So is an ask still standing: the engine has not played on from it yet (`moveAsk`).
+  moveAsk(nowPlaying, committed, { trackIndex: swap.index, position: swap.positionInTrack });
   // The store's place moves onto the download's queue with it, by the file: the engine's
   // report of the download's index can be held back (a stream in `error` holds every
   // report but `playing`), and the stream's index read through the download's queue is

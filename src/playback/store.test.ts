@@ -3740,6 +3740,51 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     expect(lastLoad()).toEqual([0, 30]);
   });
 
+  it("an ask still standing stands on the download's queue once a gapless swap commits", async () => {
+    const web = mockSvc as unknown as { swapTo?: jest.Mock };
+    web.swapTo = jest.fn(async () => 'swapped');
+    try {
+      await resume(30);
+      pushSnapshot(snap('playing', 30.2, { trackIndex: 0 }));
+      downloadLands();
+      await flushMicrotasks();
+      expect(web.swapTo).toHaveBeenCalledTimes(1);
+      expect(usePlayer.getState().nowPlaying?.queue.tracks[0].url).toBe('file:///dl/0.mp3');
+      // The resume's ask was never played on from: a run off file 1 is still the engine's.
+      ranOff();
+      await flushMicrotasks();
+      expect(usePlayer.getState().snapshot).toMatchObject({
+        state: 'error',
+        trackIndex: 0,
+        position: 30,
+      });
+    } finally {
+      delete web.swapTo;
+    }
+  });
+
+  it('a run held for a move is still decided once a gapless swap commits inside the wait', async () => {
+    const web = mockSvc as unknown as { swapTo?: jest.Mock };
+    web.swapTo = jest.fn(async () => 'swapped');
+    try {
+      await resume(30);
+      pushSnapshot(snap('playing', 0.4, { trackIndex: 1, duration: short })); // held
+      downloadLands();
+      await flushMicrotasks();
+      expect(usePlayer.getState().nowPlaying?.queue.tracks[0].url).toBe('file:///dl/0.mp3');
+      jest.advanceTimersByTime(FAULT_HOLD_MS);
+      await flushMicrotasks();
+      expect(usePlayer.getState().snapshot).toMatchObject({
+        state: 'error',
+        trackIndex: 0,
+        position: 30,
+      });
+      expect(mockSvc.pause).toHaveBeenCalled();
+    } finally {
+      delete web.swapTo;
+    }
+  });
+
   it("a report still told as playing once the fault's pause call resolved is not the listener's play", async () => {
     await resume(30);
     ranOff(); // the pause call resolves at once, as a native one does, before the engine paused
