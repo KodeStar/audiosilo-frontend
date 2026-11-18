@@ -193,6 +193,7 @@ import {
   saveLoadedPlace,
   selectBookLength,
   standByPlace,
+  teardownBeforeTokenRevoke,
   usePlayer,
 } from './store';
 /* eslint-enable import/first */
@@ -511,6 +512,36 @@ describe('with listening_sync', () => {
     }
     expect(mockClosed).toHaveLength(1);
     expect(mockFlushOutbox).not.toHaveBeenCalled();
+  });
+
+  // The stop's close waits its turn into the outbox: sent at once, the sign-out's send
+  // found the outbox without the last span, which landed after the token was revoked.
+  it('a sign-out sends the outbox only once the close of its stop has had its turn', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    mockFlushOutbox.mockClear();
+    const order: string[] = [];
+    let pass: () => void = () => {};
+    mockAppendInTurn.mockImplementationOnce(async (_cid, events) => {
+      order.push(`turn ${events.length}`);
+      await new Promise<void>((r) => (pass = r));
+    });
+    mockFlushOutbox.mockImplementation(async () => void order.push('flush'));
+    try {
+      const leaving = teardownBeforeTokenRevoke('c1');
+      await settle();
+      expect(mockClosed).toHaveLength(1);
+      // Waiting behind the close (which sends by itself when nothing waits behind it); the
+      // sign-out's own send has not gone.
+      expect(order.at(-1)).toBe('turn 0');
+      pass();
+      await leaving;
+      expect(order.slice(order.indexOf('turn 0'))).toEqual(['turn 0', 'flush']);
+    } finally {
+      pass();
+      mockFlushOutbox.mockImplementation(async () => {});
+    }
   });
 
   it('a play to a pause is one span with both file places, and no PUT and no POST /history', async () => {

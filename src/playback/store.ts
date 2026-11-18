@@ -3384,10 +3384,14 @@ export async function stopPlaybackForConnection(connectionId: string): Promise<v
  * `flushConnection`, not `flushQueue`: the latter no-ops while the ACTIVE server is
  * offline, which would skip this last-chance sync when removing a still-reachable
  * background connection. One helper so a new step can't be added to one path and
- * forgotten in the other.
+ * forgotten in the other. The stop's span close waits its turn into the outbox
+ * (`closeSpan`), so the outbox is sent only once that turn has passed (`appendInTurn` of
+ * nothing, behind it): sent at once, the send found the outbox without the span, which then
+ * landed after the token was revoked and went with the connection's purge.
  */
 export async function teardownBeforeTokenRevoke(connectionId: string): Promise<void> {
   await stopPlaybackForConnection(connectionId);
+  await appendInTurn(connectionId, []).catch(() => undefined);
   await Promise.all([
     flushConnection(connectionId).catch(() => undefined),
     // Sync v2's listening outbox (the stop above closed its span).

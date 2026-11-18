@@ -2304,7 +2304,9 @@ media GETs only.
     the acknowledged version read at the call when that is past the base it was made with
     (a move made paused with no span open was made with none, and on base 0 the server keeps
     the further place over a move back or a Stay; the copy appended after is then a
-    `duplicate`). A close or an event made
+    `duplicate`). A sign-out sends the outbox only once the close of its stop has had its
+    turn (`teardownBeforeTokenRevoke`: sent at once, the last span landed after the token
+    was revoked and went with the purge). A close or an event made
     for a connection and appended after an await is dropped once that connection was removed
     meanwhile (`connectionGeneration`, bumped first thing in the outbox's removal purge: the
     same account signing in again has the same connection id, and an orphan appended after the
