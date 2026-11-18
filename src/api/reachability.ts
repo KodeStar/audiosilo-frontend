@@ -4,7 +4,7 @@ import { create } from 'zustand';
 
 import { type Connection, onConnectionRemoved, useSession } from '@/stores/session';
 
-import { type ApiClient, TimeoutError } from './client';
+import { type ApiClient, isUnreachableError } from './client';
 import { resolveClient } from './connection-clients';
 
 /**
@@ -118,15 +118,6 @@ function setOnline(connectionId: string, online: boolean) {
   } else {
     startProbe();
   }
-}
-
-/** Whether a failed request got no answer from its server: our timeout, or the fetch
- * itself rejecting (a `TypeError`: the client's `NetworkError` on every platform, the
- * browser's "Failed to fetch"). Strict,
- * so a caller that sees every kind of failure (the query cache) never reads a capability
- * gate or a cancelled read as a dead server. */
-function isUnreachableError(e: unknown): boolean {
-  return e instanceof TimeoutError || e instanceof TypeError;
 }
 
 /**

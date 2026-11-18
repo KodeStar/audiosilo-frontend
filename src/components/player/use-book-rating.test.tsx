@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react-native';
 
+import { ApiError } from '@/api/client';
 import type { Rating } from '@/api/types';
 
 let mockExact: Rating | null | undefined;
@@ -18,6 +19,8 @@ jest.mock('@/api/hooks', () => ({
 jest.mock('@/components/ui/toast', () => ({ toast: jest.fn() }));
 
 /* eslint-disable import/first */
+import { toast } from '@/components/ui/toast';
+
 import { useBookRating } from './use-book-rating';
 /* eslint-enable import/first */
 
@@ -45,6 +48,22 @@ describe('useBookRating', () => {
     r = await mount();
     expect(r.current).toMatchObject({ value: 4, ready: true });
     expect(mockMineOpts).toHaveBeenLastCalledWith({ enabled: false });
+  });
+
+  it("says a busy server is busy, and any other failure is the rating's own", async () => {
+    mockExact = rating({});
+    const r = await mount();
+    mockSet.mockRejectedValueOnce(new ApiError(503, 'busy'));
+    await act(async () => r.current.rate(5));
+    expect(jest.mocked(toast).mock.calls.at(-1)![0].title).toBe(
+      'The server is busy. Try again in a moment.',
+    );
+    mockSet.mockRejectedValueOnce(new ApiError(500, 'boom'));
+    await act(async () => r.current.rate(5));
+    expect(jest.mocked(toast).mock.calls.at(-1)![0].title).toBe(
+      'Your rating was not saved. Try again.',
+    );
+    expect(r.current.value).toBe(4);
   });
 
   // A part or disc path: the server rates its book, which the list holds.

@@ -23,6 +23,7 @@ import {
   withLocalPlaces,
   noteClockSkew,
   noteUndoneFinish,
+  onFinishUndoneElsewhere,
   pendingSaveCount,
   type LocalPlaces,
   type PlacedProgress,
@@ -34,7 +35,10 @@ import {
   resumeLookupOf,
   saveProgress,
   serverRowOf,
+  setUndoneChannelForTests,
+  tellUndoneElsewhere,
   updateMirror,
+  writeFinishedMirror,
   writeMirror,
 } from '@/playback/progress-sync';
 import { provideStoredSkews } from '@/playback/stored-skews';
@@ -1682,5 +1686,306 @@ describe('the replay guard on the legacy PUT path (fe#198)', () => {
         resumeLookupOf({ ...ahead, position: 140 }, await places(), 'c1', 1, 'A/Book'),
       ).not.toHaveProperty('unchecked');
     });
+  });
+});
+
+// The web player's tabs share one legacy queue. A lock per tab let one tab's replay write
+// its read of the queue over a save another tab queued meanwhile; a lock across tabs held
+// over the replay's requests outlived a plain-http lease (5 s). A replay now claims what it
+// sends under the lock, sends with no lock held, and settles under it again.
+describe('the legacy queue across tabs', () => {
+  const nav = globalThis.navigator as { locks?: unknown };
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    jest.clearAllMocks();
+    reachable.mockReset().mockReturnValue(true);
+    mockResolveClient.mockReset().mockReturnValue(null);
+    mockSessionReady.mockReset().mockReturnValue(true);
+    // One browser's Web Locks: a job per name at a time, whichever tab asks.
+    const chains = new Map<string, Promise<unknown>>();
+    const request = (name: string, job: () => Promise<unknown>) => {
+      const run = (chains.get(name) ?? Promise.resolve()).then(job);
+      chains.set(
+        name,
+        run.catch(() => undefined),
+      );
+      return run;
+    };
+    Object.defineProperty(nav, 'locks', { configurable: true, value: { request } });
+  });
+  afterEach(() => {
+    delete nav.locks;
+  });
+
+  /** Another tab: its own copy of the module over the same storage and the same seams. */
+  const otherTab = () => {
+    let other!: typeof import('@/playback/progress-sync');
+    jest.isolateModules(() => {
+      jest.doMock('@react-native-async-storage/async-storage', () => ({
+        __esModule: true,
+        default: AsyncStorage,
+      }));
+      jest.doMock('@/api/connection-clients', () => ({
+        resolveClient: mockResolveClient,
+        sessionReady: mockSessionReady,
+      }));
+      jest.doMock('@/api/reachability', () => reachability);
+      /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+      other = require('@/playback/progress-sync') as typeof import('@/playback/progress-sync');
+    });
+    return other;
+  };
+
+  /** A PUT that waits until `answer` is called. */
+  function slowApi() {
+    let answer!: () => void;
+    const answered = new Promise<void>((r) => (answer = r));
+    const api = {
+      saveProgress: jest.fn(() => answered),
+      getProgress: jest.fn(async () => null),
+    } as unknown as ApiClient;
+    return { api, answer: () => answer() };
+  }
+
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const queued = { ...save, path: 'B/Other', updated_at: '2026-01-02T00:00:00Z' };
+
+  it("keeps a save another tab queued while this tab's replay was out", async () => {
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save]));
+    const { api, answer } = slowApi();
+    routeClients({ c1: api });
+    const flushing = flushQueue();
+    await tick();
+    expect(api.saveProgress).toHaveBeenCalledTimes(1);
+    // Tab B goes offline mid-replay and queues its own save; the lock is free for it.
+    reachable.mockReturnValue(false);
+    await expect(
+      otherTab().saveProgress(
+        fakeApi(async () => {}),
+        queued,
+      ),
+    ).resolves.toBe('queued');
+    answer();
+    await flushing;
+    expect(await readQueue()).toEqual([queued]);
+  });
+
+  it("does not send a save another tab's replay is sending; one that failed there is sent later", async () => {
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save]));
+    const { api } = slowApi();
+    let refuse!: () => void;
+    (api.saveProgress as jest.Mock).mockImplementation(
+      () => new Promise((_, reject) => (refuse = () => reject(new TypeError('Failed to fetch')))),
+    );
+    routeClients({ c1: api });
+    const flushing = flushQueue();
+    await tick();
+    const other = otherTab();
+    await other.flushQueue();
+    expect(api.saveProgress).toHaveBeenCalledTimes(1);
+    // The replay out fails: the save stays queued, unclaimed, and the next replay sends it.
+    refuse();
+    await flushing;
+    expect(await readQueue()).toEqual([save]);
+    (api.saveProgress as jest.Mock).mockImplementation(async () => {});
+    await other.flushQueue();
+    expect(api.saveProgress).toHaveBeenCalledTimes(2);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('replays the saves of a tab that went away with them claimed, once its claim ran out', async () => {
+    const claim = { id: 'gone', until: Date.now() + 60_000 };
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([{ ...save, claim }]));
+    const api = fakeApi(async () => {});
+    routeClients({ c1: api });
+    await flushQueue();
+    expect(api.saveProgress).not.toHaveBeenCalled();
+    await AsyncStorage.setItem(
+      QUEUE_KEY,
+      JSON.stringify([{ ...save, claim: { ...claim, until: Date.now() - 1 } }]),
+    );
+    await flushQueue();
+    expect(api.saveProgress).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  // Storage full: a replay whose claim is not in the queue would send what another tab's
+  // replay sends too.
+  it('sends nothing while storage refuses its claim, and replays once it can write', async () => {
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save]));
+    const api = fakeApi(async () => {});
+    routeClients({ c1: api });
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const write = setItem.getMockImplementation()!;
+    setItem.mockImplementation(async (key: string, value: string) => {
+      if (key === QUEUE_KEY) throw new Error('quota');
+      return write(key, value);
+    });
+    try {
+      await flushQueue();
+    } finally {
+      setItem.mockImplementation(write);
+    }
+    expect(api.saveProgress).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([save]);
+    await flushQueue();
+    expect(api.saveProgress).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('a save queued again while its older copy is out leaves the newer one queued', async () => {
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save]));
+    const { api, answer } = slowApi();
+    routeClients({ c1: api });
+    const flushing = flushConnection('c1');
+    await tick();
+    reachable.mockReturnValue(false);
+    const newer = { ...save, position: 40, updated_at: '2026-01-03T00:00:00Z' };
+    await saveProgress(api, newer);
+    answer();
+    await flushing;
+    expect(await readQueue()).toEqual([newer]);
+  });
+
+  it("a sign-out's last-chance flush waits for this tab's replay that is out", async () => {
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save]));
+    const { api, answer } = slowApi();
+    routeClients({ c1: api });
+    const flushing = flushQueue();
+    await tick();
+    let lastChanceDone = false;
+    const lastChance = flushConnection('c1').then(() => (lastChanceDone = true));
+    await tick();
+    // Resolved now, the token would be revoked under the save still on its way.
+    expect(lastChanceDone).toBe(false);
+    answer();
+    await Promise.all([flushing, lastChance]);
+    expect(api.saveProgress).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toEqual([]);
+  });
+});
+
+// fe#258's follow-up: the record a Mark as finished replaced rides on the finished record, so
+// the Undo of a finish that never left decides by the record it changes, under the mirror's
+// lock, in any tab and after a reload.
+describe('the place before a finish (writeFinishedMirror)', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  const place = { ...save, position: 48, updated_at: '2026-01-01T00:00:00Z' };
+  const finish = { ...save, position: 100, finished: true, updated_at: '2026-01-02T00:00:00Z' };
+
+  it('carries the place it replaced; a later record does not keep it', async () => {
+    await writeMirror(place);
+    await writeFinishedMirror(finish);
+    expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({
+      finished: true,
+      before: { position: 48, finished: false, updated_at: place.updated_at },
+    });
+    // The server's row for the finish read back: not this device's Mark, so the record no
+    // longer carries the place (carried on, an old finish's place would stand for every
+    // later one). The Undo in the tab that marked it keeps that place itself, outside the
+    // mirror (`placeBefore` in the store), so it still goes back to the file place.
+    await writeMirror({ ...finish, updated_at: '2026-01-02T00:00:01Z', server_clock: true });
+    expect(await readMirrorOf('c1', 1, 'A/Book')).not.toHaveProperty('before');
+  });
+
+  it('the same finish written again keeps its place; none over no place', async () => {
+    await writeMirror(place);
+    await writeFinishedMirror(finish);
+    await writeFinishedMirror({ ...finish, playback_speed: 1.5 });
+    expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({
+      playback_speed: 1.5,
+      before: { position: 48 },
+    });
+    await writeFinishedMirror({ ...finish, path: 'B/Other' });
+    expect(await readMirrorOf('c1', 1, 'B/Other')).not.toHaveProperty('before');
+  });
+
+  // Carried on, the Undo of the second finish went back to the place before the first: the
+  // book unfinished at a place older than the finish it undid.
+  it('another finish over a finished record carries no place', async () => {
+    await writeMirror(place);
+    await writeFinishedMirror(finish);
+    await writeFinishedMirror({ ...finish, updated_at: '2026-01-03T00:00:00Z' });
+    const record = await readMirrorOf('c1', 1, 'A/Book');
+    expect(record).toMatchObject({ finished: true, updated_at: '2026-01-03T00:00:00Z' });
+    expect(record).not.toHaveProperty('before');
+    // Another device's finish with this one's stamp is not this finish either.
+    const third = { path: 'C/Third' };
+    await writeMirror({ ...place, ...third });
+    await writeFinishedMirror({ ...finish, ...third });
+    expect((await readMirrorOf('c1', 1, 'C/Third'))?.before).toMatchObject({ position: 48 });
+    await writeFinishedMirror({ ...finish, ...third, device_id: 'other' });
+    expect(await readMirrorOf('c1', 1, 'C/Third')).not.toHaveProperty('before');
+  });
+});
+
+// On plain http the mirror's lock is a lease that costs each job a wait (30 ms or more): the
+// writes asked while one waits share its read and write.
+describe('mirror writes asked together', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  const mirrorWrites = () =>
+    (AsyncStorage.setItem as jest.Mock).mock.calls.filter(([key]) => key === MIRROR_KEY).length;
+
+  it('are written once', async () => {
+    const before = mirrorWrites();
+    await Promise.all(
+      ['A', 'B', 'C', 'D', 'E'].map((p) => writeMirror({ ...save, path: `${p}/Book` })),
+    );
+    expect(mirrorWrites() - before).toBe(1);
+    expect(Object.keys(await readMirror())).toHaveLength(5);
+  });
+
+  it('never ahead of a change of the mirror asked before them', async () => {
+    const first = writeMirror(save);
+    const removed = updateMirror('c1', 1, 'A/Book', () => null);
+    const again = writeMirror({ ...save, position: 20, updated_at: '2026-01-02T00:00:00Z' });
+    await Promise.all([first, removed, again]);
+    expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ position: 20 });
+  });
+});
+
+// fe#258's follow-up: after an Undo in one tab, another tab kept showing the book finished
+// ("Listen again") until clicked. The undoing tab tells the others on a tab channel.
+describe('a finish undone in another tab', () => {
+  afterEach(() => setUndoneChannelForTests(undefined));
+
+  it('is posted on the channel and heard by its subscribers', () => {
+    const listeners = new Set<(ref: unknown) => void>();
+    const posted: unknown[] = [];
+    setUndoneChannelForTests({
+      post: (message) => {
+        posted.push(message);
+        for (const l of listeners) l(message);
+      },
+      subscribe: (listener) => {
+        listeners.add(listener as (ref: unknown) => void);
+        return () => listeners.delete(listener as (ref: unknown) => void);
+      },
+    });
+    const told: unknown[] = [];
+    const stop = onFinishUndoneElsewhere((ref) => told.push(ref));
+    const ref = { connectionId: 'c1', libraryId: 4, path: 'Author/Book: Two' };
+    tellUndoneElsewhere({ ...ref, position: 12 } as typeof ref);
+    // Only the book goes out.
+    expect(posted).toEqual([ref]);
+    expect(told).toEqual([ref]);
+    stop();
+    tellUndoneElsewhere(ref);
+    expect(told).toHaveLength(1);
+  });
+
+  it('is nothing without a channel (off the web)', () => {
+    setUndoneChannelForTests(null);
+    expect(() =>
+      tellUndoneElsewhere({ connectionId: 'c1', libraryId: 1, path: 'A' }),
+    ).not.toThrow();
+    expect(typeof onFinishUndoneElsewhere(() => {})).toBe('function');
   });
 });

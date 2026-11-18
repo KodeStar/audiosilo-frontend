@@ -5,6 +5,7 @@
     "save": "Guardar",
     "done": "Concluído",
     "retry": "Tentar novamente",
+    "serverBusy": "O servidor está ocupado. Tenta novamente daqui a pouco.",
     "close": "Fechar",
     "copied": "Copiado",
     "on": "Ativado",
@@ -879,7 +880,8 @@
       "download": "Transferir",
       "downloaded": "Transferido",
       "queued": "Em fila…",
-      "downloading": "A transferir {{percent}} %"
+      "downloading": "A transferir {{percent}} %",
+      "otherTab": "Noutro separador"
     },
     "list": {
       "recentlyAdded": "Adicionados recentemente",
@@ -1146,6 +1148,10 @@
         "hint": "Segue a mesma regra de rede dos livros. Um episódio que ainda não está no teu servidor é transferido lá primeiro."
       },
       "autoDelete": "Remover um download quando terminares o livro"
+    },
+    "saveFailing": {
+      "title": "Lista de downloads não guardada",
+      "body": "O armazenamento deste dispositivo recusou a última alteração. A tentar novamente."
     },
     "browser": {
       "title": "Como os downloads funcionam num navegador",

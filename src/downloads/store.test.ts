@@ -335,6 +335,12 @@ async function readPersisted(): Promise<Record<string, DownloadEntry>> {
   return raw ? (JSON.parse(raw) as Record<string, DownloadEntry>) : {};
 }
 
+/** Let a save of the registry land: it reads the stored registry under its lock first
+ * (promises only, so it lands under fake timers too). */
+async function saved(): Promise<void> {
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+}
+
 beforeEach(async () => {
   await AsyncStorage.clear();
   jest.clearAllMocks();
@@ -2055,12 +2061,13 @@ describe("refreshing a downloaded book's chapters", () => {
       answer(fresh(bFiles, { path: 'B/Book' }), false, ['chapters', 'c1', 2, 'B/Book']);
       expect(save).not.toHaveBeenCalled();
       jest.advanceTimersByTime(2000);
+      await saved();
       expect(save).toHaveBeenCalledTimes(1);
-      const saved = await readPersisted();
-      for (const k of Object.keys(saved)) {
-        expect(saved[k].manifest.chapters?.chapters_source).toBe('community');
+      const stored = await readPersisted();
+      for (const k of Object.keys(stored)) {
+        expect(stored[k].manifest.chapters?.chapters_source).toBe('community');
       }
-      expect(Object.keys(saved)).toHaveLength(2);
+      expect(Object.keys(stored)).toHaveLength(2);
     });
 
     it('leaves it alone when the files differ, the answer is a seed, or the book is not downloaded', () => {
@@ -2168,6 +2175,7 @@ describe("refreshing a downloaded book's chapters", () => {
         // The local files stay as the download wrote them (a file's index is its name on disk).
         expect(now.manifest.files).toBe(e.manifest.files);
         // Saved at once: a JS restart right after the start must find the order it played.
+        await saved();
         expect((await readPersisted())[key]?.manifest.chapters).toEqual(reordered());
       });
 
@@ -2206,6 +2214,7 @@ describe("refreshing a downloaded book's chapters", () => {
       }
       expect(useDownloads.getState().entries[key].manifest.chapters).toEqual(fresh());
       jest.advanceTimersByTime(2000);
+      await saved();
       expect(save).toHaveBeenCalledTimes(1);
       expect((await readPersisted())[key]?.manifest.chapters).toEqual(fresh());
     });
@@ -2361,6 +2370,21 @@ describe('hydrate holds off what needs the registry', () => {
     await expect(outcome).resolves.toBe('exists');
     expect(mockEngine.downloadFile).not.toHaveBeenCalled();
     expect(useDownloads.getState().entries[savedKey]?.status).toBe('downloaded');
+  });
+
+  // Native has one runtime: the registry it last wrote stands for the stored one, and a
+  // save does not read it again first.
+  it('native saves read the stored registry once, then write from the copy they wrote', async () => {
+    const other = downloadKey('c1', 2, 'B/Book');
+    await seed({ [savedKey]: downloadedEntry(), [other]: downloadedEntry({ path: 'B/Book' }) });
+    await useDownloads.getState().hydrate();
+    const reads = () =>
+      (AsyncStorage.getItem as jest.Mock).mock.calls.filter(([k]) => k === KEY).length;
+    await useDownloads.getState().remove('c1', 2, 'A/Book');
+    const first = reads();
+    await useDownloads.getState().remove('c1', 2, 'B/Book');
+    expect(reads()).toBe(first);
+    expect(await readPersisted()).toEqual({});
   });
 
   it('a save during hydrate never writes over the saved registry', async () => {
@@ -2708,6 +2732,7 @@ describe('podcast episodes', () => {
       failure: { kind: 'serverFetch', code: 'too_large', kept: 0 },
     });
     expect(entry()?.serverFetch).toBeUndefined();
+    await saved();
     expect((await readPersisted())[key]?.status).toBe('error');
 
     await useDownloads.getState().download('c1', 2, entry()!.manifest.book, chapters);

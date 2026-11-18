@@ -13,7 +13,7 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { bytesToGo, entryBytes } from '@/downloads/downloads-view';
 import type { AheadBook, SlotState } from '@/downloads/keep-ahead';
 import { failureText } from '@/downloads/failure';
-import { useDownloadEntry } from '@/downloads/store';
+import { useDownloadElsewhere, useDownloadEntry } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 import { formatBytes } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
@@ -109,6 +109,8 @@ export function ActiveRow({
   const phone = useLayout() === 'phone';
   // The live entry: the page re-renders on status changes only, the row on its progress.
   const entry = useDownloadEntry(listed.connectionId, listed.libraryId, listed.path) ?? listed;
+  // Web: another tab of this browser is running it; Cancel asks that tab.
+  const elsewhere = useDownloadElsewhere(listed.connectionId, listed.libraryId, listed.path);
   const total = entry.totalBytes > 0 ? entry.totalBytes : entry.manifest.book.size;
   const toGo = bytesToGo(entry);
   const failed = entry.status === 'error';
@@ -169,7 +171,12 @@ export function ActiveRow({
         />
       }
       title={entry.title}
-      meta={sizeMeta(t, server, total, entry.origin === 'keep-ahead')}
+      meta={[
+        sizeMeta(t, server, total, entry.origin === 'keep-ahead'),
+        elsewhere ? t('library.download.otherTab') : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')}
       status={status}
       actions={
         <>

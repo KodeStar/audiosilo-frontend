@@ -5,9 +5,11 @@ import type { Progress } from '@/api/types';
 import { downloadEndsBefore } from '@/downloads/kept-offline';
 import { identityMovePending } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
+import { replayQueue, type Route } from '@/lib/queue-claims';
 import { serialQueue } from '@/lib/serial-queue';
+import { tabChannel, type TabChannel } from '@/lib/tab-channel';
 import { tabLock } from '@/lib/tab-lock';
-import { getItem, setItem } from '@/lib/storage';
+import { getItem, setItem, setItemStrict } from '@/lib/storage';
 import { withTimeout } from '@/lib/with-timeout';
 import {
   LISTENING_OPEN_SPAN_KEY,
@@ -23,6 +25,7 @@ import { FINISHED_TOLERANCE } from './book-queue';
 import type { OutboxEntry } from './listening-outbox';
 import { type OpenSpan, storedSpans } from './open-span-doc';
 import { hasStoredSkews, readStoredSkews } from './stored-skews';
+import { type BookRef, bookRefOf } from './types';
 
 // Reconnect-driven replay is wired in `provider.tsx`: when a connection recovers it runs
 // `flushConnection(cid)`, so a returning server replays exactly its own queued saves.
@@ -98,6 +101,9 @@ export type ProgressSave = {
    * one of its saves is PUT, a replay from the queue too, the session's guard is lifted
    * (`guardSettled`). Saves and the queue only. */
   guard_session?: string;
+  /** On the record of this device's Mark as finished (`writeFinishedMirror`): the record it
+   * replaced, a place (unfinished). Mirror only; never kept across records. */
+  before?: ProgressSave;
 };
 
 /**
@@ -152,9 +158,10 @@ const queueListeners = new Set<() => void>();
 
 /** Store the offline replay queue, read at `before` entries, and tell `onQueueChange`'s
  * listeners when its length changed. A write only ever adds a save, replaces one in place
- * or takes some out, so every count `pendingSaves` gives moves with the length. */
+ * or takes some out, so every count `pendingSaves` gives moves with the length. Rejects
+ * when storage refused it (a replay must know: `replayQueue`). */
 async function writeQueue(next: ProgressSave[], before: number): Promise<void> {
-  await setItem(QUEUE_KEY, next);
+  await setItemStrict(QUEUE_KEY, next);
   if (next.length !== before) for (const fn of queueListeners) fn();
 }
 
@@ -705,7 +712,23 @@ export async function mirrorIsNewest(
 // The mirror's read-modify-writes one at a time, in this tab and across tabs (`tabLock`): the
 // tabs of the web player write one mirror, and a per-tab queue let one tab write its read of
 // the whole mirror over another tab's change made meanwhile.
-const withMirrorLock = tabLock(MIRROR_KEY);
+const mirrorLock = tabLock(MIRROR_KEY);
+
+/** One write of records into the mirror (`writeMirrors`); `before`: the record of this
+ * device's Mark as finished (`writeFinishedMirror`). */
+type MirrorWrite = { save: ProgressSave; before?: true };
+
+/** The writes waiting together for the mirror's lock, until their job starts: a write asked
+ * meanwhile joins them, so the writes of one tick (and of a wait for the lock: on plain http
+ * a lease, a wait of 30 ms or more each) share one read and one write. */
+let waitingWrites: { writes: MirrorWrite[]; done: Promise<void> } | null = null;
+
+/** Any other change of the mirror under its lock: after the writes waiting (none asked after
+ * it joins them). */
+function withMirrorLock<T>(job: () => Promise<T>): Promise<T> {
+  waitingWrites = null;
+  return mirrorLock(job);
+}
 
 /** Upsert the durable mirror, keeping the newest record by `updated_at` (a server row's by
  * this device's clock: `localTimeOf`). The Sync v2
@@ -718,32 +741,80 @@ export function writeMirror(save: ProgressSave): Promise<void> {
 
 /** `writeMirror` for many records at once: one read and at most one write of the mirror
  * (Home's progress list, fe#198), none when every record is already there as it is (the
- * list read again with no place moved). */
-export async function writeMirrors(saves: readonly ProgressSave[]): Promise<void> {
-  if (saves.length === 0) return;
-  await withMirrorLock(async () => {
-    const map = await readMirrorMap();
-    // Only a finished record can be one an Undo undid (`noteUndoneFinish`), here or in
-    // another tab.
-    const shared = saves.some((s) => s.finished) ? await readUndoneFinishes() : {};
-    let changed = false;
-    for (const save of saves) {
-      const key = contentKey(save.connectionId, save.libraryId, save.path);
-      const existing = map[key];
-      const undone = save.finished ? latestUndo(undoneFinishes.get(key), shared[key]) : undefined;
-      const skew = existing || undone !== undefined ? await knownSkew(save.connectionId) : 0;
-      if (undone !== undefined && undoneBy(key, undone, save, skew)) continue;
-      if (!existing || localTimeOf(save, skew) >= localTimeOf(existing, skew)) {
-        const { guard: _guard, guard_session: _session, ...record } = save;
-        const next = mergeKept(record, existing, skew);
-        // The same fields (an array kept across records is the same array): no write.
-        if (existing && shallow(next, existing)) continue;
-        map[key] = next;
-        changed = true;
-      }
-    }
-    if (changed) await setItem(MIRROR_KEY, map);
+ * list read again with no place moved). Writes asked while these wait for the lock join
+ * them (`waitingWrites`). */
+export function writeMirrors(saves: readonly ProgressSave[]): Promise<void> {
+  return queueMirrorWrites(saves.map((save) => ({ save })));
+}
+
+/**
+ * The record of this device's Mark as finished (`save`, finished): written as `writeMirror`
+ * writes, and carrying the record it replaces when that is a place, unfinished (`before`;
+ * the same finish written again keeps the place it carried, `placeBeforeFinish`). The
+ * Undo of a finish that never reached the server goes back there (`restorePlaceBefore` in
+ * the store), deciding by the record it changes under the mirror's lock: a reload, and
+ * another tab's finish, see the same record.
+ */
+export function writeFinishedMirror(save: ProgressSave): Promise<void> {
+  return queueMirrorWrites([{ save, before: true }]);
+}
+
+/**
+ * The place a finish's record carries (`before`) over the record it replaces (`existing`):
+ * that record when it is a place, unfinished. Over a finished record, only the place that
+ * very finish carried (the same finish written again: its device and stamp): another finish
+ * (an earlier Mark, the book finished since and marked again) carries none, or the Undo of
+ * this one went back to a place from before that one.
+ */
+function placeBeforeFinish(save: ProgressSave, existing: ProgressSave): ProgressSave | undefined {
+  if (!existing.finished) return existing;
+  const same = existing.device_id === save.device_id && existing.updated_at === save.updated_at;
+  return same ? existing.before : undefined;
+}
+
+function queueMirrorWrites(writes: MirrorWrite[]): Promise<void> {
+  if (writes.length === 0) return Promise.resolve();
+  if (waitingWrites) {
+    waitingWrites.writes.push(...writes);
+    return waitingWrites.done;
+  }
+  const batch = { writes, done: Promise.resolve() };
+  waitingWrites = batch;
+  batch.done = mirrorLock(() => {
+    if (waitingWrites === batch) waitingWrites = null;
+    return applyMirrorWrites(batch.writes);
   });
+  return batch.done;
+}
+
+/** `writeMirrors`' read, merge and write of the mirror. Holding the mirror's lock. */
+async function applyMirrorWrites(writes: readonly MirrorWrite[]): Promise<void> {
+  const map = await readMirrorMap();
+  // Only a finished record can be one an Undo undid (`noteUndoneFinish`), here or in
+  // another tab.
+  const shared = writes.some((w) => w.save.finished) ? await readUndoneFinishes() : {};
+  let changed = false;
+  for (const { save, before } of writes) {
+    const key = contentKey(save.connectionId, save.libraryId, save.path);
+    const existing = map[key];
+    const undone = save.finished ? latestUndo(undoneFinishes.get(key), shared[key]) : undefined;
+    const skew = existing || undone !== undefined ? await knownSkew(save.connectionId) : 0;
+    if (undone !== undefined && undoneBy(key, undone, save, skew)) continue;
+    if (!existing || localTimeOf(save, skew) >= localTimeOf(existing, skew)) {
+      const { guard: _guard, guard_session: _session, before: _before, ...record } = save;
+      const next = mergeKept(record, existing, skew);
+      const prior = before && existing && placeBeforeFinish(save, existing);
+      if (prior) {
+        const { before: _nested, ...place } = prior;
+        next.before = place;
+      }
+      // The same fields (an array kept across records is the same array): no write.
+      if (existing && shallow(next, existing)) continue;
+      map[key] = next;
+      changed = true;
+    }
+  }
+  if (changed) await setItem(MIRROR_KEY, map);
 }
 
 /** How long an Undo of a finish holds off its finished record (`noteUndoneFinish`): past a
@@ -769,6 +840,31 @@ async function readUndoneFinishes(): Promise<Record<string, number>> {
     if (typeof at === 'number' && Number.isFinite(at)) out[key] = at;
   }
   return out;
+}
+
+/** The channel a tab tells the others of a finish it undid on (`tellUndoneElsewhere`). */
+const UNDONE_CHANNEL = 'audiosilo-undone-finish';
+let undoneTabs: TabChannel<BookRef> | null | undefined;
+/** The channel, opened on first use (null off the web). */
+const undoneChannel = () =>
+  undoneTabs === undefined ? (undoneTabs = tabChannel<BookRef>(UNDONE_CHANNEL)) : undoneTabs;
+
+/** Test-only: the channel `tellUndoneElsewhere` and `onFinishUndoneElsewhere` use. */
+export function setUndoneChannelForTests(channel: TabChannel<BookRef> | null | undefined): void {
+  undoneTabs = channel;
+}
+
+/** Tell the other tabs of the web player that this one undid `ref`'s finish (its Undo, or
+ * Mark as not finished), once its mirror record went back: their pages still show the book
+ * finished until they read it again. */
+export function tellUndoneElsewhere(ref: BookRef): void {
+  undoneChannel()?.post(bookRefOf(ref));
+}
+
+/** Be told of a finish another tab of the web player undid (`tellUndoneElsewhere`).
+ * Returns the unsubscribe. */
+export function onFinishUndoneElsewhere(listener: (ref: BookRef) => void): () => void {
+  return undoneChannel()?.subscribe(listener) ?? (() => {});
 }
 
 /** The later of two Undo times, either unknown. */
@@ -1152,10 +1248,12 @@ function putBody(save: ProgressSave) {
   };
 }
 
-// Serialize all read-modify-write access to the queue so a flush and a
-// concurrent save (or two overlapping flushes) can't clobber each other's writes
-// and drop queued saves (review finding F4).
-const withQueueLock = serialQueue();
+// The queue's read-modify-writes one at a time, in this tab and across tabs (`tabLock`): the
+// tabs of the web player share one queue, and a lock per tab let one tab's replay write
+// its read of the queue over a save another tab queued meanwhile. Storage only: a replay
+// sends outside it (`replayQueue`), since on plain http the lock is a lease of a few
+// seconds and a replay can take longer.
+const withQueueLock = tabLock(QUEUE_KEY);
 
 async function enqueue(save: ProgressSave): Promise<void> {
   await withQueueLock(async () => {
@@ -1170,7 +1268,8 @@ async function enqueue(save: ProgressSave): Promise<void> {
         ),
     );
     next.push(save);
-    await writeQueue(next, queue.length);
+    // Best effort, as ever: a save storage has no room for stays in the mirror only.
+    await writeQueue(next, queue.length).catch(() => undefined);
   });
 }
 
@@ -1214,44 +1313,64 @@ async function flushGroup(
   return remaining;
 }
 
+/** This tab's replays of the legacy queue, one at a time (held over the requests, so in this
+ * tab only): a replay asked while one is out waits for it, then sends what is still queued.
+ * Without it, it found everything claimed and returned at once: a sign-out's last-chance
+ * flush (`flushConnection`) let the token be revoked under the saves still on their way,
+ * and a reconnect's left the saves of a replay that then failed queued until the next save. */
+const withReplayTurn = serialQueue();
+
+/** The saves this tab sent whose removal from the queue storage refused
+ * (`ReplayQueue.sent`). */
+const sentUnsettled = new Set<string>();
+
+/** `replayQueue` over the legacy queue: claimed under its lock, sent outside it. */
+function replaySaves(route: (cid: string) => Route<ApiClient>): Promise<void> {
+  return withReplayTurn(() =>
+    replayQueue<ProgressSave, ApiClient>({
+      lock: withQueueLock,
+      read: readQueue,
+      write: writeQueue,
+      route,
+      send: flushGroup,
+      sent: sentUnsettled,
+    }),
+  );
+}
+
 /**
  * Replay queued saves (call on reconnect / app open / after a successful save). Each
  * entry replays through ITS OWN connection's client, so a save captured on server B
  * can never be written to server A. Grouped by connection preserving order; the
  * groups run concurrently (they touch disjoint servers), so one dead/slow server
- * can't delay every other server's replay by its full timeout.
+ * can't delay every other server's replay by its full timeout. Saves another tab is
+ * replaying are left to it (`replayQueue`).
  */
 export async function flushQueue(): Promise<void> {
   // Load-bearing guard: a flush racing session hydrate would resolve every entry's
   // client to null (the connection list is still empty) and drop the whole queue as
   // unroutable. Wait until the session is ready so entries route to a real client.
   if (!sessionReady()) return;
-  await withQueueLock(async () => {
-    const queue = await readQueue();
-    if (queue.length === 0) return;
-
-    // Group by connection, preserving order.
-    const groups = new Map<string, ProgressSave[]>();
-    for (const save of queue) {
-      const g = groups.get(save.connectionId);
-      if (g) g.push(save);
-      else groups.set(save.connectionId, [save]);
-    }
-
-    const remainingByGroup = await Promise.all(
-      [...groups].map(async ([cid, saves]) => {
-        if (!isReachable(cid)) return saves; // this server known down; keep its saves queued
-        const client = resolveClient(cid);
-        // A connection removed: unroutable, drop the whole group. Not while an identity
-        // move is on its way (`identityMovePending`): the id can be one the documents
-        // moved and the connections don't show yet, so the saves wait for that launch.
-        if (!client) return identityMovePending() ? saves : [];
-        return flushGroup(cid, client, saves);
-      }),
-    );
-    await writeQueue(remainingByGroup.flat(), queue.length);
-  });
+  await replaySaves(queuedRoute);
 }
+
+/** Where a replay of a stored queue (this one, the reader's) sends a connection's saves:
+ * through its client, kept while its server is known down, dropped with the connection. */
+export function queuedRoute(cid: string): Route<ApiClient> {
+  if (!isReachable(cid)) return 'keep'; // this server known down; keep its saves queued
+  const client = resolveClient(cid);
+  // A connection removed: unroutable, drop the whole group. Not while an identity
+  // move is on its way (`identityMovePending`): the id can be one the documents
+  // moved and the connections don't show yet, so the saves wait for that launch.
+  if (!client) return identityMovePending() ? 'keep' : 'drop';
+  return { send: client };
+}
+
+/** A replay's route of `connectionId`'s saves alone, through `client`: the rest stay. */
+export const onlyConnection =
+  (connectionId: string, client: ApiClient) =>
+  (cid: string): Route<ApiClient> =>
+    cid === connectionId ? { send: client } : 'keep';
 
 /**
  * Flush exactly ONE connection's queued saves through its client, regardless of that
@@ -1269,14 +1388,7 @@ export async function flushConnection(connectionId: string): Promise<void> {
   if (!sessionReady()) return;
   const client = resolveClient(connectionId);
   if (!client) return; // already gone - nothing routable to flush
-  await withQueueLock(async () => {
-    const queue = await readQueue();
-    const mine = queue.filter((s) => s.connectionId === connectionId);
-    if (mine.length === 0) return;
-    const others = queue.filter((s) => s.connectionId !== connectionId);
-    const remaining = await flushGroup(connectionId, client, mine);
-    await writeQueue([...others, ...remaining], queue.length);
-  });
+  await replaySaves(onlyConnection(connectionId, client));
 }
 
 // Removing a connection orphans its scoped state (signing in again starts from the
@@ -1301,7 +1413,9 @@ onConnectionRemoved(async (id) => {
     withQueueLock(async () => {
       const queue = await readQueue();
       const next = queue.filter((s) => s.connectionId !== id);
-      if (next.length !== queue.length) await writeQueue(next, queue.length);
+      if (next.length !== queue.length) {
+        await writeQueue(next, queue.length).catch(() => undefined);
+      }
     }),
   ]);
 });

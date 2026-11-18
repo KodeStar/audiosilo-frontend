@@ -1,6 +1,16 @@
 import { Platform } from 'react-native';
 
-import { LEASE_MS, type LeaseStorage, tabLock, withLease } from './tab-lock';
+import { fakeWebLocks } from '@/testing/fake-web-locks';
+
+import {
+  heldWebLocks,
+  holdWebLock,
+  LEASE_MS,
+  type LeaseStorage,
+  tabLock,
+  whenWebLockFree,
+  withLease,
+} from './tab-lock';
 
 /** A `localStorage` two tabs share (one Map). */
 function sharedStorage(): LeaseStorage & { data: Map<string, string> } {
@@ -96,5 +106,39 @@ describe('tabLock', () => {
       ),
     );
     expect(log).toEqual([1, -1, 2, -2, 3, -3]);
+  });
+});
+
+describe('a Web Lock held for as long as its tab works', () => {
+  const nav = globalThis.navigator as { locks?: unknown };
+  afterEach(() => {
+    delete nav.locks;
+  });
+
+  it('is seen and waited on by the other tabs until released, or until its tab goes', async () => {
+    const locks = fakeWebLocks();
+    Object.defineProperty(nav, 'locks', { configurable: true, value: locks });
+    const release = holdWebLock('work');
+    expect(await heldWebLocks()).toEqual(new Set(['work']));
+    let free = false;
+    const waiting = whenWebLockFree('work').then(() => (free = true));
+    await Promise.resolve();
+    expect(free).toBe(false);
+    release();
+    await waiting;
+    expect(await heldWebLocks()).toEqual(new Set());
+    // Its tab closed: the browser frees the lock, with no release called.
+    holdWebLock('work');
+    const gone = whenWebLockFree('work');
+    locks.close('work');
+    await gone;
+    expect(await heldWebLocks()).toEqual(new Set());
+  });
+
+  it('holds nothing without Web Locks', async () => {
+    Object.defineProperty(nav, 'locks', { configurable: true, value: undefined });
+    holdWebLock('work')();
+    expect(await heldWebLocks()).toEqual(new Set());
+    await whenWebLockFree('work');
   });
 });

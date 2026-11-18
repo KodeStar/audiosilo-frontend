@@ -10,6 +10,7 @@ import {
   ApiError,
   apiErrorKind,
   isPlainSeriesQuery,
+  isServerBusyError,
   NetworkError,
   PodcastFetchPendingError,
   ReadalongMapError,
@@ -4037,5 +4038,18 @@ describe('proxy headers', () => {
       undefined,
     );
     expect(c.proxyHeadersFor(c.coverUrl(1, 'B'))).toBeUndefined();
+  });
+});
+
+// A busy server's own 503 says busy; a gateway's 502 / 504 is away, and an episode still on
+// its way (its own coded 503) is neither.
+describe('isServerBusyError', () => {
+  it('is a 503 of the server, not a gateway nor an episode being fetched', () => {
+    expect(isServerBusyError(new ApiError(503, 'busy'))).toBe(true);
+    expect(isServerBusyError(new ApiError(502, 'bad gateway'))).toBe(false);
+    expect(isServerBusyError(new ApiError(504, 'gateway timeout'))).toBe(false);
+    expect(isServerBusyError(new NetworkError('offline'))).toBe(false);
+    const fetching = new PodcastFetchPendingError('fetching', 'podcast_fetching', {} as never, 2);
+    expect(isServerBusyError(fetching)).toBe(false);
   });
 });

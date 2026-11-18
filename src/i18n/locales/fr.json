@@ -5,6 +5,7 @@
     "save": "Enregistrer",
     "done": "Terminé",
     "retry": "Réessayer",
+    "serverBusy": "Le serveur est occupé. Réessaie dans un instant.",
     "close": "Fermer",
     "copied": "Copié",
     "on": "Activé",
@@ -879,7 +880,8 @@
       "download": "Télécharger",
       "downloaded": "Téléchargé",
       "queued": "En file d’attente…",
-      "downloading": "Téléchargement {{percent}} %"
+      "downloading": "Téléchargement {{percent}} %",
+      "otherTab": "Dans un autre onglet"
     },
     "list": {
       "recentlyAdded": "Ajoutés récemment",
@@ -1146,6 +1148,10 @@
         "hint": "Suit la même règle réseau que les livres. Un épisode pas encore sur votre serveur y est d’abord récupéré."
       },
       "autoDelete": "Supprimer un téléchargement quand vous terminez le livre"
+    },
+    "saveFailing": {
+      "title": "Liste des téléchargements non enregistrée",
+      "body": "Le stockage de cet appareil a refusé la dernière modification. Nouvel essai en cours."
     },
     "browser": {
       "title": "Comment fonctionnent les téléchargements dans un navigateur",

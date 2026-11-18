@@ -7,6 +7,8 @@
  * The store registers itself here as it loads (`setFinishRecorder`): the API hooks and the
  * book page can't import the store (it imports them). Nothing registered: the PUT path.
  */
+import { isServerAwayError } from '@/api/client';
+
 import type { Withdrawal } from './listening-outbox';
 import type { ProgressSave } from './progress-sync';
 
@@ -58,10 +60,10 @@ type FinishRecorder = {
   /** An undone finish leaves this device: its record goes back to the place before it
    * (`ref.position`), unfinished; nothing when `connectionId` was signed out since `since`. */
   unrecord: (ref: UndoRef, since: number) => Promise<void>;
-  /** Whether this device still holds the book's record from before its waiting finish (its
-   * mirror holds that finish's own record, and the one before it was a place, unfinished):
-   * the place the server still holds while the finish has not reached it. */
-  knowsPlaceBefore: (ref: FinishBook) => Promise<boolean>;
+  /** A finish that never reached the server was taken back: this device's record goes back
+   * to the one before it, the place the server still holds, when its mirror holds the
+   * finish's record carrying that place (decided as it is changed). Resolves whether it did. */
+  restoreBefore: (ref: FinishBook, since: number) => Promise<boolean>;
 };
 
 /** The book an Undo unfinishes, and the place it goes back to. */
@@ -110,7 +112,8 @@ export async function recordFinishEvent(ref: FinishRef): Promise<boolean> {
 }
 
 /** How an Undo of a Mark as finished ended (`undoFinish`): the book is unfinished, or the
- * finish may be on a server that looks down, so it could not be undone (fe#258). */
+ * finish may be on a server that looks down, so it could not be undone (fe#258); also when
+ * its edit found the server away (`isServerAwayError`), the finish kept. */
 export type UndoOutcome = 'undone' | 'unreachable';
 
 /**
@@ -122,7 +125,8 @@ export type UndoOutcome = 'undone' | 'unreachable';
  * putting the finish back sent it on reconnect); for Mark as not finished too (`atPosition`),
  * whose own place the server would never get, when this device knows the place before. Else
  * the edit (a finish the server has, or may have: `Withdrawal.unsent`), and an edit that
- * failed puts the finish back and rejects.
+ * failed puts the finish back and rejects, or resolves `unreachable` when it found the
+ * server away (`isServerAwayError`).
  * One a request carried with no answer, while its server looks down, is not undone at all
  * (`unreachable`): the server may hold it and no edit can reach it. A withdrawal that
  * failed (storage refused it) rejects with no edit: the finish still waits, and sent after
@@ -133,24 +137,39 @@ export type UndoOutcome = 'undone' | 'unreachable';
  */
 export async function undoFinish(ref: UndoRef, edit: () => Promise<unknown>): Promise<UndoOutcome> {
   const r = recorder;
-  if (!r) {
-    await edit();
-    return 'undone';
-  }
+  if (!r) return runEdit(edit);
   const since = r.generation(ref.connectionId);
   const taken = await r.withdraw(ref.connectionId, ref.libraryId, ref.path);
   if (taken.unreachable) return 'unreachable';
   // Never reached the server, which still holds the place before: back there, no edit.
-  if (taken.unsent && (!ref.atPosition || (await r.knowsPlaceBefore(ref).catch(() => false)))) {
-    await r.unrecord({ ...ref, atPosition: false }, since).catch(() => undefined);
-    return 'undone';
+  // Where this device does not know that place (a reload, another tab's finish), the Undo of
+  // a Mark goes to its own place, no edit either; Mark as not finished takes the edit.
+  if (taken.unsent) {
+    if (await r.restoreBefore(ref, since).catch(() => false)) return 'undone';
+    if (!ref.atPosition) {
+      await r.unrecord(ref, since).catch(() => undefined);
+      return 'undone';
+    }
   }
+  const outcome = await runEdit(edit, () => taken.restore().catch(() => undefined));
+  if (outcome === 'undone') await r.unrecord(ref, since).catch(() => undefined);
+  return outcome;
+}
+
+/** Run the Undo's `edit` (`failed` runs first when it fails): `unreachable` when it failed
+ * for its server being away (`isServerAwayError`: the first edit after the server died,
+ * before reachability noticed, says `unreachable` as the next would, with its Try again);
+ * another failure rejects. */
+async function runEdit(
+  edit: () => Promise<unknown>,
+  failed?: () => Promise<unknown>,
+): Promise<UndoOutcome> {
   try {
     await edit();
+    return 'undone';
   } catch (e) {
-    await taken.restore().catch(() => undefined);
+    await failed?.();
+    if (isServerAwayError(e)) return 'unreachable';
     throw e;
   }
-  await r.unrecord(ref, since).catch(() => undefined);
-  return 'undone';
 }

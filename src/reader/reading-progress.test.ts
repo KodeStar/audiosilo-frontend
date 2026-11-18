@@ -1026,3 +1026,114 @@ describe('jumpOffer', () => {
 function routeClients(map: Record<string, ApiClient | null>) {
   mockResolveClient.mockImplementation((cid: string) => map[cid] ?? null);
 }
+
+// The web player's tabs share the reader's mirror and queue. A lock per tab let one tab
+// write its read of either over another tab's change made meanwhile.
+describe('reading places across tabs', () => {
+  const nav = globalThis.navigator as { locks?: unknown };
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    jest.clearAllMocks();
+    reachable.mockReset().mockReturnValue(true);
+    mockResolveClient.mockReset().mockReturnValue(null);
+    mockSessionReady.mockReset().mockReturnValue(true);
+    // One browser's Web Locks: a job per name at a time, whichever tab asks.
+    const chains = new Map<string, Promise<unknown>>();
+    const request = (name: string, job: () => Promise<unknown>) => {
+      const run = (chains.get(name) ?? Promise.resolve()).then(job);
+      chains.set(
+        name,
+        run.catch(() => undefined),
+      );
+      return run;
+    };
+    Object.defineProperty(nav, 'locks', { configurable: true, value: { request } });
+  });
+  afterEach(() => {
+    delete nav.locks;
+  });
+
+  /** Another tab: its own copy of the module over the same storage and the same seams. */
+  const otherTab = () => {
+    let other!: typeof import('./reading-progress');
+    jest.isolateModules(() => {
+      jest.doMock('@react-native-async-storage/async-storage', () => ({
+        __esModule: true,
+        default: AsyncStorage,
+      }));
+      jest.doMock('@/api/connection-clients', () => ({
+        resolveClient: mockResolveClient,
+        sessionReady: mockSessionReady,
+      }));
+      jest.doMock('@/api/reachability', () => reachability);
+      /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+      other = require('./reading-progress') as typeof import('./reading-progress');
+    });
+    return other;
+  };
+
+  it("never writes over the other tab's place or queued save", async () => {
+    const other = otherTab();
+    await Promise.all([
+      saveReadingPlace(null, save({ path: 'A/Book' })),
+      other.saveReadingPlace(null, save({ path: 'B/Other' })),
+    ]);
+    expect(Object.keys(await readMirror()).sort()).toEqual(['c1:1:A/Book', 'c1:1:B/Other']);
+    expect((await readQueue()).map((s) => s.path).sort()).toEqual(['A/Book', 'B/Other']);
+  });
+
+  it("keeps a save another tab queued while this tab's replay was out, and sends nothing twice", async () => {
+    await AsyncStorage.setItem(READING_QUEUE_KEY, JSON.stringify([save()]));
+    let answer!: () => void;
+    const answered = new Promise<void>((r) => (answer = r));
+    const api = fakeApi(async (input) => {
+      await answered;
+      return { reading_progress: row({ ...(input as Partial<ReadingProgress>), version: 5 }) };
+    });
+    routeClients({ c1: api });
+    const replaying = flushReadingQueue();
+    await new Promise((r) => setTimeout(r, 0));
+    const other = otherTab();
+    // The other tab's replay leaves the save this tab is sending alone.
+    await other.flushReadingQueue();
+    expect(api.saveReadingProgress).toHaveBeenCalledTimes(1);
+    // And its save queued meanwhile stays queued.
+    await other.saveReadingPlace(null, save({ path: 'B/Other' }));
+    answer();
+    await replaying;
+    expect((await readQueue()).map((s) => s.path)).toEqual(['B/Other']);
+  });
+
+  // Storage full: the drop of the older queued place after a newer one was sent is refused,
+  // and the replay that followed sent the older place over the newer.
+  it('never replays an older place after a newer one, when storage refuses to drop it', async () => {
+    const older = save({ cfi: CFI_A, updated_at: '2026-01-01T00:00:00Z' });
+    await AsyncStorage.setItem(READING_QUEUE_KEY, JSON.stringify([older]));
+    const sent: string[] = [];
+    const api = fakeApi(async (input) => {
+      const place = input as Partial<ReadingProgress>;
+      sent.push(place.cfi ?? '');
+      return { reading_progress: row({ ...place, version: 5 }) };
+    });
+    routeClients({ c1: api });
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const write = setItem.getMockImplementation()!;
+    setItem.mockImplementation(async (key: string, value: string) => {
+      if (key === READING_QUEUE_KEY) throw new Error('quota');
+      return write(key, value);
+    });
+    try {
+      await saveReadingPlace(api, save({ cfi: CFI_B, updated_at: '2026-01-02T00:00:00Z' }));
+      await flushReadingQueue();
+      expect(sent).toEqual([CFI_B]);
+      expect(await readQueue()).toHaveLength(1);
+    } finally {
+      setItem.mockImplementation(write);
+    }
+    // Storage takes writes again: the older place leaves the queue, unsent.
+    await flushReadingQueue();
+    expect(sent).toEqual([CFI_B]);
+    expect(await readQueue()).toEqual([]);
+  });
+});

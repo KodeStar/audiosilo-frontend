@@ -68,11 +68,33 @@ const mockUpdateMirror = jest.fn(
   },
 );
 const mockNoteUndone = jest.fn(async (..._a: unknown[]) => {});
+const mockTellUndone = jest.fn((..._a: unknown[]) => {});
+// Each Mark as finished's record as the mirror keeps it (`writeFinishedMirror`): the save,
+// carrying the record it replaced (`mockReadMirror`'s) when that was a place, or what the
+// finished record it replaced carried. Its write is `mockWriteMirror`'s too.
+type MockRecord = { finished?: boolean; before?: unknown };
+const mockFinishedRecords: unknown[] = [];
+const mockWriteFinishedMirror = async (save: {
+  connectionId: string;
+  libraryId: number;
+  path: string;
+}) => {
+  const existing = (await mockReadMirror(
+    save.connectionId,
+    save.libraryId,
+    save.path,
+  )) as MockRecord | null;
+  const prior = existing && (existing.finished ? existing.before : existing);
+  mockFinishedRecords.push(prior ? { ...save, before: prior } : save);
+  return mockWriteMirror(save);
+};
 // Sessions whose guarded save the queue has PUT since (`guardSettled`).
 const mockSettled = new Set<string>();
 jest.mock('./progress-sync', () => ({
   saveProgress: (...a: unknown[]) => mockSaveProgress(...a),
   writeMirror: (...a: unknown[]) => mockWriteMirror(...a),
+  writeFinishedMirror: (save: { connectionId: string; libraryId: number; path: string }) =>
+    mockWriteFinishedMirror(save),
   ackVersion: (...a: unknown[]) => mockAckVersion(...a),
   flushQueue: jest.fn(async () => {}),
   flushConnection: jest.fn(async () => {}),
@@ -83,6 +105,7 @@ jest.mock('./progress-sync', () => ({
   updateMirror: (cid: string, lib: number, path: string, change: (r: never) => unknown) =>
     mockUpdateMirror(cid, lib, path, change),
   noteUndoneFinish: (...a: unknown[]) => mockNoteUndone(...a),
+  tellUndoneElsewhere: (...a: unknown[]) => mockTellUndone(...a),
   guardSettled: (id: string) => mockSettled.has(id),
   // No clock skew is known here: the two stamps as they are.
   mirrorIsNewest: async (record: { updated_at: string }, place: { updated_at: string }) =>
@@ -292,6 +315,7 @@ beforeEach(() => {
   mockClosed.length = 0;
   mockAppended.length = 0;
   mockMirrorUpdates.length = 0;
+  mockFinishedRecords.length = 0;
   mockGeneration = 0;
   mockAppendInTurn.mockImplementation(appendedInTurn);
   mockSync = true;
@@ -1429,31 +1453,31 @@ describe('Mark as finished outside the player (finish-route)', () => {
       expect(mockWriteMirror).toHaveBeenLastCalledWith(
         expect.objectContaining({ path: 'Other/Book', finished: true }),
       );
-      // The mirror holds the finish's record by the Undo, acknowledged since.
-      const finishedRec = {
-        ...(mockWriteMirror.mock.calls.at(-1)?.[0] as { updated_at: string }),
-        ack_version: 9,
-      };
+      // The mirror holds the finish's record by the Undo, carrying the record before it,
+      // acknowledged since.
+      const finishedRec = { ...(mockFinishedRecords.at(-1) as object), ack_version: 9 };
+      expect(finishedRec).toMatchObject({ finished: true, before });
       mockReadMirror.mockResolvedValue(finishedRec);
       const writes = mockWriteMirror.mock.calls.length;
       const edit = jest.fn(async () => {});
       await expect(undoFinish(undoRef, edit)).resolves.toBe('undone');
       expect(mockWithdraw).toHaveBeenCalledWith('c1', 2, 'Other/Book');
       expect(edit).not.toHaveBeenCalled();
-      // Stamped just after the finish it replaces: the mirror refuses an older record, and a
-      // read of the finished row still on its way, stamped as the finish, loses to it (fe#258).
-      const finishedAt = finishedRec.updated_at;
-      const after = new Date(Date.parse(finishedAt) + 1).toISOString();
-      // Under the mirror's lock (`updateMirror`), never a write from a read made outside it;
-      // its Sync v2 fields are the mirror's own (the ack since the finish is newer).
+      // The record before it as it was, its own stamp: the server never got the finish and
+      // holds that place, so a place another device saved after it, read next, is newer and
+      // wins (stamped after the finish, it was refused). Under the mirror's lock
+      // (`updateMirror`), never a write from a read made outside it; its Sync v2 fields are
+      // the mirror's own (the ack since the finish is newer).
       expect(mockWriteMirror).toHaveBeenCalledTimes(writes);
-      expect(mockMirrorUpdates).toEqual([{ ...before, ack_version: 9, updated_at: after }]);
-      expect(after > finishedAt && finishedAt > before.updated_at).toBe(true);
+      expect(mockMirrorUpdates).toEqual([{ ...before, ack_version: 9 }]);
       // A read of the finished row still on its way is held off (fe#258, fe#272).
       expect(mockNoteUndone).toHaveBeenCalledWith('c1', 2, 'Other/Book');
       expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
         queryKey: qk.progress('c1', 2, 'Other/Book'),
       });
+      // The other tabs are told once the record went back, so they read it again.
+      expect(mockTellUndone).toHaveBeenCalledTimes(1);
+      expect(mockTellUndone).toHaveBeenCalledWith(expect.objectContaining({ path: 'Other/Book' }));
     } finally {
       mockReadMirror.mockImplementation(async () => null);
     }
@@ -1514,8 +1538,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
     afterEach(() => mockReadMirror.mockImplementation(async () => null));
 
     it('the mirror goes back to the place the server holds, with no edit', async () => {
-      const finishedRec = mockWriteMirror.mock.calls.at(-1)?.[0] as { updated_at: string };
-      mockReadMirror.mockResolvedValue(finishedRec);
+      mockReadMirror.mockResolvedValue(mockFinishedRecords.at(-1));
       const edit = jest.fn(async () => {});
       await expect(undoFinish(notFinished, edit)).resolves.toBe('undone');
       expect(edit).not.toHaveBeenCalled();
@@ -1612,6 +1635,8 @@ describe('Mark as finished outside the player (finish-route)', () => {
       playback_speed: 1,
       device_id: 'dev-1',
       updated_at: '2026-01-01T00:00:00Z',
+      file: 'Other/Book/3.mp3',
+      file_pos: 12,
     };
     mockReadMirror.mockResolvedValue(before);
     try {
@@ -1628,10 +1653,17 @@ describe('Mark as finished outside the player (finish-route)', () => {
       const edit = jest.fn(async () => {});
       await expect(undoFinish(undoRef, edit)).resolves.toBe('undone');
       expect(edit).toHaveBeenCalledTimes(1);
+      // The row read back replaced the record that carried the place before the finish
+      // (`ProgressSave.before`): the tab that marked it still knows that place, so the Undo
+      // keeps its file place too. On the position alone, a downloaded book opened offline
+      // at the wrong file.
+      expect(echo).not.toHaveProperty('before');
       expect(mockMirrorUpdates.at(-1)).toMatchObject({
         path: 'Other/Book',
         finished: false,
         position: 48,
+        file: 'Other/Book/3.mp3',
+        file_pos: 12,
         updated_at: '2999-01-01T00:00:00.001Z',
       });
     } finally {
@@ -1687,8 +1719,8 @@ describe('Mark as finished outside the player (finish-route)', () => {
       updated_at: '2026-01-01T00:00:00Z',
     };
     mockReadMirror.mockResolvedValue(before);
-    mockWriteMirror.mockImplementationOnce(async (rec: unknown) => {
-      mockReadMirror.mockResolvedValue(rec);
+    mockWriteMirror.mockImplementationOnce(async () => {
+      mockReadMirror.mockResolvedValue(mockFinishedRecords.at(-1));
     });
     mockAppendInTurn.mockImplementationOnce(async () => {
       throw new Error('no turn');
@@ -1697,8 +1729,8 @@ describe('Mark as finished outside the player (finish-route)', () => {
       await expect(recordFinishEvent({ ...ref, path: 'Other/Book' })).rejects.toThrow('no turn');
       const finished = mockWriteMirror.mock.calls.at(-1)?.[0] as { updated_at: string };
       expect(finished).toMatchObject({ path: 'Other/Book', finished: true });
-      const after = new Date(Date.parse(finished.updated_at) + 1).toISOString();
-      expect(mockMirrorUpdates).toEqual([{ ...before, updated_at: after }]);
+      // As it was: the finish never left this device.
+      expect(mockMirrorUpdates).toEqual([before]);
     } finally {
       mockReadMirror.mockImplementation(async () => null);
     }

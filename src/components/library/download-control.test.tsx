@@ -34,8 +34,10 @@ jest.mock('@/downloads/use-download-controls', () => ({
 }));
 // The confirm reads the room it frees from the registry and removes through the store;
 // the progress line reads the registry entry.
+let mockElsewhere = false;
 jest.mock('@/downloads/store', () => ({
   useDownloadEntry: () => mockDownload(),
+  useDownloadElsewhere: () => mockElsewhere,
   useDownloadProgress: () => {
     const { useSyncExternalStore } = jest.requireActual<typeof import('react')>('react');
     const ticked = useSyncExternalStore(
@@ -210,6 +212,17 @@ describe('DownloadProgress', () => {
     mockControlsOverride = {};
     await mountWithPortal(<DownloadProgress libraryId={1} path="b" />);
     expect(screen.queryByText(/^Downloading/)).toBeNull();
+  });
+
+  it('says so when another tab of the browser is running it', async () => {
+    mockControlsOverride = { status: 'downloading', progress: 0.01, bytes: 524_288 };
+    mockElsewhere = true;
+    try {
+      await mountWithPortal(<DownloadProgress libraryId={1} path="b" />);
+      expect(screen.getByText(/^Downloading 1% · .+ \/ 50 MB · In another tab$/)).toBeTruthy();
+    } finally {
+      mockElsewhere = false;
+    }
   });
 
   it("says how far an episode's server has got it while it waits there", async () => {

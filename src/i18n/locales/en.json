@@ -5,6 +5,7 @@
     "save": "Save",
     "done": "Done",
     "retry": "Retry",
+    "serverBusy": "The server is busy. Try again in a moment.",
     "close": "Close",
     "copied": "Copied",
     "on": "On",
@@ -879,7 +880,8 @@
       "download": "Download",
       "downloaded": "Downloaded",
       "queued": "Queued…",
-      "downloading": "Downloading {{percent}}%"
+      "downloading": "Downloading {{percent}}%",
+      "otherTab": "In another tab"
     },
     "list": {
       "recentlyAdded": "Recently added",
@@ -1146,6 +1148,10 @@
         "hint": "Uses the same network rule as books. An episode not on your server yet is fetched there first."
       },
       "autoDelete": "Remove a download when you finish the book"
+    },
+    "saveFailing": {
+      "title": "Downloads list not saved",
+      "body": "Storage on this device refused the latest change. Trying again."
     },
     "browser": {
       "title": "How downloads work in a browser",

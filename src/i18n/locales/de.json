@@ -5,6 +5,7 @@
     "save": "Speichern",
     "done": "Fertig",
     "retry": "Erneut versuchen",
+    "serverBusy": "Der Server ist gerade ausgelastet. Versuche es gleich noch einmal.",
     "close": "Schließen",
     "copied": "Kopiert",
     "on": "Ein",
@@ -879,7 +880,8 @@
       "download": "Herunterladen",
       "downloaded": "Heruntergeladen",
       "queued": "In Warteschlange…",
-      "downloading": "Download läuft {{percent}} %"
+      "downloading": "Download läuft {{percent}} %",
+      "otherTab": "In einem anderen Tab"
     },
     "list": {
       "recentlyAdded": "Kürzlich hinzugefügt",
@@ -1146,6 +1148,10 @@
         "hint": "Es gilt dieselbe Netzwerkregel wie für Bücher. Eine Folge, die noch nicht auf deinem Server ist, wird zuerst dorthin geholt."
       },
       "autoDelete": "Download entfernen, wenn du das Buch beendet hast"
+    },
+    "saveFailing": {
+      "title": "Downloadliste nicht gespeichert",
+      "body": "Der Speicher dieses Geräts hat die letzte Änderung abgelehnt. Es wird erneut versucht."
     },
     "browser": {
       "title": "So funktionieren Downloads im Browser",

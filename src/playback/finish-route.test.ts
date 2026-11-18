@@ -1,3 +1,5 @@
+import { ApiError, NetworkError, TimeoutError } from '@/api/client';
+
 import { setFinishRecorder, undoFinish } from './finish-route';
 
 // fe#208: an Undo's progress edit goes only after the waiting finish is taken back; a
@@ -28,7 +30,10 @@ describe('undoFinish', () => {
           `unrecord at ${r.position}${r.atPosition ? ' (own place)' : ''} for sign-in ${since}`,
         );
       },
-      knowsPlaceBefore: async () => knowsBefore,
+      restoreBefore: async (_r, since) => {
+        if (knowsBefore) steps.push(`back to the place before for sign-in ${since}`);
+        return knowsBefore;
+      },
       ...over,
     });
 
@@ -61,7 +66,48 @@ describe('undoFinish', () => {
     expect(steps).toEqual(['withdraw c1 3 Author/Book', 'edit', 'restore']);
   });
 
+  // The first edit after the server died, before reachability noticed: the generic failure
+  // offered no Try again, where the next attempt said the server can't be reached.
+  it.each([
+    ['no answer', new NetworkError(new Error('Failed to fetch'))],
+    ['a timeout', new TimeoutError(15_000)],
+    ["a proxy's 502", new ApiError(502, 'bad gateway')],
+  ])('an edit that found the server away (%s): the finish back, unreachable', async (_, e) => {
+    const failing = async () => {
+      steps.push('edit');
+      throw e;
+    };
+    await expect(undoFinish(ref, failing)).resolves.toBe('unreachable');
+    expect(steps).toEqual(['withdraw c1 3 Author/Book', 'edit', 'restore']);
+  });
+
+  // The server's own 503 (busy: its request timeout, a restart) is an answer: it was
+  // reached, so the Undo fails as an edit does, never as "can't be reached".
+  it("an edit a busy server answered with a 503 is the edit's failure, not unreachable", async () => {
+    const busy = async () => {
+      steps.push('edit');
+      throw new ApiError(503, 'request timed out');
+    };
+    await expect(undoFinish(ref, busy)).rejects.toThrow('request timed out');
+    expect(steps).toEqual(['withdraw c1 3 Author/Book', 'edit', 'restore']);
+  });
+
+  it("an edit the server refused is still the edit's failure", async () => {
+    const refused = async () => {
+      throw new ApiError(500, 'boom');
+    };
+    await expect(undoFinish(ref, refused)).rejects.toThrow('boom');
+  });
+
   it('a finish that never left (offline): undone here, no edit, never put back', async () => {
+    unsent = true;
+    knowsBefore = true;
+    await expect(undoFinish(ref, edit(false))).resolves.toBe('undone');
+    expect(steps).toEqual(['withdraw c1 3 Author/Book', 'back to the place before for sign-in 0']);
+  });
+
+  // A reload since, or another tab's finish: the place before is not known here.
+  it('a finish that never left, the place before it not known: its own place, no edit', async () => {
     unsent = true;
     await expect(undoFinish(ref, edit(false))).resolves.toBe('undone');
     expect(steps).toEqual(['withdraw c1 3 Author/Book', 'unrecord at 48 for sign-in 0']);
@@ -78,7 +124,10 @@ describe('undoFinish', () => {
     it('this device knowing the place before it: back there, as the server is, with no edit', async () => {
       knowsBefore = true;
       await expect(undoFinish(own, edit(false))).resolves.toBe('undone');
-      expect(steps).toEqual(['withdraw c1 3 Author/Book', 'unrecord at 48 for sign-in 0']);
+      expect(steps).toEqual([
+        'withdraw c1 3 Author/Book',
+        'back to the place before for sign-in 0',
+      ]);
     });
 
     it('not knowing it (a reload, another tab): the edit puts the server at the place asked', async () => {
@@ -131,5 +180,9 @@ describe('undoFinish', () => {
     const e = jest.fn(async () => {});
     await expect(undoFinish(ref, e)).resolves.toBe('undone');
     expect(e).toHaveBeenCalledTimes(1);
+    const away = async () => {
+      throw new TypeError('Failed to fetch');
+    };
+    await expect(undoFinish(ref, away)).resolves.toBe('unreachable');
   });
 });

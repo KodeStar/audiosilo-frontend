@@ -5,6 +5,7 @@
     "save": "Salva",
     "done": "Fatto",
     "retry": "Riprova",
+    "serverBusy": "Il server è occupato. Riprova tra un momento.",
     "close": "Chiudi",
     "copied": "Copiato",
     "on": "Attivo",
@@ -879,7 +880,8 @@
       "download": "Scarica",
       "downloaded": "Scaricato",
       "queued": "In coda…",
-      "downloading": "Download {{percent}} %"
+      "downloading": "Download {{percent}} %",
+      "otherTab": "In un'altra scheda"
     },
     "list": {
       "recentlyAdded": "Aggiunti di recente",
@@ -1146,6 +1148,10 @@
         "hint": "Segue la stessa regola di rete dei libri. Un episodio non ancora sul tuo server viene prima recuperato lì."
       },
       "autoDelete": "Rimuovi un download quando finisci il libro"
+    },
+    "saveFailing": {
+      "title": "Elenco dei download non salvato",
+      "body": "La memoria di questo dispositivo ha rifiutato l'ultima modifica. Nuovo tentativo in corso."
     },
     "browser": {
       "title": "Come funzionano i download in un browser",

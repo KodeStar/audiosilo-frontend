@@ -5,6 +5,7 @@
     "save": "Guardar",
     "done": "Listo",
     "retry": "Reintentar",
+    "serverBusy": "El servidor está ocupado. Inténtalo de nuevo en un momento.",
     "close": "Cerrar",
     "copied": "Copiado",
     "on": "Activado",
@@ -879,7 +880,8 @@
       "download": "Descargar",
       "downloaded": "Descargado",
       "queued": "En cola…",
-      "downloading": "Descargando {{percent}} %"
+      "downloading": "Descargando {{percent}} %",
+      "otherTab": "En otra pestaña"
     },
     "list": {
       "recentlyAdded": "Añadidos recientemente",
@@ -1146,6 +1148,10 @@
         "hint": "Sigue la misma regla de red que los libros. Un episodio que aún no está en tu servidor se descarga allí primero."
       },
       "autoDelete": "Quitar una descarga al terminar el libro"
+    },
+    "saveFailing": {
+      "title": "Lista de descargas sin guardar",
+      "body": "El almacenamiento de este dispositivo rechazó el último cambio. Se volverá a intentar."
     },
     "browser": {
       "title": "Cómo funcionan las descargas en un navegador",

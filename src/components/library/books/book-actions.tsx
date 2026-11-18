@@ -40,6 +40,7 @@ import {
   reloadLeftBook,
   undoFinish,
 } from '@/playback/finish-route';
+import { failureTitle } from '@/lib/failure-title';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { useLatestRef } from '@/lib/use-latest';
@@ -164,9 +165,10 @@ export function useBookActions(
   const status = bookStatus(progress);
   const sendToWatch = useSendToWatch(connectionId, libraryId);
 
+  // A busy server says so (`failureTitle`): reached, to try again shortly.
   const failed = (e: unknown) => {
     if (e instanceof CapabilityError) return;
-    toast({ title: t('library.bookActions.failed') });
+    toast({ title: failureTitle(e, t('library.bookActions.failed')) });
   };
 
   const ref = { connectionId, libraryId, path };

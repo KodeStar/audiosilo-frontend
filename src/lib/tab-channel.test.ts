@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 
 import { fakeBrowser } from '@/testing/fake-browser';
 
-import { tabChannel, tabChannelKey } from './tab-channel';
+import { onStoredChange, tabChannel, tabChannelKey } from './tab-channel';
 
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
@@ -136,3 +136,27 @@ function refusingWrites() {
     removeEventListener: () => {},
   };
 }
+
+describe('onStoredChange', () => {
+  it("hears another tab's changes of its key only, until unsubscribed", async () => {
+    const browser = fakeBrowser();
+    const mine = browser.tab();
+    const other = browser.tab();
+    const heard: (string | null)[] = [];
+    const stop = onStoredChange('doc', (value) => heard.push(value), mine);
+    other.localStorage.setItem('doc', '1');
+    other.localStorage.setItem('else', '2');
+    mine.localStorage.setItem('doc', '3'); // its own write: no event here
+    other.localStorage.removeItem('doc');
+    await settle();
+    expect(heard).toEqual(['1', null]);
+    stop();
+    other.localStorage.setItem('doc', '4');
+    await settle();
+    expect(heard).toEqual(['1', null]);
+  });
+
+  it('is nothing where there are no storage events', () => {
+    expect(onStoredChange('doc', () => {}, {})()).toBeUndefined();
+  });
+});

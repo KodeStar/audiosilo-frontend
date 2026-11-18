@@ -18,12 +18,15 @@ export function tabLock(name: string): <T>(job: () => Promise<T>) => Promise<T> 
     queue(() => {
       const locks = webLocks();
       if (locks) return locks.request(name, job);
-      const storage = leaseStorage();
+      const storage = webLocalStorage();
       return storage ? withLease(storage, name, job) : job();
     });
 }
 
-type LockManager = { request<T>(name: string, job: () => Promise<T>): Promise<T> };
+type LockManager = {
+  request<T>(name: string, job: () => Promise<T>): Promise<T>;
+  query?: () => Promise<{ held?: { name?: string }[] }>;
+};
 
 /** Whether this runtime has the browser's Web Locks (a secure-context browser). */
 export const hasWebLocks = (): boolean => webLocks() !== null;
@@ -34,10 +37,49 @@ function webLocks(): LockManager | null {
   return typeof locks?.request === 'function' ? (locks as LockManager) : null;
 }
 
+/**
+ * Hold the Web Lock `name` until the returned release is called, or this tab goes away (the
+ * browser frees a closed or crashed tab's locks): a mark the other tabs can see
+ * (`heldWebLocks`) and wait on (`whenWebLockFree`) for work that lives only as long as its
+ * tab. Nothing is held without Web Locks (native, plain http): the release does nothing.
+ */
+export function holdWebLock(name: string): () => void {
+  const locks = webLocks();
+  if (!locks) return () => {};
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  void locks.request(name, () => released).catch(() => undefined);
+  return release;
+}
+
+/** The names of the Web Locks held now, by any tab of this browser (this one too). None
+ * without Web Locks, or where they cannot be asked. */
+export async function heldWebLocks(): Promise<Set<string>> {
+  const locks = webLocks();
+  const names = new Set<string>();
+  if (typeof locks?.query !== 'function') return names;
+  try {
+    for (const lock of (await locks.query()).held ?? []) {
+      if (typeof lock.name === 'string') names.add(lock.name);
+    }
+  } catch {
+    // Not answerable here: none known.
+  }
+  return names;
+}
+
+/** Resolves once no tab holds the Web Lock `name` (its holder released it, or went away);
+ * at once without Web Locks. */
+export function whenWebLockFree(name: string): Promise<void> {
+  const locks = webLocks();
+  if (!locks) return Promise.resolve();
+  return locks.request(name, async () => {}).catch(() => undefined);
+}
+
 export type LeaseStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 /** The web's `localStorage`, or null (native, or a browser that refuses it). */
-function leaseStorage(): LeaseStorage | null {
+export function webLocalStorage(): LeaseStorage | null {
   if (Platform.OS !== 'web') return null;
   try {
     const storage = (globalThis as { localStorage?: LeaseStorage }).localStorage;

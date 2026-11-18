@@ -78,6 +78,8 @@ jest.mock('@/downloads/store', () => {
     useDownloads,
     useDownloadEntry: (c: string, l: number, p: string) =>
       useDownloads((s: { entries: Record<string, unknown> }) => s.entries[key(c, l, p)]),
+    useDownloadElsewhere: (c: string, l: number, p: string) =>
+      useDownloads((s: { elsewhere?: Record<string, true> }) => !!s.elsewhere?.[key(c, l, p)]),
     useDownloadedCoverUri: () => null,
   };
 });
@@ -161,7 +163,13 @@ beforeEach(() => {
   mockProgress = [];
   mockCaps = {};
   Platform.OS = 'ios';
-  useDownloads.setState({ entries: {}, supported: true, hydrated: true } as never);
+  useDownloads.setState({
+    entries: {},
+    elsewhere: {},
+    saveFailing: false,
+    supported: true,
+    hydrated: true,
+  } as never);
   useKeepAhead.setState({ status: 'idle' as KeepAheadStatus, slots: [] as KeepAheadSlot[] });
   useSettings.setState({
     keepAhead: 0,
@@ -210,6 +218,30 @@ describe('DownloadsScreen', () => {
     );
     await fireEvent.press(screen.getByRole('button', { name: 'Cancel downloading Running' }));
     expect(store().cancel).toHaveBeenCalledWith('a', 1, 'Running');
+  });
+
+  // Web: a download another tab of this browser is running shows as that tab's, with the
+  // progress that tab saves; Cancel still goes to the store, which asks that tab.
+  it('says a running download is in another tab', async () => {
+    setEntries(entry('Running', 'downloading', { progress: 0.4, bytes: 400, totalBytes: 1000 }));
+    useDownloads.setState({ elsewhere: { 'a:1:Running': true } } as never);
+    await mount();
+    expect(screen.getByText(/ · In another tab$/)).toBeTruthy();
+    expect(screen.getByText('40% · 600 B to go')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancel downloading Running' }));
+    expect(store().cancel).toHaveBeenCalledWith('a', 1, 'Running');
+  });
+
+  // Storage refused the registry's save: the change waits in memory and is tried again,
+  // and the page says so (never dropped without a word).
+  it('says when the downloads list could not be saved', async () => {
+    await mount();
+    expect(screen.queryByTestId('downloads-save-failing')).toBeNull();
+    await act(async () => useDownloads.setState({ saveFailing: true } as never));
+    expect(screen.getByText('Downloads list not saved')).toBeTruthy();
+    expect(
+      screen.getByText('Storage on this device refused the latest change. Trying again.'),
+    ).toBeTruthy();
   });
 
   // PLAYER-05: the storage figure grows with a running download, not only once it lands.

@@ -429,6 +429,39 @@ export class NetworkError extends TypeError {
   }
 }
 
+/** What a proxy or Cloudflare answers for a server behind it that is down or did not
+ * answer in time (502, 504, Cloudflare's 520 to 524). Not a 503: the server's own answer
+ * when it is busy (its request timeout, a restart), and it was reached. */
+const SERVER_AWAY = new Set([502, 504, 520, 521, 522, 523, 524]);
+
+/** Whether a failed request got no answer from its server: our timeout, or the fetch
+ * itself rejecting (a `TypeError`: the client's `NetworkError` on every platform, the
+ * browser's "Failed to fetch"). Strict, so a caller that sees every kind of failure (the
+ * query cache) never reads a capability gate or a cancelled read as a dead server. */
+export function isUnreachableError(e: unknown): boolean {
+  return e instanceof TimeoutError || e instanceof TypeError;
+}
+
+/**
+ * Whether a failed request found its server away rather than refused: no answer
+ * (`isUnreachableError`), or a gateway answering for a server that is down (`SERVER_AWAY`).
+ * For what a failure tells the listener: the first request after a server died fails so
+ * before reachability has noticed. A busy server's 503 is never "can't be reached": it says
+ * the server is busy (`isServerBusyError`).
+ */
+export function isServerAwayError(e: unknown): boolean {
+  return isUnreachableError(e) || (e instanceof ApiError && SERVER_AWAY.has(e.status));
+}
+
+/** Whether a failed request found its server busy: its own 503 (its request timeout, a
+ * restart), or a proxy's in front of it, which reads busy too. It was reached, so not
+ * `isServerAwayError`; said as busy, to try again in a moment, rather than as the request's
+ * own failure (`failureTitle`). Not an episode still on its way (`PodcastFetchPendingError`,
+ * a 503 of its own). */
+export function isServerBusyError(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 503 && !(e instanceof PodcastFetchPendingError);
+}
+
 type QueryValue = string | number | boolean | undefined | null;
 /** A list value is sent as the key repeated once per item (`name=A&name=B`). */
 type Query = Record<string, QueryValue | readonly QueryValue[]>;

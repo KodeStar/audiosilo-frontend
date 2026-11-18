@@ -8,12 +8,13 @@ import {
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { ReadingProgress, ReadingProgressSaved } from '@/api/types';
-import { identityMovePending } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
+import { queuedKey, replayQueue, type Route } from '@/lib/queue-claims';
 import { serialQueue } from '@/lib/serial-queue';
-import { getItem, setItem } from '@/lib/storage';
+import { getItem, setItem, setItemStrict } from '@/lib/storage';
 import { READING_MIRROR_KEY, READING_QUEUE_KEY } from '@/lib/storage-keys';
-import { getDeviceId } from '@/playback/progress-sync';
+import { tabLock } from '@/lib/tab-lock';
+import { getDeviceId, onlyConnection, queuedRoute } from '@/playback/progress-sync';
 import { onConnectionRemoved } from '@/stores/session';
 
 import { clearEbookCache } from './ebook-file';
@@ -105,7 +106,10 @@ async function readMirrorMap(): Promise<Record<string, MirrorEntry>> {
   return (await getItem<Record<string, MirrorEntry>>(READING_MIRROR_KEY)) ?? {};
 }
 
-const withMirrorLock = serialQueue();
+// The mirror's read-modify-writes one at a time, in this tab and across tabs (`tabLock`): the
+// tabs of the web player write one mirror, and a lock per tab let one tab write its read of
+// the whole mirror over another tab's change made meanwhile.
+const withMirrorLock = tabLock(READING_MIRROR_KEY);
 
 /** Change one book's mirror record (created empty when absent). */
 async function updateMirror(
@@ -306,7 +310,7 @@ export async function captureReadingSave(
 
 /** The open reader's save of `place`: captured now (its place and time, kept in the mirror
  * at once), sent once every save before it is answered, the offline queue's replays
- * included (`withQueueLock`). A save captured on 0 is then made on the version an answer to
+ * included (`withSendTurn`). A save captured on 0 is then made on the version an answer to
  * this device's own save acknowledged meanwhile: two first saves on 0 in flight together
  * would diverge from each other (catalog.ResolvePlace), so a move back would be kept as the
  * other place. Never on one adopted meanwhile (Jump, Stay, the reader already there:
@@ -428,7 +432,7 @@ export async function saveReadingPlace(
   return sendThenFlush(api, async () => save);
 }
 
-/** Send the save `make` builds once it holds `withQueueLock`, or queue it; after a sent
+/** Send the save `make` builds once it holds `withSendTurn`, or queue it; after a sent
  * save, replay what is still queued. A save sent supersedes a queued save of the same book
  * made before it: the latest save per book wins, sent or queued, so a replay never follows
  * it with an older place (one made on 0 that is further on would be kept, a place the
@@ -437,7 +441,7 @@ async function sendThenFlush(
   api: ApiClient | null,
   make: () => Promise<ReadingSave>,
 ): Promise<ReadingProgressSaved | null> {
-  const { saved, more } = await withQueueLock(async () => {
+  const { saved, more } = await withSendTurn(async () => {
     const save = await make();
     if (!api || !isReachable(save.connectionId)) {
       await queueSave(save);
@@ -467,27 +471,53 @@ async function readQueue(): Promise<ReadingSave[]> {
   return Array.isArray(queue) ? queue : [];
 }
 
-/** Every save sent and every change of the offline queue, one at a time (fe#173): the
+/** Every save sent, the queue's replays included, one at a time in this tab (fe#173): the
  * queue's replays and the open reader's saves (`saveReaderPlace`) once took separate locks,
  * so a replay could be in flight beside a reader's save, both on 0, and the server took
- * them as diverged from each other (a move back kept as the other place). */
-const withQueueLock = serialQueue();
+ * them as diverged from each other (a move back kept as the other place). Held over the
+ * requests, so in this tab only. */
+const withSendTurn = serialQueue();
 
-/** Queue `save`, the latest per book winning. Holding `withQueueLock`. */
+/** The stored queue's read-modify-writes, in this tab and across tabs (`tabLock`): the tabs
+ * of the web player share one queue. Storage only: a replay claims what it sends under it
+ * and sends with it released (`replayQueue`), since on plain http it is a lease of a few
+ * seconds. */
+const withStoredQueue = tabLock(READING_QUEUE_KEY);
+
+/** Queue `save`, the latest per book winning. */
 async function queueSave(save: ReadingSave): Promise<void> {
-  const next = (await readQueue()).filter((s) => !sameBook(s, save));
-  next.push(save);
-  await setItem(READING_QUEUE_KEY, next);
+  await withStoredQueue(async () => {
+    const next = (await readQueue()).filter((s) => !sameBook(s, save));
+    next.push(save);
+    await setItem(READING_QUEUE_KEY, next);
+  });
 }
 
 /** Drop a queued save of `sent`'s book made no later than it; whether any save is still
- * queued. Holding `withQueueLock`. */
+ * queued. The lock only when there is one to drop: every page turn sends a save. */
 async function dropQueuedBefore(sent: ReadingSave): Promise<boolean> {
-  const queue = await readQueue();
-  const next = queue.filter((s) => !sameBook(s, sent) || timeOf(s) > timeOf(sent));
-  if (next.length !== queue.length) await setItem(READING_QUEUE_KEY, next);
-  return next.length > 0;
+  const stale = (s: ReadingSave) => sameBook(s, sent) && timeOf(s) <= timeOf(sent);
+  const queued = await readQueue();
+  if (!queued.some(stale)) return queued.length > 0;
+  return withStoredQueue(async () => {
+    const queue = await readQueue();
+    const next = queue.filter((s) => !stale(s));
+    if (next.length === queue.length) return next.length > 0;
+    try {
+      await setItemStrict(READING_QUEUE_KEY, next);
+    } catch {
+      // Storage refused the drop: the older place is still queued, and a replay would send
+      // it after this newer one. Remembered here, so no replay of this tab's does.
+      for (const s of queue) if (stale(s)) sentUnsettled.add(queuedKey(s));
+      return false;
+    }
+    return next.length > 0;
+  });
 }
+
+/** The queued saves this tab must never send (`ReplayQueue.sent`): sent already, or made no
+ * later than a save of their book sent since, while storage refused to take them out. */
+const sentUnsettled = new Set<string>();
 
 /** Replay one connection's saves through its client; returns those to keep. */
 async function flushGroup(
@@ -520,29 +550,27 @@ async function flushGroup(
   return remaining;
 }
 
+/** `replayQueue` over the reader's queue, in this tab's send turn: claimed under the
+ * stored queue's lock, sent outside it. */
+function replayReadingSaves(route: (cid: string) => Route<ApiClient>): Promise<void> {
+  return withSendTurn(() =>
+    replayQueue<ReadingSave, ApiClient>({
+      lock: withStoredQueue,
+      read: readQueue,
+      write: (next) => setItemStrict(READING_QUEUE_KEY, next),
+      route,
+      send: flushGroup,
+      sent: sentUnsettled,
+    }),
+  );
+}
+
 /** Replay every queued save through its own connection's client (app open, after a save,
- * the reader opening). Waits for the session, as `progress-sync`'s `flushQueue`. */
+ * the reader opening). Waits for the session, as `progress-sync`'s `flushQueue`. Saves
+ * another tab is replaying are left to it. */
 export async function flushReadingQueue(): Promise<void> {
   if (!sessionReady()) return;
-  await withQueueLock(async () => {
-    const queue = await readQueue();
-    if (queue.length === 0) return;
-    const groups = new Map<string, ReadingSave[]>();
-    for (const save of queue) {
-      const g = groups.get(save.connectionId);
-      if (g) g.push(save);
-      else groups.set(save.connectionId, [save]);
-    }
-    const remaining = await Promise.all(
-      [...groups].map(async ([cid, saves]) => {
-        if (!isReachable(cid)) return saves;
-        const client = resolveClient(cid);
-        if (!client) return identityMovePending() ? saves : [];
-        return flushGroup(cid, client, saves);
-      }),
-    );
-    await setItem(READING_QUEUE_KEY, remaining.flat());
-  });
+  await replayReadingSaves(queuedRoute);
 }
 
 /** Replay one connection's queued saves whatever its recorded reachability: it just came
@@ -551,14 +579,7 @@ export async function flushReadingConnection(connectionId: string): Promise<void
   if (!sessionReady()) return;
   const client = resolveClient(connectionId);
   if (!client) return;
-  await withQueueLock(async () => {
-    const queue = await readQueue();
-    const mine = queue.filter((s) => s.connectionId === connectionId);
-    if (mine.length === 0) return;
-    const others = queue.filter((s) => s.connectionId !== connectionId);
-    const remaining = await flushGroup(connectionId, client, mine);
-    await setItem(READING_QUEUE_KEY, [...others, ...remaining]);
-  });
+  await replayReadingSaves(onlyConnection(connectionId, client));
 }
 
 // --- "Jump there?" -----------------------------------------------------------------------------
@@ -607,7 +628,7 @@ onConnectionRemoved(async (id) => {
         await setItem(READING_MIRROR_KEY, kept);
       }
     }),
-    withQueueLock(async () => {
+    withStoredQueue(async () => {
       const queue = await readQueue();
       const next = queue.filter((s) => s.connectionId !== id);
       if (next.length !== queue.length) await setItem(READING_QUEUE_KEY, next);
