@@ -28,6 +28,7 @@ import { canAutoDownload } from '@/lib/network';
 import { sharedStart } from '@/lib/shared-start';
 import { getItem, getItemStrict, setItemStrict } from '@/lib/storage';
 import { DOWNLOADS_KEY, isRecord } from '@/lib/storage-keys';
+import { onStoredChange } from '@/lib/tab-channel';
 import { tabLock } from '@/lib/tab-lock';
 import { bookFileSpecs } from '@/playback/book-queue';
 import { fetchPercent, isAbsentEpisode } from '@/playback/episode-fetch-rules';
@@ -1262,17 +1263,7 @@ export function followStoredRegistry(raw: string | null): void {
   useDownloads.setState({ entries: next });
 }
 
-const win = globalThis as {
-  addEventListener?: (
-    type: 'storage',
-    listener: (e: { key: string | null; newValue: string | null }) => void,
-  ) => void;
-};
-if (Platform.OS === 'web' && typeof win.addEventListener === 'function') {
-  win.addEventListener('storage', (e) => {
-    if (e.key === DOWNLOADS_KEY) followStoredRegistry(e.newValue);
-  });
-}
+if (Platform.OS === 'web') onStoredChange(DOWNLOADS_KEY, followStoredRegistry);
 
 /** Save the registry within `PERSIST_EVERY_MS`: a book of many files lands one file at
  * a time, and each save writes the whole registry. A failure, completion, cancel or the

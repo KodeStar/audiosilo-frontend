@@ -19,6 +19,7 @@ import { downloadBookLength } from '@/downloads/kept-offline';
 import { contentKey } from '@/lib/content-key';
 import { randomUUID } from '@/lib/random';
 import { getItem, getItemStrict, setItem, setItemStrict } from '@/lib/storage';
+import { onStoredChange } from '@/lib/tab-channel';
 import { hasWebLocks, tabLock } from '@/lib/tab-lock';
 import {
   isRecord,
@@ -337,17 +338,7 @@ export function refreshOutboxFrom(raw: string | null): void {
 /** The outbox in a stored value as `localStorage` holds it (throws on a value not JSON). */
 const parseOutbox = (raw: string | null): OutboxEntry[] => (raw ? entriesOf(JSON.parse(raw)) : []);
 
-const win = globalThis as {
-  addEventListener?: (
-    type: 'storage',
-    listener: (e: { key: string | null; newValue: string | null }) => void,
-  ) => void;
-};
-if (typeof win.addEventListener === 'function') {
-  win.addEventListener('storage', (e) => {
-    if (e.key === OUTBOX_KEY) refreshOutboxFrom(e.newValue);
-  });
-}
+onStoredChange(OUTBOX_KEY, refreshOutboxFrom);
 
 /** The outbox for a reader outside the lock: the cache once the stored outbox was read,
  * else read under the lock (a read that brings the stored events in never lands inside a
