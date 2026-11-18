@@ -12,6 +12,7 @@ import {
   LISTENING_OUTBOX_KEY,
   PROGRESS_MIRROR_KEY as MIRROR_KEY,
   PROGRESS_QUEUE_KEY as QUEUE_KEY,
+  isRecord,
 } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
 import { shallow } from 'zustand/shallow';
@@ -674,12 +675,14 @@ export async function writeMirrors(saves: readonly ProgressSave[]): Promise<void
   if (saves.length === 0) return;
   await withMirrorLock(async () => {
     const map = await readMirrorMap();
+    // Only a finished record can be one an Undo undid (`noteUndoneFinish`), here or in
+    // another tab.
+    const shared = saves.some((s) => s.finished) ? await readUndoneFinishes() : {};
     let changed = false;
     for (const save of saves) {
       const key = contentKey(save.connectionId, save.libraryId, save.path);
       const existing = map[key];
-      // Only a finished record can be one an Undo undid (`noteUndoneFinish`).
-      const undone = save.finished ? undoneFinishes.get(key) : undefined;
+      const undone = save.finished ? latestUndo(undoneFinishes.get(key), shared[key]) : undefined;
       const skew = existing || undone !== undefined ? await knownSkew(save.connectionId) : 0;
       if (undone !== undefined && undoneBy(key, undone, save, skew)) continue;
       if (!existing || localTimeOf(save, skew) >= localTimeOf(existing, skew)) {
@@ -699,9 +702,34 @@ export async function writeMirrors(saves: readonly ProgressSave[]): Promise<void
  * read's 15 s timeout and the write of its answer. */
 const UNDONE_FINISH_HOLD_MS = 60_000;
 /** The books whose finish was undone here lately (`noteUndoneFinish`), with the time (ms,
- * this device's clock) of each Undo. This launch's only: an Undo is a toast of the launch
- * that marked the book. */
+ * this device's clock) of each Undo. This launch's, and stored (`UNDONE_FINISHES_KEY`) for
+ * the other tabs of the web player. */
 const undoneFinishes = new Map<string, number>();
+/** The undone finishes every tab of the web player reads (`noteUndoneFinish`), keyed by
+ * `contentKey`, each with the time of its Undo: the tabs write one mirror, and another
+ * tab's read of the finished row, held off only in the tab that made the Undo, finished it
+ * again. Every tab goes by the device's clock. One past the hold is dropped at the next
+ * Undo. */
+const UNDONE_FINISHES_KEY = 'audiosilo.undoneFinishes';
+
+/** The stored undone finishes (`UNDONE_FINISHES_KEY`); anything else stored there is none. */
+async function readUndoneFinishes(): Promise<Record<string, number>> {
+  const stored = await getItem<unknown>(UNDONE_FINISHES_KEY);
+  const out: Record<string, number> = {};
+  if (!isRecord(stored)) return out;
+  for (const [key, at] of Object.entries(stored)) {
+    if (typeof at === 'number' && Number.isFinite(at)) out[key] = at;
+  }
+  return out;
+}
+
+/** The later of two Undo times, either unknown. */
+function latestUndo(a: number | undefined, b: number | undefined): number | undefined {
+  return a === undefined ? b : b === undefined ? a : Math.max(a, b);
+}
+
+// One write of the stored undone finishes at a time (in this tab).
+const withUndoneLock = serialQueue();
 
 /**
  * A Mark as finished was undone (`unrecordFinish` in the store): for a while
@@ -713,16 +741,28 @@ const undoneFinishes = new Map<string, number>();
  * offline Play started the book again at 0, until the next read (fe#258). A finish made
  * after the Undo (the end, another device's, Mark as finished again) is stamped after it.
  */
-export function noteUndoneFinish(
+export async function noteUndoneFinish(
   connectionId: string,
   libraryId: number,
   path: string,
   at = Date.now(),
-): void {
+): Promise<void> {
+  const current = (when: number) => at - when <= UNDONE_FINISH_HOLD_MS;
   for (const [key, when] of undoneFinishes) {
-    if (at - when > UNDONE_FINISH_HOLD_MS) undoneFinishes.delete(key);
+    if (!current(when)) undoneFinishes.delete(key);
   }
-  undoneFinishes.set(contentKey(connectionId, libraryId, path), at);
+  const key = contentKey(connectionId, libraryId, path);
+  undoneFinishes.set(key, at);
+  // Held off in the other tabs too: the mirror is theirs as well (web), and one of them may
+  // read the finished row after the Undo.
+  await withUndoneLock(async () => {
+    const stored = await readUndoneFinishes();
+    const next: Record<string, number> = { [key]: at };
+    for (const [other, when] of Object.entries(stored)) {
+      if (other !== key && current(when)) next[other] = when;
+    }
+    await setItem(UNDONE_FINISHES_KEY, next);
+  });
 }
 
 /** Whether `save` (a finished record) is one the Undo at `at` of `key`'s finish undid (one

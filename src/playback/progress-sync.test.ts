@@ -958,7 +958,7 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
 
     it('holds off a finished record stamped before the Undo, not one after it', async () => {
       await writeMirror(unfinished);
-      noteUndoneFinish('c1', 1, 'A/Book', undoneAt);
+      await noteUndoneFinish('c1', 1, 'A/Book', undoneAt);
       const now = jest.spyOn(Date, 'now').mockReturnValue(undoneAt + 5_000);
       try {
         await writeMirror({ ...finishedRow, updated_at: '2026-01-04T23:59:59Z' });
@@ -975,7 +975,7 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
 
     it('only for a while: past the hold the newest record wins again', async () => {
       await writeMirror(unfinished);
-      noteUndoneFinish('c1', 1, 'A/Book', undoneAt);
+      await noteUndoneFinish('c1', 1, 'A/Book', undoneAt);
       const now = jest.spyOn(Date, 'now').mockReturnValue(undoneAt + 61_000);
       try {
         await writeMirror({ ...finishedRow, updated_at: '2026-01-04T23:59:59Z' });
@@ -985,8 +985,36 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
       }
     });
 
+    // Web: every tab writes the one mirror, and a hold in the Undo's tab alone let another
+    // tab's read of the finished row finish it again.
+    it("holds off another tab's finished record too", async () => {
+      await writeMirror(unfinished);
+      // The other tab: its own copy of the module (its own memory) over the same storage.
+      let other!: typeof import('@/playback/progress-sync');
+      jest.isolateModules(() => {
+        jest.doMock('@react-native-async-storage/async-storage', () => ({
+          __esModule: true,
+          default: AsyncStorage,
+        }));
+        /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+        other = require('@/playback/progress-sync') as typeof import('@/playback/progress-sync');
+      });
+      await noteUndoneFinish('c1', 1, 'A/Book', undoneAt);
+      const now = jest.spyOn(Date, 'now').mockReturnValue(undoneAt + 5_000);
+      try {
+        await other.writeMirror({ ...finishedRow, updated_at: '2026-01-04T23:59:59Z' });
+        expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ finished: false });
+        // Past the hold there too, the newest record wins again.
+        now.mockReturnValue(undoneAt + 61_000);
+        await other.writeMirror({ ...finishedRow, updated_at: '2026-01-04T23:59:59Z' });
+        expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ finished: true });
+      } finally {
+        now.mockRestore();
+      }
+    });
+
     it("another book's finished record is not held off", async () => {
-      noteUndoneFinish('c1', 1, 'A/Book', undoneAt);
+      await noteUndoneFinish('c1', 1, 'A/Book', undoneAt);
       const now = jest.spyOn(Date, 'now').mockReturnValue(undoneAt + 5_000);
       try {
         await writeMirror({ ...finishedRow, path: 'B/Book', updated_at: '2026-01-04T00:00:00Z' });

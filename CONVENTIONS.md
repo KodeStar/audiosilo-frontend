@@ -2348,7 +2348,8 @@ media GETs only.
     a downloaded book may be the server's row for the finish, newer than the finish's own
     time, and for a minute the mirror takes no finished record of the book stamped before the
     Undo, `noteUndoneFinish`: the finish's own refresh, landing after it with the server's
-    later stamp, finished it again); fe#208). The loaded book is left before any route
+    later stamp, finished it again; in every tab of the web player, through storage, as the
+    tabs write one mirror); fe#208). The loaded book is left before any route
     records the finish (`leaveFinishedBook`), and a start of it still on its way is called off
     (a load that lands after the unload is reset, `stop()`'s race too); a finish or a
     progress edit that then fails loads it again, paused where it was (`reloadLeftBook`), and
