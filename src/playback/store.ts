@@ -1835,13 +1835,15 @@ let atPartialEnd = false;
  *
  * Each ask is its own record, and the engine call that makes its move tells when the engine
  * took it (`engineTakes`). `landed`: that call resolved, so every report from then on is from
- * after the move (the services report the asked place as they resolve, and a report sent
- * before it is out by then). Only a landed ask's file can show that the engine played on from
- * it: a progress tick sent before a seek back of `PLAYED_ON` or more took is still in that file,
- * past the asked place. And only before the ask lands can a report from another file be one
- * from before the move (`engineFault`). A call that never settles (a Cast receiver that never
- * answers) leaves its ask unlanded: `ASK_SETTLE_MAX_MS` after the ask (`at`) no such tick is
- * out any more, so its file shows the engine played on as a landed one's does.
+ * after the move (the services resolve once the engine took it and report the asked place as
+ * they do, a report sent before it out by then; `service.native.ts` holds back what a native
+ * binary that resolves sooner still sends). Only a landed ask's file can show that the engine
+ * played on from it: a progress tick sent before a seek back of `PLAYED_ON` or more took is
+ * still in that file, past the asked place. And only before the ask lands can a report from
+ * another file be one from before the move (`engineFault`). A call that never settles (a Cast
+ * receiver that never answers) leaves its ask unlanded: `ASK_SETTLE_MAX_MS` after the ask
+ * (`at`) no such tick is out any more, so its file shows the engine played on as a landed
+ * one's does.
  *
  * `playing`: the engine reported the asked file `PLAYING_PAST` beyond the asked place, so it
  * holds that place in its measure (one run off a short measure reports at most its own end,

@@ -62,6 +62,11 @@ declare class AudiosiloPlayerModule extends NativeModule<AudiosiloPlayerModuleEv
   /** Android: bookmarks pressed while no JS ran, oldest first, cleared by the read (iOS:
    * []). Absent on older binaries. */
   consumePendingBookmarks?(): Promise<PendingBookmark[]>;
+  /** Both platforms: always true, its presence the marker that `load`, `seekTo` and
+   * `skipToTrack` resolve once the engine took the move (iOS: the seek's completion; Android:
+   * once the controller reported the new place). An older binary resolves them sooner, and
+   * lacks this (fe#351). */
+  resolvesOnLanding?(): boolean;
 }
 
 export default requireNativeModule<AudiosiloPlayerModule>('AudiosiloPlayer');

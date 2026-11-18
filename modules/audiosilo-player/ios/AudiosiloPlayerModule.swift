@@ -90,19 +90,38 @@ public class AudiosiloPlayerModule: Module {
     // arguments: Expo accepts 3, 4 or 5 arguments and passes nil for the missing ones, so an
     // older JS bundle that sends 4 still works (and a newer one sending 5 to this binary no
     // longer fails the argument count).
+    //
+    // The moves JS asks for (`load`, `seekTo`, `skipToTrack`) resolve once the engine took them
+    // (fe#351), never as their main-thread hop is queued: a progress tick from the place before
+    // would otherwise reach JS after the call resolved. A load or a file jump rebuilds the queue
+    // on the main thread, every tick from then on the new item's (at 0 until a deferred start
+    // seek lands, never past the asked place); a seek waits for AVPlayer's completion.
     AsyncFunction("load") {
-      [weak self] (tracks: [TrackRecord], startIndex: Int, position: Double, chapters: [ChapterRecord]?, book: BookRecord?) in
+      [weak self] (tracks: [TrackRecord], startIndex: Int, position: Double, chapters: [ChapterRecord]?, book: BookRecord?, promise: Promise) in
       onMain {
         self?.ensureEngine().load(tracks: tracks, startIndex: startIndex, position: position,
                                   chapters: chapters ?? [], book: book)
+        promise.resolve(nil)
       }
     }
 
+    // Present: the moves above resolve once taken. JS feature-detects it; an older binary
+    // resolves them before the engine took them.
+    Function("resolvesOnLanding") { () -> Bool in true }
+
     AsyncFunction("play") { [weak self] in onMain { self?.engine?.play() } }
     AsyncFunction("pause") { [weak self] in onMain { self?.engine?.pause() } }
-    AsyncFunction("seekTo") { [weak self] (seconds: Double) in onMain { self?.engine?.seek(to: seconds) } }
-    AsyncFunction("skipToTrack") { [weak self] (index: Int, seconds: Double) in
-      onMain { self?.engine?.skip(to: index, position: seconds) }
+    AsyncFunction("seekTo") { [weak self] (seconds: Double, promise: Promise) in
+      onMain {
+        guard let engine = self?.engine else { promise.resolve(nil); return }
+        engine.seek(to: seconds) { promise.resolve(nil) }
+      }
+    }
+    AsyncFunction("skipToTrack") { [weak self] (index: Int, seconds: Double, promise: Promise) in
+      onMain {
+        self?.engine?.skip(to: index, position: seconds)
+        promise.resolve(nil)
+      }
     }
     AsyncFunction("setRate") { [weak self] (rate: Double) in onMain { self?.engine?.setRate(rate) } }
     // Engine gain (0...1) for the sleep-timer fade - NOT the device volume. No-ops before

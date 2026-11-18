@@ -442,3 +442,81 @@ describe('a progress tick that jumped while playing', () => {
     });
   });
 });
+
+// fe#351: an older binary resolves a move before the engine took it, so a tick sent from the
+// place before can come after; one from before a seek back would read, in the store, as the
+// engine having played on from the asked place.
+describe('a tick from before a move an older binary resolved early', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  /** Playing file 0 at 70 s, its listeners heard from then on as [file, place]. */
+  async function playingAt70(landsOnResolve: boolean) {
+    const svc = await setUp();
+    Object.assign(mockModule, {
+      seekTo: jest.fn(async () => {}),
+      skipToTrack: jest.fn(async () => {}),
+      ...(landsOnResolve ? { resolvesOnLanding: jest.fn(() => true) } : {}),
+    });
+    send('onState', { state: 'playing' });
+    send('onProgress', { position: 70, duration: 100 });
+    const places: [number, number][] = [];
+    svc.subscribe((s) => places.push([s.trackIndex, s.position]));
+    return { svc, places };
+  }
+
+  it('is dropped until the engine reports the asked place', async () => {
+    const { svc, places } = await playingAt70(false);
+    await svc.seekTo(40);
+    send('onProgress', { position: 70.4, duration: 100 }); // sent before the seek took
+    send('onProgress', { position: 40.2, duration: 100 });
+    jest.advanceTimersByTime(1_000);
+    send('onProgress', { position: 41.2, duration: 100 });
+    expect(places).toEqual([
+      [0, 40],
+      [0, 40.2],
+      [0, 41.2],
+    ]);
+  });
+
+  it('is dropped after a jump into another file too, read as that file', async () => {
+    const { svc, places } = await playingAt70(false);
+    await svc.skipToTrack(1, 30);
+    send('onProgress', { position: 70.4, duration: 100 });
+    send('onProgress', { position: 30.1, duration: 200 });
+    expect(places).toEqual([
+      [1, 30],
+      [1, 30.1],
+    ]);
+  });
+
+  it('is taken once the wait is over: a move the engine never took', async () => {
+    const { svc, places } = await playingAt70(false);
+    await svc.seekTo(40);
+    jest.advanceTimersByTime(3_000);
+    send('onProgress', { position: 73, duration: 100 });
+    expect(places.at(-1)).toEqual([0, 73]);
+  });
+
+  it('a remote move ends the wait: its place is the engine’s', async () => {
+    const { svc, places } = await playingAt70(false);
+    await svc.seekTo(40);
+    send('onRemoteMove', { trackIndex: 0, position: 90 });
+    jest.advanceTimersByTime(1_000);
+    send('onProgress', { position: 91, duration: 100 });
+    expect(places.slice(-2)).toEqual([
+      [0, 90],
+      [0, 91],
+    ]);
+  });
+
+  it('is no concern of a binary that resolves once the move took: every tick is taken', async () => {
+    const { svc, places } = await playingAt70(true);
+    await svc.seekTo(40);
+    send('onProgress', { position: 70.4, duration: 100 });
+    expect(places).toEqual([
+      [0, 40],
+      [0, 70.4],
+    ]);
+  });
+});

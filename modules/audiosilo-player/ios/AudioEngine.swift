@@ -405,10 +405,13 @@ final class AudioEngine: NSObject {
 
   /// Seek within the current file. `remote` = the lock screen, a headset or CarPlay asked
   /// (never the JS API): `onRemoteMove` goes out once the seek has landed, after its
-  /// `onProgress`.
-  func seek(to seconds: Double, remote: Bool = false) {
+  /// `onProgress`. `landed`: run then too, superseded or not (the JS `seekTo` resolves on it,
+  /// fe#351, so no tick from before the seek reaches JS after it).
+  func seek(to seconds: Double, remote: Bool = false, landed: (() -> Void)? = nil) {
+    guard player.currentItem != nil else { landed?(); return }
     player.seek(to: CMTime(seconds: max(0, seconds), preferredTimescale: 1000)) { [weak self] finished in
       onMain {
+        defer { landed?() }
         guard let self = self else { return }
         self.sendProgress(self.player.currentTime().seconds)
         self.updateNowPlayingInfo()

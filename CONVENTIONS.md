@@ -2086,7 +2086,12 @@ media GETs only.
   through `engineTakes`. So does a load the Cast route switch makes on the phone by itself, as
   a session ends or a book can't be cast (`onOwnLoad`). The ask (`askedPlace`, one record per
   ask) has landed once that call resolves
-  (reports from then on are from after the move), and a call that rejects withdraws it. The ask
+  (reports from then on are from after the move: the native module resolves `load`, `seekTo`
+  and `skipToTrack` once the engine took the move, iOS in AVPlayer's seek completion, Android
+  at the controller's seek discontinuity (`MoveLandings`), and marks it with
+  `resolvesOnLanding`; on an older binary without it `service.native.ts` drops a tick far from
+  the asked place, in its file, until one near it or `SETTLE_MAX_MS`), and a call that
+  rejects withdraws it. The ask
   stands until the engine has played on `PLAYED_ON` seconds from it in its file (counted only
   once landed: a tick sent before a seek back took is past the asked place), moved on into a
   later file from within the tolerance of the asked file's end, or the listener moved

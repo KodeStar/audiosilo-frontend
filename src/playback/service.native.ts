@@ -24,6 +24,16 @@ const LANDING_HOLD_MS = 600;
 const LANDING_AHEAD_S = 5;
 const LANDING_BACK_S = 1;
 
+/** How long after a move an older binary resolved early (`moduleResolvesOnLanding`) a tick
+ * far from the asked place is still one sent before the move took
+ * (`NativePlaybackService.settling`). The engine takes the move within moments of the call;
+ * the bound only keeps a move it never took from silencing its ticks for long. */
+const SETTLE_MAX_MS = 3_000;
+/** How far from the asked place a tick is, at most, once the move took: a tick a second on at
+ * the top speed, short of the store's `PLAYED_ON`, so a tick from before a seek back of that
+ * much is never taken as the engine having played on from the asked place. */
+const SETTLE_NEAR_S = 2.5;
+
 /** A progress tick whose place jumped while playing, held back (`LANDING_HOLD_MS`) since
  * `since`, from the last tick taken before it (`from`). `trackIndex`: the file it is in, when
  * Android changed the file while it was held (`NativePlaybackService.fileChanged`). */
@@ -44,6 +54,15 @@ type HeldTick = {
  * ship together. */
 function moduleTakesBook(): boolean {
   return typeof AudiosiloPlayer.getLoadedBook === 'function';
+}
+
+/** Does the installed binary resolve its moves (`load`, `seekTo`, `skipToTrack`) once the
+ * engine took them (fe#351)? An older one resolves `seekTo` before AVPlayer's seek completes
+ * (iOS) and every move before its main-thread post ran (Android), so a progress tick sent from
+ * the place before can reach JS after it (`NativePlaybackService.settling`). The marker ships
+ * with the change. */
+function moduleResolvesOnLanding(): boolean {
+  return typeof AudiosiloPlayer.resolvesOnLanding === 'function';
 }
 
 /**
@@ -74,6 +93,16 @@ class NativePlaybackService implements PlaybackService {
   /** The last progress tick the snapshot took in this stretch of playing, and when. Always
    * of the snapshot's file: a new file starts the measure afresh (`update`). */
   private lastTick: { position: number; at: number } | null = null;
+  /**
+   * A move of the app's own an older binary resolved before the engine took it
+   * (`moduleResolvesOnLanding`): `(trackIndex, position)` until `until`. Meanwhile a tick
+   * further than `SETTLE_NEAR_S` from the place, in its file, is one sent from before the move
+   * and is dropped: taken, it would put the snapshot back where the engine was, and the store,
+   * whose ask counts as landed once the call resolved, would read a tick from before a seek
+   * back as the engine having played on from the asked place. The first tick near it ends
+   * the wait, as does another file, a remote move or a reset.
+   */
+  private settling: { trackIndex: number; position: number; until: number } | null = null;
 
   private emit() {
     for (const listener of this.listeners) listener(this.snapshot);
@@ -112,6 +141,7 @@ class NativePlaybackService implements PlaybackService {
    */
   private progress(position: number, duration: number) {
     const now = Date.now();
+    if (this.fromBeforeMove(position, now)) return;
     // A hold past its time ends at the next tick even when its timer never fired: Android
     // pauses the JS timers in the background, and every tick would otherwise fold into the
     // hold, the store hearing none (no save, cut or keep) until the next state change.
@@ -134,6 +164,26 @@ class NativePlaybackService implements PlaybackService {
       return;
     }
     this.takeTick({ position, duration }, now);
+  }
+  /** Is a tick at `position` one an older binary sent before the app's move took
+   * (`settling`)? */
+  private fromBeforeMove(position: number, now: number) {
+    const settling = this.settling;
+    if (!settling) return false;
+    if (now >= settling.until || this.snapshot.trackIndex !== settling.trackIndex) {
+      this.settling = null;
+      return false;
+    }
+    if (Math.abs(position - settling.position) > SETTLE_NEAR_S) return true;
+    this.settling = null;
+    return false;
+  }
+  /** The app's move to `(trackIndex, position)` resolved: on an older binary, before the engine
+   * took it (`settling`). */
+  private moved(trackIndex: number, position: number) {
+    this.settling = moduleResolvesOnLanding()
+      ? null
+      : { trackIndex, position, until: Date.now() + SETTLE_MAX_MS };
   }
   /** Does playing explain covering `seconds` of audio in `ms`, at the speed? */
   private plays(seconds: number, ms: number) {
@@ -232,6 +282,7 @@ class NativePlaybackService implements PlaybackService {
         if (!Number.isFinite(trackIndex) || !Number.isFinite(position)) return;
         const duration = this.held?.duration ?? this.snapshot.duration;
         this.dropHeld();
+        this.settling = null;
         this.setPlace({ trackIndex, position, duration }, Date.now());
         try {
           this.remoteMove?.(trackIndex, position);
@@ -272,6 +323,7 @@ class NativePlaybackService implements PlaybackService {
     } else {
       await AudiosiloPlayer.load(native, startIndex, positionInTrack, chapters);
     }
+    this.moved(startIndex, positionInTrack);
     this.update({
       trackIndex: startIndex,
       position: positionInTrack,
@@ -294,10 +346,12 @@ class NativePlaybackService implements PlaybackService {
       return this.skipToTrack(this.snapshot.trackIndex, positionInTrack);
     }
     await AudiosiloPlayer.seekTo(positionInTrack);
+    this.moved(this.snapshot.trackIndex, positionInTrack);
     this.update({ position: positionInTrack });
   }
   async skipToTrack(index: number, positionInTrack = 0) {
     await AudiosiloPlayer.skipToTrack(index, positionInTrack);
+    this.moved(index, positionInTrack);
     this.update({ trackIndex: index, position: positionInTrack });
   }
   async setRate(rate: number) {
@@ -322,6 +376,7 @@ class NativePlaybackService implements PlaybackService {
   }
   async reset() {
     await AudiosiloPlayer.reset();
+    this.settling = null;
     this.update({ ...INITIAL_SNAPSHOT, rate: this.snapshot.rate });
   }
   // The native picker is a system UI affordance, always available on iOS/Android.
@@ -351,6 +406,7 @@ class NativePlaybackService implements PlaybackService {
     // engine event (a progress tick carries no track or state) re-emit the right ones.
     this.dropHeld();
     this.lastTick = null;
+    this.settling = null;
     this.snapshot = { ...snapshot };
   }
   getSnapshot() {
