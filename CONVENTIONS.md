@@ -55,9 +55,16 @@ reading storage, without importing React; removing/signing out of a connection
 (`removedInOtherTab`, a tab channel, once its list is written and the token gone), and each
 drops the connection from its own list (not written again; its screens leave it as the list
 changes, as the removing tab's do), stops playing through it first
-(`onConnectionRemovedInOtherTab`, `playback/removed-in-other-tab.ts`) and runs the same
-cleanups over its own copies. Not when the token is back (signed in again before the word
-arrived). Stale persisted state is reconciled once, before any store
+(`onConnectionRemovedInOtherTab`, `playback/removed-in-other-tab.ts`; a tab with no book
+loaded through it has nothing to stop, and stays off the span lock the tabs share) and runs
+the same cleanups over its own copies. Not when the token is back (signed in again before the
+word arrived; no cleanups when it is back once the tab stopped playing). The channel is
+listened on from `hydrate`, never at import (the static render imports the store in Node,
+where an open `BroadcastChannel` holds the export's process). A
+stale identity a sign-in retires (`setSession`'s `retire`) stops the same way in the tab that
+retired it, before its purge; the other tabs are NOT told of it (they do not know the
+connection that replaced it, so their profiles would drop the person with it). Stale
+persisted state is reconciled once, before any store
 hydrates, by `resetStaleStorage()` (run inside the memoised launch migration `migrateStorage()`,
 `src/lib/storage-migration.ts`, which `bootstrapPlayback` (the launch steps, below) and ThemeProvider both await) along **two independent version axes** so cache churn
 can never log anyone out (`{ authReset, cacheReset }`):
