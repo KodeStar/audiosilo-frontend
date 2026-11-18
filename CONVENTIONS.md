@@ -2092,7 +2092,9 @@ media GETs only.
   (reports from then on are from after the move: the native module resolves `load`, `seekTo`
   and `skipToTrack` once the engine took the move, iOS in AVPlayer's seek completion, Android
   at the seek discontinuity its own call reported (`MoveLandings`); a seek the controller
-  never reported within a second rejects, as a refused one does. No old-binary fallback: the
+  never reported within a second rejects, as a refused one does, so a press that fires a move
+  and forgets it (`void seekBook(...)`) wraps it in `quietly` (`src/lib/quietly.ts`) instead,
+  leaving no unhandled rejection. No old-binary fallback: the
   app has no `expo-updates`, so a JS bundle only ever runs on the binary it shipped with, and a
   native change to how a call settles needs no feature marker), and a call that
   rejects withdraws it, a fault it called off standing again (`EngineAsk.faulted`). The ask

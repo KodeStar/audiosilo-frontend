@@ -15,6 +15,7 @@ import { useSliderControl } from '@/components/ui/use-slider-control';
 import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock } from '@/lib/format';
 import { percentHeard } from '@/lib/progress-view';
+import { quietly } from '@/lib/quietly';
 import { cn } from '@/lib/utils';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -345,7 +346,7 @@ export function PlayerBookTimeline({
       titles={titles}
       bookmarks={pins?.bookmarks}
       notes={pins?.notes}
-      onSeek={(p) => void seekBook(scrubTarget(p, total))}
+      onSeek={(p) => quietly(seekBook(scrubTarget(p, total)))}
       onStep={(dir) => stepSegment(usePlayer.getState(), dir)}
       onTip={onTip}
       className={className}

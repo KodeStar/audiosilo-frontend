@@ -10,6 +10,7 @@ import { ProgressBar } from '@/components/ui/progress-bar';
 import { Spinner } from '@/components/ui/spinner';
 import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
+import { quietly } from '@/lib/quietly';
 import { cn } from '@/lib/utils';
 import { wallClockSeconds } from '@/playback/rate';
 import {
@@ -212,7 +213,7 @@ export function KidsPlayer({ width }: { width: number }) {
           <RoundButton
             size={d.button}
             label={t('kids.player.back', { count: KIDS_BACK_SECONDS })}
-            onPress={() => void store().skipSeconds(-KIDS_BACK_SECONDS)}
+            onPress={() => quietly(store().skipSeconds(-KIDS_BACK_SECONDS))}
             className="bg-secondary"
             testID="kids-back"
           >

@@ -9,6 +9,7 @@ import { toast } from '@/components/ui/toast';
 import { contradictedTitle } from '@/lib/chapter-label';
 import { contentKeyOf } from '@/lib/content-key';
 import { formatClock } from '@/lib/format';
+import { quietly } from '@/lib/quietly';
 import { sharedStart } from '@/lib/shared-start';
 import { onForeground, whenActive } from '@/lib/when-active';
 
@@ -219,7 +220,7 @@ export async function offerLoadedPlace(
           // Acknowledged first: the span the jump opens is sent on the row it answered.
           void answer().then(() => {
             if (selectBookKey(usePlayer.getState()) === bookKey) {
-              void usePlayer.getState().seekBook(offer.position);
+              quietly(usePlayer.getState().seekBook(offer.position));
             }
           });
         },
@@ -458,7 +459,7 @@ export function undoMove(bookKey: string, from: number): void {
   if (selectBookKey(player) !== bookKey) return;
   const chip = selectUndoFor(bookKey)(useJumpUndo.getState());
   if (chip && Math.abs(chip.from - from) <= 5 && undoJump() !== null) return;
-  void player.seekBook(from);
+  quietly(player.seekBook(from));
 }
 
 /**

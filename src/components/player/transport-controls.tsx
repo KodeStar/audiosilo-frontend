@@ -14,6 +14,7 @@ import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
 import { FOCUS_RING_CLASS } from '@/components/ui/text';
 import { slopForPx } from '@/components/ui/touch-target';
+import { quietly } from '@/lib/quietly';
 import { useFontScale } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { onForeground } from '@/lib/when-active';
@@ -282,7 +283,7 @@ export function TransportControls({
       <SkipButton
         direction="back"
         seconds={skipBackward}
-        onPress={() => void skipSeconds(-skipBackward)}
+        onPress={() => quietly(skipSeconds(-skipBackward))}
         color={themed.foreground}
         fontSize={d.skipFont}
         maxFontScale={1}
@@ -295,7 +296,7 @@ export function TransportControls({
       <SkipButton
         direction="forward"
         seconds={skipForward}
-        onPress={() => void skipSeconds(skipForward)}
+        onPress={() => quietly(skipSeconds(skipForward))}
         color={themed.foreground}
         fontSize={d.skipFont}
         maxFontScale={1}

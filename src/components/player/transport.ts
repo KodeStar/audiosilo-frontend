@@ -5,6 +5,7 @@
  */
 
 import { pathLeaf } from '@/lib/paths';
+import { quietly } from '@/lib/quietly';
 import { FINISHED_TOLERANCE, toBookPosition } from '@/playback/book-queue';
 
 /** The slice of the current chapter this needs (`Chapter` from the playback types). */
@@ -129,14 +130,14 @@ export function stepSegment(state: StepState, dir: 1 | -1): void {
   if (!queue) return;
   const { trackIndex, position } = state.snapshot;
   if (queue.total <= 0) {
-    if (dir === -1 && position > 3) return void state.seekInTrack(0);
-    return void state.goToTrack(trackIndex + dir);
+    if (dir === -1 && position > 3) return quietly(state.seekInTrack(0));
+    return quietly(state.goToTrack(trackIndex + dir));
   }
   const bookPosition = toBookPosition(queue.offsets, trackIndex, position);
   const starts = segmentStarts(queue);
   const target =
     dir === 1 ? nextSegmentStart(starts, bookPosition) : previousSegmentStart(starts, bookPosition);
-  if (target !== undefined) void state.seekBook(target);
+  if (target !== undefined) quietly(state.seekBook(target));
 }
 
 /** A file's name for a book without chapters: the leaf of the track's path (its id is

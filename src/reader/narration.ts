@@ -2,6 +2,7 @@ import { type RefObject, useCallback, useEffect, useMemo } from 'react';
 
 import { selectPlacedBookKey } from '@/components/player/use-listening-position';
 import { contentKey } from '@/lib/content-key';
+import { quietly } from '@/lib/quietly';
 import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 
 import type { ReadalongPosition } from './protocol';
@@ -100,7 +101,7 @@ export function useNarration(
       const s = usePlayer.getState();
       // Only into the book the player holds: a tap in another book's text plays nothing.
       if (key === null || selectPlacedBookKey(s) !== key) return;
-      void s.seekBook(t).then(() => host.current?.syncPosition());
+      quietly(s.seekBook(t).then(() => host.current?.syncPosition()));
     },
     [key, host],
   );

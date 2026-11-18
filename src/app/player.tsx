@@ -18,6 +18,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { useIsDownloaded } from '@/downloads/store';
 import { contentKey } from '@/lib/content-key';
 import { bookTitle, idParam, segmentsToPath } from '@/lib/paths';
+import { quietly } from '@/lib/quietly';
 import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
 import {
@@ -149,8 +150,8 @@ export default function PlayerScreen() {
       startedKeyRef.current = key; // this target is handled; don't auto-start it again
       if (jumpedKeyRef.current === jumpKey) return; // this jump is already done
       jumpedKeyRef.current = jumpKey;
-      if (hasPos) void seekBook(posParam);
-      else if (hasTrack) void goToTrack(trackParam);
+      if (hasPos) quietly(seekBook(posParam));
+      else if (hasTrack) quietly(goToTrack(trackParam));
       return;
     }
     // Already auto-started this exact target (nowPlaying has since been cleared, e.g. by

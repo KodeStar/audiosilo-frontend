@@ -26,6 +26,7 @@ import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, MINI_TITLE_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel, namesTheItem } from '@/lib/chapter-label';
 import { useLayout } from '@/lib/layout';
+import { quietly } from '@/lib/quietly';
 import { cn } from '@/lib/utils';
 import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { selectCurrentChapter, usePlayer } from '@/playback/store';
@@ -279,7 +280,7 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue
         <SkipButton
           direction="back"
           seconds={skipBackward}
-          onPress={() => void skipSeconds(-skipBackward)}
+          onPress={() => quietly(skipSeconds(-skipBackward))}
           color={themed.foreground}
           fontSize={13}
           hitSlop={slopTo44(2.5)}

@@ -20,6 +20,7 @@ import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { isDeviceOnline } from '@/lib/device-online';
 import { canAutoDownload } from '@/lib/network';
+import { quietly } from '@/lib/quietly';
 import { flushReadingConnection } from '@/reader/reading-progress';
 import { quietOffScreen } from '@/lib/visible-store';
 import { withTimeout } from '@/lib/with-timeout';
@@ -3053,7 +3054,9 @@ async function createService(): Promise<PlaybackService> {
   svc.subscribe(onReport);
   // The OS media controls' seeks (web Media Session) go through the store's own seek,
   // so a lock-screen scrub back lowers the resume floor and saves like any other seek.
-  svc.onRemoteSeek?.((positionInTrack) => void usePlayer.getState().seekInTrack(positionInTrack));
+  svc.onRemoteSeek?.((positionInTrack) =>
+    quietly(usePlayer.getState().seekInTrack(positionInTrack)),
+  );
   // Native: the engine already moved for the lock screen, a headset or the car (its
   // snapshot holds the landed place once this returns: `service.native.ts`; the Cast
   // receiver's moves come the same way, `cast-service.ts`). That is the

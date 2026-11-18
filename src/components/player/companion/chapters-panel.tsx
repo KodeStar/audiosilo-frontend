@@ -13,6 +13,7 @@ import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock, formatDurationOrZero } from '@/lib/format';
+import { quietly } from '@/lib/quietly';
 import { isLargeText, scaleCapped, useFontScale } from '@/lib/text-scale';
 import { useLatest } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
@@ -184,12 +185,12 @@ export function ChaptersPanel({
       : queue.chapters.map((c) => chapterLabel(c, t));
   }, [queue, perTrack, title, t]);
   const onPress = useLatest((i: number) => {
-    if (perTrack) void goToTrack(i);
+    if (perTrack) quietly(goToTrack(i));
     else {
       const c = queue?.chapters[i];
       // In the chapter's own file: files of unknown length share a start (fe#324).
       if (queue && c) {
-        void seekBook(c.book_offset, trackIndexById(queue, trackIdOf(libraryId, c.file_path)));
+        quietly(seekBook(c.book_offset, trackIndexById(queue, trackIdOf(libraryId, c.file_path))));
       }
     }
     onSelected?.();
