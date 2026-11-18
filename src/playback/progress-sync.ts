@@ -25,6 +25,7 @@ import { FINISHED_TOLERANCE } from './book-queue';
 import type { OutboxEntry } from './listening-outbox';
 import { type OpenSpan, storedSpans } from './open-span-doc';
 import { hasStoredSkews, readStoredSkews } from './stored-skews';
+import { type BookRef, bookRefOf } from './types';
 
 // Reconnect-driven replay is wired in `provider.tsx`: when a connection recovers it runs
 // `flushConnection(cid)`, so a returning server replays exactly its own queued saves.
@@ -818,11 +819,7 @@ const UNDONE_FINISHES_KEY = 'audiosilo.undoneFinishes';
 
 /** The stored undone finishes (`UNDONE_FINISHES_KEY`); anything else stored there is none. */
 async function readUndoneFinishes(): Promise<Record<string, number>> {
-  return undoneFinishesIn(await getItem<unknown>(UNDONE_FINISHES_KEY));
-}
-
-/** The undone finishes in a stored value; anything else is none. */
-function undoneFinishesIn(stored: unknown): Record<string, number> {
+  const stored = await getItem<unknown>(UNDONE_FINISHES_KEY);
   const out: Record<string, number> = {};
   if (!isRecord(stored)) return out;
   for (const [key, at] of Object.entries(stored)) {
@@ -830,8 +827,6 @@ function undoneFinishesIn(stored: unknown): Record<string, number> {
   }
   return out;
 }
-
-type BookRef = { connectionId: string; libraryId: number; path: string };
 
 /** The channel a tab tells the others of a finish it undid on (`tellUndoneElsewhere`). */
 const UNDONE_CHANNEL = 'audiosilo-undone-finish';
@@ -849,11 +844,7 @@ export function setUndoneChannelForTests(channel: TabChannel<BookRef> | null | u
  * Mark as not finished), once its mirror record went back: their pages still show the book
  * finished until they read it again. */
 export function tellUndoneElsewhere(ref: BookRef): void {
-  undoneChannel()?.post({
-    connectionId: ref.connectionId,
-    libraryId: ref.libraryId,
-    path: ref.path,
-  });
+  undoneChannel()?.post(bookRefOf(ref));
 }
 
 /** Be told of a finish another tab of the web player undid (`tellUndoneElsewhere`).
