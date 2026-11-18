@@ -787,8 +787,6 @@ describe('a downloaded book whose server answered only after it started', () => 
     jest.clearAllMocks();
     answer({ server: record({ device_id: 'this-device' }), mirror: null });
     await settle();
-    answer(null);
-    await settle();
     expect(seeks()).toEqual([]);
     expect(mockToast).not.toHaveBeenCalled();
   });

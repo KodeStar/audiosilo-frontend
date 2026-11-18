@@ -8,6 +8,7 @@ import { contentKey } from '@/lib/content-key';
 import { serialQueue } from '@/lib/serial-queue';
 import { tabLock } from '@/lib/tab-lock';
 import { getItem, setItem } from '@/lib/storage';
+import { withTimeout } from '@/lib/with-timeout';
 import {
   LISTENING_OPEN_SPAN_KEY,
   LISTENING_OUTBOX_KEY,
@@ -249,8 +250,6 @@ export type InitialPlace = ResumeLookup & {
   late?: Promise<LatePlace | null>;
 };
 
-const OUT_OF_TIME = Symbol('out of time');
-
 /**
  * Where a book resumes: its server's row (written into the mirror) weighed against this
  * device's own records (`resumeLookupOf`). `waitMs` bounds the wait for the server (a
@@ -284,30 +283,15 @@ export async function loadInitialProgress(
   if (api) {
     // null = HTTP 200, no record (new book).
     const read = api.getProgress(libraryId, path);
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Past the wait: the server is checked as for a read that timed out, and the read goes on.
+    const outOfTime = waitMs === undefined ? null : new TimeoutError(waitMs);
     try {
-      const first =
-        waitMs === undefined
-          ? await read
-          : await Promise.race([
-              read,
-              new Promise<typeof OUT_OF_TIME>((resolve) => {
-                timer = setTimeout(() => resolve(OUT_OF_TIME), waitMs);
-              }),
-            ]);
-      if (first === OUT_OF_TIME) {
-        // No answer in time: the server is checked as for a read that timed out.
-        noteFailure(connectionId, new TimeoutError(waitMs ?? 0));
-        pending = read;
-      } else {
-        server = first;
-        serverOk = true;
-      }
+      server = outOfTime ? await withTimeout(read, outOfTime.timeoutMs, outOfTime) : await read;
+      serverOk = true;
     } catch (e) {
       // The local mirror/queue fallback below keys off `serverOk`, not this call.
       noteError(e);
-    } finally {
-      clearTimeout(timer);
+      if (e === outOfTime) pending = read;
     }
   }
   // Cache the authoritative server value so a later offline resume has it (keep-newest,
