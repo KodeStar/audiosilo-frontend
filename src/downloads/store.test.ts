@@ -2372,6 +2372,21 @@ describe('hydrate holds off what needs the registry', () => {
     expect(useDownloads.getState().entries[savedKey]?.status).toBe('downloaded');
   });
 
+  // Native has one runtime: the registry it last wrote stands for the stored one, and a
+  // save does not read it again first.
+  it('native saves read the stored registry once, then write from the copy they wrote', async () => {
+    const other = downloadKey('c1', 2, 'B/Book');
+    await seed({ [savedKey]: downloadedEntry(), [other]: downloadedEntry({ path: 'B/Book' }) });
+    await useDownloads.getState().hydrate();
+    const reads = () =>
+      (AsyncStorage.getItem as jest.Mock).mock.calls.filter(([k]) => k === KEY).length;
+    await useDownloads.getState().remove('c1', 2, 'A/Book');
+    const first = reads();
+    await useDownloads.getState().remove('c1', 2, 'B/Book');
+    expect(reads()).toBe(first);
+    expect(await readPersisted()).toEqual({});
+  });
+
   it('a save during hydrate never writes over the saved registry', async () => {
     await seed({ [savedKey]: downloadedEntry() });
     let mid: Record<string, DownloadEntry> | undefined;

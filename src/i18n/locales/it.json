@@ -1149,6 +1149,10 @@
       },
       "autoDelete": "Rimuovi un download quando finisci il libro"
     },
+    "saveFailing": {
+      "title": "Elenco dei download non salvato",
+      "body": "La memoria di questo dispositivo ha rifiutato l'ultima modifica. Nuovo tentativo in corso."
+    },
     "browser": {
       "title": "Come funzionano i download in un browser",
       "body": "L’audio è conservato nello spazio di questo browser, solo con una connessione sicura (https). Il browser può cancellarlo quando lo spazio scarseggia, e su iPhone e iPad Safari interrompe la riproduzione in background. Per un ascolto offline affidabile, usa l’app iOS o Android."

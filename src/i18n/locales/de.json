@@ -1149,6 +1149,10 @@
       },
       "autoDelete": "Download entfernen, wenn du das Buch beendet hast"
     },
+    "saveFailing": {
+      "title": "Downloadliste nicht gespeichert",
+      "body": "Der Speicher dieses Geräts hat die letzte Änderung abgelehnt. Es wird erneut versucht."
+    },
     "browser": {
       "title": "So funktionieren Downloads im Browser",
       "body": "Audio wird im Speicher dieses Browsers abgelegt, nur über eine sichere (https) Verbindung. Der Browser kann es löschen, wenn der Speicher knapp wird, und auf iPhone und iPad stoppt Safari die Wiedergabe im Hintergrund. Für zuverlässiges Offline-Hören nutze die iOS- oder Android-App."

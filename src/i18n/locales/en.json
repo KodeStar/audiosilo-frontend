@@ -1149,6 +1149,10 @@
       },
       "autoDelete": "Remove a download when you finish the book"
     },
+    "saveFailing": {
+      "title": "Downloads list not saved",
+      "body": "Storage on this device refused the latest change. Trying again."
+    },
     "browser": {
       "title": "How downloads work in a browser",
       "body": "Audio is kept in this browser's storage, only on a secure (https) connection. The browser may clear it when space is low, and on iPhone and iPad Safari stops playback in the background. For reliable offline listening, use the iOS or Android app."

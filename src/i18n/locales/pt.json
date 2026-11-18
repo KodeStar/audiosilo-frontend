@@ -1149,6 +1149,10 @@
       },
       "autoDelete": "Remover um download quando terminares o livro"
     },
+    "saveFailing": {
+      "title": "Lista de downloads não guardada",
+      "body": "O armazenamento deste dispositivo recusou a última alteração. A tentar novamente."
+    },
     "browser": {
       "title": "Como os downloads funcionam num navegador",
       "body": "O áudio fica no armazenamento deste navegador, só com uma conexão segura (https). O navegador pode apagá-lo quando falta espaço, e no iPhone e no iPad o Safari para a reprodução em segundo plano. Para ouvir offline com confiança, use o app para iOS ou Android."

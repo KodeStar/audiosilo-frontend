@@ -1149,6 +1149,10 @@
       },
       "autoDelete": "Quitar una descarga al terminar el libro"
     },
+    "saveFailing": {
+      "title": "Lista de descargas sin guardar",
+      "body": "El almacenamiento de este dispositivo rechazó el último cambio. Se volverá a intentar."
+    },
     "browser": {
       "title": "Cómo funcionan las descargas en un navegador",
       "body": "El audio se guarda en el almacenamiento de este navegador, solo con una conexión segura (https). El navegador puede borrarlo si falta espacio, y en iPhone y iPad Safari detiene la reproducción en segundo plano. Para escuchar sin conexión de forma fiable, usa la app de iOS o Android."

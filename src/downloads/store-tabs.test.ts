@@ -187,6 +187,14 @@ beforeEach(async () => {
 });
 
 describe('two tabs downloading (web)', () => {
+  const os = Platform.OS;
+  beforeEach(() => {
+    Platform.OS = 'web';
+  });
+  afterEach(() => {
+    Platform.OS = os;
+  });
+
   it("keeps both tabs' downloads in the stored registry", async () => {
     const a = openTab();
     const b = openTab();
@@ -299,6 +307,99 @@ describe('two tabs downloading (web)', () => {
     const saved = await stored();
     expect(saved[a.downloadKey('c1', 2, 'X/Book')]?.status).toBe('downloaded');
     expect(saved[a.downloadKey('c1', 2, 'Y/Book')]?.status).toBe('downloaded');
+  });
+
+  it('a save whose read storage refuses is tried again until it lands, and says so meanwhile', async () => {
+    const a = openTab();
+    await a.useDownloads.getState().hydrate();
+    const getItem = AsyncStorage.getItem as jest.Mock;
+    const read = getItem.getMockImplementation()!;
+    getItem.mockImplementation(async (key: string) => {
+      if (key === KEY) throw new Error('storage');
+      return read(key);
+    });
+    try {
+      await a.useDownloads.getState().download('c1', 2, book('X/Book'));
+      await settle();
+      expect(entryOf(a, 'X/Book')?.status).toBe('downloaded');
+      expect(await read(KEY)).toBeNull();
+      expect(a.useDownloads.getState().saveFailing).toBe(true);
+    } finally {
+      getItem.mockImplementation(read);
+    }
+    // No other save comes: the retry writes it.
+    await new Promise((r) => setTimeout(r, 1_100));
+    expect((await stored())[a.downloadKey('c1', 2, 'X/Book')]?.status).toBe('downloaded');
+    expect(a.useDownloads.getState().saveFailing).toBe(false);
+  });
+
+  it('a removed connection whose save storage refused is taken out by the retry, files too', async () => {
+    const a = openTab();
+    const purgesOfA = [...mockRemovalPurges];
+    const b = openTab();
+    await Promise.all([a.useDownloads.getState().hydrate(), b.useDownloads.getState().hydrate()]);
+    await b.useDownloads.getState().download('c1', 2, book('Y/Book'));
+    await settle();
+    mockRemoveBook.mockClear();
+    const getItem = AsyncStorage.getItem as jest.Mock;
+    const read = getItem.getMockImplementation()!;
+    getItem.mockImplementation(async (key: string) => {
+      if (key === KEY) throw new Error('storage');
+      return read(key);
+    });
+    try {
+      await Promise.all(purgesOfA.map((purge) => purge('c1')));
+      const kept = JSON.parse((await read(KEY)) as string) as Record<string, DownloadEntry>;
+      expect(Object.keys(kept)).toEqual([b.downloadKey('c1', 2, 'Y/Book')]);
+      expect(mockRemoveBook).not.toHaveBeenCalled();
+    } finally {
+      getItem.mockImplementation(read);
+    }
+    await new Promise((r) => setTimeout(r, 1_100));
+    expect(await stored()).toEqual({});
+    expect(mockRemoveBook).toHaveBeenCalledWith('c1', 2, 'Y/Book');
+  });
+
+  it('the page going writes what this tab changed at once, its save still on its way', async () => {
+    const seeded = openTab();
+    await seeded.useDownloads.getState().hydrate();
+    await seeded.useDownloads.getState().download('c1', 2, book('Y/Book'));
+    await settle();
+    const a = openTab();
+    await a.useDownloads.getState().hydrate();
+    // The page's storage, read and written in the moment (the registry another tab saved).
+    let page = await rawStored();
+    const storage = { getItem: () => page, setItem: (_k: string, v: string) => void (page = v) };
+    const win = new EventTarget();
+    const doc = Object.assign(new EventTarget(), { visibilityState: 'visible' });
+    const stop = a.watchRegistryOnPageHide(
+      win as unknown as Window,
+      doc as unknown as Document,
+      storage,
+    );
+    // The async save does not get its read before the tab closes.
+    let readable!: () => void;
+    const gate = new Promise<void>((r) => (readable = r));
+    const getItem = AsyncStorage.getItem as jest.Mock;
+    const read = getItem.getMockImplementation()!;
+    getItem.mockImplementation(async (key: string) => {
+      if (key === KEY) await gate;
+      return read(key);
+    });
+    try {
+      await a.useDownloads.getState().download('c1', 2, book('X/Book'));
+      await settle();
+      expect(entryOf(a, 'X/Book')?.status).toBe('downloaded');
+      win.dispatchEvent(new Event('pagehide'));
+      const saved = JSON.parse(page!) as Record<string, DownloadEntry>;
+      expect(saved[a.downloadKey('c1', 2, 'X/Book')]?.status).toBe('downloaded');
+      expect(saved[a.downloadKey('c1', 2, 'Y/Book')]?.status).toBe('downloaded');
+    } finally {
+      stop();
+      getItem.mockImplementation(read);
+      readable();
+      await settle();
+    }
   });
 
   it("removing a connection takes another tab's downloads of it from the registry", async () => {
@@ -470,6 +571,48 @@ describe('a download running in another tab (web, Web Locks)', () => {
     await settle();
     expect((await stored())[KEY_X]?.status).toBe('downloaded');
     expect(locks.names()).not.toContain(LOCK_X);
+  });
+
+  // A retry starting in another tab: its lock taken, its new start not saved yet. Read as the
+  // failure stored, a tab opened then offered Retry, which would start it a second time.
+  it("a tab opened as another tab's retry starts shows it running there, not Retry", async () => {
+    const failed: DownloadEntry = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'X/Book',
+      title: 'X/Book',
+      status: 'error',
+      progress: 0.5,
+      bytes: 50,
+      totalBytes: 100,
+      origin: 'listener',
+      failure: { kind: 'network' },
+      manifest: {
+        book: book('X/Book'),
+        chapters: null,
+        files: [],
+        coverUri: null,
+        savedAt: '2026-11-01T00:00:00Z',
+      },
+    };
+    await AsyncStorage.setItem(KEY, JSON.stringify({ [KEY_X]: failed }));
+    let letGo!: () => void;
+    void locks.request(LOCK_X, () => new Promise<void>((r) => (letGo = r)));
+    const b = await launchTab();
+    expect(entryOf(b, 'X/Book')?.status).toBe('queued');
+    expect(entryOf(b, 'X/Book')?.failure).toBeUndefined();
+    expect(b.useDownloads.getState().elsewhere[KEY_X]).toBe(true);
+    // Never saved from here, and another change heard meanwhile leaves it that tab's.
+    await settle();
+    expect((await stored())[KEY_X]?.status).toBe('error');
+    b.followStoredRegistry(await rawStored());
+    expect(entryOf(b, 'X/Book')?.status).toBe('queued');
+    // That tab let it go with nothing saved (it closed): the stored failure shows again.
+    letGo();
+    await settle();
+    expect(entryOf(b, 'X/Book')).toMatchObject({ status: 'error', failure: { kind: 'network' } });
+    expect(b.useDownloads.getState().elsewhere).toEqual({});
+    expect((await stored())[KEY_X]?.status).toBe('error');
   });
 
   it('without Web Locks a tab cannot tell: cut short, as before', async () => {

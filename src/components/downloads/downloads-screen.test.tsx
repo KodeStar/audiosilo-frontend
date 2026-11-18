@@ -163,7 +163,13 @@ beforeEach(() => {
   mockProgress = [];
   mockCaps = {};
   Platform.OS = 'ios';
-  useDownloads.setState({ entries: {}, elsewhere: {}, supported: true, hydrated: true } as never);
+  useDownloads.setState({
+    entries: {},
+    elsewhere: {},
+    saveFailing: false,
+    supported: true,
+    hydrated: true,
+  } as never);
   useKeepAhead.setState({ status: 'idle' as KeepAheadStatus, slots: [] as KeepAheadSlot[] });
   useSettings.setState({
     keepAhead: 0,
@@ -224,6 +230,18 @@ describe('DownloadsScreen', () => {
     expect(screen.getByText('40% · 600 B to go')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Cancel downloading Running' }));
     expect(store().cancel).toHaveBeenCalledWith('a', 1, 'Running');
+  });
+
+  // Storage refused the registry's save: the change waits in memory and is tried again,
+  // and the page says so (never dropped without a word).
+  it('says when the downloads list could not be saved', async () => {
+    await mount();
+    expect(screen.queryByTestId('downloads-save-failing')).toBeNull();
+    await act(async () => useDownloads.setState({ saveFailing: true } as never));
+    expect(screen.getByText('Downloads list not saved')).toBeTruthy();
+    expect(
+      screen.getByText('Storage on this device refused the latest change. Trying again.'),
+    ).toBeTruthy();
   });
 
   // PLAYER-05: the storage figure grows with a running download, not only once it lands.

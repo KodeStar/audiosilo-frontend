@@ -105,6 +105,7 @@ export function DownloadsScreen() {
   const entries = useMemo(() => useDownloads.getState().entries, [signature]);
   const supported = useDownloads((s) => s.supported);
   const hydrated = useDownloads((s) => s.hydrated);
+  const saveFailing = useDownloads((s) => s.saveFailing);
   // The person listening's servers and downloads (Phase 8 profiles); another person's
   // downloads stay on the device (and keep playing for them) but are theirs to see.
   const connections = useProfileConnections();
@@ -226,6 +227,16 @@ export function DownloadsScreen() {
           />
           <RulesCard className={besideCards ? 'flex-1' : undefined} />
         </View>
+
+        {saveFailing ? (
+          <Notice
+            testID="downloads-save-failing"
+            icon="circle-exclamation"
+            tone="warning"
+            title={t('downloads.saveFailing.title')}
+            body={t('downloads.saveFailing.body')}
+          />
+        ) : null}
 
         {Platform.OS === 'web' ? (
           <Notice

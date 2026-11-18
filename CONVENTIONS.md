@@ -2021,7 +2021,14 @@ media GETs only.
   them (`known`, compared by object; the launch's read knows an entry it kept as stored by
   its live copy, so a reload never writes back what another tab changed meanwhile), into the
   stored registry read again under `tabLock` (a tab that wrote all its entries lost every
-  download another tab made meanwhile), and a tab follows the others' finished downloads and
+  download another tab made meanwhile; native, one runtime, reads it once and then merges into
+  the copy it last wrote, `storedCopy`, until the next launch's read). A save storage refused
+  (its read or its write) keeps its changes and drops (a removed connection's) and is tried
+  again with backoff, 1 s doubling to 30 s, until one lands (`saveFailed`); meanwhile the
+  store's `saveFailing` shows a warning on the Downloads page. The web's page going
+  (`pagehide`, or hidden) writes this tab's changes at once, synchronously into `localStorage`
+  read in the same moment (`saveRegistryOnPageHide`: a save waiting on the lock never finished
+  in a closed tab), and a tab follows the others' finished downloads and
   removals through the `storage` event, and once after its launch's read
   (`followStoredRegistry`; never a book it is running or changed since, a removal waiting to
   be saved included; a finished download is compared whole, not by `savedAt`, which a
@@ -2033,7 +2040,10 @@ media GETs only.
   event, keeps the entry as stored and lists it in `elsewhere` (shown "In another tab", with
   the progress that tab saves): never revived as Interrupted, its folder never emptied, never
   saved from here, and `cancel` / `remove` ask the running tab on a tab channel
-  (`askOwnerToStop`). It waits on the lock (`watchOwner`): let go with the entry still on its
+  (`askOwnerToStop`). A held lock wins over the stored state: an entry stored as failed whose
+  lock another tab holds is a retry starting there, shown queued and that tab's
+  (`runningElsewhere`, `heldAs`), never a Retry here; the lock let go with nothing saved shows
+  the stored failure again. It waits on the lock (`watchOwner`): let go with the entry still on its
   way means the tab closed, and the waiting tab revives it as a launch does (`ownerLeft`).
   The launch reads the registry again after looking at the locks (`readStoredWithOwners`):
   an entry is nobody's only when it reads the same on both sides of a look that found no

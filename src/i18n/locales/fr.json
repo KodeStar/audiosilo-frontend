@@ -1149,6 +1149,10 @@
       },
       "autoDelete": "Supprimer un téléchargement quand vous terminez le livre"
     },
+    "saveFailing": {
+      "title": "Liste des téléchargements non enregistrée",
+      "body": "Le stockage de cet appareil a refusé la dernière modification. Nouvel essai en cours."
+    },
     "browser": {
       "title": "Comment fonctionnent les téléchargements dans un navigateur",
       "body": "L’audio est gardé dans le stockage de ce navigateur, uniquement via une connexion sécurisée (https). Le navigateur peut l’effacer quand l’espace manque, et sur iPhone et iPad Safari arrête la lecture en arrière-plan. Pour une écoute hors ligne fiable, utilisez l’app iOS ou Android."
