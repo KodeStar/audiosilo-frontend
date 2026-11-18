@@ -168,16 +168,6 @@ export function useBookActions(
     toast({ title: t('library.bookActions.failed') });
   };
 
-  const editFinished = async () => {
-    try {
-      await edit.mutateAsync({ libraryId, path, edit: { finished: true } });
-      return true;
-    } catch (e) {
-      failed(e);
-      return false;
-    }
-  };
-
   const ref = { connectionId, libraryId, path };
 
   // Mark the book finished by the route its server takes; resolves to whether it was. A
@@ -187,14 +177,17 @@ export function useBookActions(
   // with progress edits: the edit (no span waits there, and Undo is an edit too); one without:
   // the offline-aware save at the book's end.
   const recordFinished = async (): Promise<boolean> => {
-    if (progressEdit === true && !finishTakesEvent(connectionId)) return editFinished();
     try {
-      await markFinished.mutateAsync({
-        libraryId,
-        path,
-        position: book.duration,
-        duration: book.duration,
-      });
+      if (progressEdit === true && !finishTakesEvent(connectionId)) {
+        await edit.mutateAsync({ libraryId, path, edit: { finished: true } });
+      } else {
+        await markFinished.mutateAsync({
+          libraryId,
+          path,
+          position: book.duration,
+          duration: book.duration,
+        });
+      }
       return true;
     } catch (e) {
       failed(e);
@@ -255,14 +248,12 @@ export function useBookActions(
     // Undo is a progress edit (`progress_edit`): the only way to mark a book not finished
     // at the place it had.
     const canUndo = progressEdit === true;
-    const undo = async () => {
-      await unfinish(before, t('library.bookActions.undoUnreachable'), () => void undo());
-    };
+    const undo = () => void unfinish(before, t('library.bookActions.undoUnreachable'), undo);
     const done = () =>
       toast({
         title: t('library.bookActions.markedFinished'),
         description: book.title,
-        action: canUndo ? { label: t('queue.undo'), onPress: () => void undo() } : undefined,
+        action: canUndo ? { label: t('queue.undo'), onPress: undo } : undefined,
       });
     const ok = await recordFinished().finally(settled);
     if (ok) done();
