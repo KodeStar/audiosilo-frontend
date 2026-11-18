@@ -1,6 +1,7 @@
 import { Stack, useRootNavigationState, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Platform } from 'react-native';
 
 import { dropConnectHandoffs, useHandoff } from '@/components/connect/invite-handoff';
 import {
@@ -94,6 +95,21 @@ export default function ConnectLayout() {
     },
     [],
   );
+  // Back from the provider (or any page the flow was left for) can restore this page from the
+  // browser's back/forward cache, memory and all: the grown-up's pass through kids mode it left
+  // with would run the flow for a child, with no sign-in's finish to wait on (audiosilo#202). A
+  // page load forgets the pass, and so does a restore: kids mode then takes the flow back.
+  const [, setRestored] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const onShow = (e: PageTransitionEvent) => {
+      if (!e.persisted || !kidsConnectAllowed()) return;
+      endConnectFlow();
+      setRestored((n) => n + 1);
+    };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, []);
   useEffect(() => {
     if (!refused || !ready) return;
     if (openedInKids) toast({ title: t('kids.link.title'), description: t('kids.link.body') });

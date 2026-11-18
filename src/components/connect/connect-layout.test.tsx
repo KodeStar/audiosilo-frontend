@@ -1,5 +1,6 @@
 import { act, render, screen } from '@testing-library/react-native';
 import { Suspense } from 'react';
+import { Platform } from 'react-native';
 
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -133,6 +134,62 @@ it('runs it for a grown-up\'s "Add someone" from kids mode on a device with no g
   await view.unmount();
   expect(kidsConnectAllowed()).toBe(false);
   expect(connectForNewProfile()).toBe(false);
+});
+
+// audiosilo#202: Back from the provider can restore the page the trip left from the browser's
+// back/forward cache, memory and all. The pass it left with must not come back with it.
+describe("a page restored from the browser's cache", () => {
+  type Shown = (e: { persisted: boolean }) => void;
+  const shown: Shown[] = [];
+  const win = globalThis as unknown as {
+    addEventListener?: (type: string, fn: Shown) => void;
+    removeEventListener?: (type: string, fn: Shown) => void;
+  };
+  const prevOS = Platform.OS;
+  beforeEach(() => {
+    Platform.OS = 'web';
+    win.addEventListener = (type, fn) => void (type === 'pageshow' && shown.push(fn));
+    win.removeEventListener = (_, fn) => void shown.splice(shown.indexOf(fn) >>> 0, 1);
+  });
+  afterEach(() => {
+    Platform.OS = prevOS;
+    delete win.addEventListener;
+    delete win.removeEventListener;
+    shown.length = 0;
+  });
+  const show = (persisted: boolean) => act(async () => shown.forEach((fn) => fn({ persisted })));
+
+  it("ends a grown-up's pass through kids mode: kids mode takes the flow back", async () => {
+    seedProfile({ kids: true });
+    openAddSomeone();
+    const view = await render(<ConnectLayout />);
+    expect(screen.getByText('connect flow')).toBeTruthy();
+    // A page shown fresh keeps it.
+    await show(false);
+    expect(screen.getByText('connect flow')).toBeTruthy();
+    // The trip leaves for the provider; Back restores the page from the cache.
+    holdOidcIntent();
+    await show(true);
+    expect(kidsConnectAllowed()).toBe(false);
+    expect(screen.queryByText('connect flow')).toBeNull();
+    expect(mockDismissTo).toHaveBeenCalledWith('/kids');
+    expect(mockToast).not.toHaveBeenCalled();
+    await view.unmount();
+    expect(shown).toHaveLength(0);
+    // Left: the trip's intent goes with the flow, so a return finds nothing.
+    expect(store.size).toBe(0);
+  });
+
+  it("keeps a grown-up's flow running", async () => {
+    seedProfile();
+    setConnectForNewProfile(true);
+    const view = await render(<ConnectLayout />);
+    await show(true);
+    expect(screen.getByText('connect flow')).toBeTruthy();
+    expect(connectForNewProfile()).toBe(true);
+    expect(mockDismissTo).not.toHaveBeenCalled();
+    await view.unmount();
+  });
 });
 
 it('drops the proxy headers held for the flow when it is left (fe#167)', async () => {

@@ -438,9 +438,12 @@ back only with a session echoing the trip's own tag, before `finishConnect`; oth
 takes the flow back and the reason is a toast. The tag (audiosilo#202): `holdOidcIntent` makes 32
 random bytes in hex per trip, keeps them in the intent and returns them for the start URL's
 `intent`; the server carries it through the provider and echoes it on that trip's finish only,
-once (`AuthSession.intent`). Any session without it is signed out again (`notThisTrip`): with the
-provider still signed in, the server's start URL typed in the tab finishes a sign-in too, and an
-older server echoes nothing, so it fails safe. A reconnect's sign-in carries the connection it re-pairs with the
+once (`AuthSession.intent`). A session that finishes a waiting pass without it is signed out
+again (`notThisTrip`): with the provider still signed in, the server's start URL typed in the tab
+finishes a sign-in too, and an older server echoes nothing, so it fails safe. A sign-in with no
+pass waiting never reads the tag, so one without it is kept as before. A page restored from the
+browser's back/forward cache comes back with the pass in memory: the connect layout ends it on a
+persisted `pageshow`, as a page load would. A reconnect's sign-in carries the connection it re-pairs with the
 address the step signed in through (the in-memory hold's, fe#298): without it a server reset at a
 home address keeps the dead connection (`staleIdentities`' `named`) and the banner keeps asking.
 It shares the stamp and the drop as the flow is left, is taken once by `finishOidcSignIn`
