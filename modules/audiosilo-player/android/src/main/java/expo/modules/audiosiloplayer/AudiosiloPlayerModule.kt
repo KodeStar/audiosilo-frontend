@@ -329,8 +329,11 @@ class AudiosiloPlayerModule : Module() {
           val fileIndex = map.itemToFile(c.currentMediaItemIndex, 0L).first
           val (idx, ms) = map.fileToItem(fileIndex, seconds)
           c.seekTo(idx, ms)
+          MoveLandings.Target(idx, ms)
         } else {
-          c.seekTo((seconds * 1000).toLong())
+          val ms = (seconds * 1000).toLong()
+          c.seekTo(ms)
+          MoveLandings.Target(c.currentMediaItemIndex, ms)
         }
       }
     }
@@ -339,12 +342,14 @@ class AudiosiloPlayerModule : Module() {
       // `index` is a FILE index; map it to the clip item that starts that file/position.
       moveOnMain(promise) { c ->
         val map = timelineMap
-        if (map.clipped) {
+        val target = if (map.clipped) {
           val (idx, ms) = map.fileToItem(index, seconds)
-          c.seekTo(idx, ms)
+          MoveLandings.Target(idx, ms)
         } else {
-          c.seekTo(index, (seconds * 1000).toLong())
+          MoveLandings.Target(index, (seconds * 1000).toLong())
         }
+        c.seekTo(target.item, target.positionMs)
+        target
       }
     }
 
@@ -572,8 +577,10 @@ class AudiosiloPlayerModule : Module() {
         if (reason == Player.DISCONTINUITY_REASON_SILENCE_SKIP || replacing) return
         emitProgress()
         flushRemoteMove()
-        // A JS seek resolves only now, its new place sent first.
-        if (reason == Player.DISCONTINUITY_REASON_SEEK) landings.landed()
+        // A JS seek resolves only now, its new place sent first; only its own seek does.
+        if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+          landings.landed(newPosition.mediaItemIndex, newPosition.positionMs)
+        }
       }
       override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         if (replacing) return
@@ -587,11 +594,18 @@ class AudiosiloPlayerModule : Module() {
   }
 
   /** Make a JS move on the main thread with the controller, resolving [promise] once it landed
-   * ([MoveLandings]), or at once with no controller. */
-  private fun moveOnMain(promise: Promise, move: (MediaController) -> Unit) {
+   * ([MoveLandings]), or at once with no controller. A move the controller never took rejects
+   * (`ERR_MOVE_NOT_TAKEN`): the store reads it as refused, the engine still where it was. */
+  private fun moveOnMain(promise: Promise, move: (MediaController) -> MoveLandings.Target) {
     handler.post {
       val c = controller ?: return@post promise.resolve(null)
-      landings.run({ promise.resolve(null) }) { move(c) }
+      landings.run({ taken ->
+        if (taken) {
+          promise.resolve(null)
+        } else {
+          promise.reject("ERR_MOVE_NOT_TAKEN", "The player did not take the move", null)
+        }
+      }) { move(c) }
     }
   }
 

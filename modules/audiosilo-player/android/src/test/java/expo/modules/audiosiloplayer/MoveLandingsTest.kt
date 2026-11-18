@@ -23,58 +23,92 @@ class MoveLandingsTest {
 
   private val clock = Clock()
   private val landings = MoveLandings(clock::schedule, clock::cancel)
+  private val target = MoveLandings.Target(2, 40_000)
 
   @Test
   fun aMaskedSeekResolvesInsideItsCallAfterItsSample() {
     val log = mutableListOf<String>()
-    landings.run({ log.add("resolved") }) {
-      // The controller's masked seek tells its discontinuity inside the call.
+    landings.run({ log.add("taken $it") }) {
+      // The controller's masked seek tells its discontinuity inside the call, even at a place
+      // other than the asked one (clamped to a short measure).
       log.add("progress")
-      landings.landed()
+      landings.landed(2, 29_889)
+      target
     }
-    assertEquals(listOf("progress", "resolved"), log)
+    assertEquals(listOf("progress", "taken true"), log)
     assertTrue(clock.posted.isEmpty())
   }
 
   @Test
-  fun aMoveWaitsForTheControllersReportOfTheNewPlace() {
-    var resolved = 0
-    landings.run({ resolved++ }) { /* the discontinuity comes later */ }
-    assertEquals(0, resolved)
-    landings.landed()
-    assertEquals(1, resolved)
-    // The fallback was called off: nothing resolves twice.
+  fun aMoveReportedAfterItsCallResolvesAtItsTarget() {
+    val taken = mutableListOf<Boolean>()
+    landings.run({ taken.add(it) }) { target }
+    assertEquals(emptyList<Boolean>(), taken)
+    landings.landed(2, 40_020)
+    assertEquals(listOf(true), taken)
+    // The fallback was called off: nothing settles twice.
     clock.fire()
-    assertEquals(1, resolved)
+    assertEquals(listOf(true), taken)
   }
 
   @Test
-  fun aMoveTheControllerNeverReportsResolvesAfterTheFallback() {
-    var resolved = 0
-    landings.run({ resolved++ }) {}
+  fun aLockScreenSeekWhileAMoveWaitsIsNotItsLanding() {
+    val taken = mutableListOf<Boolean>()
+    landings.run({ taken.add(it) }) { target }
+    landings.landed(2, 90_000) // the lock screen's scrub, another place
+    landings.landed(3, 40_000) // the car's next, another item
+    assertEquals(emptyList<Boolean>(), taken)
+    clock.fire()
+    assertEquals(listOf(false), taken)
+  }
+
+  @Test
+  fun aMoveTheControllerNeverReportsIsNotTakenAfterTheFallback() {
+    val taken = mutableListOf<Boolean>()
+    landings.run({ taken.add(it) }) { target }
     assertEquals(listOf(MoveLandings.FALLBACK_MS), clock.posted.map { it.second })
     clock.fire()
-    assertEquals(1, resolved)
+    assertEquals(listOf(false), taken)
   }
 
   @Test
-  fun aDiscontinuityWithNoMoveWaitingResolvesNothing() {
-    landings.landed()
-    var resolved = 0
-    landings.run({ resolved++ }) {}
-    assertEquals(0, resolved)
-    landings.landed()
-    assertEquals(1, resolved)
+  fun aMoveThatLandsInItsCallTakesTheEarlierOnesStillWaiting() {
+    val first = mutableListOf<Boolean>()
+    val second = mutableListOf<Boolean>()
+    landings.run({ first.add(it) }) { target }
+    landings.run({ second.add(it) }) {
+      landings.landed(2, 10_000)
+      MoveLandings.Target(2, 10_000)
+    }
+    assertEquals(listOf(true), first)
+    assertEquals(listOf(true), second)
+    assertTrue(clock.posted.isEmpty())
   }
 
   @Test
-  fun aMoveThatThrowsStillResolves() {
-    var resolved = 0
+  fun aDiscontinuityWithNoMoveWaitingSettlesNothing() {
+    landings.landed(2, 40_000)
+    val taken = mutableListOf<Boolean>()
+    landings.run({ taken.add(it) }) { target }
+    assertEquals(emptyList<Boolean>(), taken)
+    landings.landed(2, 40_000)
+    assertEquals(listOf(true), taken)
+  }
+
+  @Test
+  fun aMoveThatThrowsIsNotTaken() {
+    val taken = mutableListOf<Boolean>()
     try {
-      landings.run({ resolved++ }) { throw IllegalStateException("no controller") }
+      landings.run({ taken.add(it) }) { throw IllegalStateException("no controller") }
     } catch (_: IllegalStateException) {
     }
-    assertEquals(1, resolved)
+    assertEquals(listOf(false), taken)
     assertTrue(clock.posted.isEmpty())
+    // The next move is told apart from it.
+    landings.run({ taken.add(it) }) {
+      landings.landed(2, 40_000)
+      target
+    }
+    assertEquals(listOf(false, true), taken)
   }
 }
