@@ -409,6 +409,15 @@ describe('the outbox', () => {
     expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['in-turn']);
   });
 
+  // The page going queues a close that nothing sends after: counted, a close finishing
+  // meanwhile left its send to it, and both waited for the next save tick.
+  it('a close waiting its turn alone is not an event waiting in turn', async () => {
+    await recoverOpenSpan();
+    const closing = closeSpan(span({ id: 'close-only' }));
+    expect(waitingInTurn('c1')).toBe(false);
+    await closing;
+  });
+
   it('removing a connection purges its events, open span and sync state', async () => {
     await appendEvents('c1', [listen('a')]);
     await appendEvents('c2', [listen('b')]);

@@ -425,11 +425,18 @@ export async function appendInTurn(
   events: ListeningEvent[],
   baseVersion?: () => Promise<number | undefined>,
 ): Promise<void> {
-  await inTurn(connectionId, events, async (since) => {
-    const base = baseVersion ? await baseVersion().catch(() => undefined) : undefined;
-    const final = base === undefined ? events : events.map((e) => ({ ...e, base_version: base }));
-    await appendEvents(connectionId, final, since);
-  });
+  appendsInTurn.set(connectionId, (appendsInTurn.get(connectionId) ?? 0) + 1);
+  try {
+    await inTurn(connectionId, events, async (since) => {
+      const base = baseVersion ? await baseVersion().catch(() => undefined) : undefined;
+      const final = base === undefined ? events : events.map((e) => ({ ...e, base_version: base }));
+      await appendEvents(connectionId, final, since);
+    });
+  } finally {
+    const left = (appendsInTurn.get(connectionId) ?? 1) - 1;
+    if (left > 0) appendsInTurn.set(connectionId, left);
+    else appendsInTurn.delete(connectionId);
+  }
 }
 
 /** Run `op` in its turn (`spanOps`, after a crashed tab's span is recovered), with `events`
@@ -688,11 +695,14 @@ export async function closeSpan(span: OpenSpan, event?: ListeningSpanEvent): Pro
   await inTurn(span.connectionId, waiting, (since) => closeInto(span, event, since));
 }
 
-/** Whether events for `connectionId` still wait their turn (`queued`): a send now would
- * leave them for a second request, which the call that queued them makes once they are in. */
+/** `appendInTurn` calls still waiting their turn, by connection (`waitingInTurn`). */
+const appendsInTurn = new Map<string, number>();
+
+/** Whether events appended in turn (`appendInTurn`) for `connectionId` still wait: a send
+ * now would leave them for a second request, which their caller makes once they are in.
+ * Not a close (`closeSpan`): the page's own going queues one that nothing sends after. */
 export function waitingInTurn(connectionId: string): boolean {
-  for (const e of queued.values()) if (e.connectionId === connectionId) return true;
-  return false;
+  return appendsInTurn.has(connectionId);
 }
 
 /** Closes (`closeSpan`) and the events behind them (`appendInTurn`) still waiting their
@@ -1800,6 +1810,7 @@ export function resetOutboxForTests(): void {
   lastStored = null;
   wentOn = null;
   queued.clear();
+  appendsInTurn.clear();
   tabId = randomUUID();
   if (staleCheck) clearTimeout(staleCheck);
   staleCheck = null;
