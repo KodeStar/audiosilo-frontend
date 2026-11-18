@@ -61,7 +61,12 @@ type FinishRecorder = {
 };
 
 /** The book an Undo unfinishes, and the place it goes back to. */
-export type UndoRef = Pick<FinishRef, 'connectionId' | 'libraryId' | 'path' | 'position'>;
+export type UndoRef = Pick<FinishRef, 'connectionId' | 'libraryId' | 'path' | 'position'> & {
+  /** Mark as not finished, not the Undo of a Mark: this device's record goes to `position`,
+   * never to the one before a finish marked earlier (kept for that finish's Undo, it may be
+   * long out of date). */
+  atPosition?: boolean;
+};
 
 let recorder: FinishRecorder | null = null;
 

@@ -451,7 +451,13 @@ describe('useBookActions', () => {
     // Through `undoFinish`: a finish still waiting in the outbox is taken back before the
     // edit, else sent after it, it finished the book again.
     expect(mockUndoRefs).toEqual([
-      { connectionId: 'c', libraryId: 1, path: 'Author/Series/01 - Book', position: 0 },
+      {
+        connectionId: 'c',
+        libraryId: 1,
+        path: 'Author/Series/01 - Book',
+        position: 0,
+        atPosition: true,
+      },
     ]);
     expect(mockEdit).toHaveBeenCalledWith({
       libraryId: 1,

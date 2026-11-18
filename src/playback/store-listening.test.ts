@@ -1459,6 +1459,38 @@ describe('Mark as finished outside the player (finish-route)', () => {
     }
   });
 
+  // The record before a finish is kept for its Undo, and stays once the toast is gone: a
+  // Mark as not finished later put the mirror back to that old place, while its edit set
+  // the server to its own.
+  it('Mark as not finished goes to its own place, not the record before an earlier finish', async () => {
+    const before = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'Other/Book',
+      position: 48,
+      duration: 100,
+      finished: false,
+      playback_speed: 1,
+      device_id: 'dev-1',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+    mockReadMirror.mockResolvedValue(before);
+    try {
+      mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      const finishedRec = mockWriteMirror.mock.calls.at(-1)?.[0] as { updated_at: string };
+      mockReadMirror.mockResolvedValue(finishedRec);
+      const edit = jest.fn(async () => {});
+      await expect(undoFinish({ ...undoRef, position: 0, atPosition: true }, edit)).resolves.toBe(
+        'undone',
+      );
+      expect(edit).toHaveBeenCalledTimes(1);
+      expect(mockMirrorUpdates.at(-1)).toMatchObject({ finished: false, position: 0 });
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
   it('Undo here with no record before the finish: only the finished record is undone', async () => {
     const finishedRec = {
       connectionId: 'c1',

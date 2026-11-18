@@ -204,13 +204,15 @@ export function useBookActions(
   // resolves to whether it was. A finish event still waiting in the outbox is taken back
   // before the edit (fe#208): sent after it, it finished the book again. One the server may
   // hold while it looks down can't be undone (fe#258): the book stays finished, and a toast
-  // titled `unreachable` offers `retry`.
+  // titled `unreachable` offers `retry`. `atPosition` for Mark as not finished: this device's
+  // record goes to `position`, not to the one before a finish marked earlier.
   const unfinish = async (
     position: number,
     unreachable: string,
     retry: () => void,
+    atPosition?: boolean,
   ): Promise<boolean> => {
-    const outcome = await undoFinish({ ...ref, position }, () =>
+    const outcome = await undoFinish({ ...ref, position, atPosition }, () =>
       edit.mutateAsync({ libraryId, path, edit: { finished: false, position } }),
     ).catch((e: unknown) => {
       failed(e);
@@ -268,7 +270,7 @@ export function useBookActions(
   const onUnfinish = async () => {
     const position = unfinishedPosition(latestProgress.current, book.duration);
     const unreachable = t('library.bookActions.unfinishUnreachable');
-    if (!(await unfinish(position, unreachable, () => void onUnfinish()))) return;
+    if (!(await unfinish(position, unreachable, () => void onUnfinish(), true))) return;
     toast({
       title: t('library.bookActions.markedUnfinished'),
       description: book.title,

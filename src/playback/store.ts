@@ -1456,7 +1456,7 @@ const beforeFinish = new Map<string, ProgressSave | null>();
  */
 async function unrecordFinish(ref: UndoRef, since: number): Promise<void> {
   const key = contentKeyOf(ref);
-  const prior = beforeFinish.get(key);
+  const prior = ref.atPosition ? undefined : beforeFinish.get(key);
   beforeFinish.delete(key);
   if (finishSent === key) finishSent = null;
   if (connectionGeneration(ref.connectionId) !== since) return;
