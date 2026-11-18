@@ -3018,6 +3018,15 @@ async function createService(): Promise<PlaybackService> {
   svc.onLanded?.(() => void Promise.resolve().then(() => persist()));
   // Native (Android): a play asked of the engine from outside the app is followed as a press.
   svc.onPlayAsked?.(playAskedFromOutside);
+  // The route switch loaded the book into the phone's engine by itself (a Cast session ended,
+  // or the book can't be cast): an engine move like the store's own, so it is asked for too,
+  // and a file that engine measured short can't run off it unseen. Not a faulted book's (its
+  // fault stands: a press reloads it), nor while a start holds the store.
+  svc.onOwnLoad?.((trackIndex, positionInTrack, loaded) => {
+    const { nowPlaying: np, loadingBook } = usePlayer.getState();
+    if (!np || loadingBook || loadedFaulted()) return;
+    void engineTakes(askEngineTo(np, trackIndex, positionInTrack), loaded).catch(() => undefined);
+  });
   // Native: the OS changed the speed and the engine already runs at it. Only a speed
   // outside the app's range goes back to the engine, clamped.
   svc.onRateChange?.((raw) => {

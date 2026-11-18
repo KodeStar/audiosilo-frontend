@@ -323,6 +323,21 @@ describe('RoutedPlaybackService', () => {
     expect(t.local.calls.at(-1)).toBe('local.play');
   });
 
+  it('tells the store of the load it makes on the phone as the session ends', async () => {
+    const t = setup();
+    const told: unknown[][] = [];
+    t.router.onOwnLoad((...args) => told.push(args));
+    await playingLocally(t);
+    expect(told).toEqual([]); // the store's own load is the store's ask
+    const cast = fakeCast();
+    await t.router.beginCast(cast as unknown as CastPlaybackService);
+    expect(told).toEqual([]);
+    cast.emit({ state: 'playing', trackIndex: 1, position: 500 });
+    await t.router.endCast();
+    expect(told).toEqual([[1, 500, expect.any(Promise)]]);
+    expect(t.local.calls).toContain('local.load(1,500)');
+  });
+
   it('restores the handed-over place when the session ends mid-handover', async () => {
     const t = setup();
     await playingLocally(t);

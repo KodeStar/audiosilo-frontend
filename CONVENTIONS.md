@@ -2083,8 +2083,9 @@ media GETs only.
   Every engine move the store asks for (a load, a seek, a track jump, a tab's place, the
   download hot-swap's load on the native engines; not the web's gapless `swapTo`, which only
   switches to a copy it has seen at the place) goes through `askEngineTo`, its engine call
-  through `engineTakes`: the ask (`askedPlace`, one record per ask) has landed once that call
-  resolves
+  through `engineTakes`. So does a load the Cast route switch makes on the phone by itself, as
+  a session ends or a book can't be cast (`onOwnLoad`). The ask (`askedPlace`, one record per
+  ask) has landed once that call resolves
   (reports from then on are from after the move), and a call that rejects withdraws it. The ask
   stands until the engine has played on `PLAYED_ON` seconds from it in its file (counted only
   once landed: a tick sent before a seek back took is past the asked place), moved on into a

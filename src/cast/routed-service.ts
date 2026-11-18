@@ -67,6 +67,8 @@ export class RoutedPlaybackService implements PlaybackService {
   private rateChange: ((rate: number) => void) | null = null;
   private landed: (() => void) | null = null;
   private playAsked: (() => void) | null = null;
+  private ownLoad:
+    ((trackIndex: number, positionInTrack: number, loaded: Promise<unknown>) => void) | null = null;
   /** Called when a book can't be cast (the session glue explains it and ends the session);
    * the router has already put the book back on the phone. */
   onCastFailed: ((err: unknown) => void) | null = null;
@@ -268,13 +270,17 @@ export class RoutedPlaybackService implements PlaybackService {
 
   private async loadLocal(load: LastLoad, place: PlaybackSnapshot) {
     try {
-      await this.local.load(
+      const loaded = this.local.load(
         load.tracks,
         place.trackIndex,
         place.position,
         load.chapters,
         load.book,
       );
+      // A load the store did not ask for: told as it is made, before the phone's engine
+      // reports from it (`PlaybackService.onOwnLoad`).
+      this.ownLoad?.(place.trackIndex, place.position, loaded);
+      await loaded;
       await this.local.setRate(place.rate);
     } catch (err) {
       console.warn('[cast] could not load the book back on this device', err);
@@ -403,6 +409,12 @@ export class RoutedPlaybackService implements PlaybackService {
   }
   onPlayAsked(handler: (() => void) | null) {
     this.playAsked = handler;
+  }
+  onOwnLoad(
+    handler:
+      ((trackIndex: number, positionInTrack: number, loaded: Promise<unknown>) => void) | null,
+  ) {
+    this.ownLoad = handler;
   }
   adoptPlace(snapshot: PlaybackSnapshot) {
     this.snapshot = { ...snapshot };

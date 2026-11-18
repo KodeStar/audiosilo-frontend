@@ -19,9 +19,15 @@ let rateChange: ((rate: number) => void) | null = null;
 let silenceSaved: ((total: number) => void) | null = null;
 /** Android's word that the engine was asked to play (`onPlayAsked`). */
 let playAsked: (() => void) | null = null;
+/** The route switch's own load, as the store is told of it (`onOwnLoad`). */
+type OwnLoad = (trackIndex: number, positionInTrack: number, loaded: Promise<unknown>) => void;
+let ownLoad: OwnLoad | null = null;
 const mockSvc = {
   onPlayAsked: jest.fn((handler: (() => void) | null) => {
     playAsked = handler;
+  }),
+  onOwnLoad: jest.fn((handler: OwnLoad | null) => {
+    ownLoad = handler;
   }),
   onRemoteSeek: jest.fn((handler: ((positionInTrack: number) => void) | null) => {
     remoteSeek = handler;
@@ -3834,6 +3840,45 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     pushSnapshot(snap('paused', 1.1, { trackIndex: 1, duration: short }));
     pushSnapshot(snap('playing', 1.1, { trackIndex: 1, duration: short }));
     await flushMicrotasks();
+    expect(lastLoad()).toEqual([0, 30]);
+  });
+
+  it('a book the route switch loaded back on the phone is asked for: a run off it stops there', async () => {
+    await resume(30);
+    pushSnapshot(snap('playing', 50, { trackIndex: 0 })); // played on: no ask stands
+    // A Cast session ends at 80 s: the place comes back paused, then the phone loads it.
+    pushSnapshot(snap('paused', 80, { trackIndex: 0 }));
+    ownLoad!(0, 80, Promise.resolve());
+    await flushMicrotasks();
+    await usePlayer.getState().toggle();
+    ranOff();
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'error',
+      trackIndex: 0,
+      position: 80,
+    });
+  });
+
+  it("the route switch's own load that fails leaves no ask, and a faulted book its fault", async () => {
+    await resume(30);
+    pushSnapshot(snap('playing', 50, { trackIndex: 0 }));
+    pushSnapshot(snap('paused', 80, { trackIndex: 0 }));
+    ownLoad!(0, 80, Promise.reject(new Error('no engine')));
+    await flushMicrotasks();
+    await usePlayer.getState().toggle();
+    pushSnapshot(snap('playing', 0.4, { trackIndex: 1 }));
+    jest.advanceTimersByTime(FAULT_HOLD_MS);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'playing', trackIndex: 1 });
+    // Faulted: the own load is no ask (it would end the fault), and a press still reloads.
+    await resume(30);
+    ranOff();
+    await flushMicrotasks();
+    ownLoad!(1, 0.4, Promise.resolve());
+    await flushMicrotasks();
+    (mockSvc.load as jest.Mock).mockClear();
+    await usePlayer.getState().toggle();
     expect(lastLoad()).toEqual([0, 30]);
   });
 
