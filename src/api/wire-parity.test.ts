@@ -24,6 +24,7 @@ const ENVELOPES: Record<string, string> = {
   'server-anonymous': 'T.ServerInfo',
   'auth-redeem': 'T.PairingPayload',
   'auth-exchange': 'T.AuthSession',
+  'auth-oidc-finish': 'T.AuthSession',
   me: 'T.User',
   libraries: '{ libraries: T.Library[] }',
   fs: 'T.Listing',

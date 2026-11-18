@@ -13,6 +13,7 @@ import {
   holdOidcIntent,
   MAX_AGE_MS,
   resumeOidcIntent,
+  oidcPassTag,
   settleOidcPass,
   takeOidcIntent,
   takeOidcResumed,
@@ -53,7 +54,12 @@ it('carries "Add someone" and the book across the trip, taken once', () => {
   // The page load: memory is gone.
   endConnectFlow();
   const held = takeOidcIntent(true);
-  expect(held).toEqual({ newPerson: true, grownUpFromKids: false, book: BOOK });
+  expect(held).toEqual({
+    newPerson: true,
+    grownUpFromKids: false,
+    book: BOOK,
+    tag: expect.stringMatching(/^[0-9a-f]{64}$/),
+  });
   expect(takeOidcIntent(true)).toBeNull();
   const settled = jest.fn();
   // No pass left with the trip: none waits, and nothing is settled later.
@@ -61,46 +67,105 @@ it('carries "Add someone" and the book across the trip, taken once', () => {
   expect(connectForNewProfile()).toBe(true);
   expect(takeOidcResumed(HOME).book).toEqual(BOOK);
   expect(takeOidcResumed(HOME).book).toBeUndefined();
-  expect(settleOidcPass(true)).toBe(false);
+  expect(settleOidcPass({ intent: held!.tag })).toBe('none');
   expect(settled).not.toHaveBeenCalled();
 });
 
 describe("a grown-up's pass through kids mode", () => {
-  const leaveWithPass = () => {
+  // The trip's tag (`holdOidcIntent`'s answer, the start URL's `intent`).
+  const leaveWithPass = (): string => {
     seedProfile({ kids: true });
     openAddSomeone();
     expect(kidsConnectAllowed()).toBe(true);
-    holdOidcIntent();
+    const tag = holdOidcIntent();
+    expect(tag).toMatch(/^[0-9a-f]{64}$/);
     // The page load: memory is gone.
     endConnectFlow();
+    return tag!;
   };
 
-  it("waits on the returned sign-in's finish, and comes back only with a session", () => {
-    leaveWithPass();
+  it("waits on the returned sign-in's finish, and comes back only with its own trip's tag", () => {
+    const tag = leaveWithPass();
     const settled = jest.fn();
     // Denied: the address alone (`/connect?oidc=1`) gives no pass back.
+    expect(oidcPassTag()).toBeUndefined();
     expect(resumeOidcIntent(takeOidcIntent(true)!, settled)).toBe(true);
     expect(kidsConnectAllowed()).toBe(false);
     expect(settled).not.toHaveBeenCalled();
-    // Allowed: the server answered with a session.
-    expect(settleOidcPass(true)).toBe(true);
+    // The tag the finish's request names while the pass waits.
+    expect(oidcPassTag()).toBe(tag);
+    // Allowed: the server answered with a session echoing this trip's tag.
+    expect(settleOidcPass({ intent: tag })).toBe('given');
     expect(kidsConnectAllowed()).toBe(true);
     expect(settled).toHaveBeenCalledTimes(1);
-    // Settled once.
-    expect(settleOidcPass(true)).toBe(false);
+    // Settled once, and the tag spent with it.
+    expect(oidcPassTag()).toBeUndefined();
+    expect(settleOidcPass({ intent: tag })).toBe('none');
     expect(settled).toHaveBeenCalledTimes(1);
   });
 
   it('is not given when the finish fails (a trip abandoned at the provider, the address typed)', () => {
-    leaveWithPass();
+    const tag = leaveWithPass();
     const settled = jest.fn();
     expect(resumeOidcIntent(takeOidcIntent(true)!, settled)).toBe(true);
-    expect(settleOidcPass(false)).toBe(true);
+    expect(settleOidcPass(null)).toBe('refused');
     expect(kidsConnectAllowed()).toBe(false);
     expect(settled).toHaveBeenCalledTimes(1);
     // Nor by a later answer.
-    expect(settleOidcPass(true)).toBe(false);
+    expect(settleOidcPass({ intent: tag })).toBe('none');
     expect(kidsConnectAllowed()).toBe(false);
+  });
+
+  // audiosilo#202: with the provider still signed in, the server's start URL typed in this tab
+  // finishes a sign-in too. Its session never carries this trip's tag.
+  it.each([
+    ['no tag (the start URL typed, or a tag spent before)', {}],
+    ["another trip's tag", { intent: 'cd'.repeat(32) }],
+    ['an empty tag', { intent: '' }],
+  ])('is not given for a session with %s', (_, session) => {
+    leaveWithPass();
+    const settled = jest.fn();
+    expect(resumeOidcIntent(takeOidcIntent(true)!, settled)).toBe(true);
+    expect(settleOidcPass(session)).toBe('refused');
+    expect(kidsConnectAllowed()).toBe(false);
+    expect(settled).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not given when the intent holds no tag (an older build, or one that is no tag)', () => {
+    seedProfile({ kids: true });
+    for (const tag of [undefined, 'ab'.repeat(31), 'AB'.repeat(32), 42]) {
+      store.set(
+        'audiosilo.oidcIntent',
+        JSON.stringify({ at: Date.now(), grownUpFromKids: true, tag }),
+      );
+      const held = takeOidcIntent(true)!;
+      expect(held.tag).toBeUndefined();
+      expect(resumeOidcIntent(held, jest.fn())).toBe(true);
+      // Even a session echoing the stored value gets nothing.
+      expect(settleOidcPass({ intent: typeof tag === 'string' ? tag : undefined })).toBe('refused');
+      expect(kidsConnectAllowed()).toBe(false);
+    }
+  });
+
+  it('makes a new tag for every trip', () => {
+    const first = leaveWithPass();
+    expect(takeOidcIntent(true)?.tag).toBe(first);
+    const second = leaveWithPass();
+    expect(second).not.toBe(first);
+  });
+
+  it("sends no tag when the tab keeps nothing, and leaves no earlier trip's intent for its return", () => {
+    leaveWithPass();
+    expect(store.size).toBe(1);
+    const full = jest.spyOn(sessionStorage, 'setItem').mockImplementation(() => {
+      throw new Error('full');
+    });
+    try {
+      expect(holdOidcIntent()).toBeUndefined();
+    } finally {
+      full.mockRestore();
+    }
+    expect(takeOidcIntent(true)).toBeNull();
   });
 
   it('does not wait while kids mode would not let it through now', () => {
@@ -110,27 +175,31 @@ describe("a grown-up's pass through kids mode", () => {
       profiles: [...s.profiles, { id: 'g', name: 'Sam', connectionIds: ['srv.2'] }],
     }));
     const settled = jest.fn();
-    expect(resumeOidcIntent(takeOidcIntent(true)!, settled)).toBe(false);
-    expect(settleOidcPass(true)).toBe(false);
+    const held = takeOidcIntent(true)!;
+    expect(resumeOidcIntent(held, settled)).toBe(false);
+    // No pass waits: the finish names no tag.
+    expect(oidcPassTag()).toBeUndefined();
+    expect(settleOidcPass({ intent: held.tag })).toBe('none');
     expect(kidsConnectAllowed()).toBe(false);
   });
 
   it('is not given once a grown-up joined the device while the finish was on its way', () => {
-    leaveWithPass();
+    const tag = leaveWithPass();
     expect(resumeOidcIntent(takeOidcIntent(true)!, jest.fn())).toBe(true);
     useProfiles.setState((s) => ({
       profiles: [...s.profiles, { id: 'g', name: 'Sam', connectionIds: ['srv.2'] }],
     }));
-    expect(settleOidcPass(true)).toBe(true);
+    expect(settleOidcPass({ intent: tag })).toBe('given');
     expect(kidsConnectAllowed()).toBe(false);
   });
 
   it('stops waiting when the flow is left', () => {
-    leaveWithPass();
+    const tag = leaveWithPass();
     const settled = jest.fn();
     expect(resumeOidcIntent(takeOidcIntent(true)!, settled)).toBe(true);
     dropOidcIntent();
-    expect(settleOidcPass(true)).toBe(false);
+    expect(oidcPassTag()).toBeUndefined();
+    expect(settleOidcPass({ intent: tag })).toBe('none');
     expect(kidsConnectAllowed()).toBe(false);
     expect(settled).not.toHaveBeenCalled();
   });
@@ -195,6 +264,7 @@ describe('a reconnect across the trip', () => {
       newPerson: false,
       grownUpFromKids: false,
       reconnect: { server, reconnectId: 'srv-old.1' },
+      tag: expect.any(String),
     });
     resumeOidcIntent(intent!, jest.fn());
     expect(reconnectOf(HOME)).toBe('srv-old.1');

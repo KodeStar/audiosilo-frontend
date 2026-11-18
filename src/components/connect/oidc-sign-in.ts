@@ -4,13 +4,11 @@ import { ApiClient, ApiError, apiErrorKind } from '@/api/client';
 import { connectClientFor } from '@/api/connect-client';
 import type { AuthSession, ServerInfo } from '@/api/types';
 import { toast } from '@/components/ui/toast';
-import { appPath, servedOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
-import { firstParam } from '@/lib/paths';
 import { useSession } from '@/stores/session';
 
 import { finishConnect } from './finish-connect';
-import { settleOidcPass, takeOidcResumed } from './oidc-intent';
+import { oidcPassTag, settleOidcPass, takeOidcResumed } from './oidc-intent';
 import { sharedRefusalText } from './sign-in-error';
 
 /**
@@ -27,28 +25,9 @@ import { sharedRefusalText } from './sign-in-error';
  * `sessionStorage` instead (`oidc-intent.ts`, fe#310).
  */
 
-/** The served player's return from a single sign-on (`/connect?oidc=1`): its own origin,
- * where the server's cookie is, or null (the app, Metro, another value, or a pairing link,
- * which wins). The route and the connect screen both decide by it. */
-export function oidcReturnOrigin(
-  oidc: string | string[] | undefined,
-  token?: string,
-): string | null {
-  return !token && firstParam(oidc) === '1' ? servedOrigin() : null;
-}
-
-/** Whether this page load is the server's return from a single sign-on, read from the
- * address itself (`oidcReturnOrigin`'s rule, on the flow's first step: the one route that
- * finishes it, so `?oidc=1` on any other of the flow's routes is no return): the connect
- * flow's layout must know before any route's params reach it, to put back what the flow was
- * for (`takeOidcIntent`). */
-export function oidcReturnOnLoad(): boolean {
-  if (!servedOrigin()) return false;
-  const at = globalThis.location;
-  if (appPath(at?.pathname ?? '').replace(/\/+$/, '') !== '/connect') return false;
-  const q = new URLSearchParams(at?.search ?? '');
-  return oidcReturnOrigin(q.get('oidc') ?? undefined, q.get('token') ?? undefined) !== null;
-}
+// The return's own rule lives apart (`oidc-return.ts`), where the root layout reaches it
+// without this module's weight.
+export { oidcReturnOnLoad, oidcReturnOrigin } from './oidc-return';
 
 /** The sign-in step's button while the server's `oidc` capability is on: the provider's
  * name ("Sign in with Keycloak"), '' when it sent none (the button then names single
@@ -62,7 +41,8 @@ export function oidcButtonName(info: ServerInfo | null): string | null {
  * A failed finish in words of our own: a 429's wait and a disabled member as every
  * sign-in words them (`sharedRefusalText`); no
  * finished sign-in in this browser (`oidc_no_sign_in`: a reload, or a browser keeping the
- * cookie back); one spent or past its minute (`oidc_sign_in_expired`); no answer from
+ * cookie back); one spent or past its minute (`oidc_sign_in_expired`); one that is not the
+ * trip a kids-mode pass waits on (`oidc_intent_mismatch`); no answer from
  * the server; anything else (a 400, a 5xx) as a sign-in that didn't finish. Each says to
  * sign in again: the finish can't be retried (the cookie went with the first try).
  */
@@ -75,6 +55,8 @@ export function oidcFinishText(e: unknown, t: TFunction): string {
       return t('connect.oidc.errors.noSignIn');
     case 'oidc_sign_in_expired':
       return t('connect.oidc.errors.expired');
+    case 'oidc_intent_mismatch':
+      return t('connect.oidc.errors.notThisTrip');
   }
   return t('connect.oidc.errors.failed');
 }
@@ -92,9 +74,18 @@ export function oidcFinishText(e: unknown, t: TFunction): string {
  * the server as a device (fe#310).
  *
  * A grown-up's pass through kids mode that the trip left with waits on this answer
- * (`settleOidcPass`): given back only with the session, before `finishConnect`. With no
- * session it is not, kids mode takes the flow back (the connect layout), and the reason goes
- * over it as a toast, since the screen that would say it is gone (null: the flow moved on).
+ * (`settleOidcPass`): given back only with a session that echoes the trip's own tag
+ * (`intent`, audiosilo#202), before `finishConnect`. Otherwise it is not, kids mode takes
+ * the flow back (the connect layout), and the reason goes over it as a toast, since the
+ * screen that would say it is gone (null: the flow moved on). The finish names the tag the
+ * pass expects (`oidcPassTag`), so the server refuses any other sign-in itself and makes no
+ * session (403 `oidc_intent_mismatch`: the start URL typed in this tab while the provider is
+ * still signed in). A server with single sign-on from before the tag can't tell the trips
+ * apart: it refuses a body naming one (400, its bodies take no field it doesn't know) and
+ * makes no session, and the toast says the server needs updating (`needsUpdate`: signing in
+ * again would end the same way). A session that came back without the tag all the same is
+ * treated alike: signed out again, since kept it could add someone to the kids device with
+ * no grown-up's say.
  */
 export async function finishOidcSignIn(
   origin: string,
@@ -105,16 +96,22 @@ export async function finishOidcSignIn(
   // A reconnect's finish goes out with its own proxy headers, as its password sign-in
   // would (`connectClientFor(server, _, reconnectId)`), never another person's.
   const { client, proxy: carried } = connectClientFor(origin, undefined, reconnectId);
+  // Read before the answer: `settleOidcPass` spends it.
+  const expected = oidcPassTag();
   let session: AuthSession;
   let info: ServerInfo | null;
   try {
     [session, info] = await Promise.all([
-      client.oidcFinish(getDeviceName()),
+      client.oidcFinish(getDeviceName(), expected),
       client.serverInfo().catch(() => null),
     ]);
   } catch (e) {
-    const message = oidcFinishText(e, t);
-    if (!settleOidcPass(false)) return message;
+    // A 400 to a finish that named a tag: a server from before the tag, refusing the field.
+    const message =
+      expected && e instanceof ApiError && e.status === 400
+        ? t('connect.oidc.errors.needsUpdate')
+        : oidcFinishText(e, t);
+    if (settleOidcPass(null) === 'none') return message;
     toast({ title: message });
     return null;
   }
@@ -125,11 +122,19 @@ export async function finishOidcSignIn(
       .logout()
       .catch(() => {});
   if (!live()) {
-    settleOidcPass(false);
+    settleOidcPass(null);
     signOut();
     return null;
   }
-  settleOidcPass(true);
+  if (settleOidcPass(session) === 'refused') {
+    signOut();
+    // A server that knows the request's tag never answers it with a session it doesn't echo,
+    // and one from before the tag refuses the request (above): this is neither's answer.
+    toast({
+      title: t(expected ? 'connect.oidc.errors.needsUpdate' : 'connect.oidc.errors.notThisTrip'),
+    });
+    return null;
+  }
   try {
     await finishConnect({
       serverUrl: origin,

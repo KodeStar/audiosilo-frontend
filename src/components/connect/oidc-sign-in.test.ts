@@ -54,6 +54,12 @@ describe('oidcReturnOnLoad', () => {
     expect(oidcReturnOnLoad()).toBe(false);
     at('/web/connect', '?oidc=1&token=tok');
     expect(oidcReturnOnLoad()).toBe(false);
+    // A repeated param reaches the screen as a list, which it takes for a pairing link: read
+    // the same way here, or the layout would wait on a finish the screen never starts.
+    at('/web/connect', '?oidc=1&token=&token=tok');
+    expect(oidcReturnOnLoad()).toBe(false);
+    at('/web/connect', '?oidc=1&oidc=2');
+    expect(oidcReturnOnLoad()).toBe(true);
     mockServed = null;
     at('/web/connect', '?oidc=1');
     expect(oidcReturnOnLoad()).toBe(false);
@@ -82,6 +88,8 @@ describe('oidcFinishText', () => {
   it.each([
     [new ApiError(401, 'no', 'oidc_no_sign_in'), 'connect.oidc.errors.noSignIn'],
     [new ApiError(401, 'gone', 'oidc_sign_in_expired'), 'connect.oidc.errors.expired'],
+    [new ApiError(403, 'other', 'oidc_intent_mismatch'), 'connect.oidc.errors.notThisTrip'],
+    [new ApiError(403, 'old server, no code'), 'connect.oidc.errors.failed'],
     [new ApiError(400, 'invalid request'), 'connect.oidc.errors.failed'],
     [new ApiError(500, 'boom'), 'connect.oidc.errors.failed'],
     [new ApiError(403, 'disabled', 'member_disabled'), 'connect.signIn.errors.disabled'],

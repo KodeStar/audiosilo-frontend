@@ -418,7 +418,7 @@ address pick so the first requests go there; the address runner re-checks it as 
 Android allows cleartext for it (`expo-build-properties` `android.usesCleartextTraffic`).
 Single sign-on (server#235, `oidc-sign-in.ts`) is the served web player's only: the sign-in step
 at its own origin (`onlyOwnServer`) asks `GET /server` and offers "Sign in with <name>" while the
-`oidc` capability is on, a full page load of `client.oidcStartUrl()`; the server lands on
+`oidc` capability is on, a full page load of `client.oidcStartUrl(tag)`; the server lands on
 `/connect?oidc=1` with the sign-in in an HttpOnly cookie (`oidcReturnOrigin` tells a return, for
 the route and the screen), and `ConnectStart` takes the param off first (the screen's own
 `useNavigation().setParams`: it runs at mount), then `POST /auth/oidc/finish`
@@ -430,12 +430,36 @@ kids mode, "Add someone", a signed-out visit's book) goes through the tab's `ses
 layout takes it once as it opens (`takeOidcIntent`, only on the return: `oidcReturnOnLoad` reads
 the address itself, `/connect?oidc=1` and no other route of the flow) and puts "Add someone" and
 the book back once the profiles are read (`resumeConnectIntent`). The grown-up's pass is never
-put back by the address alone (typed within the stamp's 11 minutes of a trip abandoned at the
+put back by the address alone (typed within the stamp's 10 minutes of a trip abandoned at the
 provider, it would open the flow for a child): while `openAddSomeone`'s rule would give it now
 it waits on the finish, the layout holding kids mode back for the return's own screen only (it
 shows a spinner and finishes the sign-in), and `finishOidcSignIn` settles it (`settleOidcPass`):
-back with the server's session, before `finishConnect`; with none, kids mode takes the flow back
-and the reason is a toast. A reconnect's sign-in carries the connection it re-pairs with the
+back only with a session echoing the trip's own tag, before `finishConnect`; otherwise kids mode
+takes the flow back and the reason is a toast. The tag (audiosilo#202): `holdOidcIntent` makes 32
+random bytes in hex per trip, keeps them in the intent and returns them for the start URL's
+`intent`; the server carries it through the provider and echoes it on that trip's finish only,
+once (`AuthSession.intent`). While a pass waits, the finish also sends the tag it expects (the
+request's `intent`, `oidcPassTag`), and the server refuses any other sign-in before it makes a
+session (403 `oidc_intent_mismatch`, the `notThisTrip` toast): with the provider still signed in,
+the server's start URL typed in the tab finishes a sign-in too. A server with single sign-on
+from before the tag refuses a finish that names one (400: its bodies take no field it doesn't
+know) and makes no session, and the toast says the server needs updating (`needsUpdate`); a
+session that finishes a waiting pass without the echo all the same is signed out again under
+the same toast: it fails safe. A sign-in with no pass waiting sends no tag and never reads one,
+so it is kept as before. A page load that is not the return ends the trip the tab still holds,
+on any route (`endOidcTripOnLoad` in `oidc-return.ts`, run by the root layout's module before
+anything renders): while the tag is held, the server's start URL sent again from the history
+would complete it. The server's own connect page removes the held intent
+(`audiosilo.oidcIntent`) too, when a trip ends there with no sign-in. The layout
+(`oidcReturnOnLoad`) and the screen (`ConnectStart`) tell a return by the one rule
+(`oidcReturnOrigin`) over params shaped alike (a repeated one is a list, as the router hands
+it), and a first step that is no return refuses a pass still waiting (`settleOidcPass(null)`):
+the layout never holds kids mode back for a finish that does not run. A page restored from the
+browser's back/forward cache comes back with the pass in memory: the connect layout ends it on
+a persisted `pageshow`, as a page load would, and holds that as state (`passEnded`), since the
+compiled gate is worked out again only when something the render holds changes ("Cache reads at
+render", above; `connect-layout.test.tsx` runs it compiled). A reconnect's sign-in carries the
+connection it re-pairs with the
 address the step signed in through (the in-memory hold's, fe#298): without it a server reset at a
 home address keeps the dead connection (`staleIdentities`' `named`) and the banner keeps asking.
 It shares the stamp and the drop as the flow is left, is taken once by `finishOidcSignIn`

@@ -498,6 +498,8 @@
         "expired": "Diese Anmeldung ist abgelaufen oder wurde schon verwendet. Melde dich erneut an.",
         "reach": "Der Server war nicht erreichbar, um die Anmeldung abzuschließen. Melde dich erneut an.",
         "notKept": "Du hast dich angemeldet, aber dieses Gerät konnte die Anmeldung nicht speichern. Melde dich erneut an.",
+        "notThisTrip": "Diese Anmeldung wurde nicht auf diesem Gerät gestartet und daher nicht gespeichert. Melde dich erneut an.",
+        "needsUpdate": "Dieser Server muss aktualisiert werden, bevor im Kindermodus jemand per Single Sign-on hinzugefügt werden kann. Die Anmeldung wurde daher nicht gespeichert. Aktualisiere den Server oder melde dich auf andere Weise an.",
         "failed": "Die Anmeldung wurde nicht abgeschlossen. Melde dich erneut an."
       }
     },

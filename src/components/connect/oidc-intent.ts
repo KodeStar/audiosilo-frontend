@@ -5,6 +5,7 @@ import {
   resumeConnectIntent,
 } from '@/components/profiles/connect-intent';
 import { type ConnectBook, connectBookParams, parseConnectBook } from '@/lib/paths';
+import { randomBytes, toHex } from '@/lib/random';
 import { sameOrigin } from '@/lib/same-origin';
 
 /**
@@ -28,31 +29,51 @@ import { sameOrigin } from '@/lib/same-origin';
  * A trip abandoned at the provider leaves its intent in the tab, and a later page load of
  * `/connect?oidc=1` (typed, from the history) would take it as its own: a grown-up's pass
  * through kids mode left behind must not open the flow for a child. So the pass is never put
- * back by the address alone: it waits on the sign-in's finish, and comes back only when the
- * server answers with a session (`settleOidcPass`); until then the layout runs the flow's
- * first step, which only finishes the sign-in, and kids mode takes the flow back when it
- * fails. The intent is also stamped and lives only as long as the server lets a sign-in's
- * trip take (`MAX_AGE_MS`, its `FlowMaxAge`), and the flow's layout drops it as the flow is
- * left (`dropOidcIntent`).
+ * back by the address alone: it waits on the sign-in's finish (`settleOidcPass`); until then
+ * the layout runs the flow's first step, which only finishes the sign-in, and kids mode takes
+ * the flow back when it fails. Nor by any session: with the provider still signed in, the
+ * server's start URL typed in this tab finishes a sign-in too (audiosilo#202). So the intent
+ * holds a random tag (`tag`) the sign-in step sends to the server's start
+ * (`oidcStartUrl(tag)`); the server carries it through the provider and echoes it on the
+ * finish of the sign-in that trip completed, once (`AuthSession.intent`), and the pass comes
+ * back only on this tab's own tag. The finish also names the tag a waiting pass expects
+ * (`oidcPassTag`, the request's `intent`), so the server refuses any other sign-in before it
+ * makes a session (403 `oidc_intent_mismatch`). A server from before the tag (a build before
+ * its first release with single sign-on) refuses a finish that names one (400): no session,
+ * no pass. A session with no tag back all the same: no pass, and the finish signs the session
+ * out again.
+ *
+ * The intent is also stamped and lives only as long as the server lets a sign-in's trip take
+ * (`MAX_AGE_MS`, its `FlowMaxAge`), and the flow's layout drops it as the flow is left
+ * (`dropOidcIntent`). Every page load that is not the return drops it too, on any route
+ * (`endOidcTripOnLoad`, the root layout): while the tag is held, the server's start URL sent
+ * again from the history would complete its trip. So does the server's own connect page (its
+ * `connect.js`, same origin) when a trip ends there with no sign-in (`#oidc=<reason>`): it
+ * removes `KEY` too, so keep the name in step with it.
  */
 
 const KEY = 'audiosilo.oidcIntent';
 
 /** How long a held intent stays good: the server's own limit on a trip to the provider
- * (`oidc.FlowMaxAge`, ten minutes), with a minute's slack. A return after that can't sign in. */
-export const MAX_AGE_MS = 11 * 60_000;
+ * (`oidc.FlowMaxAge`, ten minutes). A return after that can't sign in. */
+export const MAX_AGE_MS = 10 * 60_000;
 
 /** A reconnect's sign-in: the connection it re-pairs and the address it signed in through
  * (`holdReconnect`'s pair). */
 export type OidcReconnect = { server: string; reconnectId: string };
 
-/** The flow's intent as it left for the provider. */
+/** The flow's intent as it left for the provider. `tag`: the random value its trip was
+ * started with (`holdOidcIntent`), which only that trip's finish echoes. */
 export type OidcIntent = {
   newPerson: boolean;
   grownUpFromKids: boolean;
   book?: ConnectBook;
   reconnect?: OidcReconnect;
+  tag?: string;
 };
+
+/** A tag as `holdOidcIntent` makes it: 32 random bytes in hex. */
+const TAG = /^[0-9a-f]{64}$/;
 
 function storage(): Storage | null {
   try {
@@ -65,19 +86,32 @@ function storage(): Storage | null {
 
 /** The page is leaving for the provider: keep what the flow is for, `book`, the book a
  * signed-out visit was opening, and `reconnect`, the connection a reconnect re-pairs (the
- * sign-in step's own). */
-export function holdOidcIntent(book?: ConnectBook, reconnect?: OidcReconnect): void {
+ * sign-in step's own). Returns the trip's new tag for the server's start
+ * (`oidcStartUrl`), or undefined when the tab could keep nothing. */
+export function holdOidcIntent(book?: ConnectBook, reconnect?: OidcReconnect): string | undefined {
+  const store = storage();
+  if (!store) return undefined;
+  const tag = toHex(randomBytes(32));
   const held = {
     at: Date.now(),
+    tag,
     newPerson: connectForNewProfile(),
     grownUpFromKids: kidsConnectAllowed(),
     ...(book ? { book: connectBookParams(book) } : {}),
     ...(reconnect ? { reconnect } : {}),
   };
   try {
-    storage()?.setItem(KEY, JSON.stringify(held));
+    store.setItem(KEY, JSON.stringify(held));
+    return tag;
   } catch {
-    // Full or refused: the return then starts with no intent, as before.
+    // Full or refused: the return then starts with no intent, as before. Nor an earlier
+    // trip's, which this untagged trip's return would take for its own.
+    try {
+      store.removeItem(KEY);
+    } catch {
+      // Refused storage holds nothing.
+    }
+    return undefined;
   }
 }
 
@@ -125,6 +159,7 @@ export function peekOidcIntent(returning: boolean): OidcIntent | null {
       grownUpFromKids: v.grownUpFromKids === true,
       ...(book ? { book } : {}),
       ...(reconnect ? { reconnect } : {}),
+      ...(typeof v.tag === 'string' && TAG.test(v.tag) ? { tag: v.tag } : {}),
     };
   } catch {
     return null;
@@ -134,9 +169,10 @@ export function peekOidcIntent(returning: boolean): OidcIntent | null {
 /** What the returned sign-in's finish takes (`resumeOidcIntent`), until it does. */
 let resumed: Pick<OidcIntent, 'book' | 'reconnect'> = {};
 
-/** Tells the layout that the pass it holds kids mode back for is settled (`settleOidcPass`);
- * null while none waits. */
-let passSettled: (() => void) | null = null;
+/** The pass the layout holds kids mode back for, null while none waits: `settled` tells the
+ * layout it is settled (`settleOidcPass`), and `tag` is the trip's it left with (none: nothing
+ * echoes it). */
+let pass: { settled: () => void; tag?: string } | null = null;
 
 /**
  * Put the taken intent back (the layout, once the profiles are read): who the flow signs in
@@ -150,23 +186,38 @@ let passSettled: (() => void) | null = null;
 export function resumeOidcIntent(held: OidcIntent, onSettled: () => void): boolean {
   resumed = { book: held.book, reconnect: held.reconnect };
   const waits = resumeConnectIntent(held);
-  passSettled = waits ? onSettled : null;
+  pass = waits ? { settled: onSettled, tag: held.tag } : null;
   return waits;
 }
 
+/** The tag the waiting pass expects its sign-in's finish to carry, for the finish's request
+ * (`client.oidcFinish`'s `intent`); undefined with no pass waiting, or one that left with no
+ * tag. */
+export function oidcPassTag(): string | undefined {
+  return pass?.tag;
+}
+
+/** What `settleOidcPass` did: no pass waited, it was given back, or it was refused. */
+export type OidcPassAnswer = 'none' | 'given' | 'refused';
+
 /**
- * The returned sign-in's finish answered (`finishOidcSignIn`): the pass that waited on it is
- * `granted` (the server gave a session: the grown-up did sign in) or not (no sign-in to
- * finish, as when the address was typed after a trip abandoned at the provider), and the
- * layout is told. Whether one waited.
+ * The returned sign-in's finish answered (`finishOidcSignIn`) with `session`, or with none
+ * (null: no sign-in to finish, as when the address was typed after a trip abandoned at the
+ * provider). The pass that waited on it is given back only when the session echoes this
+ * trip's own tag (`intent`): the grown-up signed in on the trip this tab started. A session
+ * with no tag, or another, is not this trip's by any proof (a server that knows the tag
+ * refuses such a finish itself, `oidcPassTag`): it may be someone's sign-in the start URL
+ * typed later completed (a provider still signed in), so it is refused. The layout is told
+ * either way, and the tag is spent.
  */
-export function settleOidcPass(granted: boolean): boolean {
-  const settled = passSettled;
-  if (!settled) return false;
-  passSettled = null;
-  if (granted) restoreKidsConnectPass();
-  settled();
-  return true;
+export function settleOidcPass(session: { intent?: string } | null): OidcPassAnswer {
+  const waiting = pass;
+  pass = null;
+  if (!waiting) return 'none';
+  const given = !!waiting.tag && session?.intent === waiting.tag;
+  if (given) restoreKidsConnectPass();
+  waiting.settled();
+  return given ? 'given' : 'refused';
 }
 
 /** The book the returned sign-in at `origin` ends on and the connection it re-pairs, taken
@@ -187,7 +238,7 @@ export function takeOidcResumed(origin: string): { book?: ConnectBook; reconnect
  * reconnect nothing took and a pass still waiting go with it. */
 export function dropOidcIntent(): void {
   resumed = {};
-  passSettled = null;
+  pass = null;
   try {
     storage()?.removeItem(KEY);
   } catch {

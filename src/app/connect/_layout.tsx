@@ -1,6 +1,7 @@
 import { Stack, useRootNavigationState, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Platform } from 'react-native';
 
 import { dropConnectHandoffs, useHandoff } from '@/components/connect/invite-handoff';
 import {
@@ -58,8 +59,9 @@ export default function ConnectLayout() {
   // back from this tab's storage (`takeOidcIntent`, fe#310), put back once the profiles are
   // read. A grown-up's pass through kids mode is not: it waits on the sign-in's finish
   // (`passWaits`, until `settleOidcPass`), and meanwhile kids mode lets only the return's own
-  // screen run, which finishes the sign-in and shows nothing else. No session, no pass: the
-  // address typed after a trip abandoned at the provider opens nothing for a child. Read as
+  // screen run, which finishes the sign-in and shows nothing else. No session echoing this
+  // trip's tag, no pass: the address (or the server's start URL) typed after a trip abandoned
+  // at the provider opens nothing for a child (audiosilo#202). Read as
   // the layout renders and taken once it is on screen (`useHandoff`): the app's first render
   // is a transition, and one thrown away and run again must still find it.
   const intent = useHandoff(
@@ -75,7 +77,12 @@ export default function ConnectLayout() {
     setPassWaiting(passWaits);
     setHeld(null);
   }
-  const refused = known && kids && !kidsConnectAllowed() && !passWaits;
+  // A page restored from the browser's cache ended the pass it came back with (below). Held as
+  // state, since the gate must change with something this render holds: the built app (the
+  // React Compiler, CONVENTIONS.md "Cache reads at render") works `refused` out again only then,
+  // never because the pass in `connect-intent` changed and something rendered the layout again.
+  const [passEnded, setPassEnded] = useState(false);
+  const refused = known && kids && !passWaits && (passEnded || !kidsConnectAllowed());
   // Kids mode was on as the flow opened (the first render that can tell): a link, not a
   // sign-in that turned it on. Follows the render (React's way to keep state in step).
   const [openedInKids, setOpenedInKids] = useState<boolean | null>(null);
@@ -93,6 +100,20 @@ export default function ConnectLayout() {
     },
     [],
   );
+  // Back from the provider (or any page the flow was left for) can restore this page from the
+  // browser's back/forward cache, memory and all: the grown-up's pass through kids mode it left
+  // with would run the flow for a child, with no sign-in's finish to wait on (audiosilo#202). A
+  // page load forgets the pass, and so does a restore: kids mode then takes the flow back.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const onShow = (e: PageTransitionEvent) => {
+      if (!e.persisted || !kidsConnectAllowed()) return;
+      endConnectFlow();
+      setPassEnded(true);
+    };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, []);
   useEffect(() => {
     if (!refused || !ready) return;
     if (openedInKids) toast({ title: t('kids.link.title'), description: t('kids.link.body') });

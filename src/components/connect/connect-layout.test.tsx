@@ -1,8 +1,10 @@
 import { act, render, screen } from '@testing-library/react-native';
 import { Suspense } from 'react';
+import { Platform } from 'react-native';
 
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
+import { withReactCompiler } from '@/testing/react-compiler';
 import { seedProfile } from '@/testing/seed-profile';
 
 // The flow's screens, as the layout's Stack: whatever renders here would run (a pairing
@@ -135,6 +137,81 @@ it('runs it for a grown-up\'s "Add someone" from kids mode on a device with no g
   expect(connectForNewProfile()).toBe(false);
 });
 
+// audiosilo#202: Back from the provider can restore the page the trip left from the browser's
+// back/forward cache, memory and all. The pass it left with must not come back with it.
+describe("a page restored from the browser's cache", () => {
+  type Shown = (e: { persisted: boolean }) => void;
+  const shown: Shown[] = [];
+  const win = globalThis as unknown as {
+    addEventListener?: (type: string, fn: Shown) => void;
+    removeEventListener?: (type: string, fn: Shown) => void;
+  };
+  const prevOS = Platform.OS;
+  beforeEach(() => {
+    Platform.OS = 'web';
+    win.addEventListener = (type, fn) => void (type === 'pageshow' && shown.push(fn));
+    win.removeEventListener = (_, fn) => void shown.splice(shown.indexOf(fn) >>> 0, 1);
+  });
+  afterEach(() => {
+    Platform.OS = prevOS;
+    delete win.addEventListener;
+    delete win.removeEventListener;
+    shown.length = 0;
+  });
+  const show = (persisted: boolean) => act(async () => shown.forEach((fn) => fn({ persisted })));
+
+  it("ends a grown-up's pass through kids mode: kids mode takes the flow back", async () => {
+    seedProfile({ kids: true });
+    openAddSomeone();
+    const view = await render(<ConnectLayout />);
+    expect(screen.getByText('connect flow')).toBeTruthy();
+    // A page shown fresh keeps it.
+    await show(false);
+    expect(screen.getByText('connect flow')).toBeTruthy();
+    // The trip leaves for the provider; Back restores the page from the cache.
+    holdOidcIntent();
+    await show(true);
+    expect(kidsConnectAllowed()).toBe(false);
+    expect(screen.queryByText('connect flow')).toBeNull();
+    expect(mockDismissTo).toHaveBeenCalledWith('/kids');
+    expect(mockToast).not.toHaveBeenCalled();
+    await view.unmount();
+    expect(shown).toHaveLength(0);
+    // Left: the trip's intent goes with the flow, so a return finds nothing.
+    expect(store.size).toBe(0);
+  });
+
+  // As the app builds it: the React Compiler memoises what the render reads against its
+  // inputs, so the gate must change with something the render holds (Jest leaves it off).
+  it('takes the flow back in the built app too, compiled', async () => {
+    const { default: Compiled } = withReactCompiler<typeof import('@/app/connect/_layout')>(
+      require,
+      '../../app/connect/_layout',
+    );
+    seedProfile({ kids: true });
+    openAddSomeone();
+    const view = await render(<Compiled />);
+    expect(screen.getByText('connect flow')).toBeTruthy();
+    await show(true);
+    expect(kidsConnectAllowed()).toBe(false);
+    expect(screen.queryByText('connect flow')).toBeNull();
+    expect(mockDismissTo).toHaveBeenCalledWith('/kids');
+    await view.unmount();
+    expect(shown).toHaveLength(0);
+  });
+
+  it("keeps a grown-up's flow running", async () => {
+    seedProfile();
+    setConnectForNewProfile(true);
+    const view = await render(<ConnectLayout />);
+    await show(true);
+    expect(screen.getByText('connect flow')).toBeTruthy();
+    expect(connectForNewProfile()).toBe(true);
+    expect(mockDismissTo).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+});
+
 it('drops the proxy headers held for the flow when it is left (fe#167)', async () => {
   seedProfile();
   useSession.setState({
@@ -162,11 +239,13 @@ it('gives no pass with a grown-up on the device, nor for a grown-up', async () =
 describe("a single sign-on's return (a page load, fe#310)", () => {
   // A grown-up's "Add someone" from kids mode leaves for the provider with a book: the page
   // load then forgets both, as it forgets everything in memory.
+  // The trip's tag, which only its own finish echoes (audiosilo#202).
+  let tag: string | undefined;
   const leaveForProvider = () => {
     seedProfile({ kids: true });
     openAddSomeone();
     setConnectForNewProfile(true);
-    holdOidcIntent({ libraryId: 3, path: 'Austen/Emma' });
+    tag = holdOidcIntent({ libraryId: 3, path: 'Austen/Emma' });
     endConnectFlow();
   };
 
@@ -183,8 +262,8 @@ describe("a single sign-on's return (a page load, fe#310)", () => {
       libraryId: 3,
       path: 'Austen/Emma',
     });
-    // Allowed: the server answered with a session.
-    await act(async () => void settleOidcPass(true));
+    // Allowed: the server answered with a session echoing this trip's tag.
+    await act(async () => void settleOidcPass({ intent: tag }));
     expect(kidsConnectAllowed()).toBe(true);
     expect(screen.getByText('connect flow')).toBeTruthy();
     expect(mockDismissTo).not.toHaveBeenCalled();
@@ -196,12 +275,43 @@ describe("a single sign-on's return (a page load, fe#310)", () => {
     await render(<ConnectLayout />);
     expect(screen.getByText('connect flow')).toBeTruthy();
     // Denied: no session came back.
-    await act(async () => void settleOidcPass(false));
+    await act(async () => void settleOidcPass(null));
     expect(kidsConnectAllowed()).toBe(false);
     expect(screen.queryByText('connect flow')).toBeNull();
     expect(mockDismissTo).toHaveBeenCalledWith('/kids');
     // The finish says why itself (`finishOidcSignIn`): no "ask a grown-up to open this link".
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it("gives no pass to a session without this trip's tag (the start URL typed with the provider still signed in): kids mode takes the flow back", async () => {
+    leaveForProvider();
+    mockReturning = true;
+    await render(<ConnectLayout />);
+    expect(screen.getByText('connect flow')).toBeTruthy();
+    // Denied: a session, but untagged (another trip, or an older server).
+    await act(async () => void settleOidcPass({}));
+    expect(kidsConnectAllowed()).toBe(false);
+    expect(screen.queryByText('connect flow')).toBeNull();
+    expect(mockDismissTo).toHaveBeenCalledWith('/kids');
+  });
+
+  // As the app builds it (the React Compiler): the gate follows the pass as it is settled.
+  it.each([
+    ['given', true],
+    ['refused', false],
+  ])('follows a pass %s in the built app too, compiled', async (_, given) => {
+    const { default: Compiled } = withReactCompiler<typeof import('@/app/connect/_layout')>(
+      require,
+      '../../app/connect/_layout',
+    );
+    leaveForProvider();
+    mockReturning = true;
+    await render(<Compiled />);
+    expect(screen.getByText('connect flow')).toBeTruthy();
+    await act(async () => void settleOidcPass(given ? { intent: tag } : {}));
+    expect(kidsConnectAllowed()).toBe(given);
+    expect(!!screen.queryByText('connect flow')).toBe(given);
+    expect(mockDismissTo).toHaveBeenCalledTimes(given ? 0 : 1);
   });
 
   // The app's first render is a transition, and one thrown away runs the layout's first
@@ -268,7 +378,7 @@ describe("a single sign-on's return (a page load, fe#310)", () => {
     mockReturning = true;
     const view = await render(<ConnectLayout />);
     await view.unmount();
-    expect(settleOidcPass(true)).toBe(false);
+    expect(settleOidcPass({ intent: tag })).toBe('none');
     expect(kidsConnectAllowed()).toBe(false);
   });
 
