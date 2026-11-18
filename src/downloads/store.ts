@@ -2476,7 +2476,9 @@ onConnectionRemoved(async (id) => {
       ),
     });
   }
-  if (away.size > 0) stopChannel()?.post({ connectionId: id, connectionRemoved: true });
+  // Asked even when no lock says so (plain http, no Web Locks: the tabs cannot tell): a tab
+  // running one removes it, rather than writing its entry back over the purge below.
+  stopChannel()?.post({ connectionId: id, connectionRemoved: true });
   for (const key of away) {
     purging.set(key, removedAt);
     void purgeWhenLeft(key, removedAt).catch(() => {});

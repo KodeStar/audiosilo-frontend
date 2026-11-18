@@ -794,4 +794,16 @@ describe('a download running in another tab (web, Web Locks)', () => {
     expect(b.useDownloads.getState().elsewhere).toEqual({});
     expect(entryOf(a, 'X/Book')?.status).toBe('downloading');
   });
+
+  // No lock tells the removing tab the download is running there: it is asked all the same,
+  // rather than writing its entry back over the purge with its next save.
+  it('without Web Locks, removing its connection still asks the tab running it', async () => {
+    const a = await downloadingTab();
+    Object.defineProperty(nav, 'locks', { configurable: true, value: undefined });
+    const { removeC1 } = await removingTab();
+    await removeC1();
+    await settle();
+    expect(entryOf(a, 'X/Book')).toBeUndefined();
+    expect(await stored()).toEqual({});
+  });
 });
