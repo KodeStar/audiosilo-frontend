@@ -62,6 +62,7 @@ import {
   finishOidcSignIn,
   type OidcFinishFailure,
   type OidcFinishRetry,
+  oidcDoneLeft,
   oidcFlowKey,
   oidcReturnCleared,
   oidcReturnOrigin,
@@ -177,13 +178,10 @@ export function ConnectStart() {
   // more, so Try again goes and the reason is the refusal's: only Sign in again is left.
   useEffect(() => {
     if (!oidcRetry) return;
-    const expire = setTimeout(
-      () => {
-        setOidcRetry(null);
-        fail(t('connect.oidc.errors.expired'));
-      },
-      Math.max(0, oidcRetry.doneBy - Date.now()),
-    );
+    const expire = setTimeout(() => {
+      setOidcRetry(null);
+      fail(t('connect.oidc.errors.expired'));
+    }, oidcDoneLeft(oidcRetry.doneBy));
     const wait =
       oidcRetry.waitMs > 0
         ? setTimeout(() => setOidcRetry({ ...oidcRetry, waitMs: 0 }), oidcRetry.waitMs)

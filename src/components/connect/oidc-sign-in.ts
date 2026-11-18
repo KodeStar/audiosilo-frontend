@@ -73,6 +73,14 @@ export function oidcFinishText(e: unknown, t: TFunction, retry = false): string 
  * server's `oidcDoneTTL`): a retry can't outlive it. */
 export const OIDC_DONE_MS = 60_000;
 
+/** What is left of the done cookie's minute that ends at `doneBy` (epoch ms), in ms: none once
+ * it is over, and none once the clock went back past its start (`Date.now()` is the wall
+ * clock), so no clock change ever extends the minute. */
+export function oidcDoneLeft(doneBy: number): number {
+  const left = doneBy - Date.now();
+  return left > 0 && left <= OIDC_DONE_MS ? left : 0;
+}
+
 /**
  * How long before a failed finish may go again (ms), or undefined when it may not: the
  * server kept the sign-in (its done cookie) for no answer at all, a 408 (a proxy's timeout,
@@ -117,10 +125,9 @@ export type OidcFinishFailure = { message: string; retry?: OidcFinishRetry };
  * (`oidcRetryWait`: no answer, a 408, a 5xx, a 429, within the done cookie's minute) and no
  * pass waits, the same finish to send again (`retry`). The flow's key lives in that closure
  * only, never the address, storage or a log, and goes with it once the finish succeeds or is
- * refused. `live`: whether
- * the connect screen is still up. A session that answers once it has gone, or that
- * `finishConnect` did not store, is signed out again (best effort), never kept: nothing would
- * use it, and it would stay on the server as a device (fe#310).
+ * refused. `live`: whether the connect screen is still up. A session that answers once it
+ * has gone, or that `finishConnect` did not store, is signed out again (best effort), never
+ * kept: nothing would use it, and it would stay on the server as a device (fe#310).
  *
  * A grown-up's pass through kids mode that the trip left with waits on this answer
  * (`settleOidcPass`): given back only with a session that echoes the trip's own tag
@@ -170,7 +177,7 @@ export async function finishOidcSignIn(
         toast({ title: why });
         return null;
       }
-      const waitMs = oidcRetryWait(e, doneBy - Date.now());
+      const waitMs = oidcRetryWait(e, oidcDoneLeft(doneBy));
       const message = oidcFinishText(e, t, waitMs !== undefined);
       return waitMs === undefined
         ? { message }

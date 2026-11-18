@@ -5,6 +5,7 @@ import i18n from '@/i18n';
 import {
   OIDC_DONE_MS,
   oidcButtonName,
+  oidcDoneLeft,
   oidcFinishText,
   oidcRetryWait,
   oidcReturnOnLoad,
@@ -164,5 +165,24 @@ describe('oidcRetryWait', () => {
     ['a 429 waiting within what is left', new ApiError(429, 'slow', undefined, 10), 20_000, 10_000],
   ] as const)('reads %s', (_, e, left, ms) => {
     expect(oidcRetryWait(e, left)).toBe(ms);
+  });
+});
+
+describe('oidcDoneLeft', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('counts down to the end of the minute, then none', () => {
+    jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    expect(oidcDoneLeft(1_000_000 + OIDC_DONE_MS)).toBe(OIDC_DONE_MS);
+    expect(oidcDoneLeft(1_020_000)).toBe(20_000);
+    expect(oidcDoneLeft(1_000_000)).toBe(0);
+    expect(oidcDoneLeft(990_000)).toBe(0);
+  });
+
+  // `Date.now()` is the wall clock: one set back must not hand the sign-in more than its minute.
+  it('ends the minute when the clock went back past its start', () => {
+    const doneBy = 1_000_000 + OIDC_DONE_MS;
+    jest.spyOn(Date, 'now').mockReturnValue(1_000_000 - 3_600_000);
+    expect(oidcDoneLeft(doneBy)).toBe(0);
   });
 });
