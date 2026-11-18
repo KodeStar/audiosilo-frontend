@@ -1833,47 +1833,113 @@ let atPartialEnd = false;
  * engine's (`engineFault`), never the listener's place. Once it has played on, its moves and
  * its end are the book's: a server length that overestimates the audio ends it early.
  *
+ * Each ask is its own record, and the engine call that makes its move tells when the engine
+ * took it (`engineTakes`). `landed`: that call resolved, so every report from then on is from
+ * after the move (the services report the asked place as they resolve, and a report sent
+ * before it is out by then). Only a landed ask's file can show that the engine played on from
+ * it: a progress tick sent before a seek back of `PLAYED_ON` or more took is still in that file,
+ * past the asked place. And only before the ask lands can a report from another file be one
+ * from before the move (`engineFault`).
+ *
  * `playing`: the engine reported the asked file `PLAYING_PAST` beyond the asked place, so it
  * holds that place in its measure (one run off a short measure reports at most its own end,
  * short of the place) and a later file from then on is a move, not a run off its end: the
  * listener's own next from the lock screen, a headset or the car, whose file change Android
  * reports before `onRemoteMove`.
  *
+ * `held`: before that, the engine reported a later file (since `since`). That is the listener's
+ * own next as often (a headset press soon after a paused scrub or while it buffered), which
+ * Android tells up to 300 ms after the file change, so the fault waits `FAULT_HOLD_MS` for that
+ * `onRemoteMove`, the engine's reports held back meanwhile. `report`: the latest, which decides
+ * it when no other comes in time (`timer`; `due` once it fired).
+ *
  * `before`: the file of the ask this one took the place of while that still stood (else -1),
  * whose move the engine may report yet. `elsewhere`: the engine's first report from another
  * file since the ask, which bounds how long such a report reads as one from before the move
  * landed (`engineFault`). */
-let askedPlace: {
+type EngineAsk = {
   np: NowPlaying;
   trackIndex: number;
   position: number;
+  landed: boolean;
   playing: boolean;
+  held: {
+    since: number;
+    report: PlaybackSnapshot;
+    timer: ReturnType<typeof setTimeout> | null;
+    due: boolean;
+  } | null;
   before: number;
   elsewhere: { trackIndex: number; position: number } | null;
-} | null = null;
+};
+let askedPlace: EngineAsk | null = null;
 const PLAYED_ON = 3;
 const PLAYING_PAST = 0.5;
+/** How long a run into a later file waits for its `onRemoteMove` before it is a fault
+ * (`EngineAsk.held`): Android's module sends the move at most 300 ms after the file change, the
+ * same wait as the native service's for a jumped tick (`LANDING_HOLD_MS`). */
+const FAULT_HOLD_MS = 600;
 /** The book whose engine faulted (`engineFault`): its reports are dropped, and a play the
- * engine makes by itself is paused again, until the store asks it for a place again. */
+ * engine makes by itself is paused again, until the store asks it for a place again.
+ * `faultStopped`: the faulted engine has reported something other than `playing` since, so a
+ * `playing` from then on is the listener's own (the lock screen, a headset, the car), never
+ * the engine still playing on until the fault's pause lands. */
 let faultedBook: NowPlaying | null = null;
+let faultStopped = false;
 /** Has the loaded book's engine faulted (`faultedBook`)? */
 const loadedFaulted = () => faultedBook !== null && faultedBook === usePlayer.getState().nowPlaying;
 
+/** `askedPlace` is `next` from here; a fault the one before it held back is called off. */
+function setAsk(next: EngineAsk | null) {
+  if (askedPlace) dropHeld(askedPlace);
+  askedPlace = next;
+}
+
+/** The engine is back where `ask` put it, or the ask is over: no fault is held for it. */
+function dropHeld(ask: EngineAsk) {
+  if (ask.held?.timer) clearTimeout(ask.held.timer);
+  ask.held = null;
+}
+
 /** The store asks the engine for `(trackIndex, position)` of `np`'s queue (`askedPlace`).
- * Returns the ask, for a caller whose move can be refused (`withdrawAsk`). */
-function askEngineTo(np: NowPlaying, trackIndex: number, position: number) {
+ * Returns the ask, for the engine call that makes the move (`engineTakes`), or for a caller
+ * whose move can be refused (`withdrawAsk`). */
+function askEngineTo(np: NowPlaying, trackIndex: number, position: number): EngineAsk {
   const before = askedPlace?.np === np ? askedPlace.trackIndex : -1;
-  const ask = { np, trackIndex, position, playing: false, before, elsewhere: null };
-  askedPlace = ask;
+  const ask: EngineAsk = {
+    np,
+    trackIndex,
+    position,
+    landed: false,
+    playing: false,
+    held: null,
+    before,
+    elsewhere: null,
+  };
+  setAsk(ask);
   faultedBook = null;
   return ask;
+}
+
+/** `move` is the engine call that makes `ask`'s move: once it resolves the engine took it
+ * (`EngineAsk.landed`); one that rejects was refused, and its ask stands no longer
+ * (`withdrawAsk`). */
+async function engineTakes<T>(ask: EngineAsk, move: Promise<T>): Promise<T> {
+  try {
+    const taken = await move;
+    if (askedPlace === ask) ask.landed = true;
+    return taken;
+  } catch (err) {
+    withdrawAsk(ask);
+    throw err;
+  }
 }
 
 /** The engine took no such move (it refused, or the store gave up on it): `ask` no longer
  * stands. Left standing, the engine's next file from where it stayed would read as a run off
  * the asked one. A later ask is left alone. */
-function withdrawAsk(ask: NonNullable<typeof askedPlace>) {
-  if (askedPlace === ask) askedPlace = null;
+function withdrawAsk(ask: EngineAsk) {
+  if (askedPlace === ask) setAsk(null);
 }
 
 /**
@@ -1881,16 +1947,23 @@ function withdrawAsk(ask: NonNullable<typeof askedPlace>) {
  * is not before it played on from the store's last ask (`askedPlace`): on to a later file from
  * an asked place inside its file, or to the end of the media short of the book's end
  * (`endsShortOfBook`), which would otherwise read as the book finished (the credits,
- * `finishBook`'s `finished: true` and Sync v2's `finish`). Else null.
+ * `finishBook`'s `finished: true` and Sync v2's `finish`). `'hold'` while a later file waits
+ * for the listener's own move (`EngineAsk.held`): the report is not taken. Else null.
  *
- * `prev` is the store's snapshot before `s`. A report still in the file it shows, when that is
- * not the asked one, is from before the move landed (a native progress tick or a Cast status
- * sent before the seek or the track jump took): the ask stands, and nothing ran off its file.
- * So is one in the file of an ask this one replaced before the engine reported it (a jump on,
- * then a seek back, inside the engine's latency). Only until the engine has moved `PLAYED_ON`
- * seconds in that other file: it never took the move then (a seek it refused, or a run off the
- * asked file straight back into the one it came from), and the ask stands no longer, or the
- * engine's next file, minutes on, would read as a run off the asked one.
+ * `ended`: the engine reported the end of its media (`s` may read `loading`: an end while a
+ * start shows its spinner). Such an end is a fault only from an ask inside its file: an ask at
+ * a file's end, or at its start, can't land past a short measure.
+ *
+ * `prev` is the store's snapshot before `s`. Before the ask landed, a report still in the file
+ * the store shows, when that is not the asked one, is from before the move (a native progress
+ * tick or a Cast status sent before the seek or the track jump took): the ask stands, and
+ * nothing ran off its file. So is one in the file of an ask this one replaced before the engine
+ * reported it (a jump on, then a seek back, inside the engine's latency). Only until the engine
+ * has moved `PLAYED_ON` seconds in that other file: it never took the move then (a seek it
+ * refused, or a run off the asked file straight back into the one it came from), and the ask
+ * stands no longer, or the engine's next file, minutes on, would read as a run off the asked
+ * one. Once the ask landed, a later file is the engine's own, the one the store showed
+ * included (a move back past a short measure runs on into it).
  * And an `ended` the engine already showed is no new end: the native and web services keep
  * their last state, so a seek or a track jump on a book that ended re-reports `ended` with the
  * place it asked for.
@@ -1899,47 +1972,55 @@ function engineFault(
   np: NowPlaying,
   s: PlaybackSnapshot,
   prev: PlaybackSnapshot,
-): PlaybackSnapshot | null {
+  ended: boolean,
+): PlaybackSnapshot | 'hold' | null {
   const asked = askedPlace;
   if (asked?.np !== np) return null;
-  if (s.trackIndex === asked.trackIndex && s.position >= asked.position + PLAYED_ON) {
-    askedPlace = null;
-    return null;
-  }
-  if (s.trackIndex === asked.trackIndex && s.position > asked.position + PLAYING_PAST) {
-    asked.playing = true;
-  }
-  if (
-    s.trackIndex !== asked.trackIndex &&
-    (s.trackIndex === prev.trackIndex || s.trackIndex === asked.before)
-  ) {
+  if (s.trackIndex === asked.trackIndex) {
+    // In the asked file: nothing ran off it (a report of a later file was from before).
+    dropHeld(asked);
+    if (asked.landed && s.position >= asked.position + PLAYED_ON) {
+      setAsk(null);
+      return null;
+    }
+    if (asked.landed && s.position > asked.position + PLAYING_PAST) asked.playing = true;
+  } else if (!asked.landed && (s.trackIndex === prev.trackIndex || s.trackIndex === asked.before)) {
     const first = asked.elsewhere;
     if (first?.trackIndex !== s.trackIndex) {
       asked.elsewhere = { trackIndex: s.trackIndex, position: s.position };
     } else if (Math.abs(s.position - first.position) >= PLAYED_ON) {
-      askedPlace = null;
+      setAsk(null);
     }
     return null;
   }
   // From a file's start an engine can't run past its end (it measured the file at least that
   // long): only an ask inside a file can land past a short measure.
-  const rolled =
-    !asked.playing &&
-    asked.position > 0 &&
-    s.trackIndex > asked.trackIndex &&
-    (wantsPlayback || startingPlayback) &&
-    shortOfFileEnd(np.queue, asked.trackIndex, asked.position);
+  const inside = asked.position > 0 && shortOfFileEnd(np.queue, asked.trackIndex, asked.position);
   const short =
-    s.state === 'ended' &&
+    ended &&
     prev.state !== 'ended' &&
+    (s.state === 'ended' || inside) &&
     endsShortOfBook(np.queue, s.trackIndex, s.position);
-  if (!rolled && !short) {
+  const rolled =
+    !short &&
+    !asked.playing &&
+    inside &&
+    s.trackIndex > asked.trackIndex &&
+    (wantsPlayback || startingPlayback);
+  if (rolled) {
+    const now = Date.now();
+    const held = asked.held ?? { since: now, report: s, timer: null, due: false };
+    asked.held = held;
+    if (!held.due && now - held.since < FAULT_HOLD_MS) return 'hold';
+  } else if (!short) {
+    // Not a run off the asked file after all: a run held for one is called off.
+    dropHeld(asked);
     // On into a later file from the end of the asked one: it played that out.
-    if (s.trackIndex > asked.trackIndex) askedPlace = null;
+    if (s.trackIndex > asked.trackIndex) setAsk(null);
     return null;
   }
   faultedBook = np;
-  askedPlace = null;
+  setAsk(null);
   return {
     ...s,
     state: 'error',
@@ -2120,10 +2201,13 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
   let seek: Promise<void> | undefined;
   const ask = askEngineTo(np, place.index, place.positionInTrack);
   try {
-    seek = Promise.resolve(
-      place.index === snapshot.trackIndex
-        ? svc.seekTo(place.positionInTrack)
-        : svc.skipToTrack(place.index, place.positionInTrack),
+    seek = engineTakes(
+      ask,
+      Promise.resolve(
+        place.index === snapshot.trackIndex
+          ? svc.seekTo(place.positionInTrack)
+          : svc.skipToTrack(place.index, place.positionInTrack),
+      ),
     );
     await withTimeout(seek, TAB_MOVE_MAX_MS, 'the move did not settle');
     return place;
@@ -2620,7 +2704,7 @@ async function createService(): Promise<PlaybackService> {
   await svc.configure(currentConfig());
   // Keep auto-rewind + lock-screen skip intervals in sync with the settings store.
   useSettings.subscribe(() => void svc.configure(currentConfig()));
-  svc.subscribe((raw) => {
+  const onReport = (raw: PlaybackSnapshot) => {
     // Collapse the native bridge's noisy resume/retry event stream to a spinner. While
     // starting (after a play/retry, before we reach `playing`), the only real outcomes
     // are `playing` (success) and `error` (the watchdog gave up); every transient the
@@ -2631,10 +2715,22 @@ async function createService(): Promise<PlaybackService> {
     // `playing` (startingPlayback already false), so it stays `paused`. Outside a fresh
     // start, a `ready` while intending to play is also a spinner.
     // A faulted engine (`engineFault`) is not heard from until the store asks it for a place
-    // again (`askEngineTo`: a Retry, or a press, which reloads), and a play it starts by
-    // itself (the lock screen) is stopped again.
+    // again (`askEngineTo`: a Retry, or a press, which reloads). A play it goes on with until
+    // the fault's pause lands is stopped again; one after it stopped is the listener's own (the
+    // lock screen, a headset, the car), which reloads the book at its place, as a press does.
     if (loadedFaulted()) {
-      if (raw.state === 'playing') void svc.pause().catch(() => undefined);
+      if (raw.state !== 'playing') {
+        faultStopped = true;
+        return;
+      }
+      void svc.pause().catch(() => undefined);
+      if (faultStopped) {
+        faultStopped = false;
+        void usePlayer
+          .getState()
+          .retry()
+          .catch((err: unknown) => console.warn('[player] could not reload the book', err));
+      }
       return;
     }
     let state = raw.state;
@@ -2689,9 +2785,16 @@ async function createService(): Promise<PlaybackService> {
     // while a load holds the store: that is still the previous book's.
     const { nowPlaying: np, loadingBook } = usePlayer.getState();
     if (np && !loadingBook) {
-      const fault = engineFault(np, snapshot, prev);
+      const fault = engineFault(np, snapshot, prev, raw.state === 'ended' && !partialEnd);
+      if (fault === 'hold') {
+        holdFault(raw);
+        checkStallDeadline();
+        engineTick();
+        return;
+      }
       if (fault) {
         void svc.pause().catch(() => undefined);
+        faultStopped = raw.state !== 'playing';
         snapshot = fault;
       } else {
         const duration = fileDurationOf(np.queue, snapshot.trackIndex, snapshot.duration);
@@ -2801,7 +2904,22 @@ async function createService(): Promise<PlaybackService> {
     // watchdog) where Android has paused the JS timers: see `engineTicker`.
     checkStallDeadline();
     engineTick();
-  });
+  };
+  // A run into a later file waits for the listener's own move (`EngineAsk.held`): `raw`, the
+  // latest report, decides it once the wait is over and no other report came.
+  const holdFault = (raw: PlaybackSnapshot) => {
+    const ask = askedPlace;
+    const held = ask?.held;
+    if (!ask || !held) return;
+    held.report = raw;
+    held.timer ??= setTimeout(() => {
+      if (askedPlace !== ask || ask.held !== held) return;
+      if (usePlayer.getState().nowPlaying !== ask.np) return;
+      held.due = true;
+      onReport(held.report);
+    }, FAULT_HOLD_MS);
+  };
+  svc.subscribe(onReport);
   // The OS media controls' seeks (web Media Session) go through the store's own seek,
   // so a lock-screen scrub back lowers the resume floor and saves like any other seek.
   svc.onRemoteSeek?.((positionInTrack) => void usePlayer.getState().seekInTrack(positionInTrack));
@@ -2817,8 +2935,18 @@ async function createService(): Promise<PlaybackService> {
     // save, a place that book never had. So is one at the download's index while the
     // hot-swap moves the playing file (`swapHold`).
     if (loadingBook || (np && heldBySwap(np, trackIndex))) return;
-    // The listener's own move: no ask of the store's stands (`askedPlace`).
-    askedPlace = null;
+    // The listener's own move: no ask of the store's stands (`askedPlace`), and a run into a
+    // later file held for it was this move.
+    setAsk(null);
+    // A faulted engine's reports are not heard (`loadedFaulted`): the move's place is the one
+    // the book shows, so a Retry or a press reloads there, not at the place it faulted at.
+    if (np && loadedFaulted()) {
+      const { snapshot } = usePlayer.getState();
+      const duration = fileDurationOf(np.queue, trackIndex, 0);
+      usePlayer.setState({
+        snapshot: { ...snapshot, trackIndex, position: positionInTrack, duration },
+      });
+    }
     userMoved(np ? toBookPosition(np.queue.offsets, trackIndex, positionInTrack) : undefined);
     // The engine has moved already: the span ends where it was last seen (paused, where it
     // was is not known, so no move is taken for one that moves nowhere).
@@ -3103,20 +3231,34 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       finishSent = null;
       restoreOutputGain(svc); // only now can the old book's fade no longer write over it
       beginPlaybackAttempt(); // intent + start window + watchdog armed from here
-      askEngineTo(nowPlaying, index, positionInTrack);
+      const ask = askEngineTo(nowPlaying, index, positionInTrack);
       // Called off already (a car play its native side gave up on while its place was looked
       // up): the engine is set not to play before the load, so the book is never heard for a
       // moment. One called off during the load is paused after it (below). A failed pause
       // never skips the load: its `finally` is what releases `loadingBook`.
       if (wanted && !wanted()) await svc.pause().catch(() => undefined);
       try {
-        await svc.load(
-          queue.tracks,
-          index,
-          positionInTrack,
-          queue.chapterClips,
-          bookRefOf(nowPlaying),
+        await engineTakes(
+          ask,
+          svc.load(queue.tracks, index, positionInTrack, queue.chapterClips, bookRefOf(nowPlaying)),
         );
+      } catch (err) {
+        // Nothing plays: the book shows the place its start asked for, where a Retry loads it
+        // (`resumeFloor`), in its error state at once. Never the snapshot it had, which is
+        // another book's place, or Part 1 at 0:00 for the first book since the app opened.
+        if (current() && selectBookKey(get()) === key) {
+          clearPlaybackIntent();
+          set({
+            snapshot: {
+              ...get().snapshot,
+              state: 'error',
+              trackIndex: index,
+              position: positionInTrack,
+              duration: fileDurationOf(queue, index, 0),
+            },
+          });
+        }
+        throw err;
       } finally {
         // Also when the load failed: a `loadingBook` left behind would hold every save and
         // every remote move of whatever plays next.
@@ -3295,13 +3437,15 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       loaded = moved;
       at = local;
     }
-    askEngineTo(loaded, at.index, at.positionInTrack);
-    await svc.load(
-      loaded.queue.tracks,
-      at.index,
-      at.positionInTrack,
-      loaded.queue.chapterClips,
-      bookRefOf(loaded),
+    await engineTakes(
+      askEngineTo(loaded, at.index, at.positionInTrack),
+      svc.load(
+        loaded.queue.tracks,
+        at.index,
+        at.positionInTrack,
+        loaded.queue.chapterClips,
+        bookRefOf(loaded),
+      ),
     );
     await svc.setRate(get().rate);
     await startLoadedEngine(svc);
@@ -3321,12 +3465,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     // A faulted engine sits in another file than the snapshot's (`engineFault`): it is put in
     // the target's by its index, never sought within whatever file it is in.
     const faulted = loadedFaulted();
-    askEngineTo(np, target.index, target.positionInTrack);
-    if (target.index === get().snapshot.trackIndex && !faulted) {
-      await svc.seekTo(target.positionInTrack);
-    } else {
-      await svc.skipToTrack(target.index, target.positionInTrack);
-    }
+    const ask = askEngineTo(np, target.index, target.positionInTrack);
+    await engineTakes(
+      ask,
+      target.index === get().snapshot.trackIndex && !faulted
+        ? svc.seekTo(target.positionInTrack)
+        : svc.skipToTrack(target.index, target.positionInTrack),
+    );
     void persist();
   },
 
@@ -3341,8 +3486,9 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     userMoved(np ? toBookPosition(np.queue.offsets, trackIndex, pos) : undefined);
     // A faulted engine sits in another file than the snapshot's (`engineFault`): put in it.
     const faulted = loadedFaulted();
-    if (np) askEngineTo(np, trackIndex, pos);
-    await (faulted ? svc.skipToTrack(trackIndex, pos) : svc.seekTo(pos));
+    const ask = np ? askEngineTo(np, trackIndex, pos) : null;
+    const move = faulted ? svc.skipToTrack(trackIndex, pos) : svc.seekTo(pos);
+    await (ask ? engineTakes(ask, move) : move);
     void persist();
   },
 
@@ -3353,8 +3499,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     const svc = await ensureService();
     moveListeningSpan(endAt(np, i, 0));
     userMoved(toBookPosition(np.queue.offsets, i, 0));
-    askEngineTo(np, i, 0);
-    await svc.skipToTrack(i, 0);
+    await engineTakes(askEngineTo(np, i, 0), svc.skipToTrack(i, 0));
     void persist();
   },
 
@@ -4249,14 +4394,17 @@ async function reloadAdopted(
   quietAdopted = key;
   if (playing) beginPlaybackAttempt();
   const attempts = playAttempts;
-  askEngineTo(nowPlaying, landing.index, landing.positionInTrack);
+  const ask = askEngineTo(nowPlaying, landing.index, landing.positionInTrack);
   try {
-    await svc.load(
-      nowPlaying.queue.tracks,
-      landing.index,
-      landing.positionInTrack,
-      nowPlaying.queue.chapterClips,
-      bookRefOf(nowPlaying),
+    await engineTakes(
+      ask,
+      svc.load(
+        nowPlaying.queue.tracks,
+        landing.index,
+        landing.positionInTrack,
+        nowPlaying.queue.chapterClips,
+        bookRefOf(nowPlaying),
+      ),
     );
   } catch (err) {
     console.warn('[player] could not reload the adopted book in its order', err);

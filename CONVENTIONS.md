@@ -2081,31 +2081,43 @@ media GETs only.
   `store.ts`). The snapshot's `duration` is the server's for a file whose engine length is
   unknown or more than `FINISHED_TOLERANCE` shorter (the seek clamp, "left in the file").
   Every engine move the store asks for (a load, a seek, a track jump, a tab's place; not the
-  download hot-swap, which keeps the place) goes through `askEngineTo`, and the ask
-  (`askedPlace`) stands until the engine has played on `PLAYED_ON` seconds from it in its
-  file, moved on into a later file from within the tolerance of the asked file's end, or the
-  listener moved (`onRemoteMove`). While it stands, an engine that goes where the book is not
-  stops as an `error` at the asked place, its later reports dropped and a play it starts by
-  itself paused until a press (a press reloads, as Retry does): a move on to a later file from
-  a place inside the asked one before the engine reported that file `PLAYING_PAST` beyond it (a
+  download hot-swap, which keeps the place) goes through `askEngineTo`, its engine call through
+  `engineTakes`: the ask (`askedPlace`, one record per ask) has landed once that call resolves
+  (reports from then on are from after the move), and a call that rejects withdraws it. The ask
+  stands until the engine has played on `PLAYED_ON` seconds from it in its file (counted only
+  once landed: a tick sent before a seek back took is past the asked place), moved on into a
+  later file from within the tolerance of the asked file's end, or the listener moved
+  (`onRemoteMove`). While it stands, an engine that goes where the book is not stops as an
+  `error` at the asked place, its later reports dropped: a move on to a later file from a
+  place inside the asked one before the engine reported that file `PLAYING_PAST` beyond it (a
   resume past a short measure ran into the next file; once past, a later file is the
   listener's next from the lock screen, whose file change Android reports before
-  `onRemoteMove`), and an
-  `ended` short of the book's end (`endsShortOfBook`), which otherwise reads as the book
-  finished (the credits, `finishBook`'s `finished: true`, Sync v2's `finish`): a Retry or a
-  seek past the engine's end never finishes a book. Neither is a report still in the file the
-  store last showed (a progress tick or a Cast status from before a move back landed) or in
-  the file of an ask this one replaced before the engine reported it, nor an
-  `ended` the store already showed (a seek or a track jump on a book that ended re-reports it,
-  the services keeping their last state); a seek or a track jump on a faulted book puts the
-  engine in the target's file by its index (`skipToTrack`). An ask the engine never took
-  stands no longer: one whose move it refused (`withdrawAsk`, another tab's place), and one
-  whose engine has moved `PLAYED_ON` seconds in the other file since (left standing, its next
-  file, minutes on, read as a run off the asked one). A fault outlives the download hot-swap's
-  new `NowPlaying` (`commitLocalSwap`): a press still reloads. Once it has played on, its moves
-  and its end are the book's, as for any book: a server length can overestimate the audio
-  (ffprobe's bitrate estimate for a header-less VBR file), and the listener who played to the
-  real end has finished.
+  `onRemoteMove`), and an `ended` short of the book's end (`endsShortOfBook`), which otherwise
+  reads as the book finished (the credits, `finishBook`'s `finished: true`, Sync v2's
+  `finish`): a Retry or a seek past the engine's end never finishes a book. An end while a
+  start shows its spinner is one too, from an ask inside its file, at once (not the stall
+  watchdog's error later). The later file waits `FAULT_HOLD_MS` first, its reports held back:
+  a headset or car next soon after a paused scrub or while buffering reaches the store the
+  same way, and Android tells its `onRemoteMove` up to 300 ms after the file change; that move,
+  or a report back in the asked file, calls the fault off. Before the ask lands, neither is a
+  report still in the file the store last showed (a progress tick or a Cast status from before
+  a move back landed) or in the file of an ask this one replaced before the engine reported
+  it; once landed, a later file is the engine's own (a move back past a short measure runs on
+  into the file the store showed). Nor is an `ended` the store already showed (a seek or a
+  track jump on a book that ended re-reports it, the services keeping their last state). A
+  seek or a track jump on a faulted book puts the engine in the target's file by its index
+  (`skipToTrack`). An ask the engine never took stands no longer: one whose move it refused
+  (`withdrawAsk`, `engineTakes`), and one whose engine has moved `PLAYED_ON` seconds in the
+  other file since (left standing, its next file, minutes on, read as a run off the asked
+  one). A faulted book: a press reloads it, as Retry does; a play the engine goes on with until
+  the fault's pause lands is paused again, and one after it stopped is the listener's (the lock
+  screen, a headset, the car), which reloads like a press (`faultStopped`); a lock-screen move
+  is the place it shows and reloads at. A fault outlives the download hot-swap's new
+  `NowPlaying` (`commitLocalSwap`): a press still reloads. A start whose load rejects shows the
+  place it asked for in its error state at once (Retry loads there), never the snapshot it had.
+  Once the engine has played on, its moves and its end are the book's, as for any book: a
+  server length can overestimate the audio (ffprobe's bitrate estimate for a header-less VBR
+  file), and the listener who played to the real end has finished.
 - **Start playback only after chapters/files have loaded** (the player gates on
   `useChapters` settling) - starting early made multi-file books stream the folder
   path (MediaToolbox `-12864`) and lose chapter info.
