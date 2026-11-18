@@ -1836,7 +1836,9 @@ media GETs only.
     are the old queue's and never reach JS (`replacing`). The controller masks that stop as
     an idle only (no `onIsPlayingChanged(false)` for a queue that was playing, then or once
     the new one buffers), so `load` stops the 1 s progress loop itself; the new queue's
-    `playing` starts it again. Not covered: two adjacent long
+    `playing`, or its buffering on the way to playing, starts it again (`ProgressTicks`: the
+    loop also runs while a stream buffers to play, the stall watchdog's heartbeat with the
+    screen off, fe#158). Not covered: two adjacent long
     files that both play whole (each over half the budget) still hold both tables where they
     meet, since Media3 prepares the next item before the current ends; only a queue of one
     file at a time would avoid it.
@@ -2697,7 +2699,7 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   a car is connected. On Android a pause, a stop, a paused book's move (a seek, a chapter
   skip, another device's place picked up: `pausedMove`) or another book is what a resumption
   plays: with no car connected the full snapshot is written for it at once
-  (`writeForResumption`), on no timer and from the query cache (`cachedBuild`: a server is
+  (`writeForResumption`), on no timer and from the query cache (`ReadMode` `cached`: a server is
   asked only for a list the cache never held), so a pause in the background, where Android
   holds the JS timers and a request's timeout is one, still writes it.
   **Before any car, Android writes a minimal resumable snapshot** (`buildResumable`, fe#251)
@@ -2732,7 +2734,10 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   button start's foreground service is released by then, and a start a frozen server held
   played on in the background with no notification or controls; `cancelledPlays` makes
   `StartHow.wanted` false, so the start stops before its load, or `playBook` loads it paused,
-  or loads nothing once another start took the player (`replaced`); an episode's fetch it
+  or loads nothing once another start took the player (`replaced`) or native played another
+  play in its place (`replaced: true` on the event, `StartHow.superseded`, fe#350: the last
+  tap wins; the car then takes the engine's book back, `checkLoadedBook`'s `gaveWay`, which
+  its switch let go of); an episode's fetch it
   was handed to ends with it, starting nothing (`requestEpisodeFetch`'s `wanted`); natively
   its late load never completes the play that took its place (`PlayerBridge.completesCarPlay`);
   a new request for the item takes the mark off) and **bookmarks**: `carNative.onBookmark` (the module's
@@ -2750,7 +2755,7 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   form (whole-book seconds alone) is still read; only one whose place could not be read yet
   stays in file coordinates. **A press names its file by path** (fe#185): the Android service's
   pending list and `onRemoteBookmark` (Android and iOS) carry `relPath` (the file's `rel_path`,
-  from the item's media id) beside the engine's index and the seconds in that file, and JS
+  from the item's extras, `MediaItems.KEY_REL_PATH`) beside the engine's index and the seconds in that file, and JS
   reads the press in that file (`engineIndexOn`, by `trackIndexById`), so a press made before
   an adoption reloaded the engine in the download's order still lands in its file. A press an
   older binary made (no `relPath`) is read by its index, as before; a press kept in engine
@@ -2769,7 +2774,10 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   so no reader imports the car sync.
 - **Android Auto.** `LibraryCallback` + `CarBrowseTree` answer browsing from the snapshot;
   `ArtworkProvider` serves only covers the current snapshot names inside the app's data
-  directory. `playFromCar`: the book already loaded plays on; a downloaded book starts from its
+  directory (`art/<key>`). A streamed book's cover URL carries the media token, so a loaded
+  item names it as `remote/<key>` (a hash of the URL, `RemoteArtwork`, fe#349): only the
+  service's own bitmap loader turns it back into the URL, and the provider never serves it.
+  `playFromCar`: the book already loaded plays on; a downloaded book starts from its
   spec **only when no JS runtime exists** (with JS running, JS may hold another book as
   `nowPlaying`, and swapping the engine under it would save one book's place as another's);
   anything else emits `onCarPlayRequest` and completes with the module's next `load` (10 s, then
