@@ -79,6 +79,8 @@ function storage(): Storage | null {
  * sign-in step's own). Returns the trip's new tag for the server's start
  * (`oidcStartUrl`), or undefined when the tab could keep nothing. */
 export function holdOidcIntent(book?: ConnectBook, reconnect?: OidcReconnect): string | undefined {
+  const store = storage();
+  if (!store) return undefined;
   const tag = toHex(randomBytes(32));
   const held = {
     at: Date.now(),
@@ -88,8 +90,6 @@ export function holdOidcIntent(book?: ConnectBook, reconnect?: OidcReconnect): s
     ...(book ? { book: connectBookParams(book) } : {}),
     ...(reconnect ? { reconnect } : {}),
   };
-  const store = storage();
-  if (!store) return undefined;
   try {
     store.setItem(KEY, JSON.stringify(held));
     return tag;
@@ -153,12 +153,10 @@ export function peekOidcIntent(returning: boolean): OidcIntent | null {
 /** What the returned sign-in's finish takes (`resumeOidcIntent`), until it does. */
 let resumed: Pick<OidcIntent, 'book' | 'reconnect'> = {};
 
-/** Tells the layout that the pass it holds kids mode back for is settled (`settleOidcPass`);
- * null while none waits. */
-let passSettled: (() => void) | null = null;
-
-/** The tag of the trip the waiting pass left with ('' for none: nothing echoes it). */
-let passTag = '';
+/** The pass the layout holds kids mode back for, null while none waits: `settled` tells the
+ * layout it is settled (`settleOidcPass`), and `tag` is the trip's it left with (none: nothing
+ * echoes it). */
+let pass: { settled: () => void; tag?: string } | null = null;
 
 /**
  * Put the taken intent back (the layout, once the profiles are read): who the flow signs in
@@ -172,8 +170,7 @@ let passTag = '';
 export function resumeOidcIntent(held: OidcIntent, onSettled: () => void): boolean {
   resumed = { book: held.book, reconnect: held.reconnect };
   const waits = resumeConnectIntent(held);
-  passSettled = waits ? onSettled : null;
-  passTag = waits ? (held.tag ?? '') : '';
+  pass = waits ? { settled: onSettled, tag: held.tag } : null;
   return waits;
 }
 
@@ -190,14 +187,12 @@ export type OidcPassAnswer = 'none' | 'given' | 'refused';
  * and the tag is spent.
  */
 export function settleOidcPass(session: { intent?: string } | null): OidcPassAnswer {
-  const settled = passSettled;
-  const tag = passTag;
-  passSettled = null;
-  passTag = '';
-  if (!settled) return 'none';
-  const given = !!session && tag !== '' && session.intent === tag;
+  const waiting = pass;
+  pass = null;
+  if (!waiting) return 'none';
+  const given = !!waiting.tag && session?.intent === waiting.tag;
   if (given) restoreKidsConnectPass();
-  settled();
+  waiting.settled();
   return given ? 'given' : 'refused';
 }
 
@@ -219,8 +214,7 @@ export function takeOidcResumed(origin: string): { book?: ConnectBook; reconnect
  * reconnect nothing took and a pass still waiting go with it. */
 export function dropOidcIntent(): void {
   resumed = {};
-  passSettled = null;
-  passTag = '';
+  pass = null;
   try {
     storage()?.removeItem(KEY);
   } catch {

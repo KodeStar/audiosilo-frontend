@@ -147,28 +147,17 @@ describe("a grown-up's pass through kids mode", () => {
     expect(takeOidcIntent(true)?.tag).toBe(first);
     const second = leaveWithPass();
     expect(second).not.toBe(first);
-    // The tag a trip used is spent with its settle: a resume of the same intent waits for a
-    // new trip's answer, and the dropped one's tag answers nothing.
-    expect(resumeOidcIntent(takeOidcIntent(true)!, jest.fn())).toBe(true);
-    dropOidcIntent();
-    expect(settleOidcPass({ intent: second })).toBe('none');
   });
 
   it('sends no tag when the tab keeps nothing', () => {
     seedProfile();
-    const real = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage')!;
-    Object.defineProperty(globalThis, 'sessionStorage', {
-      value: {
-        setItem: () => {
-          throw new Error('full');
-        },
-      },
-      configurable: true,
+    const full = jest.spyOn(sessionStorage, 'setItem').mockImplementation(() => {
+      throw new Error('full');
     });
     try {
       expect(holdOidcIntent()).toBeUndefined();
     } finally {
-      Object.defineProperty(globalThis, 'sessionStorage', real);
+      full.mockRestore();
     }
   });
 

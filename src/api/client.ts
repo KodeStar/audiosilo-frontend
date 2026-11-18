@@ -774,7 +774,7 @@ export class ApiClient {
    * the trip's own random tag (`holdOidcIntent`), echoed by that trip's finish only
    * (`AuthSession.intent`, audiosilo#202); an older server ignores it. */
   oidcStartUrl(intent?: string) {
-    return this.apiUrl('/auth/oidc/start', intent ? { return: 'web', intent } : { return: 'web' });
+    return this.apiUrl('/auth/oidc/start', { return: 'web', intent });
   }
   /** Finish a single sign-on (capability `oidc`): the server reads the finished sign-in
    * from a cookie it set on its own origin (sent by the browser's default same-origin
