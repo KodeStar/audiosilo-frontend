@@ -2969,6 +2969,7 @@
       "newestFirst": "Plus récents d'abord",
       "oldestFirst": "Plus anciens d'abord",
       "lastCheckFailed": "La dernière vérification a échoué",
+      "secretMissing": "L'adresse privée de ce flux est manquante. Suivez-le à nouveau avec son adresse.",
       "removed": "N'est plus dans le flux",
       "noEpisodes": "Pas encore d'épisode",
       "loadError": "Impossible de charger cette émission.",

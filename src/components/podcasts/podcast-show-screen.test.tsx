@@ -226,6 +226,43 @@ describe('PodcastShowScreen', () => {
     await mountWithPortal(<PodcastShowScreen />);
     expect(screen.getByText('Last check failed')).toBeTruthy();
     expect(screen.queryByText(/upstream/)).toBeNull();
+    expect(screen.queryByTestId('podcast-secret-missing')).toBeNull();
+  });
+
+  it("says a private feed's address is missing, in place of the failed check (server#443)", async () => {
+    mockShows = [
+      podcastShow({
+        private: true,
+        status: {
+          last_checked: null,
+          last_success: null,
+          next_check: null,
+          error: { code: 'feed_secret_missing', message: 'secret gone' },
+          secret_missing: true,
+        },
+      }),
+    ];
+    await mountWithPortal(<PodcastShowScreen />);
+    expect(screen.getByTestId('podcast-secret-missing')).toBeTruthy();
+    expect(screen.getByText(/private address is missing/)).toBeTruthy();
+    expect(screen.queryByTestId('podcast-last-check-failed')).toBeNull();
+  });
+
+  it('keeps the failed check while the server does not flag a missing address (older servers)', async () => {
+    mockShows = [
+      podcastShow({
+        private: true,
+        status: {
+          last_checked: null,
+          last_success: null,
+          next_check: null,
+          error: { code: 'feed_secret_missing', message: 'secret gone' },
+        },
+      }),
+    ];
+    await mountWithPortal(<PodcastShowScreen />);
+    expect(screen.getByTestId('podcast-last-check-failed')).toBeTruthy();
+    expect(screen.queryByTestId('podcast-secret-missing')).toBeNull();
   });
 });
 

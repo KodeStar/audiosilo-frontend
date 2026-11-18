@@ -2969,6 +2969,7 @@
       "newestFirst": "Mais recentes primeiro",
       "oldestFirst": "Mais antigos primeiro",
       "lastCheckFailed": "A última verificação falhou",
+      "secretMissing": "Falta o endereço privado deste feed. Siga-o de novo pelo endereço.",
       "removed": "Não está mais no feed",
       "noEpisodes": "Ainda não há episódios",
       "loadError": "Não foi possível carregar este programa.",

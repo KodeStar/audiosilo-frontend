@@ -2969,6 +2969,7 @@
       "newestFirst": "Newest first",
       "oldestFirst": "Oldest first",
       "lastCheckFailed": "Last check failed",
+      "secretMissing": "This feed's private address is missing. Follow it again by its address.",
       "removed": "No longer in the feed",
       "noEpisodes": "No episodes yet",
       "loadError": "Couldn't load this show.",
