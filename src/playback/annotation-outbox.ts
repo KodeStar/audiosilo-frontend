@@ -441,6 +441,9 @@ export function heldOnServer(queued: QueuedBookmark, onServer: readonly Bookmark
  * says yes (the claim stands; the bookmark is better made than kept for ever). */
 async function readyToSend(entry: QueuedBookmark, held: readonly Bookmark[]): Promise<boolean> {
   try {
+    // Only a fresh one is written: the others need no lock.
+    const seen = (await readQueue()).find((e) => e.id === entry.id);
+    if (!seen?.fresh) return seen !== undefined;
     return await withLock(async () => {
       const queue = await readQueue();
       const stored = queue.find((e) => e.id === entry.id);
@@ -519,6 +522,18 @@ async function sendGroup(
   const failing = new Set<string>();
   // The server's flags, when a labelled one needs them: read once per replay.
   let labelFlag: Promise<{ failed: unknown } | undefined> | undefined;
+  /** After `e` failed (`err`): kept for the next replay, its failure recorded when it
+   * `counts`, or given up on when such failures have gone on long enough (`givenUp`).
+   * Whether it was kept. */
+  const keepOrGiveUp = (e: QueuedBookmark, err: unknown, counts: boolean): boolean => {
+    if (counts && givenUp(e)) {
+      console.warn('[bookmarks] gave up on a queued bookmark that kept failing', err);
+      return false;
+    }
+    kept.push(e);
+    if (counts) failing.add(e.id);
+    return true;
+  };
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i];
     const book = contentKeyOf(e);
@@ -551,12 +566,7 @@ async function sendGroup(
           isSignedOutError(unread.failed) ||
           askedToWait(unread.failed)
         );
-        if (counts && givenUp(e)) {
-          console.warn('[bookmarks] gave up on a queued bookmark that kept failing', unread.failed);
-          continue;
-        }
-        kept.push(e);
-        if (counts) failing.add(e.id);
+        keepOrGiveUp(e, unread.failed, counts);
         continue;
       }
       // Claimed by this replay, but taken out while it sent those ahead of it: the claim
@@ -585,15 +595,11 @@ async function sendGroup(
         break;
       }
       const counts = !askedToWait(err);
-      if (counts && givenUp(e)) {
-        console.warn('[bookmarks] gave up on a queued bookmark that kept failing', err);
-        continue;
-      }
+      if (!keepOrGiveUp(e, err, counts)) continue;
       heldBack.add(book);
-      kept.push(e);
-      if (!counts) continue;
       // A failed read is the failure of every one of the book's; a failed POST is its own.
-      for (const f of posting ? [e] : entries.slice(i)) {
+      if (!counts || posting) continue;
+      for (const f of entries.slice(i + 1)) {
         if (contentKeyOf(f) === book) failing.add(f.id);
       }
     }

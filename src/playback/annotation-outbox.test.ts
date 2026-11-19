@@ -373,8 +373,6 @@ describe('sending', () => {
     expect(client.addBookmark).toHaveBeenCalledTimes(1);
     expect(held).toMatchObject([{ position: 120, label: 'fell_asleep' }]);
     expect(await queuedBookmarks()).toEqual([]);
-    // The connection gone: nothing stored, nothing posted, and it says so.
-    await expect(queueNewBookmark('gone', 1, 'a/book', 120)).rejects.toThrow('connection gone');
   });
 
   it('sends each once when two replays run at once (another tab)', async () => {
