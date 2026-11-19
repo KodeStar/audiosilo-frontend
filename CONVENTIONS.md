@@ -281,7 +281,12 @@ proves "server answered, token rejected", cleanly distinct from offline (the rea
 layer relies on the same invariant; the full rationale + the server-source citations live
 on the `onAuthError` constructor doc in `client.ts`). The callback is injected wherever a per-connection client is
 built - `provider.tsx`'s client map AND `connection-clients.resolveClient` - as `() =>
-markNeedsReconnect(cid, 'auth')`; `client.ts` never imports the session store (no cycle).
+markNeedsReconnect(cid, 'auth')` (`connectionClient`), only while the connection still holds
+the token that client carries: a request sent before a re-pair that comes back 401 says nothing
+of the new token. Never keep a connection's client across awaits or between saves: resolve it
+when the request goes (`resolveClient`), or take `liveClient` (`src/api/live-client.ts`), which
+reads the connection again at each call, when a callee sends only after awaits of its own (the
+player's `persist` into `saveProgress`). `client.ts` never imports the session store (no cycle).
 **Onboarding** flows (connect / sign-in / demo) build bare clients with NO callback, so a
 wrong-password 401 on `/auth/login` can't false-flag a reconnect. The React Query
 `QueryCache` keeps only the two success-side jobs a per-request error callback can't do:

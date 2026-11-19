@@ -78,6 +78,20 @@ describe('connection-clients', () => {
     expect(markNeedsReconnect).toHaveBeenCalledWith('c1', 'auth');
   });
 
+  it('a 401 through a client built before a re-pair does NOT flag the re-paired connection', async () => {
+    // A request sent with the old token that comes back after the re-pair: the new token is
+    // not dead, and the connection must not ask to be reconnected again.
+    setStore([{ id: 'c1', serverUrl: 'https://h', token: 'old' }]);
+    installFetch(() => ({ status: 401, body: { error: 'invalid or expired token' } }));
+    const stale = resolveClient('c1')!;
+    setStore([{ id: 'c1', serverUrl: 'https://h', token: 'new' }]);
+    await expect(stale.me()).rejects.toMatchObject({ status: 401 });
+    expect(markNeedsReconnect).not.toHaveBeenCalled();
+    // The connection's own client, on its token now, still flags it.
+    await expect(resolveClient('c1')!.me()).rejects.toMatchObject({ status: 401 });
+    expect(markNeedsReconnect).toHaveBeenCalledWith('c1', 'auth');
+  });
+
   it('resolves an old id the identity migration moved (an offline save, a car bookmark) to its connection', async () => {
     setConnectionAliases({ srv: 'srv.3' });
     try {

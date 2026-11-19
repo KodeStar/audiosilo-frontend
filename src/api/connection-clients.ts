@@ -32,8 +32,10 @@ export function resolveClient(connectionId: string): ApiClient | null {
  * save loop, the car, the downloads) and the provider's `buildClients` for every screen. It
  * carries the token and the proxy headers kept for `url`'s origin (fe#167, `proxySetFor`), and
  * injects the dead-token callback, so a 401 on ANY request through it (query or mutation, on
- * screen or in the save loop) flags the connection for reconnect: the client is the one choke point every request path shares. Every
- * answer it gets counts for reachability (`noteAnswer`, FU-SLOWOK), by the address it came from.
+ * screen or in the save loop) flags the connection for reconnect: the client is the one choke
+ * point every request path shares. Not once the connection holds another token (a re-pair): a
+ * client built before it is stale, and the connection's sign-in is not dead. Every answer it
+ * gets counts for reachability (`noteAnswer`, FU-SLOWOK), by the address it came from.
  */
 export function connectionClient(
   conn: Connection,
@@ -44,7 +46,12 @@ export function connectionClient(
     url,
     conn.token,
     undefined,
-    () => useSession.getState().markNeedsReconnect(conn.id, 'auth'),
+    () => {
+      // Only while the connection still holds this token: a request sent before a re-pair
+      // that comes back 401 after it says nothing of the new token.
+      if (connectionOf(conn.id)?.token === conn.token)
+        useSession.getState().markNeedsReconnect(conn.id, 'auth');
+    },
     (at) => noteAnswer(conn.id, at),
     proxy,
   );
