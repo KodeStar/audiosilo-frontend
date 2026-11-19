@@ -81,16 +81,24 @@ export function useSignOut(connectionId: string) {
   const [confirmVisible, setConfirmVisible] = useState(false);
   /** Listens and bookmarks not synced to this server (the confirm shows while set). */
   const [unsynced, setUnsynced] = useState<Unsent | null>(null);
+  /** While the sign-out itself runs: its last send can wait up to 30 s for another tab's
+   * (`TAKE_OVER_WAIT_MS`), so the button shows it is working and takes no second press. */
+  const [signingOut, setSigningOut] = useState(false);
 
   const signOut = useCallback(async () => {
     setConfirmVisible(false);
+    setSigningOut(true);
     // Shared token-revoking teardown: stop playback through this connection (persisting
     // the final position while the token is still valid - otherwise the book keeps
     // playing with no mini-player in the connect screen to stop it) and replay its
     // queued progress (removing the connection below purges those saves, so this is
     // the last chance to land them). A book playing through another connection keeps
     // going; its token stays valid.
-    await signOutConnection(connectionId, api, removeConnection);
+    try {
+      await signOutConnection(connectionId, api, removeConnection);
+    } finally {
+      setSigningOut(false);
+    }
   }, [api, connectionId, removeConnection]);
 
   const warnOrSignOut = useCallback(async () => {
@@ -119,6 +127,7 @@ export function useSignOut(connectionId: string) {
     confirmVisible,
     setConfirmVisible,
     signOut,
+    signingOut,
     requestSignOut,
     unsynced,
     confirmUnsynced,

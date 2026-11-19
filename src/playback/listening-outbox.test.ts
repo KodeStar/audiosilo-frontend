@@ -49,6 +49,7 @@ import { forgetRateLimit, noteRateLimit, rateLimited } from '@/api/rate-limit';
 import * as reachability from '@/api/reachability';
 import { keepServerAnswer, keepServerFlag } from '@/api/server-snapshots';
 import { setDownloadEndCheck, setDownloadLengthCheck } from '@/downloads/kept-offline';
+import { setConnectionAliases } from '@/lib/connection-id';
 import { onConnectionRemoved } from '@/stores/session';
 
 import {
@@ -723,6 +724,75 @@ describe('flushOutbox', () => {
       jest.useRealTimers();
       forgetRateLimit('c1');
     }
+  });
+
+  // The wait is held under the connection's id now: events still naming the id the identity
+  // migration moved it from were held by it, and went with nothing at its end.
+  it("sends a moved connection's events under its old id when the wait is over", async () => {
+    setConnectionAliases({ legacy: 'c1' });
+    await appendEvents('legacy', [listen('a')]);
+    let limited = true;
+    const c = client(async (body) => {
+      if (limited) throw new ApiError(429, 'slow down', undefined, 60);
+      return answer(body);
+    });
+    (resolveClient as jest.Mock).mockImplementation((cid: string) =>
+      cid === 'c1' || cid === 'legacy' ? (c as unknown as ApiClient) : null,
+    );
+    jest.useFakeTimers({ now: new Date('2026-10-25T08:00:00.000Z') });
+    try {
+      await flushOutbox('legacy');
+      expect(c.syncListening).toHaveBeenCalledTimes(1);
+      expect(rateLimited('c1')).toBe(true);
+      limited = false;
+      await jest.advanceTimersByTimeAsync(60_000);
+      for (let i = 0; i < 50 && c.syncListening.mock.calls.length < 2; i++) {
+        await jest.advanceTimersByTimeAsync(10);
+      }
+      expect(c.syncListening).toHaveBeenCalledTimes(2);
+      expect(await outboxEvents('legacy')).toEqual([]);
+    } finally {
+      jest.useRealTimers();
+      setConnectionAliases({});
+      forgetRateLimit('c1');
+    }
+  });
+
+  // A sign-out's last send and the purge after it: events still naming the id the identity
+  // migration moved the connection from were neither sent nor purged, left for good.
+  describe("a moved connection's events under its old id at sign-out", () => {
+    beforeEach(() => setConnectionAliases({ legacy: 'c1' }));
+    afterEach(() => {
+      setConnectionAliases({});
+      forgetRateLimit('c1');
+    });
+
+    it('sends them in the last send, during a 429 too', async () => {
+      await appendEvents('legacy', [listen('a')]);
+      await appendEvents('c1', [listen('b')]);
+      await appendEvents('c2', [listen('x')]);
+      const c = client(async (body) => answer(body));
+      (resolveClient as jest.Mock).mockImplementation((cid: string) =>
+        cid === 'c1' || cid === 'legacy' ? (c as unknown as ApiClient) : null,
+      );
+      noteRateLimit('c1', new ApiError(429, 'slow down', undefined, 60));
+      expect(await unsentListens('c1')).toBe(0);
+      expect(
+        sent(c)
+          .flatMap((r) => r.events.map((e) => e.id))
+          .sort(),
+      ).toEqual(['a', 'b']);
+      expect((await outboxEvents()).map((e) => e.event.id)).toEqual(['x']);
+    });
+
+    it('counts them as unsent, then purges them with the rest', async () => {
+      await appendEvents('legacy', [listen('a')]);
+      await appendEvents('c2', [listen('x')]);
+      (reachability.isReachable as jest.Mock).mockReturnValue(false);
+      expect(await unsentListens('c1')).toBe(1);
+      for (const purge of purges) await purge('c1');
+      expect((await outboxEvents()).map((e) => e.event.id)).toEqual(['x']);
+    });
   });
 
   it('holds the connection after a 429 on an event sent alone', async () => {

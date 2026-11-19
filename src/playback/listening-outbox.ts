@@ -18,11 +18,12 @@ import type {
   Progress,
 } from '@/api/types';
 import { downloadBookLength } from '@/downloads/kept-offline';
+import { resolveConnectionId, sameConnection } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { randomUUID } from '@/lib/random';
 import { getItem, getItemStrict, setItem, setItemStrict } from '@/lib/storage';
 import { onStoredChange } from '@/lib/tab-channel';
-import { hasWebLocks, tabLock } from '@/lib/tab-lock';
+import { hasWebLocks, queryWebLocks, sharedWebLock, tabLock } from '@/lib/tab-lock';
 import {
   isRecord,
   LISTENING_OPEN_SPAN_KEY as OPEN_SPAN_KEY,
@@ -923,11 +924,27 @@ const NONE: ReadonlySet<string> = new Set();
 const marksOf = (entry: OutboxEntry): Record<string, number> =>
   isRecord(entry.out) ? entry.out : {};
 
-/** Whether a request carrying `entry` is out (in any tab) by its stored marks. A mark that
- * stands further ahead than any is written for (the clock set back since) has run out too:
- * read as live, an Undo would wait on it until the clock caught up. */
-const isOut = (entry: OutboxEntry, now: number) =>
-  Object.values(marksOf(entry)).some((until) => until > now && until - now <= OUT_MARK_MS);
+/** The Web Lock a tab holds while a request of its carrying a finish is out
+ * (`holdOutMark`): its `out` marks stand that long whatever their time says (`isOut`). */
+const outLockName = (tab: string) => `audiosilo-out:${tab}`;
+
+/** Hold this tab's `outLockName` until the returned release (shared by its requests out at
+ * once). A hidden tab's timers are throttled, the request's timeout too: a request can be
+ * out past `OUT_MARK_MS`, and an Undo that read its mark as run out took its edit while the
+ * finish could still land after it. The browser frees a closed tab's lock. Nothing is held
+ * without Web Locks (native, plain http): the time stands alone. A new `tabId` (tests) takes
+ * a new one. */
+let holdOutMark = sharedWebLock(outLockName(tabId));
+
+/** Whether a request carrying `entry` is out (in any tab) by its stored marks: one whose time
+ * stands, or whose tab holds its lock (`live`, the Web Locks held now; null where no tab can
+ * tell). A mark that stands further ahead than any is written for (the clock set back since)
+ * has run out too: read as live, an Undo would wait on it until the clock caught up. */
+const isOut = (entry: OutboxEntry, now: number, live: ReadonlySet<string> | null = null) =>
+  Object.entries(marksOf(entry)).some(
+    ([tab, until]) =>
+      (until > now && until - now <= OUT_MARK_MS) || live?.has(outLockName(tab)) === true,
+  );
 
 /** `entry` marked as out from this tab until `until` (beside any other tab's mark). */
 const markedOut = (entry: OutboxEntry, until: number): OutboxEntry => ({
@@ -998,6 +1015,8 @@ async function sending<T>(
   const marked = sharedAcrossTabs()
     ? chunk.filter((e) => e.event.kind === 'finish').map((e) => e.event.id)
     : [];
+  // Asked before the mark is written, held until it is taken off.
+  const releaseOut = marked.length > 0 ? holdOutMark() : () => {};
   const gone = marked.length > 0 ? await markOut(marked) : NONE;
   const live = chunk.filter((e) => !withdrawn.has(e.event.id) && !gone.has(e.event.id));
   const leaving = finishesLeaving(live);
@@ -1018,6 +1037,7 @@ async function sending<T>(
   } finally {
     await settled;
     release();
+    releaseOut();
   }
 }
 
@@ -1122,9 +1142,11 @@ export async function withdrawFinish(
       const queue = await readOutbox();
       const mine = queue.filter(isMine);
       const now = Date.now();
+      // Asked only when a mark is there to read.
+      const live = mine.some((e) => e.out) ? await queryWebLocks() : null;
       // Out from this tab (its request's own end is waited for), or by the stored mark
       // from another tab, whose answer shows as a change of the stored outbox.
-      const out = mine.filter((e) => sendingNow.has(e.event.id) || isOut(e, now));
+      const out = mine.filter((e) => sendingNow.has(e.event.id) || isOut(e, now, live));
       if (out.length > 0) {
         for (const e of out) waitedFor.add(e.event.id);
         const here = out.find((e) => sendingNow.has(e.event.id));
@@ -1185,29 +1207,41 @@ export async function withdrawFinish(
   };
 }
 
-/** Connections making their last send (`flushOutbox`'s `lastChance`), by how many such
- * calls are still out: a flush already running for another caller goes round again under
- * it, and one call ending never takes the bypass from another still waiting (a removal
- * asked twice, a flush begun just as the first ended). */
+/** Connections making their last send (`flushOutbox`'s `lastChance`), under their id now
+ * (`resolveConnectionId`), by how many such calls are still out: a flush already running for
+ * another caller goes round again under it, and one call ending never takes the bypass from
+ * another still waiting (a removal asked twice, a flush begun just as the first ended). */
 const lastChance = new Map<string, number>();
+
+/** Flush `connectionId`'s outbox and every other id its waiting events are stored under: one
+ * the identity migration moved it from (`sameConnection`, as the legacy queue's last send
+ * routes its saves), each flushed under the id it names. */
+async function flushEveryId(connectionId: string): Promise<void> {
+  const queue = await outboxEvents().catch((): OutboxEntry[] => []);
+  const ids = new Set([connectionId]);
+  for (const e of queue) if (sameConnection(e.connectionId, connectionId)) ids.add(e.connectionId);
+  await Promise.all([...ids].map((cid) => flushOutbox(cid)));
+}
 
 /**
  * Send a connection's outbox. One flush at a time per connection: a call while one runs
  * makes it go round once more when it ends (a sync that left more goes on by itself).
  * `lastChance`: the connection's sign-out or removal is making its last send, which tries
  * the events whatever wait its server asked (a 429), as the legacy queue's does
- * (`onlyConnection`): the purge after it drops what is left.
+ * (`onlyConnection`), those under an id the identity migration moved it from too: the purge
+ * after it drops what is left, under either id (`onConnectionRemoved`).
  */
 export function flushOutbox(
   connectionId: string,
   opts: { lastChance?: boolean } = {},
 ): Promise<void> {
   if (opts.lastChance) {
-    lastChance.set(connectionId, (lastChance.get(connectionId) ?? 0) + 1);
-    return flushOutbox(connectionId).finally(() => {
-      const left = (lastChance.get(connectionId) ?? 1) - 1;
-      if (left > 0) lastChance.set(connectionId, left);
-      else lastChance.delete(connectionId);
+    const id = resolveConnectionId(connectionId);
+    lastChance.set(id, (lastChance.get(id) ?? 0) + 1);
+    return flushEveryId(connectionId).finally(() => {
+      const left = (lastChance.get(id) ?? 1) - 1;
+      if (left > 0) lastChance.set(id, left);
+      else lastChance.delete(id);
     });
   }
   const running = inFlight.get(connectionId);
@@ -1318,7 +1352,7 @@ async function flushOnce(connectionId: string): Promise<void> {
   await recoverOpenSpan();
   // The server asked to wait (a 429 until its `Retry-After`): the events stay, and go once
   // the wait is over (`onRateLimitOver`, below). Not a sign-out's last chance.
-  if (rateLimited(connectionId) && !lastChance.has(connectionId)) return;
+  if (rateLimited(connectionId) && !lastChance.has(resolveConnectionId(connectionId))) return;
   // Read again at each round's send (`liveClient`): a re-pair during the flush changes the
   // token, and a round sent with the old one is refused (401).
   const client = liveClient(connectionId);
@@ -1419,8 +1453,12 @@ async function sendChunk(
   }
 }
 
-// A wait the server asked for (a 429) is over: the events it held go now.
-onRateLimitOver((connectionId) => void flushOutbox(connectionId));
+// A wait the server asked for (a 429) is over: the events it held go now. Told the
+// connection's id now (`resolveConnectionId`), which held the events of an id the identity
+// migration moved it from too: those go as well, under the id they name.
+onRateLimitOver((connectionId) => {
+  void flushEveryId(connectionId).catch(() => undefined);
+});
 
 /** A 400 on a batch: each event alone, once; one still refused alone can never be sent,
  * but a `stay` (a server rolled back under a stale cached `listening_stay`, whose decoder
@@ -1656,12 +1694,14 @@ async function withFinishedPlace(save: ProgressSave): Promise<ProgressSave> {
   };
 }
 
-/** Drop a connection's events from the outbox; returns them. */
+/** Drop a connection's events from the outbox, those under an id the identity migration
+ * moved it from too (`sameConnection`, as its last send takes them); returns them. */
 function takeConnection(connectionId: string): Promise<OutboxEntry[]> {
+  const ofIt = (e: OutboxEntry) => sameConnection(e.connectionId, connectionId);
   return withOutboxLock(async () => {
     const queue = await readOutbox();
-    const mine = queue.filter((e) => e.connectionId === connectionId);
-    if (mine.length > 0) await writeOutbox(queue.filter((e) => e.connectionId !== connectionId));
+    const mine = queue.filter(ofIt);
+    if (mine.length > 0) await writeOutbox(queue.filter((e) => !ofIt(e)));
     return mine;
   });
 }
@@ -1859,6 +1899,7 @@ export function resetOutboxForTests(): void {
   appendsInTurn.clear();
   removals.clear();
   tabId = randomUUID();
+  holdOutMark = sharedWebLock(outLockName(tabId));
   if (staleCheck) clearTimeout(staleCheck);
   staleCheck = null;
   rolledBack.clear();

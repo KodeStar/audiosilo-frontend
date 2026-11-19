@@ -1,10 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 import { ApiClient, ApiError, TimeoutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { forgetRateLimit, RATE_LIMIT_HOLD_S } from '@/api/rate-limit';
 import * as reachability from '@/api/reachability';
 import type { Progress } from '@/api/types';
+import { setConnectionAliases } from '@/lib/connection-id';
+import { CONNECTIONS_KEY } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
 
 import {
@@ -26,6 +29,8 @@ import {
   noteUndoneFinish,
   onFinishUndoneElsewhere,
   pendingSaveCount,
+  pendingSaves,
+  routeOnly,
   type LocalPlaces,
   type PlacedProgress,
   progressToSave,
@@ -2159,6 +2164,99 @@ describe('the legacy queue across tabs', () => {
     expect(await readQueue()).toEqual([newer]);
   });
 
+  // This tab's timers throttled past its claim, or a sign-out's last send in another tab: the
+  // second save is that replay's to send, and here it went twice.
+  it('does not send a save another replay claimed while the one ahead of it was out', async () => {
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save, queued]));
+    const { api, answer } = slowApi();
+    routeClients({ c1: api });
+    const flushing = flushQueue();
+    await tick();
+    expect(api.saveProgress).toHaveBeenCalledTimes(1);
+    const other = { id: 'other', until: Date.now() + 60_000 };
+    await AsyncStorage.setItem(
+      QUEUE_KEY,
+      JSON.stringify(
+        (await readQueue()).map((s) => (s.path === queued.path ? { ...s, claim: other } : s)),
+      ),
+    );
+    answer();
+    await flushing;
+    expect(api.saveProgress).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toEqual([{ ...queued, claim: other }]);
+  });
+
+  // Signed out here, a save another tab's replay had claimed was left to it and purged unsent.
+  describe("a sign-out's last-chance flush and another tab's claim", () => {
+    const claimed = { ...save, claim: { id: 'other', until: Date.now() + 60_000 } };
+    let os: typeof Platform.OS;
+    beforeEach(async () => {
+      os = Platform.OS;
+      claimed.claim.until = Date.now() + 60_000;
+      await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([claimed]));
+    });
+    afterEach(() => {
+      Platform.OS = os;
+    });
+
+    it('takes the claim over on the web; a reconnect leaves it', async () => {
+      Platform.OS = 'web';
+      const api = fakeApi(async () => {});
+      routeClients({ c1: api });
+      await flushConnection('c1');
+      expect(api.saveProgress).not.toHaveBeenCalled();
+      await flushConnection('c1', { lastChance: true });
+      expect(api.saveProgress).toHaveBeenCalledTimes(1);
+      expect(await readQueue()).toEqual([]);
+    });
+
+    // Off the web the app is one process: a claim no replay of this launch is sending was
+    // left by a run killed mid-replay, and kept, the save went with the purge unsent.
+    it('sends off the web one an earlier launch left claimed; a reconnect leaves it', async () => {
+      const api = fakeApi(async () => {});
+      routeClients({ c1: api });
+      await flushConnection('c1');
+      expect(api.saveProgress).not.toHaveBeenCalled();
+      await flushConnection('c1', { lastChance: true });
+      expect(api.saveProgress).toHaveBeenCalledTimes(1);
+      expect(await readQueue()).toEqual([]);
+    });
+  });
+
+  // Off the web, a claim left by a replay of this launch that ended (its settle not stored) is
+  // free to the last send: kept for its time, the purge took the save unsent.
+  it("sends off the web a save this launch's replay left claimed when storage refused its settle", async () => {
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save]));
+    const sendSave = jest
+      .fn<Promise<void>, []>()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValue(undefined);
+    const api = fakeApi(sendSave);
+    routeClients({ c1: api });
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const write = setItem.getMockImplementation()!;
+    // The claim's write goes through, the settle's (taking the claim off) is refused.
+    let queueWrites = 0;
+    setItem.mockImplementation(async (key: string, value: string) => {
+      if (key === QUEUE_KEY && ++queueWrites === 2) throw new Error('quota');
+      return write(key, value);
+    });
+    try {
+      await flushConnection('c1');
+    } finally {
+      setItem.mockImplementation(write);
+    }
+    expect(queueWrites).toBe(2);
+    expect(api.saveProgress).toHaveBeenCalledTimes(1);
+    expect((await readQueue())[0]).toMatchObject({ path: save.path, claim: expect.anything() });
+    // Signed out at once, the claim still standing by its time.
+    await flushConnection('c1', { lastChance: true });
+    expect(api.saveProgress).toHaveBeenCalledTimes(2);
+    expect(await readQueue()).toEqual([]);
+    await removalCleanup('c1');
+    expect(await readQueue()).toEqual([]);
+  });
+
   it("a sign-out's last-chance flush waits for this tab's replay that is out", async () => {
     await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save]));
     const { api, answer } = slowApi();
@@ -2174,6 +2272,50 @@ describe('the legacy queue across tabs', () => {
     await Promise.all([flushing, lastChance]);
     expect(api.saveProgress).toHaveBeenCalledTimes(1);
     expect(await readQueue()).toEqual([]);
+  });
+
+  // The check before the second save could not read the queue (`getItem` gave it as empty):
+  // kept, it had no later replay, and the connection's purge took it unsent. Off the web too.
+  describe('storage the check before a send cannot read', () => {
+    /** A replay with the first save out, the next read of the queue failing once. */
+    async function unreadableAtCheck(replay: () => Promise<void>) {
+      await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save, queued]));
+      const { api, answer } = slowApi();
+      routeClients({ c1: api });
+      const flushing = replay();
+      await tick();
+      expect(api.saveProgress).toHaveBeenCalledTimes(1);
+      const getItem = AsyncStorage.getItem as jest.Mock;
+      const read = getItem.getMockImplementation()!;
+      let failed = false;
+      getItem.mockImplementation(async (key: string) => {
+        if (key === QUEUE_KEY && !failed) {
+          failed = true;
+          throw new Error('unreadable');
+        }
+        return read(key);
+      });
+      try {
+        answer();
+        await flushing;
+      } finally {
+        getItem.mockImplementation(read);
+      }
+      expect(failed).toBe(true);
+      return api;
+    }
+
+    it("a sign-out's last-chance flush sends the save", async () => {
+      const api = await unreadableAtCheck(() => flushConnection('c1', { lastChance: true }));
+      expect(api.saveProgress).toHaveBeenCalledTimes(2);
+      expect(await readQueue()).toEqual([]);
+    });
+
+    it('a replay keeps it for the next one', async () => {
+      const api = await unreadableAtCheck(() => flushQueue());
+      expect(api.saveProgress).toHaveBeenCalledTimes(1);
+      expect(await readQueue()).toEqual([queued]);
+    });
   });
 });
 
@@ -2298,5 +2440,135 @@ describe('a finish undone in another tab', () => {
       tellUndoneElsewhere({ connectionId: 'c1', libraryId: 1, path: 'A' }),
     ).not.toThrow();
     expect(typeof onFinishUndoneElsewhere(() => {})).toBe('function');
+  });
+});
+
+describe('which connections a replay of the legacy queue sends', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    for (const id of ['c1', 'c2']) forgetRateLimit(id);
+    jest.clearAllMocks();
+    reachable.mockReset().mockReturnValue(true);
+    mockResolveClient.mockReset().mockReturnValue(null);
+    mockSessionReady.mockReset().mockReturnValue(true);
+  });
+
+  // The session of a web tab holds the connections it loaded: one signed in to in another tab
+  // since is stored, not in it, and this tab's replay dropped its saves as gone.
+  describe('on the web', () => {
+    let os: typeof Platform.OS;
+    beforeEach(() => {
+      os = Platform.OS;
+      Platform.OS = 'web';
+    });
+    afterEach(() => {
+      Platform.OS = os;
+    });
+
+    it('leaves the saves of a connection another tab is signed in to', async () => {
+      await AsyncStorage.setItem(CONNECTIONS_KEY, JSON.stringify([{ id: 'c1' }]));
+      await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save]));
+      await flushQueue();
+      expect(await readQueue()).toEqual([save]);
+    });
+
+    it('keeps them when the stored connections cannot be read', async () => {
+      await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save]));
+      const getItem = AsyncStorage.getItem as jest.Mock;
+      const read = getItem.getMockImplementation()!;
+      getItem.mockImplementation(async (key: string) => {
+        if (key === CONNECTIONS_KEY) throw new Error('unreadable');
+        return read(key);
+      });
+      try {
+        await flushQueue();
+      } finally {
+        getItem.mockImplementation(read);
+      }
+      expect(await readQueue()).toEqual([save]);
+    });
+
+    it('drops them once no tab is signed in to it', async () => {
+      await AsyncStorage.setItem(CONNECTIONS_KEY, JSON.stringify([{ id: 'c2' }]));
+      await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save]));
+      await flushQueue();
+      expect(await readQueue()).toEqual([]);
+    });
+  });
+
+  it('drops a connection the app does not know off the web, though it is stored', async () => {
+    await AsyncStorage.setItem(CONNECTIONS_KEY, JSON.stringify([{ id: 'c1' }]));
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([save]));
+    await flushQueue();
+    expect(await readQueue()).toEqual([]);
+  });
+
+  // A queued save can still name the id the identity migration moved its connection from.
+  describe('a save naming the id its connection moved from', () => {
+    const moved = { ...save, connectionId: 'legacy' };
+    beforeEach(() => setConnectionAliases({ legacy: 'c1' }));
+    afterEach(() => setConnectionAliases({}));
+
+    it('is the connection’s own to a route of that connection alone', () => {
+      const route = routeOnly('c1', (cid) => cid);
+      expect(route('c1')).toBe('c1');
+      expect(route('legacy')).toBe('legacy');
+      expect(route('c2')).toBe('keep');
+      expect(routeOnly('legacy', (cid) => cid)('c1')).toBe('c1');
+    });
+
+    // Left by the sign-out's last flush, the purge kept it (it names another id) and the
+    // next replay dropped it unsent, its connection gone.
+    it('goes with a flush of its connection', async () => {
+      await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([moved]));
+      const api = fakeApi(async () => {});
+      routeClients({ c1: api, legacy: api });
+      await flushConnection('c1', { lastChance: true });
+      expect(api.saveProgress).toHaveBeenCalledTimes(1);
+      expect(await readQueue()).toEqual([]);
+    });
+
+    // Counted at sign-out and tried by its last send, but the purge matched the id alone:
+    // one its last send could not land stayed queued under a connection that was gone.
+    it('is counted and purged with its connection', async () => {
+      const other = { ...save, connectionId: 'c2', path: 'B/Other' };
+      await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([moved, other]));
+      expect((await pendingSaves('c1')).saves).toBe(1);
+      await removalCleanup('c1');
+      expect(await readQueue()).toEqual([other]);
+    });
+
+    it('on the web, is kept while another tab is signed in to the connection', async () => {
+      const os = Platform.OS;
+      Platform.OS = 'web';
+      try {
+        await AsyncStorage.setItem(CONNECTIONS_KEY, JSON.stringify([{ id: 'c1' }]));
+        await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([moved]));
+        await flushQueue();
+        expect(await readQueue()).toEqual([moved]);
+        await AsyncStorage.setItem(CONNECTIONS_KEY, JSON.stringify([]));
+        await flushQueue();
+        expect(await readQueue()).toEqual([]);
+      } finally {
+        Platform.OS = os;
+      }
+    });
+  });
+
+  // Every connection's queue went at a hold's end, not only the one it held.
+  it('replays only the connection whose 429 wait is over', async () => {
+    const limited = fakeApi(() => Promise.reject(new ApiError(429, 'slow down', undefined, 1)));
+    await expect(saveProgress(limited, save)).resolves.toBe('queued');
+    const other = { ...save, connectionId: 'c2', path: 'B/Other' };
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([...(await readQueue()), other]));
+    const one = fakeApi(async () => {});
+    const two = fakeApi(async () => {});
+    routeClients({ c1: one, c2: two });
+    for (let i = 0; i < 60 && (await readQueue()).length > 1; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    expect(one.saveProgress).toHaveBeenCalledTimes(1);
+    expect(two.saveProgress).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([other]);
   });
 });

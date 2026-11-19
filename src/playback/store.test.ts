@@ -175,6 +175,7 @@ import { resetProfilesForTests, switchProfile, useProfiles } from '@/stores/prof
 import * as session from '@/stores/session';
 import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
+import * as readingProgress from '@/reader/reading-progress';
 
 import { bookFileSpecs } from './book-queue';
 import { clearJumpUndo, startJumpUndo, useJumpUndo } from './jump-undo';
@@ -1412,13 +1413,18 @@ describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
     await Promise.resolve();
 
     (mockSvc.reset as jest.Mock).mockClear();
+    const readerFlush = jest.spyOn(readingProgress, 'flushReadingConnection');
     await teardownBeforeTokenRevoke('c1');
 
     expect(mockSvc.reset).toHaveBeenCalled();
     expect(usePlayer.getState().nowPlaying).toBeNull();
+    // The reader's queued places too, as a last chance.
+    expect(readerFlush).toHaveBeenCalledWith('c1', { lastChance: true });
+    readerFlush.mockRestore();
     // Flushes THIS connection specifically (unlike flushQueue, it doesn't skip on the
-    // connection's reachability), so its queued saves land before removal purges them.
-    expect(flushConnection).toHaveBeenCalledWith('c1');
+    // connection's reachability), so its queued saves land before removal purges them: its
+    // last chance, which takes over another tab's claim on them.
+    expect(flushConnection).toHaveBeenCalledWith('c1', { lastChance: true });
     // And gives the bookmarks waiting on the device their last send.
     expect(mockSendBookmarks).toHaveBeenCalledWith('c1');
   });
@@ -1442,7 +1448,7 @@ describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
       expect(flushConnection).not.toHaveBeenCalled();
       othersDone();
       await teardown;
-      expect(flushConnection).toHaveBeenCalledWith('c1');
+      expect(flushConnection).toHaveBeenCalledWith('c1', { lastChance: true });
     } finally {
       told.mockRestore();
     }

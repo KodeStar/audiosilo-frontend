@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import { ApiError, type ApiClient, isRefusedForGood, TimeoutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { liveClient } from '@/api/live-client';
@@ -11,13 +13,18 @@ import {
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { Progress } from '@/api/types';
 import { downloadEndsBefore } from '@/downloads/kept-offline';
-import { identityMovePending } from '@/lib/connection-id';
+import {
+  identityMovePending,
+  resolveConnectionId,
+  sameConnection,
+  storedConnectionIds,
+} from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
-import { replayQueue, type Route } from '@/lib/queue-claims';
+import { type ClaimCheck, replayQueue, type Route } from '@/lib/queue-claims';
 import { serialQueue } from '@/lib/serial-queue';
 import { tabChannel, type TabChannel } from '@/lib/tab-channel';
 import { tabLock } from '@/lib/tab-lock';
-import { getItem, setItem, setItemStrict } from '@/lib/storage';
+import { getItem, getItemStrict, setItem, setItemStrict } from '@/lib/storage';
 import { withTimeout } from '@/lib/with-timeout';
 import {
   LISTENING_OPEN_SPAN_KEY,
@@ -162,6 +169,11 @@ async function readQueue(): Promise<ProgressSave[]> {
   return (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
 }
 
+/** `readQueue` that rejects when storage could not be read (`ReplayQueue.readStrict`). */
+async function readQueueStrict(): Promise<ProgressSave[]> {
+  return (await getItemStrict<ProgressSave[]>(QUEUE_KEY)) ?? [];
+}
+
 const queueListeners = new Set<() => void>();
 
 /** Store the offline replay queue, read at `before` entries, and tell `onQueueChange`'s
@@ -229,14 +241,17 @@ async function readClockSkews(): Promise<Record<string, number>> {
 
 /** What waits to reach a server: the legacy queue's saves, and Sync v2's listens (the
  * outbox's `listen` events plus the open spans while their server can't be reached), all of
- * them or only `connectionId`'s. `events` counts a waiting finish or unfinish too: what
- * removing the connection would drop (`unsentListens`). */
+ * them or only `connectionId`'s (under an id the identity migration moved it from too,
+ * `sameConnection`). `events` counts a waiting finish or unfinish too: what removing the
+ * connection would drop (`unsentListens`). */
 export async function pendingSaves(
   connectionId?: string,
 ): Promise<{ saves: number; listens: number; events: number }> {
   const [queue, { outbox, spans }] = await Promise.all([readQueue(), readListeningBacklog()]);
   const mine = (e: { connectionId?: unknown } | null | undefined) =>
-    !!e && (connectionId === undefined || e.connectionId === connectionId);
+    !!e &&
+    (connectionId === undefined ||
+      (typeof e.connectionId === 'string' && sameConnection(e.connectionId, connectionId)));
   const saves = Array.isArray(queue) ? queue.filter(mine).length : 0;
   const waiting = outbox.filter(mine);
   // Listens only: a finish or unfinish waiting is not listening (fe#208).
@@ -1380,6 +1395,7 @@ async function flushGroup(
   cid: string,
   routed: ApiClient,
   saves: ProgressSave[],
+  mine: ClaimCheck<ProgressSave>,
 ): Promise<ProgressSave[]> {
   const client = liveClient(cid) ?? routed;
   const remaining: ProgressSave[] = [];
@@ -1389,6 +1405,12 @@ async function flushGroup(
   let stop = false;
   for (const save of saves) {
     if (stop) {
+      remaining.push(save);
+      continue;
+    }
+    // Another replay claimed it since (this tab's timers throttled while it sent those
+    // ahead, or a sign-out took it over), or it left the queue: not this replay's to send.
+    if (!(await mine(save))) {
       remaining.push(save);
       continue;
     }
@@ -1422,16 +1444,22 @@ const withReplayTurn = serialQueue();
  * (`ReplayQueue.sent`). */
 const sentUnsettled = new Set<string>();
 
-/** `replayQueue` over the legacy queue: claimed under its lock, sent outside it. */
-function replaySaves(route: (cid: string) => Route<ApiClient>): Promise<void> {
+/** `replayQueue` over the legacy queue: claimed under its lock, sent outside it.
+ * `takeOver`: a sign-out's last send (`ReplayQueue.takeOver`). */
+function replaySaves(
+  route: (cid: string) => Route<ApiClient> | Promise<Route<ApiClient>>,
+  takeOver = false,
+): Promise<void> {
   return withReplayTurn(() =>
     replayQueue<ProgressSave, ApiClient>({
       lock: withQueueLock,
       read: readQueue,
+      readStrict: readQueueStrict,
       write: writeQueue,
       route,
       send: flushGroup,
       sent: sentUnsettled,
+      takeOver,
     }),
   );
 }
@@ -1442,18 +1470,22 @@ function replaySaves(route: (cid: string) => Route<ApiClient>): Promise<void> {
  * can never be written to server A. Grouped by connection preserving order; the
  * groups run concurrently (they touch disjoint servers), so one dead/slow server
  * can't delay every other server's replay by its full timeout. Saves another tab is
- * replaying are left to it (`replayQueue`).
+ * replaying are left to it (`replayQueue`), and so are a connection this tab does not know
+ * (`storedRoute`). `connectionId`: that connection's alone (`routeOnly`).
  */
-export async function flushQueue(): Promise<void> {
+export async function flushQueue(connectionId?: string): Promise<void> {
   // Load-bearing guard: a flush racing session hydrate would resolve every entry's
   // client to null (the connection list is still empty) and drop the whole queue as
   // unroutable. Wait until the session is ready so entries route to a real client.
   if (!sessionReady()) return;
-  await replaySaves(queuedRoute);
+  await replaySaves(
+    connectionId === undefined ? storedRoute : routeOnly(connectionId, storedRoute),
+  );
 }
 
-// A wait the server asked for (a 429) is over: the saves it held go now.
-onRateLimitOver(() => void flushQueue().catch(() => undefined));
+// A wait the server asked for (a 429) is over: the saves it held go now. That connection's
+// only: another's are held by their own wait, or went already.
+onRateLimitOver((connectionId) => void flushQueue(connectionId).catch(() => undefined));
 
 /** Where a replay of a stored queue (this one, the reader's) sends a connection's saves:
  * through its client, kept while its server is known down or asked to wait (a 429 until its
@@ -1469,12 +1501,38 @@ export function queuedRoute(cid: string): Route<ApiClient> {
   return { send: client };
 }
 
-/** A replay's route of `connectionId`'s saves alone, through `client`: the rest stay. Whatever
- * a wait its server asked (`rateLimited`): a sign-out's last chance tries them. */
-export const onlyConnection =
-  (connectionId: string, client: ApiClient) =>
-  (cid: string): Route<ApiClient> =>
-    cid === connectionId ? { send: client } : 'keep';
+/**
+ * `queuedRoute` for a replay of every connection's queued saves (this queue, the reader's, the
+ * waiting bookmarks), except that on the web a connection this tab's session does not know
+ * is dropped only once it is gone from the stored connections too: one signed in to in
+ * another tab since this tab loaded is that tab's to replay (its saves, a live one waiting
+ * for its turn included; one naming the id the identity migration moved it from too), and
+ * storage that could not be read knows of no connection gone.
+ * Off the web there is no other tab: the session is every connection there is.
+ */
+export async function storedRoute(cid: string): Promise<Route<ApiClient>> {
+  const route = queuedRoute(cid);
+  if (route !== 'drop' || Platform.OS !== 'web') return route;
+  const stored = await storedConnectionIds();
+  // Under the id the save names, or the one the identity migration moved it to.
+  if (stored === null || stored.has(cid) || stored.has(resolveConnectionId(cid))) return 'keep';
+  return 'drop';
+}
+
+/** `route` for `connectionId`'s saves alone (whichever of its ids they name,
+ * `resolveConnectionId`): the rest stay. */
+export const routeOnly =
+  <R>(connectionId: string, route: (cid: string) => R) =>
+  (cid: string): R | 'keep' =>
+    sameConnection(cid, connectionId) ? route(cid) : 'keep';
+
+/** A replay's route of `connectionId`'s saves alone (`routeOnly`: whichever of its ids they
+ * name), through `client`: the rest stay. Whatever a wait its server asked (`rateLimited`): a
+ * sign-out's last chance tries them. */
+export const onlyConnection = (
+  connectionId: string,
+  client: ApiClient,
+): ((cid: string) => Route<ApiClient>) => routeOnly(connectionId, () => ({ send: client }));
 
 /**
  * Flush exactly ONE connection's queued saves through its client, regardless of that
@@ -1486,13 +1544,18 @@ export const onlyConnection =
  *    being removed may itself still be reachable). If it's genuinely unreachable the
  *    attempt fails and the saves stay queued (then get purged - an offline server's
  *    unsynced saves are unrecoverable either way).
- * Unlike `flushQueue`, it does NOT skip on `isReachable(cid)`; it always tries.
+ * Unlike `flushQueue`, it does NOT skip on `isReachable(cid)`; it always tries. A last
+ * chance (`lastChance`) also waits for another tab's claim on them, then takes over what is
+ * left (`ReplayQueue.takeOver`, the web's): signed out here, they were purged unsent.
  */
-export async function flushConnection(connectionId: string): Promise<void> {
+export async function flushConnection(
+  connectionId: string,
+  opts: { lastChance?: boolean } = {},
+): Promise<void> {
   if (!sessionReady()) return;
   const client = resolveClient(connectionId);
   if (!client) return; // already gone - nothing routable to flush
-  await replaySaves(onlyConnection(connectionId, client));
+  await replaySaves(onlyConnection(connectionId, client), opts.lastChance === true);
 }
 
 // Removing a connection orphans its scoped state (signing in again starts from the
@@ -1522,7 +1585,9 @@ onConnectionRemoved(async (id) => {
     }),
     withQueueLock(async () => {
       const queue = await readQueue();
-      const next = queue.filter((s) => s.connectionId !== id);
+      // Under an id the identity migration moved it from too, as its last send and
+      // `pendingSaves` take them.
+      const next = queue.filter((s) => !sameConnection(s.connectionId, id));
       if (next.length !== queue.length) {
         await writeQueue(next, queue.length).catch(() => undefined);
       }
