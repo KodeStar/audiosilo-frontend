@@ -53,7 +53,9 @@ export function connectionClient(
       const now = connectionOf(conn.id);
       if (now?.token === conn.token) useSession.getState().markNeedsReconnect(now.id, 'auth');
     },
-    (at) => noteAnswer(conn.id, at),
+    // Under the connection's id now, as the 401 above: a client built before the identity
+    // migration moved it names the old one, which no reachability reader asks for.
+    (at) => noteAnswer(connectionOf(conn.id)?.id ?? conn.id, at),
     proxy,
   );
 }

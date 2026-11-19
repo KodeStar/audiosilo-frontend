@@ -135,6 +135,21 @@ describe('connection-clients', () => {
     expect(mockNoteAnswer).toHaveBeenCalledTimes(1);
   });
 
+  it('counts an answer to a client built before the identity migration under the new id', async () => {
+    setStore([{ id: 'srv', serverUrl: 'https://h', token: 'tok' }]);
+    installFetch(() => ({ status: 503, body: { error: 'busy' } }));
+    const client = resolveClient('srv')!;
+    setConnectionAliases({ srv: 'srv.3' });
+    try {
+      setStore([{ id: 'srv.3', serverUrl: 'https://h', token: 'tok' }]);
+      await expect(client.me()).rejects.toMatchObject({ status: 503 });
+      expect(mockNoteAnswer).toHaveBeenCalledWith('srv.3', 'https://h');
+      expect(mockNoteAnswer).toHaveBeenCalledTimes(1);
+    } finally {
+      setConnectionAliases({});
+    }
+  });
+
   it('a 403 through the resolved client does NOT flag reconnect (valid token, forbidden)', async () => {
     setStore([{ id: 'c1', serverUrl: 'https://h', token: 'tok' }]);
     installFetch(() => ({ status: 403, body: { error: 'no access to this path' } }));
