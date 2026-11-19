@@ -345,8 +345,10 @@ class WebPlaybackService implements PlaybackService {
       // file still reports the pause, then 'ended'.
       if (a.ended && this.index < this.tracks.length - 1) return;
       // A pause the element made itself (an OS interruption, a headset unplugged) leaves the
-      // stream unread as one through `pause()` does; never a late one after a play went out.
-      if (a.paused && !a.ended && !this.pendingAutoplay) this.unreadSince ??= Date.now();
+      // stream unread as one through `pause()` does, in the start window too (a play out, no
+      // 'playing' yet). Never a late one after a play went out: the element plays by then, and
+      // a clock a reload's stray one starts ends with its 'playing'.
+      if (a.paused && !a.ended) this.unreadSince ??= Date.now();
       this.update({ state: 'paused' });
     });
     a.addEventListener('waiting', () => active() && this.update({ state: 'loading' }));

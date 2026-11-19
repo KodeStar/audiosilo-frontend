@@ -440,6 +440,31 @@ describe('WebPlaybackService (transcoded tracks)', () => {
     expect(a.paused).toBe(false);
   });
 
+  // The interruption lands in the start window: a play is out, 'playing' not yet reported.
+  it('a pause the element made before a play began, left a long time, re-requests on play', async () => {
+    await svc.load(transcodedTracks, 0, 200);
+    el().emit('loadedmetadata');
+    await svc.play(); // asked, still buffering: no 'playing' yet
+    el().pause();
+    expect(svc.getSnapshot().state).toBe('paused');
+    now += 10 * 60_000;
+    await svc.play();
+    expect(el().src).toBe(`${STREAM}&t=200`);
+    expect(svc.getSnapshot().state).toBe('loading');
+  });
+
+  it('the same pause while a seek reloads the stream under a playing book', async () => {
+    await startPlaying(200);
+    await svc.seekTo(600);
+    el().emit('loadedmetadata'); // plays on metadata; no 'playing' yet
+    const loads = el().loads;
+    el().pause();
+    now += 10 * 60_000;
+    await svc.play();
+    expect(el().loads).toBe(loads + 1);
+    expect(el().src).toBe(`${STREAM}&t=600`);
+  });
+
   it('a seek before the first play, left a long time, asks again from there', async () => {
     await svc.load(transcodedTracks, 0, 100);
     el().emit('loadedmetadata');
