@@ -74,6 +74,7 @@ import { listenerSettings } from '@/playback/listener-settings';
 import { noteInteraction } from '@/playback/last-interaction';
 import { placeSavedAt, readLocalPlaces, resumeLookupOf } from '@/playback/progress-sync';
 import {
+  engineOtherBook,
   followsOutsidePlay,
   onOtherBookReported,
   selectBookKey,
@@ -723,11 +724,13 @@ let loadedHere = false;
 
 /**
  * The book a playback resumption starts (Android; the snapshot's `resume`, both the full and
- * the minimal one's): the loaded book while it is neither stopped nor finished (`live`); with
- * none loaded yet in this runtime, the book offered before (`RESUMABLE_KEY`) while it is still
- * the person listening's, and kids mode is as it was (a book offered before kids mode was
- * turned on may not be on the kids shelf). Never the newest Continue listening row: a book
- * stopped or finished here stays stopped at a headset's play.
+ * the minimal one's): the loaded book while it is neither stopped nor finished (`live`), unless
+ * the engine plays another book the store has not adopted (`engineOtherBook`: the car's, the
+ * store's book shown paused once its adoption was overdue), which is the one heard and so the
+ * one resumed; with none loaded yet in this runtime, the book offered before (`RESUMABLE_KEY`)
+ * while it is still the person listening's, and kids mode is as it was (a book offered before
+ * kids mode was turned on may not be on the kids shelf). Never the newest Continue listening
+ * row: a book stopped or finished here stays stopped at a headset's play.
  */
 async function resumableBook(player: PlayerState, live: LivePlace | null): Promise<BookRef | null> {
   if (player.nowPlaying) loadedHere = true;
@@ -737,7 +740,11 @@ async function resumableBook(player: PlayerState, live: LivePlace | null): Promi
       ? { ...stored, connectionId: resolveConnectionId(stored.connectionId) }
       : null;
   }
-  if (live) return live.ref;
+  if (live) {
+    // Another person's book is never named: the car sync stops it (`checkLoadedBook`).
+    const heard = engineOtherBook();
+    return heard && mayActFor(heard.connectionId) ? heard : live.ref;
+  }
   const kept = loadedHere ? null : resumableRef;
   return kept && !!kept.kids === !!activeProfile()?.kids && mayActFor(kept.connectionId)
     ? bookRefOf(kept)

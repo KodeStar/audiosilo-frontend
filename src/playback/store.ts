@@ -235,6 +235,19 @@ function reportedOtherBook(svc: PlaybackService): string | null {
 /** Whether the engine's last report named another book than the store's
  * (`reportedOtherBook`): no listening of the store's book opens then. */
 const engineHoldsAnother = (): boolean => service !== null && reportedOtherBook(service) !== null;
+/**
+ * The book the engine plays when it is not the store's (`reportedOtherBook`: Android's car or
+ * a resumption started it and it was not adopted; after `otherBookNotAdopted` the store's book
+ * shows paused while this one plays on), its connection id resolved; else null. Null too
+ * while a load or a start of the store's holds it, when the engine still reports the book that
+ * load replaces. The car sync names it for a playback resumption (`resumableBook`).
+ */
+export function engineOtherBook(): BookRef | null {
+  if (!service || usePlayer.getState().loadingBook || startsInFlight > 0) return null;
+  const named = service.reportedBook?.();
+  if (!named || reportedOtherBook(service) === null) return null;
+  return { ...bookRefOf(named), connectionId: resolveConnectionId(named.connectionId) };
+}
 /** The other book's report the car sync was last told of (`otherBookReported`), else null. */
 let otherReport: { key: string; trackIndex: number; playing: boolean } | null = null;
 let otherBookListener: (() => void) | null = null;
@@ -273,7 +286,9 @@ function otherBookReported(key: string, raw: PlaybackSnapshot) {
  * chapters. */
 const OTHER_BOOK_ADOPT_MS = 6_000;
 /** The store's book shown playing when the engine began playing another book, while the
- * deadline for that book's adoption runs (`otherBookAdoption`), else null. */
+ * deadline for that book's adoption runs (`otherBookAdoption`), else null. Compared by book,
+ * never by object: a `NowPlaying` replaced for the same book meanwhile (a chapters refresh, a
+ * hot swap's commit) is still the book shown playing. */
 let otherBookShown: NowPlaying | null = null;
 /** That deadline: an `engineTicker`, so a held report runs it where Android has paused the
  * JS timers (screen off), and stopped at its first run. */
@@ -283,7 +298,8 @@ const otherBookAdoption = engineTicker(otherBookNotAdopted, OTHER_BOOK_ADOPT_MS)
  * book's adoption is overdue, it shows paused (`otherBookNotAdopted`). */
 function armOtherBookDeadline() {
   const { nowPlaying, snapshot } = usePlayer.getState();
-  if (!nowPlaying || snapshot.state !== 'playing' || otherBookShown === nowPlaying) return;
+  if (!nowPlaying || snapshot.state !== 'playing') return;
+  if (otherBookShown && sameBook(otherBookShown, nowPlaying)) return;
   cancelOtherBookDeadline();
   otherBookShown = nowPlaying;
   otherBookAdoption.start();
@@ -301,16 +317,18 @@ function cancelOtherBookDeadline() {
  * is saved: its place was saved once at the switch (`otherBookReported`), and saved again it
  * would be dated now. Not when the store holds another book by now (an adoption landed), a
  * load holds it, it no longer shows playing, or the engine's last report is its own again.
+ * The same book under a new `NowPlaying` (a chapters refresh) still shows paused.
  */
 function otherBookNotAdopted() {
   const shown = otherBookShown;
   cancelOtherBookDeadline();
   const { nowPlaying, snapshot, loadingBook } = usePlayer.getState();
-  if (!shown || nowPlaying !== shown || loadingBook || snapshot.state !== 'playing') return;
+  if (!shown || !nowPlaying || !sameBook(nowPlaying, shown)) return;
+  if (loadingBook || snapshot.state !== 'playing') return;
   if (!engineHoldsAnother()) return;
   // An adoption still under way (a slow server's chapters) lands or gives up first.
   if (adoptions > 0) {
-    otherBookShown = shown;
+    otherBookShown = nowPlaying;
     otherBookAdoption.start();
     return;
   }
@@ -4531,6 +4549,11 @@ async function switchCurrentBookToLocal() {
     swapDue = contentKeyOf(nowPlaying);
     return;
   }
+  // The engine plays another book (the car's, not adopted: `otherBookReported`): a load of
+  // this book would cut that one off, and this book's own report would end its adoption
+  // deadline. Nothing of this book plays to move onto the download: a play press reloads it
+  // from there (`retry`), and an adoption replaces it.
+  if (engineIsAnothers() || engineHoldsAnother()) return;
   const swap = localSwapOf(nowPlaying, snapshot);
   if (!swap) return;
   const { queue, index, positionInTrack, sameOrder } = swap;

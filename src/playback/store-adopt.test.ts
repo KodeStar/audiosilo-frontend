@@ -127,6 +127,7 @@ import { resetProfilesForTests, switchProfile, useProfiles } from '@/stores/prof
 import { useSettings } from '@/stores/settings';
 
 import {
+  engineOtherBook,
   landingOf,
   onOtherBookReported,
   onPartialDownloadEnd,
@@ -2248,6 +2249,75 @@ describe("a report of another book than the store's", () => {
     // The engine holds S: a plain play would be S's, so B is loaded at its place.
     expect(mockSvc.load).toHaveBeenCalledTimes(1);
     expect((mockSvc.load as jest.Mock).mock.calls[0].slice(1, 3)).toEqual([1, 30]);
+  });
+
+  // FE-ANDROID-3: the deadline is the book's, not the object's. A `NowPlaying` replaced for the
+  // same book inside the window (a chapters refresh) left it shown playing for good.
+  it("shows the store's book paused at the deadline though its NowPlaying was replaced", async () => {
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    await usePlayer.getState().adoptLoaded(loadedB({ playing: true }));
+    engineBook = { connectionId: 'c1', libraryId: 2, path: 'B' };
+    pushSnapshot(snap('playing', 1, 30));
+    engineBook = refS;
+    pushSnapshot(snap('playing', 0, 5));
+    jest.advanceTimersByTime(3_000);
+    const np = usePlayer.getState().nowPlaying!;
+    usePlayer.setState({ nowPlaying: { ...np, queue: { ...np.queue } } });
+    jest.advanceTimersByTime(3_000);
+    await flushMicrotasks();
+    expect(usePlayer.getState()).toMatchObject({
+      nowPlaying: { path: 'B' },
+      snapshot: { state: 'paused', position: 30 },
+    });
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+  });
+
+  // FE-ANDROID-3: the store's book streamed when the car played S, and its download landed
+  // inside the adoption window. The hot swap loaded it over S (the car's book cut off), and
+  // its own report ended the deadline.
+  it("never hot-swaps the store's book over the other book the engine plays", async () => {
+    await usePlayer.getState().playBook('c1', 2, twoFileBook, twoFileChapters, 130);
+    const refB = { connectionId: 'c1', libraryId: 2, path: 'B' };
+    engineBook = refB;
+    pushSnapshot(snap('playing', 1, 30));
+    await flushMicrotasks();
+    expect(usePlayer.getState().nowPlaying?.queue.tracks[0].url).toBe('stream:2:B/1.mp3');
+    engineBook = refS;
+    pushSnapshot(snap('playing', 0, 5));
+    await flushMicrotasks();
+    jest.clearAllMocks();
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    await flushMicrotasks();
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(6_000);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'paused', position: 30 });
+    // A play press reloads B, from its download, at its place.
+    await usePlayer.getState().toggle();
+    expect(mockSvc.load).toHaveBeenCalledTimes(1);
+    const [tracks, index, at] = (mockSvc.load as jest.Mock).mock.calls[0];
+    expect((tracks as { url: string }[]).map((t) => t.url)).toEqual([
+      'file:///d/1.mp3',
+      'file:///d/2.mp3',
+    ]);
+    expect([index, at]).toEqual([1, 30]);
+  });
+
+  it('names the book the engine plays while it is not adopted (`engineOtherBook`)', async () => {
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    await usePlayer.getState().adoptLoaded(loadedB({ playing: true }));
+    engineBook = { connectionId: 'c1', libraryId: 2, path: 'B' };
+    pushSnapshot(snap('playing', 1, 30));
+    expect(engineOtherBook()).toBeNull();
+    engineBook = refS;
+    pushSnapshot(snap('playing', 0, 5));
+    expect(engineOtherBook()).toEqual(refS);
+    // A load of the store's holds it: the engine still reports the book that load replaces.
+    usePlayer.setState({ loadingBook: 'c1:2:S' });
+    expect(engineOtherBook()).toBeNull();
+    usePlayer.setState({ loadingBook: null });
+    expect(await usePlayer.getState().adoptLoaded(loadedS)).toBe(true);
+    expect(engineOtherBook()).toBeNull();
   });
 
   it('tells the car sync nothing new when the other book returns from buffering', async () => {
