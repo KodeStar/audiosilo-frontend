@@ -95,7 +95,8 @@ export function oidcRetryWait(e: unknown, leftMs: number): number | undefined {
   if (!(e instanceof ApiError)) return 0;
   if (e.status >= 500 || e.status === 408) return 0;
   if (e.status !== 429) return undefined;
-  const ms = (e.retryAfterSeconds ?? 0) * 1000;
+  // Whole seconds, as the words round it (`refusalWaitOver`): Try again and the text switch together.
+  const ms = Math.ceil(e.retryAfterSeconds ?? 0) * 1000;
   return ms < leftMs ? ms : undefined;
 }
 
@@ -105,6 +106,8 @@ export function oidcRetryWait(e: unknown, leftMs: number): number | undefined {
  * that minute is over, a failure the server would have kept the sign-in through (no answer,
  * a 408, a 5xx, a 429 shorter than the minute) has nothing left to finish: it reads as the
  * expired sign-in it now is, as the screen says when the minute runs out with Try again up.
+ * With no retry (a lockout's 15 minutes), a 429's words give way to signing in again once
+ * its wait is over, never to trying again (`waitOver`): only Sign in again is on screen.
  */
 export function oidcFinishFailure(
   e: unknown,
@@ -119,7 +122,10 @@ export function oidcFinishFailure(
   const waitMs = oidcRetryWait(e, left);
   const message = oidcFinishText(e, t, waitMs !== undefined);
   const waitOver = refusalWaitOver(e, t);
-  if (waitMs === undefined) return { message, waitOver };
+  if (waitMs === undefined) {
+    const signInAgain = waitOver && { ...waitOver, text: t('connect.oidc.errors.waitOver') };
+    return { message, waitOver: signInAgain };
+  }
   return { message, retry: { waitMs, doneBy, run }, waitOver };
 }
 

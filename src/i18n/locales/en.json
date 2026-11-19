@@ -506,7 +506,8 @@
         "needsUpdate": "This server needs updating before single sign-on can add someone from kids mode, so the sign-in wasn't kept. Update the server, or sign in another way.",
         "failed": "Signing in didn't finish. Sign in again.",
         "reachRetry": "Could not reach the server to finish signing in. Check your connection and try again.",
-        "failedRetry": "The server couldn't finish signing you in. Try again."
+        "failedRetry": "The server couldn't finish signing you in. Try again.",
+        "waitOver": "Too many tries from this network. You can sign in again now."
       },
       "tryAgain": "Try again"
     },

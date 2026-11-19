@@ -506,7 +506,8 @@
         "needsUpdate": "Este servidor tem de ser atualizado para se poder adicionar alguém a partir do modo crianças com início de sessão único, por isso o início de sessão não foi guardado. Atualiza o servidor ou inicia sessão de outra forma.",
         "failed": "O início de sessão não foi concluído. Inicia sessão novamente.",
         "reachRetry": "Não foi possível contactar o servidor para concluir o início de sessão. Verifica a ligação e tenta novamente.",
-        "failedRetry": "O servidor não conseguiu concluir o início de sessão. Tenta novamente."
+        "failedRetry": "O servidor não conseguiu concluir o início de sessão. Tenta novamente.",
+        "waitOver": "Demasiadas tentativas a partir desta rede. Já podes iniciar sessão novamente."
       },
       "tryAgain": "Tentar novamente"
     },

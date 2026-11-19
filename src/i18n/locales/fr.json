@@ -506,7 +506,8 @@
         "needsUpdate": "Ce serveur doit être mis à jour pour qu'on puisse ajouter quelqu'un depuis le mode enfant avec l'authentification unique. La connexion n'a donc pas été gardée. Mettez le serveur à jour ou connectez-vous autrement.",
         "failed": "La connexion n'a pas abouti. Connectez-vous à nouveau.",
         "reachRetry": "Impossible de joindre le serveur pour terminer la connexion. Vérifiez votre connexion, puis réessayez.",
-        "failedRetry": "Le serveur n'a pas pu terminer la connexion. Réessayez."
+        "failedRetry": "Le serveur n'a pas pu terminer la connexion. Réessayez.",
+        "waitOver": "Trop de tentatives depuis ce réseau. Vous pouvez vous reconnecter maintenant."
       },
       "tryAgain": "Réessayer"
     },

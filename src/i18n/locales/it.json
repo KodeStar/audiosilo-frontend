@@ -506,7 +506,8 @@
         "needsUpdate": "Questo server va aggiornato prima di poter aggiungere qualcuno dalla modalità bambini con il single sign-on, quindi l'accesso non è stato conservato. Aggiorna il server o accedi in un altro modo.",
         "failed": "L'accesso non è stato completato. Accedi di nuovo.",
         "reachRetry": "Impossibile raggiungere il server per completare l'accesso. Controlla la connessione e riprova.",
-        "failedRetry": "Il server non è riuscito a completare l'accesso. Riprova."
+        "failedRetry": "Il server non è riuscito a completare l'accesso. Riprova.",
+        "waitOver": "Troppi tentativi da questa rete. Ora puoi accedere di nuovo."
       },
       "tryAgain": "Riprova"
     },

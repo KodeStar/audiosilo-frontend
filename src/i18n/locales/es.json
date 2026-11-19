@@ -506,7 +506,8 @@
         "needsUpdate": "Hay que actualizar este servidor para poder añadir a alguien desde el modo infantil con inicio de sesión único, así que el inicio de sesión no se guardó. Actualiza el servidor o inicia sesión de otra forma.",
         "failed": "El inicio de sesión no se completó. Vuelve a iniciar sesión.",
         "reachRetry": "No se pudo contactar con el servidor para completar el inicio de sesión. Comprueba tu conexión y vuelve a intentarlo.",
-        "failedRetry": "El servidor no pudo completar el inicio de sesión. Vuelve a intentarlo."
+        "failedRetry": "El servidor no pudo completar el inicio de sesión. Vuelve a intentarlo.",
+        "waitOver": "Demasiados intentos desde esta red. Ya puedes volver a iniciar sesión."
       },
       "tryAgain": "Reintentar"
     },

@@ -140,6 +140,12 @@ describe('oidcRetryWait', () => {
     expect(oidcRetryWait(e, OIDC_DONE_MS)).toBe(ms);
   });
 
+  // Whole seconds, as the words' switch rounds them (`refusalWaitOver`): Try again comes back
+  // with "You can try again now", never up to a second before it.
+  it('rounds a part second up', () => {
+    expect(oidcRetryWait(new ApiError(429, 'slow', undefined, 9.2), OIDC_DONE_MS)).toBe(10_000);
+  });
+
   it.each([
     ['a 400', new ApiError(400, 'invalid request')],
     ['a 401', new ApiError(401, 'x', 'oidc_sign_in_expired')],
@@ -227,10 +233,26 @@ describe('oidcFinishFailure', () => {
     expect(oidcFinishFailure(e, t, NOW - 1, run)).toEqual({
       message: t('connect.oidc.errors.notThisTrip'),
     });
-    // A lockout outlives any minute: its own wait, not an expired sign-in.
+    // A lockout outlives any minute: its own wait, not an expired sign-in. With no Try again
+    // on screen, its words give way to signing in again, never to trying again.
     expect(oidcFinishFailure(new ApiError(429, 'slow', undefined, 900), t, NOW - 1, run)).toEqual({
       message: t('connect.signIn.errors.wait', { count: 15 }),
-      waitOver: { at: NOW + 900_000, text: t('connect.signIn.errors.waitOver') },
+      waitOver: { at: NOW + 900_000, text: t('connect.oidc.errors.waitOver') },
     });
+  });
+
+  it('says to sign in again once a lockout inside the minute is over', () => {
+    const failure = oidcFinishFailure(
+      new ApiError(429, 'slow', undefined, 900),
+      t,
+      NOW + 20_000,
+      run,
+    );
+    expect(failure.retry).toBeUndefined();
+    expect(failure.waitOver).toEqual({
+      at: NOW + 900_000,
+      text: t('connect.oidc.errors.waitOver'),
+    });
+    expect(failure.waitOver?.text).not.toBe(t('connect.signIn.errors.waitOver'));
   });
 });
