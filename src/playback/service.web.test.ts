@@ -453,6 +453,73 @@ describe('WebPlaybackService (transcoded tracks)', () => {
     expect(svc.getSnapshot().state).toBe('loading');
   });
 
+  // A play that never started reads nothing: the clock runs on from the load through it.
+  it('a play that never started and a pause leave the load unread from the load', async () => {
+    await svc.load(transcodedTracks, 0, 250);
+    el().emit('loadedmetadata');
+    const loads = el().loads;
+    now += 29_000;
+    await svc.play(); // asked, still buffering: no 'playing'
+    await svc.pause();
+    now += 29_000; // 58 s since the load, 29 s since the pause
+    await svc.play();
+    expect(el().loads).toBe(loads + 1);
+    expect(el().src).toBe(`${STREAM}&t=250`);
+  });
+
+  it('an autoplaying load that never played is unread from the load', async () => {
+    await startPlaying(200);
+    await svc.seekTo(600); // reloads, meaning to play on
+    el().emit('loadedmetadata'); // plays on metadata; no 'playing' yet
+    now += 29_000;
+    await svc.pause();
+    now += 2_000; // 31 s since the load, 2 s since the pause
+    const loads = el().loads;
+    await svc.play();
+    expect(el().loads).toBe(loads + 1);
+  });
+
+  it('a pause the element made in the start window ends the play intent', async () => {
+    await svc.load(transcodedTracks, 0, 200);
+    el().emit('loadedmetadata');
+    await svc.play(); // asked, still buffering: no 'playing' yet
+    el().pause(); // an OS interruption
+    const plays = el().plays;
+    await svc.seekTo(400);
+    el().emit('loadedmetadata');
+    expect(el().src).toBe(`${STREAM}&t=400`);
+    expect(el().plays).toBe(plays); // the seek does not start the book
+    await svc.skipToTrack(1, 0);
+    el().emit('loadedmetadata');
+    expect(el().src).toBe(STREAM2);
+    expect(el().plays).toBe(plays); // nor does a skip
+  });
+
+  // Firefox (and a 'pause' queued just before the src changed) fires one while the new load
+  // waits on its metadata: the browser's own, never the listener's.
+  it("a 'pause' while an autoplaying load waits on its metadata keeps its autoplay", async () => {
+    await startPlaying(100);
+    const a = el();
+    const plays = a.plays;
+    await svc.seekTo(600); // reloads, meaning to play on
+    expect(a.paused).toBe(true); // the load algorithm paused it
+    a.emit('pause');
+    a.emit('loadedmetadata');
+    expect(a.plays).toBe(plays + 1);
+    expect(a.paused).toBe(false);
+  });
+
+  it("a 'pause' that lands after a play went out keeps the play intent", async () => {
+    await svc.load(transcodedTracks, 0, 200);
+    el().emit('loadedmetadata');
+    await svc.play(); // the element is no longer paused
+    el().emit('pause'); // a stale one, queued before the play
+    const plays = el().plays;
+    await svc.seekTo(400);
+    el().emit('loadedmetadata');
+    expect(el().plays).toBe(plays + 1);
+  });
+
   it('the same pause while a seek reloads the stream under a playing book', async () => {
     await startPlaying(200);
     await svc.seekTo(600);

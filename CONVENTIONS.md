@@ -2920,13 +2920,16 @@ media GETs only.
   a transcoded seek), so a chapter sleep timer aimed at that boundary finds the book live and
   pauses it. A load plays on `loadedmetadata` only if `pendingAutoplay` is still set (a
   `pause()` inside the load, the listener's or the sleep timer's, clears it and settles the
-  snapshot on `paused`). A transcoded stream is never requested inside its last second
-  (`transcodeStartAt`): at the very end there is nothing to encode and the element errors
-  instead of ending. A transcode left unread more than `TRANSCODE_STALE_PAUSE_MS` (30 s), paused
-  (through `pause()` or by the element itself, an OS interruption) or loaded and never played (a
-  play the browser refused included) (`unreadSince`), is asked again at the place on the next
-  `play()`: the server (or a proxy) may have dropped it, and reading a dead connection would
-  only stall into the watchdog.
+  snapshot on `paused`). A pause the element makes itself (an OS interruption) clears it too, in
+  the start window as well, so a later transcoded seek or skip never starts the book; a 'pause'
+  event while the current load awaits its metadata (the browser's own around a src change) or
+  one landing after a play went out is not that pause. A transcoded stream is never requested
+  inside its last second (`transcodeStartAt`): at the very end there is nothing to encode and
+  the element errors instead of ending. A transcode left unread more than
+  `TRANSCODE_STALE_PAUSE_MS` (30 s) (`unreadSince`: stamped by every load and by a pause,
+  cleared only by 'playing', so a play that never started leaves it running) is asked again at
+  the place on the next `play()`: the server (or a proxy) may have dropped it, and reading a
+  dead connection would only stall into the watchdog.
 
 **Car (CarPlay and Android Auto)** (`src/car/`, the native side in `modules/audiosilo-player`;
 the full write-up is the docs' `docs-developers/frontend/native-integrations.md`). No wire change.
