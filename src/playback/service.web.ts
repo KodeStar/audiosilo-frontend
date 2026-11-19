@@ -200,6 +200,12 @@ class WebPlaybackService implements PlaybackService {
   /** Where each element's source node is connected now. */
   private routedTo = new Map<HTMLAudioElement, AudioNode>();
   private pausedAt: number | null = null;
+  /** Since when the active element's stream has gone unread: a load that doesn't play (the
+   * book loaded, a seek while paused) or a pause; null while it plays or is about to. A
+   * transcode left unread this long may be gone (dropped by the server or a proxy), so the
+   * next `play()` re-requests it (`TRANSCODE_STALE_PAUSE_MS`): a book loaded and never
+   * played as much as one paused. */
+  private unreadSince: number | null = null;
   /** Track-absolute start (seconds) of the active element's source: the `t` a
    * transcoded stream was requested at, 0 for a direct stream. */
   private offset = 0;
@@ -373,6 +379,7 @@ class WebPlaybackService implements PlaybackService {
     this.offset = source.offset;
     this.earlyEndRetryAt = null; // handleEnded re-sets it for its own reload
     this.pendingAutoplay = autoplay;
+    this.unreadSince = autoplay ? null : Date.now();
     const seq = ++this.loadSeq;
     this.placing = a;
     this.awaitingMetadata = a;
@@ -723,12 +730,15 @@ class WebPlaybackService implements PlaybackService {
         ? Math.min(this.config.autoRewindMax, pausedFor / 1000)
         : 0;
     this.pausedAt = null;
+    const unreadFor = this.unreadSince != null ? Date.now() - this.unreadSince : 0;
+    this.unreadSince = null;
     if (this.current()?.transcoded) {
       this.pendingAutoplay = true;
       // A transcoded stream can't seek in place: an auto-rewind re-requests it further
-      // back, and so does a resume after a long pause (the paused transcode may have
-      // been dropped; resuming a dead connection would only stall into the watchdog).
-      if (rewind > 0.5 || pausedFor > TRANSCODE_STALE_PAUSE_MS) {
+      // back, and so does a play after the stream went unread a long time, paused or loaded
+      // and never played (the transcode may have been dropped; reading a dead connection
+      // would only stall into the watchdog).
+      if (rewind > 0.5 || unreadFor > TRANSCODE_STALE_PAUSE_MS) {
         this.reloadTranscodedAt(Math.max(0, this.snapshot.position - rewind), true);
         return;
       }
@@ -751,6 +761,8 @@ class WebPlaybackService implements PlaybackService {
     const settle = a.paused && this.snapshot.state === 'loading';
     a.pause();
     this.pausedAt = Date.now();
+    // Unread from the first pause, or from the load before it: a second one moves nothing.
+    this.unreadSince ??= Date.now();
     this.pendingAutoplay = false;
     if (settle) this.update({ state: 'paused' });
   }
@@ -819,6 +831,7 @@ class WebPlaybackService implements PlaybackService {
     this.index = 0;
     this.offset = 0;
     this.pausedAt = null;
+    this.unreadSince = null;
     this.loadSeq++;
     this.queueSeq++;
     this.placing = null;

@@ -372,6 +372,43 @@ describe('WebPlaybackService (transcoded tracks)', () => {
     expect(el().src).toBe(`${STREAM}&t=230`);
   });
 
+  // A book loaded and left unplayed holds a transcode nobody reads, which the server's idle
+  // end (or a proxy) can drop: its first play asks again, as after a long pause.
+  it('a load left unplayed a long time re-requests on its first play', async () => {
+    await svc.load(transcodedTracks, 0, 250);
+    el().emit('loadedmetadata');
+    now += 10 * 60_000;
+    await svc.play();
+    expect(el().src).toBe(`${STREAM}&t=250`);
+    expect(svc.getSnapshot().state).toBe('loading');
+    const plays = el().plays;
+    el().emit('loadedmetadata');
+    expect(el().plays).toBe(plays + 1);
+  });
+
+  it('a load played soon reads the stream it already asked for', async () => {
+    await svc.load(transcodedTracks, 0, 250);
+    const a = el();
+    a.emit('loadedmetadata');
+    const loads = a.loads;
+    now += 5_000;
+    await svc.play();
+    expect(a.loads).toBe(loads);
+    expect(a.paused).toBe(false);
+  });
+
+  it('a seek before the first play, left a long time, asks again from there', async () => {
+    await svc.load(transcodedTracks, 0, 100);
+    el().emit('loadedmetadata');
+    await svc.seekTo(40);
+    el().emit('loadedmetadata');
+    const loads = el().loads;
+    now += 10 * 60_000;
+    await svc.play();
+    expect(el().loads).toBe(loads + 1);
+    expect(el().src).toBe(`${STREAM}&t=40`);
+  });
+
   it('an early end reloads where it stopped; a real end advances', async () => {
     await startPlaying(0);
     const a = el();
