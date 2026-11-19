@@ -681,8 +681,7 @@ function refreshAfterAdd(
  * bookmark; rejects when the connection is gone or the server refused. A bookmark that must
  * not be lost while the server can't take it (the playing book's shortcut, the sleep
  * timer's "Fell asleep") goes through the bookmark outbox (`annotation-outbox.ts`) instead.
- * The new bookmark joins the book's cached list at once, before the list is read again: a
- * waiting row the outbox settles as sent meanwhile gives way to it with no gap.
+ * The new bookmark joins the book's cached list at once (`showServerBookmark`).
  */
 export async function addBookmark(
   connectionId: string,

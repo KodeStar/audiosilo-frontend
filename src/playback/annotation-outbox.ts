@@ -426,12 +426,15 @@ function isThisOne(onServer: Bookmark, queued: QueuedBookmark): boolean {
   return Date.parse(onServer.created_at) >= Date.parse(queued.updated_at) - SAME_BOOKMARK_WINDOW_MS;
 }
 
-/** Whether the server already holds `queued` among `onServer` (the replay's rule): a waiting
- * row or pin for it would show the bookmark twice, between its send and its leaving the
- * outbox (a replay settles once every connection's sends are done), or after an add whose
- * answer was lost. */
-export function heldOnServer(queued: QueuedBookmark, onServer: readonly Bookmark[]): boolean {
-  return onServer.some((b) => isThisOne(b, queued));
+/** The server's bookmark among `onServer` that is `queued`, already held (the replay's rule),
+ * else undefined: a waiting row or pin for it would show the bookmark twice, between its send
+ * and its leaving the outbox (a replay settles once every connection's sends are done), or
+ * after an add whose answer was lost. */
+export function heldOnServer(
+  queued: QueuedBookmark,
+  onServer: readonly Bookmark[],
+): Bookmark | undefined {
+  return onServer.find((b) => isThisOne(b, queued));
 }
 
 /** Right before a send of `entry`: whether it is still in the stored outbox, one taken out
@@ -552,10 +555,8 @@ async function sendGroup(
         reads.set(book, read);
       }
       const held = await read;
-      // Already there (a send whose answer was lost, an Undo of one a replay had sent): taken
-      // as sent, and shown in the book's list as a send's would be, so its waiting row and
-      // pin give way to the server's bookmark rather than to nothing until the list is read.
-      const already = held.find((b) => isThisOne(b, e));
+      // Already there (an answer lost, an Undo of one a replay had sent): taken as sent.
+      const already = heldOnServer(e, held);
       if (already) {
         showServerBookmark(connectionId, e.libraryId, e.path, already);
         continue;
@@ -646,14 +647,14 @@ let sweep: Promise<void> | null = null;
  * failing bookmark fails once, not twice, toward giving up on it. A bookmark stored
  * meanwhile asks for its own connection's send (`enqueue`), which is never joined. */
 export function flushBookmarks(connectionId?: string): Promise<void> {
-  if (connectionId !== undefined) return flush(connectionId);
-  sweep ??= flush().finally(() => {
+  if (connectionId !== undefined) return replayWaiting(connectionId);
+  sweep ??= replayWaiting().finally(() => {
     sweep = null;
   });
   return sweep;
 }
 
-async function flush(connectionId?: string): Promise<void> {
+async function replayWaiting(connectionId?: string): Promise<void> {
   if (!sessionReady()) return;
   const route =
     connectionId === undefined
