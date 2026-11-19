@@ -1106,7 +1106,8 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   sent. A replay takes the turn per save (replays themselves one at a time, `withReplayTurn`).
   A save on its way replaces an older queued one of its book before the request goes, and a
   sent or refused one drops it; one a replay had claimed is never sent after it
-  (`settledUntil`), nor once a newer save of its book is queued in its place. The queue keeps
+  (`settledUntil`), nor once it has left the queue (`stillQueued`: a newer save of its book
+  queued in its place, or another tab's sent one dropped it). The queue keeps
   the newest save per book by `updated_at`, whatever order the writes land in.
   The mirror and the stored queue are every tab's: their read-modify-writes take `tabLock`
   (storage only), and a replay claims what it sends (`replayQueue`, as the legacy queue; a

@@ -1160,6 +1160,38 @@ describe('reading-progress', () => {
     expect((await readQueue()).map((s) => [s.path, s.cfi])).toEqual([['A/Book', CFI_B]]);
   });
 
+  it('never sends a claimed save another tab has dropped for a newer one it sent', async () => {
+    reachable.mockReturnValue(false);
+    await saveReadingPlace(null, save({ path: 'B/Other' }));
+    await saveReadingPlace(null, save({ progression: 0.6 }));
+    reachable.mockReturnValue(true);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const api = fakeApi();
+    const answer = api.saveReadingProgress.getMockImplementation()!;
+    api.saveReadingProgress.mockImplementation(
+      async (lib: number, path: string, input: Record<string, unknown>) => {
+        if (path === 'B/Other') await gate;
+        return answer(lib, path, input);
+      },
+    );
+    routeClients({ c1: api });
+    const replay = flushReadingQueue();
+    await nextMacrotask();
+    // The replay holds B/Other with A/Book claimed; another tab's reader pages back in
+    // A/Book, and that save is sent: the claimed one leaves the stored queue, with nothing
+    // newer queued in its place and nothing this tab knows of settled.
+    const queue = await readQueue();
+    await AsyncStorage.setItem(
+      READING_QUEUE_KEY,
+      JSON.stringify(queue.filter((s) => s.path !== 'A/Book')),
+    );
+    release();
+    await replay;
+    expect(api.saveReadingProgress.mock.calls.filter(([, path]) => path === 'A/Book')).toEqual([]);
+    expect(await readQueue()).toEqual([]);
+  });
+
   describe('the place after a replay (fe#173)', () => {
     it('opens at the newer local place with the row it never saw, to offer Jump at once', async () => {
       const server = ruleServer('Tablet');

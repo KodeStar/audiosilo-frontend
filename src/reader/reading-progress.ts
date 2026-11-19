@@ -593,15 +593,20 @@ async function dropQueuedBefore(sent: ReadingSave): Promise<boolean> {
  * later than a save of their book sent since, while storage refused to take them out. */
 const sentUnsettled = new Set<string>();
 
-/** Whether a save of `save`'s book made after it is queued: it carries the place. */
-async function newerQueued(save: ReadingSave): Promise<boolean> {
-  return (await readQueue()).some((s) => sameBook(s, save) && timeOf(s) > timeOf(save));
+/** Whether `save` is still its book's queued save, as when the replay claimed it. Not once
+ * a newer save of the book took its place (the reader's, sent and failed or held), another
+ * tab sent a newer one and dropped it, or its connection went. */
+async function stillQueued(save: ReadingSave): Promise<boolean> {
+  const key = queuedKey(save);
+  return (await readQueue()).some((s) => queuedKey(s) === key);
 }
 
 /** Replay one connection's saves through its client, each in its book's send turn; returns
- * those to keep. A save settled here meanwhile (`settledHere`) is not sent, nor one a newer
- * save of its book replaced in the queue since it was claimed (the reader's, sent and failed
- * or held, or another tab's): sent after that one went, it put the older place back. */
+ * those to keep. A save settled here meanwhile (`settledHere`) is not sent, nor one that left
+ * the queue since it was claimed (`stillQueued`): sent after the newer save that replaced or
+ * dropped it, in this tab or another, it put the older place back. Such a save is kept, not
+ * settled: nothing of it is queued to take out, and a queue that could not be read loses
+ * nothing. */
 async function flushGroup(
   cid: string,
   client: ApiClient,
@@ -617,7 +622,8 @@ async function flushGroup(
       continue;
     }
     const sent = await withSendTurn(contentKeyOf(save), async () => {
-      if (settledHere(save) || (await newerQueued(save))) return 'settled';
+      if (settledHere(save)) return 'settled';
+      if (!(await stillQueued(save))) return 'kept';
       try {
         await put(client, save);
         noteSuccess(cid);
