@@ -22,8 +22,8 @@ export class AddMemberHereError extends Error {
 
 /**
  * Whether this device already holds a connection for user `userId` (`username`) on the server
- * `serverId` (or one from before Phase 8 that can't tell its users apart, kept under that name
- * or none, `priorConnection`). Ask before minting a member's session (`memberSession`): a
+ * `serverId` (or one from before Phase 8 that can't tell its users apart, kept under that
+ * name, `priorConnection`). Ask before minting a member's session (`memberSession`): a
  * session `addMemberHere` then refuses would stay signed in on the server with nothing using
  * it. The same rule `addMemberHere` applies, so neither refuses what the other lets through.
  */

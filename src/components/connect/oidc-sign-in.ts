@@ -185,9 +185,9 @@ export async function finishOidcSignIn(
   // The provider's return loaded this page just now: the done cookie's minute runs from here.
   const doneBy = Date.now() + OIDC_DONE_MS;
   const { book, reconnectId } = takeOidcResumed(origin);
-  // A reconnect's finish goes out with its own proxy headers, as its password sign-in
-  // would (`connectClientFor(server, _, reconnectId)`), never another person's.
-  const { client, proxy: carried } = connectClientFor(origin, undefined, reconnectId);
+  // With the proxy headers kept for the origin (one set per origin, fe#295), as its password
+  // sign-in would.
+  const { client, proxy: carried } = connectClientFor(origin);
   // Read before the answer: `settleOidcPass` spends it.
   const expected = oidcPassTag();
   const attempt = async (): Promise<OidcFinishFailure | null> => {

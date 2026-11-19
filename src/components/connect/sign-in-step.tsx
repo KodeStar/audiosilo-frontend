@@ -135,11 +135,10 @@ export function SignInStep({
     set(v);
     if (missing === field) setMissing(null);
   };
-  // With the proxy headers entered for `server` on the step before (fe#167); a reconnect
-  // carries only those or its own connection's, never another person's. This one only asks
-  // whether single sign-on is on and names its start page: a sign-in builds its own client
-  // as it is sent (`onSubmit`).
-  const api = useMemo(() => connectClient(server, undefined, reconnectId), [server, reconnectId]);
+  // With the proxy headers entered for `server` on the step before (fe#167), else the set kept
+  // for it (one per origin, fe#295). This one only asks whether single sign-on is on and names
+  // its start page: a sign-in builds its own client as it is sent (`onSubmit`).
+  const api = useMemo(() => connectClient(server), [server]);
 
   // Single sign-on: only the served player at its own server asks (`oidc-sign-in.ts`). What
   // the flow is for (a grown-up's pass through kids mode, "Add someone", `book`, the
@@ -184,10 +183,9 @@ export function SignInStep({
     setLoading(true);
     // Which request failed decides the words (`signInErrorText`).
     let stage: SignInStage = mode === 'code' ? 'redeem' : 'login';
-    // The proxy set read as the sign-in is sent, not as the step opened (fe#295): another
-    // connection's that the sign-in would borrow (`carried`) and that signed out meanwhile
-    // is gone from the device, and must not be sent nor kept.
-    const { client, proxy: carried } = connectClientFor(server, undefined, reconnectId);
+    // The proxy set read as the sign-in is sent, not as the step opened (fe#295): one changed
+    // or removed on the Account page meanwhile is the one that counts.
+    const { client, proxy: carried } = connectClientFor(server);
     try {
       if (mode === 'code') {
         const typed = code.trim();

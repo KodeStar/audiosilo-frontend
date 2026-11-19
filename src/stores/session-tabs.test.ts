@@ -444,24 +444,78 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     expect(a.useSession.getState().connections.map((c) => c.id)).toEqual([sam]);
   });
 
-  // A set edited in place leaves the stored list as it was (its marker stays): only the
-  // headers' own write tells this tab.
+  // A set edited in place leaves the stored list as it was: only the sets' own write tells
+  // this tab (fe#295: one item for every origin's set).
   it("another tab's edited proxy headers are the ones this tab sends", async () => {
+    const { a, b } = await twoTabs();
+    const ORIGIN = 'https://proxy.example';
+    const set = (value: string) => ({ origin: ORIGIN, headers: [{ name: 'X-Proxy-Auth', value }] });
+    await b.useSession.getState().setProxySet(ORIGIN, set('one'));
+    await settle();
+    expect(a.useSession.getState().proxySets[ORIGIN]).toEqual(set('one'));
+    await b.useSession.getState().setProxySet(ORIGIN, set('two'));
+    await settle();
+    expect(a.useSession.getState().proxySets[ORIGIN]).toEqual(set('two'));
+    await b.useSession.getState().setProxySet(ORIGIN, null);
+    await settle();
+    expect(a.useSession.getState().proxySets).toEqual({});
+  });
+
+  // A tab of an earlier build (the bundle before fe#295) keeps a set for its connection
+  // after this tab launched: its mark in the list is one this tab never wrote. This tab's
+  // writes of the list keep it, or the item behind it would never be moved.
+  it("keeps a mark an earlier build's tab wrote, through this tab's writes of the list", async () => {
     const { a, b, alex } = await twoTabs();
-    const set = (value: string) => ({
-      origin: 'https://proxy.example',
-      headers: [{ name: 'X-Proxy-Auth', value }],
-    });
-    await b.useSession.getState().setProxyHeaders(alex, set('one'));
-    await settle();
-    expect(a.useSession.getState().connections.find((c) => c.id === alex)?.proxyHeaders).toEqual(
-      set('one'),
+    type Stored = { id: string; hasProxyHeaders?: true };
+    const stored = () => JSON.parse(b.env.localStorage.getItem(CONNECTIONS_KEY)!) as Stored[];
+    b.env.localStorage.setItem(
+      `audiosilo.proxy-headers.${alex}`,
+      JSON.stringify({ origin: 'https://srv', headers: [{ name: 'X-Proxy', value: 'one' }] }),
     );
-    await b.useSession.getState().setProxyHeaders(alex, set('two'));
-    await settle();
-    expect(a.useSession.getState().connections.find((c) => c.id === alex)?.proxyHeaders).toEqual(
-      set('two'),
+    b.env.localStorage.setItem(
+      CONNECTIONS_KEY,
+      JSON.stringify(stored().map((m) => (m.id === alex ? { ...m, hasProxyHeaders: true } : m))),
     );
+    await settle();
+    await a.useSession.getState().setConnectionUser(alex, mkUser(1, 'alexander'));
+    expect(stored().find((m) => m.id === alex)?.hasProxyHeaders).toBe(true);
+    expect(a.useSession.getState().connections.find((c) => c.id === alex)).not.toHaveProperty(
+      'hasProxyHeaders',
+    );
+  });
+
+  // A tab whose move of an earlier build's set could not be written uses the set from where
+  // it is (fe#295): another tab's write of the list must not take it from this tab.
+  it("keeps a set used in place from an earlier build's item through another tab's write", async () => {
+    const browser = fakeBrowser();
+    const { b, alex } = await twoTabs(browser);
+    type Stored = { id: string; hasProxyHeaders?: true };
+    const stored = () => JSON.parse(b.env.localStorage.getItem(CONNECTIONS_KEY)!) as Stored[];
+    const set = { origin: 'https://srv', headers: [{ name: 'X-Proxy', value: 'one' }] };
+    b.env.localStorage.setItem(`audiosilo.proxy-headers.${alex}`, JSON.stringify(set));
+    b.env.localStorage.setItem(
+      CONNECTIONS_KEY,
+      JSON.stringify(stored().map((m) => (m.id === alex ? { ...m, hasProxyHeaders: true } : m))),
+    );
+    const c = openTab(browser);
+    const write = c.env.localStorage.setItem;
+    c.env.localStorage.setItem = (key, value) => {
+      if (key === 'audiosilo.proxy-sets') throw new Error('quota');
+      write(key, value);
+    };
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await c.useSession.getState().hydrate();
+      expect(c.useSession.getState().proxySets).toEqual({ [set.origin]: set });
+      await b.useSession.getState().setConnectionUser(alex, mkUser(1, 'alexander'));
+      await settle();
+      expect(c.useSession.getState().connections.find((x) => x.id === alex)?.user.username).toBe(
+        'alexander',
+      );
+      expect(c.useSession.getState().proxySets).toEqual({ [set.origin]: set });
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   // Each tab builds the first document from the same list at once: the second to write finds

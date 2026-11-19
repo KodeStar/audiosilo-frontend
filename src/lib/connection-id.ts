@@ -69,14 +69,15 @@ export function serverIdOf(conn: { id: string; serverId?: string }): string {
 /**
  * The connection this device already has for `userId` on the server `serverId` (matched by
  * `serverIdOf` and `user.id`, at any URL), else one saved without a numeric user id (from
- * before user ids were kept: it was the server's one connection, so it is taken to be this
- * user). Undefined for a user new to this device. The one rule the session's `setSession`
+ * before user ids were kept) under this user's username. Undefined for a user new to this
+ * device. The one rule the session's `setSession`
  * (which connection a sign-in updates), the connect flow (which person it keeps) and
  * `repairPlan` (which address it keeps) share.
  *
- * `username`: who is signing in. A connection without a user id that kept its username is
- * taken to be this user only under that name (fe#298): anyone else signing in, a reconnect
- * included, is a new connection and never takes over its downloads, places and person.
+ * `username`: who is signing in. A connection without a user id is taken to be this user only
+ * under the username it kept (`sameUser`, fe#298): one that kept none, or a caller that does
+ * not say who, proves nothing, so anyone signing in, a reconnect included, is a new
+ * connection and never takes over its token, downloads, places and person.
  */
 export function priorConnection<
   C extends {
@@ -92,10 +93,12 @@ export function priorConnection<
   );
 }
 
-/** Whether a connection saved without a user id, under `kept` (its username, if any), may be
- * `username`'s: always when either is unknown, else only under the same name. */
-function sameUser(kept: unknown, username: string | undefined): boolean {
-  return typeof kept !== 'string' || !kept || username === undefined || kept === username;
+/** Whether a connection saved without a user id, under `kept` (its username, if any), is
+ * `username`'s: only when both are known and the same. An unknown one proves nothing, so the
+ * sign-in is a connection of its own (fe#298): never another person's token on this one's
+ * books, places and profile. */
+export function sameUser(kept: unknown, username: string | undefined): boolean {
+  return typeof kept === 'string' && !!kept && username !== undefined && kept === username;
 }
 
 // --- Aliases ----------------------------------------------------------------------------

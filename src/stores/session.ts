@@ -13,12 +13,20 @@ import { connectionIdOf, priorConnection, serverIdOf } from '@/lib/connection-id
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
 import { forgetCalendarLink } from '@/lib/upcoming-calendar';
 import { hostOf } from '@/lib/pairing';
-import { originOf, type ProxyHeaders } from '@/lib/proxy-headers';
+import {
+  type ProxyHeaders,
+  proxyOriginOf,
+  type ProxySets,
+  proxySetFor,
+  sameProxyHeaders,
+} from '@/lib/proxy-headers';
 import {
   forgetProxyHeaders,
-  proxyHeadersKey,
-  readProxyHeaders,
-  saveProxyHeaders,
+  forgetProxySets,
+  PROXY_SETS_KEY,
+  readLegacyProxyHeaders,
+  readProxySets,
+  saveProxySets,
 } from '@/lib/proxy-headers-store';
 import { mergeAddresses, sameAddresses, sameUrl } from '@/lib/server-address';
 import { onStoredChange, tabChannel, type TabChannel, type TabChannelEnv } from '@/lib/tab-channel';
@@ -47,8 +55,6 @@ import {
 /** Where a connection's session token lives in the secure store. */
 const TOKEN_PREFIX = 'audiosilo.token.';
 export const tokenKey = (id: string) => `${TOKEN_PREFIX}${id}`;
-/** Where every connection's proxy headers live (`proxyHeadersKey`), followed like the tokens. */
-const PROXY_HEADERS_PREFIX = proxyHeadersKey('');
 
 // Pre-multi-server single-session keys, cleared by the storage reset below.
 const LEGACY_SERVER = 'audiosilo.serverUrl';
@@ -140,14 +146,16 @@ export async function resetStaleStorage(): Promise<StorageResetResult> {
     // cache is folded in: its owning connections are being cleared, so it's now orphaned.
     const meta = (await getItem<PersistedConnection[]>(CONNECTIONS_KEY)) ?? [];
     // Each one's calendar link (Track U3) is a credential kept beside its token: it goes too.
-    // So are its proxy headers (fe#167).
-    await Promise.all(
-      meta.flatMap((m) => [
+    // So do the proxy headers (fe#167): every origin's, and an earlier build's per-connection
+    // copies.
+    await Promise.all([
+      ...meta.flatMap((m) => [
         deleteSecure(tokenKey(m.id)).catch(() => undefined),
         forgetCalendarLink(m.id),
         forgetProxyHeaders(m.id),
       ]),
-    );
+      forgetProxySets(),
+    ]);
     await Promise.all([
       removeItem(CONNECTIONS_KEY),
       removeItem(DEFAULT_KEY),
@@ -301,8 +309,7 @@ function listenToOtherTabs(): void {
   const env = otherTabsEnv();
   const unfollow = env
     ? onStoredChange(
-        (k) =>
-          k === CONNECTIONS_KEY || k.startsWith(TOKEN_PREFIX) || k.startsWith(PROXY_HEADERS_PREFIX),
+        (k) => k === CONNECTIONS_KEY || k.startsWith(TOKEN_PREFIX) || k === PROXY_SETS_KEY,
         storedMoved,
         env,
       )
@@ -359,44 +366,221 @@ type StoredSignIns = {
   /** Null when the stored list is empty or missing. */
   connections: Connection[] | null;
   defaultId: string | null;
+  /** Every origin's proxy headers (fe#295, `readProxySets`). */
+  proxySets: Record<string, ProxyHeaders>;
+  /** The stored connections still marked as holding a set of their own, as earlier builds
+   * kept them (`hasProxyHeaders`): `hydrate` moves those sets (`moveLegacyProxySets`), and a
+   * tab that follows the list keeps their marks (`applyStored`). */
+  marked: string[];
 };
 
-/** The stored connections with their tokens (and proxy headers). A read that fails rejects. */
+/** The stored connections with their tokens, and the proxy headers. A read that fails
+ * rejects: a locked keychain fails the read of a set as it fails a token's, never a
+ * connection that goes on without its headers. */
 async function readStored(): Promise<StoredSignIns> {
   // Strict: a list that could not be read is a failed read, never "no connections"
   // (`getItem` would answer null).
-  const [meta, defaultId] = await Promise.all([
+  const [meta, defaultId, proxySets] = await Promise.all([
     getItemStrict<PersistedConnection[]>(CONNECTIONS_KEY),
     getItemStrict<string>(DEFAULT_KEY),
+    // Read with no connection too: a set stays for its address after everyone signs out.
+    readProxySets(),
   ]);
   const list = JSON.stringify(meta ?? null);
-  if (!meta || !meta.length) return { list, connections: null, defaultId: defaultId ?? null };
-  // The proxy headers only for a connection marked as having them; a read of them that fails
-  // (a locked keychain) fails the read as the token's does: never a connection that goes on
-  // without its headers.
+  const marked = (meta ?? []).filter((m) => m.hasProxyHeaders).map((m) => m.id);
+  if (!meta || !meta.length) {
+    return { list, connections: null, defaultId: defaultId ?? null, proxySets, marked };
+  }
   const withTokens = await Promise.all(
-    meta.map(async ({ hasProxyHeaders, ...m }) => {
-      const [token, proxyHeaders] = await Promise.all([
-        getSecure(tokenKey(m.id)),
-        hasProxyHeaders ? readProxyHeaders(m.id) : null,
-      ]);
-      // A set the rules drop at load (one for an http origin, a damaged item), or the set of
-      // a connection dropped with its token gone, must not stay in the store.
-      if (hasProxyHeaders && (!token || !proxyHeaders)) await forgetProxyHeaders(m.id);
+    meta.map(async ({ hasProxyHeaders: _marked, ...m }) => {
+      const token = await getSecure(tokenKey(m.id));
       if (!token) return null;
-      return {
-        ...m,
-        serverId: serverIdOf(m),
-        token,
-        ...(proxyHeaders ? { proxyHeaders } : {}),
-      } as Connection;
+      return { ...m, serverId: serverIdOf(m), token } as Connection;
     }),
   );
   return {
     list,
     connections: withTokens.filter((c): c is Connection => c !== null),
     defaultId: defaultId ?? null,
+    proxySets,
+    marked,
   };
+}
+
+/**
+ * The stored connections whose `hasProxyHeaders` mark is written again with the list
+ * (`persist`): the ones whose own set (an earlier build's) is still where that build left it.
+ * One this build could not read (a build that can still finds it), one whose move could not
+ * be written at this launch (the next tries again), and one another tab marked since this
+ * one launched (a tab of an earlier build keeping a set for its connection: moved at this
+ * build's next launch, `applyStored`). A write of the list never drops a mark it does not
+ * know of: the item behind it would stay in secure-store with nothing left to move it. A set
+ * removed on purpose takes its old items and their marks with it (`forgetLegacyProxySets`).
+ */
+let legacyMarks: ReadonlySet<string> = new Set();
+
+/** `m` as stored: marked again while its earlier build's set is not moved (`legacyMarks`). */
+function withLegacyMark<T extends { id: string }>(m: T): T & { hasProxyHeaders?: true } {
+  return legacyMarks.has(m.id) ? { ...m, hasProxyHeaders: true } : m;
+}
+
+/**
+ * The sets this launch uses from where an earlier build left them (their move could not be
+ * written, `moveLegacyProxySets`), by origin, with the connection whose item holds each. Kept
+ * by a tab that follows another's write while their marks stand (`followInPlace`), and
+ * written to their origin's before that item goes with its connection (`keepInPlaceSets`: a
+ * sign-out leaves a set). An origin leaves it once its set is written or removed
+ * (`setProxySet`).
+ */
+let inPlace: Readonly<Record<string, { id: string; set: ProxyHeaders }>> = {};
+
+/** `inPlace` without the origins `gone`. */
+const inPlaceWithout = (gone: (string | null)[]) =>
+  Object.fromEntries(Object.entries(inPlace).filter(([o]) => !gone.includes(o)));
+
+/** The sets the stored sign-ins `read` leave this tab: those stored, and the ones it uses in
+ * place, which stay in place while their marks do and their origins have none stored
+ * (another tab that removed one took its mark, `forgetLegacyProxySets`; one that wrote it
+ * stored it). */
+function followInPlace({ proxySets, marked }: StoredSignIns): ProxySets {
+  inPlace = Object.fromEntries(
+    Object.entries(inPlace).filter(([o, p]) => !proxySets[o] && marked.includes(p.id)),
+  );
+  const kept = Object.entries(inPlace);
+  return kept.length
+    ? { ...Object.fromEntries(kept.map(([o, p]) => [o, p.set])), ...proxySets }
+    : proxySets;
+}
+
+/** Before an earlier build's items go with their connections `ids` (a sign-out, a retired
+ * identity: neither removes a set, fe#295), the sets used from them in place, still this
+ * tab's, are written to their origins'. Best-effort: one that can't be written still goes
+ * with its item. */
+async function keepInPlaceSets(ids: readonly string[]): Promise<void> {
+  const { proxySets } = useSession.getState();
+  const keep = Object.entries(inPlace).filter(
+    ([o, p]) => ids.includes(p.id) && sameProxyHeaders(proxySets[o], p.set),
+  );
+  if (!keep.length) return;
+  try {
+    await saveProxySets(Object.fromEntries(keep.map(([o, p]) => [o, p.set])));
+    inPlace = inPlaceWithout(keep.map(([o]) => o));
+  } catch (e) {
+    console.warn('[session] keeping the proxy headers of a connection that went failed', e);
+  }
+}
+
+/**
+ * Move the sets earlier builds kept per connection (`marked`, `readLegacyProxyHeaders`) into
+ * the one item kept per origin (fe#295): each becomes its origin's set unless that origin
+ * has one already (the set stored per origin wins, then the first connection's in the list),
+ * written and read back before any old item is deleted. A set this build can't read stays
+ * where it is, marked (`legacyMarks`); a marker with no item behind it is dropped. The
+ * markers are rewritten in the stored list here, so the next launch reads no old item again.
+ *
+ * A read the platform refuses rejects (the hydrate fails, as for a token: never a connection
+ * that goes on without its headers). A move that can't be WRITTEN (storage full, a keystore
+ * that refuses the write, a copy that does not read back) never fails the hydrate: the sets
+ * are used from where they are for this launch, with every old item and its mark left for the
+ * next one to move. A failed hydrate would show the listener as signed out at every launch,
+ * and a sign-in then writes the list with that server alone (`setSession`).
+ * Returns every origin's set after the move.
+ */
+async function moveLegacyProxySets(
+  marked: readonly string[],
+  stored: Record<string, ProxyHeaders>,
+): Promise<Record<string, ProxyHeaders>> {
+  inPlace = {};
+  if (!marked.length) {
+    legacyMarks = new Set();
+    return stored;
+  }
+  const read = await Promise.all(marked.map(readLegacyProxyHeaders));
+  const adopt: Record<string, ProxyHeaders> = {};
+  const from: Record<string, string> = {};
+  read.forEach((set, i) => {
+    if (set && set !== 'unreadable' && !stored[set.origin] && !adopt[set.origin]) {
+      adopt[set.origin] = set;
+      from[set.origin] = marked[i];
+    }
+  });
+  let sets = stored;
+  if (Object.keys(adopt).length) {
+    try {
+      await saveProxySets(adopt);
+      const kept = await readProxySets();
+      if (!Object.values(adopt).every((s) => sameProxyHeaders(kept[s.origin], s))) {
+        throw new Error('the proxy headers move did not read back');
+      }
+      sets = kept;
+    } catch (e) {
+      console.warn('[session] moving the proxy headers failed, trying again next launch', e);
+      inPlace = Object.fromEntries(
+        Object.entries(adopt).map(([o, set]) => [o, { id: from[o], set }]),
+      );
+      sets = { ...stored, ...adopt };
+    }
+  }
+  // Not moved: every old item stays, marked. Moved: only the ones this build can't read.
+  const moved = !Object.keys(inPlace).length;
+  const keep = new Set(
+    marked.filter((_, i) => (moved ? read[i] === 'unreadable' : read[i] !== null)),
+  );
+  legacyMarks = keep;
+  await Promise.all(
+    marked.filter((id, i) => read[i] !== null && !keep.has(id)).map(forgetProxyHeaders),
+  );
+  // The markers, as they now stand, in the list as stored (this runs before the list is in
+  // memory): read again and written under the tabs' lock, so no other tab's write is lost.
+  await writingList(async () => {
+    const meta = await getItemStrict<PersistedConnection[]>(CONNECTIONS_KEY);
+    if (!meta) return;
+    const next = meta.map(({ hasProxyHeaders: _m, ...m }) => withLegacyMark(m));
+    const text = JSON.stringify(next);
+    if (text === JSON.stringify(meta)) return;
+    knownList = text;
+    storageMoves++;
+    await setItem(CONNECTIONS_KEY, next);
+  });
+  return sets;
+}
+
+/**
+ * Forget, with their marks, the sets an earlier build kept per connection for `origins` that
+ * are still where it left them (`legacyMarks`: a move that could not be written, or another
+ * tab's): a set removed on purpose must not be moved back in at the next launch. Best-effort
+ * (the set is removed already): a read or write the platform refuses is only warned of. An
+ * item this build can't read names no origin and stays.
+ */
+async function forgetLegacyProxySets(origins: readonly string[]): Promise<void> {
+  if (!legacyMarks.size || !origins.length) return;
+  try {
+    const ids = [...legacyMarks];
+    const read = await Promise.all(ids.map(readLegacyProxyHeaders));
+    const drop = new Set(
+      ids.filter((_, i) => {
+        const set = read[i];
+        return !!set && set !== 'unreadable' && origins.includes(set.origin);
+      }),
+    );
+    if (!drop.size) return;
+    await Promise.all([...drop].map(forgetProxyHeaders));
+    const unmark = () => {
+      legacyMarks = new Set([...legacyMarks].filter((id) => !drop.has(id)));
+    };
+    // A list that never loaded is not written (a mark with no item behind it is dropped at
+    // the next launch). Else this tab's list as it is, never the stored copy read again (that
+    // write could undo one of the list made meanwhile), unmarked once it is caught up with
+    // the other tabs' (`applyStored` takes their marks in).
+    if (useSession.getState().status === 'loading' || hydrateFailed) return unmark();
+    await writingList(async () => {
+      unmark();
+      const { connections, defaultConnectionId } = useSession.getState();
+      await persist(connections, defaultConnectionId);
+    });
+  } catch (e) {
+    console.warn("[session] forgetting an earlier build's proxy headers failed", e);
+  }
 }
 
 /** `readStored`, again while another write moved the stored sign-ins during the read
@@ -421,7 +605,6 @@ const connectionText = (c: Connection) =>
     c.token,
     c.user,
     c.addresses ?? null,
-    c.proxyHeaders ?? null,
     c.needsReconnect ?? null,
   ]);
 
@@ -433,7 +616,15 @@ const connectionText = (c: Connection) =>
  * (`followStored`). */
 function applyStored(read: StoredSignIns): void {
   knownList = read.list;
-  const { connections: mine, defaultConnectionId, status } = useSession.getState();
+  // A mark this tab did not write (`legacyMarks`): kept in this tab's writes of the list.
+  if (read.marked.some((id) => !legacyMarks.has(id))) {
+    legacyMarks = new Set([...legacyMarks, ...read.marked]);
+  }
+  const { connections: mine, defaultConnectionId, status, proxySets } = useSession.getState();
+  // Another tab's edit of a set (fe#295): every connection's client on that origin follows.
+  // The sets this tab uses in place stay while their marks do (`followInPlace`).
+  const stored = followInPlace(read);
+  const sets = sameSets(proxySets, stored) ? null : { proxySets: stored };
   const next = (read.connections ?? []).map((c) => {
     const was = mine.find((m) => m.id === c.id);
     // A flag stays with the token it was raised for: a new one (signed in again in another
@@ -447,10 +638,21 @@ function applyStored(read: StoredSignIns): void {
     next.every((c, i) => connectionText(c) === connectionText(mine[i]));
   const def = next.some((c) => c.id === defaultConnectionId) ? defaultConnectionId : read.defaultId;
   const mirrored = mirror(next, def);
-  if (same && mirrored.defaultConnectionId === defaultConnectionId && mirrored.status === status)
+  if (
+    same &&
+    !sets &&
+    mirrored.defaultConnectionId === defaultConnectionId &&
+    mirrored.status === status
+  )
     return;
-  setFollowed({ connections: same ? mine : next, ...mirrored });
+  setFollowed({ connections: same ? mine : next, ...mirrored, ...sets });
   for (const c of mine) if (!next.some((n) => n.id === c.id)) void leaveConnection(c.id);
+}
+
+/** Whether two origins-to-sets maps hold the same sets. */
+function sameSets(a: ProxySets, b: ProxySets): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((o) => sameProxyHeaders(a[o], b[o]));
 }
 
 /** Read what the other tabs stored and take it (web, once the session is loaded: the hydrate
@@ -742,18 +944,14 @@ export type Connection = {
    * storage-version bump). The player picks which one to use by itself
    * (`src/api/address-route.ts`); `serverUrl` stays what the user paired with or typed. */
   addresses?: ServerAddresses;
-  /** Custom headers for an auth proxy in front of the server (fe#167), and the one origin
-   * they go to (`src/lib/proxy-headers.ts`). Credentials like the token: held in memory,
-   * kept in secure-store (`proxyHeadersKey`), never in the AsyncStorage metadata. */
-  proxyHeaders?: ProxyHeaders;
 };
 
-/** Connection metadata persisted to AsyncStorage (the token, the proxy headers and the
- * in-memory reconnect flag excluded - see secure-store / `needsReconnect`). `serverId` is
- * absent on a connection saved before Phase 8. `hasProxyHeaders` (no secret, only that a set
- * exists) is what makes `hydrate` read the set: a connection without one costs no extra
- * keychain read at launch (a CarPlay start on a locked phone included). */
-export type PersistedConnection = Omit<Connection, 'token' | 'needsReconnect' | 'proxyHeaders'> & {
+/** Connection metadata persisted to AsyncStorage (the token and the in-memory reconnect flag
+ * excluded - see secure-store / `needsReconnect`). `serverId` is absent on a connection saved
+ * before Phase 8. `hasProxyHeaders`: an earlier build's mark of a set kept for this connection
+ * alone (no secret), which `hydrate` moves to its origin's (`moveLegacyProxySets`); written
+ * again only while that set is not moved (`legacyMarks`). */
+export type PersistedConnection = Omit<Connection, 'token' | 'needsReconnect'> & {
   hasProxyHeaders?: true;
 };
 
@@ -770,8 +968,15 @@ type SessionState = {
   pendingServerUrl: string | null;
   /** Proxy headers entered on the connect screen for the address being connected to
    * (fe#167): in memory only, sent by the connect flow's bare clients to that origin
-   * (`connectProxyHeaders`), kept with the connection by `setSession`, then cleared. */
+   * (`connectProxyHeaders`), kept as that origin's set by `setSession`, then cleared. */
   pendingProxyHeaders: ProxyHeaders | null;
+  /** Custom headers for an auth proxy in front of a server (fe#167): ONE set per https
+   * origin, shared by every sign-in on this device that reaches a server there (fe#295),
+   * whoever signs out, until it is removed or replaced on purpose (`setProxySet`, a sign-in
+   * with a set typed for it). Credentials like the tokens: held in memory and in
+   * secure-store (`src/lib/proxy-headers-store.ts`), never in the AsyncStorage metadata.
+   * A client on an origin sends that origin's set (`proxySetFor`, `src/lib/proxy-headers.ts`). */
+  proxySets: ProxySets;
   /** Mirror of the default connection's user, for ergonomic selectors. */
   user: User | null;
 
@@ -803,9 +1008,9 @@ type SessionState = {
        * it would delete them (their profile, PIN and kids settings) from the device. Absent:
        * none is retired. */
       retire?: readonly string[];
-      /** The proxy headers the connect flow reached the server with (fe#167). Absent keeps
-       * what the connection already had (a re-pair never erases them); a set replaces
-       * them. */
+      /** The proxy headers the connect flow reached the server with (fe#167): kept as their
+       * origin's set when they differ from it (a set typed for the address, which got in).
+       * Absent (or null) changes nothing: a sign-in never removes a set. */
       proxyHeaders?: ProxyHeaders | null;
     },
     opts?: {
@@ -820,9 +1025,12 @@ type SessionState = {
   setPendingServerUrl: (url: string) => Promise<void>;
   /** The proxy headers the connect screen holds for its address (null: none). */
   setPendingProxyHeaders: (set: ProxyHeaders | null) => void;
-  /** Keep (or, with null, drop) a signed-in connection's proxy headers: secure-store first,
-   * then memory, so its clients are rebuilt with them. A no-op for an unknown id. */
-  setProxyHeaders: (id: string, set: ProxyHeaders | null) => Promise<void>;
+  /** Keep `set` as the proxy headers of the https origin `origin` (or, with null or an empty
+   * set, remove that origin's): secure-store first, then memory, so every client on that
+   * origin is rebuilt with them. `movedFrom`: an origin whose set this one replaces (the
+   * Account card sending a set to another address), removed in the same write. A no-op for
+   * an origin that is not an https one. */
+  setProxySet: (origin: string, set: ProxyHeaders | null, movedFrom?: string) => Promise<void>;
   /** Update a specific connection's user (a `/me` refresh after a password change
    * lands on the connection it was made against, not whatever is default). */
   setConnectionUser: (id: string, user: User) => Promise<void>;
@@ -919,12 +1127,11 @@ function hydrateEnded(failed: boolean, locked = false) {
 }
 
 async function persist(connections: Connection[], defaultId: string | null) {
-  // Strip the token and the proxy headers (→ secure-store) AND the in-memory
-  // `needsReconnect` flag, so a stale reconnect prompt never survives a restart (it's
-  // recomputed from the next failure).
+  // Strip the token (→ secure-store) AND the in-memory `needsReconnect` flag, so a stale
+  // reconnect prompt never survives a restart (it's recomputed from the next failure). An
+  // earlier build's set that is not moved keeps its mark (`legacyMarks`).
   const meta: PersistedConnection[] = connections.map(
-    ({ token: _t, needsReconnect: _r, proxyHeaders, ...rest }) =>
-      proxyHeaders ? { ...rest, hasProxyHeaders: true } : rest,
+    ({ token: _t, needsReconnect: _r, ...rest }) => withLegacyMark(rest),
   );
   // What this tab knows is stored now (`catchUp`), and a read of another tab's write that is
   // under way reads again, past this one.
@@ -939,6 +1146,7 @@ export const useSession = create<SessionState>()((set, get) => ({
   defaultConnectionId: null,
   pendingServerUrl: null,
   pendingProxyHeaders: null,
+  proxySets: {},
   user: null,
 
   hydrate: async () => {
@@ -949,12 +1157,19 @@ export const useSession = create<SessionState>()((set, get) => ({
       // against it), never "no connections". Read again when another tab wrote it meanwhile.
       const read = await readSettled();
       knownList = read.list;
+      // An earlier build's per-connection sets go to their origins first (fe#295): a read
+      // the platform refuses fails the hydrate, as a token read's does.
+      const proxySets = await moveLegacyProxySets(read.marked, read.proxySets);
       hydrateEnded(false);
       if (read.connections) {
-        set({ connections: read.connections, ...mirror(read.connections, read.defaultId) });
+        set({
+          connections: read.connections,
+          proxySets,
+          ...mirror(read.connections, read.defaultId),
+        });
         return;
       }
-      set({ status: 'unauthenticated' });
+      set({ status: 'unauthenticated', proxySets });
     } catch (e) {
       // The persisted connections are untouched, and loaded again later (`hydrateFailed`):
       // a JS runtime can outlive this launch (CarPlay's).
@@ -983,6 +1198,16 @@ export const useSession = create<SessionState>()((set, get) => ({
     // The persisted connections first, when they never loaded: the list written below would
     // otherwise hold this server alone and drop every other one.
     if (hydrateFailed) await get().hydrate();
+    // The proxy headers this sign-in got in with (fe#167), when they are not already their
+    // origin's set (a set typed on the connect screen): kept for that origin, for everyone
+    // on this device who reaches it (fe#295). First, so a set that can't be kept stores
+    // nothing. A sign-in never removes a set.
+    if (
+      proxyHeaders?.headers.length &&
+      !sameProxyHeaders(get().proxySets[proxyHeaders.origin], proxyHeaders)
+    ) {
+      await get().setProxySet(proxyHeaders.origin, proxyHeaders);
+    }
     // On the web, the list as stored, with what another tab signed in or out since this tab
     // last heard, and no other tab's write between that read and this one (`writingList`).
     const { id, stale } = await writingList(async () => {
@@ -992,8 +1217,8 @@ export const useSession = create<SessionState>()((set, get) => ({
       // adding a duplicate. Another user on the same server is another connection. A legacy
       // connection (its id still the bare server_id) is matched the same way and KEEPS its id
       // until the key migration moves it, so its downloads and saves stay reachable; one saved
-      // without a usable user id is taken to be this user (it was the server's one connection)
-      // only under the username it kept, if any (`priorConnection`, fe#298).
+      // without a usable user id is taken to be this user only under the username it kept
+      // (`priorConnection`, fe#298): one that kept none is never anyone's.
       const sameServer = existing.filter((c) => serverIdOf(c) === serverId);
       const prior = priorConnection(existing, serverId, user.id, user.username);
       const id = prior?.id ?? connectionIdOf(serverId, user.id);
@@ -1015,15 +1240,6 @@ export const useSession = create<SessionState>()((set, get) => ({
         ? prior.addresses
         : (sameServer.find((c) => c.addresses)?.addresses ?? (await knownAddresses(serverId)));
       const known = mergeAddresses(knew, addresses);
-      // The proxy headers: the ones the sign-in came through, else the ones it had, else (a
-      // new connection: another person on the server, a member signed in here) the ones
-      // another connection to this server has. Still sent only to their own origin.
-      const headers =
-        proxyHeaders !== undefined
-          ? (proxyHeaders ?? undefined)
-          : prior
-            ? prior.proxyHeaders
-            : sameServer.find((c) => c.proxyHeaders)?.proxyHeaders;
       const conn: Connection = {
         id,
         serverId,
@@ -1032,7 +1248,6 @@ export const useSession = create<SessionState>()((set, get) => ({
         token,
         user,
         addresses: known,
-        ...(headers ? { proxyHeaders: headers } : {}),
       };
       const surviving = existing
         .filter((c) => !stale.includes(c))
@@ -1041,12 +1256,12 @@ export const useSession = create<SessionState>()((set, get) => ({
         ? surviving.map((c) => (c === prior ? conn : c))
         : [...surviving, conn];
       await setSecure(tokenKey(id), token);
-      if (proxyHeaders !== undefined || (!prior && headers)) {
-        await saveProxyHeaders(id, headers ?? null);
-      }
       // Best-effort drop each stale identity's dead token. No server revoke - the token is
       // already dead, so there's nothing to call.
-      // Their calendar links (Track U3) and proxy headers (fe#167) go with them.
+      // Their calendar links (Track U3) go with them, and any per-connection proxy headers
+      // an earlier build left (fe#167; the origin's set stays for whoever reaches it, one
+      // used from such an item written to its origin's first: `keepInPlaceSets`).
+      await keepInPlaceSets(stale.map((c) => c.id));
       await Promise.all(
         stale.flatMap((c) => [
           deleteSecure(tokenKey(c.id)).catch(() => undefined),
@@ -1099,26 +1314,24 @@ export const useSession = create<SessionState>()((set, get) => ({
 
   setPendingProxyHeaders: (pendingProxyHeaders) => set({ pendingProxyHeaders }),
 
-  setProxyHeaders: async (id, headers) => {
-    if (!get().connections.some((c) => c.id === id)) return;
-    await saveProxyHeaders(id, headers);
-    await writingList(async () => {
-      // Read again after the write: the list may have changed meanwhile.
-      const { connections, defaultConnectionId } = get();
-      if (!connections.some((c) => c.id === id)) {
-        // Removed while this was being written: its headers must not outlive it.
-        await forgetProxyHeaders(id);
-        return;
-      }
-      const next = connections.map((c) => {
-        if (c.id !== id) return c;
-        const { proxyHeaders: _old, ...rest } = c;
-        return headers?.headers.length ? { ...rest, proxyHeaders: headers } : rest;
-      });
-      set({ connections: next, ...mirror(next, defaultConnectionId) });
-      // The marker that has the next launch read them (`hasProxyHeaders`).
-      await persist(next, defaultConnectionId);
-    });
+  setProxySet: async (origin, headers, movedFrom) => {
+    const o = proxyOriginOf(origin);
+    if (!o) return;
+    const keep = headers?.headers.length && headers.origin === o ? headers : null;
+    const from = movedFrom ? proxyOriginOf(movedFrom) : null;
+    const gone = from && from !== o ? from : null;
+    await saveProxySets({ ...(gone ? { [gone]: null } : {}), [o]: keep });
+    // Written or removed on purpose: no longer used from an earlier build's item.
+    inPlace = inPlaceWithout([o, gone]);
+    // Set from the state as it is NOW (another origin's change may have landed meanwhile).
+    const next = { ...get().proxySets };
+    if (gone) delete next[gone];
+    if (keep) next[o] = keep;
+    else delete next[o];
+    set({ proxySets: next });
+    // A set still used from an earlier build's item (its move not written yet) is removed
+    // there too, or the next launch would move it back.
+    await forgetLegacyProxySets([...(gone ? [gone] : []), ...(keep ? [] : [o])]);
   },
 
   setConnectionUser: (id, user) =>
@@ -1165,11 +1378,14 @@ export const useSession = create<SessionState>()((set, get) => ({
     }),
 
   removeConnection: async (id) => {
-    // The connection's calendar link (Track U3) and proxy headers (fe#167) are credentials
-    // like its token: this device forgets them with the connection (the link itself keeps
-    // working until turned off). The token first: a delete of it that fails stops the
-    // removal, and the connection must then still have its headers.
+    // The connection's calendar link (Track U3) is a credential like its token: this device
+    // forgets it with the connection (the link itself keeps working until turned off), and
+    // any proxy headers an earlier build kept for it alone. The origin's set stays (fe#295):
+    // removed only on purpose, so signing in again there needs no typing. The token first:
+    // a delete of it that fails stops the removal. A set used from its old item in place is
+    // written to its origin's before that item goes (`keepInPlaceSets`).
     await deleteSecure(tokenKey(id));
+    await keepInPlaceSets([id]);
     await Promise.all([forgetCalendarLink(id), forgetProxyHeaders(id)]);
     await writingList(async () => {
       const { connections, defaultConnectionId } = get();
@@ -1221,26 +1437,14 @@ export function useConnectionName(connectionId: string | undefined): string {
 /**
  * The proxy headers a request to `url` made outside a signed-in connection's client should
  * carry (the connect flow's bare clients, the home-address probe): the ones the connect
- * screen holds for that origin, else a signed-in connection's for that origin (a second
- * person on the same server). Null when there are none for it. The client still sends them
- * only to their own origin (`proxyHeaderRecord`).
- *
- * `ownId` names the connection the sign-in is for (a reconnect or a re-pair): then only the
- * set typed for that origin or the connection's OWN set for it, never another connection's,
- * so a reconnect's sign-in never carries another person's credentials and two people who
- * each keep their own headers for one address never take each other's. Its own set for
- * ANOTHER origin (or none) answers null (a re-pair through the home address, or a second
- * public one): `setSession` then keeps what the connection had, unless a re-pair with no set
- * at all got in on another connection's (`finishConnect`'s `carried`), which it then keeps.
+ * screen holds for that origin, else the set kept for it (`proxySetFor`: whoever's sign-in
+ * kept it, since there is one per origin, fe#295). Null when there are none for it. The
+ * client still sends them only to their own origin (`proxyHeaderRecord`).
  */
-export function connectProxyHeaders(url: string, ownId?: string): ProxyHeaders | null {
-  const origin = originOf(url);
+export function connectProxyHeaders(url: string): ProxyHeaders | null {
+  const origin = proxyOriginOf(url);
   if (!origin) return null;
-  const { pendingProxyHeaders, connections } = useSession.getState();
+  const { pendingProxyHeaders, proxySets } = useSession.getState();
   if (pendingProxyHeaders?.origin === origin) return pendingProxyHeaders;
-  if (ownId !== undefined) {
-    const own = connections.find((c) => c.id === ownId)?.proxyHeaders;
-    return own?.origin === origin ? own : null;
-  }
-  return connections.find((c) => c.proxyHeaders?.origin === origin)?.proxyHeaders ?? null;
+  return proxySetFor(proxySets, url);
 }

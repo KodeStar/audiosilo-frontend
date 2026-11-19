@@ -9,7 +9,13 @@ import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode }
 import { Platform } from 'react-native';
 
 import { connectionIdFromKey, isServerInfoKey, serverResetCid } from '@/lib/auth-failure';
-import { type ProxyHeaders, sameProxyHeaders } from '@/lib/proxy-headers';
+import {
+  type ProxyHeaders,
+  type ProxySets,
+  proxyOriginChoices,
+  proxySetFor,
+  sameProxyHeaders,
+} from '@/lib/proxy-headers';
 import { watchDeviceOnline } from '@/lib/device-online';
 import { flushConnection } from '@/playback/progress-sync';
 import { flushReadingConnection } from '@/reader/reading-progress';
@@ -214,43 +220,46 @@ const ApiContext = createContext<ApiRegistry>({
 /** A connection paired with its API client. */
 export type ApiConnection = { connection: Connection; client: ApiClient };
 
-/** A connection's client and the address and token it was built with. */
+/** A connection's client and the address, token and proxy headers it was built with. */
 type BuiltClient = {
   url: string;
   token: string;
-  proxyHeaders: ProxyHeaders | undefined;
+  proxyHeaders: ProxyHeaders | null;
   client: ApiClient;
 };
 
 /**
  * Each connection's client on the address it uses now (`pickedUrl`), reusing the one in
- * `previous` while its address, token and proxy headers are unchanged, so a switch of one connection's
- * address (home / away) rebuilds only that connection's client: every memo keyed on
- * another connection's client (the Journal's per-server queries, a capability query's
- * function) and its in-flight reachability probe survive.
+ * `previous` while its address, token and the proxy headers kept for that address (`sets`,
+ * fe#295) are unchanged, so a switch of one connection's address (home / away) rebuilds only
+ * that connection's client: every memo keyed on another connection's client (the Journal's
+ * per-server queries, a capability query's function) and its in-flight reachability probe
+ * survive.
  */
 export function buildClients(
   connections: readonly Connection[],
   picks: Record<string, string>,
   previous: ReadonlyMap<string, BuiltClient>,
+  sets: ProxySets,
 ): Map<string, BuiltClient> {
   const built = new Map<string, BuiltClient>();
   for (const c of connections) {
     const url = pickedUrl(c, picks[c.id]);
+    const proxyHeaders = proxySetFor(sets, url);
     const kept = previous.get(c.id);
     built.set(
       c.id,
       kept &&
         kept.url === url &&
         kept.token === c.token &&
-        sameProxyHeaders(kept.proxyHeaders, c.proxyHeaders)
+        sameProxyHeaders(kept.proxyHeaders, proxyHeaders)
         ? kept
         : {
             url,
             token: c.token,
-            proxyHeaders: c.proxyHeaders,
+            proxyHeaders,
             // Built on the address in use now, as `resolveClient` builds its own.
-            client: connectionClient(c, url),
+            client: connectionClient(c, url, proxyHeaders),
           },
     );
   }
@@ -265,8 +274,9 @@ const lastBuilt = new Map<string, BuiltClient>();
 function connectionClients(
   connections: readonly Connection[],
   picks: Record<string, string>,
+  sets: ProxySets,
 ): Map<string, ApiClient> {
-  const built = buildClients(connections, picks, lastBuilt);
+  const built = buildClients(connections, picks, lastBuilt, sets);
   lastBuilt.clear();
   for (const [id, b] of built) lastBuilt.set(id, b);
   return new Map([...built].map(([id, b]) => [id, b.client]));
@@ -293,19 +303,15 @@ export function readAgainOnSignIn(query: Pick<Query, 'queryKey' | 'state'>, cid:
  * new client (`useApiRegistry`) by then, and a read any earlier would ask with the dead
  * token and flag the connection again.
  */
-function useReadAgainOnSignIn(connections: readonly Connection[]) {
-  const tokens = useRef(
-    new Map<string, { token: string; proxyHeaders: ProxyHeaders | undefined }>(),
-  );
+function useReadAgainOnSignIn(connections: readonly Connection[], sets: ProxySets) {
+  const tokens = useRef(new Map<string, { token: string; proxy: string }>());
   useEffect(() => {
     const seen = tokens.current;
     for (const c of connections) {
       const before = seen.get(c.id);
-      seen.set(c.id, { token: c.token, proxyHeaders: c.proxyHeaders });
-      if (
-        before === undefined ||
-        (before.token === c.token && sameProxyHeaders(before.proxyHeaders, c.proxyHeaders))
-      ) {
+      const proxy = proxySetsText(c, sets);
+      seen.set(c.id, { token: c.token, proxy });
+      if (before === undefined || (before.token === c.token && before.proxy === proxy)) {
         continue;
       }
       void queryClient.invalidateQueries({ predicate: (q) => readAgainOnSignIn(q, c.id) });
@@ -313,18 +319,29 @@ function useReadAgainOnSignIn(connections: readonly Connection[]) {
     for (const id of seen.keys()) {
       if (!connections.some((c) => c.id === id)) seen.delete(id);
     }
-  }, [connections]);
+  }, [connections, sets]);
+}
+
+/** The proxy headers kept for each of a connection's addresses, as one comparable text. */
+function proxySetsText(c: Connection, sets: ProxySets): string {
+  return JSON.stringify(proxyOriginChoices(c).map((o) => sets[o] ?? null));
 }
 
 export function ApiProvider({ children }: { children: ReactNode }) {
   const connections = useSession((s) => s.connections);
+  // Every origin's proxy headers (fe#295): an edit rebuilds the clients on that origin.
+  const proxySets = useSession((s) => s.proxySets);
   // Which of each connection's addresses (home / away) requests go to right now.
   const picks = useAddressRoute((s) => s.picks);
 
-  // Build the clients only when the connections or the picked addresses change, and then
-  // only the ones whose address or token moved (`buildClients`) - re-creating a client
-  // drops its in-flight reachability probe and force-refetches its queries.
-  const clients = useMemo(() => connectionClients(connections, picks), [connections, picks]);
+  // Build the clients only when the connections, the picked addresses or the proxy headers
+  // change, and then only the ones whose address, token or set moved (`buildClients`) -
+  // re-creating a client drops its in-flight reachability probe and force-refetches its
+  // queries.
+  const clients = useMemo(
+    () => connectionClients(connections, picks, proxySets),
+    [connections, picks, proxySets],
+  );
 
   const registry = useMemo<ApiRegistry>(() => ({ clients, connections }), [clients, connections]);
 
@@ -333,7 +350,7 @@ export function ApiProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setReachabilityClients(registry.clients);
   }, [registry]);
-  useReadAgainOnSignIn(connections);
+  useReadAgainOnSignIn(connections, proxySets);
 
   return (
     <QueryClientProvider client={queryClient}>

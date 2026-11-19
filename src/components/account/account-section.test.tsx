@@ -81,6 +81,7 @@ let mockSession: {
   defaultConnectionId: string | null;
   setConnectionUser: jest.Mock;
   removeConnection: jest.Mock;
+  proxySets: Record<string, unknown>;
 };
 jest.mock('@/stores/session', () => ({
   useSession: (selector: (s: unknown) => unknown) => selector(mockSession),
@@ -160,6 +161,7 @@ beforeEach(() => {
     defaultConnectionId: 'c1',
     setConnectionUser: jest.fn(async () => {}),
     removeConnection: jest.fn(async () => {}),
+    proxySets: {},
   };
 });
 
@@ -334,16 +336,39 @@ describe('AccountSection', () => {
     expect(screen.queryByTestId('proxy-headers-card')).toBeNull();
   });
 
-  it('shows a demo account the proxy headers its sign-in came through (fe#167)', async () => {
+  it('shows a demo account the proxy headers kept for its address (fe#167)', async () => {
     mockSession.connections[0].user = user({ is_demo: true, role: 'user' });
-    (mockSession.connections[0] as Conn & { proxyHeaders?: unknown }).proxyHeaders = {
-      origin: 'https://books.example.com',
-      headers: [{ name: 'X-Proxy', value: 'proxy-secret' }],
+    mockSession.proxySets = {
+      'https://books.example': {
+        origin: 'https://books.example',
+        headers: [{ name: 'X-Proxy', value: 'proxy-secret' }],
+      },
     };
     await mountWithPortal(<AccountSection connectionId="c1" />);
     expect(screen.getByTestId('proxy-headers-card')).toBeTruthy();
     expect(screen.queryByText('proxy-secret')).toBeNull();
   });
+
+  // fe#295: the set is its address's, shared by everyone on the device: a demo or a kid's
+  // account can't remove it for a full account that signs in through it.
+  it.each([
+    ['a demo', { is_demo: true }],
+    ["a kid's", { member_kind: 'kid' as const, has_password: false }],
+  ])(
+    'hides the proxy headers from %s account while a full account here uses them',
+    async (_, limited) => {
+      mockSession.connections[0].user = user({ ...limited, role: 'user' });
+      mockSession.connections[1].serverUrl = 'https://books.example';
+      mockSession.proxySets = {
+        'https://books.example': {
+          origin: 'https://books.example',
+          headers: [{ name: 'X-Proxy', value: 'proxy-secret' }],
+        },
+      };
+      await mountWithPortal(<AccountSection connectionId="c1" />);
+      expect(screen.queryByTestId('proxy-headers-card')).toBeNull();
+    },
+  );
 
   it("hides API keys and pairing from a kid's account, which can't have either", async () => {
     mockSession.connections[0].user = user({

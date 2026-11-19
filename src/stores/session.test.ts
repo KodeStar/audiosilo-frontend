@@ -4,6 +4,7 @@ import { AppState, type AppStateStatus, Platform } from 'react-native';
 
 import { sessionReady } from '@/api/connection-clients';
 import type { User } from '@/api/types';
+import { forgetProxySets, PROXY_SETS_KEY, PROXY_SETS_MARKER_KEY } from '@/lib/proxy-headers-store';
 import { readCalendarLink, saveCalendarLink } from '@/lib/upcoming-calendar';
 import {
   connectProxyHeaders,
@@ -972,7 +973,27 @@ describe('session store (multi-connection)', () => {
       expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv', 'srv.5']);
     });
 
-    it('a legacy connection saved without a user id is taken as the one signing in', async () => {
+    it('a legacy connection saved without a user id is taken as the one signing in under the name it kept', async () => {
+      await AsyncStorage.setItem(
+        'audiosilo.connections',
+        JSON.stringify([
+          { id: 'srv', serverUrl: 'https://a', name: 'A', user: { username: 'sam' } },
+        ]),
+      );
+      await SecureStore.setItemAsync('audiosilo.token.srv', 'old');
+      await useSession.getState().hydrate();
+      const id = await useSession.getState().setSession({
+        serverUrl: 'https://a',
+        serverId: 'srv',
+        token: 'new',
+        user: user(3, 'sam'),
+      });
+      expect(id).toBe('srv');
+      expect(useSession.getState().connections).toHaveLength(1);
+      expect(await SecureStore.getItemAsync('audiosilo.token.srv')).toBe('new');
+    });
+
+    it('a legacy connection that kept no username is never taken over by a sign-in (fe#298)', async () => {
       await AsyncStorage.setItem(
         'audiosilo.connections',
         JSON.stringify([{ id: 'srv', serverUrl: 'https://a', name: 'A', user: {} }]),
@@ -985,8 +1006,15 @@ describe('session store (multi-connection)', () => {
         token: 'new',
         user: user(3, 'sam'),
       });
-      expect(id).toBe('srv');
-      expect(useSession.getState().connections).toHaveLength(1);
+      // A connection of its own: the legacy one keeps its token, nothing is retired.
+      expect(id).toBe('srv.3');
+      expect(
+        useSession
+          .getState()
+          .connections.map((c) => c.id)
+          .sort(),
+      ).toEqual(['srv', 'srv.3']);
+      expect(await SecureStore.getItemAsync('audiosilo.token.srv')).toBe('old');
     });
 
     it("a rebuilt server: re-pairing retires only the named identity, never another person's", async () => {
@@ -1228,59 +1256,131 @@ describe('the calendar link goes with its connection', () => {
   });
 });
 
-describe('proxy headers (fe#167) are kept like the token', () => {
-  const set = {
-    origin: 'https://a.example',
-    headers: [{ name: 'CF-Access-Client-Secret', value: 'proxy-secret' }],
-  };
-  const stored = (id: string) => SecureStore.getItemAsync(`audiosilo.proxy-headers.${id}`);
+describe('proxy headers (fe#167): one set per origin (fe#295)', () => {
+  const A = 'https://a.example';
+  const set = { origin: A, headers: [{ name: 'CF-Access-Client-Secret', value: 'proxy-secret' }] };
+  const setB = { origin: 'https://b.example', headers: [{ name: 'X-B', value: 'b-secret' }] };
+  const legacyKey = (id: string) => `audiosilo.proxy-headers.${id}`;
+  const storedSets = async () =>
+    JSON.parse((await SecureStore.getItemAsync(PROXY_SETS_KEY)) ?? 'null') as unknown;
+  const list = async () =>
+    JSON.parse((await AsyncStorage.getItem('audiosilo.connections'))!) as {
+      id: string;
+      hasProxyHeaders?: true;
+    }[];
   /** Sign in to `https://<name>.example` (server `srv-<name>`), with `proxyHeaders` if given. */
-  const signIn = (name: string, proxyHeaders?: typeof set) =>
-    useSession.getState().setSession({
-      serverUrl: `https://${name}.example`,
-      serverId: `srv-${name}`,
-      token: 't',
-      user: mkUser(name),
-      ...(proxyHeaders ? { proxyHeaders } : {}),
-    });
+  const signIn = (name: string, proxyHeaders?: typeof set | null, userId = 1) =>
+    useSession.getState().setSession(
+      {
+        serverUrl: `https://${name}.example`,
+        serverId: `srv-${name}`,
+        token: 't',
+        user: { ...mkUser(name), id: userId },
+        ...(proxyHeaders !== undefined ? { proxyHeaders } : {}),
+      },
+      { makeDefault: false },
+    );
+  /** As an earlier build left a connection's own set: the item, and its mark in the list. */
+  async function legacy(id: string, raw: string | null) {
+    if (raw !== null) await SecureStore.setItemAsync(legacyKey(id), raw);
+    const meta = await list();
+    await AsyncStorage.setItem(
+      'audiosilo.connections',
+      JSON.stringify(meta.map((m) => (m.id === id ? { ...m, hasProxyHeaders: true } : m))),
+    );
+  }
+  type Store = {
+    getItemAsync: (k: string) => Promise<string | null>;
+    setItemAsync: (k: string, v: string) => Promise<void>;
+  };
+  const store = SecureStore as unknown as Store;
+
   beforeEach(async () => {
     await AsyncStorage.clear();
     reset();
-    useSession.setState({ pendingProxyHeaders: null });
+    useSession.setState({ pendingProxyHeaders: null, proxySets: {} });
+    await forgetProxySets();
+    await Promise.all(
+      ['srv-a.1', 'srv-a.2', 'srv-b.1', 'srv-c.1'].map((id) =>
+        SecureStore.deleteItemAsync(legacyKey(id)),
+      ),
+    );
   });
 
-  it('stores them in secure-store, never in the AsyncStorage metadata, and hydrates them', async () => {
-    const id = await signIn('a', set);
-    expect(JSON.parse((await stored(id))!)).toEqual(set);
-    const meta = await AsyncStorage.getItem('audiosilo.connections');
-    expect(meta).not.toMatch(/proxy-secret|CF-Access|proxyHeaders/);
+  it("keeps a sign-in's set for its origin in secure-store, never in the list, and hydrates it", async () => {
+    await signIn('a', set);
+    expect(useSession.getState().proxySets).toEqual({ [A]: set });
+    expect(await storedSets()).toEqual({ [A]: { headers: set.headers } });
+    expect(await AsyncStorage.getItem('audiosilo.connections')).not.toMatch(
+      /proxy-secret|CF-Access|proxyHeaders/,
+    );
     reset();
+    useSession.setState({ proxySets: {} });
     await useSession.getState().hydrate();
-    expect(useSession.getState().connections[0].proxyHeaders).toEqual(set);
+    expect(useSession.getState().proxySets).toEqual({ [A]: set });
   });
 
-  it('a re-pair without headers keeps the ones the connection had; a new set replaces them', async () => {
+  it("a sign-in without headers keeps the origin's set; a sign-in with another set replaces it", async () => {
+    await signIn('a', set);
+    await signIn('a', undefined);
+    await signIn('a', null);
+    expect(useSession.getState().proxySets).toEqual({ [A]: set });
+    const other = { origin: A, headers: [{ name: 'X-Auth', value: 'v2' }] };
+    await signIn('a', other);
+    expect(useSession.getState().proxySets).toEqual({ [A]: other });
+    expect(await storedSets()).toEqual({ [A]: { headers: other.headers } });
+  });
+
+  it('a set outlives a sign-out, a retired identity and the other sign-ins on its server', async () => {
+    const owner = await signIn('a', set);
+    const member = await signIn('a', null, 2);
+    // Everyone who reaches the address uses its set (a member signed in here).
+    expect(connectProxyHeaders(A)).toEqual(set);
+    await useSession.getState().removeConnection(owner);
+    expect(useSession.getState().proxySets).toEqual({ [A]: set });
+    // The server at a was reset: the member's identity is retired, the address's set stays.
+    await useSession.getState().setSession({
+      serverUrl: A,
+      serverId: 'srv-a2',
+      token: 't2',
+      user: mkUser('a'),
+      retire: [member],
+    });
+    expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv-a2.1']);
+    expect(await storedSets()).toEqual({ [A]: { headers: set.headers } });
+  });
+
+  it('the auth reset forgets every set', async () => {
+    await signIn('a', set);
+    await AsyncStorage.removeItem('audiosilo.storageVersion');
+    expect((await resetStaleStorage()).authReset).toBe(true);
+    expect(await SecureStore.getItemAsync(PROXY_SETS_KEY)).toBeNull();
+    expect(await AsyncStorage.getItem(PROXY_SETS_MARKER_KEY)).toBeNull();
+  });
+
+  it('setProxySet keeps, moves and removes a set, and refuses a plain-http origin', async () => {
     const s = useSession.getState();
-    const base = { serverUrl: 'https://a.example', serverId: 'srv-a', user: mkUser('a') };
-    const id = await s.setSession({ ...base, token: 't1', proxyHeaders: set });
-    await s.setSession({ ...base, token: 't2' });
-    expect(useSession.getState().connections[0].proxyHeaders).toEqual(set);
-    expect(JSON.parse((await stored(id))!)).toEqual(set);
-    const other = { origin: set.origin, headers: [{ name: 'X-Auth', value: 'v2' }] };
-    await s.setSession({ ...base, token: 't3', proxyHeaders: other });
-    expect(useSession.getState().connections[0].proxyHeaders).toEqual(other);
-    expect(JSON.parse((await stored(id))!)).toEqual(other);
+    await s.setProxySet(A, set);
+    expect(useSession.getState().proxySets).toEqual({ [A]: set });
+    // Sent to another address: moved, not copied.
+    await s.setProxySet(setB.origin, setB, A);
+    expect(useSession.getState().proxySets).toEqual({ [setB.origin]: setB });
+    expect(await storedSets()).toEqual({ [setB.origin]: { headers: setB.headers } });
+    // Denied: never kept for http.
+    await s.setProxySet('http://192.168.1.5:8080', { ...set, origin: 'http://192.168.1.5:8080' });
+    expect(useSession.getState().proxySets).toEqual({ [setB.origin]: setB });
+    await s.setProxySet(setB.origin, null);
+    expect(useSession.getState().proxySets).toEqual({});
+    expect(await SecureStore.getItemAsync(PROXY_SETS_KEY)).toBeNull();
   });
 
-  it('fails the hydrate when the headers cannot be read, as a token read does', async () => {
+  it('fails the hydrate when the sets cannot be read, as a token read does', async () => {
     await signIn('a', set);
     reset();
-    const store = SecureStore as unknown as { getItemAsync: (k: string) => Promise<string | null> };
+    useSession.setState({ proxySets: {} });
     const original = store.getItemAsync;
     store.getItemAsync = (k) =>
-      k.startsWith('audiosilo.proxy-headers.')
-        ? Promise.reject(new Error('keychain locked'))
-        : original(k);
+      k === PROXY_SETS_KEY ? Promise.reject(new Error('keychain locked')) : original(k);
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       await useSession.getState().hydrate();
@@ -1291,237 +1391,268 @@ describe('proxy headers (fe#167) are kept like the token', () => {
       warn.mockRestore();
     }
     await useSession.getState().hydrate();
-    expect(useSession.getState().connections[0].proxyHeaders).toEqual(set);
+    expect(useSession.getState().proxySets).toEqual({ [A]: set });
   });
 
-  it('setProxyHeaders keeps, changes and drops them', async () => {
-    const id = await signIn('a');
-    await useSession.getState().setProxyHeaders(id, set);
-    expect(useSession.getState().connections[0].proxyHeaders).toEqual(set);
-    expect(JSON.parse((await stored(id))!)).toEqual(set);
-    await useSession.getState().setProxyHeaders(id, null);
-    expect(useSession.getState().connections[0].proxyHeaders).toBeUndefined();
-    expect(await stored(id)).toBeNull();
-    // An unknown connection: nothing is written.
-    await useSession.getState().setProxyHeaders('nobody', set);
-    expect(await stored('nobody')).toBeNull();
-  });
-
-  it('go on sign-out, with a retired stale identity, and on the auth reset', async () => {
-    const a = await signIn('a', set);
-    const b = await signIn('b', { ...set, origin: 'https://b.example' });
-    await useSession.getState().removeConnection(a);
-    expect(await stored(a)).toBeNull();
-    expect(await stored(b)).not.toBeNull();
-
-    // The server at b was reset: b's own identity is retired with its headers.
-    await useSession.getState().setSession({
-      serverUrl: 'https://b.example',
-      serverId: 'srv-b2',
-      token: 't2',
-      user: mkUser('b'),
-      retire: [b],
-    });
-    expect(await stored(b)).toBeNull();
-
-    const c = await signIn('c', { ...set, origin: 'https://c.example' });
-    await AsyncStorage.removeItem('audiosilo.storageVersion');
-    expect((await resetStaleStorage()).authReset).toBe(true);
-    expect(await stored(c)).toBeNull();
-  });
-
-  it('reads them at launch only for a connection marked as having them (no extra keychain read)', async () => {
-    const a = await signIn('a', set);
-    const b = await signIn('b');
-    const meta = JSON.parse((await AsyncStorage.getItem('audiosilo.connections'))!) as {
-      id: string;
-      hasProxyHeaders?: boolean;
-    }[];
-    expect(meta.find((m) => m.id === a)?.hasProxyHeaders).toBe(true);
-    expect(meta.find((m) => m.id === b)).not.toHaveProperty('hasProxyHeaders');
-
+  it('reads no keychain item for the sets at launch when there are none (the marker)', async () => {
+    await signIn('a');
     reset();
     const read = SecureStore.getItemAsync as jest.Mock;
     read.mockClear();
     await useSession.getState().hydrate();
-    const asked = read.mock.calls.map((c) => c[0] as string);
-    expect(asked).toContain(`audiosilo.proxy-headers.${a}`);
-    expect(asked).not.toContain(`audiosilo.proxy-headers.${b}`);
-    const conns = useSession.getState().connections;
-    expect(conns.find((c) => c.id === a)?.proxyHeaders).toEqual(set);
-    expect(conns.find((c) => c.id === a)).not.toHaveProperty('hasProxyHeaders');
-
-    // Dropping them drops the marker.
-    await useSession.getState().setProxyHeaders(a, null);
-    const after = JSON.parse((await AsyncStorage.getItem('audiosilo.connections'))!) as {
-      id: string;
-    }[];
-    expect(after.find((m) => m.id === a)).not.toHaveProperty('hasProxyHeaders');
+    expect(read.mock.calls.map((c) => c[0] as string)).not.toContain(PROXY_SETS_KEY);
+    // With one: read.
+    await useSession.getState().setProxySet(A, set);
+    reset();
+    read.mockClear();
+    await useSession.getState().hydrate();
+    expect(read.mock.calls.map((c) => c[0] as string)).toContain(PROXY_SETS_KEY);
   });
 
-  it('a new connection to a server another connection reaches through the proxy takes that set (a member signed in here)', async () => {
-    const s = useSession.getState();
-    await s.setSession({
-      serverUrl: 'https://a.example',
-      serverId: 'srv-a',
-      token: 't',
-      user: mkUser('owner'),
-      proxyHeaders: set,
-    });
-    const member = await s.setSession(
-      {
-        serverUrl: 'https://a.example',
-        serverId: 'srv-a',
-        token: 't2',
-        user: { ...mkUser('kid'), id: 2 },
-      },
-      { makeDefault: false },
-    );
-    expect(useSession.getState().connections.find((c) => c.id === member)?.proxyHeaders).toEqual(
-      set,
-    );
-    expect(JSON.parse((await stored(member))!)).toEqual(set);
-    // Another server's connection takes none.
-    const other = await signIn('b');
-    expect(
-      useSession.getState().connections.find((c) => c.id === other)?.proxyHeaders,
-    ).toBeUndefined();
-    expect(await stored(other)).toBeNull();
-  });
-
-  it("the connect flow finds the pending set for its origin, else a connection's, never another origin's", async () => {
-    expect(connectProxyHeaders('https://a.example')).toBeNull();
+  it("the connect flow finds the pending set for its origin, else the origin's, never another origin's", async () => {
+    expect(connectProxyHeaders(A)).toBeNull();
     useSession.getState().setPendingProxyHeaders(set);
-    expect(connectProxyHeaders('https://a.example/')).toBe(set);
+    expect(connectProxyHeaders(`${A}/`)).toBe(set);
     expect(connectProxyHeaders('https://a.example:8443')).toBeNull();
     expect(connectProxyHeaders('http://a.example')).toBeNull();
     expect(connectProxyHeaders('https://evil.example')).toBeNull();
 
-    // A sign-in clears the pending set; the connection's own then answers for its origin.
+    // A sign-in clears the pending set; the one it kept then answers for its origin.
     await signIn('a', set);
     expect(useSession.getState().pendingProxyHeaders).toBeNull();
-    expect(connectProxyHeaders('https://a.example')).toEqual(set);
+    expect(connectProxyHeaders(A)).toEqual(set);
     expect(connectProxyHeaders('http://192.168.1.5:8080')).toBeNull();
+    // The set the connect screen holds for the address still comes first.
+    const typed = { origin: A, headers: [{ name: 'X-Typed', value: 'typed' }] };
+    useSession.getState().setPendingProxyHeaders(typed);
+    expect(connectProxyHeaders(A)).toBe(typed);
   });
 
-  it("a re-pair finds its own connection's set before another's for the same origin", async () => {
-    const mine = { origin: set.origin, headers: [{ name: 'X-Mine', value: 'my-secret' }] };
-    const s = useSession.getState();
-    const owner = await signIn('a', set);
-    const member = await s.setSession(
-      {
-        serverUrl: 'https://a.example',
-        serverId: 'srv-a',
-        token: 't2',
-        user: { ...mkUser('kid'), id: 2 },
-        proxyHeaders: mine,
+  describe("an earlier build's per-connection sets", () => {
+    it('moves them to their origins at launch, read back before the old items go', async () => {
+      const a = await signIn('a');
+      const b = await signIn('b');
+      await legacy(a, JSON.stringify(set));
+      await legacy(b, JSON.stringify(setB));
+      reset();
+      await useSession.getState().hydrate();
+      expect(useSession.getState().proxySets).toEqual({ [A]: set, [setB.origin]: setB });
+      expect(await SecureStore.getItemAsync(legacyKey(a))).toBeNull();
+      expect(await SecureStore.getItemAsync(legacyKey(b))).toBeNull();
+      expect((await list()).some((m) => m.hasProxyHeaders)).toBe(false);
+    });
+
+    it("keeps the origin's own set, then the first connection's, over the others'", async () => {
+      const owner = await signIn('a');
+      const member = await signIn('a', undefined, 2);
+      const mine = { origin: A, headers: [{ name: 'X-Mine', value: 'mine' }] };
+      await legacy(owner, JSON.stringify(set));
+      await legacy(member, JSON.stringify(mine));
+      reset();
+      await useSession.getState().hydrate();
+      expect(useSession.getState().proxySets).toEqual({ [A]: set });
+      expect(await SecureStore.getItemAsync(legacyKey(member))).toBeNull();
+
+      // A set already kept for the origin wins over a copy found later.
+      await legacy(member, JSON.stringify(mine));
+      reset();
+      await useSession.getState().hydrate();
+      expect(useSession.getState().proxySets).toEqual({ [A]: set });
+    });
+
+    // fe#295: hydrate deleted what it could not read; another build may read it.
+    it("keeps an item it can't read, and its mark, through the list's later writes", async () => {
+      const a = await signIn('a');
+      const raw = JSON.stringify({ ...set, origin: 'http://192.168.1.5:8080' });
+      await legacy(a, raw);
+      reset();
+      await useSession.getState().hydrate();
+      expect(useSession.getState().proxySets).toEqual({});
+      expect(await SecureStore.getItemAsync(legacyKey(a))).toBe(raw);
+      expect((await list()).find((m) => m.id === a)?.hasProxyHeaders).toBe(true);
+      await signIn('c');
+      expect((await list()).find((m) => m.id === a)?.hasProxyHeaders).toBe(true);
+      expect(useSession.getState().connections.find((c) => c.id === a)).not.toHaveProperty(
+        'hasProxyHeaders',
+      );
+    });
+
+    it('drops a mark with no item behind it', async () => {
+      const a = await signIn('a');
+      await legacy(a, null);
+      reset();
+      await useSession.getState().hydrate();
+      expect(useSession.getState().connections.map((c) => c.id)).toEqual([a]);
+      expect((await list()).find((m) => m.id === a)).not.toHaveProperty('hasProxyHeaders');
+    });
+
+    // A move that can't be written must not fail the hydrate: at every launch the listener
+    // would look signed out, and a sign-in would then write the list with its server alone.
+    it.each([
+      ['refuses the write', () => Promise.reject(new Error('keychain'))],
+      ['drops the write', () => Promise.resolve()],
+    ])(
+      'uses the sets from where they are when storage %s, and moves them at a later launch',
+      async (_, refuse) => {
+        const a = await signIn('a');
+        const b = await signIn('b');
+        await legacy(a, JSON.stringify(set));
+        reset();
+        const original = store.setItemAsync;
+        store.setItemAsync = (k, v) => (k === PROXY_SETS_KEY ? refuse() : original(k, v));
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+          await useSession.getState().hydrate();
+          expect(sessionHydrateFailed()).toBe(false);
+          expect(useSession.getState().connections.map((c) => c.id)).toEqual([a, b]);
+          expect(useSession.getState().proxySets).toEqual({ [A]: set });
+          // Nothing deleted, and the mark outlives a later write of the list.
+          await signIn('c');
+          expect(useSession.getState().connections.map((c) => c.id)).toHaveLength(3);
+        } finally {
+          store.setItemAsync = original;
+          warn.mockRestore();
+        }
+        expect(await SecureStore.getItemAsync(legacyKey(a))).toBe(JSON.stringify(set));
+        expect((await list()).find((m) => m.id === a)?.hasProxyHeaders).toBe(true);
+        reset();
+        await useSession.getState().hydrate();
+        expect(useSession.getState().proxySets).toEqual({ [A]: set });
+        expect(await storedSets()).toEqual({ [A]: { headers: set.headers } });
+        expect(await SecureStore.getItemAsync(legacyKey(a))).toBeNull();
+        expect((await list()).some((m) => m.hasProxyHeaders)).toBe(false);
       },
-      { makeDefault: false },
     );
-    expect(connectProxyHeaders('https://a.example')).toEqual(set);
-    expect(connectProxyHeaders('https://a.example', owner)).toEqual(set);
-    expect(connectProxyHeaders('https://a.example', member)).toEqual(mine);
-    // An id this device no longer has takes no one's.
-    expect(connectProxyHeaders('https://a.example', 'gone.9')).toBeNull();
-    // The set the connect screen holds still comes first.
-    const typed = { origin: set.origin, headers: [{ name: 'X-Typed', value: 'typed' }] };
-    s.setPendingProxyHeaders(typed);
-    expect(connectProxyHeaders('https://a.example', member)).toBe(typed);
-  });
 
-  it("a reconnect with no set of its own never carries another person's (fe#167)", async () => {
-    const s = useSession.getState();
-    await signIn('a', set); // the owner, with headers for a.example
-    const member = await s.setSession(
-      {
-        serverUrl: 'https://a.example',
-        serverId: 'srv-a',
-        token: 't2',
-        user: { ...mkUser('kid'), id: 2 },
-        proxyHeaders: null,
+    // The set used in place still lives in the old item: removed only from the per-origin
+    // item, the next launch's move would bring it back.
+    it('keeps a set removed while its move could not be written removed at the next launch', async () => {
+      const a = await signIn('a');
+      const b = await signIn('b');
+      await legacy(a, JSON.stringify(set));
+      await legacy(b, JSON.stringify(setB));
+      reset();
+      const original = store.setItemAsync;
+      store.setItemAsync = (k, v) =>
+        k === PROXY_SETS_KEY ? Promise.reject(new Error('keychain')) : original(k, v);
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        await useSession.getState().hydrate();
+        expect(useSession.getState().proxySets).toEqual({ [A]: set, [setB.origin]: setB });
+        await useSession.getState().setProxySet(A, null);
+        expect(useSession.getState().proxySets).toEqual({ [setB.origin]: setB });
+      } finally {
+        store.setItemAsync = original;
+        warn.mockRestore();
+      }
+      expect(await SecureStore.getItemAsync(legacyKey(a))).toBeNull();
+      const stored = await list();
+      expect(stored.find((m) => m.id === a)).not.toHaveProperty('hasProxyHeaders');
+      // The other origin's, not removed, stays where it is for the next launch to move.
+      expect(stored.find((m) => m.id === b)?.hasProxyHeaders).toBe(true);
+      reset();
+      await useSession.getState().hydrate();
+      expect(useSession.getState().proxySets).toEqual({ [setB.origin]: setB });
+      expect(await storedSets()).toEqual({ [setB.origin]: { headers: setB.headers } });
+    });
+
+    // Dropping the removed set's marks writes this tab's list, never a stored copy read
+    // again: a write of the list made while that copy was read would be undone.
+    it("keeps a list write made while a removed set's old items go", async () => {
+      const a = await signIn('a');
+      const b = await signIn('b');
+      await legacy(a, JSON.stringify(set));
+      reset();
+      const original = store.setItemAsync;
+      store.setItemAsync = (k, v) =>
+        k === PROXY_SETS_KEY ? Promise.reject(new Error('keychain')) : original(k, v);
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const rename = () =>
+        useSession.getState().setConnectionUser(b, { ...mkUser('b'), username: 'bea' });
+      const plain = AsyncStorage.getItem;
+      try {
+        await useSession.getState().hydrate();
+        let renamed = false;
+        AsyncStorage.getItem = async (k: string) => {
+          const value = await plain(k);
+          if (k === 'audiosilo.connections' && !renamed) {
+            renamed = true;
+            await rename();
+          }
+          return value;
+        };
+        await useSession.getState().setProxySet(A, null);
+        if (!renamed) await rename();
+      } finally {
+        AsyncStorage.getItem = plain;
+        store.setItemAsync = original;
+        warn.mockRestore();
+      }
+      const stored = (await list()) as { id: string; user?: { username?: string } }[];
+      expect(stored.find((m) => m.id === b)?.user?.username).toBe('bea');
+      expect(stored.find((m) => m.id === a)).not.toHaveProperty('hasProxyHeaders');
+    });
+
+    // A sign-out leaves a set (fe#295), the one still used from a signed-out connection's old
+    // item too: it is written to its origin's before that item goes with the connection.
+    it.each([
+      ['a sign-out', (id: string) => useSession.getState().removeConnection(id)],
+      [
+        'a retired identity',
+        (id: string) =>
+          useSession.getState().setSession({
+            serverUrl: 'https://a.example',
+            serverId: 'srv-a2',
+            token: 't2',
+            user: { ...mkUser('a'), id: 1 },
+            retire: [id],
+          }),
+      ],
+    ])(
+      'keeps a set used in place through %s of the connection whose old item holds it',
+      async (_, end) => {
+        const a = await signIn('a');
+        const member = await signIn('a', undefined, 2);
+        await legacy(a, JSON.stringify(set));
+        reset();
+        const original = store.setItemAsync;
+        store.setItemAsync = (k, v) =>
+          k === PROXY_SETS_KEY ? Promise.reject(new Error('keychain')) : original(k, v);
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+          await useSession.getState().hydrate();
+          expect(useSession.getState().proxySets).toEqual({ [A]: set });
+        } finally {
+          store.setItemAsync = original;
+          warn.mockRestore();
+        }
+        await end(a);
+        expect(await SecureStore.getItemAsync(legacyKey(a))).toBeNull();
+        expect(useSession.getState().connections.some((c) => c.id === member)).toBe(true);
+        reset();
+        useSession.setState({ proxySets: {} });
+        await useSession.getState().hydrate();
+        expect(useSession.getState().proxySets).toEqual({ [A]: set });
       },
-      { makeDefault: false },
     );
-    expect(useSession.getState().connections.find((c) => c.id === member)?.proxyHeaders).toBe(
-      undefined,
-    );
-    // Denied: the owner's set is for the same address, but not the member's.
-    expect(connectProxyHeaders('https://a.example', member)).toBeNull();
-    // Allowed: the set typed for that address on the connect screen.
-    const typed = { origin: set.origin, headers: [{ name: 'X-Typed', value: 'typed' }] };
-    s.setPendingProxyHeaders(typed);
-    expect(connectProxyHeaders('https://a.example', member)).toBe(typed);
-  });
 
-  it("a re-pair whose own set is for another origin never takes another connection's", async () => {
-    const elsewhere = {
-      origin: 'https://b.example',
-      headers: [{ name: 'X-B', value: 'b-secret' }],
-    };
-    const s = useSession.getState();
-    const owner = await signIn('a', set);
-    const member = await s.setSession(
-      {
-        serverUrl: 'https://a.example',
-        serverId: 'srv-a',
-        token: 't2',
-        user: { ...mkUser('kid'), id: 2 },
-        proxyHeaders: elsewhere,
-      },
-      { makeDefault: false },
-    );
-    // A request to either address still finds a set for it (the bare clients ask with no id).
-    expect(connectProxyHeaders('https://a.example')).toEqual(set);
-    expect(connectProxyHeaders('https://b.example')).toEqual(elsewhere);
-    // What each keeps after a re-pair through the other's address: its own, so none to store.
-    expect(connectProxyHeaders('https://a.example', member)).toBeNull();
-    expect(connectProxyHeaders('https://b.example', owner)).toBeNull();
-    // The set the connect screen holds for that address is the listener's own choice.
-    const typed = { origin: set.origin, headers: [{ name: 'X-Typed', value: 'typed' }] };
-    s.setPendingProxyHeaders(typed);
-    expect(connectProxyHeaders('https://a.example', member)).toBe(typed);
-  });
-
-  it('a stored set the rules drop at load (an http origin) is deleted from the store', async () => {
-    const a = await signIn('a', set);
-    const b = await signIn('b', { ...set, origin: 'https://b.example' });
-    // As if written for an http origin (refused at entry today): it must not linger.
-    await SecureStore.setItemAsync(
-      `audiosilo.proxy-headers.${a}`,
-      JSON.stringify({ ...set, origin: 'http://192.168.1.5:8080' }),
-    );
-    reset();
-    await useSession.getState().hydrate();
-    const conns = useSession.getState().connections;
-    expect(conns.map((c) => c.id).sort()).toEqual([a, b].sort());
-    expect(conns.find((c) => c.id === a)?.proxyHeaders).toBeUndefined();
-    expect(await stored(a)).toBeNull();
-    expect(await stored(b)).not.toBeNull();
-  });
-
-  it('a connection dropped at launch for want of its token leaves no headers behind', async () => {
-    const a = await signIn('a', set);
-    const b = await signIn('b', { ...set, origin: 'https://b.example' });
-    await SecureStore.deleteItemAsync(`audiosilo.token.${a}`);
-    reset();
-    await useSession.getState().hydrate();
-    expect(useSession.getState().connections.map((c) => c.id)).toEqual([b]);
-    expect(await stored(a)).toBeNull();
-    expect(await stored(b)).not.toBeNull();
-  });
-
-  it('a sign-out whose token delete fails keeps the connection and its headers', async () => {
-    const id = await signIn('a', set);
-    const store = SecureStore as unknown as { deleteItemAsync: (k: string) => Promise<void> };
-    const original = store.deleteItemAsync;
-    store.deleteItemAsync = (k) =>
-      k.startsWith('audiosilo.token.') ? Promise.reject(new Error('keychain')) : original(k);
-    try {
-      await expect(useSession.getState().removeConnection(id)).rejects.toThrow('keychain');
-    } finally {
-      store.deleteItemAsync = original;
-    }
-    expect(useSession.getState().connections.map((c) => c.id)).toEqual([id]);
-    expect(JSON.parse((await stored(id))!)).toEqual(set);
+    it('fails the hydrate when an old item can not be read (as a token read does)', async () => {
+      const a = await signIn('a');
+      await legacy(a, JSON.stringify(set));
+      reset();
+      const original = store.getItemAsync;
+      store.getItemAsync = (k) =>
+        k === legacyKey(a) ? Promise.reject(new Error('keychain')) : original(k);
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        await useSession.getState().hydrate();
+        expect(sessionHydrateFailed()).toBe(true);
+      } finally {
+        store.getItemAsync = original;
+        warn.mockRestore();
+      }
+      expect(await SecureStore.getItemAsync(legacyKey(a))).toBe(JSON.stringify(set));
+      expect((await list()).find((m) => m.id === a)?.hasProxyHeaders).toBe(true);
+    });
   });
 });

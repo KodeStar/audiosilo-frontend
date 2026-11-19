@@ -76,15 +76,19 @@ describe('isReachableByReceiver', () => {
 
 describe('behindProxy (fe#167)', () => {
   const set = { origin: 'https://away.example', headers: [{ name: 'X-Proxy', value: 'v' }] };
+  const sets = { [set.origin]: set };
   it('is the address the headers go to, whatever the platform', () => {
-    expect(behindProxy(set, 'https://away.example')).toBe(true);
-    expect(behindProxy(set, 'https://away.example/')).toBe(true);
+    expect(behindProxy(sets, 'https://away.example')).toBe(true);
+    expect(behindProxy(sets, 'https://away.example/book')).toBe(true);
   });
   it('is no other address, and nothing without headers', () => {
-    expect(behindProxy(set, 'http://192.168.1.2:8080')).toBe(false);
-    expect(behindProxy(set, null)).toBe(false);
+    expect(behindProxy(sets, 'http://192.168.1.2:8080')).toBe(false);
+    expect(behindProxy(sets, 'http://away.example')).toBe(false);
+    expect(behindProxy(sets, null)).toBe(false);
     expect(behindProxy(undefined, 'https://away.example')).toBe(false);
-    expect(behindProxy({ ...set, headers: [] }, 'https://away.example')).toBe(false);
+    expect(behindProxy({ [set.origin]: { ...set, headers: [] } }, 'https://away.example')).toBe(
+      false,
+    );
   });
 });
 

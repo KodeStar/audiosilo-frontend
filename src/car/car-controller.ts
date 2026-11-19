@@ -1,7 +1,7 @@
 import type { FetchQueryOptions, QueryKey } from '@tanstack/react-query';
 import { Platform } from 'react-native';
 
-import { ApiError } from '@/api/client';
+import { isRefusedForGood } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import {
   addBookmark,
@@ -1286,7 +1286,9 @@ async function addCarBookmark(b: CarBookmark): Promise<CarBookmark | null> {
     await addBookmark(b.connectionId, b.libraryId, b.path, position);
     return null;
   } catch (err) {
-    if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+    // Refused for good only: an auth proxy's own 401 (fe#295), a 408 or a 429 never reached
+    // the server's answer about the bookmark, so it is kept and tried again.
+    if (isRefusedForGood(err)) {
       console.warn('[car] the server refused a bookmark', err);
       return null;
     }

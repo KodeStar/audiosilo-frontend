@@ -18,6 +18,14 @@ describe('signInErrorText', () => {
     );
   });
 
+  // fe#295: a sign-in proxy's own 401 is never a wrong code or password.
+  it("names the proxy headers for an auth proxy's 401, at every step", () => {
+    const e = new ApiError(401, 'Unauthorized', undefined, undefined, true);
+    for (const stage of ['redeem', 'exchange', 'login'] as const) {
+      expect(signInErrorText(e, stage, t)).toMatch(/sign-in proxy turned this device away/);
+    }
+  });
+
   it("says which way a redeemed invite can't be used when the server names it", () => {
     expect(signInErrorText(new ApiError(401, 'x', 'invite_used'), 'redeem', t)).toBe(
       'This invite has been used on all the devices it allows. Ask your admin for a new invite.',

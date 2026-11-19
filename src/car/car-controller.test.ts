@@ -2396,6 +2396,23 @@ describe('bookmarks from outside the app', () => {
     warn.mockRestore();
   });
 
+  // fe#295: an auth proxy in front of the server turned the request away: the server never
+  // saw the bookmark, which goes once the proxy headers are fixed.
+  it("keeps one an auth proxy's own 401 turned away", async () => {
+    const { ApiError } = jest.requireActual('@/api/client');
+    connect(['c1']);
+    mockClients.c1 = fakeClient({});
+    stop = startCarSync();
+    await settle();
+    load();
+    mockAddBookmark.mockRejectedValueOnce(
+      new ApiError(401, 'Unauthorized', undefined, undefined, true),
+    );
+    mockNative.bookmark?.(0, 50);
+    await settle();
+    expect((await getItem<unknown[]>('audiosilo.carBookmarks')) ?? []).toHaveLength(1);
+  });
+
   it('adds those pressed while no JS ran at start, each at its own place, skipping a gone connection', async () => {
     connect(['c1']);
     mockClients.c1 = fakeClient({});

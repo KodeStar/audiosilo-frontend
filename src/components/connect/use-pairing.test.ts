@@ -87,7 +87,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockExchangedAt.length = 0;
   mockHydrateFailed = false;
-  useSession.setState({ connections: [] });
+  useSession.setState({ connections: [], proxySets: {} });
 });
 
 describe('useLinkPairing', () => {
@@ -105,12 +105,13 @@ describe('useLinkPairing', () => {
   });
 
   it('hands finishConnect the proxy headers the exchange went out with (fe#167)', async () => {
-    // Another connection here holds a set for the link's address; this re-pair has none.
+    // A set is kept for the link's address (one per address on the device, fe#295).
     const SET = { origin: scan.base, headers: [{ name: 'X-Proxy', value: 'proxy-secret' }] };
     useSession.setState({
       connections: [
-        { id: 'a.2', serverId: 'a', serverUrl: scan.base, token: 't', proxyHeaders: SET },
+        { id: 'a.2', serverId: 'a', serverUrl: scan.base, token: 't' },
       ] as unknown as Connection[],
+      proxySets: { [scan.base]: SET },
     });
     const session = { token: 's', user: { id: 1, username: 'evie' }, server_id: 'a' };
     mockExchange.mockResolvedValue(session);
@@ -121,14 +122,14 @@ describe('useLinkPairing', () => {
     expect(mockFinish).toHaveBeenCalledWith(expect.objectContaining({ carried: SET }));
   });
 
-  it('pairs a code scanned from a reconnect as that reconnect: its own proxy headers, and finishConnect told', async () => {
+  it("pairs a code scanned from a reconnect as that reconnect, with the address's proxy headers, and finishConnect told", async () => {
     const set = (value: string) => ({ origin: scan.base, headers: [{ name: 'X-Proxy', value }] });
-    // Another person's connection to the server comes first: never its set.
     useSession.setState({
       connections: [
-        { id: 'a.2', serverId: 'a', serverUrl: scan.base, token: 't', proxyHeaders: set('other') },
-        { id: 'a.1', serverId: 'a', serverUrl: scan.base, token: 't', proxyHeaders: set('own') },
+        { id: 'a.2', serverId: 'a', serverUrl: scan.base, token: 't' },
+        { id: 'a.1', serverId: 'a', serverUrl: scan.base, token: 't' },
       ] as unknown as Connection[],
+      proxySets: { [scan.base]: set('own') },
     });
     const session = { token: 's', user: { id: 1, username: 'evie' }, server_id: 'b' };
     mockExchange.mockResolvedValue(session);

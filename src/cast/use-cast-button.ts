@@ -19,9 +19,8 @@ export function useCastButton(): CastButtonModel {
   const canCast = useCapability('cast', cid);
   const canTranscode = useCapability('transcode', cid);
   const { url } = useActiveAddress(cid ?? '');
-  const proxyHeaders = useSession((s) =>
-    cid ? s.connections.find((c) => c.id === cid)?.proxyHeaders : undefined,
-  );
+  // Every origin's proxy headers (one set per origin, fe#295).
+  const proxySets = useSession((s) => s.proxySets);
   const { supported, status, deviceName } = useCast();
   const online = useDeviceOnline();
   const queryClient = useQueryClient();
@@ -45,6 +44,6 @@ export function useCastButton(): CastButtonModel {
     chapters,
     status,
     deviceName,
-    proxied: behindProxy(proxyHeaders, url || null),
+    proxied: behindProxy(proxySets, url || null),
   });
 }

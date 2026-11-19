@@ -1,10 +1,8 @@
 import type { PlaybackTrack } from '@/playback/types';
 
 const mockResolveClient = jest.fn();
-const mockConnectionOf = jest.fn<{ proxyHeaders?: unknown } | undefined, [string]>(() => undefined);
 jest.mock('@/api/connection-clients', () => ({
   resolveClient: (cid: string) => mockResolveClient(cid),
-  connectionOf: (cid: string) => mockConnectionOf(cid),
 }));
 const mockCaps = jest.fn();
 const mockPodcastLibrary = jest.fn(() => false);
@@ -17,6 +15,7 @@ jest.mock('@/playback/book-source', () => ({ bookSourceOf: () => mockSource() })
 
 /* eslint-disable import/first */
 import { ApiClient, ApiError } from '@/api/client';
+import { useSession } from '@/stores/session';
 
 import { CastBlockedError, prepareCast } from './cast-prepare';
 import { castTokens } from './cast-token';
@@ -41,8 +40,11 @@ describe('prepareCast', () => {
     mockCaps.mockResolvedValue({ cast: true, transcode: true });
     mockSource.mockResolvedValue({ book: { codec: 'aac', direct_playable: true } });
     mockPodcastLibrary.mockReturnValue(false);
-    mockConnectionOf.mockReturnValue(undefined);
+    useSession.setState({ proxySets: {} });
   });
+
+  const AWAY = 'https://away.example';
+  const PROXIED = { [AWAY]: { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'v' }] } };
 
   it("builds the receiver's URLs on the connection's address with a cast token, never the session token", async () => {
     const { items } = await prepareCast(TRACKS, BOOK);
@@ -70,9 +72,7 @@ describe('prepareCast', () => {
   });
 
   it('casts from an address the proxy headers are not for (the home address)', async () => {
-    mockConnectionOf.mockReturnValue({
-      proxyHeaders: { origin: 'https://away.example', headers: [{ name: 'X-Proxy', value: 'v' }] },
-    });
+    useSession.setState({ proxySets: PROXIED });
     const { items } = await prepareCast(TRACKS, BOOK);
     expect(items[0].url).toContain('token=CAST-TOKEN');
     expect(JSON.stringify(items)).not.toContain('X-Proxy');
@@ -107,16 +107,13 @@ describe('prepareCast', () => {
       () => mockSource.mockResolvedValue({ book: { codec: 'mp3', episode: { show_path: 'S' } } }),
     ],
     ['episode', () => mockPodcastLibrary.mockReturnValue(true)],
-    // The address in use is behind the connection's auth proxy (fe#167).
+    // The address in use is behind an auth proxy (fe#167): a set is kept for it.
     [
       'proxy',
-      () =>
-        mockConnectionOf.mockReturnValue({
-          proxyHeaders: {
-            origin: 'http://192.168.1.5:8080',
-            headers: [{ name: 'X-Proxy', value: 'v' }],
-          },
-        }),
+      () => {
+        useSession.setState({ proxySets: PROXIED });
+        mockResolveClient.mockReturnValue(new ApiClient(AWAY, 's'));
+      },
     ],
   ])('refuses with %s', async (reason, arrange) => {
     arrange();

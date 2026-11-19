@@ -1,7 +1,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import { readAsStringAsync } from 'expo-file-system/legacy';
 
-import { ApiError, type ApiClient } from '@/api/client';
+import { ApiError, type ApiClient, isSignedOutError } from '@/api/client';
 import { engine } from '@/downloads/engine';
 import { classifyDownloadError } from '@/downloads/failure';
 import { nativeNumber } from '@/lib/native-number';
@@ -112,6 +112,24 @@ function dropOthers(dir: Directory, keep: string): void {
 }
 
 /**
+ * The error a download the server's address refused with `status` is. The download task
+ * hands back the status alone, so a 401 can't be told from an auth proxy's own by its body
+ * (`ApiError.fromProxy`, fe#295): the server is asked through the client (`me`), and only
+ * its own refusal of the token reads as signed out (the client flags the connection, as for
+ * any request). Anything else (the proxy turned that away too, the token was taken, no
+ * answer) is no sign-out: the reader offers Try again, never "Sign in again".
+ */
+async function refusalOf(api: ApiClient, status: number): Promise<ApiError> {
+  const message = 'The ebook could not be downloaded.';
+  if (status !== 401) return new ApiError(status, message);
+  const signedOut = await api.me().then(
+    () => false,
+    (e: unknown) => isSignedOutError(e),
+  );
+  return new ApiError(401, message, undefined, undefined, !signedOut);
+}
+
+/**
  * The book's EPUB on this device: the download's copy (`saved`) when it is there, else the
  * cache file for the server's `size`, fetched when it is not there yet. Resolves with the
  * file's own length, the one the reader is sent. Rejects with an `ApiError` carrying the
@@ -188,9 +206,7 @@ export async function localEbook({
     } catch (e) {
       drop(part);
       const failure = classifyDownloadError(e);
-      if (failure.kind === 'server' && failure.status) {
-        throw new ApiError(failure.status, 'The ebook could not be downloaded.');
-      }
+      if (failure.kind === 'server' && failure.status) throw await refusalOf(api, failure.status);
       if (failure.kind === 'storage') {
         throw new EbookStorageError(NO_ROOM, { cause: e });
       }

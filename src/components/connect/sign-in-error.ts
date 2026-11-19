@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next';
 
-import { ApiError, apiErrorKind } from '@/api/client';
+import { ApiError, apiErrorKind, isProxyRefusal } from '@/api/client';
 
 /** Which request of the sign-in failed: the invite code's redeem, the pairing token's
  * exchange that follows it, or a username and password login. */
@@ -10,10 +10,12 @@ export type SignInStage = 'redeem' | 'exchange' | 'login';
  * The words for a refusal that reads the same wherever it lands (a sign-in, a pairing
  * link), or `undefined` for one the caller words itself: a 429 names the wait from the
  * server's `Retry-After` when it sent one (in seconds under a minute, else in whole
- * minutes: 30 s never reads as "1 minute"), and the server's `member_disabled`,
- * `invite_used` and `invite_expired` codes their own sentences.
+ * minutes: 30 s never reads as "1 minute"), the server's `member_disabled`,
+ * `invite_used` and `invite_expired` codes their own sentences, and an auth proxy's own 401
+ * (`isProxyRefusal`, fe#295) the proxy headers, never a wrong code or password.
  */
 export function sharedRefusalText(e: ApiError, t: TFunction): string | undefined {
+  if (isProxyRefusal(e)) return t('connect.signIn.errors.proxyRefused');
   if (e.status === 429) {
     const secs = namedWaitSeconds(e);
     if (secs === undefined) return t('common.tooManyTries');

@@ -23,8 +23,12 @@ import { sameOrigin } from '@/lib/same-origin';
 /** One header, as the listener typed it (name trimmed). */
 export type ProxyHeader = { name: string; value: string };
 
-/** A connection's headers and the origin they go to. */
+/** A set of headers and the origin they go to. */
 export type ProxyHeaders = { origin: string; headers: readonly ProxyHeader[] };
+
+/** Every origin's set, by origin: one set per https origin on the device (fe#295,
+ * `proxy-headers-store.ts`). */
+export type ProxySets = Readonly<Record<string, ProxyHeaders>>;
 
 /** How many headers a connection may carry: a proxy needs one or two. */
 export const MAX_PROXY_HEADERS = 8;
@@ -146,6 +150,42 @@ export function proxyHeaderRecord(
     return {};
   }
   return Object.fromEntries(set.headers.map((h) => [h.name, h.value]));
+}
+
+/** The set kept for `url`'s origin in `sets` (null: none, or `url` is not an https URL). A
+ * signed-in connection's client on that address sends it (`connectionClient`). */
+export function proxySetFor(sets: ProxySets | null | undefined, url: string): ProxyHeaders | null {
+  const origin = proxyOriginOf(url);
+  return (origin && sets?.[origin]) || null;
+}
+
+/**
+ * The origins a connection's headers can be for, best first: `first` (the one a set is kept
+ * for now), the server's away address (the public one a proxy guards), the address it was
+ * paired with, then its home address. Distinct, https only (headers never go over plain
+ * http): none when the connection knows no https address.
+ */
+export function proxyOriginChoices(
+  conn: {
+    serverUrl: string;
+    addresses?: { home?: string; away?: string };
+  },
+  first?: string | null,
+): string[] {
+  const all = [first, conn.addresses?.away, conn.serverUrl, conn.addresses?.home].map((u) =>
+    u ? proxyOriginOf(u) : null,
+  );
+  return [...new Set(all.filter((o): o is string => !!o))];
+}
+
+/** The set kept for the first of `conn`'s addresses that has one (`proxyOriginChoices`'s
+ * order), null when none has. */
+export function connectionProxySet(
+  sets: ProxySets | null | undefined,
+  conn: { serverUrl: string; addresses?: { home?: string; away?: string } },
+): ProxyHeaders | null {
+  for (const o of proxyOriginChoices(conn)) if (sets?.[o]) return sets[o];
+  return null;
 }
 
 /** What the screen shows in place of a value: the same dots for every one, so what is drawn

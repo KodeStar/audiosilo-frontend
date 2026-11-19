@@ -12,14 +12,17 @@ export function isAbsentEpisode(book: Book): boolean {
   return !!book.episode && !book.episode.downloaded;
 }
 
-/** A refusal about the listener, not the episode: signed out (a 401), or no access (a 403
- * that names no code: the server's library scope; a 403 with a code, the demo account's,
- * says that instead). Null for any other answer. */
+/** A refusal about the listener, not the episode: signed out (the server's 401), or no
+ * access (a 403 that names no code: the server's library scope; a 403 with a code, the demo
+ * account's, says that instead). Null for any other answer, an auth proxy's own 401 among
+ * them (`fromProxy`, as `isSignedOutError` reads it, fe#295): signing in again can't get
+ * past the proxy. */
 export function accessRefusal(e: {
   status: number;
   code?: string | null;
+  fromProxy?: boolean;
 }): 'signedOut' | 'noAccess' | null {
-  if (e.status === 401) return 'signedOut';
+  if (e.status === 401 && !e.fromProxy) return 'signedOut';
   if (e.status === 403 && !e.code) return 'noAccess';
   return null;
 }

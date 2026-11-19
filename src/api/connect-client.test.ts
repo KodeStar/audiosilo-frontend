@@ -5,9 +5,9 @@ import { useSession } from '@/stores/session';
 import { connectClient, connectClientFor } from './connect-client';
 import { probeServerId } from './server-id-probe';
 
-// The connect flow's bare clients (fe#167): the proxy headers entered on the connect screen
-// go to the address they were entered for, and to nothing else (an http fallback, a home
-// address, another server a QR code names).
+// The connect flow's bare clients (fe#167): the proxy headers entered on the connect screen,
+// else the set kept for the address (fe#295), go with requests to the address they are for,
+// and not to an http fallback, a home address or another server a QR code names.
 
 const SET = {
   origin: 'https://books.example.com',
@@ -34,11 +34,11 @@ describe('the connect flow carries proxy headers to their address only', () => {
   const realOS = Platform.OS;
   beforeEach(() => {
     (Platform as { OS: string }).OS = 'ios';
-    useSession.setState({ connections: [], pendingProxyHeaders: SET });
+    useSession.setState({ connections: [], pendingProxyHeaders: SET, proxySets: {} });
   });
   afterEach(() => {
     (Platform as { OS: string }).OS = realOS;
-    useSession.setState({ pendingProxyHeaders: null });
+    useSession.setState({ pendingProxyHeaders: null, proxySets: {} });
   });
 
   it('asks the address they were entered for with them', async () => {
@@ -76,63 +76,34 @@ describe('the connect flow carries proxy headers to their address only', () => {
     const HOME = 'http://192.168.1.5:8080';
     const homeSet = { ...SET, origin: HOME };
     // A set bound to the http home address, as if held (one is refused at entry and load).
-    useSession.setState({
-      pendingProxyHeaders: homeSet,
-      connections: [
-        { serverUrl: HOME, serverId: 'srv', token: 't', id: 'srv.1', proxyHeaders: homeSet },
-      ] as never,
-    });
+    useSession.setState({ pendingProxyHeaders: homeSet, proxySets: { [HOME]: homeSet } });
     const fetchMock = installFetch();
     expect(await probeServerId(HOME)).toBe('srv');
     await connectClient(HOME).serverInfo();
     for (let i = 0; i < 2; i++) expect(sentSecret(fetchMock, i)).toBeUndefined();
   });
 
-  it("signs a reconnect in with its own set only, never another person's", async () => {
-    const mine = { origin: SET.origin, headers: [{ name: 'X-Mine', value: 'my-secret' }] };
-    const base = { serverUrl: SET.origin, serverId: 'srv', token: 't' };
-    useSession.setState({
-      pendingProxyHeaders: null,
-      connections: [
-        { ...base, id: 'srv.1', user: { id: 1 }, proxyHeaders: SET },
-        { ...base, id: 'srv.2', user: { id: 2 } },
-        { ...base, id: 'srv.3', user: { id: 3 }, proxyHeaders: mine },
-      ] as never,
-    });
-    const fetchMock = installFetch();
-    // Denied: srv.2 has none of its own; srv.1's set for the same address stays with srv.1.
-    await connectClient(SET.origin, undefined, 'srv.2').login('kid', 'pw', 'Phone');
-    expect(sentSecret(fetchMock, 0)).toBeUndefined();
-    // Allowed: srv.3's own.
-    await connectClient(SET.origin, undefined, 'srv.3').login('kid', 'pw', 'Phone');
-    const sent = (fetchMock.mock.calls[1][1] as { headers: Record<string, string> }).headers;
-    expect(sent['X-Mine']).toBe('my-secret');
-    expect(sent['CF-Access-Client-Secret']).toBeUndefined();
-  });
-
-  it("probes a connection's https home address with its own set only, never another's (fe#295)", async () => {
+  // fe#295: one set per origin on the device, whoever's sign-in kept it.
+  it("carries the set kept for the address when none was typed, and another address's never", async () => {
+    const kept = { origin: SET.origin, headers: [{ name: 'X-Kept', value: 'kept-secret' }] };
     const HOME = 'https://nas.example.com';
-    const theirs = { origin: HOME, headers: [{ name: 'X-Theirs', value: 'their-secret' }] };
-    const mine = { origin: HOME, headers: [{ name: 'X-Mine', value: 'my-secret' }] };
-    const base = { serverUrl: SET.origin, serverId: 'srv', token: 't' };
-    useSession.setState({
-      pendingProxyHeaders: null,
-      connections: [
-        { ...base, id: 'srv.1', user: { id: 1 }, proxyHeaders: theirs },
-        { ...base, id: 'srv.2', user: { id: 2 } },
-        { ...base, id: 'srv.3', user: { id: 3 }, proxyHeaders: mine },
-      ] as never,
-    });
+    useSession.setState({ pendingProxyHeaders: null, proxySets: { [SET.origin]: kept } });
     const fetchMock = installFetch();
     const sent = (i: number) =>
       (fetchMock.mock.calls[i][1] as { headers: Record<string, string> }).headers;
-    // Denied: srv.2's probe carries none, though srv.1 has a set for that address.
-    await probeServerId(HOME, 'srv.2');
-    expect(sent(0)['X-Theirs']).toBeUndefined();
-    // Allowed: srv.3's probe carries srv.3's own.
-    await probeServerId(HOME, 'srv.3');
-    expect(sent(1)['X-Mine']).toBe('my-secret');
-    expect(sent(1)['X-Theirs']).toBeUndefined();
+    // Allowed: the address's own set, for a sign-in and a probe alike.
+    await connectClient(SET.origin).login('kid', 'pw', 'Phone');
+    expect(sent(0)['X-Kept']).toBe('kept-secret');
+    expect(await probeServerId(SET.origin)).toBe('srv');
+    expect(sent(1)['X-Kept']).toBe('kept-secret');
+    // Denied: another https address (the server's home one) has none kept, so gets none.
+    expect(await probeServerId(HOME)).toBe('srv');
+    expect(sent(2)['X-Kept']).toBeUndefined();
+    // A set typed for the address wins over the one kept (a rotated token).
+    useSession.setState({ pendingProxyHeaders: SET });
+    await connectClient(SET.origin).serverInfo();
+    expect(sent(3)['X-Kept']).toBeUndefined();
+    expect(sentSecret(fetchMock, 3)).toBe('proxy-secret');
   });
 
   it('names the set its requests carry, none where none goes (finishConnect keeps it)', () => {

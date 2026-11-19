@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 import * as SecureStore from 'expo-secure-store';
 
 import type { User } from '@/api/types';
+import { forgetProxySets, readProxySets } from '@/lib/proxy-headers-store';
 import { useSession } from '@/stores/session';
 import { mountWithPortal } from '@/testing/render-overlay';
 
@@ -25,7 +26,7 @@ const SET = {
     { name: 'CF-Access-Client-Secret', value: 'proxy-secret' },
   ],
 };
-const stored = () => SecureStore.getItemAsync('audiosilo.proxy-headers.srv.1');
+const kept = () => useSession.getState().proxySets;
 
 async function signIn(proxyHeaders?: typeof SET) {
   await useSession.getState().setSession({
@@ -39,9 +40,14 @@ async function signIn(proxyHeaders?: typeof SET) {
 }
 
 beforeEach(async () => {
+  await forgetProxySets();
   await AsyncStorage.clear();
-  await SecureStore.deleteItemAsync('audiosilo.proxy-headers.srv.1');
-  useSession.setState({ connections: [], defaultConnectionId: null, pendingProxyHeaders: null });
+  useSession.setState({
+    connections: [],
+    defaultConnectionId: null,
+    pendingProxyHeaders: null,
+    proxySets: {},
+  });
 });
 
 describe('ProxyHeadersCard (fe#167)', () => {
@@ -78,14 +84,48 @@ describe('ProxyHeadersCard (fe#167)', () => {
     await fireEvent.changeText(screen.getByTestId('proxy-headers-editor-name'), 'X-Auth');
     await fireEvent.changeText(screen.getByTestId('proxy-headers-editor-value'), 'proxy-secret');
     await fireEvent.press(screen.getByTestId('proxy-headers-save'));
-    await waitFor(() =>
-      expect(useSession.getState().connections[0].proxyHeaders).toEqual({
-        origin: AWAY,
-        headers: [{ name: 'X-Auth', value: 'proxy-secret' }],
-      }),
-    );
-    expect(JSON.parse((await stored())!).headers[0].value).toBe('proxy-secret');
+    const set = { origin: AWAY, headers: [{ name: 'X-Auth', value: 'proxy-secret' }] };
+    await waitFor(() => expect(kept()[AWAY]).toEqual(set));
+    expect(await readProxySets()).toEqual({ [AWAY]: set });
     expect(screen.queryByText('proxy-secret')).toBeNull();
+    // The address's set: says so.
+    expect(screen.getByTestId('proxy-headers-shared')).toBeTruthy();
+  });
+
+  // fe#295: one set per address on the device, shown and edited from any sign-in there.
+  it("shows another person's sign-in at the same address the same set, and the edit is theirs too", async () => {
+    await signIn(SET);
+    await useSession.getState().setSession({
+      serverUrl: AWAY,
+      serverId: 'srv',
+      token: 't2',
+      user: { ...user, id: 2, username: 'maya' },
+    });
+    await mountWithPortal(<ProxyHeadersCard connectionId="srv.2" />);
+    expect(screen.getByLabelText('CF-Access-Client-Secret, value hidden')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('proxy-headers-remove'));
+    await fireEvent.press(screen.getAllByText('Remove headers').at(-1)!);
+    await waitFor(() => expect(kept()).toEqual({}));
+    expect(await readProxySets()).toEqual({});
+  });
+
+  it('moves the set when it is sent to another address', async () => {
+    const httpsHome = 'https://nas.home.example:8443';
+    await useSession.getState().setSession({
+      serverUrl: AWAY,
+      serverId: 'srv',
+      token: 't',
+      user,
+      addresses: { home: httpsHome, away: AWAY },
+      proxyHeaders: SET,
+    });
+    await mountWithPortal(<ProxyHeadersCard connectionId="srv.1" />);
+    await fireEvent.press(screen.getByTestId('proxy-headers-edit'));
+    await fireEvent.press(screen.getByText('nas.home.example:8443'));
+    await fireEvent.press(screen.getByTestId('proxy-headers-save'));
+    await waitFor(() => expect(Object.keys(kept())).toEqual([httpsHome]));
+    expect(kept()[httpsHome]?.headers).toEqual(SET.headers);
+    expect(Object.keys(await readProxySets())).toEqual([httpsHome]);
   });
 
   it('offers a choice between https addresses, the home one too when it is https', async () => {
@@ -116,12 +156,12 @@ describe('ProxyHeadersCard (fe#167)', () => {
     await fireEvent.changeText(names[0], 'Authorization');
     await fireEvent.press(screen.getByTestId('proxy-headers-save'));
     expect(screen.getByText('The app sends Authorization itself.')).toBeTruthy();
-    expect(useSession.getState().connections[0].proxyHeaders).toEqual(SET);
+    expect(kept()[AWAY]).toEqual(SET);
 
     await fireEvent.changeText(names[0], 'X-Client');
     await fireEvent.press(screen.getByTestId('proxy-headers-save'));
     await waitFor(() =>
-      expect(useSession.getState().connections[0].proxyHeaders?.headers).toEqual([
+      expect(kept()[AWAY]?.headers).toEqual([
         { name: 'X-Client', value: 'id.access' },
         { name: 'CF-Access-Client-Secret', value: 'proxy-secret' },
       ]),
@@ -134,7 +174,7 @@ describe('ProxyHeadersCard (fe#167)', () => {
     await fireEvent.press(screen.getByTestId('proxy-headers-remove'));
     expect(screen.getByText('Remove the proxy headers?')).toBeTruthy();
     await fireEvent.press(screen.getAllByText('Remove headers').at(-1)!);
-    await waitFor(() => expect(useSession.getState().connections[0].proxyHeaders).toBeUndefined());
-    expect(await stored()).toBeNull();
+    await waitFor(() => expect(kept()[AWAY]).toBeUndefined());
+    expect(await SecureStore.getItemAsync('audiosilo.proxy-sets')).toBeNull();
   });
 });

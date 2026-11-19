@@ -52,7 +52,7 @@ connection-keyed document to `ID_DOCUMENTS` in the identity migration too). The 
 reading storage, without importing React; removing/signing out of a connection
 **purges** its scoped state through the `onConnectionRemoved` registry in
 `src/stores/session.ts`. On the web every tab does. Each tab follows the stored list, tokens
-and proxy headers (`followStored`, on the `storage` events of another tab's writes; a write
+and the proxy-header sets (`followStored`, on the `storage` events of another tab's writes; a write
 heard while it reads, the launch's hydrate included, has it read again) and writes the list
 holding a `tabLock` the tabs share, reading it again first (`writingList`), so it never writes
 its older copy over another tab's sign-in; its default connection and reconnect flags stay its
@@ -351,21 +351,46 @@ one in use (`inUse`); the web passes no `inUse` and says only what the addresses
 **Proxy headers (fe#167): custom headers for a server behind an auth proxy** (Cloudflare Access
 service tokens, Authentik, Authelia and the like; nothing changes on the server). Rules in
 `src/lib/proxy-headers.ts`, storage in `src/lib/proxy-headers-store.ts`. They are credentials:
-- **Kept like the token.** `Connection.proxyHeaders` is `{ origin, headers }`, held in memory and
-  in secure-store under `audiosilo.proxy-headers.<connection id>` (iOS: the after-first-unlock
-  service, so CarPlay streams on a locked phone; web: localStorage, as the token). Never in the
-  AsyncStorage metadata (`persist` strips it, keeping only the non-secret `hasProxyHeaders`
-  marker), the query cache, a URL or a log line. `hydrate` reads them beside the token only for a
-  marked connection (no extra keychain read for anyone else, a locked-phone CarPlay start
-  included), and a refused read fails the hydrate as a token read does. A new connection to a
-  server another connection here reaches with headers (a member signed in here, a second person)
-  takes that set, stored under its own id. They go
-  with the connection wherever the token and the calendar link go (sign-out, a retired identity,
-  the auth reset, a connection `hydrate` drops because its token is gone) and move with the
-  identity migration as the token does (`copyProxyHeaders`: copied, read back and compared in
-  its token step, a failure aborting the run with the old entry kept for the next launch; the
-  old entry deleted only in the clean-up). `removeConnection` deletes the token first: a delete
-  that fails stops the removal with the headers still kept.
+- **One set per origin, kept like the token (fe#295).** A set is `{ origin, headers }`, and the
+  device keeps ONE per https origin, shared by everyone signed in here who reaches the server there
+  (a member, a second person): `useSession`'s `proxySets`, stored as one secure-store item
+  `audiosilo.proxy-sets` = `{ "<origin>": { headers } }` (iOS: the after-first-unlock service, so
+  CarPlay streams on a locked phone; web: localStorage, as the token), with a non-secret
+  AsyncStorage marker `audiosilo.proxySets` while the item exists, so a device with no set costs no
+  keychain read at launch (a locked-phone CarPlay start included). Never in the connection list,
+  the query cache, a URL or a log line. A connection holds none: `proxySetFor(sets, url)` finds the
+  set for a request's origin. A set stays until it is removed or replaced on purpose (the Account
+  card, or a sign-in that got in with a set typed for that address: `setSession`'s `proxyHeaders`,
+  saved before the list is written); a sign-out, a retired identity and a sign-in without headers
+  leave it. With nobody signed in through it, it goes when its remembered server is forgotten on
+  the connect screen (`proxyOriginsToForget`: never one a signed-in connection or another
+  remembered server still reaches), and the connect screen's Proxy headers section says it is
+  sent to the typed address and removes it after asking (`unusedProxySet`, `proxy-headers-kept`:
+  only while no signed-in connection reaches that address, and nothing is typed over it). The
+  auth reset forgets every set (`forgetProxySets`). `hydrate` reads them
+  beside the tokens, and a refused read fails the hydrate as a token read does. What this build
+  can't read is kept as it is, never deleted: an entry of the item it can't use is skipped and
+  written back untouched, a damaged item is read as none and replaced only by an explicit save.
+  Writes go one at a time through the tabs' lock (`tabLock(PROXY_SETS_KEY)`), and on the web the
+  other tabs follow them (`followStored`). Earlier builds kept a copy per connection
+  (`audiosilo.proxy-headers.<connection id>`, marked `hasProxyHeaders` in the stored list; the
+  identity migration still copies those, `copyProxyHeaders`): `hydrate` moves them first
+  (`moveLegacyProxySets`): each becomes its origin's set unless the origin has one (the stored set
+  wins, then the first connection's in the list; the other copies are deleted), written and read
+  back before any old item is deleted; a copy this build can't read stays where it is with its
+  mark (`legacyMarks`, written again by `persist`), and a mark with no item behind it is
+  dropped. A read the platform refuses fails the hydrate with nothing deleted. A move that can't
+  be written (storage full, a write refused, a copy that does not read back) never does: the sets
+  are used from where they are for that launch, every old item and mark left for the next one (a
+  failed hydrate would show the listener as signed out at every launch, and a sign-in then writes
+  the list with its server alone); a set removed (or moved to another address) meanwhile takes
+  its old items and their marks with it (`forgetLegacyProxySets`), or the next move would bring
+  it back, while a sign-out or a retired identity, which leave a set, write one used from their
+  item to its origin's before the item goes (`keepInPlaceSets`, `inPlace`), and a tab that
+  follows another's write keeps the sets it uses in place while their marks stand
+  (`followInPlace`). A tab also keeps, in its own writes of the list, a mark it
+  never wrote (an earlier build's tab keeping a set since this one launched, `applyStored`): a
+  mark dropped would leave its item with nothing to move it.
 - **One https origin.** A set names the origin (scheme, host, port) it was entered for, and
   `proxyHeaderRecord` is the one rule: only a request to that origin carries them, so the home
   address (which the proxy doesn't guard), a plain-http fallback, another port and anything else
@@ -374,10 +399,14 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   http URL whatever the set says, `proxyOriginChoices` offers https addresses only, and the
   connect screen and the Account card say so for an http address. So the tokenless `server_id`
   probe of the home address (`probeServerId`, every 90 s) carries a set only to an https home
-  address the set was entered for. (What a redirect from that request does is the next bullet's
-  open question.) On the web only same-origin with the page (the server's CORS lists a fixed set
-  of request headers, so a custom one cross-origin would fail its preflight; changing that is a
-  server change). `ApiClient` takes the set as its sixth argument and computes the record once:
+  address the set was entered for. The iOS player holds the same line by itself
+  (`modules/audiosilo-player/ios/AuthScope.swift`, the twin of Android's `AuthScope`): a track's
+  headers go only to the track's own origin (the stream, and its cover only when the cover is
+  there), every one to https, only `Authorization` to plain http (covered by
+  `ios/SelfCheck/run.sh`). (What a redirect from that request does is the next bullet's
+  open question.) On the web only same-origin with the page: a web player at another origin than
+  its server is not supported behind a proxy (the server's CORS lists a fixed set of request
+  headers, so a custom one cross-origin would fail its preflight; fe#295 struck changing that). `ApiClient` takes the set as its sixth argument and computes the record once:
   `request()` and every hand-built request send it, `authHeaders()` hands it with the token to
   expo-image, the native player (AVURLAsset headers, Media3's origin-scoped `AuthHolder`) and the
   reader's EPUB download, and `proxyHeadersFor(url)` gives it alone for a request whose URL
@@ -393,29 +422,52 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   players (iOS and Android), and the web's `fetch`. Until it is done, claim no more than "the
   request goes to one origin": the UI says "sent with requests to <origin>", never "and nowhere
   else" or "they go only to" (`src/i18n/locales.test.ts` refuses those in every locale).
-- **Before a connection exists.** The connect screen's "Proxy headers" section holds a set for the
-  address as the listener typed it (`pendingProxyHeaders`, in memory only; never rebound when the
-  flow rewrites the field, as the plain-http fallback does; taken up again by the new screen the
-  scanner hands a code to; dropped when the flow's layout unmounts or a sign-in stores it). The
+- **Before a connection exists.** The connect screen's "Proxy headers" section is for the address
+  as the listener typed it, and hands its set to the session (`pendingProxyHeaders`, in memory
+  only) as the flow moves on, never at each keystroke (`holdTyped`: Continue, a remembered
+  server's row, a link, the scanner, Sign in, an invite, the demo; a handler holds them before its
+  first await, never after, since its render's rows are stale by then). Closing the section only
+  hides them, with a caption saying how many are held for which address (`proxy-headers-held`).
+  An address the flow fills in by itself (a link that failed) is theirs only when none was typed
+  (`fillAddress`); a remembered server's row with none typed binds them to its paired address,
+  never to the home address its probe may pick. The pending set is never rebound when the flow
+  rewrites the field (the plain-http fallback), is taken up again by the new screen the scanner
+  hands a code to, and is dropped when the flow's layout unmounts or a sign-in stores it. The
   flow's bare clients are `connectClient(base)` (`src/api/connect-client.ts`) and `probeServerId`
-  (built by it), through `connectProxyHeaders(url)`: the pending set for that origin, else a
-  signed-in connection's (a second person on the same server). With `ownId` (a reconnect's
-  sign-in, `SignInStep`'s `reconnectId`, what `finishConnect` keeps for a re-pair, and the
-  address runner's home probe for a connection, `pickAddress` -> `probeServerId(home, id)`) it is
-  only the pending set or that connection's OWN set for the address, never another
-  connection's: a reconnect never signs in with another person's credentials. A sign-in or re-pair
-  with no set of its own keeps the set that carried its successful sign-in or exchange:
-  `connectClientFor` names it (`proxy`), read as the sign-in is sent (a lender that signed out
-  while the step was open lends nothing, fe#295), and `finishConnect` takes it as `carried`, so a link or QR
-  re-pair (it can't name the connection before the exchange answers, so it borrows another
-  connection's set for the address) stores the set that got it in, never none. A reconnect never
-  keeps a borrowed set, and a re-pair whose own set is for another address keeps its own. A
-  pairing QR or link pairs with them when its address is the field's: type the address and the
-  headers first, then scan.
+  (built by it), through `connectProxyHeaders(url)`: the pending set for that origin, else the set
+  kept for it. `connectClientFor` names the set its client was built with (`proxy`), and
+  `finishConnect` keeps it (`carried`) only when it is the pending set (typed, and it got the
+  sign-in or the exchange in): a kept set that carried the sign-in is kept already, and is never
+  written back (it may have been removed or changed on purpose while the sign-in was on its way).
+  Else the pending set when its origin is one of the connection's addresses and has no set yet: a
+  typed set that was never sent proved nothing, so it replaces no kept one. A demo or a kid's
+  account replaces a kept set only while no full account on the device reaches that address
+  (`mayReplaceProxySet`, the Account card's `canManageProxySet` rule for one address; the
+  identities the sign-in retires don't count); where none is kept yet, its set is kept as anyone's
+  (a kid's own device works). A pairing QR or link
+  pairs with them when its address is the field's: type the address and the headers first, then
+  scan.
+- **A proxy's 401 is not a sign-out.** The server's own 401s always carry its JSON `error`; a 401
+  without one (a page, an empty body, someone else's JSON) is the proxy's (`ApiError.fromProxy`):
+  `isSignedOutError` is false for it, so no reconnect banner and no sign-out, and the sign-in step
+  says the proxy refused the request (`isProxyRefusal`, `connect.signIn.errors.proxyRefused`).
+  Nor is it refused for good (`isRefusedForGood`): the server never saw the request, so a
+  progress or reading save it turned away is queued for once the headers are fixed, never dropped
+  (nor is the car's bookmark, `addCarBookmark`). A download task hands back the status alone (the
+  reader's EPUB, `ebook-file.native.ts`): its 401 reads as signed out only when the server itself
+  then refuses the token (`refusalOf` asks `me`). The connect screen's own probe says the proxy
+  refused it too.
 - **Edited** on the Account page's Proxy headers card (`ProxyHeadersCard`, shown whatever the
   server's flags, since it is needed most when the proxy refuses everything; for a demo
-  account only when it has a set, which a demo started behind a proxy keeps), with a choice of
-  the connection's origins (`proxyOriginChoices`). A value is never
+  account only when a set is kept for one of its addresses, as for a demo started behind a
+  proxy; never for a demo or a kid's account while a full account on the device reaches an
+  address the card could write to (the set's, or another of the connection's it could add or
+  move one to), `canManageProxySet`: the set is shared, and removing or replacing it would turn
+  that person's requests away too), with a choice of the connection's origins
+  (`proxyOriginChoices`). It edits the
+  address's set, which it says is shared with everyone here who reaches that address
+  (`proxy-headers-shared`); saving it for another of the connection's addresses moves it
+  (`setProxySet(origin, set, movedFrom)`), and Remove removes it for everyone. A value is never
   shown again: a stored row's field says "Kept as it is" and keeps it unless a new one is typed.
   Reserved names (`Authorization`, `Cookie`, `Host`, `Range`, `Content-Type`, `X-AudioSilo-Client`
   and framing headers) and values with control characters are refused at entry and dropped at load.
@@ -517,7 +569,14 @@ the screen renders and taken once it is on screen, `useHandoff`, as every hand-o
 the layout's `takeOidcIntent` too, since a first render can be thrown away and run again; never a
 `/connect/sign-in` param, fe#298: a link opens that route and must not name the connection a
 sign-in replaces), so a reset server reached through its away address still retires its dead
-identity. The sign-in step's "Scan a QR code
+identity. Whether that hand-off still re-pairs is decided once the server answered, by who
+answered and as whom (`reconnectFor`, `connect-model.ts`, fe#298), never by the address alone: the
+connection's own `server_id` re-pairs it through any of its addresses; another `server_id` (the
+server reset) only through the connection's paired or away address (`scanReconnect`'s rule) and
+signed in to as the same person (`sameUser`: the username the connection kept, both known);
+anything else is a new connection that retires nothing on the reconnect's account (`finishConnect`
+skips `staleToRetire` for it) and takes none of its addresses. Nor does a sign-in take over a
+connection saved without a user id unless it kept the signer's username (`priorConnection`). The sign-in step's "Scan a QR code
 instead" (fe#264) hands that reconnect to the scanner in memory (`openScanner` / `takeScanFor`,
 never a `/connect/scan` param: a link opens that route too, and every way into the scanner goes
 through `openScanner`, so one without a reconnect clears what was held; the flow's layout drops
@@ -527,8 +586,8 @@ so is a home address it was not paired at, where another box can answer on anoth
 would read as this server reset): an invite code's sign-in step gets it in memory (`holdReconnect`),
 a pairing code's `/connect` takes it from memory by the code's token (`holdScanReconnect` /
 `takeScanReconnect`, never a `/connect` param: a link opens that route; checked against the
-code's address again as it pairs) and `useLinkPairing` pairs with it (the connection's own proxy
-headers, `finishConnect`'s `reconnectId`). The book the sign-in step was heading to goes to the
+code's address again as it pairs) and `useLinkPairing` pairs with it (`finishConnect`'s
+`reconnectId`, decided by `reconnectFor`). The book the sign-in step was heading to goes to the
 scanner as `/connect/scan`'s book params (`openScanner(reconnectId, book)`), and a scanned code
 for that step's server (`pendingServerUrl`) that names no book of its own carries it on. `/connect` decides its "nothing to add"
 bounce when it opens and when it is back on top, never while the flow is over it; `sign-in` reads

@@ -1,11 +1,5 @@
-import {
-  blankRow,
-  canAddRow,
-  draftOf,
-  draftProblems,
-  draftToSet,
-  proxyOriginChoices,
-} from './proxy-headers-model';
+import { blankRow, canAddRow, draftOf, draftProblems, draftToSet } from './proxy-headers-model';
+import { proxyOriginChoices } from '@/lib/proxy-headers';
 
 const SET = {
   origin: 'https://books.example.com',
@@ -51,12 +45,10 @@ describe('proxy headers draft (fe#167)', () => {
         addresses: { home: 'https://nas.home.example:8443', away: 'https://books.example.com' },
       }),
     ).toEqual(['https://books.example.com', 'https://nas.home.example:8443']);
-    expect(
-      proxyOriginChoices({
-        serverUrl: 'https://a.example',
-        proxyHeaders: { ...SET, origin: 'https://b.example' },
-      }),
-    ).toEqual(['https://b.example', 'https://a.example']);
+    expect(proxyOriginChoices({ serverUrl: 'https://a.example' }, 'https://b.example')).toEqual([
+      'https://b.example',
+      'https://a.example',
+    ]);
   });
 
   it('never offers a plain-http address (headers are never sent over http)', () => {
