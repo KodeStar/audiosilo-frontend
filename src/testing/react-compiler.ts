@@ -1,6 +1,9 @@
 import { transformFileSync } from '@babel/core';
 import { dirname, resolve } from 'path';
 
+/** The time a `beforeAll` gives `withReactCompiler`'s build (its first, cold, loads Babel). */
+export const REACT_COMPILER_BUILD_MS = 60_000;
+
 /**
  * A source module as the app runs it: built by the repo's Babel config with the React
  * Compiler on (`app.json` `experiments.reactCompiler`), which Jest's own transform leaves
@@ -15,9 +18,6 @@ import { dirname, resolve } from 'path';
  * build in a file loads Babel's preset and the compiler, which takes seconds and, on a
  * loaded machine, more than a test's own 5 s.
  */
-/** The time a `beforeAll` gives `withReactCompiler`'s build (its first, cold, loads Babel). */
-export const REACT_COMPILER_BUILD_MS = 60_000;
-
 export function withReactCompiler<T>(load: NodeJS.Require, path: string): T {
   const file = load.resolve(path);
   // `supportsReactCompiler` is babel-preset-expo's caller flag, which Babel's types don't name.
