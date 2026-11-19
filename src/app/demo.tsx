@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
-import { ApiClient, ApiError } from '@/api/client';
+import { ApiError } from '@/api/client';
+import { connectClient } from '@/api/connect-client';
 import type { PairingPayload } from '@/api/types';
 import { Logo } from '@/components/brand/logo';
 import { Button } from '@/components/ui/button';
@@ -47,7 +48,10 @@ export default function DemoScreen() {
       }
       setError(null);
       try {
-        const demo = await new ApiClient(base).demoSession(getDeviceName());
+        // With the proxy headers the device holds for this origin (`connectClient`, as a
+        // sign-in's), so a demo behind a header-only proxy starts. Only sent: a demo never
+        // stores or replaces a set.
+        const demo = await connectClient(base).demoSession(getDeviceName());
         if (cancelled) return;
         setPairing(demo.pairing);
         await setSession({
