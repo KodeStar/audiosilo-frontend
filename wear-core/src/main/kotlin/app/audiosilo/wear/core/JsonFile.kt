@@ -67,7 +67,18 @@ class DurableWriter(
   /** `key`: the file it writes (`dropSuperseded`), null for none. */
   private class Write(val key: Any?, val op: () -> Boolean) : Entry
 
-  private class Call(val op: () -> Any?, val answer: CompletableFuture<Any?>) : Entry
+  private class Call<R>(val op: () -> R) : Entry {
+    val answer = CompletableFuture<R>()
+
+    /** Run `op` into `answer` (a value or a throw, for its caller). */
+    fun run() {
+      try {
+        answer.complete(op())
+      } catch (e: Exception) {
+        answer.completeExceptionally(e)
+      }
+    }
+  }
 
   @Volatile private var thread: Thread? = null
   private val executor: Executor
@@ -100,7 +111,8 @@ class DurableWriter(
   private var retrying = false
 
   /** The head's tries are spent: nothing runs until another write is asked. */
-  private var parked = false
+  private val parked
+    get() = failures >= MAX_TRIES
 
   /** The head is being run (off the lock). */
   private var running = false
@@ -120,24 +132,25 @@ class DurableWriter(
    */
   fun <R> now(op: () -> R): R {
     if (Thread.currentThread() === thread) return op()
-    val answer = CompletableFuture<Any?>()
-    enqueue(Call(op, answer))
+    val call = Call(op)
+    enqueue(call)
     return try {
-      @Suppress("UNCHECKED_CAST")
-      answer.get() as R
+      call.answer.get()
     } catch (e: java.util.concurrent.ExecutionException) {
       throw e.cause ?: e
     }
   }
 
-  /** Wait until everything asked so far is on the disk; false when a write still fails (`Stuck`). */
-  fun drain(): Boolean =
+  /** `now`, answering `stuck` instead of throwing `Stuck`. */
+  fun <R> nowOr(stuck: R, op: () -> R): R =
     try {
-      now {}
-      true
+      now(op)
     } catch (_: Stuck) {
-      false
+      stuck
     }
+
+  /** Wait until everything asked so far is on the disk; false when a write still fails (`Stuck`). */
+  fun drain(): Boolean = nowOr(false) { true }
 
   /**
    * Drop each write not begun that a later write of the same file replaces (signing out, whose
@@ -161,9 +174,8 @@ class DurableWriter(
         // A new head: a round of its own, at once (a retry still waiting finds it there).
         failures = 0
         retrying = false
-        parked = false
       }
-      if (queue.isNotEmpty() && pumps == 0 && !running) wake()
+      wakeIfIdle()
     }
   }
 
@@ -171,16 +183,18 @@ class DurableWriter(
     synchronized(lock) {
       queue.addLast(entry)
       // A new round of tries for a write whose last round was spent.
-      if (parked) {
-        parked = false
-        failures = 0
-      }
-      wake()
+      if (parked) failures = 0
+      wakeIfIdle()
     }
   }
 
-  /** Ask the executor for a run of `pump` (the lock held). */
-  private fun wake() {
+  /**
+   * Ask the executor for a run of `pump` (the lock held) when the queue has an entry and nothing
+   * else will run it: no run asked, none running (it asks for the next when done), no retry
+   * waiting, the round not spent.
+   */
+  private fun wakeIfIdle() {
+    if (queue.isEmpty() || pumps > 0 || running || retrying || parked) return
     pumps++
     executor.execute(::pump)
   }
@@ -213,17 +227,15 @@ class DurableWriter(
               pump()
             }
           } else {
-            parked = true
-            // A `now` behind it would wait for a disk that may never have room: told instead.
-            val calls = queue.filterIsInstance<Call>()
-            queue.removeAll { it is Call }
+            // Parked. A `now` behind it would wait for a disk that may never have room: told instead.
+            val calls = queue.filterIsInstance<Call<*>>()
+            queue.removeAll { it is Call<*> }
             for (c in calls) c.answer.completeExceptionally(Stuck())
           }
         }
       }
-      // Every entry has a run of `pump` coming: the runs asked for the entries behind a retry
-      // were spent while it waited.
-      if (queue.isNotEmpty() && pumps == 0 && !retrying && !parked) wake()
+      // The next entry's run (one run of `pump` at a time).
+      wakeIfIdle()
     }
   }
 
@@ -236,12 +248,8 @@ class DurableWriter(
         } catch (_: Exception) {
           false
         }
-      is Call -> {
-        try {
-          entry.answer.complete(entry.op())
-        } catch (e: Exception) {
-          entry.answer.completeExceptionally(e)
-        }
+      is Call<*> -> {
+        entry.run()
         true
       }
     }
@@ -266,6 +274,9 @@ class JsonFile<T>(
    */
   private val writer: DurableWriter? = null,
 ) {
+  /** This document's name on the `writer` (`DurableWriter.dropSuperseded`). */
+  private val key = file.absoluteFile
+
   /** The stored value, null when there is none or it can't be read (`load` tells them apart). */
   fun read(): T? = (load() as? JsonLoad.Value)?.value
 
@@ -309,7 +320,7 @@ class JsonFile<T>(
    */
   fun write(value: T?): Boolean {
     val w = writer ?: return store(value)
-    w.submit(file.absoluteFile) { store(value) }
+    w.submit(key) { store(value) }
     return true
   }
 
@@ -319,11 +330,7 @@ class JsonFile<T>(
    */
   fun writeNow(value: T?): Boolean {
     val w = writer ?: return store(value)
-    return try {
-      w.now { store(value) }
-    } catch (_: DurableWriter.Stuck) {
-      false
-    }
+    return w.nowOr(false) { store(value) }
   }
 
   private fun store(value: T?): Boolean {

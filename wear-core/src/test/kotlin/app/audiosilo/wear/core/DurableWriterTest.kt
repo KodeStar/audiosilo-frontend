@@ -57,10 +57,13 @@ class DurableWriterTest {
     }
   }
 
-  /** One launch's listening stores over `root`, writing through `writer` (null: on this thread). */
-  private inner class Stores(root: File, writer: DurableWriter?) {
+  /**
+   * One launch's listening stores over `root`, writing through `writer` (null: on this thread), the
+   * outbox in `outboxDir`.
+   */
+  private inner class Stores(root: File, writer: DurableWriter?, outboxDir: File = root) {
     private var ids = 0
-    val outbox = Outbox(root, AckStore(null), DEVICE_ID, clock = { clock.now }, writer = writer)
+    val outbox = Outbox(outboxDir, AckStore(null), DEVICE_ID, clock = { clock.now }, writer = writer)
     val places = PlaceStore(File(root, "places.json"), writer)
     val spans =
       SpanRecorder(
@@ -124,7 +127,7 @@ class DurableWriterTest {
     assertEquals(emptyMap<String, String>(), disk(dir))
     assertEquals(listOf("e1"), s.outbox.events.map { it.id })
     assertEquals(12.0, s.places.place(ref)!!.position, 0.0)
-    assertEquals(4, held.queued.size)
+    assertEquals("one run of the writer asked; it asks for the next when done", 1, held.queued.size)
     while (held.runOne()) Unit
     assertEquals(listOf("open-span.json", "outbox.json", "places.json", "open-span.json"), synced)
   }
@@ -221,19 +224,15 @@ class DurableWriterTest {
   /** The retries a writer asked for, by their delay, run when the test says so. */
   private class Retries {
     val delays = ArrayList<Long>()
-    private val waiting = ArrayList<Runnable>()
+    private val waiting = Held()
 
     fun after(ms: Long, r: Runnable) {
       delays += ms
-      waiting += r
+      waiting.execute(r)
     }
 
     /** Run the oldest waiting retry; false with none. */
-    fun fire(): Boolean {
-      if (waiting.isEmpty()) return false
-      waiting.removeAt(0).run()
-      return true
-    }
+    fun fire(): Boolean = waiting.runOne()
   }
 
   /** A disk that refuses every write while `full`, and keeps what lands, in order. */
@@ -257,17 +256,7 @@ class DurableWriterTest {
     val writer = DurableWriter(held, retries::after)
     // The outbox's folder is a file until the disk "has room": every write there fails.
     val full = File(dir, "outbox").apply { writeText("") }
-    val outbox = Outbox(full, AckStore(null), DEVICE_ID, clock = { clock.now }, writer = writer)
-    val places = PlaceStore(File(dir, "places.json"), writer)
-    val spans =
-      SpanRecorder(
-        FileSpanStore(File(dir, "open-span.json"), File(dir, "open-span-move.json"), writer),
-        AckStore(null),
-        clock = { clock.now },
-        newId = { "e1" },
-        emit = { outbox.append(it) },
-        keepPlace = { r, p -> places.set(r, p) },
-      )
+    val spans = Stores(dir, writer, outboxDir = full).spans
     spans.open(book, at(0.0), 1.0)
     assertTrue(held.runOne())
     clock.advance(12.0)
@@ -301,7 +290,6 @@ class DurableWriterTest {
     while (held.runOne()) Unit
     while (retries.fire()) while (held.runOne()) Unit
     assertEquals(listOf(500L, 1000L, 2000L, 4000L, 8000L), retries.delays)
-    assertEquals(DurableWriter.MAX_TRIES - 1, retries.delays.size)
     disk.full = false
     while (held.runOne()) Unit
     assertEquals("parked until asked", emptyList<String>(), disk.landed)
