@@ -33,9 +33,10 @@ import { onlyConnection, queuedRoute } from './progress-sync';
 /**
  * The bookmark outbox (fe#356): a bookmark made while its server can't take it (no answer, a
  * busy or failing server, a token it refuses until the connection signs in again) waits here
- * on the device and is sent once the server is back, instead of being refused. Two ways in:
+ * on the device and is sent once the server is back, instead of being refused. The ways in:
  * `addBookmarkOrQueue` tries the server first and keeps the bookmark only when that can't
- * work now; `queueBookmark` always stores it first and leaves the send to a replay. The same
+ * work now; `queueBookmark` (a delete's Undo) and `queueNewBookmark` (the sleep timer's)
+ * always store it first and leave the send to a replay. The same
  * guarantees as the listening outbox (`listening-outbox.ts`), on the simpler shape a bookmark
  * needs:
  *
@@ -118,7 +119,8 @@ export type QueuedBookmark = {
 type AddBookmarkOutcome = { made: Bookmark } | { queued: QueuedBookmark };
 
 /** A bookmark on the server counts as a queued one sent earlier when it was made no earlier
- * than this before it (the server's clock may be a little behind the device's). */
+ * than this before it (the server's clock may be a little behind the device's): for one
+ * neither `fresh` nor with `othersHeld` (`isThisOne`). */
 const SAME_BOOKMARK_WINDOW_MS = 24 * 60 * 60_000;
 /** How long a bookmark may keep failing against a server that answers before the outbox
  * gives up on it (`givenUp`)... */
@@ -292,9 +294,9 @@ async function readLabelFlag(
  * server can't take it now (see the module). Straight to the server when none of its book
  * is waiting and the server reads as reachable (`addBookmark`, which refreshes the book's lists);
  * otherwise, or when that fails with a failure worth another try, it goes into the outbox.
- * Unlabelled: a labelled one goes through `queueBookmark`, whose replay sends it once its
- * server's flags are known. Rejects when the connection is gone, the server refused it for
- * good, or the device could not store it.
+ * Unlabelled: a labelled one goes through `queueNewBookmark` or `queueBookmark`, whose replay
+ * sends it once its server's flags are known. Rejects when the connection is gone, the server
+ * refused it for good, or the device could not store it.
  */
 export async function addBookmarkOrQueue(
   connectionId: string,

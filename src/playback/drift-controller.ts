@@ -123,9 +123,10 @@ function fellAsleep(bookKey: string, fell: FellAsleep) {
 
 function makeBookmark(connectionId: string, libraryId: number, path: string, position: number) {
   try {
-    // Stored on the device first and sent from there (the bookmark outbox, fe#356), never
-    // posted straight away: nobody is awake to see a failure, and an app killed while the
-    // request is out (the OS ending a paused app at night) would otherwise lose it.
+    // Stored on the device first and sent from there (the bookmark outbox, fe#356): nobody
+    // is awake to see a failure, and an app killed while the request is out (the OS ending a
+    // paused app at night) would otherwise lose it. Posted straight away only when storage
+    // refuses it.
     void queueNewBookmark(
       connectionId,
       libraryId,
