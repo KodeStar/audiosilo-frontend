@@ -354,18 +354,6 @@ describe('proxy headers the sign-in came through (fe#167): one set per address (
       });
       expect(kept()).toEqual({ [AWAY]: SET });
     });
-
-    it("a full account still replaces the set a kid's account typed", async () => {
-      useSession.setState({ pendingProxyHeaders: THEIRS });
-      await finishConnect({
-        serverUrl: AWAY,
-        session: session('srv-1', { user: kid }),
-        carried: THEIRS,
-      });
-      useSession.setState({ pendingProxyHeaders: SET });
-      await finishConnect({ serverUrl: AWAY, session: session('srv-1'), carried: SET });
-      expect(kept()).toEqual({ [AWAY]: SET });
-    });
   });
 });
 

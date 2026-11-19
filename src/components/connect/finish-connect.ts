@@ -157,11 +157,11 @@ export async function finishConnect(input: {
   const { pendingProxyHeaders: typed, proxySets } = useSession.getState();
   const keepTyped =
     !!typed &&
-    (!proxySets[typed.origin]
-      ? sameProxyHeaders(input.carried, typed) ||
-        proxyOriginChoices(plan, input.serverUrl).includes(typed.origin)
-      : sameProxyHeaders(input.carried, typed) &&
-        mayReplaceProxySet(input.session.user, pickId, typed.origin, connections));
+    (proxySets[typed.origin]
+      ? sameProxyHeaders(input.carried, typed) &&
+        mayReplaceProxySet(input.session.user, pickId, typed.origin, connections)
+      : sameProxyHeaders(input.carried, typed) ||
+        proxyOriginChoices(plan, input.serverUrl).includes(typed.origin));
   const proxyHeaders = keepTyped ? typed : undefined;
   if (input.answeredAt) setAddressPick(pickId, input.answeredAt);
   const id = await setSession({

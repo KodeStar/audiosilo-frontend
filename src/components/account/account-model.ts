@@ -77,21 +77,8 @@ export function canManageProxySet(
   if (!conn) return false;
   if (!isLimitedAccount(conn.user)) return true;
   if (!set && conn.user?.is_demo) return false;
-  return !fullAccountReaches(proxyOriginChoices(conn, set?.origin), conn.id, connections);
-}
-
-/** Whether a full account among `connections` (other than `exceptId`) reaches one of
- * `origins`: a set kept there is theirs too, so a demo or a kid's account leaves it be. */
-function fullAccountReaches(
-  origins: readonly string[],
-  exceptId: string,
-  connections: readonly ProxyCardConnection[],
-): boolean {
-  return connections.some(
-    (c) =>
-      c.id !== exceptId &&
-      !isLimitedAccount(c.user) &&
-      proxyOriginChoices(c).some((o) => origins.includes(o)),
+  return proxyOriginChoices(conn, set?.origin).every((o) =>
+    mayReplaceProxySet(conn.user, conn.id, o, connections),
   );
 }
 
@@ -108,7 +95,12 @@ export function mayReplaceProxySet(
   origin: string,
   connections: readonly ProxyCardConnection[],
 ): boolean {
-  return !isLimitedAccount(user) || !fullAccountReaches([origin], connId, connections);
+  return (
+    !isLimitedAccount(user) ||
+    !connections.some(
+      (c) => c.id !== connId && !isLimitedAccount(c.user) && proxyOriginChoices(c).includes(origin),
+    )
+  );
 }
 
 /**
