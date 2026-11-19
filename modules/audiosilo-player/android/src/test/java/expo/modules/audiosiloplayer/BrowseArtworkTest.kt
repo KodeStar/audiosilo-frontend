@@ -11,18 +11,21 @@ import org.junit.Test
 class BrowseArtworkTest {
   private val authority = "app.audiosilo.dev.audiosilo.artwork"
 
+  // The review: the placeholder went as an `android.resource` URI, named only by the drawable's
+  // name (kept through resource shrinking by a keep file) and not opened by every reader. The
+  // provider serves it, under a key no cover has, and each reader is granted it as a cover is.
   @Test fun aBookWithNoCoverShowsTheBundledOne() {
     assertEquals(
-      "android.resource://app.audiosilo.dev/drawable/${ArtworkProvider.PLACEHOLDER}",
-      ArtworkProvider.browseArtwork(authority, "app.audiosilo.dev", null),
+      "content://$authority/art/${ArtworkProvider.PLACEHOLDER_KEY}",
+      ArtworkProvider.browseArtwork(authority, null),
     )
-    // The resource the URI names is the one the module ships.
+    // The resource the provider serves is the one the module ships.
     assertTrue(File("src/main/res/drawable-nodpi/${ArtworkProvider.PLACEHOLDER}.png").isFile)
   }
 
   @Test fun aBookWithACoverShowsItsOwn() {
     val key = "0123456789abcdef0123456789abcdef"
-    assertEquals("content://$authority/art/$key", ArtworkProvider.browseArtwork(authority, "app.audiosilo.dev", key))
+    assertEquals("content://$authority/art/$key", ArtworkProvider.browseArtwork(authority, key))
   }
 
   private fun row(artwork: String?) =

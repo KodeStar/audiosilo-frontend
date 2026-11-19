@@ -21,6 +21,7 @@ import {
   cachedDeviceId,
   getDeviceId,
   GUARD_SLACK_S,
+  guardHolds,
   ignoreOffer,
   onHeldSave,
   type LatePlace,
@@ -34,6 +35,7 @@ import {
   type NowPlaying,
   onLatePlace,
   onPickedUpAgain,
+  placeChecked,
   saveLoadedPlace,
   selectBookKey,
   selectBookPosition,
@@ -332,13 +334,97 @@ async function checkLoadedPlace(np: NowPlaying, bookKey: string, client: ApiClie
   }
 }
 
+/** An answer waiting for its tick to end (`moveOrOffer`), and what deciding it comes to:
+ * its own decision, or the newer answer's that replaced it (`settle`). `late`: a late
+ * place's (`applyLatePlace`), weighed against this device's record as the start read it. */
+type TickAnswer = {
+  row: Progress | null;
+  late: boolean;
+  outcome: Promise<boolean>;
+  settle: (moved: Promise<boolean>) => void;
+};
+
+function tickAnswer(row: Progress | null, late: boolean): TickAnswer {
+  let settle: TickAnswer['settle'] = () => undefined;
+  const outcome = new Promise<boolean>((resolve) => (settle = resolve));
+  return { row, late, outcome, settle };
+}
+
+/** The answer for each book waiting for its tick to end (`moveOrOffer`). */
+const tickAnswers = new Map<string, TickAnswer>();
+/** The move or offer under way for each book (`moveOrOffer`). */
+const deciding = new Map<string, Promise<boolean>>();
+
+/** Whether the server's row `a` is at least as new as `b` (no row is the oldest). */
+function asNew(a: Progress | null, b: Progress | null): boolean {
+  if (!b) return true;
+  if (!a) return false;
+  const ta = timeOf(a.updated_at);
+  const tb = timeOf(b.updated_at);
+  return ta !== tb ? ta > tb : a.version >= b.version;
+}
+
+/**
+ * Whether an answer with `row` takes the place of the one `waiting` for the tick's end: a
+ * newer row does. The same row does too, unless that puts a check's answer in place of a late
+ * place's: the two then differ only in what they are weighed against, and a check's record
+ * holds the session's own saves since the start, of the place it started from, which read as
+ * newer than the row (`applyLatePlace`). So the same row is decided the same way whichever
+ * of the two came first.
+ */
+function replaces(row: Progress | null, late: boolean, waiting: TickAnswer): boolean {
+  if (!asNew(row, waiting.row)) return false;
+  return late || !waiting.late || !asNew(waiting.row, row);
+}
+
 /**
  * The reconcile's rule over the server's answer for the loaded book: moved to another
  * device's newer place (`placeToMoveTo`), else offered one (`offerLoadedPlace`). Not when
  * another book is loaded, nor once the listener moved since `moves` (theirs wins). Resolves
  * true when it moved.
+ *
+ * Answers for the book that come in the same tick (a late place and a check's, say) are
+ * decided once, on the newest row (the same row: as the late place weighs it, `replaces`):
+ * each was weighed against the place before the other's move, so both moved and both said
+ * so. The others resolve as that one does (a check that read no move would let its held
+ * saves go with the place before it). One that comes while another is being applied waits
+ * for it, and then finds the book moved (the listener's moves count it).
  */
 async function moveOrOffer(
+  np: NowPlaying,
+  bookKey: string,
+  moves: number,
+  server: Progress | null,
+  deviceId: string,
+  mirror: ProgressSave | null,
+  { late = false }: { late?: boolean } = {},
+): Promise<boolean> {
+  const waiting = tickAnswers.get(bookKey);
+  if (waiting && !replaces(server, late, waiting)) return waiting.outcome;
+  const answer = tickAnswer(server, late);
+  tickAnswers.set(bookKey, answer);
+  // The answer this one replaces comes to what this one does.
+  waiting?.settle(answer.outcome);
+  await Promise.resolve();
+  if (tickAnswers.get(bookKey) !== answer) return answer.outcome;
+  tickAnswers.delete(bookKey);
+  // Every decision under way first: one begun while this waited for another is waited for
+  // too, or the two would each move from the place before the other's move.
+  for (let before = deciding.get(bookKey); before; before = deciding.get(bookKey)) {
+    await before.catch(() => false);
+  }
+  const decided = decide(np, bookKey, moves, server, deviceId, mirror);
+  answer.settle(decided.catch(() => false));
+  deciding.set(bookKey, decided);
+  try {
+    return await decided;
+  } finally {
+    if (deciding.get(bookKey) === decided) deciding.delete(bookKey);
+  }
+}
+
+/** `moveOrOffer`'s rule for one answer. */
+async function decide(
   np: NowPlaying,
   bookKey: string,
   moves: number,
@@ -375,7 +461,8 @@ async function moveOrOffer(
  * session's own saves since are of the older place it started from, and would always read as
  * newer). A seek of the listener's own made meanwhile wins, and so does an offer of the same
  * row shown or answered since (Jump, Stay or ignored: `answeredSince`), which the move would
- * otherwise overrule. Never throws.
+ * otherwise overrule. The start's saves then go unguarded (`placeChecked`) unless the answer
+ * holds a further place the book stayed short of. Never throws.
  */
 async function applyLatePlace(
   bookKey: string,
@@ -390,7 +477,14 @@ async function applyLatePlace(
       readMirror(np.connectionId, np.libraryId, np.path),
     ]);
     if (answeredSince(bookKey, server, current)) return;
-    await moveOrOffer(np, bookKey, moves, server, deviceId, mirror);
+    const moved = await moveOrOffer(np, bookKey, moves, server, deviceId, mirror, { late: true });
+    // The start's place is checked now (the replay guard, fe#198): unless the answer holds
+    // another device's place further on that the book stayed short of (the listener's own
+    // seek won, or it was offered), its saves go unguarded.
+    const now = usePlayer.getState();
+    if (selectBookKey(now) !== bookKey) return;
+    const at = { position: selectBookPosition(now), device_id: deviceId, finished: false };
+    if (moved || !guardHolds(at, server, current?.answered)) placeChecked(bookKey);
   } catch {
     // Stays where it is; the saves go on (guarded: the start was not checked, fe#198).
   }

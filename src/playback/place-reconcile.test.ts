@@ -63,6 +63,7 @@ jest.mock('./progress-sync', () => ({
   cachedDeviceId: () => 'this-device',
   writeMirror: jest.fn(async () => {}),
   guardSettled: () => false,
+  guardHolds: jest.requireActual('./progress-sync').guardHolds,
   GUARD_SLACK_S: 30,
   placeKey: (p: { device_id?: string; updated_at: string }) => `${p.device_id}|${p.updated_at}`,
   onHeldSave: (cb: HeldCb) => {
@@ -156,7 +157,13 @@ import { useSettings } from '@/stores/settings';
 import { queryClient } from '@/api/provider';
 
 import { resetOutboxForTests } from './listening-outbox';
-import { OFFER_REPEAT_MS, offerOf, placeToMoveTo, startPlaceReconcile } from './place-reconcile';
+import {
+  OFFER_REPEAT_MS,
+  offerOf,
+  placeToMoveTo,
+  reconcileLoadedPlace,
+  startPlaceReconcile,
+} from './place-reconcile';
 import {
   LONG_PAUSE_MS,
   PICK_UP_WAIT_MS,
@@ -794,6 +801,103 @@ describe('a downloaded book whose server answered only after it started', () => 
     await settle();
     expect(seeks()).toEqual([]);
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  // The review: a late answer and a check's that came in the same tick each moved from the
+  // place before the other's move: two moves, and two "Picked up" toasts.
+  it("a check's answer in the same tick is one move, to the newest place", async () => {
+    const answerLate = await startedWithoutItsServer();
+    let answerCheck: (row: Progress | null) => void = () => {};
+    mockServer = () => new Promise((resolve) => (answerCheck = resolve));
+    const check = reconcileLoadedPlace('picked-up');
+    await settle();
+    answerLate();
+    answerCheck(record({ position: 600, version: 4, updated_at: '2026-10-08T12:30:00Z' }));
+    await check;
+    await settle(24);
+    expect(seeks()).toEqual([600]);
+    expect(mockToast).toHaveBeenCalledTimes(1);
+  });
+
+  // The review: an older check's answer that the late one replaced in the same tick read
+  // as no move, so the check let its held saves go with the place before the late one's move,
+  // dated now: this device's old place over the other device's on the server.
+  it("a check's older answer in the same tick waits for the newer one's move", async () => {
+    const answerLate = await startedWithoutItsServer();
+    let answerCheck: (row: Progress | null) => void = () => {};
+    mockServer = () => new Promise((resolve) => (answerCheck = resolve));
+    const check = reconcileLoadedPlace('picked-up');
+    await settle();
+    mockSaveProgress.mockClear();
+    answerLate();
+    answerCheck(record({ position: 300, version: 2, updated_at: '2026-10-08T09:30:00Z' }));
+    await check;
+    await settle(24);
+    expect(seeks()).toEqual([400]);
+    expect(saved()).not.toContain(100);
+    expect(mockToast).toHaveBeenCalledTimes(1);
+  });
+
+  // The review: the same row from both in one tick was decided as whichever came second
+  // weighed it. As the check's (this device's record now, which holds the session's own
+  // saves of the place it started from, newer than the row), the book stayed where it was.
+  it.each([
+    ['the late answer first', true],
+    ["the check's answer first", false],
+  ])('the same row from both in one tick moves once, %s', async (_name, lateFirst) => {
+    const answerLate = await startedWithoutItsServer();
+    let answerCheck: (row: Progress | null) => void = () => {};
+    mockServer = () => new Promise((resolve) => (answerCheck = resolve));
+    const check = reconcileLoadedPlace('picked-up');
+    await settle();
+    if (lateFirst) answerLate();
+    answerCheck(record());
+    if (!lateFirst) answerLate();
+    await check;
+    await settle(24);
+    expect(seeks()).toEqual([400]);
+    expect(mockToast).toHaveBeenCalledTimes(1);
+  });
+
+  // The review: a start whose server answered late kept guarding its saves (fe#198), each
+  // read against the server's row first, though the answer had checked its place.
+  describe('the replay guard', () => {
+    const lastGuard = () =>
+      (mockSaveProgress.mock.calls.at(-1)?.[1] as { guard?: boolean } | undefined)?.guard;
+
+    async function savedAfter(row: Progress, meanwhile?: () => Promise<void>) {
+      let answer: (late: LatePlace | null) => void = () => {};
+      mockLoadInitialProgress.mockResolvedValueOnce({
+        kind: 'progress',
+        progress: record({ position: 100, version: 0, device_id: 'this-device' }),
+        unchecked: true,
+        late: new Promise<LatePlace | null>((resolve) => (answer = resolve)),
+      });
+      await usePlayer.getState().playBook('c1', 2, BOOK, undefined);
+      pushSnapshot(snap('playing', 100));
+      await settle();
+      jest.clearAllMocks();
+      await meanwhile?.();
+      answer({ server: row, mirror: mirrorAt('2026-10-08T09:00:00Z', 100) });
+      await settle(24);
+      mockSaveProgress.mockClear();
+      pushSnapshot(snap('playing', 130));
+      jest.advanceTimersByTime(15_000);
+      await settle();
+    }
+
+    it('goes once the late answer holds nothing further on', async () => {
+      await savedAfter(record({ position: 90, device_id: 'this-device' }));
+      expect(mockSaveProgress).toHaveBeenCalled();
+      expect(lastGuard()).toBeFalsy();
+    });
+
+    it("stays when the answer holds another device's place the book stayed short of", async () => {
+      // The listener's own seek meanwhile wins: the book stays short of the other device's.
+      await savedAfter(record({ position: 900 }), () => usePlayer.getState().seekBook(120));
+      expect(seeks()).toEqual([120]);
+      expect(lastGuard()).toBe(true);
+    });
   });
 
   it('stays when the server holds nothing newer of another device', async () => {

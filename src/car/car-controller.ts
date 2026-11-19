@@ -74,6 +74,8 @@ import { listenerSettings } from '@/playback/listener-settings';
 import { noteInteraction } from '@/playback/last-interaction';
 import { placeSavedAt, readLocalPlaces, resumeLookupOf } from '@/playback/progress-sync';
 import {
+  followsOutsidePlay,
+  onOtherBookReported,
   selectBookKey,
   selectBookPosition,
   selectIsPlaying,
@@ -98,7 +100,10 @@ import {
 import { type Connection, sessionHydrateFailed, useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 
-import type { PendingBookmark } from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
+import type {
+  LoadedBook,
+  PendingBookmark,
+} from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
 
 import { artworkName, artworkOnDisk, artworkUri, ensureArtwork, pruneArtwork } from './car-artwork';
 import {
@@ -1386,6 +1391,9 @@ function onBookmarkPressed(
 // --- Adopting -------------------------------------------------------------------------------
 
 let checking: Promise<void> | null = null;
+/** The engine changed while a check was running (`checkServiceChange`): that check may have
+ * read the engine before the change, so the engine is read again once it ends. */
+let checkAgain = false;
 
 /**
  * Android: when the playback service holds a book the player store doesn't (the car started
@@ -1424,11 +1432,19 @@ function checkLoadedBook(gaveWay?: BookRef): Promise<void> {
       const named = !!player.nowPlaying && contentKeyOf(player.nowPlaying) === contentKeyOf(loaded);
       if (named && (!gaveWay || contentKeyOf(gaveWay) === contentKeyOf(loaded))) return;
       // Read again once the book's source is read (the engine plays on meanwhile).
-      if (await player.adoptLoaded(loaded, () => carNative.getLoadedBook())) request(true);
-      else if (refused(loaded)) {
+      if (await player.adoptLoaded(loaded, () => carNative.getLoadedBook())) {
+        request(true);
+        return;
+      }
+      const current = await carNative.getLoadedBook();
+      if (refused(loaded)) {
         // The person switched while the adoption read the book: stop it if still loaded.
-        const current = await carNative.getLoadedBook();
         if (current && refused(current)) await carNative.stopPlayback?.();
+      } else if (current && !sameLoad(current, loaded)) {
+        // The engine holds another book (or file order) than the one the adoption read and
+        // gave up on. No change of the store's may ever say so (it holds the engine's reports
+        // of an outside play's book until that is adopted), so the engine is read again.
+        checkAgain = true;
       }
     } catch (err) {
       console.warn('[car] adopting the loaded book failed', err);
@@ -1438,8 +1454,27 @@ function checkLoadedBook(gaveWay?: BookRef): Promise<void> {
     // set for good and every later check returned it without asking native again.
   })().finally(() => {
     checking = null;
+    if (checkAgain) {
+      checkAgain = false;
+      void checkLoadedBook();
+    }
   });
   return checking;
+}
+
+/** Two reads of the engine's book that name the same book in the same file order. */
+const sameLoad = (a: LoadedBook, b: LoadedBook): boolean =>
+  contentKeyOf(a) === contentKeyOf(b) && (a.files ?? []).join('\n') === (b.files ?? []).join('\n');
+
+/**
+ * The engine may hold another book now (`mayBeServiceChange`): checked. A check already
+ * running may have read the engine before this change (its adoption reads the book for
+ * seconds, and gives up when the engine holds another by then), and joining it would ask
+ * nothing of the book the engine holds now: the engine is read again once that check ends.
+ */
+function checkServiceChange(): void {
+  if (checking) checkAgain = true;
+  else void checkLoadedBook();
 }
 
 type PlayerState = ReturnType<typeof usePlayer.getState>;
@@ -1448,16 +1483,24 @@ type PlayerState = ReturnType<typeof usePlayer.getState>;
  * Whether an engine change may be the playback service's own (Android: the car, or a
  * resumption, loaded another queue under the book the store holds): the engine moved to
  * another file, or started playing, on the same loaded book with no book of the store's
- * loading. The store's own changes ask nothing: its book switch (a new `nowPlaying`), its
- * load (`loadingBook` set, or just cleared), its stop or finish (no book), a pause or a
- * stall.
+ * loading; or, after playback stopped in `error`, was asked to play from outside the app
+ * (`loading`: the store follows it as a press, `followsOutsidePlay`), which may be another
+ * book the service started, adopted at once as that play rather than paused by the store's
+ * watchdog when it takes longer than its grace to start. The store's own changes ask nothing:
+ * its book switch (a new `nowPlaying`), its load (`loadingBook` set, or just cleared), its
+ * stop or finish (no book), a pause or a stall, its own Retry or play after playback stopped
+ * (the same `error` to `loading` turn, with no play followed from outside). An engine whose
+ * reports name their book (`reportedBook`) tells of another book's changes apart, the store
+ * holding none of them (`onOtherBookReported`); the changes here are then its own book's
+ * (another queue of it), or any book's from an older binary, whose reports name none.
  */
 function mayBeServiceChange(s: PlayerState, prev: PlayerState): boolean {
   if (Platform.OS !== 'android' || !s.nowPlaying || s.nowPlaying !== prev.nowPlaying) return false;
   if (s.loadingBook || prev.loadingBook) return false;
   return (
     s.snapshot.trackIndex !== prev.snapshot.trackIndex ||
-    (s.snapshot.state === 'playing' && prev.snapshot.state !== 'playing')
+    (s.snapshot.state === 'playing' && prev.snapshot.state !== 'playing') ||
+    (s.snapshot.state === 'loading' && prev.snapshot.state === 'error' && followsOutsidePlay())
   );
 }
 
@@ -1555,7 +1598,12 @@ export function startCarSync(): () => void {
         // another device's place picked up) or another book: what a resumption plays.
         placeChanged();
       }
-      if (mayBeServiceChange(s, prev)) void checkLoadedBook();
+      if (mayBeServiceChange(s, prev)) checkServiceChange();
+    }),
+    // The engine reports another book than the store's (the store holds none of it): the
+    // service may have started it (Android).
+    onOtherBookReported(() => {
+      if (Platform.OS === 'android') checkServiceChange();
     }),
     useDownloads.subscribe((s, prev) => {
       if (s.entries === prev.entries) return;
@@ -1648,6 +1696,7 @@ function teardown() {
   if (timer) clearTimeout(timer);
   timer = null;
   again = null;
+  checkAgain = false;
   resumptionAgain = false;
   kidsShelfSeen.clear();
   setCarConnected(false);

@@ -117,6 +117,19 @@ describe('the native engine, Phase 6 events', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
+  it('tells the store when Android stops wanting to play, before the state', async () => {
+    const svc = await setUp();
+    const handler = jest.fn();
+    svc.onPauseAsked!(handler);
+    send('onState', { state: 'loading', playWhenReady: true });
+    expect(handler).not.toHaveBeenCalled();
+    // A pause of a buffering engine still reads `loading`.
+    send('onState', { state: 'loading', playWhenReady: false });
+    expect(handler).toHaveBeenCalledTimes(1);
+    send('onState', { state: 'paused', playWhenReady: false });
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it('tells no ask without a playWhenReady to compare (iOS, an older binary, the first state)', async () => {
     const svc = await setUp();
     const handler = jest.fn();
@@ -153,6 +166,79 @@ describe("the native engine's load", () => {
     };
     await svc.configure(config);
     expect(mockModule.setConfig).toHaveBeenCalledWith(config);
+  });
+});
+
+// The engine's reports name their book (`BookReport`), so the store can drop another book's.
+describe('the book a report names', () => {
+  const other = { connectionId: 'c1', libraryId: 2, path: 'B' };
+
+  it('is the one each report names, before its listeners hear it', async () => {
+    const svc = await setUp();
+    const named: unknown[] = [];
+    svc.subscribe(() => named.push(svc.reportedBook!()));
+    const playAsked = jest.fn(() => named.push(svc.reportedBook!()));
+    svc.onPlayAsked!(playAsked);
+    const moved = jest.fn(() => named.push(svc.reportedBook!()));
+    svc.onRemoteMove!(moved);
+    const rate = jest.fn(() => named.push(svc.reportedBook!()));
+    svc.onRateChange!(rate);
+    send('onState', { state: 'paused', playWhenReady: false, book });
+    send('onState', { state: 'loading', playWhenReady: true, book: other });
+    send('onProgress', { position: 3, duration: 100, book });
+    send('onTrackChange', { index: 1, book: other });
+    send('onRemoteMove', { trackIndex: 1, position: 4, book });
+    send('onRateChange', { rate: 1.5, book: other });
+    // paused(book); playAsked + loading(other); tick(book); file(other); move + place(book);
+    // speed(other) + its snapshot.
+    expect(named).toEqual([book, other, other, book, other, book, book, other, other]);
+  });
+
+  it('is none for a report that names none (an older binary) or a malformed one', async () => {
+    const svc = await setUp();
+    send('onState', { state: 'paused', book });
+    send('onProgress', { position: 3, duration: 100 });
+    expect(svc.reportedBook!()).toBeNull();
+    send('onState', { state: 'paused', book: { connectionId: 'c1', path: 'A' } });
+    expect(svc.reportedBook!()).toBeNull();
+  });
+
+  it("is the loaded book's once a load lands, and none after a reset", async () => {
+    const svc = await setUp();
+    mockModule.reset = jest.fn(async () => {});
+    send('onState', { state: 'playing', book: other });
+    const named: unknown[] = [];
+    svc.subscribe(() => named.push(svc.reportedBook!()));
+    await svc.load(tracks, 0, 0, [], book);
+    expect(named).toEqual([book]);
+    await svc.reset();
+    expect(svc.reportedBook!()).toBeNull();
+    // An older binary is never told the book: its load names none.
+    const old = await setUp(false);
+    await old.load(tracks, 0, 0, [], book);
+    expect(old.reportedBook!()).toBeNull();
+  });
+
+  it("drops a tick held for its move when another book's report comes", async () => {
+    jest.useFakeTimers();
+    try {
+      const svc = await setUp();
+      const heard: [string | undefined, number][] = [];
+      svc.subscribe((s) => heard.push([svc.reportedBook!()?.path, s.position]));
+      send('onState', { state: 'playing', book });
+      send('onProgress', { position: 10, duration: 100, book });
+      jest.advanceTimersByTime(1_000);
+      send('onProgress', { position: 70, duration: 100, book }); // held for its move
+      send('onProgress', { position: 5, duration: 100, book: other });
+      jest.advanceTimersByTime(1_000);
+      expect(heard).toEqual([
+        ['A', 0],
+        ['A', 10],
+        ['B', 5],
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 

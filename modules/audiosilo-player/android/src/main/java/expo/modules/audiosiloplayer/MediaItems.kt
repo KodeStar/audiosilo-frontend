@@ -9,7 +9,34 @@ import androidx.media3.session.MediaSession.MediaItemsWithStartPosition
 import java.net.URLDecoder
 
 /** A book's identity (path is the identity, scoped by connection; never a DB id). */
-data class BookRef(val connectionId: String, val libraryId: Long, val path: String)
+data class BookRef(val connectionId: String, val libraryId: Long, val path: String) {
+  /** The book in an event's terms (JS's `BookRef`; the library id as a JS number). */
+  fun toEvent(): Map<String, Any> =
+    mapOf("connectionId" to connectionId, "libraryId" to libraryId.toDouble(), "path" to path)
+}
+
+/** What an engine report adds to name the book it is of: `book`, the loaded item's (JS's
+ * `BookReport`, which says why). None for an item loaded without a book. */
+fun reportedBook(book: BookRef?): Map<String, Any> =
+  book?.let { mapOf("book" to it.toEvent()) } ?: emptyMap()
+
+/** A move from outside the app at (fileIndex, seconds within that file) of [book], the service's
+ * item when it landed. The module holds it until its controller caught up, and it still names
+ * that book then, whatever the controller holds by the time it is sent. */
+data class RemoteMove(val fileIndex: Int, val position: Double, val book: BookRef?) {
+  /** The `onRemoteMove` event. */
+  fun toEvent(): Map<String, Any> =
+    mapOf("trackIndex" to fileIndex, "position" to position) + reportedBook(book)
+}
+
+/** The `onRateChange` event for a speed a controller other than the app set on [book]. */
+fun rateChangeEvent(rate: Double, book: BookRef?): Map<String, Any> =
+  mapOf("rate" to rate) + reportedBook(book)
+
+/** The `onState` event for an engine that failed with [book] loaded: it no longer wants to play
+ * (the service stopped it, `onEngineFailed`). */
+fun failedStateEvent(book: BookRef?): Map<String, Any> =
+  mapOf("state" to "error", "playWhenReady" to false) + reportedBook(book)
 
 /** One audio file of a queue, the plain-Kotlin twin of the JS `NativeTrack` (the module's
  * `TrackRecord` and the car snapshot's play spec both map onto it). */

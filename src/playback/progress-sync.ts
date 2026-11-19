@@ -263,9 +263,11 @@ export type InitialPlace = ResumeLookup & {
  * downloaded book, which starts from this device's records when its server is slow: a frozen
  * server held a car's start for the whole request timeout, past the car's own wait). Past it
  * the server is checked (`noteFailure`, as for a read that timed out), the book starts from
- * this device's records, and the read goes on (`late`): a server that answers then may hold
- * another device's newer place, which the player then moves to or offers as the place
- * reconcile does (`onLatePlace`).
+ * this device's records, and the read goes on (`late`): a server that answers then is up
+ * again (`noteSuccess`, when the connection still uses the address that answered) and its
+ * row goes into the mirror; it may hold another device's newer place, which the player then
+ * moves to or offers as the place reconcile does (`onLatePlace`). A late read that fails
+ * asks for no second check.
  */
 export async function loadInitialProgress(
   api: ApiClient | null,
@@ -303,7 +305,9 @@ export async function loadInitialProgress(
   }
   // Cache the authoritative server value so a later offline resume has it (keep-newest,
   // so a locally-newer offline advance isn't regressed by a stale server read).
-  if (serverOk && server) await writeMirror(progressToSave(connectionId, libraryId, path, server));
+  const mirrorRow = (row: Progress) =>
+    writeMirror(progressToSave(connectionId, libraryId, path, row));
+  if (serverOk && server) await mirrorRow(server);
   const places = await readLocalPlaces();
   const lookup = resumeLookupOf(
     serverOk ? server : undefined,
@@ -314,10 +318,26 @@ export async function loadInitialProgress(
   );
   if (!pending) return lookup;
   const mirror = places.mirror[contentKey(connectionId, libraryId, path)] ?? null;
+  // The read can answer up to the request's own timeout after it was sent: on an address the
+  // connection has left since (a home / away switch), its answer says nothing of the one it
+  // uses now (fe#147, as `noteAnswer`).
+  const at = api?.baseUrl;
+  const answered = () => {
+    const now = resolveClient(connectionId);
+    if (!now || now.baseUrl === at) noteSuccess(connectionId);
+  };
   const late = pending.then(
-    (row): LatePlace => ({ server: row, mirror }),
+    async (row): Promise<LatePlace> => {
+      // An answer after all: the server is up (the wait had it checked), and its row goes
+      // into the mirror as an answer in time does.
+      answered();
+      if (row) await mirrorRow(row).catch(() => undefined);
+      return { server: row, mirror };
+    },
     (e: unknown) => {
-      noteError(e);
+      // The wait's timeout already had the server checked: a read that then fails the same
+      // way asks for no second check. An HTTP answer still says it is up.
+      if (e instanceof ApiError) answered();
       return null;
     },
   );

@@ -1,6 +1,5 @@
 package expo.modules.audiosiloplayer
 
-import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import androidx.media3.common.MediaItem
@@ -16,21 +15,54 @@ import androidx.media3.session.MediaConstants
  */
 object CarBrowseTree {
   const val ROOT = "audiosilo.root"
+  /** The root a browser asking for recent media gets ([MediaLibraryService.LibraryParams.isRecent]):
+   * its one child is the book a resumption plays ([recentChildren]). System UI's own request
+   * (the resumption card after a reboot) Media3 answers itself, through `onPlaybackResumption`. */
+  const val RECENT_ROOT = "audiosilo.recent"
   private const val TAB_PREFIX = "tab:"
   private const val INFO_PREFIX = "info:"
 
   fun tabId(tab: CarTab) = TAB_PREFIX + tab.id
 
-  fun rootItem(): MediaItem = MediaItem.Builder()
-    .setMediaId(ROOT)
+  fun rootItem(): MediaItem = folderItem(ROOT, MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+
+  /** The recent root ([RECENT_ROOT]). */
+  fun recentRootItem(): MediaItem = folderItem(RECENT_ROOT, MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
+
+  /** A root: browsable, never playable. */
+  private fun folderItem(id: String, mediaType: Int): MediaItem = MediaItem.Builder()
+    .setMediaId(id)
     .setMediaMetadata(
       MediaMetadata.Builder()
         .setIsBrowsable(true)
         .setIsPlayable(false)
-        .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+        .setMediaType(mediaType)
         .build(),
     )
     .build()
+
+  /**
+   * The recent root's children, and the resumption card's item: the book a resumption plays
+   * ([resumable], already one with a play spec), as its browse row is (title, author, cover),
+   * or none. PLAYABLE: System UI shows a card only for a first child flagged playable, and a
+   * play spec's own items carry no such flag (the reboot card never appeared).
+   */
+  fun recentChildren(authority: String, resumable: CarItem?, grant: (Uri) -> Unit): List<MediaItem> =
+    listOfNotNull(resumable?.takeIf(::hasRecent)?.let { bookItem(authority, it, grant) })
+
+  /** Whether [resumable] is one a resumption can start (downloaded: it has a play spec), so
+   * there is recent media to offer at all ([recentChildren] not empty). */
+  fun hasRecent(resumable: CarItem?): Boolean = resumable?.play != null
+
+  /** How many children the recent root has for [resumable]: its one book, or none. */
+  fun recentCount(resumable: CarItem?): Int = if (hasRecent(resumable)) 1 else 0
+
+  /** Whether the recent root's children changed between two resumable books: another book,
+   * one where there was none (or none now), or the same one showing something else (its
+   * title, author, cover or progress). Where it resumes ([CarItem.play], which moves as the
+   * book plays) is not shown. */
+  fun recentChanged(previous: CarItem?, now: CarItem?): Boolean =
+    previous?.takeIf(::hasRecent)?.copy(play = null) != now?.takeIf(::hasRecent)?.copy(play = null)
 
   /** Root extras: the tabs' children (books) default to grid items. */
   fun rootExtras(): Bundle = Bundle().apply {
@@ -67,23 +99,24 @@ object CarBrowseTree {
 
   /** A tab's books, or one label item for an empty tab; null for an unknown parent (the root's
    * children come from [rootChildren]). */
-  fun children(context: Context, snapshot: CarSnapshot?, parentId: String, grant: (Uri) -> Unit): List<MediaItem>? {
+  fun children(authority: String, snapshot: CarSnapshot?, parentId: String, grant: (Uri) -> Unit): List<MediaItem>? {
     snapshot ?: return null
     val tab = snapshot.tabs.firstOrNull { tabId(it) == parentId } ?: return null
     if (tab.items.isEmpty()) return listOf(infoItem(tab.id, snapshot.labels.empty))
-    return tab.items.map { bookItem(context, it, grant) }
+    return tab.items.map { bookItem(authority, it, grant) }
   }
 
   /** One item by id (Media3's default `onSubscribe` asks for the parent, and Auto may ask for a
    * book). Null when the snapshot doesn't name it. */
-  fun item(context: Context, snapshot: CarSnapshot?, id: String, grant: (Uri) -> Unit): MediaItem? {
+  fun item(authority: String, snapshot: CarSnapshot?, id: String, grant: (Uri) -> Unit): MediaItem? {
     if (id == ROOT) return rootItem()
+    if (id == RECENT_ROOT) return recentRootItem()
     snapshot ?: return null
     snapshot.tabs.firstOrNull { tabId(it) == id }?.let { return tabItem(it) }
-    return snapshot.find(id)?.let { bookItem(context, it, grant) }
+    return snapshot.find(id)?.let { bookItem(authority, it, grant) }
   }
 
-  fun bookItem(context: Context, item: CarItem, grant: (Uri) -> Unit): MediaItem {
+  private fun bookItem(authority: String, item: CarItem, grant: (Uri) -> Unit): MediaItem {
     val extras = Bundle().apply {
       val status = when {
         item.finished -> MediaConstants.EXTRAS_VALUE_COMPLETION_STATUS_FULLY_PLAYED
@@ -100,11 +133,10 @@ object CarBrowseTree {
       )
     }
     // A book with no cover, or whose cover file is gone, shows the bundled one: with none,
-    // Android Auto drew a warning triangle. Only the provider's URIs need a grant.
-    val key = ArtworkProvider.browseArtworkKey(item)
+    // Android Auto drew a warning triangle. Both are the provider's URIs, granted per reader.
     val artwork = Uri.parse(
-      ArtworkProvider.browseArtwork(ArtworkProvider.authority(context), context.packageName, key),
-    ).also { if (key != null) grant(it) }
+      ArtworkProvider.browseArtwork(authority, ArtworkProvider.browseArtworkKey(item)),
+    ).also(grant)
     return MediaItem.Builder()
       .setMediaId(item.id)
       .setMediaMetadata(

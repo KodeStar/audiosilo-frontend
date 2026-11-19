@@ -85,7 +85,11 @@ final class AudioEngine: NSObject {
   /// app's lifetime; without removal a recreated engine leaks its predecessor's handlers
   /// (they linger as [weak self] no-ops on the shared center). Paired with their command.
   private var commandTargets: [(command: MPRemoteCommand, target: Any)] = []
-  private let send: (String, [String: Any]) -> Void
+  private let emit: (String, [String: Any]) -> Void
+  /// The transport reports, which name the loaded book (`send`).
+  private static let bookReports: Set<String> = [
+    "onState", "onProgress", "onTrackChange", "onRemoteMove", "onRateChange",
+  ]
 
   /// The loaded book's chapter clips (the same ones Android plays as clipped items). Active
   /// with 2+ clips; otherwise every path below keeps the whole-file behaviour.
@@ -107,7 +111,7 @@ final class AudioEngine: NSObject {
   init(send: @escaping (String, [String: Any]) -> Void) {
     // Every onState also tells the CarPlay templates (`.audiosiloPlayerDidChange`, the one
     // engine -> CarPlay notification; the play state is read back from the engine).
-    self.send = { name, body in
+    self.emit = { name, body in
       send(name, body)
       if name == "onState" { AudioEngine.postPlayerDidChange() }
     }
@@ -118,6 +122,16 @@ final class AudioEngine: NSObject {
     observeNotifications()
     startProgressTimer()
     AudioEngine.shared = self
+  }
+
+  /// An event to JS. A transport report (`bookReports`) names the book it is of (`book`, when
+  /// `load` named one: JS's `BookReport`, which says why).
+  private func send(_ name: String, _ body: [String: Any]) {
+    var body = body
+    if Self.bookReports.contains(name), let b = loadedBook {
+      body["book"] = b.event
+    }
+    emit(name, body)
   }
 
   // MARK: Session
@@ -333,7 +347,12 @@ final class AudioEngine: NSObject {
     }
     failureObs = item.observe(\.status, options: [.new]) { [weak self] item, _ in
       guard let self = self, !self.rebuilding, item.status == .failed else { return }
-      DispatchQueue.main.async { self.send("onState", ["state": "loading"]) }
+      // Still the current item on main: a load landed in between names its own book in
+      // `send`, and this item's failure is not of it.
+      DispatchQueue.main.async {
+        guard !self.rebuilding, item === self.player.currentItem else { return }
+        self.send("onState", ["state": "loading"])
+      }
     }
   }
 
@@ -540,11 +559,7 @@ final class AudioEngine: NSObject {
     {
       body["relPath"] = String(id[id.index(after: colon)...])
     }
-    if let b = loadedBook {
-      body["connectionId"] = b.connectionId
-      body["libraryId"] = b.libraryId
-      body["path"] = b.path
-    }
+    if let b = loadedBook { body.merge(b.event) { $1 } }
     send("onRemoteBookmark", body)
   }
 

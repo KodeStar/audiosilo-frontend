@@ -17,8 +17,10 @@ type TrackPlace = (trackIndex: number, positionInTrack: number, checkpoint?: boo
 let remoteMove: TrackPlace | null = null;
 let rateChange: ((rate: number) => void) | null = null;
 let silenceSaved: ((total: number) => void) | null = null;
-/** Android's word that the engine was asked to play (`onPlayAsked`). */
+/** Android's word that the engine was asked to play (`onPlayAsked`), or stopped wanting to
+ * (`onPauseAsked`). */
 let playAsked: (() => void) | null = null;
+let pauseAsked: (() => void) | null = null;
 /** The route switch's own load, as the store is told of it (`onOwnLoad`). */
 type OwnLoad = (trackIndex: number, positionInTrack: number, loaded: Promise<unknown>) => void;
 let ownLoad: OwnLoad | null = null;
@@ -28,6 +30,9 @@ const mockSvc = {
   }),
   onOwnLoad: jest.fn((handler: OwnLoad | null) => {
     ownLoad = handler;
+  }),
+  onPauseAsked: jest.fn((handler: (() => void) | null) => {
+    pauseAsked = handler;
   }),
   onRemoteSeek: jest.fn((handler: ((positionInTrack: number) => void) | null) => {
     remoteSeek = handler;
@@ -865,6 +870,19 @@ describe('stall watchdog promotes a stuck loading to error', () => {
     pushSnapshot(snap('paused', 50));
     await Promise.resolve();
     expect(usePlayer.getState().snapshot.state).toBe('error');
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot.state).toBe('playing');
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+  });
+
+  // The review: Android's pause of a buffering engine reads `loading`, so the fence held a
+  // car or headset play the engine did not tell of for its whole second. The engine says it
+  // stopped wanting to play: a `playing` from there is a new play.
+  it("a playing after Android's engine stopped wanting to play is a new play", async () => {
+    await stalledIntoError();
+    pushSnapshot(snap('loading', 50));
+    pauseAsked?.();
     pushSnapshot(snap('playing', 50));
     await Promise.resolve();
     expect(usePlayer.getState().snapshot.state).toBe('playing');
@@ -4810,6 +4828,20 @@ describe('Smart Speed and Voice Boost', () => {
     expect(silenceSaved).not.toBeNull();
     silenceSaved!(12.5);
     expect(mockNoteSilenceSaved).toHaveBeenCalledWith(12.5, 'c1:2:A/Book.m4b');
+  });
+
+  // A tick of another book the engine plays (the car started it, not adopted yet) is none of
+  // the playing book's time saved.
+  it("counts another book's silence total on no book", async () => {
+    await startBook(makeBook(), 10);
+    const svc = mockSvc as PlaybackService & { reportedBook?: () => unknown };
+    svc.reportedBook = () => ({ connectionId: 'c1', libraryId: 2, path: 'Another' });
+    try {
+      silenceSaved!(14);
+      expect(mockNoteSilenceSaved).toHaveBeenLastCalledWith(14, null);
+    } finally {
+      delete svc.reportedBook;
+    }
   });
 
   it('saves the counts when playback halts', async () => {

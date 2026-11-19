@@ -1730,7 +1730,18 @@ media GETs only.
   lengths, `smartSpeed`, `voiceBoost`), `setCarSnapshot(json)`, `getLoadedBook()` (Android; iOS
   null) and `consumePendingBookmarks()` (Android; iOS `[]`); events `onRemoteMove`,
   `onRateChange`, `onRemoteBookmark`, `onCarConnection`, `onCarPlayRequest`,
-  `onCarPlayCancel` (Android) and `onProgress.silenceSaved`. **Feature-detect every function added after the first shipped
+  `onCarPlayCancel` (Android) and `onProgress.silenceSaved`. The transport reports (`onState`,
+  `onProgress`, `onTrackChange`, `onRemoteMove`, `onRateChange`) name the book they are of
+  (`book`, the module's `BookReport`: Android the current item's, iOS `load`'s; on Android a
+  remote move, a speed and a failure are the service's own item's, passed through
+  `PlayerBridge`, since the module's controller hears of an item change a message late, and a
+  remote move held for the controller to catch up keeps the book it was made in); the service
+  keeps it (`reportedBook`, set before its listeners hear the report, and `load`'s own book
+  once the load lands) and the store drops a report of a book it does not hold
+  (`reportedOtherBook`: one the car or a resumption started, or the one its own load
+  replaces), telling the car sync instead (`onOtherBookReported`, which adopts it on
+  Android). A report that names none (an older binary, a queue loaded without a book, the
+  web, a Cast receiver) is taken as before. **Feature-detect every function added after the first shipped
   builds**: the JS bundle can be newer than the installed binary (a store build lags), and an
   Expo function called with more arguments than it declares throws. So `load`'s 5th `book` is
   passed only when the binary also has `getLoadedBook` (`moduleTakesBook` in
@@ -2353,7 +2364,13 @@ media GETs only.
   it only read, which a downloaded book's page and its download keep there, does not), not
   finished, and more than 30 s away, and stands back if the listener moved meanwhile
   (`localMoveCount`). The move goes
-  through `seekBook` and a toast offers Undo. On a `listening_sync` server, when that rule finds
+  through `seekBook` and a toast offers Undo. Answers for the book that come in the same tick
+  (a late place and a check's) are decided once, on the newest row (`moveOrOffer`): each was
+  weighed against the place before the other's move, so both moved and both said so. The
+  same row from both is decided as the late place weighs it (`replaces`: against this
+  device's record as the start read it, whichever of the two came first). The
+  others resolve as that one does (a check that read no move would let its held saves go
+  with the place before the move); one that comes while another is applied waits for it. On a `listening_sync` server, when that rule finds
   nothing to move to, the check offers another device's place instead (`offerOf`, `offerLoadedPlace`:
   a row of another device at a version this device has not acknowledged, or the row's
   `other_place`; a toast with Jump and Stay, see Listening sync below), and an auto-move
@@ -2769,8 +2786,9 @@ media GETs only.
   `subscribe` drops EVERY incoming state except `playing` while `prev` is `error` and no
   retry is in flight (nor a `playing` within `STALL_PAUSE_FENCE_MS` of the watchdog's own
   pause: sent before the pause reached the engine, it is older, and the engine is paused
-  again; on iOS and the web the fence ends once the engine reports itself `paused`, so a car
-  or headset play right after the stop plays). This is suppress-all-but-`playing`, not an allow-list - enumerating
+  again; on iOS and the web the fence ends once the engine reports itself `paused`, on
+  Android once its playWhenReady turns off (`onPauseAsked`: a buffering engine's pause reads
+  `loading` there), so a car or headset play right after the stop plays). This is suppress-all-but-`playing`, not an allow-list - enumerating
   the noisy states bit us repeatedly (iOS frozen `onProgress` ticks carrying `loading`;
   Android `onPlayerError` → `STATE_IDLE` → `idle` plus its own ticks → a flash→spinner
   loop). It's released by a retry (`wantsPlayback` true) or a genuine `playing`. The
@@ -2784,7 +2802,33 @@ media GETs only.
   that comes back after a short outage stays paused and the listener presses Play (or Retry,
   the car, a headset). Left buffering, the engine started on its own whenever the server
   answered again, with the listener told playback had stopped. A deliberate call: do not
-  make the pause Android-only.
+  make the pause Android-only. A play asked from outside after the stop (Android tells it,
+  `onPlayAsked`) is followed as a press of the store's book; when the service started
+  another book with it (the car, a resumption), the car sync adopts that book at once (the
+  `error` to `loading` turn of a followed outside play, `mayBeServiceChange` with
+  `followsOutsidePlay`; the store's own Retry makes the same turn and asks nothing), the
+  attempt's watchdog never stops it while the adoption is under way, and the adoption takes
+  it as that book's asked play (`loading` and the watchdog from there, when the engine's
+  last report is `loading`). From the moment that adoption begins, or a report names the
+  other book (`reportedOtherBook`), the engine's reports are held (`engineIsAnothers`, and
+  every report naming another book, adopted or not): they are the other book's, so the
+  store shows none of them (nor reads one as a run off a stalled ask, `engineFault`),
+  opens no listening span, starts no save loop, runs no pick-up check and saves nothing for
+  its own book, and the adopted book begins its own from the engine's place and state when
+  the adoption lands. A store book that was playing ends there, its listening closed and its
+  place saved once where it was last heard, its save loop stopped (`otherBookReported`), and
+  when that book is not adopted within `OTHER_BOOK_ADOPT_MS` (6 s) it shows paused there,
+  its intent over, nothing saved and the other book left playing (`otherBookNotAdopted`; a
+  report of its own book in between ends that deadline, and a play press then reloads it, as
+  Retry does); one
+  that still loaded or stalled, with no outside play followed, ends in `error` at its
+  watchdog without the engine being paused (that book plays on, the car's play, for the car
+  sync to adopt). An adoption that gave up leaves the play to the watchdog (its whole
+  grace again), which stops the engine and says playback stopped with the store's book
+  where it stood when the play was asked and no place written. The engine changing again
+  while a check runs has it read once more when the check ends (`checkServiceChange`), and
+  so does an adoption that gave up on a book the engine no longer holds, since no change of
+  the store's can say so while it holds the reports.
 - **A browser autoplay refusal is a pause, not an error.** A cold `/player` deep link has
   no user gesture, so `audio.play()` rejects with `NotAllowedError`. `service.web.ts`
   reports exactly that as `AutoplayBlockedError` (`types.ts`) with its snapshot `paused`;
@@ -2931,7 +2975,11 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   (`onLatePlace`, `applyLatePlace`: moved to another device's newer place with Undo, or offered
   it on Sync v2), weighed against this device's record as the start read it, and a seek of the
   listener's own made meanwhile wins, as does an offer of the same row shown or answered
-  since (`answeredSince`), and a book played to its end stays there.
+  since (`answeredSince`), and a book played to its end stays there. A late answer says its
+  server is up (`noteSuccess`, when the connection still uses the address that answered; a
+  late failure asks for no second check) and writes its row to
+  the mirror, and the start's saves go unguarded from there (`placeChecked`, the replay guard)
+  unless it holds a further place the book stayed short of.
 - **Auto sleep stays off in the car**: `car-connection.ts` (`isCarConnected`, written by the
   car sync and, on iOS, by the car start in `register-car-task.ios.ts`) is read by
   `auto-sleep-controller.ts`, so the nightly timer never pauses a driver. It is its own module
@@ -2941,11 +2989,13 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   snapshot names or the loaded queue's items name (`art/<key>`, the same key for the same
   file). A downloaded book's cover goes on its loaded items as that content URI
   (`ArtworkProvider.itemArtwork`, `LocalArtwork`), granted to each connected car and System UI
-  (`grantPlayingArtwork`) and to the resumption card's asker (`onPlaybackResumption`): they load
+  (`grantPlayingArtwork`) and to whoever asks for the resumption card (`recentItems`): they load
   the item's artwork URI themselves (the car always; System UI when it has no bitmap, which a
   browse item never carries) and could not read the `file://` URI. A book with no cover, or whose cover file is gone (`browseArtworkKey`), shows the bundled
-  `audiosilo_car_cover` in the browse lists (an `android.resource` URI, no grant; with none, or
-  with a URI the provider cannot open, the car drew a warning triangle). A streamed book's cover URL carries the media token, so a loaded
+  `audiosilo_car_cover` in the browse lists, served by the provider too (`art/placeholder`,
+  `PLACEHOLDER_KEY`, a copy of the drawable in the cache, granted per reader like a cover; an
+  `android.resource` URI named the drawable only by its name; with no artwork, or with a URI
+  the provider cannot open, the car drew a warning triangle). A streamed book's cover URL carries the media token, so a loaded
   item names it as `audiosilo-artwork://remote/<key>` (a hash of the URL, `RemoteArtwork`,
   fe#349): only the service's own bitmap loader turns it back into the URL. Its scheme is
   the app's own, never `content`: the provider does not serve it, and the car and the lock
@@ -2989,8 +3039,14 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   controller and the next/previous commands), each controller's connect and what the
   player then does (play, pause, a move, and who asked). A book is named by a short hash of
   its item id (`MediaKeyLog.ref`), never the id: it holds the connection, library and path.
-  `onPlaybackResumption(…, isForPlayback = false)` (System UI's card after a reboot) answers from
-  the play spec with no side effect; `CarConnectionMonitor` reads the Auto host's
+  `onPlaybackResumption(…, isForPlayback = false)` (System UI's card after a reboot: Media3
+  answers System UI's recent-media root itself and asks this for its child) answers with the
+  resumable book's browse item (`recentItems`, `CarBrowseTree.recentChildren`: title, author,
+  cover, and flagged playable, which System UI requires of the card's item; the play spec's
+  own items carry no such flag, so the card never appeared) with no side effect. Another
+  browser asking for recent media (`LibraryParams.isRecent`) gets `RECENT_ROOT`, whose one
+  child is that item (one subscribed to it is told when a snapshot makes it another,
+  `recentChanged`); `CarConnectionMonitor` reads the Auto host's
   connection provider (Media3 only notices a legacy controller leaving by timeout).
   - **Headless JS.** When the service needs JS (a car play, a book playing with no JS that
     must save, a pending bookmark, Auto connecting), `JsRuntime.ensure` starts the app's

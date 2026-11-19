@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import AudiosiloPlayer from '../../modules/audiosilo-player';
 
 import { resolveConnectionId } from '@/lib/connection-id';
+import { nativeBookOf } from '@/playback/native-book';
 
 import type { CarNative } from './car-native';
 
@@ -101,18 +102,7 @@ export const carNative: CarNative = {
       if (!Number.isFinite(trackIndex) || !Number.isFinite(position)) return;
       // The engine's own book (a binary that knows `load`'s book sends it): the press belongs to the book the
       // listener heard, whichever the store holds right now.
-      const book =
-        typeof e.connectionId === 'string' &&
-        e.connectionId !== '' &&
-        typeof e.path === 'string' &&
-        e.path !== '' &&
-        Number.isSafeInteger(e.libraryId)
-          ? {
-              connectionId: resolveConnectionId(e.connectionId),
-              libraryId: e.libraryId as number,
-              path: e.path,
-            }
-          : undefined;
+      const book = nativeBookOf(e) ?? undefined;
       handler(trackIndex, position, book, fileOf(e.relPath) ? e.relPath : undefined);
     });
     return () => sub.remove();
