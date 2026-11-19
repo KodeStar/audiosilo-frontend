@@ -8,7 +8,7 @@
 // move recovered from one, the places); the rest is rebuilt from the server or the phone, so it
 // skips the sync (CONVENTIONS.md, the Wear OS app). Given a `DurableWriter`, a durable document's
 // writes leave the caller's thread (the main looper) for the writer's one thread, in the order
-// they were asked (fe#285).
+// they were asked, a failed one tried again before any after it (fe#285).
 package app.audiosilo.wear.core
 
 import java.io.File
@@ -18,9 +18,10 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
-import java.util.concurrent.FutureTask
+import java.util.concurrent.TimeUnit
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 
@@ -43,44 +44,215 @@ sealed interface JsonLoad<out T> {
  * relies on (an event kept before its span leaves its file, a place before the span's removal):
  * a kill stops the writes at some point, and every point of that one sequence is a state the
  * writes on the caller's thread passed through too. The values handed in are immutable, so the
- * caller's memory copy goes on at once. Writes that fail are dropped, as the caller's ignored them.
+ * caller's memory copy goes on at once.
+ *
+ * A write that fails (a full disk) stays first in the queue and is tried again, `MAX_TRIES` times
+ * in all with a doubling wait (`retryDelayMs`), before anything asked after it runs: a later write
+ * landing first would leave a state the in-order writes never pass through (a place without the
+ * span it came from, a span's removal without its event), and a kill there loses listening. Once
+ * its tries are spent the queue waits, the write still first, until the next write is asked, which
+ * starts a new round of tries (the disk may have room by then). Nothing is dropped but by
+ * `dropSuperseded` (signing out).
  */
-class DurableWriter(executor: Executor? = null) {
-  @Volatile private var thread: Thread? = null
-  private val executor: Executor =
-    executor
-      ?: Executors.newSingleThreadExecutor { r ->
-        Thread(r, "audiosilo-durable-writes").also {
-          it.isDaemon = true
-          thread = it
-        }
-      }
+class DurableWriter(
+  executor: Executor? = null,
+  /** Runs a retry after the given ms (the tests' seam; null: the writer's own thread, or `executor` at once). */
+  retryAfter: ((Long, Runnable) -> Unit)? = null,
+) {
+  /** `now` could not run its op: a write asked before it still fails after its round of tries. */
+  class Stuck : java.io.IOException("an earlier write still fails")
 
-  /** Run `op` after everything asked before it; returns at once. */
-  fun submit(op: () -> Unit) {
-    executor.execute {
-      try {
-        op()
-      } catch (_: Exception) {
-        // A write that failed: the next one of that file tries again, as on the caller's thread.
-      }
+  private sealed interface Entry
+
+  /** `key`: the file it writes (`dropSuperseded`), null for none. */
+  private class Write(val key: Any?, val op: () -> Boolean) : Entry
+
+  private class Call(val op: () -> Any?, val answer: CompletableFuture<Any?>) : Entry
+
+  @Volatile private var thread: Thread? = null
+  private val executor: Executor
+  private val retryAfter: (Long, Runnable) -> Unit
+
+  init {
+    if (executor != null) {
+      this.executor = executor
+      this.retryAfter = retryAfter ?: { _, r -> executor.execute(r) }
+    } else {
+      val own =
+        Executors.newSingleThreadScheduledExecutor { r ->
+          Thread(r, "audiosilo-durable-writes").also {
+            it.isDaemon = true
+            thread = it
+          }
+        }
+      this.executor = own
+      this.retryAfter = retryAfter ?: { ms, r -> own.schedule(r, ms, TimeUnit.MILLISECONDS) }
     }
   }
 
-  /** Run `op` after everything asked before it, and wait for its answer. */
+  private val lock = Any()
+  private val queue = ArrayDeque<Entry>()
+
+  /** The head's failed tries this round. */
+  private var failures = 0
+
+  /** A retry of the head is waiting for its delay. */
+  private var retrying = false
+
+  /** The head's tries are spent: nothing runs until another write is asked. */
+  private var parked = false
+
+  /** The head is being run (off the lock). */
+  private var running = false
+
+  /** Runs of `pump` asked of the executor and not begun. */
+  private var pumps = 0
+
+  /**
+   * Run `op` after everything asked before it has landed; returns at once. `op` answers whether
+   * it landed; `key` names the file it writes (`dropSuperseded`).
+   */
+  fun submit(key: Any? = null, op: () -> Boolean) = enqueue(Write(key, op))
+
+  /**
+   * Run `op` after everything asked before it has landed, and wait for its answer. Throws `Stuck`
+   * (`op` not run) when a write asked before it still fails once its round of tries is spent.
+   */
   fun <R> now(op: () -> R): R {
     if (Thread.currentThread() === thread) return op()
-    val task = FutureTask(op)
-    executor.execute(task)
+    val answer = CompletableFuture<Any?>()
+    enqueue(Call(op, answer))
     return try {
-      task.get()
+      @Suppress("UNCHECKED_CAST")
+      answer.get() as R
     } catch (e: java.util.concurrent.ExecutionException) {
       throw e.cause ?: e
     }
   }
 
-  /** Wait until everything asked so far is on the disk (signing out: nothing of it lands later). */
-  fun drain() = now {}
+  /** Wait until everything asked so far is on the disk; false when a write still fails (`Stuck`). */
+  fun drain(): Boolean =
+    try {
+      now {}
+      true
+    } catch (_: Stuck) {
+      false
+    }
+
+  /**
+   * Drop each write not begun that a later write of the same file replaces (signing out, whose
+   * removals replace every listening file: a write of them that still fails must not hold those
+   * back). The states between are skipped, so only for a caller that needs the end state alone.
+   */
+  fun dropSuperseded() {
+    synchronized(lock) {
+      val head = queue.firstOrNull()
+      val later = HashSet<Any>()
+      val kept = ArrayList<Entry>()
+      for (e in queue.reversed()) {
+        val key = (e as? Write)?.key
+        if (key != null && !later.add(key) && !(running && e === head)) continue
+        kept += e
+      }
+      kept.reverse()
+      queue.clear()
+      queue.addAll(kept)
+      if (queue.firstOrNull() !== head) {
+        // A new head: a round of its own, at once (a retry still waiting finds it there).
+        failures = 0
+        retrying = false
+        parked = false
+      }
+      if (queue.isNotEmpty() && pumps == 0 && !running) wake()
+    }
+  }
+
+  private fun enqueue(entry: Entry) {
+    synchronized(lock) {
+      queue.addLast(entry)
+      // A new round of tries for a write whose last round was spent.
+      if (parked) {
+        parked = false
+        failures = 0
+      }
+      wake()
+    }
+  }
+
+  /** Ask the executor for a run of `pump` (the lock held). */
+  private fun wake() {
+    pumps++
+    executor.execute(::pump)
+  }
+
+  /** Run the head of the queue once, if nothing holds it (a retry's delay, a spent round). */
+  private fun pump() {
+    val head =
+      synchronized(lock) {
+        pumps--
+        if (running || retrying || parked) return
+        queue.firstOrNull()?.also { running = true } ?: return
+      }
+    val landed = run(head)
+    synchronized(lock) {
+      running = false
+      // Still first: `dropSuperseded` keeps the head it finds running.
+      if (queue.firstOrNull() === head) {
+        if (landed) {
+          queue.removeFirst()
+          failures = 0
+        } else {
+          failures++
+          if (failures < MAX_TRIES) {
+            retrying = true
+            retryAfter(retryDelayMs(failures)) {
+              synchronized(lock) {
+                retrying = false
+                pumps++
+              }
+              pump()
+            }
+          } else {
+            parked = true
+            // A `now` behind it would wait for a disk that may never have room: told instead.
+            val calls = queue.filterIsInstance<Call>()
+            queue.removeAll { it is Call }
+            for (c in calls) c.answer.completeExceptionally(Stuck())
+          }
+        }
+      }
+      // Every entry has a run of `pump` coming: the runs asked for the entries behind a retry
+      // were spent while it waited.
+      if (queue.isNotEmpty() && pumps == 0 && !retrying && !parked) wake()
+    }
+  }
+
+  /** Whether `entry` is done: a write that landed, or a call (its answer, a value or a throw, is its caller's). */
+  private fun run(entry: Entry): Boolean =
+    when (entry) {
+      is Write ->
+        try {
+          entry.op()
+        } catch (_: Exception) {
+          false
+        }
+      is Call -> {
+        try {
+          entry.answer.complete(entry.op())
+        } catch (e: Exception) {
+          entry.answer.completeExceptionally(e)
+        }
+        true
+      }
+    }
+
+  companion object {
+    /** A failed write's tries in one round (the first and its retries). */
+    const val MAX_TRIES = 6
+
+    /** The wait before a failed write's next try: 0.5 s, doubling, at most 8 s. */
+    fun retryDelayMs(failures: Int): Long = 500L shl (failures - 1).coerceIn(0, 4)
+  }
 }
 
 class JsonFile<T>(
@@ -132,16 +304,27 @@ class JsonFile<T>(
   /**
    * Store `value` (null removes the file). False when it could not be stored (a full disk: the
    * memory copy goes on; the next write tries again). With a `writer` it is queued there and true
-   * means asked, not done (`writeNow` waits for the answer).
+   * means asked, not done: a write that fails there is tried again before any asked after it
+   * (`DurableWriter`), and `writeNow` waits for the answer.
    */
   fun write(value: T?): Boolean {
     val w = writer ?: return store(value)
-    w.submit { store(value) }
+    w.submit(file.absoluteFile) { store(value) }
     return true
   }
 
-  /** `write`, waiting for its turn on the `writer` (after every write asked before it) and its answer. */
-  fun writeNow(value: T?): Boolean = writer?.now { store(value) } ?: store(value)
+  /**
+   * `write`, waiting for its turn on the `writer` (after every write asked before it) and its
+   * answer. False, nothing written, when a write before it still fails (`DurableWriter.Stuck`).
+   */
+  fun writeNow(value: T?): Boolean {
+    val w = writer ?: return store(value)
+    return try {
+      w.now { store(value) }
+    } catch (_: DurableWriter.Stuck) {
+      false
+    }
+  }
 
   private fun store(value: T?): Boolean {
     if (value == null) {

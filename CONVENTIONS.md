@@ -4284,10 +4284,15 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   moved to the couldn't-sync list lands there one write before it leaves the outbox, so a kill
   between the two sends it again, never loses it); one write at a time in the order asked across the files (each queued under the
   lock that made its change, the value immutable), so the main looper never waits on an fsync and a
-  kill leaves a state the in-order writes pass through: the write order above still holds. The
-  launch's join of an outbox set aside waits for its write (`writeNow`) before it deletes what it
-  joined; signing out drains the writer before the account and token go, so a kill between them
-  never leaves one account's outbox to the next.
+  kill leaves a state the in-order writes pass through: the write order above still holds. A write
+  that fails (a full disk) stays first and is tried again before anything asked after it, 6 tries
+  a round with a doubling wait from 0.5 s to 8 s (`DurableWriter.MAX_TRIES`, `retryDelayMs`); a
+  spent round waits, the write still first, until the next write asked starts another, and a
+  `now` behind it is told `Stuck` (its op not run). The launch's join of an outbox set aside waits
+  for its write (`writeNow`, false when stuck) before it deletes what it joined; signing out drops
+  the writes its removals replace (`dropSuperseded`, so one the disk still refuses neither holds
+  them back nor lands after them) and drains the writer before the account and token go, so a
+  kill between them never leaves one account's outbox to the next.
 - **Downloads (decision 8)**: one WorkManager `BookWorker` per book (unique `book:<safe name>`,
   KEEP; `CONNECTED`; exponential backoff from 1 min) runs `BookDownload`: item + chapters (kept
   in `items/`), `POST .../renditions`, polls at `retry_after_seconds` (15 s at least) for up to

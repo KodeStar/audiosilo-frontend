@@ -900,7 +900,9 @@ class AppModel private constructor(private val context: Context) {
     _pendingReplace.value = null
     pendingPair = null
     // The account's listening is off the disk before the account is: a kill in between must not
-    // leave its outbox to be sent under the next one.
+    // leave its outbox to be sent under the next one. The removals above replace each of its
+    // files, so a write of them a full disk still refuses is dropped rather than waited for.
+    durable.dropSuperseded()
     durable.drain()
     tokens.setToken(null)
     accountFile.write(null)

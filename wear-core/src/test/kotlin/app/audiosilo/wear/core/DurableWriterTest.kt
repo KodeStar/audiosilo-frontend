@@ -8,6 +8,7 @@ import java.util.concurrent.Executor
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -170,7 +171,7 @@ class DurableWriterTest {
     assertEquals(listOf("old"), outbox.events.map { it.id })
   }
 
-  // An offer's Jump acknowledges the row in memory before its move (the move's events go on the
+  // An offer's Jump acknowledges the row in memory within its move (the move's events go on the
   // row's version) and writes it after: a kill never leaves the acknowledgement on the disk without
   // the move (the watch would resume at its old place on the other device's version, sending that
   // place back).
@@ -217,14 +218,134 @@ class DurableWriterTest {
     assertTrue(File(dir, "sync-state.json").exists())
   }
 
+  /** The retries a writer asked for, by their delay, run when the test says so. */
+  private class Retries {
+    val delays = ArrayList<Long>()
+    private val waiting = ArrayList<Runnable>()
+
+    fun after(ms: Long, r: Runnable) {
+      delays += ms
+      waiting += r
+    }
+
+    /** Run the oldest waiting retry; false with none. */
+    fun fire(): Boolean {
+      if (waiting.isEmpty()) return false
+      waiting.removeAt(0).run()
+      return true
+    }
+  }
+
+  /** A disk that refuses every write while `full`, and keeps what lands, in order. */
+  private class FakeDisk {
+    var full = true
+    val landed = ArrayList<String>()
+
+    fun write(name: String): () -> Boolean = {
+      if (full) false else true.also { landed += name }
+    }
+  }
+
+  // A full disk (fe#285): the outbox write of a close fails. The place and the span's removal
+  // asked after it wait for it rather than land without it (a kill then would lose the span: gone
+  // from its file, its event in no outbox); it is tried again with a growing wait, and once the
+  // disk has room it lands first and the rest follow in order.
   @Test
-  fun aWriteThatFailsLeavesTheQueueGoing() {
-    val writer = DurableWriter()
-    val blocker = File(dir, "blocker").apply { writeText("") }
-    // Its folder is a file: this write fails, the next one of another file still lands.
-    PlaceStore(File(blocker, "places.json"), writer).set(ref, LocalPlace(1.0, at = clock.now))
-    PlaceStore(File(dir, "places.json"), writer).set(ref, LocalPlace(2.0, at = clock.now))
-    writer.drain()
-    assertEquals(2.0, PlaceStore(File(dir, "places.json")).place(ref)!!.position, 0.0)
+  fun aWriteThatFailsIsTriedAgainBeforeAnyAskedAfterIt() {
+    val held = Held()
+    val retries = Retries()
+    val writer = DurableWriter(held, retries::after)
+    // The outbox's folder is a file until the disk "has room": every write there fails.
+    val full = File(dir, "outbox").apply { writeText("") }
+    val outbox = Outbox(full, AckStore(null), DEVICE_ID, clock = { clock.now }, writer = writer)
+    val places = PlaceStore(File(dir, "places.json"), writer)
+    val spans =
+      SpanRecorder(
+        FileSpanStore(File(dir, "open-span.json"), File(dir, "open-span-move.json"), writer),
+        AckStore(null),
+        clock = { clock.now },
+        newId = { "e1" },
+        emit = { outbox.append(it) },
+        keepPlace = { r, p -> places.set(r, p) },
+      )
+    spans.open(book, at(0.0), 1.0)
+    assertTrue(held.runOne())
+    clock.advance(12.0)
+    spans.close(at(12.0))
+    while (held.runOne()) Unit
+    assertFalse("the place waits for the event", File(dir, "places.json").exists())
+    assertTrue("the span stays recoverable", File(dir, "open-span.json").exists())
+    assertEquals("one retry waits", listOf(500L), retries.delays)
+    assertTrue(retries.fire())
+    assertEquals(listOf(500L, 1000L), retries.delays)
+    assertTrue(File(dir, "open-span.json").exists())
+    full.delete()
+    assertTrue(retries.fire())
+    while (held.runOne()) Unit
+    assertEquals(listOf("e1"), Outbox(full, AckStore(null), DEVICE_ID).events.map { it.id })
+    assertEquals(12.0, PlaceStore(File(dir, "places.json")).place(ref)!!.position, 0.0)
+    assertFalse(File(dir, "open-span.json").exists())
+    assertFalse("nothing more to try", retries.fire())
+  }
+
+  // The tries are bounded: once a round is spent nothing runs (the writes behind still wait), until
+  // the next write asked starts a new round.
+  @Test
+  fun aSpentRoundWaitsForTheNextWriteToTryAgain() {
+    val held = Held()
+    val retries = Retries()
+    val writer = DurableWriter(held, retries::after)
+    val disk = FakeDisk()
+    writer.submit("open-span", disk.write("open-span"))
+    writer.submit("places", disk.write("places"))
+    while (held.runOne()) Unit
+    while (retries.fire()) while (held.runOne()) Unit
+    assertEquals(listOf(500L, 1000L, 2000L, 4000L, 8000L), retries.delays)
+    assertEquals(DurableWriter.MAX_TRIES - 1, retries.delays.size)
+    disk.full = false
+    while (held.runOne()) Unit
+    assertEquals("parked until asked", emptyList<String>(), disk.landed)
+    writer.submit("outbox", disk.write("outbox"))
+    while (held.runOne()) Unit
+    assertEquals(listOf("open-span", "places", "outbox"), disk.landed)
+  }
+
+  // A `now` (the launch's join, the sign-out's drain) behind a write that still fails is told so
+  // once the round is spent, its op not run; a later one, the disk back, goes through.
+  @Test
+  fun aNowBehindAWriteThatStillFailsIsToldItIsStuck() {
+    val writer = DurableWriter(retryAfter = { _, r -> r.run() })
+    val disk = FakeDisk()
+    writer.submit("outbox", disk.write("outbox"))
+    var ran = false
+    assertThrows(DurableWriter.Stuck::class.java) { writer.now { ran = true } }
+    assertFalse(ran)
+    assertFalse(writer.drain())
+    disk.full = false
+    assertTrue(writer.drain())
+    assertEquals(listOf("outbox"), disk.landed)
+  }
+
+  // Signing out: the removals that follow replace a write the disk still refuses, so it is dropped
+  // rather than held in front of them (or landing after them).
+  @Test
+  fun signingOutDropsAFailedWriteALaterOneOfItsFileReplaces() {
+    val held = Held()
+    val retries = Retries()
+    val writer = DurableWriter(held, retries::after)
+    val disk = FakeDisk()
+    writer.submit("outbox", disk.write("outbox"))
+    assertTrue(held.runOne())
+    assertEquals(1, retries.delays.size)
+    val removals = FakeDisk().apply { full = false }
+    writer.submit("places", removals.write("places removed"))
+    writer.submit("outbox", removals.write("outbox removed"))
+    writer.dropSuperseded()
+    while (held.runOne()) Unit
+    assertEquals(listOf("places removed", "outbox removed"), removals.landed)
+    disk.full = false
+    retries.fire()
+    while (held.runOne()) Unit
+    assertEquals("never lands after its removal", emptyList<String>(), disk.landed)
   }
 }
