@@ -34,7 +34,7 @@ export type PairFailure = { outcome: 'refused' | 'temporary'; message: string };
  *   refused, ask for a new link;
  * - no answer: temporary, naming a self-signed certificate only where one may be why
  *   (`selfSigned`, `selfSignedMayBeWhy`);
- * - 408, 429 (the wait in minutes from `Retry-After` when sent) and 5xx: temporary;
+ * - 408, 429 (the wait from `Retry-After` when sent, `sharedRefusalText`) and 5xx: temporary;
  * - every other 4xx: refused, by the server's code when it names one (`invite_used`,
  *   `invite_expired`, `member_disabled`), else expired or used (401, 410), else a link
  *   that can't be used.

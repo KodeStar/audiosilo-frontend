@@ -17,9 +17,11 @@ export function sharedRefusalText(e: ApiError, t: TFunction): string | undefined
   if (e.status === 429) {
     const s = e.retryAfterSeconds;
     if (s === undefined || s <= 0) return t('common.tooManyTries');
-    return s < 60
-      ? t('connect.signIn.errors.waitSeconds', { count: Math.ceil(s) })
-      : t('connect.signIn.errors.wait', { count: Math.ceil(s / 60) });
+    // Whole seconds first, so 59.5 s reads as "1 minute", never "60 seconds".
+    const secs = Math.ceil(s);
+    return secs < 60
+      ? t('connect.signIn.errors.waitSeconds', { count: secs })
+      : t('connect.signIn.errors.wait', { count: Math.ceil(secs / 60) });
   }
   switch (apiErrorKind(e)) {
     case 'member_disabled':

@@ -45,6 +45,10 @@ describe('signInErrorText', () => {
     expect(signInErrorText(new ApiError(429, 'x', undefined, 60), 'redeem', t)).toBe(
       'Too many tries from this network. Try again in 1 minute.',
     );
+    // Rounded to whole seconds first: never "60 seconds".
+    expect(signInErrorText(new ApiError(429, 'x', undefined, 59.5), 'login', t)).toBe(
+      'Too many tries from this network. Try again in 1 minute.',
+    );
   });
 
   // A single sign-on's finish offers Try again after a 429 shorter than its minute: 30 s
