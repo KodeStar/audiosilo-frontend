@@ -54,11 +54,12 @@ let mockWaiting: QueuedBookmark[] = [];
 jest.mock('@/playback/use-queued-bookmarks', () => ({
   useQueuedBookmarks: (cid: string | undefined) => (cid ? mockWaiting : []),
 }));
-const mockDiscard = jest.fn(async (_id: string) => true);
+// The entry as stored when it was taken out (a replay may have changed it since it was listed).
+const mockDiscard = jest.fn(async (_id: string): Promise<QueuedBookmark | undefined> => undefined);
 const mockRequeue = jest.fn(async (..._a: unknown[]) => ({}));
 jest.mock('@/playback/annotation-outbox', () => ({
   discardQueuedBookmark: (id: string) => mockDiscard(id),
-  queueBookmark: (...a: unknown[]) => mockRequeue(...a),
+  requeueBookmark: (...a: unknown[]) => mockRequeue(...a),
 }));
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
@@ -210,6 +211,8 @@ describe('BookmarksSection', () => {
 
   it('takes a waiting bookmark out unsent, with an Undo that keeps it again', async () => {
     mockWaiting = [waiting('w1', 400, 'kept here')];
+    const stored = { ...waiting('w1', 400, 'kept here'), client_id: 'k1', othersHeld: [3] };
+    mockDiscard.mockResolvedValueOnce(stored);
     await render(<BookmarksSection libraryId={1} path="a/book" />);
     await fireEvent.press(screen.getByRole('button', { name: 'Delete bookmark at 6:40' }));
     expect(mockDiscard).toHaveBeenCalledWith('w1');
@@ -217,7 +220,8 @@ describe('BookmarksSection', () => {
     const shown = mockToast.mock.calls[0][0];
     expect(shown).toMatchObject({ title: 'Bookmark deleted', description: '6:40' });
     shown.action.onPress();
-    expect(mockRequeue).toHaveBeenCalledWith('c', 1, 'a/book', 400, 'kept here', undefined);
+    // Put back as it was stored: its client_id and what a send of it did go with it.
+    expect(mockRequeue).toHaveBeenCalledWith(stored);
   });
 
   it('lists no waiting bookmark among the notes', async () => {

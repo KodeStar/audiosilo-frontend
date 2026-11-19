@@ -134,7 +134,7 @@ function makeBookmark(connectionId: string, libraryId: number, path: string, pos
       Math.round(position),
       t('player.sleepTimer.fellAsleepNote'),
       // Sent only to a server with `annotations`, once its flags are known (the outbox's
-      // `readLabelFlag`).
+      // `readFlags`).
       FELL_ASLEEP_LABEL,
     ).catch(() => {
       // the connection gone, or storage refused it and so did the server: there is simply

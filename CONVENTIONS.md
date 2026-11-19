@@ -1739,9 +1739,12 @@ as above). **`label` is sent ONLY to a server known to have `annotations`**, bec
 decoder refuses unknown fields (a 400, and the bookmark is lost): the one owner of that gate is
 `postBookmark` in `hooks.ts` (`useAddBookmark` on `useCapability`, the framework-free
 `addBookmark` on `cachedCapability`; not known yet counts as no, and the bookmark is still made
-without its label). Never call `client.addBookmark` with a label directly. The server answers
-fixed-width UTC timestamps with milliseconds (so they compare as strings) and `[]` for an empty
-per-book list (the client still reads an older server's `null` as none).
+without its label). Never call `client.addBookmark` with a label directly. The same gate holds
+`client_id` (`AddBookmarkVars.clientId`, the device's UUID for a bookmark) to a server known to
+have `bookmark_client_id`, which makes a bookmark at most once per user and `client_id`: the same
+one posted again answers 200 with the bookmark it holds, and `Bookmark.client_id` carries it. The
+server answers fixed-width UTC timestamps with milliseconds (so they compare as strings) and `[]`
+for an empty per-book list (the client still reads an older server's `null` as none).
 
 **Bookmarks made offline wait on the device (fe#356).** The one-tap bookmark (`addBookmarkHere`)
 goes through `addBookmarkOrQueue` (`src/playback/annotation-outbox.ts`): straight to the server
@@ -1753,7 +1756,18 @@ first (`queueNewBookmark`) and sent only from the outbox: nobody is awake to ret
 killed while a direct POST was out (up to its 15 s timeout) would lose it; it shows as waiting
 until a replay sends it. Only when storage refuses it is it posted straight away, once (its
 label on flags read first). The one-tap keeps the direct send: its "Bookmark added" toast and Add
-note need the server's bookmark, and the listener is there to see a failure. The outbox is sent
+note need the server's bookmark, and the listener is there to see a failure. To a server known to
+take a `client_id` (`bookmark_client_id`) it is stored first too, `fresh` with its id, then
+posted with that id and taken out once that works or is refused for good (its book's ones stored
+behind it meanwhile, held back for it, go then), so a kill mid-POST leaves it to a replay, whose
+POST with the same id makes it once at most; a 400 whose server can't be asked why keeps it, as a
+replay would, and a sign-out while the POST is out drops it. While that POST is out
+it is not waiting: no row, pin or count shows it and no replay from that tab sends it (`posting`,
+memory only, so after a kill it shows and replays at the next launch); it shows once the POST has
+failed. Another tab knows nothing of that POST: it may show or send it meanwhile, which its id
+keeps to one bookmark. On an older server, or flags not read yet, nothing is stored before the
+POST (a resend there could make it twice), and a storage write refused leaves the add direct as
+before. The outbox is sent
 at launch and on reconnect (`startBookmarkSync`, a root service; also once a connection a 401
 flagged is signed in again, with no backoff meanwhile), with the stored queues in the
 foreground and on the web's focus and `online` (`startQueueReplays`), and on a backoff (30 s
@@ -1761,15 +1775,29 @@ doubling to 10 min) while a reachable server keeps failing, through `replayQueue
 `queuedRoute` (claims, so two tabs never send one twice). A replay of every connection asked
 for while one is out joins it (`flushBookmarks`: the web's `online` and focus fire together),
 so those two count a failure once; a connection's own replay (its reconnect, a sign-in, a new
-bookmark) is never joined and queues behind it. The POST has no idempotency key, so
-a replay reads the book's bookmarks first and takes one at the same second with the same
-note as already sent: one the replay did not see there before its first send of it
-(`othersHeld`, stored right before that send), else, for one a send may have reached before it
-was stored (a direct add whose answer was lost, a delete's Undo), one made at most a day before.
-One no send has reached (`fresh`: the Fell asleep, a one-tap kept without trying the server) is
-never taken for one already there, so the night before's at the same second never stands in for
-tonight's; when that read fails, whatever the status (a
-403 or 404 too), the bookmarks wait, and only the POST's own refusal for good drops one. A send
+bookmark) is never joined and queues behind it. **Sent once (FE-BOOKMARK-IDEMPOTENCY):** every
+entry gets a `client_id` (a UUID) when it is stored, or before the one-tap's direct add, and keeps
+it across replays and a delete's Undo. To a server with `bookmark_client_id` (flags read first
+when not known, `readFlags`) a replay just posts again with it, no read first: a 200 is the
+bookmark already held and settles the entry like a 201 (`addBookmark` shows it). An older
+server's POST has no idempotency key, so there (and for an entry an older build stored with no
+`client_id`, or while the flags can't be read) a replay reads the book's bookmarks first and
+takes one with its `client_id` (never one made under another), else one made with no id at the
+same second with the same note, as already sent: one the replay did not see there before its
+first send of it without the id (`othersHeld`, stored right before that send), else, for one a
+send may have reached before it was stored (a direct add whose answer was lost; not one a 401 or
+429 turned away), one made at most a day before. One no send without its `client_id` has reached
+(`fresh`: the Fell asleep, a one-tap kept without trying the server, any sent only with its id)
+is never taken for one at its place, so the night before's at the same second never stands in
+for tonight's, and two made in the same second never settle on one; a send with its id leaves
+`fresh` alone (nothing is written before it), so it goes with its id only on flags that still
+say so right before the POST (else it waits for the next replay). When the read fails, whatever
+the status (a 403 or 404 too), the bookmarks wait, and only the POST's own refusal for good drops
+one (a 409 `client_id_conflict` too: that id landed, and its book moved since, so a fresh id
+would make it twice; not a 400 to one sent with its id while the server, asked again, no longer
+takes one: `whyRefused` asks `/server` itself and keeps the answer (`keepServerAnswer`), never
+the cached flags, which stay fresh for minutes after a server is rolled back, and one whose
+server can't be asked waits; the one-tap's direct add is kept the same way). A send
 puts the new bookmark in the book's cached list at once (`addBookmark`), and a replay that finds
 one already there puts the server's in it the same way (`showServerBookmark`), so its waiting row
 and pin give way to it with no gap before the list is read again. Order holds within a book only: a
@@ -1778,8 +1806,17 @@ books' go past it, so one that keeps failing never blocks the connection's queue
 only at a failure that is the connection's (no answer, a gateway's 502/504/52x, a 401). One still
 failing 7 days after its first failure against a server that answered, and after 10 such
 failures (`failedSince`, `failures`, `GIVE_UP_MS`, `GIVE_UP_TRIES`), is dropped with a log line,
-never on its first failures; a 503 or 429, a server that is away and a 401 do not count. A
-labelled one (Fell asleep) is sent only once its server's flags are known (`readLabelFlag` reads
+never on its first failures; a 503 or 429, a server that is away and a 401 do not count. At most
+one failure counts per entry per `RETRY_MIN_MS` (stored `lastFailure`: a connection's own replay
+right behind a sweep meets the same failure), and a try that gets past the step its failures came
+to (`failingStep`: `flags`, `read`, `post`) starts the count again, as does a gap of more than a
+day since the last counted failure (`RUN_GAP_MS`: the app closed, its server away; an older
+build's entry with no `lastFailure` goes by `failedSince`), so one old failure and, a week on, an
+hour of 500s are not a week of failing, while a POST that fails on every day it is tried still
+gives up (a stored step
+a build does not know, a later build's in the queue two tabs share, starts the count again too:
+`isQueued` takes any name, since an entry it turned down would be left out of the next write). A
+labelled one (Fell asleep) is sent only once its server's flags are known (`readFlags` reads
 `/server` when they are not) and waits, label and all, while that read fails: here "not known
 yet" never sends it bare. That wait is for the flags, not its turn: it holds back none of its
 book's unlabelled ones (order holds within a book only among those that can be sent), and it
@@ -1789,9 +1826,10 @@ after its confirm names them beside the unsynced listens (`unsentBeforeSignOut`,
 `src/components/account/unsent.ts`: the sign-out, remove-server and remove-person confirms); a replay
 drops the entries of a connection gone once the session has loaded. Waiting ones are listed
 among the book's bookmarks (`useQueuedBookmarks`, `QueuedBookmarkRow`: "Waiting to sync", Delete
-takes one out unsent, with an Undo that puts it back through the outbox (`queueBookmark`, never
-a direct POST: a replay may have sent it just before the Delete, and its read before a send
-keeps it from being made twice), and a replay skips one taken out after it claimed it) and
+takes one out unsent, with an Undo that puts it back through the outbox (`discardQueuedBookmark`
+resolves the stored entry, `requeueBookmark` stores it again with its `client_id`, `fresh` and
+`othersHeld`; never a direct POST: a replay may have sent it just before the Delete), and a
+replay skips one taken out after it claimed it) and
 pinned on the seek bar, never beside the listed one the server already holds. The outbox is
 an `ID_DOCUMENTS` document of the identity migration. The editor's add and the delete's
 Undo still post directly (the listener sees the failure there); the car keeps its own

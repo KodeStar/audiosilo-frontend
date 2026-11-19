@@ -84,6 +84,14 @@ export type Capabilities = {
    * treat missing as false, never send a `label` (such a server rejects the unknown field
    * with a 400) and never call the routes it gates. */
   annotations?: boolean;
+  /** Whether the bookmark POST takes an optional `client_id` (a UUID the device chose, in
+   * its hyphenated form) and makes it at most once per user: the same `client_id` posted
+   * again answers 200 with the bookmark it already holds (201 for a new one), and the
+   * bookmark's JSON carries it ({@link Bookmark.client_id}). The bookmark outbox keeps one
+   * per waiting bookmark, so a replay after a lost answer just posts again
+   * (`annotation-outbox.ts`). Absent on older servers: treat missing as false and never
+   * send `client_id` (such a server rejects the unknown field with a 400). */
+  bookmark_client_id?: boolean;
   /** Whether the server tells the player its home and away addresses
    * ({@link ServerAddresses}): on the pairing payload and its links, the exchange and
    * login answers, and `GET /addresses` (player redesign Phase 5). Absent on older
@@ -1212,6 +1220,10 @@ export type Bookmark = {
    * Sent by a server with `annotations` (always, `''` included); absent on older
    * servers. */
   label?: string;
+  /** The device's id for the bookmark, when its POST sent one (capability
+   * `bookmark_client_id`): the bookmark outbox's key for a bookmark it already sent.
+   * Absent otherwise, and on older servers. */
+  client_id?: string;
   created_at: string;
 };
 

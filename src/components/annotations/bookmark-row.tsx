@@ -6,7 +6,7 @@ import { toast } from '@/components/ui/toast';
 import { formatClock } from '@/lib/format';
 import {
   discardQueuedBookmark,
-  queueBookmark,
+  requeueBookmark,
   type QueuedBookmark,
 } from '@/playback/annotation-outbox';
 
@@ -61,10 +61,9 @@ export function QueuedBookmarkRow({
       (removed) => {
         if (!removed) return; // sent meanwhile: the list shows it as made
         // Undo puts it back in the outbox, not on the server: a replay may have sent it
-        // just before the Delete, and its read before a send keeps it from being made twice.
-        deletedToast(t, BOOKMARK_DELETE_COPY, position, () =>
-          queueBookmark(connectionId, libraryId, path, position, note, label),
-        );
+        // just before the Delete. It keeps its `client_id` (and what a send without it did),
+        // so its replay finds it there rather than making it twice.
+        deletedToast(t, BOOKMARK_DELETE_COPY, position, () => requeueBookmark(removed));
       },
       () => toast({ title: t(BOOKMARK_DELETE_COPY.deleteFailed) }),
     );
