@@ -64,6 +64,20 @@ describe('keyedSerialQueue', () => {
     await held;
   });
 
+  it('says whether a key has a job running or waiting', async () => {
+    const serially = keyedSerialQueue();
+    expect(serially.busy('k')).toBe(false);
+    let release: () => void = () => {};
+    const held = serially('k', () => new Promise<void>((r) => (release = r)));
+    expect(serially.busy('k')).toBe(true);
+    expect(serially.busy('other')).toBe(false);
+    await new Promise((r) => setTimeout(r, 0));
+    release();
+    await held;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(serially.busy('k')).toBe(false);
+  });
+
   it('rejects only the failed job, and runs the next of its key', async () => {
     const serially = keyedSerialQueue();
     const failed = serially('k', async () => {

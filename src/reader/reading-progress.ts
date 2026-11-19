@@ -10,7 +10,7 @@ import { noteRateLimit, onRateLimitOver, rateLimited, stopsReplay } from '@/api/
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { ReadingProgress, ReadingProgressSaved } from '@/api/types';
 import { contentKey, contentKeyOf, isKeyOf } from '@/lib/content-key';
-import { queuedKey, replayQueue, type Route } from '@/lib/queue-claims';
+import { type Claimed, claimStands, queuedKey, replayQueue, type Route } from '@/lib/queue-claims';
 import { keyedSerialQueue, serialQueue } from '@/lib/serial-queue';
 import { getItem, setItem, setItemStrict } from '@/lib/storage';
 import { READING_MIRROR_KEY, READING_QUEUE_KEY } from '@/lib/storage-keys';
@@ -307,6 +307,12 @@ export async function adoptServerPlace(
 
 // --- saving ----------------------------------------------------------------------------------
 
+/** Per book (`contentKey`), when this tab's last capture of it was made (ms): a capture is
+ * later, so two pages turned in one millisecond are two saves. The queue (`queuedKey`, the
+ * newest per book) and `settledUntil` tell a book's saves apart by their time; with one time,
+ * the answer to the first dropped the second's queued copy as sent. */
+const lastCaptured = new Map<string, number>();
+
 /** A save of `place` now, made on the version this device last acknowledged. */
 export async function captureReadingSave(
   connectionId: string,
@@ -315,6 +321,12 @@ export async function captureReadingSave(
   place: { cfi: string; progression: number },
 ): Promise<ReadingSave> {
   const mirror = await readMirror(connectionId, libraryId, path);
+  const key = contentKey(connectionId, libraryId, path);
+  const now = Date.now();
+  const last = lastCaptured.get(key) ?? -Infinity;
+  // Within a second of the last: not a clock set back, which captures follow.
+  const at = now <= last && last - now < 1000 ? last + 1 : now;
+  lastCaptured.set(key, at);
   return {
     connectionId,
     libraryId,
@@ -322,7 +334,7 @@ export async function captureReadingSave(
     cfi: place.cfi,
     progression: Math.min(1, Math.max(0, place.progression)),
     device_id: await getDeviceId(),
-    updated_at: new Date().toISOString(),
+    updated_at: new Date(at).toISOString(),
     base_version: mirror?.version ?? 0,
   };
 }
@@ -450,7 +462,7 @@ export async function saveReadingPlace(
 const latestAsked = new Map<string, object>();
 
 /** Made on 0, `save` on the version an answer to this device's own save acknowledged
- * meanwhile (`saveReadingPlace`). */
+ * meanwhile (`saveReadingPlace`), whether the reader's turn or a replay sends it. */
 async function onOwnVersion(save: ReadingSave): Promise<ReadingSave> {
   if (save.base_version) return save;
   const entry = await readMirror(save.connectionId, save.libraryId, save.path);
@@ -463,7 +475,13 @@ async function onOwnVersion(save: ReadingSave): Promise<ReadingSave> {
  * queued, so a replay never follows it with an older place (one made on 0 that is further on
  * would be kept, a place the reader had left). Such a save is replaced in the queue by this
  * one before the request goes (`queueAhead`), not only once it is answered: a request the
- * app was closed under left the older place to be replayed. */
+ * app was closed under left the older place to be replayed. A save that has to wait for its
+ * turn (a save of its book still on its way, up to the client's timeout) is queued as it
+ * starts to wait (`queueSave`), not only once its turn comes: the app closed meanwhile, the
+ * server kept the older page until this device's next save of the book. In its turn it is
+ * sent only while that queued copy is still there unclaimed (`waitingUnclaimed`): one a
+ * replay claimed meanwhile is that replay's to send (here too, it went twice), and one that
+ * left the queue went from another tab or gave way to a newer save. */
 async function sendThenFlush(
   api: ApiClient | null,
   captured: ReadingSave,
@@ -471,8 +489,17 @@ async function sendThenFlush(
   const key = contentKeyOf(captured);
   const turn = {};
   latestAsked.set(key, turn);
+  // Asked before the turn is: once it is, the book always has a job.
+  const waiting = withSendTurn.busy(key)
+    ? queueSave(captured, setItemStrict).catch(() => false)
+    : null;
   const { saved, more } = await withSendTurn(key, async () => {
     if (latestAsked.get(key) !== turn) return { saved: null, more: false };
+    // Queued as it waited: sent only while that copy is unclaimed (`waitingUnclaimed`). One
+    // storage refused to queue is sent as any save.
+    if (waiting && (await waiting) && !(await waitingUnclaimed(captured))) {
+      return { saved: null, more: false };
+    }
     const save = await onOwnVersion(captured);
     if (!api || !isReachable(save.connectionId) || rateLimited(save.connectionId)) {
       await queueSave(save);
@@ -505,8 +532,8 @@ async function sendThenFlush(
 
 // --- the offline queue -----------------------------------------------------------------------
 
-async function readQueue(): Promise<ReadingSave[]> {
-  const queue = await getItem<ReadingSave[]>(READING_QUEUE_KEY);
+async function readQueue(): Promise<Claimed<ReadingSave>[]> {
+  const queue = await getItem<Claimed<ReadingSave>[]>(READING_QUEUE_KEY);
   return Array.isArray(queue) ? queue : [];
 }
 
@@ -548,14 +575,16 @@ const withStoredQueue = tabLock(READING_QUEUE_KEY);
 
 /** Queue `save`, the latest per book winning: by the time each was made, not the order the
  * writes come in (another tab's save, or a replay's, written after a newer one of the book
- * never puts the older place back). */
-async function queueSave(save: ReadingSave): Promise<void> {
-  await withStoredQueue(async () => {
+ * never puts the older place back). Whether it was written (`write`, by default best effort:
+ * a failure is not told). */
+async function queueSave(save: ReadingSave, write = setItem): Promise<boolean> {
+  return withStoredQueue(async () => {
     const queue = await readQueue();
-    if (queue.some((s) => sameBook(s, save) && timeOf(s) > timeOf(save))) return;
+    if (queue.some((s) => sameBook(s, save) && timeOf(s) > timeOf(save))) return false;
     const next = queue.filter((s) => !sameBook(s, save));
     next.push(save);
-    await setItem(READING_QUEUE_KEY, next);
+    await write(READING_QUEUE_KEY, next);
+    return true;
   });
 }
 
@@ -597,8 +626,20 @@ const sentUnsettled = new Set<string>();
  * a newer save of the book took its place (the reader's, sent and failed or held), another
  * tab sent a newer one and dropped it, or its connection went. */
 async function stillQueued(save: ReadingSave): Promise<boolean> {
+  return (await queuedCopy(save)) !== undefined;
+}
+
+/** The stored queue's copy of `save` (`queuedKey`: its book and its time), with any claim. */
+async function queuedCopy(save: ReadingSave): Promise<Claimed<ReadingSave> | undefined> {
   const key = queuedKey(save);
-  return (await readQueue()).some((s) => queuedKey(s) === key);
+  return (await readQueue()).find((s) => queuedKey(s) === key);
+}
+
+/** Whether a save queued as it started to wait for its send turn (`sendThenFlush`) is still
+ * queued with no replay's claim standing on it, so it is this turn's to send. */
+async function waitingUnclaimed(save: ReadingSave): Promise<boolean> {
+  const copy = await queuedCopy(save);
+  return copy !== undefined && !claimStands(copy);
 }
 
 /** Replay one connection's saves through its client, each in its book's send turn; returns
@@ -625,7 +666,10 @@ async function flushGroup(
       if (settledHere(save)) return 'settled';
       if (!(await stillQueued(save))) return 'kept';
       try {
-        await put(client, save);
+        // On the version an answer to this device's own save acknowledged meanwhile, as the
+        // reader's own send would: a save queued as it waited behind that one is sent here
+        // when a replay claimed it.
+        await put(client, await onOwnVersion(save));
         noteSuccess(cid);
         noteSettled(save);
         return 'settled';
@@ -719,6 +763,7 @@ export function jumpOffer(
 // and the app's cached EPUBs.
 onConnectionRemoved(async (id) => {
   for (const key of settledUntil.keys()) if (isKeyOf(key, id)) settledUntil.delete(key);
+  for (const key of lastCaptured.keys()) if (isKeyOf(key, id)) lastCaptured.delete(key);
   await Promise.all([
     clearEbookCache(id),
     withMirrorLock(async () => {
