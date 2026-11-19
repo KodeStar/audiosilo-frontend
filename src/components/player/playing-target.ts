@@ -1,5 +1,6 @@
 import { useShallow } from 'zustand/react/shallow';
 
+import { sameConnection } from '@/lib/connection-id';
 import { usePlayer } from '@/playback/store';
 
 import type { PlayTarget } from './use-play-book';
@@ -16,7 +17,7 @@ export function selectIsLoaded(target: PlayTarget | null | undefined) {
     return (
       !!target &&
       !!np &&
-      np.connectionId === target.connectionId &&
+      sameConnection(np.connectionId, target.connectionId) &&
       np.libraryId === target.libraryId &&
       np.path === target.path
     );

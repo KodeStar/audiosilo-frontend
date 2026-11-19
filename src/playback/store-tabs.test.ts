@@ -49,8 +49,13 @@ const mirrorKey = (connectionId: string, libraryId: number, path: string) =>
 jest.mock('@/lib/storage', () => {
   // The web's storage is the browser's `localStorage`: each tab's copy reads and writes its
   // own tab's, so a write tells the OTHER tabs.
+  // None for this file's own imports (`playing-claim` reads the connection aliases' module),
+  // loaded before any tab: only a tab's modules read storage.
   const { tabStorage } = jest.requireActual('@/testing/fake-browser');
-  return { ...jest.requireActual('@/lib/storage'), ...tabStorage(mockTab.localStorage) };
+  return {
+    ...jest.requireActual('@/lib/storage'),
+    ...(mockTab ? tabStorage(mockTab.localStorage) : {}),
+  };
 });
 jest.mock('./service', () => {
   const engine = mockEngine;

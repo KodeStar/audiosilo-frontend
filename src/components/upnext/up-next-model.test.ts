@@ -1,4 +1,5 @@
 import type { Book, NextBook, QueueEntry } from '@/api/types';
+import { setConnectionAliases } from '@/lib/connection-id';
 
 import {
   canDrop,
@@ -122,6 +123,16 @@ describe('drag payload', () => {
   it("takes only a book from the queue's own server", () => {
     expect(canDrop(book, 'a')).toBe('ok');
     expect(canDrop(book, 'b')).toBe('other-server');
+  });
+
+  // The loaded book's card can name the id another tab's identity migration moved from.
+  it('takes a book under the id its server was renamed from', () => {
+    setConnectionAliases({ a: 'a.7' });
+    try {
+      expect(canDrop(book, 'a.7')).toBe('ok');
+    } finally {
+      setConnectionAliases({});
+    }
   });
 });
 

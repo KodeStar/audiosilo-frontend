@@ -9,6 +9,7 @@ import { dropStartedBook } from '@/components/player/drop-started';
 import { usePlayBook } from '@/components/player/use-play-book';
 import { toast } from '@/components/ui/toast';
 import { playFailedToast } from '@/components/player/play-failed';
+import { sameConnection } from '@/lib/connection-id';
 import { useLayout } from '@/lib/layout';
 import { useKeptOffline, useUnreadQuery } from '@/lib/offline-state';
 import { connectionParam, idParam, segmentsToPath } from '@/lib/paths';
@@ -83,7 +84,11 @@ export function useUpNextData(cid: string | undefined) {
   const actions = useQueueActions(cid);
   const { add, remove, fail } = actions;
   const nowPlaying = usePlayer((s) => s.nowPlaying);
-  const loaded = nowPlaying && nowPlaying.connectionId === cid ? nowPlaying : null;
+  // Under an id the identity migration moved it from too (`sameConnection`).
+  const loaded =
+    nowPlaying && cid !== undefined && sameConnection(nowPlaying.connectionId, cid)
+      ? nowPlaying
+      : null;
   const next = useNextBook(loaded?.libraryId ?? 0, loaded?.path ?? '', !!loaded, cid);
   const shown = useShownBook(cid);
   // The same cached list Home and the palette read; a mount doesn't refetch it.
@@ -172,7 +177,8 @@ function loadedHolding(cid: string, entry: QueueEntry): string {
   const np = usePlayer.getState().nowPlaying;
   const holds =
     !entry.book &&
-    np?.connectionId === cid &&
+    !!np &&
+    sameConnection(np.connectionId, cid) &&
     np.libraryId === entry.library_id &&
     entry.path.startsWith(`${np.path}/`);
   return holds ? np.path : entry.path;

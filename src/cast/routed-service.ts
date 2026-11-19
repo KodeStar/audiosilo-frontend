@@ -1,3 +1,4 @@
+import { sameConnection } from '@/lib/connection-id';
 import { sameTrackOrder } from '@/playback/book-queue';
 import type {
   BookRef,
@@ -21,7 +22,7 @@ function sameBookLoad(a: LastLoad | null, b: LastLoad | null): boolean {
   return (
     !!a.book &&
     !!b.book &&
-    a.book.connectionId === b.book.connectionId &&
+    sameConnection(a.book.connectionId, b.book.connectionId) &&
     a.book.libraryId === b.book.libraryId &&
     a.book.path === b.book.path
   );

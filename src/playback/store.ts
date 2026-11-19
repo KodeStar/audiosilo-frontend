@@ -1968,7 +1968,12 @@ function giveWayTo(claim: PlayingClaim) {
   if (gives && noted && notedPlay?.own === playAskedAt) return;
   const goesOn = !gives && noted;
   // Not when it plays on (the newer play is this tab's: the other tab follows it).
-  if (np && np.connectionId === claim.connectionId && (gives || !mine.live) && !goesOn) {
+  if (
+    np &&
+    sameConnection(np.connectionId, claim.connectionId) &&
+    (gives || !mine.live) &&
+    !goesOn
+  ) {
     notedPlay = {
       connectionId: claim.connectionId,
       tab: claim.tab,
@@ -2331,7 +2336,9 @@ function reloadPlace(np: NowPlaying): { index: number; positionInTrack: number }
  * would be of a download that landed meanwhile (another engine's measure, `retry`), nor at the
  * place another tab played the book on to (read as the reload starts). */
 function stuckPastMeasure(np: NowPlaying): boolean {
-  if (otherTabPlayed?.connectionId === np.connectionId || streamsDownloadedFile(np)) return false;
+  const played = otherTabPlayed;
+  if ((played && sameConnection(played.connectionId, np.connectionId)) || streamsDownloadedFile(np))
+    return false;
   const at = reloadPlace(np);
   return pastMeasure(np, at.index, at.positionInTrack, engineLength(np, at.index));
 }
@@ -2680,7 +2687,8 @@ let notedPlay: { connectionId: string; tab: string; askedAt: number; own: number
 let catchingUp: Promise<void> | null = null;
 /** Whether the loaded book's place is not to be saved: another tab has played since. */
 const behindOtherTab = (np: NowPlaying) =>
-  catchingUp !== null || otherTabPlayed?.connectionId === np.connectionId;
+  catchingUp !== null ||
+  (otherTabPlayed !== null && sameConnection(otherTabPlayed.connectionId, np.connectionId));
 /** The play this tab claimed last (`claimPlaying`), by when it was asked for (`askedAt`,
  * which every claim of the play carries: a play claims again on each move into `playing`):
  * an answer to it says where the tab that gave way stopped (`onGaveWayAnswer`). `since`:
@@ -2965,7 +2973,8 @@ function dropListening() {
  */
 export function showOtherTabsPlace(): void {
   const { snapshot, nowPlaying: np } = usePlayer.getState();
-  if (!service || !np || otherTabPlayed?.connectionId !== np.connectionId) return;
+  if (!service || !np || !otherTabPlayed) return;
+  if (!sameConnection(otherTabPlayed.connectionId, np.connectionId)) return;
   if (wantsPlayback || (snapshot.state !== 'paused' && snapshot.state !== 'ready')) return;
   void catchUpWithOtherTab(service, otherTabPlayed.since, { finished: false });
 }
@@ -3532,7 +3541,8 @@ async function createService(): Promise<PlaybackService> {
       // that began by itself takes it now, and its listening begins there.
       const behind = byItself ? otherTabPlayed : null;
       claimPlaying();
-      if (behind && behind.connectionId === usePlayer.getState().nowPlaying?.connectionId) {
+      const loadedNow = usePlayer.getState().nowPlaying;
+      if (behind && loadedNow && sameConnection(behind.connectionId, loadedNow.connectionId)) {
         catchUpPlaying(svc, behind.since);
       } else {
         // Neither begins while a move to another tab's place is out (this play buffered and
@@ -4115,7 +4125,8 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       beginPlaybackAttempt();
       // Another tab played on meanwhile: from where it left the book, when it is this one.
       const behind = otherTabPlayed;
-      if (behind && behind.connectionId === get().nowPlaying?.connectionId) {
+      const loadedNow = get().nowPlaying;
+      if (behind && loadedNow && sameConnection(behind.connectionId, loadedNow.connectionId)) {
         const attempt = playAttempts;
         await catchUpWithOtherTab(svc, behind.since);
         // Paused, or pressed again, while that was read: the later press stands.

@@ -1,3 +1,4 @@
+import { sameConnection } from '@/lib/connection-id';
 import { focusedRoute, type NavState, topRootRoute } from '@/lib/root-stack';
 
 /** A book to start: on which connection, library and path. */
@@ -58,7 +59,8 @@ export function navFor(
     playerOnTop: topRootRoute(state) === 'player',
     bookOnTop:
       route?.name === BOOK_ROUTE &&
-      params.connection === target.connectionId &&
+      typeof params.connection === 'string' &&
+      sameConnection(params.connection, target.connectionId) &&
       params.libraryId === String(target.libraryId) &&
       params.path === target.path,
   };

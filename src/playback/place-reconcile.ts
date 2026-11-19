@@ -7,6 +7,7 @@ import { isReachable, onReconnect } from '@/api/reachability';
 import type { Chapter, Progress } from '@/api/types';
 import { toast } from '@/components/ui/toast';
 import { contradictedTitle } from '@/lib/chapter-label';
+import { sameConnection } from '@/lib/connection-id';
 import { contentKeyOf } from '@/lib/content-key';
 import { formatClock } from '@/lib/format';
 import { quietly } from '@/lib/quietly';
@@ -278,7 +279,7 @@ function offerFromAnswer(connectionId: string, rows: Progress[], staysHeld: Read
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   const bookKey = selectBookKey(player);
-  if (!np || !bookKey || np.connectionId !== connectionId) return;
+  if (!np || !bookKey || !sameConnection(np.connectionId, connectionId)) return;
   const row = rows.find((r) => r.library_id === np.libraryId && r.path === np.path);
   // This device's own row with no other place offers nothing (`offerOf`): no reads then.
   if (!row || (row.device_id === cachedDeviceId() && !row.other_place)) return;
@@ -604,7 +605,9 @@ function runPlaceReconcile(): () => void {
   );
   stops.push(
     onReconnect((cid) => {
-      if (usePlayer.getState().nowPlaying?.connectionId === cid) {
+      // Told the id now: a book loaded before another tab's migration names the old one.
+      const np = usePlayer.getState().nowPlaying;
+      if (np && sameConnection(np.connectionId, cid)) {
         void reconcileLoadedPlace('reconnect');
       }
     }),

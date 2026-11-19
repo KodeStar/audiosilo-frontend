@@ -15,6 +15,7 @@ import { Icon } from '@/components/ui/icon';
 import { Switch } from '@/components/ui/switch';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel, sameTitle } from '@/lib/chapter-label';
+import { sameConnection } from '@/lib/connection-id';
 import { formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
@@ -78,7 +79,8 @@ export function UpNextPanel({
   const { actions } = data;
   const playNow = usePlayNow(cid);
   const { entries } = data;
-  const loaded = nowPlaying?.connectionId === cid ? nowPlaying : null;
+  // Under an id the identity migration moved it from too (`sameConnection`).
+  const loaded = nowPlaying && sameConnection(nowPlaying.connectionId, cid) ? nowPlaying : null;
   // Its sign-in ended: the sign-in state in place of the load error and its Retry (#124).
   const signedOut = useSignedOutConnection(cid);
 
