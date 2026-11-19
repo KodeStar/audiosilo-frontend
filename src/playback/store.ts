@@ -25,6 +25,7 @@ import { flushReadingConnection } from '@/reader/reading-progress';
 import { quietOffScreen } from '@/lib/visible-store';
 import { withTimeout } from '@/lib/with-timeout';
 import { mayActFor } from '@/stores/profiles';
+import { tellOtherTabsGoing } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 
 import type { LoadedBook } from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
@@ -4327,25 +4328,48 @@ export async function stopPlaybackForConnection(connectionId: string): Promise<v
 }
 
 /**
+ * Stop playback through the connection and wait out the stop's span close, which waits its
+ * turn into the outbox (`closeSpan`): past that turn (`appendInTurn` of nothing, behind it),
+ * the outbox holds the span. Run before a removal's purges, by the removing tab
+ * (`teardownBeforeTokenRevoke`) and by a tab playing through the connection when told of it,
+ * or when a sign-in retires it (`removed-in-other-tab.ts`): done after them, the place and
+ * the span landed once they were purged.
+ */
+export async function stopPlaybackAndCloseSpan(connectionId: string): Promise<void> {
+  await stopPlaybackForConnection(connectionId);
+  await appendInTurn(connectionId, []).catch(() => undefined);
+}
+
+/**
  * The shared teardown rule for every token-revoking path (sign-out in
  * use-sign-out.ts, remove-connection in connections-section.tsx): stop playback
  * through the connection first, so the final position persists while its token is
- * still valid, then flush THIS connection's offline replay queue so its queued saves
- * land before the connection (and with it, those saves) is purged. Uses
- * `flushConnection`, not `flushQueue`: the latter no-ops while the ACTIVE server is
- * offline, which would skip this last-chance sync when removing a still-reachable
- * background connection. One helper so a new step can't be added to one path and
- * forgotten in the other. The stop's span close waits its turn into the outbox
- * (`closeSpan`), so the outbox is sent only once that turn has passed (`appendInTurn` of
- * nothing, behind it): sent at once, the send found the outbox without the span, which then
- * landed after the token was revoked and went with the connection's purge.
+ * still valid, then flush THIS connection's saves so they land before the connection
+ * (and with it, those saves) is purged (`flushConnectionSaves`). One helper so a new step
+ * can't be added to one path and forgotten in the other. The outbox is sent only once the
+ * stop's span is in it (`stopPlaybackAndCloseSpan`): sent at once, the send found the outbox
+ * without the span, which then landed after the token was revoked and went with the
+ * connection's purge. On the web, a tab playing through the connection stops and sends its
+ * own meanwhile, while the token still works (`tellOtherTabsGoing`, a bounded wait;
+ * `removed-in-other-tab.ts`).
  */
 export async function teardownBeforeTokenRevoke(connectionId: string): Promise<void> {
-  await stopPlaybackForConnection(connectionId);
-  await appendInTurn(connectionId, []).catch(() => undefined);
+  // The other tabs' wait (at least its answer window) runs beside this tab's own stop.
+  await Promise.all([stopPlaybackAndCloseSpan(connectionId), tellOtherTabsGoing(connectionId)]);
+  await flushConnectionSaves(connectionId);
+}
+
+/**
+ * Send a connection's waiting saves: its offline replay queue (`flushConnection`, not
+ * `flushQueue`: the latter no-ops while the ACTIVE server is offline, which would skip this
+ * last-chance sync when removing a still-reachable background connection), Sync v2's
+ * listening outbox and the ebook reader's queued places. Run before its token is revoked,
+ * by the removing tab and by another tab playing through it (`removed-in-other-tab.ts`).
+ */
+export async function flushConnectionSaves(connectionId: string): Promise<void> {
   await Promise.all([
     flushConnection(connectionId).catch(() => undefined),
-    // Sync v2's listening outbox (the stop above closed its span).
+    // Sync v2's listening outbox (the stop before this closed its span).
     flushOutbox(connectionId),
     // The ebook reader's queued places too (Bridge Phase 3b).
     flushReadingConnection(connectionId).catch(() => undefined),

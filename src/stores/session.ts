@@ -14,14 +14,22 @@ import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
 import { forgetCalendarLink } from '@/lib/upcoming-calendar';
 import { hostOf } from '@/lib/pairing';
 import { originOf, type ProxyHeaders } from '@/lib/proxy-headers';
-import { forgetProxyHeaders, readProxyHeaders, saveProxyHeaders } from '@/lib/proxy-headers-store';
+import {
+  forgetProxyHeaders,
+  proxyHeadersKey,
+  readProxyHeaders,
+  saveProxyHeaders,
+} from '@/lib/proxy-headers-store';
 import { mergeAddresses, sameAddresses, sameUrl } from '@/lib/server-address';
+import { onStoredChange, tabChannel, type TabChannel, type TabChannelEnv } from '@/lib/tab-channel';
+import { tabLock } from '@/lib/tab-lock';
 import { looksLikeHomeAddress } from '@/lib/url-host';
 import { getItem, getItemStrict, removeItem, setItem } from '@/lib/storage';
 import {
   CONNECTIONS_KEY,
   DEFAULT_CONNECTION_KEY as DEFAULT_KEY,
   DOWNLOADS_KEY,
+  isRecord,
   LISTENING_OPEN_SPAN_KEY,
   LISTENING_OUTBOX_KEY,
   LISTENING_SYNC_KEY,
@@ -37,7 +45,10 @@ import {
 // Connection metadata is kept in AsyncStorage (`CONNECTIONS_KEY`, the default's id under
 // `DEFAULT_KEY`); each connection's token lives in secure-store under its own key.
 /** Where a connection's session token lives in the secure store. */
-export const tokenKey = (id: string) => `audiosilo.token.${id}`;
+const TOKEN_PREFIX = 'audiosilo.token.';
+export const tokenKey = (id: string) => `${TOKEN_PREFIX}${id}`;
+/** Where every connection's proxy headers live (`proxyHeadersKey`), followed like the tokens. */
+const PROXY_HEADERS_PREFIX = proxyHeadersKey('');
 
 // Pre-multi-server single-session keys, cleared by the storage reset below.
 const LEGACY_SERVER = 'audiosilo.serverUrl';
@@ -203,6 +214,448 @@ export function onConnectionRemoved(fn: (id: string) => void | Promise<void>): (
   return () => removalCleanups.delete(fn);
 }
 
+/** Run each of `fns` (the removal cleanups, the other-tab steps) for each of `ids`; one that
+ * fails never blocks the others (nor the removal), it is only warned of (`what`). Each is
+ * started in this call (a cleanup's first step is its mark that the connection is gone); one
+ * that throws outright (not every one is async) fails as a rejection does. */
+async function runEach(
+  fns: ReadonlySet<(id: string) => void | Promise<void>>,
+  ids: readonly string[],
+  what: string,
+): Promise<void> {
+  const results = await Promise.allSettled(ids.flatMap((id) => [...fns].map(async (fn) => fn(id))));
+  for (const r of results) {
+    if (r.status === 'rejected') console.warn(`[session] ${what} failed`, r.reason);
+  }
+}
+
+/** The connection list without `id`, and the default after it (the first left when it was
+ * `id`): one rule for the removing tab and the tabs it tells. */
+function withoutConnection(
+  connections: readonly Connection[],
+  defaultConnectionId: string | null,
+  id: string,
+): { next: Connection[]; nextDefault: string | null } {
+  const next = connections.filter((c) => c.id !== id);
+  return {
+    next,
+    nextDefault: defaultConnectionId === id ? (next[0]?.id ?? null) : defaultConnectionId,
+  };
+}
+
+// Web: the tabs of the player share the stored connections, tokens and every connection's
+// scoped state, but each holds its own copy in memory. Each tab follows what the others store
+// (`followStored`: the list, the tokens and the proxy headers, read again whenever another
+// tab writes one), and writes the list holding a lock the tabs share, reading it again first
+// (`writingList`), so a tab never writes its older copy over another tab's sign-in. The
+// default connection and the reconnect flags stay each tab's own (the default follows the
+// stored one only once its own is gone). A tab that removes a connection, or retires one in a
+// sign-in (`retired`: a word a tab of an earlier build ignores, where a `removed` would have
+// it drop the person with it), also tells the others (`TABS_CHANNEL`), and each runs the
+// removal's cleanups on its own copies (`removedInOtherTab`: its downloads, the queues and
+// mirrors it holds, its query cache), which the removing tab cannot reach. Before it revokes
+// a token, the removing tab gives a tab playing through it a bounded wait to send its place
+// and its listening (`tellOtherTabsGoing`). Native is one runtime: no other tab.
+type TabsMessage =
+  | { removed: string }
+  | { retired: string; replacedBy: string }
+  | { going: string; ask: string }
+  | { flushing: string; ask: string; tab: string }
+  | { flushed: string; ask: string; tab: string };
+const TABS_CHANNEL = 'audiosilo-connection-removed';
+let tabsChannel: TabChannel<TabsMessage> | null | undefined;
+let tabsEnv: TabChannelEnv | null | undefined;
+let listening: (() => void) | null = null;
+/** This tab, in the answers to a `going` word. */
+const thisTab = `${Date.now().toString(36)}.${Math.random().toString(36).slice(2)}`;
+/** The channel, opened on first use (null off the web). */
+const tabsChannelOf = () =>
+  tabsChannel === undefined ? (tabsChannel = tabChannel<TabsMessage>(TABS_CHANNEL)) : tabsChannel;
+
+/** Where this tab hears the other tabs' writes (the browser's `storage` events): null off
+ * the web. Resolved on first use, never at import. */
+export function otherTabsEnv(): TabChannelEnv | null {
+  if (tabsEnv === undefined) tabsEnv = Platform.OS === 'web' ? (globalThis as TabChannelEnv) : null;
+  return tabsEnv;
+}
+
+/** Test-only: the channel and the storage events this tab hears the other tabs on (heard from
+ * now on); null: none (as native). */
+export function setTabsForTests(
+  tabs: { channel: TabChannel<TabsMessage> | null; env: TabChannelEnv | null } | null,
+): void {
+  listening?.();
+  listening = null;
+  tabsChannel = tabs ? tabs.channel : undefined;
+  tabsEnv = tabs ? tabs.env : undefined;
+  if (tabs) listenToOtherTabs();
+}
+
+/** Hear the other tabs: their words on the channel, and their writes of the list and the
+ * tokens. Once, from the launch's `hydrate`. Never at import: the web build's static render
+ * imports this module in Node, where an open `BroadcastChannel` keeps the export's process
+ * from exiting. */
+function listenToOtherTabs(): void {
+  if (listening) return;
+  const unsubscribe = tabsChannelOf()?.subscribe(heard);
+  const env = otherTabsEnv();
+  const unfollow = env
+    ? onStoredChange(
+        (k) =>
+          k === CONNECTIONS_KEY || k.startsWith(TOKEN_PREFIX) || k.startsWith(PROXY_HEADERS_PREFIX),
+        storedMoved,
+        env,
+      )
+    : undefined;
+  listening = () => {
+    unsubscribe?.();
+    unfollow?.();
+  };
+}
+
+function heard(m: unknown): void {
+  if (!isRecord(m)) return;
+  if (typeof m.removed === 'string') void removedInOtherTab(m.removed).catch(() => {});
+  else if (typeof m.retired === 'string' && typeof m.replacedBy === 'string')
+    void removedInOtherTab(m.retired, m.replacedBy).catch(() => {});
+  else if (typeof m.going === 'string' && typeof m.ask === 'string')
+    goingInOtherTab(m.going, m.ask);
+}
+
+/** Moved by every write of the stored sign-ins this tab knows of (another tab's, heard, and
+ * its own, `persist`): a read of them that saw it move reads again. */
+let storageMoves = 0;
+/** The stored list (JSON) as this tab last read or wrote it. */
+let knownList: string | null = null;
+let following: Promise<void> | null = null;
+let followedChange = false;
+/** How many times a read of the stored sign-ins that another write moved is tried. */
+const SETTLE_READS = 5;
+
+/** Whether the session's change being told now is one this tab followed from another tab's
+ * write. That tab writes what follows from it (the profiles document), and this tab takes it
+ * from storage, never working it out from its own copy. */
+export function sessionChangeFollowed(): boolean {
+  return followedChange;
+}
+
+function setFollowed(state: Partial<SessionState>): void {
+  followedChange = true;
+  try {
+    useSession.setState(state);
+  } finally {
+    followedChange = false;
+  }
+}
+
+function storedMoved(): void {
+  storageMoves++;
+  void followStored();
+}
+
+type StoredSignIns = {
+  /** The stored list's JSON (`knownList`). */
+  list: string;
+  /** Null when the stored list is empty or missing. */
+  connections: Connection[] | null;
+  defaultId: string | null;
+};
+
+/** The stored connections with their tokens (and proxy headers). A read that fails rejects. */
+async function readStored(): Promise<StoredSignIns> {
+  // Strict: a list that could not be read is a failed read, never "no connections"
+  // (`getItem` would answer null).
+  const [meta, defaultId] = await Promise.all([
+    getItemStrict<PersistedConnection[]>(CONNECTIONS_KEY),
+    getItemStrict<string>(DEFAULT_KEY),
+  ]);
+  const list = JSON.stringify(meta ?? null);
+  if (!meta || !meta.length) return { list, connections: null, defaultId: defaultId ?? null };
+  // The proxy headers only for a connection marked as having them; a read of them that fails
+  // (a locked keychain) fails the read as the token's does: never a connection that goes on
+  // without its headers.
+  const withTokens = await Promise.all(
+    meta.map(async ({ hasProxyHeaders, ...m }) => {
+      const [token, proxyHeaders] = await Promise.all([
+        getSecure(tokenKey(m.id)),
+        hasProxyHeaders ? readProxyHeaders(m.id) : null,
+      ]);
+      // A set the rules drop at load (one for an http origin, a damaged item), or the set of
+      // a connection dropped with its token gone, must not stay in the store.
+      if (hasProxyHeaders && (!token || !proxyHeaders)) await forgetProxyHeaders(m.id);
+      if (!token) return null;
+      return {
+        ...m,
+        serverId: serverIdOf(m),
+        token,
+        ...(proxyHeaders ? { proxyHeaders } : {}),
+      } as Connection;
+    }),
+  );
+  return {
+    list,
+    connections: withTokens.filter((c): c is Connection => c !== null),
+    defaultId: defaultId ?? null,
+  };
+}
+
+/** `readStored`, again while another write moved the stored sign-ins during the read
+ * (`settled` false: still moving after `SETTLE_READS` reads). */
+async function readSettled(): Promise<StoredSignIns & { settled: boolean }> {
+  for (let attempt = 1; ; attempt++) {
+    const moves = storageMoves;
+    const read = await readStored();
+    const settled = moves === storageMoves;
+    if (settled || attempt >= SETTLE_READS) return { ...read, settled };
+  }
+}
+
+/** One connection as far as a tab's copy of it goes: every field of `Connection` (a field
+ * left out here is a change `applyStored` does not see). */
+const connectionText = (c: Connection) =>
+  JSON.stringify([
+    c.id,
+    serverIdOf(c),
+    c.serverUrl,
+    c.name,
+    c.token,
+    c.user,
+    c.addresses ?? null,
+    c.proxyHeaders ?? null,
+    c.needsReconnect ?? null,
+  ]);
+
+/** Take what is stored (`read`) as this tab's list: its own default and reconnect flags kept
+ * where they still apply. Nothing changes when the list is the one it holds. A connection
+ * the list drops is left at once (`leaveConnection`, the player's stop), the word on the
+ * channel or not, and only once the list has changed (the stop's saves must not go out with
+ * the revoked token); the cleanups wait for the word (`removedInOtherTab`). Why: CONVENTIONS.md
+ * (`followStored`). */
+function applyStored(read: StoredSignIns): void {
+  knownList = read.list;
+  const { connections: mine, defaultConnectionId, status } = useSession.getState();
+  const next = (read.connections ?? []).map((c) => {
+    const was = mine.find((m) => m.id === c.id);
+    // A flag stays with the token it was raised for: a new one (signed in again in another
+    // tab) clears it.
+    return was?.needsReconnect && was.token === c.token
+      ? { ...c, needsReconnect: was.needsReconnect }
+      : c;
+  });
+  const same =
+    next.length === mine.length &&
+    next.every((c, i) => connectionText(c) === connectionText(mine[i]));
+  const def = next.some((c) => c.id === defaultConnectionId) ? defaultConnectionId : read.defaultId;
+  const mirrored = mirror(next, def);
+  if (same && mirrored.defaultConnectionId === defaultConnectionId && mirrored.status === status)
+    return;
+  setFollowed({ connections: same ? mine : next, ...mirrored });
+  for (const c of mine) if (!next.some((n) => n.id === c.id)) void leaveConnection(c.id);
+}
+
+/** Read what the other tabs stored and take it (web, once the session is loaded: the hydrate
+ * reads it before then). One read at a time; a write heard during it has it read again. */
+function followStored(): Promise<void> {
+  const loaded = () => useSession.getState().status !== 'loading' && !hydrateFailed;
+  if (!otherTabsEnv() || !loaded()) return Promise.resolve();
+  following ??= (async () => {
+    let unsettled = false;
+    try {
+      const read = await readSettled();
+      unsettled = !read.settled;
+      if (loaded()) applyStored(read);
+    } catch (e) {
+      // Unreadable now: what this tab holds stays, and the next write heard reads again.
+      console.warn("[session] reading another tab's sign-ins failed", e);
+    } finally {
+      following = null;
+    }
+    // Still moving when the reads ran out: the writes heard meanwhile were folded into this
+    // follow, so it reads once more rather than leave the tab on an older list.
+    if (unsettled) await followStored();
+  })();
+  return following;
+}
+
+/** Web: bring this tab's list up to the stored one, so a tab that has not heard another
+ * tab's latest write yet never works from its older copy. Web only: callers ask
+ * `otherTabsEnv()` first, so native keeps its timing. */
+async function catchUp(): Promise<void> {
+  if (following) await following;
+  let stored: string;
+  try {
+    stored = JSON.stringify((await getItemStrict<PersistedConnection[]>(CONNECTIONS_KEY)) ?? null);
+  } catch {
+    return;
+  }
+  if (stored === knownList) return;
+  storageMoves++;
+  await followStored();
+}
+
+/** Web: catch this tab's list up with the stored one (`catchUp`), for a write that follows
+ * from it made elsewhere (the profiles document's, `writeChanges`). Nothing off the web. */
+export async function catchUpWithOtherTabs(): Promise<void> {
+  if (otherTabsEnv()) await catchUp();
+}
+
+/** The lock every tab takes to write the stored list (`writingList`). */
+const withListLock = tabLock(CONNECTIONS_KEY);
+
+/** Run `job`, a read of this tab's list and a write of it (`persist`): on the web holding the
+ * lock the tabs share for it, the list caught up with the stored one first (`catchUp`), so two
+ * tabs writing at once never write over each other's change (each reads the other's write
+ * before it makes its own). Off the web, `job` as it is. `job` must never wait on another
+ * `writingList` (the lock is held while it runs). */
+function writingList<T>(job: () => Promise<T>): Promise<T> {
+  if (!otherTabsEnv()) return job();
+  return withListLock(async () => {
+    await catchUp();
+    return job();
+  });
+}
+
+// What a tab does first, before the cleanups, when a connection goes with no teardown run
+// here before it (the player stops playing through it): another tab removed it (that tab
+// ran its own, `teardownBeforeTokenRevoke`; this one runs it at the stored list or the word,
+// whichever it hears first), or a sign-in here retired it as a stale identity (`setSession`).
+const otherTabRemovalSteps = new Set<(id: string) => void | Promise<void>>();
+
+/** Register a step run first when ANOTHER tab of the web player removed a connection (the
+ * removing tab ran it itself before removing: `teardownBeforeTokenRevoke`), and when a
+ * sign-in here retires a stale identity (nothing ran before that). Returns an
+ * unsubscribe fn. */
+export function onConnectionRemovedInOtherTab(
+  fn: (id: string) => void | Promise<void>,
+): () => void {
+  otherTabRemovalSteps.add(fn);
+  return () => otherTabRemovalSteps.delete(fn);
+}
+
+/** The other-tab removal steps running now, by connection. */
+const leaving = new Map<string, Promise<void>>();
+
+/** Run the other-tab removal steps for `id` (the player's stop), once at a time: a tab that
+ * hears the stored list drop it (`applyStored`) and then the word (`removedInOtherTab`) waits
+ * on the one stop, never starting a second beside it. A word heard once that one is done
+ * asks again, and finds nothing playing through the connection. Also a sign-in's retirement
+ * here (`setSession`, any platform). */
+function leaveConnection(id: string): Promise<void> {
+  let run = leaving.get(id);
+  if (!run) {
+    run = runEach(otherTabRemovalSteps, [id], 'connection leave step').finally(() =>
+      leaving.delete(id),
+    );
+    leaving.set(id, run);
+  }
+  return run;
+}
+
+/**
+ * Another tab removed the connection `id` (its token, calendar link and proxy headers
+ * already deleted there, the stored list written), or retired it in a sign-in in favour of
+ * `replacedBy` (the word `retired`): this tab moves the person to the replacing connection as
+ * that tab did (`onConnectionReplaced`), takes the stored list (`followStored`; a removal
+ * heard while this tab still hydrates has the hydrate read it again) and runs the removal's
+ * cleanups. Nothing when its token is stored again (signed in again since, there or here), or
+ * cannot be read; and no cleanups when it is stored again by the time this tab stopped
+ * playing.
+ */
+async function removedInOtherTab(id: string, replacedBy?: string): Promise<void> {
+  if (!id) return;
+  storageMoves++;
+  if ((await getSecure(tokenKey(id))) !== null) return;
+  if (replacedBy) replaced(id, replacedBy);
+  await followStored();
+  // Not taken from storage (it could not be read): dropped from this tab's copy all the same.
+  const { connections, defaultConnectionId } = useSession.getState();
+  if (connections.some((c) => c.id === id)) {
+    const { next, nextDefault } = withoutConnection(connections, defaultConnectionId, id);
+    setFollowed({ connections: next, ...mirror(next, nextDefault) });
+  }
+  await leaveConnection(id);
+  // Signed in again while this tab stopped (the stop waits its turn into the outbox): what
+  // is stored of the connection now is the new sign-in's, in every tab, not this purge's.
+  if ((await getSecure(tokenKey(id))) !== null) return;
+  await runEach(removalCleanups, [id], 'connection-removed cleanup');
+}
+
+// What a tab does when another tab is about to revoke a connection's token: a tab playing
+// through it stops and sends its place and listening while the token still works.
+const goingSteps = new Set<(id: string) => Promise<void> | null>();
+
+/** Register a step run when ANOTHER tab of the web player is about to revoke a connection's
+ * token (`tellOtherTabsGoing`): its work, or null when this tab has none for it (its answer
+ * is then nothing, so the removing tab does not wait on it). Returns an unsubscribe fn. */
+export function onConnectionGoingInOtherTab(fn: (id: string) => Promise<void> | null): () => void {
+  goingSteps.add(fn);
+  return () => goingSteps.delete(fn);
+}
+
+function goingInOtherTab(id: string, ask: string): void {
+  const work: Promise<void>[] = [];
+  for (const fn of goingSteps) {
+    try {
+      const w = fn(id);
+      if (w) work.push(w);
+    } catch (e) {
+      console.warn('[session] other-tab going step failed', e);
+    }
+  }
+  const channel = tabsChannelOf();
+  if (!work.length || !channel) return;
+  channel.post({ flushing: id, ask, tab: thisTab });
+  void Promise.allSettled(work).then(() => channel.post({ flushed: id, ask, tab: thisTab }));
+}
+
+/** How long a removing tab waits for the other tabs to say they have work for the connection
+ * (`tellOtherTabsGoing`). Every removal on the web waits this long. */
+const GOING_ANSWER_MS = 250;
+/** The most a removing tab waits for the other tabs' work before it revokes the token. */
+const GOING_FLUSH_MS = 3000;
+
+/**
+ * Web: tell the other tabs the connection `id` is about to go (its token revoked), and wait
+ * until each that has work for it (a tab playing through it: its stop, place and listening
+ * sent while the token works) says it is done, at most `flushMs`. A tab that says nothing
+ * within `answerMs` has none. Run by the removing tab's teardown before its own flush
+ * (`teardownBeforeTokenRevoke`). Nothing off the web.
+ */
+export async function tellOtherTabsGoing(
+  id: string,
+  { answerMs = GOING_ANSWER_MS, flushMs = GOING_FLUSH_MS } = {},
+): Promise<void> {
+  const channel = tabsChannelOf();
+  if (!channel) return;
+  const ask = `${thisTab}.${Math.random().toString(36).slice(2)}`;
+  // The tabs that said they have work for it and have not said it is done.
+  const pending = new Set<string>();
+  await new Promise<void>((resolve) => {
+    let answered = false;
+    const finish = () => {
+      clearTimeout(answerTimer);
+      clearTimeout(flushTimer);
+      unsubscribe();
+      resolve();
+    };
+    const check = () => {
+      if (answered && pending.size === 0) finish();
+    };
+    const unsubscribe = channel.subscribe((m: unknown) => {
+      if (!isRecord(m) || m.ask !== ask || typeof m.tab !== 'string') return;
+      if (m.flushing === id) pending.add(m.tab);
+      else if (m.flushed === id) pending.delete(m.tab);
+      check();
+    });
+    const answerTimer = setTimeout(() => {
+      answered = true;
+      check();
+    }, answerMs);
+    const flushTimer = setTimeout(finish, flushMs);
+    channel.post({ going: id, ask });
+  });
+}
+
 // Told when a sign-in retires a stale identity in favour of the new connection (a server
 // that was reset, signed in to again by the same person): the profiles store moves the new
 // id into the person that held the old one, so their PIN, name and kids settings stay.
@@ -216,6 +669,17 @@ const replacementHooks = new Set<(oldId: string, newId: string) => void>();
 export function onConnectionReplaced(fn: (oldId: string, newId: string) => void): () => void {
   replacementHooks.add(fn);
   return () => replacementHooks.delete(fn);
+}
+
+/** Run the replacement hooks for `oldId` -> `newId`; one that throws is only warned of. */
+function replaced(oldId: string, newId: string): void {
+  for (const fn of replacementHooks) {
+    try {
+      fn(oldId, newId);
+    } catch (e) {
+      console.warn('[session] connection-replaced hook failed', e);
+    }
+  }
 }
 
 /**
@@ -462,6 +926,10 @@ async function persist(connections: Connection[], defaultId: string | null) {
     ({ token: _t, needsReconnect: _r, proxyHeaders, ...rest }) =>
       proxyHeaders ? { ...rest, hasProxyHeaders: true } : rest,
   );
+  // What this tab knows is stored now (`catchUp`), and a read of another tab's write that is
+  // under way reads again, past this one.
+  knownList = JSON.stringify(meta);
+  storageMoves++;
   await Promise.all([setItem(CONNECTIONS_KEY, meta), setItem(DEFAULT_KEY, defaultId)]);
 }
 
@@ -474,43 +942,18 @@ export const useSession = create<SessionState>()((set, get) => ({
   user: null,
 
   hydrate: async () => {
+    // Web: the other tabs are heard from the launch on (`followStored`, `removedInOtherTab`).
+    listenToOtherTabs();
     try {
-      // Strict: a list that could not be read is a failed hydrate (retried, and nothing
-      // reconciles against it), never "no connections" (`getItem` would answer null).
-      const [meta, defaultId] = await Promise.all([
-        getItemStrict<PersistedConnection[]>(CONNECTIONS_KEY),
-        getItemStrict<string>(DEFAULT_KEY),
-      ]);
-
-      if (meta && meta.length) {
-        // The proxy headers only for a connection marked as having them; a read of them
-        // that fails (a locked keychain) fails the hydrate as the token's does: never a
-        // connection that goes on without its headers.
-        const withTokens = await Promise.all(
-          meta.map(async ({ hasProxyHeaders, ...m }) => {
-            const [token, proxyHeaders] = await Promise.all([
-              getSecure(tokenKey(m.id)),
-              hasProxyHeaders ? readProxyHeaders(m.id) : null,
-            ]);
-            // A set the rules drop at load (one for an http origin, a damaged item), or the
-            // set of a connection dropped with its token gone, must not stay in the store.
-            if (hasProxyHeaders && (!token || !proxyHeaders)) await forgetProxyHeaders(m.id);
-            if (!token) return null;
-            return {
-              ...m,
-              serverId: serverIdOf(m),
-              token,
-              ...(proxyHeaders ? { proxyHeaders } : {}),
-            } as Connection;
-          }),
-        );
-        const connections = withTokens.filter((c): c is Connection => c !== null);
-        hydrateEnded(false);
-        set({ connections, ...mirror(connections, defaultId ?? null) });
+      // A list that could not be read is a failed hydrate (retried, and nothing reconciles
+      // against it), never "no connections". Read again when another tab wrote it meanwhile.
+      const read = await readSettled();
+      knownList = read.list;
+      hydrateEnded(false);
+      if (read.connections) {
+        set({ connections: read.connections, ...mirror(read.connections, read.defaultId) });
         return;
       }
-
-      hydrateEnded(false);
       set({ status: 'unauthenticated' });
     } catch (e) {
       // The persisted connections are untouched, and loaded again later (`hydrateFailed`):
@@ -540,115 +983,114 @@ export const useSession = create<SessionState>()((set, get) => ({
     // The persisted connections first, when they never loaded: the list written below would
     // otherwise hold this server alone and drop every other one.
     if (hydrateFailed) await get().hydrate();
-    const existing = get().connections;
-    // Dedupe by the server's stable identity AND the user, so re-pairing the same account -
-    // even at a different URL - updates its connection (and refreshes the URL) instead of
-    // adding a duplicate. Another user on the same server is another connection. A legacy
-    // connection (its id still the bare server_id) is matched the same way and KEEPS its id
-    // until the key migration moves it, so its downloads and saves stay reachable; one saved
-    // without a usable user id is taken to be this user (it was the server's one connection)
-    // only under the username it kept, if any (`priorConnection`, fe#298).
-    const sameServer = existing.filter((c) => serverIdOf(c) === serverId);
-    const prior = priorConnection(existing, serverId, user.id, user.username);
-    const id = prior?.id ?? connectionIdOf(serverId, user.id);
-    // A rebuilt server mints a NEW server_id at the SAME URL, so a connection to this URL
-    // whose server_id differs is a stale identity of the same physical server (its token is
-    // dead). The person signing in's own (`retire`) is dropped here, or re-pairing leaves a
-    // zombie the reconnect banner keeps re-flagging on every /server hit. Anyone else's
-    // stays, flagged 'server-reset' for them: never delete another person from the device.
-    const candidates = staleIdentities(existing, serverId, serverUrl, retire).filter(
-      (c) => c !== prior,
-    );
-    const stale = candidates.filter((c) => retire?.includes(c.id));
-    const kept = new Set(candidates.filter((c) => !stale.includes(c)));
-    // What the device knew of this server's addresses: the connection's, else another
-    // user's connection to the same server, else (a sign-in again after signing out, from
-    // the connect screen's remembered servers) the remembered server's, so a sign-in
-    // through the away address doesn't forget the home one.
-    const knew = prior
-      ? prior.addresses
-      : (sameServer.find((c) => c.addresses)?.addresses ?? (await knownAddresses(serverId)));
-    const known = mergeAddresses(knew, addresses);
-    // The proxy headers: the ones the sign-in came through, else the ones it had, else (a
-    // new connection: another person on the server, a member signed in here) the ones
-    // another connection to this server has. Still sent only to their own origin.
-    const headers =
-      proxyHeaders !== undefined
-        ? (proxyHeaders ?? undefined)
-        : prior
-          ? prior.proxyHeaders
-          : sameServer.find((c) => c.proxyHeaders)?.proxyHeaders;
-    const conn: Connection = {
-      id,
-      serverId,
-      serverUrl,
-      name: name ?? prior?.name ?? sameServer[0]?.name ?? hostOf(serverUrl),
-      token,
-      user,
-      addresses: known,
-      ...(headers ? { proxyHeaders: headers } : {}),
-    };
-    const surviving = existing
-      .filter((c) => !stale.includes(c))
-      .map((c) => (kept.has(c) ? { ...c, needsReconnect: 'server-reset' as const } : c));
-    const connections = prior
-      ? surviving.map((c) => (c === prior ? conn : c))
-      : [...surviving, conn];
-    await setSecure(tokenKey(id), token);
-    if (proxyHeaders !== undefined || (!prior && headers)) {
-      await saveProxyHeaders(id, headers ?? null);
-    }
-    // Best-effort drop each stale identity's dead token. No server revoke - the token is
-    // already dead, so there's nothing to call.
-    // Their calendar links (Track U3) and proxy headers (fe#167) go with them.
-    await Promise.all(
-      stale.flatMap((c) => [
-        deleteSecure(tokenKey(c.id)).catch(() => undefined),
-        forgetCalendarLink(c.id),
-        forgetProxyHeaders(c.id),
-      ]),
-    );
-    // The default: this connection, unless the caller keeps the current one (which must
-    // still be signed in; a retired stale identity can't stay the default).
-    const current = get().defaultConnectionId;
-    const defaultId =
-      makeDefault || !current || !connections.some((c) => c.id === current) ? id : current;
-    await persist(connections, defaultId);
-    // The list just written is the one in memory: settled, even when the hydrate above failed
-    // again (unreadable storage, not a locked phone: a sign-in means it is unlocked).
-    if (hydrateFailed) hydrateEnded(false);
-    // Remember this server durably (no token) so the connect screen can offer a one-tap
-    // reconnect after a full logout. Upserts by serverId; best-effort (storage swallows).
-    await rememberServer({ serverUrl, name: conn.name, serverId, addresses: known });
-    // The person keeps their profile: the new connection takes the retired one's place.
-    for (const c of stale) {
-      for (const fn of replacementHooks) {
-        try {
-          fn(c.id, id);
-        } catch (e) {
-          console.warn('[session] connection-replaced hook failed', e);
-        }
+    // On the web, the list as stored, with what another tab signed in or out since this tab
+    // last heard, and no other tab's write between that read and this one (`writingList`).
+    const { id, stale } = await writingList(async () => {
+      const existing = get().connections;
+      // Dedupe by the server's stable identity AND the user, so re-pairing the same account -
+      // even at a different URL - updates its connection (and refreshes the URL) instead of
+      // adding a duplicate. Another user on the same server is another connection. A legacy
+      // connection (its id still the bare server_id) is matched the same way and KEEPS its id
+      // until the key migration moves it, so its downloads and saves stay reachable; one saved
+      // without a usable user id is taken to be this user (it was the server's one connection)
+      // only under the username it kept, if any (`priorConnection`, fe#298).
+      const sameServer = existing.filter((c) => serverIdOf(c) === serverId);
+      const prior = priorConnection(existing, serverId, user.id, user.username);
+      const id = prior?.id ?? connectionIdOf(serverId, user.id);
+      // A rebuilt server mints a NEW server_id at the SAME URL, so a connection to this URL
+      // whose server_id differs is a stale identity of the same physical server (its token is
+      // dead). The person signing in's own (`retire`) is dropped here, or re-pairing leaves a
+      // zombie the reconnect banner keeps re-flagging on every /server hit. Anyone else's
+      // stays, flagged 'server-reset' for them: never delete another person from the device.
+      const candidates = staleIdentities(existing, serverId, serverUrl, retire).filter(
+        (c) => c !== prior,
+      );
+      const stale = candidates.filter((c) => retire?.includes(c.id));
+      const kept = new Set(candidates.filter((c) => !stale.includes(c)));
+      // What the device knew of this server's addresses: the connection's, else another
+      // user's connection to the same server, else (a sign-in again after signing out, from
+      // the connect screen's remembered servers) the remembered server's, so a sign-in
+      // through the away address doesn't forget the home one.
+      const knew = prior
+        ? prior.addresses
+        : (sameServer.find((c) => c.addresses)?.addresses ?? (await knownAddresses(serverId)));
+      const known = mergeAddresses(knew, addresses);
+      // The proxy headers: the ones the sign-in came through, else the ones it had, else (a
+      // new connection: another person on the server, a member signed in here) the ones
+      // another connection to this server has. Still sent only to their own origin.
+      const headers =
+        proxyHeaders !== undefined
+          ? (proxyHeaders ?? undefined)
+          : prior
+            ? prior.proxyHeaders
+            : sameServer.find((c) => c.proxyHeaders)?.proxyHeaders;
+      const conn: Connection = {
+        id,
+        serverId,
+        serverUrl,
+        name: name ?? prior?.name ?? sameServer[0]?.name ?? hostOf(serverUrl),
+        token,
+        user,
+        addresses: known,
+        ...(headers ? { proxyHeaders: headers } : {}),
+      };
+      const surviving = existing
+        .filter((c) => !stale.includes(c))
+        .map((c) => (kept.has(c) ? { ...c, needsReconnect: 'server-reset' as const } : c));
+      const connections = prior
+        ? surviving.map((c) => (c === prior ? conn : c))
+        : [...surviving, conn];
+      await setSecure(tokenKey(id), token);
+      if (proxyHeaders !== undefined || (!prior && headers)) {
+        await saveProxyHeaders(id, headers ?? null);
       }
-    }
-    // Building `conn` fresh (with no `needsReconnect`) inherently clears any prior flag on
-    // a re-pair of an existing connection.
-    set({
-      connections,
-      pendingServerUrl: null,
-      pendingProxyHeaders: null,
-      ...mirror(connections, defaultId),
+      // Best-effort drop each stale identity's dead token. No server revoke - the token is
+      // already dead, so there's nothing to call.
+      // Their calendar links (Track U3) and proxy headers (fe#167) go with them.
+      await Promise.all(
+        stale.flatMap((c) => [
+          deleteSecure(tokenKey(c.id)).catch(() => undefined),
+          forgetCalendarLink(c.id),
+          forgetProxyHeaders(c.id),
+        ]),
+      );
+      // The default: this connection, unless the caller keeps the current one (which must
+      // still be signed in; a retired stale identity can't stay the default).
+      const current = get().defaultConnectionId;
+      const defaultId =
+        makeDefault || !current || !connections.some((c) => c.id === current) ? id : current;
+      await persist(connections, defaultId);
+      // The list just written is the one in memory: settled, even when the hydrate above failed
+      // again (unreadable storage, not a locked phone: a sign-in means it is unlocked).
+      if (hydrateFailed) hydrateEnded(false);
+      // Remember this server durably (no token) so the connect screen can offer a one-tap
+      // reconnect after a full logout. Upserts by serverId; best-effort (storage swallows).
+      await rememberServer({ serverUrl, name: conn.name, serverId, addresses: known });
+      // The person keeps their profile: the new connection takes the retired one's place.
+      for (const c of stale) replaced(c.id, id);
+      // Building `conn` fresh (with no `needsReconnect`) inherently clears any prior flag on
+      // a re-pair of an existing connection.
+      set({
+        connections,
+        pendingServerUrl: null,
+        pendingProxyHeaders: null,
+        ...mirror(connections, defaultId),
+      });
+      return { id, stale };
     });
     // Purge each dropped stale identity's scoped state (downloads, progress mirror/queue,
     // query cache, scroll memory), same semantics as removeConnection: run every cleanup,
-    // never let one block the re-pair.
+    // never let one block the re-pair. No teardown ran before this (the connect flow has
+    // none): a book still playing through the retired identity (its download) stops first,
+    // as it does in a tab told of a removal, so its place and span are written before the
+    // purge, not after it, and nothing plays on from files the purge deletes.
     if (stale.length) {
-      const results = await Promise.allSettled(
-        stale.flatMap((c) => [...removalCleanups].map((fn) => fn(c.id))),
-      );
-      for (const r of results) {
-        if (r.status === 'rejected')
-          console.warn('[session] stale-identity cleanup failed', r.reason);
-      }
+      const retired = stale.map((c) => c.id);
+      // The web's other tabs move the person to this connection too, and purge what they
+      // hold of each retired one (`removedInOtherTab`).
+      for (const old of retired) tabsChannelOf()?.post({ retired: old, replacedBy: id });
+      await Promise.all(retired.map(leaveConnection));
+      await runEach(removalCleanups, retired, 'stale-identity cleanup');
     }
     return id;
   },
@@ -660,83 +1102,88 @@ export const useSession = create<SessionState>()((set, get) => ({
   setProxyHeaders: async (id, headers) => {
     if (!get().connections.some((c) => c.id === id)) return;
     await saveProxyHeaders(id, headers);
-    // Read again after the write: the list may have changed meanwhile.
-    const { connections, defaultConnectionId } = get();
-    if (!connections.some((c) => c.id === id)) {
-      // Removed while this was being written: its headers must not outlive it.
-      await forgetProxyHeaders(id);
-      return;
-    }
-    const next = connections.map((c) => {
-      if (c.id !== id) return c;
-      const { proxyHeaders: _old, ...rest } = c;
-      return headers?.headers.length ? { ...rest, proxyHeaders: headers } : rest;
+    await writingList(async () => {
+      // Read again after the write: the list may have changed meanwhile.
+      const { connections, defaultConnectionId } = get();
+      if (!connections.some((c) => c.id === id)) {
+        // Removed while this was being written: its headers must not outlive it.
+        await forgetProxyHeaders(id);
+        return;
+      }
+      const next = connections.map((c) => {
+        if (c.id !== id) return c;
+        const { proxyHeaders: _old, ...rest } = c;
+        return headers?.headers.length ? { ...rest, proxyHeaders: headers } : rest;
+      });
+      set({ connections: next, ...mirror(next, defaultConnectionId) });
+      // The marker that has the next launch read them (`hasProxyHeaders`).
+      await persist(next, defaultConnectionId);
     });
-    set({ connections: next, ...mirror(next, defaultConnectionId) });
-    // The marker that has the next launch read them (`hasProxyHeaders`).
-    await persist(next, defaultConnectionId);
   },
 
-  setConnectionUser: async (id, user) => {
-    const { connections, defaultConnectionId } = get();
-    if (!connections.some((c) => c.id === id)) return;
-    const next = connections.map((c) => (c.id === id ? { ...c, user } : c));
-    await persist(next, defaultConnectionId);
-    set({ connections: next, ...mirror(next, defaultConnectionId) });
-  },
+  setConnectionUser: (id, user) =>
+    writingList(async () => {
+      const { connections, defaultConnectionId } = get();
+      if (!connections.some((c) => c.id === id)) return;
+      const next = connections.map((c) => (c.id === id ? { ...c, user } : c));
+      await persist(next, defaultConnectionId);
+      set({ connections: next, ...mirror(next, defaultConnectionId) });
+    }),
 
-  learnAddresses: async (id, fresh) => {
-    // Read and set in one synchronous step, persisting after: the address runner learns
-    // every connection's addresses at once (launch, reconnect), and a list read before an
-    // await would be set over another call's update (or bring back a connection removed
-    // meanwhile).
-    const { connections, defaultConnectionId } = get();
-    const conn = connections.find((c) => c.id === id);
-    if (!conn) return;
-    const addresses = mergeAddresses(conn.addresses, fresh);
-    if (sameAddresses(conn.addresses, addresses)) return;
-    const next = connections.map((c) => (c.id === id ? { ...c, addresses } : c));
-    set({ connections: next, ...mirror(next, defaultConnectionId) });
-    // The remembered server is server-level (no user): keyed by the server's id, not this
-    // connection's.
-    await Promise.all([
-      persist(next, defaultConnectionId),
-      rememberAddresses(serverIdOf(conn), addresses),
-    ]);
-  },
+  learnAddresses: (id, fresh) =>
+    writingList(async () => {
+      // Read and set in one synchronous step, persisting after: the address runner learns
+      // every connection's addresses at once (launch, reconnect), and a list read before an
+      // await would be set over another call's update (or bring back a connection removed
+      // meanwhile).
+      const { connections, defaultConnectionId } = get();
+      const conn = connections.find((c) => c.id === id);
+      if (!conn) return;
+      const addresses = mergeAddresses(conn.addresses, fresh);
+      if (sameAddresses(conn.addresses, addresses)) return;
+      const next = connections.map((c) => (c.id === id ? { ...c, addresses } : c));
+      set({ connections: next, ...mirror(next, defaultConnectionId) });
+      // The remembered server is server-level (no user): keyed by the server's id, not this
+      // connection's.
+      await Promise.all([
+        persist(next, defaultConnectionId),
+        rememberAddresses(serverIdOf(conn), addresses),
+      ]);
+    }),
 
   setUser: async (user) => {
     const { defaultConnectionId } = get();
     if (defaultConnectionId) await get().setConnectionUser(defaultConnectionId, user);
   },
 
-  setDefaultConnection: async (id) => {
-    const { connections, defaultConnectionId } = get();
-    if (id === defaultConnectionId || !connections.some((c) => c.id === id)) return;
-    set(mirror(connections, id));
-    await persist(connections, id);
-  },
+  setDefaultConnection: (id) =>
+    writingList(async () => {
+      const { connections, defaultConnectionId } = get();
+      if (id === defaultConnectionId || !connections.some((c) => c.id === id)) return;
+      set(mirror(connections, id));
+      await persist(connections, id);
+    }),
 
   removeConnection: async (id) => {
-    const { connections, defaultConnectionId } = get();
-    const next = connections.filter((c) => c.id !== id);
-    const nextDefault = defaultConnectionId === id ? (next[0]?.id ?? null) : defaultConnectionId;
     // The connection's calendar link (Track U3) and proxy headers (fe#167) are credentials
     // like its token: this device forgets them with the connection (the link itself keeps
     // working until turned off). The token first: a delete of it that fails stops the
     // removal, and the connection must then still have its headers.
     await deleteSecure(tokenKey(id));
     await Promise.all([forgetCalendarLink(id), forgetProxyHeaders(id)]);
-    await persist(next, nextDefault);
-    set({ connections: next, ...mirror(next, nextDefault) });
+    await writingList(async () => {
+      const { connections, defaultConnectionId } = get();
+      const { next, nextDefault } = withoutConnection(connections, defaultConnectionId, id);
+      await persist(next, nextDefault);
+      set({ connections: next, ...mirror(next, nextDefault) });
+    });
+    // The web's other tabs forget it too, and purge what they hold of it
+    // (`removedInOtherTab`): told once the list is written and the token gone.
+    tabsChannelOf()?.post({ removed: id });
     // Purge the removed connection's scoped state (downloads, progress mirror/queue,
     // query cache, scroll memory). A failing cleanup must never block removal, so run
     // them all and only warn on rejection.
-    const results = await Promise.allSettled([...removalCleanups].map((fn) => fn(id)));
-    for (const r of results) {
-      if (r.status === 'rejected')
-        console.warn('[session] connection-removed cleanup failed', r.reason);
-    }
+    await runEach(removalCleanups, [id], 'connection-removed cleanup');
   },
 
   markNeedsReconnect: (id, reason) => {

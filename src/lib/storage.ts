@@ -29,6 +29,13 @@ export async function getItemStrict<T>(key: string): Promise<T | null> {
   }
 }
 
+/** The stored text of `key` as it is (null when there is none), for a caller that must tell
+ * a document that does not parse from a missing one, or compare it with what it last read.
+ * A storage error rejects. */
+export async function getRawItem(key: string): Promise<string | null> {
+  return AsyncStorage.getItem(key);
+}
+
 export async function setItem(key: string, value: unknown): Promise<void> {
   try {
     await AsyncStorage.setItem(key, JSON.stringify(value));

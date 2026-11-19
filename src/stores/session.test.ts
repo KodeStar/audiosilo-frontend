@@ -10,6 +10,7 @@ import {
   hasExistingInstall,
   LOCKED_RETRY_MS,
   onConnectionRemoved,
+  onConnectionRemovedInOtherTab,
   onConnectionReplaced,
   resetStaleStorage,
   sessionHydrateFailed,
@@ -556,6 +557,30 @@ describe('session store (multi-connection)', () => {
       expect(persisted.map((c: { id: string }) => c.id)).toEqual(['srv-b.1']);
     });
 
+    // The connect flow runs no teardown: a book playing through the retired identity (its
+    // download) stops before the purge takes its place, its span and its files.
+    it('stops what plays through the retired identity before its scoped state is purged', async () => {
+      await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'srv-a', token: 't1', user: mkUser('a') });
+      const order: string[] = [];
+      unsubs.push(
+        onConnectionRemovedInOtherTab(async (id) => {
+          await Promise.resolve();
+          order.push(`stop ${id}`);
+        }),
+        onConnectionRemoved((id) => void order.push(`cleanup ${id}`)),
+      );
+      await useSession.getState().setSession({
+        serverUrl: 'https://a',
+        serverId: 'srv-b',
+        token: 't2',
+        user: mkUser('b'),
+        retire: ['srv-a.1'],
+      });
+      expect(order).toEqual(['stop srv-a.1', 'cleanup srv-a.1']);
+    });
+
     it('names and matches servers with the shared URL helpers (hostOf, sameUrl)', async () => {
       await useSession.getState().setSession({
         serverUrl: 'HTTPS://Books.example.com/',
@@ -644,6 +669,27 @@ describe('session store (multi-connection)', () => {
       expect(other).toHaveBeenCalledWith(id); // a sibling cleanup still ran
       expect(useSession.getState().connections).toHaveLength(0); // the connection is gone
       expect(warn).toHaveBeenCalled(); // the rejection was warned, not thrown
+      warn.mockRestore();
+    });
+
+    // Not every cleanup is async: one that throws outright is a failure like a rejection.
+    it('a cleanup that throws neither blocks removal nor the other cleanups', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const id = await useSession
+        .getState()
+        .setSession({ serverUrl: 'https://a', serverId: 'srv-a', token: 't', user: mkUser('a') });
+      const other = jest.fn();
+      unsubs.push(
+        onConnectionRemoved(() => {
+          throw new Error('cleanup boom');
+        }),
+      );
+      unsubs.push(onConnectionRemoved(other));
+
+      await expect(useSession.getState().removeConnection(id)).resolves.toBeUndefined();
+
+      expect(other).toHaveBeenCalledWith(id);
+      expect(warn).toHaveBeenCalled();
       warn.mockRestore();
     });
   });

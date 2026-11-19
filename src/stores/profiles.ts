@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useMemo } from 'react';
 import { AppState, type NativeEventSubscription } from 'react-native';
 import { create } from 'zustand';
@@ -9,12 +8,17 @@ import { serverIdOf } from '@/lib/connection-id';
 import { parseHhMm } from '@/lib/hhmm';
 import { initialProfiles } from '@/lib/identity-migration';
 import { randomUUID } from '@/lib/random';
-import { setItem } from '@/lib/storage';
+import { getRawItem, setItem } from '@/lib/storage';
 import { isRecord, PROFILES_KEY } from '@/lib/storage-keys';
+import { onStoredChange } from '@/lib/tab-channel';
+import { tabLock } from '@/lib/tab-lock';
 import {
+  catchUpWithOtherTabs,
   type Connection,
   onConnectionRemoved,
   onConnectionReplaced,
+  otherTabsEnv,
+  sessionChangeFollowed,
   sessionHydrateFailed,
   useSession,
 } from '@/stores/session';
@@ -33,7 +37,8 @@ import {
  * connections with the same `initialProfiles` rule.
  *
  * Kept consistent with the session (`reconcileProfiles`, run on every change of the
- * session's connections once the session has settled, and on `onConnectionRemoved`):
+ * session's connections once the session has settled, except one this tab followed from
+ * another tab's write, and on `onConnectionRemoved`):
  * a removed connection leaves its profile, a profile with no connections is deleted, a
  * connection no profile holds is placed (the active profile when it has no connection to
  * that server, else another profile without one, else a profile of its own), and a
@@ -124,10 +129,15 @@ function parseProfile(raw: unknown): Profile | null {
   };
 }
 
+/** Whether `raw` has a stored document's shape (`parseProfilesDoc` validates the rest). */
+function isProfilesDoc(raw: unknown): raw is Record<string, unknown> & { profiles: unknown[] } {
+  return isRecord(raw) && raw.version === 1 && Array.isArray(raw.profiles);
+}
+
 /** A stored document, validated: anything unreadable is an empty document (rebuilt from
  * the session by `reconcileProfiles`). */
 export function parseProfilesDoc(raw: unknown): ProfilesDoc {
-  if (!isRecord(raw) || raw.version !== 1 || !Array.isArray(raw.profiles)) return EMPTY_DOC;
+  if (!isProfilesDoc(raw)) return EMPTY_DOC;
   const seen = new Set<string>();
   const profiles: Profile[] = [];
   for (const p of raw.profiles.map(parseProfile)) {
@@ -484,18 +494,145 @@ const docOf = (s: ProfilesDoc): ProfilesDoc => ({
   askAtLaunch: s.askAtLaunch,
 });
 
-/** Set and persist a new document (only once hydrated: before that the stored one isn't
- * known, and a write would replace it), asking at launch once a second person appears
- * (`askOnSecondPerson`). */
-function commit(change: ProfilesDoc): void {
+/** A change to the document, made from the document it changes. */
+type DocChange = (doc: ProfilesDoc) => ProfilesDoc;
+
+/** Set a changed document and persist it (only once hydrated: before that the stored one
+ * isn't known, and a write would replace it), asking at launch once a second person appears
+ * (`askOnSecondPerson`). On the web the write goes through `writeChanges`, so a change never
+ * lands over another tab's newer document. */
+function commit(change: DocChange): void {
   const state = useProfiles.getState();
   if (!state.hydrated) return;
   const prev = docOf(state);
-  const next = docOf(askOnSecondPerson(prev, change));
+  const next = docOf(askOnSecondPerson(prev, change(prev)));
   if (sameDoc(next, prev)) return;
   useProfiles.setState(next);
   // A document never read is never written over (`unread`).
-  if (!state.unread) void setItem(PROFILES_KEY, next);
+  if (state.unread) return;
+  if (!otherTabsEnv()) {
+    void setItem(PROFILES_KEY, next);
+    return;
+  }
+  if (!waitingChanges.length) waitingBase = prev;
+  waitingChanges.push(change);
+  writing ??= writeChanges();
+}
+
+// Web: the tabs of the player share the stored document, each holding its own copy. A tab
+// follows the others' writes (`followStoredDoc`), and writes the document holding a lock the
+// tabs share, reading it again first (`writeChanges`): when another tab wrote since, this
+// tab's changes are made again over that document, never over its own older copy (a person
+// added in the other tab keeps their name, PIN and kids settings). The person listening
+// stays each tab's own.
+
+/** The stored document as this tab last read or wrote it (web). */
+let storedText: string | null = null;
+/** This tab's changes not written yet, in order, the document they were first made over
+ * (this tab's before them), and the write under way. */
+let waitingChanges: DocChange[] = [];
+let waitingBase: ProfilesDoc | null = null;
+let writing: Promise<void> | null = null;
+/** Another tab's write heard while this tab's own were being written (`followStoredDoc`). */
+let heardWhileWriting = false;
+/** The lock every tab takes to write the document (`writeChanges`). */
+const withDocLock = tabLock(PROFILES_KEY);
+
+/** A stored document's text, read; null when it does not parse as one. */
+function parseStored(text: string): ProfilesDoc | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  return isProfilesDoc(raw) ? parseProfilesDoc(raw) : null;
+}
+
+/** Another tab's document as this tab's (`mine`: this tab's, before any change of its own not
+ * written yet): the person listening here stays, while they are still on the device (a tab
+ * that had nobody on it takes the stored one). */
+function asThisTabs(stored: ProfilesDoc, mine: ProfilesDoc): ProfilesDoc {
+  const own = mine.activeProfileId;
+  const activeProfileId =
+    own !== null && stored.profiles.some((p) => p.id === own)
+      ? own
+      : mine.profiles.length === 0
+        ? stored.activeProfileId
+        : null;
+  return { ...stored, activeProfileId };
+}
+
+async function writeChanges(): Promise<void> {
+  try {
+    // Holding the lock: no other tab writes between this tab's read and its write.
+    while (waitingChanges.length) await withDocLock(writeWaiting);
+  } catch (e) {
+    console.warn('[profiles] writing the people failed', e);
+  } finally {
+    writing = null;
+  }
+  // Another tab's write heard while this one waited its turn, and not read by it (it landed
+  // after the read): taken now.
+  if (heardWhileWriting) {
+    heardWhileWriting = false;
+    followStoredDoc(await getRawItem(PROFILES_KEY).catch(() => null));
+  }
+}
+
+/** Write this tab's waiting changes (`writeChanges`, holding the lock). */
+async function writeWaiting(): Promise<void> {
+  // The list as stored first: a reconcile made again over another tab's newer document reads
+  // the session's list, which must hold that tab's connections too (a direct read can see
+  // its document before its list is heard), or it would drop the people they belong to.
+  await catchUpWithOtherTabs();
+  let stored: string | null;
+  try {
+    stored = await getRawItem(PROFILES_KEY);
+  } catch {
+    stored = storedText;
+  }
+  const changes = waitingChanges;
+  const mine = docOf(useProfiles.getState());
+  const base = waitingBase ?? mine;
+  waitingChanges = [];
+  waitingBase = null;
+  const state = useProfiles.getState();
+  if (!state.hydrated || state.unread) return;
+  const theirs = stored !== null && stored !== storedText ? parseStored(stored) : null;
+  if (theirs) {
+    // The person listening as this tab had them before its changes (a person those changes
+    // made is not in the other tab's document yet, so it cannot stay on that alone), then the
+    // changes made again over it, then this tab's person kept when they made them there too.
+    let doc = asThisTabs(theirs, base);
+    for (const change of changes) doc = docOf(askOnSecondPerson(doc, change(doc)));
+    const own = mine.activeProfileId;
+    if (own !== null && doc.profiles.some((p) => p.id === own))
+      doc = { ...doc, activeProfileId: own };
+    useProfiles.setState(doc);
+  }
+  const next = docOf(useProfiles.getState());
+  const text = JSON.stringify(next);
+  storedText = text;
+  if (text !== stored) await setItem(PROFILES_KEY, next);
+}
+
+/** Another tab wrote the document (`text`, its new value): take it. Not while this tab's own
+ * changes are being written: the write reads the document first and makes them over it (one
+ * that lands after that read is taken once the write is done, `heardWhileWriting`). */
+function followStoredDoc(text: string | null): void {
+  const state = useProfiles.getState();
+  if (!state.hydrated || state.unread || text === null || text === storedText) return;
+  if (writing) {
+    heardWhileWriting = true;
+    return;
+  }
+  const theirs = parseStored(text);
+  if (!theirs) return;
+  storedText = text;
+  const doc = asThisTabs(theirs, docOf(state));
+  if (!sameDoc(doc, docOf(state))) useProfiles.setState(doc);
+  if (sessionSettled()) void alignDefaultConnection();
 }
 
 /** Whether the session's connection list means what it says (loaded, not a failed read). */
@@ -507,28 +644,35 @@ function sessionSettled(): boolean {
 function reconcileNow(): void {
   const state = useProfiles.getState();
   if (!state.hydrated || !sessionSettled()) return;
-  const { connections, defaultConnectionId } = useSession.getState();
-  // Unread: only the connections already placed (signed in this run, `placeConnection`)
-  // take part; any other is left in no profile, so nobody sees or plays it.
-  const known = state.unread ? connections.filter((c) => profileOf(c.id, state)) : connections;
-  commit(reconcileProfiles(docOf(state), known, defaultConnectionId));
+  // The ids of the profiles it makes: the same each time the change is made (again over
+  // another tab's newer document, `writeChanges`), so the person it made keeps their id.
+  const made: string[] = [];
+  commit((doc) => {
+    const { connections, defaultConnectionId } = useSession.getState();
+    // Unread: only the connections already placed (signed in this run, `placeConnection`)
+    // take part; any other is left in no profile, so nobody sees or plays it.
+    const known = state.unread ? connections.filter((c) => profileOf(c.id, doc)) : connections;
+    let n = 0;
+    const newId = () => (made[n++] ??= randomUUID());
+    return reconcileProfiles(doc, known, defaultConnectionId, newId);
+  });
   void alignDefaultConnection();
 }
 
 /** A removed connection leaves its profile at once (the session's own change already
- * reconciles; this also covers a removal while the list counts as unsettled). */
+ * reconciles; this also covers a removal while the list counts as unsettled, and one another
+ * tab made). */
 function onRemoved(id: string): void {
-  const s = useProfiles.getState();
-  if (!s.hydrated || !profileOf(id, s)) return;
-  commit(withProfiles(docOf(s), withoutConnection(s.profiles, id)));
+  commit((doc) =>
+    profileOf(id, doc) ? withProfiles(doc, withoutConnection(doc.profiles, id)) : doc,
+  );
 }
 
 /** A sign-in replaced the person's stale identity (`replaceInDoc`): run by the session just
- * before its list changes, so the reconcile that follows finds the new id placed. */
+ * before its list changes, so the reconcile that follows finds the new id placed (and in a
+ * tab told of it, before the list it follows drops the old id). */
 function onReplaced(oldId: string, newId: string): void {
-  const s = useProfiles.getState();
-  if (!s.hydrated) return;
-  commit(replaceInDoc(docOf(s), oldId, newId));
+  commit((doc) => replaceInDoc(doc, oldId, newId));
 }
 
 /** Keep the document consistent with the session from now on (once: nothing to keep
@@ -536,14 +680,26 @@ function onReplaced(oldId: string, newId: string): void {
 function followSession(): void {
   if (unsubscribeSession) return;
   const unsubChanges = useSession.subscribe((s, prev) => {
-    if (s.connections !== prev.connections || s.status !== prev.status) reconcileNow();
+    if (s.connections === prev.connections && s.status === prev.status) return;
+    // Another tab's write, followed here: that tab writes the document that goes with it,
+    // and this tab takes it from storage (`followStoredDoc`), never working it out from its
+    // own copy, which may not have that tab's latest people yet. Only this tab's default
+    // follows its own person.
+    if (sessionChangeFollowed()) {
+      if (useProfiles.getState().hydrated && sessionSettled()) void alignDefaultConnection();
+      return;
+    }
+    reconcileNow();
   });
   const unsubRemoved = onConnectionRemoved(onRemoved);
   const unsubReplaced = onConnectionReplaced(onReplaced);
+  const env = otherTabsEnv();
+  const unfollowStored = env ? onStoredChange(PROFILES_KEY, followStoredDoc, env) : null;
   unsubscribeSession = () => {
     unsubChanges();
     unsubRemoved();
     unsubReplaced();
+    unfollowStored?.();
   };
 }
 
@@ -558,6 +714,7 @@ function adopt(raw: string | null): void {
     // corrupt: as missing
   }
   const doc = parseProfilesDoc(parsed);
+  storedText = raw;
   useProfiles.setState({ ...doc, hydrated: true, hydrationFailed: false, unread: false });
   followSession();
   reconcileNow();
@@ -594,7 +751,7 @@ function giveUpOnRead(): void {
     if (session.connections.length > 0) {
       retryWhenActive ??= AppState.addEventListener('change', (next) => {
         if (next !== 'active') return;
-        AsyncStorage.getItem(PROFILES_KEY).then(adopt, () => undefined);
+        getRawItem(PROFILES_KEY).then(adopt, () => undefined);
       });
       return true;
     }
@@ -619,7 +776,7 @@ function hydrateProfiles(): Promise<void> {
     for (let attempt = 1; ; attempt++) {
       let raw: string | null;
       try {
-        raw = await AsyncStorage.getItem(PROFILES_KEY);
+        raw = await getRawItem(PROFILES_KEY);
       } catch {
         useProfiles.setState({ hydrationFailed: true });
         if (attempt >= HYDRATE_ATTEMPTS) break;
@@ -748,13 +905,19 @@ export function useManagerName(
 
 // --- Changes --------------------------------------------------------------------------------
 
+/** `doc` with the profile `profileId` changed (`doc` itself when there is none). */
+function withProfile(
+  doc: ProfilesDoc,
+  profileId: string,
+  change: (p: Profile) => Profile,
+): ProfilesDoc {
+  return doc.profiles.some((p) => p.id === profileId)
+    ? { ...doc, profiles: doc.profiles.map((p) => (p.id === profileId ? change(p) : p)) }
+    : doc;
+}
+
 function updateProfile(profileId: string, change: (p: Profile) => Profile): void {
-  const s = useProfiles.getState();
-  if (!s.profiles.some((p) => p.id === profileId)) return;
-  commit({
-    ...docOf(s),
-    profiles: s.profiles.map((p) => (p.id === profileId ? change(p) : p)),
-  });
+  commit((doc) => withProfile(doc, profileId, change));
 }
 
 /**
@@ -797,13 +960,19 @@ export function mayTurnOnKids(
  * isn't 'HH:MM' is the default. Turning it on is refused (nothing changes) when it would
  * leave no grown-up on the device (`mayTurnOnKids`). */
 export function setProfileKids(profileId: string, kids: KidsSettings | undefined): void {
-  if (kids && !mayTurnOnKids(profileId)) return;
-  updateProfile(profileId, (p) => {
-    const { kids: _old, ...rest } = p;
-    if (!kids) return rest;
-    const parsed = parseKids(kids) ?? { bedtime: DEFAULT_BEDTIME };
-    return { ...rest, kids: parsed };
-  });
+  // Asked of the document the change is made over, so one made again over another tab's
+  // newer document (`writeChanges`, where another person went into kids mode meanwhile)
+  // never leaves the device without a grown-up either.
+  commit((doc) =>
+    kids && !mayTurnOnKids(profileId, doc)
+      ? doc
+      : withProfile(doc, profileId, (p) => {
+          const { kids: _old, ...rest } = p;
+          if (!kids) return rest;
+          const parsed = parseKids(kids) ?? { bedtime: DEFAULT_BEDTIME };
+          return { ...rest, kids: parsed };
+        }),
+  );
 }
 
 /** Rename a profile on this device (trimmed; an empty name is ignored). */
@@ -823,17 +992,16 @@ export function setProfileHasPin(profileId: string, hasPin: boolean): void {
 
 /** "Ask who's listening when the app opens". */
 export function setAskAtLaunch(ask: boolean): void {
-  const s = useProfiles.getState();
-  commit({ ...docOf(s), askAtLaunch: ask });
+  commit((doc) => ({ ...doc, askAtLaunch: ask }));
 }
 
 /** Delete a profile from this device (its connections are signed out first by the
  * caller; a profile left with connections would be rebuilt by the reconcile). */
 export function deleteProfile(profileId: string): void {
-  const s = useProfiles.getState();
-  const profiles = s.profiles.filter((p) => p.id !== profileId);
-  if (profiles.length === s.profiles.length) return;
-  commit(withProfiles(docOf(s), profiles));
+  commit((doc) => {
+    const profiles = doc.profiles.filter((p) => p.id !== profileId);
+    return profiles.length === doc.profiles.length ? doc : withProfiles(doc, profiles);
+  });
 }
 
 /**
@@ -845,8 +1013,15 @@ export function placeConnection(connectionId: string, opts: PlaceOptions = {}): 
   const { connections } = useSession.getState();
   const conn = connections.find((c) => c.id === connectionId);
   if (!s.hydrated || !conn) return null;
-  const { doc, profileId } = placeInDoc(docOf(s), conn, connections, opts);
-  commit(doc);
+  // One id for a profile it makes, so the change made again over another tab's newer
+  // document (`writeChanges`) makes the same person.
+  const made = randomUUID();
+  let profileId: string | null = null;
+  commit((doc) => {
+    const placed = placeInDoc(doc, conn, connections, opts, () => made);
+    profileId ??= placed.profileId;
+    return placed.doc;
+  });
   return profileId;
 }
 
@@ -869,7 +1044,9 @@ export async function switchProfile(profileId: string): Promise<void> {
   const s = useProfiles.getState();
   const target = s.profiles.find((p) => p.id === profileId);
   if (!target) return;
-  commit({ ...docOf(s), activeProfileId: profileId });
+  commit((doc) =>
+    doc.profiles.some((p) => p.id === profileId) ? { ...doc, activeProfileId: profileId } : doc,
+  );
   // Required on use: the player store imports most of the app (and, through the API
   // provider, this module), so a static import would be a cycle at load.
   const { usePlayer } =
@@ -897,6 +1074,11 @@ async function alignDefaultConnection(): Promise<void> {
 /** Tests only: forget the hydration and the store's state. */
 export function resetProfilesForTests(): void {
   hydration = null;
+  storedText = null;
+  waitingChanges = [];
+  waitingBase = null;
+  writing = null;
+  heardWhileWriting = false;
   unsubscribeSession?.();
   unsubscribeSession = null;
   stopRetrying();

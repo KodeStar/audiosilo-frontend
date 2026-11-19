@@ -160,6 +160,7 @@ import { engine as downloadEngine } from '@/downloads/engine';
 import { isDeclined, useDownloads } from '@/downloads/store';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 import { resetProfilesForTests, switchProfile, useProfiles } from '@/stores/profiles';
+import * as session from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 
 import { bookFileSpecs } from './book-queue';
@@ -1405,6 +1406,31 @@ describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
     // Flushes THIS connection specifically (unlike flushQueue, it doesn't skip on the
     // connection's reachability), so its queued saves land before removal purges them.
     expect(flushConnection).toHaveBeenCalledWith('c1');
+  });
+
+  // Web: a tab playing through the connection sends its own while the token still works,
+  // so this tab flushes only once the other tabs are done (their wait runs beside its stop).
+  it('teardownBeforeTokenRevoke flushes only once its stop and the other tabs are done', async () => {
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 0);
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    (flushConnection as jest.Mock).mockClear();
+    let othersDone: () => void = () => {};
+    const told = jest
+      .spyOn(session, 'tellOtherTabsGoing')
+      .mockImplementation(() => new Promise<void>((r) => (othersDone = r)));
+    try {
+      const teardown = teardownBeforeTokenRevoke('c1');
+      await flushMicrotasks(20);
+      expect(usePlayer.getState().nowPlaying).toBeNull();
+      expect(told).toHaveBeenCalledWith('c1');
+      expect(flushConnection).not.toHaveBeenCalled();
+      othersDone();
+      await teardown;
+      expect(flushConnection).toHaveBeenCalledWith('c1');
+    } finally {
+      told.mockRestore();
+    }
   });
 
   it('leaves a book from another connection playing (its token stays valid)', async () => {

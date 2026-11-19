@@ -89,7 +89,11 @@ const mockClient = {
   proxyHeadersFor: () => undefined,
   streamUrl: (_lib: number, p: string) => `stream:${p}`,
 } as unknown as ApiClient;
-jest.mock('@/api/connection-clients', () => ({ resolveClient: () => mockClient }));
+// The connections no longer signed in (removed): no client.
+const mockSignedOut = new Set<string>();
+jest.mock('@/api/connection-clients', () => ({
+  resolveClient: (cid: string) => (mockSignedOut.has(cid) ? null : mockClient),
+}));
 const mockRemovalPurges: ((id: string) => Promise<void>)[] = [];
 jest.mock('@/stores/session', () => ({
   onConnectionRemoved: (fn: (id: string) => Promise<void>) => {
@@ -130,9 +134,17 @@ jest.mock('@/api/hooks', () => ({
 
 type Store = typeof import('@/downloads/store');
 
+/** Each tab's removal purges (its copy of the store's, and of what it imports). */
+const purgesOf = new Map<Store, ((id: string) => Promise<void>)[]>();
+
+/** The connection `c1` removed, as tab `tab` runs it: the tab that removed it, or one the
+ * session told of the removal (`removedInOtherTab`). */
+const purgeC1 = (tab: Store) => Promise.all(purgesOf.get(tab)!.map((purge) => purge('c1')));
+
 /** One tab: its own copy of the store (its own memory) over the shared storage. */
 function openTab(): Store {
   let tab!: Store;
+  const before = mockRemovalPurges.length;
   jest.isolateModules(() => {
     jest.doMock('@react-native-async-storage/async-storage', () => ({
       __esModule: true,
@@ -141,6 +153,7 @@ function openTab(): Store {
     /* eslint-disable-next-line @typescript-eslint/no-require-imports */
     tab = require('@/downloads/store') as Store;
   });
+  purgesOf.set(tab, mockRemovalPurges.slice(before));
   return tab;
 }
 
@@ -182,6 +195,8 @@ const entryOf = (tab: Store, path: string) =>
 beforeEach(async () => {
   await AsyncStorage.clear();
   mockRemovalPurges.length = 0;
+  purgesOf.clear();
+  mockSignedOut.clear();
   mockRemoveBook.mockClear();
   mockTransfer.gate = null;
 });
@@ -446,6 +461,51 @@ describe('two tabs downloading (web)', () => {
     await Promise.all(purgesOfA.map((purge) => purge('c1')));
     expect(await stored()).toEqual({});
   });
+
+  // fe#368's verify: a failed download is shown only in the tab that ran it; the removing
+  // tab took it from the registry, and the tab showing it kept it (with its files) until a
+  // reload.
+  it('a failed download of a removed connection goes from the tab showing it, files too', async () => {
+    const a = openTab();
+    const b = openTab();
+    await Promise.all([a.useDownloads.getState().hydrate(), b.useDownloads.getState().hydrate()]);
+    mockTransfer.gate = Promise.reject(new Error('network'));
+    await a.useDownloads.getState().download('c1', 2, book('X/Book'));
+    await settle();
+    expect(entryOf(a, 'X/Book')?.status).toBe('error');
+    expect(entryOf(b, 'X/Book')).toBeUndefined();
+    await purgeC1(b);
+    expect(entryOf(a, 'X/Book')?.status).toBe('error');
+    mockRemoveBook.mockClear();
+    // The session tells tab A of the removal.
+    await purgeC1(a);
+    await settle();
+    expect(entryOf(a, 'X/Book')).toBeUndefined();
+    expect(mockRemoveBook).toHaveBeenCalledWith('c1', 2, 'X/Book');
+    expect(await stored()).toEqual({});
+  });
+
+  // fe#368's verify: a tab still on the removed connection's book page started a download,
+  // which failed on its server (401) and stayed as an error entry for nobody.
+  it('a removed connection downloads nothing until it is signed in again', async () => {
+    const a = openTab();
+    await a.useDownloads.getState().hydrate();
+    mockSignedOut.add('c1');
+    await purgeC1(a);
+    await expect(a.useDownloads.getState().download('c1', 2, book('X/Book'))).resolves.toBe(
+      'declined',
+    );
+    await settle();
+    expect(entryOf(a, 'X/Book')).toBeUndefined();
+    expect(await stored()).toEqual({});
+    // Signed in again (the same connection id): it downloads.
+    mockSignedOut.delete('c1');
+    await expect(a.useDownloads.getState().download('c1', 2, book('X/Book'))).resolves.toBe(
+      'queued',
+    );
+    await settle();
+    expect(entryOf(a, 'X/Book')?.status).toBe('downloaded');
+  });
 });
 
 // A finished download changes without a new `savedAt`: the other tab took its chapters from
@@ -686,21 +746,18 @@ describe('a download running in another tab (web, Web Locks)', () => {
     expect((await stored())[KEY_X]?.status).toBe('error');
   });
 
-  /** Tab B, launched, with the purges it registers for a removed connection. */
-  async function removingTab(): Promise<{ b: Store; removeC1: () => Promise<unknown> }> {
-    const before = mockRemovalPurges.length;
-    const b = await launchTab();
-    const purges = mockRemovalPurges.slice(before);
-    return { b, removeC1: () => Promise.all(purges.map((purge) => purge('c1'))) };
-  }
-
   // Removing its connection in another tab deleted its folder under the transfer, and the
   // tab running it wrote its entry back with its next save.
-  it('removing its connection in another tab: the tab running it removes it', async () => {
+  it('removing its connection in another tab: the tab running it, told, removes it', async () => {
     const a = await downloadingTab();
-    const { b, removeC1 } = await removingTab();
+    const b = await launchTab();
     expect(b.useDownloads.getState().elsewhere[KEY_X]).toBe(true);
-    await removeC1();
+    await purgeC1(b);
+    await settle();
+    // Tab B leaves tab A's folder alone: the transfer is still writing it.
+    expect(mockRemoveBook).not.toHaveBeenCalled();
+    // The session tells tab A of the removal: it runs the purge too.
+    await purgeC1(a);
     await settle();
     expect(entryOf(a, 'X/Book')).toBeUndefined();
     expect(entryOf(b, 'X/Book')).toBeUndefined();
@@ -713,8 +770,8 @@ describe('a download running in another tab (web, Web Locks)', () => {
     const a = await downloadingTab();
     // Tab A hears no request (a tab of an older build).
     a.setDownloadStopChannelForTests(null);
-    const { b, removeC1 } = await removingTab();
-    await removeC1();
+    const b = await launchTab();
+    await purgeC1(b);
     await settle();
     expect(mockRemoveBook).not.toHaveBeenCalled();
     expect(entryOf(b, 'X/Book')).toBeUndefined();
@@ -738,8 +795,8 @@ describe('a download running in another tab (web, Web Locks)', () => {
   it('a tab running it that does not answer: its end heard here is still purged', async () => {
     const a = await downloadingTab();
     a.setDownloadStopChannelForTests(null);
-    const { b, removeC1 } = await removingTab();
-    await removeC1();
+    const b = await launchTab();
+    await purgeC1(b);
     await settle();
     const setItem = jest.mocked(AsyncStorage.setItem);
     const write = setItem.getMockImplementation()!;
@@ -760,8 +817,9 @@ describe('a download running in another tab (web, Web Locks)', () => {
 
   it('a book downloaded again in the tab that ran it is not purged', async () => {
     const a = await downloadingTab();
-    const { b, removeC1 } = await removingTab();
-    await removeC1();
+    const b = await launchTab();
+    await purgeC1(b);
+    await purgeC1(a);
     await settle();
     expect(await stored()).toEqual({});
     mockTransfer.gate = null;
@@ -776,8 +834,7 @@ describe('a download running in another tab (web, Web Locks)', () => {
   it('a tab running it that closes meanwhile: its entry and files go then', async () => {
     const a = await downloadingTab();
     a.setDownloadStopChannelForTests(null);
-    const { removeC1 } = await removingTab();
-    await removeC1();
+    await purgeC1(await launchTab());
     await settle();
     expect(mockRemoveBook).not.toHaveBeenCalled();
     locks.close(LOCK_X);
@@ -795,15 +852,41 @@ describe('a download running in another tab (web, Web Locks)', () => {
     expect(entryOf(a, 'X/Book')?.status).toBe('downloading');
   });
 
-  // No lock tells the removing tab the download is running there: it is asked all the same,
-  // rather than writing its entry back over the purge with its next save.
-  it('without Web Locks, removing its connection still asks the tab running it', async () => {
+  // No lock tells the removing tab the download is running there: the tab running it purges
+  // it all the same when told, rather than writing its entry back over the purge.
+  it('without Web Locks, the tab running it purges it when told of the removal', async () => {
     const a = await downloadingTab();
     Object.defineProperty(nav, 'locks', { configurable: true, value: undefined });
-    const { removeC1 } = await removingTab();
-    await removeC1();
+    await purgeC1(await launchTab());
+    await purgeC1(a);
     await settle();
     expect(entryOf(a, 'X/Book')).toBeUndefined();
     expect(await stored()).toEqual({});
+  });
+
+  // The removing tab closed before the tab running the download let it go (here: it ended
+  // first, before the removal reached it): nobody is left waiting to purge it, so the tab
+  // that ran it purges it itself when told.
+  it('the removing tab gone, the tab that ran it purges its ended download itself', async () => {
+    const a = await downloadingTab();
+    finish();
+    await settle();
+    expect(entryOf(a, 'X/Book')?.status).toBe('downloaded');
+    expect(locks.names()).not.toContain(LOCK_X);
+    await purgeC1(a);
+    await settle();
+    expect(entryOf(a, 'X/Book')).toBeUndefined();
+    expect(await stored()).toEqual({});
+    expect(mockRemoveBook).toHaveBeenCalledWith('c1', 2, 'X/Book');
+  });
+
+  it('the removing tab gone, the tab running it purges it as it is told', async () => {
+    const a = await downloadingTab();
+    await purgeC1(a);
+    await settle();
+    expect(entryOf(a, 'X/Book')).toBeUndefined();
+    expect(locks.names()).not.toContain(LOCK_X);
+    expect(await stored()).toEqual({});
+    expect(mockRemoveBook).toHaveBeenCalledWith('c1', 2, 'X/Book');
   });
 });

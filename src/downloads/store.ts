@@ -531,6 +531,9 @@ function queueBook(
   origin: DownloadOrigin,
 ): Promise<DownloadOutcome> {
   const done = (outcome: DownloadOutcome) => Promise.resolve(outcome);
+  // A connection removed here (or in another tab, which told this one): nothing of it is
+  // fetched, and no entry is left behind for it (its server would refuse the token).
+  if (removedConnection(connectionId)) return done('declined');
   // A book this browser plays through the server's transcoder would download as its
   // raw files, which it can't play offline: refuse (every path - the book page, auto
   // download, keep-ahead - lands here). The UI says why (useDownloadControls, and the
@@ -575,7 +578,7 @@ function queueBook(
     }
     // Things may have moved while the room was read.
     const now = useDownloads.getState().entries[key];
-    if (declined.has(key)) return 'declined';
+    if (declined.has(key) || removedConnection(connectionId)) return 'declined';
     if (now && now.status !== 'error') return 'exists';
     for (const k of yielding) stepAside(k);
     begin(key, connectionId, libraryId, book, chapterData, origin);
@@ -1624,11 +1627,8 @@ async function ownerLeft(key: string): Promise<void> {
   if (revived?.serverFetch) resumeEpisodeWaits();
 }
 
-/** What a tab asks the tab running a download to do with it (`askOwnerToStop`), or with every
- * download of a connection it removed (`connectionRemoved`). */
-type StopRequest =
-  | { connectionId: string; libraryId: number; path: string; remove: boolean }
-  | { connectionId: string; connectionRemoved: true };
+/** What a tab asks the tab running a download to do with it (`askOwnerToStop`). */
+type StopRequest = { connectionId: string; libraryId: number; path: string; remove: boolean };
 
 /** The channel a tab asks another to stop its download on. */
 const STOP_CHANNEL = 'audiosilo-download-stop';
@@ -1661,23 +1661,17 @@ function askOwnerToStop(key: string, ask: StopRequest): boolean {
   return true;
 }
 
-/** Another tab asked for a download to be stopped: done when this tab is running it. A
- * connection removed there: each of its downloads this tab runs is removed (that tab drops
- * the rest, and these from the registry once this one let them go). */
+/** Another tab asked for a download to be stopped: done when this tab is running it. */
 function stopAsked(ask: StopRequest): void {
-  if (typeof ask?.connectionId !== 'string') return;
-  const state = useDownloads.getState();
-  const runsHere = (key: string) => inProgress(state.entries[key]) && !state.elsewhere[key];
-  if ('connectionRemoved' in ask) {
-    if (ask.connectionRemoved !== true) return;
-    for (const [key, e] of Object.entries(state.entries)) {
-      if (e.connectionId !== ask.connectionId || !runsHere(key)) continue;
-      void state.remove(e.connectionId, e.libraryId, e.path).catch(() => {});
-    }
+  if (
+    typeof ask?.connectionId !== 'string' ||
+    typeof ask.path !== 'string' ||
+    typeof ask.libraryId !== 'number'
+  )
     return;
-  }
-  if (typeof ask.path !== 'string' || typeof ask.libraryId !== 'number') return;
-  if (!runsHere(downloadKey(ask.connectionId, ask.libraryId, ask.path))) return;
+  const state = useDownloads.getState();
+  const key = downloadKey(ask.connectionId, ask.libraryId, ask.path);
+  if (!inProgress(state.entries[key]) || state.elsewhere[key]) return;
   if (ask.remove) void state.remove(ask.connectionId, ask.libraryId, ask.path).catch(() => {});
   else state.cancel(ask.connectionId, ask.libraryId, ask.path);
 }
@@ -2428,6 +2422,10 @@ const removals = new Map<string, string>();
  * download started again (signed in again, a retry): no longer this purge's. */
 const purging = new Map<string, string>();
 
+/** Whether `connectionId` was removed here (`removals`) and is not signed in again since. */
+const removedConnection = (connectionId: string) =>
+  removals.has(connectionId) && !resolveClient(connectionId);
+
 /** Whether another tab's save of `e` (the stored entry of `key`) is a removed connection's,
  * not shown here. */
 function ofRemovedConnection(key: string, e: DownloadEntry): boolean {
@@ -2455,8 +2453,8 @@ onConnectionRemoved(async (id) => {
   removals.set(id, removedAt);
   // Web: the connection's downloads another tab is running (it holds their lock,
   // `tab-owner.ts`) are that tab's to stop: their folders are being written there. That tab
-  // is asked to remove them, and each goes from the registry here once it let it go
-  // (`purgeWhenLeft`).
+  // runs this purge too (the session tells every tab of the removal), and each goes from the
+  // registry here once it let it go (`purgeWhenLeft`), should that tab not get to it.
   const away = new Set([...(await downloadsRunningElsewhere())].filter((key) => isKeyOf(key, id)));
   const state = useDownloads.getState();
   const doomed = Object.entries(state.entries).filter(([, e]) => e.connectionId === id);
@@ -2476,9 +2474,6 @@ onConnectionRemoved(async (id) => {
       ),
     });
   }
-  // Asked even when no lock says so (plain http, no Web Locks: the tabs cannot tell): a tab
-  // running one removes it, rather than writing its entry back over the purge below.
-  stopChannel()?.post({ connectionId: id, connectionRemoved: true });
   for (const key of away) {
     purging.set(key, removedAt);
     void purgeWhenLeft(key, removedAt).catch(() => {});
@@ -2491,11 +2486,12 @@ onConnectionRemoved(async (id) => {
 
 /**
  * A removed connection's download another tab was running (`key`): once that tab let it go
- * (it removed it, as asked; it ended first; or it closed), what the registry still holds of
- * it goes, and its files with it (`persist`'s drop of an entry this tab does not hold). By
- * key, not by `savedAt`: a download that ended there was saved again as it ended, after the
- * removal (`purging`, which keeps that save from showing here meanwhile). Unless the book's
- * download was started again since, here or there (signed in again, a retry).
+ * (it removed it, running this purge itself; it ended first; or it closed), what the
+ * registry still holds of it goes, and its files with it (`persist`'s drop of an entry this
+ * tab does not hold). By key, not by `savedAt`: a download that ended there was saved again
+ * as it ended, after the removal (`purging`, which keeps that save from showing here
+ * meanwhile). Unless the book's download was started again since, here or there (signed in
+ * again, a retry).
  */
 async function purgeWhenLeft(key: string, removedAt: string): Promise<void> {
   await whenDownloadLeft(key);

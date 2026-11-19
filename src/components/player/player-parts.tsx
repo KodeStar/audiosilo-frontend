@@ -392,7 +392,8 @@ export function CompanionChips() {
     c.tab !== 'text' ? (
       <CompanionChip key={c.tab} tab={c.tab} icon={c.icon} />
     ) : target ? (
-      <ConnectionScope key={c.tab} connectionId={target.connectionId}>
+      // As the companion's own scope: its Text tab shows with the connection gone too.
+      <ConnectionScope key={c.tab} connectionId={target.connectionId} keepWhenGone>
         <TextChip target={target} />
       </ConnectionScope>
     ) : null,

@@ -111,16 +111,17 @@ function storageChannel<T>(name: string, env: TabChannelEnv): TabChannel<T> | nu
 }
 
 /** Be told of each change another tab makes to the stored `key` (the web's `storage` events:
- * its new value, null once removed). Nothing where there are no such events (native).
- * Returns the unsubscribe. */
+ * its new value, null once removed), or to every key `key` accepts (a function of the key).
+ * Nothing where there are no such events (native). Returns the unsubscribe. */
 export function onStoredChange(
-  key: string,
+  key: string | ((key: string) => boolean),
   listener: (newValue: string | null) => void,
   env: TabChannelEnv = globalThis as TabChannelEnv,
 ): () => void {
   if (typeof env.addEventListener !== 'function') return () => {};
+  const matches = typeof key === 'string' ? (k: string) => k === key : key;
   const onStorage = (e: StorageChange) => {
-    if (e.key === key) listener(e.newValue);
+    if (e.key !== null && matches(e.key)) listener(e.newValue);
   };
   env.addEventListener('storage', onStorage);
   return () => env.removeEventListener?.('storage', onStorage);

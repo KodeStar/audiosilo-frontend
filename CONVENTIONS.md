@@ -51,7 +51,40 @@ connection-keyed document to `ID_DOCUMENTS` in the identity migration too). The 
 (`resolveClient`) and gate on the session having hydrated (`sessionReady`) before
 reading storage, without importing React; removing/signing out of a connection
 **purges** its scoped state through the `onConnectionRemoved` registry in
-`src/stores/session.ts`. Stale persisted state is reconciled once, before any store
+`src/stores/session.ts`. On the web every tab does. Each tab follows the stored list, tokens
+and proxy headers (`followStored`, on the `storage` events of another tab's writes; a write
+heard while it reads, the launch's hydrate included, has it read again) and writes the list
+holding a `tabLock` the tabs share, reading it again first (`writingList`), so it never writes
+its older copy over another tab's sign-in; its default connection and reconnect flags stay its
+own (the default follows only once it is gone). Before
+its teardown's flush the removing tab tells the others the connection is going
+(`tellOtherTabsGoing`): a tab playing through it stops and sends its place and listening while
+the token works (`onConnectionGoingInOtherTab`), and the removing tab waits on it
+(`GOING_ANSWER_MS` for an answer, at most `GOING_FLUSH_MS`). Once its list is written and the
+token gone it tells them it is removed (`removedInOtherTab`, the same tab channel), and each
+takes the stored list (its screens leave it as the list changes, as the removing tab's do),
+stops playing through it first (`onConnectionRemovedInOtherTab`,
+`playback/removed-in-other-tab.ts`; a tab with no book loaded through it has nothing to stop,
+and stays off the span lock the tabs share) and runs the same cleanups over its own copies.
+Not when the token is back (signed in again before the word arrived; no cleanups when it is
+back once the tab stopped playing).
+A tab stops as soon as the stored list drops the connection (`applyStored` ->
+`leaveConnection`, one stop at a time), the word or not: a tab held while another removed it
+hears the list first. Never before the list changes (the stop's listening would be sent with
+the revoked token; on a server without `listening_sync` the player's own client PUTs the place
+either way, and is refused), so a screen can render once through a connection that is
+gone while the player still holds its book: `ConnectionScope` renders nothing then, never a
+`useApi()` throw (`keepWhenGone` keeps content that says so itself: the companion and its Text
+chip, which a download plays on with). The cleanups still wait for the word.
+The channel and the `storage` events are listened to from
+`hydrate`, never at import (the static render imports the store in Node, where an open
+`BroadcastChannel` holds the export's process). A stale identity a sign-in retires
+(`setSession`'s `retire`) stops the same way in the tab that retired it, before its purge, and
+the other tabs are told of it with the connection that replaced it (`retired`, `replacedBy`;
+never as a `removed`, which a tab still on an earlier build would take as a removal and drop the
+person with): each moves the person to it first (`onConnectionReplaced`), so their profile keeps
+its PIN, name and kids settings. Stale
+persisted state is reconciled once, before any store
 hydrates, by `resetStaleStorage()` (run inside the memoised launch migration `migrateStorage()`,
 `src/lib/storage-migration.ts`, which `bootstrapPlayback` (the launch steps, below) and ThemeProvider both await) along **two independent version axes** so cache churn
 can never log anyone out (`{ authReset, cacheReset }`):
@@ -579,6 +612,14 @@ snapshot and the widget follow `activeProfileId`). The rules:
   setting a PIN over a stored one asks for it first. SHA-256 is pure JS (`src/lib/sha256.ts`:
   no subtle crypto on a plain-http web origin, and an async digest per round was too slow),
   hashed in chunks that let the UI paint. A forgotten PIN: remove that person from the device.
+- **Tabs (web)** share the stored document, each holding its own copy: a tab takes another's
+  writes (`followStoredDoc`), and writes holding a `tabLock` the tabs share, its list caught up
+  and the document read again first (`writeChanges`), making its changes again over a newer one
+  (a change is a function of the document, `commit`; a guard such as `mayTurnOnKids` is asked
+  inside it, and the ids a change makes are the same each time it is made). A list change a
+  tab followed from another tab is never reconciled there (`sessionChangeFollowed`): the tab
+  that made it writes the people that go with it. The person listening stays each tab's own
+  (taken as the tab had it before its unwritten changes, then kept when they made it).
 - **A document that can't be read** is retried (`HYDRATE_ATTEMPTS`), never taken as missing
   (rebuilding it would drop every PIN and kids setting). Then: with someone signed in the store
   stays shut (`hydrationFailed`: nothing shows or plays, nobody new signs in) and reads again
@@ -2085,12 +2126,15 @@ media GETs only.
   as cut short on reload, as before. A removed connection's purge takes
   the other tabs' finished downloads of it from the stored registry too, then their files. One
   another tab is running (its lock held) is that tab's: its folder is never touched from here;
-  that tab is asked on the tab channel to remove the connection's downloads it runs
-  (`connectionRemoved`), and once it let each go (removed, ended first, or the tab closed)
-  what the registry still holds of it goes, files too (`purgeWhenLeft`). Meanwhile its saves
-  are not followed here, its end's either (`removals`, by key `purging`), unless one shows it
-  started again since (signed in again, a retry): then it is that download's, not purged.
-  Without Web Locks the tabs are asked all the same. **Files are stored
+  that tab, told of the removal by the session, runs the purge itself (so its downloads of
+  the connection go, files too, whatever their state: on their way, ended first, failed; and
+  the removing tab may be gone by then), and once it let each go (removed, ended first, or
+  the tab closed) what the registry still holds of it goes here too (`purgeWhenLeft`).
+  Meanwhile its saves are not followed here, its end's either (`removals`, by key `purging`),
+  unless one shows it started again since (signed in again, a retry): then it is that
+  download's, not purged. Without Web Locks every tab is told all the same. A removed
+  connection downloads nothing until it is signed in again (`removedConnection`: `download`
+  answers `declined`, no entry). **Files are stored
   per-connection**: native `downloads/<connectionId>/<libraryId>/<slug>/`, web Cache API
   `/_offline/<connectionId>/<libraryId>/<slug>/`; the registry keys on
   `downloadKey(connectionId, libraryId, path)`. Pre-scoping downloads (from before the

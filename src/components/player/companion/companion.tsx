@@ -206,7 +206,9 @@ export function Companion({
   if (!target) return null;
   return (
     <View className={cn(variant !== 'inline' && 'flex-1', className)}>
-      <ConnectionScope connectionId={target.connectionId}>
+      {/* With its connection gone it still shows: the chapters and a download's text work
+          on, and the own tabs say the server isn't connected (`OwnPanel`). */}
+      <ConnectionScope connectionId={target.connectionId} keepWhenGone>
         <CompanionBody target={target} variant={variant} onChapter={onChapter} />
       </ConnectionScope>
     </View>
