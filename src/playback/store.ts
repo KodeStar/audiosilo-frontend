@@ -242,6 +242,10 @@ const adopting: { key: string; ownLoad: boolean }[] = [];
  * another (FE-ANDROID-5). Taken as the store's book's, that book's place would be saved as it.
  */
 let unnamedOther: (ListenerMark & { key: string }) | null = null;
+/** Whether the last report held as an unnamed other book's (`unnamedReportOfAdopted`) was of it
+ * playing, a buffer after it played included: the sound plays whatever the store's book shows
+ * (`engineOtherBookPlays`, read for each report in `createService`). */
+let unnamedPlays = false;
 /** Whether the engine's last report named a book (`reportedBook`). */
 const lastReportNamesBook = (): boolean => !!service?.reportedBook?.();
 /** Whether the engine's last report named no book (an older binary) while an adoption of
@@ -273,6 +277,7 @@ const unnamedOtherHolds = (): boolean =>
 function ownLoadTakesEngine() {
   for (const a of adopting) a.ownLoad = true;
   unnamedOther = null;
+  unnamedPlays = false;
 }
 
 /**
@@ -324,11 +329,15 @@ let otherReport: { key: string; trackIndex: number; playing: boolean; ended: boo
  * last report `playing`): the sound plays whatever the store's book shows, paused included
  * (`otherBookNotAdopted`, `pauseOwnBook`). The sleep timer counts down while it does
  * (`selectIsTransportLive` alone would read the store's book's pause) and its `pause` stops it.
+ * So does a book whose reports name none while they are held as another book's
+ * (`unnamedReportOfAdopted`, `unnamedPlays`): it is heard all the same.
  */
 export function engineOtherBookPlays(): boolean {
-  // `playing` is false for an `ended` report; a load of the store's holds the engine
-  // (`engineOtherBook`), and the report must still be of that book.
-  if (!otherReport?.playing || !service || ownLoadHoldsEngine()) return false;
+  // A load of the store's holds the engine (`engineOtherBook`).
+  if (!service || ownLoadHoldsEngine()) return false;
+  if (unnamedPlays && unnamedReportOfAdopted()) return true;
+  // `playing` is false for an `ended` report, and the report must still be of that book.
+  if (!otherReport?.playing) return false;
   return reportedOtherBook(service) === otherReport.key;
 }
 /** Told when `engineOtherBookPlays` turns (`noteOtherBookPlays`): no write of the player store
@@ -492,10 +501,15 @@ async function pauseOwnBook(svc: PlaybackService) {
  * is not the store's (`engineOtherBookPlays` as it fired): that book plays again, as the
  * car's play would, and nothing of the store's book changes (a play press of the store's
  * reloads the store's book over it, `toggle`). False, asking nothing, once the engine no
- * longer holds such a book, or it plays already.
+ * longer holds such a book, or it plays already. A book whose reports name none is held to be
+ * there while they are held as its own (`unnamedReportOfAdopted`).
  */
 export async function resumeOtherBook(): Promise<boolean> {
-  if (!service || engineOtherBook() === null || engineOtherBookPlays()) return false;
+  if (!service || engineOtherBookPlays()) return false;
+  // A book whose reports name none, held as another book's, is still that book while the
+  // hold stands (`unnamedReportOfAdopted`), a load of the store's aside (`engineOtherBook`).
+  const unnamed = unnamedReportOfAdopted() && !ownLoadHoldsEngine();
+  if (engineOtherBook() === null && !unnamed) return false;
   await service.play();
   return true;
 }
@@ -3508,6 +3522,7 @@ function switchBook(request: PlayRequest) {
   pendingStopSave = null;
   // The engine holds this book from here (its load, or the adoption of it).
   unnamedOther = null;
+  unnamedPlays = false;
   playGeneration++;
   lastPlayRequest = request; // so retry() can re-run resume
   resumeLookupFailed = false;
@@ -3583,12 +3598,19 @@ async function createService(): Promise<PlaybackService> {
     // engine the car gave another book to plays that book.
     const other = reportedOtherBook(svc);
     if (other !== null) {
+      unnamedPlays = false;
       otherBookReported(other, raw);
       noteOtherBookPlays();
       holdReport();
       return;
     }
     otherReport = null;
+    // A report that names no book, held below as another book's (`unnamedReportOfAdopted`):
+    // whether that book plays is kept, as a named one's is (`otherBookReported`), so the sleep
+    // timer counts down on it and stops it (`engineOtherBookPlays`).
+    unnamedPlays =
+      unnamedReportOfAdopted() &&
+      (raw.state === 'playing' || (unnamedPlays && raw.state === 'loading'));
     noteOtherBookPlays();
     // The store's own book is heard again: the other book's adoption deadline is over, and a
     // later report of another book runs a whole one of its own.

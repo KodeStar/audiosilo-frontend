@@ -2131,6 +2131,61 @@ describe('a play asked from outside of another book after playback stopped', () 
     expect((mockSvc.load as jest.Mock).mock.calls[0].slice(1, 3)).toEqual([1, 30]);
   });
 
+  // The sleep timer stops whatever plays (FE-ANDROID-4): the other book's play is known from
+  // its held reports though they name none, so the timer counts down on it (`onOtherBookPlays`)
+  // and the store's `pause` reaches the engine while the store's book shows paused.
+  it("knows an unnamed other book plays during that hold, and the store's pause stops it", async () => {
+    const read = await askedForS(undefined, async () => null);
+    expect(await read()).toBe(false);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    pushSnapshot(snap('paused', 0, 80));
+    expect(engineOtherBookPlays()).toBe(false);
+    const told = jest.fn();
+    const off = onOtherBookPlays(told);
+    try {
+      jest.clearAllMocks();
+      // The car plays S on.
+      pushSnapshot(snap('playing', 0, 81));
+      expect(engineOtherBookPlays()).toBe(true);
+      expect(told).toHaveBeenCalledTimes(1);
+      // A buffer of a book heard playing is still its play.
+      pushSnapshot(snap('loading', 0, 82));
+      expect(engineOtherBookPlays()).toBe(true);
+      expect(told).toHaveBeenCalledTimes(1);
+      expect(usePlayer.getState().snapshot).toMatchObject({ state: 'paused', position: 30 });
+      await usePlayer.getState().pause();
+      expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+      pushSnapshot(snap('paused', 0, 82));
+      expect(engineOtherBookPlays()).toBe(false);
+      expect(told).toHaveBeenCalledTimes(2);
+      // The shake in the timer's grace plays that book again, never a reload of B.
+      expect(await resumeOtherBook()).toBe(true);
+      expect(mockSvc.play).toHaveBeenCalledTimes(1);
+      expect(mockSvc.load).not.toHaveBeenCalled();
+      expectNothingSaved();
+    } finally {
+      off();
+    }
+  });
+
+  // Nothing of it once the hold is over (a play press reloaded B): B's own unnamed play is
+  // the store's book's, not another's.
+  it("reads no other book's play once the store's book was reloaded after that hold", async () => {
+    const read = await askedForS(undefined, async () => null);
+    expect(await read()).toBe(false);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    pushSnapshot(snap('playing', 0, 81));
+    expect(engineOtherBookPlays()).toBe(true);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    expect(engineOtherBookPlays()).toBe(false);
+    pushSnapshot(snap('playing', 1, 31));
+    expect(engineOtherBookPlays()).toBe(false);
+    expect(await resumeOtherBook()).toBe(false);
+  });
+
   // An adoption that began after the store's own start asked for its load (so not marked
   // `ownLoad`) gives up, and the engine is the start's book from that load: its unnamed
   // reports are that book's, never held as the other book's.
