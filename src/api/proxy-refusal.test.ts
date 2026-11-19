@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { renderHook } from '@testing-library/react-native';
 
 import type { User } from '@/api/types';
 import { useSession } from '@/stores/session';
@@ -12,6 +13,7 @@ import {
   noteProxyAnswer,
   onProxyRefusalsOver,
   resetProxyRefusalsForTests,
+  useProxyRefused,
   useProxyRefusals,
 } from './proxy-refusal';
 
@@ -201,4 +203,20 @@ it('a late refusal of a set since replaced starts no episode', async () => {
   } finally {
     await useSession.getState().setProxySet(AWAY, null);
   }
+});
+
+// Why a read failed (the Library's load errors): only the refusal itself, never a sign-in's own
+// set gone stale (`useProxyNotice` counts that too, though it turns nothing away), and never
+// for a connection that needs signing in again.
+it('says a read was refused only while an episode lasts', async () => {
+  const { result, rerender } = await renderHook(() => useProxyRefused('srv-1.1'));
+  expect(result.current).toBe(false);
+  noteProxyAnswer('srv-1.1', 403);
+  await rerender({});
+  expect(result.current).toBe(true);
+  useSession.getState().markNeedsReconnect('srv-1.1', 'auth');
+  await rerender({});
+  expect(result.current).toBe(false);
+  const none = await renderHook(() => useProxyRefused(undefined));
+  expect(none.result.current).toBe(false);
 });

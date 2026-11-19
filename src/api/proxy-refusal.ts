@@ -119,6 +119,19 @@ export function useProxyNotice(connectionId: string | undefined): boolean {
   });
 }
 
+/** Whether a proxy is turning `connectionId`'s requests away now (its episode), and it does
+ * not need signing in again: why a read failed, where `useProxyNotice` also counts a sign-in's
+ * own set gone stale, which turns nothing away. */
+export function useProxyRefused(connectionId: string | undefined): boolean {
+  const refused = useProxyRefusals((s) =>
+    connectionId ? s.refused[connectionId] !== undefined : false,
+  );
+  const needsReconnect = useSession(
+    (s) => !!s.connections.find((c) => c.id === connectionId)?.needsReconnect,
+  );
+  return refused && !needsReconnect;
+}
+
 /** Tests: no connection refused. */
 export function resetProxyRefusalsForTests(): void {
   useProxyRefusals.setState({ refused: {} });

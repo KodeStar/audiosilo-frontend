@@ -543,7 +543,8 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   grown-up to pair the device again (`proxyHeaders.refusedBannerPair`,
   `refusedAskGrownUpPair`). The whole strip but the button opens Account, its padding too. The
   Library's load errors say the proxy refused, with their Retry (`proxyHeaders.refusedRetry`),
-  not that the server did not answer.
+  not that the server did not answer, while a refusal lasts (`useProxyRefused`: never for a sign-in's
+  own set gone stale alone).
   Nor is it refused for good (`isRefusedForGood`): the server never saw the request, so a
   progress or reading save it turned away is queued for once the headers are fixed, never dropped
   (nor is the car's bookmark, `addCarBookmark`, nor a waiting one: a replay stops at it as at a

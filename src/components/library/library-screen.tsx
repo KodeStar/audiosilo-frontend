@@ -10,7 +10,7 @@ import {
   usePodcastShows,
   useSeriesList,
 } from '@/api/hooks';
-import { useProxyNotice } from '@/api/proxy-refusal';
+import { useProxyRefused } from '@/api/proxy-refusal';
 import { OfflineState } from '@/components/layout/offline-state';
 import {
   refusedConnection,
@@ -76,8 +76,9 @@ export function LibraryScreen() {
   const { selection, library, server, groups, retryServer } = useSelectedLibrary();
   const signedOut = useSignedOutConnections();
   const deviceOnline = useDeviceOnline();
-  // The server the Library is on, while a proxy in front of it turns the device away.
-  const proxyRefused = useProxyNotice(server?.connectionId);
+  // The server the Library is on, while a proxy in front of it turns the device away (the
+  // refusal itself: a sign-in's own set gone stale says nothing of why a list failed).
+  const proxyRefused = useProxyRefused(server?.connectionId);
   const cid = selection?.connectionId ?? '';
   const libraryId = selection?.libraryId ?? 0;
   // Unknown until the selected library is listed (`resolveLibraryMode` keeps a request).
