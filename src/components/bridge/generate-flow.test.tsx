@@ -508,6 +508,30 @@ describe('the status while a job runs', () => {
     expect(screen.queryByText('Open the console to fix it.')).toBeNull();
   });
 
+  // The Bridge couldn't ask the server whether the book is still to be shared: it asks
+  // again by itself and carries on once the server answers, so nothing to fix.
+  it('says a job waiting to confirm its share carries on by itself', async () => {
+    mockBridgeJobs.mockResolvedValue([
+      bridgeJob({
+        state: 'needs_attention',
+        progress: {
+          step: 'contributing',
+          park: { code: 'share_unconfirmed', hint: 'the server could not be reached' },
+        },
+      }),
+    ]);
+    await mount();
+    expect(
+      await screen.findByText(
+        'Waiting to check with the server that this book is still to be shared. Nothing has been shared yet.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('It carries on by itself.')).toBeTruthy();
+    expect(screen.queryByText('It needs a person to look at it.')).toBeNull();
+    expect(screen.queryByText('the server could not be reached')).toBeNull();
+    expect(screen.queryByText('Open the console to fix it.')).toBeNull();
+  });
+
   // A spent monthly budget resumes when the month turns: a bare time would read as today.
   it('names the day a park resumes by itself when that is not today', async () => {
     const later = new Date(Date.now() + 3 * 24 * 3600_000);

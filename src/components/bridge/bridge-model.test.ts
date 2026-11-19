@@ -142,6 +142,7 @@ describe('parkReason', () => {
     expect(parkReason('chapters_not_detected')).toBe('chaptersNotDetected');
     expect(parkReason('qa_no_converge')).toBe('review');
     expect(parkReason('core_needed')).toBe('core');
+    expect(parkReason('share_unconfirmed')).toBe('share');
     expect(parkReason('a_new_code')).toBe('other');
     expect(parkReason(undefined)).toBe('other');
     // A code that names an Object member is no reason either.
@@ -149,9 +150,11 @@ describe('parkReason', () => {
     expect(parkReason('toString')).toBe('other');
   });
 
-  // A book waiting for a worker goes on once one connects, with no time to name.
+  // A book waiting for a worker goes on once one connects, and a share the Bridge
+  // couldn't confirm once the server answers, with no time to name.
   it('says which parks end by themselves', () => {
     expect(parkEndsByItself('worker')).toBe(true);
+    expect(parkEndsByItself('share')).toBe(true);
     expect(parkEndsByItself('asr')).toBe(false);
     expect(parkEndsByItself('other')).toBe(false);
   });

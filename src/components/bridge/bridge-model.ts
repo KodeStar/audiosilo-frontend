@@ -224,6 +224,10 @@ const PARK_REASON: Readonly<Record<string, ParkReason>> = {
   core_needed: 'core',
   core_pending: 'core',
   contrib_unavailable: 'contrib',
+  // A generate-and-share job that couldn't ask the server, just before filing, whether
+  // the book is still to be shared (Contributions may have been turned off): the Bridge
+  // asks again by itself about once a minute and carries on once the server answers.
+  share_unconfirmed: 'share',
   manifest_changed: 'changed',
   qa_no_converge: 'review',
   fix_loop_exhausted: 'review',
@@ -246,6 +250,7 @@ export type ParkReason =
   | 'ebook'
   | 'core'
   | 'contrib'
+  | 'share'
   | 'changed'
   | 'review'
   | 'other';
@@ -256,9 +261,10 @@ export function parkReason(code: string | undefined): ParkReason {
 }
 
 /** Whether a park ends by itself with no time to name, so there is nothing to fix in
- * the console: the Bridge takes a book waiting for a worker on once one connects. */
+ * the console: the Bridge takes a book waiting for a worker on once one connects, and a
+ * share it couldn't confirm once the server answers. */
 export function parkEndsByItself(reason: ParkReason): boolean {
-  return reason === 'worker';
+  return reason === 'worker' || reason === 'share';
 }
 
 /** How a job's status reads: its phase, the stage, the counts and ETA when known, the
