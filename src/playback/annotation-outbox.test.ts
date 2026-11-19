@@ -1162,6 +1162,36 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
     expect(await queuedBookmarks()).toEqual([]);
   });
 
+  it("sends one again after a kill mid-send, once the dead replay's claim runs out", async () => {
+    const { client, held } = server('c1');
+    mockOnline.c1 = false;
+    await queueNewBookmark('c1', 1, 'a/book', 120, 'Fell asleep');
+    mockOnline.c1 = true;
+    // The app was killed with its POST out: it landed, and the entry is still stored, fresh,
+    // under the claim of a replay that no longer exists.
+    const [entry] = await queuedBookmarks();
+    await client.addBookmark(1, 'a/book', 120, 'Fell asleep', undefined, entry.client_id);
+    client.addBookmark.mockClear();
+    const claim = { id: 'dead', until: Date.now() + 30_000 };
+    await AsyncStorage.setItem('audiosilo.annotationOutbox', JSON.stringify([{ ...entry, claim }]));
+    resetAnnotationOutboxForTests();
+    // The launch: left to the replay that claimed it.
+    await flushBookmarks();
+    expect(client.addBookmark).not.toHaveBeenCalled();
+    expect(await queuedBookmarks()).toHaveLength(1);
+    // Its claim run out: posted again with its id, the server's 200 settles it.
+    const now = jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 61_000);
+    try {
+      await flushBookmarks();
+    } finally {
+      now.mockRestore();
+    }
+    expect(sentIds(client)).toEqual([entry.client_id]);
+    expect(client.bookmarks).not.toHaveBeenCalled();
+    expect(held).toHaveLength(1);
+    expect(await queuedBookmarks()).toEqual([]);
+  });
+
   it('keeps an Undo from making one a replay sent just before its Delete', async () => {
     const { client, held } = server('c1');
     loseAnswers(client);

@@ -1799,7 +1799,9 @@ never on its first failures; a 503 or 429, a server that is away and a 401 do no
 one failure counts per entry per `RETRY_MIN_MS` (stored `lastFailure`: a connection's own replay
 right behind a sweep meets the same failure), and a try that gets past the step its failures came
 to (`failingStep`: `flags`, `read`, `post`) starts the count again, so one old failure and an hour
-of 500s are not a week of failing, while a POST that keeps failing still gives up. A
+of 500s are not a week of failing, while a POST that keeps failing still gives up (a stored step
+a build does not know, a later build's in the queue two tabs share, starts the count again too:
+`isQueued` takes any name, since an entry it turned down would be left out of the next write). A
 labelled one (Fell asleep) is sent only once its server's flags are known (`readFlags` reads
 `/server` when they are not) and waits, label and all, while that read fails: here "not known
 yet" never sends it bare. That wait is for the flags, not its turn: it holds back none of its

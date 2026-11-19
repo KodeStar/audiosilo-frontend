@@ -183,8 +183,9 @@ const isQueued = (v: unknown): v is Claimed<QueuedBookmark> =>
   (v.failures === undefined || typeof v.failures === 'number') &&
   (v.client_id === undefined || typeof v.client_id === 'string') &&
   (v.lastFailure === undefined || typeof v.lastFailure === 'string') &&
-  (v.failingStep === undefined ||
-    (typeof v.failingStep === 'string' && Object.hasOwn(STEP_ORDER, v.failingStep))) &&
+  // Any name: a step this build does not know (a later build's, in the queue two tabs share)
+  // must not cost the bookmark, which the next write would leave out (`runAt`).
+  (v.failingStep === undefined || typeof v.failingStep === 'string') &&
   (v.fresh === undefined || v.fresh === true) &&
   (v.othersHeld === undefined ||
     (Array.isArray(v.othersHeld) && v.othersHeld.every((id) => typeof id === 'number')));
@@ -608,7 +609,10 @@ type Tried = { step: SendStep; counts: boolean };
  * past the step they came to (`failingStep`), so the count starts again (any success for it
  * ends the run: one old failure is not the start of a week of failing). */
 function runAt<T extends QueuedBookmark>(e: T, step: SendStep): T {
-  if (e.failingStep === undefined || STEP_ORDER[step] <= STEP_ORDER[e.failingStep]) return e;
+  if (e.failingStep === undefined) return e;
+  // A stored step this build has no place for says nothing to compare: the count starts again.
+  const known = Object.hasOwn(STEP_ORDER, e.failingStep);
+  if (known && STEP_ORDER[step] <= STEP_ORDER[e.failingStep]) return e;
   const { failedSince: _since, failures: _n, lastFailure: _last, failingStep: _step, ...rest } = e;
   return rest as T;
 }
