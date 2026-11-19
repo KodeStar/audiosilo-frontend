@@ -3299,8 +3299,9 @@ export function useUnfollowPodcast(connectionId?: string) {
 }
 
 /** An episode's fetch status, read once (capability `podcast_fetch`; never polled here:
- * the episode-fetch controller, `src/playback/episode-fetch.ts`, is the one poller and
- * keeps this entry up to date while it watches). `enabled` false asks nothing. */
+ * the episode-fetch controller, `src/playback/episode-fetch.ts`, and a download's wait for
+ * its episode, `watchEpisode` in `src/downloads/store.ts`, keep this entry up to date while
+ * they follow it). `enabled` false asks nothing. */
 export function usePodcastFetchStatus(
   libraryId: number,
   path: string,
