@@ -340,6 +340,29 @@ describe('the book a report names', () => {
     expect(svc.getSnapshot().position).toBe(40);
   });
 
+  // Two loads out at once that both fail, the first one first: the floor goes back past both,
+  // never to the first one's tag (every report of the load the engine still holds would be
+  // dropped as superseded).
+  it('takes the standing load’s reports again once two overlapping loads after it failed', async () => {
+    const svc = await setUp();
+    await svc.load(tracks, 0, 0, [], book);
+    const a = ((mockModule.load as jest.Mock).mock.calls[0][4] as { load: number }).load;
+    const rejects: ((err: Error) => void)[] = [];
+    const pending = () =>
+      new Promise<void>((_, reject) => {
+        rejects.push(reject);
+      });
+    (mockModule.load as jest.Mock).mockImplementationOnce(pending).mockImplementationOnce(pending);
+    const b = svc.load(tracks, 0, 0, [], other);
+    const c = svc.load(tracks, 0, 0, [], book);
+    rejects[0](new Error('no'));
+    await expect(b).rejects.toThrow('no');
+    rejects[1](new Error('no'));
+    await expect(c).rejects.toThrow('no');
+    send('onProgress', { position: 40, duration: 100, book, load: a });
+    expect(svc.getSnapshot().position).toBe(40);
+  });
+
   it("keeps a report of the engine's book when the load failed", async () => {
     const svc = await setUp();
     send('onState', { state: 'playing', book: other });

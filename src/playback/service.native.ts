@@ -94,10 +94,14 @@ class NativePlaybackService implements PlaybackService {
   private replaced: string | null = null;
   /** The tags of this run's loads (`load`): each takes the next number past `lastLoad`, from
    * one past `loadBase` (the time this service was made, so a tag an earlier run of the JS gave
-   * the engine is none of this run's). `loadFloor`: the latest load asked (one that failed
-   * gives its place back), below which a tagged report is of a superseded load (`name`). */
+   * the engine is none of this run's). `standing`: the loads asked since the last one that
+   * landed, that one first, none that failed. `loadFloor`: the latest of them, below which a
+   * tagged report is of a superseded load (`name`). A load that fails leaves the list, so the
+   * floor goes back to the latest load still standing, also when two that overlap both fail
+   * (a floor put back to the first one's tag would drop every report of the load before it). */
   private readonly loadBase = Date.now();
   private lastLoad = this.loadBase;
+  private standing: number[] = [];
   private loadFloor = this.loadBase;
   /** The app's own moves out (`seekTo`, `skipToTrack`), and when the latest was made: their
    * ticks are never held (`progress`, `ownMoveOut`). */
@@ -387,7 +391,7 @@ class NativePlaybackService implements PlaybackService {
     const native = tracks.map(toNativeTrack);
     const told = book && moduleTakesBook() ? book : null;
     const tag = ++this.lastLoad;
-    const floor = this.loadFloor;
+    this.standing.push(tag);
     this.loadFloor = tag;
     // From the ask on, a report of the book the engine held is that book's last (`name`). A
     // reload of the same book keeps one a load before it replaced, as no report has named
@@ -409,9 +413,12 @@ class NativePlaybackService implements PlaybackService {
     } catch (err) {
       // Not loaded: the engine may still hold that book, and its reports are its own.
       this.replaced = null;
-      if (this.loadFloor === tag) this.loadFloor = floor;
+      this.standing = this.standing.filter((t) => t !== tag);
+      this.loadFloor = this.standing[this.standing.length - 1] ?? this.loadBase;
       throw err;
     }
+    // Every load asked before this one is superseded for good, failed or not.
+    this.standing = this.standing.filter((t) => t >= tag);
     // The engine holds this queue now: the report below is its book's, as the engine's own
     // reports name it from here.
     this.named = told ? bookRefOf(told) : null;
