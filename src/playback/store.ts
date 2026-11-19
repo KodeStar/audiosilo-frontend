@@ -156,6 +156,9 @@ let deviceId = '';
 /** The place a `stop` is saving and the book it stops (`selectBookKey`), until that save
  * ends (`saveForStop`). */
 let pendingStopSave: { key: string | null; saved: Promise<unknown> } | null = null;
+/** Counts the starts (`switchBook`: a play or an adoption, one that then fails included), so a
+ * `stop` still saving tells a start made meanwhile, the same book's again too. */
+let playGeneration = 0;
 /** Where the playing listening began (`POST /history` when it ends); `sync`: begun on a
  * server taking listening events, whose spans carry it instead. */
 let historyStart: { position: number; at: number; sync: boolean } | null = null;
@@ -3292,6 +3295,7 @@ function switchBook(request: PlayRequest) {
   // A stop still saving (`saveForStop`) saved the book as it was loaded before this start:
   // a stop of this one, the same book started again included, saves its own place.
   pendingStopSave = null;
+  playGeneration++;
   lastPlayRequest = request; // so retry() can re-run resume
   resumeLookupFailed = false;
 }
@@ -4304,18 +4308,21 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
 
   stop: async () => {
     const stopping = selectBookKey(get());
+    const generation = playGeneration;
     clearPlaybackIntent();
     cancelOtherBookDeadline();
     stopSaveLoop();
     closeListeningSpan();
     await saveForStop(stopping);
-    // Another book was started while the place saved (a switch of person whose route
-    // starts the new person's book at once): it owns the engine now, and a reset would cut
-    // it off and leave the player with nothing.
-    if (selectBookKey(get()) !== stopping) return;
+    // A book was started while the place saved (a switch of person whose route starts the
+    // new person's book at once, the same book played again): it owns the engine now, and a
+    // reset would cut it off and leave the player with nothing. By the start, not the book
+    // shown: the same book started again is another play, and one that failed still holds
+    // what the listener asked for after the stop.
+    if (playGeneration !== generation) return;
     invalidateProgressLists();
     if (service) await service.reset();
-    if (selectBookKey(get()) !== stopping) return;
+    if (playGeneration !== generation) return;
     set({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate: get().rate } });
   },
 

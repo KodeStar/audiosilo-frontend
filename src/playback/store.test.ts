@@ -1549,6 +1549,51 @@ describe('stops of one book that overlap', () => {
   });
 });
 
+describe('a stop whose save is still out when a start is made', () => {
+  /** Start the book, playing at 40, and stop it with its save held; returns the release. */
+  async function stopHeld(): Promise<{ stopping: Promise<void>; save: () => void }> {
+    await startBook(makeBook(), 0, 'c1');
+    pushSnapshot(snap('playing', 40));
+    await flushMicrotasks();
+    let save: () => void = () => {};
+    mockSaveProgress.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (save = () => resolve())),
+    );
+    const stopping = usePlayer.getState().stop();
+    await flushMicrotasks();
+    return { stopping, save };
+  }
+
+  it('leaves the same book started again loaded when the save lands', async () => {
+    const { stopping, save } = await stopHeld();
+    await startBook(makeBook(), 0, 'c1');
+    (mockSvc.reset as jest.Mock).mockClear();
+    save();
+    await stopping;
+    expect(mockSvc.reset).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying).toMatchObject({ connectionId: 'c1' });
+  });
+
+  it('leaves a start of the same book that failed as it is: the listener asked for it after the stop', async () => {
+    const { stopping, save } = await stopHeld();
+    (mockSvc.load as jest.Mock).mockRejectedValueOnce(new Error('no source'));
+    await expect(startBook(makeBook(), 0, 'c1')).rejects.toThrow('no source');
+    (mockSvc.reset as jest.Mock).mockClear();
+    save();
+    await stopping;
+    expect(mockSvc.reset).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying).toMatchObject({ connectionId: 'c1' });
+  });
+
+  it('still unloads the book when nothing was started meanwhile', async () => {
+    const { stopping, save } = await stopHeld();
+    save();
+    await stopping;
+    expect(mockSvc.reset).toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+  });
+});
+
 // --- per-connection scoping of saves + the download hot-swap -----------------
 
 describe('connection scoping', () => {
