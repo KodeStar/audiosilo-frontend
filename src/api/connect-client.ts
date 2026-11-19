@@ -18,14 +18,12 @@ export function connectClient(base: string, timeoutMs?: number): ApiClient {
 /**
  * `connectClient`, with the set its requests carry (`proxy`, undefined when none goes to
  * `base`, as the client itself decides): what a successful exchange or sign-in went out
- * with, which `finishConnect` keeps as the origin's set when it is the typed one.
- * `_reconnectId` is ignored: there is one set per origin (fe#295), so a reconnect carries
- * the same one as anyone (a caller from before that still passes it).
+ * with, which `finishConnect` keeps as the origin's set when it is the typed one. A
+ * reconnect carries the same set as anyone: there is one per origin (fe#295).
  */
 export function connectClientFor(
   base: string,
   timeoutMs?: number,
-  _reconnectId?: string,
 ): { client: ApiClient; proxy?: ProxyHeaders } {
   const set = connectProxyHeaders(base);
   const client = new ApiClient(base, null, timeoutMs, undefined, undefined, set);
