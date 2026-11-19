@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { noteProxyAnswer, resetProxyRefusalsForTests } from '@/api/proxy-refusal';
 import type { User } from '@/api/types';
@@ -10,11 +10,8 @@ import { onAccountPage, ProxyRefusedBanner } from './proxy-refused-banner';
 
 const mockPush = jest.fn();
 jest.mock('@/lib/open', () => ({ pushInShell: (h: unknown) => mockPush(h) }));
-const mockReconnect = jest.fn((_conn: unknown) => Promise.resolve());
-jest.mock('./reconnect-banner', () => ({
-  ...jest.requireActual('./reconnect-banner'),
-  reconnectConnection: (conn: unknown) => mockReconnect(conn),
-}));
+const mockRouterPush = jest.fn();
+jest.mock('expo-router', () => ({ router: { push: (to: unknown) => mockRouterPush(to) } }));
 
 const user: User = {
   id: 1,
@@ -41,7 +38,7 @@ beforeEach(async () => {
   resetProfilesForTests();
   resetProxyRefusalsForTests();
   mockPush.mockClear();
-  mockReconnect.mockClear();
+  mockRouterPush.mockClear();
   await AsyncStorage.clear();
   useSession.setState({
     status: 'unauthenticated',
@@ -88,8 +85,12 @@ it('offers a full account Sign in again, through the reconnect flow', async () =
   noteProxyAnswer('srv-1.1', true);
   await render(<ProxyRefusedBanner />);
   await fireEvent.press(screen.getByLabelText('Sign in again to Hearthside'));
-  expect(mockReconnect).toHaveBeenCalledTimes(1);
-  expect(mockReconnect).toHaveBeenCalledWith(expect.objectContaining({ id: 'srv-1.1' }));
+  await waitFor(() =>
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      pathname: '/connect/sign-in',
+      params: { serverName: 'Hearthside' },
+    }),
+  );
   expect(mockPush).not.toHaveBeenCalled();
   await fireEvent.press(screen.getByTestId('proxy-refused-banner'));
   expect(mockPush).toHaveBeenCalledTimes(1);

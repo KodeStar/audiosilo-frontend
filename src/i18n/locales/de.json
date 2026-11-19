@@ -2431,7 +2431,6 @@
     "refusedAskGrownUp": "Der Anmelde-Proxy für {{name}} hat dieses Gerät abgewiesen: Bitte einen Erwachsenen, die Proxy-Header zu aktualisieren",
     "refusedPlain": "Der Anmelde-Proxy für {{name}} hat dieses Gerät abgewiesen",
     "askGrownUp": "Bitte einen Erwachsenen, die Proxy-Header zu aktualisieren.",
-    "signInAgain": "Wieder anmelden",
     "signInAgainBody": "Wenn die Proxy-Header stimmen, ist deine Anmeldung bei {{name}} vielleicht abgelaufen: Melde dich wieder an."
   },
   "year": {

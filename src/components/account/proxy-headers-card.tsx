@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { reconnectConnection } from '@/components/layout/reconnect-banner';
+import { SignInAgainButton } from '@/components/layout/reconnect-banner';
 import { FormError } from '@/components/ui/form-error';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
@@ -198,14 +198,7 @@ export function ProxyHeadersCard({ connectionId }: { connectionId: string }) {
       {refused && !isLimitedAccount(conn.user) ? (
         <View className="gap-2" testID="proxy-headers-sign-in-again">
           <Text variant="caption">{t('proxyHeaders.signInAgainBody', { name: conn.name })}</Text>
-          <Button
-            className="self-start"
-            variant="outline"
-            title={t('proxyHeaders.signInAgain')}
-            accessibilityLabel={t('reconnect.state.title', { name: conn.name })}
-            onPress={() => void reconnectConnection(conn)}
-            testID="proxy-headers-sign-in-again-button"
-          />
+          <SignInAgainButton conn={conn} className="self-start" variant="outline" />
         </View>
       ) : null}
       <Text variant="caption">

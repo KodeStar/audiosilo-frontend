@@ -10,11 +10,8 @@ import { mountWithPortal } from '@/testing/render-overlay';
 
 import { ProxyHeadersCard } from './proxy-headers-card';
 
-const mockReconnect = jest.fn((_conn: unknown) => Promise.resolve());
-jest.mock('@/components/layout/reconnect-banner', () => ({
-  ...jest.requireActual('@/components/layout/reconnect-banner'),
-  reconnectConnection: (conn: unknown) => mockReconnect(conn),
-}));
+const mockRouterPush = jest.fn();
+jest.mock('expo-router', () => ({ router: { push: (to: unknown) => mockRouterPush(to) } }));
 
 const user: User = {
   id: 1,
@@ -48,7 +45,7 @@ async function signIn(proxyHeaders?: typeof SET) {
 
 beforeEach(async () => {
   resetProxyRefusalsForTests();
-  mockReconnect.mockClear();
+  mockRouterPush.mockClear();
   await forgetProxySets();
   await AsyncStorage.clear();
   useSession.setState({
@@ -199,8 +196,12 @@ describe('ProxyHeadersCard (fe#167)', () => {
       ),
     ).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('Sign in again to books.example.com'));
-    expect(mockReconnect).toHaveBeenCalledTimes(1);
-    expect(mockReconnect).toHaveBeenCalledWith(expect.objectContaining({ id: 'srv.1' }));
+    await waitFor(() =>
+      expect(mockRouterPush).toHaveBeenCalledWith({
+        pathname: '/connect/sign-in',
+        params: { serverName: 'books.example.com' },
+      }),
+    );
   });
 
   it('offers no Sign in again to a kid, who signs in some other way', async () => {

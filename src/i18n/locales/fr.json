@@ -2431,7 +2431,6 @@
     "refusedAskGrownUp": "Le proxy de connexion de {{name}} a refusé cet appareil : demande à un adulte de mettre à jour les en-têtes de proxy",
     "refusedPlain": "Le proxy de connexion de {{name}} a refusé cet appareil",
     "askGrownUp": "Demande à un adulte de mettre à jour les en-têtes de proxy.",
-    "signInAgain": "Se reconnecter",
     "signInAgainBody": "Si les en-têtes de proxy sont corrects, ta connexion à {{name}} a peut-être expiré : reconnecte-toi."
   },
   "year": {

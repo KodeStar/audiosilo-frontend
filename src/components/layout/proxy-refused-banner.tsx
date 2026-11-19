@@ -2,7 +2,6 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { needsProxyNotice, useProxyRefusals } from '@/api/proxy-refusal';
-import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { pushInShell } from '@/lib/open';
@@ -14,7 +13,7 @@ import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { BANNER_STRIP_CLASS, RECONNECT_STRIP_CLASS, reconnectConnection } from './reconnect-banner';
+import { BANNER_STRIP_CLASS, RECONNECT_STRIP_CLASS, SignInAgainButton } from './reconnect-banner';
 
 /** The Account page's route name in the shell's stacks (`src/app/(app)/.../account.tsx`). */
 const ACCOUNT_ROUTE = 'account';
@@ -74,9 +73,6 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
     </>
   );
   const strip = cn(BANNER_STRIP_CLASS, RECONNECT_STRIP_CLASS, className);
-  // Only where the banner opens Account (a refusal now); never a kid's or a demo's account,
-  // which signs in some other way.
-  const signInAgain = canManage && !isLimitedAccount(conn.user);
 
   if (!canManage) {
     return (
@@ -85,6 +81,9 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
       </View>
     );
   }
+  // Never a kid's or a demo's account (which may still manage a set no full account
+  // reaches): they sign in some other way.
+  const signInAgain = !isLimitedAccount(conn.user);
   const toAccount = (
     <Pressable
       testID="proxy-refused-banner"
@@ -106,14 +105,7 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
   return (
     <View className={strip}>
       {toAccount}
-      <Button
-        size="sm"
-        variant="ghost"
-        title={t('proxyHeaders.signInAgain')}
-        accessibilityLabel={t('reconnect.state.title', { name: conn.name })}
-        onPress={() => void reconnectConnection(conn)}
-        testID="proxy-refused-sign-in-again"
-      />
+      <SignInAgainButton conn={conn} size="sm" variant="ghost" />
     </View>
   );
 }
