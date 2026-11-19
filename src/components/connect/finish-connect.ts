@@ -151,14 +151,12 @@ export async function finishConnect(input: {
   // way); a typed one that was never sent proved nothing, so it replaces no kept set. A
   // sign-in never removes one.
   const { pendingProxyHeaders: typed, proxySets } = useSession.getState();
-  const gotIn = typed && sameProxyHeaders(input.carried, typed) ? typed : undefined;
-  const typedHere =
-    typed &&
-    !proxySets[typed.origin] &&
-    proxyOriginChoices(plan, input.serverUrl).includes(typed.origin)
-      ? typed
-      : undefined;
-  const proxyHeaders = gotIn ?? typedHere;
+  const keepTyped =
+    !!typed &&
+    (sameProxyHeaders(input.carried, typed) ||
+      (!proxySets[typed.origin] &&
+        proxyOriginChoices(plan, input.serverUrl).includes(typed.origin)));
+  const proxyHeaders = keepTyped ? typed : undefined;
   if (input.answeredAt) setAddressPick(pickId, input.answeredAt);
   const id = await setSession({
     serverUrl: plan.serverUrl,

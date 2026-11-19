@@ -251,13 +251,10 @@ describe('canManageProxySet', () => {
     expect(canManageProxySet(kid, set, [kid])).toBe(true);
     expect(canManageProxySet(demo, set, [demo, kid])).toBe(true);
     expect(
-      canManageProxySet(
+      canManageProxySet(kid, set, [
+        { ...conn('other.1'), serverUrl: 'https://other.example.net' },
         kid,
-        set,
-        [conn('other.1'), kid].map((c, i) =>
-          i === 0 ? { ...c, serverUrl: 'https://other.example.net' } : c,
-        ),
-      ),
+      ]),
     ).toBe(true);
   });
 

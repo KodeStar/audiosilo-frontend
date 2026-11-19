@@ -145,8 +145,7 @@ export function proxyOriginsToForget(
   sets: ProxySets,
   others: readonly Pick<KnownServer, 'serverUrl' | 'addresses'>[],
 ): string[] {
-  const used = new Set(others.flatMap((o) => proxyOriginChoices(o)));
-  return proxyOriginChoices(entry).filter((o) => !!sets[o] && !used.has(o));
+  return proxyOriginChoices(entry).filter((o) => !!unusedProxySet(o, sets, others));
 }
 
 /**
