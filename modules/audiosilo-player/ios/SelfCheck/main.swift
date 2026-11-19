@@ -1,6 +1,7 @@
 // Host self-check for the pure Swift parts of the iOS engine (no simulator needed):
 //   modules/audiosilo-player/ios/SelfCheck/run.sh
-// Compiled with swiftc together with ../ChapterClips.swift, ../VoiceBoostDSP.swift and ../CarArtworkPath.swift.
+// Compiled with swiftc together with ../ChapterClips.swift, ../VoiceBoostDSP.swift, ../CarArtworkPath.swift
+// and ../AuthScope.swift.
 // Excluded from the pod (AudiosiloPlayer.podspec `exclude_files`). Exits non-zero on failure.
 
 import AVFoundation
@@ -347,6 +348,41 @@ do {
   let nested = "Documents/downloads/c1/1/Containers/Data/Application/9F8E7D6C-0000-4000-8000-000000000009/Library/cover.jpg"
   check(CarArtworkPath.reroot("\(old)/\(nested)", home: new) == "\(new)/\(nested)",
         "a container-shaped folder inside the container (a server path) never anchors the move")
+}
+
+// MARK: - AuthScope (fe#295)
+
+do {
+  let book = ["Authorization": "Bearer t", "CF-Access-Client-Secret": "proxy-secret"]
+  let https = URL(string: "https://Books.Example.com/api/v1/libraries/1/stream?path=a.mp3")!
+  let http = URL(string: "http://192.168.1.20:8080/api/v1/libraries/1/stream?path=a.mp3")!
+  check(AuthScope.origin(https) == "https://books.example.com:443"
+        && AuthScope.origin(http) == "http://192.168.1.20:8080"
+        && AuthScope.origin(URL(string: "http://nas/x")!) == "http://nas:80",
+        "an origin is lower-cased with the scheme's default port")
+  check(AuthScope.origin(URL(string: "file:///var/mobile/a.mp3")!) == nil, "a file URL has no origin")
+  // Allowed: the track's own https origin gets the token and the proxy headers.
+  check(AuthScope.headers(for: https, from: book, scope: https) == book, "https gets every header")
+  check(AuthScope.headers(for: URL(string: "https://books.example.com:443/api/v1/cover?id=1")!,
+                          from: book, scope: https) == book,
+        "a cover on the track's origin (the default port named) gets them too")
+  // Denied: plain http gets the token only, never a proxy header.
+  check(AuthScope.headers(for: http, from: book, scope: http) == ["Authorization": "Bearer t"],
+        "plain http gets the token only")
+  check(AuthScope.headers(for: http, from: ["X-Proxy": "secret"], scope: http) == nil,
+        "plain http with only a proxy header gets nothing")
+  // Denied: another origin (host, port or scheme) gets nothing at all.
+  check(AuthScope.headers(for: URL(string: "https://covers.example.net/a.jpg")!, from: book, scope: https) == nil,
+        "a cover on another host gets nothing")
+  check(AuthScope.headers(for: URL(string: "https://books.example.com:8443/a.jpg")!, from: book, scope: https) == nil,
+        "another port is another origin")
+  check(AuthScope.headers(for: URL(string: "http://books.example.com/a.jpg")!, from: book, scope: https) == nil,
+        "http on the same host is another origin")
+  check(AuthScope.headers(for: URL(string: "file:///var/mobile/cover.jpg")!, from: book, scope: https) == nil,
+        "a local file gets nothing")
+  check(AuthScope.headers(for: https, from: nil, scope: https) == nil
+        && AuthScope.headers(for: https, from: [:], scope: https) == nil,
+        "no headers are none")
 }
 
 print("\(checks - failures)/\(checks) checks passed")

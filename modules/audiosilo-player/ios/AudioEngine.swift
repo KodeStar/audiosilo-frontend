@@ -163,7 +163,9 @@ final class AudioEngine: NSObject {
   private func makeItem(_ t: TrackRecord) -> AVPlayerItem? {
     guard let url = URL(string: t.url) else { return nil }
     let asset: AVURLAsset
-    if let headers = t.headers, !headers.isEmpty {
+    // Only what may go to the track's own origin: a proxy header never over plain http
+    // (`AuthScope`, fe#295).
+    if let headers = AuthScope.headers(for: url, from: t.headers, scope: url) {
       // "AVURLAssetHTTPHeaderFieldsKey" is the undocumented/unofficial AVFoundation
       // option for injecting request headers (no public symbol exists). It is the
       // mechanism we rely on for the Authorization header on streams; if Apple ever
@@ -844,7 +846,7 @@ final class AudioEngine: NSObject {
     info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = rate
     MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     syncPlaybackState()
-    loadArtwork(t.artwork, headers: t.headers)
+    loadArtwork(t.artwork, headers: t.headers, track: URL(string: t.url))
   }
 
   /// Tell Now Playing whether we play. On a device iOS ignores this (it reads the audio
@@ -888,11 +890,17 @@ final class AudioEngine: NSObject {
     Self.postPlayerDidChange()
   }
 
-  private func loadArtwork(_ urlString: String?, headers: [String: String]?) {
+  /// The cover for Now Playing. The track's headers go with it only when the cover is on the
+  /// track's own origin (`AuthScope`, fe#295): a cover on another host gets none.
+  private func loadArtwork(_ urlString: String?, headers: [String: String]?, track: URL?) {
     guard let urlString = urlString, let url = URL(string: urlString), artworkURL != urlString else { return }
     artworkURL = urlString
     var req = URLRequest(url: url)
-    headers?.forEach { req.setValue($1, forHTTPHeaderField: $0) }
+    if let track = track {
+      AuthScope.headers(for: url, from: headers, scope: track)?.forEach {
+        req.setValue($1, forHTTPHeaderField: $0)
+      }
+    }
     URLSession.shared.dataTask(with: req) { [weak self] data, _, _ in
       guard let self = self, let data = data, let image = UIImage(data: data) else { return }
       let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
