@@ -5,7 +5,12 @@ import {
   isSignedOutError,
   isUnreachableError,
 } from '@/api/client';
-import { resolveClient, sessionReady, whenSessionReady } from '@/api/connection-clients';
+import {
+  connectionOf,
+  resolveClient,
+  sessionReady,
+  whenSessionReady,
+} from '@/api/connection-clients';
 import { addBookmark, cachedCapability, fetchCapabilities } from '@/api/hooks';
 import { isReachable, noteFailure, onReconnect } from '@/api/reachability';
 import type { Bookmark, BookmarkLabel } from '@/api/types';
@@ -18,7 +23,7 @@ import { getItemStrict, setItemStrict } from '@/lib/storage';
 import { ANNOTATION_OUTBOX_KEY as KEY, isRecord } from '@/lib/storage-keys';
 import { onStoredChange } from '@/lib/tab-channel';
 import { tabLock } from '@/lib/tab-lock';
-import { onConnectionRemoved } from '@/stores/session';
+import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import { connectionGeneration } from './listening-outbox';
 import { onlyConnection, queuedRoute } from './progress-sync';
@@ -38,11 +43,11 @@ import { onlyConnection, queuedRoute } from './progress-sync';
  *   before, rather than holding one that a reload would lose.
  * - Ordered: oldest first per connection. A new bookmark goes behind any still waiting for
  *   its server, and a replay stops at the first that can't be sent yet.
- * - Retried: at launch and on the server's reconnect (`startBookmarkSync`), with the stored
- *   queues in the foreground and on the web's focus and `online` (`startQueueReplays`), and
- *   with a backoff while the server answers but fails (`scheduleRetry`). A replay claims what
- *   it sends (`replayQueue`, `src/lib/queue-claims.ts`), so two tabs never send the same
- *   bookmark at once.
+ * - Retried: at launch, on the server's reconnect and once a connection a 401 flagged is
+ *   signed in again (`startBookmarkSync`), with the stored queues in the foreground and on the
+ *   web's focus and `online` (`startQueueReplays`), and with a backoff while the server
+ *   answers but fails (`scheduleRetry`). A replay claims what it sends (`replayQueue`,
+ *   `src/lib/queue-claims.ts`), so two tabs never send the same bookmark at once.
  * - Sent once: the server's bookmark POST has no idempotency key, and a request that got no
  *   answer may still have landed (or a tab may have died mid-send). So a replay reads the
  *   book's bookmarks first and takes one already there (the same second, the same note, made
@@ -374,9 +379,13 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryDelay = RETRY_MIN_MS;
 
 /** Try again later while a reachable connection still has bookmarks waiting (its server
- * answered but failed); a server that is down is sent to on its reconnect instead. */
+ * answered but failed); a server that is down is sent to on its reconnect instead, and one
+ * that refuses the token (a 401: `needsReconnect`) once it is signed in again
+ * (`startBookmarkSync`), rather than asked every few minutes meanwhile. */
 function scheduleRetry(): void {
-  const due = snapshot.some((e) => queuedRoute(e.connectionId) !== 'keep');
+  const due = snapshot.some(
+    (e) => queuedRoute(e.connectionId) !== 'keep' && !connectionOf(e.connectionId)?.needsReconnect,
+  );
   if (!due) {
     if (retryTimer) clearTimeout(retryTimer);
     retryTimer = null;
@@ -395,14 +404,26 @@ function scheduleRetry(): void {
 
 /**
  * The outbox's own sending triggers, for the life of the app: every connection's bookmarks
- * once the session is ready (the launch) and a connection's when its server comes back. The
- * foreground, the web's focus and `online` are the stored queues' (`startQueueReplays`), and
- * the backoff is `scheduleRetry`'s. Started with the root's services; returns the stop.
+ * once the session is ready (the launch), a connection's when its server comes back, and a
+ * connection's when it is signed in again (a new token, or its reconnect flag cleared: what
+ * its 401s kept waiting goes at once). The foreground, the web's focus and `online` are the
+ * stored queues' (`startQueueReplays`), and the backoff is `scheduleRetry`'s. Started with
+ * the root's services; returns the stop.
  */
 export const startBookmarkSync = sharedStart((): (() => void) => {
+  const flush = (cid?: string) => void flushBookmarks(cid).catch(() => undefined);
   const stops = [
-    whenSessionReady(() => void flushBookmarks().catch(() => undefined)),
-    onReconnect((cid) => void flushBookmarks(cid).catch(() => undefined)),
+    whenSessionReady(() => flush()),
+    onReconnect((cid) => flush(cid)),
+    useSession.subscribe((state, prev) => {
+      if (state.connections === prev.connections) return;
+      for (const c of state.connections) {
+        const was = prev.connections.find((p) => p.id === c.id);
+        if (was && (was.token !== c.token || (was.needsReconnect && !c.needsReconnect))) {
+          flush(c.id);
+        }
+      }
+    }),
   ];
   return () => {
     for (const stop of stops) stop();
@@ -422,6 +443,8 @@ onConnectionRemoved(async (id) => {
     const next = queue.filter((e) => e.connectionId !== id);
     if (next.length !== queue.length) await writeQueue(next);
   }).catch(() => undefined);
+  // Its backoff goes with it, unless another connection's bookmarks still need it.
+  scheduleRetry();
 });
 
 /** Test-only: forget what this module holds in memory. */

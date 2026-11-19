@@ -11,8 +11,14 @@ type Client = { bookmarks: jest.Mock; addBookmark: jest.Mock };
 const mockClients = new Map<string, Client>();
 let mockReady = true;
 let mockLaunch: (() => void) | null = null;
+// A connection a 401 flagged for signing in again (`needsReconnect`).
+const mockFlagged = new Set<string>();
 jest.mock('@/api/connection-clients', () => ({
   resolveClient: (cid: string) => mockClients.get(cid) ?? null,
+  connectionOf: (cid: string) =>
+    mockClients.has(cid)
+      ? { id: cid, needsReconnect: mockFlagged.has(cid) || undefined }
+      : undefined,
   sessionReady: () => mockReady,
   whenSessionReady: (fn: () => void) => {
     mockLaunch = fn;
@@ -58,8 +64,17 @@ jest.mock('@/api/hooks', () => ({
   cachedCapability: () => mockAnnotations,
   fetchCapabilities: () => mockFetchCaps(),
 }));
+// The session's changes `startBookmarkSync` follows (a connection signed in again).
+type MockSession = { connections: { id: string; token: string; needsReconnect?: string }[] };
+let mockSessionListener: ((state: MockSession, prev: MockSession) => void) | null = null;
 jest.mock('@/stores/session', () => ({
   onConnectionRemoved: jest.fn(() => () => {}),
+  useSession: {
+    subscribe: (fn: (state: MockSession, prev: MockSession) => void) => {
+      mockSessionListener = fn;
+      return () => (mockSessionListener = null);
+    },
+  },
 }));
 
 /* eslint-disable import/first */
@@ -132,6 +147,7 @@ beforeEach(async () => {
   mockReady = true;
   mockAnnotations = true;
   mockGenerations.clear();
+  mockFlagged.clear();
   await AsyncStorage.clear();
 });
 
@@ -423,6 +439,31 @@ describe('sign-out and removal', () => {
 });
 
 describe('startBookmarkSync', () => {
+  it('waits for a re-sign-in after a 401 instead of asking again on the backoff', async () => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick', 'queueMicrotask'] });
+    const { client, held, state } = server('c1', new ApiError(401, 'unauthorized'));
+    const release = startBookmarkSync();
+    try {
+      mockFlagged.add('c1');
+      await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+      client.bookmarks.mockClear();
+      await jest.advanceTimersByTimeAsync(30 * 60_000);
+      expect(client.bookmarks).not.toHaveBeenCalled();
+      // Signed in again: a new token, the flag gone.
+      mockFlagged.delete('c1');
+      state.down = null;
+      mockSessionListener?.(
+        { connections: [{ id: 'c1', token: 'new' }] },
+        { connections: [{ id: 'c1', token: 'old', needsReconnect: 'auth' }] },
+      );
+      await jest.advanceTimersByTimeAsync(0);
+      expect(held.map((b) => b.position)).toEqual([100]);
+    } finally {
+      release();
+      jest.useRealTimers();
+    }
+  });
+
   it('sends at launch and when a server comes back', async () => {
     const { held, state } = server('c1', offline());
     // Made while the server is known down: kept, nothing sent.
