@@ -95,7 +95,14 @@ class NativePlaybackService implements PlaybackService {
       this.dropHeld();
       this.lastTick = null;
     }
-    this.snapshot = { ...this.snapshot, ...patch };
+    // Another file told with no length of its own (a file change before its first tick, a
+    // skip no tick told) has none yet (0), never the length of the file it left: the store
+    // would keep that as the engine's measure of the new file (fe#351).
+    const unmeasured =
+      patch.trackIndex !== undefined &&
+      patch.trackIndex !== this.snapshot.trackIndex &&
+      patch.duration === undefined;
+    this.snapshot = { ...this.snapshot, ...patch, ...(unmeasured ? { duration: 0 } : null) };
     if (patch.state !== undefined && patch.state !== 'playing') this.lastTick = null;
     this.emit();
   }
@@ -211,6 +218,8 @@ class NativePlaybackService implements PlaybackService {
    *
    * iOS tells the change before the new file's first tick: a held tick was the file it
    * leaves, taken first, and a new file starts at 0 until its tick.
+   *
+   * A new file no tick told has no length until its own tick (`update`), on either platform.
    */
   private fileChanged(index: number) {
     const held = this.held;

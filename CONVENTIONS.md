@@ -2178,8 +2178,10 @@ media GETs only.
   palette too), at the place of a move whose call is still out (`reloadPlace`: Android takes
   up to a second to rebuild the engine for a move on a book in error), else at the place shown.
   Not at a place past the engine's own measure of its file (`stuckPastMeasure`, the length it
-  last reported for the file in a report not the first of a file change (iOS's keeps the old
-  file's length), nor one sent while a move of the store's is out (a load is told with the
+  last reported for the file in a report not the first of a file change (the native service
+  tells a new file with no length, 0, until the file's own tick, never the old file's; iOS
+  sends no periodic tick of a new file before its `onTrackChange`), nor one sent while a move of the
+  store's is out (a load is told with the
   server's length), or the clamp a fault was read from (`pastMeasure`, its file's measure),
   `engineLengths`, kept per `NowPlaying` and per route, the phone's
   engine or a Cast receiver, each measuring a file its own way, `castRouted`): the

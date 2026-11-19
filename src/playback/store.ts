@@ -3329,8 +3329,10 @@ async function createService(): Promise<PlaybackService> {
     const { nowPlaying: np, loadingBook } = usePlayer.getState();
     if (np && !loadingBook) {
       // The engine's own length of the file, for a reload's check (`retry`). Not from the first
-      // report of another file, which the native service may send with the old file's length
-      // (iOS's `fileChanged`), nor a place the hot-swap could not map, which keeps the store's.
+      // report of another file, which a service may send before the engine told that file's
+      // length (the native one tells a file change with none, `NativePlaybackService.update`,
+      // so no later report before the file's first tick keeps the old file's either), nor a
+      // place the hot-swap could not map, which keeps the store's.
       // Nor while a move of the store's is out: a load is told with the server's length before
       // the engine measured anything (a clamp it took is noted with its fault, `engineFault`).
       const moving = askedPlace?.np === np && !askedPlace.landed;

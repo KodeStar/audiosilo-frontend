@@ -452,10 +452,28 @@ describe('a progress tick that jumped while playing', () => {
     expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 0.3, duration: 200 });
   });
 
+  // fe#351: told with the old file's length, any report before the new file's first tick (a
+  // stall at the file change) gave the store that length as the engine's measure of the new file.
+  it('tells a new file with no length until its own tick, never the old file’s', async () => {
+    const { svc } = await nearTheEnd();
+    const lengths: [number, number][] = [];
+    svc.subscribe((s) => lengths.push([s.trackIndex, s.duration]));
+    send('onTrackChange', { index: 1 });
+    send('onState', { state: 'loading' }); // the new file stalls before its first tick
+    expect(lengths).toEqual([
+      [1, 0],
+      [1, 0],
+    ]);
+    send('onProgress', { position: 0.3, duration: 200, trackIndex: 1 });
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, duration: 200 });
+  });
+
   it('keeps the place on iOS when a rebuild tells the file it is already in', async () => {
-    const { places } = await heardPlaces();
+    const { svc, places } = await heardPlaces();
     send('onTrackChange', { index: 0 });
     expect(places).toEqual([[0, 11]]);
+    // The same file: its length stands.
+    expect(svc.getSnapshot().duration).toBe(100);
   });
 
   describe('on Android, where the new file’s tick comes before its change', () => {
@@ -565,6 +583,8 @@ describe('a progress tick that jumped while playing', () => {
       const { svc, places } = await heardPlaces();
       send('onTrackChange', { index: 1 });
       expect(places).toEqual([[1, 11]]);
+      // No length of its own yet: never the one of the file it left.
+      expect(svc.getSnapshot().duration).toBe(0);
       jest.advanceTimersByTime(1_000);
       send('onProgress', { position: 1, duration: 200, trackIndex: 1 });
       expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 1, duration: 200 });
