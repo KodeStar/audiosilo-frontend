@@ -27,10 +27,7 @@ const mockMake = (lib: number, path: string, position: number, note: string, lab
   mockHeld.push(made);
   return Promise.resolve(made);
 };
-const mockAddBookmark = jest.fn(
-  (lib: number, path: string, position: number, note: string, label?: string) =>
-    mockMake(lib, path, position, note, label),
-);
+const mockAddBookmark = jest.fn(mockMake);
 const mockBookmarks = jest.fn((lib: number, path: string) =>
   Promise.resolve(mockHeld.filter((b) => b.library_id === lib && b.path === path)),
 );
@@ -55,11 +52,7 @@ jest.mock('@/api/connection-clients', () => ({
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import type { Bookmark, ServerInfo } from '@/api/types';
-import {
-  flushBookmarks,
-  queuedBookmarks,
-  resetAnnotationOutboxForTests,
-} from '@/playback/annotation-outbox';
+import { queuedBookmarks, resetAnnotationOutboxForTests } from '@/playback/annotation-outbox';
 import { startDriftWatch } from '@/playback/drift-controller';
 import { resetInteractions } from '@/playback/last-interaction';
 import { GRACE_SECONDS, useSleepTimer } from '@/playback/sleep-timer';
@@ -205,13 +198,9 @@ describe('drift controller', () => {
         annotations: true,
       },
     });
-    try {
-      jest.advanceTimersByTime(GRACE_SECONDS * 1000);
-      await settle();
-      expect(mockAddBookmark).toHaveBeenCalledWith(1, 'a.m4b', 1300, 'Fell asleep', 'fell_asleep');
-    } finally {
-      queryClient.removeQueries({ queryKey: qk.server('srv-1') });
-    }
+    jest.advanceTimersByTime(GRACE_SECONDS * 1000);
+    await settle();
+    expect(mockAddBookmark).toHaveBeenCalledWith(1, 'a.m4b', 1300, 'Fell asleep', 'fell_asleep');
   });
 
   it('offers it at once when the morning play is what closes the grace', async () => {
@@ -243,24 +232,18 @@ describe('drift controller', () => {
     expect(mockToast).not.toHaveBeenCalled();
   });
 
-  /** The next POST lands on the server but answers only on `answer()` (the request out). */
-  function postWithoutAnswer(): { answer: () => void } {
-    let answer = () => {};
-    mockAddBookmark.mockImplementationOnce(
-      (lib, path, position, note, label) =>
-        new Promise<Bookmark>((resolve) => {
-          void mockMake(lib, path, position, note, label).then((made) => {
-            answer = () => resolve(made);
-          });
-        }),
-    );
-    return { answer: () => answer() };
-  }
-
   // Stored before any request: an app killed while the POST is out still has it, as a
-  // waiting row and pin, labelled for its server.
+  // waiting row and pin, labelled for its server. (Two replays never send it twice: the
+  // outbox's claims, annotation-outbox.test.ts.)
   it('stores the bookmark on the device before sending it', async () => {
-    const post = postWithoutAnswer();
+    // The POST lands on the server but answers only on `answer()` (the request out).
+    let answer!: () => void;
+    const answered = new Promise<void>((r) => (answer = r));
+    mockAddBookmark.mockImplementationOnce(async (...args) => {
+      const made = await mockMake(...args);
+      await answered;
+      return made;
+    });
     await fallAsleep();
     jest.advanceTimersByTime(GRACE_SECONDS * 1000);
     await settle();
@@ -268,26 +251,8 @@ describe('drift controller', () => {
     expect(await queuedBookmarks('srv-1')).toMatchObject([
       { libraryId: 1, path: 'a.m4b', position: 1300, note: 'Fell asleep', label: 'fell_asleep' },
     ]);
-    post.answer();
+    answer();
     await settle();
-    expect(await queuedBookmarks('srv-1')).toEqual([]);
-  });
-
-  // A replay asked while the outbox's own send is out (a reconnect, the foreground) does
-  // not post it again.
-  it('sends it once when another replay overlaps its send', async () => {
-    const post = postWithoutAnswer();
-    await fallAsleep();
-    jest.advanceTimersByTime(GRACE_SECONDS * 1000);
-    await settle();
-    expect(mockAddBookmark).toHaveBeenCalledTimes(1);
-    const overlap = flushBookmarks('srv-1');
-    await settle();
-    post.answer();
-    await overlap;
-    await settle();
-    expect(mockAddBookmark).toHaveBeenCalledTimes(1);
-    expect(mockHeld).toHaveLength(1);
     expect(await queuedBookmarks('srv-1')).toEqual([]);
   });
 
