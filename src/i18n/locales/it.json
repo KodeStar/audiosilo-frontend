@@ -548,7 +548,13 @@
       "openLink": "Apri il link",
       "appOnly": "Questo link è per un altro server e si apre solo nell'app AudioSilo. Aprilo sul tuo telefono o tablet."
     },
-    "memberNotReady": "Questo dispositivo non può ancora farle accedere. Riprova tra un momento."
+    "memberNotReady": "Questo dispositivo non può ancora farle accedere. Riprova tra un momento.",
+    "getApp": {
+      "title": "Scarica l'app AudioSilo",
+      "appStore": "App Store",
+      "googlePlay": "Google Play",
+      "apk": "Android senza Google Play? Scarica l'APK"
+    }
   },
   "onboarding": {
     "step": "Passaggio {{step}} di {{count}}",

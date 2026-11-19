@@ -53,6 +53,7 @@ import {
 import { KnownServerRow, type Probe, ProbeNotice } from './connect-parts';
 import { CoverFan } from './cover-cascade';
 import { finishConnect } from './finish-connect';
+import { GetAppLinks } from './get-app-links';
 import {
   beginInviteSignIn,
   openScanner,
@@ -937,6 +938,8 @@ export function ConnectStart() {
           ))}
         </View>
       ) : null}
+      {/* The browser is where someone without the app starts: where to get it (fe#299). */}
+      {isWeb ? <GetAppLinks /> : null}
     </ConnectFrame>
   );
 }

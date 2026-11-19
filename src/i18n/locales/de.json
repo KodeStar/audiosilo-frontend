@@ -548,7 +548,13 @@
       "openLink": "Link öffnen",
       "appOnly": "Dieser Link ist für einen anderen Server und öffnet sich nur in der AudioSilo-App. Öffne ihn auf deinem Smartphone oder Tablet."
     },
-    "memberNotReady": "Dieses Gerät kann die Person noch nicht anmelden. Versuche es gleich noch einmal."
+    "memberNotReady": "Dieses Gerät kann die Person noch nicht anmelden. Versuche es gleich noch einmal.",
+    "getApp": {
+      "title": "Hol dir die AudioSilo-App",
+      "appStore": "App Store",
+      "googlePlay": "Google Play",
+      "apk": "Android ohne Google Play? Lade die APK herunter"
+    }
   },
   "onboarding": {
     "step": "Schritt {{step}} von {{count}}",

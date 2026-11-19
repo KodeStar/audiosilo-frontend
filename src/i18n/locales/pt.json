@@ -548,7 +548,13 @@
       "openLink": "Abrir a ligação",
       "appOnly": "Esta ligação é para outro servidor e só abre na app AudioSilo. Abra-a no seu telemóvel ou tablet."
     },
-    "memberNotReady": "Este dispositivo ainda não consegue iniciar a sessão dessa pessoa. Tente novamente daqui a pouco."
+    "memberNotReady": "Este dispositivo ainda não consegue iniciar a sessão dessa pessoa. Tente novamente daqui a pouco.",
+    "getApp": {
+      "title": "Obtém a aplicação AudioSilo",
+      "appStore": "App Store",
+      "googlePlay": "Google Play",
+      "apk": "Android sem Google Play? Descarrega o APK"
+    }
   },
   "onboarding": {
     "step": "Passo {{step}} de {{count}}",
