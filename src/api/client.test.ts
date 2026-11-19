@@ -11,6 +11,7 @@ import {
   apiErrorKind,
   isPlainSeriesQuery,
   isProxyRefusal,
+  isRefusedForGood,
   isServerBusyError,
   isSignedOutError,
   NetworkError,
@@ -1004,6 +1005,9 @@ describe('ApiClient', () => {
     expect(e).toMatchObject({ name: 'ApiError', status: 401, fromProxy: true });
     expect(isSignedOutError(e)).toBe(false);
     expect(isProxyRefusal(e)).toBe(true);
+    // Not refused for good either: a save the proxy turned away is kept for once the
+    // headers are fixed (the progress and reading queues), never dropped.
+    expect(isRefusedForGood(e)).toBe(false);
     expect(onAuthError).not.toHaveBeenCalled();
   });
 
@@ -1013,6 +1017,7 @@ describe('ApiClient', () => {
     expect(e).toMatchObject({ status: 401, fromProxy: false });
     expect(isSignedOutError(e)).toBe(true);
     expect(isProxyRefusal(e)).toBe(false);
+    expect(isRefusedForGood(e)).toBe(true);
   });
 
   it('does NOT fire onAuthError on a network failure / timeout (no HTTP status)', async () => {

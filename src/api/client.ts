@@ -137,14 +137,17 @@ export class ApiError extends Error {
 }
 
 /** Whether `e` is a 4xx the same request can never get past: not a 408 or a 429 (the
- * server's rate limit), which say "not now". */
+ * server's rate limit), which say "not now", nor an auth proxy's own 401 (`fromProxy`,
+ * fe#295): the server never saw the request, which gets past once the proxy headers are
+ * fixed, so a save it turned away is kept for then, never dropped. */
 export function isRefusedForGood(e: unknown): e is ApiError {
   return (
     e instanceof ApiError &&
     e.status >= 400 &&
     e.status < 500 &&
     e.status !== 408 &&
-    e.status !== 429
+    e.status !== 429 &&
+    !e.fromProxy
   );
 }
 
