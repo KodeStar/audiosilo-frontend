@@ -2930,7 +2930,9 @@ media GETs only.
   does the place reconcile move or offer anything while the engine holds another book,
   `engineHoldsOtherBook`, a late place included: its seek would land in that book; nor do
   the app's own seek, skip and chapter jump ask the engine then: the store's book shows the
-  place, saved, and the play press reloads it there, `listenerMove`). A resumption
+  place, saved even while an adoption is under way (`persist`: the listener's own move since
+  the outside play), the play press reloads it there, `listenerMove`, and the car sync reads
+  no engine change from it, `mayBeServiceChange`). A resumption
   meanwhile plays the other book, the one heard (`engineOtherBook`, the car snapshot's
   `resume`, whether the store's book shows paused or finished): the car sync writes the
   snapshot when that book begins playing (`onOtherBookReported`'s `playing`, adopted or

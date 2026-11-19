@@ -800,8 +800,10 @@ async function persist(opts?: {
   // Nor an adoption's reloaded place, until it plays (`quietAdopted`).
   if (quietAdopted === contentKeyOf(nowPlaying) && !opts?.forceFinished) return;
   // Nor while the engine holds another book on its way to being adopted
-  // (`engineIsAnothers`): nothing of this book was heard since it stopped.
-  if (engineIsAnothers() && !opts?.forceFinished) return;
+  // (`engineIsAnothers`): nothing of this book was heard since it stopped. Unless the
+  // listener moved it since that play was asked (`listenerMove` shows the place): that place
+  // is theirs, and an adoption that lands would otherwise drop it unsaved.
+  if (engineIsAnothers() && outsidePlay?.moves === localMoves && !opts?.forceFinished) return;
   // Nor a place another tab has played past (`otherTabPlayed`), nor one on its way to that
   // tab's (`catchingUp`): dated now, it would be the newest in the mirror the tabs share.
   if (behindOtherTab(nowPlaying) && !opts?.forceFinished) return;
@@ -2378,20 +2380,22 @@ function engineMove<T>(
  *
  * While the engine holds another book (`engineHoldsOtherBook`: the car's, not adopted, the
  * store's book shown where it was last heard) the engine is not asked at all: its move would
- * be that book's. The store's book shows the place, which is saved, and a play press reloads
- * it from there, as it does any play in that state (`toggle`, `retry`). */
-async function listenerMove<T>(
+ * be that book's. The store's book shows the place, which is saved: a play press while the
+ * engine's reports name the other book reloads it from there (`toggle`, `retry`), and an
+ * adoption under way replaces it, the moved place kept (`persist`). */
+async function listenerMove(
   np: NowPlaying | null,
   trackIndex: number,
   position: number,
-  move: () => Promise<T>,
+  move: () => Promise<unknown>,
 ): Promise<void> {
   if (!np) {
     await move();
     return;
   }
   if (engineHoldsOtherBook()) {
-    placeShown(np, trackIndex, position);
+    // Not once another book is the store's (a start or an adoption landed meanwhile).
+    if (usePlayer.getState().nowPlaying === np) placeShown(np, trackIndex, position);
     return;
   }
   const moves = localMoves;

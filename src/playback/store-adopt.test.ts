@@ -1879,6 +1879,20 @@ describe('a play asked from outside of another book after playback stopped', () 
     }
   });
 
+  // The review: the app's own move of the store's book while the other book's adoption was
+  // under way was shown and never saved (`listenerMove`): the adoption landed, and it was gone.
+  it("saves the store's book's own move made while the other book is adopted", async () => {
+    const read = await askedForS();
+    await usePlayer.getState().seekBook(150);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 50 });
+    expect(mockSvc.seekTo).not.toHaveBeenCalled();
+    expect(mockSvc.skipToTrack).not.toHaveBeenCalled();
+    expect(savedPaths()).toEqual(['B']);
+    expect(await read()).toBe(true);
+    expect(usePlayer.getState().nowPlaying?.path).toBe('S');
+  });
+
   // The review: an outside play of another book that was never adopted (its adoption gave up)
   // left that book's reports in the store's book: once it played it was the store's book's
   // play, and one that never played stopped at the other book's place, saved as the store's
