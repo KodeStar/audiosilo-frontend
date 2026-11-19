@@ -231,21 +231,49 @@ export const followsOutsidePlay = (): boolean => outsidePlay !== null;
  * from outside (`outsidePlay`). Once an adoption switched the store to its book, they are that
  * book's own. */
 const adopting: { key: string; ownLoad: boolean }[] = [];
+/**
+ * The engine holds another book than the store's whose reports name none (an older binary, a
+ * car play from an old snapshot), after its adoption gave up (`adoptLoadedBook`): the store's
+ * book (`key`, its content key) and the listener's moves and speed changes then. Its reports
+ * are held as an adoption's are (`unnamedReportOfAdopted`), and the store's book's place is not
+ * saved (`persist`, unless the listener moved it or set its speed since), past the end of the
+ * play followed from outside (`clearPlaybackIntent`: a Pause in the watchdog's grace), until a
+ * report names a book again or the store loads its own book (`ownLoadTakesEngine`), or holds
+ * another (FE-ANDROID-5). Taken as the store's book's, that book's place would be saved as it.
+ */
+let unnamedOther: { key: string; moves: number; speedSets: number } | null = null;
+/** Whether the engine's last report named a book (`reportedBook`). */
+const lastReportNamesBook = (): boolean => !!service?.reportedBook?.();
 /** Whether the engine's last report named no book (an older binary) while an adoption of
  * another book than the store's is under way (`adopting`) and still holds the engine: that
  * report is the adopted book's. Not once a load of the store's took the engine: the report is
  * the store's book's, and that adoption gives up (`adoptNow`). Nor while the store holds no
  * book (`reportedOtherBook`: a Cast session resumed with none loaded, the web's too): there is
- * no place of the store's to keep it from, and its reports are taken as before. */
+ * no place of the store's to keep it from, and its reports are taken as before. Also once such
+ * an adoption gave up (`unnamedOther`), until a report names a book again (which ends that
+ * hold here) or the store loads or holds another book. */
 const unnamedReportOfAdopted = (): boolean => {
-  if (adopting.length === 0 || service?.reportedBook?.()) return false;
+  if (lastReportNamesBook()) {
+    unnamedOther = null;
+    return false;
+  }
   const own = selectBookKey(usePlayer.getState());
-  return own !== null && adopting.some((a) => !a.ownLoad && a.key !== own);
+  if (unnamedOther !== null && unnamedOther.key !== own) unnamedOther = null;
+  if (own === null) return false;
+  if (unnamedOther !== null) return true;
+  return adopting.some((a) => !a.ownLoad && a.key !== own);
 };
+/** Whether `unnamedOther` holds the store's book's place from saves. */
+const unnamedOtherHolds = (): boolean =>
+  unnamedReportOfAdopted() &&
+  unnamedOther !== null &&
+  unnamedOther.moves === localMoves &&
+  unnamedOther.speedSets === localSpeedSets;
 /** A load of the store's own book is asked of the engine (`playBook`, `retry`): an adoption under
  * way reads a book the engine no longer holds, and its reports are the store's book's. */
 function ownLoadTakesEngine() {
   for (const a of adopting) a.ownLoad = true;
+  unnamedOther = null;
 }
 
 /**
@@ -941,6 +969,10 @@ async function persist(opts?: {
   ) {
     return;
   }
+  // Nor while the engine holds another book whose reports name none, its adoption given up
+  // (`unnamedOther`): nothing of this book was heard since, unless the listener moved it or
+  // set its speed.
+  if (unnamedOtherHolds() && !opts?.forceFinished) return;
   // Nor a place another tab has played past (`otherTabPlayed`), nor one on its way to that
   // tab's (`catchingUp`): dated now, it would be the newest in the mirror the tabs share.
   if (behindOtherTab(nowPlaying) && !opts?.forceFinished) return;
@@ -3449,6 +3481,8 @@ function switchBook(request: PlayRequest) {
   // A stop still saving (`saveForStop`) saved the book as it was loaded before this start:
   // a stop of this one, the same book started again included, saves its own place.
   pendingStopSave = null;
+  // The engine holds this book from here (its load, or the adoption of it).
+  unnamedOther = null;
   playGeneration++;
   lastPlayRequest = request; // so retry() can re-run resume
   resumeLookupFailed = false;
@@ -5034,6 +5068,18 @@ async function adoptLoadedBook(
     return adopted;
   } finally {
     adopting.splice(adopting.indexOf(adoption), 1);
+    // Gave up with the engine's reports naming no book and still held as this one's: the
+    // engine holds that other book all the same, and they stay held (`unnamedOther`).
+    const own = selectBookKey(usePlayer.getState());
+    if (
+      !adopted &&
+      !adoption.ownLoad &&
+      own !== null &&
+      own !== adoption.key &&
+      !lastReportNamesBook()
+    ) {
+      unnamedOther ??= { key: own, moves: localMoves, speedSets: localSpeedSets };
+    }
     // Gave up with the play still followed: the watchdog ends it, after its whole grace from
     // here, so the engine's book by now (another again) can be adopted first (the car sync
     // reads the engine once more).
