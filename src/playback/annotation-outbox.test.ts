@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
 import { ApiError, NetworkError, TimeoutError } from '@/api/client';
+import { noteProxyAnswer, resetProxyRefusalsForTests } from '@/api/proxy-refusal';
 import { forgetRateLimit, noteRateLimit } from '@/api/rate-limit';
 import type { Bookmark } from '@/api/types';
 import { setConnectionAliases } from '@/lib/connection-id';
@@ -1984,6 +1985,34 @@ describe('startBookmarkSync', () => {
       expect(held.map((b) => b.position)).toEqual([100]);
     } finally {
       release();
+      jest.useRealTimers();
+    }
+  });
+
+  // A proxy turning the device away (fe#295) holds the bookmarks; the server's own answer
+  // ends the episode (`noteProxyAnswer`), and what waited goes then, not at the backoff.
+  it("sends what a proxy's refusals held once the episode ends", async () => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick', 'queueMicrotask'] });
+    const { client, held, state } = server('c1');
+    const release = startBookmarkSync();
+    try {
+      state.down = new ApiError(403, 'Forbidden', undefined, undefined, true);
+      noteProxyAnswer('c1', true);
+      await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+      expect(await queuedBookmarks()).toHaveLength(1);
+      state.down = null;
+      client.bookmarks.mockClear();
+      // Another connection's episode ending sends none of c1's.
+      noteProxyAnswer('c2', true);
+      noteProxyAnswer('c2', false);
+      await jest.advanceTimersByTimeAsync(0);
+      expect(client.bookmarks).not.toHaveBeenCalled();
+      noteProxyAnswer('c1', false);
+      await jest.advanceTimersByTimeAsync(0);
+      expect(held.map((b) => b.position)).toEqual([100]);
+    } finally {
+      release();
+      resetProxyRefusalsForTests();
       jest.useRealTimers();
     }
   });

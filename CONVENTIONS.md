@@ -1826,7 +1826,8 @@ at launch and on reconnect (`startBookmarkSync`, a root service; also once a con
 flagged is signed in again, with no backoff meanwhile, and once the wait a 429 asked of its
 server is over, `onRateLimitOver`; a 429 on a bookmark's own send, the tap's or a replay's, sets
 that wait, `noteRateLimit`: a replay stops there and a tap made meanwhile is stored unsent,
-`rateLimited`), with the stored queues in the
+`rateLimited`; and once a proxy's refusals of it end, the server answering itself again,
+`useProxyRefusals`), with the stored queues in the
 foreground and on the web's focus and `online` (`startQueueReplays`), and on a backoff (30 s
 doubling to 10 min) while a reachable server keeps failing, through `replayQueue` routed by
 `storedRoute` (claims, so two tabs never send one twice; a connection another tab is signed in
