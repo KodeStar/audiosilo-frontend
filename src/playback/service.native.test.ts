@@ -254,6 +254,29 @@ describe('the book a report names', () => {
     ]);
   });
 
+  it('keeps dropping late reports of the replaced book across a reload of the loaded one', async () => {
+    const svc = await setUp();
+    send('onState', { state: 'playing', book: other });
+    await svc.load(tracks, 0, 0, [], book);
+    // The same book again before any report named it (a swap onto its download).
+    await svc.load(tracks, 0, 5, [], book);
+    send('onProgress', { position: 40, duration: 100, book: other });
+    expect(svc.reportedBook!()).toEqual(book);
+    expect(svc.getSnapshot().position).toBe(5);
+  });
+
+  it("takes the replaced book's reports once the app loads that book again", async () => {
+    const svc = await setUp();
+    send('onState', { state: 'playing', book: other });
+    await svc.load(tracks, 0, 0, [], book);
+    // A report naming no book (an idle after a reset of the queue) names nothing new.
+    send('onProgress', { position: 1, duration: 100 });
+    await svc.load(tracks, 0, 0, [], other);
+    send('onProgress', { position: 40, duration: 100, book: other });
+    expect(svc.reportedBook!()).toEqual(other);
+    expect(svc.getSnapshot().position).toBe(40);
+  });
+
   it("keeps a report of the engine's book when the load failed", async () => {
     const svc = await setUp();
     send('onState', { state: 'playing', book: other });

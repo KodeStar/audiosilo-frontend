@@ -366,9 +366,14 @@ class NativePlaybackService implements PlaybackService {
     // (see `moduleTakesBook`).
     const native = tracks.map(toNativeTrack);
     const told = book && moduleTakesBook() ? book : null;
-    // From the ask on, a report of the book the engine held is that book's last (`name`).
+    // From the ask on, a report of the book the engine held is that book's last (`name`). A
+    // reload of the same book keeps one a load before it replaced, as no report has named
+    // another book since: that book's late reports may still be on their way. A load of that
+    // replaced book itself ends it: its reports are this load's.
     const was = this.named && contentKeyOf(this.named);
-    this.replaced = told && was && was !== contentKeyOf(told) ? was : null;
+    const key = told && contentKeyOf(told);
+    if (!key || key === this.replaced) this.replaced = null;
+    else if (was && was !== key) this.replaced = was;
     try {
       if (told) {
         await AudiosiloPlayer.load(native, startIndex, positionInTrack, chapters ?? [], told);
