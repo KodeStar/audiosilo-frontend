@@ -19,7 +19,7 @@ data class BookRef(val connectionId: String, val libraryId: Long, val path: Stri
  * `BookReport`, which says why), and with it `load`, the tag of the app's load that item came
  * from ([MediaItems.loadOf]; none for a queue the service loaded itself). None for an item
  * loaded without a book. */
-fun reportedBook(book: BookRef?, load: Double? = null): Map<String, Any> {
+fun reportedBook(book: BookRef?, load: Double?): Map<String, Any> {
   book ?: return emptyMap()
   val named = mapOf("book" to book.toEvent())
   return if (load == null) named else named + ("load" to load)
@@ -32,7 +32,7 @@ data class RemoteMove(
   val fileIndex: Int,
   val position: Double,
   val book: BookRef?,
-  val load: Double? = null,
+  val load: Double?,
 ) {
   /** The `onRemoteMove` event. */
   fun toEvent(): Map<String, Any> =
@@ -41,12 +41,12 @@ data class RemoteMove(
 
 /** The `onRateChange` event for a speed a controller other than the app set on [book] (of the
  * app's load tagged [load]). */
-fun rateChangeEvent(rate: Double, book: BookRef?, load: Double? = null): Map<String, Any> =
+fun rateChangeEvent(rate: Double, book: BookRef?, load: Double?): Map<String, Any> =
   mapOf("rate" to rate) + reportedBook(book, load)
 
 /** The `onState` event for an engine that failed with [book] loaded (of the app's load tagged
  * [load]): it no longer wants to play (the service stopped it, `onEngineFailed`). */
-fun failedStateEvent(book: BookRef?, load: Double? = null): Map<String, Any> =
+fun failedStateEvent(book: BookRef?, load: Double?): Map<String, Any> =
   mapOf("state" to "error", "playWhenReady" to false) + reportedBook(book, load)
 
 /** One audio file of a queue, the plain-Kotlin twin of the JS `NativeTrack` (the module's
@@ -179,7 +179,7 @@ object MediaItems {
   }
 
   /** A whole-file item (a multi-file book without chapter clips). */
-  fun toMediaItem(t: TrackSpec, fileIndex: Int, book: BookRef?, load: Double? = null): MediaItem {
+  fun toMediaItem(t: TrackSpec, fileIndex: Int, book: BookRef?, load: Double?): MediaItem {
     val metadata = MediaMetadata.Builder()
       .setTitle(t.title)
       .setArtist(t.artist ?: "")
@@ -196,7 +196,7 @@ object MediaItems {
 
   /** A clipped item for one chapter: the file's URL clipped to the chapter's in-file range,
    * titled with the chapter (so the lock screen and the car's queue show the chapter). */
-  fun toClipItem(clip: ClipSpec, tracks: List<TrackSpec>, book: BookRef?, load: Double? = null): MediaItem {
+  fun toClipItem(clip: ClipSpec, tracks: List<TrackSpec>, book: BookRef?, load: Double?): MediaItem {
     val t = tracks.getOrNull(clip.fileIndex) ?: tracks.first()
     val title = clip.title.ifEmpty { t.title }
     val metadata = MediaMetadata.Builder()

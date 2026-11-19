@@ -5,7 +5,7 @@ import org.junit.Test
 
 class ReportedBookTest {
   @Test fun aReportNamesTheLoadedBookInJsTerms() {
-    val report = mapOf("index" to 3) + reportedBook(BookRef("srv.1", 7, "Author/Book"))
+    val report = mapOf("index" to 3) + reportedBook(BookRef("srv.1", 7, "Author/Book"), null)
     assertEquals(
       mapOf(
         "index" to 3,
@@ -16,7 +16,7 @@ class ReportedBookTest {
   }
 
   @Test fun aReportOfAnItemLoadedWithoutABookNamesNone() {
-    assertEquals(mapOf("state" to "playing"), mapOf("state" to "playing") + reportedBook(null))
+    assertEquals(mapOf("state" to "playing"), mapOf("state" to "playing") + reportedBook(null, null))
   }
 
   private val left = BookRef("srv.1", 7, "Author/Left")
@@ -25,13 +25,13 @@ class ReportedBookTest {
   // FE-ANDROID-2: the service's reports name the book the service's own item belongs to, the one
   // it passes, never another the module's controller (a message behind) still shows.
   @Test fun aRateChangeNamesTheBookTheServiceSetItOn() {
-    assertEquals(mapOf("rate" to 1.5, "book" to now.toEvent()), rateChangeEvent(1.5, now))
+    assertEquals(mapOf("rate" to 1.5, "book" to now.toEvent()), rateChangeEvent(1.5, now, null))
   }
 
   @Test fun aFailedEngineNamesTheBookTheServiceHadLoaded() {
     assertEquals(
       mapOf("state" to "error", "playWhenReady" to false, "book" to now.toEvent()),
-      failedStateEvent(now),
+      failedStateEvent(now, null),
     )
   }
 
@@ -40,14 +40,14 @@ class ReportedBookTest {
   @Test fun aHeldRemoteMoveNamesTheBookItWasMadeIn() {
     assertEquals(
       mapOf("trackIndex" to 2, "position" to 31.5, "book" to left.toEvent()),
-      RemoteMove(2, 31.5, left).toEvent(),
+      RemoteMove(2, 31.5, left, null).toEvent(),
     )
   }
 
   @Test fun reportsOfAnItemWithoutABookNameNone() {
-    assertEquals(mapOf("rate" to 1.0), rateChangeEvent(1.0, null))
-    assertEquals(mapOf("state" to "error", "playWhenReady" to false), failedStateEvent(null))
-    assertEquals(mapOf("trackIndex" to 0, "position" to 4.0), RemoteMove(0, 4.0, null).toEvent())
+    assertEquals(mapOf("rate" to 1.0), rateChangeEvent(1.0, null, null))
+    assertEquals(mapOf("state" to "error", "playWhenReady" to false), failedStateEvent(null, null))
+    assertEquals(mapOf("trackIndex" to 0, "position" to 4.0), RemoteMove(0, 4.0, null, null).toEvent())
   }
 
   // FE-ANDROID-5: a report carries the tag of the app's load its item came from, so JS drops one
