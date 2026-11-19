@@ -1817,10 +1817,13 @@ describe('a play asked from outside of another book after playback stopped', () 
 
   /** B adopted paused (at `at`, else its second file, 30 s), then stopped (`error`); the
    * engine asked to play S, still loading; S's adoption under way, its book still being read.
-   * Returns the read's answer. `reread`: the car sync's read of the engine as it lands. */
+   * Returns the read's answer. `reread`: the car sync's read of the engine as it lands.
+   * `heard`: the place of the engine's unnamed `loading` report before the adoption began
+   * (B's own unless a test says S's). */
   async function askedForS(
     at: { trackIndex: number; position: number } = { trackIndex: 1, position: 30 },
     reread?: () => Promise<ReturnType<typeof loadedB> | null>,
+    heard: { trackIndex: number; position: number } = at,
   ): Promise<() => Promise<boolean>> {
     useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
     await usePlayer.getState().adoptLoaded(loadedB({ playing: false, ...at }));
@@ -1828,7 +1831,7 @@ describe('a play asked from outside of another book after playback stopped', () 
     usePlayer.setState({ snapshot: { ...snapshot, state: 'error' } });
     jest.clearAllMocks();
     playAsked?.();
-    pushSnapshot(snap('loading', at.trackIndex, at.position));
+    pushSnapshot(snap('loading', heard.trackIndex, heard.position));
     const answers: (() => void)[] = [];
     mockFetchQuery.mockImplementation(
       (opts: unknown) =>
@@ -2081,6 +2084,51 @@ describe('a play asked from outside of another book after playback stopped', () 
       nowPlaying: { path: 'B' },
       snapshot: { state: 'playing', trackIndex: 1, position: 31 },
     });
+  });
+
+  // The engine's unnamed `loading` report of S, heard before S's adoption began, was taken as
+  // B's place. B stands where it was when the play was asked from the moment the adoption
+  // begins: the listener's speed change, which lifts the hold on B's saves, saved S's place
+  // as B's, during the adoption and after a Pause in the watchdog's grace alike (a place past
+  // B's own: one well before it the resume floor refused, the speed going unsaved).
+  it("saves the store's book where it stood on a speed change after a Pause, never the other book's place", async () => {
+    const read = await askedForS(undefined, async () => null, { trackIndex: 1, position: 80 });
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 30 });
+    expect(await read()).toBe(false);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'paused',
+      trackIndex: 1,
+      position: 30,
+    });
+    expectNothingSaved();
+    await usePlayer.getState().setRate(2);
+    await flushMicrotasks();
+    expect(savedPaths()).toEqual(['B']);
+    expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 130 });
+  });
+
+  it("saves the store's book where it stood on a speed change during the adoption", async () => {
+    const read = await askedForS(undefined, undefined, { trackIndex: 1, position: 80 });
+    await usePlayer.getState().setRate(2);
+    await flushMicrotasks();
+    expect(savedPaths()).toEqual(['B']);
+    expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 130 });
+    expect(await read()).toBe(true);
+  });
+
+  // A play press after that Pause reloads B where it stood, never at S's place.
+  it("reloads the store's book where it stood on a play press after a Pause", async () => {
+    const read = await askedForS(undefined, async () => null, { trackIndex: 1, position: 80 });
+    expect(await read()).toBe(false);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    jest.clearAllMocks();
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    expect(mockSvc.load).toHaveBeenCalledTimes(1);
+    expect((mockSvc.load as jest.Mock).mock.calls[0].slice(1, 3)).toEqual([1, 30]);
   });
 
   // An adoption that began after the store's own start asked for its load (so not marked

@@ -3356,6 +3356,11 @@ media GETs only.
   moved it or set its speed since), past the end of the followed outside play (a Pause in
   the watchdog's grace, `clearPlaybackIntent`), until a report names a book again or the
   store loads or holds another (`ownLoadTakesEngine`, `switchBook`).
+  An unnamed report taken as the store's book's before the adoption began left the other
+  book's place in the snapshot, so the store's book shows where it stood when the play was
+  asked from the moment the adoption begins (`standWhereAsked`, the watchdog's
+  `stoodWhenAsked`): a speed change, during the adoption or after a Pause in the grace, saves
+  that place, and a play press reloads there, never the other book's place past it.
   The store's `pause` is "stop the sound" (the sleep timer): while the store's book shows
   playing or loading, the engine pauses whatever it plays, the other book too, and the
   store's book shows paused; while it shows paused and the engine plays the other book

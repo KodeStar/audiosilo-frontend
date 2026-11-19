@@ -3202,10 +3202,7 @@ function fireStallWatchdog() {
   // since, or its queue is another by now (the download hot-swap: the place is of the queue
   // it was read in).
   const asked = outsidePlay;
-  const stood =
-    asked?.other && asked.moves === localMoves && asked.np === usePlayer.getState().nowPlaying
-      ? asked.snapshot
-      : null;
+  const stood = stoodWhenAsked();
   clearPlaybackIntent();
   if (stood) {
     const { trackIndex, position, duration } = stood;
@@ -3228,6 +3225,34 @@ function fireStallWatchdog() {
   // and so is a `playing` it sent before the pause reached it (`stallPauseUntil`).
   stallPauseUntil = Date.now() + STALL_PAUSE_FENCE_MS;
   void service?.pause().catch(() => undefined);
+}
+
+/** Where the store's book stood when the play followed from outside was asked (`outsidePlay`),
+ * once that play is another book's (`other`), else null. Null too once the listener moved the
+ * book since, or its queue is another by now (the download hot-swap: the place is of the queue
+ * it was read in). */
+function stoodWhenAsked(): PlaybackSnapshot | null {
+  const asked = outsidePlay;
+  return asked?.other && asked.moves === localMoves && asked.np === usePlayer.getState().nowPlaying
+    ? asked.snapshot
+    : null;
+}
+
+/**
+ * The store's book shows where it stood when the play followed from outside was asked
+ * (`stoodWhenAsked`), its state kept, as the adoption of another book begins. A report that
+ * names no book, taken as the store's book's before that adoption began, left the other
+ * book's place in the snapshot: held from saves only while the listener touched nothing
+ * (`persist`), it was saved as this book's by a speed change, during the adoption or after a
+ * Pause in the watchdog's grace, and a play press reloaded this book there.
+ */
+function standWhereAsked() {
+  const stood = stoodWhenAsked();
+  if (!stood) return;
+  const { snapshot } = usePlayer.getState();
+  const { trackIndex, position, duration } = stood;
+  if (snapshot.trackIndex === trackIndex && snapshot.position === position) return;
+  usePlayer.setState({ snapshot: { ...snapshot, trackIndex, position, duration } });
 }
 
 /**
@@ -5062,7 +5087,10 @@ async function adoptLoadedBook(
   // the engine's reports are held from here (`engineIsAnothers`).
   const followed = outsidePlay;
   const loadedKey = resolvedKeyOf(service);
-  if (followed && contentKeyOf(followed.np) !== loadedKey) followed.other = true;
+  if (followed && !followed.other && contentKeyOf(followed.np) !== loadedKey) {
+    followed.other = true;
+    standWhereAsked();
+  }
   const adoption = { key: loadedKey, ownLoad: false };
   const ownBefore = selectBookKey(usePlayer.getState());
   adopting.push(adoption);
