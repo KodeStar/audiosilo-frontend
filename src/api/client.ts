@@ -174,6 +174,13 @@ export function isNotInLibraryError(e: unknown): boolean {
   return e instanceof ApiError && (e.status === 404 || e.status === 403 || e.status === 400);
 }
 
+/** `isNotInLibraryError` from the server itself: a proxy's own 401 or 403
+ * (`isProxyRefusal`) never reached it, so it says nothing of the content and the same read
+ * may get past next time. The LibriVox job poll's and its watcher's ONE rule for a refusal. */
+export function isServerNotInLibraryError(e: unknown): boolean {
+  return isNotInLibraryError(e) && !isProxyRefusal(e);
+}
+
 /** The refusal codes (`ApiError.code`) the app tells apart: the household members routes'
  * (Phase 8b-1; `member_disabled` is a 409 for a member the admin disabled, on their
  * session and their pairing), and `kid_account` on pairing too. One list, so the type and
@@ -804,10 +811,10 @@ export class ApiClient {
       // the same tick): report it as a timeout so it's classified as unreachable.
       if (timedOut && !(e instanceof ApiError)) throw new TimeoutError(timeoutMs);
       // A 401 ApiError means the server answered and rejected our token - fire the
-      // dead-token callback (every ApiError the readers throw lands here). An auth proxy's
-      // own 401 is not (`fromProxy`): signing in again can't get past it. 403 is a scope
-      // denial (valid token, forbidden) and a network/timeout failure has no status, so
-      // neither is a dead token - the full rationale is on the constructor doc above.
+      // dead-token callback (every ApiError the readers throw lands here). A proxy's own
+      // 401 is not (`fromProxy`): signing in again can't get past it. A 403 is a scope
+      // denial (valid token, forbidden) or a proxy's, and a network/timeout failure has no
+      // status, so none is a dead token - the full rationale is on the constructor doc above.
       if (isSignedOutError(e)) this.onAuthError?.();
       throw e;
     } finally {

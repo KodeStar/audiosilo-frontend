@@ -75,9 +75,8 @@ import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import {
   ApiError,
-  isNotInLibraryError,
   isPlainSeriesQuery,
-  isProxyRefusal,
+  isServerNotInLibraryError,
   isSignedOutError,
   type ApiClient,
   type BookListQuery,
@@ -2924,7 +2923,7 @@ function failuresInARow(query: {
  * no more once it is gone (a 404: the last answer would read as open for ever). A first
  * read that failed with no answer or a server error is asked again (`retry: false`, and
  * nothing else reads it: its row would wait for ever); a refusal (a 400, 401 or 403) is
- * not, but a 401 or 403 from a proxy in front of the server (`isProxyRefusal`) is a read
+ * not, but a 401 or 403 from a proxy in front of the server (`isServerNotInLibraryError`) is a read
  * that failed, asked again. Its Cancel is `useCancelBridgeJob`. `shown` false (a recording
  * row whose page is under another tab): that reader takes no updates and does not count as
  * one (React Query's `subscribed`), so the watcher's poll leaves the on-screen pace until
@@ -2949,7 +2948,7 @@ export function useLibrivoxJob(
         // The server's refusal stays refused (the default retry's rule, `retryQuery`), and a
         // 404 is gone. A proxy's own 401 or 403 is a read that failed: asked again, backing off.
         if (isSignedOutError(error)) return false;
-        if (isNotInLibraryError(error) && !isProxyRefusal(error)) return false;
+        if (isServerNotInLibraryError(error)) return false;
         return librivoxJobPollInterval(
           data,
           active && AppState.currentState === 'active',

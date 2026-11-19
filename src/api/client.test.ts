@@ -13,6 +13,7 @@ import {
   isProxyRefusal,
   isRefusedForGood,
   isServerBusyError,
+  isServerNotInLibraryError,
   isSignedOutError,
   NetworkError,
   PodcastFetchPendingError,
@@ -2962,12 +2963,14 @@ describe('ApiClient podcasts (Bridge Phase 2d-1)', () => {
     expect(own).toMatchObject({ status: 403, fromProxy: false });
     expect(isProxyRefusal(own)).toBe(false);
     expect(isRefusedForGood(own)).toBe(true);
+    expect(isServerNotInLibraryError(own)).toBe(true);
     // A proxy's page, and a proxy's own JSON with no `error`.
     const page = await refusal({ status: 403, text: '<html>Forbidden</html>' });
     expect(page).toMatchObject({ status: 403, fromProxy: true });
     // The server never saw it: the proxy may let the next one through.
     expect(isProxyRefusal(page)).toBe(true);
     expect(isRefusedForGood(page)).toBe(false);
+    expect(isServerNotInLibraryError(page)).toBe(false);
     expect(await refusal({ status: 403, body: { message: 'denied' } })).toMatchObject({
       status: 403,
       fromProxy: true,

@@ -2,9 +2,9 @@ import { hashKey, type QueryClient, useQueryClient } from '@tanstack/react-query
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { create } from 'zustand';
 
-import { ApiError, isNotInLibraryError, isProxyRefusal } from '@/api/client';
+import { ApiError, isServerNotInLibraryError } from '@/api/client';
 import { invalidateLibraryLists, qk, useLibrivoxJob, useServerInfo } from '@/api/hooks';
-import type { BridgeJob } from '@/api/types';
+import type { BridgeJob, ServerInfo } from '@/api/types';
 import { isAway } from '@/lib/app-activity';
 import { BRIDGE_IDLE_POLL_MS, isOpenJob } from '@/lib/bridge-jobs';
 import { getItem, setItem } from '@/lib/storage';
@@ -26,7 +26,7 @@ import { DONE_RECHECK_MS } from './librivox-model';
  * without polling (`useFollowedFetch`). A job that ends asks the connection's works again,
  * and a done one reads the library's lists again and asks the works once more a moment
  * later (`librivoxFetchEnded`); then it is watched no more, as it is once gone (a 404) or
- * refused by the server (its own 400 or 403; a 403 from a proxy in front of it,
+ * refused by the server (its own 400 or 403; a 401 or 403 from a proxy in front of it,
  * `ApiError.fromProxy`, is a read that failed: the watch is kept and the poll asks again,
  * backing off). A connection signed out (gone, or needing its sign-in again after
  * a 401) holds the watch, unread, and reads it again once signed in: a fetch that ended
@@ -85,17 +85,12 @@ function setAwaySince(w: Pick<Watch, 'cid' | 'id'>, awaySince: number | undefine
  * connections and `/server` has answered (`WatchedFetch`). */
 function savedWatches(raw: unknown): Watch[] {
   if (!Array.isArray(raw)) return [];
-  return raw
-    .filter(
-      (w): w is Watch =>
-        isRecord(w) &&
-        typeof w.cid === 'string' &&
-        typeof w.id === 'number' &&
-        typeof w.at === 'number',
-    )
-    .map(({ cid, id, at, awaySince }) =>
-      typeof awaySince === 'number' ? { cid, id, at, awaySince } : { cid, id, at },
-    );
+  return raw.flatMap((w: unknown): Watch[] => {
+    if (!isRecord(w)) return [];
+    const { cid, id, at, awaySince } = w;
+    if (typeof cid !== 'string' || typeof id !== 'number' || typeof at !== 'number') return [];
+    return [typeof awaySince === 'number' ? { cid, id, at, awaySince } : { cid, id, at }];
+  });
 }
 
 let restoring: Promise<void> | null = null;
@@ -198,21 +193,21 @@ function WatchedFetch({ cid, id, at, awaySince }: Watch) {
   useReadElsewhere(qc, qk.bridgeJob(cid, id));
   const read = useLibrivoxJob(reading ? id : undefined, true, cid);
   // Judged only once `/server` has answered: until then the hooks' gate lays that read's own
-  // failure over the job's (`useCapabilityQuery`), so a proxy's 403 or 404 for `/server` at
-  // launch would read as the job refused or gone.
+  // failure over the job's (`useCapabilityQuery`), so a 403 or 404 for `/server` at launch
+  // would read as the job refused or gone.
   const info = useServerInfo(cid);
   const own = info.data !== undefined ? read : { data: read.data, error: null };
   // When `/server` last answered, and whether that answer found the Bridge away (0: no
   // answer yet, nothing judged).
   const answeredAt = reading && info.data !== undefined ? info.dataUpdatedAt : 0;
-  const bridgeAway = info.data?.capabilities?.bridge !== true;
+  const bridgeAway = isBridgeAway(info.data);
   const { gone, job, ended } = followedRead(own);
   const doneIn = job?.state === 'done' ? job.library_id : null;
   // The server's refusal (its own 400 or 403): asking again can't help, by the poll's own
   // rule (`useLibrivoxJob`), which stops too. A proxy's 401 or 403 is a read that failed:
-  // the poll asks again. A 404 is `gone`: an end, not a refusal. A 401 holds the watch until the
-  // connection is signed in again (`reading`).
-  const refused = !gone && isNotInLibraryError(own.error) && !isProxyRefusal(own.error);
+  // the poll asks again. A 404 is `gone`: an end, not a refusal. The server's 401 holds the
+  // watch until the connection is signed in again (`reading`).
+  const refused = !gone && isServerNotInLibraryError(own.error);
   const signedIn = !!conn;
   // Who is signed in is known only once the session has read its connections.
   const sessionRead = useSession((s) => s.status !== 'loading');
@@ -243,13 +238,19 @@ function WatchedFetch({ cid, id, at, awaySince }: Watch) {
   return null;
 }
 
+/** Whether a `/server` answer finds the Bridge away (its `bridge` flag not true): the ONE
+ * reading for the waker's asking and a watch's `awaySince`. */
+function isBridgeAway(info: ServerInfo | undefined): boolean {
+  return info?.capabilities?.bridge !== true;
+}
+
 /** A watched connection whose Bridge is away (`/server`'s `bridge` flag not true): its reads
  * are paused by their gate, and nothing else may read `/server` again while no page is open,
  * so it is asked every `BRIDGE_IDLE_POLL_MS` with the app in the foreground until it is back,
  * or until its watches are dropped for a Bridge away too long (`WATCH_TTL_MS`). */
 function BridgeAwayWaker({ cid }: { cid: string }) {
   const info = useServerInfo(cid);
-  useServerAskedWhileAway(info.data?.capabilities?.bridge !== true, info.refetch);
+  useServerAskedWhileAway(isBridgeAway(info.data), info.refetch);
   return null;
 }
 
