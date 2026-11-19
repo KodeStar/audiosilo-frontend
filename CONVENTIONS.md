@@ -2096,7 +2096,8 @@ media GETs only.
   `<i>.mka` an older app left beside the `<i>.mp3` it saves. A finished download's
   `totalBytes` is the bytes its files came to (the engine's last progress report is the
   whole file), not the sizes the book lists: a remuxed MP3 is smaller. While hydrate reads
-  the registry (`hydrating`, its entries read side by side), `download`, `remove` and
+  the registry (`hydrating`, its entries read up to eight at once; a read that fails starts no
+  further one, and those under way end before it is thrown on), `download`, `remove` and
   `cancel` wait for it and `persist` holds off, so a saved book is never fetched over, put
   back after a remove or cancel, or saved over by the live entries. **The web's tabs share one registry** (fe#258's
   follow-up): `persist` writes only the entries this tab changed since it last wrote or read

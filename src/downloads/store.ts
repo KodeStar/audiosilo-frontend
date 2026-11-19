@@ -385,11 +385,23 @@ async function readRegistry(): Promise<Registry> {
   // Each entry on its own (its own folder: relocated, renamed, checked on disk), several at
   // once: a launch with many downloads no longer waits for the sum (fe#153), and a large
   // library never fans out every file's probe together (the web's Cache API).
-  const outcomes = await mapLimit(Object.values(saved), REGISTRY_READS_AT_ONCE, (raw) =>
-    readSavedEntry(raw, away),
-  );
+  // A read that fails ends the launch's read (`download`, `remove` and `cancel` no longer
+  // wait): no further entry is started, and the ones under way have ended before the failure
+  // is thrown on, since one still relocating, renaming or emptying a folder would do it under
+  // a download started since.
+  const failures: unknown[] = [];
+  const outcomes = await mapLimit(Object.values(saved), REGISTRY_READS_AT_ONCE, async (raw) => {
+    if (failures.length > 0) return null;
+    try {
+      return await readSavedEntry(raw, away);
+    } catch (error) {
+      failures.push(error);
+      return null;
+    }
+  });
+  if (failures.length > 0) throw failures[0];
   const cleaned: Registry = {};
-  for (const [key, entry] of outcomes) if (entry) cleaned[key] = entry;
+  for (const outcome of outcomes) if (outcome?.[1]) cleaned[outcome[0]] = outcome[1];
   // Merge, don't overwrite: a live entry made during the read's async window (per-book
   // file moves and renames, fileExists probes; `download` itself waits for the read,
   // `hydrating`) would be clobbered by a blind set(cleaned) built from the stale

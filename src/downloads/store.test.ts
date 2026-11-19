@@ -2712,6 +2712,44 @@ describe("download() waits for the launch's offline check", () => {
   it('stops waiting on the check once it is over, when the launch read failed', async () => {
     client();
     await seed({ [downloadKey('c1', 2, 'Old/Book')]: downloadedEntry({ path: 'Old/Book' }) });
+  // A failed read ends the launch's wait: a read still under way then would empty or rename
+  // a folder under the download that stopped waiting for it.
+  it("ends every entry's read before a failed read is thrown on", async () => {
+    const other = downloadKey('c1', 2, 'B/Book');
+    await seed({ [savedKey]: downloadedEntry(), [other]: downloadedEntry({ path: 'B/Book' }) });
+    let otherRead = false;
+    mockEngine.fileExists.mockImplementation(async (uri: string) => {
+      if (!uri.includes('B/Book')) throw new Error('storage gone');
+      await new Promise((r) => setTimeout(r, 0));
+      otherRead = true;
+      return false;
+    });
+    await expect(useDownloads.getState().hydrate()).rejects.toThrow('storage gone');
+    expect(otherRead).toBe(true);
+    expect(mockEngine.removeBook).toHaveBeenCalledWith('c1', 2, 'B/Book');
+  });
+
+  // Under a storage that fails, nothing more is relocated, renamed or emptied than was
+  // already under way.
+  it('starts no further read once one has failed', async () => {
+    const paths = Array.from({ length: 12 }, (_, i) => `N/Book ${i}`);
+    await seed(
+      Object.fromEntries(
+        paths.map((path) => [downloadKey('c1', 2, path), downloadedEntry({ path })]),
+      ),
+    );
+    const asked = new Set<string>();
+    mockEngine.fileExists.mockImplementation(async (uri: string) => {
+      const path = paths.find((p) => uri.includes(`${p}:`) || uri.includes(`${p}/`));
+      if (path) asked.add(path);
+      await new Promise((r) => setTimeout(r, 0));
+      throw new Error('storage gone');
+    });
+    await expect(useDownloads.getState().hydrate()).rejects.toThrow('storage gone');
+    expect(asked.size).toBeGreaterThan(0);
+    expect(asked.size).toBeLessThanOrEqual(8);
+  });
+
     mockEngine.fileExists.mockRejectedValueOnce(new Error('storage gone'));
     mockEngine.probe = async () => true;
     await expect(useDownloads.getState().hydrate()).rejects.toThrow('storage gone');
