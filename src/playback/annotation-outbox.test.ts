@@ -1294,6 +1294,47 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
     expect(held.map((b) => b.id)).toEqual([9]);
   });
 
+  it('keeps one stored with a failing step this build does not know, its count started again', async () => {
+    const { client, held } = server('c1');
+    const entry = {
+      id: 'later',
+      connectionId: 'c1',
+      libraryId: 1,
+      path: 'a/book',
+      position: 120,
+      note: '',
+      updated_at: new Date().toISOString(),
+      client_id: '6f1c2f0e-8a57-4d0b-9c5e-2f6f3f0a9b11',
+      fresh: true,
+      // A later build's, in the queue its tab shares with this one: ten failures over more
+      // than the week, at a step with no place in this build's order.
+      failedSince: new Date(Date.now() - 8 * 24 * 60 * 60_000).toISOString(),
+      failures: 10,
+      lastFailure: new Date(Date.now() - 60 * 60_000).toISOString(),
+      failingStep: 'confirm',
+    };
+    await AsyncStorage.setItem('audiosilo.annotationOutbox', JSON.stringify([entry]));
+    // Still waiting here, and a write of the queue (another bookmark stored) keeps it.
+    mockOnline.c1 = false;
+    await queueNewBookmark('c1', 1, 'b/book', 130, 'n');
+    expect((await queuedBookmarks()).map((e) => e.position)).toEqual([120, 130]);
+    mockOnline.c1 = true;
+    // Its POST fails once more: not given up on by a count this build can't place.
+    client.addBookmark.mockRejectedValueOnce(new ApiError(500, 'boom'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    await flushBookmarks();
+    expect(warn).not.toHaveBeenCalled();
+    expect((await queuedBookmarks())[0]).toMatchObject({
+      position: 120,
+      failures: 1,
+      failingStep: 'post',
+    });
+    await flushBookmarks();
+    expect(held.map((b) => b.position).sort()).toEqual([120, 130]);
+    expect(await queuedBookmarks()).toEqual([]);
+    warn.mockRestore();
+  });
+
   it('drops one whose client_id the server holds on another book, once, and sends the rest', async () => {
     const { client, held, state } = server('c1', offline());
     await queueNewBookmark('c1', 1, 'a/book', 100, 'n');
