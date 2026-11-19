@@ -190,15 +190,15 @@ let stallPauseUntil = 0;
 /** A play asked of the engine from outside the app that the store follows
  * (`playAskedFromOutside`) while it is still starting, else null: over once it plays, is
  * given up (`clearPlaybackIntent`) or another play is asked for (`beginPlaybackAttempt`), so
- * a later stall is the store's book's own. The store's book, where it stood, the listener's
- * moves (`localMoves`) and its speed when the play was asked. `other`: the engine holds another
+ * a later stall is the store's book's own. The store's book, where it stood and the
+ * listener's moves and speed changes (`localMoves`, `localSpeedSets`) when the play was asked. `other`: the engine holds another
  * book, one the service started: its report named that book (`reportedOtherBook`), or its
  * adoption began (`adoptLoadedBook`). */
 let outsidePlay: {
   np: NowPlaying;
   snapshot: PlaybackSnapshot;
   moves: number;
-  rate: number;
+  speedSets: number;
   other: boolean;
 } | null = null;
 /**
@@ -590,6 +590,10 @@ function pickUp() {
 /** Counts the listener's own moves in the loaded book (seeks, track jumps, a book
  * started): a reconcile that sees it change while its check was out stands back. */
 let localMoves = 0;
+/** Counts the listener's speed changes (`setRate`): kept apart from `localMoves`, which the
+ * place reconcile reads, and read by `persist` while another book is on its way to being
+ * adopted. */
+let localSpeedSets = 0;
 
 /** `playBook`s running now. An adoption that read while one ran stands back: the start
  * switches the book only after its own awaits, so an adoption landing between would take
@@ -830,7 +834,7 @@ async function persist(opts?: {
   if (
     engineIsAnothers() &&
     outsidePlay?.moves === localMoves &&
-    outsidePlay.rate === rate &&
+    outsidePlay.speedSets === localSpeedSets &&
     !opts?.forceFinished
   ) {
     return;
@@ -3028,10 +3032,16 @@ function fireStallWatchdog() {
  */
 function playAskedFromOutside() {
   if (wantsPlayback || startsInFlight > 0 || resumeLookupFailed || loadedFaulted()) return;
-  const { snapshot, nowPlaying, loadingBook, rate } = usePlayer.getState();
+  const { snapshot, nowPlaying, loadingBook } = usePlayer.getState();
   if (snapshot.state !== 'error' || !nowPlaying || loadingBook) return;
   beginPlaybackAttempt();
-  outsidePlay = { np: nowPlaying, snapshot, moves: localMoves, rate, other: false };
+  outsidePlay = {
+    np: nowPlaying,
+    snapshot,
+    moves: localMoves,
+    speedSets: localSpeedSets,
+    other: false,
+  };
 }
 
 /** Begin a playback attempt: we intend to play, we're "connecting" until the engine
@@ -4076,7 +4086,6 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     // the stream is buffering). The engine pause is idempotent in either state.
     const st = get().snapshot.state;
     if (pickUpWait) settlePickUpWaitPaused();
-    // Never another book's the engine plays (`pauseOwnBook`).
     if (st === 'playing' || st === 'loading') await pauseOwnBook(svc);
   },
 
@@ -4237,7 +4246,10 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     const changed = clamped !== get().rate;
     set({ rate: clamped });
     // The span at the old speed ends here; the next runs at the new one.
-    if (changed) cutListeningSpan();
+    if (changed) {
+      cutListeningSpan();
+      localSpeedSets++;
+    }
     // Not while the engine holds another book (`engineHoldsOtherBook`: the car's, not
     // adopted): its speed would be that book's. The speed is the store's book's, saved with
     // it, and the engine takes it at that book's next load (a play press reloads it).

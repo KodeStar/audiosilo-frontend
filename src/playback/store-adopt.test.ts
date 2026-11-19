@@ -1905,6 +1905,14 @@ describe('a play asked from outside of another book after playback stopped', () 
       path: 'B',
       playback_speed: 2,
     });
+    // Set back to the speed it had when the play was asked: saved too, not left at 2.
+    await usePlayer.getState().setRate(1);
+    await flushMicrotasks();
+    expect(mockSvc.setRate).not.toHaveBeenCalled();
+    expect(mockSaveProgress.mock.calls.at(-1)?.[1]).toMatchObject({
+      path: 'B',
+      playback_speed: 1,
+    });
     expect(await read()).toBe(true);
     expect(usePlayer.getState()).toMatchObject({ nowPlaying: { path: 'S' }, rate: 1 });
   });
@@ -2444,9 +2452,9 @@ describe("a report of another book than the store's", () => {
     expect((mockSvc.load as jest.Mock).mock.calls[0].slice(1, 3)).toEqual([0, 60]);
   });
 
-  // The review: the app's speed set while the engine played the car's S was S's speed. It is
-  // B's, saved with B, and the engine takes it when B is next loaded.
-  it("sets the store's book's speed, never the engine's other book's", async () => {
+  /** B, downloaded, plays at 1/30 until the car starts S (0/5), not adopted: the mocks
+   * cleared, B still shows playing within its adoption's deadline. */
+  async function carPlaysSOverB() {
     useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
     await usePlayer.getState().adoptLoaded(loadedB({ playing: true }));
     engineBook = refB;
@@ -2455,6 +2463,12 @@ describe("a report of another book than the store's", () => {
     pushSnapshot(snap('playing', 0, 5));
     await flushMicrotasks();
     jest.clearAllMocks();
+  }
+
+  // The review: the app's speed set while the engine played the car's S was S's speed. It is
+  // B's, saved with B, and the engine takes it when B is next loaded.
+  it("sets the store's book's speed, never the engine's other book's", async () => {
+    await carPlaysSOverB();
     // Within the adoption's deadline, and after it.
     await usePlayer.getState().setRate(2);
     await flushMicrotasks();
@@ -2480,14 +2494,7 @@ describe("a report of another book than the store's", () => {
   it.each(['pause', 'toggle'] as const)(
     "pauses only the store's book on the app's %s while the engine plays the other",
     async (press) => {
-      useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
-      await usePlayer.getState().adoptLoaded(loadedB({ playing: true }));
-      engineBook = refB;
-      pushSnapshot(snap('playing', 1, 30));
-      engineBook = refS;
-      pushSnapshot(snap('playing', 0, 5));
-      await flushMicrotasks();
-      jest.clearAllMocks();
+      await carPlaysSOverB();
       jest.advanceTimersByTime(2_000);
       expect(usePlayer.getState().snapshot.state).toBe('playing');
       await usePlayer.getState()[press]();
