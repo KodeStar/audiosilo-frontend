@@ -671,6 +671,21 @@ describe('sending', () => {
   });
 });
 
+it("shows a waiting bookmark under its connection's new id once an identity move rewrote it", async () => {
+  server('c1', offline());
+  await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+  await idle();
+  expect(queuedBookmarksSnapshot().map((e) => e.connectionId)).toEqual(['c1']);
+  // The identity migration's rewrite: the same entry, its connection id moved.
+  const stored = JSON.parse((await AsyncStorage.getItem('audiosilo.annotationOutbox')) ?? '[]');
+  await AsyncStorage.setItem(
+    'audiosilo.annotationOutbox',
+    JSON.stringify(stored.map((e: object) => ({ ...e, connectionId: 'c1.7' }))),
+  );
+  await queuedBookmarks();
+  expect(queuedBookmarksSnapshot().map((e) => e.connectionId)).toEqual(['c1.7']);
+});
+
 describe('sign-out and removal', () => {
   it('counts what still waits after a send to a reachable server (the confirm)', async () => {
     const { held, state } = server('c1', offline());

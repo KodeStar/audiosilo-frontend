@@ -157,8 +157,11 @@ let snapshot: readonly QueuedBookmark[] = [];
 let snapshotRead = false;
 const listeners = new Set<() => void>();
 
+/** Whether the screens would read the same from both: the same entries in the same order,
+ * each for the same connection (an identity move rewrites the ids in place). */
 const sameEntries = (a: readonly QueuedBookmark[], b: readonly QueuedBookmark[]) =>
-  a.length === b.length && a.every((e, i) => e.id === b[i].id);
+  a.length === b.length &&
+  a.every((e, i) => e.id === b[i].id && e.connectionId === b[i].connectionId);
 
 function setSnapshot(queue: Claimed<QueuedBookmark>[]): void {
   snapshotRead = true;
