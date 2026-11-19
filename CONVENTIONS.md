@@ -4508,12 +4508,18 @@ on first need). NOT device-verified (no Cast device yet).
   `CastPlaybackService.loadedBook`, never the queue an adoption remembered mid-handover). A
   session that begins while the store's own load is on its way into the phone's engine waits
   for it to land (`localLoad`), so that book goes over from its own place, never the place of
-  the book the load replaced; a session ended or replaced meanwhile never becomes the route.
-  The wait is bounded (`LOCAL_LOAD_WAIT_MS`): a load that never lands goes over paused from
-  where it was asked to start. A session that ends hands back the book the receiver holds
-  (`loadedQueue`; mid-handover the one handed over), at the receiver's place, its report named
-  (`handingBack`): when that is not the store's book (an adoption landed mid-handover) the
-  store holds it as another book's and is told of no load of its own.
+  the book the load replaced; a session ended or replaced meanwhile never becomes the route
+  (it is detached), and `endCastForCar` ends one still waiting (`beginningCast`), so the car's
+  play never moves to the TV once that load lands. The wait is bounded (`LOCAL_LOAD_WAIT_MS`):
+  a load that never lands (or fails) goes over paused from where it was asked to start, the
+  latest load's when a second tap replaced it. A play or pause the store asks while a handover
+  is on its way (its start plays the book once its load landed, just as such a session hands
+  it over) is the receiver's once the book lands there (`handoverAsk`), never the phone
+  engine's the handover unloads. A session that ends hands back the book the receiver holds
+  (`loadedQueue`, with its chapters; mid-handover the one handed over), at the receiver's
+  place, named (`handingBack`) for its report and while the phone loads it: when that is not
+  the store's book (an adoption landed mid-handover) the store holds it as another book's and
+  is told of no load of its own.
   `startCastSync` (the root's services, `root-services-impl.tsx`) follows the driver's session events; `endCastForCar` and
   `stopCasting` end a session from the app. A user's Stop casting stops the receiver's app (from
   the app, the Cast dialog or the notification), so the TV never plays on while the book comes

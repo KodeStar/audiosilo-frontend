@@ -119,6 +119,9 @@ export function startCastSync(
         };
         const hadBook = usePlayer.getState().nowPlaying !== null;
         void router.beginCast(cast).then(() => {
+          // Not a session that never took the route (it ended, or another replaced it, while
+          // it waited for the phone's load): its book is not the store's to adopt.
+          if (router.castRoute() !== cast) return;
           if (type === 'resumed' && !hadBook) void adoptReceiverBook(router, cast, remote);
         });
       }),
@@ -204,7 +207,9 @@ export function stopCasting(driver: CastDriver = castDriver): Promise<void> {
  */
 export async function endCastForCar(driver: CastDriver = castDriver): Promise<boolean> {
   const router = currentRouter();
-  if (!router?.isCasting()) return false;
+  // A session still waiting to take the route (`beginningCast`) would take the car's play to
+  // the TV once the phone's load landed: it is ended too.
+  if (!router || (!router.isCasting() && !router.beginningCast())) return false;
   await router.castRoute()?.refresh();
   await router.endCast();
   await driver.endSession(true).catch(() => undefined);

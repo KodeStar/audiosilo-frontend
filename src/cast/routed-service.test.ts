@@ -914,6 +914,43 @@ describe('RoutedPlaybackService: a book started while the route is changing', ()
     expect(t.router.reportedBook()).toEqual(OTHER);
   });
 
+  // The store's start plays its book once the load landed (after its speed), which is when a
+  // session that waited for that load begins its handover: that play is the receiver's, never
+  // the phone engine's the handover unloads.
+  it('plays on the receiver a play asked while the book it waited for goes there', async () => {
+    const t = setup();
+    await playingLocally(t);
+    const hold = heldLocalLoad(t);
+    const start = t.router.load(OTHER_TRACKS, 0, 30, [], OTHER);
+    await settle();
+    const { cast, held } = heldCast();
+    const handover = t.router.beginCast(cast as unknown as CastPlaybackService);
+    await settle();
+    hold.land();
+    await start;
+    await settle();
+    expect(held).toHaveLength(1); // the book is on its way to the receiver
+    const playsBefore = t.local.calls.filter((c) => c === 'local.play').length;
+    await t.router.play();
+    held[0].finish();
+    await handover;
+    expect(cast.calls).toContain('cast.play');
+    expect(t.local.calls.filter((c) => c === 'local.play')).toHaveLength(playsBefore);
+  });
+
+  it('keeps the receiver paused for a pause asked while a playing book goes there', async () => {
+    const t = setup();
+    await playingLocally(t);
+    const { cast, held } = heldCast();
+    const handover = t.router.beginCast(cast as unknown as CastPlaybackService);
+    await settle();
+    await t.router.pause();
+    held[0].finish();
+    await handover;
+    expect(t.router.isCasting()).toBe(true);
+    expect(cast.calls).not.toContain('cast.play');
+  });
+
   it('makes no route of a session that ended while it waited for the phone to load', async () => {
     const t = setup();
     await playingLocally(t);
@@ -923,13 +960,65 @@ describe('RoutedPlaybackService: a book started while the route is changing', ()
     const cast = fakeCast();
     const handover = t.router.beginCast(cast as unknown as CastPlaybackService);
     await settle();
+    expect(t.router.beginningCast()).toBe(true);
     await t.router.endCast();
+    expect(t.router.beginningCast()).toBe(false);
     hold.land();
     await start;
     await handover;
     expect(t.router.isCasting()).toBe(false);
     expect(cast.calls).toEqual([]);
+    expect(cast.detach).toHaveBeenCalled(); // it no longer listens to its receiver
     expect(t.local.calls).not.toContain('local.reset');
+  });
+
+  // A load that fails never put the book where it was asked: the engine still reports the
+  // book it was to replace, playing, and neither that place nor that play is the new book's.
+  it('hands over a book whose load into the phone failed from where it was asked, paused', async () => {
+    const t = setup();
+    await playingLocally(t); // BOOK plays at (1, 120)
+    const failed: { fail: () => void } = { fail: () => {} };
+    (t.local.load as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          failed.fail = () => reject(new Error('unreachable'));
+        }),
+    );
+    const start = t.router.load(OTHER_TRACKS, 0, 30, [], OTHER);
+    await settle();
+    const cast = fakeCast();
+    const handover = t.router.beginCast(cast as unknown as CastPlaybackService);
+    await settle();
+    failed.fail();
+    await expect(start).rejects.toThrow('unreachable');
+    await handover;
+    expect(cast.calls).toContain('cast.load(0,30)');
+    expect(cast.calls).not.toContain('cast.load(1,120)');
+    expect(cast.calls).not.toContain('cast.play');
+  });
+
+  // The receiver's book is not the store's (an adoption landed mid-handover): while the phone
+  // loads it, the engine is that book's, so a press or the car sync never reads it as the
+  // store's.
+  it('names the book a hand-back gives the phone while the phone loads it', async () => {
+    const t = setup();
+    await playingLocally(t);
+    const { cast, held } = heldCast();
+    const handover = t.router.beginCast(cast as unknown as CastPlaybackService);
+    await settle();
+    t.router.rememberLoad({ tracks: OTHER_TRACKS, chapters: [], book: OTHER });
+    held[0].finish();
+    await handover;
+    cast.emit({ state: 'playing', trackIndex: 1, position: 400 });
+    const hold = heldLocalLoad(t);
+    const ending = t.router.endCast();
+    await settle();
+    expect(t.local.calls.at(-1)).toBe('local.load(1,400)');
+    expect(t.router.reportedBook()).toEqual(BOOK);
+    hold.land();
+    await ending;
+    // The phone's engine names its own from here (this fake names none).
+    expect(t.router.reportedBook()).toBeNull();
   });
 
   describe('a load into the phone that never lands', () => {
@@ -956,6 +1045,27 @@ describe('RoutedPlaybackService: a book started while the route is changing', ()
       expect(cast.calls).toContain('cast.load(0,30)');
       expect(cast.calls).not.toContain('cast.play');
       expect(jest.getTimerCount()).toBe(0);
+    });
+
+    // A second tap while the first load hung: the book that goes over is the latest one asked,
+    // from its own place, never the book the engine still reports.
+    it('hands over the load that replaced one, from its place, when neither lands', async () => {
+      const t = setup();
+      await playingLocally(t); // BOOK plays at (1, 120)
+      heldLocalLoad(t); // never lands
+      void t.router.load(OTHER_TRACKS, 0, 30, [], OTHER);
+      await settle();
+      const cast = fakeCast();
+      const handover = t.router.beginCast(cast as unknown as CastPlaybackService);
+      await settle();
+      heldLocalLoad(t); // never lands either
+      void t.router.load(TRACKS, 0, 45, [], BOOK);
+      await settle();
+      jest.advanceTimersByTime(LOCAL_LOAD_WAIT_MS);
+      await handover;
+      expect(cast.calls).toContain('cast.load(0,45)');
+      expect(cast.calls).not.toContain('cast.load(1,120)');
+      expect(cast.calls).not.toContain('cast.play');
     });
 
     it('leaves no timer once the load lands or the session ends', async () => {
@@ -1006,6 +1116,8 @@ describe('RoutedPlaybackService: a book started while the route is changing', ()
       await two;
       expect(t.router.castRoute()).toBe(second);
       expect(first.calls).toEqual([]);
+      expect(first.detach).toHaveBeenCalled();
+      expect(second.detach).not.toHaveBeenCalled();
       expect(second.calls).toContain('cast.load(0,30)');
       expect(jest.getTimerCount()).toBe(0);
     });

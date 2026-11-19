@@ -287,4 +287,29 @@ describe('endCastForCar (finding 9)', () => {
     await expect(endCastForCar(driver)).resolves.toBe(false);
     expect(driver.endSession).not.toHaveBeenCalled();
   });
+
+  // A session waiting for the phone's load (`beginningCast`) would take the route, and the
+  // car's play with it, once that load landed.
+  it('ends a session still waiting to take the route, which then never takes it', async () => {
+    const held: { land: () => void } = { land: () => {} };
+    const router = routed({
+      ...localEngine(),
+      load: () =>
+        new Promise<void>((resolve) => {
+          held.land = resolve;
+        }),
+    });
+    const start = router.load([], 0, 0);
+    const cast = { detach: jest.fn() };
+    const begin = router.beginCast(cast as never);
+    expect(router.beginningCast()).toBe(true);
+    const driver = fakeDriver();
+    await expect(endCastForCar(driver)).resolves.toBe(true);
+    expect(driver.endSession).toHaveBeenCalledWith(true);
+    held.land();
+    await start;
+    await begin;
+    expect(router.isCasting()).toBe(false);
+    expect(cast.detach).toHaveBeenCalled();
+  });
 });
