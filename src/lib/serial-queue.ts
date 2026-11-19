@@ -21,10 +21,7 @@ export function keyedSerialQueue(): <T>(key: string, job: () => Promise<T>) => P
   const tails = new Map<string, Promise<unknown>>();
   return <T>(key: string, job: () => Promise<T>): Promise<T> => {
     const run = (tails.get(key) ?? Promise.resolve()).then(job, job);
-    const tail = run.then(
-      () => undefined,
-      () => undefined,
-    );
+    const tail = run.catch(() => undefined);
     tails.set(key, tail);
     void tail.then(() => {
       if (tails.get(key) === tail) tails.delete(key);

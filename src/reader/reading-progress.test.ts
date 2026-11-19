@@ -155,6 +155,7 @@ async function stored<T>(key: string, fallback: T): Promise<T> {
   return raw ? (JSON.parse(raw) as T) : fallback;
 }
 const readQueue = () => stored<ReadingSave[]>(READING_QUEUE_KEY, []);
+const nextMacrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 const readMirror = () =>
   stored<Record<string, { place: { cfi: string } | null; version: number }>>(
     READING_MIRROR_KEY,
@@ -809,8 +810,6 @@ describe('reading-progress', () => {
   });
 
   describe('one queue for every send (fe#173)', () => {
-    const nextMacrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
-
     /** `server`'s api with its first PUT held until `release()`, counting the PUTs in flight. */
     function heldFirst(server: ReturnType<typeof ruleServer>) {
       let release = () => {};
@@ -933,8 +932,6 @@ describe('reading-progress', () => {
   });
 
   describe('a request that hangs (fe#173)', () => {
-    const nextMacrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
-
     /** An api whose PUTs of `held` paths wait until `release()`; every other PUT answers
      * as `fakeApi` does. */
     function hangs(held: (path: string) => boolean) {
@@ -1042,7 +1039,7 @@ describe('reading-progress', () => {
         api,
         save({ cfi: CFI_B, updated_at: '2026-10-01T10:05:00.000Z' }),
       );
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await nextMacrotask();
       expect(api.saveReadingProgress).toHaveBeenCalled();
       expect((await readQueue()).map((s) => s.cfi)).toEqual([CFI_B]);
       answer();
@@ -1146,9 +1143,9 @@ describe('reading-progress', () => {
       mockResolveClient.mockReturnValue(server.api);
       // The replay is out (its answer will keep the tablet's place) as the lookup asks.
       const replay = flushReadingQueue();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await nextMacrotask();
       const lookup = lookupReadingPlace(server.api, 'c1', 1, 'A/Book');
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await nextMacrotask();
       release();
       const [found] = await Promise.all([lookup, replay]);
       expect(found.place?.cfi).toBe(CFI_A);
