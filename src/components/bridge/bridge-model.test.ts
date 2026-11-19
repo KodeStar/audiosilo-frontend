@@ -150,13 +150,23 @@ describe('parkReason', () => {
     expect(parkReason('toString')).toBe('other');
   });
 
-  // A book waiting for a worker goes on once one connects, and a share the Bridge
-  // couldn't confirm once the server answers, with no time to name.
-  it('says which parks end by themselves', () => {
-    expect(parkEndsByItself('worker')).toBe(true);
-    expect(parkEndsByItself('share')).toBe(true);
-    expect(parkEndsByItself('asr')).toBe(false);
-    expect(parkEndsByItself('other')).toBe(false);
+  // The server's transientParks: the parks the Bridge resumes once they pass. A refused
+  // credential shares the agent's reason but waits for a person.
+  it('says which parks end by themselves, as the server counts them', () => {
+    for (const code of [
+      'agent_rate_limited',
+      'agent_unavailable',
+      'asr_worker_waiting',
+      'share_unconfirmed',
+    ]) {
+      expect(parkEndsByItself(code)).toBe(true);
+    }
+    expect(parkEndsByItself('agent_credential_refused')).toBe(false);
+    expect(parkEndsByItself('budget_exceeded')).toBe(false);
+    expect(parkEndsByItself('asr_unavailable')).toBe(false);
+    expect(parkEndsByItself('a_new_code')).toBe(false);
+    expect(parkEndsByItself('constructor')).toBe(false);
+    expect(parkEndsByItself(undefined)).toBe(false);
   });
 });
 
@@ -198,10 +208,11 @@ describe('jobStatusView', () => {
       phase: 'parked',
       reason: 'rateLimited',
       retryAt: new Date('2026-10-15T14:05:00Z'),
+      endsByItself: true,
     });
     expect(
       jobStatusView(bridgeJob({ state: 'needs_attention', progress: { park: { code: 'x' } } })),
-    ).toEqual({ phase: 'parked', reason: 'other', retryAt: undefined });
+    ).toEqual({ phase: 'parked', reason: 'other', retryAt: undefined, endsByItself: false });
   });
 
   // server#218: a park code the player doesn't know says the Bridge's own words; a known
@@ -219,11 +230,13 @@ describe('jobStatusView', () => {
       reason: 'other',
       hint: 'The disk is full. Free some space.',
       retryAt: undefined,
+      endsByItself: false,
     });
     expect(parked('budget_exceeded')).toEqual({
       phase: 'parked',
       reason: 'budget',
       retryAt: undefined,
+      endsByItself: false,
     });
   });
 

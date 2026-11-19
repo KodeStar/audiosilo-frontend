@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { formatDuration, formatShortDay, formatWallClock, localIsoDay } from '@/lib/format';
 
-import { type JobStatusView, jobStatusView, parkEndsByItself, statusJob } from './bridge-model';
+import { type JobStatusView, jobStatusView, statusJob } from './bridge-model';
 import { JobStatusLayout } from './job-status-layout';
 import type { GenerateModel } from './use-generate';
 
@@ -182,11 +182,7 @@ function JobStatus({
         <Text variant="caption">
           {view.retryAt
             ? retryLine(t, view.retryAt)
-            : t(
-                parkEndsByItself(view.reason)
-                  ? 'bridge.status.byItself'
-                  : 'bridge.status.openConsole',
-              )}
+            : t(view.endsByItself ? 'bridge.status.byItself' : 'bridge.status.openConsole')}
         </Text>
       ) : null}
     </JobStatusLayout>

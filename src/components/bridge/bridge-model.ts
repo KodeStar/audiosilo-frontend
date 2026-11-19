@@ -260,11 +260,20 @@ export function parkReason(code: string | undefined): ParkReason {
   return code && Object.hasOwn(PARK_REASON, code) ? PARK_REASON[code] : 'other';
 }
 
-/** Whether a park ends by itself with no time to name, so there is nothing to fix in
- * the console: the Bridge takes a book waiting for a worker on once one connects, and a
- * share it couldn't confirm once the server answers. */
-export function parkEndsByItself(reason: ParkReason): boolean {
-  return reason === 'worker' || reason === 'share';
+/** The park codes the Bridge resumes by itself once they pass, the server's
+ * `transientParks` (internal/bridge/jobs.go): the agent's rate limit, a short outage of
+ * the agent container, a wait for an ASR worker, and a share it couldn't confirm. */
+const TRANSIENT_PARKS: ReadonlySet<string> = new Set([
+  'agent_rate_limited',
+  'agent_unavailable',
+  'asr_worker_waiting',
+  'share_unconfirmed',
+]);
+
+/** Whether a park ends by itself, so with no time to name there is nothing to fix in the
+ * console. By the code, not the reason: `agent` also groups a refused credential. */
+export function parkEndsByItself(code: string | undefined): boolean {
+  return code !== undefined && TRANSIENT_PARKS.has(code);
 }
 
 /** How a job's status reads: its phase, the stage, the counts and ETA when known, the
@@ -285,6 +294,8 @@ export type JobStatusView =
        * says why rather than nothing (server#218); the console shows the same. */
       hint?: string;
       retryAt?: Date;
+      /** It resumes by itself ({@link parkEndsByItself}), whether or not `retryAt` names when. */
+      endsByItself: boolean;
     }
   | { phase: 'failed'; error: string };
 
@@ -302,6 +313,7 @@ export function jobStatusView(job: BridgeJob): JobStatusView {
       reason,
       hint: reason === 'other' ? p?.park?.hint?.trim() || undefined : undefined,
       retryAt: retry && Number.isFinite(retry.getTime()) ? retry : undefined,
+      endsByItself: parkEndsByItself(p?.park?.code),
     };
   }
   if (job.state !== 'running') return { phase: 'waiting' };
