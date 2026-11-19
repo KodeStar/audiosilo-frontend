@@ -454,9 +454,17 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   Else the pending set when its origin is one of the connection's addresses and has no set yet: a
   typed set that was never sent proved nothing, so it replaces no kept one. A demo or a kid's
   account replaces a kept set only while no full account on the device reaches that address
-  (`mayReplaceProxySet`, the Account card's `canManageProxySet` rule for one address; the
-  identities the sign-in retires don't count); where none is kept yet, its set is kept as anyone's
-  (a kid's own device works). A pairing QR or link
+  (`mayReplaceProxySet`, the Account card's `canManageProxySet` rule for one address, both in
+  `src/lib/proxy-headers.ts`; the identities the sign-in retires don't count); where none is kept
+  yet, its set is kept as anyone's (a kid's own device works). The keep is decided inside
+  `setSession`, under the list's lock against the list and sets as stored (`proxyChoice`;
+  `finishConnect` hands it the typed set, `proxyUnsent`), so a full account another tab signed in
+  meanwhile counts. A kid's set that got in where such a kept set differs has the kept one probed
+  first (`keptSetRefused`: a tokenless `GET /server` carrying it, refused by the proxy itself):
+  when the proxy refuses it, the kid's sign-in uses its typed set for itself until the app closes
+  (`signInProxySets`, memory only, `connectionSetFor`: only while the address's kept set is still
+  the one it stood in for, so a grown-up's update takes over), and kids mode and the shell ask a
+  grown-up to update the proxy headers (`useOnOwnProxySet`, `ProxyRefusedBanner`). A pairing QR or link
   pairs with them when its address is the field's: type the address and the headers first, then
   scan.
 - **A proxy's 401 is not a sign-out, nor its 403 no access.** The server's own 401s and 403s
@@ -464,6 +472,19 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   JSON) is the proxy's (`ApiError.fromProxy`). `isSignedOutError` is false for it, and so is
   `accessRefusal`'s no access (fe#280), so no reconnect banner and no sign-out, and the sign-in step
   says the proxy refused the request (`isProxyRefusal`, `connect.signIn.errors.proxyRefused`).
+  Nor is its 403 "not in the library" (`isNotInLibraryError` is never a proxy's: the book, browse
+  and player pages keep their Retry, read-along its Try again), and `accessRefusal` names it
+  `proxy` (an episode's fetch and its download wait fail with the app's `proxy_refused` reason,
+  worded as the proxy headers). A pairing link naming a book opens it when a proxy turns the
+  token check away (`stillSignedIn` counts only the server's own 401).
+  **Signed in, it is said once per run** (`src/api/proxy-refusal.ts`): every signed-in
+  connection's client tells, per answer, whether the proxy refused it or let it through
+  (`ApiClient`'s `onProxyAnswer` -> `noteProxyAnswer`); the first refusal starts the
+  connection's episode and the next success ends it (memory only; a removed connection's goes
+  with it). While it lasts the shell shows `ProxyRefusedBanner` beside the reconnect banner (not
+  for a connection that needs signing in again): it opens the connection's Account page when the
+  listener may edit the set (`canManageProxySet`), else asks a grown-up, as kids mode does over
+  the stories.
   Nor is it refused for good (`isRefusedForGood`): the server never saw the request, so a
   progress or reading save it turned away is queued for once the headers are fixed, never dropped
   (nor is the car's bookmark, `addCarBookmark`). A download task hands back the status alone (the
@@ -907,7 +928,9 @@ in step.
   `librivoxFetchEnded` (the works asked again; a `done` one also `invalidateLibraryLists` and the
   works once more after `DONE_RECHECK_MS`, on a module timer that fires whatever is mounted by
   then) and drops the watch; it also drops one that is gone (404, the works asked again) or
-  refused by the server (its own 400 or 403: nothing read again), judged only once `/server` has
+  refused by the server (its own 400 or 403: nothing read again; `followedRead`'s `refused`, which
+  also drops the job from the row, so it offers Add again rather than an "Adding" nothing polls),
+  judged only once `/server` has
   answered (until then the gate lays that read's own failure over the job's,
   `useCapabilityQuery`). A proxy's 401 or 403 (`ApiError.fromProxy`: its session lapsed, the
   server never saw the request) is no refusal: the watch is kept and the poll asks again, backing off
@@ -1034,9 +1057,10 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   (`blipDelay`); a failed or impossible fetch ends as a `serverFetch` failure with the server's code
   (`failureText` reads it through `fetchReasonKey`; `identity_changed` also reads the item and the
   library's episode lists again). A refusal of the listener (`accessRefusal`: the server's own
-  401, or its own 403 naming no code; a proxy's 401 or 403, `ApiError.fromProxy`, is a fetch
-  that failed for no named reason) is its own failure, `signedOut` or `noAccess`, and the player's fetch says
-  it as the reasons `signed_out` / `no_access`. The listener's Retry of a failed fetch POSTs
+  401, or its own 403 naming no code) is its own failure, `signedOut` or `noAccess`, and the
+  player's fetch says it as the reasons `signed_out` / `no_access`; a proxy's 401 or 403
+  (`ApiError.fromProxy`) is a failed fetch with the app's reason `proxy_refused` (both places,
+  `REFUSAL_CODES`), worded as the proxy headers. The listener's Retry of a failed fetch POSTs
   (past the server's cool-down); until the server answers that POST the waiting entry saves it
   (`serverFetch.refetch`), so a launch asks it again, and a wait that ends signed out, with no
   access or cut short by a launch keeps it on its failure (`failure.refetch`), so the Retry after
@@ -1785,7 +1809,9 @@ POST (a resend there could make it twice), and a storage write refused leaves th
 before. The outbox is sent
 at launch and on reconnect (`startBookmarkSync`, a root service; also once a connection a 401
 flagged is signed in again, with no backoff meanwhile, and once the wait a 429 asked of its
-server is over, `onRateLimitOver`), with the stored queues in the
+server is over, `onRateLimitOver`; a 429 on a bookmark's own send, the tap's or a replay's, sets
+that wait, `noteRateLimit`: a replay stops there and a tap made meanwhile is stored unsent,
+`rateLimited`), with the stored queues in the
 foreground and on the web's focus and `online` (`startQueueReplays`), and on a backoff (30 s
 doubling to 10 min) while a reachable server keeps failing, through `replayQueue` routed by
 `storedRoute` (claims, so two tabs never send one twice; a connection another tab is signed in
