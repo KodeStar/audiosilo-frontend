@@ -463,7 +463,8 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   first (`keptSetRefused`: a tokenless `GET /server` carrying it, refused by the proxy itself):
   when the proxy refuses it, the kid's sign-in uses its typed set for itself until the app closes
   (`signInProxySets`, memory only, `connectionSetFor`: only while the address's kept set is still
-  the one it stood in for, so a grown-up's update takes over), and kids mode and the shell ask a
+  the one it stood in for, so a grown-up's update takes over; it ends with that sign-in, signed out
+  or signed in again here or in another tab, `ownSetsStill`), and kids mode and the shell ask a
   grown-up to update the proxy headers (`useProxyNotice`, `ProxyRefusedBanner`). A pairing QR or link
   pairs with them when its address is the field's: type the address and the headers first, then
   scan.
@@ -476,18 +477,21 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   and player pages keep their Retry, read-along its Try again), and `accessRefusal` names it
   `proxy` (an episode's fetch and its download wait fail with the app's `proxy_refused` reason,
   worded as the proxy headers). A pairing link naming a book opens it when a proxy turns the
-  token check away (`stillSignedIn` counts only the server's own 401).
+  token check away (`stillSignedIn` counts only the server's own 401), and `apiErrorKind` reads it
+  as `failed`, never `forbidden`.
   **Signed in, it is said once per run** (`src/api/proxy-refusal.ts`): every signed-in
   connection's client tells, per answer, whether the proxy refused it or let it through
   (`ApiClient`'s `onProxyAnswer` -> `noteProxyAnswer`); the first refusal starts the
   connection's episode and the next success ends it (memory only; a removed connection's goes
-  with it). While it lasts the shell shows `ProxyRefusedBanner` beside the reconnect banner (not
+  with it; an answer to a request sent with a set the connection no longer sends there counts for
+  nothing, `connectionClient`). While it lasts the shell shows `ProxyRefusedBanner` beside the reconnect banner (not
   for a connection that needs signing in again): it opens the connection's Account page when the
   listener may edit the set (`canManageProxySet`), else asks a grown-up, as kids mode does over
   the stories.
   Nor is it refused for good (`isRefusedForGood`): the server never saw the request, so a
   progress or reading save it turned away is queued for once the headers are fixed, never dropped
-  (nor is the car's bookmark, `addCarBookmark`). A download task hands back the status alone (the
+  (nor is the car's bookmark, `addCarBookmark`, nor a waiting one: a replay stops at it as at a
+  401, never counting it toward giving up, `connectionFailure`). A download task hands back the status alone (the
   reader's EPUB, `ebook-file.native.ts`): its 401 reads as signed out only when the server itself
   then refuses the token (`refusalOf` asks `me`). The connect screen's own probe says the proxy
   refused it too.
