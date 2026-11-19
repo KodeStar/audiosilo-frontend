@@ -1723,7 +1723,9 @@ after its confirm names them beside the unsynced listens (`unsentBeforeSignOut`,
 `src/components/account/unsent.ts`: the sign-out, remove-server and remove-person confirms); a replay
 drops the entries of a connection gone once the session has loaded. Waiting ones are listed
 among the book's bookmarks (`useQueuedBookmarks`, `QueuedBookmarkRow`: "Waiting to sync", Delete
-takes one out unsent, with Undo, and a replay skips one taken out after it claimed it) and
+takes one out unsent, with an Undo that puts it back through the outbox (`queueBookmark`, never
+a direct POST: a replay may have sent it just before the Delete, and its read before a send
+keeps it from being made twice), and a replay skips one taken out after it claimed it) and
 pinned on the seek bar, never beside the listed one the server already holds. The outbox is
 an `ID_DOCUMENTS` document of the identity migration. The editor's add and the delete's
 Undo still post directly (the listener sees the failure there); the car keeps its own
