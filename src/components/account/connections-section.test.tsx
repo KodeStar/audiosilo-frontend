@@ -9,6 +9,11 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('@/api/provider', () => ({ useApiRegistry: () => ({ clients: new Map() }) }));
 jest.mock('@/playback/store', () => ({ teardownBeforeTokenRevoke: jest.fn() }));
+// What the server has not had yet: Sync v2's listens and the waiting bookmarks (fe#356).
+let mockListens = 0;
+let mockBookmarks = 0;
+jest.mock('@/playback/listening-outbox', () => ({ unsentListens: async () => mockListens }));
+jest.mock('@/playback/annotation-outbox', () => ({ unsentBookmarks: async () => mockBookmarks }));
 let mockDownloaded = 0;
 jest.mock('@/downloads/store', () => ({
   downloadedCountFor: () => mockDownloaded,
@@ -33,6 +38,8 @@ import { ConnectionsSection, useConnectionRemoval } from './connections-section'
 beforeEach(() => {
   mockServed = null;
   mockDownloaded = 0;
+  mockListens = 0;
+  mockBookmarks = 0;
   jest.clearAllMocks();
   resetProfilesForTests();
   useSession.setState({
@@ -186,6 +193,19 @@ describe('removing a server', () => {
     await fireEvent.press(screen.getByText('Cancel'));
     expect(remove).not.toHaveBeenCalled();
     expect(useSession.getState().connections).toHaveLength(1);
+  });
+
+  it('names the listens and bookmarks that have not synced (fe#356)', async () => {
+    mockListens = 2;
+    mockBookmarks = 1;
+    await mountWithPortal(<Pane />);
+    await fireEvent.press(screen.getByLabelText('Remove Hearthside'));
+    expect(
+      await screen.findByText(/2 listens haven't synced to Hearthside and will be lost\./),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/1 bookmark hasn't synced to Hearthside and will be lost\./),
+    ).toBeTruthy();
   });
 
   it('names the downloads it deletes, and removes on confirm', async () => {

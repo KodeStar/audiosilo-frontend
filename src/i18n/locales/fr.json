@@ -220,7 +220,9 @@
         "signOut": "Cela déconnecte cet appareil de {{name}}. Votre écoute reste sur le serveur : reconnectez-vous pour la retrouver ici.",
         "last": "C'est le seul serveur sur cet appareil, donc AudioSilo revient à la première étape.",
         "unsynced_one": "{{count}} écoute n'a pas été synchronisée avec {{name}} et sera perdue.",
-        "unsynced_other": "{{count}} écoutes n'ont pas été synchronisées avec {{name}} et seront perdues."
+        "unsynced_other": "{{count}} écoutes n'ont pas été synchronisées avec {{name}} et seront perdues.",
+        "unsyncedBookmarks_one": "{{count}} signet n'a pas été synchronisé avec {{name}} et sera perdu.",
+        "unsyncedBookmarks_other": "{{count}} signets n'ont pas été synchronisés avec {{name}} et seront perdus."
       }
     },
     "signOut": {
@@ -234,7 +236,9 @@
       "downloadsWarning_other": "La déconnexion supprimera aussi {{count}} livres téléchargés depuis ce serveur sur cet appareil.",
       "unsyncedTitle": "Écoutes non synchronisées",
       "unsynced_one": "{{count}} écoute n'a pas été synchronisée avec {{server}}. Se déconnecter quand même ?",
-      "unsynced_other": "{{count}} écoutes n'ont pas été synchronisées avec {{server}}. Se déconnecter quand même ?"
+      "unsynced_other": "{{count}} écoutes n'ont pas été synchronisées avec {{server}}. Se déconnecter quand même ?",
+      "unsyncedAnyTitle": "Pas encore synchronisé",
+      "anyway": "Se déconnecter quand même ?"
     },
     "switcher": "Serveur",
     "none": "Connectez-vous à un serveur pour voir son compte.",

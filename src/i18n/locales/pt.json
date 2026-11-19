@@ -220,7 +220,9 @@
         "signOut": "Isto termina a sessão deste dispositivo em {{name}}. O que ouviu fica no servidor: inicie sessão de novo para o recuperar aqui.",
         "last": "É o único servidor neste dispositivo, por isso o AudioSilo volta ao primeiro passo.",
         "unsynced_one": "{{count}} audição ainda não foi sincronizada com {{name}} e vai perder-se.",
-        "unsynced_other": "{{count}} audições ainda não foram sincronizadas com {{name}} e vão perder-se."
+        "unsynced_other": "{{count}} audições ainda não foram sincronizadas com {{name}} e vão perder-se.",
+        "unsyncedBookmarks_one": "{{count}} marcador ainda não foi sincronizado com {{name}} e vai perder-se.",
+        "unsyncedBookmarks_other": "{{count}} marcadores ainda não foram sincronizados com {{name}} e vão perder-se."
       }
     },
     "signOut": {
@@ -234,7 +236,9 @@
       "downloadsWarning_other": "Terminar sessão também elimina {{count}} livros descarregados deste servidor neste dispositivo.",
       "unsyncedTitle": "Audições por sincronizar",
       "unsynced_one": "{{count}} audição ainda não foi sincronizada com {{server}}. Terminar sessão mesmo assim?",
-      "unsynced_other": "{{count}} audições ainda não foram sincronizadas com {{server}}. Terminar sessão mesmo assim?"
+      "unsynced_other": "{{count}} audições ainda não foram sincronizadas com {{server}}. Terminar sessão mesmo assim?",
+      "unsyncedAnyTitle": "Ainda por sincronizar",
+      "anyway": "Terminar sessão mesmo assim?"
     },
     "switcher": "Servidor",
     "none": "Inicie sessão num servidor para ver a sua conta.",

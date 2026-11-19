@@ -220,7 +220,9 @@
         "signOut": "Dadurch wird dieses Gerät von {{name}} abgemeldet. Dein Hörfortschritt bleibt auf dem Server: Melde dich wieder an, um ihn hier zurückzubekommen.",
         "last": "Es ist der einzige Server auf diesem Gerät, daher kehrt AudioSilo zum ersten Schritt zurück.",
         "unsynced_one": "{{count}} Hörsitzung wurde noch nicht mit {{name}} synchronisiert und geht verloren.",
-        "unsynced_other": "{{count}} Hörsitzungen wurden noch nicht mit {{name}} synchronisiert und gehen verloren."
+        "unsynced_other": "{{count}} Hörsitzungen wurden noch nicht mit {{name}} synchronisiert und gehen verloren.",
+        "unsyncedBookmarks_one": "{{count}} Lesezeichen wurde noch nicht mit {{name}} synchronisiert und geht verloren.",
+        "unsyncedBookmarks_other": "{{count}} Lesezeichen wurden noch nicht mit {{name}} synchronisiert und gehen verloren."
       }
     },
     "signOut": {
@@ -234,7 +236,9 @@
       "downloadsWarning_other": "Beim Abmelden werden außerdem {{count}} von diesem Server auf dieses Gerät heruntergeladene Bücher gelöscht.",
       "unsyncedTitle": "Nicht synchronisiertes Hören",
       "unsynced_one": "{{count}} Hörsitzung wurde noch nicht mit {{server}} synchronisiert. Trotzdem abmelden?",
-      "unsynced_other": "{{count}} Hörsitzungen wurden noch nicht mit {{server}} synchronisiert. Trotzdem abmelden?"
+      "unsynced_other": "{{count}} Hörsitzungen wurden noch nicht mit {{server}} synchronisiert. Trotzdem abmelden?",
+      "unsyncedAnyTitle": "Noch nicht synchronisiert",
+      "anyway": "Trotzdem abmelden?"
     },
     "switcher": "Server",
     "none": "Melde dich bei einem Server an, um sein Konto zu sehen.",

@@ -220,7 +220,9 @@
         "signOut": "This signs this device out of {{name}}. Your listening stays on the server: sign in again to get it back here.",
         "last": "It's the only server on this device, so AudioSilo goes back to its first step.",
         "unsynced_one": "{{count}} listen hasn't synced to {{name}} and will be lost.",
-        "unsynced_other": "{{count}} listens haven't synced to {{name}} and will be lost."
+        "unsynced_other": "{{count}} listens haven't synced to {{name}} and will be lost.",
+        "unsyncedBookmarks_one": "{{count}} bookmark hasn't synced to {{name}} and will be lost.",
+        "unsyncedBookmarks_other": "{{count}} bookmarks haven't synced to {{name}} and will be lost."
       }
     },
     "signOut": {
@@ -234,7 +236,9 @@
       "downloadsWarning_other": "Signing out also deletes {{count}} books downloaded from this server on this device.",
       "unsyncedTitle": "Listens not synced",
       "unsynced_one": "{{count}} listen hasn't synced to {{server}}. Sign out anyway?",
-      "unsynced_other": "{{count}} listens haven't synced to {{server}}. Sign out anyway?"
+      "unsynced_other": "{{count}} listens haven't synced to {{server}}. Sign out anyway?",
+      "unsyncedAnyTitle": "Not synced yet",
+      "anyway": "Sign out anyway?"
     },
     "switcher": "Server",
     "none": "Sign in to a server to see its account.",

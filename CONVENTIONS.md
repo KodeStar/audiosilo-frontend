@@ -1708,7 +1708,9 @@ while a reachable server keeps failing, through `replayQueue` routed by `queuedR
 so two tabs never send one twice). The POST has no idempotency key, so a replay reads the book's
 bookmarks first and takes one at the same second with the same note, made at most a day before,
 as already sent. Signing out or removing a server gives it a last send in
-`flushConnectionSaves` (`sendBookmarksBeforeRemoval`) and the removal purges what is left; a replay
+`flushConnectionSaves` (`sendBookmarksBeforeRemoval`) and the removal purges what is left,
+after its confirm names them beside the unsynced listens (`unsentBeforeSignOut`,
+`src/components/account/unsent.ts`: the sign-out, remove-server and remove-person confirms); a replay
 drops the entries of a connection gone once the session has loaded. Waiting ones are listed
 among the book's bookmarks (`useQueuedBookmarks`, `QueuedBookmarkRow`: "Waiting to sync", Delete
 takes one out unsent, with Undo) and pinned on the seek bar. The editor's add and the delete's

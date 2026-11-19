@@ -72,6 +72,7 @@ import {
   resetAnnotationOutboxForTests,
   sendBookmarksBeforeRemoval,
   startBookmarkSync,
+  unsentBookmarks,
 } from './annotation-outbox';
 import { onConnectionRemoved } from '@/stores/session';
 /* eslint-enable import/first */
@@ -354,6 +355,27 @@ describe('sending', () => {
 });
 
 describe('sign-out and removal', () => {
+  it('counts what still waits after a send to a reachable server (the confirm)', async () => {
+    const { held, state } = server('c1', offline());
+    await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+    expect(await unsentBookmarks('c1')).toBe(1);
+    state.down = null;
+    expect(await unsentBookmarks('c1')).toBe(0);
+    expect(held).toHaveLength(1);
+  });
+
+  it('does not wait on a server known down before the confirm', async () => {
+    const { client } = server('c1', offline());
+    await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+    await idle();
+    mockOnline.c1 = false;
+    client.addBookmark.mockClear();
+    client.bookmarks.mockClear();
+    expect(await unsentBookmarks('c1')).toBe(1);
+    expect(client.bookmarks).not.toHaveBeenCalled();
+    expect(client.addBookmark).not.toHaveBeenCalled();
+  });
+
   it('sends what waits whatever the recorded reachability', async () => {
     const { held, state } = server('c1', offline());
     await addBookmarkOrQueue('c1', 1, 'a/book', 100);

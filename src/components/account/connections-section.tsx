@@ -19,11 +19,12 @@ import { onlyOwnServer, servedOrigin } from '@/lib/base-url';
 import { accountHref } from '@/lib/paths';
 import { serverDisplayName } from '@/lib/server-display-name';
 import { cn } from '@/lib/utils';
-import { unsentListens } from '@/playback/listening-outbox';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
 import { useThemeColors } from '@/theme/use-theme-colors';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession, type Connection } from '@/stores/session';
+
+import { type Unsent, unsentBeforeSignOut, unsentLines } from './unsent';
 
 /** The drawn remove button's size in rem (`h-9 w-9`). */
 const REMOVE_REM = 2.25;
@@ -59,18 +60,17 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
   const onRemove = (c: Connection) => {
     const count = downloadedCountFor(useDownloads.getState().entries, c.id);
     const last = useSession.getState().connections.every((o) => o.id === c.id);
-    // Sync v2's listens get a last send first; any left are named in the confirm.
-    void unsentListens(c.id)
-      .catch(() => 0)
-      .then((unsynced) =>
-        setPendingRemoval({
-          connection: c,
-          name: serverDisplayName(c, useSession.getState().connections),
-          downloadCount: count,
-          last,
-          unsynced,
-        }),
-      );
+    // Sync v2's listens and the waiting bookmarks get a send first; any left are named in
+    // the confirm.
+    void unsentBeforeSignOut(c.id).then((unsent) =>
+      setPendingRemoval({
+        connection: c,
+        name: serverDisplayName(c, useSession.getState().connections),
+        downloadCount: count,
+        last,
+        unsent,
+      }),
+    );
   };
 
   const dialog = (
@@ -100,12 +100,12 @@ type PendingRemoval = {
   name: string;
   downloadCount: number;
   last: boolean;
-  /** Sync v2 listens still not on the server (lost with it). */
-  unsynced: number;
+  /** Sync v2 listens and waiting bookmarks still not on the server (lost with it). */
+  unsent: Unsent;
 };
 
 /** What removing a server loses, in words: its downloads, else this device's sign-in;
- * the listens that haven't synced; and the way back to the first step when it is the last
+ * the listens and bookmarks that haven't synced; and the way back to the first step when it is the last
  * server. */
 function removeMessage(pending: PendingRemoval | null, t: TFunction): string {
   if (!pending) return '';
@@ -114,14 +114,7 @@ function removeMessage(pending: PendingRemoval | null, t: TFunction): string {
       ? t('account.connections.removeConfirm.message', { count: pending.downloadCount })
       : t('account.connections.removeConfirm.signOut', { name: pending.name }),
   ];
-  if (pending.unsynced > 0) {
-    parts.push(
-      t('account.connections.removeConfirm.unsynced', {
-        count: pending.unsynced,
-        name: pending.name,
-      }),
-    );
-  }
+  parts.push(...unsentLines(t, pending.unsent, pending.name));
   if (pending.last) parts.push(t('account.connections.removeConfirm.last'));
   return parts.join(' ');
 }

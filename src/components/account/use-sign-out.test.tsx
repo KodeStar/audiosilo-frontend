@@ -27,6 +27,11 @@ const mockUnsent = jest.fn(async (_cid: string) => 0);
 jest.mock('@/playback/listening-outbox', () => ({
   unsentListens: (cid: string) => mockUnsent(cid),
 }));
+// And the bookmarks still waiting on the device (fe#356).
+const mockUnsentBookmarks = jest.fn(async (_cid: string) => 0);
+jest.mock('@/playback/annotation-outbox', () => ({
+  unsentBookmarks: (cid: string) => mockUnsentBookmarks(cid),
+}));
 
 /* eslint-disable import/first */
 import { teardownBeforeTokenRevoke } from '@/playback/store';
@@ -137,7 +142,10 @@ describe('useSignOut', () => {
 
 // Sync v2 (failure row 10): listens still unsent after a last send are confirmed first.
 describe('useSignOut with unsynced listens', () => {
-  afterEach(() => mockUnsent.mockReset().mockResolvedValue(0));
+  afterEach(() => {
+    mockUnsent.mockReset().mockResolvedValue(0);
+    mockUnsentBookmarks.mockReset().mockResolvedValue(0);
+  });
 
   it('confirms "N listens haven\'t synced" before signing out, and signs out on confirm', async () => {
     seed(user({ has_password: true }));
@@ -148,14 +156,26 @@ describe('useSignOut with unsynced listens', () => {
       await hook().requestSignOut();
     });
     expect(mockUnsent).toHaveBeenCalledWith('c1');
-    expect(hook().unsynced).toBe(3);
+    expect(hook().unsynced).toEqual({ listens: 3, bookmarks: 0 });
     expect(mockSessionState.removeConnection).not.toHaveBeenCalled();
 
     await act(async () => {
       await hook().confirmUnsynced();
     });
-    expect(hook().unsynced).toBe(0);
+    expect(hook().unsynced).toBeNull();
     await waitFor(() => expect(mockSessionState.removeConnection).toHaveBeenCalledWith('c1'));
+  });
+
+  it('confirms the bookmarks still waiting on the device too (fe#356)', async () => {
+    seed(user({ has_password: true }));
+    mockUnsentBookmarks.mockResolvedValue(2);
+    const hook = await mountHook(() => useSignOut('c1'));
+    await act(async () => {
+      await hook().requestSignOut();
+    });
+    expect(mockUnsentBookmarks).toHaveBeenCalledWith('c1');
+    expect(hook().unsynced).toEqual({ listens: 0, bookmarks: 2 });
+    expect(mockSessionState.removeConnection).not.toHaveBeenCalled();
   });
 
   it('cancel keeps the connection (and its listens)', async () => {
@@ -166,7 +186,7 @@ describe('useSignOut with unsynced listens', () => {
       await hook().requestSignOut();
     });
     await act(async () => hook().cancelUnsynced());
-    expect(hook().unsynced).toBe(0);
+    expect(hook().unsynced).toBeNull();
     expect(mockSessionState.removeConnection).not.toHaveBeenCalled();
   });
 

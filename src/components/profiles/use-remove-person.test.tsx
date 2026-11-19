@@ -34,6 +34,11 @@ const mockUnsent = jest.fn(async (cid: string) => (cid === 'c2' ? 3 : 0));
 jest.mock('@/playback/listening-outbox', () => ({
   unsentListens: (cid: string) => mockUnsent(cid),
 }));
+// And the bookmarks waiting on the device (fe#356).
+const mockUnsentBookmarks = jest.fn(async (_cid: string) => 0);
+jest.mock('@/playback/annotation-outbox', () => ({
+  unsentBookmarks: (cid: string) => mockUnsentBookmarks(cid),
+}));
 
 /* eslint-disable import/first */
 import type { Profile } from '@/stores/profiles';
@@ -69,6 +74,22 @@ describe('useRemovePerson', () => {
       "3 listens haven't synced to Work and will be lost.",
     );
     expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
+  it('names the bookmarks still waiting beside the listens', async () => {
+    mockUnsent.mockImplementation(async (cid: string) => (cid === 'c2' ? 3 : 0));
+    mockUnsentBookmarks.mockImplementation(async (cid: string) => (cid === 'c1' ? 1 : 2));
+    const hook = await mount();
+    await act(async () => {
+      await hook().request(evie, 'Evie');
+    });
+    expect(screen.getByTestId('remove-person-unsynced-c1')).toHaveTextContent(
+      "1 bookmark hasn't synced to Home and will be lost.",
+    );
+    expect(screen.getByTestId('remove-person-unsynced-c2')).toHaveTextContent(
+      "3 listens haven't synced to Work and will be lost. 2 bookmarks haven't synced to Work and will be lost.",
+    );
+    mockUnsentBookmarks.mockReset().mockResolvedValue(0);
   });
 
   it('says nothing about listens when everything synced', async () => {

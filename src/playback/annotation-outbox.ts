@@ -355,6 +355,13 @@ export async function flushBookmarks(connectionId?: string): Promise<void> {
   }
 }
 
+/** Before a sign-out or removal is confirmed: a send of `connectionId`'s waiting bookmarks
+ * while its server reads as reachable, then how many are still waiting (and would be lost). */
+export async function unsentBookmarks(connectionId: string): Promise<number> {
+  await flushBookmarks(connectionId).catch(() => undefined);
+  return (await queuedBookmarks(connectionId)).length;
+}
+
 /** The last send before `connectionId` is signed out or removed, whatever its recorded
  * reachability (`flushConnectionSaves`). */
 export async function sendBookmarksBeforeRemoval(connectionId: string): Promise<void> {
