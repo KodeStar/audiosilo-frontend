@@ -1,9 +1,8 @@
 import { networkChecked } from '@/api/address-route';
-import { sessionReady } from '@/api/connection-clients';
+import { whenSessionReady } from '@/api/connection-clients';
 import { onReconnect } from '@/api/reachability';
 import { sharedStart } from '@/lib/shared-start';
 import { onForeground } from '@/lib/when-active';
-import { useSession } from '@/stores/session';
 
 import { flushAllOutboxes, flushOutbox } from './listening-outbox';
 import { cutListeningSpanNow } from './store';
@@ -22,17 +21,8 @@ import { cutListeningSpanNow } from './store';
 export const startListeningSync = sharedStart(runListeningSync);
 
 function runListeningSync(): () => void {
-  const stops: (() => void)[] = [];
   // `flushAllOutboxes` closes a span a kill left open first (`recoverOpenSpan`).
-  const launch = () => void flushAllOutboxes();
-  if (sessionReady()) launch();
-  else {
-    stops.push(
-      useSession.subscribe((state, prev) => {
-        if (prev.status === 'loading' && state.status !== 'loading' && sessionReady()) launch();
-      }),
-    );
-  }
+  const stops = [whenSessionReady(() => void flushAllOutboxes())];
   stops.push(
     onReconnect((cid) => {
       cutListeningSpanNow(cid);

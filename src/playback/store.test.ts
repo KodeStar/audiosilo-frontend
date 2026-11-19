@@ -88,6 +88,11 @@ const mockMirrorIsNewest = jest.fn(
   async (record: Stamped, place: Stamped): Promise<boolean> =>
     Date.parse(record.updated_at) >= Date.parse(place.updated_at),
 );
+// The bookmarks waiting on the device: their last send before a removal (fe#356).
+const mockSendBookmarks = jest.fn(async (_cid: string) => {});
+jest.mock('./annotation-outbox', () => ({
+  sendBookmarksBeforeRemoval: (cid: string) => mockSendBookmarks(cid),
+}));
 jest.mock('./progress-sync', () => ({
   saveProgress: (...args: unknown[]) => mockSaveProgress(...args),
   // This device's own record between two saves (`placeLoop`).
@@ -1406,6 +1411,8 @@ describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
     // Flushes THIS connection specifically (unlike flushQueue, it doesn't skip on the
     // connection's reachability), so its queued saves land before removal purges them.
     expect(flushConnection).toHaveBeenCalledWith('c1');
+    // And gives the bookmarks waiting on the device their last send.
+    expect(mockSendBookmarks).toHaveBeenCalledWith('c1');
   });
 
   // Web: a tab playing through the connection sends its own while the token still works,

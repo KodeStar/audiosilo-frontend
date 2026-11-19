@@ -1,6 +1,3 @@
-import { Platform } from 'react-native';
-
-import { networkChecked } from '@/api/address-route';
 import {
   type ApiClient,
   ApiError,
@@ -8,7 +5,7 @@ import {
   isSignedOutError,
   isUnreachableError,
 } from '@/api/client';
-import { resolveClient, sessionReady } from '@/api/connection-clients';
+import { resolveClient, sessionReady, whenSessionReady } from '@/api/connection-clients';
 import { addBookmark, cachedCapability, fetchCapabilities } from '@/api/hooks';
 import { isReachable, noteFailure, onReconnect } from '@/api/reachability';
 import type { Bookmark, BookmarkLabel } from '@/api/types';
@@ -16,12 +13,15 @@ import { contentKeyOf } from '@/lib/content-key';
 import { type Claimed, replayQueue, type Route, unclaimed } from '@/lib/queue-claims';
 import { randomUUID } from '@/lib/random';
 import { sharedStart } from '@/lib/shared-start';
+import { serialQueue } from '@/lib/serial-queue';
 import { getItemStrict, setItemStrict } from '@/lib/storage';
 import { ANNOTATION_OUTBOX_KEY as KEY, isRecord } from '@/lib/storage-keys';
 import { onStoredChange } from '@/lib/tab-channel';
 import { tabLock } from '@/lib/tab-lock';
-import { onForeground } from '@/lib/when-active';
-import { onConnectionRemoved, useSession } from '@/stores/session';
+import { onConnectionRemoved } from '@/stores/session';
+
+import { connectionGeneration } from './listening-outbox';
+import { onlyConnection, queuedRoute } from './progress-sync';
 
 /**
  * The bookmark outbox (fe#356): a bookmark made while its server can't take it (no answer, a
@@ -38,18 +38,22 @@ import { onConnectionRemoved, useSession } from '@/stores/session';
  *   before, rather than holding one that a reload would lose.
  * - Ordered: oldest first per connection. A new bookmark goes behind any still waiting for
  *   its server, and a replay stops at the first that can't be sent yet.
- * - Retried: at launch, on the server's reconnect, in the foreground, on the browser's
- *   `online`, and with a backoff while the server answers but fails (`startBookmarkSync`).
- *   A replay claims what it sends (`replayQueue`, `src/lib/queue-claims.ts`), so two tabs
- *   never send the same bookmark at once.
+ * - Retried: at launch and on the server's reconnect (`startBookmarkSync`), with the stored
+ *   queues in the foreground and on the web's focus and `online` (`startQueueReplays`), and
+ *   with a backoff while the server answers but fails (`scheduleRetry`). A replay claims what
+ *   it sends (`replayQueue`, `src/lib/queue-claims.ts`), so two tabs never send the same
+ *   bookmark at once.
  * - Sent once: the server's bookmark POST has no idempotency key, and a request that got no
  *   answer may still have landed (or a tab may have died mid-send). So a replay reads the
  *   book's bookmarks first and takes one already there (the same second, the same note, made
  *   no earlier than a day before this one) as this bookmark, sent.
  * - Dropped on sign-out and when a connection is removed (`onConnectionRemoved`), like the
- *   listening outbox: signing in again starts from the server's record. One made before the
- *   removal and appended after it is not appended (`since`). An entry whose connection is
- *   gone once the session has loaded (a storage reset) is dropped by the next replay.
+ *   listening outbox, after a last send while the token still works
+ *   (`sendBookmarksBeforeRemoval`, in `flushConnectionSaves`): signing in again starts from
+ *   the server's record. One made before the removal and appended after it is not appended
+ *   (`since`). An entry whose connection is gone once the session has loaded (a storage
+ *   reset) is dropped by the next replay (`queuedRoute`: not while an identity move is on its
+ *   way).
  *
  * A bookmark the server refuses for good (a 4xx other than 401, 408 and 429: the book is gone
  * or out of the account's reach) is dropped, logged. Labels follow `postBookmark`'s rule at
@@ -155,13 +159,18 @@ export function onQueuedBookmarksChange(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
+let firstLoad: Promise<void> | null = null;
+
 /** Read the stored queue once, for the first screen that shows it. */
 export function loadQueuedBookmarks(): Promise<void> {
   if (snapshotRead) return Promise.resolve();
-  return readQueue().then(
+  firstLoad ??= readQueue().then(
     () => undefined,
-    () => undefined,
+    () => {
+      firstLoad = null; // unreadable: the next screen asks again
+    },
   );
+  return firstLoad;
 }
 
 /** The bookmarks waiting for `connectionId`'s server, oldest first (all when absent). */
@@ -172,19 +181,13 @@ export async function queuedBookmarks(connectionId?: string): Promise<QueuedBook
 
 // --- Adding -------------------------------------------------------------------------------
 
-/** How many times each connection was removed this launch (its purge, below): a bookmark
- * made before a removal is not appended after it (`since`). */
-const removals = new Map<string, number>();
-
-const generationOf = (connectionId: string) => removals.get(connectionId) ?? 0;
-
 type NewEntry = Omit<QueuedBookmark, 'id' | 'updated_at'>;
 
 /** Append a bookmark behind every other one waiting. Rejects when its connection was removed
- * since `since`, or when storage refused the write. */
+ * since `since` (its sign-in, `connectionGeneration`), or when storage refused the write. */
 function append(fields: NewEntry, since: number): Promise<QueuedBookmark> {
   return withLock(async () => {
-    if (generationOf(fields.connectionId) !== since) throw new Error('connection gone');
+    if (connectionGeneration(fields.connectionId) !== since) throw new Error('connection gone');
     const queue = await readQueue();
     // Unique per book: the replay settles an entry by its book and this time.
     const book = contentKeyOf(fields);
@@ -201,13 +204,14 @@ function append(fields: NewEntry, since: number): Promise<QueuedBookmark> {
   });
 }
 
+/** A server's refusal of a bookmark for good: a 4xx other than 401 (a token it refuses until
+ * the connection signs in again), 408 and 429. */
+const refusedForGood = (err: unknown) => isRefusedForGood(err) && !isSignedOutError(err);
+
 /** Whether a failed add is worth keeping to send later: no answer, a server failing or
- * asking for a moment (5xx, 408, 429), or a token it refuses until the connection signs in
- * again (401). Not a refusal for good, nor a code bug. */
-function worthKeeping(err: unknown): boolean {
-  if (isUnreachableError(err) || isSignedOutError(err)) return true;
-  return err instanceof ApiError && !isRefusedForGood(err);
-}
+ * asking for a moment (5xx, 408, 429), or a 401. Not a refusal for good, nor a code bug. */
+const worthKeeping = (err: unknown) =>
+  isUnreachableError(err) || (err instanceof ApiError && !refusedForGood(err));
 
 /**
  * Add a bookmark to a book on ONE connection's server, or keep it on the device when the
@@ -226,7 +230,7 @@ export async function addBookmarkOrQueue(
   label?: BookmarkLabel,
 ): Promise<AddBookmarkOutcome> {
   if (!resolveClient(connectionId)) throw new Error('connection gone');
-  const since = generationOf(connectionId);
+  const since = connectionGeneration(connectionId);
   // Behind any still waiting for this server: they reach it in the order they were made. The
   // copy here once read (another tab's changes reach it through `storage` events).
   const queue = snapshotRead ? snapshot : await readQueue().catch(() => snapshot);
@@ -298,7 +302,7 @@ async function sendGroup(
       }
       held.push(await addBookmark(connectionId, e.libraryId, e.path, e.position, e.note, e.label));
     } catch (err) {
-      if (isRefusedForGood(err) && !isSignedOutError(err)) {
+      if (refusedForGood(err)) {
         console.warn('[bookmarks] the server refused a queued bookmark', err);
         continue;
       }
@@ -312,57 +316,51 @@ async function sendGroup(
 /** The entries this tab sent whose removal storage refused: never sent again from here. */
 const sentUnsettled = new Set<string>();
 
-/** Where a connection's bookmarks go in a replay: its client (only `only`'s when given, and
- * only while it reads as reachable unless `force`), kept, or dropped once the session has
- * loaded without it. */
-function routeFor(only?: string, force = false): (cid: string) => Route<ApiClient> {
-  return (cid) => {
-    if (only !== undefined && cid !== only) return 'keep';
-    const client = resolveClient(cid);
-    if (!client) return sessionReady() ? 'drop' : 'keep';
-    return force || isReachable(cid) ? { send: client } : 'keep';
-  };
-}
-
-/** This tab's replays still running (a sign-out's last send waits for them). */
-const replays = new Set<Promise<void>>();
+/** This tab's replays, one at a time: one asked while another is out (a sign-out's last
+ * send behind a reconnect's) waits for it, then sends what is still waiting, rather than
+ * finding it all claimed. */
+const withReplayTurn = serialQueue();
 
 function replay(route: (cid: string) => Route<ApiClient>): Promise<void> {
-  const run = replayQueue<QueuedBookmark, ApiClient>({
-    lock: withLock,
-    read: readQueue,
-    write: (next) => writeQueue(next),
-    route,
-    send: sendGroup,
-    sent: sentUnsettled,
-  });
-  replays.add(run);
-  void run.finally(() => replays.delete(run)).catch(() => undefined);
-  return run;
+  return withReplayTurn(() =>
+    replayQueue<QueuedBookmark, ApiClient>({
+      lock: withLock,
+      read: readQueue,
+      write: writeQueue,
+      route,
+      send: sendGroup,
+      sent: sentUnsettled,
+    }),
+  );
 }
 
-/** Send the waiting bookmarks of every reachable connection (or only `connectionId`'s).
- * Waits for the session. Bookmarks another tab is sending are left to it. */
+/** Send the waiting bookmarks of every reachable connection (or only `connectionId`'s), as
+ * the stored queues do (`queuedRoute`). Waits for the session. Bookmarks another tab is
+ * sending are left to it. */
 export async function flushBookmarks(connectionId?: string): Promise<void> {
   if (!sessionReady()) return;
+  const route =
+    connectionId === undefined
+      ? queuedRoute
+      : (cid: string): Route<ApiClient> => (cid === connectionId ? queuedRoute(cid) : 'keep');
+  // Nothing this replay would send or drop, as last read: no storage read, no lock.
+  if (snapshotRead && snapshot.every((e) => route(e.connectionId) === 'keep')) {
+    scheduleRetry();
+    return;
+  }
   try {
-    await replay(routeFor(connectionId));
+    await replay(route);
   } finally {
     scheduleRetry();
   }
 }
 
-/**
- * The last send before `connectionId` is signed out or removed, whatever its recorded
- * reachability, then how many of its bookmarks are still waiting (and would be dropped).
- */
-export async function unsentBookmarks(connectionId: string): Promise<number> {
-  // A replay running here holds what it sends (its claims): it ends first.
-  await Promise.allSettled([...replays]);
-  if (sessionReady() && resolveClient(connectionId)) {
-    await replay(routeFor(connectionId, true)).catch(() => undefined);
-  }
-  return (await queuedBookmarks(connectionId).catch(() => [])).length;
+/** The last send before `connectionId` is signed out or removed, whatever its recorded
+ * reachability (`flushConnectionSaves`). */
+export async function sendBookmarksBeforeRemoval(connectionId: string): Promise<void> {
+  const client = resolveClient(connectionId);
+  if (!sessionReady() || !client) return;
+  await replay(onlyConnection(connectionId, client)).catch(() => undefined);
 }
 
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -371,7 +369,7 @@ let retryDelay = RETRY_MIN_MS;
 /** Try again later while a reachable connection still has bookmarks waiting (its server
  * answered but failed); a server that is down is sent to on its reconnect instead. */
 function scheduleRetry(): void {
-  const due = snapshot.some((e) => isReachable(e.connectionId) && resolveClient(e.connectionId));
+  const due = snapshot.some((e) => queuedRoute(e.connectionId) !== 'keep');
   if (!due) {
     if (retryTimer) clearTimeout(retryTimer);
     retryTimer = null;
@@ -388,52 +386,30 @@ function scheduleRetry(): void {
 
 // --- Triggers -----------------------------------------------------------------------------
 
-type Win = Pick<Window, 'addEventListener' | 'removeEventListener'>;
-
 /**
- * The outbox's sending triggers, for the life of the app: every connection's bookmarks once
- * the session is ready (the launch), a connection's when its server comes back, all of them
- * in the foreground (once `networkChecked`, as the listening outbox) and, on the web, when the
- * browser is back online. Started with the root's services; returns the stop.
+ * The outbox's own sending triggers, for the life of the app: every connection's bookmarks
+ * once the session is ready (the launch) and a connection's when its server comes back. The
+ * foreground, the web's focus and `online` are the stored queues' (`startQueueReplays`), and
+ * the backoff is `scheduleRetry`'s. Started with the root's services; returns the stop.
  */
-export const startBookmarkSync = sharedStart(
-  (
-    win: Win | undefined = Platform.OS === 'web'
-      ? (globalThis as { window?: Win }).window
-      : undefined,
-  ): (() => void) => {
-    const flushAll = () => void flushBookmarks().catch(() => undefined);
-    const stops: (() => void)[] = [];
-    if (sessionReady()) flushAll();
-    else {
-      stops.push(
-        useSession.subscribe((state, prev) => {
-          if (prev.status === 'loading' && state.status !== 'loading' && sessionReady()) {
-            flushAll();
-          }
-        }),
-      );
-    }
-    stops.push(onReconnect((cid) => void flushBookmarks(cid).catch(() => undefined)));
-    stops.push(onForeground(() => void networkChecked().then(flushAll)));
-    if (typeof win?.addEventListener === 'function') {
-      win.addEventListener('online', flushAll);
-      stops.push(() => win.removeEventListener('online', flushAll));
-    }
-    return () => {
-      for (const stop of stops) stop();
-      if (retryTimer) clearTimeout(retryTimer);
-      retryTimer = null;
-    };
-  },
-);
+export const startBookmarkSync = sharedStart((): (() => void) => {
+  const stops = [
+    whenSessionReady(() => void flushBookmarks().catch(() => undefined)),
+    onReconnect((cid) => void flushBookmarks(cid).catch(() => undefined)),
+  ];
+  return () => {
+    for (const stop of stops) stop();
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = null;
+  };
+});
 
 // --- Removal ------------------------------------------------------------------------------
 
-// Removing a connection (signing out) drops its waiting bookmarks, as its listening.
+// Removing a connection (signing out) drops its waiting bookmarks, as its listening. Its
+// sign-in ends first, before any await (the listening outbox's `connectionGeneration`): a
+// bookmark made for it is not appended from here.
 onConnectionRemoved(async (id) => {
-  // First, before any await: a bookmark made for this sign-in is not appended from here.
-  removals.set(id, generationOf(id) + 1);
   await withLock(async () => {
     const queue = await readQueue();
     const next = queue.filter((e) => e.connectionId !== id);
@@ -445,9 +421,8 @@ onConnectionRemoved(async (id) => {
 export function resetAnnotationOutboxForTests(): void {
   snapshot = [];
   snapshotRead = false;
-  removals.clear();
+  firstLoad = null;
   sentUnsettled.clear();
-  replays.clear();
   if (retryTimer) clearTimeout(retryTimer);
   retryTimer = null;
   retryDelay = RETRY_MIN_MS;

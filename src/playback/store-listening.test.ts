@@ -93,6 +93,11 @@ const mockWriteFinishedMirror = async (save: {
 };
 // Sessions whose guarded save the queue has PUT since (`guardSettled`).
 const mockSettled = new Set<string>();
+// The bookmarks waiting on the device: their last send before a removal (fe#356).
+const mockSendBookmarks = jest.fn(async (_cid: string) => {});
+jest.mock('./annotation-outbox', () => ({
+  sendBookmarksBeforeRemoval: (cid: string) => mockSendBookmarks(cid),
+}));
 jest.mock('./progress-sync', () => ({
   saveProgress: (...a: unknown[]) => mockSaveProgress(...a),
   writeMirror: (...a: unknown[]) => mockWriteMirror(...a),

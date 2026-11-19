@@ -28,12 +28,6 @@ jest.mock('@/playback/listening-outbox', () => ({
   unsentListens: (cid: string) => mockUnsent(cid),
 }));
 
-// The bookmarks still waiting on the device get a last send before the token goes.
-const mockUnsentBookmarks = jest.fn(async (_cid: string) => 0);
-jest.mock('@/playback/annotation-outbox', () => ({
-  unsentBookmarks: (cid: string) => mockUnsentBookmarks(cid),
-}));
-
 /* eslint-disable import/first */
 import { teardownBeforeTokenRevoke } from '@/playback/store';
 
@@ -110,10 +104,6 @@ describe('useSignOut', () => {
     // Before revoking the token: the shared teardown (stop playback + flush the
     // queued progress that removing the connection would purge).
     expect(teardownBeforeTokenRevoke).toHaveBeenCalledWith('c1');
-    expect(mockUnsentBookmarks).toHaveBeenCalledWith('c1');
-    expect(mockUnsentBookmarks.mock.invocationCallOrder[0]).toBeLessThan(
-      mockApi.logout.mock.invocationCallOrder[0],
-    );
   });
 
   it('refreshes unknown flags from /me before deciding (and warns when stranded)', async () => {

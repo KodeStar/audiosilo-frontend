@@ -1701,13 +1701,14 @@ and the sleep timer's "Fell asleep" go through `addBookmarkOrQueue`
 reads as reachable, else (or after no answer, a 5xx, 408, 429 or 401) into
 `audiosilo.annotationOutbox`, oldest first per connection, a new one always behind those
 waiting. A refusal for good (any other 4xx) or a write storage refuses is still the caller's
-error ("Couldn't add the bookmark"). The outbox is sent at launch, on reconnect, in the
-foreground, on the web's `online` and on a backoff (30 s doubling to 10 min) while a reachable
-server keeps failing (`startBookmarkSync`, a root service), through `replayQueue` (claims, so
-two tabs never send one twice). The POST has no idempotency key, so a replay reads the book's
+error ("Couldn't add the bookmark"). The outbox is sent at launch and on reconnect
+(`startBookmarkSync`, a root service), with the stored queues in the foreground and on the
+web's focus and `online` (`startQueueReplays`), and on a backoff (30 s doubling to 10 min)
+while a reachable server keeps failing, through `replayQueue` routed by `queuedRoute` (claims,
+so two tabs never send one twice). The POST has no idempotency key, so a replay reads the book's
 bookmarks first and takes one at the same second with the same note, made at most a day before,
-as already sent. Signing out or removing a server gives it a last send beside
-`teardownBeforeTokenRevoke` (`unsentBookmarks`) and the removal purges what is left; a replay
+as already sent. Signing out or removing a server gives it a last send in
+`flushConnectionSaves` (`sendBookmarksBeforeRemoval`) and the removal purges what is left; a replay
 drops the entries of a connection gone once the session has loaded. Waiting ones are listed
 among the book's bookmarks (`useQueuedBookmarks`, `QueuedBookmarkRow`: "Waiting to sync", Delete
 takes one out unsent, with Undo) and pinned on the seek bar. The editor's add and the delete's

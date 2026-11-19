@@ -10,9 +10,19 @@ import type { Bookmark } from '@/api/types';
 type Client = { bookmarks: jest.Mock; addBookmark: jest.Mock };
 const mockClients = new Map<string, Client>();
 let mockReady = true;
+let mockLaunch: (() => void) | null = null;
 jest.mock('@/api/connection-clients', () => ({
   resolveClient: (cid: string) => mockClients.get(cid) ?? null,
   sessionReady: () => mockReady,
+  whenSessionReady: (fn: () => void) => {
+    mockLaunch = fn;
+    return () => (mockLaunch = null);
+  },
+}));
+// A removal ends the connection's sign-in first (the listening outbox's count).
+const mockGenerations = new Map<string, number>();
+jest.mock('./listening-outbox', () => ({
+  connectionGeneration: (cid: string) => mockGenerations.get(cid) ?? 0,
 }));
 const mockOnline: Record<string, boolean> = {};
 let mockReconnect: ((cid: string) => void) | null = null;
@@ -50,7 +60,6 @@ jest.mock('@/api/hooks', () => ({
 }));
 jest.mock('@/stores/session', () => ({
   onConnectionRemoved: jest.fn(() => () => {}),
-  useSession: { subscribe: () => () => {} },
 }));
 
 /* eslint-disable import/first */
@@ -61,14 +70,20 @@ import {
   queuedBookmarks,
   queuedBookmarksSnapshot,
   resetAnnotationOutboxForTests,
+  sendBookmarksBeforeRemoval,
   startBookmarkSync,
-  unsentBookmarks,
 } from './annotation-outbox';
 import { onConnectionRemoved } from '@/stores/session';
 /* eslint-enable import/first */
 
-/** The outbox's purge for a removed connection (registered when it loaded). */
-const removed = jest.mocked(onConnectionRemoved).mock.calls[0][0] as (id: string) => Promise<void>;
+/** The removal cleanups registered when the modules loaded (the outbox's purge among them). */
+const cleanups = jest.mocked(onConnectionRemoved).mock.calls.map(([fn]) => fn);
+
+/** Remove a connection as the session does: its sign-in ends, then the cleanups run. */
+async function removed(id: string) {
+  mockGenerations.set(id, (mockGenerations.get(id) ?? 0) + 1);
+  await Promise.all(cleanups.map((fn) => fn(id)));
+}
 
 /** Let the replays an add started in the background finish. */
 async function idle() {
@@ -115,6 +130,7 @@ beforeEach(async () => {
   for (const k of Object.keys(mockOnline)) delete mockOnline[k];
   mockReady = true;
   mockAnnotations = true;
+  mockGenerations.clear();
   await AsyncStorage.clear();
 });
 
@@ -266,6 +282,7 @@ describe('sending', () => {
     const { client, held, state } = server('c1', offline());
     await addBookmarkOrQueue('c1', 1, 'a/book', 100);
     await addBookmarkOrQueue('c1', 1, 'a/book', 200);
+    await idle(); // the second add's own send has failed too
     state.down = null;
     client.addBookmark.mockClear();
     client.addBookmark.mockRejectedValueOnce(new ApiError(502, 'bad gateway'));
@@ -337,19 +354,21 @@ describe('sending', () => {
 });
 
 describe('sign-out and removal', () => {
-  it('sends what waits whatever the recorded reachability, then counts what is left', async () => {
+  it('sends what waits whatever the recorded reachability', async () => {
     const { held, state } = server('c1', offline());
     await addBookmarkOrQueue('c1', 1, 'a/book', 100);
     mockOnline.c1 = false;
     state.down = null;
-    expect(await unsentBookmarks('c1')).toBe(0);
+    await sendBookmarksBeforeRemoval('c1');
     expect(held).toHaveLength(1);
+    expect(await queuedBookmarks('c1')).toEqual([]);
   });
 
-  it('counts those still waiting when the last send fails', async () => {
+  it('keeps those the last send could not land (the removal purges them)', async () => {
     server('c1', offline());
     await addBookmarkOrQueue('c1', 1, 'a/book', 100);
-    expect(await unsentBookmarks('c1')).toBe(1);
+    await sendBookmarksBeforeRemoval('c1');
+    expect(await queuedBookmarks('c1')).toHaveLength(1);
   });
 
   it("drops a removed connection's bookmarks and keeps the others'", async () => {
@@ -384,23 +403,27 @@ describe('sign-out and removal', () => {
 describe('startBookmarkSync', () => {
   it('sends at launch and when a server comes back', async () => {
     const { held, state } = server('c1', offline());
+    // Made while the server is known down: kept, nothing sent.
+    mockOnline.c1 = false;
     await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+    mockOnline.c1 = true;
     state.down = null;
-    const release = startBookmarkSync(undefined);
+    const release = startBookmarkSync();
     try {
-      await new Promise((r) => setTimeout(r, 0));
-      await flushBookmarks(); // the launch's replay has settled once this one has
-      expect(held).toHaveLength(1);
-      await addBookmarkOrQueue('c1', 1, 'a/book', 200).then(() => undefined);
+      // The launch, once the session is ready.
+      expect(mockLaunch).not.toBeNull();
+      mockLaunch?.();
+      await idle();
+      expect(held.map((b) => b.position)).toEqual([100]);
       mockOnline.c1 = false;
-      state.down = offline();
       await addBookmarkOrQueue('c1', 1, 'a/book', 300);
+      await idle();
+      expect(held.map((b) => b.position)).toEqual([100]);
+      // Its server comes back.
       mockOnline.c1 = true;
-      state.down = null;
       mockReconnect?.('c1');
-      await new Promise((r) => setTimeout(r, 0));
-      await flushBookmarks('c1');
-      expect(held.map((b) => b.position)).toEqual([100, 200, 300]);
+      await idle();
+      expect(held.map((b) => b.position)).toEqual([100, 300]);
     } finally {
       release();
     }

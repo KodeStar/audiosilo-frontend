@@ -19,7 +19,6 @@ import { onlyOwnServer, servedOrigin } from '@/lib/base-url';
 import { accountHref } from '@/lib/paths';
 import { serverDisplayName } from '@/lib/server-display-name';
 import { cn } from '@/lib/utils';
-import { unsentBookmarks } from '@/playback/annotation-outbox';
 import { unsentListens } from '@/playback/listening-outbox';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -50,10 +49,9 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
 
   const performRemove = async (id: string) => {
     const client = clients.get(id);
-    // Shared token-revoking teardown (playback stop + queued-progress flush) and a last
-    // send of the bookmarks waiting on the device (fe#356), then best-effort server-side
-    // logout, and forget it locally.
-    await Promise.all([teardownBeforeTokenRevoke(id), unsentBookmarks(id).catch(() => 0)]);
+    // Shared token-revoking teardown (playback stop + queued-progress flush), then
+    // best-effort server-side logout, and forget it locally.
+    await teardownBeforeTokenRevoke(id);
     void client?.logout().catch(() => {});
     void remove(id);
   };
