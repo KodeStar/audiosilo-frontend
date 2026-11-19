@@ -495,8 +495,7 @@ async function sendThenFlush(
     : null;
   const { saved, more } = await withSendTurn(key, async () => {
     if (latestAsked.get(key) !== turn) return { saved: null, more: false };
-    // Queued as it waited: sent only while that copy is unclaimed (`waitingUnclaimed`). One
-    // storage refused to queue is sent as any save.
+    // One storage refused to queue is sent as any save.
     if (waiting && (await waiting) && !(await waitingUnclaimed(captured))) {
       return { saved: null, more: false };
     }
@@ -666,9 +665,7 @@ async function flushGroup(
       if (settledHere(save)) return 'settled';
       if (!(await stillQueued(save))) return 'kept';
       try {
-        // On the version an answer to this device's own save acknowledged meanwhile, as the
-        // reader's own send would: a save queued as it waited behind that one is sent here
-        // when a replay claimed it.
+        // A save queued as it waited behind its book's own (`sendThenFlush`).
         await put(client, await onOwnVersion(save));
         noteSuccess(cid);
         noteSettled(save);

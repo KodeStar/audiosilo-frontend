@@ -170,6 +170,42 @@ async function forgetConnections() {
   await AsyncStorage.clear();
 }
 
+/** `api` (a `fakeApi` by default) with its PUTs of `held` paths waiting until `release()`;
+ * every other PUT answers as it did. */
+function hangs(held: (path: string) => boolean, api: ReturnType<typeof fakeApi> = fakeApi()) {
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const answer = api.saveReadingProgress.getMockImplementation()!;
+  api.saveReadingProgress.mockImplementation(
+    async (lib: number, path: string, input: Record<string, unknown>) => {
+      if (held(path)) await gate;
+      return answer(lib, path, input);
+    },
+  );
+  return { api, release };
+}
+
+/** A `hangs` predicate: the first PUT waits, the others do not. */
+function firstOnly(): () => boolean {
+  let first = true;
+  return () => {
+    const was = first;
+    first = false;
+    return was;
+  };
+}
+
+/** `field` of every PUT `api` was asked, in order: of `path`'s only, when given. */
+function sent<K extends keyof ReadingSave>(
+  api: { saveReadingProgress: jest.Mock },
+  field: K,
+  path?: string,
+): ReadingSave[K][] {
+  return api.saveReadingProgress.mock.calls
+    .filter(([, p]) => path === undefined || p === path)
+    .map(([, , body]) => (body as ReadingSave)[field]);
+}
+
 describe('reading-progress', () => {
   beforeEach(async () => {
     await forgetConnections();
@@ -291,6 +327,25 @@ describe('reading-progress', () => {
     expect(next.base_version).toBe(5);
     expect(next.progression).toBe(1);
     expect(next.device_id).toEqual(expect.any(String));
+  });
+
+  it('captures a book’s pages a millisecond apart at least, and follows a clock set back', async () => {
+    const at = Date.parse('2026-10-01T10:00:00.000Z');
+    const now = jest.spyOn(Date, 'now').mockReturnValue(at);
+    try {
+      const capture = async (path = 'A/Book') =>
+        (await captureReadingSave('c1', 1, path, { cfi: CFI_A, progression: 0.2 })).updated_at;
+      expect(await capture()).toBe('2026-10-01T10:00:00.000Z');
+      expect(await capture()).toBe('2026-10-01T10:00:00.001Z');
+      // Another book's captures are its own.
+      expect(await capture('B/Other')).toBe('2026-10-01T10:00:00.000Z');
+      now.mockReturnValue(at - 500);
+      expect(await capture()).toBe('2026-10-01T10:00:00.002Z');
+      now.mockReturnValue(at - 5_000);
+      expect(await capture()).toBe('2026-10-01T09:59:55.000Z');
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it('a queued save keeps its base, and the version the flush answers is adopted', async () => {
@@ -933,25 +988,8 @@ describe('reading-progress', () => {
   });
 
   describe('a request that hangs (fe#173)', () => {
-    /** An api whose PUTs of `held` paths wait until `release()`; every other PUT answers
-     * as `fakeApi` does. */
-    function hangs(held: (path: string) => boolean) {
-      let release = () => {};
-      const gate = new Promise<void>((resolve) => (release = resolve));
-      const api = fakeApi();
-      const answer = api.saveReadingProgress.getMockImplementation()!;
-      api.saveReadingProgress.mockImplementation(
-        async (lib: number, path: string, input: Record<string, unknown>) => {
-          if (held(path)) await gate;
-          return answer(lib, path, input);
-        },
-      );
-      return { api, release };
-    }
     const progressions = (api: { saveReadingProgress: jest.Mock }, path = 'A/Book') =>
-      api.saveReadingProgress.mock.calls
-        .filter(([, p]) => p === path)
-        .map(([, , body]) => (body as ReadingSave).progression);
+      sent(api, 'progression', path);
 
     it('never holds another book’s save, or another server’s, behind it', async () => {
       const one = hangs((path) => path === 'A/Book');
@@ -1022,19 +1060,7 @@ describe('reading-progress', () => {
 
     it('a waiting save a replay claimed goes once, on the version the one before it acknowledged', async () => {
       const server = ruleServer('This browser');
-      let release = () => {};
-      const gate = new Promise<void>((resolve) => (release = resolve));
-      const answer = server.api.saveReadingProgress.getMockImplementation()!;
-      let held = true;
-      server.api.saveReadingProgress.mockImplementation(
-        async (lib: number, path: string, input: Record<string, unknown>) => {
-          if (held) {
-            held = false;
-            await gate;
-          }
-          return answer(lib, path, input);
-        },
-      );
+      const { release } = hangs(firstOnly(), server.api);
       routeClients({ c1: server.api });
       // Both made on 0; the reader moved back while the first hung.
       const first = saveReadingPlace(server.api, save({ progression: 0.5 }));
@@ -1533,31 +1559,12 @@ describe('reading places across tabs', () => {
     expect((await readQueue()).map((s) => s.path)).toEqual(['B/Other']);
   });
 
-  /** An api whose first PUT waits until `release()`; the others answer as `fakeApi` does. */
-  function firstHangs() {
-    let release = () => {};
-    const gate = new Promise<void>((resolve) => (release = resolve));
-    const api = fakeApi();
-    const answer = api.saveReadingProgress.getMockImplementation()!;
-    let held = true;
-    api.saveReadingProgress.mockImplementation(
-      async (lib: number, path: string, input: Record<string, unknown>) => {
-        if (held) {
-          held = false;
-          await gate;
-        }
-        return answer(lib, path, input);
-      },
-    );
-    return { api, release };
-  }
-  const cfisSent = (api: { saveReadingProgress: jest.Mock }) =>
-    api.saveReadingProgress.mock.calls.map(([, , body]) => (body as ReadingSave).cfi);
+  const cfisSent = (api: { saveReadingProgress: jest.Mock }) => sent(api, 'cfi');
 
   // A save waiting behind a hung one of its book lived only in memory and the mirror: the
   // app killed there, the server kept the previous page until the next save of the book.
   it('replays a save that was waiting behind a hung one when the app was killed, once', async () => {
-    const { api, release } = firstHangs();
+    const { api, release } = hangs(firstOnly());
     const first = saveReadingPlace(api, save({ cfi: CFI_A, progression: 0.5 }));
     await nextMacrotask();
     const waiting = saveReadingPlace(
@@ -1582,7 +1589,7 @@ describe('reading places across tabs', () => {
   });
 
   it('sends a waiting save once when another tab replays it first', async () => {
-    const { api, release } = firstHangs();
+    const { api, release } = hangs(firstOnly());
     routeClients({ c1: api });
     const first = saveReadingPlace(api, save({ cfi: CFI_A, progression: 0.5 }));
     await nextMacrotask();
