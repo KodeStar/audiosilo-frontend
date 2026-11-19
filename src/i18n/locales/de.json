@@ -2429,6 +2429,7 @@
     "refusedBanner": "Der Anmelde-Proxy für {{name}} hat dieses Gerät abgewiesen: Aktualisiere die Proxy-Header unter Konto",
     "refusedBannerHint": "Öffnet das Konto für diesen Server",
     "refusedAskGrownUp": "Der Anmelde-Proxy für {{name}} hat dieses Gerät abgewiesen: Bitte einen Erwachsenen, die Proxy-Header zu aktualisieren",
+    "refusedPlain": "Der Anmelde-Proxy für {{name}} hat dieses Gerät abgewiesen",
     "askGrownUp": "Bitte einen Erwachsenen, die Proxy-Header zu aktualisieren."
   },
   "year": {

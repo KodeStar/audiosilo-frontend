@@ -32,9 +32,10 @@ export function onAccountPage(state: NavState | undefined, connectionId: string)
  * server itself answers again, so once for the whole run, never once per request). It is not a sign-out:
  * the person listening's connection stays signed in, and the way past is the proxy headers.
  * Where they can change them (`canManageProxySet`, the Account card's own rule) it opens the
- * connection's Account page, whose Proxy headers card edits them; a kid's or a demo account
- * that may not (someone else here reaches that address through the same set) is told to ask
- * a grown-up instead, with nothing to tap. So is a kid's account that gets in only on the
+ * connection's Account page, whose Proxy headers card edits them; a kid's account that may
+ * not (someone else here reaches that address through the same set) is told to ask a
+ * grown-up instead, with nothing to tap, and a demo account that may not is only told what
+ * happened (no grown-up is behind a demo). So is a kid's account that gets in only on the
  * headers typed for its sign-in (`signInProxySets`, the kept set stale), until a grown-up
  * updates the address's set. A connection that needs signing in again shows the reconnect
  * banner only. The first such connection, in connection order. On that connection's Account
@@ -60,9 +61,11 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
       <Text variant="caption" className="flex-1 text-brand-ink">
         {canManage
           ? t('proxyHeaders.refusedBanner', { name: conn.name })
-          : refused[conn.id]
-            ? t('proxyHeaders.refusedAskGrownUp', { name: conn.name })
-            : t('proxyHeaders.askGrownUp')}
+          : conn.user?.is_demo
+            ? t('proxyHeaders.refusedPlain', { name: conn.name })
+            : refused[conn.id]
+              ? t('proxyHeaders.refusedAskGrownUp', { name: conn.name })
+              : t('proxyHeaders.askGrownUp')}
       </Text>
     </>
   );

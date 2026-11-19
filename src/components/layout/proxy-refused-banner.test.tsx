@@ -115,6 +115,18 @@ it("asks a kid to get a grown-up when the set is a full account's here too", asy
   expect(mockPush).not.toHaveBeenCalled();
 });
 
+// A demo account with no set to edit (`canManageProxySet`): nothing to tap, and no grown-up to
+// ask either, so it only says what happened.
+it('only says what happened to a demo account, with no grown-up to ask', async () => {
+  await signIn({ ...user, id: 7, username: 'demo', is_demo: true });
+  noteProxyAnswer('srv-1.7', true);
+  await render(<ProxyRefusedBanner />);
+  expect(screen.getByText('The sign-in proxy for Hearthside turned this device away')).toBeTruthy();
+  expect(screen.queryByText(/grown-up/)).toBeNull();
+  await fireEvent.press(screen.getByTestId('proxy-refused-banner'));
+  expect(mockPush).not.toHaveBeenCalled();
+});
+
 // A kid's sign-in that got in on its own typed set where the kept one is stale (fe#295,
 // `signInProxySets`): its requests get through, and a grown-up is asked to update the set.
 it("asks a grown-up while a kid's sign-in is on its own set, until the address's set changes", async () => {

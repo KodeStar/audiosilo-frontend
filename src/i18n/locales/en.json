@@ -2429,6 +2429,7 @@
     "refusedBanner": "The sign-in proxy for {{name}} turned this device away: update the proxy headers in Account",
     "refusedBannerHint": "Opens Account for this server",
     "refusedAskGrownUp": "The sign-in proxy for {{name}} turned this device away: ask a grown-up to update the proxy headers",
+    "refusedPlain": "The sign-in proxy for {{name}} turned this device away",
     "askGrownUp": "Ask a grown-up to update the proxy headers."
   },
   "year": {

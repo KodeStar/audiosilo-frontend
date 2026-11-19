@@ -2429,6 +2429,7 @@
     "refusedBanner": "Il proxy di accesso di {{name}} ha respinto questo dispositivo: aggiorna le intestazioni proxy in Account",
     "refusedBannerHint": "Apre l'account di questo server",
     "refusedAskGrownUp": "Il proxy di accesso di {{name}} ha respinto questo dispositivo: chiedi a un adulto di aggiornare le intestazioni proxy",
+    "refusedPlain": "Il proxy di accesso di {{name}} ha respinto questo dispositivo",
     "askGrownUp": "Chiedi a un adulto di aggiornare le intestazioni proxy."
   },
   "year": {

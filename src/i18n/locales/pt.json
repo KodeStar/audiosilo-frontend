@@ -2429,6 +2429,7 @@
     "refusedBanner": "O proxy de início de sessão de {{name}} recusou este dispositivo: atualiza os cabeçalhos de proxy em Conta",
     "refusedBannerHint": "Abre a conta deste servidor",
     "refusedAskGrownUp": "O proxy de início de sessão de {{name}} recusou este dispositivo: pede a um adulto para atualizar os cabeçalhos de proxy",
+    "refusedPlain": "O proxy de início de sessão de {{name}} recusou este dispositivo",
     "askGrownUp": "Pede a um adulto para atualizar os cabeçalhos de proxy."
   },
   "year": {
