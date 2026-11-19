@@ -2923,8 +2923,9 @@ media GETs only.
   snapshot on `paused`). A transcoded stream is never requested inside its last second
   (`transcodeStartAt`): at the very end there is nothing to encode and the element errors
   instead of ending. A transcode left unread more than `TRANSCODE_STALE_PAUSE_MS` (30 s), paused
-  or loaded and never played (`unreadSince`), is asked again at the place on the next `play()`:
-  the server (or a proxy) may have dropped it, and reading a dead connection would
+  (through `pause()` or by the element itself, an OS interruption) or loaded and never played (a
+  play the browser refused included) (`unreadSince`), is asked again at the place on the next
+  `play()`: the server (or a proxy) may have dropped it, and reading a dead connection would
   only stall into the watchdog.
 
 **Car (CarPlay and Android Auto)** (`src/car/`, the native side in `modules/audiosilo-player`;

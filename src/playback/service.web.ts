@@ -201,7 +201,8 @@ class WebPlaybackService implements PlaybackService {
   private routedTo = new Map<HTMLAudioElement, AudioNode>();
   private pausedAt: number | null = null;
   /** Since when the active element's stream has gone unread: a load that doesn't play (the
-   * book loaded, a seek while paused) or a pause; null while it plays or is about to. A
+   * book loaded, a seek while paused, a play the browser refused) or a pause (through
+   * `pause()` or the element's own); null while it plays or is about to. A
    * transcode left unread this long may be gone (dropped by the server or a proxy), so the
    * next `play()` re-requests it (`TRANSCODE_STALE_PAUSE_MS`): a book loaded and never
    * played as much as one paused. */
@@ -330,6 +331,8 @@ class WebPlaybackService implements PlaybackService {
       // (`playing-claim.ts`).
       if (!active() || a.paused) return;
       this.pendingAutoplay = false;
+      // Read again, however it started (a browser resuming it after a transient interruption).
+      this.unreadSince = null;
       this.update({ state: 'playing' });
     });
     a.addEventListener('pause', () => {
@@ -341,6 +344,9 @@ class WebPlaybackService implements PlaybackService {
       // book stopped, expire without pausing it, and let the next file play on. The last
       // file still reports the pause, then 'ended'.
       if (a.ended && this.index < this.tracks.length - 1) return;
+      // A pause the element made itself (an OS interruption, a headset unplugged) leaves the
+      // stream unread as one through `pause()` does; never a late one after a play went out.
+      if (a.paused && !a.ended && !this.pendingAutoplay) this.unreadSince ??= Date.now();
       this.update({ state: 'paused' });
     });
     a.addEventListener('waiting', () => active() && this.update({ state: 'loading' }));
@@ -692,6 +698,7 @@ class WebPlaybackService implements PlaybackService {
    * `a.play()`, its refusals told apart:
    * - the browser's autoplay refusal (`NotAllowedError`: no user gesture yet) settles to
    *   `paused` and is reported as `AutoplayBlockedError`, so the store can read it as a pause;
+   *   the stream stays unread from when it was before the play (`unreadSince`);
    * - a source that failed to load (`NotSupportedError`, "no supported sources", or an
    *   `AbortError` from an element that has errored) settles to `error` and is reported as
    *   `PlaybackStartError('audio')`, so the start can say why;
@@ -699,13 +706,14 @@ class WebPlaybackService implements PlaybackService {
    *   source (which owns playback now): nothing failed;
    * - anything else is rethrown as is.
    */
-  private async playElement(a: HTMLAudioElement) {
+  private async playElement(a: HTMLAudioElement, unreadSince: number | null) {
     try {
       await a.play();
     } catch (err) {
       const name = (err as { name?: unknown } | null)?.name;
       if (name === 'NotAllowedError') {
         this.pendingAutoplay = false;
+        this.unreadSince ??= unreadSince ?? Date.now();
         if (a === this.audio) this.update({ state: 'paused' });
         throw new AutoplayBlockedError();
       }
@@ -730,7 +738,8 @@ class WebPlaybackService implements PlaybackService {
         ? Math.min(this.config.autoRewindMax, pausedFor / 1000)
         : 0;
     this.pausedAt = null;
-    const unreadFor = this.unreadSince != null ? Date.now() - this.unreadSince : 0;
+    const { unreadSince } = this;
+    const unreadFor = unreadSince != null ? Date.now() - unreadSince : 0;
     this.unreadSince = null;
     if (this.current()?.transcoded) {
       this.pendingAutoplay = true;
@@ -742,7 +751,7 @@ class WebPlaybackService implements PlaybackService {
         this.reloadTranscodedAt(Math.max(0, this.snapshot.position - rewind), true);
         return;
       }
-      await this.playElement(a);
+      await this.playElement(a, unreadSince);
       return;
     }
     if (rewind > 0.5) {
@@ -750,7 +759,7 @@ class WebPlaybackService implements PlaybackService {
       this.seekSeq++;
       a.currentTime = Math.max(0, a.currentTime - rewind);
     }
-    await this.playElement(a);
+    await this.playElement(a, unreadSince);
   }
 
   async pause() {

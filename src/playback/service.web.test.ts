@@ -397,6 +397,49 @@ describe('WebPlaybackService (transcoded tracks)', () => {
     expect(a.paused).toBe(false);
   });
 
+  // No gesture yet (a book opened by a link): the browser refuses the first play, and the
+  // load it was for stays unread.
+  it('a first play the browser refused leaves the load unread for a play long after', async () => {
+    await svc.load(transcodedTracks, 0, 250);
+    el().emit('loadedmetadata');
+    jest
+      .spyOn(FakeAudio.prototype, 'play')
+      .mockRejectedValueOnce(Object.assign(new Error('refused'), { name: 'NotAllowedError' }));
+    await expect(svc.play()).rejects.toBeInstanceOf(AutoplayBlockedError);
+    now += 10 * 60_000;
+    await svc.play();
+    expect(el().src).toBe(`${STREAM}&t=250`);
+    expect(svc.getSnapshot().state).toBe('loading');
+  });
+
+  // An OS interruption or a headset unplugged pauses the element without `pause()`.
+  it('a pause the element made itself, left a long time, re-requests on play', async () => {
+    await startPlaying(200);
+    el().currentTime = 30;
+    el().emit('timeupdate'); // at 230
+    el().pause();
+    now += 10 * 60_000;
+    await svc.play();
+    expect(el().src).toBe(`${STREAM}&t=230`);
+  });
+
+  it('a pause the element made and undid itself leaves a later short pause alone', async () => {
+    await startPlaying(200);
+    const a = el();
+    const src = a.src;
+    a.pause();
+    now += 10 * 60_000;
+    // The browser resumes it (audio focus back after a transient loss).
+    void a.play();
+    a.emit('playing');
+    await svc.pause();
+    now += 5_000;
+    await svc.play();
+    expect(el()).toBe(a);
+    expect(a.src).toBe(src);
+    expect(a.paused).toBe(false);
+  });
+
   it('a seek before the first play, left a long time, asks again from there', async () => {
     await svc.load(transcodedTracks, 0, 100);
     el().emit('loadedmetadata');
