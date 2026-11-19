@@ -96,14 +96,18 @@ describe('serverIdOf', () => {
 });
 
 describe('priorConnection', () => {
-  const on = (id: string, serverId: string, user?: { id?: unknown }) => ({ id, serverId, user });
+  const on = (id: string, serverId: string, user?: { id?: unknown; username?: string }) => ({
+    id,
+    serverId,
+    user,
+  });
 
   it("finds the user's connection on the server, else one saved without a user id", () => {
-    const legacy = on('srv', 'srv', {});
+    const legacy = { id: 'srv', serverId: 'srv', user: { username: 'kit' } };
     const sam = on('srv.2', 'srv', { id: 2 });
     const other = on('elsewhere.1', 'elsewhere', { id: 1 });
-    expect(priorConnection([legacy, sam, other], 'srv', 2)).toBe(sam);
-    expect(priorConnection([legacy, sam, other], 'srv', 1)).toBe(legacy);
+    expect(priorConnection([legacy, sam, other], 'srv', 2, 'sam')).toBe(sam);
+    expect(priorConnection([legacy, sam, other], 'srv', 1, 'kit')).toBe(legacy);
     expect(priorConnection([sam, other], 'srv', 1)).toBeUndefined();
     expect(priorConnection([sam, other], 'elsewhere', 1)).toBe(other);
     // A legacy connection with no serverId is matched by what its id says.
@@ -112,13 +116,15 @@ describe('priorConnection', () => {
 
   it('takes one without a user id to be the signer only under the name it kept (fe#298)', () => {
     const legacy = { id: 'srv', serverId: 'srv', user: { username: 'sam' } };
-    // Allowed: Sam again, or a caller that does not say who.
+    // Allowed: Sam again.
     expect(priorConnection([legacy], 'srv', 2, 'sam')).toBe(legacy);
-    expect(priorConnection([legacy], 'srv', 2)).toBe(legacy);
-    // Denied: anyone else signing in is new here, never Sam's connection.
+    // Denied: anyone else signing in is new here, never Sam's connection, and so is a
+    // caller that does not say who.
     expect(priorConnection([legacy], 'srv', 5, 'kit')).toBeUndefined();
-    // One that kept no name either can't tell: the server's one connection, as before.
-    expect(priorConnection([on('srv', 'srv', {})], 'srv', 5, 'kit')?.id).toBe('srv');
+    expect(priorConnection([legacy], 'srv', 2)).toBeUndefined();
+    // Denied: one that kept no name can't be proven anyone's, so the sign-in is new.
+    expect(priorConnection([on('srv', 'srv', {})], 'srv', 5, 'kit')).toBeUndefined();
+    expect(priorConnection([on('srv', 'srv', { username: '' })], 'srv', 5, 'kit')).toBeUndefined();
   });
 });
 

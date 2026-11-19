@@ -973,7 +973,27 @@ describe('session store (multi-connection)', () => {
       expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv', 'srv.5']);
     });
 
-    it('a legacy connection saved without a user id is taken as the one signing in', async () => {
+    it('a legacy connection saved without a user id is taken as the one signing in under the name it kept', async () => {
+      await AsyncStorage.setItem(
+        'audiosilo.connections',
+        JSON.stringify([
+          { id: 'srv', serverUrl: 'https://a', name: 'A', user: { username: 'sam' } },
+        ]),
+      );
+      await SecureStore.setItemAsync('audiosilo.token.srv', 'old');
+      await useSession.getState().hydrate();
+      const id = await useSession.getState().setSession({
+        serverUrl: 'https://a',
+        serverId: 'srv',
+        token: 'new',
+        user: user(3, 'sam'),
+      });
+      expect(id).toBe('srv');
+      expect(useSession.getState().connections).toHaveLength(1);
+      expect(await SecureStore.getItemAsync('audiosilo.token.srv')).toBe('new');
+    });
+
+    it('a legacy connection that kept no username is never taken over by a sign-in (fe#298)', async () => {
       await AsyncStorage.setItem(
         'audiosilo.connections',
         JSON.stringify([{ id: 'srv', serverUrl: 'https://a', name: 'A', user: {} }]),
@@ -986,8 +1006,15 @@ describe('session store (multi-connection)', () => {
         token: 'new',
         user: user(3, 'sam'),
       });
-      expect(id).toBe('srv');
-      expect(useSession.getState().connections).toHaveLength(1);
+      // A connection of its own: the legacy one keeps its token, nothing is retired.
+      expect(id).toBe('srv.3');
+      expect(
+        useSession
+          .getState()
+          .connections.map((c) => c.id)
+          .sort(),
+      ).toEqual(['srv', 'srv.3']);
+      expect(await SecureStore.getItemAsync('audiosilo.token.srv')).toBe('old');
     });
 
     it("a rebuilt server: re-pairing retires only the named identity, never another person's", async () => {
