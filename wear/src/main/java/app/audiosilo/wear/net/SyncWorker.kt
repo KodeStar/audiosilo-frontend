@@ -63,8 +63,9 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
     private val connected = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 
     /**
-     * Send what waits from the background now. KEEP: a run already queued or running flushes until
-     * nothing new waits (`AppModel.syncInBackground`), so a second one adds nothing.
+     * Send what waits from the background now, after any run already going (`APPEND_OR_REPLACE`:
+     * KEEP dropped this while a run was past its last look at the outbox, fe#285). Asked once per
+     * run (`ExpediteGate`): a run still waiting to start sends everything when it does.
      */
     fun expedite(context: Context) {
       val request =
@@ -73,7 +74,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
           .setConstraints(connected)
           .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
           .build()
-      WorkManager.getInstance(context).enqueueUniqueWork(SyncSchedule.UNIQUE_WORK, ExistingWorkPolicy.KEEP, request)
+      WorkManager.getInstance(context).enqueueUniqueWork(SyncSchedule.UNIQUE_WORK, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
 
     /** The 15 minute backstop while events wait (on), or not (off). */

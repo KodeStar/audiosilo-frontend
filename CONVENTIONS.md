@@ -4336,9 +4336,11 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   place is saved by the tick only while the audio moves (a hold keeps `lastAdvance`'s time).
 - **Sync (decision 9)**: `AppModel.schedule(trigger)` runs `SyncSchedule.plan`: in front it
   flushes (launch after `spans.recover()`, foreground, each closed span, the 60 s timer, a
-  network coming up); in the background `SyncWorker.expedite` (unique `sync`, KEEP, CONNECTED,
-  `RUN_AS_NON_EXPEDITED` out of quota) and the 15 min `sync-periodic` backstop while events
-  wait. A worker run (`AppModel.syncInBackground`) picks its own address with the probe (home
+  network coming up); in the background `SyncWorker.expedite` (unique `sync`,
+  `APPEND_OR_REPLACE`, CONNECTED, `RUN_AS_NON_EXPEDITED` out of quota) and the 15 min
+  `sync-periodic` backstop while events wait. An expedite goes after any run already going, once
+  per run (`ExpediteGate`: a run still waiting to start sends everything when it does; KEEP dropped
+  the ask of a span closed after a running run's last look, fe#285). A worker run (`AppModel.syncInBackground`) picks its own address with the probe (home
   allowed), flushes up to `WORKER_ROUNDS` while spans close, and retries with backoff only on
   no answer (`SyncSchedule.outcome`). Sign out (`AppModel.signOut`) stops the player first, then
   is blocked while events wait unless discarded; a replacing account likewise (pass 1).

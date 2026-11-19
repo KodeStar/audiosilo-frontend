@@ -29,6 +29,7 @@ import app.audiosilo.wear.core.ContinueRow
 import app.audiosilo.wear.core.DownloadIndex
 import app.audiosilo.wear.core.DownloadRecord
 import app.audiosilo.wear.core.DurableWriter
+import app.audiosilo.wear.core.ExpediteGate
 import app.audiosilo.wear.core.FileSpanStore
 import app.audiosilo.wear.core.HeldBook
 import app.audiosilo.wear.core.HeldBooks
@@ -196,6 +197,9 @@ class AppModel private constructor(private val context: Context) {
 
   /** Whether the backstop is scheduled, as far as this process knows (null: not asked yet). */
   private var backstopOn: Boolean? = null
+
+  /** Whether an expedite enqueues a worker run (once per run, after any run going). */
+  private val expedites = ExpediteGate()
 
   /** A network coming up while in front: a trigger only, never a gate (decision 3). */
   private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -368,7 +372,7 @@ class AppModel private constructor(private val context: Context) {
     if (!canSync) return
     val plan = SyncSchedule.plan(trigger, outbox.unsentCount, inForeground)
     if (plan.flushNow) scope.launch { flush() }
-    if (plan.expedite) SyncWorker.expedite(context)
+    if (plan.expedite && expedites.ask()) SyncWorker.expedite(context)
     setBackstop(plan.backstop)
   }
 
@@ -398,6 +402,8 @@ class AppModel private constructor(private val context: Context) {
    * Flushed again while spans close meanwhile, a few rounds at most.
    */
   suspend fun syncInBackground(): SyncSchedule.Outcome {
+    // From here this run reads the outbox: a span closed later enqueues a run after it.
+    expedites.started()
     val a = _account.value
     val token = tokens.token()
     if (!canSync || a == null || token == null) {
@@ -863,6 +869,7 @@ class AppModel private constructor(private val context: Context) {
     spans.forgetMove()
     outbox.discardAll()
     SyncWorker.cancelAll(context)
+    expedites.cancelled()
     backstopOn = false
     _offerPrompt.value = null
     router.reset()

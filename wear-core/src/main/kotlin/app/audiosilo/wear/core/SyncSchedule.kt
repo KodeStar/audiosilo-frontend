@@ -86,3 +86,35 @@ object SyncSchedule {
   const val WORKER_ROUNDS = 3
 }
 
+/**
+ * Whether an expedite enqueues a sync worker run (fe#285). The worker is unique work: with KEEP, a
+ * request while a run was RUNNING was dropped, so a span closed after that run's last look at the
+ * outbox waited for the 15 minute backstop. A request now goes after any run already going
+ * (`APPEND_OR_REPLACE`), once per run: while a run waits to start, it sends everything when it
+ * does, so asking again adds nothing. Thread-safe (the main thread asks, the worker starts).
+ */
+class ExpediteGate {
+  /** A run is enqueued that has not started yet. */
+  private var waiting = false
+
+  /** An expedite: true when a run is to be enqueued (after any run going now). */
+  @Synchronized
+  fun ask(): Boolean {
+    if (waiting) return false
+    waiting = true
+    return true
+  }
+
+  /** A run started: it reads the outbox from now on, so a span closed later asks for one after it. */
+  @Synchronized
+  fun started() {
+    waiting = false
+  }
+
+  /** The runs were cancelled (signed out): nothing waits to start. */
+  @Synchronized
+  fun cancelled() {
+    waiting = false
+  }
+}
+
