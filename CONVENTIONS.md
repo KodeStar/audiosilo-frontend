@@ -3019,8 +3019,8 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   row, which after a stop is the newest book in progress: the loaded book while it is neither
   stopped nor finished, unless the engine plays another book the store has not adopted (the
   car's, the loaded one shown paused at its adoption deadline: `engineOtherBook`), which is
-  named instead; until a book is loaded in this runtime, the book offered last
-  (`audiosilo.carResumable`, kept with whether kids mode was on, and dropped when that
+  named instead while it has not played to its end; until a book is loaded in this runtime,
+  the book offered last (`audiosilo.carResumable`, kept with whether kids mode was on, and dropped when that
   changed), so opening the app after a kill without playing keeps it; once one was stopped or
   finished here, none. Native reads it in `CarSnapshot.resumable` (a snapshot kept from before
   the field still answers with its first Continue row), after the engine's own live place

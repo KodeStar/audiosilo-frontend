@@ -240,12 +240,14 @@ const engineHoldsAnother = (): boolean => service !== null && reportedOtherBook(
  * a resumption started it and it was not adopted; after `otherBookNotAdopted` the store's book
  * shows paused while this one plays on), its connection id resolved; else null. Null too
  * while a load or a start of the store's holds it, when the engine still reports the book that
- * load replaces. The car sync names it for a playback resumption (`resumableBook`).
+ * load replaces, and once that book played to its end (a finished book never resumes, as the
+ * store's own does not). The car sync names it for a playback resumption (`resumableBook`).
  */
 export function engineOtherBook(): BookRef | null {
   if (!service || usePlayer.getState().loadingBook || startsInFlight > 0) return null;
   const named = service.reportedBook?.();
   if (!named || reportedOtherBook(service) === null) return null;
+  if (service.getSnapshot().state === 'ended') return null;
   return { ...bookRefOf(named), connectionId: resolveConnectionId(named.connectionId) };
 }
 /** The other book's report the car sync was last told of (`otherBookReported`), else null. */

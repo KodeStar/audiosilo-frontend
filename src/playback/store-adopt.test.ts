@@ -2312,6 +2312,13 @@ describe("a report of another book than the store's", () => {
     engineBook = refS;
     pushSnapshot(snap('playing', 0, 5));
     expect(engineOtherBook()).toEqual(refS);
+    // Played to its end: no book to resume, as the store's own finished book is not.
+    (mockSvc.getSnapshot as jest.Mock).mockImplementation(() => snap('ended', 0, 50));
+    try {
+      expect(engineOtherBook()).toBeNull();
+    } finally {
+      (mockSvc.getSnapshot as jest.Mock).mockImplementation(() => ({ ...INITIAL }));
+    }
     // A load of the store's holds it: the engine still reports the book that load replaces.
     usePlayer.setState({ loadingBook: 'c1:2:S' });
     expect(engineOtherBook()).toBeNull();
