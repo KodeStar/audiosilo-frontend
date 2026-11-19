@@ -187,15 +187,16 @@ object WearLink {
   /**
    * At start and at the prune's alarm: drop the pairs past their time, and act on every receipt
    * waiting (one put while no process ran and the service was not started, or one the last process
-   * died on). True when it got through (or there is no Data Layer to settle with); false when the
-   * Data Layer failed or did not answer, so the alarm's sweep is tried again (`armRetry`).
+   * died on). True when it got through (or there is no Data Layer to settle with, `noApiIsDone`);
+   * false when the Data Layer failed or did not answer, so the alarm's sweep is tried again
+   * (`armRetry`).
    */
-  private suspend fun sweep(context: Context): Boolean {
+  private suspend fun sweep(context: Context, noApiIsDone: Boolean = true): Boolean {
     val done =
       quietly("sweep") {
         withTimeoutOrNull(HOLD_LIMIT_MS) {
           // A phone with no Wear OS app has nothing to settle (and no local node to ask for).
-          if (!available(context)) return@withTimeoutOrNull true
+          if (!available(context)) return@withTimeoutOrNull noApiIsDone
           lock.withLock {
             val me = me(context) ?: return@withLock false
             val own = prune(context, me, ownItems(context, me), System.currentTimeMillis())
@@ -267,7 +268,9 @@ object WearLink {
   suspend fun pruneDue(context: Context): Boolean {
     // Set again whatever is found: an alarm a moment early must not leave the pair to the next start.
     pruneArmedAt = null
-    val done = sweep(context)
+    // A prune is due only after a pair was sent, so the Wearable API answered here then: one that
+    // does not answer now is Play services not ready (just after a boot, an update), tried again.
+    val done = sweep(context, noApiIsDone = false)
     // Got through and no pair is left to prune (`armPrune` sets nothing for an alarm already gone).
     if (done && pruneArmedAt == null) bootReceiver(context, on = false)
     return done

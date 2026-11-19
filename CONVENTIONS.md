@@ -4041,7 +4041,9 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     `RECEIVE_BOOT_COMPLETED`) runs the sweep again, enabled only while a prune is due (`armPrune`
     and `armRetry` turn it on, a sweep that leaves nothing to prune turns it off), so a phone with
     no pair held is not woken at boot. A sweep that does not get through (the Data Layer failed or
-    gave no answer in the receiver's 9 s) sets a retry alarm, 1, 2, 4 ... 32 minutes
+    gave no answer in the receiver's 9 s, or the Wearable API did not answer: Play services not
+    ready after a boot or an update, as a prune is due only after a pair was sent) sets a retry
+    alarm, 1, 2, 4 ... 32 minutes
     (`WearRules.pruneRetryDelayMs`, `PRUNE_RETRIES` 6, fe#285). An idle phone holds one past its
     life only after a force stop (no alarm survives it) or the retries spent, until the app next
     starts; a new pair drops any held for another watch. One watch at a time: of the nodes with the app (capability
