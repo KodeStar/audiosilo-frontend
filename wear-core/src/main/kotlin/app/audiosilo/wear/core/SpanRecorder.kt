@@ -485,6 +485,12 @@ class SpanRecorder(
    * book's place (`keepPlace`): playing, after the next span replaces the closed one in its file (a
    * kill before the place recovers it from that span, `fromHeard`); paused, before the move's event,
    * so the watch never resumes behind a move the server has.
+   *
+   * `acknowledge` (an offer's Jump: its row acknowledged, `AckStore.answerOffer`) runs once the span
+   * the move ends is in the outbox and before the move's own span or event: the closing span goes on
+   * the version this watch knew while it was heard (`baseAtClose`), never the offered row's, which
+   * would let the place left behind replace the other device's newer one on the server (sent alone
+   * when a kill stops the move's own writes); the move goes on the row's.
    */
   fun move(
     book: PlayingBook,
@@ -493,9 +499,11 @@ class SpanRecorder(
     reason: ListeningStart? = null,
     playing: Boolean,
     speed: Double,
+    acknowledge: () -> Unit = {},
   ) {
     val before = from ?: span?.to
     val closed = close(before, null, clearStore = !playing || to == null)
+    acknowledge()
     val target = to ?: return
     val why =
       reason

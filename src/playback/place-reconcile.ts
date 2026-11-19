@@ -31,6 +31,7 @@ import {
   type ProgressSave,
 } from './progress-sync';
 import {
+  answerAfterSpan,
   engineHoldsOtherBook,
   holdSaves,
   localMoveCount,
@@ -243,8 +244,10 @@ export async function offerLoadedPlace(
       action: {
         label: t('player.placeOffer.jump'),
         onPress: () => {
-          // Acknowledged first: the span the jump opens is sent on the row it answered.
-          void answer().then(() => {
+          // Acknowledged before the move, so the span the jump opens is sent on the row it
+          // answered, and after the span heard here closes, so that one is not
+          // (`answerAfterSpan`).
+          void answerAfterSpan(np, answer).then(() => {
             if (selectBookKey(usePlayer.getState()) === bookKey) {
               quietly(usePlayer.getState().seekBook(offer.position));
             }

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { describePlace, offerOf, type PlaceOffer } from '@/playback/place-reconcile';
 import { answerOffer, getDeviceId, type ProgressSave, readMirror } from '@/playback/progress-sync';
+import { answerAfterSpan } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
 
 type Target = { connectionId: string; libraryId: number; path: string };
@@ -72,9 +73,11 @@ export function ListeningOfferLine({
   const play = () => {
     setAnswered(offer.key);
     const { connectionId, libraryId, path } = target;
-    void answerOffer(connectionId, libraryId, path, row, offer.key).then(() =>
-      onPlay(offer.position),
-    );
+    // After the span this book still has open closes (`answerAfterSpan`): what was heard
+    // before the answer is not sent on the row's version.
+    void answerAfterSpan(target, () =>
+      answerOffer(connectionId, libraryId, path, row, offer.key),
+    ).then(() => onPlay(offer.position));
   };
   return (
     <View testID="listening-offer" className="flex-row flex-wrap items-center gap-x-2 gap-y-1">

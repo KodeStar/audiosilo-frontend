@@ -3013,7 +3013,13 @@ media GETs only.
     `duration` is the audio's own length (`BookQueue.audio`, never a timeline a chapter
     overhangs: the server refuses a span more than 10 s off, `duration_mismatch`); a place that
     is not a finite number never reaches a span or an event (`finiteEnd`, `eventIsFinite`).
-    `base_version` is the mirror's `ack_version` at the close (0 when none: a cold start).
+    `base_version` is the mirror's `ack_version` at the close (0 when none: a cold start). An
+    offer answered by a move (the toast's Jump, the book page's Play from there) cuts that
+    book's open span first and acknowledges the row in the outbox's turn after its close
+    (`answerAfterSpan`, `afterInTurn`), so what was heard before the answer never goes on the
+    row's version (the place left behind would replace the other device's newer one, sent
+    alone after a kill; fe#285); the move goes on the row's. The Wear OS app does the same
+    (`SpanRecorder.move`'s `acknowledge`); the Apple Watch still acknowledges before the move.
   - *Storage* (all connection-scoped, in `SCOPED_STORAGE_KEYS` and the identity migration, purged
     with the connection): `audiosilo.listeningOutbox` (closed events with their `connectionId`,
     immutable once there; a `finish` entry also carries its sends' marks, see *Across tabs*),
@@ -4222,7 +4228,7 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   run), `SystemPause` (a pause the system made, from Media3's reasons), `PhoneInbox` (PhoneLink's
   sweep and event plans), `FileSpanStore` and `Labels`. Wear-only additions to ported files, for
   the sync rate below (the Apple Watch writes `places.json` every 5 s, unsynced, so it needs none):
-  `SpanRecorder.playingTick`, `recover(carry)`, `keep(heardAt)` and the cut's (`tick`, `cut`),
+  `SpanRecorder.playingTick`, `recover(carry)`, `keep(heardAt)` and the cut's (`tick`, `cut`), `move`'s `acknowledge`,
   `OpenSpan.fromHeard`, the recorder's `keepPlace` and the stalled-span rule (`Spans.STALL`),
   `PlaceStore.set(save:)` and `PlaceStore.recover`, the `DurableWriter`, and the outbox removing
   its file when empty. `JsonFile(durable = true)`
@@ -4270,9 +4276,11 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   missing file is an empty outbox at launch. **The serial writer** (fe#285): these four files are
   written on one background thread (`DurableWriter`, given to `Outbox`, `PlaceStore` and
   `FileSpanStore`), and with them, unsynced, the two whose order against them matters: `acks.json`
-  (`AckStore`: a Jump is acknowledged in memory before its move, whose events go on the row's
-  version, and written after it, `AppModel.jump`; the acknowledgement on the disk without the move
-  would resume at the old place on the other device's version) and `sync-state.json` (an event
+  (`AckStore`: a Jump is acknowledged in memory once the span its move ends is closed, on the
+  version that span was heard on, and before the move's own, which goes on the row's version
+  (`SpanRecorder.move`'s `acknowledge`), and written after the move, `AppModel.jump`; the
+  acknowledgement on the disk without the move would resume at the old place on the other device's
+  version) and `sync-state.json` (an event
   moved to the couldn't-sync list lands there one write before it leaves the outbox, so a kill
   between the two sends it again, never loses it); one write at a time in the order asked across the files (each queued under the
   lock that made its change, the value immutable), so the main looper never waits on an fsync and a

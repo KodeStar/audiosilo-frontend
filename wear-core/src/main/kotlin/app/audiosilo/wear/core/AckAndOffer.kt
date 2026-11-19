@@ -25,10 +25,11 @@ data class BookAck(
 /**
  * The acknowledged versions, kept in a file (`acks.json`). Thread-safe. Given the listening's
  * `DurableWriter` (Wear, fe#285), the file is written there, in the order asked with the outbox
- * and the places. An offer's Jump is acknowledged in memory before its move (the move's events go
- * on the row's version) and written after it (`answerOffer(save = false)`, then `save`): the
- * acknowledgement on the disk without the move would resume at the old place on the other device's
- * version after a kill, sending that place back.
+ * and the places. An offer's Jump is acknowledged in memory between the span its move ends and the
+ * move's own (`SpanRecorder.move`'s `acknowledge`: only the move's events go on the row's version)
+ * and written after the move (`answerOffer(save = false)`, then `save`): the acknowledgement on the
+ * disk without the move would resume at the old place on the other device's version after a kill,
+ * sending that place back.
  */
 class AckStore(file: File?, writer: DurableWriter? = null) {
   private val file = file?.let { JsonFile(it, SERIALIZER, writer = writer) }

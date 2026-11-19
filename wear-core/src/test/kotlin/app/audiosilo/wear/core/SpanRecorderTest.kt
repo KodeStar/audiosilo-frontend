@@ -860,6 +860,36 @@ class SpanRecorderTest {
     assertEquals(44, acks.ackVersion(folder))
   }
 
+  // An offer's Jump (fe#285): the span it ends was heard on the version this watch knew, so it goes
+  // on that one; only the move's own span (playing) or event (paused) goes on the offered row's. On
+  // the row's, the place left behind would replace the other device's newer one on the server, and
+  // a kill before the move's own writes sends it alone.
+  @Test
+  fun aJumpsClosingSpanGoesOnTheVersionBeforeTheOffer() {
+    acks.ack(folder, 41)
+    val offered = row(lib = folder.libraryId, path = folder.path, version = 44, device = "other")
+    val answer = { acks.answerOffer(folder, offered, "other|t", save = false) }
+    val r = recorder()
+    r.open(book, at(10.0), 1.0)
+    clock.advance(20.0)
+    r.move(book, to = at(80.0), from = at(30.0), reason = ListeningStart.JUMP, playing = true, speed = 1.0, acknowledge = answer)
+    assertEquals("the span the jump ends", listOf(41), listens.map { it.baseVersion })
+    clock.advance(5.0)
+    r.close(at(85.0))
+    assertEquals(listOf(41, 44), listens.map { it.baseVersion })
+    assertEquals(listOf(ListeningStart.RESUME, ListeningStart.JUMP), listens.map { it.start })
+
+    // Paused: the move's event alone, on the row's version.
+    acks.clear()
+    acks.ack(folder, 50)
+    emitted.clear()
+    val later = row(lib = folder.libraryId, path = folder.path, version = 52, device = "other")
+    r.move(book, to = at(20.0), from = at(85.0), reason = ListeningStart.JUMP, playing = false, speed = 1.0) {
+      acks.answerOffer(folder, later, "other|u", save = false)
+    }
+    assertEquals(listOf(52), listens.map { it.baseVersion })
+  }
+
   // The open span survives a kill as JSON (Files' open-span.json).
   @Test
   fun anOpenSpanRoundTripsThroughItsFile() {

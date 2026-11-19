@@ -1169,6 +1169,58 @@ describe('on a server with listening_sync', () => {
     expect(seeks()).toEqual([640]);
   });
 
+  // fe#285: the span heard before a Jump goes on the version this device knew while it heard
+  // it, not the row the Jump answered: on that one the place left behind would replace the
+  // other device's newer place, and an app killed before the jump's own span is stored sends
+  // it alone. The jump's span goes on the row's.
+  it("a Jump made while playing sends the span it ends on the version before the row's", async () => {
+    await loadedAndPaused();
+    mockMirror = { ...mockMirror!, ack_version: 5 };
+    // The answer acknowledges the row in the mirror, as `answerOffer` does.
+    mockAckVersion.mockImplementationOnce(async (...a: unknown[]) => {
+      mockMirror = { ...mockMirror!, ack_version: a[3] as number };
+    });
+    mockServer = async () =>
+      record({
+        device_id: 'this-device',
+        position: 105,
+        version: 7,
+        other_place: {
+          position: 640,
+          // A key and device of its own: an offer is shown once a launch.
+          device_id: 'jump-watch',
+          device_name: "Chris's Watch",
+          updated_at: '2026-10-08T11:05:00Z',
+        },
+      });
+    await backInFront();
+    const offer = lastToast();
+    pushSnapshot(snap('playing', 105));
+    await settle();
+    jest.setSystemTime(Date.now() + 3000);
+    pushSnapshot(snap('playing', 108));
+    offer.action.onPress();
+    for (let i = 0; i < 10; i++) await settle();
+    expect(seeks()).toEqual([640]);
+    jest.setSystemTime(Date.now() + 3000);
+    pushSnapshot(snap('paused', 643));
+    for (let i = 0; i < 10; i++) await settle();
+    const sent = mockClient.syncListening.mock.calls.flatMap(
+      (c) => (c[0] as { events: { to_pos?: number }[] }).events,
+    );
+    // An earlier test's events may still wait in the outbox: these are this test's.
+    expect(sent.find((e) => e.to_pos === 108)).toMatchObject({
+      start: 'resume',
+      from_pos: 105,
+      base_version: 5,
+    });
+    expect(sent.find((e) => e.to_pos === 643)).toMatchObject({
+      start: 'jump',
+      from_pos: 640,
+      base_version: 7,
+    });
+  });
+
   it('Stay acknowledges and stays; the same offer is not shown again', async () => {
     await loadedAndPaused();
     mockServer = async () =>

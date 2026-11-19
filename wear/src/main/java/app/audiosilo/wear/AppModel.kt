@@ -534,18 +534,20 @@ class AppModel private constructor(private val context: Context) {
   }
 
   /**
-   * Jump: move to the offered place (acknowledging the row). Acknowledged in memory first (the
-   * move's events go on the row's version) and written after the move (fe#285): a kill between the
-   * two leaves the move without its acknowledgement (the watch is at the offered place, or is
-   * offered it again), never the acknowledgement without the move (the old place resumed on the
-   * other device's version, which sends that place back).
+   * Jump: move to the offered place (acknowledging the row). Acknowledged in memory once the span
+   * the move ends is closed, on the version it was heard on, and before the move's own (on the
+   * row's: `SpanRecorder.move`'s `acknowledge`), and written after the move (fe#285): a kill
+   * between the two leaves the move without its acknowledgement (the watch is at the offered place,
+   * or is offered it again), never the acknowledgement without the move (the old place resumed on
+   * the other device's version, which sends that place back).
    */
   fun jump(p: OfferPrompt) {
-    val moves = engine.loadedBook == p.ref
-    acks.answerOffer(p.ref, p.row, p.offer.key, save = !moves)
     _offerPrompt.value = null
-    if (!moves) return
-    engine.seek(p.offer.position, ListeningStart.JUMP)
+    if (engine.loadedBook != p.ref) {
+      acks.answerOffer(p.ref, p.row, p.offer.key)
+      return
+    }
+    engine.seek(p.offer.position, ListeningStart.JUMP) { acks.answerOffer(p.ref, p.row, p.offer.key, save = false) }
     acks.save()
   }
 

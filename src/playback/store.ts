@@ -57,6 +57,7 @@ import {
 import { engineTick, engineTicker } from './engine-ticks';
 import { type FinishRef, finishedSave, setFinishRecorder, type UndoRef } from './finish-route';
 import {
+  afterInTurn,
   appendInTurn,
   closeSpan,
   connectionGeneration,
@@ -1952,6 +1953,23 @@ export function standByPlace(): void {
   }
   closeListeningSpan();
   nextStart = carriedStart(start);
+}
+
+/**
+ * An offer answered by moving to its place (the player's Jump, the book page's Play from
+ * there): the span of that book still open is cut first, and `answer` (the row
+ * acknowledged) is made in the outbox's turn once that close is in (`afterInTurn`). What was
+ * heard before the answer then goes on the version this device knew while it heard it
+ * (`baseAtClose`), never the offered row's: on that one the place left behind would replace
+ * the other device's newer place on the server, sent alone when the app is killed before
+ * the move's own span is kept (fe#285). The move made once this resolves goes on the row's.
+ * No span of the book open: just `answer`.
+ */
+export async function answerAfterSpan(ref: ContentRef, answer: () => Promise<void>): Promise<void> {
+  if (!span || !sameBook(span, ref)) return answer();
+  const { connectionId } = span;
+  cutListeningSpan();
+  await afterInTurn(connectionId, answer);
 }
 
 /** Cut the playing span now (the server came back, the app went to the background); a

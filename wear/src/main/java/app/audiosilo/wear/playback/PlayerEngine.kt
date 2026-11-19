@@ -383,19 +383,23 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     publish()
   }
 
-  /** Move to `target` (whole-book seconds). `reason` null: a jump, or moved back when behind. */
-  fun seek(target: Double, reason: ListeningStart? = null) {
-    val b = book ?: return
+  /**
+   * Move to `target` (whole-book seconds). `reason` null: a jump, or moved back when behind.
+   * `acknowledge`: an offer's Jump, run between the span the move ends and its own
+   * (`SpanRecorder.move`); at once when nothing moves.
+   */
+  fun seek(target: Double, reason: ListeningStart? = null, acknowledge: () -> Unit = {}) {
+    val b = book ?: return acknowledge()
     val to = Skips.target(target, 0.0, b.timeline.total)
     val place = b.timeline.locate(to)
     val end = b.timeline.spanEnd(place.index, place.positionInTrack)
     // Previous at the book's start: nothing moves, so no span and no newer time on the place.
     val from = spanEnd()
-    if (reason == null && Spans.movesNowhere(from, end) && abs(position - to) < ChapterNav.AT_START) return
+    if (reason == null && Spans.movesNowhere(from, end) && abs(position - to) < ChapterNav.AT_START) return acknowledge()
     // Moved back into a book that played to its end: it is finished on the server and a listen
     // never unfinishes, so the next play sends the `unfinish` (its reason stays the move's).
     if (ended) spans.prepareStart(spans.nextStart, unfinish = true)
-    spans.move(b.playing, end, from, reason, playing, rate)
+    spans.move(b.playing, end, from, reason, playing, rate, acknowledge)
     ended = false
     val p = player()
     if (p.mediaItemCount == 0) setItems(b, place.index, place.positionInTrack) else p.seekTo(place.index, ms(place.positionInTrack))
