@@ -6,6 +6,7 @@ import type {
   Progress,
   QueueEntry,
 } from '@/api/types';
+import type { OtherBookNews } from '@/playback/store';
 
 import type { CarSnapshot } from './car-model';
 
@@ -123,7 +124,7 @@ let mockOutsidePlay = true;
 /** The book the engine plays that the store has not adopted (`engineOtherBook`), else null. */
 let mockEngineOther: { connectionId: string; libraryId: number; path: string } | null = null;
 /** The store's word that the engine reported another book (`onOtherBookReported`). */
-let mockOtherBookReported: ((news: 'moved' | 'playing' | 'ended') => void) | null = null;
+let mockOtherBookReported: ((news: OtherBookNews) => void) | null = null;
 jest.mock('@/playback/store', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { create } = require('zustand');
@@ -139,7 +140,7 @@ jest.mock('@/playback/store', () => {
     usePlayer,
     followsOutsidePlay: () => mockOutsidePlay,
     engineOtherBook: () => mockEngineOther,
-    onOtherBookReported: (listener: (news: 'moved' | 'playing' | 'ended') => void) => {
+    onOtherBookReported: (listener: (news: OtherBookNews) => void) => {
       mockOtherBookReported = listener;
       return () => {
         if (mockOtherBookReported === listener) mockOtherBookReported = null;
