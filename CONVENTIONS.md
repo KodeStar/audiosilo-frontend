@@ -3364,7 +3364,12 @@ media GETs only.
   book's place in the snapshot, so the store's book shows where it stood when the play was
   asked from the moment the adoption begins (`standWhereAsked`, the watchdog's
   `stoodWhenAsked`): a speed change, during the adoption or after a Pause in the grace, saves
-  that place, and a play press reloads there, never the other book's place past it.
+  that place, and a play press reloads there, never the other book's place past it. So does a
+  play asked from outside while the store's book stood still (paused, not in error), which the
+  store does not follow: where it stood is kept (`pausedAsk`) until it plays or the store
+  starts a play of its own.
+  These holds come before a faulted book's stop (`loadedFaulted`), as a named other book's
+  report does: a faulted store's book never pauses the other book's play nor reloads over it.
   Whether that unnamed book plays is kept from its held reports (`unnamedPlays`), so
   `engineOtherBookPlays` is true for it too: the sleep timer counts down on it, the store's
   `pause` stops it, and `resumeOtherBook` plays it again.

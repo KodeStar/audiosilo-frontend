@@ -141,6 +141,7 @@ import { useSettings } from '@/stores/settings';
 import {
   engineOtherBook,
   engineOtherBookPlays,
+  FAULT_HOLD_MS,
   landingOf,
   onOtherBookPlays,
   onOtherBookReported,
@@ -2243,6 +2244,120 @@ describe('a play asked from outside of another book after playback stopped', () 
   // An adoption that began after the store's own start asked for its load (so not marked
   // `ownLoad`) gives up, and the engine is the start's book from that load: its unnamed
   // reports are that book's, never held as the other book's.
+  /** B adopted paused at (1, 30); the engine asked to play from outside (no error, so no play
+   * followed) and its unnamed `loading` report at `heard` taken; S's adoption then begins and
+   * gives up (the engine read again names nothing). Returns once it gave up. */
+  async function askedForSWhilePaused(heard: { trackIndex: number; position: number }) {
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    await usePlayer.getState().adoptLoaded(loadedB({ playing: false }));
+    jest.clearAllMocks();
+    playAsked?.();
+    pushSnapshot(snap('loading', heard.trackIndex, heard.position));
+    const answers: (() => void)[] = [];
+    mockFetchQuery.mockImplementation(
+      (opts: unknown) =>
+        new Promise((resolve) => {
+          const key = (opts as { queryKey: unknown[] }).queryKey;
+          answers.push(() => resolve(key[0] === 'item' ? book : chapters));
+        }),
+    );
+    const adopting = usePlayer.getState().adoptLoaded(loadedS, async () => null);
+    await flushMicrotasks();
+    // From the moment the adoption begins, B stands where it was.
+    const during = usePlayer.getState().snapshot;
+    for (const answer of answers) answer();
+    expect(await adopting).toBe(false);
+    return during;
+  }
+
+  // FE-ANDROID-5: B stood paused (not stopped in error), so the play asked from outside was not
+  // followed and left no place to stand B at: S's unnamed report, taken as B's before its
+  // adoption began, stayed B's place, and a speed change saved it as B's.
+  it("stands a paused store's book where it was when another book's adoption begins", async () => {
+    const during = await askedForSWhilePaused({ trackIndex: 1, position: 80 });
+    expect(during).toMatchObject({ trackIndex: 1, position: 30 });
+    expect(usePlayer.getState()).toMatchObject({
+      nowPlaying: { path: 'B' },
+      snapshot: { trackIndex: 1, position: 30 },
+    });
+    await usePlayer.getState().setRate(2);
+    await flushMicrotasks();
+    expect(savedPaths()).toEqual(['B']);
+    expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 130 });
+  });
+
+  // Not once the store's book played from that ask (the lock screen's play of B itself): its
+  // place is its own from there, and a later adoption of another book leaves it.
+  it("keeps the place a paused store's book played to before another book's adoption", async () => {
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    await usePlayer.getState().adoptLoaded(loadedB({ playing: false }));
+    playAsked?.();
+    pushSnapshot(snap('loading', 1, 30));
+    pushSnapshot(snap('playing', 1, 31));
+    pushSnapshot(snap('playing', 1, 60));
+    pushSnapshot(snap('paused', 1, 60));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 60 });
+    const answers: (() => void)[] = [];
+    mockFetchQuery.mockImplementation(
+      (opts: unknown) =>
+        new Promise((resolve) => {
+          const key = (opts as { queryKey: unknown[] }).queryKey;
+          answers.push(() => resolve(key[0] === 'item' ? book : chapters));
+        }),
+    );
+    const adopting = usePlayer.getState().adoptLoaded(loadedS, async () => null);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 60 });
+    for (const answer of answers) answer();
+    expect(await adopting).toBe(false);
+  });
+
+  // FE-ANDROID-5: the store's book had faulted (its engine ran off the asked file) when the car
+  // played S, whose reports name none. The fault's check ran before the hold, so S's play was
+  // paused again and B reloaded over it. The hold wins, during the adoption and once it gave up.
+  it("neither pauses nor reloads over an unnamed other book while the store's book is faulted", async () => {
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    await usePlayer.getState().playBook('c1', 2, twoFileBook, twoFileChapters, 50);
+    await flushMicrotasks();
+    // The engine runs off its asked file into the next: a fault, paused there.
+    pushSnapshot(snap('playing', 1, 0.4));
+    jest.advanceTimersByTime(FAULT_HOLD_MS);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    expect(mockSvc.pause).toHaveBeenCalled();
+    pushSnapshot(snap('paused', 1, 0.5));
+    await flushMicrotasks();
+    jest.clearAllMocks();
+    // The car plays S; its adoption is under way.
+    const answers: (() => void)[] = [];
+    mockFetchQuery.mockImplementation(
+      (opts: unknown) =>
+        new Promise((resolve) => {
+          const key = (opts as { queryKey: unknown[] }).queryKey;
+          answers.push(() => resolve(key[0] === 'item' ? book : chapters));
+        }),
+    );
+    playAsked?.();
+    const adopting = usePlayer.getState().adoptLoaded(loadedS, async () => null);
+    await flushMicrotasks();
+    pushSnapshot(snap('playing', 0, 6));
+    await flushMicrotasks();
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    // It gives up: the engine holds S all the same, and S plays on.
+    for (const answer of answers) answer();
+    expect(await adopting).toBe(false);
+    pushSnapshot(snap('playing', 0, 7));
+    await flushMicrotasks();
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    expect(usePlayer.getState()).toMatchObject({
+      nowPlaying: { path: 'B' },
+      snapshot: { state: 'error' },
+    });
+  });
+
   it("holds nothing after an adoption that gave up while the store's own load was out", async () => {
     useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
     let land!: () => void;
