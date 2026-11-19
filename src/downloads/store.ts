@@ -382,9 +382,12 @@ async function readRegistry(): Promise<Registry> {
   // as the retry starting there, `runningElsewhere`): never checked on disk, revived as cut
   // short or emptied, under a transfer that is still writing.
   const { saved, away } = await readStoredWithOwners();
-  // Each entry on its own (its own folder: relocated, renamed, checked on disk), all at once:
-  // a launch with many downloads waits for the slowest, not for the sum (fe#153).
-  const outcomes = await Promise.all(Object.values(saved).map((raw) => readSavedEntry(raw, away)));
+  // Each entry on its own (its own folder: relocated, renamed, checked on disk), several at
+  // once: a launch with many downloads no longer waits for the sum (fe#153), and a large
+  // library never fans out every file's probe together (the web's Cache API).
+  const outcomes = await mapLimit(Object.values(saved), REGISTRY_READS_AT_ONCE, (raw) =>
+    readSavedEntry(raw, away),
+  );
   const cleaned: Registry = {};
   for (const [key, entry] of outcomes) if (entry) cleaned[key] = entry;
   // Merge, don't overwrite: a live entry made during the read's async window (per-book
@@ -422,6 +425,9 @@ async function readRegistry(): Promise<Registry> {
   for (const key of Object.keys(elsewhere)) watchOwner(key);
   return cleaned;
 }
+
+/** How many saved entries the launch's read checks at once (`readRegistry`). */
+const REGISTRY_READS_AT_ONCE = 8;
 
 /** One saved entry as the launch reads it (`readRegistry`): its key, and what it is now
  * (null: dropped, its folder deleted). */
