@@ -20,7 +20,7 @@ import {
   type ServerSnapshot,
 } from '@/api/server-snapshots';
 import type { ApiClient } from '@/api/client';
-import type { Book, ChaptersResponse, Progress } from '@/api/types';
+import type { Book, BookMeta, ChaptersResponse, Progress } from '@/api/types';
 import { identityMovePending } from '@/lib/connection-id';
 import { contentKey, contentKeyOf, isKeyOf } from '@/lib/content-key';
 import { mapLimit } from '@/lib/map-limit';
@@ -1293,6 +1293,16 @@ function adoptWorkId(ref: BookRef, book: Book): void {
   patchEntry(key, { manifest: { ...manifest, book: { ...manifest.book, work_id: workId } } });
   persistSoon();
   if (!manifest.meta || manifest.book.work_id) {
+    // A `/meta` answer read before the book named this work stays fresh for an hour, and
+    // the keep would save it as it is (an unmatched one, or another work's): read again.
+    void queryClient.invalidateQueries({
+      queryKey: qk.bookMeta(ref.connectionId, ref.libraryId, ref.path),
+      predicate: (q) => {
+        const meta = q.state.data as BookMeta | undefined;
+        return !meta?.matched || meta.work.id !== workId;
+      },
+      refetchType: 'none',
+    });
     keepOfflineMeta(key, { force: true }).catch(() => {});
   }
 }

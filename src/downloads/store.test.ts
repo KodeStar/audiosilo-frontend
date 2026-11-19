@@ -192,6 +192,7 @@ jest.mock('@/api/hooks', () => ({
     item: (cid: string, lib: number, path: string) => ['item', cid, lib, path],
     progress: (cid: string, lib: number, path: string) => ['progress', cid, lib, path],
     chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path],
+    bookMeta: (cid: string, lib: number, path: string) => ['bookMeta', cid, lib, path],
     server: (cid: string) => ['server', cid],
     podcastShows: (cid: string, lib: number) => ['podcastShows', cid, lib],
     podcastFetch: (cid: string, lib: number, path: string) => ['podcastFetch', cid, lib, path],
@@ -4206,11 +4207,22 @@ describe('the offline companion (community metadata kept with a download)', () =
 
       const p = payload();
       mockCapture.mockResolvedValue(p);
+      const { queryClient } = jest.requireMock('@/api/provider');
+      queryClient.invalidateQueries.mockClear();
       answer(makeBook({ rel_path: path, work_id: 'w1' }));
       await settle();
       await settle();
       expect(mockCapture).toHaveBeenCalledTimes(2);
       expect(mockWriteMeta).toHaveBeenLastCalledWith(expect.objectContaining({ path }), p);
+      // A `/meta` answer read before the book named the work is read again, not kept as it
+      // is; one naming the work is kept.
+      expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(1);
+      const [filters] = queryClient.invalidateQueries.mock.calls[0];
+      expect(filters).toMatchObject({ queryKey: ['bookMeta', 'c1', 2, path], refetchType: 'none' });
+      const stale = (data: unknown) => filters.predicate({ state: { data } });
+      expect(stale({ matched: false })).toBe(true);
+      expect(stale({ matched: true, work: { id: 'w0' } })).toBe(true);
+      expect(stale({ matched: true, work: { id: 'w1' } })).toBe(false);
       const { manifest } = useDownloads.getState().entries[key]!;
       expect(manifest.book.work_id).toBe('w1');
       expect(manifest.meta).toEqual({ savedAt: '2026-05-01T10:00:00.000Z' });
@@ -4246,6 +4258,32 @@ describe('the offline companion (community metadata kept with a download)', () =
       await settle();
       expect(useDownloads.getState().entries[key]?.manifest.book.work_id).toBe('w1');
       expect(mockCapture).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+    }
+  });
+
+  // The answers the cache holds when the refresh starts count too: the web starts it after
+  // the first paint, when a screen's `/item` can have landed already.
+  it('takes the work a cached /item answer names when the refresh starts', async () => {
+    const path = nextPath();
+    const key = downloadKey('c1', 2, path);
+    await downloadOne(path);
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+    mockGetQueryData.mockImplementation((k) => {
+      const [kind, , , p] = k as unknown[];
+      return kind === 'item' && p === path
+        ? makeBook({ rel_path: path, work_id: 'w1' })
+        : undefined;
+    });
+    mockCapture.mockResolvedValue(payload());
+    const stop = startItemRefresh();
+    try {
+      await settle();
+      await settle();
+      expect(useDownloads.getState().entries[key]?.manifest.book.work_id).toBe('w1');
+      expect(mockCapture).toHaveBeenCalledTimes(2);
+      expect(useDownloads.getState().entries[key]?.manifest.meta).toBeDefined();
     } finally {
       stop();
     }
