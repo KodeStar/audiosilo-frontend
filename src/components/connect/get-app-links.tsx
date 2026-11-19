@@ -11,7 +11,7 @@ import { openExternalUrl } from '@/lib/support';
  * (`PairingPayload.links`, `qr.go`): the App Store, Google Play, and the APK on the player's
  * GitHub releases for an Android phone without Play. Keep the three in step with the server.
  */
-export const APP_LINKS = {
+const APP_LINKS = {
   ios: 'https://apps.apple.com/us/app/audiosilo/id6783431375',
   android: 'https://play.google.com/store/apps/details?id=app.audiosilo',
   apk: 'https://github.com/KodeStar/audiosilo-frontend/releases/latest',
