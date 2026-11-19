@@ -66,7 +66,10 @@ jest.mock('@/api/hooks', () => ({
   },
   cachedCapability: () => mockAnnotations,
   fetchCapabilities: () => mockFetchCaps(),
+  showServerBookmark: (...args: unknown[]) => mockShowServerBookmark(...args),
 }));
+// The book's cached list taking a bookmark its server already holds.
+const mockShowServerBookmark = jest.fn();
 // The session's changes `startBookmarkSync` follows (a connection signed in again).
 type MockSession = { connections: { id: string; token: string; needsReconnect?: string }[] };
 let mockSessionListener: ((state: MockSession, prev: MockSession) => void) | null = null;
@@ -284,6 +287,8 @@ describe('sending', () => {
     expect(client.addBookmark).not.toHaveBeenCalled();
     expect(held).toHaveLength(1);
     expect(await queuedBookmarks()).toEqual([]);
+    // Shown in the book's list as a send's would be: its waiting row gives way to it.
+    expect(mockShowServerBookmark).toHaveBeenCalledWith('c1', 1, 'a/book', held[0]);
   });
 
   it('does not take a bookmark from long before at the same place as this one', async () => {
@@ -761,6 +766,8 @@ describe('sending', () => {
     await idle();
     expect(held.map((b) => b.position)).toEqual([100]);
     expect(await queuedBookmarks()).toEqual([]);
+    // The Undo's entry, found already there, shows the server's bookmark in the list.
+    expect(mockShowServerBookmark).toHaveBeenCalledWith('c1', 1, 'a/book', held[0]);
   });
 
   it('puts one back for a server that never got it, and sends it', async () => {

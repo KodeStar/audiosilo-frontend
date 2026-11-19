@@ -13,7 +13,7 @@ import {
   sessionReady,
   whenSessionReady,
 } from '@/api/connection-clients';
-import { addBookmark, cachedCapability, fetchCapabilities } from '@/api/hooks';
+import { addBookmark, cachedCapability, fetchCapabilities, showServerBookmark } from '@/api/hooks';
 import { isReachable, noteFailure, onReconnect } from '@/api/reachability';
 import type { Bookmark, BookmarkLabel } from '@/api/types';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
@@ -552,7 +552,14 @@ async function sendGroup(
         reads.set(book, read);
       }
       const held = await read;
-      if (heldOnServer(e, held)) continue;
+      // Already there (a send whose answer was lost, an Undo of one a replay had sent): taken
+      // as sent, and shown in the book's list as a send's would be, so its waiting row and
+      // pin give way to the server's bookmark rather than to nothing until the list is read.
+      const already = held.find((b) => isThisOne(b, e));
+      if (already) {
+        showServerBookmark(connectionId, e.libraryId, e.path, already);
+        continue;
+      }
       // Its label goes only on flags that are known: it waits, label and all, while they
       // can't be read. What it waits for is the flags, not its turn: the book's unlabelled
       // ones behind it go on past it. The wait counts toward giving up on it as a failed send

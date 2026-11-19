@@ -1719,8 +1719,9 @@ One no send has reached (`fresh`: the Fell asleep, a one-tap kept without trying
 never taken for one already there, so the night before's at the same second never stands in for
 tonight's; when that read fails, whatever the status (a
 403 or 404 too), the bookmarks wait, and only the POST's own refusal for good drops one. A send
-puts the new bookmark in the book's cached list at once (`addBookmark`), so its waiting row and
-pin give way to it with no gap before the list is read again. Order holds within a book only: a
+puts the new bookmark in the book's cached list at once (`addBookmark`), and a replay that finds
+one already there puts the server's in it the same way (`showServerBookmark`), so its waiting row
+and pin give way to it with no gap before the list is read again. Order holds within a book only: a
 bookmark that can't be sent yet holds back the rest of its book for that replay and the other
 books' go past it, so one that keeps failing never blocks the connection's queue; a replay stops
 only at a failure that is the connection's (no answer, a gateway's 502/504/52x, a 401). One still

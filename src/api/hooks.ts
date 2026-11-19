@@ -701,14 +701,27 @@ export async function addBookmark(
     path,
     { position, note, label },
   );
-  // An answer with no bookmark in it (an older server) leaves the list to the read again.
-  if (created) {
+  showServerBookmark(connectionId, libraryId, path, created);
+  return created;
+}
+
+/** A bookmark its server holds, just made (`addBookmark`) or found there by the bookmark
+ * outbox (an add whose answer was lost), joins the book's cached list at once, once, then the
+ * book's list and the across-books one are read again: a waiting row the outbox settles
+ * meanwhile gives way to it with no gap. A list never read is left to its first read, and
+ * no bookmark (an older server's answer) to the read again. */
+export function showServerBookmark(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  bookmark: Bookmark | undefined,
+): void {
+  if (bookmark) {
     queryClient.setQueryData<Bookmark[]>(qk.bookmarks(connectionId, libraryId, path), (list) =>
-      list && !list.some((b) => b.id === created.id) ? [...list, created] : undefined,
+      list && !list.some((b) => b.id === bookmark.id) ? [...list, bookmark] : undefined,
     );
   }
   void refreshAfterAdd(queryClient, 'bookmarks', connectionId, libraryId, path);
-  return created;
 }
 
 /** `addBookmark` for a note: pin `body` at `position` of a book on ONE connection's

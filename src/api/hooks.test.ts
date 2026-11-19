@@ -75,6 +75,7 @@ import {
   qk,
   readingPlaceQuery,
   serverInfoQuery,
+  showServerBookmark,
 } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { setKeptOfflineCheck } from '@/downloads/kept-offline';
@@ -384,6 +385,21 @@ describe('addBookmark', () => {
       // A book whose list was never read is left to its first read.
       await addBookmark('srv', 2, 'Other', 61);
       expect(queryClient.getQueryData(qk.bookmarks('srv', 2, 'Other'))).toBeUndefined();
+    } finally {
+      queryClient.clear();
+    }
+  });
+
+  it('shows a bookmark the outbox found on the server in the cached list, once', () => {
+    const key = qk.bookmarks('srv', 2, 'A/Book');
+    const old = { id: 3, position: 10 } as Bookmark;
+    const found = { id: 7, position: 61, note: 'n' } as Bookmark;
+    queryClient.setQueryData(key, [old]);
+    try {
+      showServerBookmark('srv', 2, 'A/Book', found);
+      showServerBookmark('srv', 2, 'A/Book', found);
+      expect(queryClient.getQueryData(key)).toEqual([old, found]);
+      expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: key });
     } finally {
       queryClient.clear();
     }
