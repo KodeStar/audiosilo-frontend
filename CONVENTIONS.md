@@ -56,7 +56,10 @@ and the proxy-header sets (`followStored`, on the `storage` events of another ta
 heard while it reads, the launch's hydrate included, has it read again) and writes the list
 holding a `tabLock` the tabs share, reading it again first (`writingList`), so it never writes
 its older copy over another tab's sign-in; its default connection and reconnect flags stay its
-own (the default follows only once it is gone). Before
+own (the default follows only once it is gone). A connection another tab's identity migration
+renamed (the same token under `<server_id>.<user_id>`, `renamesIn` by `renamedIn`'s rule) has
+not gone: its flag, its being the default and its own proxy set go on under the new id, and it
+is never left (`leaveConnection`). Before
 its teardown's flush the removing tab tells the others the connection is going
 (`tellOtherTabsGoing`): a tab playing through it stops and sends its place and listening while
 the token works (`onConnectionGoingInOtherTab`), and the removing tab waits on it

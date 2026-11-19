@@ -623,8 +623,9 @@ const connectionText = (c: Connection) =>
  * where they still apply. Nothing changes when the list is the one it holds. A connection
  * the list drops is left at once (`leaveConnection`, the player's stop), the word on the
  * channel or not, and only once the list has changed (the stop's saves must not go out with
- * the revoked token); the cleanups wait for the word (`removedInOtherTab`). Why: CONVENTIONS.md
- * (`followStored`). */
+ * the revoked token); the cleanups wait for the word (`removedInOtherTab`). One another tab's
+ * identity migration renamed (`renamesIn`) is not dropped: its reconnect flag, its being the
+ * default and its own proxy set go on under the new id. Why: CONVENTIONS.md (`followStored`). */
 function applyStored(read: StoredSignIns): void {
   knownList = read.list;
   // A mark this tab did not write (`legacyMarks`): kept in this tab's writes of the list.
@@ -642,8 +643,13 @@ function applyStored(read: StoredSignIns): void {
   // The sets this tab uses in place stay while their marks do (`followInPlace`).
   const stored = followInPlace(read);
   const sets = sameSets(proxySets, stored) ? null : { proxySets: stored };
-  const next = (read.connections ?? []).map((c) => {
-    const was = mine.find((m) => m.id === c.id);
+  const listed = read.connections ?? [];
+  // Another tab's identity migration renamed these (`renamedIn`, the token the same): the
+  // same sign-in under a new id, so what this tab holds of it goes on under that id and it
+  // is not left (the player's stop is for a connection that went).
+  const renamed = renamesIn(mine, listed);
+  const next = listed.map((c) => {
+    const was = mine.find((m) => (renamed.get(m.id) ?? m.id) === c.id);
     // A flag stays with the token it was raised for: a new one (signed in again in another
     // tab) clears it.
     return was?.needsReconnect && was.token === c.token
@@ -653,7 +659,8 @@ function applyStored(read: StoredSignIns): void {
   const same =
     next.length === mine.length &&
     next.every((c, i) => connectionText(c) === connectionText(mine[i]));
-  const def = next.some((c) => c.id === defaultConnectionId) ? defaultConnectionId : read.defaultId;
+  const kept = defaultConnectionId && (renamed.get(defaultConnectionId) ?? defaultConnectionId);
+  const def = kept && next.some((c) => c.id === kept) ? kept : read.defaultId;
   const mirrored = mirror(next, def);
   if (
     same &&
@@ -671,7 +678,24 @@ function applyStored(read: StoredSignIns): void {
     ...sets,
     ...(own !== signInProxySets ? { signInProxySets: own } : {}),
   });
-  for (const c of mine) if (!next.some((n) => n.id === c.id)) void leaveConnection(c.id);
+  for (const c of mine) {
+    if (!renamed.has(c.id) && !next.some((n) => n.id === c.id)) void leaveConnection(c.id);
+  }
+}
+
+/** The connections of `mine` the stored list (`listed`) holds under a new id the identity
+ * migration gave them (`renamedIn`) with the token they held: old id to new. */
+function renamesIn(
+  mine: readonly Connection[],
+  listed: readonly Connection[],
+): ReadonlyMap<string, string> {
+  const moves = new Map<string, string>();
+  for (const m of mine) {
+    if (listed.some((c) => c.id === m.id)) continue;
+    const now = renamedIn(m, listed, mine);
+    if (now && now.token === m.token) moves.set(m.id, now.id);
+  }
+  return moves;
 }
 
 /** Whether two origins-to-sets maps hold the same sets. */
