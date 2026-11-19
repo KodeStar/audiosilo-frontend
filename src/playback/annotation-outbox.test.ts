@@ -1055,6 +1055,22 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
     expect(held[0]).not.toHaveProperty('client_id');
   });
 
+  it('stops at a flags read with no answer, asking the server nothing more', async () => {
+    const { client, state } = server('c1', offline());
+    mockOnline.c1 = false;
+    await addBookmarkOrQueue('c1', 1, 'a/book', 120);
+    await addBookmarkOrQueue('c1', 1, 'b/book', 130);
+    mockOnline.c1 = true;
+    mockAnnotations = undefined;
+    mockCapsDown = offline();
+    state.down = null;
+    await flushBookmarks();
+    expect(mockFetchCaps).toHaveBeenCalledTimes(1);
+    expect(client.bookmarks).not.toHaveBeenCalled();
+    expect(client.addBookmark).not.toHaveBeenCalled();
+    expect((await queuedBookmarks()).map((e) => e.position)).toEqual([120, 130]);
+  });
+
   it("sends one an older build stored (no client_id) the older servers' way", async () => {
     const { client, held } = server('c1');
     held.push({

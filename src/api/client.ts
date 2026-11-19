@@ -268,6 +268,9 @@ const API_ERROR_CODES = [
   // The same finish, 403 (audiosilo#202): the sign-in is not the one the request's `intent`
   // names (a kids-mode pass waiting on its own trip). No session was made.
   'oidc_intent_mismatch',
+  // A bookmark POST's `client_id` the caller already holds on another book (409, capability
+  // `bookmark_client_id`): the bookmark outbox drops that entry.
+  'client_id_conflict',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

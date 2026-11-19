@@ -1,6 +1,7 @@
 import {
   type ApiClient,
   ApiError,
+  apiErrorKind,
   isRefusedForGood,
   isServerAwayError,
   isServerBusyError,
@@ -301,8 +302,7 @@ const refusedForGood = (err: unknown) => isRefusedForGood(err) && !isSignedOutEr
 
 /** The 409 a server with `bookmark_client_id` answers for a `client_id` the caller holds on
  * another book: refused for good for that id (`sendGroup`). */
-const clientIdConflict = (err: unknown) =>
-  err instanceof ApiError && err.status === 409 && err.code === 'client_id_conflict';
+const clientIdConflict = (err: unknown) => apiErrorKind(err) === 'client_id_conflict';
 
 /** Whether a failed add is worth keeping to send later: no answer, a server failing or
  * asking for a moment (5xx, 408, 429), or a 401. Not a refusal for good, nor a code bug. */
@@ -585,13 +585,13 @@ function afterTry<T extends QueuedBookmark>(e: T, { step, counts }: Tried, now: 
   const run = runAt(e, step);
   if (!counts || !countsNow(run, now)) return run;
   const at = new Date(now).toISOString();
-  const was = run.failingStep;
   return {
     ...run,
     failedSince: run.failedSince ?? at,
     failures: (run.failures ?? 0) + 1,
     lastFailure: at,
-    failingStep: was !== undefined && STEP_ORDER[was] > STEP_ORDER[step] ? was : step,
+    // `runAt` kept only a step at or past this one.
+    failingStep: run.failingStep ?? step,
   };
 }
 
@@ -672,12 +672,13 @@ async function sendGroup(
         e.label !== undefined || e.client_id !== undefined
           ? await (flags ??= readFlags(connectionId, client))
           : undefined;
+      // Nothing the server said (no answer, a cancelled read), a gateway's or a 401: the
+      // connection's, as a send's (the read and POST behind it would only wait it out again).
+      if (unread && connectionFailure(unread.failed)) throw unread.failed;
       if (unread && e.label !== undefined) {
         noteFailure(connectionId, unread.failed);
-        // A send's rule: nothing the server said (no answer, a cancelled read), a gateway's,
-        // a 401, a 503 or a 429 does not count.
-        const counts = !(connectionFailure(unread.failed) || askedToWait(unread.failed));
-        keepOrGiveUp(e, unread.failed, 'flags', counts);
+        // A send's rule: a 503 or a 429 does not count.
+        keepOrGiveUp(e, unread.failed, 'flags', !askedToWait(unread.failed));
         continue;
       }
       step = 'read';
