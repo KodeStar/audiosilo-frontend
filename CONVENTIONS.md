@@ -1775,7 +1775,8 @@ media GETs only.
   replaces is told once taken (`onLanded`), which saves again. A tick naming another file
   (`onProgress.trackIndex`) is held the same way unless playing explains it (a run on from the
   file's end); paused, it is the new file's at once. A tick while the app's own `seekTo` or
-  `skipToTrack` is out is never held (no `onRemoteMove` follows it): held, the call's place would
+  `skipToTrack` is out (for up to 10 s: a call that never settles holds nothing off for good) is
+  never held (no `onRemoteMove` follows it): held, the call's place would
   replace it as the call resolved, so a seek the engine took clamped at a short measure read as
   landed while playing (fe#351). The store's handler (`userMoved`) lowers
   the floor to it, counts it in `localMoves` (a place reconcile in flight stands back) and

@@ -476,6 +476,22 @@ describe('a progress tick that jumped while playing', () => {
     expect(svc.getSnapshot().duration).toBe(100);
   });
 
+  // A call that never settles would leave every later tick taken at once, no jump held.
+  it('holds a jump again once its own seek has been out too long', async () => {
+    const { svc, heard } = await playing();
+    (mockModule as Record<string, unknown>).seekTo = jest.fn(() => new Promise<void>(() => {}));
+    void svc.seekTo(80);
+    jest.advanceTimersByTime(1_000);
+    send('onProgress', { position: 12, duration: 100 });
+    jest.advanceTimersByTime(10_000);
+    send('onProgress', { position: 22, duration: 100 });
+    expect(heard()).toEqual([11, 12, 22]);
+    // The lock screen's scrub, its report still to come: held for it, as with no seek out.
+    jest.advanceTimersByTime(1_000);
+    send('onProgress', { position: 70, duration: 100 });
+    expect(heard()).toEqual([11, 12, 22]);
+  });
+
   describe('on Android, where the new file’s tick comes before its change', () => {
     beforeEach(() => {
       Platform.OS = 'android';

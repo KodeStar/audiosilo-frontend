@@ -27,6 +27,10 @@ const LANDING_HOLD_MS = 600;
  * time since the last tick at the speed; back, a second. */
 const LANDING_AHEAD_S = 5;
 const LANDING_BACK_S = 1;
+/** Longer than the app's own move takes to settle when it does (`NativePlaybackService.ownMove`):
+ * Android settles one within a second, taken or not (`MoveLandings`), iOS in AVPlayer's seek
+ * completion, which waits on a stalled stream. */
+const OWN_MOVE_MAX_MS = 10_000;
 
 /** A progress tick whose place jumped while playing, held back (`LANDING_HOLD_MS`) since
  * `since`, from the last tick taken before it (`from`). `trackIndex`: the file it is in, when
@@ -82,8 +86,10 @@ class NativePlaybackService implements PlaybackService {
   private lastTick: { position: number; at: number } | null = null;
   /** The book the engine's last report named (`reportedBook`), else null. */
   private named: BookRef | null = null;
-  /** The app's own moves out (`seekTo`, `skipToTrack`): their ticks are never held (`progress`). */
+  /** The app's own moves out (`seekTo`, `skipToTrack`), and when the latest was made: their
+   * ticks are never held (`progress`, `ownMoveOut`). */
   private moving = 0;
+  private movedAt = 0;
 
   private emit() {
     for (const listener of this.listeners) listener(this.snapshot);
@@ -139,7 +145,7 @@ class NativePlaybackService implements PlaybackService {
    * stops has the place before the jump; the move's own save follows it, and a held tick no
    * move replaces is told once it is taken (`onLanded`), to be saved again.
    *
-   * A tick while the app's own move is out (`moving`) is taken at once: no `onRemoteMove`
+   * A tick while the app's own move is out (`ownMoveOut`) is taken at once: no `onRemoteMove`
    * follows it, and the store already knows of the move. Held, the call's place would replace
    * it as the call resolves, so a move the engine took clamped (Media3 or AVPlayer at the end
    * of a VBR file it measures short) would read as landed where it asked, and the store would
@@ -156,7 +162,8 @@ class NativePlaybackService implements PlaybackService {
     // pauses the JS timers in the background, and every tick would otherwise fold into the
     // hold, the store hearing none (no save, cut or keep) until the next state change.
     if (this.held && now - this.held.since >= LANDING_HOLD_MS) this.releaseHeld();
-    if (this.moving > 0) this.dropHeld();
+    const ownMove = this.ownMoveOut(now);
+    if (ownMove) this.dropHeld();
     const file =
       trackIndex === undefined || trackIndex === this.snapshot.trackIndex ? undefined : trackIndex;
     const last = this.lastTick;
@@ -171,7 +178,7 @@ class NativePlaybackService implements PlaybackService {
     const jumped =
       playing &&
       last !== null &&
-      this.moving === 0 &&
+      !ownMove &&
       (file === undefined
         ? !this.plays(position - last.position, now - last.at) ||
           position < last.position - LANDING_BACK_S
@@ -384,11 +391,17 @@ class NativePlaybackService implements PlaybackService {
   /** `call` makes the app's own move: its ticks are taken at once while it is out (`progress`). */
   private async ownMove(call: () => Promise<void>) {
     this.moving++;
+    this.movedAt = Date.now();
     try {
       await call();
     } finally {
       this.moving--;
     }
+  }
+  /** Is a move of the app's own out? Not one out `OWN_MOVE_MAX_MS` or more: a call that never
+   * settles would otherwise leave every later tick taken at once, no jump held for its move. */
+  private ownMoveOut(now: number) {
+    return this.moving > 0 && now - this.movedAt < OWN_MOVE_MAX_MS;
   }
   async setRate(rate: number) {
     await AudiosiloPlayer.setRate(rate);
