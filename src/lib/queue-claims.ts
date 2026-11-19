@@ -72,7 +72,8 @@ export type ReplayQueue<T extends QueuedSave, C> = {
   read: () => Promise<Claimed<T>[]>;
   /** Store the queue (`before`: its length as read). Rejects when storage refused it. */
   write: (next: Claimed<T>[], before: number) => Promise<void>;
-  route: (connectionId: string) => Route<C>;
+  /** Asked once per connection per replay, under the lock. */
+  route: (connectionId: string) => Route<C> | Promise<Route<C>>;
   /** Send one connection's entries in order; resolves to those to keep queued. */
   send: (connectionId: string, client: C, entries: T[]) => Promise<T[]>;
   /** The entries (`queuedKey`) this tab sent, or sent a later save of, whose removal storage
@@ -111,7 +112,7 @@ export async function replayQueue<T extends QueuedSave, C>(q: ReplayQueue<T, C>)
       }
       const cid = entry.connectionId;
       let route = routes.get(cid);
-      if (!route) routes.set(cid, (route = q.route(cid)));
+      if (!route) routes.set(cid, (route = await q.route(cid)));
       if (route === 'drop') continue;
       if (route === 'keep') {
         next.push(stored);

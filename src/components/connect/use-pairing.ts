@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
-import { ApiError } from '@/api/client';
+import { ApiError, isRefusedForGood } from '@/api/client';
 import { connectClientFor } from '@/api/connect-client';
 import { resolveClient } from '@/api/connection-clients';
 import { probeServerId } from '@/api/server-id-probe';
@@ -61,19 +61,20 @@ export function pairFailure(
         : t('connect.server.pairingReachError'),
     );
   }
-  if (e.status === 408) return temporary(t('connect.server.pairingReachError'));
-  if (e.status < 400 || e.status >= 500) return temporary(t('connect.server.pairingServerError'));
-  // A 429 always has shared words (the wait), and only it is temporary among them.
-  const shared = sharedRefusalText(e, t);
-  if (shared !== undefined) {
-    return e.status === 429
-      ? { ...temporary(shared), waitOver: refusalWaitOver(e, t) }
-      : refused(shared);
+  const { status } = e;
+  // Not refused for good (the rule every save queue keeps): a 408, a 429 (its shared words
+  // name the wait) or no 4xx at all.
+  if (!isRefusedForGood(e)) {
+    if (status === 408) return temporary(t('connect.server.pairingReachError'));
+    const wait = status === 429 ? sharedRefusalText(e, t) : undefined;
+    if (wait !== undefined) return { ...temporary(wait), waitOver: refusalWaitOver(e, t) };
+    return temporary(t('connect.server.pairingServerError'));
   }
   return refused(
-    e.status === 401 || e.status === 410
-      ? t('connect.server.pairingRefused')
-      : t('connect.server.pairingUnusable'),
+    sharedRefusalText(e, t) ??
+      (status === 401 || status === 410
+        ? t('connect.server.pairingRefused')
+        : t('connect.server.pairingUnusable')),
   );
 }
 

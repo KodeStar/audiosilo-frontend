@@ -1095,10 +1095,38 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   the book.
 - **The place** (`reading-progress.ts`) is `progress-sync`'s pattern (offline queue, latest per
   book, durable mirror, 4xx dropped but a 408 or a 429, which is queued (`isRefusedForGood`),
-  replay through each save's connection) plus `base_version`:
+  replay through each save's connection; a 429 stops the replay and queues the connection's
+  saves until its `Retry-After` is over, then replays them (`src/api/rate-limit.ts`, held per
+  connection, never per `ApiClient`: `resolveClient` builds one per call), as `progress-sync`'s
+  legacy queue's replay does (a live listening save is still sent meanwhile, and a 429 it gets
+  is noted too); a sign-out's last flush still tries them) plus `base_version`:
   the last version this device acknowledged, always sent (0 only when no row was ever seen).
-  Every send, the queue's replays and the open reader's saves alike, goes one at a time in the
-  tab (`withSendTurn`, fe#173), and a sent save drops a queued one of the book made before it.
+  Every send of a book, the queue's replays and the open reader's saves alike, goes one at a
+  time in the tab (`withSendTurn`, fe#173), per book: a request that hangs (up to the client's
+  timeout) holds only its own book's saves, and of the saves held behind it only the latest is
+  sent. A replay takes the turn per save (replays themselves one at a time, `withReplayTurn`).
+  A save on its way replaces an older queued one of its book before the request goes, and a
+  sent or refused one drops it. One held behind a save of its book still on its way is queued
+  as it starts to wait (the app closed under the hung request replays it). On the web that copy
+  is claimed by its own tab's wait (`heldForTurn`, `CLAIM_MS`, not renewed): sent by another
+  tab while the save ahead was still out, it went on 0 too and the server kept the further
+  place, so a move back was lost. This tab's replays leave it too, so a sign-out's last flush
+  (`flushReadingConnection`) first waits for its connection's saves on their way
+  (`latestAsked`), then replays what they left queued. In its turn it is sent only while that copy is still queued
+  and no other tab's replay claimed it (one did only once the wait's claim ran out): that
+  replay sends it (on the version its own earlier save's answer acknowledged, `onOwnVersion`,
+  as the reader's send would), and one that left the queue went from another tab or gave way
+  to a newer save. One this tab's replay claimed still goes in its own turn (`replayingHere`),
+  and the replay finds it settled: left to the replay, it went behind the other books' saves
+  of its connection, and not at all once one of them stopped the replay. On the web a tab's
+  replay drops a connection's saves as gone only once it is gone from the stored connections
+  too (`readerRoute`, `storedConnectionIds`): one signed in to in another tab is not in this
+  tab's session, and its saves (a live one waiting for its turn too) are that tab's to send.
+  A book's captures in a tab are a millisecond apart at least (`lastCaptured`): the queue and
+  `settledUntil` tell its saves apart by time. One a replay had claimed is never sent after it
+  (`settledUntil`), nor once it has left the queue (`stillQueued`: a newer save of its book
+  queued in its place, or another tab's sent one dropped it). The queue keeps
+  the newest save per book by `updated_at`, whatever order the writes land in.
   The mirror and the stored queue are every tab's: their read-modify-writes take `tabLock`
   (storage only), and a replay claims what it sends (`replayQueue`, as the legacy queue; a
   queued place whose drop storage refused after a newer one was sent is remembered,
@@ -1123,8 +1151,11 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   the offer "Jump there?" (`jumpOffer`) is judged against the page on screen. The lookup opens at
   the newest place, or at a queued save the server will keep (diverged and further on);
   opening at a local place, a server row this device never saw comes back as `unseen` (no save
-  of the book queued), which the screen takes as the first answer, so Jump shows at the open
-  after a replay from Home (fe#173). The answer's `seen` also counts the very version this
+  of the book queued; only a row further on than that place; the local places read once a
+  save of the book in flight is answered), which the screen takes as the first answer, so
+  Jump shows at the open after a replay from Home (fe#173). A row older than the version this
+  device acknowledged (read before the open's own replay was answered) counts as no row: the
+  server no longer holds it, so the reader neither opens there nor offers it. The answer's `seen` also counts the very version this
   device acknowledged (one version is one write), so a late answer with an adopted row never
   offers it again. With no answer from the server and no place on this device it fails (the
   fetch notice; Try again looks again): never a guessed start, whose save would replace a place read elsewhere.

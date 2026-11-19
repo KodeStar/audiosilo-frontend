@@ -1,4 +1,4 @@
-import { serialQueue } from './serial-queue';
+import { keyedSerialQueue, serialQueue } from './serial-queue';
 
 describe('serialQueue', () => {
   it('runs one job at a time, in order', async () => {
@@ -35,5 +35,56 @@ describe('serialQueue', () => {
     // b is not held behind a's unfinished job.
     await expect(b(async () => 'b')).resolves.toBe('b');
     release();
+  });
+});
+
+describe('keyedSerialQueue', () => {
+  it('runs one key’s jobs one at a time, in order', async () => {
+    const serially = keyedSerialQueue();
+    const log: string[] = [];
+    const job = (name: string, ms: number) => () =>
+      new Promise<string>((resolve) => {
+        log.push(`start ${name}`);
+        setTimeout(() => {
+          log.push(`end ${name}`);
+          resolve(name);
+        }, ms);
+      });
+    const results = await Promise.all([serially('k', job('a', 20)), serially('k', job('b', 1))]);
+    expect(results).toEqual(['a', 'b']);
+    expect(log).toEqual(['start a', 'end a', 'start b', 'end b']);
+  });
+
+  it('never holds one key’s job behind another key’s unfinished one', async () => {
+    const serially = keyedSerialQueue();
+    let release: () => void = () => {};
+    const held = serially('a', () => new Promise<void>((r) => (release = r)));
+    await expect(serially('b', async () => 'b')).resolves.toBe('b');
+    release();
+    await held;
+  });
+
+  it('says whether a key has a job running or waiting', async () => {
+    const serially = keyedSerialQueue();
+    expect(serially.busy('k')).toBe(false);
+    let release: () => void = () => {};
+    const held = serially('k', () => new Promise<void>((r) => (release = r)));
+    expect(serially.busy('k')).toBe(true);
+    expect(serially.busy('other')).toBe(false);
+    await new Promise((r) => setTimeout(r, 0));
+    release();
+    await held;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(serially.busy('k')).toBe(false);
+  });
+
+  it('rejects only the failed job, and runs the next of its key', async () => {
+    const serially = keyedSerialQueue();
+    const failed = serially('k', async () => {
+      throw new Error('boom');
+    });
+    const next = serially('k', async () => 'ok');
+    await expect(failed).rejects.toThrow('boom');
+    await expect(next).resolves.toBe('ok');
   });
 });

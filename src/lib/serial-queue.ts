@@ -11,3 +11,29 @@ export function serialQueue(): <T>(job: () => Promise<T>) => Promise<T> {
     return run;
   };
 }
+
+/** A `keyedSerialQueue`: hand it a job of a key, or ask whether the key has work. */
+export type KeyedSerialQueue = (<T>(key: string, job: () => Promise<T>) => Promise<T>) & {
+  /** Whether a job of `key` is running or waiting, so one handed now would wait for it. True
+   * for a moment after the last one settles (its queue is let go a tick later). */
+  busy: (key: string) => boolean;
+};
+
+/**
+ * A `serialQueue` per key: jobs of one key one at a time, in the order handed, and jobs of
+ * different keys never wait for each other (a request that hangs holds its own key only). A
+ * key's queue is let go once its last job settles, so the map holds only keys with work.
+ */
+export function keyedSerialQueue(): KeyedSerialQueue {
+  const tails = new Map<string, Promise<unknown>>();
+  const run = <T>(key: string, job: () => Promise<T>): Promise<T> => {
+    const ran = (tails.get(key) ?? Promise.resolve()).then(job, job);
+    const tail = ran.catch(() => undefined);
+    tails.set(key, tail);
+    void tail.then(() => {
+      if (tails.get(key) === tail) tails.delete(key);
+    });
+    return ran;
+  };
+  return Object.assign(run, { busy: (key: string) => tails.has(key) });
+}

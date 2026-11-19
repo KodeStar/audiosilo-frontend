@@ -1,5 +1,12 @@
 import { ApiError, type ApiClient, isRefusedForGood, TimeoutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
+import {
+  forgetRateLimit,
+  noteRateLimit,
+  onRateLimitOver,
+  rateLimited,
+  stopsReplay,
+} from '@/api/rate-limit';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { Progress } from '@/api/types';
 import { downloadEndsBefore } from '@/downloads/kept-offline';
@@ -1308,6 +1315,9 @@ export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<
     // No answer only asks for a check of the server (`noteFailure`): one slow save never
     // marks a healthy server down; the check does when it gets no answer either.
     noteFailure(save.connectionId, e);
+    // A 429 is the connection's: the queue's replays wait out its `Retry-After`, and the one
+    // that follows it sends this save (the last before a pause has no later save to do it).
+    noteRateLimit(save.connectionId, e);
     await enqueue(save);
     return 'queued';
   }
@@ -1363,7 +1373,8 @@ async function flushGroup(
 ): Promise<ProgressSave[]> {
   const remaining: ProgressSave[] = [];
   // Stop the group only when the server is UNREACHABLE (no point hammering the rest of
-  // it); a per-save server error still lets the rest of the group through.
+  // it) or asked to wait (a 429: later replays wait out its `Retry-After`, `queuedRoute`); a
+  // per-save server error still lets the rest of the group through.
   let stop = false;
   for (const save of saves) {
     if (stop) {
@@ -1381,11 +1392,9 @@ async function flushGroup(
       if (isRefusedForGood(e)) continue; // 4xx: drop, can't ever succeed (not a 408 or a 429)
       noteFailure(cid, e); // only a check marks the server down
       remaining.push(save); // keep it to retry next time
-      // An `ApiError` means the server ANSWERED (even a 500), so the failure is specific
-      // to this save - keep flushing the rest of the group past it rather than blocking
-      // every later book behind one poison entry. A non-`ApiError` is a connection/
-      // network failure: the server is unreachable, so stop and retry the group later.
-      if (!(e instanceof ApiError)) stop = true;
+      // A save's own failure lets the rest through, so one poison entry never blocks every
+      // later book; no answer or a 429 stops the group (fe#173).
+      if (stopsReplay(cid, e)) stop = true;
     }
   }
   return remaining;
@@ -1432,10 +1441,15 @@ export async function flushQueue(): Promise<void> {
   await replaySaves(queuedRoute);
 }
 
+// A wait the server asked for (a 429) is over: the saves it held go now.
+onRateLimitOver(() => void flushQueue().catch(() => undefined));
+
 /** Where a replay of a stored queue (this one, the reader's) sends a connection's saves:
- * through its client, kept while its server is known down, dropped with the connection. */
+ * through its client, kept while its server is known down or asked to wait (a 429 until its
+ * `Retry-After`, `rateLimited`), dropped with the connection. */
 export function queuedRoute(cid: string): Route<ApiClient> {
   if (!isReachable(cid)) return 'keep'; // this server known down; keep its saves queued
+  if (rateLimited(cid)) return 'keep'; // the server asked to wait; replayed once it is over
   const client = resolveClient(cid);
   // A connection removed: unroutable, drop the whole group. Not while an identity
   // move is on its way (`identityMovePending`): the id can be one the documents
@@ -1444,7 +1458,8 @@ export function queuedRoute(cid: string): Route<ApiClient> {
   return { send: client };
 }
 
-/** A replay's route of `connectionId`'s saves alone, through `client`: the rest stay. */
+/** A replay's route of `connectionId`'s saves alone, through `client`: the rest stay. Whatever
+ * a wait its server asked (`rateLimited`): a sign-out's last chance tries them. */
 export const onlyConnection =
   (connectionId: string, client: ApiClient) =>
   (cid: string): Route<ApiClient> =>
@@ -1474,6 +1489,7 @@ export async function flushConnection(connectionId: string): Promise<void> {
 onConnectionRemoved(async (id) => {
   clockSkews.delete(id);
   skewLooked.delete(id);
+  forgetRateLimit(id);
   // An early place read of its books is never taken by a start made once it is signed in
   // again (a connection with no user id keeps its id for whoever signs in next).
   for (const [key, early] of earlyReads) {
