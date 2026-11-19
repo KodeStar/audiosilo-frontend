@@ -241,9 +241,9 @@ class WebPlaybackService implements PlaybackService {
    * advance to the next file, a skip or a transcoded seek while playing) and by `play()`
    * on a transcoded track; cleared on `playing`, `error`, `pause()`, `reset()` and a pause
    * the element made itself (an OS interruption in the start window: see the 'pause'
-   * listener for the ones it ignores). A load
-   * plays only if this is still set when its metadata arrives, so a pause inside the
-   * window (the listener's, or the sleep timer's at a chapter end) holds. A transcoded
+   * listener for the ones it ignores). A load plays only if this is still set when its
+   * metadata arrives, so a pause inside the window (the listener's, or the sleep timer's at
+   * a chapter end) holds. A transcoded
    * seek reloads the source, so the window recurs on every seek, and a second seek (or a
    * skip) inside it must keep playing. */
   private pendingAutoplay = false;
