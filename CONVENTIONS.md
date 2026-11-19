@@ -488,7 +488,7 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   one of its 401 codes, nothing else) is the server's: a server before the mark (§15 of
   CROSS-REPO.md, shipped clients meet older servers), or a proxy that passed it on. Else a 401 to
   an address the request carried proxy headers to is the proxy's even with a JSON `error`
-  (`proxiedRefusal` in `send`, so every reader gets it). Else the body decides, as for every 403:
+  (`send` notes the answer, `unauthorizedOrigin` reads it, so every reader gets it). Else the body decides, as for every 403:
   the server's own always carry its JSON `error`; one without it (a page, an empty body, someone
   else's JSON) is the proxy's (`ApiError.fromProxy`, `unauthorizedOrigin`). `isSignedOutError`
   is false for it, and so is

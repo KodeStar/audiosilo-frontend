@@ -31,19 +31,27 @@ afterEach(() => {
   mockDeviceOnline = true;
 });
 
-type FetchResult = { status: number; body?: unknown };
+/** An answer: a JSON `body`, or a raw `text` (a proxy's page), and its headers. */
+type FetchResult = {
+  status: number;
+  body?: unknown;
+  text?: string;
+  headers?: Record<string, string>;
+};
 
 /** Install a fake global fetch driven by `impl`; returns the jest mock. */
 function installFetch(impl: (url: string, init: RequestInit) => FetchResult): jest.Mock {
   const mock = jest.fn((input: RequestInfo | URL, init?: RequestInit) => {
-    const { status, body } = impl(String(input), init ?? {});
-    const text = body === undefined ? '' : JSON.stringify(body);
+    const { status, body, text: raw, headers = {} } = impl(String(input), init ?? {});
+    const text = raw ?? (body === undefined ? '' : JSON.stringify(body));
+    const lower = new Map(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
     const res = {
       ok: status >= 200 && status < 300,
       status,
       statusText: `status ${status}`,
+      headers: { get: (name: string) => lower.get(name.toLowerCase()) ?? null },
       text: () => Promise.resolve(text),
-    } as Response;
+    } as unknown as Response;
     return Promise.resolve(res);
   });
   globalThis.fetch = mock as unknown as typeof globalThis.fetch;
@@ -4185,20 +4193,11 @@ describe("the server's 401 mark (WS-401-MARK)", () => {
   };
 
   function answer401(text: string, mark?: string) {
-    globalThis.fetch = jest.fn(() =>
-      Promise.resolve({
-        ok: false,
-        status: 401,
-        statusText: 'Unauthorized',
-        headers: {
-          get: (name: string) =>
-            mark !== undefined && name.toLowerCase() === UNAUTHORIZED_HEADER.toLowerCase()
-              ? mark
-              : null,
-        },
-        text: () => Promise.resolve(text),
-      } as unknown as Response),
-    ) as unknown as typeof globalThis.fetch;
+    installFetch(() => ({
+      status: 401,
+      text,
+      headers: mark === undefined ? undefined : { [UNAUTHORIZED_HEADER]: mark },
+    }));
   }
   const serverBody = JSON.stringify({ error: 'invalid or expired token' });
 
@@ -4308,15 +4307,7 @@ describe("the server's 401 mark (WS-401-MARK)", () => {
   });
 
   it("leaves a 403 to its body: the server's own behind a proxy is still its own", async () => {
-    globalThis.fetch = jest.fn(() =>
-      Promise.resolve({
-        ok: false,
-        status: 403,
-        statusText: 'Forbidden',
-        headers: { get: () => null },
-        text: () => Promise.resolve(JSON.stringify({ error: 'no access to this path' })),
-      } as unknown as Response),
-    ) as unknown as typeof globalThis.fetch;
+    installFetch(() => ({ status: 403, body: { error: 'no access to this path' } }));
     const { c } = client('https://away.example');
     await expect(c.me()).rejects.toMatchObject({ status: 403, fromProxy: false, fromServer: true });
   });
