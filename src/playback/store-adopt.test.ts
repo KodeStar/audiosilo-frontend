@@ -2049,6 +2049,21 @@ describe('a play asked from outside of another book after playback stopped', () 
     expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 41 });
   });
 
+  // Also when that report names the other book: a later one that names none (a queue loaded
+  // without a book, a Cast receiver) is not held for it again.
+  it('holds no unnamed report again after one named the other book during that hold', async () => {
+    const read = await askedForS(undefined, async () => null);
+    expect(await read()).toBe(false);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    engineBook = { connectionId: 'c1', libraryId: 2, path: 'S' };
+    pushSnapshot(snap('playing', 1, 80));
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 30 });
+    engineBook = null;
+    pushSnapshot(snap('paused', 1, 41));
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 41 });
+  });
+
   // And once the store loads its own book (a play press reloads it): its unnamed reports are
   // its own, its play heard.
   it("takes the store's book's unnamed reports once a play press reloaded it after that hold", async () => {

@@ -3551,6 +3551,9 @@ async function createService(): Promise<PlaybackService> {
     engineTick();
   };
   const onReport = (raw: PlaybackSnapshot) => {
+    // A report that names a book ends the hold of an unnamed other book (`unnamedOther`), the
+    // other book's too: the checks below stop at it before that hold is read.
+    if (svc.reportedBook?.()) unnamedOther = null;
     // Another book's report (`reportedOtherBook`): before the fault's stop below, as an
     // engine the car gave another book to plays that book.
     const other = reportedOtherBook(svc);
@@ -5079,12 +5082,12 @@ async function adoptLoadedBook(
     if (
       !adopted &&
       !adoption.ownLoad &&
+      !ownLoadHoldsEngine() &&
       own !== null &&
       own === ownBefore &&
       own !== adoption.key &&
       !lastReportNamesBook()
     ) {
-      !ownLoadHoldsEngine() &&
       unnamedOther ??= { key: own, moves: localMoves, speedSets: localSpeedSets };
     }
     // Gave up with the play still followed: the watchdog ends it, after its whole grace from
