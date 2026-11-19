@@ -1,7 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient } from '@tanstack/react-query';
 
-import type { BookMeta, BookMetaSeries, BookMetaWork, ServerInfo } from '@/api/types';
+import type {
+  BookMeta,
+  BookMetaSeries,
+  BookMetaWork,
+  PodcastEpisodeInfo,
+  ServerInfo,
+} from '@/api/types';
 import type { DownloadEntry } from '@/downloads/types';
 
 // The payload file, kept in memory by (connection, library, path, name).
@@ -441,6 +447,31 @@ describe('captureOfflineMeta', () => {
     };
     mockClient.bookMeta.mockResolvedValue(generated);
     await expect(captureOfflineMeta(e)).resolves.toMatchObject({ meta: generated, works: [] });
+  });
+
+  // A console match without an ASIN or ISBN (a LibriVox download, fe#290): the server names
+  // its work (`work_id`, server#484), so offline its page reads as matched, as online.
+  it('keeps a book matched only by its work, from the list row or the full item', async () => {
+    const e = entry();
+    delete e.manifest.book.asin;
+    e.manifest.book.work_id = 'w_garden';
+    expect(canMatch(e)).toBe(true);
+    mockClient.serverInfo.mockResolvedValue(server({ metadata: true }));
+    mockClient.bookMeta.mockResolvedValue(envelope());
+    await expect(captureOfflineMeta(e)).resolves.toMatchObject({ meta: { matched: true } });
+
+    const listRow = entry();
+    delete listRow.manifest.book.asin;
+    qc.setQueryData(qk.item('c1', 2, listRow.path), { ...listRow.manifest.book, work_id: 'w' });
+    expect(canMatch(listRow)).toBe(true);
+  });
+
+  it('keeps no episode, even one naming a work', () => {
+    const e = entry();
+    delete e.manifest.book.asin;
+    e.manifest.book.work_id = 'w_garden';
+    e.manifest.book.episode = { show_path: 'Show' } as PodcastEpisodeInfo;
+    expect(canMatch(e)).toBe(false);
   });
 
   it('asks a server without metadata for nothing more', async () => {

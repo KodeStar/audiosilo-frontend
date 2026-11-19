@@ -46,10 +46,10 @@ export const LIVE_POSITION_BUCKET_S = 15;
  * either way and an unmatched answer renders as the surface did without it. The book page,
  * the player's companion and reveal toast, Home's Now card and Previously on and the end
  * credits ask by it (fe#290); the offline copy, which runs for every download, keeps to the
- * books that can match by id (`matchableById`). Never before the book is in: until then a
- * route's path may be a file inside the book, and an episode is not yet known to be one. The
- * series page's anchor and Search's characters pick their books by their own rules
- * (`metadataAnchor`, `characterBooksToLoad`).
+ * books that can match by id (`matchableById`) or name their work (`work_id`, `canMatch`).
+ * Never before the book is in: until then a route's path may be a file inside the book, and
+ * an episode is not yet known to be one. The series page's anchor and Search's characters
+ * pick their books by their own rules (`metadataAnchor`, `characterBooksToLoad`).
  */
 export function metaEnabledFor(
   metadata: boolean | undefined,

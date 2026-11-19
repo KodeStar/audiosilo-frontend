@@ -1695,8 +1695,10 @@ with what a Bridge generated, and an older one answers `matched:false` without a
 The book page, the companion and reveal toast, Home's Now card and Previously on and the end
 credits go through it (fe#290: a console-matched book without ids shows its community content in
 the player too, and the companion offers no Generate for a book the community covers). **The
-offline copy alone keeps the id rule, `matchableById`** (an ASIN, an ISBN **or `generated`**,
-never an episode): it runs for every download, so such a book reads as unmatched offline. The series page's anchor (`metadataAnchor`, an
+offline copy alone keeps a narrower rule, `canMatch`** (`offline-meta.ts`: `matchableById`, an
+ASIN, an ISBN **or `generated`**, or a `work_id`, which the server sends since server#484 for a
+console match without ids; never an episode): it runs for every download, so a book with none of
+them reads as unmatched offline, as an id-less match does from an older server (no `work_id`). The series page's anchor (`metadataAnchor`, an
 ASIN or ISBN) and Search's characters (`characterBooksToLoad`, the started books, capped,
 ids or not) pick their books by their own rules. Two readers of the envelope, and each
 field is read through one of them, never both:
@@ -5174,7 +5176,7 @@ are asked, at most 10,000 rows.
   The Text tab reads it offline (`readDownloadedReadalong`, `qk.readalongLocal`, `networkMode:
   'always'`) with the EPUB on the device.
 - **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community
-  metadata (asked by `matchableById`, so a book with content generated on its server too; the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
+  metadata (asked by `canMatch`: `matchableById`, so a book with content generated on its server too, or a `work_id`, so a console match without ids, fe#290; the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
   `meta.json` beside its audio (`engine.writeText`: the book's folder on native, its Cache API
   prefix on web), so it is scoped by connection and deleted with the files. **Not in the registry**:
   that is ONE JSON document rewritten every couple of seconds while a download runs, an envelope
