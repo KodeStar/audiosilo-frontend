@@ -461,6 +461,29 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     expect(a.useSession.getState().proxySets).toEqual({});
   });
 
+  // A tab of an earlier build (the bundle before fe#295) keeps a set for its connection
+  // after this tab launched: its mark in the list is one this tab never wrote. This tab's
+  // writes of the list keep it, or the item behind it would never be moved.
+  it("keeps a mark an earlier build's tab wrote, through this tab's writes of the list", async () => {
+    const { a, b, alex } = await twoTabs();
+    type Stored = { id: string; hasProxyHeaders?: true };
+    const stored = () => JSON.parse(b.env.localStorage.getItem(CONNECTIONS_KEY)!) as Stored[];
+    b.env.localStorage.setItem(
+      `audiosilo.proxy-headers.${alex}`,
+      JSON.stringify({ origin: 'https://srv', headers: [{ name: 'X-Proxy', value: 'one' }] }),
+    );
+    b.env.localStorage.setItem(
+      CONNECTIONS_KEY,
+      JSON.stringify(stored().map((m) => (m.id === alex ? { ...m, hasProxyHeaders: true } : m))),
+    );
+    await settle();
+    await a.useSession.getState().setConnectionUser(alex, mkUser(1, 'alexander'));
+    expect(stored().find((m) => m.id === alex)?.hasProxyHeaders).toBe(true);
+    expect(a.useSession.getState().connections.find((c) => c.id === alex)).not.toHaveProperty(
+      'hasProxyHeaders',
+    );
+  });
+
   // Each tab builds the first document from the same list at once: the second to write finds
   // the first's people, and someone is still listening there.
   it('two tabs making the first people at once both have someone listening', async () => {

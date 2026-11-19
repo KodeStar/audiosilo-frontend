@@ -373,8 +373,14 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   (`moveLegacyProxySets`): each becomes its origin's set unless the origin has one (the stored set
   wins, then the first connection's in the list; the other copies are deleted), written and read
   back before any old item is deleted; a copy this build can't read stays where it is with its
-  mark (`unreadableLegacy`, written again by `persist`), and a mark with no item behind it is
-  dropped. A failure fails the hydrate with nothing deleted.
+  mark (`legacyMarks`, written again by `persist`), and a mark with no item behind it is
+  dropped. A read the platform refuses fails the hydrate with nothing deleted. A move that can't
+  be written (storage full, a write refused, a copy that does not read back) never does: the sets
+  are used from where they are for that launch, every old item and mark left for the next one (a
+  failed hydrate would show the listener as signed out at every launch, and a sign-in then writes
+  the list with its server alone). A tab also keeps, in its own writes of the list, a mark it
+  never wrote (an earlier build's tab keeping a set since this one launched, `applyStored`): a
+  mark dropped would leave its item with nothing to move it.
 - **One https origin.** A set names the origin (scheme, host, port) it was entered for, and
   `proxyHeaderRecord` is the one rule: only a request to that origin carries them, so the home
   address (which the proxy doesn't guard), a plain-http fallback, another port and anything else

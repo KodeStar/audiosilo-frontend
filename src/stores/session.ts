@@ -369,7 +369,8 @@ type StoredSignIns = {
   /** Every origin's proxy headers (fe#295, `readProxySets`). */
   proxySets: Record<string, ProxyHeaders>;
   /** The stored connections still marked as holding a set of their own, as earlier builds
-   * kept them (`hasProxyHeaders`): `hydrate` moves those sets (`moveLegacyProxySets`). */
+   * kept them (`hasProxyHeaders`): `hydrate` moves those sets (`moveLegacyProxySets`), and a
+   * tab that follows the list keeps their marks (`applyStored`). */
   marked: string[];
 };
 
@@ -525,6 +526,10 @@ const connectionText = (c: Connection) =>
  * (`followStored`). */
 function applyStored(read: StoredSignIns): void {
   knownList = read.list;
+  // A mark this tab did not write (`legacyMarks`): kept in this tab's writes of the list.
+  if (read.marked.some((id) => !legacyMarks.has(id))) {
+    legacyMarks = new Set([...legacyMarks, ...read.marked]);
+  }
   const { connections: mine, defaultConnectionId, status, proxySets } = useSession.getState();
   // Another tab's edit of a set (fe#295): every connection's client on that origin follows.
   const sets = sameSets(proxySets, read.proxySets) ? null : { proxySets: read.proxySets };
