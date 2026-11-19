@@ -58,8 +58,10 @@ holding a `tabLock` the tabs share, reading it again first (`writingList`), so i
 its older copy over another tab's sign-in; its default connection and reconnect flags stay its
 own (the default follows only once it is gone). A connection another tab's identity migration
 renamed (the same token under `<server_id>.<user_id>`, `renamesIn` by `renamedIn`'s rule) has
-not gone: its flag, its being the default and its own proxy set go on under the new id, and it
-is never left (`leaveConnection`). Before
+not gone: its flag, its being the default and its own proxy set go on under the new id, the
+move joins this tab's aliases (`setConnectionAliases`: the book it plays and its saves, spans
+and bookmarks reach the new id, the web's files are found under the old), and it is never left
+(`leaveConnection`). Before
 its teardown's flush the removing tab tells the others the connection is going
 (`tellOtherTabsGoing`): a tab playing through it stops and sends its place and listening while
 the token works (`onConnectionGoingInOtherTab`), and the removing tab waits on it

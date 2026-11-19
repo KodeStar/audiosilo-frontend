@@ -16,7 +16,12 @@ import { fakeWebLocks } from '@/testing/fake-web-locks';
 
 type Session = typeof import('@/stores/session');
 type Profiles = typeof import('@/stores/profiles');
-type Tab = Session & { profiles: Profiles; env: FakeTab };
+type Tab = Session & {
+  profiles: Profiles;
+  env: FakeTab;
+  clients: typeof import('@/api/connection-clients');
+  ids: typeof import('@/lib/connection-id');
+};
 
 const REMOVAL_CHANNEL = 'audiosilo-connection-removed';
 
@@ -28,6 +33,8 @@ function openTab(browser: ReturnType<typeof fakeBrowser>, gate: Gate = { wait: n
   const env = browser.tab();
   let session!: Session;
   let profiles!: Profiles;
+  let clients!: Tab['clients'];
+  let ids!: Tab['ids'];
   jest.isolateModules(() => {
     jest.doMock('@/lib/storage', () => tabStorage(env.localStorage));
     jest.doMock('@/lib/secure-store', () => ({
@@ -42,10 +49,12 @@ function openTab(browser: ReturnType<typeof fakeBrowser>, gate: Gate = { wait: n
     /* eslint-disable @typescript-eslint/no-require-imports */
     session = require('@/stores/session') as Session;
     profiles = require('@/stores/profiles') as Profiles;
+    clients = require('@/api/connection-clients') as Tab['clients'];
+    ids = require('@/lib/connection-id') as Tab['ids'];
     /* eslint-enable @typescript-eslint/no-require-imports */
   });
   session.setTabsForTests({ channel: asWeb(() => tabChannel(REMOVAL_CHANNEL, env)), env });
-  return { ...session, profiles, env };
+  return { ...session, profiles, env, clients, ids };
 }
 
 /** Run `fn` as on the web, where a tab channel is made; the rest of the store runs as on the
@@ -802,6 +811,10 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     expect(s.connections.find((c) => c.id === 'srv.12')?.needsReconnect).toBe('auth');
     expect(s.defaultConnectionId).toBe('srv.12');
     expect(left).toEqual([]);
+    // The book it plays (and its saves, spans and bookmarks) still names `srv`: that reaches
+    // the renamed connection, and the web's files are found where they were kept.
+    expect(a.clients.connectionOf('srv')?.id).toBe('srv.12');
+    expect(a.ids.legacyIdOf('srv.12')).toBe('srv');
   });
 
   it('leaves a connection the stored list drops for one on a new token', async () => {
@@ -812,6 +825,7 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     const conn = a.useSession.getState().connections.find((c) => c.id === 'srv.12');
     expect(conn?.needsReconnect).toBeUndefined();
     expect(left).toEqual(['srv']);
+    expect(a.clients.connectionOf('srv')).toBeUndefined();
   });
 
   // The tab that changed the list writes the people that go with it; a tab following it

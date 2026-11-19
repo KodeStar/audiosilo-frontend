@@ -11,10 +11,12 @@ import {
 } from '@/lib/known-servers';
 import { isKidAccount } from '@/lib/account';
 import {
+  connectionAliases,
   connectionIdOf,
   isLegacyConnectionId,
   priorConnection,
   serverIdOf,
+  setConnectionAliases,
   usableUserId,
 } from '@/lib/connection-id';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
@@ -673,6 +675,11 @@ function applyStored(read: StoredSignIns): void {
   // A sign-in's own proxy headers end with it: signed out, or signed in again, in another tab.
   // One another tab's identity migration renamed keeps them under its new id.
   const own = ownSetsStill(signInProxySets, next, mine, renamed);
+  // What still names the old id (the book this tab plays, its saves, spans and bookmarks, the
+  // web's files kept under it, `legacyIdOf`) resolves to the new one, as after a relaunch:
+  // this tab loaded the aliases before that tab's migration recorded them.
+  if (renamed.size > 0)
+    setConnectionAliases({ ...connectionAliases(), ...Object.fromEntries(renamed) });
   setFollowed({
     connections: same ? mine : next,
     ...mirrored,
