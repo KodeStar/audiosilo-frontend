@@ -724,13 +724,13 @@ let loadedHere = false;
 
 /**
  * The book a playback resumption starts (Android; the snapshot's `resume`, both the full and
- * the minimal one's): the loaded book while it is neither stopped nor finished (`live`), unless
- * the engine plays another book the store has not adopted (`engineOtherBook`: the car's, the
- * store's book shown paused once its adoption was overdue), which is the one heard and so the
- * one resumed; with none loaded yet in this runtime, the book offered before (`RESUMABLE_KEY`)
- * while it is still the person listening's, and kids mode is as it was (a book offered before
- * kids mode was turned on may not be on the kids shelf). Never the newest Continue listening
- * row: a book stopped or finished here stays stopped at a headset's play.
+ * the minimal one's): the book the engine plays when the store has not adopted it
+ * (`engineOtherBook`: the car's, whether the store's book shows paused or finished), which is
+ * the one heard and so the one resumed; else the loaded book while it is neither stopped nor
+ * finished (`live`); with none loaded yet in this runtime, the book offered before
+ * (`RESUMABLE_KEY`) while it is still the person listening's, and kids mode is as it was (a
+ * book offered before kids mode was turned on may not be on the kids shelf). Never the newest
+ * Continue listening row: a book stopped or finished here stays stopped at a headset's play.
  */
 async function resumableBook(player: PlayerState, live: LivePlace | null): Promise<BookRef | null> {
   if (player.nowPlaying) loadedHere = true;
@@ -740,11 +740,10 @@ async function resumableBook(player: PlayerState, live: LivePlace | null): Promi
       ? { ...stored, connectionId: resolveConnectionId(stored.connectionId) }
       : null;
   }
-  if (live) {
-    // Another person's book is never named: the car sync stops it (`checkLoadedBook`).
-    const heard = engineOtherBook();
-    return heard && mayActFor(heard.connectionId) ? heard : live.ref;
-  }
+  // Another person's book is never named: the car sync stops it (`checkLoadedBook`).
+  const heard = engineOtherBook();
+  if (heard && mayActFor(heard.connectionId)) return heard;
+  if (live) return live.ref;
   const kept = loadedHere ? null : resumableRef;
   return kept && !!kept.kids === !!activeProfile()?.kids && mayActFor(kept.connectionId)
     ? bookRefOf(kept)
@@ -1058,7 +1057,7 @@ function writeForResumption(): void {
 }
 
 /** Android: the listener paused, stopped, moved a paused book or changed book, or the book
- * the engine played unadopted came to its end (`onOtherBookReported`). With a car
+ * the engine plays unadopted began playing or came to its end (`onOtherBookReported`). With a car
  * connected, the full snapshot as soon as the gap allows; with one met before but none
  * connected, the full one at once (`writeForResumption`), so the one native keeps for a
  * resumption names that book at that place; else the resumable one, at once
@@ -1609,13 +1608,16 @@ export function startCarSync(): () => void {
       if (mayBeServiceChange(s, prev)) checkServiceChange();
     }),
     // The engine reports another book than the store's (the store holds none of it): the
-    // service may have started it (Android). Played to its end, there is nothing to adopt,
-    // and it is no longer the book a resumption starts (`resumableBook`): the snapshot that
-    // named it is written again, or a headset's play after a kill would start it once more.
-    onOtherBookReported((ended) => {
+    // service may have started it (Android). Begun playing, it is the book a resumption
+    // starts (`resumableBook`) whether or not it is adopted, and whatever the store's book
+    // shows (paused or finished, nothing of the store's changes): the snapshot names it now.
+    // Played to its end, there is nothing to adopt, and it is that book no longer: the
+    // snapshot that named it is written again, or a headset's play after a kill would start it
+    // once more.
+    onOtherBookReported((news) => {
       if (Platform.OS !== 'android') return;
-      if (ended) placeChanged();
-      else checkServiceChange();
+      if (news !== 'ended') checkServiceChange();
+      if (news !== 'moved') placeChanged();
     }),
     useDownloads.subscribe((s, prev) => {
       if (s.entries === prev.entries) return;

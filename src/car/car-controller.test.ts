@@ -123,7 +123,7 @@ let mockOutsidePlay = true;
 /** The book the engine plays that the store has not adopted (`engineOtherBook`), else null. */
 let mockEngineOther: { connectionId: string; libraryId: number; path: string } | null = null;
 /** The store's word that the engine reported another book (`onOtherBookReported`). */
-let mockOtherBookReported: ((ended?: boolean) => void) | null = null;
+let mockOtherBookReported: ((news: 'moved' | 'playing' | 'ended') => void) | null = null;
 jest.mock('@/playback/store', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { create } = require('zustand');
@@ -139,7 +139,7 @@ jest.mock('@/playback/store', () => {
     usePlayer,
     followsOutsidePlay: () => mockOutsidePlay,
     engineOtherBook: () => mockEngineOther,
-    onOtherBookReported: (listener: (ended?: boolean) => void) => {
+    onOtherBookReported: (listener: (news: 'moved' | 'playing' | 'ended') => void) => {
       mockOtherBookReported = listener;
       return () => {
         if (mockOtherBookReported === listener) mockOtherBookReported = null;
@@ -1589,11 +1589,43 @@ describe('the resumable snapshot (Android, fe#251)', () => {
       mockNative.getLoadedBook.mockClear();
       // E ended (`engineOtherBook` names none from then): the store is unchanged.
       mockEngineOther = null;
-      mockOtherBookReported?.(true);
+      mockOtherBookReported?.('ended');
       await flushPromises();
       expect(lastSnapshot().resume).toBe(D);
       expect(await getItem('audiosilo.carResumable')).toMatchObject({ path: 'D' });
       expect(mockNative.getLoadedBook).not.toHaveBeenCalled();
+    });
+
+    // The review: the store's book was paused already when the car's book began playing, so
+    // nothing of the store's changed and no snapshot named the car's book; one the adoption
+    // gave up on was never resumed by a headset's play after a kill.
+    it("names the engine's book once it begins playing, the store's book paused", async () => {
+      usePlayer.setState(loaded('paused', 1, 50));
+      stop = startCarSync();
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      expect(lastSnapshot().resume).toBe(D);
+      mockNative.getLoadedBook.mockClear();
+      mockEngineOther = { connectionId: 'c1', libraryId: 2, path: 'E' };
+      mockOtherBookReported?.('playing');
+      await flushPromises();
+      const E = carItemId({ connectionId: 'c1', libraryId: 2, path: 'E' });
+      expect(lastSnapshot().resume).toBe(E);
+      expect(await getItem('audiosilo.carResumable')).toMatchObject({ path: 'E' });
+      // Its adoption is still asked for (the engine is read).
+      expect(mockNative.getLoadedBook).toHaveBeenCalled();
+    });
+
+    it("names the engine's book once it begins playing, the store's book finished", async () => {
+      usePlayer.setState(loaded('ended', 1, 100));
+      stop = startCarSync();
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      expect(lastSnapshot().resume).toBeNull();
+      mockEngineOther = { connectionId: 'c1', libraryId: 2, path: 'E' };
+      mockOtherBookReported?.('playing');
+      await flushPromises();
+      expect(lastSnapshot().resume).toBe(
+        carItemId({ connectionId: 'c1', libraryId: 2, path: 'E' }),
+      );
     });
 
     it("never names the engine's book when it is not the person listening's", async () => {
@@ -2562,7 +2594,7 @@ describe('adopting the service’s book (Android)', () => {
     await settle();
     expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
     mockNative.getLoadedBook.mockResolvedValue(loaded);
-    mockOtherBookReported?.();
+    mockOtherBookReported?.('moved');
     await settle();
     expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded, expect.any(Function));
     // Not on iOS, whose engine only ever holds what the store loaded.
@@ -2571,7 +2603,7 @@ describe('adopting the service’s book (Android)', () => {
     Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
     stop = startCarSync();
     await settle();
-    mockOtherBookReported?.();
+    mockOtherBookReported?.('moved');
     await settle();
     expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
   });

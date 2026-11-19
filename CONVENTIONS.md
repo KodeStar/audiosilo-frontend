@@ -2043,6 +2043,9 @@ media GETs only.
   one that has not made its book the store's yet is seen by nothing) swaps once they are
   over (`swapDue`, `runDueSwap`), from the place that start put the book at, and not at all
   when it placed nothing (a failed load or resume lookup; the next start uses the download).
+  One landing while the engine plays another book (the car's, not adopted:
+  `engineHoldsOtherBook`) waits too, never loading over that book, and runs once the engine
+  reports the store's book again (a Retry or a press reloads from the download itself).
   The native load runs as a play attempt when it plays on, which is the intent
   (`wantsPlayback`), never the engine's `playing` alone: a pause or a stop the engine has
   not reported yet stands (`beginPlaybackAttempt`, so iOS's pause at `load` reads as the
@@ -2925,10 +2928,13 @@ media GETs only.
   `NowPlaying` replaced for the same book in the window still shows paused, and the download
   hot swap never loads the store's book over the other one: `switchCurrentBookToLocal`; nor
   does the place reconcile move or offer anything while the engine holds another book,
-  `engineHoldsOtherBook`, a late place included: its seek would land in that book). A
-  resumption meanwhile plays the other book, the one heard (`engineOtherBook`, the car
-  snapshot's `resume`), until it played to its end: the car sync is told of that end
-  (`onOtherBookReported`'s `ended`) and writes the snapshot again, naming the loaded book; one
+  `engineHoldsOtherBook`, a late place included: its seek would land in that book; nor do
+  the app's own seek, skip and chapter jump ask the engine then: the store's book shows the
+  place, saved, and the play press reloads it there, `listenerMove`). A resumption
+  meanwhile plays the other book, the one heard (`engineOtherBook`, the car snapshot's
+  `resume`, whether the store's book shows paused or finished): the car sync writes the
+  snapshot when that book begins playing (`onOtherBookReported`'s `playing`, adopted or
+  not) and again once it played to its end (`ended`), naming the loaded book then; one
   that still loaded or stalled, with no outside play followed, ends in `error` at its
   watchdog without the engine being paused (that book plays on, the car's play, for the car
   sync to adopt). An adoption that gave up leaves the play to the watchdog (its whole
@@ -3020,11 +3026,11 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   pruned, and no timer, so Bluetooth or a headset's play after a kill resumes the book with no
   car ever met. **The book a resumption starts is the one the snapshot names** (`resume`, an
   item id; `resumableBook`, the full snapshot's too), never just the first Continue listening
-  row, which after a stop is the newest book in progress: the loaded book while it is neither
-  stopped nor finished, unless the engine plays another book the store has not adopted (the
-  car's, the loaded one shown paused at its adoption deadline: `engineOtherBook`), which is
-  named instead while it has not played to its end (its end rewrites the snapshot, with no
-  change of the store's to say so: `onOtherBookReported`); until a book is loaded in this runtime,
+  row, which after a stop is the newest book in progress: the book the engine plays that the
+  store has not adopted (the car's, whether the loaded one shows paused or finished:
+  `engineOtherBook`) while it has not played to its end (its start and its end each rewrite
+  the snapshot, with no change of the store's to say so: `onOtherBookReported`), else the
+  loaded book while it is neither stopped nor finished; until a book is loaded in this runtime,
   the book offered last (`audiosilo.carResumable`, kept with whether kids mode was on, and dropped when that
   changed), so opening the app after a kill without playing keeps it; once one was stopped or
   finished here, none. Native reads it in `CarSnapshot.resumable` (a snapshot kept from before
