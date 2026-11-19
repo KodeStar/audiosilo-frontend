@@ -289,6 +289,27 @@ describe('a pairing link', () => {
     expect(mockSetParams).not.toHaveBeenCalled();
   });
 
+  it("drops a pairing link's wait from the words once it is over", async () => {
+    jest.useFakeTimers();
+    try {
+      mockParams = { token: 'tok', server: AWAY };
+      mockApi.exchange.mockRejectedValue(new ApiError(429, 'slow down', undefined, 30));
+      mockApi.serverInfo.mockResolvedValue(info());
+      await render(<ConnectStart />);
+      const waiting = 'Too many tries from this network. Try again in 30 seconds.';
+      expect(await screen.findByText(waiting)).toBeTruthy();
+      expect(screen.getByTestId('pairing-try-again')).toBeTruthy();
+      await act(async () => jest.advanceTimersByTime(30_000));
+      expect(screen.queryByText(waiting)).toBeNull();
+      expect(
+        screen.getByText('Too many tries from this network. You can try again now.'),
+      ).toBeTruthy();
+      expect(screen.getByTestId('pairing-try-again')).toBeTruthy();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it.each([
     ['the server failing itself', new ApiError(503, 'busy')],
     ['no answer', new TypeError('Network request failed')],
@@ -1736,6 +1757,13 @@ describe("a single sign-on's return (?oidc=1)", () => {
         await fireEvent.press(screen.getByTestId('oidc-try-again'));
         expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
         await act(async () => jest.advanceTimersByTime(30_000));
+        // Try again works again, and the words no longer name a wait.
+        expect(
+          screen.queryByText('Too many tries from this network. Try again in 30 seconds.'),
+        ).toBeNull();
+        expect(
+          screen.getByText('Too many tries from this network. You can try again now.'),
+        ).toBeTruthy();
         await fireEvent.press(screen.getByTestId('oidc-try-again'));
         await waitFor(() => expect(mockReplace).toHaveBeenCalled());
         expect(mockApi.oidcFinish).toHaveBeenLastCalledWith('Test device', undefined, FLOW);

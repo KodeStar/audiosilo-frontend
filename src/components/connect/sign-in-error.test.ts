@@ -1,7 +1,7 @@
 import { ApiError } from '@/api/client';
 import i18n, { ensureLanguage, SUPPORTED_CODES } from '@/i18n';
 
-import { signInErrorText } from './sign-in-error';
+import { refusalWaitOver, signInErrorText } from './sign-in-error';
 
 const t = i18n.t.bind(i18n);
 
@@ -73,6 +73,14 @@ describe('signInErrorText', () => {
     );
   });
 
+  it.each(SUPPORTED_CODES.filter((c) => c !== 'en'))('words a wait that is over in %s', (lng) => {
+    const wait = new ApiError(429, 'x', undefined, 30);
+    const said = refusalWaitOver(wait, i18n.getFixedT(lng))?.text;
+    expect(said).toBeTruthy();
+    // A missing key falls back to the English sentence.
+    expect(said).not.toBe(refusalWaitOver(wait, t)?.text);
+  });
+
   it('falls back to a few minutes when the server sent no wait', () => {
     expect(signInErrorText(new ApiError(429, 'x'), 'login', t)).toBe(
       'Too many tries. Wait a few minutes and try again.',
@@ -92,5 +100,25 @@ describe('signInErrorText', () => {
     expect(signInErrorText(new ApiError(500, 'boom'), 'login', t)).toBe(
       'Sign in failed. Please try again.',
     );
+  });
+});
+
+describe('refusalWaitOver', () => {
+  beforeEach(() => jest.spyOn(Date, 'now').mockReturnValue(1_000_000));
+  afterEach(() => jest.restoreAllMocks());
+
+  it('says a named wait is over at the Retry-After, with no time in the words', () => {
+    expect(refusalWaitOver(new ApiError(429, 'x', undefined, 30), t)).toEqual({
+      at: 1_030_000,
+      text: 'Too many tries from this network. You can try again now.',
+    });
+    expect(refusalWaitOver(new ApiError(429, 'x', undefined, 900), t)?.at).toBe(1_900_000);
+  });
+
+  it('has nothing to swap for words that name no wait', () => {
+    expect(refusalWaitOver(new ApiError(429, 'x'), t)).toBeUndefined();
+    expect(refusalWaitOver(new ApiError(429, 'x', undefined, 0), t)).toBeUndefined();
+    expect(refusalWaitOver(new ApiError(401, 'x', undefined, 30), t)).toBeUndefined();
+    expect(refusalWaitOver(new TypeError('Failed to fetch'), t)).toBeUndefined();
   });
 });

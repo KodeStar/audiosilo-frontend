@@ -482,6 +482,7 @@
         "wait_other": "Too many tries from this network. Try again in {{count}} minutes.",
         "waitSeconds_one": "Too many tries from this network. Try again in {{count}} second.",
         "waitSeconds_other": "Too many tries from this network. Try again in {{count}} seconds.",
+        "waitOver": "Too many tries from this network. You can try again now.",
         "badCode": "That invite code didn't work. Check it, or ask your admin for a new invite.",
         "usedInvite": "This invite can't add another device: it is used up or has expired. Ask your admin for a new invite.",
         "inviteUsed": "This invite has been used on all the devices it allows. Ask your admin for a new invite.",

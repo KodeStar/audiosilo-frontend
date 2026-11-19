@@ -482,6 +482,7 @@
         "wait_other": "Trop de tentatives depuis ce réseau. Réessayez dans {{count}} minutes.",
         "waitSeconds_one": "Trop de tentatives depuis ce réseau. Réessayez dans {{count}} seconde.",
         "waitSeconds_other": "Trop de tentatives depuis ce réseau. Réessayez dans {{count}} secondes.",
+        "waitOver": "Trop de tentatives depuis ce réseau. Vous pouvez réessayer maintenant.",
         "badCode": "Ce code d'invitation n'a pas fonctionné. Vérifiez-le ou demandez une nouvelle invitation à votre administrateur.",
         "usedInvite": "Cette invitation ne peut plus ajouter d'appareil : elle est épuisée ou a expiré. Demandez une nouvelle invitation à votre administrateur.",
         "inviteUsed": "Cette invitation a déjà servi sur tous les appareils qu'elle permet. Demandez une nouvelle invitation à votre administrateur.",

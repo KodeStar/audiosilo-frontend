@@ -15,7 +15,8 @@ import { sessionHydrateFailed, useSession } from '@/stores/session';
 
 import { pairingFallback, selfSignedMayBeWhy, signedInAs, withFallback } from './connect-model';
 import { endConnect, finishConnect } from './finish-connect';
-import { sharedRefusalText } from './sign-in-error';
+import { refusalWaitOver, sharedRefusalText, type WaitOver } from './sign-in-error';
+import { useRefusalError } from './use-refusal-error';
 
 /** How a pairing link's exchange ended. `refused`: the server said no for good (any 4xx
  * but 408 and 429, or a token spent on an exchange whose session this device then
@@ -25,8 +26,13 @@ import { sharedRefusalText } from './sign-in-error';
 export type PairOutcome = 'paired' | 'refused' | 'temporary';
 
 /** Why a pairing link failed: what it means for the link (`PairOutcome`) and the words
- * the screen says, from ONE reading of the error so the two never disagree. */
-export type PairFailure = { outcome: 'refused' | 'temporary'; message: string };
+ * the screen says, from ONE reading of the error so the two never disagree, with what
+ * they become once a 429's wait is over (`refusalWaitOver`). */
+export type PairFailure = {
+  outcome: 'refused' | 'temporary';
+  message: string;
+  waitOver?: WaitOver;
+};
 
 /**
  * A failed exchange (`e`), in words of our own, never the server's English:
@@ -59,7 +65,11 @@ export function pairFailure(
   if (e.status < 400 || e.status >= 500) return temporary(t('connect.server.pairingServerError'));
   // A 429 always has shared words (the wait), and only it is temporary among them.
   const shared = sharedRefusalText(e, t);
-  if (shared !== undefined) return e.status === 429 ? temporary(shared) : refused(shared);
+  if (shared !== undefined) {
+    return e.status === 429
+      ? { ...temporary(shared), waitOver: refusalWaitOver(e, t) }
+      : refused(shared);
+  }
   return refused(
     e.status === 401 || e.status === 410
       ? t('connect.server.pairingRefused')
@@ -72,8 +82,9 @@ export type LinkPairing = {
   pairing: boolean;
   /** Why the last pairing failed, in words. */
   error: string | null;
-  /** Say why a link can't pair (a link with no server address). */
-  fail: (message: string) => void;
+  /** Say why a link can't pair (a link with no server address), or a single sign-on's
+   * finish failed, with what the words become once a wait they name is over. */
+  fail: (message: string, waitOver?: WaitOver) => void;
   /** Put away why the last pairing failed (the listener moved on to another address). */
   clear: () => void;
   /** Exchange a pairing link's token on its server and finish the connect flow (on the
@@ -122,7 +133,7 @@ async function stillSignedIn(connectionId: string): Promise<boolean> {
 export function useLinkPairing(startPairing = false): LinkPairing {
   const { t } = useTranslation();
   const [pairing, setPairing] = useState(startPairing);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useRefusalError();
   const live = useRef(true);
   useEffect(() => {
     live.current = true;
@@ -211,18 +222,18 @@ export function useLinkPairing(startPairing = false): LinkPairing {
         selfSignedMayBeWhy(scan.base, e, Platform.OS === 'web'),
         t,
       );
-      setError(failure.message);
+      setError(failure.message, failure.waitOver);
       setPairing(false);
       return failure.outcome;
     }
   });
 
-  const fail = useLatest((message: string) => {
-    setError(message);
+  const fail = useLatest((message: string, waitOver?: WaitOver) => {
+    setError(message, waitOver);
     setPairing(false);
   });
 
-  const clear = useCallback(() => setError(null), []);
+  const clear = useCallback(() => setError(null), [setError]);
 
   return { pairing, error, fail, pair, clear };
 }

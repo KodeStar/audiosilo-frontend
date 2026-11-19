@@ -315,8 +315,8 @@ export function ConnectStart() {
 
   // A failed finish says why, with its retry when the server left room for one
   // (`oidcRetryWait`); none: the sign-in is refused, so Sign in again.
-  const oidcFailed = ({ message, retry }: OidcFinishFailure) => {
-    fail(message);
+  const oidcFailed = ({ message, retry, waitOver }: OidcFinishFailure) => {
+    fail(message, waitOver);
     setOidcRetry(retry ?? null);
   };
   const retryOidc = () => {

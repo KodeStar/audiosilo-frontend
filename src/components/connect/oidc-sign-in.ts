@@ -9,7 +9,7 @@ import { useSession } from '@/stores/session';
 
 import { finishConnect } from './finish-connect';
 import { oidcPassTag, settleOidcPass, takeOidcResumed } from './oidc-intent';
-import { sharedRefusalText } from './sign-in-error';
+import { refusalWaitOver, sharedRefusalText, type WaitOver } from './sign-in-error';
 
 /**
  * Single sign-on (OpenID Connect, server#235) in the web player. The sign-in step offers
@@ -118,7 +118,10 @@ export function oidcFinishFailure(
   if (left <= 0 && keptThrough) return { message: t('connect.oidc.errors.expired') };
   const waitMs = oidcRetryWait(e, left);
   const message = oidcFinishText(e, t, waitMs !== undefined);
-  return waitMs === undefined ? { message } : { message, retry: { waitMs, doneBy, run } };
+  const waitOver = refusalWaitOver(e, t);
+  return waitMs === undefined
+    ? { message, waitOver }
+    : { message, retry: { waitMs, doneBy, run }, waitOver };
 }
 
 /** The same finish sent again (`finishOidcSignIn`'s, with its flow, book and reconnect, all
@@ -131,9 +134,10 @@ export type OidcFinishRetry = {
   run: () => Promise<OidcFinishFailure | null>;
 };
 
-/** A finish that failed on the screen: why, in words, and the retry the server left room
- * for (`oidcRetryWait`), none once the sign-in is refused. */
-export type OidcFinishFailure = { message: string; retry?: OidcFinishRetry };
+/** A finish that failed on the screen: why, in words (and what they become once a 429's wait
+ * is over, `refusalWaitOver`), and the retry the server left room for (`oidcRetryWait`), none
+ * once the sign-in is refused. */
+export type OidcFinishFailure = { message: string; retry?: OidcFinishRetry; waitOver?: WaitOver };
 
 /**
  * Finish a single sign-on on the served player's own server (`origin`): `POST

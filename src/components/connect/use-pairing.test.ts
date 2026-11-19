@@ -235,7 +235,23 @@ describe('useLinkPairing', () => {
       "This link was used, but signing in didn't finish. Ask for a new link.",
     ],
   ])('classifies %s as one outcome with its words', (_row, e, exchanged, outcome, message) => {
-    expect(pairFailure(e, exchanged, false, t)).toEqual({ outcome, message });
+    const failure = pairFailure(e, exchanged, false, t);
+    expect({ outcome: failure.outcome, message: failure.message }).toEqual({ outcome, message });
+  });
+
+  it("gives a 429's named wait its words for once it is over, and nothing else any", () => {
+    jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    try {
+      expect(pairFailure(new ApiError(429, 'x', undefined, 30), false, false, t).waitOver).toEqual({
+        at: 1_030_000,
+        text: 'Too many tries from this network. You can try again now.',
+      });
+      for (const e of [new ApiError(429, 'x'), new ApiError(401, 'x'), new ApiError(503, 'x')]) {
+        expect(pairFailure(e, false, false, t).waitOver).toBeUndefined();
+      }
+    } finally {
+      jest.restoreAllMocks();
+    }
   });
 
   it('names a self-signed certificate only for no answer', () => {

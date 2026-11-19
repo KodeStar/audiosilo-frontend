@@ -203,6 +203,8 @@ describe('oidcFinishFailure', () => {
     expect(oidcFinishFailure(new ApiError(429, 'slow', undefined, 10), t, doneBy, run)).toEqual({
       message: t('connect.signIn.errors.waitSeconds', { count: 10 }),
       retry: { waitMs: 10_000, doneBy, run },
+      // The words lose their time once Try again works again.
+      waitOver: { at: NOW + 10_000, text: t('connect.signIn.errors.waitOver') },
     });
   });
 
@@ -228,6 +230,7 @@ describe('oidcFinishFailure', () => {
     // A lockout outlives any minute: its own wait, not an expired sign-in.
     expect(oidcFinishFailure(new ApiError(429, 'slow', undefined, 900), t, NOW - 1, run)).toEqual({
       message: t('connect.signIn.errors.wait', { count: 15 }),
+      waitOver: { at: NOW + 900_000, text: t('connect.signIn.errors.waitOver') },
     });
   });
 });

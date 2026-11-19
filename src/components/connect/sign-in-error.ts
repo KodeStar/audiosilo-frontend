@@ -35,6 +35,22 @@ export function sharedRefusalText(e: ApiError, t: TFunction): string | undefined
   return undefined;
 }
 
+/** What a refusal that names a wait says once that wait is over: `text` from `at` (epoch ms). */
+export type WaitOver = { at: number; text: string };
+
+/**
+ * When the wait `sharedRefusalText` names (a 429 with a `Retry-After`) is over, and the words
+ * then: the same refusal with no time in it, so "Try again in 30 seconds" never stays on
+ * screen once trying again works (`useRefusalError` swaps it then). `undefined` for any error
+ * whose words name no wait.
+ */
+export function refusalWaitOver(e: unknown, t: TFunction): WaitOver | undefined {
+  if (!(e instanceof ApiError) || e.status !== 429) return undefined;
+  const s = e.retryAfterSeconds;
+  if (s === undefined || s <= 0) return undefined;
+  return { at: Date.now() + s * 1000, text: t('connect.signIn.errors.waitOver') };
+}
+
 /**
  * A failed sign-in as a sentence that says what to do next (CONNECT-08), never the
  * server's raw string ("invalid credentials"). Told apart by status and the request that

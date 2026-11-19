@@ -482,6 +482,7 @@
         "wait_other": "Demasiados intentos desde esta red. Vuelve a intentarlo dentro de {{count}} minutos.",
         "waitSeconds_one": "Demasiados intentos desde esta red. Vuelve a intentarlo dentro de {{count}} segundo.",
         "waitSeconds_other": "Demasiados intentos desde esta red. Vuelve a intentarlo dentro de {{count}} segundos.",
+        "waitOver": "Demasiados intentos desde esta red. Ya puedes volver a intentarlo.",
         "badCode": "Ese código de invitación no ha funcionado. Revísalo o pide una nueva invitación a tu administrador.",
         "usedInvite": "Esta invitación no puede añadir otro dispositivo: se ha agotado o ha caducado. Pide una nueva invitación a tu administrador.",
         "inviteUsed": "Esta invitación ya se ha usado en todos los dispositivos que permite. Pide una nueva invitación a tu administrador.",
