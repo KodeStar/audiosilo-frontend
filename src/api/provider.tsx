@@ -365,16 +365,20 @@ const ConnectionScopeContext = createContext<string>('');
  * content route's `?connection=` query param; Home's cards, from their book's). Nothing
  * while that connection is not signed in: a subtree can outlive it for a render (the
  * player's book through a connection another tab removed, until its stop lands), and its
- * hooks would throw (`useApi`). */
+ * hooks would throw (`useApi`). `keepWhenGone`: the subtree all the same, for content that
+ * asks only through `useOptionalApi` and says itself the server isn't connected (the
+ * companion and its Text chip: a download plays on without its connection). */
 export function ConnectionScope({
   connectionId,
+  keepWhenGone = false,
   children,
 }: {
   connectionId: string;
+  keepWhenGone?: boolean;
   children: ReactNode;
 }) {
   const { clients } = useContext(ApiContext);
-  if (connectionId && !clients.has(connectionId)) return null;
+  if (connectionId && !keepWhenGone && !clients.has(connectionId)) return null;
   return (
     <ConnectionScopeContext.Provider value={connectionId}>
       {children}

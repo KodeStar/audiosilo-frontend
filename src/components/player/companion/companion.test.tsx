@@ -11,8 +11,10 @@ jest.mock('../playing-target', () => ({
 }));
 // The book's connection is gone (a download playing on after its server was removed):
 // no client, and the throwing hooks behind Bookmarks, Notes and History throw as `useApi`.
+// Its scope renders nothing then, as the real one does, unless kept (`keepWhenGone`).
 jest.mock('@/api/provider', () => ({
-  ConnectionScope: ({ children }: { children: unknown }) => children,
+  ConnectionScope: ({ children, keepWhenGone }: { children: unknown; keepWhenGone?: boolean }) =>
+    keepWhenGone ? children : null,
   useOptionalApi: () => null,
   useCid: (cid?: string) => cid ?? '',
 }));

@@ -18,6 +18,8 @@ import {
   retryQuery,
   useApi,
   useApis,
+  useOptionalApi,
+  useScopedCid,
 } from './provider';
 
 // The provider's reconnect handler, as the reachability layer would run it (registered
@@ -164,6 +166,23 @@ describe('ConnectionScope', () => {
     await render(scoped('srv.1'));
     await act(async () => useSession.setState({ connections: [at('srv.2')] } as never));
     expect(screen.toJSON()).toBeNull();
+  });
+
+  // The companion asks only through `useOptionalApi` and says the server isn't connected
+  // itself: its content stays, scoped to the gone connection (never the default's).
+  it('keeps content that says so itself, scoped to the gone connection', async () => {
+    useSession.setState({ connections: [at('srv.2')], defaultConnectionId: 'srv.2' } as never);
+    function Optional() {
+      return <Text>{`${useScopedCid()}:${useOptionalApi() === null ? 'none' : 'client'}`}</Text>;
+    }
+    await render(
+      <ApiProvider>
+        <ConnectionScope connectionId="srv.1" keepWhenGone>
+          <Optional />
+        </ConnectionScope>
+      </ApiProvider>,
+    );
+    expect(screen.getByText('srv.1:none')).toBeTruthy();
   });
 });
 
