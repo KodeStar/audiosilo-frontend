@@ -17,7 +17,7 @@ import {
 } from '@/downloads/store';
 import type { DownloadManifest } from '@/downloads/types';
 import { isAway, onAppStateEdge } from '@/lib/app-activity';
-import { resolveConnectionId } from '@/lib/connection-id';
+import { resolveConnectionId, sameConnection } from '@/lib/connection-id';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { isDeviceOnline } from '@/lib/device-online';
 import { canAutoDownload } from '@/lib/network';
@@ -4498,10 +4498,13 @@ export function onPickedUpAgain(listener: () => unknown): () => void {
  * Stop playback (persisting the final position) when the playing book was loaded
  * through the given connection. Books playing through another connection keep going:
  * their token stays valid. Matched by the stable connection id, so it works regardless
- * of ApiClient instances being rebuilt when the connection list changes.
+ * of ApiClient instances being rebuilt when the connection list changes, and by the id it
+ * moved from (`sameConnection`): a book loaded before another tab's identity migration
+ * renamed its connection still names the old one (`applyStored`).
  */
 export async function stopPlaybackForConnection(connectionId: string): Promise<void> {
-  if (usePlayer.getState().nowPlaying?.connectionId === connectionId)
+  const playing = usePlayer.getState().nowPlaying?.connectionId;
+  if (playing !== undefined && sameConnection(playing, connectionId))
     await usePlayer.getState().stop();
 }
 
