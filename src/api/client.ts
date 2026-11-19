@@ -131,8 +131,10 @@ export class ApiError extends Error {
      * (`isSignedOutError`) nor of a library the listener may not open (`accessRefusal`). */
     public fromProxy = false,
     /** The answer is the AudioSilo server's own: its error envelope, a JSON body with an
-     * `error` string. Whatever stands in front of the server let this request through
-     * (`onProxyAnswer`); an error status without it (a gateway's page) says nothing of that. */
+     * `error` string (a 401 as `unauthorizedOrigin` reads it: its mark, its exact body, or
+     * any `error` where the request carried no proxy headers). Whatever stands in front of the server let
+     * this request through (`onProxyAnswer`); an error status without it (a gateway's page)
+     * says nothing of that. */
     public fromServer = false,
   ) {
     super(message);
@@ -357,8 +359,10 @@ function retryAfterOf(res: Response, fetch: PodcastFetchStatus): number {
 
 /** The header the server marks every 401 of its own with (WS-401-MARK): the body's
  * `code` when the 401 has one, else `UNAUTHORIZED_PLAIN`. A proxy's own 401 has none, and
- * a proxy that rewrites the server's error page keeps it. Cross-origin the server exposes
- * it; a server before it sends none (`unauthorizedOrigin`). */
+ * a proxy that rewrites the server's error page keeps it while it passes the server's headers
+ * on (one that serves an error page of its own in place of the answer, nginx's `error_page`,
+ * drops it). Cross-origin the server exposes it; a server before it sends none
+ * (`unauthorizedOrigin`). */
 export const UNAUTHORIZED_HEADER = 'X-AudioSilo-Unauthorized';
 /** `UNAUTHORIZED_HEADER`'s value on a 401 without a code. */
 const UNAUTHORIZED_PLAIN = 'unauthorized';
