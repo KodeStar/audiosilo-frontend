@@ -336,4 +336,45 @@ class DurableWriterTest {
     while (held.runOne()) Unit
     assertEquals("never lands after its removal", emptyList<String>(), disk.landed)
   }
+
+  // Signing out while the write it replaces is being tried: that write, failing, is dropped there
+  // rather than tried again in front of the removals (the sign-out's drain would wait out a round).
+  @Test
+  fun signingOutDropsTheReplacedWriteItFindsRunningOnceItFails() {
+    val held = Held()
+    val retries = Retries()
+    val writer = DurableWriter(held, retries::after)
+    val removals = FakeDisk().apply { full = false }
+    writer.submit("outbox") {
+      writer.submit("outbox", removals.write("outbox removed"))
+      writer.dropSuperseded()
+      false
+    }
+    while (held.runOne()) Unit
+    assertEquals(listOf("outbox removed"), removals.landed)
+    assertEquals("not tried again", emptyList<Long>(), retries.delays)
+  }
+
+  // A retry still waiting for the write a sign-out dropped runs nothing: the write now first keeps
+  // its own wait and its own count of tries.
+  @Test
+  fun aRetryOfADroppedWriteLeavesTheNextHeadItsOwnWait() {
+    val held = Held()
+    val retries = Retries()
+    val writer = DurableWriter(held, retries::after)
+    var tries = 0
+    writer.submit("outbox") { false }
+    assertTrue(held.runOne())
+    writer.submit("outbox") { tries++ >= 1 }
+    writer.dropSuperseded()
+    while (held.runOne()) Unit
+    assertEquals(1, tries)
+    assertTrue("the dropped write's retry", retries.fire())
+    while (held.runOne()) Unit
+    assertEquals("it runs nothing", 1, tries)
+    assertTrue(retries.fire())
+    while (held.runOne()) Unit
+    assertEquals(2, tries)
+    assertEquals(listOf(500L, 500L), retries.delays)
+  }
 }

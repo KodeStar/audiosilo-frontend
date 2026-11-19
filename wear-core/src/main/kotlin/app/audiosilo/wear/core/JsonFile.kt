@@ -50,9 +50,9 @@ sealed interface JsonLoad<out T> {
  * in all with a doubling wait (`retryDelayMs`), before anything asked after it runs: a later write
  * landing first would leave a state the in-order writes never pass through (a place without the
  * span it came from, a span's removal without its event), and a kill there loses listening. Once
- * its tries are spent the queue waits, the write still first, until the next write is asked, which
- * starts a new round of tries (the disk may have room by then). Nothing is dropped but by
- * `dropSuperseded` (signing out).
+ * its tries are spent the queue waits, the write still first, until the next write (or `now`) is
+ * asked, which starts a new round of tries (the disk may have room by then). Nothing is dropped
+ * but by `dropSuperseded` (signing out).
  */
 class DurableWriter(
   executor: Executor? = null,
@@ -107,8 +107,12 @@ class DurableWriter(
   /** The head's failed tries this round. */
   private var failures = 0
 
+  /** The retry of the head waiting for its delay (its own, so one a `dropSuperseded` outran is spent), else null. */
+  private var retry: Any? = null
+
   /** A retry of the head is waiting for its delay. */
-  private var retrying = false
+  private val retrying
+    get() = retry != null
 
   /** The head's tries are spent: nothing runs until another write is asked. */
   private val parked
@@ -116,6 +120,9 @@ class DurableWriter(
 
   /** The head is being run (off the lock). */
   private var running = false
+
+  /** The head being run is replaced by a later write (`dropSuperseded`): dropped if it fails. */
+  private var runningSuperseded = false
 
   /** Runs of `pump` asked of the executor and not begun. */
   private var pumps = 0
@@ -156,6 +163,7 @@ class DurableWriter(
    * Drop each write not begun that a later write of the same file replaces (signing out, whose
    * removals replace every listening file: a write of them that still fails must not hold those
    * back). The states between are skipped, so only for a caller that needs the end state alone.
+   * One being run now is dropped once it fails, rather than tried again in front of them.
    */
   fun dropSuperseded() {
     synchronized(lock) {
@@ -164,16 +172,19 @@ class DurableWriter(
       val kept = ArrayList<Entry>()
       for (e in queue.reversed()) {
         val key = (e as? Write)?.key
-        if (key != null && !later.add(key) && !(running && e === head)) continue
+        if (key != null && !later.add(key)) {
+          if (!(running && e === head)) continue
+          runningSuperseded = true
+        }
         kept += e
       }
       kept.reverse()
       queue.clear()
       queue.addAll(kept)
       if (queue.firstOrNull() !== head) {
-        // A new head: a round of its own, at once (a retry still waiting finds it there).
+        // A new head: a round of its own, at once (a retry still waiting is spent).
         failures = 0
-        retrying = false
+        retry = null
       }
       wakeIfIdle()
     }
@@ -210,21 +221,29 @@ class DurableWriter(
     val landed = run(head)
     synchronized(lock) {
       running = false
-      // Still first: `dropSuperseded` keeps the head it finds running.
+      val superseded = runningSuperseded
+      runningSuperseded = false
+      // Still first: `dropSuperseded` keeps the head it finds running (dropped here if it failed).
       if (queue.firstOrNull() === head) {
-        if (landed) {
+        if (landed || superseded) {
           queue.removeFirst()
           failures = 0
         } else {
           failures++
           if (failures < MAX_TRIES) {
-            retrying = true
+            val mine = Any()
+            retry = mine
             retryAfter(retryDelayMs(failures)) {
-              synchronized(lock) {
-                retrying = false
-                pumps++
-              }
-              pump()
+              val due =
+                synchronized(lock) {
+                  (retry === mine).also {
+                    if (it) {
+                      retry = null
+                      pumps++
+                    }
+                  }
+                }
+              if (due) pump()
             }
           } else {
             // Parked. A `now` behind it would wait for a disk that may never have room: told instead.
