@@ -2121,8 +2121,9 @@ media GETs only.
   rejects withdraws it, a fault it called off standing again (`calledOff`: one record for the
   book, the fault and the number of the ask that called it off, `EngineAsk.seq`, while every ask
   since is of the book; a refusal of the store's last ask
-  brings the fault back, any ask of the book from the one that called it off on taken, or the
-  asks ending otherwise, clears it). The ask
+  brings the fault back, any ask of the book from the one that called it off on taken, the
+  asks ending otherwise, or an ask made after one given up on (`withdrawAsk`, none standing),
+  clears it). The ask
   stands until the engine has played on `PLAYED_ON` seconds from it in its file (counted only
   once landed: a tick sent before a seek back took is past the asked place), moved on into a
   later file from within the tolerance of the asked file's end, or the listener moved

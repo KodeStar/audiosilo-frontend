@@ -2225,7 +2225,8 @@ function stuckPastMeasure(np: NowPlaying): boolean {
  * on (`withdrawAsk`: a move to another tab's place past `TAB_MOVE_MAX_MS`, whose call may still
  * settle). The engine refusing that ask's move (`engineTakes`) is the engine still where it
  * faulted, so the fault stands again; one of them taken clears it, and so does the ask's end any
- * other way (`setAsk(null)`: the engine played on from it or ran off it, the listener moved).
+ * other way (`setAsk(null)`: the engine played on from it or ran off it, the listener moved), or
+ * an ask made after one given up on (none standing: the engine may have gone anywhere since).
  * One record for the book, re-pointed with the asks at the download hot-swap's commit
  * (`moveAsk`). */
 let calledOff: { np: NowPlaying; from: number } | null = null;
@@ -2265,10 +2266,12 @@ function askEngineTo(np: NowPlaying, trackIndex: number, position: number): Engi
     before,
     elsewhere: null,
   };
-  // The ask calls the book's fault off, or is the latest of the asks since one did: the engine
-  // may still be where it faulted, so the fault stands again if this one is refused.
+  // The ask calls the book's fault off, or is the latest of the asks since one did while one of
+  // them still stands: the engine may still be where it faulted, so the fault stands again if
+  // this one is refused. After one given up on (`withdrawAsk`), none stands: a later move is
+  // the listener's from wherever the engine went meanwhile.
   if (faultedBook === np) calledOff = { np, from: seq };
-  else if (calledOff?.np !== np) calledOff = null;
+  else if (askedPlace?.np !== np) calledOff = null;
   setAsk(ask);
   faultedBook = null;
   return ask;

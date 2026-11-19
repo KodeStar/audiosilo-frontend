@@ -1327,6 +1327,62 @@ describe.each([
       expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 610 });
     });
 
+    // A seek on the faulted book called the fault off and never settled; a play from the OS
+    // media controls then moved to the other tab's place, a move given up on. The engine went on
+    // playing from wherever it was: a later move it refuses brings back no fault from before.
+    it('a move refused after one given up on brings back no fault an earlier ask called off', async () => {
+      mockMirror.on = true;
+      await a.start(30, 'c1', parts);
+      await sleep(10);
+      a.engine.runOff(1, 0.4); // file 1 measured short: the engine ran on into file 2
+      await until(() => a.player().snapshot.state === 'error', 'A to fault');
+      a.engine.svc.skipToTrack.mockImplementationOnce(() => new Promise<void>(() => {}));
+      void a.player().seekInTrack(60);
+      await sleep(10);
+      a.engine.runOff(0, 60); // the engine went there; the call never says so
+      // B plays the book on to 605 and stops there.
+      await b.start(600, 'c1', parts);
+      await sleep(10);
+      b.engine.at(605);
+      await b.save();
+      await b.player().pause();
+      await sleep(40);
+      const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const shortened = shortenTabMoveBound();
+      const { seekTo, skipToTrack } = a.engine.svc;
+      const impls = [seekTo.getMockImplementation(), skipToTrack.getMockImplementation()] as const;
+      const moves = () => seekTo.mock.calls.length + skipToTrack.mock.calls.length;
+      try {
+        // The move to B's place never settles; every move after it is refused.
+        const before = moves();
+        const move = () =>
+          moves() === before + 1
+            ? new Promise<void>(() => {})
+            : Promise.reject(new Error('refused'));
+        seekTo.mockImplementation(move);
+        skipToTrack.mockImplementation(move);
+        await a.engine.svc.play(); // no press in the page
+        await until(() => moves() === before + 1, 'A to move');
+        await until(() => warned.mock.calls.length > 0, 'A to give the move up');
+        shortened.mockRestore();
+        await a
+          .player()
+          .seekInTrack(700)
+          .catch(() => undefined);
+        expect(moves()).toBeGreaterThan(before + 1);
+        a.engine.svc.pause.mockClear();
+        a.engine.at(620); // playing on
+        await sleep(10);
+        expect(a.engine.svc.pause).not.toHaveBeenCalled();
+        expect(a.player().snapshot.state).toBe('playing');
+      } finally {
+        shortened.mockRestore();
+        warned.mockRestore();
+        seekTo.mockImplementation(impls[0]);
+        skipToTrack.mockImplementation(impls[1]);
+      }
+    });
+
     // A move given up on (not refused) can still land. Left as it was, the floor put back at
     // the place the engine had refused every save of a landing far behind it, and the span
     // opened at that place ran on over the audio in between.
