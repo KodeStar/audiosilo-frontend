@@ -1,7 +1,8 @@
 import * as Network from 'expo-network';
-import { AppState, Platform } from 'react-native';
+import { Platform } from 'react-native';
 
 import { startBookInPlace } from '@/components/player/start-book';
+import { isAway } from '@/lib/app-activity';
 import {
   fallbackAddress,
   pickAddress,
@@ -354,8 +355,7 @@ function runAddressRouting(opts: { probe?: ServerIdProbe }): () => void {
   };
   // The re-check of home runs only in the foreground.
   const recheck = ticker(recheckHome, HOME_RECHECK_MS);
-  if (AppState.currentState !== 'background' && AppState.currentState !== 'inactive')
-    recheck.start();
+  if (!isAway()) recheck.start();
   else beginNetworkCheck(); // started away (a background launch): check on coming to front
   stops.push(
     onForeground(

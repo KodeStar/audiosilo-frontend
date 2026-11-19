@@ -1,8 +1,9 @@
 import { type RefObject, useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AppState, type ViewInstance } from 'react-native';
+import { type ViewInstance } from 'react-native';
 
 import { toast } from '@/components/ui/toast';
+import { isAway } from '@/lib/app-activity';
 import { whenActive } from '@/lib/when-active';
 
 import { captureCard, deliverCard } from './share-card';
@@ -74,8 +75,7 @@ export function useShareCard(): ShareCardState {
         setCoversOff(false);
         // Away (the app shared to is over this one): wait for the foreground. Only then:
         // a state that is neither (unknown, an extension) must not hold the story forever.
-        const away = AppState.currentState === 'background' || AppState.currentState === 'inactive';
-        if (away) await new Promise<void>((resolve) => whenActive(resolve));
+        if (isAway()) await new Promise<void>((resolve) => whenActive(resolve));
         running.current = false;
         setBusy(false);
       }

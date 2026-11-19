@@ -3,6 +3,7 @@ import { AppState, type NativeEventSubscription } from 'react-native';
 import { ApiError, PodcastFetchPendingError } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
 import type { PodcastFetchStatus } from '@/api/types';
+import { isOffScreen } from '@/lib/app-activity';
 import { serverIdOf } from '@/lib/connection-id';
 import { accessRefusal, blipDelay, pollDelay } from '@/playback/episode-fetch-rules';
 
@@ -190,7 +191,7 @@ function end(w: Waiter, how: EpisodeWaitEnd) {
 function schedule(w: Waiter, seconds: number) {
   if (!live(w)) return;
   const wait = pollDelay(seconds);
-  if (AppState.currentState === 'background') {
+  if (isOffScreen()) {
     w.paused = true;
     return;
   }
@@ -209,7 +210,7 @@ function askAgain(w: Waiter, retryAfter?: number) {
 
 async function step(w: Waiter) {
   if (!live(w)) return;
-  if (AppState.currentState === 'background') {
+  if (isOffScreen()) {
     w.paused = true;
     return;
   }

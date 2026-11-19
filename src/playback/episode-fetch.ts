@@ -1,4 +1,3 @@
-import { AppState } from 'react-native';
 import { create } from 'zustand';
 
 import { ApiError, PodcastFetchPendingError } from '@/api/client';
@@ -9,6 +8,7 @@ import { queryClient } from '@/api/provider';
 import type { Book, PodcastFetchStatus } from '@/api/types';
 import type { PlayTarget } from '@/components/player/play-route';
 import { startBookInPlace, type StartOptions } from '@/components/player/start-book';
+import { isOffScreen } from '@/lib/app-activity';
 import { contentKeyOf } from '@/lib/content-key';
 import { onForeground } from '@/lib/when-active';
 import { mayActFor, useProfiles } from '@/stores/profiles';
@@ -357,7 +357,7 @@ function settle(
 function schedule(r: Run, seconds: number) {
   if (run !== r) return;
   const wait = pollDelay(seconds);
-  if (AppState.currentState === 'background') {
+  if (isOffScreen()) {
     r.paused = true;
     return;
   }
