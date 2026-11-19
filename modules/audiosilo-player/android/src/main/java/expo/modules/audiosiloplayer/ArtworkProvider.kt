@@ -33,6 +33,14 @@ class ArtworkProvider : ContentProvider() {
     // Only `art/<key>` ([uriString]): any other path never names a file.
     val segments = uri.pathSegments
     if (segments.size != 2 || segments[0] != ART) throw FileNotFoundException(uri.toString())
+    if (segments[1] == PLACEHOLDER_KEY) {
+      val file = try {
+        placeholderFile(ctx)
+      } catch (e: Exception) {
+        throw FileNotFoundException("$uri: ${e.message}")
+      }
+      return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+    }
     val file = CarSnapshotStore.get(ctx)?.artworkByKey?.get(segments[1])
       ?: LocalArtwork.fileFor(segments[1])
       ?: throw FileNotFoundException(uri.toString())
@@ -40,7 +48,9 @@ class ArtworkProvider : ContentProvider() {
     return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
   }
 
-  override fun getType(uri: Uri): String = "image/jpeg"
+  // The bundled placeholder is a PNG ([placeholderFile]).
+  override fun getType(uri: Uri): String =
+    if (uri.pathSegments.getOrNull(1) == PLACEHOLDER_KEY) "image/png" else "image/jpeg"
 
   override fun query(
     uri: Uri,
@@ -54,6 +64,33 @@ class ArtworkProvider : ContentProvider() {
   override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
   override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
 
+  /** The bundled [PLACEHOLDER] as a file of the app's own, written from the resource once per
+   * install of the app (a resource can sit compressed in the APK, where no file descriptor
+   * reaches it; an update may bring another picture, and ends this process). Kept while the
+   * process lives, so an open asks the package manager nothing. */
+  private fun placeholderFile(ctx: Context): File {
+    placeholder?.takeIf { it.isFile }?.let { return it }
+    synchronized(ArtworkProvider::class.java) {
+      placeholder?.takeIf { it.isFile }?.let { return it }
+      val installed = ctx.packageManager.getPackageInfo(ctx.packageName, 0).lastUpdateTime
+      val file = File(ctx.cacheDir, "$PLACEHOLDER-$installed.png")
+      if (!file.isFile) {
+        val part = File(file.parentFile, "${file.name}.part")
+        ctx.resources.openRawResource(R.drawable.audiosilo_car_cover).use { input ->
+          part.outputStream().use { input.copyTo(it) }
+        }
+        if (!part.renameTo(file)) {
+          part.delete()
+          throw FileNotFoundException(file.path)
+        }
+        // An earlier install's copy is never read again.
+        ctx.cacheDir.listFiles { f -> f.name.startsWith("$PLACEHOLDER-") && f != file }?.forEach { it.delete() }
+      }
+      placeholder = file
+      return file
+    }
+  }
+
   companion object {
     fun authority(context: Context) = "${context.packageName}.audiosilo.artwork"
 
@@ -65,11 +102,15 @@ class ArtworkProvider : ContentProvider() {
      * triangle for an item with no artwork). */
     const val PLACEHOLDER = "audiosilo_car_cover"
 
-    /** A browse row's artwork: the provider's URI for its cover's [artworkKey], else the
-     * bundled [PLACEHOLDER] of [packageName] (an `android.resource` URI, which the car opens
-     * with no grant). */
-    fun browseArtwork(authority: String, packageName: String, artworkKey: String?): String =
-      artworkKey?.let { uriString(authority, it) } ?: "android.resource://$packageName/drawable/$PLACEHOLDER"
+    /** The key the provider serves [PLACEHOLDER] under: never a cover's, which are hex. */
+    const val PLACEHOLDER_KEY = "placeholder"
+
+    /** A browse row's artwork: the provider's URI for its cover's [artworkKey], else for the
+     * bundled [PLACEHOLDER] ([PLACEHOLDER_KEY]). Both are granted per reader, as a cover is:
+     * an `android.resource` URI named the drawable only by its name, which release resource
+     * shrinking had to be told to keep and not every reader resolves. */
+    fun browseArtwork(authority: String, artworkKey: String?): String =
+      uriString(authority, artworkKey ?: PLACEHOLDER_KEY)
 
     /** The key a browse row's cover is served under ([CarItem.artworkKey]) while its file is
      * there, else null (the bundled [PLACEHOLDER]): a snapshot can outlive its cover file (a
@@ -93,6 +134,15 @@ class ArtworkProvider : ContentProvider() {
     /** System UI's package: it draws the lock screen's and the media controls' cover, and the
      * resumption card's, loading the artwork URI itself when it is given no bitmap. */
     const val SYSTEM_UI = "com.android.systemui"
+
+    /** Who is granted the resumption card's cover: System UI, which draws the card whoever
+     * Media3 names as asking (its own notification controller when connected), and [asker]
+     * unless it is the app itself ([ownPackage]) or System UI. */
+    fun cardReaders(asker: String, ownPackage: String): List<String> =
+      listOf(SYSTEM_UI) + listOfNotNull(asker.takeIf { it != ownPackage && it != SYSTEM_UI })
+
+    /** [placeholderFile], once written in this process. */
+    @Volatile private var placeholder: File? = null
 
     private const val ART = "art"
 

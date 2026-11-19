@@ -25,13 +25,13 @@ class LocalArtworkTest {
   }
 
   // The lock screen and System UI's resumption card load a downloaded cover's URI from another
-  // app, as the car does: only the provider's own URIs are granted, never a streamed cover's
-  // token-free URI or the bundled placeholder.
+  // app, as the car does: only the provider's own URIs are granted (the bundled placeholder is
+  // one), never a streamed cover's token-free URI.
   @Test fun onlyTheProvidersUrisAreGranted() {
     assertTrue(ArtworkProvider.serves(ArtworkProvider.itemArtwork("file://$cover", authority), authority))
     val streamed = ArtworkProvider.itemArtwork("https://books.example/cover?token=secret", authority)
     assertFalse(ArtworkProvider.serves(streamed, authority))
-    assertFalse(ArtworkProvider.serves(ArtworkProvider.browseArtwork(authority, "app.audiosilo.dev", null), authority))
+    assertTrue(ArtworkProvider.serves(ArtworkProvider.browseArtwork(authority, null), authority))
     assertFalse(ArtworkProvider.serves("content://other.provider/art/0123", authority))
   }
 

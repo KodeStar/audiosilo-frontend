@@ -118,6 +118,10 @@ type MockPlayerState = {
   } | null;
   snapshot: { state: string; trackIndex: number; position: number };
 };
+/** Whether the store follows a play asked from outside the app (`followsOutsidePlay`). */
+let mockOutsidePlay = true;
+/** The store's word that the engine reported another book (`onOtherBookReported`). */
+let mockOtherBookReported: (() => void) | null = null;
 jest.mock('@/playback/store', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { create } = require('zustand');
@@ -131,6 +135,13 @@ jest.mock('@/playback/store', () => {
   }));
   return {
     usePlayer,
+    followsOutsidePlay: () => mockOutsidePlay,
+    onOtherBookReported: (listener: () => void) => {
+      mockOtherBookReported = listener;
+      return () => {
+        if (mockOtherBookReported === listener) mockOtherBookReported = null;
+      };
+    },
     selectBookKey: (s: MockPlayerState) =>
       s.nowPlaying
         ? `${s.nowPlaying.connectionId}:${s.nowPlaying.libraryId}:${s.nowPlaying.path}`
@@ -2466,6 +2477,157 @@ describe('adopting the service’s book (Android)', () => {
     });
     await settle();
     expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded, expect.any(Function));
+  });
+
+  // The engine's reports name their book: the store holds another book's, so its own state
+  // never changes for one, and tells the car sync instead.
+  it("adopts the book the engine holds when the store says it reported another book's", async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    usePlayer.setState({
+      nowPlaying: { connectionId: 'c1', libraryId: 2, path: 'A', queue: { offsets: [0] } },
+      snapshot: { state: 'paused', trackIndex: 0, position: 10, duration: 100, rate: 1 },
+    });
+    stop = startCarSync();
+    await settle();
+    expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
+    mockNative.getLoadedBook.mockResolvedValue(loaded);
+    mockOtherBookReported?.();
+    await settle();
+    expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded, expect.any(Function));
+    // Not on iOS, whose engine only ever holds what the store loaded.
+    stop();
+    (usePlayer.getState().adoptLoaded as jest.Mock).mockClear();
+    Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
+    stop = startCarSync();
+    await settle();
+    mockOtherBookReported?.();
+    await settle();
+    expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
+  });
+
+  // The review: after "Playback stopped", a car, headset or resumption play of another book
+  // was followed as a press of the store's book, and its watchdog paused that other book once
+  // it took longer than the grace to start. It is adopted as the play it is.
+  it('adopts a book the engine was asked to play from outside after playback stopped', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    usePlayer.setState({
+      nowPlaying: { connectionId: 'c1', libraryId: 2, path: 'A', queue: { offsets: [0] } },
+      snapshot: { state: 'error', trackIndex: 0, position: 10, duration: 100, rate: 1 },
+    });
+    stop = startCarSync();
+    await settle();
+    expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
+    mockNative.getLoadedBook.mockResolvedValue({ ...loaded, playing: true });
+    // The store follows the outside play as a press: `loading`, before the engine plays.
+    usePlayer.setState({
+      snapshot: { state: 'loading', trackIndex: 0, position: 10, duration: 100, rate: 1 },
+    });
+    await settle();
+    expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded, expect.any(Function));
+  });
+
+  // The review: the store's own Retry (or play) after playback stopped makes the same `error`
+  // to `loading` turn, and cost a read of the engine's book that could only name its own.
+  it("asks nothing of the engine on the store's own Retry after playback stopped", async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    usePlayer.setState({
+      nowPlaying: { connectionId: 'c1', libraryId: 2, path: 'A', queue: { offsets: [0] } },
+      snapshot: { state: 'error', trackIndex: 0, position: 10, duration: 100, rate: 1 },
+    });
+    stop = startCarSync();
+    await settle();
+    mockNative.getLoadedBook.mockClear();
+    mockOutsidePlay = false;
+    try {
+      usePlayer.setState({
+        snapshot: { state: 'loading', trackIndex: 0, position: 10, duration: 100, rate: 1 },
+      });
+      await settle();
+      expect(mockNative.getLoadedBook).not.toHaveBeenCalled();
+      expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
+    } finally {
+      mockOutsidePlay = true;
+    }
+  });
+
+  // The store holds the engine's reports while an outside play's book is adopted, so no
+  // change of its own says the engine went on to yet another book meanwhile: an adoption that
+  // gave up reads the engine once more, and the book it holds by then is adopted.
+  it('reads the engine again when an adoption gave up on a book the engine no longer holds', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    usePlayer.setState({
+      nowPlaying: { connectionId: 'c1', libraryId: 2, path: 'A', queue: { offsets: [0] } },
+      snapshot: { state: 'error', trackIndex: 0, position: 10, duration: 100, rate: 1 },
+    });
+    stop = startCarSync();
+    await settle();
+    const adoptLoaded = jest.mocked(usePlayer.getState().adoptLoaded);
+    const other = { ...loaded, path: 'E' };
+    // The engine holds E by the time D's adoption has read its book and given up.
+    adoptLoaded.mockImplementationOnce(async () => {
+      mockNative.getLoadedBook.mockResolvedValue(other);
+      return false;
+    });
+    mockNative.getLoadedBook.mockResolvedValue({ ...loaded, playing: true });
+    usePlayer.setState({
+      snapshot: { state: 'loading', trackIndex: 0, position: 10, duration: 100, rate: 1 },
+    });
+    await settle();
+    expect(adoptLoaded).toHaveBeenCalledTimes(2);
+    expect(adoptLoaded).toHaveBeenLastCalledWith(other, expect.any(Function));
+  });
+
+  // An adoption that gave up on the book the engine still holds is not asked for again.
+  it('asks once for a book whose adoption gave up while the engine still holds it', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    usePlayer.setState({
+      nowPlaying: { connectionId: 'c1', libraryId: 2, path: 'A', queue: { offsets: [0] } },
+      snapshot: { state: 'error', trackIndex: 0, position: 10, duration: 100, rate: 1 },
+    });
+    stop = startCarSync();
+    await settle();
+    const adoptLoaded = jest.mocked(usePlayer.getState().adoptLoaded);
+    adoptLoaded.mockResolvedValueOnce(false);
+    mockNative.getLoadedBook.mockResolvedValue({ ...loaded, playing: true });
+    usePlayer.setState({
+      snapshot: { state: 'loading', trackIndex: 0, position: 10, duration: 100, rate: 1 },
+    });
+    await settle();
+    expect(adoptLoaded).toHaveBeenCalledTimes(1);
+  });
+
+  // The review: a change of the engine's seen while a check was running joined that check,
+  // which had read the engine before it (its adoption then gave up on the book the engine no
+  // longer held), and nothing asked about the book the engine held by then.
+  it('reads the engine again when it changed while a check was running', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    usePlayer.setState({
+      nowPlaying: { connectionId: 'c1', libraryId: 2, path: 'A', queue: { offsets: [0] } },
+      snapshot: { state: 'error', trackIndex: 0, position: 10, duration: 100, rate: 1 },
+    });
+    stop = startCarSync();
+    await settle();
+    const adoptLoaded = jest.mocked(usePlayer.getState().adoptLoaded);
+    let giveUp: (adopted: boolean) => void = () => {};
+    adoptLoaded.mockImplementationOnce(() => new Promise<boolean>((resolve) => (giveUp = resolve)));
+    mockNative.getLoadedBook.mockResolvedValue({ ...loaded, playing: true });
+    usePlayer.setState({
+      snapshot: { state: 'loading', trackIndex: 0, position: 10, duration: 100, rate: 1 },
+    });
+    await settle();
+    expect(adoptLoaded).toHaveBeenCalledTimes(1);
+    // The service starts yet another book while that one is read.
+    const other = { ...loaded, path: 'E' };
+    mockNative.getLoadedBook.mockResolvedValue(other);
+    usePlayer.setState({
+      snapshot: { state: 'loading', trackIndex: 1, position: 0, duration: 100, rate: 1 },
+    });
+    await settle();
+    expect(adoptLoaded).toHaveBeenCalledTimes(1);
+    giveUp(false);
+    await settle();
+    expect(adoptLoaded).toHaveBeenCalledTimes(2);
+    expect(adoptLoaded).toHaveBeenLastCalledWith(other, expect.any(Function));
   });
 
   it('never brings back a book the store finished or stopped while the service was asked', async () => {

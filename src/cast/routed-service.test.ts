@@ -27,6 +27,7 @@ type Fake = PlaybackService & {
   move?: (t: number, p: number) => void;
   landed?: () => void;
   playAsked?: () => void;
+  pauseAsked?: () => void;
 };
 
 /** An engine that records what it is asked and emits what a test tells it to. */
@@ -83,6 +84,9 @@ function fakeEngine(name: string, extra: Partial<PlaybackService> = {}): Fake {
     },
     onPlayAsked(h) {
       engine.playAsked = h ?? undefined;
+    },
+    onPauseAsked(h) {
+      engine.pauseAsked = h ?? undefined;
     },
     getSnapshot: () => snap,
     subscribe(l) {
@@ -228,6 +232,27 @@ describe('RoutedPlaybackService', () => {
     await t.router.beginCast(fakeCast() as unknown as CastPlaybackService);
     t.local.playAsked?.();
     expect(asked).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes on the phone engine stopping wanting to play, never while casting', async () => {
+    const t = setup();
+    const stopped = jest.fn();
+    t.router.onPauseAsked(stopped);
+    await playingLocally(t);
+    t.local.pauseAsked?.();
+    expect(stopped).toHaveBeenCalledTimes(1);
+    await t.router.beginCast(fakeCast() as unknown as CastPlaybackService);
+    t.local.pauseAsked?.();
+    expect(stopped).toHaveBeenCalledTimes(1);
+  });
+
+  it("names the phone engine's reported book, never while casting", async () => {
+    const book = { connectionId: 'c1', libraryId: 2, path: 'A' };
+    const t = setup({ reportedBook: () => book });
+    await playingLocally(t);
+    expect(t.router.reportedBook()).toEqual(book);
+    await t.router.beginCast(fakeCast() as unknown as CastPlaybackService);
+    expect(t.router.reportedBook()).toBeNull();
   });
 
   it('loads a new book on the receiver while casting', async () => {

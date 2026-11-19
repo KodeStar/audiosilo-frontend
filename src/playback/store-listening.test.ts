@@ -2,7 +2,7 @@ import type { Book, ChaptersResponse, ListeningEvent, Progress } from '@/api/typ
 
 import type { OpenSpan } from './listening-outbox';
 import type { ResumeLookup } from './progress-sync';
-import type { PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
+import type { BookRef, PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
 
 // Sync v2's spans in the store (Track W1): what the store hands the outbox on a server with
 // `listening_sync`, and that it hands it nothing (the PUT path, as before) without it. The
@@ -12,7 +12,10 @@ import type { PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
 let pushSnapshot: (s: PlaybackSnapshot) => void = () => {};
 let remoteMove: (trackIndex: number, position: number) => void = () => {};
 let landed: () => void = () => {};
+/** The book the engine's last report named (`reportedBook`); null: it named none. */
+let engineBook: BookRef | null = null;
 const mockSvc = {
+  reportedBook: jest.fn(() => engineBook),
   onRemoteSeek: jest.fn(),
   onRemoteMove: jest.fn((cb: (trackIndex: number, position: number) => void) => {
     remoteMove = cb;
@@ -312,6 +315,7 @@ async function start(at?: number) {
 beforeEach(() => {
   jest.clearAllMocks();
   jest.useFakeTimers();
+  engineBook = null;
   mockClosed.length = 0;
   mockAppended.length = 0;
   mockMirrorUpdates.length = 0;
@@ -595,6 +599,60 @@ describe('with listening_sync', () => {
     expect(mockFlushOutbox).toHaveBeenCalledWith('c1');
   });
 
+  // (c), data loss: the car (Android) started another book in the engine while this one was
+  // paused. Its `playing` opened a span for this book at the other book's place, and the
+  // switch to the adopted book closed it: a listen of this book that never happened. A
+  // report that names another book is none of this book's.
+  it("another book's play opens no span for this book", async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    pushSnapshot(snap('paused', 0, 10));
+    await settle();
+    mockClosed.length = 0;
+    mockStoreOpenSpan.mockClear();
+    engineBook = { connectionId: 'c1', libraryId: 2, path: 'Another' };
+    pushSnapshot(snap('playing', 1, 40));
+    jest.advanceTimersByTime(20_000);
+    pushSnapshot(snap('playing', 1, 60));
+    await settle();
+    await usePlayer.getState().stop();
+    await settle();
+    expect(mockClosed).toEqual([]);
+    expect(mockStoreOpenSpan).not.toHaveBeenCalled();
+  });
+
+  // The car switched to another book while this one played: this book's listening ends at
+  // the other book's first report, where this book was last heard, not when the adoption
+  // lands seconds later; and none opens again while the engine plays the other book (the
+  // save loop's cut and the open span's keep would reopen one).
+  it("another book's first report ends this book's span there", async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(5_000);
+    pushSnapshot(snap('playing', 0, 10));
+    await settle();
+    mockStoreOpenSpan.mockClear();
+    const switchedAt = Date.now();
+    engineBook = { connectionId: 'c1', libraryId: 2, path: 'Another' };
+    pushSnapshot(snap('playing', 1, 40));
+    await settle();
+    expect(mockClosed).toHaveLength(1);
+    jest.advanceTimersByTime(30_000);
+    pushSnapshot(snap('playing', 1, 70));
+    await settle();
+    await usePlayer.getState().stop();
+    await settle();
+    expect(mockClosed).toHaveLength(1);
+    expect(mockClosed[0]).toMatchObject({
+      path: folder,
+      from: { pos: 5 },
+      to: { pos: 10 },
+      endedAt: new Date(switchedAt).toISOString(),
+    });
+    expect(mockStoreOpenSpan).not.toHaveBeenCalled();
+  });
+
   it('the 15 s tick cuts the span while reachable; the next one continues', async () => {
     await start();
     pushSnapshot(snap('playing', 0, 5));
@@ -807,6 +865,22 @@ describe('with listening_sync', () => {
     expect(mockSaveProgress.mock.calls.map((c) => (c[1] as { position: number }).position)).toEqual(
       [70],
     );
+  });
+
+  // The tick that landed was another book's (the car started it in the engine): nothing of
+  // this book moved, so nothing of it is saved again, dated now.
+  it("saves nothing when the place that lands is another book's", async () => {
+    mockSync = false;
+    await start();
+    pushSnapshot(snap('playing', 0, 10));
+    pushSnapshot(snap('paused', 0, 10));
+    await settle();
+    mockSaveProgress.mockClear();
+    engineBook = { connectionId: 'c1', libraryId: 2, path: 'Another' };
+    pushSnapshot(snap('paused', 0, 70));
+    landed();
+    await settle();
+    expect(mockSaveProgress).not.toHaveBeenCalled();
   });
 
   it('paused, a lock-screen move the engine already made is sent', async () => {

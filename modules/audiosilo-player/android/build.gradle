@@ -24,6 +24,11 @@ android {
   lint {
     abortOnError = false
   }
+  // JVM tests build Media3 items, whose metadata holds a Bundle and an artwork Uri: Android's
+  // stubs answer with defaults there (a Uri.parse is null) instead of throwing.
+  testOptions {
+    unitTests.returnDefaultValues = true
+  }
 }
 
 dependencies {

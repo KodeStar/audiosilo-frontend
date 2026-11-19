@@ -107,7 +107,7 @@ class AudiosiloPlayerModule : Module() {
 
   /** A remote move the service reported, emitted once the controller's own position caught up
    * (its next discontinuity), so `onRemoteMove` follows the `onProgress` that shows it. */
-  private var pendingRemoteMove: Pair<Int, Double>? = null
+  private var pendingRemoteMove: RemoteMove? = null
   private val remoteMoveFallback = Runnable { flushRemoteMove() }
 
   /** The JS seeks waiting for the controller to report their new place (fe#351). */
@@ -121,28 +121,25 @@ class AudiosiloPlayerModule : Module() {
   @Volatile private var observingCarConnection = false
 
   private val sink = object : PlayerEventSink {
-    override fun remoteMove(fileIndex: Int, position: Double) {
-      pendingRemoteMove = Pair(fileIndex, position)
+    override fun remoteMove(fileIndex: Int, position: Double, book: BookRef?) {
+      pendingRemoteMove = RemoteMove(fileIndex, position, book)
       handler.removeCallbacks(remoteMoveFallback)
       handler.postDelayed(remoteMoveFallback, REMOTE_MOVE_FALLBACK_MS)
     }
 
-    override fun rateChange(rate: Double) {
-      sendEvent("onRateChange", mapOf("rate" to rate))
+    override fun rateChange(rate: Double, book: BookRef?) {
+      sendEvent("onRateChange", rateChangeEvent(rate, book))
     }
 
     override fun remoteBookmark(fileIndex: Int, position: Double, book: BookRef?, relPath: String?) {
       val place: Map<String, Any> = mapOf("trackIndex" to fileIndex, "position" to position) +
         (relPath?.let { mapOf("relPath" to it) } ?: emptyMap())
-      val named: Map<String, Any> = book?.let {
-        mapOf("connectionId" to it.connectionId, "libraryId" to it.libraryId.toDouble(), "path" to it.path)
-      } ?: emptyMap()
-      sendEvent("onRemoteBookmark", place + named)
+      sendEvent("onRemoteBookmark", place + (book?.toEvent() ?: emptyMap()))
     }
 
-    override fun playerFailed() {
+    override fun playerFailed(book: BookRef?) {
       // The service has just stopped it wanting to play (`onEngineFailed`).
-      sendEvent("onState", mapOf("state" to "error", "playWhenReady" to false))
+      sendEvent("onState", failedStateEvent(book))
     }
 
     override fun carConnection(connected: Boolean) {
@@ -617,8 +614,12 @@ class AudiosiloPlayerModule : Module() {
     handler.removeCallbacks(remoteMoveFallback)
     val move = pendingRemoteMove ?: return
     pendingRemoteMove = null
-    sendEvent("onRemoteMove", mapOf("trackIndex" to move.first, "position" to move.second))
+    sendEvent("onRemoteMove", move.toEvent())
   }
+
+  /** The book a controller event's report is of: the controller's current item's
+   * ([reportedBook]). The service's reports (a remote move, a speed, a failure) name its own. */
+  private fun reported(): Map<String, Any> = reportedBook(MediaItems.bookOf(controller?.currentMediaItem))
 
   private fun emitState() {
     val c = controller ?: return
@@ -630,13 +631,13 @@ class AudiosiloPlayerModule : Module() {
     }
     // playWhenReady: JS follows a play asked from outside the app (the car, a headset) after
     // playback stopped in error, whose state alone (`loading`) it holds (fe#157).
-    sendEvent("onState", mapOf("state" to state, "playWhenReady" to c.playWhenReady))
+    sendEvent("onState", mapOf("state" to state, "playWhenReady" to c.playWhenReady) + reported())
   }
 
   private fun emitTrackChange(index: Int) {
     if (index >= 0 && index != lastTrackIndex) {
       lastTrackIndex = index
-      sendEvent("onTrackChange", mapOf("index" to index))
+      sendEvent("onTrackChange", mapOf("index" to index) + reported())
     }
   }
 
@@ -654,7 +655,8 @@ class AudiosiloPlayerModule : Module() {
     val duration = if (!map.clipped && c.duration > 0) c.duration / 1000.0 else map.fileDurationAt(item)
     sendEvent(
       "onProgress",
-      mapOf("position" to position, "duration" to duration, "silenceSaved" to AudioEffects.silenceSavedSeconds),
+      mapOf("position" to position, "duration" to duration, "silenceSaved" to AudioEffects.silenceSavedSeconds) +
+        reported(),
     )
   }
 

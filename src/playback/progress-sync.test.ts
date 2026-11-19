@@ -565,6 +565,62 @@ describe('progress-sync', () => {
       expect(reachability.noteFailure).toHaveBeenCalledWith('c1', expect.any(TimeoutError));
       await jest.advanceTimersByTimeAsync(12_000);
       await expect(r.late).resolves.toBeNull();
+      // The review: and its late failure asked for a second check of the same server.
+      expect(reachability.noteFailure).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // The review: a server answering after the wait stayed marked as checked (the wait's
+  // `noteFailure`), and its row never reached the mirror a later offline start reads.
+  it('loadInitialProgress: a late answer says the server is up and writes its row to the mirror', async () => {
+    let answer: (p: Progress | null) => void = () => {};
+    const slow = {
+      getProgress: jest.fn(() => new Promise<Progress | null>((resolve) => (answer = resolve))),
+    } as unknown as ApiClient;
+    jest.useFakeTimers();
+    try {
+      const lookup = loadInitialProgress(slow, 'c1', 1, 'A/Book', 3_000);
+      await jest.advanceTimersByTimeAsync(3_000);
+      const r = await lookup;
+      expect(reachability.noteSuccess).not.toHaveBeenCalled();
+      answer(
+        makeProgress({ position: 400, device_id: 'other', updated_at: '2026-01-02T00:00:00Z' }),
+      );
+      await expect(r.late).resolves.toMatchObject({ server: { position: 400 } });
+      expect(reachability.noteSuccess).toHaveBeenCalledWith('c1');
+      expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({
+        position: 400,
+        device_id: 'other',
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // The review: the late answer said the server was up whatever address had answered, up to
+  // the request's timeout after it was sent. One on an address the connection has left since
+  // (a home / away switch) says nothing of the address it uses now (fe#147).
+  it('loadInitialProgress: a late answer on an address the connection has left says nothing of the server', async () => {
+    let answer: (p: Progress | null) => void = () => {};
+    const slow = {
+      baseUrl: 'http://home.lan:8080',
+      getProgress: jest.fn(() => new Promise<Progress | null>((resolve) => (answer = resolve))),
+    } as unknown as ApiClient;
+    mockResolveClient.mockImplementation(() => ({ baseUrl: 'https://away.example' }));
+    jest.useFakeTimers();
+    try {
+      const lookup = loadInitialProgress(slow, 'c1', 1, 'A/Book', 3_000);
+      await jest.advanceTimersByTimeAsync(3_000);
+      const r = await lookup;
+      answer(
+        makeProgress({ position: 400, device_id: 'other', updated_at: '2026-01-02T00:00:00Z' }),
+      );
+      // Its row is the server's all the same: told, and kept.
+      await expect(r.late).resolves.toMatchObject({ server: { position: 400 } });
+      expect(reachability.noteSuccess).not.toHaveBeenCalled();
+      expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ position: 400 });
     } finally {
       jest.useRealTimers();
     }

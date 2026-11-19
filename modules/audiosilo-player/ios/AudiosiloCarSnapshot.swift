@@ -22,6 +22,9 @@ struct CarSnapshot: Decodable {
     var connectionId: String
     var libraryId: Int
     var path: String
+
+    /// The book in an event's terms (JS's `BookRef`): a report's `book`, a bookmark's fields.
+    var event: [String: Any] { ["connectionId": connectionId, "libraryId": libraryId, "path": path] }
   }
 
   struct Item: Decodable {

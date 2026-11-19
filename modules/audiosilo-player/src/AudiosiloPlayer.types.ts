@@ -25,26 +25,37 @@ export type NativeChapter = {
 
 export type NativeState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended' | 'error';
 
+/** What every engine report (`onState`, `onProgress`, `onTrackChange`, `onRemoteMove`,
+ * `onRateChange`) carries to name the book it is of: `book`, the loaded queue's (the `book`
+ * `load` was given, or the one the Android service loaded itself), so JS drops a report of a
+ * book it does not hold. Absent from binaries that predate it and for a queue loaded without
+ * a book (JS then takes the report as before). */
+export type BookReport = { book?: BookRef };
+
 /** `playWhenReady` (Android only): whether the engine wants to play, so the app hears of a
  * play asked from outside it (the car, a headset). Absent on iOS and on older binaries. */
-export type StateEvent = { state: NativeState; playWhenReady?: boolean };
+export type StateEvent = { state: NativeState; playWhenReady?: boolean } & BookReport;
 /** Position/duration within the current track, in seconds. `silenceSaved` (Android only):
  * book seconds removed by Smart speed since the app's process started, summed over every
  * player the service builds, so it never goes down. Absent on iOS (no Smart speed there) and on
  * binaries that predate Smart speed. */
-export type ProgressEvent = { position: number; duration: number; silenceSaved?: number };
-export type TrackChangeEvent = { index: number };
+export type ProgressEvent = {
+  position: number;
+  duration: number;
+  silenceSaved?: number;
+} & BookReport;
+export type TrackChangeEvent = { index: number } & BookReport;
 
 /** The engine moved because of something OUTSIDE the JS API (the lock screen or notification
  * scrubber and buttons, a headset, CarPlay, Android Auto, their chapter lists), sent once the move
  * landed, in the bridge's usual coordinates (FILE index + seconds within that file). Not sent for
  * moves the JS API asked for, auto-rewind on play, Smart speed's silence skips, or a file
  * advancing by itself at its end. */
-export type RemoteMoveEvent = { trackIndex: number; position: number };
+export type RemoteMoveEvent = { trackIndex: number; position: number } & BookReport;
 
 /** The OS changed the speed (CarPlay's rate button, iOS changePlaybackRateCommand, an Android
  * controller). The engine already applied it. */
-export type RateChangeEvent = { rate: number };
+export type RateChangeEvent = { rate: number } & BookReport;
 
 /** A bookmark button outside the app was pressed (CarPlay's Now Playing, Android Auto's custom
  * action; the phone's notification leaves it out): where the book was at the press, and which

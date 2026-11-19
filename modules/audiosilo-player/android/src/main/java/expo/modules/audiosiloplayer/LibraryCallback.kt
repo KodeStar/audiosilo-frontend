@@ -2,6 +2,7 @@ package expo.modules.audiosiloplayer
 
 import android.content.Intent
 import android.os.Bundle
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -113,6 +114,16 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
     browser: MediaSession.ControllerInfo,
     params: LibraryParams?,
   ): ListenableFuture<LibraryResult<MediaItem>> {
+    // Recent media (a resumption UI): CarBrowseTree.RECENT_ROOT, and no root at all when
+    // nothing is resumable (the platform's contract: the browser then offers no resumption).
+    if (params?.isRecent == true) {
+      if (!CarBrowseTree.hasRecent(service.resumable())) {
+        return Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_NOT_SUPPORTED))
+      }
+      return Futures.immediateFuture(
+        LibraryResult.ofItem(CarBrowseTree.recentRootItem(), LibraryParams.Builder().setRecent(true).build()),
+      )
+    }
     val rootParams = LibraryParams.Builder().setExtras(CarBrowseTree.rootExtras()).build()
     return Futures.immediateFuture(LibraryResult.ofItem(CarBrowseTree.rootItem(), rootParams))
   }
@@ -125,13 +136,11 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
     pageSize: Int,
     params: LibraryParams?,
   ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
-    val snapshot = service.snapshot()
-    if (snapshot == null) service.needJs() // JS writes the first snapshot; notifyChildrenChanged follows
-    val all = if (parentId == CarBrowseTree.ROOT) {
-      val limit = params?.extras?.getInt(MediaConstants.EXTRAS_KEY_ROOT_CHILDREN_LIMIT, 0) ?: 0
-      CarBrowseTree.rootChildren(snapshot, limit)
+    // Recent media: no JS boot (a resumption UI asks with none running), paged as the rest.
+    val all = if (parentId == CarBrowseTree.RECENT_ROOT) {
+      service.recentItems(browser.packageName)
     } else {
-      CarBrowseTree.children(service, snapshot, parentId) { service.grantArtwork(browser, it) }
+      browseChildren(browser, parentId, params)
         ?: return Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE, params))
     }
     val from = page.toLong() * pageSize
@@ -139,12 +148,24 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
     return Futures.immediateFuture(LibraryResult.ofItemList(ImmutableList.copyOf(pageItems), params))
   }
 
+  /** The car tree's children of [parentId], from the snapshot; null for an unknown parent. */
+  private fun browseChildren(browser: MediaSession.ControllerInfo, parentId: String, params: LibraryParams?): List<MediaItem>? {
+    val snapshot = service.snapshot()
+    if (snapshot == null) service.needJs() // JS writes the first snapshot; notifyChildrenChanged follows
+    return if (parentId == CarBrowseTree.ROOT) {
+      val limit = params?.extras?.getInt(MediaConstants.EXTRAS_KEY_ROOT_CHILDREN_LIMIT, 0) ?: 0
+      CarBrowseTree.rootChildren(snapshot, limit)
+    } else {
+      CarBrowseTree.children(ArtworkProvider.authority(service), snapshot, parentId) { service.grantArtwork(browser, it) }
+    }
+  }
+
   override fun onGetItem(
     session: MediaLibrarySession,
     browser: MediaSession.ControllerInfo,
     mediaId: String,
   ): ListenableFuture<LibraryResult<MediaItem>> {
-    val item = CarBrowseTree.item(service, service.snapshot(), mediaId) { service.grantArtwork(browser, it) }
+    val item = CarBrowseTree.item(ArtworkProvider.authority(service), service.snapshot(), mediaId) { service.grantArtwork(browser, it) }
       ?: return Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE))
     return Futures.immediateFuture(LibraryResult.ofItem(item, null))
   }
@@ -207,9 +228,11 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
    * names for it ([CarSnapshot.resumable]: never a stopped or finished one), when it is
    * downloaded (has a play spec). Media3 asks
    * with [isForPlayback] true only for a play command, so merely connecting Auto never plays.
-   * With false (System UI's resumption card after a reboot) it only wants the
-   * item to show: answered from the spec with no side effect (no JS boot, no car request).
-   * A failed play resumption releases a foreground start ([AudiosiloPlayerService.watchResumption]).
+   * With false (System UI's resumption card after a reboot, through Media3's recent root) it
+   * only wants the item to show: the book's playable browse item
+   * ([AudiosiloPlayerService.recentItems], why there: [CarBrowseTree.recentChildren]), with no
+   * side effect (no JS boot, no car request). A play from the card asks again, with true. A failed play resumption releases a foreground start
+   * ([AudiosiloPlayerService.watchResumption]).
    */
   override fun onPlaybackResumption(
     mediaSession: MediaSession,
@@ -221,12 +244,9 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
       "resumption from ${service.describe(controller)}: forPlayback=$isForPlayback, item=${MediaKeyLog.ref(item?.id)}"
     }
     if (!isForPlayback) {
-      return item?.play?.let {
-        val queue = MediaItems.startPositionOf(it, ArtworkProvider.authority(service))
-        // The card loads the cover's URI itself (Media3 sends a browse item no bitmap): let it.
-        service.grantItemArtwork(controller.packageName, queue.mediaItems.firstOrNull())
-        Futures.immediateFuture(queue)
-      } ?: nothingToResume()
+      val card = service.recentItems(controller.packageName, item)
+      if (card.isEmpty()) return nothingToResume()
+      return Futures.immediateFuture(MediaItemsWithStartPosition(card, 0, C.TIME_UNSET))
     }
     return service.watchResumption(
       item?.let { service.playFromCar(it, requirePlaySpec = true) } ?: nothingToResume(),

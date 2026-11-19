@@ -295,6 +295,13 @@ export interface PlaybackService {
       ((trackIndex: number, positionInTrack: number, loaded: Promise<unknown>) => void) | null,
   ): void;
   /**
+   * Native (Android): the engine stopped wanting to play (its playWhenReady turned off), told
+   * before the state that comes with it. A pause the store sent has reached the engine, so a
+   * `playing` it reports from here is a new play (the stall watchdog's fence ends,
+   * `stallPauseUntil`). Optional, as `onPlayAsked`.
+   */
+  onPauseAsked?(handler: (() => void) | null): void;
+  /**
    * For the store's `adoptLoaded`: where an engine this bridge did NOT load is now (a
    * queue the Android playback service loaded itself, for the car or before the app's JS
    * restarted). Seeds the bridge's merged snapshot WITHOUT emitting, so the next event it
@@ -318,6 +325,13 @@ export interface PlaybackService {
   /** Whether playback is on a Cast receiver, or on its way there (the route switch). A
    * receiver streams the book from the server whatever the phone holds. */
   isCasting?(): boolean;
+  /**
+   * Native: the book the engine's last report named (the module's `BookReport`), else null.
+   * Valid inside the service's listeners, for the report being handled. The store drops a
+   * report of a book it does not hold (`reportedOtherBook`). Absent on the web; null while
+   * casting.
+   */
+  reportedBook?(): BookRef | null;
   getSnapshot(): PlaybackSnapshot;
   subscribe(listener: (snapshot: PlaybackSnapshot) => void): () => void;
 }

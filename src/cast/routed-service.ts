@@ -69,6 +69,7 @@ export class RoutedPlaybackService implements PlaybackService {
   private playAsked: (() => void) | null = null;
   private ownLoad:
     ((trackIndex: number, positionInTrack: number, loaded: Promise<unknown>) => void) | null = null;
+  private pauseAsked: (() => void) | null = null;
   /** Called when a book can't be cast (the session glue explains it and ends the session);
    * the router has already put the book back on the phone. */
   onCastFailed: ((err: unknown) => void) | null = null;
@@ -93,6 +94,9 @@ export class RoutedPlaybackService implements PlaybackService {
     });
     local.onPlayAsked?.(() => {
       if (this.mode === 'local') this.playAsked?.();
+    });
+    local.onPauseAsked?.(() => {
+      if (this.mode === 'local') this.pauseAsked?.();
     });
     if (local.swapTo) {
       const swap = local.swapTo.bind(local);
@@ -416,9 +420,15 @@ export class RoutedPlaybackService implements PlaybackService {
   ) {
     this.ownLoad = handler;
   }
+  onPauseAsked(handler: (() => void) | null) {
+    this.pauseAsked = handler;
+  }
   adoptPlace(snapshot: PlaybackSnapshot) {
     this.snapshot = { ...snapshot };
     this.route().adoptPlace?.(snapshot);
+  }
+  reportedBook() {
+    return this.mode === 'local' ? (this.local.reportedBook?.() ?? null) : null;
   }
   getSnapshot() {
     return this.snapshot;

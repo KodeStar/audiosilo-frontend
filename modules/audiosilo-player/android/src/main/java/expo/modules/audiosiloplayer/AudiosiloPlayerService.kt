@@ -347,6 +347,17 @@ class AudiosiloPlayerService : MediaLibraryService() {
    * else the one the snapshot names ([CarSnapshot.resumable]). */
   internal fun resumable(): CarItem? = snapshot()?.resumable(LivePlaceStore.get(this))
 
+  /** The book a resumption plays as a playable browse item, for a browser asking for recent
+   * media and for System UI's resumption card ([CarBrowseTree.recentChildren]); none when
+   * nothing is resumable. Its cover is granted to the card's readers
+   * ([ArtworkProvider.cardReaders]). */
+  internal fun recentItems(asker: String, item: CarItem? = resumable()): List<MediaItem> {
+    val readers = ArtworkProvider.cardReaders(asker, packageName)
+    return CarBrowseTree.recentChildren(ArtworkProvider.authority(this), item) { uri ->
+      readers.forEach { grantArtwork(it, uri) }
+    }
+  }
+
   /** The player's events that keep the [LivePlace]. */
   private inner class LivePlaceListener(private val exo: ExoPlayer) : Player.Listener {
     override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -449,11 +460,11 @@ class AudiosiloPlayerService : MediaLibraryService() {
 
     override fun onRemoteMove() {
       val (fileIndex, position) = currentFilePosition() ?: return
-      PlayerBridge.sink?.remoteMove(fileIndex, position)
+      PlayerBridge.sink?.remoteMove(fileIndex, position, loadedBook())
     }
 
     override fun onRemoteRate(rate: Float) {
-      PlayerBridge.sink?.rateChange(rate.toDouble())
+      PlayerBridge.sink?.rateChange(rate.toDouble(), loadedBook())
     }
 
     override fun requester(): String? = mediaSession?.controllerForCurrentRequest?.let(::describe)
@@ -470,6 +481,10 @@ class AudiosiloPlayerService : MediaLibraryService() {
     val kind = if (c.controllerVersion == MediaSession.ControllerInfo.LEGACY_CONTROLLER_VERSION) "legacy" else "media3"
     return "${c.packageName} $kind$role"
   }
+
+  /** The book the engine plays now, from its own current item (the module's controller can
+   * still show the one before it). */
+  private fun loadedBook(): BookRef? = MediaItems.bookOf(player?.currentMediaItem)
 
   /** Where the player is, in FILE coordinates (from the current item's extras). */
   private fun currentFilePosition(): Pair<Int, Double>? {
@@ -568,6 +583,13 @@ class AudiosiloPlayerService : MediaLibraryService() {
         if (tabChanged(previous, snapshot, tab)) session.notifyChildrenChanged(CarBrowseTree.tabId(tab), tab.items.size, null)
       }
     }
+    // The recent root's one child is the book a resumption plays ([recentItems]): a browser
+    // subscribed to it hears when that is another book, or none, or shows something else.
+    val live = LivePlaceStore.get(this)
+    val recent = snapshot?.resumable(live)
+    if (CarBrowseTree.recentChanged(previous?.resumable(live), recent)) {
+      session.notifyChildrenChanged(CarBrowseTree.RECENT_ROOT, CarBrowseTree.recentCount(recent), null)
+    }
     refreshLayout()
   }
 
@@ -607,7 +629,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
   /** Lets [packageName] open [item]'s cover, when it is one the artwork provider serves (a
    * downloaded book's, [LocalArtwork]). A streamed cover's URI is the app's own, which no grant
    * opens. */
-  internal fun grantItemArtwork(packageName: String, item: MediaItem?) {
+  private fun grantItemArtwork(packageName: String, item: MediaItem?) {
     val uri = item?.mediaMetadata?.artworkUri ?: return
     if (ArtworkProvider.serves(uri.toString(), ArtworkProvider.authority(this))) grantArtwork(packageName, uri)
   }
@@ -931,7 +953,7 @@ class AudiosiloPlayerService : MediaLibraryService() {
    */
   private fun onEngineFailed(exo: ExoPlayer, error: PlaybackException) {
     exo.playWhenReady = false
-    PlayerBridge.sink?.playerFailed()
+    PlayerBridge.sink?.playerFailed(MediaItems.bookOf(exo.currentMediaItem))
     // peek: never a disk read on the main thread (the snapshot is preloaded in onCreate).
     val label = CarSnapshotStore.peek()?.labels?.playbackError?.ifEmpty { null } ?: error.message ?: return
     sendSessionError(SessionError.ERROR_IO, label)

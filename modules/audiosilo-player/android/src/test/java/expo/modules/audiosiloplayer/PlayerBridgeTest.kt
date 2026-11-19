@@ -11,10 +11,10 @@ class PlayerBridgeTest {
   private class Sink(override val observingCar: Boolean) : PlayerEventSink {
     val requests = ArrayList<String>()
     val cancels = ArrayList<Pair<String, Boolean>>()
-    override fun remoteMove(fileIndex: Int, position: Double) = Unit
-    override fun rateChange(rate: Double) = Unit
+    override fun remoteMove(fileIndex: Int, position: Double, book: BookRef?) = Unit
+    override fun rateChange(rate: Double, book: BookRef?) = Unit
     override fun remoteBookmark(fileIndex: Int, position: Double, book: BookRef?, relPath: String?) = Unit
-    override fun playerFailed() = Unit
+    override fun playerFailed(book: BookRef?) = Unit
     override fun carConnection(connected: Boolean) = Unit
     override fun carPlayRequest(id: String) { requests.add(id) }
     override fun carPlayCancel(id: String, replaced: Boolean) { cancels.add(id to replaced) }
