@@ -1,6 +1,6 @@
 import { ApiError, TimeoutError } from '@/api/client';
 import type { PeopleList, Progress, ServerAddresses } from '@/api/types';
-import { priorConnection, serverIdOf } from '@/lib/connection-id';
+import { priorConnection, sameUser, serverIdOf } from '@/lib/connection-id';
 import type { KnownServer } from '@/lib/known-servers';
 import { normalizeUrl, type PairingScan } from '@/lib/pairing';
 import {
@@ -100,6 +100,36 @@ export function repairPlan(input: {
     };
   }
   return { serverUrl: pending, addresses: answer };
+}
+
+/**
+ * Whether a sign-in started by the reconnect banner for `reconnectId` (the in-memory hand-off,
+ * never a link's) still re-pairs that connection, decided once the server answered by WHO
+ * answered and as whom (fe#298), not by the reconnect alone:
+ * - the connection's own server (the same `server_id`): yes, through any of its addresses.
+ *   Whose connection the sign-in then updates is `priorConnection`'s (the person who signed
+ *   in): another person on the same server is a connection of their own, and the
+ *   reconnect's stays as it was.
+ * - another `server_id`: only as that server reset, reached through the connection's paired
+ *   or away address (`scanReconnect`'s rule: never one it only knows as its home address,
+ *   where another box can answer on another network) and signed in to as the same person
+ *   (`sameUser`: the username the connection kept, when both are known). Then the reset
+ *   server's connection takes its place.
+ * Anything else is no reconnect (undefined): a connection of its own, which retires nothing
+ * on the reconnect's account and takes none of its addresses.
+ */
+export function reconnectFor(
+  reconnectId: string | undefined,
+  answer: { serverId: string; username?: string; base: string },
+  connections: readonly RepairConnection[],
+): string | undefined {
+  const target = reconnectId ? connections.find((c) => c.id === reconnectId) : undefined;
+  if (!target) return undefined;
+  if (serverIdOf(target) === answer.serverId) return target.id;
+  const reset =
+    scanReconnect(target.id, answer.base, connections) !== undefined &&
+    sameUser(target.user?.username, answer.username);
+  return reset ? target.id : undefined;
 }
 
 /**
@@ -261,9 +291,7 @@ export function reconnectAddress(
       serverUrl: entry.serverUrl,
       addresses: entry.addresses,
     },
-    // A remembered server is no connection (`id` is its server_id, never a connection id):
-    // its home probe carries what the connect flow's other probes do (`connectProxyHeaders`).
-    (url) => probe(url),
+    probe,
   );
 }
 

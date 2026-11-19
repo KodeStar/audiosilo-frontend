@@ -65,7 +65,7 @@ export type CastBlockReason =
   | 'proxy';
 
 /**
- * Whether `baseUrl` is the origin a connection's proxy headers go to (fe#167): a server
+ * Whether `baseUrl` is the origin proxy headers go to (fe#167, the set kept for it): a server
  * behind an auth proxy there, which a Cast receiver can't pass. Whatever the platform: the
  * web, which sends no headers cross-origin, can't hand the receiver a way past it either.
  */

@@ -6,6 +6,7 @@ import { effectiveUrl, useAddressRoute } from '@/api/address-route';
 import type { User } from '@/api/types';
 import { endConnectFlow, kidsConnectAllowed } from '@/components/profiles/connect-intent';
 import { remember } from '@/lib/known-servers';
+import { forgetProxySets } from '@/lib/proxy-headers-store';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import i18n from '@/i18n';
 import { useSession } from '@/stores/session';
@@ -128,8 +129,10 @@ beforeEach(async () => {
     defaultConnectionId: null,
     pendingServerUrl: null,
     pendingProxyHeaders: null,
+    proxySets: {},
     user: null,
   });
+  await forgetProxySets();
 });
 afterAll(() => {
   Platform.OS = os;
@@ -1123,7 +1126,8 @@ describe('proxy headers for a server behind an auth proxy (fe#167)', () => {
       origin: AWAY,
       headers: [{ name: 'CF-Access-Client-Secret', value: 'proxy-secret' }],
     };
-    expect(useSession.getState().pendingProxyHeaders).toEqual(set);
+    // Bound as the flow moves on, never at each keystroke (fe#295).
+    expect(useSession.getState().pendingProxyHeaders).toBeNull();
     await fireEvent.press(screen.getByText('Continue'));
     expect(await screen.findByText('Found Hearthside')).toBeTruthy();
     expect(mockBases).toEqual([AWAY, 'http://books.example.com']);
@@ -1143,7 +1147,8 @@ describe('proxy headers for a server behind an auth proxy (fe#167)', () => {
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     expect(mockBases).toEqual([AWAY]);
     expect(mockProxies).toEqual([set]);
-    expect(conn().proxyHeaders).toEqual(set);
+    // Kept as the address's set, not as the connection's (fe#295).
+    expect(useSession.getState().proxySets).toEqual({ [AWAY]: set });
   });
 
   it('pairs a code for another server without them', async () => {
@@ -1156,7 +1161,7 @@ describe('proxy headers for a server behind an auth proxy (fe#167)', () => {
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     expect(mockBases).toEqual(['https://other.example.com']);
     expect(mockProxies).toEqual([null]);
-    expect(conn().proxyHeaders).toBeUndefined();
+    expect(useSession.getState().proxySets).toEqual({});
   });
 
   it('takes up the headers the flow holds when the scanner hands a code back (a new screen)', async () => {
@@ -1169,20 +1174,26 @@ describe('proxy headers for a server behind an auth proxy (fe#167)', () => {
     expect(useSession.getState().pendingProxyHeaders).toEqual(set);
   });
 
-  it('never shows a value, says what is wrong with a row, and drops them when closed', async () => {
+  it('never shows a value, says what is wrong with a row, and keeps them when closed', async () => {
+    mockApi.serverInfo.mockResolvedValue(info());
     await render(<ConnectStart />);
     await fireEvent.changeText(screen.getByLabelText('Server address'), AWAY);
     await enterHeader('Authorization', 'proxy-secret');
     expect(screen.getByTestId('proxy-headers-editor-value').props.secureTextEntry).toBe(true);
     expect(screen.queryByText('proxy-secret')).toBeNull();
     expect(screen.getByText('The app sends Authorization itself.')).toBeTruthy();
-    expect(useSession.getState().pendingProxyHeaders).toBeNull();
     await fireEvent.changeText(screen.getByTestId('proxy-headers-editor-name'), 'X-Auth');
+    expect(screen.queryByTestId('proxy-headers-held')).toBeNull();
+    // Closed, not dropped (fe#295): it says what is held, and the flow still sends it.
+    await fireEvent.press(screen.getByTestId('proxy-headers-toggle'));
+    expect(screen.getByTestId('proxy-headers-held')).toBeTruthy();
+    expect(screen.queryByText('proxy-secret')).toBeNull();
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(await screen.findByText('Found Hearthside')).toBeTruthy();
     expect(useSession.getState().pendingProxyHeaders?.headers).toEqual([
       { name: 'X-Auth', value: 'proxy-secret' },
     ]);
-    await fireEvent.press(screen.getByTestId('proxy-headers-toggle'));
-    expect(useSession.getState().pendingProxyHeaders).toBeNull();
+    expect(mockProxies).toEqual([useSession.getState().pendingProxyHeaders]);
   });
 
   it('a demo again with no set of its own keeps the set the demo session got in on', async () => {
@@ -1202,17 +1213,43 @@ describe('proxy headers for a server behind an auth proxy (fe#167)', () => {
     const demo = () => useSession.getState().connections.find((c) => c.id === 'srv-demo.1');
     // Not the first connection: the flow leaves onboarding (no `replace`), with no error.
     await waitFor(() => expect(demo()?.token).toBe('demo'));
-    expect(demo()?.proxyHeaders).toEqual(set);
+    expect(useSession.getState().proxySets).toEqual({ [AWAY]: set });
     expect(screen.queryByText(/Could not (start|reach) the demo/)).toBeNull();
   });
 
   it('follows the address: headers entered before it are for the address typed', async () => {
+    mockApi.serverInfo.mockResolvedValue(info());
     await render(<ConnectStart />);
     await enterHeader('X-Auth', 'v');
     expect(screen.getByText(/Enter the server's https address first/)).toBeTruthy();
-    expect(useSession.getState().pendingProxyHeaders).toBeNull();
     await fireEvent.changeText(screen.getByLabelText('Server address'), 'other.example.com');
+    expect(screen.queryByText(/Enter the server's https address first/)).toBeNull();
+    expect(useSession.getState().pendingProxyHeaders).toBeNull();
+    await fireEvent.press(screen.getByText('Continue'));
     expect(useSession.getState().pendingProxyHeaders?.origin).toBe('https://other.example.com');
+  });
+
+  // fe#295: a reconnect with headers typed but no address binds them to the server's paired
+  // address, never to the home address its probe may pick.
+  it("binds headers typed with no address to the reconnect's paired address", async () => {
+    await remember({
+      serverId: 'srv-1',
+      serverUrl: AWAY,
+      name: 'Hearthside',
+      addresses: { home: HOME, away: AWAY },
+    });
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await enterHeader('X-Auth', 'v');
+    await fireEvent.press(await screen.findByLabelText('Reconnect to Hearthside'));
+    await waitFor(() => expect(mockPush).toHaveBeenCalled());
+    expect(useSession.getState().pendingProxyHeaders).toEqual({
+      origin: AWAY,
+      headers: [{ name: 'X-Auth', value: 'v' }],
+    });
+    // The home address answered: asked without them.
+    expect(mockBases[0]).toBe(HOME);
+    expect(mockProxies[0]).toBeNull();
   });
 });
 
@@ -1522,17 +1559,16 @@ describe("a single sign-on's return (?oidc=1)", () => {
       });
     });
 
-    it("finishes with the connection's own proxy headers, never another person's", async () => {
-      const set = { origin: HOME, headers: [{ name: 'X-Auth', value: 'sams-secret' }] };
-      useSession.setState({ connections: [mine, { ...theirs, proxyHeaders: set }] as never });
+    it("finishes at the home address without another address's proxy headers", async () => {
+      const set = { origin: AWAY, headers: [{ name: 'X-Auth', value: 'sams-secret' }] };
+      useSession.setState({ proxySets: { [AWAY]: set } });
       resume(HOME);
       await render(<ConnectStart />);
       await waitFor(() => expect(ids()).toContain('srv-2.1'));
-      // The finish's client, the first one built: the dead connection has no set.
+      // The finish's client, the first one built: no set is kept for the home address.
       expect(mockProxies[0]).toBeNull();
-      expect(
-        useSession.getState().connections.find((c) => c.id === 'srv-2.1')?.proxyHeaders,
-      ).toBeFalsy();
+      // The set stays its own address's (fe#295).
+      expect(useSession.getState().proxySets).toEqual({ [AWAY]: set });
     });
 
     it.each([

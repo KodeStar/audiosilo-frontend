@@ -444,24 +444,21 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     expect(a.useSession.getState().connections.map((c) => c.id)).toEqual([sam]);
   });
 
-  // A set edited in place leaves the stored list as it was (its marker stays): only the
-  // headers' own write tells this tab.
+  // A set edited in place leaves the stored list as it was: only the sets' own write tells
+  // this tab (fe#295: one item for every origin's set).
   it("another tab's edited proxy headers are the ones this tab sends", async () => {
-    const { a, b, alex } = await twoTabs();
-    const set = (value: string) => ({
-      origin: 'https://proxy.example',
-      headers: [{ name: 'X-Proxy-Auth', value }],
-    });
-    await b.useSession.getState().setProxyHeaders(alex, set('one'));
+    const { a, b } = await twoTabs();
+    const ORIGIN = 'https://proxy.example';
+    const set = (value: string) => ({ origin: ORIGIN, headers: [{ name: 'X-Proxy-Auth', value }] });
+    await b.useSession.getState().setProxySet(ORIGIN, set('one'));
     await settle();
-    expect(a.useSession.getState().connections.find((c) => c.id === alex)?.proxyHeaders).toEqual(
-      set('one'),
-    );
-    await b.useSession.getState().setProxyHeaders(alex, set('two'));
+    expect(a.useSession.getState().proxySets[ORIGIN]).toEqual(set('one'));
+    await b.useSession.getState().setProxySet(ORIGIN, set('two'));
     await settle();
-    expect(a.useSession.getState().connections.find((c) => c.id === alex)?.proxyHeaders).toEqual(
-      set('two'),
-    );
+    expect(a.useSession.getState().proxySets[ORIGIN]).toEqual(set('two'));
+    await b.useSession.getState().setProxySet(ORIGIN, null);
+    await settle();
+    expect(a.useSession.getState().proxySets).toEqual({});
   });
 
   // Each tab builds the first document from the same list at once: the second to write finds

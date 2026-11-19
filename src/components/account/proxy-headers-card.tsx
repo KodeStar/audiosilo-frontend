@@ -23,15 +23,18 @@ import { useSession } from '@/stores/session';
 
 /**
  * "Proxy headers" (fe#167): custom headers for an auth proxy in front of this server
- * (Cloudflare Access, Authentik, Authelia and the like), sent to one of its addresses only.
- * Shown whatever the server's flags: it is needed most when the proxy turns every request
- * away. Values are never shown, not even while editing (a stored value's field says
- * "Kept as it is"). Saving rebuilds the connection's clients, and what failed is read again.
+ * (Cloudflare Access, Authentik, Authelia and the like), sent with requests to one of its
+ * https addresses. The set is that address's, shared by everyone on this device who signs in
+ * there (fe#295), and stays until it is changed or removed here, whoever signs out. Shown
+ * whatever the server's flags: it is needed most when the proxy turns every request away.
+ * Values are never shown, not even while editing (a stored value's field says "Kept as it
+ * is"). Saving rebuilds the clients on that address, and what failed is read again.
  */
 export function ProxyHeadersCard({ connectionId }: { connectionId: string }) {
   const { t } = useTranslation();
   const conn = useSession((s) => s.connections.find((c) => c.id === connectionId));
-  const setProxyHeaders = useSession((s) => s.setProxyHeaders);
+  const sets = useSession((s) => s.proxySets);
+  const setProxySet = useSession((s) => s.setProxySet);
   const [rows, setRows] = useState<HeaderDraftRow[] | null>(null);
   const [origin, setOrigin] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
@@ -40,8 +43,12 @@ export function ProxyHeadersCard({ connectionId }: { connectionId: string }) {
   const [confirmRemove, setConfirmRemove] = useState(false);
   if (!conn) return null;
 
-  const set = conn.proxyHeaders;
-  const choices = proxyOriginChoices(conn);
+  // The set kept for the first of the connection's addresses that has one.
+  const set =
+    proxyOriginChoices(conn)
+      .map((o) => sets[o])
+      .find((s) => !!s) ?? null;
+  const choices = proxyOriginChoices(conn, set?.origin);
   const editing = rows !== null;
   const target = origin ?? choices[0] ?? null;
 
@@ -63,7 +70,9 @@ export function ProxyHeadersCard({ connectionId }: { connectionId: string }) {
     setSaving(true);
     setError(null);
     try {
-      await setProxyHeaders(connectionId, draftToSet(target, rows));
+      if (!target) return;
+      // Sent to another address now: the set moves there.
+      await setProxySet(target, draftToSet(target, rows), set?.origin);
       stopEdit();
     } catch {
       setError(t('proxyHeaders.saveFailed'));
@@ -74,7 +83,7 @@ export function ProxyHeadersCard({ connectionId }: { connectionId: string }) {
   const remove = async () => {
     setConfirmRemove(false);
     try {
-      await setProxyHeaders(connectionId, null);
+      if (set) await setProxySet(set.origin, null);
     } catch {
       setError(t('proxyHeaders.saveFailed'));
     }
@@ -123,7 +132,7 @@ export function ProxyHeadersCard({ connectionId }: { connectionId: string }) {
       ) : set ? (
         <View className="gap-3">
           <View className="overflow-hidden rounded-card border border-border">
-            {set.headers.map((h, i) => (
+            {set.headers.map((h, i: number) => (
               <View
                 key={h.name}
                 accessible
@@ -142,6 +151,9 @@ export function ProxyHeadersCard({ connectionId }: { connectionId: string }) {
               </View>
             ))}
           </View>
+          <Text variant="caption" testID="proxy-headers-shared">
+            {t('proxyHeaders.shared')}
+          </Text>
           <View className="flex-row flex-wrap gap-2">
             <Button
               variant="outline"

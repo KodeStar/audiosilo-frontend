@@ -208,30 +208,26 @@ describe('buildClients', () => {
     expect(repaired.get('c2')!.client).not.toBe(switched.get('c2')!.client);
   });
 
-  it('rebuilds a client whose proxy headers changed (fe#167), and keeps it for an equal set', () => {
+  it('rebuilds the clients on an address whose proxy headers changed (fe#295), and keeps them for an equal set', () => {
     const set = { origin: 'https://m', headers: [{ name: 'X-Proxy', value: 'one' }] };
-    const first = buildClients(conns, {}, new Map());
+    const first = buildClients(conns, {}, new Map(), {});
     expect(first.get('c2')!.client.authHeaders()).toEqual({ Authorization: 'Bearer t' });
-    const added = buildClients(
-      [conns[0], { ...(conns[1] as object), proxyHeaders: set }] as never[],
-      {},
-      first,
-    );
+    const added = buildClients(conns, {}, first, { 'https://m': set });
     expect(added.get('c2')!.client).not.toBe(first.get('c2')!.client);
     expect(added.get('c2')!.client.authHeaders()).toEqual({
       'X-Proxy': 'one',
       Authorization: 'Bearer t',
     });
     expect(added.get('c1')!.client).toBe(first.get('c1')!.client);
-    const same = buildClients(
-      [
-        conns[0],
-        { ...(conns[1] as object), proxyHeaders: { ...set, headers: [...set.headers] } },
-      ] as never[],
-      {},
-      added,
-    );
+    const same = buildClients(conns, {}, added, {
+      'https://m': { ...set, headers: [...set.headers] },
+    });
     expect(same.get('c2')!.client).toBe(added.get('c2')!.client);
+    // Denied: a client on another address (c1's home) gets none of that set.
+    const home = buildClients(conns, { c1: 'http://192.168.1.20:8080' }, same, {
+      'https://m': set,
+    });
+    expect(home.get('c1')!.client.authHeaders()).toEqual({ Authorization: 'Bearer t' });
   });
 
   // FU-SLOWOK: every answer a connection's client gets counts for its reachability.

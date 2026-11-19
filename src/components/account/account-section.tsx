@@ -20,6 +20,7 @@ import { addressKind, mergeAddresses } from '@/lib/server-address';
 import { serverDisplayName } from '@/lib/server-display-name';
 import { APP_VERSION } from '@/lib/version';
 import { useProfileConnections } from '@/stores/profiles';
+import { hasProxySet } from '@/lib/proxy-headers';
 import { useSession } from '@/stores/session';
 import { watchLink } from '@/watch/link';
 
@@ -129,6 +130,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   // reader, bring it back once the request failed, and ask again, twice a second for good.
   const capsUnread = !caps && (serverInfo.isPaused || serverInfo.errorUpdateCount > 0);
   const demo = !!user?.is_demo;
+  const hasDemoSet = useSession((st) => !!connection && hasProxySet(st.proxySets, connection));
   // A kid's account (8b-1) can't pair a device or have API keys (the server refuses both).
   const kid = isKidAccount(user);
 
@@ -197,10 +199,10 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
       <AccountAddresses cid={cid} caps={caps} capsUnread={capsUnread} />
 
       {/* Not gated on the server's flags: needed most when a proxy turns every request
-          away (fe#167). A demo account has no use for it, unless its sign-in came through
-          a proxy (the connect screen's headers are kept with it): then they can be seen
-          and removed here like anyone's. */}
-      {!demo || connection?.proxyHeaders ? <ProxyHeadersCard connectionId={cid} /> : null}
+          away (fe#167). A demo account has no use for it, unless its server's address has a
+          set (a demo started behind a proxy): then it can be seen and removed here like
+          anyone's. */}
+      {!demo || hasDemoSet ? <ProxyHeadersCard connectionId={cid} /> : null}
 
       {caps?.my_devices === true || capsUnread ? (
         <DevicesSection connectionId={cid} serverName={serverName} />

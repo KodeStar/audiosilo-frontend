@@ -31,7 +31,7 @@ import {
   type PairingScan,
 } from '@/lib/pairing';
 import { connectBookParams, firstParam, idParam, parseConnectBook } from '@/lib/paths';
-import { originOf, proxyOriginOf } from '@/lib/proxy-headers';
+import { originOf, proxyOriginOf, sameProxyHeaders } from '@/lib/proxy-headers';
 import { useRouteParams } from '@/lib/route-params';
 import { sameOrigin } from '@/lib/same-origin';
 import { openExternalUrl } from '@/lib/support';
@@ -204,19 +204,36 @@ export function ConnectStart() {
       if (token) takeScanReconnect(token);
     },
   );
-  // Custom headers for an auth proxy in front of the server (fe#167), for the address in
-  // the field: held by the session for the connect flow's clients (`connectProxyHeaders`)
-  // while the section is open, and kept with the connection the sign-in makes. The flow's
-  // layout drops them when the flow is left. Values already held come back hidden.
+  // Custom headers for an auth proxy in front of the server (fe#167), for the address the
+  // listener typed: handed to the session for the connect flow's clients
+  // (`connectProxyHeaders`) as the flow moves on (`holdTyped`: Continue, a remembered server,
+  // a link, the scanner, sign-in, the demo), never at each keystroke, and kept as that
+  // address's set once a sign-in gets in with them. Closing the section only hides them (it
+  // says how many are held). The flow's layout drops them when the flow is left. Values
+  // already held come back hidden.
   const [proxyOpen, setProxyOpen] = useState(() => !!heldProxy);
   const [proxyRows, setProxyRows] = useState<HeaderDraftRow[]>(() => draftOf(heldProxy));
   const setPendingProxyHeaders = useSession((s) => s.setPendingProxyHeaders);
   // Only an https address takes them (never sent over plain http); an http one says so.
   const typedOrigin = originOf(normalizeUrl(typedUrl));
   const proxyOrigin = typedOrigin ? proxyOriginOf(typedOrigin) : null;
-  useEffect(() => {
-    setPendingProxyHeaders(proxyOpen ? draftToSet(proxyOrigin, proxyRows) : null);
-  }, [proxyOpen, proxyOrigin, proxyRows, setPendingProxyHeaders]);
+  const typedSet = setFor(typedUrl, proxyRows);
+  // `address`: the one the headers are for when this very handler set it (the state is not
+  // read again until the next render). A handler that goes on after an await holds them
+  // before it, never after: its render's rows and address are stale by then.
+  const holdTyped = (address?: string) => {
+    const typed = address === undefined ? typedSet : setFor(address, proxyRows);
+    if (!sameProxyHeaders(useSession.getState().pendingProxyHeaders, typed)) {
+      setPendingProxyHeaders(typed);
+    }
+  };
+  // An address the flow fills in by itself (a link that failed, a remembered server) is the
+  // headers' address too, when the listener typed none: never over one they typed, so a set
+  // is never moved to an address it was not entered for.
+  const fillAddress = (address: string) => {
+    setUrl((u) => u || address);
+    setTypedUrl((u) => u || address);
+  };
   // `pair` also resolves once the screen has gone: nothing after it may then touch
   // the route now on top (its params) or the session (a probe's pending address).
   const mounted = useRef(true);
@@ -233,6 +250,7 @@ export function ConnectStart() {
   // field it otherwise skips (CONNECT-14). A link that may work in a moment (the server
   // busy, failing or not answering) keeps its token for a reload, and offers Try again.
   const pairLink = async (scan: PairingScan) => {
+    holdTyped();
     setRetryLink(null);
     // A single sign-on's Try again is about that sign-in, not this link.
     setOidcRetry(null);
@@ -247,7 +265,7 @@ export function ConnectStart() {
     if (outcome === 'paired' || !mounted.current) return;
     if (outcome === 'temporary') {
       setRetryLink(scan);
-      setUrl((u) => u || scan.base);
+      fillAddress(scan.base);
       return;
     }
     router.setParams({ token: undefined });
@@ -255,7 +273,7 @@ export function ConnectStart() {
     // A pasted link (or Try again) on the card already found: the card stays as it is.
     if (origin && served === 'found') return;
     if (origin) showServedCard(origin);
-    else setUrl((u) => u || scan.base);
+    else fillAddress(scan.base);
   };
 
   // A pairing link's token: exchange it once (a language switch must not run it again).
@@ -496,6 +514,11 @@ export function ConnectStart() {
   // whichever address answered as its own.
   const onReconnect = async (entry: KnownServer) => {
     moveOn();
+    // Headers typed with no address are for this server's (its paired one, never the home
+    // address the probe may choose); a set kept for that address needs no typing (fe#295).
+    const headersFor = typedUrl || entry.serverUrl;
+    setTypedUrl(headersFor);
+    holdTyped(headersFor);
     setBusy(entry.serverId);
     const target = await reconnectAddress(entry, probeServerId, Platform.OS === 'web');
     setUrl(target);
@@ -505,6 +528,7 @@ export function ConnectStart() {
   // Continue with the typed address.
   const onContinue = () => {
     moveOn();
+    holdTyped();
     void connect(url, 'manual');
   };
 
@@ -517,6 +541,7 @@ export function ConnectStart() {
     setOidcRetry(null);
     setDemoError(null);
     setDemoLoading(true);
+    holdTyped();
     try {
       const { client, proxy: carried } = connectClientFor(base);
       const demo = await client.demoSession(getDeviceName());
@@ -561,6 +586,7 @@ export function ConnectStart() {
     else if (invite) {
       // On to the sign-in step, as `goSignIn`: Back finds no stale reason or Try again.
       moveOn();
+      holdTyped();
       beginInviteSignIn(invite, () => router.push('/connect/sign-in'));
     }
   };
@@ -665,8 +691,12 @@ export function ConnectStart() {
           variant={probe?.kind === 'found' ? 'secondary' : 'default'}
           icon="qrcode"
           title={t('connect.server.scanQr')}
-          // No reconnect from here: it also drops one an earlier scanner never took.
-          onPress={() => openScanner()}
+          // No reconnect from here: it also drops one an earlier scanner never took. The
+          // screen the scanner hands its code to takes the headers up (`heldProxy`).
+          onPress={() => {
+            holdTyped();
+            openScanner();
+          }}
           testID="connect-scan"
         />
       )}
@@ -722,7 +752,11 @@ export function ConnectStart() {
           <ConnectReveal testID="probe-reveal">
             <ProbeNotice
               probe={probe}
-              onSignIn={() => probe.kind === 'found' && goSignIn(probe.name)}
+              onSignIn={() => {
+                if (probe.kind !== 'found') return;
+                holdTyped();
+                goSignIn(probe.name);
+              }}
               onDemo={() => probe.kind === 'found' && onTryDemo(probe.base, probe.name)}
               demoLoading={demoLoading}
             />
@@ -755,6 +789,12 @@ export function ConnectStart() {
           />
         )}
       </View>
+      {!proxyOpen && !isServed && typedSet ? (
+        // Closed, not dropped: what is held still goes with the flow's requests.
+        <Text variant="caption" testID="proxy-headers-held">
+          {t('proxyHeaders.held', { count: typedSet.headers.length, origin: typedSet.origin })}
+        </Text>
+      ) : null}
       {proxyOpen && !isServed ? (
         <View className="gap-3" testID="proxy-headers-section">
           <Text variant="caption">
@@ -840,6 +880,13 @@ export function ConnectStart() {
       ) : null}
     </ConnectFrame>
   );
+}
+
+/** The set the editor's rows make for the address `typed` as the listener entered it (none
+ * unless it is an https one). */
+function setFor(typed: string, rows: readonly HeaderDraftRow[]) {
+  const origin = originOf(normalizeUrl(typed));
+  return draftToSet(origin ? proxyOriginOf(origin) : null, rows);
 }
 
 /** A link for the AudioSilo app (`audiosilo://`), which a browser can't open. */

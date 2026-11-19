@@ -1,4 +1,5 @@
 import { resolveConnectionId } from '@/lib/connection-id';
+import { type ProxyHeaders, proxySetFor } from '@/lib/proxy-headers';
 import { type Connection, sessionHydrateFailed, useSession } from '@/stores/session';
 
 import { effectiveUrl } from './address-route';
@@ -29,19 +30,23 @@ export function resolveClient(connectionId: string): ApiClient | null {
  * A connection's client on `url` (the address it uses now, never straight from `serverUrl`),
  * the one way one is built: `resolveClient` for the framework-free modules (the progress-sync
  * save loop, the car, the downloads) and the provider's `buildClients` for every screen. It
- * carries the token and the proxy headers (fe#167), and injects the dead-token callback, so a
- * 401 on ANY request through it (query or mutation, on screen or in the save loop) flags the
- * connection for reconnect: the client is the one choke point every request path shares. Every
+ * carries the token and the proxy headers kept for `url`'s origin (fe#167, `proxySetFor`), and
+ * injects the dead-token callback, so a 401 on ANY request through it (query or mutation, on
+ * screen or in the save loop) flags the connection for reconnect: the client is the one choke point every request path shares. Every
  * answer it gets counts for reachability (`noteAnswer`, FU-SLOWOK), by the address it came from.
  */
-export function connectionClient(conn: Connection, url: string): ApiClient {
+export function connectionClient(
+  conn: Connection,
+  url: string,
+  proxy: ProxyHeaders | null = proxySetFor(useSession.getState().proxySets, url),
+): ApiClient {
   return new ApiClient(
     url,
     conn.token,
     undefined,
     () => useSession.getState().markNeedsReconnect(conn.id, 'auth'),
     (at) => noteAnswer(conn.id, at),
-    conn.proxyHeaders,
+    proxy,
   );
 }
 

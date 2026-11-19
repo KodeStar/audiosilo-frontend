@@ -23,8 +23,12 @@ import { sameOrigin } from '@/lib/same-origin';
 /** One header, as the listener typed it (name trimmed). */
 export type ProxyHeader = { name: string; value: string };
 
-/** A connection's headers and the origin they go to. */
+/** A set of headers and the origin they go to. */
 export type ProxyHeaders = { origin: string; headers: readonly ProxyHeader[] };
+
+/** Every origin's set, by origin: one set per https origin on the device (fe#295,
+ * `proxy-headers-store.ts`). */
+export type ProxySets = Readonly<Record<string, ProxyHeaders>>;
 
 /** How many headers a connection may carry: a proxy needs one or two. */
 export const MAX_PROXY_HEADERS = 8;
@@ -146,6 +150,24 @@ export function proxyHeaderRecord(
     return {};
   }
   return Object.fromEntries(set.headers.map((h) => [h.name, h.value]));
+}
+
+/** The set kept for `url`'s origin in `sets` (null: none, or `url` is not an https URL). A
+ * signed-in connection's client on that address sends it (`connectionClient`). */
+export function proxySetFor(sets: ProxySets | null | undefined, url: string): ProxyHeaders | null {
+  const origin = proxyOriginOf(url);
+  return (origin && sets?.[origin]) || null;
+}
+
+/** Whether any address of `conn` (the one it was paired with, its away and home ones) has a
+ * set kept for it in `sets`. */
+export function hasProxySet(
+  sets: ProxySets | null | undefined,
+  conn: { serverUrl: string; addresses?: { home?: string; away?: string } },
+): boolean {
+  return [conn.serverUrl, conn.addresses?.away, conn.addresses?.home].some(
+    (u) => !!u && !!proxySetFor(sets, u),
+  );
 }
 
 /** What the screen shows in place of a value: the same dots for every one, so what is drawn

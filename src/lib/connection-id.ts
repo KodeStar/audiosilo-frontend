@@ -94,7 +94,7 @@ export function priorConnection<
 
 /** Whether a connection saved without a user id, under `kept` (its username, if any), may be
  * `username`'s: always when either is unknown, else only under the same name. */
-function sameUser(kept: unknown, username: string | undefined): boolean {
+export function sameUser(kept: unknown, username: string | undefined): boolean {
   return typeof kept !== 'string' || !kept || username === undefined || kept === username;
 }
 
