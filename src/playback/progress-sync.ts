@@ -257,6 +257,57 @@ export type InitialPlace = ResumeLookup & {
   late?: Promise<LatePlace | null>;
 };
 
+/** Place reads a start began early (`readPlaceEarly`), by book: the read, when it began and
+ * the address it went to. */
+const earlyReads = new Map<
+  string,
+  { read: Promise<Progress | null>; at: number; baseUrl: string }
+>();
+/** How long an early read stays the start's to take (`loadInitialProgress`). */
+export const EARLY_READ_MS = 15_000;
+
+/**
+ * Begin a book's place read now, for the `loadInitialProgress` that follows (a downloaded
+ * book's start asks its server for its item and chapters first, `startSourceOf`: the place is
+ * read beside that, so a slow server holds the start for one wait, not one wait after the
+ * other). That lookup takes it, counting its wait from when the read began; one not taken
+ * within `EARLY_READ_MS` is dropped.
+ */
+export function readPlaceEarly(
+  api: ApiClient,
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): void {
+  const now = Date.now();
+  for (const [key, early] of earlyReads) {
+    if (now - early.at > EARLY_READ_MS) earlyReads.delete(key);
+  }
+  const read = api.getProgress(libraryId, path);
+  // Never taken (the start was called off), it must not reject unhandled.
+  read.catch(() => undefined);
+  earlyReads.set(contentKey(connectionId, libraryId, path), {
+    read,
+    at: now,
+    baseUrl: api.baseUrl,
+  });
+}
+
+/** The early read of a book (`readPlaceEarly`) made to `api`'s address and still fresh,
+ * taken (a second lookup reads afresh), with how long ago it began; else null. */
+function takeEarlyRead(
+  api: ApiClient,
+  key: string,
+): { read: Promise<Progress | null>; ageMs: number } | null {
+  const early = earlyReads.get(key);
+  if (!early) return null;
+  earlyReads.delete(key);
+  const ageMs = Date.now() - early.at;
+  return early.baseUrl === api.baseUrl && ageMs <= EARLY_READ_MS
+    ? { read: early.read, ageMs }
+    : null;
+}
+
 /**
  * Where a book resumes: its server's row (written into the mirror) weighed against this
  * device's own records (`resumeLookupOf`). `waitMs` bounds the wait for the server (a
@@ -267,7 +318,7 @@ export type InitialPlace = ResumeLookup & {
  * again (`noteSuccess`, when the connection still uses the address that answered) and its
  * row goes into the mirror; it may hold another device's newer place, which the player then
  * moves to or offers as the place reconcile does (`onLatePlace`). A late read that fails
- * asks for no second check.
+ * asks for no second check. A read the start began early is taken (`readPlaceEarly`).
  */
 export async function loadInitialProgress(
   api: ApiClient | null,
@@ -290,10 +341,13 @@ export async function loadInitialProgress(
   // failed to hydrate). There's no server to ask, so skip the fetch and resume from the
   // durable mirror / offline queue below - exactly the unreachable-server path.
   if (api) {
-    // null = HTTP 200, no record (new book).
-    const read = api.getProgress(libraryId, path);
+    // null = HTTP 200, no record (new book). A read the start began early is taken, and the
+    // wait counts from when it began (`readPlaceEarly`).
+    const early = takeEarlyRead(api, contentKey(connectionId, libraryId, path));
+    const read = early?.read ?? api.getProgress(libraryId, path);
+    const wait = waitMs === undefined ? undefined : Math.max(0, waitMs - (early?.ageMs ?? 0));
     // Past the wait: the server is checked as for a read that timed out, and the read goes on.
-    const outOfTime = waitMs === undefined ? null : new TimeoutError(waitMs);
+    const outOfTime = wait === undefined ? null : new TimeoutError(wait);
     try {
       server = outOfTime ? await withTimeout(read, outOfTime.timeoutMs, outOfTime) : await read;
       serverOk = true;

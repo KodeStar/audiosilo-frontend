@@ -6,6 +6,7 @@ import { downloadedEntryOf } from '@/downloads/store';
 import { contentKeyOf } from '@/lib/content-key';
 import { isDeviceOnline } from '@/lib/device-online';
 import { type BookSource, bookSourceOf, fetchBookSource } from '@/playback/book-source';
+import { readPlaceEarly } from '@/playback/progress-sync';
 import {
   cancelEpisodeFetchOf,
   cancelEpisodeFetchUnless,
@@ -36,9 +37,16 @@ export type StartOptions = {
 };
 
 /** How long a downloaded book waits for its server's item and chapters before it starts
- * from its download's copy (under a car's 10 s wait for a start, with room for the resume
- * lookup). */
+ * from its download's copy (under a car's 10 s wait for a start). Its place is read in the
+ * same wait (`readPlaceEarly`), so a frozen server holds the start this long, once. */
 export const FRESH_SOURCE_WAIT_MS = 3_000;
+
+/** The client a downloaded book's start asks, when there is one to ask: its connection's,
+ * with the device online and the server not marked unreachable. Null for a streamed book. */
+function downloadedClient(target: PlayTarget) {
+  const client = downloadedEntryOf(target) ? resolveClient(target.connectionId) : null;
+  return client && isDeviceOnline() && isReachable(target.connectionId) ? client : null;
+}
 
 /**
  * Where a book starts from. A downloaded one still asks its server first, as a streamed one
@@ -52,8 +60,8 @@ export const FRESH_SOURCE_WAIT_MS = 3_000;
  * or null when its connection is gone).
  */
 async function startSourceOf(target: PlayTarget): Promise<BookSource | null> {
-  const client = downloadedEntryOf(target) ? resolveClient(target.connectionId) : null;
-  if (client && isDeviceOnline() && isReachable(target.connectionId)) {
+  const client = downloadedClient(target);
+  if (client) {
     try {
       return await withTimeout(
         fetchBookSource(target, client),
@@ -179,6 +187,14 @@ async function playsOnLoaded(target: PlayTarget, book: Book, opts: StartOptions)
 
 async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): Promise<boolean> {
   if (!mayActFor(target.connectionId)) return false;
+  // A downloaded book from its saved place: its place is read beside its item and chapters,
+  // so the store's resume lookup waits only for what is left of this wait, not a second one
+  // after it (a frozen server held a car's start about 6 s, two waits of 3 s).
+  const asked = downloadedClient(target);
+  const saved = downloadedEntryOf(target)?.manifest.book;
+  if (asked && saved && opts.position === undefined && opts.track === undefined) {
+    readPlaceEarly(asked, target.connectionId, target.libraryId, saved.rel_path);
+  }
   const source = await startSourceOf(target);
   if (!source) return false;
   if (how.wanted && !how.wanted()) return false;

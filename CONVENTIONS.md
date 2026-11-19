@@ -3078,7 +3078,10 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   the download's copy at once (a Play offline spun for the whole wait). Its resume lookup
   follows the same rule (`DOWNLOADED_PLACE_WAIT_MS`, `loadInitialProgress`'s `waitMs`): no
   server asked when there is none to ask, else 3 s at most, then this device's records with
-  its saves guarded. A frozen server otherwise held a car's start for the whole request
+  its saves guarded. The place is read beside the item and chapters (`readPlaceEarly`, from
+  the saved place only) and the lookup takes that read, its wait counted from when it began,
+  so a frozen server holds the start for one wait, not one after the other (about 6 s in a
+  car run, FE-ANDROID-3). A frozen server otherwise held a car's start for the whole request
   timeout, past the car's 10 s wait. The read goes on (`InitialPlace.late`): a server that
   answers after the wait gets the place reconcile's rule once the book is loaded
   (`onLatePlace`, `applyLatePlace`: moved to another device's newer place with Undo, or offered

@@ -574,8 +574,9 @@ function lastPlayRequestFor(ref: ContentRef): PlayRequest | null {
 const MIN_HISTORY_MS = 20_000; // ignore listening spans shorter than this
 const STALL_GRACE_MS = 3_000; // a 'loading' that outlasts this is treated as a dead stream
 /** How long a downloaded book waits for its server's place before it starts from this
- * device's records (`loadInitialProgress`): with the wait for its item and chapters
- * (`FRESH_SOURCE_WAIT_MS`, 3 s) well inside a car's 10 s wait for a start. */
+ * device's records (`loadInitialProgress`), well inside a car's 10 s wait for a start. A start
+ * from the saved place reads it beside its item and chapters (`readPlaceEarly`), so this wait
+ * and theirs (`FRESH_SOURCE_WAIT_MS`, 3 s) run together. */
 export const DOWNLOADED_PLACE_WAIT_MS = 3_000;
 
 // The periodic save's two paces (`saveIntervalMs`, perf P4). The server derives listening

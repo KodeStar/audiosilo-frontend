@@ -30,6 +30,13 @@ jest.mock('@/playback/store', () => ({
   selectIsTransportLive: () => mockEngineState === 'playing',
 }));
 
+// The place read a downloaded book's start begins beside its item and chapters.
+const mockReadEarly = jest.fn();
+jest.mock('@/playback/progress-sync', () => ({
+  ...jest.requireActual('@/playback/progress-sync'),
+  readPlaceEarly: (...a: unknown[]) => mockReadEarly(...a),
+}));
+
 const mockDrop = jest.fn();
 jest.mock('./drop-started', () => ({ dropStartedBook: (...a: unknown[]) => mockDrop(...a) }));
 const mockRequestFetch = jest.fn();
@@ -96,6 +103,7 @@ beforeEach(() => {
   mockLoadedKey = null;
   mockEngineState = 'playing';
   mockDrop.mockReset().mockResolvedValue(undefined);
+  mockReadEarly.mockReset();
   mockRequestFetch.mockReset();
   mockCancelUnless.mockReset();
   mockCancelOf.mockReset();
@@ -319,6 +327,42 @@ describe('startBookInPlace', () => {
       );
     } finally {
       jest.useRealTimers();
+    }
+  });
+
+  // FE-ANDROID-3: on a frozen server a car's start of a downloaded book waited for its item
+  // and chapters, then for its place: two waits of 3 s. The place is read beside them.
+  it("reads a downloaded book's place beside its item and chapters, in the one wait", async () => {
+    useDownloads.setState({ entries: { [`c1:2:${target.path}`]: downloadedEntry() } });
+    mockItem.mockImplementationOnce(() => new Promise(() => {}));
+    jest.useFakeTimers();
+    try {
+      const starting = startBookInPlace(target);
+      await Promise.resolve();
+      // Asked at once, before the item and chapters answer (they never do here).
+      expect(mockReadEarly).toHaveBeenCalledWith(mockClient, 'c1', 2, target.path);
+      expect(mockPlayBook).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(FRESH_SOURCE_WAIT_MS);
+      await expect(starting).resolves.toBe(true);
+      expect(mockReadEarly).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('reads no place early for a streamed book, a start at a given place, or with no one to ask', async () => {
+    await startBookInPlace(target);
+    expect(mockReadEarly).not.toHaveBeenCalled();
+    useDownloads.setState({ entries: { [`c1:2:${target.path}`]: downloadedEntry() } });
+    await startBookInPlace(target, { position: 30 });
+    await startBookInPlace(target, { track: 1 });
+    expect(mockReadEarly).not.toHaveBeenCalled();
+    try {
+      mockReachable = false;
+      await startBookInPlace(target);
+      expect(mockReadEarly).not.toHaveBeenCalled();
+    } finally {
+      mockReachable = true;
     }
   });
 
