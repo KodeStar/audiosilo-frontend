@@ -2435,6 +2435,7 @@
     "refusedAskGrownUpPair": "Il proxy di accesso di {{name}} ha respinto questo dispositivo: chiedi a un adulto di aggiornare le intestazioni proxy o di abbinare di nuovo questo dispositivo",
     "refusedPlain": "Il proxy di accesso di {{name}} ha respinto questo dispositivo",
     "askGrownUp": "Chiedi a un adulto di aggiornare le intestazioni proxy.",
+    "askGrownUpPair": "Chiedi a un adulto di aggiornare le intestazioni proxy o di abbinare di nuovo questo dispositivo.",
     "signInAgainBody": "Se le intestazioni proxy sono corrette, il tuo accesso a {{name}} potrebbe essere scaduto: accedi di nuovo.",
     "refusedRetry": "Il proxy di accesso di {{name}} ha respinto questo dispositivo. Non si perde nulla: riprova quando il proxy lo lascia passare."
   },

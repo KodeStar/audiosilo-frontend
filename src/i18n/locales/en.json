@@ -2435,6 +2435,7 @@
     "refusedAskGrownUpPair": "The sign-in proxy for {{name}} turned this device away: ask a grown-up to update the proxy headers or to pair this device again",
     "refusedPlain": "The sign-in proxy for {{name}} turned this device away",
     "askGrownUp": "Ask a grown-up to update the proxy headers.",
+    "askGrownUpPair": "Ask a grown-up to update the proxy headers or to pair this device again.",
     "signInAgainBody": "If the proxy headers are right, your sign-in to {{name}} may have ended: sign in again.",
     "refusedRetry": "The sign-in proxy for {{name}} turned this device away. Nothing is lost: try again once the proxy lets it in."
   },

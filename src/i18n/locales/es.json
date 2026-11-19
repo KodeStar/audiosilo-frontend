@@ -2435,6 +2435,7 @@
     "refusedAskGrownUpPair": "El proxy de inicio de sesión de {{name}} ha rechazado este dispositivo: pide a un adulto que actualice las cabeceras de proxy o que vuelva a vincular este dispositivo",
     "refusedPlain": "El proxy de inicio de sesión de {{name}} ha rechazado este dispositivo",
     "askGrownUp": "Pide a un adulto que actualice las cabeceras de proxy.",
+    "askGrownUpPair": "Pide a un adulto que actualice las cabeceras de proxy o que vuelva a vincular este dispositivo.",
     "signInAgainBody": "Si las cabeceras de proxy son correctas, puede que tu sesión en {{name}} haya terminado: vuelve a iniciar sesión.",
     "refusedRetry": "El proxy de inicio de sesión de {{name}} ha rechazado este dispositivo. No se pierde nada: vuelve a intentarlo cuando el proxy lo deje pasar."
   },

@@ -542,9 +542,9 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   proxy dropping the mark turned into a refusal is otherwise a dead end. A proxy's 403 offers
   none (no sign-in gets past it); a kid's account, which never signs itself in, is told to ask a
   grown-up to pair the device again (`proxyHeaders.refusedBannerPair`,
-  `refusedAskGrownUpPair`). The whole strip but the button opens Account, its padding and edges
-  too; beside the button no chevron is drawn, and on a phone the button always wraps under the
-  words. The
+  `refusedAskGrownUpPair`, kids mode's `askGrownUpPair`). The whole strip but the button opens
+  Account, its padding and edges too; beside the button no chevron is drawn, and on a phone the
+  button always wraps under the words. The
   Library's load errors say the proxy refused, with their Retry (`proxyHeaders.refusedRetry`),
   not that the server did not answer, while a refusal lasts (`useProxyRefused`: never for a sign-in's
   own set gone stale alone).
