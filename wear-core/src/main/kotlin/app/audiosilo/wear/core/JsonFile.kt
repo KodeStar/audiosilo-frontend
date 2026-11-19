@@ -51,12 +51,14 @@ sealed interface JsonLoad<out T> {
  * after it runs: a later write landing first would leave a state the in-order writes never pass
  * through (a place without the span it came from, a span's removal without its event), and a
  * kill there loses listening. A write asked meanwhile never tries it again sooner. While it
- * fails, a write asked behind it takes the place of one of the same file still waiting (the
- * latest content, at the later place), so the queue holds one write per file however long the
- * disk stays full; the files then catch up in the order of their last writes (those few writes
- * mix two states the in-order writes passed through, the price of a bounded queue; a kill while
- * the disk is full finds the state before the failing write). Nothing waits on it: `now` behind
- * it is told `Stuck`, and `attempt` false. Nothing else is dropped but by `forget` (signing out).
+ * fails, a write asked behind it replaces the last one waiting when that one writes the same
+ * file (the 5 s keeps of the open span), and is queued after it otherwise: the files catch up
+ * in the order asked, as the outbox, the span and the place depend on each other's order (the
+ * latest of each file in another order loses a span's event or puts a sent place back). So the
+ * queue grows with the cuts, closes and sync answers while the disk stays full, a few writes
+ * every 15 s (a kill then finds the state before the failing write). Nothing waits on it: `now`
+ * behind it is told `Stuck`, and `attempt` false. Nothing else is dropped but by `forget`
+ * (signing out).
  */
 class DurableWriter(
   executor: Executor? = null,
@@ -228,15 +230,15 @@ class DurableWriter(
   }
 
   /**
-   * Queue `write` behind a failing head (the lock held), in place of the writes of its file still
-   * waiting there: the latest content wins, so the queue stays one write per file.
+   * Queue `write` behind a failing head (the lock held), in place of the last entry when that is a
+   * write of the same file waiting there (never the head): the state between the two is the only
+   * one skipped, so the catch-up still passes only through states the in-order writes do. An
+   * earlier write of the file with others between stays: dropping it would land those others
+   * against the file's older content, or moving it would land its later content before them.
    */
   private fun coalesce(write: Write) {
-    if (write.key != null) {
-      val head = queue.removeFirst()
-      queue.removeAll { it is Write && it.key == write.key }
-      queue.addFirst(head)
-    }
+    val last = queue.last()
+    if (write.key != null && queue.size > 1 && last is Write && last.key == write.key) queue.removeLast()
     queue.addLast(write)
   }
 

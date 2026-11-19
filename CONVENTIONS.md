@@ -4293,10 +4293,12 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   that fails (a full disk) stays first and is tried again before anything asked after it, with a
   doubling wait from 0.5 s capped at 30 s, until it lands (`retryDelayMs`,
   `MAX_RETRY_DELAY_MS`); a write asked meanwhile never tries it sooner. While it fails, a write
-  asked behind it replaces the one of its file still waiting there (the latest content, at the
-  later place), so the queue holds one write per file however long the disk is full; once it has
-  room the files catch up in the order of their last writes (a mix of the two states for those
-  few writes, the trade for a bounded queue). Nothing waits on a failing write: a `now` behind it
+  asked behind it replaces the last one waiting only when that one writes the same file (the
+  open span's 5 s keeps), and is queued after it otherwise: once the disk has room the files catch
+  up in the order asked, as the outbox, the span and the place depend on each other's order (the
+  latest of each file in another order loses a span's event, or lands a place the span left
+  behind after the outbox sent the newer one). The queue so grows by a few writes every 15 s
+  while the disk stays full. Nothing waits on a failing write: a `now` behind it
   is told `Stuck` at once (its op not run), and the launch's join of an outbox set aside makes one
   try (`writeNow`, `DurableWriter.attempt`): it deletes what it joined only once that try lands;
   one that fails stays queued and is tried again in the background, the asides kept for the next

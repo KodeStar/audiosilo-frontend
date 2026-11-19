@@ -303,25 +303,60 @@ class DurableWriterTest {
     assertFalse("nothing more to try", retries.fire())
   }
 
-  // While a write fails, the writes asked behind it take the place of their file's earlier ones (the
-  // latest content), so the queue stays one write per file however long the disk is full.
+  // While a write fails, a write asked behind it replaces the last one waiting of its own file (the
+  // open span's keeps), never the failing one, and never one with another file's write after it.
   @Test
-  fun writesBehindAFailingOneCoalesceByFile() {
+  fun writesBehindAFailingOneCoalesceOnlyWithTheLastOfTheirFile() {
     val held = Held()
     val retries = Retries()
     val writer = DurableWriter(held, retries::after)
     val disk = FakeDisk()
-    writer.submit("outbox", disk.write("outbox 0"))
+    writer.submit("span", disk.write("span 0"))
     assertTrue(held.runOne())
-    for (i in 1..100) {
-      writer.submit("places", disk.write("places $i"))
-      writer.submit("outbox", disk.write("outbox $i"))
-    }
-    assertEquals("the failing write and one per file", 3, writer.queued)
+    for (i in 1..100) writer.submit("span", disk.write("span $i"))
+    writer.submit("outbox", disk.write("outbox 1"))
+    writer.submit("span", disk.write("span 101"))
+    writer.submit("outbox", disk.write("outbox 2"))
+    assertEquals("the failing write, then the others in order", 5, writer.queued)
     disk.full = false
     assertTrue(retries.fire())
     while (held.runOne()) Unit
-    assertEquals(listOf("outbox 0", "places 100", "outbox 100"), disk.landed)
+    assertEquals(listOf("span 0", "span 100", "outbox 1", "span 101", "outbox 2"), disk.landed)
+  }
+
+  // The catch-up once a full disk has room (fe#285): the writes asked while it was full land in the
+  // order asked, so a kill at any point between them finds a state the in-order writes passed
+  // through. The latest file to land first would not do: a span's removal before the outbox
+  // holding its event loses the span, an outbox that no longer holds a sent event before the
+  // span's removal brings the place back to that span's last keep.
+  @Test
+  fun theCatchUpAfterAFullDiskPassesOnlyThroughStatesTheInOrderWritesPassThrough() {
+    val inline = File(dir, "inline").apply { mkdirs() }
+    val queued = File(dir, "queued").apply { mkdirs() }
+    val start = clock.now
+
+    val expected = arrayListOf(disk(inline))
+    JsonFile.onSynced = { expected += disk(inline) }
+    Stores(inline, null).listen()
+
+    clock.now = start
+    JsonFile.onSynced = null
+    val held = Held()
+    val retries = Retries()
+    val writer = DurableWriter(held, retries::after)
+    val full = FakeDisk()
+    writer.submit("before") { full.write("before")() }
+    assertTrue(held.runOne())
+    Stores(queued, writer).listen()
+    assertEquals("nothing lands while the disk is full", mapOf<String, String>(), disk(queued))
+    full.full = false
+    val seen = arrayListOf(disk(queued))
+    assertTrue(retries.fire())
+    seen += disk(queued)
+    while (held.runOne()) seen += disk(queued)
+
+    for (state in seen) assertTrue("a state the in-order writes never pass through: $state", state in expected)
+    assertEquals(expected.last(), seen.last())
   }
 
   // A `now` (the sign-out's drain) behind a write that fails is told so at once, its op not run,
