@@ -60,7 +60,7 @@ export const DRIFT_STORAGE_KEY = 'audiosilo.driftOffs';
 export const WATCH_LEDGER_KEY = 'audiosilo.watchLedger';
 /** The `librivox.fetch` jobs the root's watcher follows
  * (`src/components/librivox/fetch-watcher.tsx`): an array, each with its connection id
- * (`cid`), job id and when it was first watched. */
+ * (`cid`), job id, when it was first watched and, while its Bridge is away, since when. */
 export const LIBRIVOX_WATCHES_KEY = 'audiosilo.librivoxWatches';
 /** `{ [legacyId]: newId }`, recorded by the identity migration (never wiped by a reset). */
 export const CONNECTION_ALIASES_KEY = 'audiosilo.connectionAliases';

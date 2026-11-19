@@ -22,6 +22,8 @@ const mockBridge = create<Record<string, boolean>>(() => ({}));
 // Connections whose `/server` has not answered (nothing known of it).
 const mockServerUnknown = create<Record<string, boolean>>(() => ({}));
 const mockServerRefetch = jest.fn();
+// When each connection's `/server` last answered (its `dataUpdatedAt`, ms).
+const mockServerAt = create<Record<string, number>>(() => ({}));
 jest.mock('@/api/hooks', () => ({
   qk: {
     librivoxWorks: (cid: string) => ['librivoxWork', cid],
@@ -31,8 +33,10 @@ jest.mock('@/api/hooks', () => ({
   useServerInfo: (cid: string) => {
     const bridge = mockBridge((s) => s[cid] ?? true);
     const unknown = mockServerUnknown((s) => s[cid] ?? false);
+    const at = mockServerAt((s) => s[cid] ?? 1);
     return {
       data: unknown ? undefined : { capabilities: { bridge } },
+      dataUpdatedAt: unknown ? 0 : at,
       refetch: () => mockServerRefetch(cid),
     };
   },
@@ -91,6 +95,7 @@ beforeEach(async () => {
   useLibrivoxWatches.setState({ watches: [] });
   mockBridge.setState({}, true);
   mockServerUnknown.setState({}, true);
+  mockServerAt.setState({}, true);
   mockServerRefetch.mockReset();
   mockReads.setState({}, true);
   mockAsked.length = 0;
@@ -294,6 +299,55 @@ describe('LibrivoxFetchWatcher', () => {
       }
     });
 
+    it('drops the watch, and stops asking, once /server has found the Bridge away for WATCH_TTL_MS', async () => {
+      const t0 = Date.now();
+      const serverAnswers = (at: number, bridge: boolean) =>
+        act(async () => {
+          mockServerAt.setState({ c1: at });
+          mockBridge.setState({ c1: bridge });
+        });
+      const awaySince = () => useLibrivoxWatches.getState().watches[0]?.awaySince;
+      mockReads.setState({ 41: { data: librivoxJob({ id: 41, state: 'running' }) } });
+      mockServerAt.setState({ c1: t0 });
+      jest.useFakeTimers();
+      try {
+        await mount();
+        await act(async () => watchLibrivoxFetch('c1', 41));
+        expect(awaySince()).toBeUndefined();
+        // Found away: since then, by the answer's own time.
+        await serverAnswers(t0 + 1000, false);
+        expect(awaySince()).toBe(t0 + 1000);
+        // Back a while: forgotten, so a later absence counts from its own start.
+        await serverAnswers(t0 + 2000, true);
+        expect(awaySince()).toBeUndefined();
+        await serverAnswers(t0 + 3000, false);
+        expect(awaySince()).toBe(t0 + 3000);
+        await serverAnswers(t0 + 3000 + WATCH_TTL_MS - 1, false);
+        expect(watches()).toEqual([{ cid: 'c1', id: 41 }]);
+        await act(async () => jest.advanceTimersByTime(BRIDGE_IDLE_POLL_MS));
+        expect(mockServerRefetch).toHaveBeenCalledTimes(1);
+        // A week away: gone for good, and /server is asked no more.
+        await serverAnswers(t0 + 3000 + WATCH_TTL_MS, false);
+        expect(watches()).toEqual([]);
+        await act(async () => jest.advanceTimersByTime(BRIDGE_IDLE_POLL_MS * 3));
+        expect(mockServerRefetch).toHaveBeenCalledTimes(1);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('never counts the absence from an answer older than the watch', async () => {
+      const t0 = Date.now();
+      // The last answer kept is from before the fetch was added, the Bridge away then.
+      mockServerAt.setState({ c1: t0 - WATCH_TTL_MS });
+      mockBridge.setState({ c1: false });
+      await mount();
+      await act(async () => watchLibrivoxFetch('c1', 41));
+      const [w] = useLibrivoxWatches.getState().watches;
+      expect(w.awaySince).toBe(w.at);
+      expect(watches()).toEqual([{ cid: 'c1', id: 41 }]);
+    });
+
     it('asks nothing for a connection that is signed out', async () => {
       signIn();
       mockBridge.setState({ c1: false });
@@ -331,11 +385,33 @@ describe('LibrivoxFetchWatcher', () => {
     it('drops anything saved that is not a watch', async () => {
       await AsyncStorage.setItem(
         LIBRIVOX_WATCHES_KEY,
-        JSON.stringify([{ cid: 'c1', id: 42, at: Date.now() }, { cid: 'c1', id: '43' }, 'junk']),
+        JSON.stringify([
+          { cid: 'c1', id: 42, at: 5, awaySince: 'x' },
+          { cid: 'c1', id: '43' },
+          'junk',
+        ]),
       );
       resetLibrivoxWatchesForTests();
       await restoreLibrivoxWatches();
-      expect(watches()).toEqual([{ cid: 'c1', id: 42 }]);
+      expect(useLibrivoxWatches.getState().watches).toEqual([{ cid: 'c1', id: 42, at: 5 }]);
+    });
+
+    it("counts a Bridge's absence across launches, and drops the watch once it is too long", async () => {
+      const since = Date.now() - WATCH_TTL_MS;
+      await AsyncStorage.setItem(
+        LIBRIVOX_WATCHES_KEY,
+        JSON.stringify([{ cid: 'c1', id: 41, at: since - 1000, awaySince: since }]),
+      );
+      resetLibrivoxWatchesForTests();
+      useLibrivoxWatches.setState({ watches: [] });
+      mockBridge.setState({ c1: false });
+      // The launch's answer kept from before: nothing new known yet.
+      mockServerAt.setState({ c1: since });
+      await mount();
+      expect(watches()).toEqual([{ cid: 'c1', id: 41 }]);
+      // `/server` answers again, the Bridge still away a week on.
+      await act(async () => mockServerAt.setState({ c1: Date.now() }));
+      expect(watches()).toEqual([]);
     });
 
     it("follows a signed-in connection's saved watch however old, and lets a signed-out one's go", async () => {

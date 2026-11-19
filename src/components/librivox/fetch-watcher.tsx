@@ -35,12 +35,24 @@ import { DONE_RECHECK_MS } from './librivox-model';
  * parked for longer than that is still followed, also by the next launch). The read keeps
  * its `bridge` gate (true only while the Bridge is online): a lapsed heartbeat pauses it,
  * the watch kept, and the watcher asks `/server` again every `BRIDGE_IDLE_POLL_MS` in the
- * foreground until the Bridge is back.
+ * foreground until the Bridge is back. A Bridge `/server` still finds away `WATCH_TTL_MS`
+ * after it was first found away (`awaySince`, saved with the watch) is taken as gone for
+ * good too: the watch is dropped, and with the connection's last one the asking stops. Find
+ * on LibriVox follows the fetch again if its row reads it open once the Bridge is back.
  */
-type Watch = { cid: string; id: number; /** When it was first watched (ms). */ at: number };
+type Watch = {
+  cid: string;
+  id: number;
+  /** When it was first watched (ms). */
+  at: number;
+  /** When `/server` first answered with the Bridge away (ms, its `dataUpdatedAt`), since it
+   * was last online. */
+  awaySince?: number;
+};
 
-/** How long a watch whose connection is signed out is kept: a fetch ends in hours at most,
- * and a connection not back by then is taken as gone for good. */
+/** How long a watch is kept with its connection signed out, or its Bridge away: a fetch
+ * ends in hours at most, and a connection or a Bridge not back by then is taken as gone for
+ * good. */
 export const WATCH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const useLibrivoxWatches = create<{ watches: Watch[] }>(() => ({ watches: [] }));
@@ -60,18 +72,30 @@ function dropWatch(w: Pick<Watch, 'cid' | 'id'>) {
   useLibrivoxWatches.setState((s) => ({ watches: s.watches.filter((x) => !same(x, w)) }));
 }
 
-/** The saved watches (the well formed ones). None is judged by its age here: only a
- * signed-out connection's watch runs out (`WATCH_TTL_MS`), and who is signed in is known
- * only once the session has read its connections (`WatchedFetch`). */
+/** Record when `w`'s Bridge was first found away (undefined: online again). */
+function setAwaySince(w: Pick<Watch, 'cid' | 'id'>, awaySince: number | undefined) {
+  useLibrivoxWatches.setState((s) => ({
+    watches: s.watches.map((x) => (same(x, w) ? { ...x, awaySince } : x)),
+  }));
+}
+
+/** The saved watches (the well formed ones; an `awaySince` that is not a number left out).
+ * None is judged by its age here: only a signed-out connection's watch, or one whose Bridge
+ * is away, runs out (`WATCH_TTL_MS`), and both are known only once the session has read its
+ * connections and `/server` has answered (`WatchedFetch`). */
 function savedWatches(raw: unknown): Watch[] {
   if (!Array.isArray(raw)) return [];
-  return raw.filter(
-    (w): w is Watch =>
-      isRecord(w) &&
-      typeof w.cid === 'string' &&
-      typeof w.id === 'number' &&
-      typeof w.at === 'number',
-  );
+  return raw
+    .filter(
+      (w): w is Watch =>
+        isRecord(w) &&
+        typeof w.cid === 'string' &&
+        typeof w.id === 'number' &&
+        typeof w.at === 'number',
+    )
+    .map(({ cid, id, at, awaySince }) =>
+      typeof awaySince === 'number' ? { cid, id, at, awaySince } : { cid, id, at },
+    );
 }
 
 let restoring: Promise<void> | null = null;
@@ -165,7 +189,7 @@ function useReadElsewhere(qc: QueryClient, queryKey: readonly unknown[]): boolea
   return useSyncExternalStore(subscribe, read, read);
 }
 
-function WatchedFetch({ cid, id, at }: Watch) {
+function WatchedFetch({ cid, id, at, awaySince }: Watch) {
   const qc = useQueryClient();
   const conn = useSession((s) => s.connections.find((c) => c.id === cid));
   // Signed in, and not waiting for its sign-in again (a 401): only then asked. Never for a
@@ -176,7 +200,12 @@ function WatchedFetch({ cid, id, at }: Watch) {
   // Judged only once `/server` has answered: until then the hooks' gate lays that read's own
   // failure over the job's (`useCapabilityQuery`), so a proxy's 403 or 404 for `/server` at
   // launch would read as the job refused or gone.
-  const own = useServerInfo(cid).data !== undefined ? read : { data: read.data, error: null };
+  const info = useServerInfo(cid);
+  const own = info.data !== undefined ? read : { data: read.data, error: null };
+  // When `/server` last answered, and whether that answer found the Bridge away (0: no
+  // answer yet, nothing judged).
+  const answeredAt = reading && info.data !== undefined ? info.dataUpdatedAt : 0;
+  const bridgeAway = info.data?.capabilities?.bridge !== true;
   const { gone, job, ended } = followedRead(own);
   const doneIn = job?.state === 'done' ? job.library_id : null;
   // The server's refusal (its own 400 or 403): asking again can't help, by the poll's own
@@ -199,12 +228,25 @@ function WatchedFetch({ cid, id, at }: Watch) {
     dropWatch({ cid, id });
   }, [sessionRead, signedIn, at, refused, reading, ended, doneIn, qc, cid, id]);
 
+  useEffect(() => {
+    if (!answeredAt) return;
+    if (!bridgeAway) {
+      if (awaySince !== undefined) setAwaySince({ cid, id }, undefined);
+      return;
+    }
+    // Never from before the watch: an answer kept from then says nothing of how long since.
+    if (awaySince === undefined) return setAwaySince({ cid, id }, Math.max(answeredAt, at));
+    // Away for longer than any fetch takes, by `/server`'s own answers: gone for good.
+    if (answeredAt - awaySince >= WATCH_TTL_MS) dropWatch({ cid, id });
+  }, [answeredAt, bridgeAway, awaySince, at, cid, id]);
+
   return null;
 }
 
 /** A watched connection whose Bridge is away (`/server`'s `bridge` flag not true): its reads
  * are paused by their gate, and nothing else may read `/server` again while no page is open,
- * so it is asked every `BRIDGE_IDLE_POLL_MS` with the app in the foreground until it is. */
+ * so it is asked every `BRIDGE_IDLE_POLL_MS` with the app in the foreground until it is back,
+ * or until its watches are dropped for a Bridge away too long (`WATCH_TTL_MS`). */
 function BridgeAwayWaker({ cid }: { cid: string }) {
   const info = useServerInfo(cid);
   useServerAskedWhileAway(info.data?.capabilities?.bridge !== true, info.refetch);

@@ -921,7 +921,12 @@ in step.
   lapsed heartbeat pauses its reads (the query is skipped) and keeps the watch, and while it is
   away the watcher asks each signed-in watched connection's `/server` again every
   `BRIDGE_IDLE_POLL_MS` in the foreground (`BridgeAwayWaker`; nothing else would with no page
-  open), so it reads again once the flag is back. It renders again as a recording row starts or
+  open), so it reads again once the flag is back. Not for ever: a watch saves when `/server`
+  first found its Bridge away (`awaySince`, the answer's `dataUpdatedAt`, never before the
+  watch; cleared once it is online again), and is dropped at the first answer still away
+  `WATCH_TTL_MS` later, so with the connection's last watch the asking stops. Nothing shows
+  the drop (no surface shows a watch, and Find on LibriVox opens closed while the Bridge is
+  away); a row that reads the fetch open once it is back watches it again. It renders again as a recording row starts or
   stops reading a job (`useReadElsewhere`), so the poll takes the row's pace at once.
 - **The page**: `/find-librivox?connection=&library=` (`findLibrivoxHref`, `openFindLibrivox`),
   the Library tab's own page like Find shows (a browse page too, `BROWSE_PATHS`: opening it
