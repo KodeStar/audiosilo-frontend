@@ -391,6 +391,25 @@ describe('sending', () => {
     expect(held.map((b) => b.position)).toEqual([100, 200]);
   });
 
+  it('joins a send to every connection already out, so one failure counts once', async () => {
+    const { client, state } = server('c1', offline());
+    await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+    await idle();
+    state.down = null;
+    client.addBookmark.mockClear();
+    client.bookmarks.mockClear();
+    client.addBookmark.mockRejectedValue(new ApiError(500, 'boom'));
+    // The web's `online` and `focus`, together.
+    await Promise.all([flushBookmarks(), flushBookmarks()]);
+    expect(client.bookmarks).toHaveBeenCalledTimes(1);
+    expect(client.addBookmark).toHaveBeenCalledTimes(1);
+    expect(await queuedBookmarks()).toMatchObject([{ position: 100, failures: 1 }]);
+    // Once settled, the next ask sends again.
+    await flushBookmarks();
+    expect(client.addBookmark).toHaveBeenCalledTimes(2);
+    expect(await queuedBookmarks()).toMatchObject([{ position: 100, failures: 2 }]);
+  });
+
   it("stops at a failure that is the connection's and keeps it and those behind it", async () => {
     const { client, held, state } = server('c1', offline());
     await addBookmarkOrQueue('c1', 1, 'a/book', 100);

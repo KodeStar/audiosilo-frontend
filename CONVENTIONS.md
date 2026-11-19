@@ -1710,7 +1710,9 @@ at launch and on reconnect (`startBookmarkSync`, a root service; also once a con
 flagged is signed in again, with no backoff meanwhile), with the stored queues in the
 foreground and on the web's focus and `online` (`startQueueReplays`), and on a backoff (30 s
 doubling to 10 min) while a reachable server keeps failing, through `replayQueue` routed by
-`queuedRoute` (claims, so two tabs never send one twice). The POST has no idempotency key, so
+`queuedRoute` (claims, so two tabs never send one twice). A replay of every connection asked
+for while one is out joins it (`flushBookmarks`: the web's `online` and focus fire together),
+so one failure counts once. The POST has no idempotency key, so
 a replay reads the book's bookmarks first and takes one at the same second with the same
 note as already sent: one the replay did not see there before its first send of it
 (`othersHeld`, stored right before that send), else, for one a send may have reached before it

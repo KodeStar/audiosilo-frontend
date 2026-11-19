@@ -636,10 +636,24 @@ function replay(route: (cid: string) => Route<ApiClient>): Promise<void> {
   );
 }
 
+/** The send to every connection asked for and not settled yet: the one a second ask joins. */
+let sweep: Promise<void> | null = null;
+
 /** Send the waiting bookmarks of every reachable connection (or only `connectionId`'s), as
  * the stored queues do (`queuedRoute`). Waits for the session. Bookmarks another tab is
- * sending are left to it. */
-export async function flushBookmarks(connectionId?: string): Promise<void> {
+ * sending are left to it. A send to every connection asked for while one is out (the web's
+ * `online` and `focus` fire together) joins it rather than sending again behind it, so one
+ * failing bookmark fails once, not twice, toward giving up on it. A bookmark stored
+ * meanwhile asks for its own connection's send (`enqueue`), which is never joined. */
+export function flushBookmarks(connectionId?: string): Promise<void> {
+  if (connectionId !== undefined) return flush(connectionId);
+  sweep ??= flush().finally(() => {
+    sweep = null;
+  });
+  return sweep;
+}
+
+async function flush(connectionId?: string): Promise<void> {
   if (!sessionReady()) return;
   const route =
     connectionId === undefined
@@ -752,6 +766,7 @@ export function resetAnnotationOutboxForTests(): void {
   snapshot = [];
   snapshotRead = false;
   firstLoad = null;
+  sweep = null;
   sentUnsettled.clear();
   if (retryTimer) clearTimeout(retryTimer);
   retryTimer = null;
