@@ -12,11 +12,13 @@ interface PlayerEventSink {
   /** A move from outside the JS API landed at (fileIndex, seconds within that file) of [book].
    * Every [book] here is the service's own current item's: the module's controller can still
    * hold the item before it (it hears of a change one message later), so a report named from
-   * the controller could name the book the engine just left. */
-  fun remoteMove(fileIndex: Int, position: Double, book: BookRef?)
+   * the controller could name the book the engine just left. [load]: the tag of the app's load
+   * that item came from ([MediaItems.loadOf]), null for a queue the service loaded itself. */
+  fun remoteMove(fileIndex: Int, position: Double, book: BookRef?, load: Double?)
 
-  /** A controller other than the app changed the speed of [book]; the engine already applied it. */
-  fun rateChange(rate: Double, book: BookRef?)
+  /** A controller other than the app changed the speed of [book] (of the load tagged [load]);
+   * the engine already applied it. */
+  fun rateChange(rate: Double, book: BookRef?, load: Double?)
 
   /** The bookmark button was pressed at (fileIndex, seconds within that file) of [book], the
    * book the engine has loaded (null when its items carry none, e.g. an older JS load).
@@ -25,8 +27,9 @@ interface PlayerEventSink {
   fun remoteBookmark(fileIndex: Int, position: Double, book: BookRef?, relPath: String?)
 
   /** The engine failed (a stream that could not be read) while [book] was loaded. Controllers
-   * see it stopped, not failed ([AudiobookPlayer.failed]), so this is how the app hears of it. */
-  fun playerFailed(book: BookRef?)
+   * see it stopped, not failed ([AudiobookPlayer.failed]), so this is how the app hears of it.
+   * [load]: as for [remoteMove]. */
+  fun playerFailed(book: BookRef?, load: Double?)
 
   /** Android Auto (or Automotive) connected or disconnected. */
   fun carConnection(connected: Boolean)

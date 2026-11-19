@@ -2142,7 +2142,14 @@ media GETs only.
   after it landed (the events and the load's answer are two channels), is dropped whole in the
   service until a report names another book (`name`), so it is never read as the car's book
   (a Pause or a place of the loaded book); a reload of the same book before then keeps it
-  dropped. The store drops a report of a book it does not hold
+  dropped. Every load is also tagged (FE-ANDROID-5): `load`'s `book` carries `load`, a number
+  of this JS run's (past the time the service was made), which Android keeps on the queue's
+  items (`MediaItems.KEY_LOAD`) and iOS beside the book, and every report of that queue carries
+  it back (`BookReport.load`). A tagged report of a load a later one superseded is dropped
+  whole, whatever book it names (A, then B, then A again: B's late reports, which the one slot
+  above lets through); a report of the latest load ends the watch. A report with no tag (an
+  older binary, a queue the Android service loaded itself) keeps the rule above, and an older
+  binary ignores the record field. The store drops a report of a book it does not hold
   (`reportedOtherBook`: one the car or a resumption started, or the one its own load
   replaces while that load holds the store), telling the car sync instead (`onOtherBookReported`, which adopts it on
   Android). A report that names none (an older binary, a queue loaded without a book, the

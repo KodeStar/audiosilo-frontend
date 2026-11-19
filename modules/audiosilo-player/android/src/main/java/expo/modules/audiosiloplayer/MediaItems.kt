@@ -16,27 +16,38 @@ data class BookRef(val connectionId: String, val libraryId: Long, val path: Stri
 }
 
 /** What an engine report adds to name the book it is of: `book`, the loaded item's (JS's
- * `BookReport`, which says why). None for an item loaded without a book. */
-fun reportedBook(book: BookRef?): Map<String, Any> =
-  book?.let { mapOf("book" to it.toEvent()) } ?: emptyMap()
+ * `BookReport`, which says why), and with it `load`, the tag of the app's load that item came
+ * from ([MediaItems.loadOf]; none for a queue the service loaded itself). None for an item
+ * loaded without a book. */
+fun reportedBook(book: BookRef?, load: Double? = null): Map<String, Any> {
+  book ?: return emptyMap()
+  val named = mapOf("book" to book.toEvent())
+  return if (load == null) named else named + ("load" to load)
+}
 
 /** A move from outside the app at (fileIndex, seconds within that file) of [book], the service's
  * item when it landed. The module holds it until its controller caught up, and it still names
  * that book then, whatever the controller holds by the time it is sent. */
-data class RemoteMove(val fileIndex: Int, val position: Double, val book: BookRef?) {
+data class RemoteMove(
+  val fileIndex: Int,
+  val position: Double,
+  val book: BookRef?,
+  val load: Double? = null,
+) {
   /** The `onRemoteMove` event. */
   fun toEvent(): Map<String, Any> =
-    mapOf("trackIndex" to fileIndex, "position" to position) + reportedBook(book)
+    mapOf("trackIndex" to fileIndex, "position" to position) + reportedBook(book, load)
 }
 
-/** The `onRateChange` event for a speed a controller other than the app set on [book]. */
-fun rateChangeEvent(rate: Double, book: BookRef?): Map<String, Any> =
-  mapOf("rate" to rate) + reportedBook(book)
+/** The `onRateChange` event for a speed a controller other than the app set on [book] (of the
+ * app's load tagged [load]). */
+fun rateChangeEvent(rate: Double, book: BookRef?, load: Double? = null): Map<String, Any> =
+  mapOf("rate" to rate) + reportedBook(book, load)
 
-/** The `onState` event for an engine that failed with [book] loaded: it no longer wants to play
- * (the service stopped it, `onEngineFailed`). */
-fun failedStateEvent(book: BookRef?): Map<String, Any> =
-  mapOf("state" to "error", "playWhenReady" to false) + reportedBook(book)
+/** The `onState` event for an engine that failed with [book] loaded (of the app's load tagged
+ * [load]): it no longer wants to play (the service stopped it, `onEngineFailed`). */
+fun failedStateEvent(book: BookRef?, load: Double? = null): Map<String, Any> =
+  mapOf("state" to "error", "playWhenReady" to false) + reportedBook(book, load)
 
 /** One audio file of a queue, the plain-Kotlin twin of the JS `NativeTrack` (the module's
  * `TrackRecord` and the car snapshot's play spec both map onto it). */
@@ -93,6 +104,9 @@ object MediaItems {
   /** The library-relative path of the file the item plays ([TrackSpec.relPath]), so nothing
    * reads it back out of the media id (a clip's id adds `#<startInFile>` to it, fe#172). */
   const val KEY_REL_PATH = "audiosilo.relPath"
+  /** The tag of the app's load the item came from (`load`'s `book.load`), which the reports of
+   * it carry back to JS ([reportedBook]); absent from a queue the service built itself. */
+  const val KEY_LOAD = "audiosilo.load"
 
   /**
    * The queue for one book: chapter clips when [clips] is non-empty (the lock screen gets a
@@ -101,6 +115,8 @@ object MediaItems {
    *
    * A file too long to clip within [heapBytes] ([ClipBudget]) plays as one whole-file item
    * instead of its chapter clips (fe#194); the other files keep theirs.
+   *
+   * [load]: the tag of the app's load (none for a queue the service starts), kept on every item.
    */
   fun buildQueue(
     tracks: List<TrackSpec>,
@@ -109,6 +125,7 @@ object MediaItems {
     startIndex: Int,
     positionInTrack: Double,
     heapBytes: Long = Runtime.getRuntime().maxMemory(),
+    load: Double? = null,
   ): BuiltQueue {
     if (tracks.isEmpty()) return BuiltQueue(emptyList(), 0, 0L)
     val items: List<MediaItem>
@@ -124,10 +141,10 @@ object MediaItems {
           // One whole-file item, where the file's first clip was; its other clips are dropped.
           if (!placed.add(clip.fileIndex)) continue
           val t = tracks[clip.fileIndex] // wholeFiles holds only indexes of tracks
-          built.add(toMediaItem(t, clip.fileIndex, book))
+          built.add(toMediaItem(t, clip.fileIndex, book, load))
           entries.add(TimelineMap.Entry(clip.fileIndex, 0.0, 0.0, t.duration, clip = false))
         } else {
-          built.add(toClipItem(clip, tracks, book))
+          built.add(toClipItem(clip, tracks, book, load))
           entries.add(entryFor(clip, tracks))
         }
       }
@@ -136,7 +153,7 @@ object MediaItems {
       itemIndex = idx
       itemPosMs = ms
     } else {
-      items = tracks.mapIndexed { i, t -> toMediaItem(t, i, book) }
+      items = tracks.mapIndexed { i, t -> toMediaItem(t, i, book, load) }
       itemIndex = startIndex
       itemPosMs = (positionInTrack * 1000).toLong().coerceAtLeast(0L)
     }
@@ -162,12 +179,12 @@ object MediaItems {
   }
 
   /** A whole-file item (a multi-file book without chapter clips). */
-  fun toMediaItem(t: TrackSpec, fileIndex: Int, book: BookRef?): MediaItem {
+  fun toMediaItem(t: TrackSpec, fileIndex: Int, book: BookRef?, load: Double? = null): MediaItem {
     val metadata = MediaMetadata.Builder()
       .setTitle(t.title)
       .setArtist(t.artist ?: "")
       .setAlbumTitle(t.album ?: t.title)
-      .setExtras(extras(fileIndex, 0.0, 0.0, t.duration, clip = false, book = book, track = t))
+      .setExtras(extras(fileIndex, 0.0, 0.0, t.duration, clip = false, book = book, track = t, load = load))
       .apply { artworkUriOf(t)?.let { setArtworkUri(it) } }
       .build()
     return MediaItem.Builder()
@@ -179,7 +196,7 @@ object MediaItems {
 
   /** A clipped item for one chapter: the file's URL clipped to the chapter's in-file range,
    * titled with the chapter (so the lock screen and the car's queue show the chapter). */
-  fun toClipItem(clip: ClipSpec, tracks: List<TrackSpec>, book: BookRef?): MediaItem {
+  fun toClipItem(clip: ClipSpec, tracks: List<TrackSpec>, book: BookRef?, load: Double? = null): MediaItem {
     val t = tracks.getOrNull(clip.fileIndex) ?: tracks.first()
     val title = clip.title.ifEmpty { t.title }
     val metadata = MediaMetadata.Builder()
@@ -187,7 +204,10 @@ object MediaItems {
       .setArtist(t.artist ?: "")
       .setAlbumTitle(t.album ?: t.title)
       .setExtras(
-        extras(clip.fileIndex, clip.startInFile, clip.endInFile, t.duration, clip = true, book = book, track = t),
+        extras(
+          clip.fileIndex, clip.startInFile, clip.endInFile, t.duration,
+          clip = true, book = book, track = t, load = load,
+        ),
       )
       .apply { artworkUriOf(t)?.let { setArtworkUri(it) } }
       .build()
@@ -219,6 +239,7 @@ object MediaItems {
     clip: Boolean,
     book: BookRef?,
     track: TrackSpec,
+    load: Double?,
   ) = Bundle().apply {
     putInt(KEY_FILE_INDEX, fileIndex)
     putDouble(KEY_START_IN_FILE, startInFile)
@@ -232,6 +253,7 @@ object MediaItems {
       putLong(KEY_LIBRARY, book.libraryId)
       putString(KEY_PATH, book.path)
     }
+    load?.let { putDouble(KEY_LOAD, it) }
   }
 
   private fun entryFor(clip: ClipSpec, tracks: List<TrackSpec>) = TimelineMap.Entry(
@@ -265,6 +287,13 @@ object MediaItems {
     val connection = e.getString(KEY_CONNECTION) ?: return null
     val path = e.getString(KEY_PATH) ?: return null
     return BookRef(connection, e.getLong(KEY_LIBRARY), path)
+  }
+
+  /** The tag of the app's load an item came from ([KEY_LOAD]), or null (a queue the service
+   * built itself, an older JS's load). */
+  fun loadOf(item: MediaItem?): Double? {
+    val e = item?.mediaMetadata?.extras ?: return null
+    return if (e.containsKey(KEY_LOAD)) e.getDouble(KEY_LOAD) else null
   }
 
   /** The library-relative path of the file an item plays ([KEY_REL_PATH]), or null (an item

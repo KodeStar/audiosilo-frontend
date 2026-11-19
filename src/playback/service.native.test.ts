@@ -142,11 +142,14 @@ describe('the native engine, Phase 6 events', () => {
 });
 
 describe("the native engine's load", () => {
-  it('names the book to a Phase 6 binary', async () => {
+  it('names the book to a Phase 6 binary, tagged with the load', async () => {
     const svc = await setUp(true);
     await svc.load(tracks, 1, 10, [], book);
     expect((mockModule.load as jest.Mock).mock.calls[0]).toHaveLength(5);
-    expect((mockModule.load as jest.Mock).mock.calls[0][4]).toEqual(book);
+    expect((mockModule.load as jest.Mock).mock.calls[0][4]).toEqual({
+      ...book,
+      load: expect.any(Number),
+    });
   });
 
   it('keeps to four arguments on an older binary (more would throw there)', async () => {
@@ -274,6 +277,66 @@ describe('the book a report names', () => {
     await svc.load(tracks, 0, 0, [], other);
     send('onProgress', { position: 40, duration: 100, book: other });
     expect(svc.reportedBook!()).toEqual(other);
+    expect(svc.getSnapshot().position).toBe(40);
+  });
+
+  // FE-ANDROID-5: one slot of the book a load replaced. On A, then B, then A again, the last
+  // load of A ended the watch for A, and B's late reports (sent before it, heard after) passed
+  // as another book's, read by the store as the car's. Every load is tagged (`load`), and a
+  // report of a load a later one superseded is dropped.
+  it('drops a late report of a superseded load, by its load tag, on A then B then A', async () => {
+    const svc = await setUp();
+    const loads = () =>
+      (mockModule.load as jest.Mock).mock.calls.map((c) => (c[4] as { load: number }).load);
+    await svc.load(tracks, 0, 0, [], book);
+    await svc.load(tracks, 0, 0, [], other);
+    await svc.load(tracks, 0, 7, [], book);
+    const [a1, b, a2] = loads();
+    expect(a1).toBeLessThan(b);
+    expect(b).toBeLessThan(a2);
+    const heard: [string | undefined, string, number][] = [];
+    svc.subscribe((s) => heard.push([svc.reportedBook!()?.path, s.state, s.position]));
+    const moved = jest.fn();
+    svc.onRemoteMove!(moved);
+    send('onTrackChange', { index: 0, book: other, load: b });
+    send('onState', { state: 'playing', book: other, load: b });
+    send('onProgress', { position: 40, duration: 100, book: other, load: b });
+    send('onRemoteMove', { trackIndex: 0, position: 41, book: other, load: b });
+    // The first load of A is superseded too.
+    send('onProgress', { position: 90, duration: 100, book, load: a1 });
+    expect(svc.reportedBook!()).toEqual(book);
+    expect(moved).not.toHaveBeenCalled();
+    expect(heard).toEqual([]);
+    // The last load's own reports are taken.
+    send('onState', { state: 'playing', book, load: a2 });
+    send('onProgress', { position: 8, duration: 100, book, load: a2 });
+    expect(heard).toEqual([
+      ['A', 'playing', 7],
+      ['A', 'playing', 8],
+    ]);
+    // A report with no tag (a queue the car's service loaded itself) names its book as before.
+    send('onState', { state: 'playing', book: other });
+    expect(svc.reportedBook!()).toEqual(other);
+  });
+
+  it('takes an untagged report as before, and one with a tag of no load of its own', async () => {
+    const svc = await setUp();
+    await svc.load(tracks, 0, 0, [], book);
+    // An untagged report of the loaded book (an older binary) is taken.
+    send('onProgress', { position: 3, duration: 100, book });
+    expect(svc.getSnapshot().position).toBe(3);
+    // A tag the app never gave (an earlier run of its JS) is no load of this one's.
+    send('onProgress', { position: 4, duration: 100, book, load: 1 });
+    expect(svc.getSnapshot().position).toBe(4);
+  });
+
+  it('takes a superseded load’s reports again once the load after it failed', async () => {
+    const svc = await setUp();
+    await svc.load(tracks, 0, 0, [], book);
+    const a = ((mockModule.load as jest.Mock).mock.calls[0][4] as { load: number }).load;
+    (mockModule.load as jest.Mock).mockRejectedValueOnce(new Error('no'));
+    await expect(svc.load(tracks, 0, 0, [], other)).rejects.toThrow('no');
+    send('onProgress', { position: 40, duration: 100, book, load: a });
     expect(svc.getSnapshot().position).toBe(40);
   });
 

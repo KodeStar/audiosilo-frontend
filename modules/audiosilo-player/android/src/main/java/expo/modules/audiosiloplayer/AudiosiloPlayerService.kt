@@ -460,11 +460,11 @@ class AudiosiloPlayerService : MediaLibraryService() {
 
     override fun onRemoteMove() {
       val (fileIndex, position) = currentFilePosition() ?: return
-      PlayerBridge.sink?.remoteMove(fileIndex, position, loadedBook())
+      PlayerBridge.sink?.remoteMove(fileIndex, position, loadedBook(), loadedTag())
     }
 
     override fun onRemoteRate(rate: Float) {
-      PlayerBridge.sink?.rateChange(rate.toDouble(), loadedBook())
+      PlayerBridge.sink?.rateChange(rate.toDouble(), loadedBook(), loadedTag())
     }
 
     override fun requester(): String? = mediaSession?.controllerForCurrentRequest?.let(::describe)
@@ -485,6 +485,9 @@ class AudiosiloPlayerService : MediaLibraryService() {
   /** The book the engine plays now, from its own current item (the module's controller can
    * still show the one before it). */
   private fun loadedBook(): BookRef? = MediaItems.bookOf(player?.currentMediaItem)
+
+  /** The tag of the app's load the engine's current item came from ([MediaItems.loadOf]). */
+  private fun loadedTag(): Double? = MediaItems.loadOf(player?.currentMediaItem)
 
   /** Where the player is, in FILE coordinates (from the current item's extras). */
   private fun currentFilePosition(): Pair<Int, Double>? {
@@ -953,7 +956,8 @@ class AudiosiloPlayerService : MediaLibraryService() {
    */
   private fun onEngineFailed(exo: ExoPlayer, error: PlaybackException) {
     exo.playWhenReady = false
-    PlayerBridge.sink?.playerFailed(MediaItems.bookOf(exo.currentMediaItem))
+    val item = exo.currentMediaItem
+    PlayerBridge.sink?.playerFailed(MediaItems.bookOf(item), MediaItems.loadOf(item))
     // peek: never a disk read on the main thread (the snapshot is preloaded in onCreate).
     val label = CarSnapshotStore.peek()?.labels?.playbackError?.ifEmpty { null } ?: error.message ?: return
     sendSessionError(SessionError.ERROR_IO, label)

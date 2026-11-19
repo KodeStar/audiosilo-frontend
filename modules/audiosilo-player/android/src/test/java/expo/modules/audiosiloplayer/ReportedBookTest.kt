@@ -49,4 +49,28 @@ class ReportedBookTest {
     assertEquals(mapOf("state" to "error", "playWhenReady" to false), failedStateEvent(null))
     assertEquals(mapOf("trackIndex" to 0, "position" to 4.0), RemoteMove(0, 4.0, null).toEvent())
   }
+
+  // FE-ANDROID-5: a report carries the tag of the app's load its item came from, so JS drops one
+  // of a load a later one superseded (sent before it, heard after).
+  @Test fun aReportOfAnAppLoadCarriesItsTag() {
+    assertEquals(
+      mapOf("state" to "playing", "book" to now.toEvent(), "load" to 42.0),
+      mapOf("state" to "playing") + reportedBook(now, 42.0),
+    )
+    assertEquals(mapOf("rate" to 1.5, "book" to now.toEvent(), "load" to 42.0), rateChangeEvent(1.5, now, 42.0))
+    assertEquals(
+      mapOf("state" to "error", "playWhenReady" to false, "book" to now.toEvent(), "load" to 42.0),
+      failedStateEvent(now, 42.0),
+    )
+    assertEquals(
+      mapOf("trackIndex" to 2, "position" to 31.5, "book" to left.toEvent(), "load" to 41.0),
+      RemoteMove(2, 31.5, left, 41.0).toEvent(),
+    )
+  }
+
+  // A queue the service loaded itself has no tag, and a tag goes only with a book.
+  @Test fun aReportWithoutATagOrABookCarriesNone() {
+    assertEquals(mapOf("book" to now.toEvent()), reportedBook(now, null))
+    assertEquals(emptyMap<String, Any>(), reportedBook(null, 42.0))
+  }
 }

@@ -48,6 +48,9 @@ struct BookRecord: Record {
   @Field var connectionId: String = ""
   @Field var libraryId: Int = 0
   @Field var path: String = ""
+  /// This load's tag (JS's `LoadTag`), carried back on the queue's reports (`AudioEngine.send`);
+  /// absent from an older JS bundle.
+  @Field var load: Double? = nil
 }
 
 // MARK: - Module
