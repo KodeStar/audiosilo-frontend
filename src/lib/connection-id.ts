@@ -1,5 +1,6 @@
 import { getItem, getItemStrict } from '@/lib/storage';
 import { CONNECTION_ALIASES_KEY, CONNECTIONS_KEY, isRecord } from '@/lib/storage-keys';
+import type { PersistedConnection } from '@/stores/session';
 
 /**
  * The connection id: which signed-in account on which server a piece of state belongs to.
@@ -188,9 +189,12 @@ export async function storedConnectionIds(): Promise<Set<string> | null> {
   } catch {
     return null;
   }
-  const ids = new Set<string>();
-  if (Array.isArray(raw)) {
-    for (const c of raw) if (isRecord(c) && typeof c.id === 'string' && c.id) ids.add(c.id);
-  }
-  return ids;
+  return new Set(readConnections(raw).map((c) => c.id));
+}
+
+/** The stored connections (`CONNECTIONS_KEY`) in `raw`, a record with no id skipped. */
+export function readConnections(raw: unknown): PersistedConnection[] {
+  return Array.isArray(raw)
+    ? raw.filter((c): c is PersistedConnection => isRecord(c) && typeof c.id === 'string' && !!c.id)
+    : [];
 }

@@ -6,6 +6,7 @@ import {
   connectionIdOf,
   isLegacyConnectionId,
   parseAliases,
+  readConnections,
   serverIdOf,
   setConnectionAliases,
   usableUserId,
@@ -166,12 +167,6 @@ function parse(raw: string | null | undefined): unknown {
   } catch {
     return null; // corrupt: left as it is (its own store's parser drops it)
   }
-}
-
-function readConnections(raw: unknown): PersistedConnection[] {
-  return Array.isArray(raw)
-    ? raw.filter((c): c is PersistedConnection => isRecord(c) && typeof c.id === 'string' && !!c.id)
-    : [];
 }
 
 /** The moves to make: the stored plan of a run cut short, plus each legacy connection with a
