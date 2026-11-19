@@ -2455,7 +2455,11 @@ media GETs only.
   for the answer, so a move lands before any of the old place sounds: `pickUpBeforePlay`,
   fe#158; one check is out at a time, and a press waits for the one already out, as when the
   app coming to the front started it), the loaded book asks its server for its progress, and meanwhile the store holds its saves (`holdSaves`: 5 s at most,
-  then it saves the held place). It moves only when the record is from another `device_id`,
+  then it saves the held place). It moves only when the record is from another `device_id`
+  (a record with no device id, a progress edit, an import or a `PUT` that named none, is no
+  device's: it counts only for a late place, `byAnotherDevice`, which stands in for the
+  start's own lookup, where the newest record wins; it is then moved to or offered as an
+  unknown device's),
   newer than this device's own last save in its mirror (a newer unsynced save here wins; a record
   it only read, which a downloaded book's page and its download keep there, does not), not
   finished, and more than 30 s away, and stands back if the listener moved meanwhile
