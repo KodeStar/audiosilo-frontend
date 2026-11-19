@@ -253,6 +253,8 @@ const lastReportNamesBook = (): boolean => !!service?.reportedBook?.();
  * an adoption gave up (`unnamedOther`), until a report names a book again (which ends that
  * hold here) or the store loads or holds another book. */
 const unnamedReportOfAdopted = (): boolean => {
+  // Nothing held: read on every report, so no key is built for it.
+  if (unnamedOther === null && adopting.length === 0) return false;
   if (lastReportNamesBook()) {
     unnamedOther = null;
     return false;
