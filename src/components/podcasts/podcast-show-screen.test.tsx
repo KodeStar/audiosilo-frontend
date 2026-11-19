@@ -155,6 +155,17 @@ describe('PodcastShowScreen', () => {
     }
   });
 
+  // A proxy's own 403 (fe#295) never reached the server: it says nothing of the link.
+  it("offers Retry, never a bad link, when a proxy's own 403 turned the show list away", async () => {
+    const { ApiError } = jest.requireActual('@/api/client');
+    mockShows = undefined;
+    mockShowsError = new ApiError(403, 'Forbidden', undefined, undefined, true);
+    await mountWithPortal(<PodcastShowScreen />);
+    expect(screen.queryByText("This link doesn't point to anything here.")).toBeNull();
+    expect(screen.getByText("Couldn't load this show.")).toBeTruthy();
+    expect(screen.getByText('Retry')).toBeTruthy();
+  });
+
   it('offers Retry when the show list failed for another reason', async () => {
     const { ApiError } = jest.requireActual('@/api/client');
     mockShows = undefined;

@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, View } from 'react-native';
 
-import { ApiError } from '@/api/client';
+import { ApiError, isProxyRefusal } from '@/api/client';
 import { useCapability, usePodcastEpisodes, usePodcastShows, useProgressLookup } from '@/api/hooks';
 import { useScopedCid } from '@/api/provider';
 import type { PodcastEpisodeOrder, PodcastShow } from '@/api/types';
@@ -66,8 +66,15 @@ function ShowContent() {
     );
   }
   // A link to a library that isn't a podcast library (409), or isn't there or isn't
-  // shared (403, 404): a stale or hand-edited link, which no Retry can mend.
-  if (!shows.data && shows.error instanceof ApiError && BAD_LINK.has(shows.error.status)) {
+  // shared (403, 404): a stale or hand-edited link, which no Retry can mend. Never a proxy's
+  // own 403 (`isProxyRefusal`, fe#295): the server never saw the request, so it says nothing
+  // of the link, and the Retry below gets past once the proxy headers are fixed.
+  if (
+    !shows.data &&
+    shows.error instanceof ApiError &&
+    !isProxyRefusal(shows.error) &&
+    BAD_LINK.has(shows.error.status)
+  ) {
     return <EmptyState icon="microphone" title={t('library.detail.badLink')} />;
   }
   if (!shows.data) {
