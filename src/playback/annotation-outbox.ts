@@ -37,8 +37,10 @@ import { onlyConnection, queuedRoute } from './progress-sync';
  * busy or failing server, a token it refuses until the connection signs in again) waits here
  * on the device and is sent once the server is back, instead of being refused. The ways in:
  * `addBookmarkOrQueue` tries the server first and keeps the bookmark only when that can't
- * work now; `queueNewBookmark` (the sleep timer's) and `requeueBookmark` (a delete's Undo)
- * always store it first and leave the send to a replay. The same
+ * work now (to a server with `bookmark_client_id` it is stored before that try, and settled
+ * when it works, so an app killed mid-POST still has it); `queueNewBookmark` (the sleep
+ * timer's) and `requeueBookmark` (a delete's Undo) always store it first and leave the send
+ * to a replay. The same
  * guarantees as the listening outbox (`listening-outbox.ts`), on the simpler shape a bookmark
  * needs:
  *
@@ -382,7 +384,11 @@ async function readFlags(
  * server can't take it now (see the module). Straight to the server when none of its book
  * is waiting and the server reads as reachable (`addBookmark`, which refreshes the book's lists);
  * otherwise, or when that fails with a failure worth another try, it goes into the outbox,
- * with the `client_id` that add was sent with. Unlabelled: a labelled one goes through
+ * with the `client_id` that add was sent with. To a server known to take that id
+ * (`bookmark_client_id`) it is stored first, as the sleep timer's is, then posted with its
+ * id and taken out once that works: an app killed while the POST is out leaves it to a
+ * replay, whose POST with the same id makes it once at most. Storage that refuses it then
+ * leaves the add as it was, straight to the server. Unlabelled: a labelled one goes through
  * `queueNewBookmark`, whose replay sends it once its server's flags are known. Rejects when
  * the connection is gone, the server refused it for good, or the device could not store it.
  */
@@ -403,23 +409,45 @@ export async function addBookmarkOrQueue(
   const queue = snapshotRead ? snapshot : await readQueue().catch(() => snapshot);
   const book = contentKey(connectionId, libraryId, path);
   const waiting = queue.some((e) => contentKeyOf(e) === book);
+  const fields = { connectionId, libraryId, path, position, note, client_id: clientId };
   let failed = false;
   // Whether a send of it without its `client_id` may have reached the server.
   let sentBare = false;
+  // Stored before the POST (a server that takes its id), to take out once that works.
+  let stored: QueuedBookmark | undefined;
+  /** Take `stored` out: made, or refused for good. Storage that refuses that leaves it to a
+   * replay, whose POST with its id the server answers with the one it holds. */
+  const settle = async () => {
+    if (stored) await discardQueuedBookmark(stored.id).catch(() => undefined);
+  };
   if (!waiting && isReachable(connectionId)) {
     // `addBookmark` sends the id on the same flags.
     const withId = takesClientId(connectionId);
+    // Its id makes a resend safe, so it is kept before any request (no send without its id
+    // has gone out: `fresh`), and a kill while the POST is out leaves it to a replay.
+    if (withId) stored = await append({ ...fields, fresh: true }, since).catch(() => undefined);
     try {
-      return {
-        made: await addBookmark(connectionId, libraryId, path, position, note, undefined, clientId),
-      };
+      const made = await addBookmark(
+        connectionId,
+        libraryId,
+        path,
+        position,
+        note,
+        undefined,
+        clientId,
+      );
+      await settle();
+      return { made };
     } catch (err) {
       // Its id refused by a server that no longer takes one (`whyRefused`), not the bookmark:
       // nothing landed, and it is kept to go without the id, at once (the flags say so now).
       const idRefused =
         withId && badRequest(err) && (await whyRefused(connectionId, client)) === 'id';
       if (!idRefused) {
-        if (!worthKeeping(err)) throw err;
+        if (!worthKeeping(err)) {
+          await settle();
+          throw err;
+        }
         noteFailure(connectionId, err);
         failed = true;
         // A 401 or a 429 turned it away before the server took it: nothing landed.
@@ -427,18 +455,8 @@ export async function addBookmarkOrQueue(
       }
     }
   }
-  const queued = await append(
-    {
-      connectionId,
-      libraryId,
-      path,
-      position,
-      note,
-      client_id: clientId,
-      ...(sentBare ? {} : { fresh: true as const }),
-    },
-    since,
-  );
+  const queued =
+    stored ?? (await append({ ...fields, ...(sentBare ? {} : { fresh: true as const }) }, since));
   // Sent now behind the ones waiting when the server is up; after a failure just now, on
   // the backoff (its reconnect sends it when it is down).
   if (failed) scheduleRetry();

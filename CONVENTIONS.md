@@ -1756,7 +1756,13 @@ first (`queueNewBookmark`) and sent only from the outbox: nobody is awake to ret
 killed while a direct POST was out (up to its 15 s timeout) would lose it; it shows as waiting
 until a replay sends it. Only when storage refuses it is it posted straight away, once (its
 label on flags read first). The one-tap keeps the direct send: its "Bookmark added" toast and Add
-note need the server's bookmark, and the listener is there to see a failure. The outbox is sent
+note need the server's bookmark, and the listener is there to see a failure. To a server known to
+take a `client_id` (`bookmark_client_id`) it is stored first too, `fresh` with its id, then
+posted with that id and taken out once that works or is refused for good, so a kill mid-POST
+leaves it to a replay, whose POST with the same id makes it once at most; while that POST is out
+it shows as waiting. On an older server, or flags not read yet, nothing is stored before the
+POST (a resend there could make it twice), and a storage write refused leaves the add direct as
+before. The outbox is sent
 at launch and on reconnect (`startBookmarkSync`, a root service; also once a connection a 401
 flagged is signed in again, with no backoff meanwhile), with the stored queues in the
 foreground and on the web's focus and `online` (`startQueueReplays`), and on a backoff (30 s

@@ -216,6 +216,21 @@ describe('adding', () => {
     expect(await queuedBookmarks()).toEqual([]);
   });
 
+  it.each([
+    ['an older server', true],
+    ['a server whose flags are not read yet', undefined],
+  ])('stores nothing before the POST of a tap to %s', async (_name, annotations) => {
+    const { client } = server('c1');
+    mockAnnotations = annotations;
+    // Its POST out, with no answer yet: an older server makes a resend twice, so the add
+    // keeps it only once that POST has failed.
+    client.addBookmark.mockImplementationOnce(() => new Promise(() => {}));
+    void addBookmarkOrQueue('c1', 1, 'a/book', 120);
+    await idle();
+    expect(client.addBookmark).toHaveBeenCalledWith(1, 'a/book', 120, '');
+    expect(await queuedBookmarks()).toEqual([]);
+  });
+
   it('keeps a bookmark made offline and sends it once when the server is back', async () => {
     const { client, held, state } = server('c1', offline());
     const out = await addBookmarkOrQueue('c1', 1, 'a/book', 120, 'a note');
@@ -1188,6 +1203,50 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
     expect(await queuedBookmarks()).toEqual([]);
     // The next tap goes straight there, bare.
     expect(await addBookmarkOrQueue('c1', 1, 'a/book', 130)).toHaveProperty('made');
+  });
+
+  it('stores a tap before its POST and takes it out once that works', async () => {
+    const { client, held } = server('c1');
+    const send = client.addBookmark.getMockImplementation();
+    let storedDuringPost: QueuedBookmark[] = [];
+    client.addBookmark.mockImplementationOnce(async (...args: unknown[]) => {
+      storedDuringPost = await queuedBookmarks();
+      return send?.(...args);
+    });
+    expect(await addBookmarkOrQueue('c1', 1, 'a/book', 120)).toMatchObject({
+      made: { position: 120 },
+    });
+    expect(storedDuringPost).toMatchObject([
+      { position: 120, fresh: true, client_id: sentIds(client)[0] },
+    ]);
+    expect(held).toHaveLength(1);
+    expect(await queuedBookmarks()).toEqual([]);
+  });
+
+  it.each([
+    ['landed', true],
+    ['never reached the server', false],
+  ])('sends a tap killed mid-POST whose request %s again, once', async (_name, lands) => {
+    const { client, held } = server('c1');
+    const send = client.addBookmark.getMockImplementation();
+    client.addBookmark.mockImplementationOnce(async (...args: unknown[]) => {
+      if (lands) await send?.(...args);
+      // The app killed: no answer ever comes.
+      return new Promise(() => {});
+    });
+    void addBookmarkOrQueue('c1', 1, 'a/book', 120);
+    await idle();
+    const [entry] = await queuedBookmarks();
+    expect(entry).toMatchObject({ position: 120, fresh: true, client_id: expect.any(String) });
+    expect(sentIds(client)).toEqual([entry.client_id]);
+    // The next launch: what was in memory is gone, the stored entry is not.
+    resetAnnotationOutboxForTests();
+    await flushBookmarks();
+    await flushBookmarks();
+    expect(sentIds(client)).toEqual([entry.client_id, entry.client_id]);
+    expect(client.bookmarks).not.toHaveBeenCalled();
+    expect(held).toMatchObject([{ position: 120, client_id: entry.client_id }]);
+    expect(await queuedBookmarks()).toEqual([]);
   });
 
   it('fails a tap a 400 refuses while its server still takes ids', async () => {
