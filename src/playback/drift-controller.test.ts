@@ -12,7 +12,13 @@ const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
 
 const mockAddBookmark = jest.fn((..._args: unknown[]) => Promise.resolve({}));
-let mockClient: { addBookmark: typeof mockAddBookmark } | null = null;
+// An older server's `/server` (no `annotations`): a labelled bookmark is sent only once its
+// server's flags are known, and the outbox reads them when they are not cached (fe#356).
+const mockServerInfo = jest.fn(() => Promise.resolve({ capabilities: { annotations: false } }));
+let mockClient: {
+  addBookmark: typeof mockAddBookmark;
+  serverInfo: typeof mockServerInfo;
+} | null = null;
 jest.mock('@/api/connection-clients', () => ({ resolveClient: () => mockClient }));
 
 /* eslint-disable import/first */
@@ -90,7 +96,7 @@ describe('drift controller', () => {
     mockToast.mockClear();
     mockAddBookmark.mockClear();
     mockAddBookmark.mockImplementation(() => Promise.resolve({}));
-    mockClient = { addBookmark: mockAddBookmark };
+    mockClient = { addBookmark: mockAddBookmark, serverInfo: mockServerInfo };
     resetAnnotationOutboxForTests();
     await AsyncStorage.clear();
     player.patch({
