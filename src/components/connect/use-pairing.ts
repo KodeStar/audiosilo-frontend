@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
-import { ApiError, isRefusedForGood } from '@/api/client';
+import { ApiError, isProxyRefusal, isRefusedForGood } from '@/api/client';
 import { connectClientFor } from '@/api/connect-client';
 import { resolveClient } from '@/api/connection-clients';
 import { probeServerId } from '@/api/server-id-probe';
@@ -40,7 +40,8 @@ export type PairFailure = {
  *   refused, ask for a new link;
  * - no answer: temporary, naming a self-signed certificate only where one may be why
  *   (`selfSigned`, `selfSignedMayBeWhy`);
- * - 408, 429 (the wait from `Retry-After` when sent, `sharedRefusalText`) and 5xx: temporary;
+ * - 408, 429 (the wait from `Retry-After` when sent, `sharedRefusalText`), a proxy's own 401
+ *   or 403 (`isProxyRefusal`: its headers, `sharedRefusalText`) and 5xx: temporary;
  * - every other 4xx: refused, by the server's code when it names one (`invite_used`,
  *   `invite_expired`, `member_disabled`), else expired or used (401, 410), else a link
  *   that can't be used.
@@ -63,11 +64,12 @@ export function pairFailure(
   }
   const { status } = e;
   // Not refused for good (the rule every save queue keeps): a 408, a 429 (its shared words
-  // name the wait) or no 4xx at all.
+  // name the wait), a proxy's own 401 or 403 (its shared words name the proxy headers, never
+  // the server) or no 4xx at all.
   if (!isRefusedForGood(e)) {
     if (status === 408) return temporary(t('connect.server.pairingReachError'));
-    const wait = status === 429 ? sharedRefusalText(e, t) : undefined;
-    if (wait !== undefined) return { ...temporary(wait), waitOver: refusalWaitOver(e, t) };
+    const shared = status === 429 || isProxyRefusal(e) ? sharedRefusalText(e, t) : undefined;
+    if (shared !== undefined) return { ...temporary(shared), waitOver: refusalWaitOver(e, t) };
     return temporary(t('connect.server.pairingServerError'));
   }
   return refused(
