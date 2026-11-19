@@ -1132,10 +1132,11 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   the offer "Jump there?" (`jumpOffer`) is judged against the page on screen. The lookup opens at
   the newest place, or at a queued save the server will keep (diverged and further on);
   opening at a local place, a server row this device never saw comes back as `unseen` (no save
-  of the book queued; only a row further on than that place and no older than the version
-  this device acknowledged; the local places read once a save of the book in flight is
-  answered), which the screen takes as the first answer, so Jump shows at the open
-  after a replay from Home (fe#173). The answer's `seen` also counts the very version this
+  of the book queued; only a row further on than that place; the local places read once a
+  save of the book in flight is answered), which the screen takes as the first answer, so
+  Jump shows at the open after a replay from Home (fe#173). A row older than the version this
+  device acknowledged (read before the open's own replay was answered) counts as no row: the
+  server no longer holds it, so the reader neither opens there nor offers it. The answer's `seen` also counts the very version this
   device acknowledged (one version is one write), so a late answer with an adopted row never
   offers it again. With no answer from the server and no place on this device it fails (the
   fetch notice; Try again looks again): never a guessed start, whose save would replace a place read elsewhere.

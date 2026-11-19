@@ -1213,6 +1213,43 @@ describe('reading-progress', () => {
       expect(found.unseen).toMatchObject({ device_id: 'tablet', progression: 0.8 });
     });
 
+    it('opens at its own place the server kept, not the row read before a replay in flight was answered', async () => {
+      const server = ruleServer('Tablet');
+      await tabletSaves(server, 0.3);
+      // An offline session further on, made before the tablet's save by the clock.
+      reachable.mockReturnValue(false);
+      await saveReadingPlace(
+        null,
+        save({
+          cfi: CFI_A,
+          progression: 0.6,
+          updated_at: new Date(Date.now() - 120_000).toISOString(),
+        }),
+      );
+      reachable.mockReturnValue(true);
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const put = server.api.saveReadingProgress.getMockImplementation()!;
+      server.api.saveReadingProgress.mockImplementation(async (...args: unknown[]) => {
+        await gate;
+        return put(...args);
+      });
+      mockResolveClient.mockReturnValue(server.api);
+      // The lookup reads the tablet's row; the replay's answer then keeps this device's place.
+      const replay = flushReadingQueue();
+      await nextMacrotask();
+      const lookup = lookupReadingPlace(server.api, 'c1', 1, 'A/Book');
+      await nextMacrotask();
+      release();
+      const [found] = await Promise.all([lookup, replay]);
+      expect(server.row()).toMatchObject({ device_id: 'dev', progression: 0.6 });
+      expect(found).toEqual({
+        place: expect.objectContaining({ cfi: CFI_A }),
+        fromServer: null,
+        unseen: null,
+      });
+    });
+
     it('offers no row older than the version this device acknowledged (an answer overtaken)', async () => {
       await adoptServerPlace(
         'c1',

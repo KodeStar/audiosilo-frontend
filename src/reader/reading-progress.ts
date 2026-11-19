@@ -186,8 +186,10 @@ async function readMirror(
  * replays it as it opens, and that answer says what the server kept. The local places are
  * read once the server answered and any save of the book in flight is answered too (its
  * send turn, `withSendTurn`): read before, the answer of a save in flight was not in them,
- * and the row it acknowledged was offered back as unseen. Nor a row older than the version
- * this device acknowledged (an answer read before a save of the book overtook it).
+ * and the row it acknowledged was offered back as unseen. A row older than the version this
+ * device acknowledged (an answer read before a save of the book overtook it) counts as no
+ * row at all: the server no longer holds it, so the reader neither opens there nor offers it
+ * (opened there, its next save moved the place the server had kept back).
  * `place` null: none anywhere, open at the start. With no answer from the server, this
  * device's own places stand; with none either, the lookup fails (throws the request's
  * error) instead of opening at the start: a start saved over a place read elsewhere would
@@ -240,6 +242,10 @@ export async function lookupReadingPlace(
   );
   // A save this tab sent or had refused since it was queued is not one the reader replays.
   const queued = queue.find((s) => sameBook(s, book) && !settledHere(s)) ?? null;
+  // A row older than the version this device acknowledged was read before a save of the book
+  // overtook it (the open's own replay, answered while the lookup waited its turn): the
+  // server no longer holds it, so it is neither where to open nor a place to offer.
+  if (server && server.version < (mirror?.version ?? 0)) server = null;
   let best: ReadingPlace | null = server;
   for (const place of [mirror?.place ?? null, queued]) {
     if (place && (!best || timeOf(place) > timeOf(best))) best = place;
@@ -261,7 +267,6 @@ export async function lookupReadingPlace(
     !fromServer &&
     !queued &&
     server.progression > best.progression &&
-    server.version >= (mirror?.version ?? 0) &&
     !seenBy(server, mirror, await getDeviceId())
       ? server
       : null;
