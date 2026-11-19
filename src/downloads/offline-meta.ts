@@ -18,10 +18,10 @@ import type { DownloadEntry } from './types';
 /**
  * The offline companion: a downloaded book keeps its community metadata (the `/meta`
  * envelope, the previous book's work, and the server's `/server` answer) so the book page
- * and the player's companion read exactly what they would online, with no network (a
- * book that can match only by its console match is not kept, `canMatch`: offline, its
- * page reads as unmatched). The spoiler gate is unchanged: it still runs on the device
- * against the listener's place (`meta-gating.ts`); nothing here decides what to show.
+ * and the player's companion read exactly what they would online, with no network (kept
+ * for a book with something to match by, `canMatch`; any other reads as unmatched
+ * offline). The spoiler gate is unchanged: it still runs on the device against the
+ * listener's place (`meta-gating.ts`); nothing here decides what to show.
  *
  * Where it lives: in its own file beside the book's audio (`OFFLINE_META_FILE`, through
  * `engine.writeText`: a file in the book's folder on native, a Cache API entry under the
@@ -132,11 +132,18 @@ export function releaseOfflineBook(connectionId: string, libraryId: number, path
  * Put `data` in the cache under `key` unless the cache already holds an answer there (a
  * fresh one from the server always wins over a saved copy), dated `updatedAt` so it goes
  * stale on the screens' own schedule, and keep the entry for good (`keepForGood`). Used
- * for every seed of a downloaded book.
+ * for every seed of a downloaded book. `overOlder`: also over an answer read before
+ * `updatedAt`, for data that is itself the server's answer of that time.
  */
-export function seedQuery(key: QueryKey, data: unknown, updatedAt: number): void {
+export function seedQuery(
+  key: QueryKey,
+  data: unknown,
+  updatedAt: number,
+  overOlder = false,
+): void {
   keepForGood(key);
-  if (queryClient.getQueryData(key) === undefined) {
+  const held = queryClient.getQueryState(key);
+  if (held?.data === undefined || (overOlder && held.dataUpdatedAt < updatedAt)) {
     queryClient.setQueryData(key, data, { updatedAt });
   }
 }
@@ -145,7 +152,10 @@ export function seedQuery(key: QueryKey, data: unknown, updatedAt: number): void
  * server's answer, whose `metadata` flag opens the readers' gate, is seeded for every
  * connection at launch (`restoreServerSnapshots`); a reader that asked meanwhile takes
  * this copy when it lands (`seedQuery` fills a key with no data, a failed or waiting one
- * too). */
+ * too). Over an answer older than the payload too: a keep with `meta_bundle` reads only the
+ * `include=previous` key, and the plain one every screen reads would stay as it was read
+ * before (unmatched, before a console match), marked stale but all there is offline until
+ * the next launch. */
 export function seedOfflineMeta(
   connectionId: string,
   libraryId: number,
@@ -154,12 +164,13 @@ export function seedOfflineMeta(
 ): void {
   const { meta, savedAt } = payload;
   const plain: BookMeta = meta.matched && meta.previous ? withoutPrevious(meta) : meta;
-  seedQuery(qk.bookMeta(connectionId, libraryId, path), plain, savedAt);
+  seedQuery(qk.bookMeta(connectionId, libraryId, path), plain, savedAt, true);
   if (payload.previous) {
-    seedQuery(qk.bookMeta(connectionId, libraryId, path, { includePrevious: true }), meta, savedAt);
+    const bundle = qk.bookMeta(connectionId, libraryId, path, { includePrevious: true });
+    seedQuery(bundle, meta, savedAt, true);
   }
   const works = [...(meta.matched ? (meta.previous ?? []) : []), ...payload.works];
-  for (const w of works) seedQuery(qk.metaWork(connectionId, w.id), w, savedAt);
+  for (const w of works) seedQuery(qk.metaWork(connectionId, w.id), w, savedAt, true);
 }
 
 /** The plain request's answer from an `include=previous` one (the plain answer has no
@@ -181,15 +192,19 @@ export async function serverHasMetadata(connectionId: string): Promise<boolean> 
   }
 }
 
-/** Whether a downloaded book's metadata is kept (`matchableById`: an ASIN or ISBN, which the
- * server matches by, or content generated on its server). The screens also ask for a book
- * with neither (a console match, `metaEnabledFor`), but this runs for every download, so it
- * keeps to the books that can match by id: offline, such a book reads as unmatched. The
- * download's book can be the list shape, so the full item is asked first. */
+/** Whether a downloaded book's metadata is kept (`matchableById`: an ASIN, an ISBN,
+ * generated content or a `work_id`). The screens ask for any book (`metaEnabledFor`), but
+ * this runs for every download, so it keeps to the books with something to match by:
+ * offline, any other reads as unmatched (an id-less console match from an older server,
+ * which sends no `work_id`). The download's book can be the list shape, so the full item is
+ * asked first; that shape never says a podcast episode is one (and a feed's tags can carry
+ * an ISBN-like value), so an episode by either is none. */
 export function canMatch(entry: DownloadEntry): boolean {
   const { connectionId, libraryId, path } = entry;
   const item = queryClient.getQueryData<Book>(qk.item(connectionId, libraryId, path));
-  return matchableById(item) || matchableById(entry.manifest.book);
+  const { book } = entry.manifest;
+  if (item?.episode || book.episode) return false;
+  return matchableById(item) || matchableById(book);
 }
 
 /**

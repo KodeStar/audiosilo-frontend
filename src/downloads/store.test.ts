@@ -164,6 +164,13 @@ jest.mock('@/api/provider', () => ({
     fetchQuery: (o: { queryKey: unknown[] }) => mockFetchQuery(o),
   },
 }));
+/** A server answer landing in the query cache under `queryKey` (`manual`: the store's own
+ * seed), as the cache's listeners see it. */
+function emitAnswer(queryKey: unknown[], data: unknown, manual?: boolean) {
+  for (const l of mockCacheListeners) {
+    l({ type: 'updated', query: { queryKey }, action: { type: 'success', data, manual } });
+  }
+}
 // The show's cached episode lists (its own tests): what a fetched episode marks them with.
 const mockMarkEpisodeOnServer = jest.fn();
 jest.mock('@/api/podcast-cache', () => ({
@@ -185,6 +192,7 @@ jest.mock('@/api/hooks', () => ({
     item: (cid: string, lib: number, path: string) => ['item', cid, lib, path],
     progress: (cid: string, lib: number, path: string) => ['progress', cid, lib, path],
     chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path],
+    bookMeta: (cid: string, lib: number, path: string) => ['bookMeta', cid, lib, path],
     server: (cid: string) => ['server', cid],
     podcastShows: (cid: string, lib: number) => ['podcastShows', cid, lib],
     podcastFetch: (cid: string, lib: number, path: string) => ['podcastFetch', cid, lib, path],
@@ -229,7 +237,7 @@ import {
   refreshedChapters,
   reviveEntry,
   startChapterRefresh,
-  startReadalongRefresh,
+  startItemRefresh,
   useDownloadedCoverUri,
   useDownloadedEbook,
   useDownloadedReadalong,
@@ -1555,16 +1563,9 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
     expect(result.current).toBe('g1');
   });
 
-  describe('startReadalongRefresh', () => {
-    const answer = (
-      data: unknown,
-      manual?: boolean,
-      k: unknown[] = ['item', 'c1', 2, 'A/Book'],
-    ) => {
-      for (const l of mockCacheListeners) {
-        l({ type: 'updated', query: { queryKey: k }, action: { type: 'success', data, manual } });
-      }
-    };
+  describe('startItemRefresh', () => {
+    const answer = (data: unknown, manual?: boolean, k: unknown[] = ['item', 'c1', 2, 'A/Book']) =>
+      emitAnswer(k, data, manual);
     // Each test's download is its own (`savedAt`): the refresh tries a map once per download
     // and launch, and this module's launch lasts the whole file.
     let saves = 0;
@@ -1591,7 +1592,7 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
     let stop: () => void = () => {};
     beforeEach(() => {
       serves(true);
-      stop = startReadalongRefresh();
+      stop = startItemRefresh();
     });
     afterEach(() => stop());
 
@@ -1605,7 +1606,7 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
         return k[0] === 'item' && k[3] === 'A/Book' ? made : undefined;
       });
       mockFetchReadalong.mockResolvedValue(keptMap('g2'));
-      stop = startReadalongRefresh();
+      stop = startItemRefresh();
       await settle();
       expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF, { ebookSha256: undefined });
       expect(entry()?.manifest.readalongGeneratedAt).toBe('g2');
@@ -1618,7 +1619,7 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
         if (k[0] === 'server') return { capabilities: { readalong: true } };
         return k[0] === 'item' ? e.manifest.book : undefined;
       });
-      stop = startReadalongRefresh();
+      stop = startItemRefresh();
       await settle();
       expect(mockFetchReadalong).not.toHaveBeenCalled();
       expect(mockRemoveReadalong).not.toHaveBeenCalled();
@@ -2292,11 +2293,8 @@ describe("refreshing a downloaded book's chapters", () => {
   });
 
   describe('startChapterRefresh', () => {
-    const answer = (data: unknown, manual?: boolean, key = ['chapters', 'c1', 2, 'A/Book']) => {
-      for (const l of mockCacheListeners) {
-        l({ type: 'updated', query: { queryKey: key }, action: { type: 'success', data, manual } });
-      }
-    };
+    const answer = (data: unknown, manual?: boolean, key = ['chapters', 'c1', 2, 'A/Book']) =>
+      emitAnswer(key, data, manual);
     let stop: () => void = () => {};
     // Fake timers, so the save `persistSoon` holds runs here and never leaks into the
     // next test (it would hold that test's save behind its own).
@@ -4188,6 +4186,277 @@ describe('the offline companion (community metadata kept with a download)', () =
     expect(useDownloads.getState().entries[downloadKey('c1', 2, path)]?.manifest.meta?.job).toBe(7);
   });
 
+  // fe#290: a book downloaded before its server named its work (a console match without
+  // ids) kept nothing; the next `/item` answer naming it gives the download the id and keeps
+  // the copy, with no request of its own.
+  it('takes the work an /item answer names and keeps the copy then, once', async () => {
+    const path = nextPath();
+    const key = downloadKey('c1', 2, path);
+    await downloadOne(path); // its own keep found nothing to match by
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+    const answer = (book: Book) => emitAnswer(['item', 'c1', 2, path], book);
+    const watch = jest.spyOn(AppState, 'addEventListener');
+    const stop = startItemRefresh();
+    try {
+      // An older server names no work, and an episode never keeps: nothing changes.
+      answer(makeBook({ rel_path: path }));
+      answer(makeBook({ rel_path: path, work_id: 'w1', episode: { show_path: 'Show' } as never }));
+      await settle();
+      expect(mockCapture).toHaveBeenCalledTimes(1);
+      expect(useDownloads.getState().entries[key]?.manifest.book.work_id).toBeUndefined();
+
+      const p = payload();
+      mockCapture.mockResolvedValue(p);
+      const { queryClient } = jest.requireMock('@/api/provider');
+      queryClient.invalidateQueries.mockClear();
+      answer(makeBook({ rel_path: path, work_id: 'w1' }));
+      await settle();
+      await settle();
+      expect(mockCapture).toHaveBeenCalledTimes(2);
+      expect(mockWriteMeta).toHaveBeenLastCalledWith(expect.objectContaining({ path }), p);
+      // A `/meta` answer read before the book named the work is read again, not kept as it
+      // is; one naming the work is kept.
+      expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(1);
+      const [filters] = queryClient.invalidateQueries.mock.calls[0];
+      expect(filters).toMatchObject({ queryKey: ['bookMeta', 'c1', 2, path], refetchType: 'none' });
+      const stale = (data: unknown) => filters.predicate({ state: { data } });
+      expect(stale({ matched: false })).toBe(true);
+      expect(stale({ matched: true, work: { id: 'w0' } })).toBe(true);
+      expect(stale({ matched: true, work: { id: 'w1' } })).toBe(false);
+      const { manifest } = useDownloads.getState().entries[key]!;
+      expect(manifest.book.work_id).toBe('w1');
+      expect(manifest.meta).toEqual({ savedAt: '2026-05-01T10:00:00.000Z' });
+      // The id reaches storage, so a later launch's fill-in keeps it too (`canMatch`).
+      watch.mock.calls.findLast(([type]) => type === 'change')?.[1]('background');
+      await settle();
+      expect((await readPersisted())[key]?.manifest.book.work_id).toBe('w1');
+
+      // The same work again asks nothing more; another work keeps the copy again.
+      answer(makeBook({ rel_path: path, work_id: 'w1' }));
+      await settle();
+      expect(mockCapture).toHaveBeenCalledTimes(2);
+      answer(makeBook({ rel_path: path, work_id: 'w2' }));
+      await settle();
+      await settle();
+      expect(mockCapture).toHaveBeenCalledTimes(3);
+    } finally {
+      stop();
+    }
+  });
+
+  // A copy kept by the book's ASIN that names the work stays: a download made before its
+  // server sent work ids at all (server#241) takes the id and reads its own file, no more.
+  it('takes the work without keeping again when the copy names it already', async () => {
+    const path = nextPath();
+    const key = downloadKey('c1', 2, path);
+    const kept = { ...payload(), meta: { matched: true, work: { id: 'w1' } } };
+    mockCapture.mockResolvedValue(kept);
+    await downloadOne(path);
+    expect(useDownloads.getState().entries[key]?.manifest.meta).toBeDefined();
+    mockReadMeta.mockResolvedValue(kept);
+    const { queryClient } = jest.requireMock('@/api/provider');
+    queryClient.invalidateQueries.mockClear();
+    const stop = startItemRefresh();
+    try {
+      emitAnswer(['item', 'c1', 2, path], makeBook({ rel_path: path, work_id: 'w1' }));
+      await settle();
+      expect(useDownloads.getState().entries[key]?.manifest.book.work_id).toBe('w1');
+      expect(mockReadMeta).toHaveBeenCalledTimes(1);
+      expect(mockCapture).toHaveBeenCalledTimes(1);
+      expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+    } finally {
+      stop();
+    }
+  });
+
+  // A book with an ASIN the community did not know kept an unmatched copy; an admin's
+  // console match then names its work, and the copy is kept again, not a week later.
+  it('keeps the copy again when the one kept by an ASIN was unmatched', async () => {
+    const path = nextPath();
+    const key = downloadKey('c1', 2, path);
+    const unmatched = payload();
+    mockCapture.mockResolvedValue(unmatched);
+    useDownloads
+      .getState()
+      .download('c1', 2, makeBook({ rel_path: path, files: undefined, asin: 'B0' }));
+    await settle();
+    await settle();
+    expect(useDownloads.getState().entries[key]?.manifest.meta).toBeDefined();
+    mockReadMeta.mockResolvedValue(unmatched);
+    const matched = { ...payload(), meta: { matched: true, work: { id: 'w1' } } };
+    mockCapture.mockResolvedValue(matched);
+    const stop = startItemRefresh();
+    try {
+      emitAnswer(['item', 'c1', 2, path], makeBook({ rel_path: path, asin: 'B0', work_id: 'w1' }));
+      // Its copy is from before the work, said in the same save as the id: a keep cut short
+      // is the next launch's to read again.
+      expect(useDownloads.getState().entries[key]?.manifest.meta?.rematched).toBe(true);
+      await settle();
+      await settle();
+      expect(mockCapture).toHaveBeenCalledTimes(2);
+      expect(mockWriteMeta).toHaveBeenLastCalledWith(expect.objectContaining({ path }), matched);
+      // The copy kept for the work says so no more.
+      expect(useDownloads.getState().entries[key]?.manifest.meta).toEqual({
+        savedAt: '2026-05-01T10:00:00.000Z',
+      });
+    } finally {
+      stop();
+    }
+  });
+
+  // A keep reads `/meta` again when the answer the cache holds is from before the book's
+  // work: a console match made within the hour, a book removed and downloaded again.
+  it('keeps no cached /meta answer from before the work the book names', async () => {
+    const { queryClient } = jest.requireMock('@/api/provider');
+    queryClient.invalidateQueries.mockClear();
+    await downloadOne(nextPath());
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled(); // no work, nothing to mark
+    const path = nextPath();
+    useDownloads
+      .getState()
+      .download('c1', 2, makeBook({ rel_path: path, files: undefined, work_id: 'w1' }));
+    await settle();
+    await settle();
+    expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(1);
+    const [filters] = queryClient.invalidateQueries.mock.calls[0];
+    expect(filters).toMatchObject({ queryKey: ['bookMeta', 'c1', 2, path], refetchType: 'none' });
+    expect(filters.predicate({ state: { data: { matched: false } } })).toBe(true);
+    expect(filters.predicate({ state: { data: { matched: true, work: { id: 'w1' } } } })).toBe(
+      false,
+    );
+    // Marked before the read.
+    expect(queryClient.invalidateQueries.mock.invocationCallOrder[0]).toBeLessThan(
+      mockCapture.mock.invocationCallOrder[1],
+    );
+  });
+
+  // The download's own book can be a list row, or older than a tag the file gained: on a
+  // launch with no network it is all `canMatch` reads, so it takes every field the answer
+  // names. Only a work asks for a keep.
+  it('takes the ASIN, ISBN and generated flag an /item answer names, with no keep', async () => {
+    const path = nextPath();
+    const key = downloadKey('c1', 2, path);
+    await downloadOne(path);
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+    const watch = jest.spyOn(AppState, 'addEventListener');
+    const stop = startItemRefresh();
+    try {
+      emitAnswer(
+        ['item', 'c1', 2, path],
+        makeBook({ rel_path: path, asin: 'B0', isbn: '978', generated: true }),
+      );
+      await settle();
+      expect(useDownloads.getState().entries[key]?.manifest.book).toMatchObject({
+        asin: 'B0',
+        isbn: '978',
+        generated: true,
+      });
+      expect(mockCapture).toHaveBeenCalledTimes(1);
+      watch.mock.calls.findLast(([type]) => type === 'change')?.[1]('background');
+      await settle();
+      expect((await readPersisted())[key]?.manifest.book).toMatchObject({
+        asin: 'B0',
+        isbn: '978',
+      });
+      // An answer naming fewer drops nothing.
+      emitAnswer(['item', 'c1', 2, path], makeBook({ rel_path: path }));
+      await settle();
+      expect(useDownloads.getState().entries[key]?.manifest.book.asin).toBe('B0');
+    } finally {
+      stop();
+    }
+  });
+
+  // An answer that lands while the files do finds no downloaded book to give its fields
+  // to: the finished download takes them from the cache, and its own keep is for that work.
+  it('a download that finishes takes what the cached /item answer names', async () => {
+    const path = nextPath();
+    const key = downloadKey('c1', 2, path);
+    mockGetQueryData.mockImplementation((k) => {
+      const [kind, , , p] = k as unknown[];
+      return kind === 'item' && p === path
+        ? makeBook({ rel_path: path, asin: 'B0', work_id: 'w1' })
+        : undefined;
+    });
+    const { queryClient } = jest.requireMock('@/api/provider');
+    queryClient.invalidateQueries.mockClear();
+    await downloadOne(path);
+    const entry = useDownloads.getState().entries[key];
+    expect(entry?.status).toBe('downloaded');
+    expect(entry?.manifest.book).toMatchObject({ asin: 'B0', work_id: 'w1' });
+    expect((await readPersisted())[key]?.manifest.book.work_id).toBe('w1');
+    // A `/meta` answer read before the book named the work is not kept as it is.
+    expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(1);
+    expect(queryClient.invalidateQueries.mock.calls[0][0]).toMatchObject({
+      queryKey: ['bookMeta', 'c1', 2, path],
+      refetchType: 'none',
+    });
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+    expect(mockCapture.mock.calls[0][0].manifest.book.work_id).toBe('w1');
+  });
+
+  // Many answers at once (the cached ones, as the refresh starts) are no burst of `/meta`
+  // requests: the keeps they ask for run one book at a time.
+  it('keeps for the works several answers name one book at a time', async () => {
+    const paths = [nextPath(), nextPath(), nextPath()];
+    for (const path of paths) await downloadOne(path);
+    mockCapture.mockClear();
+    const ends: (() => void)[] = [];
+    let running = 0;
+    let most = 0;
+    mockCapture.mockImplementation(async () => {
+      most = Math.max(most, ++running);
+      await new Promise<void>((r) => ends.push(r));
+      running--;
+      return null;
+    });
+    const stop = startItemRefresh();
+    try {
+      for (const path of paths) {
+        emitAnswer(['item', 'c1', 2, path], makeBook({ rel_path: path, work_id: 'w1' }));
+      }
+      for (let i = 0; i < paths.length; i++) {
+        await settle();
+        expect(mockCapture).toHaveBeenCalledTimes(i + 1);
+        ends[i]();
+      }
+      await settle();
+      expect(most).toBe(1);
+      for (const path of paths) {
+        const book = useDownloads.getState().entries[downloadKey('c1', 2, path)]?.manifest.book;
+        expect(book?.work_id).toBe('w1');
+      }
+    } finally {
+      stop();
+    }
+  });
+
+  // The answers the cache holds when the refresh starts count too: the web starts it after
+  // the first paint, when a screen's `/item` can have landed already.
+  it('takes the work a cached /item answer names when the refresh starts', async () => {
+    const path = nextPath();
+    const key = downloadKey('c1', 2, path);
+    await downloadOne(path);
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+    mockGetQueryData.mockImplementation((k) => {
+      const [kind, , , p] = k as unknown[];
+      return kind === 'item' && p === path
+        ? makeBook({ rel_path: path, work_id: 'w1' })
+        : undefined;
+    });
+    mockCapture.mockResolvedValue(payload());
+    const stop = startItemRefresh();
+    try {
+      await settle();
+      await settle();
+      expect(useDownloads.getState().entries[key]?.manifest.book.work_id).toBe('w1');
+      expect(mockCapture).toHaveBeenCalledTimes(2);
+      expect(useDownloads.getState().entries[key]?.manifest.meta).toBeDefined();
+    } finally {
+      stop();
+    }
+  });
+
   it('a removed book stops keeping its cache entries for good', async () => {
     const path = nextPath();
     mockCapture.mockResolvedValue(payload());
@@ -4299,6 +4568,60 @@ describe('the offline companion (community metadata kept with a download)', () =
     // The capture found nothing: the kept copy and its marker stay.
     expect(mockWriteMeta).not.toHaveBeenCalled();
     expect(useDownloads.getState().entries[key]?.manifest.meta).toBeDefined();
+  });
+
+  // The id an `/item` answer named was saved, its keep cut short (the app closed, a request
+  // that failed): no later answer names a new work, so the launch reads the copy again.
+  describe('a copy from before the work its book names, at launch', () => {
+    const launch = async (path: string, rematched: boolean, meta: unknown) => {
+      const base = downloadedEntry().manifest;
+      await seed({
+        [downloadKey('c1', 2, path)]: downloadedEntry({
+          path,
+          manifest: {
+            ...base,
+            book: { ...base.book, work_id: 'w1' },
+            meta: { savedAt: '2026-05-01T10:00:00Z', ...(rematched && { rematched: true }) },
+          },
+        }),
+      });
+      mockReadMeta.mockResolvedValue({ ...payload(Date.now() - 60_000), meta });
+      const { queryClient } = jest.requireMock('@/api/provider');
+      queryClient.invalidateQueries.mockClear();
+      await useDownloads.getState().hydrate();
+      await settle();
+      await settle();
+      return queryClient.invalidateQueries as jest.Mock;
+    };
+
+    it('is read again when the keep for that work did not land, and seeded stale', async () => {
+      const path = nextPath();
+      const matched = { ...payload(), meta: { matched: true, work: { id: 'w1' } } };
+      mockCapture.mockResolvedValue(matched);
+      const invalidate = await launch(path, true, { matched: false });
+      // A keep under way for the work reads `/meta`, not the copy just seeded.
+      expect(invalidate).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: ['bookMeta', 'c1', 2, path], refetchType: 'none' }),
+      );
+      expect(mockCapture).toHaveBeenCalledTimes(1);
+      expect(mockWriteMeta).toHaveBeenCalledWith(expect.objectContaining({ path }), matched);
+      const kept = useDownloads.getState().entries[downloadKey('c1', 2, path)]?.manifest.meta;
+      expect(kept).toEqual({ savedAt: '2026-05-01T10:00:00.000Z' });
+    });
+
+    it('is left alone once a keep landed, whatever it answered', async () => {
+      // Kept since for a work the community answers otherwise: seeded stale, not asked for
+      // at every launch.
+      const invalidate = await launch(nextPath(), false, { matched: false });
+      expect(invalidate).toHaveBeenCalledTimes(1);
+      expect(mockCapture).not.toHaveBeenCalled();
+    });
+
+    it('is no such copy when it names the work', async () => {
+      const invalidate = await launch(nextPath(), true, { matched: true, work: { id: 'w1' } });
+      expect(invalidate).not.toHaveBeenCalled();
+      expect(mockCapture).not.toHaveBeenCalled();
+    });
   });
 
   it('leaves a copy from this week alone', async () => {

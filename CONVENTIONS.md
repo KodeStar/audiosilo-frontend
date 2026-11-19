@@ -1695,8 +1695,11 @@ with what a Bridge generated, and an older one answers `matched:false` without a
 The book page, the companion and reveal toast, Home's Now card and Previously on and the end
 credits go through it (fe#290: a console-matched book without ids shows its community content in
 the player too, and the companion offers no Generate for a book the community covers). **The
-offline copy alone keeps the id rule, `matchableById`** (an ASIN, an ISBN **or `generated`**,
-never an episode): it runs for every download, so such a book reads as unmatched offline. The series page's anchor (`metadataAnchor`, an
+offline copy alone keeps a narrower rule, `canMatch`** (`offline-meta.ts`: `matchableById`, an
+ASIN, an ISBN, **`generated`** or a `work_id`, which the server sends since server#484 for a
+console match without ids too; never an episode, by the download's book or its cached item: a
+list row never says one is): it runs for every download, so a book with none
+of them reads as unmatched offline, as an id-less match does from an older server. The series page's anchor (`metadataAnchor`, an
 ASIN or ISBN) and Search's characters (`characterBooksToLoad`, the started books, capped,
 ids or not) pick their books by their own rules. Two readers of the envelope, and each
 field is read through one of them, never both:
@@ -5156,7 +5159,7 @@ are asked, at most 10,000 rows.
   progress step while a map is likely), keeps the sha256 of the ebook it was made from
   (`ebookSha256`, kept when the map is dropped: the EPUB stays), and its `book.readalong` names the map kept (`namingReadalong`): offline that book
   is the item's seed, and `readalongSource` reads the copy only while the book names it or no
-  map. `startReadalongRefresh` (the root's services) takes the `/item` answers the cache holds
+  map. `startItemRefresh` (the root's services) takes the `/item` answers the cache holds
   when it starts and once the launch's `hydrate` has read the registry (the web starts it after
   paint; the store's seeds name the kept map and change nothing but a map the download could not
   fetch), then watches the server's `/item` answers for a downloaded book: another
@@ -5174,15 +5177,34 @@ are asked, at most 10,000 rows.
   The Text tab reads it offline (`readDownloadedReadalong`, `qk.readalongLocal`, `networkMode:
   'always'`) with the EPUB on the device.
 - **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community
-  metadata (asked by `matchableById`, so a book with content generated on its server too; the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
+  metadata (asked by `canMatch`: `matchableById`, so a book with content generated on its server
+  too, or a console match without ids by its `work_id`, fe#290; the `/meta` envelope, plus the
+  previous work(s) the envelope doesn't hold) as
   `meta.json` beside its audio (`engine.writeText`: the book's folder on native, its Cache API
-  prefix on web), so it is scoped by connection and deleted with the files. **Not in the registry**:
+  prefix on web), so it is scoped by connection and deleted with the files. A download's book takes every
+  match field an `/item` answer names that it lacks or names otherwise (`adoptMatch`, in
+  `startItemRefresh`; `withMatchFields`, the list `matchableById` reads; a download that finishes
+  takes them from the cached answer), so `canMatch` is right on a launch with no network, where
+  the download's book is all it reads. A work the book did not name has its copy kept then
+  (`keepForWork`): a download made before its server sent the `work_id`, or one kept as unmatched
+  before a console match; a copy that names the work already stays (read from its file, no
+  request). One book at a time across the downloads. The copy it had is marked in the same save as
+  the id (`meta.rematched`, gone with the next copy kept): a keep cut short (the app closed, a
+  request that failed) leaves it, and the next launch reads again a marked copy that does not name
+  the book's work, as it does one a week old; no later answer would, the id being taken. Every
+  keep first marks stale the cached `/meta` answers that do not name the work its book names
+  (`staleMetaNotNaming` in `keepOfflineMetaNow`, no request of its own), and the launch does the
+  same for a copy it seeds, so no keep saves an answer from before a console match as it is.
+  **Not in the registry**:
   that is ONE JSON document rewritten every couple of seconds while a download runs, an envelope
   can be hundreds of KB, and AsyncStorage on Android / localStorage on web cap the whole store at a
   few MB; the registry carries only a marker (`DownloadManifest.meta`). The seeds fill exactly the
   keys the readers use (`qk.bookMeta`, its `includePrevious` variant when fetched that way,
   `qk.metaWork`, and the store's own `qk.item` / `qk.chapters`) through `seedQuery`: never over
-  data the cache already holds, dated by `savedAt` so an online screen still refetches on its own
+  data the cache already holds (the `/meta` seeds alone also cover an answer read before the copy
+  was, `overOlder`: a keep with `meta_bundle` reads only the `includePrevious` key, and the plain
+  one the screens read would otherwise stay as it was read before, all there is offline until the
+  next launch), dated by `savedAt` so an online screen still refetches on its own
   schedule, and kept for the session through `setQueryDefaults` (`gcTime: Infinity`; else a book
   downloaded an hour before the flight opens with nothing) until `releaseOfflineBook` on remove.
   Every reader first waits on the `metadata` flag, which a cold offline launch knows from the

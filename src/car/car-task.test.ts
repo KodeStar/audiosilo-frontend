@@ -36,7 +36,7 @@ jest.mock('@/downloads/keep-ahead-controller', () => ({
 }));
 jest.mock('@/downloads/store', () => ({
   startChapterRefresh: mockStarted('chapters'),
-  startReadalongRefresh: mockStarted('readalong'),
+  startItemRefresh: mockStarted('item'),
 }));
 jest.mock('@/widgets/widget-sync', () => ({ startWidgetSync: mockStarted('widget') }));
 jest.mock('./car-controller', () => ({
@@ -77,7 +77,7 @@ import { CAR_TASK_IDLE_MS, runCarTask, untilIdle } from './car-task';
 /* eslint-enable import/first */
 
 /** The session's work a car-only session starts (fe#158), in order. */
-const SESSION = ['bookEnd', 'keepAhead', 'chapters', 'readalong', 'widget'];
+const SESSION = ['bookEnd', 'keepAhead', 'chapters', 'item', 'widget'];
 
 const setState = (state: string) =>
   (usePlayer as unknown as { setState: (s: object) => void }).setState({ snapshot: { state } });

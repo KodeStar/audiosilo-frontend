@@ -20,11 +20,13 @@ import {
   type ServerSnapshot,
 } from '@/api/server-snapshots';
 import type { ApiClient } from '@/api/client';
-import type { Book, ChaptersResponse, Progress } from '@/api/types';
+import type { Book, BookMeta, ChaptersResponse, Progress } from '@/api/types';
+import { withMatchFields } from '@/components/library/meta-gating';
 import { identityMovePending } from '@/lib/connection-id';
 import { contentKey, contentKeyOf, isKeyOf } from '@/lib/content-key';
 import { mapLimit } from '@/lib/map-limit';
 import { canAutoDownload } from '@/lib/network';
+import { serialQueue } from '@/lib/serial-queue';
 import { sharedStart } from '@/lib/shared-start';
 import { getItem, getItemStrict, setItemStrict } from '@/lib/storage';
 import { DOWNLOADS_KEY, isRecord } from '@/lib/storage-keys';
@@ -225,7 +227,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     }
     // An `/item` answer can reach the cache before this read the registry (the web's
     // refresh starts after paint, its own sweep then finding no downloads yet).
-    if (readalongRefreshOn) refreshCachedReadalongs(Object.values(cleaned));
+    if (itemRefreshOn) takeCachedItems(Object.values(cleaned));
     await persist();
     // Web: what other tabs changed while this one read (their `storage` events are not
     // followed then) shows now, not at their next save.
@@ -1214,17 +1216,17 @@ function runChapterRefresh(): () => void {
   });
 }
 
-/** The map refetches this session already tried, by download and map (`startReadalongRefresh`):
+/** The map refetches this session already tried, by download and map (`startItemRefresh`):
  * one attempt each per launch, so a map that keeps failing its check is not fetched again on
  * every answer for the book. */
 const readalongTried = new Set<string>();
 
 /**
- * Keep downloaded books' read-along maps in step with the server (Bridge Phase 3c): every
- * `/item` answer the server gives for a downloaded book with its EPUB on the device fetches
- * the map again when its `readalong.generated_at` is not the one the download keeps, and
- * drops the kept one when the server has no ready map any more, unless a stale one still fits
- * the download's EPUB (`readalongChange`; only from a server that serves maps, so an older one
+ * Keep downloaded books in step with the server's `/item` answers. Read-along maps (Bridge
+ * Phase 3c): every answer for a downloaded book with its EPUB on the device fetches the map
+ * again when its `readalong.generated_at` is not the one the download keeps, and drops the
+ * kept one when the server has no ready map any more, unless a stale one still fits the
+ * download's EPUB (`readalongChange`; only from a server that serves maps, so an older one
  * never drops anything). Returns the unsubscribe; shared (`sharedStart`) by the root layout
  * and the car's stack (fe#158).
  *
@@ -1233,43 +1235,124 @@ const readalongTried = new Set<string>();
  * the web starts it after the first paint, when a screen's `/item` can have landed already.
  * The store's own seeds name the map the download keeps (`namingReadalong`), so they change
  * nothing but a map the download could not fetch, which is tried again (`readalongTried`).
+ *
+ * What the book's community metadata is found by: an answer naming an id or a work the
+ * download's book lacks gives it that (`adoptMatch`, fe#290).
  */
-export const startReadalongRefresh = sharedStart(runReadalongRefresh);
+export const startItemRefresh = sharedStart(runItemRefresh);
 
-function runReadalongRefresh(): () => void {
-  readalongRefreshOn = true;
-  refreshCachedReadalongs(Object.values(useDownloads.getState().entries));
+function runItemRefresh(): () => void {
+  itemRefreshOn = true;
+  takeCachedItems(Object.values(useDownloads.getState().entries));
   const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
     if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
     const ref = bookKeyParts(event.query.queryKey, 'item');
     const book = event.action.data as Book | undefined;
     if (!ref || !book) return;
-    const { cid, libraryId, path } = ref;
-    void refreshReadalong({ connectionId: cid, libraryId, path }, book).catch(() => {});
+    takeItemAnswer({ connectionId: ref.cid, libraryId: ref.libraryId, path: ref.path }, book);
   });
   return () => {
-    readalongRefreshOn = false;
+    itemRefreshOn = false;
     unsubscribe();
   };
 }
 
-/** Whether `startReadalongRefresh` runs (the launch's registry read then takes the cached
+/** Whether `startItemRefresh` runs (the launch's registry read then takes the cached
  * answers too). */
-let readalongRefreshOn = false;
+let itemRefreshOn = false;
 
 /** The `/item` answers the cache holds for these downloaded books, each taken as an answer
- * that just landed (`refreshReadalong`). */
-function refreshCachedReadalongs(entries: Iterable<DownloadEntry>): void {
+ * that just landed (`takeItemAnswer`). */
+function takeCachedItems(entries: Iterable<DownloadEntry>): void {
   for (const entry of entries) {
     if (entry.status !== 'downloaded') continue;
     const cached = queryClient.getQueryData<Book>(
       qk.item(entry.connectionId, entry.libraryId, entry.path),
     );
-    if (cached) void refreshReadalong(bookRefOf(entry), cached).catch(() => {});
+    if (cached) takeItemAnswer(bookRefOf(entry), cached);
   }
 }
 
-/** One answer's work for `startReadalongRefresh`. */
+/** One `/item` answer's work for `startItemRefresh`. */
+function takeItemAnswer(ref: BookRef, book: Book): void {
+  adoptMatch(ref, book);
+  void refreshReadalong(ref, book).catch(() => {});
+}
+
+/**
+ * A download's book takes what an `/item` answer says its community metadata is found by
+ * (`withMatchFields`: an ASIN, an ISBN, generated content, the community work), each when
+ * the book names none or another (fe#290). The download's own book can be a list row, and
+ * one made before its server sent the work's id (server#484, a console match without ids)
+ * names none: on a launch with no network that book is all `canMatch` reads, which would
+ * leave the download out of the fill-in and the weekly refresh, unmatched offline. A work
+ * the book did not name has its copy kept for it (`keepForWork`), and the copy it has is
+ * marked as from before the work (`meta.rematched`) in the same save as the id: the id alone,
+ * saved with the keep cut short (the app closed, a request that failed), would leave that
+ * copy a week, no later answer naming a new work. Never an episode; no request of its own.
+ */
+function adoptMatch(ref: BookRef, book: Book): void {
+  const entry = downloadedEntryOf(ref);
+  if (!entry || book.episode || entry.manifest.book.episode) return;
+  const { manifest } = entry;
+  const taken = withMatchFields(manifest.book, book);
+  if (taken === manifest.book) return;
+  const key = contentKeyOf(ref);
+  const newWork = taken.work_id !== manifest.book.work_id ? taken.work_id : undefined;
+  const meta = newWork && manifest.meta ? { ...manifest.meta, rematched: true as const } : null;
+  patchEntry(key, { manifest: { ...manifest, book: taken, ...(meta && { meta }) } });
+  persistSoon();
+  if (newWork) keepForWork(key, newWork);
+}
+
+/** A download's book with what the `/item` answer the cache holds says it is found by
+ * (`withMatchFields`), for a download that just finished: the answers that landed while
+ * its files did found no downloaded book to give them to (`adoptMatch`). */
+function withCachedMatch(ref: BookRef, book: Book): Book {
+  const cached = queryClient.getQueryData<Book>(qk.item(ref.connectionId, ref.libraryId, ref.path));
+  return cached && !cached.episode && !book.episode ? withMatchFields(book, cached) : book;
+}
+
+/** The keeps `keepForWork` was asked for: one book at a time. */
+const oneWorkKeep = serialQueue();
+
+/**
+ * Keep a download's copy for the work its book now names, past this launch's try: a
+ * download that kept none, one kept as unmatched before its console match, one tied to
+ * another work. A copy that names the work already stays as it is (a book matched by its
+ * ASIN or ISBN all along; read from its file, no request). One book at a time across the
+ * downloads, so many answers at once (the cached ones, as the refresh starts) are never a
+ * burst of requests. The keep reads `/meta` again, not an answer from before the work
+ * (`keepOfflineMetaNow`).
+ */
+function keepForWork(key: string, workId: string): void {
+  void oneWorkKeep(async () => {
+    // A keep under way for the book (its download's own) writes the copy read here.
+    await metaKeeps.get(key);
+    const entry = useDownloads.getState().entries[key];
+    if (entry?.status !== 'downloaded' || entry.manifest.book.work_id !== workId) return;
+    const kept = entry.manifest.meta ? (await readOfflineMeta(entry))?.meta : undefined;
+    if (namesWork(kept, workId)) return;
+    await keepOfflineMeta(key, { force: true });
+  }).catch(() => {});
+}
+
+/** Whether a `/meta` answer is a match to the work `workId`. */
+const namesWork = (meta: BookMeta | undefined, workId: string | undefined): boolean =>
+  !!meta?.matched && meta.work.id === workId;
+
+/** Mark stale the `/meta` answers the cache holds for a book that do not name `workId`,
+ * with no request: one read before the book named the work stays fresh for an hour, and a
+ * keep would save it as it is (an unmatched one, or another work's), not read again. */
+function staleMetaNotNaming(ref: BookRef, workId: string): void {
+  void queryClient.invalidateQueries({
+    queryKey: qk.bookMeta(ref.connectionId, ref.libraryId, ref.path),
+    predicate: (q) => !namesWork(q.state.data as BookMeta | undefined, workId),
+    refetchType: 'none',
+  });
+}
+
+/** One answer's read-along work for `startItemRefresh`. */
 async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
   const entry = downloadedEntryOf(ref);
   if (!entry || cachedCapability(ref.connectionId, 'readalong') !== true) return;
@@ -1933,6 +2016,10 @@ async function keepOfflineMetaNow(key: string, { force = false, job }: KeepOptio
   const attempt = `${key}@${entry.manifest.savedAt}`;
   if (metaTried.has(attempt) && !force) return;
   metaTried.add(attempt);
+  // Never a cached answer from before the book named its work (a console match made since,
+  // a book removed and downloaded again within the hour): that one is read again.
+  const workId = entry.manifest.book.work_id;
+  if (workId) staleMetaNotNaming(entry, workId);
   const payload = await captureOfflineMeta(entry);
   if (!payload || !stillDownloaded(key, entry)) return;
   if (!(await writeOfflineMeta(entry, payload))) return;
@@ -1971,7 +2058,8 @@ const RESTORE_READS_AT_ONCE = 3;
  * `restoreServerSnapshots`; a file from before that answer had its own key carries it
  * over, unless one read later is kept), then fill in, one book at a time, the downloads
  * that kept none (made before this existed, or whose file is gone or unreadable), then
- * refresh the copies older than a week. That asks only a server with `metadata`, each
+ * refresh the copies older than a week, and those from before the work their book names
+ * whose keep did not land (`meta.rematched`). That asks only a server with `metadata`, each
  * server's flags once; a failure keeps what the book had. */
 async function restoreOfflineMeta(keys: string[]): Promise<void> {
   const downloaded = keys
@@ -1996,7 +2084,16 @@ async function restoreOfflineMeta(keys: string[]): Promise<void> {
     if (payload.server && !carried.has(entry.connectionId)) {
       carried.set(entry.connectionId, payload.server);
     }
-    if (Date.now() - payload.savedAt > KEPT_META_REFRESH_MS) old.push(key);
+    // A copy from before the work its book names now (`adoptMatch`, as late as this
+    // launch's own cached answers) is seeded stale, so a keep under way for that work reads
+    // `/meta`, not this copy; and one whose keep never landed is read again below.
+    const now = useDownloads.getState().entries[key]?.manifest;
+    const workId = now?.book.work_id;
+    const before = !!workId && !namesWork(payload.meta, workId);
+    if (before) staleMetaNotNaming(entry, workId);
+    if ((before && now?.meta?.rematched) || Date.now() - payload.savedAt > KEPT_META_REFRESH_MS) {
+      old.push(key);
+    }
   }
   // Neither replaces an answer read later (the launch's seed, the server's own).
   for (const [cid, snapshot] of carried) {
@@ -2462,6 +2559,8 @@ async function runOne(key: string) {
     // sizes the book lists, fe#153), without an ebook whose fetch failed, with the map.
     const bytes = priorBytes + ebookBytes + mapBytes;
 
+    // With what an `/item` answer that landed while the files did says the book is found by.
+    const book = withCachedMatch(entry, entry.manifest.book);
     // With the server's chapters answer when one landed while the files did.
     const manifest = withCachedChapters(entry, {
       ...entry.manifest,
@@ -2471,7 +2570,7 @@ async function runOne(key: string) {
       readalongGeneratedAt: readalong?.generatedAt,
       readalongBytes: readalong?.bytes,
       ebookSha256: readalong?.ebookSha256,
-      book: namingReadalong(entry.manifest.book, readalong?.generatedAt),
+      book: namingReadalong(book, readalong?.generatedAt),
       savedAt: new Date().toISOString(),
     });
 

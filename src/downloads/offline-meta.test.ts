@@ -1,7 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient } from '@tanstack/react-query';
 
-import type { BookMeta, BookMetaSeries, BookMetaWork, ServerInfo } from '@/api/types';
+import type {
+  BookMeta,
+  BookMetaSeries,
+  BookMetaWork,
+  PodcastEpisodeInfo,
+  ServerInfo,
+} from '@/api/types';
 import type { DownloadEntry } from '@/downloads/types';
 
 // The payload file, kept in memory by (connection, library, path, name).
@@ -303,6 +309,37 @@ describe('seedOfflineMeta', () => {
     expect(qc.getQueryData(qk.bookMeta('c1', 2, 'P', { hideSpoilers: true }))).toBeUndefined();
   });
 
+  // A keep with `meta_bundle` reads only the include=previous key: the plain one the screens
+  // read takes the copy over an answer read before it (unmatched, before a console match),
+  // never over one read since.
+  it('covers an answer read before the copy, never one read since', () => {
+    const plain = qk.bookMeta('c1', 2, 'P');
+    const fresh: OfflineMeta = {
+      v: 1,
+      savedAt: 5000,
+      previous: true,
+      meta: envelope({ previous: [work('w2')] }),
+      works: [],
+    };
+    qc.setQueryData(plain, { matched: false }, { updatedAt: 1000 });
+    qc.setQueryData(qk.metaWork('c1', 'w2'), work('w2', { title: 'older' }), { updatedAt: 1000 });
+    void qc.invalidateQueries({ queryKey: plain, refetchType: 'none' });
+    seedOfflineMeta('c1', 2, 'P', fresh);
+    expect(qc.getQueryData(plain)).toMatchObject({ matched: true, work: { id: 'w3' } });
+    expect(qc.getQueryState(plain)).toMatchObject({ dataUpdatedAt: 5000, isInvalidated: false });
+    expect(qc.getQueryData(qk.metaWork('c1', 'w2'))).toEqual(work('w2'));
+
+    qc.setQueryData(plain, { matched: false }, { updatedAt: 9000 });
+    seedOfflineMeta('c1', 2, 'P', fresh);
+    expect(qc.getQueryData(plain)).toEqual({ matched: false });
+    // A copy dated as the answer the cache holds (the launch reading one this session kept)
+    // changes nothing.
+    const bundle = qk.bookMeta('c1', 2, 'P', { includePrevious: true });
+    const held = qc.getQueryData(bundle);
+    seedOfflineMeta('c1', 2, 'P', { ...fresh, meta: envelope() });
+    expect(qc.getQueryData(bundle)).toBe(held);
+  });
+
   it('answers an unmatched book as unmatched, and only the plain request without previous', () => {
     seedOfflineMeta('c1', 2, 'P', {
       v: 1,
@@ -441,6 +478,42 @@ describe('captureOfflineMeta', () => {
     };
     mockClient.bookMeta.mockResolvedValue(generated);
     await expect(captureOfflineMeta(e)).resolves.toMatchObject({ meta: generated, works: [] });
+  });
+
+  // A console match without an ASIN or ISBN (a LibriVox download, fe#290): the server names
+  // its work (`work_id`, server#484), so offline its page reads as matched, as online.
+  it('keeps a book matched only by its work, from the list row or the full item', async () => {
+    const e = entry();
+    delete e.manifest.book.asin;
+    e.manifest.book.work_id = 'w_garden';
+    expect(canMatch(e)).toBe(true);
+    mockClient.serverInfo.mockResolvedValue(server({ metadata: true }));
+    mockClient.bookMeta.mockResolvedValue(envelope());
+    await expect(captureOfflineMeta(e)).resolves.toMatchObject({ meta: { matched: true } });
+
+    const listRow = entry();
+    delete listRow.manifest.book.asin;
+    qc.setQueryData(qk.item('c1', 2, listRow.path), { ...listRow.manifest.book, work_id: 'w' });
+    expect(canMatch(listRow)).toBe(true);
+  });
+
+  it('keeps no episode, even one naming a work', () => {
+    const e = entry();
+    delete e.manifest.book.asin;
+    e.manifest.book.work_id = 'w_garden';
+    e.manifest.book.episode = { show_path: 'Show' } as PodcastEpisodeInfo;
+    expect(canMatch(e)).toBe(false);
+  });
+
+  // A list row never says an episode is one, and a feed's tags can carry an ISBN-like
+  // value: the full item decides.
+  it('keeps no episode downloaded from a list row, once its item says it is one', () => {
+    const e = entry();
+    expect(e.manifest.book.episode).toBeUndefined();
+    expect(canMatch(e)).toBe(true);
+    const episode = { show_path: 'Show' } as PodcastEpisodeInfo;
+    qc.setQueryData(qk.item('c1', 2, e.path), { ...e.manifest.book, episode });
+    expect(canMatch(e)).toBe(false);
   });
 
   it('asks a server without metadata for nothing more', async () => {

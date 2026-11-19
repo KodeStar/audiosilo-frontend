@@ -14,6 +14,7 @@ import {
   revealIsPastEnd,
   splitCharacters,
   splitRecaps,
+  withMatchFields,
 } from './meta-gating';
 
 const character = (id: string, chapter: number): BookMetaCharacter => ({
@@ -261,17 +262,37 @@ describe('metaEnabledFor', () => {
 });
 
 describe('matchableById', () => {
-  it('is a book with an ASIN or ISBN, or with content generated on its server', () => {
+  it('is a book with an ASIN or ISBN, content generated on its server, or a work (fe#290)', () => {
     expect(matchableById({ asin: 'B0', isbn: undefined })).toBe(true);
     expect(matchableById({ asin: undefined, isbn: '978' })).toBe(true);
     expect(matchableById({ asin: '', isbn: '', generated: true })).toBe(true);
+    expect(matchableById({ asin: '', isbn: '', work_id: 'w_garden' })).toBe(true);
     expect(matchableById({ asin: '', isbn: '' })).toBe(false);
     expect(matchableById(undefined)).toBe(false);
   });
 
   it('never a podcast episode, whatever its tags carry', () => {
     const episode = { show_path: 'Show' } as PodcastEpisodeInfo;
-    expect(matchableById({ asin: 'B0', isbn: '978', generated: true, episode })).toBe(false);
+    expect(matchableById({ asin: 'B0', isbn: '978', generated: true, work_id: 'w', episode })).toBe(
+      false,
+    );
+  });
+});
+
+describe('withMatchFields', () => {
+  it('takes every field the answer names that the book lacks or names otherwise', () => {
+    const row = { title: 'A Book', asin: 'B0', work_id: 'w_old' };
+    expect(
+      withMatchFields(row, { asin: 'B0', isbn: '978', generated: true, work_id: 'w_new' }),
+    ).toEqual({ title: 'A Book', asin: 'B0', isbn: '978', generated: true, work_id: 'w_new' });
+  });
+
+  it('is the same book when the answer names nothing new, and never drops a field', () => {
+    const book = { asin: 'B0', isbn: '978', generated: true, work_id: 'w' };
+    expect(withMatchFields(book, { ...book })).toBe(book);
+    // An older server, or a list row, names fewer.
+    expect(withMatchFields(book, { asin: '', generated: false })).toBe(book);
+    expect(withMatchFields(book, {})).toBe(book);
   });
 });
 
