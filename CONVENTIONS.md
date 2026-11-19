@@ -1118,9 +1118,9 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   as the reader's send would), and one that left the queue went from another tab or gave way
   to a newer save. One this tab's replay claimed still goes in its own turn (`replayingHere`),
   and the replay finds it settled: left to the replay, it went behind the other books' saves
-  of its connection, and not at all once one of them stopped the replay. A tab's replay drops
-  a connection's saves as gone only once it is gone from the stored connections too
-  (`readerRoute`, `storedConnectionIds`): one signed in to in another tab is not in this
+  of its connection, and not at all once one of them stopped the replay. On the web a tab's
+  replay drops a connection's saves as gone only once it is gone from the stored connections
+  too (`readerRoute`, `storedConnectionIds`): one signed in to in another tab is not in this
   tab's session, and its saves (a live one waiting for its turn too) are that tab's to send.
   A book's captures in a tab are a millisecond apart at least (`lastCaptured`): the queue and
   `settledUntil` tell its saves apart by time. One a replay had claimed is never sent after it

@@ -1652,29 +1652,16 @@ describe('reading places across tabs', () => {
   // The session of a tab holds the connections it loaded: one signed in to in another tab
   // since is stored, not in it. Its replay dropped that connection's saves as gone, a live
   // one waiting behind its own tab's hung save included, which was then never sent.
-  it('leaves a save of a connection this tab does not know to the tab signed in to it', async () => {
-    await AsyncStorage.setItem(CONNECTIONS_KEY, JSON.stringify([{ id: 'c1' }]));
-    const other = otherTab();
-    const { api, release } = hangs(firstOnly());
-    const first = other.saveReadingPlace(api, save({ cfi: CFI_A, progression: 0.5 }));
-    await nextMacrotask();
-    const waiting = other.saveReadingPlace(
-      api,
-      save({ cfi: CFI_B, progression: 0.6, updated_at: '2026-10-01T10:05:00.000Z' }),
-    );
-    await nextMacrotask();
+  it('drops a save whose connection is gone from every tab', async () => {
+    await AsyncStorage.setItem(CONNECTIONS_KEY, JSON.stringify([{ id: 'c2' }]));
+    await AsyncStorage.setItem(READING_QUEUE_KEY, JSON.stringify([save()]));
     routeClients({});
     await flushReadingQueue();
-    const queuedHere = (await readQueue()).map((s) => s.cfi);
-    release();
-    await Promise.all([first, waiting]);
-    expect(queuedHere).toEqual([CFI_B]);
-    expect(cfisSent(api)).toEqual([CFI_A, CFI_B]);
     expect(await readQueue()).toEqual([]);
   });
 
-  it('drops a save whose connection is gone from every tab', async () => {
-    await AsyncStorage.setItem(CONNECTIONS_KEY, JSON.stringify([{ id: 'c2' }]));
+  it('drops a save of a connection the app does not know off the web, though it is stored', async () => {
+    await AsyncStorage.setItem(CONNECTIONS_KEY, JSON.stringify([{ id: 'c1' }]));
     await AsyncStorage.setItem(READING_QUEUE_KEY, JSON.stringify([save()]));
     routeClients({});
     await flushReadingQueue();
@@ -1690,6 +1677,27 @@ describe('reading places across tabs', () => {
     });
     afterEach(() => {
       Platform.OS = os;
+    });
+
+    it('leaves a save of a connection this tab does not know to the tab signed in to it', async () => {
+      await AsyncStorage.setItem(CONNECTIONS_KEY, JSON.stringify([{ id: 'c1' }]));
+      const other = otherTab();
+      const { api, release } = hangs(firstOnly());
+      const first = other.saveReadingPlace(api, save({ cfi: CFI_A, progression: 0.5 }));
+      await nextMacrotask();
+      const waiting = other.saveReadingPlace(
+        api,
+        save({ cfi: CFI_B, progression: 0.6, updated_at: '2026-10-01T10:05:00.000Z' }),
+      );
+      await nextMacrotask();
+      routeClients({});
+      await flushReadingQueue();
+      const queuedHere = (await readQueue()).map((s) => s.cfi);
+      release();
+      await Promise.all([first, waiting]);
+      expect(queuedHere).toEqual([CFI_B]);
+      expect(cfisSent(api)).toEqual([CFI_A, CFI_B]);
+      expect(await readQueue()).toEqual([]);
     });
 
     // Another tab's replay sent the waiting copy while its own tab's earlier save of the book

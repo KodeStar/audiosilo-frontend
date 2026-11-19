@@ -751,12 +751,13 @@ function replayReadingSaves(
   );
 }
 
-/** `queuedRoute`, except that a connection this tab's session does not know is dropped only
- * once it is gone from the stored connections too: one signed in to in another tab since this
- * tab loaded is that tab's to replay (its saves, a live one waiting for its turn included). */
+/** `queuedRoute`, except that on the web a connection this tab's session does not know is
+ * dropped only once it is gone from the stored connections too: one signed in to in another
+ * tab since this tab loaded is that tab's to replay (its saves, a live one waiting for its turn
+ * included). Off the web there is no other tab: the session is every connection there is. */
 async function readerRoute(cid: string): Promise<Route<ApiClient>> {
   const route = queuedRoute(cid);
-  if (route !== 'drop') return route;
+  if (route !== 'drop' || Platform.OS !== 'web') return route;
   const stored = await storedConnectionIds();
   return stored === null || stored.has(cid) ? 'keep' : 'drop';
 }
