@@ -325,6 +325,25 @@ describe('WebPlaybackService (transcoded tracks)', () => {
     expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 50, duration: 500 });
   });
 
+  // A re-pair while the book plays: the old token may be revoked, so the engine's next
+  // request (a seek of the transcoded stream, the next file) goes with the new one.
+  it('sends its next requests with the addresses a restream gives the same queue', async () => {
+    const withNew = (t: PlaybackTrack) => ({ ...t, url: t.url.replace('token=k', 'token=n') });
+    await startPlaying(100);
+    svc.restream?.(transcodedTracks.map(withNew));
+    await svc.seekTo(300);
+    expect(el().src).toBe(`${STREAM.replace('token=k', 'token=n')}&t=300`);
+    await svc.skipToTrack(1, 0);
+    expect(el().src).toBe(STREAM2.replace('token=k', 'token=n'));
+  });
+
+  it('ignores a restream of another queue', async () => {
+    await startPlaying(100);
+    svc.restream?.(directTracks);
+    await svc.skipToTrack(1, 0);
+    expect(el().src).toBe(STREAM2);
+  });
+
   it('a load (the store retry path) reloads at the track-absolute position', async () => {
     await startPlaying(100);
     el().currentTime = 20;

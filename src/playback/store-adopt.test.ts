@@ -491,6 +491,32 @@ describe('adoptLoaded', () => {
     mockFetchQuery.mockImplementation(async () => ({}));
   });
 
+  it('streams with the token of a re-pair made while the book was read', async () => {
+    const repaired = {
+      ...fakeClient,
+      coverUrl: (lib: number, path: string) => `cover:${lib}:${path}?token=new`,
+      streamUrl: (lib: number, path: string) => `stream:${lib}:${path}?token=new`,
+    };
+    mockFetchQuery.mockImplementation(async (opts: unknown) => {
+      const key = (opts as { queryKey: unknown[] }).queryKey;
+      mockResolveClient.mockReturnValue(repaired);
+      return key[0] === 'item' ? twoFileBook : twoFileChapters;
+    });
+    try {
+      expect(await usePlayer.getState().adoptLoaded(loadedB({}))).toBe(true);
+      const np = usePlayer.getState().nowPlaying!;
+      expect(np.queue.tracks.map((t) => t.url)).toEqual([
+        'stream:2:B/1.mp3?token=new',
+        'stream:2:B/2.mp3?token=new',
+      ]);
+      expect(np.cover).toBe('cover:2:B?token=new');
+    } finally {
+      mockResolveClient.mockReturnValue(fakeClient);
+      mockFetchQuery.mockReset();
+      mockFetchQuery.mockImplementation(async () => ({}));
+    }
+  });
+
   it('gives up, changing nothing, when another book starts while it reads', async () => {
     const answers: (() => void)[] = [];
     mockFetchQuery.mockImplementation(

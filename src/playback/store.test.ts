@@ -56,6 +56,7 @@ const mockSvc = {
   setRate: jest.fn(async () => {}),
   setVolume: jest.fn(async () => {}),
   reset: jest.fn(async () => {}),
+  restream: jest.fn(),
   getSnapshot: jest.fn(() => ({ ...INITIAL })),
   subscribe: jest.fn((listener: (s: PlaybackSnapshot) => void) => {
     pushSnapshot = listener;
@@ -172,6 +173,7 @@ import { isDeclined, useDownloads } from '@/downloads/store';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 import { resetProfilesForTests, switchProfile, useProfiles } from '@/stores/profiles';
 import * as session from '@/stores/session';
+import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 
 import { bookFileSpecs } from './book-queue';
@@ -1486,6 +1488,73 @@ describe("the connection's client at each save", () => {
     expect(mockLiveClient).toHaveBeenCalledWith('c1');
     expect(repaired.addHistory).toHaveBeenCalled();
     expect(fakeClient.addHistory).not.toHaveBeenCalled();
+  });
+});
+
+describe('a re-pair while a book is loaded', () => {
+  afterEach(() => mockResolveClient.mockImplementation(() => fakeClient));
+
+  /** The same connection on a new token: its media urls and headers carry it. */
+  const repaired = {
+    ...fakeClient,
+    coverUrl: (lib: number, path: string) => `cover:${lib}:${path}?token=new`,
+    streamUrl: (lib: number, path: string) => `stream:${lib}:${path}?token=new`,
+    authHeaders: () => ({ Authorization: 'Bearer new' }),
+  };
+
+  it("streams the book's next request with the new token, in the queue the book holds", async () => {
+    await startBook(makeBook(), 0, 'c1');
+    pushSnapshot(snap('playing', 40));
+    await flushMicrotasks();
+    const before = usePlayer.getState().nowPlaying!;
+    mockResolveClient.mockImplementation(() => repaired);
+    useSession.setState({ connections: [...useSession.getState().connections] });
+    const after = usePlayer.getState().nowPlaying!;
+    // The same book and queue (a start's and a swap's checks compare them).
+    expect(after).toBe(before);
+    expect(after.queue.tracks[0]).toMatchObject({
+      url: 'stream:2:A/Book.m4b?token=new',
+      headers: { Authorization: 'Bearer new' },
+    });
+    // The engine's next request (its next file, a transcoded seek) and a Retry's reload.
+    expect(mockSvc.restream).toHaveBeenCalledWith(after.queue.tracks);
+    (mockSvc.load as jest.Mock).mockClear();
+    await usePlayer.getState().retry();
+    expect(mockSvc.load).toHaveBeenCalledWith(
+      [expect.objectContaining({ url: 'stream:2:A/Book.m4b?token=new' })],
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it('changes nothing when the connection list changes and the token does not', async () => {
+    await startBook(makeBook(), 0, 'c1');
+    const tracks = usePlayer.getState().nowPlaying!.queue.tracks;
+    (mockSvc.restream as jest.Mock).mockClear();
+    useSession.setState({ connections: [...useSession.getState().connections] });
+    expect(usePlayer.getState().nowPlaying!.queue.tracks).toBe(tracks);
+    expect(mockSvc.restream).not.toHaveBeenCalled();
+  });
+
+  it('loads a start with the token of a re-pair made while its place was looked up', async () => {
+    mockLoadInitialProgress.mockImplementationOnce(async () => {
+      mockResolveClient.mockImplementation(() => repaired);
+      return { kind: 'empty' };
+    });
+    (mockSvc.load as jest.Mock).mockClear();
+    // A resume: its place is looked up.
+    await usePlayer.getState().playBook('c1', 2, makeBook());
+    expect(mockLoadInitialProgress).toHaveBeenCalled();
+    expect(mockSvc.load).toHaveBeenCalledWith(
+      [expect.objectContaining({ url: 'stream:2:A/Book.m4b?token=new' })],
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(usePlayer.getState().nowPlaying?.cover).toBe('cover:2:A/Book.m4b?token=new');
   });
 });
 

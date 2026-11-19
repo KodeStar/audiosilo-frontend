@@ -122,6 +122,16 @@ export class RoutedPlaybackService implements PlaybackService {
     }
   }
 
+  /** The loaded queue at new addresses (`PlaybackService.restream`): the phone's engine takes
+   * them, and so does the queue a route switch hands over (a receiver streams on its cast
+   * token, never these). */
+  restream(tracks: PlaybackTrack[]): void {
+    if (this.lastLoad && sameOrder(this.lastLoad.tracks, tracks)) {
+      this.lastLoad = { ...this.lastLoad, tracks };
+    }
+    this.local.restream?.(tracks);
+  }
+
   /** The cast route, while there is one. */
   castRoute(): CastPlaybackService | null {
     return this.cast;

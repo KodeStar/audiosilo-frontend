@@ -196,6 +196,14 @@ export interface PlaybackService {
     book?: BookRef,
     onSwitch?: () => void,
   ): Promise<SwapOutcome>;
+  /**
+   * The loaded queue's tracks again, the same files in the same order at new addresses (a
+   * re-pair's token, `restreamTracks`): every request the engine makes from now on uses them
+   * (its next file, a transcoded stream's seek), and what plays goes on where it is. Ignored
+   * when the engine holds another queue. Optional: an engine without it keeps the items it
+   * loaded until its next load (a Retry, a start, the download hot-swap).
+   */
+  restream?(tracks: PlaybackTrack[]): void;
   play(): Promise<void>;
   pause(): Promise<void>;
   /** Seek within the current track. */

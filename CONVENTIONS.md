@@ -285,8 +285,15 @@ markNeedsReconnect(cid, 'auth')` (`connectionClient`), only while the connection
 the token that client carries: a request sent before a re-pair that comes back 401 says nothing
 of the new token. Never keep a connection's client across awaits or between saves: resolve it
 when the request goes (`resolveClient`), or take `liveClient` (`src/api/live-client.ts`), which
-reads the connection again at each call, when a callee sends only after awaits of its own (the
-player's `persist` into `saveProgress`). `client.ts` never imports the session store (no cycle).
+reads the connection again at each call, when a send comes only after awaits of its own
+(`progress-sync`'s `saveProgress` and replay, `flushGroup`, and the listening outbox's flush; a
+client handed in is used only for a connection not signed in now). A start (`playBook`,
+`adoptNow`) resolves it again after each await. The loaded book's streamed tracks carry the
+token in their urls (and headers on native): each change of the connection list re-addresses
+them (`restreamTracks`, `restreamLoaded` in `store.ts`), in the store's queue, which a Retry, a
+reload and the download hot-swap load from, and in the engine's (`PlaybackService.restream`: the
+web engine's next file and transcoded seek; native has none and keeps the items it loaded until
+its next load). `client.ts` never imports the session store (no cycle).
 **Onboarding** flows (connect / sign-in / demo) build bare clients with NO callback, so a
 wrong-password 401 on `/auth/login` can't false-flag a reconnect. The React Query
 `QueryCache` keeps only the two success-side jobs a per-request error callback can't do:
@@ -1162,8 +1169,10 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   replay through each save's connection; a 429 stops the replay and queues the connection's
   saves until its `Retry-After` is over, then replays them (`src/api/rate-limit.ts`, held per
   connection, never per `ApiClient`: `resolveClient` builds one per call), as `progress-sync`'s
-  legacy queue's replay does (a live listening save is still sent meanwhile, and a 429 it gets
-  is noted too); a sign-out's last flush still tries them) plus `base_version`:
+  legacy queue does (its live saves are queued meanwhile too, and a 429 one gets sets the
+  hold) and the listening outbox (a flush sends nothing meanwhile, a 429 on a batch or an
+  event sent alone sets it, and its end flushes the connection); a sign-out's last flush of
+  the queues still tries them, the outbox's counts them unsent) plus `base_version`:
   the last version this device acknowledged, always sent (0 only when no row was ever seen).
   Every send of a book, the queue's replays and the open reader's saves alike, goes one at a
   time in the tab (`withSendTurn`, fe#173), per book: a request that hangs (up to the client's

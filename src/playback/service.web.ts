@@ -584,6 +584,13 @@ class WebPlaybackService implements PlaybackService {
     this.update({ state: 'ready' });
   }
 
+  restream(tracks: PlaybackTrack[]) {
+    // The same files in the same order only: the index and the place read the same.
+    if (tracks.length !== this.tracks.length) return;
+    if (tracks.some((t, i) => t.id !== this.tracks[i].id)) return;
+    this.tracks = tracks;
+  }
+
   async swapTo(
     tracks: PlaybackTrack[],
     startIndex: number,

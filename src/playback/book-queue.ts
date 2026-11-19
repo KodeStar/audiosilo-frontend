@@ -340,6 +340,45 @@ export function buildBookQueue(
   };
 }
 
+/** The same address, whatever its query (the media token rides in it). */
+const sameAddress = (a: string, b: string) => a.split('?')[0] === b.split('?')[0];
+
+const sameHeaders = (a?: Record<string, string>, b?: Record<string, string>) =>
+  JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/**
+ * A loaded queue's `tracks` with each one the server streams addressed through `api` as it
+ * is now, as `buildBookQueue` would address it: the url (a transcoded one still transcoded)
+ * and, on native, the headers carry a re-pair's new token, and so does the server's cover. A
+ * downloaded file (`local`) and its cover stay. The ids and the order stay, so a place in
+ * the queue reads the same. Null when nothing changes (no client, the same token), so a
+ * caller swaps nothing in.
+ */
+export function restreamTracks(
+  tracks: PlaybackTrack[],
+  api: ApiClient | null,
+  libraryId: number,
+  bookPath: string,
+): PlaybackTrack[] | null {
+  if (!api) return null;
+  const headers = Platform.OS !== 'web' ? api.authHeaders() : undefined;
+  const cover = api.coverUrl(libraryId, bookPath);
+  const prefix = `${libraryId}:`;
+  let changed = false;
+  const next = tracks.map((t) => {
+    if (t.local || !t.id.startsWith(prefix)) return t;
+    const path = t.id.slice(prefix.length);
+    const url = t.transcoded
+      ? api.streamUrl(libraryId, path, false, { transcode: true })
+      : api.streamUrl(libraryId, path);
+    const artwork = t.artwork !== undefined && sameAddress(t.artwork, cover) ? cover : t.artwork;
+    if (url === t.url && artwork === t.artwork && sameHeaders(t.headers, headers)) return t;
+    changed = true;
+    return { ...t, url, headers, artwork };
+  });
+  return changed ? next : null;
+}
+
 /** Distinct audio files referenced by a book's chapters, in play order, with a
  * per-file duration estimated from the largest chapter end within it. */
 function distinctFilesFromChapters(chapters: Chapter[]): { path: string; duration: number }[] {

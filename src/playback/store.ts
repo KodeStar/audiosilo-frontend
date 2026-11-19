@@ -26,7 +26,7 @@ import { flushReadingConnection } from '@/reader/reading-progress';
 import { quietOffScreen } from '@/lib/visible-store';
 import { withTimeout } from '@/lib/with-timeout';
 import { mayActFor } from '@/stores/profiles';
-import { tellOtherTabsGoing } from '@/stores/session';
+import { tellOtherTabsGoing, useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 
 import type { LoadedBook } from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
@@ -40,6 +40,7 @@ import {
   fileDurationOf,
   FINISHED_TOLERANCE,
   locate,
+  restreamTracks,
   shortOfFileEnd,
   toBookPosition,
   trackIdOf,
@@ -3750,6 +3751,10 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // Resolve the client from the connection id (single source of truth), mirroring the
       // downloads store - so a caller can't pass an `api` that disagrees with `connectionId`.
       const api = resolveClient(connectionId);
+      // The client as the connection is now, read again after each await below: a re-pair
+      // meanwhile changed the token, and the streams, the cover and the place lookup would
+      // otherwise carry the old one. A connection gone since keeps the one it had.
+      const clientNow = () => resolveClient(connectionId) ?? api;
 
       // Play from local files when the book is downloaded (works fully offline).
       const ref = { connectionId, libraryId, path: book.rel_path };
@@ -3793,7 +3798,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       const transcode =
         !local &&
         mayNeedWebTranscode(book, chapterData) &&
-        (await resolveWebTranscode(connectionId, api, book, chapterData));
+        (await resolveWebTranscode(connectionId, clientNow(), book, chapterData));
       // A downloaded book given no chapters (its chapters read failed) plays its download's
       // files and chapters, the order its manifest holds, so the engine never holds an order
       // the manifest does not (`adoptStartedChapters`). So does one that ends before its book
@@ -3810,7 +3815,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       const own = dl && (!chapterData || offlineShort) ? dl.manifest : undefined;
       const queueChapters = own ? (own.chapters ?? undefined) : chapterData;
       const queue = buildBookQueue(
-        api,
+        clientNow(),
         libraryId,
         own ? { ...book, files: own.book.files, chapters: own.book.chapters } : book,
         queueChapters,
@@ -3825,7 +3830,15 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       if (endsBefore && trackIndexById(queue, trackIdOf(libraryId, endsBefore)) < 0) {
         partialQueues.set(queue, serverLengthOf(dl?.manifest, chapterData));
       }
-      const nowPlaying = nowPlayingOf(ref, book, queue, api, local);
+      // The book as it loads, built once the awaits below are over: its streams go with the
+      // token the connection holds then (`restreamTracks`), in the queue the place was found
+      // in (the same object: `partialQueues` keys on it).
+      const loadedBook = (): NowPlaying => {
+        const now = clientNow();
+        const tracks = restreamTracks(queue.tracks, now, libraryId, book.rel_path);
+        if (tracks) queue.tracks = tracks;
+        return nowPlayingOf(ref, book, queue, now, local);
+      };
       const svc = await ensureService();
 
       let startAt = startBookPosition ?? 0;
@@ -3853,7 +3866,8 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         // start for the whole request timeout, and the car gave up on it). Started from this
         // device's records, as offline: its saves go guarded (`unchecked`, fe#198). A server
         // that answers later is followed once the book is loaded (`followLatePlace`).
-        const placeApi = dl && (!isDeviceOnline() || !isReachable(connectionId)) ? null : api;
+        const placeApi =
+          dl && (!isDeviceOnline() || !isReachable(connectionId)) ? null : clientNow();
         const r = await loadInitialProgress(
           placeApi,
           connectionId,
@@ -3908,7 +3922,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
           if (!current()) return;
           set({
             rate: speed,
-            nowPlaying,
+            nowPlaying: loadedBook(),
             snapshot: { ...INITIAL_SNAPSHOT, state: 'error', rate: speed },
           });
           restoreOutputGain(svc);
@@ -3956,6 +3970,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       const key = contentKey(connectionId, libraryId, book.rel_path);
       const prev = get();
       const loadingBook = selectBookKey(prev) === key ? prev.loadingBook : key;
+      const nowPlaying = loadedBook();
       set({ rate: speed, nowPlaying, loadingBook });
       // An explicit place is the listener's own: unguarded, like a resume checked against
       // the server.
@@ -4867,7 +4882,6 @@ async function adoptNow(
   // account (`mayActFor`).
   if (!mayActFor(loaded.connectionId)) return false;
   const before = usePlayer.getState().nowPlaying;
-  const api = resolveClient(loaded.connectionId);
   let source: Awaited<ReturnType<typeof bookSourceOf>>;
   let id: string;
   let svc: PlaybackService;
@@ -4895,7 +4909,10 @@ async function adoptNow(
   const inEngineOrder = (chapters: ChaptersResponse | undefined) =>
     engineIds !== null && sameIds(specIds(bookFileSpecs(book, chapters), libraryId), engineIds);
   let otherOrder = engineIds !== null && !inEngineOrder(chapterData);
-  const served = otherOrder && local ? await serverChaptersOf(ref, api) : null;
+  // The connection's client read at each use, never one taken before an await: a re-pair
+  // meanwhile changed the token.
+  const served =
+    otherOrder && local ? await serverChaptersOf(ref, resolveClient(connectionId)) : null;
   if (reread) {
     // The engine played on while the book was read: where it is, whether it plays and at what
     // speed now (a pause, a move or a speed change made meanwhile stands), and nothing to
@@ -4932,6 +4949,8 @@ async function adoptNow(
     const own = idsIn(chapterData);
     if (engineIds.some((id) => servedIds.has(id) && !own.has(id))) chapterData = served;
   }
+  // After the last await: the token the connection holds now.
+  const api = resolveClient(connectionId);
   const queue = buildBookQueue(
     api,
     libraryId,
@@ -5298,6 +5317,29 @@ usePlayer.subscribe((state, prev) => {
   if (!state.nowPlaying || contentKeyOf(state.nowPlaying) !== due) return;
   if (state.snapshot.state === 'playing') void pickedUpAgainListener?.();
   else pausedAt = 0;
+});
+
+/**
+ * The loaded book's streams on its connection as it is now: a re-pair gives it another token
+ * (the old one may be revoked), and the tracks take it from the next request
+ * (`restreamTracks`): the store's queue, which a Retry, a reload and the download hot-swap
+ * load from, and the engine's (`restream`: its next file, a transcoded stream's seek). In
+ * place, the queue still the book's: every check of a start or a swap compares `nowPlaying`
+ * by identity. An engine without `restream` (native) keeps the items it loaded until its
+ * next load. Run on each change of the connection list; nothing changes when the book's
+ * streams already have those addresses.
+ */
+function restreamLoaded(): void {
+  const np = usePlayer.getState().nowPlaying;
+  if (!np) return;
+  const client = resolveClient(np.connectionId);
+  const tracks = restreamTracks(np.queue.tracks, client, np.libraryId, np.path);
+  if (!tracks) return;
+  np.queue.tracks = tracks;
+  service?.restream?.(tracks);
+}
+useSession.subscribe((state, prev) => {
+  if (state.connections !== prev.connections) restreamLoaded();
 });
 
 /** Whether `np`'s queue streams a file its download holds (a download that landed and was
