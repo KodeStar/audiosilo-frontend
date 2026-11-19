@@ -2162,8 +2162,11 @@ media GETs only.
   palette too), at the place of a move whose call is still out (`reloadPlace`: Android takes
   up to a second to rebuild the engine for a move on a book in error), else at the place shown.
   Not at a place past the engine's own measure of its file (`stuckPastMeasure`, the length it
-  last reported for the file in a report not the first of a file change, `engineLengths`, kept
-  per `NowPlaying` and dropped as the route switch loads the book back on the phone): the
+  last reported for the file in a report not the first of a file change, nor one sent while a
+  move of the store's is out (Android tells a paused move into another file's place, with the
+  new file's length, under the old file's index; a load is told with the server's length),
+  `engineLengths`, kept per `NowPlaying` and per route, the phone's
+  engine or a Cast receiver, each measuring a file its own way, `castRouted`): the
   engine would clamp and play into the next file before its fault stopped it, so nothing is
   reloaded or played, the book stays faulted in its error at the place, and the listener moves
   it back to play; not where a download landed meanwhile (the reload is of its files) or

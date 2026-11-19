@@ -2125,21 +2125,30 @@ const reportsUnheard = () => loadedFaulted() || errorHeld();
 /** The engine's own length of each file of `np`'s queue, as it last reported it (the snapshot's
  * `duration` before the store reads the server's over a short measure, `fileDurationOf`), by
  * file index. Only the engine that plays `np` now measured them: a new book, or the download
- * hot-swap's new `NowPlaying`, starts with none, and so does the phone's engine the route switch
- * loads the book into (`onOwnLoad`). */
-let engineLengths: { np: NowPlaying; byFile: Map<number, number> } | null = null;
+ * hot-swap's new `NowPlaying`, starts with none, and so does the other route (`casting`: a
+ * Cast receiver measures a file its own way, and the phone's engine the route switch loads the
+ * book back into never took the receiver's measure). */
+let engineLengths: { np: NowPlaying; casting: boolean; byFile: Map<number, number> } | null = null;
+
+/** Is the store's engine a Cast receiver, or on its way to one (`engineLengths`)? */
+const castRouted = () => service?.isCasting?.() ?? false;
 
 /** Note the engine's length of file `trackIndex` of `np`'s queue. */
 function noteEngineLength(np: NowPlaying, trackIndex: number, duration: number) {
   if (!(duration > 0)) return;
-  if (engineLengths?.np !== np) engineLengths = { np, byFile: new Map() };
+  const casting = castRouted();
+  if (engineLengths?.np !== np || engineLengths.casting !== casting) {
+    engineLengths = { np, casting, byFile: new Map() };
+  }
   engineLengths.byFile.set(trackIndex, duration);
 }
 
 /** The engine's length of file `trackIndex` of `np`'s queue as it last reported it
  * (`engineLengths`), 0 when unknown. */
 const engineLength = (np: NowPlaying, trackIndex: number): number =>
-  engineLengths?.np === np ? (engineLengths.byFile.get(trackIndex) ?? 0) : 0;
+  engineLengths?.np === np && engineLengths.casting === castRouted()
+    ? (engineLengths.byFile.get(trackIndex) ?? 0)
+    : 0;
 
 /** Is `position` in file `trackIndex` of `np`'s queue past `measure`, the engine's own length of
  * that file, while the server's length goes on past the place (`shortOfFileEnd`)? An engine put
@@ -3314,8 +3323,16 @@ async function createService(): Promise<PlaybackService> {
     if (np && !loadingBook) {
       // The engine's own length of the file, for a reload's check (`retry`). Not from the first
       // report of another file, which the native service sends with the old file's length
-      // (`fileChanged`), nor a place the hot-swap could not map, which keeps the store's.
-      if (snapshot.trackIndex === prev.trackIndex && snapshot.duration === reported.duration) {
+      // (`fileChanged`), nor a place the hot-swap could not map, which keeps the store's. Nor
+      // while a move of the store's is out: Android tells a paused move into another file's
+      // place, and the new file's length, under the old file's index before its file change,
+      // and a load is told with the server's length before the engine measured anything.
+      const moving = askedPlace?.np === np && !askedPlace.landed;
+      if (
+        !moving &&
+        snapshot.trackIndex === prev.trackIndex &&
+        snapshot.duration === reported.duration
+      ) {
         noteEngineLength(np, snapshot.trackIndex, snapshot.duration);
       }
       const fault = engineFault(np, snapshot, prev, raw.state === 'ended' && !partialEnd);
@@ -3521,8 +3538,6 @@ async function createService(): Promise<PlaybackService> {
   svc.onOwnLoad?.((trackIndex, positionInTrack, loaded) => {
     const { nowPlaying: np, loadingBook } = usePlayer.getState();
     if (!np || loadingBook || loadedFaulted()) return;
-    // Another engine plays the book from here: what the receiver measured is not its.
-    engineLengths = null;
     void engineTakes(askEngineTo(np, trackIndex, positionInTrack), loaded).catch(() => undefined);
   });
   // Native (Android): the engine stopped wanting to play, so the watchdog's pause has reached

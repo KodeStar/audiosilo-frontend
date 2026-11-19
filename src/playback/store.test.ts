@@ -4699,6 +4699,83 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
       position: 30,
     });
   });
+
+  it("a paused move into another file never takes that file's length for the one it left (Android)", async () => {
+    await resume(10);
+    // File 1 measured in full (139.42 s), file 2 short (29.9 s).
+    pushSnapshot(snap('playing', 10.5, { trackIndex: 0, duration: 139.42 }));
+    await usePlayer.getState().pause();
+    pushSnapshot(snap('paused', 11, { trackIndex: 0, duration: 139.42 }));
+    // Media3 tells a paused move's place, with the new file's length, before its file change.
+    (mockSvc.skipToTrack as jest.Mock).mockImplementationOnce(async () => {
+      pushSnapshot(snap('paused', 5, { trackIndex: 0, duration: short }));
+    });
+    await usePlayer.getState().seekBook(lengths[0] + 5);
+    pushSnapshot(snap('paused', 5, { trackIndex: 1, duration: short }));
+    pushSnapshot(snap('paused', 5, { trackIndex: 1, duration: short }));
+    // A paused scrub past file 2's measure faults there.
+    (mockSvc.seekTo as jest.Mock).mockImplementationOnce(async () => {
+      pushSnapshot(snap('paused', short + 0.03, { trackIndex: 1, duration: short }));
+    });
+    await usePlayer.getState().seekInTrack(60);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'error',
+      trackIndex: 1,
+      position: 60,
+    });
+    // Back in file 1 at 100 s, inside its own measure: a press plays there.
+    await usePlayer.getState().seekBook(100);
+    await flushMicrotasks();
+    (mockSvc.load as jest.Mock).mockClear();
+    await usePlayer.getState().toggle();
+    expect(lastLoad()).toEqual([0, 100]);
+  });
+
+  it("a reload's own report of the server's length never replaces the engine's measure", async () => {
+    await resume(10);
+    pushSnapshot(snap('playing', 10.5, { trackIndex: 0, duration: short }));
+    // The stream fails; a press reloads at 10.5, inside the measure. The native service tells
+    // the load with the server's length, in the same file, before the call resolves.
+    pushSnapshot(snap('error', 10.5, { trackIndex: 0, duration: 0 }));
+    (mockSvc.load as jest.Mock).mockImplementationOnce(async () => {
+      pushSnapshot(snap('ready', 10.5, { trackIndex: 0, duration: lengths[0] }));
+    });
+    await usePlayer.getState().toggle();
+    expect(lastLoad()).toEqual([0, 10.5]);
+    // It fails again before a tick; the listener scrubs past the engine's measure.
+    pushSnapshot(snap('error', 10.5, { trackIndex: 0, duration: 0 }));
+    await flushMicrotasks();
+    await usePlayer.getState().seekInTrack(60);
+    await flushMicrotasks();
+    (mockSvc.load as jest.Mock).mockClear();
+    // Still the engine's 29.9 s: nothing is reloaded there to play into file 2.
+    await usePlayer.getState().toggle();
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', position: 60 });
+  });
+
+  it("a book faulted on the phone's measure reloads on a Cast receiver, which measures its own", async () => {
+    await resume(10);
+    pushSnapshot(snap('playing', 10.5, { trackIndex: 0, duration: short }));
+    await usePlayer.getState().pause();
+    pushSnapshot(snap('paused', 11, { trackIndex: 0, duration: short }));
+    (mockSvc.seekTo as jest.Mock).mockImplementationOnce(async () => {
+      pushSnapshot(snap('paused', short + 0.03, { trackIndex: 0, duration: short }));
+    });
+    await usePlayer.getState().seekInTrack(60);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', position: 60 });
+    const cast = mockSvc as unknown as { isCasting?: () => boolean };
+    cast.isCasting = () => true;
+    try {
+      (mockSvc.load as jest.Mock).mockClear();
+      await usePlayer.getState().toggle();
+      expect(lastLoad()).toEqual([0, 60]);
+    } finally {
+      delete cast.isCasting;
+    }
+  });
 });
 
 // --- the two readings of "the user is listening" ---------------------------
