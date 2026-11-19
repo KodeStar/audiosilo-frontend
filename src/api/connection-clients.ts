@@ -1,5 +1,5 @@
 import { resolveConnectionId } from '@/lib/connection-id';
-import { connectionSetFor, type ProxyHeaders } from '@/lib/proxy-headers';
+import { connectionSetFor, type ProxyHeaders, sameProxyHeaders } from '@/lib/proxy-headers';
 import { type Connection, sessionHydrateFailed, useSession } from '@/stores/session';
 
 import { effectiveUrl } from './address-route';
@@ -61,10 +61,15 @@ export function connectionClient(
     // migration moved it names the old one, which no reachability reader asks for.
     (at) => noteAnswer(connectionOf(conn.id)?.id ?? conn.id, at),
     proxy,
-    // Under its id now, as above; a connection no longer signed in has nothing to say.
+    // Under its id now, as above; a connection no longer signed in has nothing to say. Only
+    // while the connection still sends these headers there: a request sent with a set since
+    // replaced (a grown-up's update) that answers late says nothing of the one it sends now,
+    // and would raise the notice again after the new set got through.
     (refused) => {
       const now = connectionOf(conn.id);
-      if (now) noteProxyAnswer(now.id, refused);
+      if (now && sameProxyHeaders(connectionProxyFor(now.id, url), proxy)) {
+        noteProxyAnswer(now.id, refused);
+      }
     },
   );
 }

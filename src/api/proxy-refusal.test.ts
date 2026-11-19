@@ -86,3 +86,22 @@ it('a connection signed out takes its episode with it', async () => {
   await useSession.getState().removeConnection('srv-1.1');
   expect(refused()).toEqual({});
 });
+
+// The headers fixed meanwhile (a grown-up's update): a request still out with the set before
+// that answers late says nothing of the one the connection sends now.
+it('a late refusal of a set since replaced starts no episode', async () => {
+  const set = (value: string) => ({ origin: AWAY, headers: [{ name: 'X-Proxy', value }] });
+  await useSession.getState().setProxySet(AWAY, set('stale'));
+  try {
+    const before = resolveClient('srv-1.1')!;
+    await useSession.getState().setProxySet(AWAY, set('fresh'));
+    answerAll(403, '<html>Forbidden</html>');
+    await expect(before.me()).rejects.toBeInstanceOf(ApiError);
+    expect(refused()).toEqual({});
+    // The set it sends now, refused: that one says so.
+    await expect(resolveClient('srv-1.1')!.me()).rejects.toBeInstanceOf(ApiError);
+    expect(refused()).toEqual({ 'srv-1.1': true });
+  } finally {
+    await useSession.getState().setProxySet(AWAY, null);
+  }
+});
