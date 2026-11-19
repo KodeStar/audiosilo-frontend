@@ -2187,7 +2187,8 @@ media GETs only.
   (`onRemoteMove`'s `checkpoint`, as iOS suspends the app) never is, nor calls off a held run. A
   fault outlives the download hot-swap's new `NowPlaying` (`commitLocalSwap`, `moveAsk`): a
   press still reloads. So does a fault an ask called off, and an ask still standing, in the same file of the download's queue (`moveAsk`),
-  a run held for the listener's move with it. A start whose load rejects shows the place it
+  a run held for the listener's move with it (its last report read onto that queue too,
+  `EngineAsk.held.seen`). A start whose load rejects shows the place it
   asked for in its error state at once (Retry loads there), never the snapshot it had. Once the
   engine has played on, its moves and its end are the book's, as for any book: a server length
   can overestimate the audio (ffprobe's bitrate estimate for a header-less VBR file), and the

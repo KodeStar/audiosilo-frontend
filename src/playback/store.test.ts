@@ -2101,6 +2101,24 @@ describe('the download hot-swap across file orders', () => {
     await flushMicrotasks();
   });
 
+  it("measures a run held across the swap's commit on the download's queue (iOS)", async () => {
+    await streamIn(newOrder);
+    const landLoad = holdNextLoad();
+    downloadLands(['A/Folder/a.mp3', ...newOrder]);
+    await flushMicrotasks();
+    // The engine runs off the download's 2.mp3 into its 10.mp3 (index 2) while the load is out,
+    // then the load lands and the store holds the download's queue, the run going on.
+    pushSnapshot(snap('playing', 0, { trackIndex: 2, duration: 30 }));
+    pushSnapshot(snap('playing', 1, { trackIndex: 2, duration: 30 }));
+    landLoad();
+    await flushMicrotasks();
+    // A second of the media on: no move of the listener's, read on either queue.
+    pushSnapshot(snap('playing', 2.5, { trackIndex: 2, duration: 30 }));
+    jest.advanceTimersByTime(FAULT_HOLD_MS);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', position: 20 });
+  });
+
   it('swaps at the same index and place when the orders match', async () => {
     await streamIn(newOrder);
     downloadLands(newOrder);

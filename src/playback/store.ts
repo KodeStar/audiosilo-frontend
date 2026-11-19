@@ -2363,6 +2363,11 @@ function moveAsk(from: NowPlaying, to: NowPlaying, lost: { trackIndex: number; p
   ask.before = ask.before >= 0 ? onto(ask.before) : -1;
   const seen = ask.elsewhere ? onto(ask.elsewhere.trackIndex) : -1;
   ask.elsewhere = ask.elsewhere && seen >= 0 ? { ...ask.elsewhere, trackIndex: seen } : null;
+  // A held run's last report, read onto `to` as the next one will be (`heldMove`); -1 for a
+  // file `to` lacks, measured as a new file's first report.
+  if (ask.held) {
+    ask.held.seen = { ...ask.held.seen, trackIndex: onto(ask.held.seen.trackIndex) };
+  }
 }
 
 /**
