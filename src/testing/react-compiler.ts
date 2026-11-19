@@ -10,7 +10,14 @@ import { dirname, resolve } from 'path';
  *
  * `load` is the test file's own `require`: the module's imports resolve from its folder
  * when the test sits beside it, and they take the test file's `jest.mock`s.
+ *
+ * Build it in a `beforeAll` given `REACT_COMPILER_BUILD_MS`, never inside a test: the first
+ * build in a file loads Babel's preset and the compiler, which takes seconds and, on a
+ * loaded machine, more than a test's own 5 s.
  */
+/** The time a `beforeAll` gives `withReactCompiler`'s build (its first, cold, loads Babel). */
+export const REACT_COMPILER_BUILD_MS = 60_000;
+
 export function withReactCompiler<T>(load: NodeJS.Require, path: string): T {
   const file = load.resolve(path);
   // `supportsReactCompiler` is babel-preset-expo's caller flag, which Babel's types don't name.
