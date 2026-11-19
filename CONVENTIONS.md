@@ -1696,9 +1696,9 @@ The book page, the companion and reveal toast, Home's Now card and Previously on
 credits go through it (fe#290: a console-matched book without ids shows its community content in
 the player too, and the companion offers no Generate for a book the community covers). **The
 offline copy alone keeps a narrower rule, `canMatch`** (`offline-meta.ts`: `matchableById`, an
-ASIN, an ISBN **or `generated`**, or a `work_id`, which the server sends since server#484 for a
-console match without ids; never an episode): it runs for every download, so a book with none of
-them reads as unmatched offline, as an id-less match does from an older server (no `work_id`). The series page's anchor (`metadataAnchor`, an
+ASIN, an ISBN, **`generated`** or a `work_id`, which the server sends since server#484 for a
+console match without ids too; never an episode): it runs for every download, so a book with none
+of them reads as unmatched offline, as an id-less match does from an older server. The series page's anchor (`metadataAnchor`, an
 ASIN or ISBN) and Search's characters (`characterBooksToLoad`, the started books, capped,
 ids or not) pick their books by their own rules. Two readers of the envelope, and each
 field is read through one of them, never both:
@@ -5158,7 +5158,7 @@ are asked, at most 10,000 rows.
   progress step while a map is likely), keeps the sha256 of the ebook it was made from
   (`ebookSha256`, kept when the map is dropped: the EPUB stays), and its `book.readalong` names the map kept (`namingReadalong`): offline that book
   is the item's seed, and `readalongSource` reads the copy only while the book names it or no
-  map. `startReadalongRefresh` (the root's services) takes the `/item` answers the cache holds
+  map. `startItemRefresh` (the root's services) takes the `/item` answers the cache holds
   when it starts and once the launch's `hydrate` has read the registry (the web starts it after
   paint; the store's seeds name the kept map and change nothing but a map the download could not
   fetch), then watches the server's `/item` answers for a downloaded book: another
@@ -5176,9 +5176,13 @@ are asked, at most 10,000 rows.
   The Text tab reads it offline (`readDownloadedReadalong`, `qk.readalongLocal`, `networkMode:
   'always'`) with the EPUB on the device.
 - **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community
-  metadata (asked by `canMatch`: `matchableById`, so a book with content generated on its server too, or a `work_id`, so a console match without ids, fe#290, which a download made before its server sent one takes from the next `/item` answer, keeping the copy then: `adoptWorkId`; the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
+  metadata (asked by `canMatch`: `matchableById`, so a book with content generated on its server
+  too, or a console match without ids by its `work_id`, fe#290; the `/meta` envelope, plus the
+  previous work(s) the envelope doesn't hold) as
   `meta.json` beside its audio (`engine.writeText`: the book's folder on native, its Cache API
-  prefix on web), so it is scoped by connection and deleted with the files. **Not in the registry**:
+  prefix on web), so it is scoped by connection and deleted with the files. A download made before its
+  server sent the `work_id` takes it from the next `/item` answer (`adoptWorkId`, in
+  `startItemRefresh`) and keeps its copy then (one it already kept stays, unless the answer names another work). **Not in the registry**:
   that is ONE JSON document rewritten every couple of seconds while a download runs, an envelope
   can be hundreds of KB, and AsyncStorage on Android / localStorage on web cap the whole store at a
   few MB; the registry carries only a marker (`DownloadManifest.meta`). The seeds fill exactly the

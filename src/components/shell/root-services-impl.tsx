@@ -8,7 +8,7 @@ import { BookEndedRoute, startBookEndWatch } from '@/components/player/book-ende
 import { CompanionRevealListener } from '@/components/player/companion/reveal-listener';
 import { ShakeToExtendListener } from '@/components/player/shake-to-extend-listener';
 import { startKeepAhead } from '@/downloads/keep-ahead-controller';
-import { startChapterRefresh, startReadalongRefresh } from '@/downloads/store';
+import { startChapterRefresh, startItemRefresh } from '@/downloads/store';
 import { startBookmarkSync } from '@/playback/annotation-outbox';
 import { startAutoSleep } from '@/playback/auto-sleep-controller';
 import { startDriftWatch } from '@/playback/drift-controller';
@@ -45,9 +45,10 @@ export function startRootServices({ late = false }: { late?: boolean } = {}): ()
     // A downloaded book takes the server's changed chapters (a rescan, community chapters)
     // whenever they arrive online, while its audio files are unchanged; see the store.
     startChapterRefresh(),
-    // A downloaded book keeps its read-along map in step: fetched again once it is made
-    // again, dropped once the server has none ready; see the store.
-    startReadalongRefresh(),
+    // A downloaded book follows the server's `/item` answers: its read-along map fetched
+    // again once it is made again, dropped once the server has none ready, and the
+    // community work it is matched to (fe#290); see the store.
+    startItemRefresh(),
     // Undo jump: remembers where the listener was after any jump of more than a minute
     // (scrub, chapter tap, lock-screen seek...) for the "Back to 17:26:50" chip. Watches the
     // player's snapshots, so it must run whatever is on screen; see the module.

@@ -225,7 +225,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     }
     // An `/item` answer can reach the cache before this read the registry (the web's
     // refresh starts after paint, its own sweep then finding no downloads yet).
-    if (readalongRefreshOn) takeCachedItems(Object.values(cleaned));
+    if (itemRefreshOn) takeCachedItems(Object.values(cleaned));
     await persist();
     // Web: what other tabs changed while this one read (their `storage` events are not
     // followed then) shows now, not at their next save.
@@ -1214,17 +1214,17 @@ function runChapterRefresh(): () => void {
   });
 }
 
-/** The map refetches this session already tried, by download and map (`startReadalongRefresh`):
+/** The map refetches this session already tried, by download and map (`startItemRefresh`):
  * one attempt each per launch, so a map that keeps failing its check is not fetched again on
  * every answer for the book. */
 const readalongTried = new Set<string>();
 
 /**
- * Keep downloaded books' read-along maps in step with the server (Bridge Phase 3c): every
- * `/item` answer the server gives for a downloaded book with its EPUB on the device fetches
- * the map again when its `readalong.generated_at` is not the one the download keeps, and
- * drops the kept one when the server has no ready map any more, unless a stale one still fits
- * the download's EPUB (`readalongChange`; only from a server that serves maps, so an older one
+ * Keep downloaded books in step with the server's `/item` answers. Read-along maps (Bridge
+ * Phase 3c): every answer for a downloaded book with its EPUB on the device fetches the map
+ * again when its `readalong.generated_at` is not the one the download keeps, and drops the
+ * kept one when the server has no ready map any more, unless a stale one still fits the
+ * download's EPUB (`readalongChange`; only from a server that serves maps, so an older one
  * never drops anything). Returns the unsubscribe; shared (`sharedStart`) by the root layout
  * and the car's stack (fe#158).
  *
@@ -1234,13 +1234,13 @@ const readalongTried = new Set<string>();
  * The store's own seeds name the map the download keeps (`namingReadalong`), so they change
  * nothing but a map the download could not fetch, which is tried again (`readalongTried`).
  *
- * The same answers carry a downloaded book's community work id to its download
+ * The community work: an answer naming one the download's book lacks gives it the id
  * (`adoptWorkId`, fe#290).
  */
-export const startReadalongRefresh = sharedStart(runReadalongRefresh);
+export const startItemRefresh = sharedStart(runItemRefresh);
 
-function runReadalongRefresh(): () => void {
-  readalongRefreshOn = true;
+function runItemRefresh(): () => void {
+  itemRefreshOn = true;
   takeCachedItems(Object.values(useDownloads.getState().entries));
   const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
     if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
@@ -1250,14 +1250,14 @@ function runReadalongRefresh(): () => void {
     takeItemAnswer({ connectionId: ref.cid, libraryId: ref.libraryId, path: ref.path }, book);
   });
   return () => {
-    readalongRefreshOn = false;
+    itemRefreshOn = false;
     unsubscribe();
   };
 }
 
-/** Whether `startReadalongRefresh` runs (the launch's registry read then takes the cached
+/** Whether `startItemRefresh` runs (the launch's registry read then takes the cached
  * answers too). */
-let readalongRefreshOn = false;
+let itemRefreshOn = false;
 
 /** The `/item` answers the cache holds for these downloaded books, each taken as an answer
  * that just landed (`takeItemAnswer`). */
@@ -1271,21 +1271,18 @@ function takeCachedItems(entries: Iterable<DownloadEntry>): void {
   }
 }
 
-/** One `/item` answer's work for `startReadalongRefresh`. */
+/** One `/item` answer's work for `startItemRefresh`. */
 function takeItemAnswer(ref: BookRef, book: Book): void {
   adoptWorkId(ref, book);
   void refreshReadalong(ref, book).catch(() => {});
 }
 
 /**
- * A downloaded book takes the community work an `/item` answer names (`work_id`) when its
- * download's book names none or another (fe#290): one downloaded before its server sent the
- * id for a console match without an ASIN or ISBN (server#484), or before that match. The
- * download's book is what `canMatch` reads once the session's answer is gone, so without the
- * id such a book keeps no metadata and reads as unmatched offline; with it the copy is kept
- * at once (`keepOfflineMeta`, past this launch's try, which found nothing to match by) and on
- * every later launch's fill-in. No request of its own: it rides the answers the screens
- * fetch. An answer naming no work (an older server) changes nothing; never an episode.
+ * A download's book takes the community work an `/item` answer names when it names none or
+ * another (fe#290): a book downloaded before its server sent the id (server#484, a console
+ * match without ids) is otherwise kept as unmatched offline (`canMatch`). The copy is kept
+ * then, past this launch's try, when the download kept none or was tied to another work; a
+ * copy kept by the book's ASIN or ISBN stays. Never an episode; no request of its own.
  */
 function adoptWorkId(ref: BookRef, book: Book): void {
   const entry = downloadedEntryOf(ref);
@@ -1295,10 +1292,12 @@ function adoptWorkId(ref: BookRef, book: Book): void {
   const { manifest } = entry;
   patchEntry(key, { manifest: { ...manifest, book: { ...manifest.book, work_id: workId } } });
   persistSoon();
-  keepOfflineMeta(key, { force: true }).catch(() => {});
+  if (!manifest.meta || manifest.book.work_id) {
+    keepOfflineMeta(key, { force: true }).catch(() => {});
+  }
 }
 
-/** One answer's read-along work for `startReadalongRefresh`. */
+/** One answer's read-along work for `startItemRefresh`. */
 async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
   const entry = downloadedEntryOf(ref);
   if (!entry || cachedCapability(ref.connectionId, 'readalong') !== true) return;

@@ -87,7 +87,7 @@ export type DownloadManifest = {
   /** The `generated_at` of the book's read-along map, kept beside `book.epub`
    * (`readalong.json`, Bridge Phase 3c, read by name) so the companion's Text tab follows
    * the narration offline: a book whose server answers another one (made again) fetches it
-   * again (`startReadalongRefresh`), and `book` names it. Only with `ebookUri`; absent when
+   * again (`startItemRefresh`), and `book` names it. Only with `ebookUri`; absent when
    * the book has none (or a stale one), when it could not be fetched (optional, like the
    * ebook) and on downloads made before it existed. */
   readalongGeneratedAt?: string;

@@ -164,6 +164,13 @@ jest.mock('@/api/provider', () => ({
     fetchQuery: (o: { queryKey: unknown[] }) => mockFetchQuery(o),
   },
 }));
+/** A server answer landing in the query cache under `queryKey` (`manual`: the store's own
+ * seed), as the cache's listeners see it. */
+function emitAnswer(queryKey: unknown[], data: unknown, manual?: boolean) {
+  for (const l of mockCacheListeners) {
+    l({ type: 'updated', query: { queryKey }, action: { type: 'success', data, manual } });
+  }
+}
 // The show's cached episode lists (its own tests): what a fetched episode marks them with.
 const mockMarkEpisodeOnServer = jest.fn();
 jest.mock('@/api/podcast-cache', () => ({
@@ -229,7 +236,7 @@ import {
   refreshedChapters,
   reviveEntry,
   startChapterRefresh,
-  startReadalongRefresh,
+  startItemRefresh,
   useDownloadedCoverUri,
   useDownloadedEbook,
   useDownloadedReadalong,
@@ -1555,16 +1562,9 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
     expect(result.current).toBe('g1');
   });
 
-  describe('startReadalongRefresh', () => {
-    const answer = (
-      data: unknown,
-      manual?: boolean,
-      k: unknown[] = ['item', 'c1', 2, 'A/Book'],
-    ) => {
-      for (const l of mockCacheListeners) {
-        l({ type: 'updated', query: { queryKey: k }, action: { type: 'success', data, manual } });
-      }
-    };
+  describe('startItemRefresh', () => {
+    const answer = (data: unknown, manual?: boolean, k: unknown[] = ['item', 'c1', 2, 'A/Book']) =>
+      emitAnswer(k, data, manual);
     // Each test's download is its own (`savedAt`): the refresh tries a map once per download
     // and launch, and this module's launch lasts the whole file.
     let saves = 0;
@@ -1591,7 +1591,7 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
     let stop: () => void = () => {};
     beforeEach(() => {
       serves(true);
-      stop = startReadalongRefresh();
+      stop = startItemRefresh();
     });
     afterEach(() => stop());
 
@@ -1605,7 +1605,7 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
         return k[0] === 'item' && k[3] === 'A/Book' ? made : undefined;
       });
       mockFetchReadalong.mockResolvedValue(keptMap('g2'));
-      stop = startReadalongRefresh();
+      stop = startItemRefresh();
       await settle();
       expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF, { ebookSha256: undefined });
       expect(entry()?.manifest.readalongGeneratedAt).toBe('g2');
@@ -1618,7 +1618,7 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
         if (k[0] === 'server') return { capabilities: { readalong: true } };
         return k[0] === 'item' ? e.manifest.book : undefined;
       });
-      stop = startReadalongRefresh();
+      stop = startItemRefresh();
       await settle();
       expect(mockFetchReadalong).not.toHaveBeenCalled();
       expect(mockRemoveReadalong).not.toHaveBeenCalled();
@@ -2292,11 +2292,8 @@ describe("refreshing a downloaded book's chapters", () => {
   });
 
   describe('startChapterRefresh', () => {
-    const answer = (data: unknown, manual?: boolean, key = ['chapters', 'c1', 2, 'A/Book']) => {
-      for (const l of mockCacheListeners) {
-        l({ type: 'updated', query: { queryKey: key }, action: { type: 'success', data, manual } });
-      }
-    };
+    const answer = (data: unknown, manual?: boolean, key = ['chapters', 'c1', 2, 'A/Book']) =>
+      emitAnswer(key, data, manual);
     let stop: () => void = () => {};
     // Fake timers, so the save `persistSoon` holds runs here and never leaks into the
     // next test (it would hold that test's save behind its own).
@@ -4196,17 +4193,9 @@ describe('the offline companion (community metadata kept with a download)', () =
     const key = downloadKey('c1', 2, path);
     await downloadOne(path); // its own keep found nothing to match by
     expect(mockCapture).toHaveBeenCalledTimes(1);
-    const answer = (book: Book) => {
-      for (const l of mockCacheListeners) {
-        l({
-          type: 'updated',
-          query: { queryKey: ['item', 'c1', 2, path] },
-          action: { type: 'success', data: book },
-        });
-      }
-    };
+    const answer = (book: Book) => emitAnswer(['item', 'c1', 2, path], book);
     const watch = jest.spyOn(AppState, 'addEventListener');
-    const stop = startReadalongRefresh();
+    const stop = startItemRefresh();
     try {
       // An older server names no work, and an episode never keeps: nothing changes.
       answer(makeBook({ rel_path: path }));
@@ -4238,6 +4227,25 @@ describe('the offline companion (community metadata kept with a download)', () =
       await settle();
       await settle();
       expect(mockCapture).toHaveBeenCalledTimes(3);
+    } finally {
+      stop();
+    }
+  });
+
+  // A copy kept by the book's ASIN stays: a download made before its server sent work ids at
+  // all (server#241) takes the id without reading the copy again.
+  it('takes the work without keeping again when the copy was kept already', async () => {
+    const path = nextPath();
+    const key = downloadKey('c1', 2, path);
+    mockCapture.mockResolvedValue(payload());
+    await downloadOne(path);
+    expect(useDownloads.getState().entries[key]?.manifest.meta).toBeDefined();
+    const stop = startItemRefresh();
+    try {
+      emitAnswer(['item', 'c1', 2, path], makeBook({ rel_path: path, work_id: 'w1' }));
+      await settle();
+      expect(useDownloads.getState().entries[key]?.manifest.book.work_id).toBe('w1');
+      expect(mockCapture).toHaveBeenCalledTimes(1);
     } finally {
       stop();
     }

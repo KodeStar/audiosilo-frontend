@@ -1,7 +1,7 @@
 import { startAddressRouting } from '@/api/address-runner';
 import { startBookEndWatch } from '@/components/player/book-ended-listener';
 import { startKeepAhead } from '@/downloads/keep-ahead-controller';
-import { startChapterRefresh, startReadalongRefresh } from '@/downloads/store';
+import { startChapterRefresh, startItemRefresh } from '@/downloads/store';
 import { bootstrapPlayback } from '@/lib/bootstrap';
 import { startListeningSync } from '@/playback/listening-sync';
 import { startPlaceReconcile } from '@/playback/place-reconcile';
@@ -85,7 +85,7 @@ function startAppControllers() {
   startBookEndWatch();
   startKeepAhead();
   startChapterRefresh();
-  startReadalongRefresh();
+  startItemRefresh();
   startWidgetSync();
   controllersStarted = true;
 }
