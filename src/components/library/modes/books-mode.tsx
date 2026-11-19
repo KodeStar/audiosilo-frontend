@@ -30,7 +30,7 @@ import { LABEL_KINDS } from '@/lib/labels';
 import { useLayout } from '@/lib/layout';
 import { offlineState } from '@/lib/offline-state';
 import { useRouteParams } from '@/lib/route-params';
-import { useSession } from '@/stores/session';
+import { useConnectionName } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
 
 import { AzRail } from '../books/az-rail';
@@ -124,7 +124,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
   // A proxy in front of the server turning the device away: the load error says so, not that
   // the server didn't answer (the shell's banner says what to do).
   const proxyRefused = useProxyNotice(connectionId);
-  const serverName = useSession((s) => s.connections.find((c) => c.id === connectionId)?.name);
+  const serverName = useConnectionName(connectionId);
   // The one offline rule (`offlineState`): the list waits for the network or failed
   // without one (`offline`: no Retry can work), else it failed with one (`failed`).
   const unread = offlineState({

@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
+import type { ProxyRefusalStatus } from '@/api/client';
 import { needsProxyNotice, useProxyRefusals } from '@/api/proxy-refusal';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
@@ -12,7 +13,7 @@ import { canManageProxySet, connectionProxySet, isLimitedAccount } from '@/lib/p
 import { currentNavState, focusedRoute, type NavState } from '@/lib/root-stack';
 import { cn } from '@/lib/utils';
 import { useProfileConnections } from '@/stores/profiles';
-import { useSession } from '@/stores/session';
+import { type Connection, useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { BANNER_STRIP_CLASS, RECONNECT_STRIP_CLASS, SignInAgainButton } from './reconnect-banner';
@@ -26,6 +27,23 @@ export function onAccountPage(state: NavState | undefined, connectionId: string)
   const route = focusedRoute(state);
   const params = (route?.params ?? {}) as Record<string, unknown>;
   return route?.name === ACCOUNT_ROUTE && params.connection === connectionId;
+}
+
+/** The banner's words (their key): what the account can do about the refusal
+ * (`ProxyRefusedBanner`). A 401 may be the server's refusal of the token with its mark dropped
+ * (WS-401-MARK), so a kid's account is told who can pair it again; a proxy's 403 never is. */
+function bannerKey(
+  canManage: boolean,
+  status: ProxyRefusalStatus | undefined,
+  user: Connection['user'],
+) {
+  if (canManage)
+    return isKidAccount(user) && status === 401
+      ? 'proxyHeaders.refusedBannerPair'
+      : 'proxyHeaders.refusedBanner';
+  if (user?.is_demo) return 'proxyHeaders.refusedPlain';
+  if (status === undefined) return 'proxyHeaders.askGrownUp';
+  return status === 401 ? 'proxyHeaders.refusedAskGrownUpPair' : 'proxyHeaders.refusedAskGrownUp';
 }
 
 /**
@@ -68,22 +86,11 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
   // full account signs in again here, a kid's account (which never signs itself in) is told
   // who can pair it again. A proxy's 403 is no such thing.
   const mayBeSignedOut = status === 401;
-  const kid = isKidAccount(conn.user);
   const content = (
     <>
       <Icon name="key" size={13} color={themed.brand} />
       <Text variant="caption" className="flex-1 text-brand-ink">
-        {canManage
-          ? kid && mayBeSignedOut
-            ? t('proxyHeaders.refusedBannerPair', { name: conn.name })
-            : t('proxyHeaders.refusedBanner', { name: conn.name })
-          : conn.user?.is_demo
-            ? t('proxyHeaders.refusedPlain', { name: conn.name })
-            : status === undefined
-              ? t('proxyHeaders.askGrownUp')
-              : mayBeSignedOut
-                ? t('proxyHeaders.refusedAskGrownUpPair', { name: conn.name })
-                : t('proxyHeaders.refusedAskGrownUp', { name: conn.name })}
+        {t(bannerKey(canManage, status, conn.user), { name: conn.name })}
       </Text>
     </>
   );

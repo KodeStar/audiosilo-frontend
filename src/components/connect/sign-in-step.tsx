@@ -154,14 +154,15 @@ export function SignInStep({
   // `/server` said: a sign-in's unmarked 401 is then something in front of it refusing, never
   // a wrong password or code (`onSubmit`). Unknown until it answers, and for a server before
   // the mark: the 401's body decides, as before.
-  const marks = useRef<{ server: string; marks?: boolean } | null>(null);
+  const marks = useRef<boolean | undefined>(undefined);
   useEffect(() => {
+    marks.current = undefined;
     const ask = new AbortController();
     api
       .serverInfo(ask.signal)
       .then((info) => {
         if (ask.signal.aborted) return;
-        marks.current = { server, marks: info.capabilities?.unauthorized_mark };
+        marks.current = info.capabilities?.unauthorized_mark;
         if (canSso) setSsoName(oidcButtonName(info));
       })
       // A server that doesn't answer offers no single sign-on; the other ways stay.
@@ -194,9 +195,7 @@ export function SignInStep({
     let stage: SignInStage = mode === 'code' ? 'redeem' : 'login';
     // The proxy set read as the sign-in is sent, not as the step opened (fe#295): one changed
     // or removed on the Account page meanwhile is the one that counts.
-    const { client, proxy: carried } = connectClientFor(server, undefined, () =>
-      marks.current?.server === server ? marks.current.marks : undefined,
-    );
+    const { client, proxy: carried } = connectClientFor(server, undefined, () => marks.current);
     try {
       if (mode === 'code') {
         const typed = code.trim();

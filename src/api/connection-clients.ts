@@ -89,8 +89,8 @@ export function connectionClient(
     // into a refusal, WS-401-MARK) says nothing of the new token.
     (refused) => {
       const now = connectionOf(conn.id);
-      if (!now || (!refused && !useProxyRefusals.getState().refused[now.id])) return;
-      if (now.token !== conn.token) return;
+      if (!now || now.token !== conn.token) return;
+      if (!refused && !useProxyRefusals.getState().refused[now.id]) return;
       if (sameProxyHeaders(connectionProxyFor(now.id, url), proxy)) {
         noteProxyAnswer(now.id, refused);
       }
