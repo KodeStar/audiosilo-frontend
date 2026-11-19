@@ -592,8 +592,9 @@ describe('with listening_sync', () => {
     await settle();
     expect(mockClosed).toHaveLength(0);
     cutPlayingSpan('c1');
-    await settle();
+    // Closed at the call, before any await: the outbox's last send waits its turn behind it.
     expect(mockClosed.map((s) => [s.from.pos, s.to.pos])).toEqual([[5, 9]]);
+    await settle();
     // Still playing: the next span opens where the cut ended.
     jest.advanceTimersByTime(3_000);
     pushSnapshot(snap('paused', 0, 12));
