@@ -6,16 +6,22 @@ jest.mock('@/playback/store', () =>
 );
 jest.mock('@/components/ui/toast', () => ({ toast: jest.fn(), dismissToast: jest.fn() }));
 jest.mock('@/api/provider', () => ({
-  queryClient: { invalidateQueries: jest.fn(), getQueryData: jest.fn() },
+  queryClient: { invalidateQueries: jest.fn(), getQueryData: jest.fn(), setQueryData: jest.fn() },
 }));
 jest.mock('@/api/connection-clients', () => ({ resolveClient: jest.fn() }));
 
 /* eslint-disable import/first */
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { waitFor } from '@testing-library/react-native';
+
+import { NetworkError } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
+import { useReachability } from '@/api/reachability';
 import { queryClient } from '@/api/provider';
 import { dismissToast, toast } from '@/components/ui/toast';
 import i18n from '@/i18n';
 import { ownsArrows, ownsSpace } from '@/lib/keyboard';
+import { queuedBookmarks, resetAnnotationOutboxForTests } from '@/playback/annotation-outbox';
 import { lastInteraction, resetInteractions } from '@/playback/last-interaction';
 import { useSettings } from '@/stores/settings';
 import { playerStoreMock } from '@/testing/player-store-mock';
@@ -251,8 +257,11 @@ describe('runPlayerShortcut', () => {
 });
 
 describe('addBookmarkHere', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
+    resetAnnotationOutboxForTests();
+    await AsyncStorage.clear();
+    useReachability.setState({ online: {} });
     const player = playerStoreMock();
     player.reset();
     player.usePlayer.setState({
@@ -265,6 +274,8 @@ describe('addBookmarkHere', () => {
       },
     });
   });
+  // A kept bookmark arms the outbox's retry: none left behind.
+  afterEach(() => resetAnnotationOutboxForTests());
 
   it("adds a bookmark at the place on the playing book's server, and says so", async () => {
     const addBookmark = jest.fn(() => Promise.resolve({}));
@@ -294,6 +305,7 @@ describe('addBookmarkHere', () => {
     (resolveClient as jest.Mock).mockReturnValue({ addBookmark });
     const added = addBookmarkHere(t);
     dismissBookmarkToast();
+    await waitFor(() => expect(addBookmark).toHaveBeenCalled());
     land({ id: 5, position: 62_810 });
     await added;
     expect(addBookmark).toHaveBeenCalledTimes(1);
@@ -308,6 +320,7 @@ describe('addBookmarkHere', () => {
     (resolveClient as jest.Mock).mockReturnValue({ addBookmark });
     const first = addBookmarkHere(t);
     const second = addBookmarkHere(t);
+    await waitFor(() => expect(addBookmark).toHaveBeenCalled());
     land({});
     await Promise.all([first, second]);
     expect(addBookmark).toHaveBeenCalledTimes(1);
@@ -366,6 +379,33 @@ describe('addBookmarkHere', () => {
     (queryClient.getQueryData as jest.Mock).mockReturnValue({ capabilities: {} });
     await addBookmarkHere(t);
     expect(toast).toHaveBeenCalledWith({ title: 'Bookmark added', description: '17:26:50' });
+  });
+
+  // fe#356: a bookmark made while the server can't be reached waits on the device.
+  it('keeps a bookmark the server could not be reached for, and says so', async () => {
+    (resolveClient as jest.Mock).mockReturnValue({
+      addBookmark: () => Promise.reject(new NetworkError('Failed to fetch')),
+    });
+    await addBookmarkHere(t);
+    expect(toast).toHaveBeenCalledWith({
+      title: 'Bookmark kept on this device',
+      description: '17:26:50 · It syncs once the server is back',
+    });
+    expect(await queuedBookmarks('srv')).toMatchObject([
+      { connectionId: 'srv', libraryId: 1, path: 'a/book', position: 62_810, note: '' },
+    ]);
+  });
+
+  it('keeps one made while its server is known to be down, without asking it', async () => {
+    const addBookmark = jest.fn(() => Promise.resolve({}));
+    (resolveClient as jest.Mock).mockReturnValue({ addBookmark });
+    useReachability.setState({ online: { srv: false } });
+    await addBookmarkHere(t);
+    expect(addBookmark).not.toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Bookmark kept on this device' }),
+    );
+    expect(await queuedBookmarks('srv')).toHaveLength(1);
   });
 
   it('says when it could not', async () => {

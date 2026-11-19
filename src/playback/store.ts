@@ -30,6 +30,7 @@ import { useSettings } from '@/stores/settings';
 
 import type { LoadedBook } from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
 
+import { sendBookmarksBeforeRemoval } from './annotation-outbox';
 import {
   bookFileSpecs,
   buildBookQueue,
@@ -4493,7 +4494,7 @@ export async function teardownBeforeTokenRevoke(connectionId: string): Promise<v
  * Send a connection's waiting saves: its offline replay queue (`flushConnection`, not
  * `flushQueue`: the latter no-ops while the ACTIVE server is offline, which would skip this
  * last-chance sync when removing a still-reachable background connection), Sync v2's
- * listening outbox and the ebook reader's queued places. Run before its token is revoked,
+ * listening outbox, the ebook reader's queued places and the waiting bookmarks. Run before its token is revoked,
  * by the removing tab and by another tab playing through it (`removed-in-other-tab.ts`).
  */
 export async function flushConnectionSaves(connectionId: string): Promise<void> {
@@ -4503,6 +4504,8 @@ export async function flushConnectionSaves(connectionId: string): Promise<void> 
     flushOutbox(connectionId),
     // The ebook reader's queued places too (Bridge Phase 3b).
     flushReadingConnection(connectionId).catch(() => undefined),
+    // And the bookmarks waiting on the device for the server (fe#356).
+    sendBookmarksBeforeRemoval(connectionId),
   ]);
 }
 

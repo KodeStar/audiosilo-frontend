@@ -67,3 +67,20 @@ export function connectionOf(connectionId: string): Connection | undefined {
 export function sessionReady(): boolean {
   return useSession.getState().status !== 'loading' && !sessionHydrateFailed();
 }
+
+/** Run `fn` once, as soon as the session is ready (`sessionReady`): now when it is, else on
+ * the first store change that makes it so (a hydrate that failed and then succeeded too, which
+ * never passes through `loading` again). The callback form of `offline-meta.ts`'s
+ * `whenSessionReady`. Returns the stop (a no-op once `fn` ran). */
+export function whenSessionReady(fn: () => void): () => void {
+  if (sessionReady()) {
+    fn();
+    return () => undefined;
+  }
+  const stop = useSession.subscribe(() => {
+    if (!sessionReady()) return;
+    stop();
+    fn();
+  });
+  return stop;
+}

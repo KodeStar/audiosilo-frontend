@@ -484,7 +484,8 @@ function BookPage() {
   // Counts where they are already in hand (no extra request for a count).
   const counts: Partial<Record<BookTab, number>> = {
     chapters: list.rows.length || undefined,
-    bookmarks: annotations.bookmarks?.length,
+    // With the ones still waiting on this device, as the tab lists them (their pins: fe#356).
+    bookmarks: annotations.bookmarks ? annotations.pins.bookmarks.length : undefined,
     notes: annotations.notes?.length,
     characters:
       metaCharacters.length > 0 ? splitCharacters(metaCharacters, gate).visible.length : undefined,

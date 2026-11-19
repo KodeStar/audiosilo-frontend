@@ -12,7 +12,12 @@ jest.mock('./listening-outbox', () => ({
 }));
 const mockCut = jest.fn((..._a: unknown[]) => {});
 jest.mock('./store', () => ({ cutListeningSpanNow: (...a: unknown[]) => mockCut(...a) }));
-jest.mock('@/api/connection-clients', () => ({ sessionReady: () => true }));
+jest.mock('@/api/connection-clients', () => ({
+  whenSessionReady: (fn: () => void) => {
+    fn();
+    return () => {};
+  },
+}));
 let mockReconnect: ((cid: string) => void) | null = null;
 jest.mock('@/api/reachability', () => ({
   onReconnect: (cb: (cid: string) => void) => {
@@ -22,7 +27,6 @@ jest.mock('@/api/reachability', () => ({
     };
   },
 }));
-jest.mock('@/stores/session', () => ({ useSession: { subscribe: () => () => {} } }));
 
 /* eslint-disable import/first */
 import { startListeningSync } from './listening-sync';

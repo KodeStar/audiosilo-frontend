@@ -386,6 +386,7 @@ describe('session store (multi-connection)', () => {
       await AsyncStorage.setItem(CACHE_VERSION_KEY, JSON.stringify(CACHE_STORAGE_VERSION - 1));
       await AsyncStorage.setItem('audiosilo.downloads', JSON.stringify({ 'srv-a:1:x': {} }));
       await AsyncStorage.setItem('audiosilo.offlineServers', JSON.stringify({ 'srv-a': {} }));
+      await AsyncStorage.setItem('audiosilo.annotationOutbox', JSON.stringify([{ id: 'b1' }]));
 
       const res = await resetStaleStorage();
 
@@ -394,6 +395,8 @@ describe('session store (multi-connection)', () => {
       // Scoped cache gone.
       expect(await AsyncStorage.getItem('audiosilo.downloads')).toBeNull();
       expect(await AsyncStorage.getItem('audiosilo.offlineServers')).toBeNull();
+      // The bookmarks waiting for a server too (fe#356).
+      expect(await AsyncStorage.getItem('audiosilo.annotationOutbox')).toBeNull();
       // But the connection + its token survive - nobody is logged out.
       expect(await AsyncStorage.getItem('audiosilo.connections')).not.toBeNull();
       expect(await SecureStore.getItemAsync('audiosilo.token.srv-a')).toBe('tokA');

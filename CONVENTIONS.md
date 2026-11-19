@@ -1695,6 +1695,60 @@ without its label). Never call `client.addBookmark` with a label directly. The s
 fixed-width UTC timestamps with milliseconds (so they compare as strings) and `[]` for an empty
 per-book list (the client still reads an older server's `null` as none).
 
+**Bookmarks made offline wait on the device (fe#356).** The one-tap bookmark (`addBookmarkHere`)
+goes through `addBookmarkOrQueue` (`src/playback/annotation-outbox.ts`): straight to the server
+when none of its book waits and the server reads as reachable, else (or after no answer, a 5xx,
+408, 429 or 401) into `audiosilo.annotationOutbox`, oldest first within a book, a new one always
+behind its book's waiting ones. A refusal for good (any other 4xx) or a write storage refuses is
+still the caller's error ("Couldn't add the bookmark"). The sleep timer's "Fell asleep" is stored
+first (`queueNewBookmark`) and sent only from the outbox: nobody is awake to retry it, and an app
+killed while a direct POST was out (up to its 15 s timeout) would lose it; it shows as waiting
+until a replay sends it. Only when storage refuses it is it posted straight away, once (its
+label on flags read first). The one-tap keeps the direct send: its "Bookmark added" toast and Add
+note need the server's bookmark, and the listener is there to see a failure. The outbox is sent
+at launch and on reconnect (`startBookmarkSync`, a root service; also once a connection a 401
+flagged is signed in again, with no backoff meanwhile), with the stored queues in the
+foreground and on the web's focus and `online` (`startQueueReplays`), and on a backoff (30 s
+doubling to 10 min) while a reachable server keeps failing, through `replayQueue` routed by
+`queuedRoute` (claims, so two tabs never send one twice). A replay of every connection asked
+for while one is out joins it (`flushBookmarks`: the web's `online` and focus fire together),
+so those two count a failure once; a connection's own replay (its reconnect, a sign-in, a new
+bookmark) is never joined and queues behind it. The POST has no idempotency key, so
+a replay reads the book's bookmarks first and takes one at the same second with the same
+note as already sent: one the replay did not see there before its first send of it
+(`othersHeld`, stored right before that send), else, for one a send may have reached before it
+was stored (a direct add whose answer was lost, a delete's Undo), one made at most a day before.
+One no send has reached (`fresh`: the Fell asleep, a one-tap kept without trying the server) is
+never taken for one already there, so the night before's at the same second never stands in for
+tonight's; when that read fails, whatever the status (a
+403 or 404 too), the bookmarks wait, and only the POST's own refusal for good drops one. A send
+puts the new bookmark in the book's cached list at once (`addBookmark`), and a replay that finds
+one already there puts the server's in it the same way (`showServerBookmark`), so its waiting row
+and pin give way to it with no gap before the list is read again. Order holds within a book only: a
+bookmark that can't be sent yet holds back the rest of its book for that replay and the other
+books' go past it, so one that keeps failing never blocks the connection's queue; a replay stops
+only at a failure that is the connection's (no answer, a gateway's 502/504/52x, a 401). One still
+failing 7 days after its first failure against a server that answered, and after 10 such
+failures (`failedSince`, `failures`, `GIVE_UP_MS`, `GIVE_UP_TRIES`), is dropped with a log line,
+never on its first failures; a 503 or 429, a server that is away and a 401 do not count. A
+labelled one (Fell asleep) is sent only once its server's flags are known (`readLabelFlag` reads
+`/server` when they are not) and waits, label and all, while that read fails: here "not known
+yet" never sends it bare. That wait is for the flags, not its turn: it holds back none of its
+book's unlabelled ones (order holds within a book only among those that can be sent), and it
+counts toward giving up on it like a failed send. Signing out or removing a server gives it a last send in
+`flushConnectionSaves` (`sendBookmarksBeforeRemoval`) and the removal purges what is left,
+after its confirm names them beside the unsynced listens (`unsentBeforeSignOut`,
+`src/components/account/unsent.ts`: the sign-out, remove-server and remove-person confirms); a replay
+drops the entries of a connection gone once the session has loaded. Waiting ones are listed
+among the book's bookmarks (`useQueuedBookmarks`, `QueuedBookmarkRow`: "Waiting to sync", Delete
+takes one out unsent, with an Undo that puts it back through the outbox (`queueBookmark`, never
+a direct POST: a replay may have sent it just before the Delete, and its read before a send
+keeps it from being made twice), and a replay skips one taken out after it claimed it) and
+pinned on the seek bar, never beside the listed one the server already holds. The outbox is
+an `ID_DOCUMENTS` document of the identity migration. The editor's add and the delete's
+Undo still post directly (the listener sees the failure there); the car keeps its own
+retry list (`CAR_BOOKMARKS_KEY`).
+
 **Upcoming releases (Track U2; the wire is U1's, CROSS-REPO §8).** One flag, `upcoming` (false
 while community metadata or the server's job is off), and one read, `client.upcoming()` ->
 `GET /me/upcoming` (`UpcomingResponse {status, generated_at?, window_days, items}`, `items` never

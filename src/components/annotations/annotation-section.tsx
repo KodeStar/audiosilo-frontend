@@ -6,6 +6,7 @@ import { Platform, View } from 'react-native';
 
 import { useBookmarks, useCapability, useNotes } from '@/api/hooks';
 import { useCid } from '@/api/provider';
+import type { Bookmark } from '@/api/types';
 import { OfflineState } from '@/components/layout/offline-state';
 import { EmptyState } from '@/components/ui/empty-state';
 import type { IconName } from '@/components/ui/icon';
@@ -13,9 +14,11 @@ import { RowSkeletonList } from '@/components/ui/skeleton';
 import type { AnnotationKind, AnnotationOf, AnnotationTarget } from '@/lib/annotation-request';
 import { byPosition } from '@/lib/by-position';
 import { useUnreadQuery } from '@/lib/offline-state';
+import type { QueuedBookmark } from '@/playback/annotation-outbox';
+import { useQueuedBookmarks } from '@/playback/use-queued-bookmarks';
 
 import type { AnnotationRowProps } from './annotation-row';
-import { BookmarkRow } from './bookmark-row';
+import { BookmarkRow, QueuedBookmarkRow } from './bookmark-row';
 import { NoteRow } from './note-row';
 import { AddBookmarkAction, AddNoteAction, JournalLink } from './section-actions';
 import { useChapterNamer } from './use-book-place';
@@ -66,6 +69,10 @@ const SECTION: {
   },
 };
 
+/** Where a listed or waiting row sits in the book. */
+const positionOf = (item: { row: { position: number } } | { queued: QueuedBookmark }) =>
+  'queued' in item ? item.queued.position : item.row.position;
+
 /** Where a book's bookmarks or notes are listed, and for which book. */
 export type AnnotationSectionProps = {
   libraryId: number;
@@ -101,8 +108,24 @@ export function AnnotationSection<K extends AnnotationKind>({
   const query = useList(libraryId, path, connectionId);
   const annotations = useCapability('annotations', cid);
   const chapterAt = useChapterNamer(target);
-  const rows = useMemo(() => byPosition(query.data ?? []), [query.data]);
   const unread = useUnreadQuery(query);
+  const listed = unread !== 'offline' && !query.isPending && !query.isError;
+  // Bookmarks still waiting on this device for the server (fe#356), among the listed ones
+  // (not one the list already shows: sent, and not yet out of the outbox).
+  const waiting = useQueuedBookmarks(
+    kind === 'bookmark' ? cid : undefined,
+    libraryId,
+    path,
+    kind === 'bookmark' && listed ? (query.data as Bookmark[] | undefined) : undefined,
+  );
+  const items = useMemo(
+    () =>
+      [
+        ...(listed ? byPosition(query.data ?? []) : []).map((row) => ({ row })),
+        ...waiting.map((queued) => ({ queued })),
+      ].sort((a, b) => positionOf(a) - positionOf(b)),
+    [listed, query.data, waiting],
+  );
 
   return (
     <View>
@@ -122,19 +145,28 @@ export function AnnotationSection<K extends AnnotationKind>({
           action={{ label: t('common.retry'), onPress: () => void query.refetch() }}
           className="py-6"
         />
-      ) : rows.length === 0 ? (
+      ) : items.length === 0 ? (
         <EmptyState icon={icon} title={t(empty)} hint={t(hint())} className="py-6" />
-      ) : (
-        rows.map((row, i) => (
+      ) : null}
+      {items.map((item, i) =>
+        'queued' in item ? (
+          <QueuedBookmarkRow
+            key={`queued-${item.queued.id}`}
+            bookmark={item.queued}
+            chapter={chapterAt(item.queued.position)}
+            onJump={onJump}
+            first={i === 0 && listed}
+          />
+        ) : (
           <Row
-            key={row.id}
-            row={row}
+            key={item.row.id}
+            row={item.row}
             connectionId={cid}
-            chapter={chapterAt(row.position)}
+            chapter={chapterAt(item.row.position)}
             onJump={onJump}
             first={i === 0}
           />
-        ))
+        ),
       )}
     </View>
   );

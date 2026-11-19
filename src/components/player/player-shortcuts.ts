@@ -1,11 +1,12 @@
 import type { TFunction } from 'i18next';
 
-import { addBookmark, cachedCapability } from '@/api/hooks';
+import { cachedCapability } from '@/api/hooks';
 import { dismissToast, toast } from '@/components/ui/toast';
 import { editBookmarkRequest } from '@/lib/annotation-request';
 import { formatClock } from '@/lib/format';
 import type { ShortcutKey } from '@/lib/keyboard';
 import { quietly } from '@/lib/quietly';
+import { addBookmarkOrQueue } from '@/playback/annotation-outbox';
 import { noteInteraction } from '@/playback/last-interaction';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
@@ -111,12 +112,13 @@ export function dismissBookmarkToast(): void {
 
 /**
  * Add a bookmark at the playing book's current position, on its own server, and say so
- * ("Bookmark added", the clock). Adding stays one tap; where the server takes edits
- * (`annotations`), the toast's action "Add note" opens the bookmark editor on the new
- * bookmark (note and label). Framework-free (the shortcut can fire from any page),
- * through the PLAYING book's connection. One at a time: a double tap on the companion's
- * button, or B held down, while one is on its way adds nothing more (the caller gets the
- * one in flight).
+ * ("Bookmark added", the clock). A server that can't take it now gets it later: it waits
+ * on the device (`addBookmarkOrQueue`, fe#356) and the toast says so. Adding stays one tap;
+ * where the server takes edits (`annotations`), the toast's action "Add note" opens the
+ * bookmark editor on the new bookmark (note and label). Framework-free (the shortcut can
+ * fire from any page), through the PLAYING book's connection. One at a time: a double tap
+ * on the companion's button, or B held down, while one is on its way adds nothing more (the
+ * caller gets the one in flight).
  */
 export function addBookmarkHere(t: TFunction): Promise<void> {
   adding ??= addNow(t).finally(() => {
@@ -136,9 +138,18 @@ async function addNow(t: TFunction): Promise<void> {
   const { connectionId, libraryId, path } = np;
   const dismissals = bookmarkDismissals;
   try {
-    const made = await addBookmark(connectionId, libraryId, path, position);
+    const outcome = await addBookmarkOrQueue(connectionId, libraryId, path, position);
     // The player closed while it was on its way: its toast went with it.
     if (bookmarkDismissals !== dismissals) return;
+    if ('queued' in outcome) {
+      // Kept on the device until its server takes it (fe#356): no note to add to it yet.
+      bookmarkToast = toast({
+        title: t('player.bookmarks.queued'),
+        description: t('player.bookmarks.queuedHint', { time: formatClock(position) }),
+      });
+      return;
+    }
+    const made = outcome.made;
     // An edit needs `annotations`; an older server can't add a note to a bookmark it has.
     const editable = !!made?.id && cachedCapability(connectionId, 'annotations') === true;
     bookmarkToast = toast({

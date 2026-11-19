@@ -676,10 +676,12 @@ function refreshAfterAdd(
 /**
  * Add a bookmark to a book on ONE connection's server, then refresh its lists
  * (`refreshAfterAdd`). Framework-free, for the callers that run outside React or for a
- * book that is not the screen's (the playing book's shortcut, the sleep timer's "Fell
- * asleep", a delete's Undo). `label` follows `postBookmark`'s rule, on the cached
- * `/server` answer. Resolves the new bookmark; rejects when the connection is gone or the
- * server refused.
+ * book that is not the screen's (a delete's Undo, the car, the bookmark outbox's sends).
+ * `label` follows `postBookmark`'s rule, on the cached `/server` answer. Resolves the new
+ * bookmark; rejects when the connection is gone or the server refused. A bookmark that must
+ * not be lost while the server can't take it (the playing book's shortcut, the sleep
+ * timer's "Fell asleep") goes through the bookmark outbox (`annotation-outbox.ts`) instead.
+ * The new bookmark joins the book's cached list at once (`showServerBookmark`).
  */
 export async function addBookmark(
   connectionId: string,
@@ -698,8 +700,31 @@ export async function addBookmark(
     path,
     { position, note, label },
   );
-  void refreshAfterAdd(queryClient, 'bookmarks', connectionId, libraryId, path);
+  showServerBookmark(connectionId, libraryId, path, created);
   return created;
+}
+
+/** A bookmark its server holds, just made (`addBookmark`) or found there by the bookmark
+ * outbox (an add whose answer was lost), joins the book's cached list at once, once, then the
+ * book's list and the across-books one are read again: a waiting row the outbox settles
+ * meanwhile gives way to it with no gap. It goes at its place in the list as the server
+ * orders it (by position), not last: one found there may be older than those after it. A list
+ * never read is left to its first read, and no bookmark (an older server's answer) to the read
+ * again. */
+export function showServerBookmark(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  bookmark: Bookmark | undefined,
+): void {
+  if (bookmark) {
+    queryClient.setQueryData<Bookmark[]>(qk.bookmarks(connectionId, libraryId, path), (list) => {
+      if (!list || list.some((b) => b.id === bookmark.id)) return undefined;
+      const at = list.findIndex((b) => b.position > bookmark.position);
+      return at < 0 ? [...list, bookmark] : [...list.slice(0, at), bookmark, ...list.slice(at)];
+    });
+  }
+  void refreshAfterAdd(queryClient, 'bookmarks', connectionId, libraryId, path);
 }
 
 /** `addBookmark` for a note: pin `body` at `position` of a book on ONE connection's

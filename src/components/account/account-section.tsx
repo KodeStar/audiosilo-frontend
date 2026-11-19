@@ -35,6 +35,7 @@ import { PairDeviceCard } from './pair-device-card';
 import { PasswordCard, PasswordDialog } from './password-card';
 import { ProxyHeadersCard } from './proxy-headers-card';
 import { SignOutConfirm } from './sign-out-confirm';
+import { signOutUnsentCopy } from './unsent';
 import { useApiKeysManager } from './use-api-keys-manager';
 import { usePasswordEditor } from './use-password-editor';
 import { useSignOut } from './use-sign-out';
@@ -257,9 +258,8 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
         }}
       />
       <ConfirmDialog
-        visible={signOut.unsynced > 0}
-        title={t('account.signOut.unsyncedTitle')}
-        message={t('account.signOut.unsynced', { count: signOut.unsynced, server: serverName })}
+        visible={signOut.unsynced !== null}
+        {...signOutUnsentCopy(t, signOut.unsynced, serverName)}
         confirmLabel={t('account.signOut.confirm')}
         confirmIcon="logout"
         destructive

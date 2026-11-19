@@ -220,7 +220,9 @@
         "signOut": "Esto cierra la sesión de este dispositivo en {{name}}. Lo que has escuchado sigue en el servidor: vuelve a iniciar sesión para recuperarlo aquí.",
         "last": "Es el único servidor de este dispositivo, así que AudioSilo vuelve al primer paso.",
         "unsynced_one": "{{count}} escucha no se ha sincronizado con {{name}} y se perderá.",
-        "unsynced_other": "{{count}} escuchas no se han sincronizado con {{name}} y se perderán."
+        "unsynced_other": "{{count}} escuchas no se han sincronizado con {{name}} y se perderán.",
+        "unsyncedBookmarks_one": "{{count}} marcador no se ha sincronizado con {{name}} y se perderá.",
+        "unsyncedBookmarks_other": "{{count}} marcadores no se han sincronizado con {{name}} y se perderán."
       }
     },
     "signOut": {
@@ -234,7 +236,9 @@
       "downloadsWarning_other": "Cerrar sesión también eliminará {{count}} libros descargados de este servidor en este dispositivo.",
       "unsyncedTitle": "Escuchas sin sincronizar",
       "unsynced_one": "{{count}} escucha no se ha sincronizado con {{server}}. ¿Cerrar sesión de todas formas?",
-      "unsynced_other": "{{count}} escuchas no se han sincronizado con {{server}}. ¿Cerrar sesión de todas formas?"
+      "unsynced_other": "{{count}} escuchas no se han sincronizado con {{server}}. ¿Cerrar sesión de todas formas?",
+      "unsyncedAnyTitle": "Aún sin sincronizar",
+      "anyway": "¿Cerrar sesión de todas formas?"
     },
     "switcher": "Servidor",
     "none": "Inicia sesión en un servidor para ver su cuenta.",
@@ -418,7 +422,8 @@
       "addNote": "Añadir nota",
       "loadFailed": "No se pudieron cargar tus marcadores",
       "emptyHintWeb": "Pulsa B mientras escuchas o toca el marcador en el reproductor.",
-      "emptyHintNative": "Toca el marcador en el reproductor mientras escuchas."
+      "emptyHintNative": "Toca el marcador en el reproductor mientras escuchas.",
+      "waiting": "Pendiente de sincronizar"
     },
     "note": {
       "title": "Nota",
@@ -1645,7 +1650,9 @@
       "label": "Marcadores",
       "empty": "Aún no hay marcadores.",
       "added": "Marcador añadido",
-      "addFailed": "No se pudo añadir el marcador"
+      "addFailed": "No se pudo añadir el marcador",
+      "queued": "Marcador guardado en este dispositivo",
+      "queuedHint": "{{time}} · Se sincroniza cuando el servidor vuelva"
     },
     "history": {
       "empty": "Aún no hay historial."

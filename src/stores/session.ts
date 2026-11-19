@@ -34,6 +34,7 @@ import { tabLock } from '@/lib/tab-lock';
 import { looksLikeHomeAddress } from '@/lib/url-host';
 import { getItem, getItemStrict, removeItem, setItem } from '@/lib/storage';
 import {
+  ANNOTATION_OUTBOX_KEY,
   CONNECTIONS_KEY,
   DEFAULT_CONNECTION_KEY as DEFAULT_KEY,
   DOWNLOADS_KEY,
@@ -100,6 +101,7 @@ const SCOPED_STORAGE_KEYS = [
   LISTENING_SYNC_KEY,
   OFFLINE_SERVERS_KEY,
   STARTUP_CACHE_KEY,
+  ANNOTATION_OUTBOX_KEY,
 ];
 
 /** Outcome of `resetStaleStorage`: the two axes reset independently. */

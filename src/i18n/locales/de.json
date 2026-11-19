@@ -220,7 +220,9 @@
         "signOut": "Dadurch wird dieses Gerät von {{name}} abgemeldet. Dein Hörfortschritt bleibt auf dem Server: Melde dich wieder an, um ihn hier zurückzubekommen.",
         "last": "Es ist der einzige Server auf diesem Gerät, daher kehrt AudioSilo zum ersten Schritt zurück.",
         "unsynced_one": "{{count}} Hörsitzung wurde noch nicht mit {{name}} synchronisiert und geht verloren.",
-        "unsynced_other": "{{count}} Hörsitzungen wurden noch nicht mit {{name}} synchronisiert und gehen verloren."
+        "unsynced_other": "{{count}} Hörsitzungen wurden noch nicht mit {{name}} synchronisiert und gehen verloren.",
+        "unsyncedBookmarks_one": "{{count}} Lesezeichen wurde noch nicht mit {{name}} synchronisiert und geht verloren.",
+        "unsyncedBookmarks_other": "{{count}} Lesezeichen wurden noch nicht mit {{name}} synchronisiert und gehen verloren."
       }
     },
     "signOut": {
@@ -234,7 +236,9 @@
       "downloadsWarning_other": "Beim Abmelden werden außerdem {{count}} von diesem Server auf dieses Gerät heruntergeladene Bücher gelöscht.",
       "unsyncedTitle": "Nicht synchronisiertes Hören",
       "unsynced_one": "{{count}} Hörsitzung wurde noch nicht mit {{server}} synchronisiert. Trotzdem abmelden?",
-      "unsynced_other": "{{count}} Hörsitzungen wurden noch nicht mit {{server}} synchronisiert. Trotzdem abmelden?"
+      "unsynced_other": "{{count}} Hörsitzungen wurden noch nicht mit {{server}} synchronisiert. Trotzdem abmelden?",
+      "unsyncedAnyTitle": "Noch nicht synchronisiert",
+      "anyway": "Trotzdem abmelden?"
     },
     "switcher": "Server",
     "none": "Melde dich bei einem Server an, um sein Konto zu sehen.",
@@ -418,7 +422,8 @@
       "addNote": "Notiz hinzufügen",
       "loadFailed": "Deine Lesezeichen konnten nicht geladen werden",
       "emptyHintWeb": "Drücke beim Hören B oder tippe im Player auf das Lesezeichen.",
-      "emptyHintNative": "Tippe beim Hören im Player auf das Lesezeichen."
+      "emptyHintNative": "Tippe beim Hören im Player auf das Lesezeichen.",
+      "waiting": "Wartet auf Synchronisierung"
     },
     "note": {
       "title": "Notiz",
@@ -1645,7 +1650,9 @@
       "label": "Lesezeichen",
       "empty": "Noch keine Lesezeichen.",
       "added": "Lesezeichen hinzugefügt",
-      "addFailed": "Lesezeichen konnte nicht hinzugefügt werden"
+      "addFailed": "Lesezeichen konnte nicht hinzugefügt werden",
+      "queued": "Lesezeichen auf diesem Gerät behalten",
+      "queuedHint": "{{time}} · Wird synchronisiert, sobald der Server wieder da ist"
     },
     "history": {
       "empty": "Noch kein Verlauf."

@@ -220,7 +220,9 @@
         "signOut": "In questo modo questo dispositivo esce da {{name}}. I tuoi ascolti restano sul server: accedi di nuovo per ritrovarli qui.",
         "last": "È l'unico server su questo dispositivo, quindi AudioSilo torna al primo passaggio.",
         "unsynced_one": "{{count}} ascolto non è stato sincronizzato con {{name}} e andrà perso.",
-        "unsynced_other": "{{count}} ascolti non sono stati sincronizzati con {{name}} e andranno persi."
+        "unsynced_other": "{{count}} ascolti non sono stati sincronizzati con {{name}} e andranno persi.",
+        "unsyncedBookmarks_one": "{{count}} segnalibro non è stato sincronizzato con {{name}} e andrà perso.",
+        "unsyncedBookmarks_other": "{{count}} segnalibri non sono stati sincronizzati con {{name}} e andranno persi."
       }
     },
     "signOut": {
@@ -234,7 +236,9 @@
       "downloadsWarning_other": "Disconnettendoti verranno eliminati anche {{count}} libri scaricati da questo server su questo dispositivo.",
       "unsyncedTitle": "Ascolti non sincronizzati",
       "unsynced_one": "{{count}} ascolto non è stato sincronizzato con {{server}}. Disconnettere comunque?",
-      "unsynced_other": "{{count}} ascolti non sono stati sincronizzati con {{server}}. Disconnettere comunque?"
+      "unsynced_other": "{{count}} ascolti non sono stati sincronizzati con {{server}}. Disconnettere comunque?",
+      "unsyncedAnyTitle": "Non ancora sincronizzato",
+      "anyway": "Disconnettere comunque?"
     },
     "switcher": "Server",
     "none": "Accedi a un server per vederne l'account.",
@@ -418,7 +422,8 @@
       "addNote": "Aggiungi nota",
       "loadFailed": "Impossibile caricare i tuoi segnalibri",
       "emptyHintWeb": "Premi B durante l'ascolto, oppure tocca il segnalibro nel lettore.",
-      "emptyHintNative": "Tocca il segnalibro nel lettore durante l'ascolto."
+      "emptyHintNative": "Tocca il segnalibro nel lettore durante l'ascolto.",
+      "waiting": "In attesa di sincronizzazione"
     },
     "note": {
       "title": "Nota",
@@ -1645,7 +1650,9 @@
       "label": "Segnalibri",
       "empty": "Ancora nessun segnalibro.",
       "added": "Segnalibro aggiunto",
-      "addFailed": "Impossibile aggiungere il segnalibro"
+      "addFailed": "Impossibile aggiungere il segnalibro",
+      "queued": "Segnalibro tenuto su questo dispositivo",
+      "queuedHint": "{{time}} · Si sincronizza quando il server torna disponibile"
     },
     "history": {
       "empty": "Ancora nessuna cronologia."

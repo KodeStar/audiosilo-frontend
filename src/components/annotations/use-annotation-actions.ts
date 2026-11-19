@@ -1,4 +1,4 @@
-import type { ParseKeys } from 'i18next';
+import type { ParseKeys, TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
 import type { BookmarkLabel } from '@/api/bookmark-labels';
@@ -49,6 +49,13 @@ function restoreNote(connectionId: string, note: Note): Promise<Note> {
   return addNote(connectionId, note.library_id, note.path, note.body, note.position);
 }
 
+/** A bookmark delete's words (`UNDO`, and a waiting bookmark's delete). */
+export const BOOKMARK_DELETE_COPY = {
+  deleted: 'annotations.bookmark.deleted',
+  deleteFailed: 'annotations.bookmark.deleteFailed',
+  restoreFailed: 'annotations.bookmark.restoreFailed',
+} as const;
+
 /** What a delete with Undo needs per kind: its delete hook, its restore, its copy. */
 const UNDO: {
   [K in keyof AnnotationOf]: {
@@ -60,11 +67,7 @@ const UNDO: {
   bookmark: {
     useDelete: useDeleteBookmark,
     restore: restoreBookmark,
-    copy: {
-      deleted: 'annotations.bookmark.deleted',
-      deleteFailed: 'annotations.bookmark.deleteFailed',
-      restoreFailed: 'annotations.bookmark.restoreFailed',
-    },
+    copy: BOOKMARK_DELETE_COPY,
   },
   note: {
     useDelete: useDeleteNote,
@@ -76,6 +79,26 @@ const UNDO: {
     },
   },
 };
+
+/** The toast after a delete: what went, where, and Undo, which puts it back (`restore`) or
+ * says it could not. Also a waiting bookmark's (`QueuedBookmarkRow`). */
+export function deletedToast(
+  t: TFunction,
+  copy: { deleted: ParseKeys; restoreFailed: ParseKeys },
+  position: number,
+  restore: () => Promise<unknown>,
+): void {
+  toast({
+    title: t(copy.deleted),
+    description: formatClock(position),
+    action: {
+      label: t('annotations.undo'),
+      onPress: () => {
+        restore().catch(() => toast({ title: t(copy.restoreFailed) }));
+      },
+    },
+  });
+}
 
 /**
  * Delete a bookmark or a note at once, with an Undo toast that puts it back
@@ -95,17 +118,7 @@ export function useDeleteWithUndo<K extends keyof AnnotationOf>(
   const del = useDelete(libraryId, path, connectionId);
   return (row) =>
     del.mutate(row.id, {
-      onSuccess: () =>
-        toast({
-          title: t(copy.deleted),
-          description: formatClock(row.position),
-          action: {
-            label: t('annotations.undo'),
-            onPress: () => {
-              restore(connectionId, row).catch(() => toast({ title: t(copy.restoreFailed) }));
-            },
-          },
-        }),
+      onSuccess: () => deletedToast(t, copy, row.position, () => restore(connectionId, row)),
       onError: () => toast({ title: t(copy.deleteFailed) }),
     });
 }

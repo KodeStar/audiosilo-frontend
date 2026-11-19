@@ -15,6 +15,7 @@ describe('storage keys', () => {
       LISTENING_OUTBOX_KEY: 'audiosilo.listeningOutbox',
       LISTENING_OPEN_SPAN_KEY: 'audiosilo.listeningOpenSpan',
       LISTENING_SYNC_KEY: 'audiosilo.listeningSync',
+      ANNOTATION_OUTBOX_KEY: 'audiosilo.annotationOutbox',
       OFFLINE_SERVERS_KEY: 'audiosilo.offlineServers',
       STARTUP_CACHE_KEY: 'audiosilo.startupCache',
       CAR_BOOKMARKS_KEY: 'audiosilo.carBookmarks',

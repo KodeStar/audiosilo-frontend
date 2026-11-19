@@ -3,6 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useApiRegistry } from '@/api/provider';
+import {
+  anyUnsent,
+  type Unsent,
+  unsentBeforeSignOut,
+  unsentLines,
+} from '@/components/account/unsent';
 import { freshAccountUser, signOutConnection } from '@/components/account/use-sign-out';
 import {
   AlertDialog,
@@ -17,7 +23,6 @@ import { DialogIcon } from '@/components/ui/dialog';
 import { Text } from '@/components/ui/text';
 import { managerName, needsPasswordWarning } from '@/lib/account';
 import { clearPin } from '@/lib/profile-pin';
-import { unsentListens } from '@/playback/listening-outbox';
 import { connectionsOfProfile, deleteProfile, devicePeople, type Profile } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
@@ -50,7 +55,7 @@ export function useRemovePerson(): {
     servers: Connection[];
     warned: Connection[];
     managed: { connection: Connection; owner: string }[];
-    unsynced: { connection: Connection; count: number }[];
+    unsynced: { connection: Connection; unsent: Unsent }[];
   } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -58,12 +63,12 @@ export function useRemovePerson(): {
     const servers = connectionsOfProfile(useSession.getState().connections, profile.connectionIds);
     const warned: Connection[] = [];
     const managed: { connection: Connection; owner: string }[] = [];
-    const unsynced: { connection: Connection; count: number }[] = [];
+    const unsynced: { connection: Connection; unsent: Unsent }[] = [];
     // Each server's last send and account read run together (a send may wait on the network).
     const reads = await Promise.all(
       servers.map((c) =>
         Promise.all([
-          unsentListens(c.id).catch(() => 0),
+          unsentBeforeSignOut(c.id),
           freshAccountUser(c.user, clients.get(c.id), (fresh) => {
             void setConnectionUser(c.id, fresh);
           }),
@@ -71,8 +76,8 @@ export function useRemovePerson(): {
       ),
     );
     for (const [i, c] of servers.entries()) {
-      const [count, user] = reads[i];
-      if (count > 0) unsynced.push({ connection: c, count });
+      const [unsent, user] = reads[i];
+      if (anyUnsent(unsent)) unsynced.push({ connection: c, unsent });
       const owner = managerName(user, { connection: c, people: devicePeople() });
       if (owner) managed.push({ connection: c, owner });
       else if (needsPasswordWarning(user)) warned.push(c);
@@ -113,14 +118,14 @@ export function useRemovePerson(): {
                 {t('profiles.remove.member', { name: pending.name, server: c.name, owner })}
               </Text>
             ))}
-            {pending?.unsynced.map(({ connection: c, count }) => (
+            {pending?.unsynced.map(({ connection: c, unsent }) => (
               <Text
                 key={c.id}
                 variant="muted"
                 className="text-destructive"
                 testID={`remove-person-unsynced-${c.id}`}
               >
-                {t('account.connections.removeConfirm.unsynced', { count, name: c.name })}
+                {unsentLines(t, unsent, c.name).join(' ')}
               </Text>
             ))}
             {pending?.warned.map((c) => (

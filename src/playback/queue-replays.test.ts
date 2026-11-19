@@ -2,9 +2,11 @@ import { AppState } from 'react-native';
 
 const mockFlushQueue = jest.fn(async () => {});
 const mockFlushReading = jest.fn(async () => {});
+const mockFlushBookmarks = jest.fn(async () => {});
 jest.mock('@/api/address-route', () => ({ networkChecked: async () => {} }));
 jest.mock('./progress-sync', () => ({ flushQueue: () => mockFlushQueue() }));
 jest.mock('@/reader/reading-progress', () => ({ flushReadingQueue: () => mockFlushReading() }));
+jest.mock('./annotation-outbox', () => ({ flushBookmarks: () => mockFlushBookmarks() }));
 
 /* eslint-disable-next-line import/first */
 import { startQueueReplays } from './queue-replays';
@@ -41,6 +43,7 @@ describe('the stored queues replayed when the app is picked up again', () => {
     win.fire('focus');
     expect(mockFlushQueue).toHaveBeenCalledTimes(1);
     expect(mockFlushReading).toHaveBeenCalledTimes(1);
+    expect(mockFlushBookmarks).toHaveBeenCalledTimes(1);
     win.fire('online');
     expect(mockFlushQueue).toHaveBeenCalledTimes(2);
     // Hidden, then shown again (the web's visibility, the app's foreground).
@@ -50,6 +53,7 @@ describe('the stored queues replayed when the app is picked up again', () => {
     await checked();
     expect(mockFlushQueue).toHaveBeenCalledTimes(3);
     expect(mockFlushReading).toHaveBeenCalledTimes(3);
+    expect(mockFlushBookmarks).toHaveBeenCalledTimes(3);
     stop();
     win.fire('focus');
     win.fire('online');

@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { bookmarksQuery, notesQuery } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import type { Bookmark, Note } from '@/api/types';
+import { useQueuedBookmarks } from '@/playback/use-queued-bookmarks';
 
 import { usePlayingTarget } from './playing-target';
 import type { PlayTarget } from './use-play-book';
@@ -24,7 +25,8 @@ export type BookAnnotations = { bookmarks?: Bookmark[]; notes?: Note[]; pins: Bo
  * ANY book's bookmarks and notes, through the book's own connection, on the same cache
  * entries as `useBookmarks` / `useNotes` (`qk.bookmarks` / `qk.notes`), so a bookmark
  * added anywhere shows here. Unlike those hooks it never throws when the connection is
- * gone (a downloaded book whose server was removed): there is simply nothing. Null
+ * gone (a downloaded book whose server was removed): there is simply nothing. The pins
+ * carry the book's bookmarks still waiting on this device (`useQueuedBookmarks`). Null
  * `target`: nothing is asked. `staleTime` defaults to 10 minutes, for the pieces that
  * mount on every page (the dock); a page that shows the counts passes its own.
  */
@@ -39,9 +41,15 @@ export function useBookAnnotations(
   const path = api && target ? target.path : '';
   const bookmarks = useQuery({ ...bookmarksQuery(cid, api, lib, path), staleTime }).data;
   const notes = useQuery({ ...notesQuery(cid, api, lib, path), staleTime }).data;
+  // The bookmarks still waiting on this device for the server are pinned too (fe#356), once:
+  // not a second time beside the listed one the server already holds.
+  const queued = useQueuedBookmarks(cid, lib, path, bookmarks);
   const pins = useMemo(
-    () => (path && (bookmarks || notes) ? pinsOf(bookmarks ?? [], notes ?? []) : EMPTY),
-    [path, bookmarks, notes],
+    () =>
+      path && (bookmarks || notes || queued.length > 0)
+        ? pinsOf([...(bookmarks ?? []), ...queued], notes ?? [])
+        : EMPTY,
+    [path, bookmarks, notes, queued],
   );
   return path ? { bookmarks, notes, pins } : { pins };
 }

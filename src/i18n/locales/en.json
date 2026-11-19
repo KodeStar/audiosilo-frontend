@@ -220,7 +220,9 @@
         "signOut": "This signs this device out of {{name}}. Your listening stays on the server: sign in again to get it back here.",
         "last": "It's the only server on this device, so AudioSilo goes back to its first step.",
         "unsynced_one": "{{count}} listen hasn't synced to {{name}} and will be lost.",
-        "unsynced_other": "{{count}} listens haven't synced to {{name}} and will be lost."
+        "unsynced_other": "{{count}} listens haven't synced to {{name}} and will be lost.",
+        "unsyncedBookmarks_one": "{{count}} bookmark hasn't synced to {{name}} and will be lost.",
+        "unsyncedBookmarks_other": "{{count}} bookmarks haven't synced to {{name}} and will be lost."
       }
     },
     "signOut": {
@@ -234,7 +236,9 @@
       "downloadsWarning_other": "Signing out also deletes {{count}} books downloaded from this server on this device.",
       "unsyncedTitle": "Listens not synced",
       "unsynced_one": "{{count}} listen hasn't synced to {{server}}. Sign out anyway?",
-      "unsynced_other": "{{count}} listens haven't synced to {{server}}. Sign out anyway?"
+      "unsynced_other": "{{count}} listens haven't synced to {{server}}. Sign out anyway?",
+      "unsyncedAnyTitle": "Not synced yet",
+      "anyway": "Sign out anyway?"
     },
     "switcher": "Server",
     "none": "Sign in to a server to see its account.",
@@ -418,7 +422,8 @@
       "addNote": "Add note",
       "loadFailed": "Couldn't load your bookmarks",
       "emptyHintWeb": "Press B while listening, or tap the bookmark in the player.",
-      "emptyHintNative": "Tap the bookmark in the player while listening."
+      "emptyHintNative": "Tap the bookmark in the player while listening.",
+      "waiting": "Waiting to sync"
     },
     "note": {
       "title": "Note",
@@ -1645,7 +1650,9 @@
       "label": "Bookmarks",
       "empty": "No bookmarks yet.",
       "added": "Bookmark added",
-      "addFailed": "Couldn't add the bookmark"
+      "addFailed": "Couldn't add the bookmark",
+      "queued": "Bookmark kept on this device",
+      "queuedHint": "{{time}} · It syncs once the server is back"
     },
     "history": {
       "empty": "No history yet."
