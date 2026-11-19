@@ -219,6 +219,74 @@ describe('the book a report names', () => {
     expect(old.reportedBook!()).toBeNull();
   });
 
+  // FE-ANDROID-4 (b): a report of the book a load replaced, sent before the load and heard
+  // after it landed, named that book again, so the store read it as the car's book and the
+  // app's Pause left the engine playing.
+  it('drops a late report of the book a load replaced, until a report names another', async () => {
+    const svc = await setUp();
+    send('onState', { state: 'playing', book: other });
+    const heard: [string | undefined, string, number][] = [];
+    svc.subscribe((s) => heard.push([svc.reportedBook!()?.path, s.state, s.position]));
+    const moved = jest.fn();
+    svc.onRemoteMove!(moved);
+    const rate = jest.fn();
+    svc.onRateChange!(rate);
+    await svc.load(tracks, 0, 0, [], book);
+    send('onProgress', { position: 40, duration: 100, book: other });
+    send('onState', { state: 'paused', playWhenReady: false, book: other });
+    send('onTrackChange', { index: 1, book: other });
+    send('onRemoteMove', { trackIndex: 1, position: 4, book: other });
+    send('onRateChange', { rate: 2, book: other });
+    expect(svc.reportedBook!()).toEqual(book);
+    expect(moved).not.toHaveBeenCalled();
+    expect(rate).not.toHaveBeenCalled();
+    // A report with no book (malformed) passes as before and keeps the watch.
+    send('onProgress', { position: 1, duration: 100 });
+    send('onProgress', { position: 41, duration: 100, book: other });
+    // The loaded book's own report ends it: the book named after it is a new play (the car).
+    send('onState', { state: 'playing', book });
+    send('onState', { state: 'playing', book: other });
+    expect(heard).toEqual([
+      ['A', 'ready', 0],
+      [undefined, 'ready', 1],
+      ['A', 'playing', 1],
+      ['B', 'playing', 1],
+    ]);
+  });
+
+  it('keeps dropping late reports of the replaced book across a reload of the loaded one', async () => {
+    const svc = await setUp();
+    send('onState', { state: 'playing', book: other });
+    await svc.load(tracks, 0, 0, [], book);
+    // The same book again before any report named it (a swap onto its download).
+    await svc.load(tracks, 0, 5, [], book);
+    send('onProgress', { position: 40, duration: 100, book: other });
+    expect(svc.reportedBook!()).toEqual(book);
+    expect(svc.getSnapshot().position).toBe(5);
+  });
+
+  it("takes the replaced book's reports once the app loads that book again", async () => {
+    const svc = await setUp();
+    send('onState', { state: 'playing', book: other });
+    await svc.load(tracks, 0, 0, [], book);
+    // A report naming no book (an idle after a reset of the queue) names nothing new.
+    send('onProgress', { position: 1, duration: 100 });
+    await svc.load(tracks, 0, 0, [], other);
+    send('onProgress', { position: 40, duration: 100, book: other });
+    expect(svc.reportedBook!()).toEqual(other);
+    expect(svc.getSnapshot().position).toBe(40);
+  });
+
+  it("keeps a report of the engine's book when the load failed", async () => {
+    const svc = await setUp();
+    send('onState', { state: 'playing', book: other });
+    (mockModule.load as jest.Mock).mockRejectedValueOnce(new Error('no'));
+    await expect(svc.load(tracks, 0, 0, [], book)).rejects.toThrow('no');
+    send('onProgress', { position: 40, duration: 100, book: other });
+    expect(svc.reportedBook!()).toEqual(other);
+    expect(svc.getSnapshot().position).toBe(40);
+  });
+
   it("drops a tick held for its move when another book's report comes", async () => {
     jest.useFakeTimers();
     try {
