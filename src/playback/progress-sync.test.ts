@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { ApiClient, ApiError, TimeoutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
+import { forgetRateLimit, RATE_LIMIT_HOLD_S } from '@/api/rate-limit';
 import * as reachability from '@/api/reachability';
 import type { Progress } from '@/api/types';
 import { onConnectionRemoved } from '@/stores/session';
@@ -142,6 +143,8 @@ function routeClients(map: Record<string, ApiClient | null>) {
 describe('progress-sync', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
+    // A 429's wait is the connection's, held in memory: none carried from another test.
+    forgetRateLimit('c1');
     jest.clearAllMocks();
     reachable.mockReset().mockReturnValue(true);
     // clearAllMocks wipes call logs but keeps implementations; reset the seam mocks
@@ -209,9 +212,21 @@ describe('progress-sync', () => {
       await flushQueue();
       expect(await readQueue()).toHaveLength(1);
 
+      // A 429's wait is the connection's, whatever client the next replay is built
+      // (`resolveClient` builds one per call): it goes once the wait is over.
       const ok = fakeApi(() => Promise.resolve());
       routeClients({ c1: ok });
-      await flushQueue();
+      const now = jest.spyOn(Date, 'now');
+      try {
+        if (status === 429) {
+          await flushQueue();
+          expect(ok.saveProgress).not.toHaveBeenCalled();
+          now.mockReturnValue(Date.now() + RATE_LIMIT_HOLD_S * 1000);
+        }
+        await flushQueue();
+      } finally {
+        now.mockRestore();
+      }
       expect(ok.saveProgress).toHaveBeenCalledTimes(1);
       expect(await readQueue()).toHaveLength(0);
     },
@@ -247,6 +262,29 @@ describe('progress-sync', () => {
     } finally {
       now.mockRestore();
     }
+  });
+
+  it('holds a 429 for the connection whatever client a replay is built, but a sign-out tries', async () => {
+    reachable.mockReturnValue(false);
+    await saveProgress(
+      fakeApi(() => Promise.resolve()),
+      save,
+    );
+    reachable.mockReturnValue(true);
+    routeClients({
+      c1: fakeApi(() => Promise.reject(new ApiError(429, 'slow down', undefined, 60))),
+    });
+    await flushQueue();
+    // `resolveClient` builds a client per call: the next replay's is another one.
+    const next = fakeApi(() => Promise.resolve());
+    routeClients({ c1: next });
+    await flushQueue();
+    expect(next.saveProgress).not.toHaveBeenCalled();
+    expect(await readQueue()).toHaveLength(1);
+    // Signing out (`teardownBeforeTokenRevoke`): the queued saves' last chance.
+    await flushConnection('c1');
+    expect(next.saveProgress).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toHaveLength(0);
   });
 
   it('enqueues on a connection error, then replays it on the next flush', async () => {

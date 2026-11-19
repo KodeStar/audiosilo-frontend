@@ -6,7 +6,7 @@ import {
   TimeoutError,
 } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
-import { noteRateLimit, rateLimited, stopsReplay } from '@/api/rate-limit';
+import { noteRateLimit, onRateLimitOver, rateLimited, stopsReplay } from '@/api/rate-limit';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { ReadingProgress, ReadingProgressSaved } from '@/api/types';
 import { contentKey, contentKeyOf, isKeyOf } from '@/lib/content-key';
@@ -469,7 +469,7 @@ async function sendThenFlush(
   const { saved, more } = await withSendTurn(key, async () => {
     if (latestAsked.get(key) !== turn) return { saved: null, more: false };
     const save = await onOwnVersion(captured);
-    if (!api || !isReachable(save.connectionId) || rateLimited(api)) {
+    if (!api || !isReachable(save.connectionId) || rateLimited(save.connectionId)) {
       await queueSave(save);
       return { saved: null, more: false };
     }
@@ -486,7 +486,7 @@ async function sendThenFlush(
         await dropQueuedBefore(save);
       } else {
         noteFailure(save.connectionId, e);
-        noteRateLimit(api, e);
+        noteRateLimit(save.connectionId, e);
         await queueSave(save);
       }
       return { saved: null, more: false };
@@ -596,8 +596,9 @@ async function flushGroup(
   saves: ReadingSave[],
 ): Promise<ReadingSave[]> {
   const remaining: ReadingSave[] = [];
-  // The server asked to wait (a 429): the group waits out its `Retry-After`.
-  let stop = rateLimited(client);
+  // No answer, or the server asked to wait (a 429: later replays wait out its
+  // `Retry-After`, `queuedRoute`): the rest of the group waits too.
+  let stop = false;
   for (const save of saves) {
     if (stop) {
       remaining.push(save);
@@ -617,7 +618,7 @@ async function flushGroup(
           return 'settled';
         }
         noteFailure(cid, e);
-        return stopsReplay(client, e) ? 'stop' : 'kept';
+        return stopsReplay(cid, e) ? 'stop' : 'kept';
       }
     });
     if (sent === 'settled') continue;
@@ -650,8 +651,13 @@ export async function flushReadingQueue(): Promise<void> {
   await replayReadingSaves(queuedRoute);
 }
 
-/** Replay one connection's queued saves whatever its recorded reachability: it just came
- * back, or it is about to be signed out (`teardownBeforeTokenRevoke`). */
+// A wait the server asked for (a 429) is over: the places it held go now, the reader open
+// or not.
+onRateLimitOver(() => void flushReadingQueue().catch(() => undefined));
+
+/** Replay one connection's queued saves whatever its recorded reachability or a wait its
+ * server asked (`onlyConnection`): it just came back, or it is about to be signed out
+ * (`teardownBeforeTokenRevoke`), the queued places' last chance. */
 export async function flushReadingConnection(connectionId: string): Promise<void> {
   if (!sessionReady()) return;
   const client = resolveClient(connectionId);

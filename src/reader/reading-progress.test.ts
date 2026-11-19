@@ -45,9 +45,10 @@ jest.mock('./ebook-file', () => ({
 }));
 
 // progress-sync (imported for getDeviceId) registers first; the reader's purge is the last.
-const removalCleanup = (onConnectionRemoved as jest.Mock).mock.calls.at(-1)?.[0] as (
-  id: string,
-) => Promise<void>;
+const removalCleanups = (onConnectionRemoved as jest.Mock).mock.calls.map(
+  ([cleanup]) => cleanup as (id: string) => Promise<void>,
+);
+const removalCleanup = removalCleanups.at(-1)!;
 
 const reachable = reachability.isReachable as jest.Mock;
 const mockResolveClient = resolveClient as jest.Mock;
@@ -162,10 +163,10 @@ const readMirror = () =>
     {},
   );
 
-/** A fresh start: what this tab settled is the connections' (`onConnectionRemoved`), and the
- * tests reuse the same saves. */
+/** A fresh start: what this tab settled and a wait a 429 asked are the connections'
+ * (`onConnectionRemoved`), and the tests reuse the same saves. */
 async function forgetConnections() {
-  for (const id of ['c1', 'c2']) await removalCleanup(id);
+  for (const id of ['c1', 'c2']) for (const cleanup of removalCleanups) await cleanup(id);
   await AsyncStorage.clear();
 }
 
@@ -1097,6 +1098,36 @@ describe('reading-progress', () => {
     } finally {
       now.mockRestore();
     }
+  });
+
+  describe('a 429 is the connection’s (fe#173)', () => {
+    const limitedApi = (retryAfter?: number) =>
+      fakeApi(() => Promise.reject(new ApiError(429, 'slow down', undefined, retryAfter)));
+
+    it('holds whatever client a replay is built, and a sign-out’s last flush still tries', async () => {
+      await saveReadingPlace(limitedApi(60), save());
+      // `resolveClient` builds a client per call: the replay's is another one.
+      const next = fakeApi();
+      routeClients({ c1: next });
+      await flushReadingQueue();
+      expect(next.saveReadingProgress).not.toHaveBeenCalled();
+      expect(await readQueue()).toHaveLength(1);
+      // Signing out (`teardownBeforeTokenRevoke`): the queued place's last chance.
+      await flushReadingConnection('c1');
+      expect(next.saveReadingProgress).toHaveBeenCalledTimes(1);
+      expect(await readQueue()).toEqual([]);
+    });
+
+    it('replays the places it held once the wait is over, with nothing else to send them', async () => {
+      await saveReadingPlace(limitedApi(1), save());
+      const next = fakeApi();
+      routeClients({ c1: next });
+      for (let i = 0; i < 60 && (await readQueue()).length > 0; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      expect(next.saveReadingProgress).toHaveBeenCalledTimes(1);
+      expect(await readQueue()).toEqual([]);
+    });
   });
 
   describe('the place after a replay (fe#173)', () => {
