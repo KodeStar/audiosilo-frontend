@@ -1,5 +1,5 @@
 import { hashKey, type QueryClient, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { create } from 'zustand';
 
 import { ApiError, isNotInLibraryError } from '@/api/client';
@@ -80,13 +80,13 @@ let stopSaving: (() => void) | null = null;
 export function restoreLibrivoxWatches(): Promise<void> {
   restoring ??= (async () => {
     const saved = savedWatches(await getItem<unknown>(WATCHES_KEY), Date.now());
-    useLibrivoxWatches.setState((s) => ({
-      watches: [...saved.filter((w) => !s.watches.some((x) => same(x, w))), ...s.watches],
-    }));
-    void setItem(WATCHES_KEY, useLibrivoxWatches.getState().watches);
     stopSaving = useLibrivoxWatches.subscribe((s, prev) => {
       if (s.watches !== prev.watches) void setItem(WATCHES_KEY, s.watches);
     });
+    // A new list, so the merge is saved too (the ones past their hold left out).
+    useLibrivoxWatches.setState((s) => ({
+      watches: [...saved.filter((w) => !s.watches.some((x) => same(x, w))), ...s.watches],
+    }));
   })();
   return restoring;
 }
@@ -151,12 +151,16 @@ export function LibrivoxFetchWatcher() {
  * (`librivoxJobPollInterval`'s `seen`) at once, not at its next answer. */
 function useReadElsewhere(qc: QueryClient, queryKey: readonly unknown[]): boolean {
   const hash = hashKey(queryKey);
-  return useSyncExternalStore(
-    (onChange) =>
+  const subscribe = useCallback(
+    (onChange: () => void) =>
       qc.getQueryCache().subscribe((e) => {
         if (e.query.queryHash !== hash) return;
         if (e.type === 'observerAdded' || e.type === 'observerRemoved') onChange();
       }),
+    [qc, hash],
+  );
+  return useSyncExternalStore(
+    subscribe,
     () => (qc.getQueryCache().get(hash)?.getObserversCount() ?? 0) > 1,
   );
 }
@@ -194,8 +198,14 @@ function WatchedFetch({ cid, id, at }: Watch) {
  * so it is asked every `BRIDGE_IDLE_POLL_MS` with the app in the foreground until it is. */
 function BridgeAwayWaker({ cid }: { cid: string }) {
   const info = useServerInfo(cid);
-  const away = info.data?.capabilities?.bridge !== true;
-  const refetch = info.refetch;
+  useServerAskedWhileAway(info.data?.capabilities?.bridge !== true, info.refetch);
+  return null;
+}
+
+/** While the Bridge is `away`, `/server` is read again (`refetch`) every
+ * `BRIDGE_IDLE_POLL_MS` with the app in the foreground: its answer is fresh for minutes and
+ * nothing else reads it again meanwhile. The watcher's and Find on LibriVox's one rule. */
+export function useServerAskedWhileAway(away: boolean, refetch: () => unknown) {
   useEffect(() => {
     if (!away) return;
     const timer = setInterval(() => {
@@ -203,5 +213,4 @@ function BridgeAwayWaker({ cid }: { cid: string }) {
     }, BRIDGE_IDLE_POLL_MS);
     return () => clearInterval(timer);
   }, [away, refetch]);
-  return null;
 }

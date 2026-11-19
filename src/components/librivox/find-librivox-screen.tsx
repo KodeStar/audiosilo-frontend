@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -9,14 +9,13 @@ import { OfflineState } from '@/components/layout/offline-state';
 import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { isAway } from '@/lib/app-activity';
-import { BRIDGE_IDLE_POLL_MS } from '@/lib/bridge-jobs';
 import { useUnreadQuery } from '@/lib/offline-state';
 import { parseFindLibrivoxParams } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
 import { useSession } from '@/stores/session';
 
+import { useServerAskedWhileAway } from './fetch-watcher';
 import { librivoxAccess } from './librivox-model';
 import { LibrivoxSearch } from './librivox-search';
 
@@ -79,18 +78,10 @@ function FindLibrivoxContent() {
     setOpenFor(null);
   }
   const away = access === 'unavailable' && openFor === cid;
-  // Away: `/server` is asked again while the app is in the foreground. Its answer is fresh
-  // for minutes and nothing reads it again on an open page, so "add once it's back" would
-  // wait for the app to be left and opened again (and the followed fetches' reads with it,
-  // which the same flag holds).
-  const refetchInfo = info.refetch;
-  useEffect(() => {
-    if (!away) return;
-    const timer = setInterval(() => {
-      if (!isAway()) void refetchInfo();
-    }, BRIDGE_IDLE_POLL_MS);
-    return () => clearInterval(timer);
-  }, [away, refetchInfo]);
+  // Away: `/server` is asked again while the app is in the foreground, or "add once it's
+  // back" would wait for the app to be left and opened again (and the followed fetches'
+  // reads with it, which the same flag holds).
+  useServerAskedWhileAway(away, info.refetch);
 
   if (!params) return <EmptyState icon="book" title={t('library.detail.badLink')} />;
   if (access === 'unknown') {

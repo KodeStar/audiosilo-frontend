@@ -169,7 +169,7 @@ export function librivoxJobPollInterval(
   if (job.state === 'needs_attention') return BRIDGE_IDLE_POLL_MS;
   const pace = seen ? LIBRIVOX_POLL_MS : LIBRIVOX_UNSEEN_POLL_MS;
   if (!failed || failures <= 0) return pace;
-  return Math.max(pace, Math.min(BRIDGE_IDLE_POLL_MS, pace * 2 ** failures));
+  return Math.min(BRIDGE_IDLE_POLL_MS, pace * 2 ** failures);
 }
 
 /**
