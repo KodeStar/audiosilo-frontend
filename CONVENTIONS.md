@@ -3269,12 +3269,16 @@ media GETs only.
   too, since a report naming the wrong book (the one a load replaced, late) would otherwise
   leave the sound playing under a paused button. While the reports are the other book's
   (`pausesAnother`: a report names it, or an adoption of another book is under way and the
-  report names none, an older binary, `adoptsAnother`), the store's book shows paused where
-  it was last heard, its intent over, nothing saved (`pauseOwnBook`); not while a load of
-  the store's holds the engine (`loadingBook`, `startsInFlight`): the book named then is the
-  one that load replaces. While an adoption of another book is under way, a report that
-  names no book is held as that book's (never the store's book's place or state), even once
-  a Pause ended the followed outside play.
+  report names none, an older binary, `unnamedReportOfAdopted`), the store's book shows
+  paused where it was last heard, its intent over, nothing saved (`pauseOwnBook`, the
+  store's `pause` too); not while a load of the store's holds the engine (`loadingBook`,
+  `startsInFlight`): the book named then is the one that load replaces. A play press then
+  reloads the store's book (`toggle`, `retry`). While an adoption of another book is under
+  way, a report that names no book is held as that book's (never the store's book's place or
+  state), and so are its moves, speed and Smart Speed (`engineHoldsOtherBook`), even once a
+  Pause ended the followed outside play; not once a load of the store's book took the engine
+  (`ownLoadTakesEngine` in `playBook` and `retry`: the adoption reads a book the engine no
+  longer holds and gives up, and the reports are the store's book's, its start heard).
   The store's `pause` is "stop the sound" (the sleep timer): while the store's book shows
   playing or loading, the engine pauses whatever it plays, the other book too, and the
   store's book shows paused; while it shows paused and the engine plays the other book

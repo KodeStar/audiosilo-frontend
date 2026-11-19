@@ -222,19 +222,28 @@ const engineIsAnothers = (): boolean => outsidePlay?.other === true;
  * played yet (`outsidePlay`). The car sync then asks whose book the engine holds
  * (`mayBeServiceChange`); a Retry or a play of the store's own asks nothing. */
 export const followsOutsidePlay = (): boolean => outsidePlay !== null;
-/** The books adoptions of the engine's book under way take (`adoptLoadedBook`, their content
- * keys). While one is not the store's book (`unnamedReportOfAdopted`), a report that names no book (an
- * older binary) is that book's, never the store's book's place or state, even once a Pause
- * ended the play followed from outside (`outsidePlay`). Once an adoption switched the store to
- * its book, they are that book's own. */
-const adopting: string[] = [];
+/** The adoptions of the engine's book under way (`adoptLoadedBook`): the book each takes (its
+ * content key), and whether a load of the store's own book has taken the engine since it began
+ * (`ownLoadTakesEngine`). While one is not the store's book and no load of the store's came
+ * since (`unnamedReportOfAdopted`), a report that names no book (an older binary) is that
+ * book's, never the store's book's place or state, even once a Pause ended the play followed
+ * from outside (`outsidePlay`). Once an adoption switched the store to its book, they are that
+ * book's own. */
+const adopting: { key: string; ownLoad: boolean }[] = [];
 /** Whether the engine's last report named no book (an older binary) while an adoption of
- * another book than the store's is under way (`adopting`): that report is the adopted book's. */
+ * another book than the store's is under way (`adopting`) and still holds the engine: that
+ * report is the adopted book's. Not once a load of the store's took the engine: the report is
+ * the store's book's, and that adoption gives up (`adoptNow`). */
 const unnamedReportOfAdopted = (): boolean => {
   if (service?.reportedBook?.()) return false;
   const own = selectBookKey(usePlayer.getState());
-  return adopting.some((key) => key !== own);
+  return adopting.some((a) => !a.ownLoad && a.key !== own);
 };
+/** A load of the store's own book is asked of the engine (`playBook`, `retry`): an adoption under
+ * way reads a book the engine no longer holds, and its reports are the store's book's. */
+function ownLoadTakesEngine() {
+  for (const a of adopting) a.ownLoad = true;
+}
 
 /**
  * The content key of the book the engine's last report named, when that is not the store's
@@ -255,10 +264,13 @@ function reportedOtherBook(svc: PlaybackService): string | null {
  * (`reportedOtherBook`): no listening of the store's book opens then. */
 const engineHoldsAnother = (): boolean => service !== null && reportedOtherBook(service) !== null;
 /** Whether the engine holds another book than the store's, by its last report's name
- * (`engineHoldsAnother`) or because its adoption is under way (`engineIsAnothers`): the
- * engine's reports are that book's, and so would any move asked of it be. The place
- * reconcile moves and offers nothing then (`decide`: its seek would land in the other book). */
-export const engineHoldsOtherBook = (): boolean => engineIsAnothers() || engineHoldsAnother();
+ * (`engineHoldsAnother`) or because its adoption is under way (`engineIsAnothers`, and
+ * `unnamedReportOfAdopted` for a report that names none once a Pause ended the followed play):
+ * the engine's reports are that book's (its moves, speed and Smart Speed), and so would any
+ * move or speed asked of it be. The place reconcile moves and offers nothing then (`decide`:
+ * its seek would land in the other book). */
+export const engineHoldsOtherBook = (): boolean =>
+  engineIsAnothers() || engineHoldsAnother() || unnamedReportOfAdopted();
 /**
  * The book the engine plays when it is not the store's (`reportedOtherBook`: Android's car or
  * a resumption started it and it was not adopted; after `otherBookNotAdopted` the store's book
@@ -4081,6 +4093,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // moment. One called off during the load is paused after it (below). A failed pause
       // never skips the load: its `finally` is what releases `loadingBook`.
       if (wanted && !wanted()) await svc.pause().catch(() => undefined);
+      ownLoadTakesEngine();
       try {
         await engineTakes(
           ask,
@@ -4197,9 +4210,10 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // A faulted engine is never just resumed (it sits where the book is not), nor one in
       // error (a dead stream; or the engine took a move clamped at its short measure, and
       // the book shows the place asked for, `showPlace`), nor one that plays another book
-      // (the car's, never adopted: `otherBookNotAdopted`), whose play would be that book's:
-      // the press reloads the book at its place, as Retry does.
-      if (loadedFaulted() || st === 'error' || engineHoldsAnother()) {
+      // (the car's, never adopted: `otherBookNotAdopted`; or one being adopted whose report
+      // names none, `pausesAnother`), whose play would be that book's: the press reloads the
+      // book at its place, as Retry does.
+      if (loadedFaulted() || st === 'error' || pausesAnother()) {
         await get().retry();
         return;
       }
@@ -4235,9 +4249,9 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       return;
     }
     // The engine plays another book (the car's, not adopted): that book stops too, and the
-    // store's book, still shown playing, shows paused where it was last heard.
-    if (pausesAnother()) showOwnBookPaused();
-    await svc.pause();
+    // store's book, still shown playing, shows paused where it was last heard; not while a
+    // load of the store's holds the engine (`pauseOwnBook`).
+    await pauseOwnBook(svc);
   },
 
   retry: async () => {
@@ -4310,6 +4324,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       loaded = moved;
       at = local;
     }
+    ownLoadTakesEngine();
     await engineMove(loaded, at.index, at.positionInTrack, () =>
       svc.load(
         loaded.queue.tracks,
@@ -4960,13 +4975,14 @@ async function adoptLoadedBook(
   const followed = outsidePlay;
   const loadedKey = resolvedKeyOf(service);
   if (followed && contentKeyOf(followed.np) !== loadedKey) followed.other = true;
-  adopting.push(loadedKey);
+  const adoption = { key: loadedKey, ownLoad: false };
+  adopting.push(adoption);
   let adopted = false;
   try {
     adopted = await adoptNow(service, reread);
     return adopted;
   } finally {
-    adopting.splice(adopting.indexOf(loadedKey), 1);
+    adopting.splice(adopting.indexOf(adoption), 1);
     // Gave up with the play still followed: the watchdog ends it, after its whole grace from
     // here, so the engine's book by now (another again) can be adopted first (the car sync
     // reads the engine once more).
