@@ -933,6 +933,33 @@ describe("a download's size and the files it leaves (fe#153, fe#197)", () => {
     expect(entry()?.manifest.files.map((f) => f.bytes)).toEqual([800, 800]);
   });
 
+  it('counts a kept file an older app listed as 0 bytes at the size the book lists', async () => {
+    api();
+    await seed({
+      [key]: {
+        ...downloadedEntry(),
+        status: 'error',
+        failure: { kind: 'network', kept: 0.5 },
+        manifest: {
+          ...downloadedEntry().manifest,
+          book: mkaBook(2),
+          files: [{ relPath: 'A/Book/00.mka', localUri: 'live:c1:2:A/Book:0.mka', bytes: 0 }],
+        },
+      },
+    });
+    mockEngine.localUri = undefined;
+    await useDownloads.getState().hydrate();
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string, _u, onProgress?: (w: number, t: number) => void) => {
+        if (name !== 'cover.jpg') onProgress?.(800, 800);
+        return `live:c1:2:A/Book:${name}`;
+      },
+    );
+    useDownloads.getState().download('c1', 2, mkaBook(2));
+    await settle();
+    expect(entry()).toMatchObject({ status: 'downloaded', bytes: 1800, totalBytes: 1800 });
+  });
+
   it("removes the '.mka' an older iOS app left of a file it now saves as '.mp3'", async () => {
     Platform.OS = 'ios';
     api();

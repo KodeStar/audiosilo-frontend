@@ -2314,7 +2314,9 @@ async function runOne(key: string) {
       const done = plan.kept(s.path);
       if (done && (await engine.fileExists(done.localUri))) {
         files.push(done);
-        land(s.size, done.bytes ?? s.size);
+        // An older app listed a file whose engine reported nothing as 0 bytes: the size the
+        // book lists stands in, or the finished total (now these bytes) comes out short.
+        land(s.size, done.bytes || s.size);
         patch({ bytes: priorBytes, totalBytes: knownTotal, progress: (i + 1) / steps });
         continue;
       }
