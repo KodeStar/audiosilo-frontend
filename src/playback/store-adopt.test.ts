@@ -2241,9 +2241,19 @@ describe('a play asked from outside of another book after playback stopped', () 
     expect(loadedPlace?.()).toBeNull();
   });
 
-  // An adoption that began after the store's own start asked for its load (so not marked
-  // `ownLoad`) gives up, and the engine is the start's book from that load: its unnamed
-  // reports are that book's, never held as the other book's.
+  /** The item and chapter fetches wait: each answers when its function in the list is called. */
+  function heldFetches(): (() => void)[] {
+    const answers: (() => void)[] = [];
+    mockFetchQuery.mockImplementation(
+      (opts: unknown) =>
+        new Promise((resolve) => {
+          const key = (opts as { queryKey: unknown[] }).queryKey;
+          answers.push(() => resolve(key[0] === 'item' ? book : chapters));
+        }),
+    );
+    return answers;
+  }
+
   /** B adopted paused at (1, 30); the engine asked to play from outside (no error, so no play
    * followed) and its unnamed `loading` report at `heard` taken; S's adoption then begins and
    * gives up (the engine read again names nothing). Returns once it gave up. */
@@ -2257,14 +2267,7 @@ describe('a play asked from outside of another book after playback stopped', () 
     jest.clearAllMocks();
     playAsked?.();
     pushSnapshot(snap(heard.state ?? 'loading', heard.trackIndex, heard.position));
-    const answers: (() => void)[] = [];
-    mockFetchQuery.mockImplementation(
-      (opts: unknown) =>
-        new Promise((resolve) => {
-          const key = (opts as { queryKey: unknown[] }).queryKey;
-          answers.push(() => resolve(key[0] === 'item' ? book : chapters));
-        }),
-    );
+    const answers = heldFetches();
     const adopting = usePlayer.getState().adoptLoaded(loadedS, async () => null);
     await flushMicrotasks();
     // From the moment the adoption begins, B stands where it was.
@@ -2314,14 +2317,7 @@ describe('a play asked from outside of another book after playback stopped', () 
     pushSnapshot(snap('paused', 1, 60));
     await flushMicrotasks();
     expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 60 });
-    const answers: (() => void)[] = [];
-    mockFetchQuery.mockImplementation(
-      (opts: unknown) =>
-        new Promise((resolve) => {
-          const key = (opts as { queryKey: unknown[] }).queryKey;
-          answers.push(() => resolve(key[0] === 'item' ? book : chapters));
-        }),
-    );
+    const answers = heldFetches();
     const adopting = usePlayer.getState().adoptLoaded(loadedS, async () => null);
     await flushMicrotasks();
     expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 60 });
@@ -2346,14 +2342,7 @@ describe('a play asked from outside of another book after playback stopped', () 
     await flushMicrotasks();
     jest.clearAllMocks();
     // The car plays S; its adoption is under way.
-    const answers: (() => void)[] = [];
-    mockFetchQuery.mockImplementation(
-      (opts: unknown) =>
-        new Promise((resolve) => {
-          const key = (opts as { queryKey: unknown[] }).queryKey;
-          answers.push(() => resolve(key[0] === 'item' ? book : chapters));
-        }),
-    );
+    const answers = heldFetches();
     playAsked?.();
     const adopting = usePlayer.getState().adoptLoaded(loadedS, async () => null);
     await flushMicrotasks();
@@ -2374,6 +2363,9 @@ describe('a play asked from outside of another book after playback stopped', () 
     });
   });
 
+  // An adoption that began after the store's own start asked for its load (so not marked
+  // `ownLoad`) gives up, and the engine is the start's book from that load: its unnamed
+  // reports are that book's, never held as the other book's.
   it("holds nothing after an adoption that gave up while the store's own load was out", async () => {
     useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
     let land!: () => void;

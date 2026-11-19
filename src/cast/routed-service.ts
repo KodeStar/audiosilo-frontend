@@ -14,6 +14,9 @@ import type { CastPlaybackService } from './cast-service';
 /** What the store last asked to load: the route switch reloads it on the other side. */
 type LastLoad = { tracks: PlaybackTrack[]; chapters?: PlaybackChapter[]; book?: BookRef };
 
+/** A book load asked of one side, and where it was asked to start. */
+type AskedLoad = { load: LastLoad; trackIndex: number; position: number };
+
 /** Whether two loads are the same book (`rememberLoad` swaps in the phone's own copy of the
  * loaded book: another object, the same book). */
 function sameBookLoad(a: LastLoad | null, b: LastLoad | null): boolean {
@@ -66,19 +69,14 @@ export class RoutedPlaybackService implements PlaybackService {
   /** A book `load` sent to the receiver that has not landed there yet, and where it was
    * asked to start: until it lands the receiver's snapshot is still the previous book's,
    * so a session ending meanwhile hands this place back instead (`endCast`). */
-  private pending: { load: LastLoad; trackIndex: number; position: number } | null = null;
+  private pending: AskedLoad | null = null;
   /** A book `load` on its way into the phone's engine (the store's own start), and where it
    * was asked to start: until it lands the engine's snapshot is still the book it replaces,
    * so a session that begins meanwhile waits for it (`beginCast`). */
-  private localLoad: {
-    done: Promise<void>;
-    load: LastLoad;
-    trackIndex: number;
-    position: number;
-  } | null = null;
+  private localLoad: (AskedLoad & { done: Promise<void> }) | null = null;
   /** The wait of the session `beginCast` is making the route (`localLoad`), stopped by a newer
    * session or the end of the session (`endCast`). */
-  private beginning: { stop: () => void } | null = null;
+  private beginning: (() => void) | null = null;
   /** The book a handover gives the receiver (`beginCast`): a session that ends before it is
    * the route hands this book back, at the place being handed over (`handBack`). */
   private handover: LastLoad | null = null;
@@ -184,12 +182,8 @@ export class RoutedPlaybackService implements PlaybackService {
     // A load of the store's own still on its way into the phone's engine: the engine's place
     // is the book it replaces until it lands, and the loaded book would go over at that one's
     // place. It goes over from where its load put it, so the session waits for that.
-    let asked: PlaybackSnapshot | null = null;
-    if (this.localLoad) {
-      const waited = await this.localLoadLands();
-      if (waited === false) return;
-      asked = waited;
-    }
+    const asked = this.localLoad ? await this.localLoadLands() : null;
+    if (asked === false) return;
     if (this.cast) await this.endCast();
     // Asked while the phone is still the route: the store reads the phone's last report. A
     // load that never landed leaves the engine holding the book it replaced, as another book.
@@ -288,12 +282,7 @@ export class RoutedPlaybackService implements PlaybackService {
     const pending = this.pending;
     this.pending = null;
     const at: PlaybackSnapshot = pending
-      ? {
-          ...this.snapshot,
-          trackIndex: pending.trackIndex,
-          position: pending.position,
-          duration: pending.load.tracks[pending.trackIndex]?.duration ?? 0,
-        }
+      ? this.placeOf(pending)
       : this.mode === 'cast'
         ? cast.getSnapshot()
         : this.snapshot;
@@ -323,9 +312,19 @@ export class RoutedPlaybackService implements PlaybackService {
 
   /** Stop the wait of a session that is still to become the route (`beginning`). */
   private stopBeginning() {
-    const waiting = this.beginning;
+    const stop = this.beginning;
     this.beginning = null;
-    waiting?.stop();
+    stop?.();
+  }
+
+  /** The router's snapshot at the place a load was asked to start at. */
+  private placeOf({ load, trackIndex, position }: AskedLoad): PlaybackSnapshot {
+    return {
+      ...this.snapshot,
+      trackIndex,
+      position,
+      duration: load.tracks[trackIndex]?.duration ?? 0,
+    };
   }
 
   /**
@@ -336,50 +335,31 @@ export class RoutedPlaybackService implements PlaybackService {
    * book's own to go over from (the engine's snapshot is still the book it replaced).
    */
   private async localLoadLands(): Promise<PlaybackSnapshot | null | false> {
-    let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const cut = new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, LOCAL_LOAD_WAIT_MS);
-      this.beginning = {
-        stop: () => {
-          stopped = true;
-          resolve();
-        },
-      };
+    let stop!: () => void;
+    const cut = new Promise<'stopped' | 'bound'>((resolve) => {
+      timer = setTimeout(() => resolve('bound'), LOCAL_LOAD_WAIT_MS);
+      stop = () => resolve('stopped');
     });
-    const mine = this.beginning;
+    this.beginning = stop;
+    const landed = () => 'landed' as const;
     try {
       for (let loading = this.localLoad; loading;) {
-        let landed = false;
-        const done = loading.done.then(
-          () => {
-            landed = true;
-          },
-          () => {
-            landed = true;
-          },
-        );
-        await Promise.race([done, cut]);
-        if (stopped) return false;
-        if (!landed) {
-          // The bound: the load never landed, and the handover's reset takes the engine.
+        const outcome = await Promise.race([loading.done.then(landed, landed), cut]);
+        // Stopped (`stopBeginning`), also once the load landed first.
+        if (outcome === 'stopped' || this.beginning !== stop) return false;
+        if (outcome === 'bound') {
+          // The load never landed, and the handover's reset takes the engine.
           if (this.localLoad === loading) this.localLoad = null;
           if (!sameBookLoad(loading.load, this.lastLoad)) return null;
-          const { trackIndex, position, load } = loading;
-          return {
-            ...this.snapshot,
-            trackIndex,
-            position,
-            duration: load.tracks[trackIndex]?.duration ?? 0,
-            state: 'paused',
-          };
+          return { ...this.placeOf(loading), state: 'paused' };
         }
         loading = this.localLoad === loading ? null : this.localLoad;
       }
       return null;
     } finally {
       clearTimeout(timer);
-      if (this.beginning === mine) this.beginning = null;
+      if (this.beginning === stop) this.beginning = null;
     }
   }
 
@@ -408,6 +388,7 @@ export class RoutedPlaybackService implements PlaybackService {
   }
 
   private dropCast() {
+    this.handover = null;
     this.castUnsub?.();
     this.castUnsub = null;
     this.cast?.onRemoteMove(null);
