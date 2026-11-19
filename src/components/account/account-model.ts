@@ -83,11 +83,12 @@ export function canManageProxySet(
 }
 
 /**
- * Whether a sign-in by `user` (the connection `connId`) may replace the set kept for `origin`
- * with the one it got in with (`finishConnect`, fe#167): `canManageProxySet`'s rule for that
- * one address. A full account always may; a demo or a kid's account only while no full
- * account on the device (`connections`) reaches `origin`, since the set is theirs too. A set
- * the address does not have yet is not this rule's: any sign-in keeps one.
+ * Whether `user` (the connection `connId`) may write the set for `origin`: `canManageProxySet`'s
+ * rule for that one address (the card asks it of every address it could write to, a set kept
+ * there or not), and what a sign-in asks before replacing a kept set with the one it got in
+ * with (`finishConnect`, fe#167; where none is kept yet, any sign-in keeps its own). A full
+ * account always may; a demo or a kid's account only while no full account on the device
+ * (`connections`) reaches `origin`, since the set is theirs too.
  */
 export function mayReplaceProxySet(
   user: ProxyCardConnection['user'],
