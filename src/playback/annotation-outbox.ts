@@ -708,11 +708,6 @@ const connectionFailure = (err: unknown) =>
 /** The server's rate limit (a 429): the connection's, so a replay stops there. */
 const tooMany = (err: unknown) => err instanceof ApiError && err.status === 429;
 
-/** A server asking for a moment (its 503, a proxy's, a 429): the bookmark's book waits for
- * the next replay, and the wait does not count toward giving up on it (a proxy answers a
- * 503 for as long as the server behind it is off). */
-const askedToWait = (err: unknown) => isServerBusyError(err) || tooMany(err);
-
 /** What a replay's try of a bookmark it keeps came to: the step it failed or stopped at, and
  * whether that failure counts toward giving up on it. */
 type Tried = { step: SendStep; counts: boolean };
@@ -858,8 +853,8 @@ async function sendGroup(
       }
       if (unread && e.label !== undefined) {
         noteFailure(connectionId, unread.failed);
-        // A send's rule: a 503 or a 429 does not count.
-        keepOrGiveUp(e, unread.failed, 'flags', !askedToWait(unread.failed));
+        // A send's rule: a server asking for a moment (its 503, a proxy's) does not count.
+        keepOrGiveUp(e, unread.failed, 'flags', !isServerBusyError(unread.failed));
         continue;
       }
       step = 'read';
@@ -955,7 +950,9 @@ async function sendGroup(
         kept.push(...entries.slice(i));
         break;
       }
-      const counts = !askedToWait(err);
+      // A server asking for a moment (its 503, a proxy's: a proxy answers one for as long as
+      // the server behind it is off): the book waits for the next replay, not counted.
+      const counts = !isServerBusyError(err);
       if (!keepOrGiveUp(e, err, step, counts)) continue;
       heldBack.add(book);
       // A failed read is the failure of every one of the book's; a failed POST is its own.
