@@ -217,10 +217,11 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
 
   /**
    * Close the span at `at`. A span closed keeps the place itself, between its event and its file's
-   * removal (fe#285); with none open the place is saved here.
+   * removal (fe#285); with none open the place is saved here, stamped when the audio last moved:
+   * playing with no span (held by a call, or stalled, SpanRecorder.tick) nothing was heard since.
    */
   private fun closeSpan(at: Instant?) {
-    if (spans.close(spanEnd(), at) == null) savePlace(at)
+    if (spans.close(spanEnd(), at) == null) savePlace(at ?: lastAdvance)
   }
 
   /**
