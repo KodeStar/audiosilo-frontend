@@ -1484,6 +1484,41 @@ describe("the connection's client at each save", () => {
   });
 });
 
+describe('stops of one book that overlap', () => {
+  it('save its place once (a tab told the connection is going, then that it is gone)', async () => {
+    await startBook(makeBook(), 0, 'c1');
+    pushSnapshot(snap('playing', 40));
+    await flushMicrotasks();
+    mockSaveProgress.mockClear();
+    let saved: () => void = () => {};
+    mockSaveProgress.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (saved = () => resolve())),
+    );
+    const going = usePlayer.getState().stop();
+    await flushMicrotasks();
+    const removed = usePlayer.getState().stop();
+    await flushMicrotasks();
+    saved();
+    await Promise.all([going, removed]);
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+  });
+
+  it('saves again for a stop made once the first one has saved', async () => {
+    await startBook(makeBook(), 0, 'c1');
+    pushSnapshot(snap('playing', 40));
+    await flushMicrotasks();
+    mockSaveProgress.mockClear();
+    await usePlayer.getState().stop();
+    await startBook(makeBook(), 0, 'c1');
+    pushSnapshot(snap('playing', 50));
+    await flushMicrotasks();
+    mockSaveProgress.mockClear();
+    await usePlayer.getState().stop();
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+  });
+});
+
 // --- per-connection scoping of saves + the download hot-swap -----------------
 
 describe('connection scoping', () => {

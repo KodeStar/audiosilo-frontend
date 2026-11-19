@@ -153,6 +153,9 @@ function isTransportLiveState(state: PlaybackState): boolean {
 
 let service: PlaybackService | null = null;
 let deviceId = '';
+/** The place a `stop` is saving and the book it stops (`selectBookKey`), until that save
+ * ends (`saveForStop`). */
+let stopSave: { key: string | null; saved: Promise<unknown> } | null = null;
 /** Where the playing listening began (`POST /history` when it ends); `sync`: begun on a
  * server taking listening events, whose spans carry it instead. */
 let historyStart: { position: number; at: number; sync: boolean } | null = null;
@@ -937,6 +940,22 @@ async function persist(opts?: {
   // straight on from here.
   if (guarded && outcome === 'saved' && placeGuard === guard) placeGuard = null;
   return outcome === 'saved' || outcome === 'queued' ? position : undefined;
+}
+
+/** The stopping book `key`'s place, saved once for the stops of it that overlap: a second
+ * stop while the first still saves waits for that save rather than sending its own (a tab
+ * told a connection is going stops, and is told it is gone while that stop still saves).
+ * Only the save is shared: each stop then goes on to its own teardown (the lists read
+ * again, the engine reset), which is safe twice. */
+function saveForStop(key: string | null): Promise<unknown> {
+  if (stopSave?.key === key) return stopSave.saved;
+  const entry = { key, saved: persist() };
+  stopSave = entry;
+  const done = () => {
+    if (stopSave === entry) stopSave = null;
+  };
+  entry.saved.then(done, done);
+  return entry.saved;
 }
 
 /** Save the loaded book's place now: the listener answered Stay to a place its server held
@@ -4284,7 +4303,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     cancelOtherBookDeadline();
     stopSaveLoop();
     closeListeningSpan();
-    await persist();
+    await saveForStop(stopping);
     // Another book was started while the place saved (a switch of person whose route
     // starts the new person's book at once): it owns the engine now, and a reset would cut
     // it off and leave the player with nothing.

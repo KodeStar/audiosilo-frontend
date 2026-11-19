@@ -13,7 +13,8 @@ import { flushConnectionSaves, stopPlaybackAndCloseSpan, usePlayer } from './sto
  *   through it stops, so the stop's place and its span's close are written before the purges
  *   take them, not after. The token is gone: the stop's place goes through the connection's
  *   client as this tab's list holds it at the save, none once the list has dropped it (this
- *   device's record only).
+ *   device's record only). A stop the going step began and is still saving shares that save
+ *   rather than making a second (`saveForStop`).
  *   The same when a sign-in here retires a stale identity the book plays through (any
  *   platform: the connect flow runs no teardown of its own).
  *
