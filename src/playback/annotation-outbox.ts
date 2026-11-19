@@ -2,6 +2,7 @@ import {
   type ApiClient,
   ApiError,
   apiErrorKind,
+  isProxyRefusal,
   isRefusedForGood,
   isServerAwayError,
   isServerBusyError,
@@ -357,9 +358,10 @@ const worthKeeping = (err: unknown) =>
   isUnreachableError(err) || (err instanceof ApiError && !refusedForGood(err));
 
 /** A refusal before the server took the request (a token it refuses, a 401, its own or a
- * proxy's; asked to slow down, a 429): a bookmark POST so answered never landed. */
+ * proxy's; a proxy's own 403, `isProxyRefusal`; asked to slow down, a 429): a bookmark POST
+ * so answered never landed. */
 const turnedAway = (err: unknown) =>
-  err instanceof ApiError && (err.status === 401 || err.status === 429);
+  isProxyRefusal(err) || (err instanceof ApiError && (err.status === 401 || err.status === 429));
 
 /** Whether `connectionId`'s server is known to take a bookmark's `client_id`. */
 const takesClientId = (connectionId: string) =>
@@ -699,11 +701,16 @@ async function readyToSend(
 }
 
 /** A failure that is the connection's, not the bookmark's: no answer, a gateway answering
- * for a server that is away, a token refused until the connection signs in again, or nothing
- * the server said at all (the connection gone meanwhile). The connection's other bookmarks
- * would fail the same way, so the replay stops there. */
+ * for a server that is away, a token refused until the connection signs in again, a proxy in
+ * front of the server turning the device away (`isProxyRefusal`: never counted toward giving
+ * up, as no save it turns away is dropped, fe#295), or nothing the server said at all (the
+ * connection gone meanwhile). The connection's other bookmarks would fail the same way, so
+ * the replay stops there. */
 const connectionFailure = (err: unknown) =>
-  !(err instanceof ApiError) || isServerAwayError(err) || isSignedOutError(err);
+  !(err instanceof ApiError) ||
+  isServerAwayError(err) ||
+  isSignedOutError(err) ||
+  isProxyRefusal(err);
 
 /** The server's rate limit (a 429): the connection's, so a replay stops there. */
 const tooMany = (err: unknown) => err instanceof ApiError && err.status === 429;
@@ -845,8 +852,8 @@ async function sendGroup(
         e.label !== undefined || e.client_id !== undefined
           ? await (flags ??= readFlags(connectionId, client))
           : undefined;
-      // Nothing the server said (no answer, a cancelled read), a gateway's, a 401 or a 429:
-      // the connection's, as a send's (the read and POST behind it would only wait it out
+      // Nothing the server said (no answer, a cancelled read), a gateway's, a 401, a proxy's
+      // refusal or a 429: the connection's, as a send's (the read and POST behind it would only wait it out
       // again).
       if (unread && (connectionFailure(unread.failed) || tooMany(unread.failed))) {
         throw unread.failed;
@@ -941,8 +948,8 @@ async function sendGroup(
         continue;
       }
       noteFailure(connectionId, err);
-      // The connection's, not this bookmark's: no answer, a gateway's, a 401, or its server's
-      // rate limit (a 429, noted so the connection's sends wait out its `Retry-After`, as the
+      // The connection's, not this bookmark's: no answer, a gateway's, a 401, a proxy's
+      // refusal, or its server's rate limit (a 429, noted so the connection's sends wait out its `Retry-After`, as the
       // other queues' do: `stopsReplay`).
       if (connectionFailure(err) || noteRateLimit(connectionId, err)) {
         // Not counted, but how far it came still ends a run of failures before that step.

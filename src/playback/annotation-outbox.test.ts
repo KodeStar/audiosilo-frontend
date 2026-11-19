@@ -657,6 +657,20 @@ describe('sending', () => {
       expect(held.map((b) => b.position)).toEqual([300, 200]);
     });
 
+    // A proxy in front of the server turning the device away (fe#295) is the connection's:
+    // the server never saw the bookmark, so a week of it gives up on none.
+    it('never gives up while a proxy refuses the device, a week or more', async () => {
+      const { state, held } = await waiting();
+      state.down = new ApiError(403, 'Forbidden', undefined, undefined, true);
+      await failFor(10);
+      await failFor(8, DAY);
+      expect(await positions()).toEqual([100, 200, 300]);
+      expect(warn).not.toHaveBeenCalled();
+      state.down = null;
+      await flushBookmarks();
+      expect(held.map((b) => b.position).sort()).toEqual([100, 200, 300]);
+    });
+
     it("drops a book's bookmarks whose read has failed for a week", async () => {
       const { client, held } = await waiting();
       const read = client.bookmarks.getMockImplementation();
