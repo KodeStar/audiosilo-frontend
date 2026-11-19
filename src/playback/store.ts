@@ -5061,6 +5061,7 @@ async function adoptLoadedBook(
   const loadedKey = resolvedKeyOf(service);
   if (followed && contentKeyOf(followed.np) !== loadedKey) followed.other = true;
   const adoption = { key: loadedKey, ownLoad: false };
+  const ownBefore = selectBookKey(usePlayer.getState());
   adopting.push(adoption);
   let adopted = false;
   try {
@@ -5069,12 +5070,14 @@ async function adoptLoadedBook(
   } finally {
     adopting.splice(adopting.indexOf(adoption), 1);
     // Gave up with the engine's reports naming no book and still held as this one's: the
-    // engine holds that other book all the same, and they stay held (`unnamedOther`).
+    // engine holds that other book all the same, and they stay held (`unnamedOther`). Not once
+    // the store holds another book than when it began (another adoption landed meanwhile).
     const own = selectBookKey(usePlayer.getState());
     if (
       !adopted &&
       !adoption.ownLoad &&
       own !== null &&
+      own === ownBefore &&
       own !== adoption.key &&
       !lastReportNamesBook()
     ) {

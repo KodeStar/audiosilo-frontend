@@ -1946,6 +1946,28 @@ describe('a play asked from outside of another book after playback stopped', () 
     expect(usePlayer.getState().nowPlaying?.path).toBe('S');
   });
 
+  // An adoption that gives up once another landed meanwhile leaves no hold on the book that
+  // one adopted: the engine holds that book, and its unnamed reports are its own.
+  it('holds nothing of a book adopted while an earlier adoption was under way', async () => {
+    const answers: (() => void)[] = [];
+    mockFetchQuery.mockImplementation(
+      (opts: unknown) =>
+        new Promise((resolve) => {
+          const key = (opts as { queryKey: unknown[] }).queryKey;
+          answers.push(() => resolve(key[0] === 'item' ? book : chapters));
+        }),
+    );
+    const adoptingS = usePlayer.getState().adoptLoaded(loadedS);
+    await flushMicrotasks();
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    expect(await usePlayer.getState().adoptLoaded(loadedB({ playing: false }))).toBe(true);
+    for (const answer of answers) answer();
+    expect(await adoptingS).toBe(false);
+    expect(usePlayer.getState().nowPlaying?.path).toBe('B');
+    pushSnapshot(snap('paused', 1, 40));
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 40 });
+  });
+
   // The car sync's read of the engine can answer before that reload lands in it, still naming
   // S: the adoption gives up all the same, as the engine holds B once the load lands (taken, S
   // would be the store's book with B's unnamed reports saved as its place).
