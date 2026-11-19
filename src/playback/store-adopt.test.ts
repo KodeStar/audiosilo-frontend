@@ -2545,6 +2545,47 @@ describe("a report of another book than the store's", () => {
     });
   });
 
+  /** S plays (the engine's reports name it), then a start of B whose load is held: B is the
+   * store's book while the engine's last report still names S, the book that load replaces.
+   * Returns the load's landing. */
+  async function startBOverPlayingS(): Promise<() => void> {
+    await usePlayer.getState().playBook('c1', 2, book, chapters, 10);
+    engineBook = refS;
+    pushSnapshot(snap('playing', 0, 12));
+    await flushMicrotasks();
+    let land!: () => void;
+    (mockSvc.load as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          land = resolve;
+        }),
+    );
+    jest.clearAllMocks();
+    void usePlayer.getState().playBook('c1', 2, twoFileBook, twoFileChapters, 50);
+    await flushMicrotasks(30);
+    expect(usePlayer.getState()).toMatchObject({
+      nowPlaying: { path: 'B' },
+      snapshot: { state: 'playing' },
+    });
+    expect(mockSvc.load).toHaveBeenCalledTimes(1);
+    return () => {
+      engineBook = refB;
+      land();
+    };
+  }
+
+  // The review: the app's Pause pressed while a start of the store's loaded read the book that
+  // load replaces as the car's, and left it playing (on under the new book's error, should the
+  // load fail).
+  it("pauses the engine on the app's Pause while a start of the store's loads", async () => {
+    const land = await startBOverPlayingS();
+    await usePlayer.getState().toggle();
+    expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+    // The start ends (its in-flight count is the store's, shared by the tests after this).
+    land();
+    await flushMicrotasks(30);
+  });
+
   // The review: a download landing while the engine played S was dropped (no `swapDue`), so
   // the store's book streamed on once the engine held it again, until a Retry or a start.
   it("swaps a download that landed meanwhile in once the engine holds the store's book again", async () => {

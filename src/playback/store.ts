@@ -191,9 +191,9 @@ let stallPauseUntil = 0;
  * (`playAskedFromOutside`) while it is still starting, else null: over once it plays, is
  * given up (`clearPlaybackIntent`) or another play is asked for (`beginPlaybackAttempt`), so
  * a later stall is the store's book's own. The store's book, where it stood and the
- * listener's moves and speed changes (`localMoves`, `localSpeedSets`) when the play was asked. `other`: the engine holds another
- * book, one the service started: its report named that book (`reportedOtherBook`), or its
- * adoption began (`adoptLoadedBook`). */
+ * listener's moves and speed changes (`localMoves`, `localSpeedSets`) when the play was
+ * asked. `other`: the engine holds another book, one the service started: its report named
+ * that book (`reportedOtherBook`), or its adoption began (`adoptLoadedBook`). */
 let outsidePlay: {
   np: NowPlaying;
   snapshot: PlaybackSnapshot;
@@ -356,9 +356,10 @@ function otherBookNotAdopted() {
 }
 
 /** The store's book shows paused where it was last heard while the engine plays another
- * book (`otherBookNotAdopted`, `pauseOwnBook`): its intent to play is over, the engine is not
- * asked (its pause would be that book's) and nothing is saved (its place was saved once as
- * it stopped, `otherBookReported`; saved again it would be dated now). */
+ * book (`otherBookNotAdopted`, `pauseOwnBook`, and the store's `pause`, which then stops that
+ * book itself): its intent to play is over, the engine is not asked here (its pause would be
+ * that book's) and nothing is saved (its place was saved once as it stopped,
+ * `otherBookReported`; saved again it would be dated now). */
 function showOwnBookPaused() {
   cancelOtherBookDeadline();
   clearPlaybackIntent();
@@ -373,9 +374,13 @@ function showOwnBookPaused() {
  * (`engineHoldsAnother`, the state in which a play press reloads the store's book), the press
  * is the store's book's alone: it shows paused (`showOwnBookPaused`) and the other book plays
  * on. A report that names no book (an older binary) keeps the engine's pause: nothing would
- * keep that book's reports out of the store's. */
+ * keep that book's reports out of the store's. So does a load of the store's that holds the
+ * engine (`loadingBook`, `startsInFlight`): the book named then is the one that load replaces
+ * (`otherBookReported`), and left playing it would go on under the store's book, a failed
+ * load's error included. */
 async function pauseOwnBook(svc: PlaybackService) {
-  if (engineHoldsAnother()) showOwnBookPaused();
+  const ownLoad = usePlayer.getState().loadingBook !== null || startsInFlight > 0;
+  if (engineHoldsAnother() && !ownLoad) showOwnBookPaused();
   else await svc.pause();
 }
 
@@ -761,8 +766,9 @@ type PlayerState = {
   /** The app's Play/Pause press. Its pause leaves alone another book the engine plays, not
    * adopted (`pauseOwnBook`). */
   toggle: () => Promise<void>;
-  /** Stop the sound (the sleep timer): the engine pauses whatever book it plays, the car's
-   * not adopted included, and the store's book shows paused. */
+  /** Stop the sound (the sleep timer) while the store's book shows playing or loading: the
+   * engine pauses whatever book it plays, the car's not adopted included, and the store's
+   * book shows paused. */
   pause: () => Promise<void>;
   /** Re-load the current track at the current position and resume - recovery after
    * the engine reports an `error` (e.g. the stream became unreachable). */

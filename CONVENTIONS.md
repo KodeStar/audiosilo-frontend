@@ -2938,9 +2938,12 @@ media GETs only.
   (`toggle`) while a report names the other book, the state in which a play press reloads
   the store's book, is the store's book's alone: it shows paused where it was last heard,
   its intent over, nothing saved, and the other book plays on, deadline window included
-  (`pauseOwnBook`). A report that names no book (an older binary) keeps the engine's pause.
-  The store's `pause` is "stop the sound" (the sleep timer): the engine pauses whatever it
-  plays, the other book too, and the store's book shows paused. Only a press of the app's
+  (`pauseOwnBook`). A report that names no book (an older binary) keeps the engine's pause,
+  and so does a load of the store's holding the engine (`loadingBook`, `startsInFlight`):
+  the book named then is the one that load replaces.
+  The store's `pause` is "stop the sound" (the sleep timer): while the store's book shows
+  playing or loading, the engine pauses whatever it plays, the other book too, and the
+  store's book shows paused. Only a press of the app's
   own Pause leaves the other book alone; the lock screen, a headset and audio focus pause
   the engine natively, never through the store. A resumption
   meanwhile plays the other book, the one heard (`engineOtherBook`, the car snapshot's
