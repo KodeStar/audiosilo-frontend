@@ -260,6 +260,16 @@ object WearRules {
       }
       .map { it.path }
 
+  /** How many times an alarm's sweep that did not get through is tried again (fe#285). */
+  const val PRUNE_RETRIES = 6
+
+  /**
+   * How long before the prune sweep's `attempt`th retry (1, 2, 4 ... 32 minutes, about an hour in
+   * all), or null once they are spent: a Data Layer that failed or did not answer (just after a
+   * boot, Play services updating) would otherwise leave the pair until the app next starts.
+   */
+  fun pruneRetryDelayMs(attempt: Int): Long? = if (attempt in 1..PRUNE_RETRIES) 60_000L shl (attempt - 1) else null
+
   /**
    * When the first `pair` in `own` runs out (epoch ms), null with none: the time of the prune that
    * drops it with the app idle (WearLink's alarm), so a pairing token never sits in the Data Layer

@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- PairPruneBootReceiver: a boot drops the pair prune's alarm (fe#285). -->
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
   <application>
     <!-- The phone's one WearableListenerService (WearLinkService): Play services starts the app
          for a watch's receipt or its watch-state even when the app is not running, so the phone
@@ -24,5 +26,18 @@
     <receiver
       android:name="expo.modules.audiosilowatch.PairPruneReceiver"
       android:exported="false" />
+    <!-- A boot or this app's update drops every alarm: the prune's is set again
+         (PairPruneBootReceiver). Off until a prune is due (WearLink.armPrune turns it on and off),
+         so a phone with no pair held is not woken at boot. Exported for the system's own
+         broadcasts, which no other app can send; it ignores any other action. -->
+    <receiver
+      android:name="expo.modules.audiosilowatch.PairPruneBootReceiver"
+      android:enabled="false"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+      </intent-filter>
+    </receiver>
   </application>
 </manifest>

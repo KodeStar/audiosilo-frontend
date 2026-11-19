@@ -4036,11 +4036,15 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     sweep at start. So `outstanding` is the phone's own book items still there, never `failed`
     (the 7-day hold ends one the watch never takes), and "delivered" means the watch app took it.
     Pairs are pruned past `expires_at` at every snapshot, send and start, and at an alarm set for the
-    first pair's `expires_at` (`PairPruneReceiver`, inexact and allowed while idle; a reboot or a
-    force stop drops it and the next start sets it again), so an idle phone holds one past its life
-    only when the alarm was lost that way or its prune could not finish (the Data Layer gave no
-    answer in the receiver's 9 s, and nothing tries again), until the app next starts; a new pair drops any
-    held for another watch. One watch at a time: of the nodes with the app (capability
+    first pair's `expires_at` (`PairPruneReceiver`, inexact and allowed while idle). A boot or the
+    app's update drops the alarm: `PairPruneBootReceiver` (BOOT_COMPLETED, MY_PACKAGE_REPLACED;
+    `RECEIVE_BOOT_COMPLETED`) runs the sweep again, enabled only while a prune is due (`armPrune`
+    and `armRetry` turn it on, a sweep that leaves nothing to prune turns it off), so a phone with
+    no pair held is not woken at boot. A sweep that does not get through (the Data Layer failed or
+    gave no answer in the receiver's 9 s) sets a retry alarm, 1, 2, 4 ... 32 minutes
+    (`WearRules.pruneRetryDelayMs`, `PRUNE_RETRIES` 6, fe#285). An idle phone holds one past its
+    life only after a force stop (no alarm survives it) or the retries spent, until the app next
+    starts; a new pair drops any held for another watch. One watch at a time: of the nodes with the app (capability
     `audiosilo_wear_app`, or a `watch-state`), the one whose `watch-state` this phone saw last
     (kept in prefs), else one nearby; `watch_id` is its node id. The phone advertises
     `audiosilo_phone_app` (`res/values/wear.xml`), kept through release resource shrinking by

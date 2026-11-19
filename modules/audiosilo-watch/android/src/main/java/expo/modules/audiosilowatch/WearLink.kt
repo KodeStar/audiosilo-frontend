@@ -12,8 +12,10 @@
 package expo.modules.audiosilowatch
 
 import android.app.AlarmManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.util.Log
 import androidx.concurrent.futures.await
@@ -185,25 +187,29 @@ object WearLink {
   /**
    * At start and at the prune's alarm: drop the pairs past their time, and act on every receipt
    * waiting (one put while no process ran and the service was not started, or one the last process
-   * died on).
+   * died on). True when it got through (or there is no Data Layer to settle with); false when the
+   * Data Layer failed or did not answer, so the alarm's sweep is tried again (`armRetry`).
    */
-  private suspend fun sweep(context: Context) {
-    quietly("sweep") {
-      withTimeoutOrNull(HOLD_LIMIT_MS) {
-        // A phone with no Wear OS app has nothing to settle (and no local node to ask for).
-        if (!available(context)) return@withTimeoutOrNull
-        lock.withLock {
-          val me = me(context) ?: return@withLock
-          val own = prune(context, me, ownItems(context, me), System.currentTimeMillis())
-          val taken =
-            read(context, anyNode(WearPaths.FROM), prefix = true).mapNotNull { r ->
-              WearRules.receipt(r.item.payload)?.let { Taken(r.node, r.item.path, it) }
-            }
-          settle(context, me, taken, own)
+  private suspend fun sweep(context: Context): Boolean {
+    val done =
+      quietly("sweep") {
+        withTimeoutOrNull(HOLD_LIMIT_MS) {
+          // A phone with no Wear OS app has nothing to settle (and no local node to ask for).
+          if (!available(context)) return@withTimeoutOrNull true
+          lock.withLock {
+            val me = me(context) ?: return@withLock false
+            val own = prune(context, me, ownItems(context, me), System.currentTimeMillis())
+            val taken =
+              read(context, anyNode(WearPaths.FROM), prefix = true).mapNotNull { r ->
+                WearRules.receipt(r.item.payload)?.let { Taken(r.node, r.item.path, it) }
+              }
+            settle(context, me, taken, own)
+            true
+          }
         }
-      }
-    }
+      } ?: false
     notifyChanged()
+    return done
   }
 
   /** Delete the phone's items these receipts name, where it still holds those very sends. Under `lock`. */
@@ -243,14 +249,51 @@ object WearLink {
       // Inexact, and allowed while the phone dozes: a minute late is fine, never kept for hours.
       if (at == null) alarms.cancel(due) else alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, due)
       pruneArmedAt = at
+      bootReceiver(context, on = at != null)
     }
   }
 
-  /** The alarm went off (PairPruneReceiver): drop the pairs past their time, and set the next alarm. */
-  suspend fun pruneDue(context: Context) {
+  /**
+   * The alarm went off (PairPruneReceiver) or the phone booted: drop the pairs past their time, and
+   * set the next alarm. False when the sweep did not get through (the caller sets the retry).
+   */
+  suspend fun pruneDue(context: Context): Boolean {
     // Set again whatever is found: an alarm a moment early must not leave the pair to the next start.
     pruneArmedAt = null
-    sweep(context)
+    val done = sweep(context)
+    // Got through and no pair is left to prune (`armPrune` sets nothing for an alarm already gone).
+    if (done && pruneArmedAt == null) bootReceiver(context, on = false)
+    return done
+  }
+
+  /**
+   * Try the alarm's sweep again later (fe#285): its `attempt`th retry (`WearRules.pruneRetryDelayMs`),
+   * none once they are spent (the next start's sweep then). It takes the alarm's place; a sweep that
+   * gets through sets the alarm at the next expiry again.
+   */
+  fun armRetry(context: Context, attempt: Int) {
+    val delay = WearRules.pruneRetryDelayMs(attempt) ?: return
+    val at = System.currentTimeMillis() + delay
+    quietly("prune retry") {
+      val alarms = context.getSystemService(AlarmManager::class.java) ?: return@quietly
+      alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, PairPruneReceiver.pending(context, attempt))
+      pruneArmedAt = at
+      bootReceiver(context, on = true)
+    }
+  }
+
+  /**
+   * PairPruneBootReceiver on while a prune is due (a boot drops the alarm), off otherwise: a phone
+   * with no pair held is not woken at every boot.
+   */
+  private fun bootReceiver(context: Context, on: Boolean) {
+    quietly("boot receiver") {
+      context.packageManager.setComponentEnabledSetting(
+        ComponentName(context, PairPruneBootReceiver::class.java),
+        if (on) PackageManager.COMPONENT_ENABLED_STATE_ENABLED else PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
+        PackageManager.DONT_KILL_APP,
+      )
+    }
   }
 
   /**

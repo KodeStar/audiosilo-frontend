@@ -388,3 +388,44 @@ class JsonTest {
     assertNull(Json.decodeObject("nope".toByteArray()))
   }
 }
+
+// fe#285: the pair prune outlives a sweep that did not get through, and a boot.
+class PruneAlarmTest {
+  @Test
+  fun aSweepThatDidNotGetThroughIsTriedAgainForAboutAnHour() {
+    val delays = (1..WearRules.PRUNE_RETRIES).map { WearRules.pruneRetryDelayMs(it) }
+    assertEquals(listOf(1L, 2L, 4L, 8L, 16L, 32L).map { it * 60_000L }, delays)
+    assertNull("then the next start's sweep", WearRules.pruneRetryDelayMs(WearRules.PRUNE_RETRIES + 1))
+    assertNull("the alarm at an expiry is no retry", WearRules.pruneRetryDelayMs(0))
+  }
+
+  @Test
+  fun aBootOrAnUpdateSetsTheAlarmAgainAndNothingElseDoes() {
+    assertTrue(PairPruneBootReceiver.handles("android.intent.action.BOOT_COMPLETED"))
+    assertTrue(PairPruneBootReceiver.handles("android.intent.action.MY_PACKAGE_REPLACED"))
+    assertFalse(PairPruneBootReceiver.handles("android.intent.action.LOCKED_BOOT_COMPLETED"))
+    assertFalse(PairPruneBootReceiver.handles(null))
+  }
+
+  // The manifest the app merges: the boot receiver takes only the system's two broadcasts, starts
+  // off (WearLink turns it on while a prune is due), and the alarm's own receiver stays private.
+  @Test
+  fun theManifestWiresTheBootReceiver() {
+    val doc =
+      javax.xml.parsers.DocumentBuilderFactory.newInstance()
+        .apply { isNamespaceAware = true }
+        .newDocumentBuilder()
+        .parse(java.io.File("src/main/AndroidManifest.xml"))
+    val ns = "http://schemas.android.com/apk/res/android"
+    fun elements(tag: String) =
+      doc.getElementsByTagName(tag).let { l -> (0 until l.length).map { l.item(it) as org.w3c.dom.Element } }
+    assertTrue(elements("uses-permission").any { it.getAttributeNS(ns, "name") == "android.permission.RECEIVE_BOOT_COMPLETED" })
+    val receivers = elements("receiver").associateBy { it.getAttributeNS(ns, "name").substringAfterLast('.') }
+    val boot = receivers.getValue("PairPruneBootReceiver")
+    assertEquals("false", boot.getAttributeNS(ns, "enabled"))
+    assertEquals("true", boot.getAttributeNS(ns, "exported"))
+    val actions = boot.getElementsByTagName("action").let { l -> (0 until l.length).map { (l.item(it) as org.w3c.dom.Element).getAttributeNS(ns, "name") } }
+    assertEquals(PairPruneBootReceiver.ACTIONS, actions.toSet())
+    assertEquals("false", receivers.getValue("PairPruneReceiver").getAttributeNS(ns, "exported"))
+  }
+}
