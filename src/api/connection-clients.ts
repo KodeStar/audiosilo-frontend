@@ -68,14 +68,19 @@ export function sessionReady(): boolean {
   return useSession.getState().status !== 'loading' && !sessionHydrateFailed();
 }
 
-/** Run `fn` once the session is ready (`sessionReady`): now when it is, else when it first
- * finishes loading. Returns the stop (a no-op once `fn` ran). */
+/** Run `fn` once, as soon as the session is ready (`sessionReady`): now when it is, else on
+ * the first store change that makes it so (a hydrate that failed and then succeeded too, which
+ * never passes through `loading` again). The callback form of `offline-meta.ts`'s
+ * `whenSessionReady`. Returns the stop (a no-op once `fn` ran). */
 export function whenSessionReady(fn: () => void): () => void {
   if (sessionReady()) {
     fn();
     return () => undefined;
   }
-  return useSession.subscribe((state, prev) => {
-    if (prev.status === 'loading' && state.status !== 'loading' && sessionReady()) fn();
+  const stop = useSession.subscribe(() => {
+    if (!sessionReady()) return;
+    stop();
+    fn();
   });
+  return stop;
 }
