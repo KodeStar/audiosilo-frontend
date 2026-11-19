@@ -1027,7 +1027,8 @@ describe("a download's size and the files it leaves (fe#153, fe#197)", () => {
     expect(mockEngine.removeBook).toHaveBeenCalledTimes(1);
     expect(shown).toBe('downloading');
 
-    // The next launch leaves the row (saved with no file) alone.
+    // The web's next launch leaves the row (saved with no file) alone.
+    Platform.OS = 'web';
     mockEngine.removeBook.mockClear();
     useDownloads.setState({ entries: {}, hydrated: false });
     await useDownloads.getState().hydrate();
@@ -1311,7 +1312,6 @@ describe("a book's ebook rides along with its download (Bridge Phase 3b-2)", () 
     expect(entry()).toMatchObject({ status: 'downloaded', progress: 1, bytes: 1100 });
   });
 
-  it("takes the app reader's cached copy instead of fetching the ebook again", async () => {
   // Everything it will hold is here: its total is that, not the sizes the book lists (with
   // the ebook it carries on without).
   it('gives a download saved but not servable the bytes it holds as its total too', async () => {
@@ -1335,6 +1335,7 @@ describe("a book's ebook rides along with its download (Bridge Phase 3b-2)", () 
     });
   });
 
+  it("takes the app reader's cached copy instead of fetching the ebook again", async () => {
     api();
     mockEngine.copyFile = jest.fn(
       async (_c: string, _l: number, _p: string, name: string) => `live:c1:2:A/Book:${name}`,
@@ -1917,8 +1918,8 @@ describe('hydrate pruning', () => {
     expect((await readPersisted())[key]?.status).toBe('error');
   });
 
-  // fe#197: a row saved with no file has no folder left, and was emptied again every launch.
-  it('leaves alone a failure, or a waiting episode, saved with no file', async () => {
+  /** A failure and a waiting episode, each saved with no file. */
+  const savedWithNoFile = async () => {
     const failed = downloadedEntry({
       status: 'error',
       progress: 0,
@@ -1934,12 +1935,38 @@ describe('hydrate pruning', () => {
     waiting.manifest.files = [];
     const key = downloadKey('c1', 2, 'A/Book');
     await seed({ [key]: failed, [downloadKey('c1', 2, 'B/Book')]: waiting });
+    return key;
+  };
+
+  // fe#197: on the web a row saved with no file holds nothing, and emptying it read the whole
+  // media cache again on every launch.
+  it('leaves alone a failure, or a waiting episode, saved with no file on the web', async () => {
+    Platform.OS = 'web';
+    const key = await savedWithNoFile();
 
     await useDownloads.getState().hydrate();
 
     expect(useDownloads.getState().entries[key]).toMatchObject({ status: 'error' });
     expect(mockEngine.removeBook).not.toHaveBeenCalled();
   });
+
+  // A 2.4.x-2.6.x app emptied a failure's folder only at its next launch, and Android leaves
+  // the partial file where it was being written: the launch after the update finds it.
+  it.each(['android', 'ios'] as const)(
+    'empties the folder of a failure saved with no file in the app (%s)',
+    async (os) => {
+      Platform.OS = os;
+      const key = await savedWithNoFile();
+
+      await useDownloads.getState().hydrate();
+
+      expect(useDownloads.getState().entries[key]).toMatchObject({
+        status: 'error',
+        failure: { kind: 'interrupted', kept: 0 },
+      });
+      expect(mockEngine.removeBook).toHaveBeenCalledWith('c1', 2, 'A/Book');
+    },
+  );
 
   it('drops a keep-ahead download that finished no file (keep-ahead plans it again)', async () => {
     const entry = downloadedEntry({ status: 'downloading', origin: 'keep-ahead' });
@@ -2685,6 +2712,44 @@ describe('hydrate holds off what needs the registry', () => {
     expect(Object.keys(useDownloads.getState().entries)).toEqual([savedKey, other]);
   });
 
+  // A failed read ends the launch's wait: a read still under way then would empty or rename
+  // a folder under the download that stopped waiting for it.
+  it("ends every entry's read before a failed read is thrown on", async () => {
+    const other = downloadKey('c1', 2, 'B/Book');
+    await seed({ [savedKey]: downloadedEntry(), [other]: downloadedEntry({ path: 'B/Book' }) });
+    let otherRead = false;
+    mockEngine.fileExists.mockImplementation(async (uri: string) => {
+      if (!uri.includes('B/Book')) throw new Error('storage gone');
+      await new Promise((r) => setTimeout(r, 0));
+      otherRead = true;
+      return false;
+    });
+    await expect(useDownloads.getState().hydrate()).rejects.toThrow('storage gone');
+    expect(otherRead).toBe(true);
+    expect(mockEngine.removeBook).toHaveBeenCalledWith('c1', 2, 'B/Book');
+  });
+
+  // Under a storage that fails, nothing more is relocated, renamed or emptied than was
+  // already under way.
+  it('starts no further read once one has failed', async () => {
+    const paths = Array.from({ length: 12 }, (_, i) => `N/Book ${i}`);
+    await seed(
+      Object.fromEntries(
+        paths.map((path) => [downloadKey('c1', 2, path), downloadedEntry({ path })]),
+      ),
+    );
+    const asked = new Set<string>();
+    mockEngine.fileExists.mockImplementation(async (uri: string) => {
+      const path = paths.find((p) => uri.includes(`${p}:`) || uri.includes(`${p}/`));
+      if (path) asked.add(path);
+      await new Promise((r) => setTimeout(r, 0));
+      throw new Error('storage gone');
+    });
+    await expect(useDownloads.getState().hydrate()).rejects.toThrow('storage gone');
+    expect(asked.size).toBeGreaterThan(0);
+    expect(asked.size).toBeLessThanOrEqual(8);
+  });
+
   it('a remove() during hydrate stays removed', async () => {
     await seed({ [savedKey]: downloadedEntry() });
     let removed: Promise<void> | undefined;
@@ -2735,44 +2800,6 @@ describe("download() waits for the launch's offline check", () => {
   it('stops waiting on the check once it is over, when the launch read failed', async () => {
     client();
     await seed({ [downloadKey('c1', 2, 'Old/Book')]: downloadedEntry({ path: 'Old/Book' }) });
-  // A failed read ends the launch's wait: a read still under way then would empty or rename
-  // a folder under the download that stopped waiting for it.
-  it("ends every entry's read before a failed read is thrown on", async () => {
-    const other = downloadKey('c1', 2, 'B/Book');
-    await seed({ [savedKey]: downloadedEntry(), [other]: downloadedEntry({ path: 'B/Book' }) });
-    let otherRead = false;
-    mockEngine.fileExists.mockImplementation(async (uri: string) => {
-      if (!uri.includes('B/Book')) throw new Error('storage gone');
-      await new Promise((r) => setTimeout(r, 0));
-      otherRead = true;
-      return false;
-    });
-    await expect(useDownloads.getState().hydrate()).rejects.toThrow('storage gone');
-    expect(otherRead).toBe(true);
-    expect(mockEngine.removeBook).toHaveBeenCalledWith('c1', 2, 'B/Book');
-  });
-
-  // Under a storage that fails, nothing more is relocated, renamed or emptied than was
-  // already under way.
-  it('starts no further read once one has failed', async () => {
-    const paths = Array.from({ length: 12 }, (_, i) => `N/Book ${i}`);
-    await seed(
-      Object.fromEntries(
-        paths.map((path) => [downloadKey('c1', 2, path), downloadedEntry({ path })]),
-      ),
-    );
-    const asked = new Set<string>();
-    mockEngine.fileExists.mockImplementation(async (uri: string) => {
-      const path = paths.find((p) => uri.includes(`${p}:`) || uri.includes(`${p}/`));
-      if (path) asked.add(path);
-      await new Promise((r) => setTimeout(r, 0));
-      throw new Error('storage gone');
-    });
-    await expect(useDownloads.getState().hydrate()).rejects.toThrow('storage gone');
-    expect(asked.size).toBeGreaterThan(0);
-    expect(asked.size).toBeLessThanOrEqual(8);
-  });
-
     mockEngine.fileExists.mockRejectedValueOnce(new Error('storage gone'));
     mockEngine.probe = async () => true;
     await expect(useDownloads.getState().hydrate()).rejects.toThrow('storage gone');

@@ -476,10 +476,16 @@ async function readSavedEntry(
     return [key, null];
   }
   // A row kept with no finished file: what its folder holds is partial. Emptied by the
-  // launch that made it so; a row saved that way already (a failure listing no file, an
-  // episode waiting for its server) has no folder left, and was emptied again on every
-  // launch (fe#197).
-  const emptied = raw.manifest.files.length === 0 && (raw.status === 'error' || !!raw.serverFetch);
+  // launch that made it so. On the web a row saved that way already (a failure listing no
+  // file, an episode waiting for its server) holds nothing (a transfer that fails stores
+  // nothing), and emptying it read every key of the media cache on every launch (fe#197).
+  // The app looks again, which costs one check of the folder: a failure a 2.4.x-2.6.x app
+  // saved kept its partial file until that app's next launch, and Android writes it at the
+  // file's own name.
+  const emptied =
+    Platform.OS === 'web' &&
+    raw.manifest.files.length === 0 &&
+    (raw.status === 'error' || !!raw.serverFetch);
   if (revived.manifest.files.length === 0 && !emptied)
     void engine.removeBook(e.connectionId, e.libraryId, e.path);
   if (revived.status !== 'downloaded') return [key, revived];
@@ -2452,13 +2458,13 @@ async function runOne(key: string) {
         failure: { kind: 'unservable' },
         progress: 1,
         bytes,
+        totalBytes: bytes,
         manifest,
       });
       void persist();
       return;
     }
     if (!live()) return void (await dropFiles());
-        totalBytes: bytes,
 
     patchEntry(key, { status: 'downloaded', progress: 1, bytes, totalBytes: bytes, manifest });
     void persist();
@@ -2482,8 +2488,8 @@ async function runOne(key: string) {
       // fails on the gone file must not unlist the rest).
       const held = [...files, ...(plan ? plan.notReached(handled) : earlier)];
       // Nothing finished: what the folder holds is partial, emptied now rather than by a
-      // launch (which leaves a row saved with no file alone, fe#197). Before the row shows
-      // the failure, so a Retry starts after it.
+      // launch (the web's leaves a row saved with no file alone, fe#197). Before the row
+      // shows the failure, so a Retry starts after it.
       if (held.length === 0) {
         await dropFiles();
         if (!live()) return;

@@ -4751,7 +4751,10 @@ are asked, at most 10,000 rows.
   fetches each other file under a name no kept file holds (its index when free, else the next
   free number past the list), and keeps the kept files of the paths it never reached listed when
   it fails. One with no file left (most books
-  are one M4B) stays as a row to retry from the start, its folder emptied, unless keep-ahead
+  are one M4B) stays as a row to retry from the start, its folder emptied (by `runOne` as it
+  fails, by the launch that finds it cut short; the app's launch empties a row already saved
+  with no file again, since an older app left its partial file until its own next launch,
+  and the web's leaves it alone, fe#197), unless keep-ahead
   started it (keep-ahead plans it again); a downloaded book with no file left is dropped with its
   folder. While an identity move is pending an entry is kept exactly as stored. No storage format
   change.
