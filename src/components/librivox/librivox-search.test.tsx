@@ -360,6 +360,48 @@ describe('LibrivoxSearch', () => {
     ]);
   });
 
+  // The server's own 403 for the job's read (the admin's role taken away mid-fetch): the
+  // watcher drops it, so the row shows no "Adding" nothing polls, and offers Add again.
+  it('offers Add again, never "Adding", once the server refuses the fetch\'s read', async () => {
+    mockWork = { data: work({ job: { id: 41, state: 'running' } }) };
+    mockJobs = { 41: { data: librivoxJob({ id: 41, state: 'running' }), dataUpdatedAt: 1 } };
+    await mount();
+    await openWork();
+    expect(screen.getByText('Adding')).toBeTruthy();
+    mockJobs = {
+      41: {
+        data: librivoxJob({ id: 41, state: 'running' }),
+        dataUpdatedAt: 1,
+        isError: true,
+        error: new ApiError(403, 'admin only'),
+      },
+    };
+    await act(async () => {
+      useLibrivoxWatches.setState({ watches: [] });
+      mockJobsRead.setState((s) => ({ n: s.n + 1 }));
+    });
+    expect(await screen.findByTestId('librivox-add')).toBeTruthy();
+    expect(screen.queryByText('Adding')).toBeNull();
+    expect(screen.queryByTestId('librivox-fetch-status')).toBeNull();
+    expect(useLibrivoxWatches.getState().watches).toEqual([]);
+  });
+
+  it("keeps showing the fetch through a proxy's 403 (a read that failed)", async () => {
+    mockWork = { data: work({ job: { id: 41, state: 'running' } }) };
+    mockJobs = {
+      41: {
+        data: librivoxJob({ id: 41, state: 'running' }),
+        dataUpdatedAt: 1,
+        isError: true,
+        error: new ApiError(403, 'Forbidden', undefined, undefined, true),
+      },
+    };
+    await mount();
+    await openWork();
+    expect(screen.getByText('Adding')).toBeTruthy();
+    expect(screen.queryByTestId('librivox-add')).toBeNull();
+  });
+
   it('watches the job an Add queued when the page was left before the answer', async () => {
     let answer: (a: { job: BridgeJob }) => void = () => {};
     mockAdd.mockReturnValue(new Promise((resolve) => (answer = resolve)));

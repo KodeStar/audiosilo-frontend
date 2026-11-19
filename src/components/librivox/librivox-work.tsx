@@ -129,7 +129,9 @@ function RecordingRow({
   const add = useAddLibrivox(connectionId);
   const fetch = useFollowedFetch(connectionId, r);
   const here = r.in_library[0];
-  const state = rowState(!!here, fetch.job, r.job !== null);
+  // A fetch whose read the server refused is followed no more (`followedRead`): the row offers
+  // Add again, never "Adding" for a fetch nothing polls, whatever the work last said of it.
+  const state = rowState(!!here, fetch.job, r.job !== null && !fetch.refused);
   const readers = namesLine(r.narrators);
   const facts = [
     r.runtime_min > 0 ? formatDuration(r.runtime_min * 60) : '',
@@ -341,17 +343,21 @@ function useFollowedFetch(connectionId: string, r: LibrivoxRecording) {
   const cancel = useCancelBridgeJob(connectionId);
   // One already known ended is the watcher's no more: a work opened again shows its last
   // answer first, which still names the fetch whose end was handled when it came.
-  const { job, ended } = followedRead(read);
+  // A read the server refused (its own 400 or 403): the watcher drops its watch, and the
+  // row shows no job for it (`refused`), so it offers Add again rather than an "Adding"
+  // nothing polls.
+  const { job, ended, refused } = followedRead(read);
   // Handed over again with each answer that reads it open (nothing changes while it is
-  // watched): the watcher drops a watch its read was refused (a 400 or 403), and a row
-  // still showing it would otherwise show a fetch nobody polls.
+  // watched): the watcher drops a watch it no longer reads (signed out), and a row still
+  // showing it would otherwise show a fetch nobody polls.
   const readAt = read.dataUpdatedAt;
   useEffect(() => {
-    if (followed !== undefined && !ended) watchLibrivoxFetch(connectionId, followed);
-  }, [connectionId, followed, ended, readAt]);
+    if (followed !== undefined && !ended && !refused) watchLibrivoxFetch(connectionId, followed);
+  }, [connectionId, followed, ended, refused, readAt]);
 
   return {
     job,
+    refused,
     // Watched as it is queued, not only by the effect above: the row may be gone by the
     // time Add answers (the page left meanwhile), and its state with it.
     follow: (id: number) => {
