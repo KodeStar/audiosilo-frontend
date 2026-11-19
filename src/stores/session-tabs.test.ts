@@ -4,6 +4,7 @@ import type { User } from '@/api/types';
 import { CONNECTIONS_KEY, PROFILES_KEY } from '@/lib/storage-keys';
 import { tabChannel } from '@/lib/tab-channel';
 import { fakeBrowser, type FakeTab, sleep, tabStorage, until } from '@/testing/fake-browser';
+import { fakeWebLocks } from '@/testing/fake-web-locks';
 
 /**
  * The web player's tabs share the stored connections, tokens and profiles, each holding its
@@ -252,6 +253,30 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     );
   });
 
+  // The other tab's document can be read before its list is heard (a direct read sees the
+  // write before the `storage` event arrives): a reconcile of this tab's own, made again
+  // over that document, must not drop the people whose connections it has not heard of yet.
+  it("a reconcile of its own made over another tab's newer people keeps them", async () => {
+    const { a, b, sam, browser } = await twoTabsWithPeople();
+    const release = browser.hold();
+    const jo = await signIn(a, 3, 'jo', 'tj', 'other');
+    const person = a.profiles.placeConnection(jo, { newProfile: true, name: 'Jo' })!;
+    await until(
+      () => storedDoc(browser).profiles.some((p) => p.id === person),
+      "A's people written",
+    );
+    // B, told of none of it yet, flags one of its own (in memory: no list write first).
+    b.useSession.getState().markNeedsReconnect(sam, 'auth');
+    await settle();
+    expect(storedDoc(browser).profiles.find((p) => p.id === person)).toMatchObject({
+      name: 'Jo',
+      connectionIds: [jo],
+    });
+    release();
+    await settle();
+    expect(b.profiles.profileOf(jo)?.id).toBe(person);
+  });
+
   it("takes another tab's people as they are written, its own person still listening", async () => {
     const { a, b } = await twoTabsWithPeople();
     const mine = b.profiles.activeProfile()!.id;
@@ -303,6 +328,22 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     expect(cleanup).toHaveBeenCalledWith(alex);
   });
 
+  // A tab still on an earlier build hears only `removed`, and would drop the person with it.
+  it('a retirement is never told as a removal', async () => {
+    const { a, browser } = await twoTabsWithPeople();
+    const heard: unknown[] = [];
+    const os = Platform.OS;
+    Platform.OS = 'web';
+    try {
+      tabChannel(REMOVAL_CHANNEL, browser.tab())?.subscribe((m) => void heard.push(m));
+    } finally {
+      Platform.OS = os;
+    }
+    const fresh = await retireInA(a);
+    await settle();
+    expect(heard).toEqual([{ retired: 'srv.1', replacedBy: fresh }]);
+  });
+
   // The told tab moves the person itself (the word names the new connection): the retiring
   // tab's document may land after the list, or (its people not read) never.
   it("a retirement told before the retiring tab's people are written still keeps the person", async () => {
@@ -345,6 +386,80 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     expect(a.useSession.getState().connections.map((c) => c.id)).toEqual([sam]);
   });
 
+  // A set edited in place leaves the stored list as it was (its marker stays): only the
+  // headers' own write tells this tab.
+  it("another tab's edited proxy headers are the ones this tab sends", async () => {
+    const { a, b, alex } = await twoTabs();
+    const set = (value: string) => ({
+      origin: 'https://proxy.example',
+      headers: [{ name: 'X-Proxy-Auth', value }],
+    });
+    await b.useSession.getState().setProxyHeaders(alex, set('one'));
+    await settle();
+    expect(a.useSession.getState().connections.find((c) => c.id === alex)?.proxyHeaders).toEqual(
+      set('one'),
+    );
+    await b.useSession.getState().setProxyHeaders(alex, set('two'));
+    await settle();
+    expect(a.useSession.getState().connections.find((c) => c.id === alex)?.proxyHeaders).toEqual(
+      set('two'),
+    );
+  });
+
+  // Each tab builds the first document from the same list at once: the second to write finds
+  // the first's people, and someone is still listening there.
+  it('two tabs making the first people at once both have someone listening', async () => {
+    const { a, b, alex, browser } = await twoTabs();
+    await Promise.all([
+      a.profiles.useProfiles.getState().hydrate(),
+      b.profiles.useProfiles.getState().hydrate(),
+    ]);
+    await settle();
+    const doc = storedDoc(browser);
+    for (const t of [a, b]) {
+      const s = t.profiles.useProfiles.getState();
+      expect(s.profiles).toEqual(doc.profiles);
+      expect(s.activeProfileId).toBe(t.profiles.profileOf(alex)?.id);
+      expect(s.activeProfileId).not.toBeNull();
+    }
+  });
+
+  // Two people turned to kids mode in two tabs at once: the second, made again over the
+  // first's document, is refused (a device always keeps a grown-up).
+  it('kids mode turned on in two tabs at once still leaves a grown-up', async () => {
+    // Two people: alex (B's) and jo (added in A).
+    const browser = fakeBrowser();
+    const b = openTab(browser);
+    await b.useSession.getState().hydrate();
+    const alex = await signIn(b, 1, 'alex', 'ta');
+    await b.profiles.useProfiles.getState().hydrate();
+    const a = openTab(browser);
+    await a.useSession.getState().hydrate();
+    await a.profiles.useProfiles.getState().hydrate();
+    const jo = await signIn(a, 3, 'jo', 'tj', 'other');
+    const joPerson = a.profiles.placeConnection(jo, { newProfile: true, keepActive: true })!;
+    await settle();
+    const alexPerson = b.profiles.profileOf(alex)!.id;
+    expect(b.profiles.useProfiles.getState().profiles.map((p) => p.id)).toEqual([
+      alexPerson,
+      joPerson,
+    ]);
+    const release = browser.hold();
+    a.profiles.setProfileKids(joPerson, { bedtime: '18:00' });
+    await until(
+      () => !!storedDoc(browser).profiles.find((p) => p.id === joPerson)?.kids,
+      "A's kids mode written",
+    );
+    // B, told of none of it yet, asks of its own copy (where jo is still a grown-up).
+    b.profiles.setProfileKids(alexPerson, { bedtime: '18:00' });
+    await settle();
+    release();
+    await settle();
+    const doc = storedDoc(browser);
+    expect(doc.profiles.find((p) => p.id === joPerson)?.kids).toBeDefined();
+    expect(doc.profiles.find((p) => p.id === alexPerson)?.kids).toBeUndefined();
+  });
+
   it('a token stored again in another tab is the one this tab sends, its reconnect flag cleared', async () => {
     const { a, b, alex } = await twoTabs();
     a.useSession.getState().markNeedsReconnect(alex, 'auth');
@@ -383,6 +498,52 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     await settle();
     expect(b.useSession.getState().connections.map((c) => c.id)).toContain(jo);
     expect(browser.data.get(PROFILES_KEY)).toBe(before);
+  });
+});
+
+// Two tabs write at the same moment: each reads what is stored before the other's write is
+// heard. The lock the tabs share for each document has the second read the first's write.
+describe('two tabs writing at once (web, Web Locks)', () => {
+  const nav = globalThis.navigator as { locks?: unknown };
+  beforeEach(() => {
+    Object.defineProperty(nav, 'locks', { configurable: true, value: fakeWebLocks() });
+  });
+  afterEach(() => {
+    delete nav.locks;
+  });
+
+  it('keeps both sign-ins', async () => {
+    const { a, b, browser } = await twoTabs();
+    const release = browser.hold();
+    const [jo, kim] = await Promise.all([
+      signIn(a, 3, 'jo', 'tj', 'other'),
+      signIn(b, 4, 'kim', 'tk', 'third'),
+    ]);
+    release();
+    await settle();
+    expect(storedIds(browser)).toEqual(expect.arrayContaining([jo, kim]));
+    for (const t of [a, b]) {
+      expect(t.useSession.getState().connections.map((c) => c.id)).toEqual(
+        expect.arrayContaining([jo, kim]),
+      );
+    }
+  });
+
+  it("keeps both tabs' changes to the people", async () => {
+    const { a, b, alex, sam, browser } = await twoTabs();
+    for (const t of [a, b]) await t.profiles.useProfiles.getState().hydrate();
+    await settle();
+    const alexPerson = a.profiles.profileOf(alex)!.id;
+    const samPerson = a.profiles.profileOf(sam)!.id;
+    const release = browser.hold();
+    a.profiles.renameProfile(alexPerson, 'Alexander');
+    b.profiles.renameProfile(samPerson, 'Samantha');
+    await settle();
+    release();
+    await settle();
+    const doc = storedDoc(browser);
+    expect(doc.profiles.find((p) => p.id === alexPerson)?.name).toBe('Alexander');
+    expect(doc.profiles.find((p) => p.id === samPerson)?.name).toBe('Samantha');
   });
 });
 

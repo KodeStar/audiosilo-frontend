@@ -11,7 +11,9 @@ import { randomUUID } from '@/lib/random';
 import { getRawItem, setItem } from '@/lib/storage';
 import { isRecord, PROFILES_KEY } from '@/lib/storage-keys';
 import { onStoredChange } from '@/lib/tab-channel';
+import { tabLock } from '@/lib/tab-lock';
 import {
+  catchUpWithOtherTabs,
   type Connection,
   onConnectionRemoved,
   onConnectionReplaced,
@@ -512,21 +514,29 @@ function commit(change: DocChange): void {
     void setItem(PROFILES_KEY, next);
     return;
   }
+  if (!waitingChanges.length) waitingBase = prev;
   waitingChanges.push(change);
   writing ??= writeChanges();
 }
 
 // Web: the tabs of the player share the stored document, each holding its own copy. A tab
-// follows the others' writes (`followStoredDoc`), and reads the document again before it
-// writes it (`writeChanges`): when another tab wrote since, this tab's changes are made again
-// over that document, never over its own older copy (a person added in the other tab keeps
-// their name, PIN and kids settings). The person listening stays each tab's own.
+// follows the others' writes (`followStoredDoc`), and writes the document holding a lock the
+// tabs share, reading it again first (`writeChanges`): when another tab wrote since, this
+// tab's changes are made again over that document, never over its own older copy (a person
+// added in the other tab keeps their name, PIN and kids settings). The person listening
+// stays each tab's own.
 
 /** The stored document as this tab last read or wrote it (web). */
 let storedText: string | null = null;
-/** This tab's changes not written yet, in order, and the write under way. */
+/** This tab's changes not written yet, in order, the document they were first made over
+ * (this tab's before them), and the write under way. */
 let waitingChanges: DocChange[] = [];
+let waitingBase: ProfilesDoc | null = null;
 let writing: Promise<void> | null = null;
+/** Another tab's write heard while this tab's own were being written (`followStoredDoc`). */
+let heardWhileWriting = false;
+/** The lock every tab takes to write the document (`writeChanges`). */
+const withDocLock = tabLock(PROFILES_KEY);
 
 /** A stored document's text, read; null when it does not parse as one. */
 function parseStored(text: string): ProfilesDoc | null {
@@ -539,8 +549,9 @@ function parseStored(text: string): ProfilesDoc | null {
   return isProfilesDoc(raw) ? parseProfilesDoc(raw) : null;
 }
 
-/** Another tab's document as this tab's: the person listening here stays, while they are
- * still on the device (a tab that had nobody on it takes the stored one). */
+/** Another tab's document as this tab's (`mine`: this tab's, before any change of its own not
+ * written yet): the person listening here stays, while they are still on the device (a tab
+ * that had nobody on it takes the stored one). */
 function asThisTabs(stored: ProfilesDoc, mine: ProfilesDoc): ProfilesDoc {
   const own = mine.activeProfileId;
   const activeProfileId =
@@ -554,38 +565,68 @@ function asThisTabs(stored: ProfilesDoc, mine: ProfilesDoc): ProfilesDoc {
 
 async function writeChanges(): Promise<void> {
   try {
-    while (waitingChanges.length) {
-      let stored: string | null;
-      try {
-        stored = await getRawItem(PROFILES_KEY);
-      } catch {
-        stored = storedText;
-      }
-      const changes = waitingChanges;
-      waitingChanges = [];
-      const state = useProfiles.getState();
-      if (!state.hydrated || state.unread) return;
-      const theirs = stored !== null && stored !== storedText ? parseStored(stored) : null;
-      if (theirs) {
-        let doc = asThisTabs(theirs, docOf(state));
-        for (const change of changes) doc = docOf(askOnSecondPerson(doc, change(doc)));
-        useProfiles.setState(doc);
-      }
-      const next = docOf(useProfiles.getState());
-      const text = JSON.stringify(next);
-      storedText = text;
-      if (text !== stored) await setItem(PROFILES_KEY, next);
-    }
+    // Holding the lock: no other tab writes between this tab's read and its write.
+    while (waitingChanges.length) await withDocLock(writeWaiting);
+  } catch (e) {
+    console.warn('[profiles] writing the people failed', e);
   } finally {
     writing = null;
   }
+  // Another tab's write heard while this one waited its turn, and not read by it (it landed
+  // after the read): taken now.
+  if (heardWhileWriting) {
+    heardWhileWriting = false;
+    followStoredDoc(await getRawItem(PROFILES_KEY).catch(() => null));
+  }
+}
+
+/** Write this tab's waiting changes (`writeChanges`, holding the lock). */
+async function writeWaiting(): Promise<void> {
+  // The list as stored first: a reconcile made again over another tab's newer document reads
+  // the session's list, which must hold that tab's connections too (a direct read can see
+  // its document before its list is heard), or it would drop the people they belong to.
+  await catchUpWithOtherTabs();
+  let stored: string | null;
+  try {
+    stored = await getRawItem(PROFILES_KEY);
+  } catch {
+    stored = storedText;
+  }
+  const changes = waitingChanges;
+  const mine = docOf(useProfiles.getState());
+  const base = waitingBase ?? mine;
+  waitingChanges = [];
+  waitingBase = null;
+  const state = useProfiles.getState();
+  if (!state.hydrated || state.unread) return;
+  const theirs = stored !== null && stored !== storedText ? parseStored(stored) : null;
+  if (theirs) {
+    // The person listening as this tab had them before its changes (a person those changes
+    // made is not in the other tab's document yet, so it cannot stay on that alone), then the
+    // changes made again over it, then this tab's person kept when they made them there too.
+    let doc = asThisTabs(theirs, base);
+    for (const change of changes) doc = docOf(askOnSecondPerson(doc, change(doc)));
+    const own = mine.activeProfileId;
+    if (own !== null && doc.profiles.some((p) => p.id === own))
+      doc = { ...doc, activeProfileId: own };
+    useProfiles.setState(doc);
+  }
+  const next = docOf(useProfiles.getState());
+  const text = JSON.stringify(next);
+  storedText = text;
+  if (text !== stored) await setItem(PROFILES_KEY, next);
 }
 
 /** Another tab wrote the document (`text`, its new value): take it. Not while this tab's own
- * changes are being written: the write reads the document first and makes them over it. */
+ * changes are being written: the write reads the document first and makes them over it (one
+ * that lands after that read is taken once the write is done, `heardWhileWriting`). */
 function followStoredDoc(text: string | null): void {
   const state = useProfiles.getState();
-  if (!state.hydrated || state.unread || writing || text === null || text === storedText) return;
+  if (!state.hydrated || state.unread || text === null || text === storedText) return;
+  if (writing) {
+    heardWhileWriting = true;
+    return;
+  }
   const theirs = parseStored(text);
   if (!theirs) return;
   storedText = text;
@@ -603,12 +644,17 @@ function sessionSettled(): boolean {
 function reconcileNow(): void {
   const state = useProfiles.getState();
   if (!state.hydrated || !sessionSettled()) return;
+  // The ids of the profiles it makes: the same each time the change is made (again over
+  // another tab's newer document, `writeChanges`), so the person it made keeps their id.
+  const made: string[] = [];
   commit((doc) => {
     const { connections, defaultConnectionId } = useSession.getState();
     // Unread: only the connections already placed (signed in this run, `placeConnection`)
     // take part; any other is left in no profile, so nobody sees or plays it.
     const known = state.unread ? connections.filter((c) => profileOf(c.id, doc)) : connections;
-    return reconcileProfiles(doc, known, defaultConnectionId);
+    let n = 0;
+    const newId = () => (made[n++] ??= randomUUID());
+    return reconcileProfiles(doc, known, defaultConnectionId, newId);
   });
   void alignDefaultConnection();
 }
@@ -859,12 +905,19 @@ export function useManagerName(
 
 // --- Changes --------------------------------------------------------------------------------
 
+/** `doc` with the profile `profileId` changed (`doc` itself when there is none). */
+function withProfile(
+  doc: ProfilesDoc,
+  profileId: string,
+  change: (p: Profile) => Profile,
+): ProfilesDoc {
+  return doc.profiles.some((p) => p.id === profileId)
+    ? { ...doc, profiles: doc.profiles.map((p) => (p.id === profileId ? change(p) : p)) }
+    : doc;
+}
+
 function updateProfile(profileId: string, change: (p: Profile) => Profile): void {
-  commit((doc) =>
-    doc.profiles.some((p) => p.id === profileId)
-      ? { ...doc, profiles: doc.profiles.map((p) => (p.id === profileId ? change(p) : p)) }
-      : doc,
-  );
+  commit((doc) => withProfile(doc, profileId, change));
 }
 
 /**
@@ -907,13 +960,19 @@ export function mayTurnOnKids(
  * isn't 'HH:MM' is the default. Turning it on is refused (nothing changes) when it would
  * leave no grown-up on the device (`mayTurnOnKids`). */
 export function setProfileKids(profileId: string, kids: KidsSettings | undefined): void {
-  if (kids && !mayTurnOnKids(profileId)) return;
-  updateProfile(profileId, (p) => {
-    const { kids: _old, ...rest } = p;
-    if (!kids) return rest;
-    const parsed = parseKids(kids) ?? { bedtime: DEFAULT_BEDTIME };
-    return { ...rest, kids: parsed };
-  });
+  // Asked of the document the change is made over, so one made again over another tab's
+  // newer document (`writeChanges`, where another person went into kids mode meanwhile)
+  // never leaves the device without a grown-up either.
+  commit((doc) =>
+    kids && !mayTurnOnKids(profileId, doc)
+      ? doc
+      : withProfile(doc, profileId, (p) => {
+          const { kids: _old, ...rest } = p;
+          if (!kids) return rest;
+          const parsed = parseKids(kids) ?? { bedtime: DEFAULT_BEDTIME };
+          return { ...rest, kids: parsed };
+        }),
+  );
 }
 
 /** Rename a profile on this device (trimmed; an empty name is ignored). */
@@ -1017,7 +1076,9 @@ export function resetProfilesForTests(): void {
   hydration = null;
   storedText = null;
   waitingChanges = [];
+  waitingBase = null;
   writing = null;
+  heardWhileWriting = false;
   unsubscribeSession?.();
   unsubscribeSession = null;
   stopRetrying();
