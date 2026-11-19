@@ -190,14 +190,15 @@ let stallPauseUntil = 0;
 /** A play asked of the engine from outside the app that the store follows
  * (`playAskedFromOutside`) while it is still starting, else null: over once it plays, is
  * given up (`clearPlaybackIntent`) or another play is asked for (`beginPlaybackAttempt`), so
- * a later stall is the store's book's own. The store's book, where it stood and the
- * listener's moves (`localMoves`) when the play was asked. `other`: the engine holds another
+ * a later stall is the store's book's own. The store's book, where it stood, the listener's
+ * moves (`localMoves`) and its speed when the play was asked. `other`: the engine holds another
  * book, one the service started: its report named that book (`reportedOtherBook`), or its
  * adoption began (`adoptLoadedBook`). */
 let outsidePlay: {
   np: NowPlaying;
   snapshot: PlaybackSnapshot;
   moves: number;
+  rate: number;
   other: boolean;
 } | null = null;
 /**
@@ -351,11 +352,33 @@ function otherBookNotAdopted() {
     otherBookAdoption.start();
     return;
   }
+  showOwnBookPaused();
+}
+
+/** The store's book shows paused where it was last heard while the engine plays another
+ * book (`otherBookNotAdopted`, `pauseOwnBook`): its intent to play is over, the engine is not
+ * asked (its pause would be that book's) and nothing is saved (its place was saved once as
+ * it stopped, `otherBookReported`; saved again it would be dated now). */
+function showOwnBookPaused() {
+  cancelOtherBookDeadline();
   clearPlaybackIntent();
   stopSaveLoop();
   // Paused from now, so a play after a long pause checks its place first (`pickUpBeforePlay`).
   pausedAt ??= Date.now();
+  const { snapshot } = usePlayer.getState();
   usePlayer.setState({ snapshot: { ...snapshot, state: 'paused' } });
+}
+
+/** The app's own pause of the store's book (`pause`, `toggle`). While the engine's reports
+ * name another book (`engineHoldsAnother`: the car's or a resumption's, not adopted, the
+ * store's book still shown playing during its adoption's deadline or loading for an outside
+ * play), the pause is the store's book's alone, as a play press then reloads the store's book
+ * (`toggle`): it shows paused where it was last heard (`showOwnBookPaused`) and the other book
+ * plays on. A report that names no book (an older binary) keeps the engine's pause: with the
+ * outside play no longer followed, nothing would keep that book's reports out of the store's. */
+async function pauseOwnBook(svc: PlaybackService) {
+  if (engineHoldsAnother()) showOwnBookPaused();
+  else await svc.pause();
 }
 
 /** Be told when the engine reports another book than the store's (`otherBookReported`; one
@@ -801,9 +824,17 @@ async function persist(opts?: {
   if (quietAdopted === contentKeyOf(nowPlaying) && !opts?.forceFinished) return;
   // Nor while the engine holds another book on its way to being adopted
   // (`engineIsAnothers`): nothing of this book was heard since it stopped. Unless the
-  // listener moved it since that play was asked (`listenerMove` shows the place): that place
-  // is theirs, and an adoption that lands would otherwise drop it unsaved.
-  if (engineIsAnothers() && outsidePlay?.moves === localMoves && !opts?.forceFinished) return;
+  // listener moved it or set its speed since that play was asked (`listenerMove` shows the
+  // place, `setRate` keeps the speed for this book): that is theirs, and an adoption that
+  // lands would otherwise drop it unsaved.
+  if (
+    engineIsAnothers() &&
+    outsidePlay?.moves === localMoves &&
+    outsidePlay.rate === rate &&
+    !opts?.forceFinished
+  ) {
+    return;
+  }
   // Nor a place another tab has played past (`otherTabPlayed`), nor one on its way to that
   // tab's (`catchingUp`): dated now, it would be the newest in the mirror the tabs share.
   if (behindOtherTab(nowPlaying) && !opts?.forceFinished) return;
@@ -2997,10 +3028,10 @@ function fireStallWatchdog() {
  */
 function playAskedFromOutside() {
   if (wantsPlayback || startsInFlight > 0 || resumeLookupFailed || loadedFaulted()) return;
-  const { snapshot, nowPlaying, loadingBook } = usePlayer.getState();
+  const { snapshot, nowPlaying, loadingBook, rate } = usePlayer.getState();
   if (snapshot.state !== 'error' || !nowPlaying || loadingBook) return;
   beginPlaybackAttempt();
-  outsidePlay = { np: nowPlaying, snapshot, moves: localMoves, other: false };
+  outsidePlay = { np: nowPlaying, snapshot, moves: localMoves, rate, other: false };
 }
 
 /** Begin a playback attempt: we intend to play, we're "connecting" until the engine
@@ -4002,7 +4033,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       if (playingOn) playOnStopped = true;
       // Before the engine is asked: its `paused` is then no transition (nothing to save).
       if (pickUpWait) settlePickUpWaitPaused();
-      await svc.pause();
+      await pauseOwnBook(svc);
     } else {
       // At the end of a partial download (D3, fe#185) nothing plays: the engine, ended,
       // reports no `playing`, and the stall watchdog would call the attempt an error. The
@@ -4045,7 +4076,8 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     // the stream is buffering). The engine pause is idempotent in either state.
     const st = get().snapshot.state;
     if (pickUpWait) settlePickUpWaitPaused();
-    if (st === 'playing' || st === 'loading') await svc.pause();
+    // Never another book's the engine plays (`pauseOwnBook`).
+    if (st === 'playing' || st === 'loading') await pauseOwnBook(svc);
   },
 
   retry: async () => {
@@ -4206,7 +4238,10 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     set({ rate: clamped });
     // The span at the old speed ends here; the next runs at the new one.
     if (changed) cutListeningSpan();
-    if (service) await service.setRate(clamped);
+    // Not while the engine holds another book (`engineHoldsOtherBook`: the car's, not
+    // adopted): its speed would be that book's. The speed is the store's book's, saved with
+    // it, and the engine takes it at that book's next load (a play press reloads it).
+    if (service && !engineHoldsOtherBook()) await service.setRate(clamped);
     void persist();
   },
 

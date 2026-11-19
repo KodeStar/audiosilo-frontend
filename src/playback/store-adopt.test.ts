@@ -1893,6 +1893,22 @@ describe('a play asked from outside of another book after playback stopped', () 
     expect(usePlayer.getState().nowPlaying?.path).toBe('S');
   });
 
+  // The review: the app's speed set while the other book was adopted was that book's speed,
+  // and the store's book's was never saved before the adoption replaced it.
+  it("saves the store's book's own speed set while the other book is adopted", async () => {
+    const read = await askedForS();
+    await usePlayer.getState().setRate(2);
+    await flushMicrotasks();
+    expect(mockSvc.setRate).not.toHaveBeenCalled();
+    expect(savedPaths()).toEqual(['B']);
+    expect(mockSaveProgress.mock.calls.at(-1)?.[1]).toMatchObject({
+      path: 'B',
+      playback_speed: 2,
+    });
+    expect(await read()).toBe(true);
+    expect(usePlayer.getState()).toMatchObject({ nowPlaying: { path: 'S' }, rate: 1 });
+  });
+
   // The review: an outside play of another book that was never adopted (its adoption gave up)
   // left that book's reports in the store's book: once it played it was the store's book's
   // play, and one that never played stopped at the other book's place, saved as the store's
@@ -2427,6 +2443,74 @@ describe("a report of another book than the store's", () => {
     expect(mockSvc.load).toHaveBeenCalledTimes(1);
     expect((mockSvc.load as jest.Mock).mock.calls[0].slice(1, 3)).toEqual([0, 60]);
   });
+
+  // The review: the app's speed set while the engine played the car's S was S's speed. It is
+  // B's, saved with B, and the engine takes it when B is next loaded.
+  it("sets the store's book's speed, never the engine's other book's", async () => {
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    await usePlayer.getState().adoptLoaded(loadedB({ playing: true }));
+    engineBook = refB;
+    pushSnapshot(snap('playing', 1, 30));
+    engineBook = refS;
+    pushSnapshot(snap('playing', 0, 5));
+    await flushMicrotasks();
+    jest.clearAllMocks();
+    // Within the adoption's deadline, and after it.
+    await usePlayer.getState().setRate(2);
+    await flushMicrotasks();
+    expect(mockSvc.setRate).not.toHaveBeenCalled();
+    expect(usePlayer.getState().rate).toBe(2);
+    expect(mockSaveProgress.mock.calls.at(-1)?.[1]).toMatchObject({
+      path: 'B',
+      position: 130,
+      playback_speed: 2,
+    });
+    jest.advanceTimersByTime(6_000);
+    await flushMicrotasks();
+    await usePlayer.getState().setRate(1.25);
+    expect(mockSvc.setRate).not.toHaveBeenCalled();
+    // The play press reloads B at the speed set.
+    await usePlayer.getState().toggle();
+    expect(mockSvc.load).toHaveBeenCalledTimes(1);
+    expect(mockSvc.setRate).toHaveBeenCalledWith(1.25);
+  });
+
+  // The review: the app's pause while B still showed playing (the adoption's deadline) paused
+  // the car's S. As a play press reloads B then, the pause is B's alone: S plays on.
+  it.each(['pause', 'toggle'] as const)(
+    "pauses only the store's book on the app's %s while the engine plays the other",
+    async (press) => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+      await usePlayer.getState().adoptLoaded(loadedB({ playing: true }));
+      engineBook = refB;
+      pushSnapshot(snap('playing', 1, 30));
+      engineBook = refS;
+      pushSnapshot(snap('playing', 0, 5));
+      await flushMicrotasks();
+      jest.clearAllMocks();
+      jest.advanceTimersByTime(2_000);
+      expect(usePlayer.getState().snapshot.state).toBe('playing');
+      await usePlayer.getState()[press]();
+      await flushMicrotasks();
+      expect(mockSvc.pause).not.toHaveBeenCalled();
+      expect(usePlayer.getState()).toMatchObject({
+        nowPlaying: { path: 'B' },
+        snapshot: { state: 'paused', trackIndex: 1, position: 30 },
+      });
+      jest.advanceTimersByTime(LOCAL_SAVE_MS);
+      pushSnapshot(snap('playing', 0, 70));
+      await flushMicrotasks();
+      expectNothingSaved();
+      expect(mockSvc.pause).not.toHaveBeenCalled();
+      // The car sync's adoption still takes S, playing.
+      expect(await usePlayer.getState().adoptLoaded({ ...loadedS, position: 71 })).toBe(true);
+      pushSnapshot(snap('playing', 0, 72));
+      expect(usePlayer.getState()).toMatchObject({
+        nowPlaying: { path: 'S' },
+        snapshot: { state: 'playing', position: 72 },
+      });
+    },
+  );
 
   // The review: a download landing while the engine played S was dropped (no `swapDue`), so
   // the store's book streamed on once the engine held it again, until a Retry or a start.

@@ -2932,7 +2932,14 @@ media GETs only.
   the app's own seek, skip and chapter jump ask the engine then: the store's book shows the
   place, saved even while an adoption is under way (`persist`: the listener's own move since
   the outside play), the play press reloads it there, `listenerMove`, and the car sync reads
-  no engine change from it, `mayBeServiceChange`). A resumption
+  no engine change from it, `mayBeServiceChange`; nor does the app's speed set, which is the
+  store's book's, saved with it the same way and taken by the engine at that book's next
+  load, `setRate`; nor the app's pause or a toggle's pause while a report names the other
+  book, the same state in which a play press reloads the store's book: the store's book
+  shows paused where it was last heard, its intent over, nothing saved, and the other book
+  plays on, deadline window included, `pauseOwnBook`; a report that names no book, an older
+  binary, keeps the engine's pause, since nothing would hold that book's reports apart
+  once the outside play is over). A resumption
   meanwhile plays the other book, the one heard (`engineOtherBook`, the car snapshot's
   `resume`, whether the store's book shows paused or finished): the car sync writes the
   snapshot when that book begins playing (`onOtherBookReported`'s `playing`, adopted or
