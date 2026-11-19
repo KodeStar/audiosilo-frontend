@@ -1291,12 +1291,64 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
     const out = addBookmarkOrQueue('c1', 1, 'a/book', 120);
     await idle();
     const [entry] = await storedEntries();
-    // Another tab knows nothing of this one's POST: it sends the entry, with its id.
-    await client.addBookmark(1, 'a/book', 120, '', undefined, entry.client_id);
-    await AsyncStorage.setItem(KEY, '[]');
+    // Another tab knows nothing of this one's POST (its memory, here forgotten): its replay
+    // sends the entry, with its id, and takes it out.
+    resetAnnotationOutboxForTests();
+    await flushBookmarks();
+    expect(sentIds(client)).toEqual([entry.client_id, entry.client_id]);
+    expect(await storedEntries()).toEqual([]);
     post.answer();
     expect(await out).toHaveProperty('made');
     expect(held).toHaveLength(1);
+    expect(await storedEntries()).toEqual([]);
+  });
+
+  it("sends its book's one stored behind a tap's POST once that works", async () => {
+    const { client, held } = server('c1');
+    const post = heldPost(client);
+    const out = addBookmarkOrQueue('c1', 1, 'a/book', 120);
+    await idle();
+    // The sleep timer's (or an Undo's) while the tap's POST is out: held back behind it.
+    await queueNewBookmark('c1', 1, 'a/book', 130, 'Fell asleep');
+    await idle();
+    expect(held).toEqual([]);
+    expect(queuedBookmarksSnapshot()).toMatchObject([{ position: 130 }]);
+    post.answer();
+    expect(await out).toHaveProperty('made');
+    // Sent at once, not left to the backoff.
+    await idle();
+    expect(held.map((b) => b.position)).toEqual([120, 130]);
+    expect(await storedEntries()).toEqual([]);
+  });
+
+  it('takes out a stored tap its server refuses for good', async () => {
+    const { client } = server('c1');
+    const err = new ApiError(404, 'not found');
+    client.addBookmark.mockRejectedValueOnce(err);
+    await expect(addBookmarkOrQueue('c1', 1, 'a/book', 120)).rejects.toBe(err);
+    expect(await storedEntries()).toEqual([]);
+  });
+
+  it('keeps a stored tap a 400 refuses while its server cannot be asked why', async () => {
+    const { client, held } = server('c1');
+    client.addBookmark.mockRejectedValueOnce(new ApiError(400, 'invalid request'));
+    client.serverInfo.mockRejectedValueOnce(new ApiError(500, 'boom'));
+    expect(await addBookmarkOrQueue('c1', 1, 'a/book', 120)).toMatchObject({
+      queued: { position: 120, fresh: true },
+    });
+    await flushBookmarks();
+    expect(held).toMatchObject([{ position: 120 }]);
+    expect(await storedEntries()).toEqual([]);
+  });
+
+  it('does not keep a stored tap whose connection is removed while its POST is out', async () => {
+    const { client } = server('c1');
+    const post = heldPost(client);
+    const out = addBookmarkOrQueue('c1', 1, 'a/book', 120);
+    await idle();
+    await removed('c1');
+    post.answer(offline());
+    await expect(out).rejects.toThrow('connection gone');
     expect(await storedEntries()).toEqual([]);
   });
 

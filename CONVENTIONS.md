@@ -1758,8 +1758,10 @@ until a replay sends it. Only when storage refuses it is it posted straight away
 label on flags read first). The one-tap keeps the direct send: its "Bookmark added" toast and Add
 note need the server's bookmark, and the listener is there to see a failure. To a server known to
 take a `client_id` (`bookmark_client_id`) it is stored first too, `fresh` with its id, then
-posted with that id and taken out once that works or is refused for good, so a kill mid-POST
-leaves it to a replay, whose POST with the same id makes it once at most. While that POST is out
+posted with that id and taken out once that works or is refused for good (its book's ones stored
+behind it meanwhile, held back for it, go then), so a kill mid-POST leaves it to a replay, whose
+POST with the same id makes it once at most; a 400 whose server can't be asked why keeps it, as a
+replay would, and a sign-out while the POST is out drops it. While that POST is out
 it is not waiting: no row, pin or count shows it and no replay from that tab sends it (`posting`,
 memory only, so after a kill it shows and replays at the next launch); it shows once the POST has
 failed. Another tab knows nothing of that POST: it may show or send it meanwhile, which its id

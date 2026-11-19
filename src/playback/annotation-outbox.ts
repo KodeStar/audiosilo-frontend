@@ -439,10 +439,15 @@ export async function addBookmarkOrQueue(
   let sentBare = false;
   // Stored before the POST (a server that takes its id), to take out once that works.
   let stored: QueuedBookmark | undefined;
+  // Whether `stored` was taken out (`settle`): its book's ones stored behind it meanwhile (an
+  // Undo, the sleep timer's, another tab's), which a replay held back for it, go now.
+  let settled = false;
   /** Take `stored` out: made, or refused for good. Storage that refuses that leaves it to a
    * replay, whose POST with its id the server answers with the one it holds. */
   const settle = async () => {
-    if (stored) await discardQueuedBookmark(stored.id).catch(() => undefined);
+    if (!stored) return;
+    settled = true;
+    await discardQueuedBookmark(stored.id).catch(() => undefined);
   };
   if (!waiting && isReachable(connectionId)) {
     // Its id makes a resend safe, so it is kept before any request (no send without its id
@@ -469,13 +474,18 @@ export async function addBookmarkOrQueue(
         await settle();
         return { made };
       }
-    } catch (err) {
-      // Its id refused by a server that no longer takes one (`whyRefused`), not the bookmark:
-      // nothing landed, and it is kept to go without the id, at once (the flags say so now).
-      const idRefused =
-        withId && badRequest(err) && (await whyRefused(connectionId, client)) === 'id';
-      if (!idRefused) {
-        if (!worthKeeping(err)) {
+    } catch (thrown) {
+      let err = thrown;
+      // A 400 to its id: asked why (`whyRefused`). Its id refused by a server that no longer
+      // takes one, not the bookmark: nothing landed, and it is kept to go without the id, at
+      // once (the flags say so now).
+      const why = withId && badRequest(err) ? await whyRefused(connectionId, client) : undefined;
+      if (why !== 'id') {
+        // Its server could not be asked: the 400 says nothing for good yet, so it waits on
+        // that failure, as the replay's would (never dropped on it).
+        const unasked = why !== undefined && why !== 'bookmark';
+        if (unasked) err = why.failed;
+        if (!unasked && !worthKeeping(err)) {
           await settle();
           throw err;
         }
@@ -490,8 +500,12 @@ export async function addBookmarkOrQueue(
         posting.delete(stored.id);
         publish();
       }
+      if (settled) void flushBookmarks(connectionId).catch(() => undefined);
     }
   }
+  // Signed out or removed while its POST was out: its stored entry went with the connection
+  // (as `append` refuses one for a sign-in that ended).
+  if (stored && connectionGeneration(connectionId) !== since) throw new Error('connection gone');
   const queued =
     stored ?? (await append({ ...fields, ...(sentBare ? {} : { fresh: true as const }) }, since));
   // Sent now behind the ones waiting when the server is up; after a failure just now, on
@@ -502,14 +516,17 @@ export async function addBookmarkOrQueue(
 }
 
 /** Store a tap's bookmark before its own POST (`append`), out of sight while that is out
- * (`posting`). Undefined when storage refused it: the tap is then posted as before. */
+ * (`posting`). Undefined when storage refused it: the tap is then posted as before. Rejects
+ * when its connection was signed out or removed since `since` (its sign-in): nothing to post
+ * it to. */
 async function storePosting(fields: NewEntry, since: number): Promise<QueuedBookmark | undefined> {
   const id = randomUUID();
   posting.add(id);
   try {
     return await append(fields, since, id);
-  } catch {
+  } catch (err) {
     posting.delete(id);
+    if (connectionGeneration(fields.connectionId) !== since) throw err;
     return undefined;
   }
 }
@@ -989,7 +1006,8 @@ export async function sendBookmarksBeforeRemoval(connectionId: string): Promise<
   if (!sessionReady() || !client) return;
   // None of its own waiting, as last read: no turn behind a replay still out for another
   // server (a sign-out would wait out that server's timeouts for nothing).
-  if (snapshotRead && !snapshot.some((e) => e.connectionId === connectionId)) return;
+  // A tap's own POST out (`posting`) is not waiting: the replay leaves it to that POST.
+  if (snapshotRead && !shown.some((e) => e.connectionId === connectionId)) return;
   await replay(onlyConnection(connectionId, client)).catch(() => undefined);
 }
 
