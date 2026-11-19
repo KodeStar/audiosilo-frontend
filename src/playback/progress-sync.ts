@@ -257,11 +257,11 @@ export type InitialPlace = ResumeLookup & {
   late?: Promise<LatePlace | null>;
 };
 
-/** Place reads a start began early (`readPlaceEarly`), by book: the read, when it began and
- * the address it went to. */
+/** Place reads a start began early (`readPlaceEarly`), by book: the read, when it began, the
+ * address it went to and the connection it is of (dropped with it: `onConnectionRemoved`). */
 const earlyReads = new Map<
   string,
-  { read: Promise<Progress | null>; at: number; baseUrl: string }
+  { read: Promise<Progress | null>; at: number; baseUrl: string; connectionId: string }
 >();
 /** How long an early read stays the start's to take (`loadInitialProgress`). */
 export const EARLY_READ_MS = 15_000;
@@ -293,6 +293,7 @@ export function readPlaceEarly(
     read,
     at: now,
     baseUrl: api.baseUrl,
+    connectionId,
   });
 }
 
@@ -1473,6 +1474,11 @@ export async function flushConnection(connectionId: string): Promise<void> {
 onConnectionRemoved(async (id) => {
   clockSkews.delete(id);
   skewLooked.delete(id);
+  // An early place read of its books is never taken by a start made once it is signed in
+  // again (a connection with no user id keeps its id for whoever signs in next).
+  for (const [key, early] of earlyReads) {
+    if (early.connectionId === id) earlyReads.delete(key);
+  }
   // The mirror and queue take independent locks and touch disjoint storage keys, so
   // purge them concurrently rather than serializing the two storage round-trips.
   await Promise.all([

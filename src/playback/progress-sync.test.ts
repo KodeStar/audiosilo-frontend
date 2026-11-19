@@ -747,6 +747,19 @@ describe('progress-sync', () => {
     }
   });
 
+  // A connection signed out before the start took its read: whoever signs in to it next (one
+  // with no user id keeps its id) never starts from the read made for the one before.
+  it('loadInitialProgress: an early read is dropped with its connection, another one’s kept', async () => {
+    const api = fakeGetApi(async () => makeProgress({ position: 10 }));
+    readPlaceEarly(api, 'c1', 1, 'A/Book');
+    readPlaceEarly(api, 'c2', 1, 'A/Book');
+    await removalCleanup('c1');
+    await loadInitialProgress(api, 'c1', 1, 'A/Book', 3_000);
+    expect(api.getProgress).toHaveBeenCalledTimes(3);
+    await loadInitialProgress(api, 'c2', 1, 'A/Book', 3_000);
+    expect(api.getProgress).toHaveBeenCalledTimes(3);
+  });
+
   it("loadInitialProgress: a server answering inside the wait is the server's place", async () => {
     const api = fakeGetApi(() => Promise.resolve(makeProgress({ position: 60 })));
     const r = await loadInitialProgress(api, 'c1', 1, 'A/Book', 3_000);
