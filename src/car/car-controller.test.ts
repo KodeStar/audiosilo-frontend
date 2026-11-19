@@ -123,6 +123,8 @@ type MockPlayerState = {
 let mockOutsidePlay = true;
 /** The book the engine plays that the store has not adopted (`engineOtherBook`), else null. */
 let mockEngineOther: { connectionId: string; libraryId: number; path: string } | null = null;
+/** Whether the engine holds another book than the store's (`engineHoldsOtherBook`). */
+let mockEngineHolds = false;
 /** The store's word that the engine reported another book (`onOtherBookReported`). */
 let mockOtherBookReported: ((news: OtherBookNews) => void) | null = null;
 jest.mock('@/playback/store', () => {
@@ -140,6 +142,7 @@ jest.mock('@/playback/store', () => {
     usePlayer,
     followsOutsidePlay: () => mockOutsidePlay,
     engineOtherBook: () => mockEngineOther,
+    engineHoldsOtherBook: () => mockEngineHolds,
     onOtherBookReported: (listener: (news: OtherBookNews) => void) => {
       mockOtherBookReported = listener;
       return () => {
@@ -383,6 +386,7 @@ beforeEach(async () => {
   }) as never);
   forgetCarSync();
   mockEngineOther = null;
+  mockEngineHolds = false;
   (queryClient.getQueryData as jest.Mock).mockImplementation(() => undefined);
   mockArtOnDisk.clear();
   for (const k of Object.keys(mockClients)) delete mockClients[k];
@@ -2761,6 +2765,24 @@ describe('adopting the service’s book (Android)', () => {
     answer({ ...loaded, path: 'Other' });
     await settle();
     expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
+  });
+
+  // The app's own chapter jump on the store's book while the engine plays the car's book moves
+  // only the place shown (`listenerMove`): no engine change, so no adoption is asked of it.
+  it("asks nothing for the app's own move while the engine holds another book", async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    const paused = {
+      nowPlaying: { connectionId: 'c1', libraryId: 2, path: 'D', queue: { offsets: [0, 100] } },
+      snapshot: { state: 'paused', trackIndex: 0, position: 30, duration: 100, rate: 1 },
+    };
+    usePlayer.setState(paused);
+    stop = startCarSync();
+    await settle();
+    mockNative.getLoadedBook.mockClear();
+    mockEngineHolds = true;
+    usePlayer.setState({ snapshot: { ...paused.snapshot, trackIndex: 1, position: 0 } });
+    await settle();
+    expect(mockNative.getLoadedBook).not.toHaveBeenCalled();
   });
 
   it("asks nothing for the store's own changes: a book switch, its load, a pause, a stop", async () => {

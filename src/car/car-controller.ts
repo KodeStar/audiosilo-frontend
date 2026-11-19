@@ -74,6 +74,7 @@ import { listenerSettings } from '@/playback/listener-settings';
 import { noteInteraction } from '@/playback/last-interaction';
 import { placeSavedAt, readLocalPlaces, resumeLookupOf } from '@/playback/progress-sync';
 import {
+  engineHoldsOtherBook,
   engineOtherBook,
   followsOutsidePlay,
   onOtherBookReported,
@@ -1504,10 +1505,15 @@ type PlayerState = ReturnType<typeof usePlayer.getState>;
 function mayBeServiceChange(s: PlayerState, prev: PlayerState): boolean {
   if (Platform.OS !== 'android' || !s.nowPlaying || s.nowPlaying !== prev.nowPlaying) return false;
   if (s.loadingBook || prev.loadingBook) return false;
+  if (s.snapshot.state === 'loading' && prev.snapshot.state === 'error' && followsOutsidePlay()) {
+    return true;
+  }
+  // While the engine holds another book the snapshot takes none of its reports: a move there
+  // is the app's own (`listenerMove`), and that book tells its own news (`onOtherBookReported`).
+  if (engineHoldsOtherBook()) return false;
   return (
     s.snapshot.trackIndex !== prev.snapshot.trackIndex ||
-    (s.snapshot.state === 'playing' && prev.snapshot.state !== 'playing') ||
-    (s.snapshot.state === 'loading' && prev.snapshot.state === 'error' && followsOutsidePlay())
+    (s.snapshot.state === 'playing' && prev.snapshot.state !== 'playing')
   );
 }
 
