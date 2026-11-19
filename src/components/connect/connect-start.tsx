@@ -559,7 +559,8 @@ export function ConnectStart() {
     }
     if (scan) void pairLink(scan);
     else if (invite) {
-      setOidcRetry(null);
+      // On to the sign-in step, as `goSignIn`: Back finds no stale reason or Try again.
+      moveOn();
       beginInviteSignIn(invite, () => router.push('/connect/sign-in'));
     }
   };

@@ -1627,6 +1627,23 @@ describe("a single sign-on's return (?oidc=1)", () => {
     expect(screen.queryByText(words)).toBeNull();
   });
 
+  it('drops the reason when a pasted invite link goes on to the sign-in step', async () => {
+    const words = "There's no sign-in to finish in this browser. Sign in again.";
+    mockApi.oidcFinish.mockRejectedValue(new ApiError(401, 'x', 'oidc_no_sign_in'));
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await waitFor(() => expect(screen.getByText('Found Hearthside')).toBeTruthy());
+    expect(screen.getByText(words)).toBeTruthy();
+    await fireEvent.press(screen.getByText('I have a pairing link'));
+    await fireEvent.changeText(
+      screen.getByLabelText('Pairing link'),
+      `${ORIGIN}/connect#code=ABCD-EFGH-JKMN-PQRS`,
+    );
+    await fireEvent.press(screen.getByText('Connect'));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/connect/sign-in'));
+    expect(screen.queryByText(words)).toBeNull();
+  });
+
   // The server keeps the sign-in (its done cookie) on no answer, a 5xx and a 429 (server#406),
   // so the screen offers the same finish again, from memory: the address it came back on
   // never sends it again.
