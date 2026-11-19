@@ -1619,7 +1619,7 @@
       "ebook": "Não foi possível ler o e-book.",
       "core": "O livro precisa antes de um registro no AudioSilo Meta.",
       "contrib": "Contribuir não está configurado no Bridge.",
-      "share": "À espera de confirmar com o servidor que este livro ainda deve ser partilhado. Ainda não foi partilhado nada.",
+      "share": "À espera de confirmar que este livro ainda deve ser partilhado. Até lá, não é partilhado mais nada.",
       "changed": "Os ficheiros do livro mudaram durante a leitura.",
       "review": "As verificações não conseguiram confirmar os resultados.",
       "other": "Precisa que uma pessoa dê uma olhada."

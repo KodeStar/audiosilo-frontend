@@ -552,7 +552,7 @@ describe('the status while a job runs', () => {
     await mount();
     expect(
       await screen.findByText(
-        'Waiting to check with the server that this book is still to be shared. Nothing has been shared yet.',
+        'Waiting to confirm this book is still to be shared. Nothing more is shared until then.',
       ),
     ).toBeTruthy();
     expect(screen.getByText('It carries on by itself.')).toBeTruthy();
