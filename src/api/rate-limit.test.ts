@@ -34,6 +34,16 @@ describe('rate-limit', () => {
     expect(rateLimited('c1', 1_000)).toBe(false);
   });
 
+  it('lets go a wait further ahead than any it notes (the clock set back since)', () => {
+    const noted = 10_000_000;
+    noteRateLimit('c1', new ApiError(429, 'slow down', undefined, 60), noted);
+    // Set back a little: still within the longest wait, so it holds.
+    expect(rateLimited('c1', noted - 60_000)).toBe(true);
+    // Set back an hour: it would hold for the hour and the wait.
+    expect(rateLimited('c1', noted - 3_600_000)).toBe(false);
+    expect(rateLimited('c1', noted)).toBe(false);
+  });
+
   it('notes nothing but a 429, and holds only the connection it answered', () => {
     for (const e of [
       new ApiError(408, 'timeout'),

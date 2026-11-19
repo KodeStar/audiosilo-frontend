@@ -47,7 +47,7 @@ function wakeAfter(connectionId: string, ms: number): void {
       wakes.delete(connectionId);
       // A timer can fire a little before the clock says the wait is over.
       const left = (holds.get(connectionId) ?? 0) - Date.now();
-      if (left > 0) {
+      if (rateLimited(connectionId)) {
         wakeAfter(connectionId, left);
         return;
       }
@@ -64,11 +64,13 @@ export function stopsReplay(connectionId: string, e: unknown): boolean {
   return !(e instanceof ApiError) || noteRateLimit(connectionId, e);
 }
 
-/** Whether `connectionId`'s server asked to wait (a 429) and the wait is not over at `now`. */
+/** Whether `connectionId`'s server asked to wait (a 429) and the wait is not over at `now`.
+ * One further ahead than any is noted for (the clock set back since) is over too, as a
+ * queue claim is (`claimStands`): it would hold for as long as the clock went back. */
 export function rateLimited(connectionId: string, now = Date.now()): boolean {
   const until = holds.get(connectionId);
   if (until === undefined) return false;
-  if (now < until) return true;
+  if (now < until && until - now <= RATE_LIMIT_MAX_HOLD_S * 1000) return true;
   holds.delete(connectionId);
   return false;
 }
