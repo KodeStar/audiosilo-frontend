@@ -126,6 +126,16 @@ describe('DownloadControl', () => {
     expect(mockRemove).toHaveBeenCalledWith('c', 1, 'b');
   });
 
+  // fe#197: the menu read the total the book listed, the confirm what the download holds.
+  it("gives the menu and the confirm the same size when the download's bytes differ from its total", async () => {
+    mockControlsOverride = { bytes: 62_914_560, totalBytes: 52_428_800 };
+    await mountWithPortal(<DownloadControl libraryId={1} path="b" book={book} />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Downloaded' }));
+    expect(screen.getByText('60 MB on this device')).toBeTruthy();
+    await fireEvent.press(screen.getByText('Remove download'));
+    expect(screen.getByText(/It frees 60 MB\./)).toBeTruthy();
+  });
+
   it('shows the percent on the full control, and cancels from it', async () => {
     const cancel = jest.fn();
     mockControlsOverride = { status: 'downloading', progress: 0.52, cancel };
