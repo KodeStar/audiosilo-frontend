@@ -4219,7 +4219,7 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   syncs the bytes before its rename and the folder after (a battery death never empties the file): only
   `outbox.json`, `open-span.json`, `open-span-move.json` and `places.json`, whose loss loses listening; the rest
   (caches, sync status, acks, the account) is rebuilt from the server or the phone, so it skips
-  the sync. The rate while playing (all on the main looper): a plain 5 s tick syncs the open
+  the sync. The rate while playing (asked on the main looper, written off it): a plain 5 s tick syncs the open
   span only; the 15 s cut syncs the outbox, then the next span over the closed one (no keep, no
   removal first: the event is kept before the span file changes) and the place. **The place rule**:
   `places.json` is synced on a pause, seek, stop, rate change, the end, a call's hold, a span
@@ -4254,7 +4254,14 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   event goes again under its one id (`duplicate`), and its place is taken over the saved one (the
   write order above, which a place saved while the span's own writes failed would break). An
   outbox with nothing waiting removes `outbox.json` (a folder sync) rather than syncing `[]`; a
-  missing file is an empty outbox at launch. Moving these writes off the main looper is a follow-up.
+  missing file is an empty outbox at launch. **The serial writer** (fe#285): these four files are
+  written on one background thread (`DurableWriter`, given to `Outbox`, `PlaceStore` and
+  `FileSpanStore`), one write at a time in the order asked across the files (each queued under the
+  lock that made its change, the value immutable), so the main looper never waits on an fsync and a
+  kill leaves a state the in-order writes pass through: the write order above still holds. The
+  launch's join of an outbox set aside waits for its write (`writeNow`) before it deletes what it
+  joined; signing out drains the writer before the account and token go, so a kill between them
+  never leaves one account's outbox to the next.
 - **Downloads (decision 8)**: one WorkManager `BookWorker` per book (unique `book:<safe name>`,
   KEEP; `CONNECTED`; exponential backoff from 1 min) runs `BookDownload`: item + chapters (kept
   in `items/`), `POST .../renditions`, polls at `retry_after_seconds` (15 s at least) for up to

@@ -28,6 +28,7 @@ import app.audiosilo.wear.core.BookRef
 import app.audiosilo.wear.core.ContinueRow
 import app.audiosilo.wear.core.DownloadIndex
 import app.audiosilo.wear.core.DownloadRecord
+import app.audiosilo.wear.core.DurableWriter
 import app.audiosilo.wear.core.FileSpanStore
 import app.audiosilo.wear.core.HeldBook
 import app.audiosilo.wear.core.HeldBooks
@@ -130,14 +131,17 @@ class AppModel private constructor(private val context: Context) {
   val library = ContinueListening(files)
   val downloads = DownloadIndex(files.downloadsIndex)
   val acks = AckStore(files.acks)
-  val outbox = Outbox(files.root, acks, deviceId)
+
+  /** The listening's durable files (outbox, open span, places) are written off the main looper, in order. */
+  private val durable = DurableWriter()
+  val outbox = Outbox(files.root, acks, deviceId, writer = durable)
   private val held = HeldBooks(files.heldBooks)
-  val places = PlaceStore(files.places)
+  val places = PlaceStore(files.places, durable)
 
   /** Closed spans go into the outbox, then a send is scheduled (SyncSchedule's SPAN_CLOSED). */
   val spans =
     SpanRecorder(
-      FileSpanStore(files.openSpan, files.openSpanMove),
+      FileSpanStore(files.openSpan, files.openSpanMove, durable),
       acks,
       emit = { events ->
         outbox.append(events)
@@ -866,6 +870,9 @@ class AppModel private constructor(private val context: Context) {
     _server.value = null
     _pendingReplace.value = null
     pendingPair = null
+    // The account's listening is off the disk before the account is: a kill in between must not
+    // leave its outbox to be sent under the next one.
+    durable.drain()
     tokens.setToken(null)
     accountFile.write(null)
     _account.value = null

@@ -293,9 +293,12 @@ object Resume {
     ResumePlan(0.0, null, null, ListeningStart.RESTART, unfinish = true, tookRow = tookRow)
 }
 
-/** The places this watch played to, per book (`places.json`). Thread-safe. */
-class PlaceStore(file: File?) {
-  private val file = file?.let { JsonFile(it, SERIALIZER, durable = true) }
+/**
+ * The places this watch played to, per book (`places.json`). Thread-safe. Given a `DurableWriter`,
+ * the file is written there, each write queued under the lock that made its change.
+ */
+class PlaceStore(file: File?, writer: DurableWriter? = null) {
+  private val file = file?.let { JsonFile(it, SERIALIZER, durable = true, writer = writer) }
   private var places: Map<String, LocalPlace> = this.file?.read() ?: emptyMap()
 
   @Synchronized fun place(ref: BookRef): LocalPlace? = places[ref.key]

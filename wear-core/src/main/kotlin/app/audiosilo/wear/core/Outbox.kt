@@ -17,6 +17,8 @@
 // that can't be moved either stays in the way, unwritten, until a later save can (`stuck`).
 //
 // Thread-safe: the app's main thread and the SyncWorker may both call it; one flush runs at a time.
+// Given a `DurableWriter`, `outbox.json` is written there, in the order the changes were made (each
+// write is queued under the lock that made its change).
 package app.audiosilo.wear.core
 
 import java.io.File
@@ -51,10 +53,12 @@ class Outbox(
   private val directory: File?,
   private val acks: AckStore,
   private val deviceId: String,
+  /** Where `outbox.json`'s writes run (null: on the caller's thread). */
+  writer: DurableWriter? = null,
   private val clock: () -> Instant = Instant::now,
 ) {
   private val lock = Any()
-  private val eventsFile = directory?.let { JsonFile(File(it, "outbox.json"), EVENTS, durable = true) }
+  private val eventsFile = directory?.let { JsonFile(File(it, "outbox.json"), EVENTS, durable = true, writer = writer) }
   private val stateFile = directory?.let { JsonFile(File(it, "sync-state.json"), SyncState.serializer()) }
 
   /**
@@ -136,7 +140,7 @@ class Outbox(
     val events = older + (current ?: emptyList())
     if (joined.isEmpty() || stuck) return events
     // Gone only once they are safely in the outbox (a full disk: tried again next launch).
-    if (main.save(events)) joined.forEach { it.delete() }
+    if (main.save(events, wait = true)) joined.forEach { it.delete() }
     return events
   }
 
@@ -437,10 +441,11 @@ class Outbox(
 
     /**
      * Store what waits: nothing waiting removes the file (one folder sync, not a synced `[]`); a
-     * missing file reads as an empty outbox at launch.
+     * missing file reads as an empty outbox at launch. `wait`: for the write's answer, not only
+     * its turn on the writer.
      */
-    private fun JsonFile<List<ListeningEvent>>.save(events: List<ListeningEvent>): Boolean =
-      write(events.ifEmpty { null })
+    private fun JsonFile<List<ListeningEvent>>.save(events: List<ListeningEvent>, wait: Boolean = false): Boolean =
+      if (wait) writeNow(events.ifEmpty { null }) else write(events.ifEmpty { null })
 
     private fun asideFiles(directory: File): List<File> =
       directory.listFiles { f -> f.name.startsWith(ASIDE_PREFIX) }?.toList() ?: emptyList()

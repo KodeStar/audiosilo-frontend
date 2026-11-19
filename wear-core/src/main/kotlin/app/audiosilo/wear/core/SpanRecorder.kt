@@ -582,11 +582,12 @@ class SpanRecorder(
 
 /**
  * The open span on disk (Files' `open-span.json`), what a kill leaves for the next launch to
- * recover, and the move recovered from one until a span takes it (`open-span-move.json`).
+ * recover, and the move recovered from one until a span takes it (`open-span-move.json`). Given a
+ * `DurableWriter`, both are written there (read only at launch, before any write).
  */
-class FileSpanStore(file: java.io.File, moveFile: java.io.File) : OpenSpanStore {
-  private val doc = JsonFile(file, OpenSpan.serializer(), durable = true)
-  private val moveDoc = JsonFile(moveFile, RecoveredMove.serializer(), durable = true)
+class FileSpanStore(file: java.io.File, moveFile: java.io.File, writer: DurableWriter? = null) : OpenSpanStore {
+  private val doc = JsonFile(file, OpenSpan.serializer(), durable = true, writer = writer)
+  private val moveDoc = JsonFile(moveFile, RecoveredMove.serializer(), durable = true, writer = writer)
 
   override fun load(): OpenSpan? = doc.read()
 

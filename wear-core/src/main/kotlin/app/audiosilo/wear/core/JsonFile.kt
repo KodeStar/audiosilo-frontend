@@ -6,7 +6,9 @@
 // rename and the folder after it, so a battery dying mid-write leaves the old file or the new
 // one, never an empty one. Only what holds listening is durable (the outbox, the open span and the
 // move recovered from one, the places); the rest is rebuilt from the server or the phone, so it
-// skips the sync (CONVENTIONS.md, the Wear OS app).
+// skips the sync (CONVENTIONS.md, the Wear OS app). Given a `DurableWriter`, a durable document's
+// writes leave the caller's thread (the main looper) for the writer's one thread, in the order
+// they were asked (fe#285).
 package app.audiosilo.wear.core
 
 import java.io.File
@@ -16,6 +18,9 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.util.UUID
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
+import java.util.concurrent.FutureTask
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 
@@ -32,11 +37,59 @@ sealed interface JsonLoad<out T> {
   data object Corrupt : JsonLoad<Nothing>
 }
 
+/**
+ * The durable files' writes off the caller's thread (fe#285): one thread runs them one at a time,
+ * in the order they were asked, across every file it is given. That order is what the listening
+ * relies on (an event kept before its span leaves its file, a place before the span's removal):
+ * a kill stops the writes at some point, and every point of that one sequence is a state the
+ * writes on the caller's thread passed through too. The values handed in are immutable, so the
+ * caller's memory copy goes on at once. Writes that fail are dropped, as the caller's ignored them.
+ */
+class DurableWriter(executor: Executor? = null) {
+  @Volatile private var thread: Thread? = null
+  private val executor: Executor =
+    executor
+      ?: Executors.newSingleThreadExecutor { r ->
+        Thread(r, "audiosilo-durable-writes").also {
+          it.isDaemon = true
+          thread = it
+        }
+      }
+
+  /** Run `op` after everything asked before it; returns at once. */
+  fun submit(op: () -> Unit) {
+    executor.execute {
+      try {
+        op()
+      } catch (_: Exception) {
+        // A write that failed: the next one of that file tries again, as on the caller's thread.
+      }
+    }
+  }
+
+  /** Run `op` after everything asked before it, and wait for its answer. */
+  fun <R> now(op: () -> R): R {
+    if (Thread.currentThread() === thread) return op()
+    val task = FutureTask(op)
+    executor.execute(task)
+    return try {
+      task.get()
+    } catch (e: java.util.concurrent.ExecutionException) {
+      throw e.cause ?: e
+    }
+  }
+
+  /** Wait until everything asked so far is on the disk (signing out: nothing of it lands later). */
+  fun drain() = now {}
+}
+
 class JsonFile<T>(
   val file: File,
   private val serializer: KSerializer<T>,
   /** Sync each write to the disk (see the header): for a file whose loss loses listening. */
   private val durable: Boolean = false,
+  /** Where a durable document's writes run (null: on the caller's thread). */
+  private val writer: DurableWriter? = null,
 ) {
   /** The stored value, null when there is none or it can't be read (`load` tells them apart). */
   fun read(): T? = (load() as? JsonLoad.Value)?.value
@@ -71,9 +124,19 @@ class JsonFile<T>(
 
   /**
    * Store `value` (null removes the file). False when it could not be stored (a full disk: the
-   * memory copy goes on; the next write tries again).
+   * memory copy goes on; the next write tries again). With a `writer` it is queued there and true
+   * means asked, not done (`writeNow` waits for the answer).
    */
   fun write(value: T?): Boolean {
+    val w = writer ?: return store(value)
+    w.submit { store(value) }
+    return true
+  }
+
+  /** `write`, waiting for its turn on the `writer` (after every write asked before it) and its answer. */
+  fun writeNow(value: T?): Boolean = writer?.now { store(value) } ?: store(value)
+
+  private fun store(value: T?): Boolean {
     if (value == null) {
       // Durable: the removal reaches the disk too, or a power cut could bring back what was closed.
       val removed = file.delete()
