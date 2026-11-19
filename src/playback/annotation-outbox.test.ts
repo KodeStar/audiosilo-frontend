@@ -243,6 +243,18 @@ describe('adding', () => {
     expect(await queuedBookmarks()).toEqual([]);
   });
 
+  it("does not hold a bookmark behind another book's still waiting", async () => {
+    const { client, held, state } = server('c1', offline());
+    await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+    state.down = null;
+    client.bookmarks.mockClear();
+    // Another book's goes straight to the server, as with nothing waiting.
+    expect(await addBookmarkOrQueue('c1', 1, 'b/book', 200)).toHaveProperty('made');
+    expect(client.bookmarks).not.toHaveBeenCalled();
+    expect(held.map((b) => b.position)).toEqual([200]);
+    expect((await queuedBookmarks()).map((e) => e.position)).toEqual([100]);
+  });
+
   it("does not hold one connection's bookmark behind another's", async () => {
     server('c1', offline());
     const two = server('c2');
@@ -307,7 +319,7 @@ describe('sending', () => {
     expect(held.map((b) => b.position)).toEqual([100, 200]);
   });
 
-  it('stops at the first that fails and keeps it and those behind it', async () => {
+  it("stops at a failure that is the connection's and keeps it and those behind it", async () => {
     const { client, held, state } = server('c1', offline());
     await addBookmarkOrQueue('c1', 1, 'a/book', 100);
     await addBookmarkOrQueue('c1', 1, 'a/book', 200);
@@ -334,6 +346,139 @@ describe('sending', () => {
     await flushBookmarks();
     expect(held.map((b) => b.position)).toEqual([200]);
     expect(await queuedBookmarks()).toEqual([]);
+  });
+
+  it.each([
+    ['a 500', new ApiError(500, 'boom')],
+    ['a 503', new ApiError(503, 'busy')],
+  ])(
+    "sends the other books' past one that fails with %s, and holds back the rest of its book",
+    async (_name, err) => {
+      const { client, held, state } = server('c1', offline());
+      await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+      await addBookmarkOrQueue('c1', 1, 'b/book', 200);
+      await addBookmarkOrQueue('c1', 1, 'a/book', 300);
+      await addBookmarkOrQueue('c1', 1, 'c/book', 400);
+      await idle();
+      state.down = null;
+      client.addBookmark.mockClear();
+      // The first of a/book keeps failing.
+      const send = client.addBookmark.getMockImplementation();
+      client.addBookmark.mockImplementation((...args: unknown[]) =>
+        args[2] === 100 ? Promise.reject(err) : send?.(...args),
+      );
+      await flushBookmarks();
+      expect(held.map((b) => b.position)).toEqual([200, 400]);
+      // a/book's second waits behind its first: never sent ahead of it.
+      expect((await queuedBookmarks()).map((e) => e.position)).toEqual([100, 300]);
+      await flushBookmarks();
+      expect(held.map((b) => b.position)).toEqual([200, 400]);
+      client.addBookmark.mockImplementation(send);
+      await flushBookmarks();
+      expect(held.map((b) => b.position)).toEqual([200, 400, 100, 300]);
+      expect(await queuedBookmarks()).toEqual([]);
+    },
+  );
+
+  it("sends the other books' past one whose read fails", async () => {
+    const { client, held, state } = server('c1', offline());
+    await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+    await addBookmarkOrQueue('c1', 1, 'b/book', 200);
+    await idle();
+    state.down = null;
+    const read = client.bookmarks.getMockImplementation();
+    client.bookmarks.mockImplementation((...args: unknown[]) =>
+      args[1] === 'a/book' ? Promise.reject(new ApiError(404, 'not found')) : read?.(...args),
+    );
+    await flushBookmarks();
+    expect(held.map((b) => b.position)).toEqual([200]);
+    expect((await queuedBookmarks()).map((e) => e.position)).toEqual([100]);
+  });
+
+  describe('giving up', () => {
+    const DAY = 24 * 60 * 60_000;
+    let warn: jest.SpyInstance;
+    beforeEach(() => {
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick', 'queueMicrotask'] });
+      warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => {
+      warn.mockRestore();
+      jest.useRealTimers();
+    });
+
+    /** Two bookmarks of one book and one of another, waiting for a server that is back. */
+    async function waiting() {
+      const s = server('c1', offline());
+      mockOnline.c1 = false;
+      await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+      await addBookmarkOrQueue('c1', 1, 'a/book', 200);
+      await addBookmarkOrQueue('c1', 1, 'b/book', 300);
+      mockOnline.c1 = true;
+      s.state.down = null;
+      return s;
+    }
+    const positions = async () => (await queuedBookmarks()).map((e) => e.position);
+
+    it('drops one still failing a week after its first failure, said in the log', async () => {
+      const { client, held } = await waiting();
+      const send = client.addBookmark.getMockImplementation();
+      client.addBookmark.mockImplementation((...args: unknown[]) =>
+        args[2] === 100 ? Promise.reject(new ApiError(500, 'boom')) : send?.(...args),
+      );
+      // Its first failure: kept, as on every try of the week after it.
+      await flushBookmarks();
+      expect(await positions()).toEqual([100, 200]);
+      jest.setSystemTime(Date.now() + 6 * DAY);
+      await flushBookmarks();
+      expect(await positions()).toEqual([100, 200]);
+      expect(warn).not.toHaveBeenCalled();
+      // A week on: given up, and the one behind it (which never failed itself) goes.
+      jest.setSystemTime(Date.now() + 2 * DAY);
+      await flushBookmarks();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(await positions()).toEqual([]);
+      expect(held.map((b) => b.position)).toEqual([300, 200]);
+    });
+
+    it("drops a book's bookmarks whose read has failed for a week", async () => {
+      const { client, held } = await waiting();
+      const read = client.bookmarks.getMockImplementation();
+      client.bookmarks.mockImplementation((...args: unknown[]) =>
+        args[1] === 'a/book' ? Promise.reject(new ApiError(404, 'not found')) : read?.(...args),
+      );
+      await flushBookmarks();
+      jest.setSystemTime(Date.now() + 6 * DAY);
+      await flushBookmarks();
+      expect(await positions()).toEqual([100, 200]);
+      expect(warn).not.toHaveBeenCalled();
+      client.bookmarks.mockClear();
+      jest.setSystemTime(Date.now() + 2 * DAY);
+      await flushBookmarks();
+      expect(warn).toHaveBeenCalledTimes(2);
+      expect(await positions()).toEqual([]);
+      // One read of the book told both.
+      expect(client.bookmarks).toHaveBeenCalledTimes(1);
+      expect(held.map((b) => b.position)).toEqual([300]);
+    });
+
+    it.each([
+      ['is away (a gateway 502)', new ApiError(502, 'bad gateway')],
+      ['is busy (a 503)', new ApiError(503, 'busy')],
+      ['gives no answer', offline()],
+      ['refuses the token (a 401)', new ApiError(401, 'unauthorized')],
+    ])('never gives up while the server %s', async (_name, err) => {
+      const { state, held } = await waiting();
+      state.down = err;
+      await flushBookmarks();
+      jest.setSystemTime(Date.now() + 30 * DAY);
+      await flushBookmarks();
+      expect(await positions()).toEqual([100, 200, 300]);
+      expect(warn).not.toHaveBeenCalled();
+      state.down = null;
+      await flushBookmarks();
+      expect(held.map((b) => b.position).sort()).toEqual([100, 200, 300]);
+    });
   });
 
   it.each([

@@ -1697,10 +1697,10 @@ per-book list (the client still reads an older server's `null` as none).
 
 **Bookmarks made offline wait on the device (fe#356).** The one-tap bookmark (`addBookmarkHere`)
 and the sleep timer's "Fell asleep" go through `addBookmarkOrQueue`
-(`src/playback/annotation-outbox.ts`): straight to the server when nothing waits for it and it
-reads as reachable, else (or after no answer, a 5xx, 408, 429 or 401) into
-`audiosilo.annotationOutbox`, oldest first per connection, a new one always behind those
-waiting. A refusal for good (any other 4xx) or a write storage refuses is still the caller's
+(`src/playback/annotation-outbox.ts`): straight to the server when none of its book waits and
+the server reads as reachable, else (or after no answer, a 5xx, 408, 429 or 401) into
+`audiosilo.annotationOutbox`, oldest first within a book, a new one always behind its book's
+waiting ones. A refusal for good (any other 4xx) or a write storage refuses is still the caller's
 error ("Couldn't add the bookmark"). The outbox is sent at launch and on reconnect
 (`startBookmarkSync`, a root service; also once a connection a 401 flagged is signed in
 again, with no backoff meanwhile), with the stored queues in the foreground and on the
@@ -1709,7 +1709,13 @@ while a reachable server keeps failing, through `replayQueue` routed by `queuedR
 so two tabs never send one twice). The POST has no idempotency key, so a replay reads the book's
 bookmarks first and takes one at the same second with the same note, made at most a day before,
 as already sent; when that read fails, whatever the status (a 403 or 404 too), the bookmarks
-wait, and only the POST's own refusal for good drops one. A labelled one (Fell asleep) is sent only once its server's flags are known
+wait, and only the POST's own refusal for good drops one. Order holds within a book only: a
+bookmark that can't be sent yet holds back the rest of its book for that replay and the other
+books' go past it, so one that keeps failing never blocks the connection's queue; a replay stops
+only at a failure that is the connection's (no answer, a gateway's 502/504/52x, a 401). One still
+failing 7 days after its first failure against a server that answered (`failedSince`,
+`GIVE_UP_MS`) is dropped with a log line, never on its first failure; a 503 or 429, a server
+that is away and a 401 do not count. A labelled one (Fell asleep) is sent only once its server's flags are known
 (`labelFlagKnown` reads `/server` when they are not) and waits, label and all, while that read
 fails: here "not known yet" never sends it bare. Signing out or removing a server gives it a last send in
 `flushConnectionSaves` (`sendBookmarksBeforeRemoval`) and the removal purges what is left,
