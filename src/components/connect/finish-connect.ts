@@ -12,7 +12,12 @@ import { connectionIdOf, priorConnection } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
 import { bookHref, type ConnectBook } from '@/lib/paths';
 import { popTabToRoot } from '@/lib/root-stack';
-import { type ProxyHeaders, proxyOriginChoices, sameProxyHeaders } from '@/lib/proxy-headers';
+import {
+  mayReplaceProxySet,
+  type ProxyHeaders,
+  proxyOriginChoices,
+  sameProxyHeaders,
+} from '@/lib/proxy-headers';
 import { mergeAddresses } from '@/lib/server-address';
 import {
   activeProfile,
@@ -64,7 +69,7 @@ export function readyHref(connectionId: string) {
  * a demo or a kid's account (`setSession` decides, `mayReplaceProxySet`). A kid's account in
  * that place has the kept set probed first (`keptSetRefused`): one the proxy refuses leaves
  * the kid on the typed set for this sign-in, and kids mode and the shell ask a grown-up to
- * update the address's set (`useOnOwnProxySet`).
+ * update the address's set (`useProxyNotice`).
  */
 export async function finishConnect(input: {
   serverUrl: string;
@@ -163,8 +168,9 @@ export async function finishConnect(input: {
     typed && (gotIn || proxyOriginChoices(plan, input.serverUrl).includes(typed.origin))
       ? typed
       : undefined;
-  // A kid's set that got in where another set is kept: the kept one is asked of the proxy
-  // first, so a stale one does not leave the kid on headers the proxy turns away.
+  // A kid's set that got in where another set is kept and is not the kid's to replace: the
+  // kept one is asked of the proxy first, so a stale one does not leave the kid on headers
+  // the proxy turns away. Where it may replace it, the answer would change nothing.
   const kept = proxyHeaders ? proxySets[proxyHeaders.origin] : undefined;
   const keptRefused =
     proxyHeaders &&
@@ -172,6 +178,12 @@ export async function finishConnect(input: {
     gotIn &&
     isKidAccount(input.session.user) &&
     !sameProxyHeaders(kept, proxyHeaders) &&
+    !mayReplaceProxySet(
+      input.session.user,
+      pickId,
+      proxyHeaders.origin,
+      connections.filter((c) => !retire.includes(c.id)),
+    ) &&
     (await keptSetRefused(kept))
       ? kept
       : undefined;
