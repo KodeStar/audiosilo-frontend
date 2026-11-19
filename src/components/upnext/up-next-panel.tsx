@@ -79,7 +79,6 @@ export function UpNextPanel({
   const { actions } = data;
   const playNow = usePlayNow(cid);
   const { entries } = data;
-  // Under an id the identity migration moved it from too (`sameConnection`).
   const loaded = nowPlaying && sameConnection(nowPlaying.connectionId, cid) ? nowPlaying : null;
   // Its sign-in ended: the sign-in state in place of the load error and its Retry (#124).
   const signedOut = useSignedOutConnection(cid);

@@ -244,7 +244,6 @@ function addressToFollow(np: NowPlaying): string | null {
   if (follow?.nowPlaying === np && follow.connections === connections && follow.picks === picks)
     return follow.moveTo;
   const base = np.queue.tracks[0] ? streamBase(np.queue.tracks[0].url) : null; // null: downloaded
-  // Under an id the identity migration moved it from too (`sameConnection`).
   const conn = base ? connections.find((c) => sameConnection(c.id, np.connectionId)) : undefined;
   const url = conn ? effectiveUrl(conn) : null;
   const moveTo = base && url && !sameUrl(base, url) ? url : null;

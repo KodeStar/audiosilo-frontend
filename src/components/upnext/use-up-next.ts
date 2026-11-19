@@ -84,7 +84,6 @@ export function useUpNextData(cid: string | undefined) {
   const actions = useQueueActions(cid);
   const { add, remove, fail } = actions;
   const nowPlaying = usePlayer((s) => s.nowPlaying);
-  // Under an id the identity migration moved it from too (`sameConnection`).
   const loaded =
     nowPlaying && cid !== undefined && sameConnection(nowPlaying.connectionId, cid)
       ? nowPlaying

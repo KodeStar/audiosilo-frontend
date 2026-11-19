@@ -24,7 +24,6 @@ import { CoverBackdrop } from '@/components/player/cover-backdrop';
 import { Button } from '@/components/ui/button';
 import { useBehindModalProps } from '@/components/ui/modal-layer';
 import { Text } from '@/components/ui/text';
-import { sameConnection } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { formatDuration, formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
@@ -201,11 +200,7 @@ function EndCreditsBody({
     // unfinished, keeps its download and stays on Up next.
     const player = usePlayer.getState();
     const np = player.nowPlaying;
-    const loaded =
-      !!np &&
-      sameConnection(np.connectionId, cid) &&
-      np.libraryId === libraryId &&
-      np.path === path;
+    const loaded = selectIsLoaded(target)(player);
     // Never by its place when its queue ends short of the book (a partial download, D3,
     // fe#185): that end is the downloaded part's, and Play now must not finish the book.
     const over =
@@ -238,7 +233,7 @@ function EndCreditsBody({
         setCancelled(true);
         playFailedToast(failure, t('upnext.playFailed', { title: next.title }));
       });
-  }, [next, cid, libraryId, path, ended, t]);
+  }, [next, cid, libraryId, path, target, ended, t]);
 
   // Opened by the book's end (or "Mark as finished"): it is no longer up next. Once.
   const dropped = useRef(false);

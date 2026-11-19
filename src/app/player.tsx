@@ -144,12 +144,7 @@ export default function PlayerScreen() {
     // nowPlaying.path, which can differ from the decoded route param. Using the
     // route param here made the guard never match for some paths, re-invoking
     // playBook every render (hammering getProgress + restarting playback).
-    if (
-      nowPlaying &&
-      sameConnection(nowPlaying.connectionId, cid) &&
-      nowPlaying.libraryId === libraryId &&
-      nowPlaying?.path === book.rel_path
-    ) {
+    if (routePlaying) {
       startedKeyRef.current = key; // this target is handled; don't auto-start it again
       if (jumpedKeyRef.current === jumpKey) return; // this jump is already done
       jumpedKeyRef.current = jumpKey;
@@ -198,6 +193,7 @@ export default function PlayerScreen() {
     position,
     track,
     nowPlaying,
+    routePlaying,
     seekBook,
     goToTrack,
     gated,

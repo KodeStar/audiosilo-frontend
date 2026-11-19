@@ -125,8 +125,8 @@ export function parseDragPayload(raw: string | null | undefined): BookDragPayloa
   return null;
 }
 
-/** Whether a dragged book can go on the queue shown: only one of the same server (under an
- * id the identity migration moved it from too, `sameConnection`: the loaded book's card). */
+/** Whether a dragged book can go on the queue shown: only one of the same connection
+ * (`sameConnection`: the loaded book's card may name the id it was renamed from). */
 export function canDrop(payload: BookDragPayload, queueConnection: string) {
   return sameConnection(payload.connectionId, queueConnection)
     ? ('ok' as const)
