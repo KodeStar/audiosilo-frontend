@@ -6,12 +6,9 @@ package app.audiosilo.wear.core
 
 import java.io.File
 import java.time.Instant
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 
@@ -193,25 +190,22 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
 
   val records: StateFlow<List<DownloadRecord>> = flow.asStateFlow()
 
-  /**
-   * The books as `watch-state` reports them, each time that changes: a stage moving (queued,
-   * preparing, downloading, ready, failed) is news, from whichever thread changed it; bytes landing
-   * or a row's message are not.
-   */
-  val stages: Flow<List<WatchStateBook>> = flow.map { rs -> rs.map { it.stateBook() } }.distinctUntilChanged()
-
   /** False when the last write failed (a full disk): `records` would not survive a kill. */
   @Volatile
   var saved: Boolean = true
     private set
 
+  /** What `watch-state` was last told of the books: each one's stage, and `saved`. */
+  private var told: Pair<List<WatchStateBook>, Boolean> = flow.value.map { it.stateBook() } to saved
+
   private val newsFlow = MutableStateFlow(0)
 
   /**
    * Bumped once a change moves what `watch-state` is made of, after both parts are set: a stage
-   * (`stages`), or `saved` flipping (fe#285), which settles the phone's held books or keeps them
-   * with no stage moving (a full disk filling up while bytes land, or space coming back), so the
-   * phone hears of it then, not when the book's run ends.
+   * moving (queued, preparing, downloading, ready, failed; not bytes landing or a row's message),
+   * from whichever thread moved it, or `saved` flipping (fe#285), which settles the phone's held
+   * books or keeps them with no stage moving (a full disk filling up while bytes land, or space
+   * coming back), so the phone hears of it then, not when the book's run ends.
    */
   val news: StateFlow<Int> = newsFlow.asStateFlow()
 
@@ -272,14 +266,13 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
       r
     }
 
-  /** Forget every record (the account was left), then remove their files (`files`) under the lock. Returns what they were. */
-  fun removeAll(files: (List<DownloadRecord>) -> Unit = {}): List<DownloadRecord> =
+  /** Forget every record (the account was left), then remove their files (`files`) under the lock. */
+  fun removeAll(files: () -> Unit = {}) {
     synchronized(lock) {
-      val all = flow.value
       commit(emptyList())
-      files(all)
-      all
+      files()
     }
+  }
 
   /**
    * Run `block` under the index's lock while `record`'s book is still here in that same folder
@@ -326,12 +319,15 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
   private fun commit(next: List<DownloadRecord>) {
     // Never over an index still in the way: aside now if it moves, else these stay in memory alone.
     if (inTheWay) inTheWay = file?.setAside(ASIDE_PREFIX) == false
-    val before = flow.value.map { it.stateBook() } to saved
-    // Saved before the flow moves: a `stages` collector reads `saved`, and it can run inside the
+    // Saved before the flow moves: a `news` collector reads `saved`, and it can run inside the
     // assignment below (on the main thread) or while a worker's write is still on.
     saved = if (inTheWay) false else file?.write(next.ifEmpty { null }) ?: true
     flow.value = next
-    if ((next.map { it.stateBook() } to saved) != before) newsFlow.value += 1
+    val now = next.map { it.stateBook() } to saved
+    if (now != told) {
+      told = now
+      newsFlow.value += 1
+    }
   }
 
   private companion object {

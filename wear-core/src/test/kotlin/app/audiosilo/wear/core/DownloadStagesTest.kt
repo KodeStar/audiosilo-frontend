@@ -52,7 +52,7 @@ class DownloadStagesTest {
   fun theIndexSaysEachStageAndNothingElse() = runTest {
     val index = DownloadIndex(null)
     val seen = ArrayList<List<WatchStateBook>>()
-    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { index.stages.collect { seen += it } }
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { index.news.collect { seen += index.records.value.map { it.stateBook() } } }
 
     index.enqueue(REF, "Book", null, QUEUED_AT)
     index.update(REF) { it.copy(state = WatchStateBook.State.PREPARING) }
@@ -84,7 +84,7 @@ class DownloadStagesTest {
     val blocker = File.createTempFile("blocker", null).apply { deleteOnExit() }
     val index = DownloadIndex(File(blocker, "downloads.json"))
     val seen = ArrayList<Boolean>()
-    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { index.stages.collect { if (it.isNotEmpty()) seen += index.saved } }
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { index.news.collect { if (index.records.value.isNotEmpty()) seen += index.saved } }
 
     index.enqueue(REF, "Book", null, QUEUED_AT)
 
