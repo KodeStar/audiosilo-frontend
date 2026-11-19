@@ -1,6 +1,7 @@
 import {
   type BookRef,
   INITIAL_SNAPSHOT,
+  type PlaybackChapter,
   type PlaybackService,
   type PlaybackSnapshot,
   type PlaybackTrack,
@@ -105,7 +106,11 @@ function fakeCast() {
     detach: jest.Mock;
     refresh: jest.Mock;
     loadedBook: () => BookRef | null;
-    loadedQueue: () => { tracks: PlaybackTrack[]; book: BookRef } | null;
+    loadedQueue: () => {
+      tracks: PlaybackTrack[];
+      chapters?: PlaybackChapter[];
+      book: BookRef;
+    } | null;
   };
   engine.detach = jest.fn();
   engine.refresh = jest.fn(async () => {});
@@ -118,7 +123,11 @@ function fakeCast() {
     const lastReset = Math.max(0, ...reset.mock.invocationCallOrder);
     if (load.mock.invocationCallOrder[last] < lastReset) return null;
     const args = load.mock.calls[last] as unknown[];
-    return { tracks: args[0] as PlaybackTrack[], book: args[4] as BookRef };
+    return {
+      tracks: args[0] as PlaybackTrack[],
+      chapters: args[3] as PlaybackChapter[] | undefined,
+      book: args[4] as BookRef,
+    };
   };
   engine.loadedBook = () => engine.loadedQueue()?.book ?? null;
   return engine;
@@ -848,7 +857,8 @@ describe('RoutedPlaybackService: a book started while the route is changing', ()
     const named: (BookRef | null)[] = [];
     t.router.subscribe(() => named.push(t.router.reportedBook()));
     await t.router.endCast();
-    expect(t.local.load).toHaveBeenLastCalledWith(TRACKS, 1, 400, undefined, BOOK);
+    // With the chapters it went over with (Android builds the engine's items from them).
+    expect(t.local.load).toHaveBeenLastCalledWith(TRACKS, 1, 400, [], BOOK);
     expect(named[0]).toEqual(BOOK);
     expect(t.seen.at(-1)).toMatchObject({ state: 'paused', trackIndex: 1, position: 400 });
     expect(told).toEqual([]);

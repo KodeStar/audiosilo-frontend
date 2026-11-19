@@ -98,6 +98,9 @@ type Intent = {
  * jump to another file can reload it, and a status can be mapped back. */
 type Loaded = {
   tracks: PlaybackTrack[];
+  /** The book's chapters as `load` was given them: a session that ends hands them back with
+   * the queue (`loadedQueue`). None for a queue adopted (`adoptQueue`). */
+  chapters?: PlaybackChapter[];
   book: BookRef;
   items: CastItem[];
   /** The URLs sent, by track index (a transcoded item's `&t=` included). */
@@ -333,7 +336,7 @@ export class CastPlaybackService implements PlaybackService {
     tracks: PlaybackTrack[],
     startIndex: number,
     positionInTrack: number,
-    _chapters?: PlaybackChapter[],
+    chapters?: PlaybackChapter[],
     book?: BookRef,
   ) {
     if (!book) throw new Error('A cast needs the book it is loading');
@@ -349,6 +352,7 @@ export class CastPlaybackService implements PlaybackService {
       // A newer load (or a reset) came while this one prepared (its cast token can take a
       // round trip a cached one doesn't): it owns the receiver, this one stands back.
       if (seq !== this.loadSeq) return;
+      loaded.chapters = chapters;
       this.loaded = loaded;
       const ready = () =>
         this.update({
@@ -516,10 +520,12 @@ export class CastPlaybackService implements PlaybackService {
     return this.loaded?.book ?? null;
   }
 
-  /** The queue of the book this service gave the receiver (`loadedBook`), else null: the book
-   * a session that ends hands back to the phone (`RoutedPlaybackService.endCast`). */
-  loadedQueue(): { tracks: PlaybackTrack[]; book: BookRef } | null {
-    return this.loaded ? { tracks: this.loaded.tracks, book: this.loaded.book } : null;
+  /** The queue of the book this service gave the receiver (`loadedBook`), with its chapters,
+   * else null: the book a session that ends hands back to the phone
+   * (`RoutedPlaybackService.endCast`). */
+  loadedQueue(): { tracks: PlaybackTrack[]; chapters?: PlaybackChapter[]; book: BookRef } | null {
+    const loaded = this.loaded;
+    return loaded ? { tracks: loaded.tracks, chapters: loaded.chapters, book: loaded.book } : null;
   }
 
   subscribe(listener: (s: PlaybackSnapshot) => void) {
@@ -931,6 +937,7 @@ export class CastPlaybackService implements PlaybackService {
         freshToken: true,
       }).catch(() => null);
       if (!fresh || seq !== this.loadSeq || this.loaded !== loaded) return false;
+      fresh.chapters = loaded.chapters;
       this.loaded = fresh;
       return true;
     } finally {
