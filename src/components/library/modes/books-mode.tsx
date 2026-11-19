@@ -7,6 +7,7 @@ import { View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { useAllProgressAll } from '@/api/hooks';
+import { useProxyNotice } from '@/api/proxy-refusal';
 import type { Book, Progress } from '@/api/types';
 import { OfflineState } from '@/components/layout/offline-state';
 import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
@@ -29,6 +30,7 @@ import { LABEL_KINDS } from '@/lib/labels';
 import { useLayout } from '@/lib/layout';
 import { offlineState } from '@/lib/offline-state';
 import { useRouteParams } from '@/lib/route-params';
+import { useSession } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
 
 import { AzRail } from '../books/az-rail';
@@ -119,6 +121,10 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
 
   const whole = useWholeLibrary(connectionId, libraryId);
   const signedOut = useSignedOutConnection(connectionId);
+  // A proxy in front of the server turning the device away: the load error says so, not that
+  // the server didn't answer (the shell's banner says what to do).
+  const proxyRefused = useProxyNotice(connectionId);
+  const serverName = useSession((s) => s.connections.find((c) => c.id === connectionId)?.name);
   // The one offline rule (`offlineState`): the list waits for the network or failed
   // without one (`offline`: no Retry can work), else it failed with one (`failed`).
   const unread = offlineState({
@@ -342,7 +348,11 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
       return (
         <LoadError
           title={t('library.books.error.title')}
-          hint={t('library.books.error.hint')}
+          hint={
+            proxyRefused
+              ? t('proxyHeaders.refusedRetry', { name: serverName })
+              : t('library.books.error.hint')
+          }
           retryLabel={t('common.retry')}
           onRetry={whole.retry}
         />
