@@ -44,16 +44,20 @@ function openTab(browser: ReturnType<typeof fakeBrowser>, gate: Gate = { wait: n
     profiles = require('@/stores/profiles') as Profiles;
     /* eslint-enable @typescript-eslint/no-require-imports */
   });
-  // The channel is the web's: made as on the web, the rest of the store as on the device
-  // the tests run as.
+  session.setTabsForTests({ channel: asWeb(() => tabChannel(REMOVAL_CHANNEL, env)), env });
+  return { ...session, profiles, env };
+}
+
+/** Run `fn` as on the web, where a tab channel is made; the rest of the store runs as on the
+ * device the tests run as. */
+function asWeb<T>(fn: () => T): T {
   const os = Platform.OS;
   Platform.OS = 'web';
   try {
-    session.setTabsForTests({ channel: tabChannel(REMOVAL_CHANNEL, env), env });
+    return fn();
   } finally {
     Platform.OS = os;
   }
-  return { ...session, profiles, env };
 }
 
 const mkUser = (id: number, name: string): User => ({
@@ -94,20 +98,14 @@ type WordsChannel = NonNullable<NonNullable<Parameters<Session['setTabsForTests'
 function holdWords(tab: Tab): () => void {
   let release!: () => void;
   const words = new Promise<void>((r) => (release = r));
-  const os = Platform.OS;
-  Platform.OS = 'web';
-  try {
-    const real = tabChannel(REMOVAL_CHANNEL, tab.env) as WordsChannel;
-    tab.setTabsForTests({
-      channel: {
-        post: real.post,
-        subscribe: (listener) => real.subscribe((m) => void words.then(() => listener(m))),
-      },
-      env: tab.env,
-    });
-  } finally {
-    Platform.OS = os;
-  }
+  const real = asWeb(() => tabChannel(REMOVAL_CHANNEL, tab.env)) as WordsChannel;
+  tab.setTabsForTests({
+    channel: {
+      post: real.post,
+      subscribe: (listener) => real.subscribe((m) => void words.then(() => listener(m))),
+    },
+    env: tab.env,
+  });
   return release;
 }
 
@@ -398,13 +396,7 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
   it('a retirement is never told as a removal', async () => {
     const { a, browser } = await twoTabsWithPeople();
     const heard: unknown[] = [];
-    const os = Platform.OS;
-    Platform.OS = 'web';
-    try {
-      tabChannel(REMOVAL_CHANNEL, browser.tab())?.subscribe((m) => void heard.push(m));
-    } finally {
-      Platform.OS = os;
-    }
+    asWeb(() => tabChannel(REMOVAL_CHANNEL, browser.tab()))?.subscribe((m) => void heard.push(m));
     const fresh = await retireInA(a);
     await settle();
     expect(heard).toEqual([{ retired: 'srv.1', replacedBy: fresh }]);

@@ -427,14 +427,10 @@ const connectionText = (c: Connection) =>
 
 /** Take what is stored (`read`) as this tab's list: its own default and reconnect flags kept
  * where they still apply. Nothing changes when the list is the one it holds. A connection
- * gone from it (its token deleted or the list written without it: removed, signed out or
- * retired in another tab) has this tab leave it at once (`leaveConnection`: the player
- * stops playing through it), the word on the channel or not: a tab held while the other
- * tab removed it hears the list before the word, and must not play on, or show the
- * playing book, through a connection it no longer holds. Not before the list changes:
- * the stop's saves would go out with the revoked token. The cleanups wait for the word
- * (`removedInOtherTab`): a retirement's word moves the person to the new connection
- * first. */
+ * the list drops is left at once (`leaveConnection`, the player's stop), the word on the
+ * channel or not, and only once the list has changed (the stop's saves must not go out with
+ * the revoked token); the cleanups wait for the word (`removedInOtherTab`). Why: CONVENTIONS.md
+ * (`followStored`). */
 function applyStored(read: StoredSignIns): void {
   knownList = read.list;
   const { connections: mine, defaultConnectionId, status } = useSession.getState();

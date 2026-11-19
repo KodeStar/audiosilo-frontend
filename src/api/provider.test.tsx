@@ -163,7 +163,6 @@ describe('ConnectionScope', () => {
     useSession.setState({ connections: [at('srv.1'), at('srv.2')] } as never);
     await render(scoped('srv.1'));
     await act(async () => useSession.setState({ connections: [at('srv.2')] } as never));
-    expect(screen.queryByText('https://srv.1')).toBeNull();
     expect(screen.toJSON()).toBeNull();
   });
 });
