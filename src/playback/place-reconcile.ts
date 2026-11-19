@@ -91,7 +91,10 @@ export const CHECK_TIMEOUT_MS = 5_000;
  * listening import, a `PUT` that named none: CROSS-REPO section 25; this device's own Mark as
  * not finished writes one): another device's only for a late place (`late`, `applyLatePlace`),
  * which stands in for the start's own resume lookup, where the newest record wins whoever
- * wrote it. Then it is moved to or offered as an unknown device's.
+ * wrote it. Then it is moved to as an unknown device's when it is newer than every record the
+ * start read (`placeToMoveTo`), and never offered (`offerOf`): the start's own lookup offers no
+ * such record either, and an older one is no place another device left (the listener's own
+ * Mark as not finished, an old import).
  */
 function byAnotherDevice(id: string | undefined, deviceId: string, late: boolean): boolean {
   return id ? id !== deviceId : late && deviceId !== '';
@@ -138,8 +141,8 @@ export function placeToMoveTo(input: {
  *     diverged) when it is another device's, more than `MOVE_THRESHOLD_S` from here, and not
  *     answered yet (`answered` holds the `device_id|updated_at` keys this device answered).
  * Answering either (Jump or Stay) acknowledges the row's version and notes the key, so it
- * is offered once. A place with no device id is offered only as a late place's (`late`,
- * `byAnotherDevice`).
+ * is offered once. A place with no device id is no device's and is never offered, a late
+ * place's neither (`byAnotherDevice`).
  */
 export type PlaceOffer = {
   position: number;
@@ -155,7 +158,6 @@ export function offerOf(
   ackVersion: number | undefined,
   enginePosition: number,
   answered: readonly string[] = [],
-  late = false,
 ): PlaceOffer | null {
   if (!row) return null;
   // A place of another device, far enough from here and not answered yet.
@@ -165,7 +167,7 @@ export function offerOf(
     device_name?: string;
     updated_at: string;
   }): PlaceOffer | null => {
-    if (!byAnotherDevice(p.device_id, deviceId, late)) return null;
+    if (!p.device_id || p.device_id === deviceId) return null;
     if (Math.abs(p.position - enginePosition) <= MOVE_THRESHOLD_S) return null;
     const key = placeKey(p);
     return answered.includes(key)
@@ -206,11 +208,7 @@ export async function offerLoadedPlace(
   row: Progress | null,
   deviceId: string,
   mirror: Pick<ProgressSave, 'ack_version' | 'answered'> | null,
-  {
-    held = false,
-    stayHeld = false,
-    late = false,
-  }: { held?: boolean; stayHeld?: boolean; late?: boolean } = {},
+  { held = false, stayHeld = false }: { held?: boolean; stayHeld?: boolean } = {},
 ): Promise<boolean> {
   const player = usePlayer.getState();
   const np = player.nowPlaying;
@@ -224,7 +222,6 @@ export async function offerLoadedPlace(
     held ? undefined : mirror?.ack_version,
     selectBookPosition(player),
     mirror?.answered,
-    late,
   );
   if (!offer || shownOffers.has(`${bookKey}|${offer.key}`)) return false;
   // The key is `device_id|updated_at`; an ISO time has no `|`.
@@ -469,8 +466,9 @@ async function decide(
   const from = selectBookPosition(now);
   const to = placeToMoveTo({ server, deviceId, mirror, enginePosition: from, late });
   if (to === null) {
-    // Sync v2: a place another device left that the server did not move to is offered.
-    await offerLoadedPlace(bookKey, server, deviceId, mirror, { late });
+    // Sync v2: a place another device left that the server did not move to is offered (never
+    // one with no device id, a late place's neither).
+    await offerLoadedPlace(bookKey, server, deviceId, mirror);
     return false;
   }
   // The row it moved to is the place this device has now seen (Sync v2's ack).

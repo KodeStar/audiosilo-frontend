@@ -2458,8 +2458,9 @@ media GETs only.
   then it saves the held place). It moves only when the record is from another `device_id`
   (a record with no device id, a progress edit, an import or a `PUT` that named none, is no
   device's: it counts only for a late place, `byAnotherDevice`, which stands in for the
-  start's own lookup, where the newest record wins; it is then moved to or offered as an
-  unknown device's, and weighed against any record the start read, a read one too),
+  start's own lookup, where the newest record wins; it is then moved to as an unknown
+  device's when it is newer than any record the start read, a read one too, and never
+  offered, an older one neither: `offerOf`),
   newer than this device's own last save in its mirror (a newer unsynced save here wins; a record
   it only read, which a downloaded book's page and its download keep there, does not), not
   finished, and more than 30 s away, and stands back if the listener moved meanwhile

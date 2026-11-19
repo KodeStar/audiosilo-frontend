@@ -853,15 +853,44 @@ describe('a downloaded book whose server answered only after it started', () => 
     );
   });
 
-  it('offers an older place with no device id on a listening_sync server, as an unknown device', async () => {
+  // An older row with no device id is no place another device left (the listener's own Mark
+  // as not finished, an old import): the start's own lookup never offers one, nor does a late
+  // answer, whatever the row carries (a version not acknowledged, an `other_place` of no
+  // device's).
+  it('neither moves to nor offers an older place with no device id on a listening_sync server', async () => {
     serverCaps({});
     try {
       const answer = await startedWithoutItsServer();
-      answer(record({ device_id: '', version: 4, updated_at: '2026-10-08T08:00:00Z' }));
+      answer(
+        record({
+          device_id: '',
+          version: 4,
+          updated_at: '2026-10-08T08:00:00Z',
+          other_place: {
+            position: 900,
+            device_id: '',
+            device_name: '',
+            updated_at: '2026-10-08T07:00:00Z',
+          },
+        }),
+      );
+      await settle();
+      expect(seeks()).toEqual([]);
+      expect(mockToast).not.toHaveBeenCalled();
+    } finally {
+      noServerCaps();
+    }
+  });
+
+  it('still offers an older place of another device on a listening_sync server', async () => {
+    serverCaps({});
+    try {
+      const answer = await startedWithoutItsServer();
+      answer(record({ version: 4, updated_at: '2026-10-08T08:00:00Z' }));
       await settle();
       expect(seeks()).toEqual([]);
       expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'On another device you were at 6:40. Jump there?' }),
+        expect.objectContaining({ title: expect.stringContaining('Jump there?') }),
       );
     } finally {
       noServerCaps();
@@ -1066,16 +1095,16 @@ describe('offerOf', () => {
     expect(offerOf(null, 'this-device', 3, 105)).toBeNull();
   });
 
-  it('offers a place with no device id only as a late place, as an unknown device', () => {
+  it('never offers a place with no device id, the kept row or its other place', () => {
     const noDevice = record({ device_id: '', version: 4 });
     expect(offerOf(noDevice, 'this-device', 3, 105)).toBeNull();
-    expect(offerOf(noDevice, 'this-device', 3, 105, [], true)).toEqual({
-      position: 400,
-      deviceName: '',
-      key: '|2026-10-08T10:00:00Z',
-    });
-    expect(offerOf(noDevice, '', 3, 105, [], true)).toBeNull();
-    expect(offerOf(noDevice, 'this-device', 3, 105, ['|2026-10-08T10:00:00Z'], true)).toBeNull();
+    const other = {
+      position: 900,
+      device_id: '',
+      device_name: '',
+      updated_at: noDevice.updated_at,
+    };
+    expect(offerOf({ ...noDevice, other_place: other }, 'this-device', 3, 105)).toBeNull();
   });
 });
 
