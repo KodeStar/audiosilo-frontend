@@ -400,6 +400,10 @@ describe('addBookmark', () => {
       showServerBookmark('srv', 2, 'A/Book', found);
       expect(queryClient.getQueryData(key)).toEqual([old, found]);
       expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: key });
+      // At its place by position, as the server lists them, not last.
+      const earlier = { id: 5, position: 4 } as Bookmark;
+      showServerBookmark('srv', 2, 'A/Book', earlier);
+      expect(queryClient.getQueryData(key)).toEqual([earlier, old, found]);
     } finally {
       queryClient.clear();
     }

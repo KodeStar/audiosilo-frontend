@@ -707,8 +707,10 @@ export async function addBookmark(
 /** A bookmark its server holds, just made (`addBookmark`) or found there by the bookmark
  * outbox (an add whose answer was lost), joins the book's cached list at once, once, then the
  * book's list and the across-books one are read again: a waiting row the outbox settles
- * meanwhile gives way to it with no gap. A list never read is left to its first read, and
- * no bookmark (an older server's answer) to the read again. */
+ * meanwhile gives way to it with no gap. It goes at its place in the list as the server
+ * orders it (by position), not last: one found there may be older than those after it. A list
+ * never read is left to its first read, and no bookmark (an older server's answer) to the read
+ * again. */
 export function showServerBookmark(
   connectionId: string,
   libraryId: number,
@@ -716,9 +718,11 @@ export function showServerBookmark(
   bookmark: Bookmark | undefined,
 ): void {
   if (bookmark) {
-    queryClient.setQueryData<Bookmark[]>(qk.bookmarks(connectionId, libraryId, path), (list) =>
-      list && !list.some((b) => b.id === bookmark.id) ? [...list, bookmark] : undefined,
-    );
+    queryClient.setQueryData<Bookmark[]>(qk.bookmarks(connectionId, libraryId, path), (list) => {
+      if (!list || list.some((b) => b.id === bookmark.id)) return undefined;
+      const at = list.findIndex((b) => b.position > bookmark.position);
+      return at < 0 ? [...list, bookmark] : [...list.slice(0, at), bookmark, ...list.slice(at)];
+    });
   }
   void refreshAfterAdd(queryClient, 'bookmarks', connectionId, libraryId, path);
 }
