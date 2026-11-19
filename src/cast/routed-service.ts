@@ -44,6 +44,11 @@ type Mode = 'local' | 'cast' | 'switching';
  * that place. A cast started while the book was playing plays on; the phone never plays
  * again by itself when a cast ends (the place comes back paused). Nothing the old side
  * emits during the switch reaches the store.
+ *
+ * The phone's engine can hold another book than the one the store loaded (Android: the car
+ * started one that was not adopted). Its snapshot is then that book's, so a session that
+ * begins hands the loaded book over at the place the store says it is (`onLoadedPlace`),
+ * paused, and the other book stops with the phone's engine.
  */
 export class RoutedPlaybackService implements PlaybackService {
   private mode: Mode = 'local';
@@ -68,6 +73,7 @@ export class RoutedPlaybackService implements PlaybackService {
   private ownLoad:
     ((trackIndex: number, positionInTrack: number, loaded: Promise<unknown>) => void) | null = null;
   private pauseAsked: (() => void) | null = null;
+  private loadedPlace: (() => PlaybackSnapshot | null) | null = null;
   /** Called when a book can't be cast (the session glue explains it and ends the session);
    * the router has already put the book back on the phone. */
   onCastFailed: ((err: unknown) => void) | null = null;
@@ -141,10 +147,22 @@ export class RoutedPlaybackService implements PlaybackService {
    * load the book on the receiver there at the same speed, and play it when the phone was
    * playing. A book that can't be cast stays on the phone (paused) and `onCastFailed` says
    * why; the route is then the phone again.
+   *
+   * While the phone's engine holds another book than the loaded one (`onLoadedPlace` answers),
+   * the place handed over is the loaded book's own, never the engine's (that other book's:
+   * the receiver would play the loaded book from it), and it goes over paused: the play heard
+   * was the other book's. That book stops with the phone's engine, also when the loaded book
+   * has no place to hand over (it ended).
    */
   async beginCast(cast: CastPlaybackService): Promise<void> {
     if (this.cast === cast) return;
     if (this.cast) await this.endCast();
+    // Asked while the phone is still the route: the store reads the phone's last report.
+    const own = this.loadedPlace?.() ?? null;
+    // The router's snapshot is the engine's last report, that other book's: the loaded book's
+    // place from here, so a session that ends mid-switch hands this one back (`handBack`),
+    // never the loaded book at the other book's place.
+    if (own) this.snapshot = own;
     const generation = ++this.generation;
     const current = () => generation === this.generation && this.cast === cast;
     this.mode = 'switching';
@@ -165,12 +183,19 @@ export class RoutedPlaybackService implements PlaybackService {
     const load = this.lastLoad;
     if (!load || at.state === 'idle' || at.state === 'ended') {
       this.mode = 'cast';
+      // Nothing to hand over, but the phone's engine holds that other book: it stops here too,
+      // or it played on out of the app's reach (a Pause goes to the receiver from now).
+      if (own) await this.local.reset().catch(() => undefined);
       return;
     }
-    const wasPlaying = at.state === 'playing' || at.state === 'loading';
+    const wasPlaying = !own && (at.state === 'playing' || at.state === 'loading');
     await this.local.pause().catch(() => undefined);
     if (!current()) return;
-    const place = { ...at, ...pick(this.local.getSnapshot()), state: 'paused' as const };
+    const place = {
+      ...at,
+      ...(own ? null : pick(this.local.getSnapshot())),
+      state: 'paused' as const,
+    };
     this.forward(place);
     await this.local.reset().catch(() => undefined);
     if (!current()) return;
@@ -431,12 +456,21 @@ export class RoutedPlaybackService implements PlaybackService {
   onPauseAsked(handler: (() => void) | null) {
     this.pauseAsked = handler;
   }
+  onLoadedPlace(handler: (() => PlaybackSnapshot | null) | null) {
+    this.loadedPlace = handler;
+  }
   adoptPlace(snapshot: PlaybackSnapshot) {
     this.snapshot = { ...snapshot };
     this.route().adoptPlace?.(snapshot);
   }
+  /** The phone's engine names its own reports' book. A receiver's reports are of the book
+   * loaded there (`load`, a handover, the queue the store remembered: `lastLoad`), so they name
+   * it, and the store never holds them as another book's (one the phone's engine held with no
+   * name, before the session began). None while a load is on its way there (`pending`: the
+   * receiver still reports the book before it), nor during a switch. */
   reportedBook() {
-    return this.mode === 'local' ? (this.local.reportedBook?.() ?? null) : null;
+    if (this.mode === 'local') return this.local.reportedBook?.() ?? null;
+    return this.mode === 'cast' && !this.pending ? (this.lastLoad?.book ?? null) : null;
   }
   getSnapshot() {
     return this.snapshot;

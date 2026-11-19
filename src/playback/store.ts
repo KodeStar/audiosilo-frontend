@@ -3932,6 +3932,15 @@ async function createService(): Promise<PlaybackService> {
     if (!np || loadingBook || loadedFaulted()) return;
     void engineTakes(askEngineTo(np, trackIndex, positionInTrack), loaded).catch(() => undefined);
   });
+  // A Cast session that begins while the engine holds another book than the store's (the
+  // car's, not adopted: `engineHoldsOtherBook`) hands the store's book over from the place it
+  // shows, at its own speed: the engine's place and speed are that other book's. Not while a
+  // load of the store's holds the engine (the book it replaces reports a moment late).
+  svc.onLoadedPlace?.(() => {
+    const { nowPlaying, snapshot, rate } = usePlayer.getState();
+    if (!nowPlaying || ownLoadHoldsEngine() || !engineHoldsOtherBook()) return null;
+    return { ...snapshot, rate };
+  });
   // Native (Android): the engine stopped wanting to play, so the watchdog's pause has reached
   // it: a `playing` from here is a new play (a car or headset play the engine did not tell
   // of), never a report from before the pause.

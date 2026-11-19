@@ -24,6 +24,9 @@ let rateChange: ((rate: number) => void) | null = null;
 /** The route switch's word of a load it made itself (`onOwnLoad`). */
 let ownLoad: ((trackIndex: number, position: number, loaded: Promise<unknown>) => void) | null =
   null;
+/** The route switch's ask for the loaded book's place as a Cast session begins
+ * (`onLoadedPlace`). */
+let loadedPlace: (() => PlaybackSnapshot | null) | null = null;
 /** The book the engine's last report named (`reportedBook`); null: it named none. */
 let engineBook: BookRef | null = null;
 const mockSvc = {
@@ -40,6 +43,9 @@ const mockSvc = {
   }),
   onOwnLoad: jest.fn((handler: typeof ownLoad) => {
     ownLoad = handler;
+  }),
+  onLoadedPlace: jest.fn((handler: typeof loadedPlace) => {
+    loadedPlace = handler;
   }),
   setup: jest.fn(async () => {}),
   configure: jest.fn(async () => {}),
@@ -2210,6 +2216,28 @@ describe('a play asked from outside of another book after playback stopped', () 
       trackIndex: 1,
       position: 31,
     });
+  });
+
+  // A Cast session that begins during that hold hands B over from B's own place, at B's
+  // speed (the route switch asks, `onLoadedPlace`): the engine's place is S's.
+  it("gives the route switch the store's book's place during that hold, none without one", async () => {
+    await usePlayer.getState().adoptLoaded(loadedB({ playing: false }));
+    expect(loadedPlace?.()).toBeNull();
+    const read = await askedForS(undefined, async () => null);
+    expect(await read()).toBe(false);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    pushSnapshot(snap('playing', 0, 81));
+    expect(loadedPlace?.()).toMatchObject({
+      state: 'paused',
+      trackIndex: 1,
+      position: 30,
+      rate: 1.5,
+    });
+    // The receiver's reports name B (the route switch's word): the hold is over.
+    engineBook = { connectionId: 'c1', libraryId: 2, path: 'B' };
+    pushSnapshot(snap('paused', 1, 30));
+    expect(loadedPlace?.()).toBeNull();
   });
 
   // An adoption that began after the store's own start asked for its load (so not marked

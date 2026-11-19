@@ -246,13 +246,131 @@ describe('RoutedPlaybackService', () => {
     expect(stopped).toHaveBeenCalledTimes(1);
   });
 
-  it("names the phone engine's reported book, never while casting", async () => {
+  it("names the phone engine's reported book, and the receiver's own while casting", async () => {
     const book = { connectionId: 'c1', libraryId: 2, path: 'A' };
     const t = setup({ reportedBook: () => book });
     await playingLocally(t);
     expect(t.router.reportedBook()).toEqual(book);
-    await t.router.beginCast(fakeCast() as unknown as CastPlaybackService);
+    // On the receiver: the book handed over, never the phone engine's last word.
+    const cast = fakeCast();
+    await t.router.beginCast(cast as unknown as CastPlaybackService);
+    expect(t.router.reportedBook()).toEqual(BOOK);
+    // None while another book is on its way there: the receiver still reports the old one.
+    const next = { connectionId: 'srv.3', libraryId: 2, path: 'A/C' };
+    let land!: () => void;
+    (cast.load as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          land = resolve;
+        }),
+    );
+    const loading = t.router.load(TRACKS, 0, 0, [], next);
     expect(t.router.reportedBook()).toBeNull();
+    land();
+    await loading;
+    expect(t.router.reportedBook()).toEqual(next);
+    // Nor once nothing is loaded.
+    await t.router.reset();
+    expect(t.router.reportedBook()).toBeNull();
+    await t.router.endCast();
+    expect(t.router.reportedBook()).toEqual(book);
+  });
+
+  // FE-ANDROID-5: the phone's engine held another book than the loaded one (the car's, not
+  // adopted), so the router's snapshot was that book's place and play state: the receiver
+  // played the loaded book from the other book's place.
+  it("hands the loaded book over at the store's place while the phone holds another book", async () => {
+    const t = setup();
+    await t.router.load(TRACKS, 1, 100, [], BOOK);
+    // The car's book plays in the phone's engine: its reports are the router's snapshot.
+    t.local.emit({ state: 'playing', trackIndex: 0, position: 80, rate: 1 });
+    t.router.onLoadedPlace(() => ({
+      state: 'paused',
+      trackIndex: 1,
+      position: 130,
+      duration: 600,
+      rate: 1.5,
+    }));
+    const cast = fakeCast();
+    await t.router.beginCast(cast as unknown as CastPlaybackService);
+    expect(t.local.calls).toEqual(expect.arrayContaining(['local.pause', 'local.reset']));
+    expect(cast.calls).toEqual(['cast.load(1,130)', 'cast.setRate(1.5)']);
+    expect(t.seen.find((s) => s.state === 'paused')).toMatchObject({
+      trackIndex: 1,
+      position: 130,
+      rate: 1.5,
+    });
+    expect(t.router.reportedBook()).toEqual(BOOK);
+  });
+
+  // The session ended while the phone was being paused for it: the hand-back read the
+  // router's snapshot, still the car's book's, and loaded the store's book there.
+  it("hands the store's place back when the session ends mid-switch, never the other book's", async () => {
+    let paused: () => void = () => {};
+    const t = setup({
+      pause: jest.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            paused = resolve;
+          }),
+      ),
+    });
+    await t.router.load(TRACKS, 1, 100, [], BOOK);
+    t.local.emit({ state: 'playing', trackIndex: 0, position: 80, rate: 1 });
+    t.router.onLoadedPlace(() => ({
+      state: 'paused',
+      trackIndex: 1,
+      position: 130,
+      duration: 600,
+      rate: 1.5,
+    }));
+    const cast = fakeCast();
+    const began = t.router.beginCast(cast as unknown as CastPlaybackService);
+    const ended = t.router.endCast();
+    paused();
+    await Promise.all([began, ended]);
+    expect(cast.calls).toEqual([]);
+    expect(t.local.calls.slice(-2)).toEqual(['local.load(1,130)', 'local.setRate(1.5)']);
+    expect(t.seen.filter((s) => s.state === 'paused').at(-1)).toMatchObject({
+      trackIndex: 1,
+      position: 130,
+    });
+    expect(t.router.castRoute()).toBeNull();
+  });
+
+  // The store's book ended, so nothing goes to the receiver: the car's book must not play on
+  // in the phone's engine with the receiver as the route.
+  it("stops the phone's other book when the loaded book has no place to hand over", async () => {
+    const t = setup();
+    await t.router.load(TRACKS, 1, 100, [], BOOK);
+    t.local.emit({ state: 'playing', trackIndex: 0, position: 80, rate: 1 });
+    t.router.onLoadedPlace(() => ({
+      state: 'ended',
+      trackIndex: 1,
+      position: 600,
+      duration: 600,
+      rate: 1,
+    }));
+    const cast = fakeCast();
+    await t.router.beginCast(cast as unknown as CastPlaybackService);
+    expect(cast.calls).toEqual([]);
+    expect(t.local.calls.at(-1)).toBe('local.reset');
+    expect(t.router.castRoute()).not.toBeNull();
+    // Without another book in the phone's engine, an ended book's engine is left as it is.
+    const u = setup();
+    await u.router.load(TRACKS, 1, 100, [], BOOK);
+    u.local.emit({ state: 'ended' });
+    await u.router.beginCast(fakeCast() as unknown as CastPlaybackService);
+    expect(u.local.calls).not.toContain('local.reset');
+  });
+
+  it("hands over at the phone's own place when the store says nothing of another book", async () => {
+    const t = setup();
+    await playingLocally(t);
+    t.router.onLoadedPlace(() => null);
+    const cast = fakeCast();
+    await t.router.beginCast(cast as unknown as CastPlaybackService);
+    expect(cast.calls).toEqual(['cast.load(1,120)', 'cast.setRate(1.5)', 'cast.play']);
   });
 
   it('loads a new book on the receiver while casting', async () => {
