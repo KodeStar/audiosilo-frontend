@@ -20,6 +20,7 @@ import {
   ReadalongMapError,
   SERIES_BATCH_MAX_QUERY_BYTES,
   SERIES_BOOKS_MAX_NAMES,
+  UNAUTHORIZED_HEADER,
 } from '@/api/client';
 import type { AddMemberBody, BridgeEstimate, Listing, SidecarsGenerateResult } from '@/api/types';
 import { podcastEpisode, podcastShow, wire2b } from '@/testing/podcast-fixtures';
@@ -4166,5 +4167,127 @@ describe('isServerBusyError', () => {
     expect(isServerBusyError(new NetworkError('offline'))).toBe(false);
     const fetching = new PodcastFetchPendingError('fetching', 'podcast_fetching', {} as never, 2);
     expect(isServerBusyError(fetching)).toBe(false);
+  });
+});
+
+// WS-401-MARK: the server marks every 401 of its own (`X-AudioSilo-Unauthorized`, the body's
+// code or `unauthorized`). The mark decides first; a 401 without it is an auth proxy's when the
+// request carried proxy headers there; with neither (an older server, no proxy set) the body
+// decides as before (fe#295).
+describe("the server's 401 mark (WS-401-MARK)", () => {
+  const realOS = Platform.OS;
+  afterEach(() => {
+    (Platform as { OS: string }).OS = realOS;
+  });
+  const SET = {
+    origin: 'https://away.example',
+    headers: [{ name: 'CF-Access-Client-Id', value: 'id.access' }],
+  };
+
+  function answer401(text: string, mark?: string) {
+    globalThis.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: {
+          get: (name: string) =>
+            mark !== undefined && name.toLowerCase() === UNAUTHORIZED_HEADER.toLowerCase()
+              ? mark
+              : null,
+        },
+        text: () => Promise.resolve(text),
+      } as unknown as Response),
+    ) as unknown as typeof globalThis.fetch;
+  }
+  const serverBody = JSON.stringify({ error: 'invalid or expired token' });
+
+  /** A client on `base` with the proxy set (on away.example) and the three callbacks. */
+  function client(base: string) {
+    (Platform as { OS: string }).OS = 'ios';
+    const onAuthError = jest.fn();
+    const heard: boolean[] = [];
+    const c = new ApiClient(base, 'tok', undefined, onAuthError, undefined, SET, (r) =>
+      heard.push(r),
+    );
+    return { c, onAuthError, heard };
+  }
+
+  it("reads a marked 401 as the server's, behind a proxy too, with the mark's code", async () => {
+    // The proxy rewrote the server's body into a page: the mark still names the server and
+    // its code.
+    answer401('<html>Unauthorized</html>', 'invite_used');
+    const { c, onAuthError, heard } = client('https://away.example');
+    const e = await c.me().catch((err: unknown) => err);
+    expect(e).toMatchObject({
+      status: 401,
+      code: 'invite_used',
+      fromProxy: false,
+      fromServer: true,
+    });
+    expect(isSignedOutError(e)).toBe(true);
+    expect(isProxyRefusal(e)).toBe(false);
+    expect(onAuthError).toHaveBeenCalledTimes(1);
+    expect(heard).toEqual([false]);
+  });
+
+  it("keeps the body's code over the mark, and no code for the plain mark", async () => {
+    answer401(JSON.stringify({ error: 'nope', code: 'oidc_no_sign_in' }), 'oidc_no_sign_in');
+    const { c } = client('https://away.example');
+    await expect(c.me()).rejects.toMatchObject({ code: 'oidc_no_sign_in', fromProxy: false });
+    answer401(serverBody, 'unauthorized');
+    const e = await c.me().catch((err: unknown) => err);
+    expect(e).toMatchObject({ status: 401, fromProxy: false });
+    expect((e as ApiError).code).toBeUndefined();
+  });
+
+  it("reads an unmarked 401 behind a proxy as the proxy's, even in the server's shape", async () => {
+    // Denied: a proxy answering `{error}` itself (or a server body it stood in for) is no
+    // sign-out while the request carried proxy headers.
+    answer401(serverBody);
+    const { c, onAuthError, heard } = client('https://away.example');
+    const e = await c.me().catch((err: unknown) => err);
+    expect(e).toMatchObject({ status: 401, fromProxy: true, fromServer: false });
+    expect(isSignedOutError(e)).toBe(false);
+    expect(isProxyRefusal(e)).toBe(true);
+    expect(isRefusedForGood(e)).toBe(false);
+    expect(onAuthError).not.toHaveBeenCalled();
+    expect(heard).toEqual([true]);
+  });
+
+  it('reads it so on a hand-built request too (the ebook)', async () => {
+    answer401(serverBody);
+    const { c, onAuthError } = client('https://away.example');
+    await expect(c.ebook(1, 'B')).rejects.toMatchObject({ status: 401, fromProxy: true });
+    expect(onAuthError).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the body with no mark and no proxy set for the address', async () => {
+    // The home address: the set is for away.example, so this request carried none.
+    answer401(serverBody);
+    const home = client('http://192.168.1.10:8080');
+    const own = await home.c.me().catch((err: unknown) => err);
+    expect(own).toMatchObject({ status: 401, fromProxy: false, fromServer: true });
+    expect(isSignedOutError(own)).toBe(true);
+    expect(home.onAuthError).toHaveBeenCalledTimes(1);
+    // An older server's 401 without its `error` is still the proxy's.
+    answer401('<html>Sign in</html>');
+    const page = await home.c.me().catch((err: unknown) => err);
+    expect(page).toMatchObject({ status: 401, fromProxy: true });
+    expect(home.onAuthError).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a 403 to its body: the server's own behind a proxy is still its own", async () => {
+    globalThis.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        headers: { get: () => null },
+        text: () => Promise.resolve(JSON.stringify({ error: 'no access to this path' })),
+      } as unknown as Response),
+    ) as unknown as typeof globalThis.fetch;
+    const { c } = client('https://away.example');
+    await expect(c.me()).rejects.toMatchObject({ status: 403, fromProxy: false, fromServer: true });
   });
 });

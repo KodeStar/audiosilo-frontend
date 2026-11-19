@@ -125,10 +125,13 @@ export class ApiError extends Error {
      * status; a date or a header the browser can't expose cross-origin reads as absent).
      * Bridge Phase 2d-2: the discovery and OPML limits. */
     public retryAfterSeconds?: number,
-    /** A 401 or 403 that is not the AudioSilo server's own (its every refusal is JSON with
-     * an `error` string): a proxy in front of it turning the request away (fe#295, fe#280).
-     * The server never judged the request, so it is no sign the connection is signed out
-     * (`isSignedOutError`) nor of a library the listener may not open (`accessRefusal`). */
+    /** A 401 or 403 that is not the AudioSilo server's own: a proxy in front of it turning
+     * the request away (fe#295, fe#280). A 401 the server wrote carries its mark
+     * (`UNAUTHORIZED_HEADER`); one without the mark is the proxy's when the request carried
+     * proxy headers, else (an older server) one without the server's JSON `error`, as a 403
+     * without one is (`unauthorizedOrigin`). The server never judged the request, so it is
+     * no sign the connection is signed out (`isSignedOutError`) nor of a library the
+     * listener may not open (`accessRefusal`). */
     public fromProxy = false,
     /** The answer is the AudioSilo server's own: its error envelope, a JSON body with an
      * `error` string. Whatever stands in front of the server let this request through
@@ -355,13 +358,66 @@ function retryAfterOf(res: Response, fetch: PodcastFetchStatus): number {
   return typeof body === 'number' && Number.isFinite(body) && body >= 0 ? body : 2;
 }
 
+/** The header the server marks every 401 of its own with (WS-401-MARK): the body's
+ * `code` when the 401 has one, else `UNAUTHORIZED_PLAIN`. A proxy's own 401 has none, and
+ * a proxy that rewrites the server's error page keeps it. Cross-origin the server exposes
+ * it; a server before it sends none (`unauthorizedOrigin`). */
+export const UNAUTHORIZED_HEADER = 'X-AudioSilo-Unauthorized';
+/** `UNAUTHORIZED_HEADER`'s value on a 401 without a code. */
+const UNAUTHORIZED_PLAIN = 'unauthorized';
+
+/** The server's mark on a 401 answer (`UNAUTHORIZED_HEADER`), else undefined. */
+function unauthorizedMark(res: Response): string | undefined {
+  if (res.status !== 401) return undefined;
+  return res.headers?.get?.(UNAUTHORIZED_HEADER)?.trim() || undefined;
+}
+
+/**
+ * Whose a 401 or 403 answer is, by the answer alone: `server` (its own refusal: act on it),
+ * `proxy` (an auth proxy in front of it turned the request away: never a sign-out) or
+ * `unknown` for any other status. The mark decides first: a 401 carrying it is the server's
+ * whatever its body says (a proxy that rewrote the server's page). Without it the body says:
+ * the server's every refusal is JSON with an `error` string, so one without it is the
+ * proxy's (fe#295); an older server marks nothing (CROSS-REPO §15). A request that carried
+ * proxy headers reads an unmarked 401 as the proxy's whatever its body (`send`,
+ * `proxiedRefusal`).
+ */
+function unauthorizedOrigin(
+  res: Response,
+  hasServerError: boolean,
+): 'server' | 'proxy' | 'unknown' {
+  if (res.status !== 401 && res.status !== 403) return 'unknown';
+  if (unauthorizedMark(res) !== undefined) return 'server';
+  return hasServerError ? 'server' : 'proxy';
+}
+
+/**
+ * `e` as the request that carried proxy headers to this address (`proxied`) reads it: a 401
+ * without the server's mark is the proxy's even with a JSON `error` (a proxy that answers in
+ * that shape, or stands in its own body for the server's), so it is never a sign-out. The
+ * server's own 401 always carries the mark (WS-401-MARK). Anything else is `e` as it is.
+ */
+function proxiedRefusal(e: unknown, res: Response, proxied: boolean): unknown {
+  if (proxied && e instanceof ApiError && e.status === 401 && unauthorizedMark(res) === undefined) {
+    e.fromProxy = true;
+    e.fromServer = false;
+  }
+  return e;
+}
+
 /** The error a non-2xx answer with a JSON (or empty) body `data` is: its `error` and
- * `code`, or for a 503 about an episode still on its way, a `PodcastFetchPendingError`
- * keeping its `fetch`. */
+ * `code` (on a 401, the server's mark names the code when the body lost it), or for a 503
+ * about an episode still on its way, a `PodcastFetchPendingError` keeping its `fetch`. */
 function apiErrorOf(res: Response, data: unknown, fallbackMsg: string): ApiError {
   const body = data as { error?: unknown; code?: unknown; fetch?: unknown } | undefined;
   const msg = typeof body?.error === 'string' ? body.error : '';
-  const code = typeof body?.code === 'string' && body.code ? body.code : undefined;
+  const mark = unauthorizedMark(res);
+  const code =
+    typeof body?.code === 'string' && body.code
+      ? body.code
+      : mark !== undefined && mark !== UNAUTHORIZED_PLAIN
+        ? mark
+        : undefined;
   if (
     res.status === 503 &&
     code !== undefined &&
@@ -377,15 +433,15 @@ function apiErrorOf(res: Response, data: unknown, fallbackMsg: string): ApiError
       retryAfterOf(res, fetch),
     );
   }
+  const origin = unauthorizedOrigin(res, !!msg);
   return new ApiError(
     res.status,
     msg || fallbackMsg,
     code,
     retryAfterHeader(res),
-    // A 401 or 403 without the server's `error`: a proxy's own (JSON, Authelia's for one,
-    // or a page).
-    (res.status === 401 || res.status === 403) && !msg,
-    !!msg,
+    // A proxy's own 401 or 403 (JSON, Authelia's for one, or a page).
+    origin === 'proxy',
+    origin === 'server' || (origin === 'unknown' && !!msg),
   );
 }
 
@@ -402,7 +458,8 @@ async function readJson<T>(res: Response): Promise<T> {
   try {
     data = text ? JSON.parse(text) : undefined;
   } catch {
-    // Not JSON: a reverse proxy's page. A 401 or 403 of that kind is the proxy's (`fromProxy`).
+    // Not JSON: a reverse proxy's page. A 401 or 403 of that kind is the proxy's (`fromProxy`)
+    // unless the server marked it (a proxy that rewrote the server's page).
     throw apiErrorOf(res, undefined, fallbackMsg);
   }
   if (!res.ok) throw apiErrorOf(res, data, fallbackMsg);
@@ -828,7 +885,12 @@ export class ApiClient {
         throw new NetworkError(e);
       }
       this.onAnswer?.(this.baseUrl);
-      const answer = await read(res, touch);
+      // Whose a 401 is: the server's mark, else a request that carried proxy headers here
+      // reads it as the proxy's (`proxiedRefusal`, WS-401-MARK).
+      const proxied = this.proxyOrigin !== null && originOf(url) === this.proxyOrigin;
+      const answer = await read(res, touch).catch((e: unknown) => {
+        throw proxiedRefusal(e, res, proxied);
+      });
       this.onProxyAnswer?.(false);
       return answer;
     } catch (e) {

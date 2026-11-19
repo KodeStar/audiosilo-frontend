@@ -113,8 +113,9 @@ function dropOthers(dir: Directory, keep: string): void {
 
 /**
  * The error a download the server's address refused with `status` is. The download task
- * hands back the status alone, so a 401 can't be told from an auth proxy's own by its body
- * (`ApiError.fromProxy`, fe#295): the server is asked through the client (`me`), and only
+ * hands back the status alone, so a 401 can't be told from an auth proxy's own by the
+ * server's mark or its body (`ApiError.fromProxy`, fe#295, WS-401-MARK): the server is asked
+ * through the client (`me`), and only
  * its own refusal of the token reads as signed out (the client flags the connection, as for
  * any request). Anything else (the proxy turned that away too, the token was taken, no
  * answer) is no sign-out: the reader offers Try again, never "Sign in again".
