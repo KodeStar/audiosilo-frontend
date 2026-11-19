@@ -158,14 +158,17 @@ describe('waitForEpisode', () => {
     expect(ends[demo]).toEqual({ kind: 'failed', code: 'demo_account' });
   });
 
-  it("ends failed, not signed out, on an auth proxy's 401 (fe#295)", async () => {
-    client.prepareEpisodeStream.mockRejectedValueOnce(
-      new ApiError(401, 'Unauthorized', undefined, undefined, true),
-    );
-    const out = wait(1);
-    await flush();
-    expect(ends[out]).toEqual({ kind: 'failed', code: null });
-  });
+  it.each([401, 403])(
+    "ends failed, never signed out or no access, on a proxy's own %i (fe#295, fe#280)",
+    async (status) => {
+      client.prepareEpisodeStream.mockRejectedValueOnce(
+        new ApiError(status, 'Refused', undefined, undefined, true),
+      );
+      const key = wait(1);
+      await flush();
+      expect(ends[key]).toEqual({ kind: 'failed', code: null });
+    },
+  );
 
   it('waits and asks again at the fetch limit, and on a blip', async () => {
     client.prepareEpisodeStream

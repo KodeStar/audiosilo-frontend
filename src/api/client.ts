@@ -125,10 +125,10 @@ export class ApiError extends Error {
      * status; a date or a header the browser can't expose cross-origin reads as absent).
      * Bridge Phase 2d-2: the discovery and OPML limits. */
     public retryAfterSeconds?: number,
-    /** A 401 that is not the AudioSilo server's own (its every refusal is JSON with an
-     * `error` string): an auth proxy in front of it turning the request away (fe#295). The
-     * session token was never checked, so it is no sign the connection is signed out
-     * (`isSignedOutError`). */
+    /** A 401 or 403 that is not the AudioSilo server's own (its every refusal is JSON with
+     * an `error` string): a proxy in front of it turning the request away (fe#295, fe#280).
+     * The server never judged the request, so it is no sign the connection is signed out
+     * (`isSignedOutError`) nor of a library the listener may not open (`accessRefusal`). */
     public fromProxy = false,
   ) {
     super(message);
@@ -137,7 +137,7 @@ export class ApiError extends Error {
 }
 
 /** Whether `e` is a 4xx the same request can never get past: not a 408 or a 429 (the
- * server's rate limit), which say "not now", nor an auth proxy's own 401 (`fromProxy`,
+ * server's rate limit), which say "not now", nor a proxy's own 401 or 403 (`fromProxy`,
  * fe#295): the server never saw the request, which gets past once the proxy headers are
  * fixed, so a save it turned away is kept for then, never dropped. */
 export function isRefusedForGood(e: unknown): e is ApiError {
@@ -158,8 +158,8 @@ export function isSignedOutError(e: unknown): boolean {
   return e instanceof ApiError && e.status === 401 && !e.fromProxy;
 }
 
-/** Whether `e` is an auth proxy in front of the server turning the request away with a 401
- * of its own (`ApiError.fromProxy`): its proxy headers are missing or no longer taken. */
+/** Whether `e` is a proxy in front of the server turning the request away with a 401 or a
+ * 403 of its own (`ApiError.fromProxy`): its proxy headers are missing or no longer taken. */
 export function isProxyRefusal(e: unknown): boolean {
   return e instanceof ApiError && e.fromProxy;
 }
@@ -363,8 +363,9 @@ function apiErrorOf(res: Response, data: unknown, fallbackMsg: string): ApiError
     msg || fallbackMsg,
     code,
     retryAfterHeader(res),
-    // A 401 without the server's `error`: a proxy's own JSON (Authelia's, for one).
-    res.status === 401 && !msg,
+    // A 401 or 403 without the server's `error`: a proxy's own (JSON, Authelia's for one,
+    // or a page).
+    (res.status === 401 || res.status === 403) && !msg,
   );
 }
 
@@ -381,7 +382,7 @@ async function readJson<T>(res: Response): Promise<T> {
   try {
     data = text ? JSON.parse(text) : undefined;
   } catch {
-    // Not JSON: a reverse proxy's page. A 401 of that kind is an auth proxy's (`fromProxy`).
+    // Not JSON: a reverse proxy's page. A 401 or 403 of that kind is the proxy's (`fromProxy`).
     throw apiErrorOf(res, undefined, fallbackMsg);
   }
   if (!res.ok) throw apiErrorOf(res, data, fallbackMsg);
