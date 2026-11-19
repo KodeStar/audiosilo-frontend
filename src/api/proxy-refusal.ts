@@ -50,19 +50,16 @@ export function needsProxyNotice(
 }
 
 /** `needsProxyNotice` for one connection, kept current: a sign-in's own set only while the
- * connection is still signed in. */
+ * connection is still signed in, and nothing for one that needs signing in again (the banner's
+ * rule: that is the one thing to ask for). */
 export function useProxyNotice(connectionId: string | undefined): boolean {
   const refused = useProxyRefusals((s) => s.refused);
-  return useSession(
-    (s) =>
-      !!connectionId &&
-      needsProxyNotice(
-        connectionId,
-        refused,
-        s.proxySets,
-        s.connections.some((c) => c.id === connectionId) ? s.signInProxySets : {},
-      ),
-  );
+  return useSession((s) => {
+    if (!connectionId) return false;
+    const conn = s.connections.find((c) => c.id === connectionId);
+    if (conn?.needsReconnect) return false;
+    return needsProxyNotice(connectionId, refused, s.proxySets, conn ? s.signInProxySets : {});
+  });
 }
 
 /** Tests: no connection refused. */

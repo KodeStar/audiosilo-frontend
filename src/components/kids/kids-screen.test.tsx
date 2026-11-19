@@ -302,6 +302,32 @@ it("asks a grown-up to update the proxy headers while the kid is on its sign-in'
   }
 });
 
+// The kid's sign-in ended while a proxy notice was up: signing in again is the one thing to
+// ask for, said once by the card.
+it('asks nothing of the proxy headers once the kid needs signing in again', async () => {
+  mockStories = { status: 'signed-out', serverName: 'Hearthside' };
+  useSession.setState({
+    connections: [
+      {
+        id: 'c',
+        serverUrl: 'https://books.example.com',
+        name: 'Hearthside',
+        token: 't',
+        needsReconnect: 'auth',
+      } as Connection,
+    ],
+  });
+  noteProxyAnswer('c', true);
+  try {
+    await render(<KidsScreen />);
+    expect(screen.getByText('Ask a grown-up to sign Leo in again.')).toBeTruthy();
+    expect(screen.queryByTestId('kids-proxy-refused')).toBeNull();
+  } finally {
+    resetProxyRefusalsForTests();
+    useSession.setState({ connections: [] });
+  }
+});
+
 it('says the sign-in ended (not "isn\'t answering") and offers no Try again (D4)', async () => {
   mockStories = { status: 'signed-out', serverName: 'Hearthside' };
   await render(<KidsScreen />);
