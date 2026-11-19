@@ -1663,19 +1663,19 @@ export function useBookmarks(libraryId: number, path: string, connectionId?: str
   return useQuery(bookmarksQuery(useCid(connectionId), useApi(connectionId), libraryId, path));
 }
 
-/** Bookmark a book at `position`, with an optional `note`, `label` and `clientId`, then
- * refresh the book's bookmarks and the across-books list. Works on every server: `label` and
- * `clientId` follow `postBookmark`'s rule, on this connection's `useCapability`. Resolves the new
+/** Bookmark a book at `position`, with an optional `note` and `label`, then refresh the
+ * book's bookmarks and the across-books list. Works on every server: `label` follows
+ * `postBookmark`'s rule, on this connection's `useCapability`. No `clientId`: only the
+ * bookmark outbox resends an add, and it goes through `addBookmark`. Resolves the new
  * bookmark. */
 export function useAddBookmark(libraryId: number, path: string, connectionId?: string) {
   const api = useApi(connectionId);
   const cid = useCid(connectionId);
   const annotations = useCapability('annotations', connectionId);
-  const clientIds = useCapability('bookmark_client_id', connectionId);
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (vars: AddBookmarkVars) =>
-      postBookmark(api, { annotations, bookmark_client_id: clientIds }, libraryId, path, vars),
+    mutationFn: (vars: Omit<AddBookmarkVars, 'clientId'>) =>
+      postBookmark(api, { annotations }, libraryId, path, vars),
     onSuccess: () => refreshAfterAdd(qc, 'bookmarks', cid, libraryId, path),
   });
 }

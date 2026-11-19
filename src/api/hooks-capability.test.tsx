@@ -1943,21 +1943,6 @@ describe('Phase 4 bookmark labels on add', () => {
     });
     expect(mockClients.c1.addBookmark.mock.calls).toEqual([[2, 'A/Book', 61, '']]);
   });
-
-  it('sends a client_id only to a server with bookmark_client_id', async () => {
-    const { result } = await mountAnnotations({ annotations: true, bookmark_client_id: true }, () =>
-      useAddBookmark(2, 'A/Book'),
-    );
-    await act(async () => {
-      await result.current.m.mutateAsync({ position: 61, clientId: 'k1' });
-    });
-    expect(mockClients.c1.addBookmark).toHaveBeenCalledWith(2, 'A/Book', 61, '', undefined, 'k1');
-    const older = await mountAnnotations({ annotations: true }, () => useAddBookmark(2, 'A/Book'));
-    await act(async () => {
-      await older.result.current.m.mutateAsync({ position: 62, label: 'funny', clientId: 'k2' });
-    });
-    expect(mockClients.c1.addBookmark).toHaveBeenLastCalledWith(2, 'A/Book', 62, '', 'funny');
-  });
 });
 
 describe('Phase 4 cache updates', () => {
