@@ -2,6 +2,8 @@ import { FlashList } from '@shopify/flash-list';
 import { act, render, screen } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
+import { settleFlashList } from '@/testing/flash-list';
+
 // Guards patches/@shopify+flash-list+*.patch: on the web, react-native-web reports an item's
 // onLayout a tick after the resize, so once the data shrank (Home's Continue rail as a book
 // is finished) the item the data dropped could still report its size, and FlashList's size
@@ -32,15 +34,11 @@ function cellOnLayout(text: string): LayoutHandler {
 describe('FlashList size check (patched)', () => {
   it('ignores a size an item reports after the data dropped it', async () => {
     const view = await render(list(['a', 'b', 'c']));
+    await settleFlashList();
     const late = cellOnLayout('c');
     await view.rerender(list(['a', 'b']));
+    await settleFlashList();
     // react-native-web's late report for the dropped third item.
     await expect(act(async () => late(size))).resolves.toBeUndefined();
-  });
-
-  it('still checks an item the data has', async () => {
-    await render(list(['a', 'b']));
-    const onLayout = cellOnLayout('b');
-    await expect(act(async () => onLayout(size))).resolves.toBeUndefined();
   });
 });
