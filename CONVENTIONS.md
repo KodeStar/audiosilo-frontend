@@ -885,12 +885,15 @@ in step.
   `useCancelBridgeJob` (`storeJob` puts a job about no book at its own read, `qk.bridgeJob`). A
   `librivox.fetch` has no book path, so it is followed by its id (not `useBridgeJobs` /
   `useBridgeJobSurface`, which are keyed on a book), polled while open and `active`
-  (`librivoxJobPollInterval`: 5 s, 60 s parked), never after a 404. A first read that failed
+  (`librivoxJobPollInterval`: 5 s while a recording row reads it too, 30 s with only the
+  watcher asking, 60 s parked, doubling per failed read in a row up to 60 s), never after a 404
+  nor a refusal. A first read that failed
   with no answer or a server error is asked again every 60 s (nothing else would: its row has no
   status, Cancel or Add until one gets through); a refusal (400, 401, 403) is not.
 - **The fetch watcher** (`fetch-watcher.tsx`, fe#293): every open job a row follows is handed to
-  `watchLibrivoxFetch(cid, id)` (an in-memory zustand list; nothing persisted, so after a restart
-  the Library's stale time covers it; an Add's job as it answers, row or no row by then, and
+  `watchLibrivoxFetch(cid, id)` (a zustand list saved under `audiosilo.librivoxWatches` and read
+  again by the watcher's first mount, so a fetch on its way when the app closed is followed at
+  the next launch, fe#299; an Add's job as it answers, row or no row by then, and
   never one the row already reads as ended, whose end the watcher handled), and
   `LibrivoxFetchWatcher` (a root listener,
   `RootListeners`) is its ONE poller: one `useLibrivoxJob(id, true, cid)` per watch, whatever
@@ -898,14 +901,19 @@ in step.
   false (no poll of its own, so never two). When a job ends the watcher calls
   `librivoxFetchEnded` (the works asked again; a `done` one also `invalidateLibraryLists` and the
   works once more after `DONE_RECHECK_MS`, on a module timer that fires whatever is mounted by
-  then) and drops the watch; it also drops one that is gone (404, the works asked again), refused
-  (400, 401, 403: nothing read again) or whose connection signed out (never read). A row still
-  open hands its fetch over again with each answer that reads it open (a no-op while watched), so
-  one dropped on a 401 is watched again once its connection is signed in again. A failed read
-  (no answer, a 5xx) keeps the watch: the poll asks again. The watcher keeps the hooks' own gate
-  (`bridge`, which `/server` sends true only while the Bridge is online) and does not ask
-  `librivoxAccess`: a lapsed heartbeat pauses its reads (the query is skipped) and keeps the
-  watch, and it reads again once the flag is back.
+  then) and drops the watch; it also drops one that is gone (404, the works asked again) or
+  refused (400, 403: nothing read again). A connection signed out (gone, or `needsReconnect`
+  after a 401) holds its watches unread; once signed in again they are read, and a fetch that
+  ended meanwhile is handled then. One whose connection is not back `WATCH_TTL_MS` (7 days) after
+  it was first watched is dropped. A row still open hands its fetch over again with each answer
+  that reads it open (a no-op while watched). A failed read (no answer, a 5xx) keeps the watch:
+  the poll asks again, backing off. The watcher keeps the hooks' own gate (`bridge`, which
+  `/server` sends true only while the Bridge is online) and does not ask `librivoxAccess`: a
+  lapsed heartbeat pauses its reads (the query is skipped) and keeps the watch, and while it is
+  away the watcher asks each signed-in watched connection's `/server` again every
+  `BRIDGE_IDLE_POLL_MS` in the foreground (`BridgeAwayWaker`; nothing else would with no page
+  open), so it reads again once the flag is back. It renders again as a recording row starts or
+  stops reading a job (`useReadElsewhere`), so the poll takes the row's pace at once.
 - **The page**: `/find-librivox?connection=&library=` (`findLibrivoxHref`, `openFindLibrivox`),
   the Library tab's own page like Find shows (a browse page too, `BROWSE_PATHS`: opening it
   keeps the Library's scroll memory), opened from the Books mode's ... menu (`LibrivoxMenu`,
@@ -1009,9 +1017,16 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   is one this browser turns out to play transcoded. The fetch limit, 429 and blips ask again
   (`blipDelay`); a failed or impossible fetch ends as a `serverFetch` failure with the server's code
   (`failureText` reads it through `fetchReasonKey`; `identity_changed` also reads the item and the
-  library's episode lists again). A refusal of the listener (`accessRefusal`: a 401, or a 403
-  naming no code) is its own failure, `signedOut` or `noAccess`, and the player's fetch says it as
-  the reasons `signed_out` / `no_access`. A wait outlives a reload or restart: `reviveEntry` keeps
+  library's episode lists again). A refusal of the listener (`accessRefusal`: a 401, or the
+  server's own 403 naming no code; a proxy's 403, `ApiError.fromProxy`, is a fetch that failed
+  for no named reason) is its own failure, `signedOut` or `noAccess`, and the player's fetch says
+  it as the reasons `signed_out` / `no_access`. The listener's Retry of a failed fetch POSTs
+  (past the server's cool-down); until the server answers that POST the waiting entry saves it
+  (`serverFetch.refetch`), so a launch asks it again, and a wait that ends signed out, with no
+  access or cut short by a launch keeps it on its failure (`failure.refetch`), so the Retry after
+  a sign-in POSTs too. Each status a wait reads is written where the episode page and an open
+  row menu read it (`qk.podcastFetch`, as the player's fetch does); a row menu follows it only
+  while it is open. A wait outlives a reload or restart: `reviveEntry` keeps
   the waiting entry and `resumeEpisodeWaits` asks again once the session has read its connections
   (one with no client then, or in a browser the launch's check finds can't play a download offline, is a download cut short). A cancel or remove stops the wait (`stopWaiting`); the server's
   fetch carries on. The fetch rules the player and the waiter share live in
