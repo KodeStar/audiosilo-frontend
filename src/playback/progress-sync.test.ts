@@ -94,8 +94,12 @@ function fakeApi(saveImpl: () => Promise<void>): ApiClient {
 }
 
 /** An api whose getProgress resolves to the given value (null = no record) or rejects. */
-function fakeGetApi(getImpl: () => Promise<Progress | null>): ApiClient {
+function fakeGetApi(
+  getImpl: () => Promise<Progress | null>,
+  baseUrl = 'http://home.lan:8080',
+): ApiClient {
   return {
+    baseUrl,
     getProgress: jest.fn(getImpl),
     saveProgress: jest.fn(async () => {}),
   } as unknown as ApiClient;
@@ -667,10 +671,7 @@ describe('progress-sync', () => {
       fakeApi(() => Promise.resolve()),
       { ...save, position: 75 },
     );
-    const frozen = {
-      baseUrl: 'http://home.lan:8080',
-      getProgress: jest.fn(() => new Promise<Progress | null>(() => {})),
-    } as unknown as ApiClient;
+    const frozen = fakeGetApi(() => new Promise<Progress | null>(() => {}));
     jest.useFakeTimers();
     try {
       readPlaceEarly(frozen, 'c1', 1, 'A/Book');
@@ -693,10 +694,7 @@ describe('progress-sync', () => {
   });
 
   it('loadInitialProgress: an early read that answered is the place, with no wait at all', async () => {
-    const api = {
-      baseUrl: 'http://home.lan:8080',
-      getProgress: jest.fn(async () => makeProgress({ position: 60 })),
-    } as unknown as ApiClient;
+    const api = fakeGetApi(async () => makeProgress({ position: 60 }));
     jest.useFakeTimers();
     try {
       readPlaceEarly(api, 'c1', 1, 'A/Book');
@@ -713,14 +711,8 @@ describe('progress-sync', () => {
   });
 
   it('loadInitialProgress: never takes an early read of another address, or one gone stale', async () => {
-    const home = {
-      baseUrl: 'http://home.lan:8080',
-      getProgress: jest.fn(async () => makeProgress({ position: 10 })),
-    } as unknown as ApiClient;
-    const away = {
-      baseUrl: 'https://away.example',
-      getProgress: jest.fn(async () => makeProgress({ position: 20 })),
-    } as unknown as ApiClient;
+    const home = fakeGetApi(async () => makeProgress({ position: 10 }));
+    const away = fakeGetApi(async () => makeProgress({ position: 20 }), 'https://away.example');
     readPlaceEarly(home, 'c1', 1, 'A/Book');
     const r = await loadInitialProgress(away, 'c1', 1, 'A/Book', 3_000);
     expect(r).toMatchObject({ progress: { position: 20 } });

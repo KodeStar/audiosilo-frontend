@@ -286,6 +286,17 @@ async function backInFront() {
   await settle();
 }
 
+/** The server's flags as a listening_sync server's, with `capabilities` on top. */
+const serverCaps = (capabilities: Record<string, boolean>) =>
+  (queryClient.getQueryData as jest.Mock).mockImplementation((key: readonly unknown[]) =>
+    key[0] === 'server' ? { capabilities: { listening_sync: true, ...capabilities } } : undefined,
+  );
+/** The server's flags back to none (the PUT path, as the mock starts). */
+const noServerCaps = () =>
+  (queryClient.getQueryData as jest.Mock).mockImplementation((k: readonly unknown[]) =>
+    k?.[0] === 'server' ? { capabilities: {} } : undefined,
+  );
+
 describe('placeToMoveTo', () => {
   const base = {
     server: record(),
@@ -825,9 +836,7 @@ describe('a downloaded book whose server answered only after it started', () => 
   });
 
   it('offers an older place with no device id on a listening_sync server, as an unknown device', async () => {
-    (queryClient.getQueryData as jest.Mock).mockImplementation((key: readonly unknown[]) =>
-      key[0] === 'server' ? { capabilities: { listening_sync: true } } : undefined,
-    );
+    serverCaps({});
     try {
       const answer = await startedWithoutItsServer();
       answer(record({ device_id: '', version: 4, updated_at: '2026-10-08T08:00:00Z' }));
@@ -837,9 +846,7 @@ describe('a downloaded book whose server answered only after it started', () => 
         expect.objectContaining({ title: 'On another device you were at 6:40. Jump there?' }),
       );
     } finally {
-      (queryClient.getQueryData as jest.Mock).mockImplementation((k: readonly unknown[]) =>
-        k?.[0] === 'server' ? { capabilities: {} } : undefined,
-      );
+      noServerCaps();
     }
   });
 
@@ -1034,16 +1041,8 @@ describe('offerOf', () => {
 });
 
 describe('on a server with listening_sync', () => {
-  const serverCaps = (capabilities: Record<string, boolean>) =>
-    (queryClient.getQueryData as jest.Mock).mockImplementation((key: readonly unknown[]) =>
-      key[0] === 'server' ? { capabilities: { listening_sync: true, ...capabilities } } : undefined,
-    );
   beforeEach(() => serverCaps({}));
-  afterEach(() =>
-    (queryClient.getQueryData as jest.Mock).mockImplementation((k: readonly unknown[]) =>
-      k?.[0] === 'server' ? { capabilities: {} } : undefined,
-    ),
-  );
+  afterEach(noServerCaps);
 
   type Toast = {
     title: string;

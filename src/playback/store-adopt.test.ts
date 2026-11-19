@@ -1995,6 +1995,7 @@ describe("a report of another book than the store's", () => {
     chapters: [],
   };
   const refS: BookRef = { connectionId: 'c1', libraryId: 2, path: 'S' };
+  const refB: BookRef = { connectionId: 'c1', libraryId: 2, path: 'B' };
   const loadedS = { ...refS, trackIndex: 0, position: 5, rate: 1, playing: true };
 
   beforeEach(() => {
@@ -2256,7 +2257,7 @@ describe("a report of another book than the store's", () => {
   it("shows the store's book paused at the deadline though its NowPlaying was replaced", async () => {
     useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
     await usePlayer.getState().adoptLoaded(loadedB({ playing: true }));
-    engineBook = { connectionId: 'c1', libraryId: 2, path: 'B' };
+    engineBook = refB;
     pushSnapshot(snap('playing', 1, 30));
     engineBook = refS;
     pushSnapshot(snap('playing', 0, 5));
@@ -2277,7 +2278,6 @@ describe("a report of another book than the store's", () => {
   // its own report ended the deadline.
   it("never hot-swaps the store's book over the other book the engine plays", async () => {
     await usePlayer.getState().playBook('c1', 2, twoFileBook, twoFileChapters, 130);
-    const refB = { connectionId: 'c1', libraryId: 2, path: 'B' };
     engineBook = refB;
     pushSnapshot(snap('playing', 1, 30));
     await flushMicrotasks();
@@ -2306,7 +2306,7 @@ describe("a report of another book than the store's", () => {
   it('names the book the engine plays while it is not adopted (`engineOtherBook`)', async () => {
     useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
     await usePlayer.getState().adoptLoaded(loadedB({ playing: true }));
-    engineBook = { connectionId: 'c1', libraryId: 2, path: 'B' };
+    engineBook = refB;
     pushSnapshot(snap('playing', 1, 30));
     expect(engineOtherBook()).toBeNull();
     engineBook = refS;
