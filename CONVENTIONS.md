@@ -502,6 +502,9 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   a wrong current password on `POST /auth/password` keeps the session), and so is
   `accessRefusal`'s no access (fe#280), so no reconnect banner and no sign-out, and the sign-in step
   says the proxy refused the request (`isProxyRefusal`, `connect.signIn.errors.proxyRefused`).
+  The sign-in step asks `/server` once as it opens and hands its client the mark flag
+  (`connectClientFor`'s `marksUnauthorized`): on a server that marks its 401s an unmarked one to
+  the redeem, the exchange or the login is that refusal, never a wrong code or password.
   Nor is its 403 "not in the library" (`isNotInLibraryError` is never a proxy's: the book, browse
   and player pages keep their Retry, read-along its Try again, and a podcast show's page never
   reads it as a bad link), and `accessRefusal` names it
@@ -512,9 +515,14 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   **Signed in, it is said once per run** (`src/api/proxy-refusal.ts`): every signed-in
   connection's client tells, per answer, whether the proxy refused it or let it through
   (`ApiClient`'s `onProxyAnswer` -> `noteProxyAnswer`); the first refusal starts the
-  connection's episode and the next answer the server itself gave ends it: a success, or its own
-  error envelope (`ApiError.fromServer`: its 401, a 404, a 500), since the proxy let that request
-  through; a gateway's page or no answer says nothing (memory only; a removed connection's goes
+  connection's episode (keeping its status: a 401 once any was, `ProxyRefusalStatus`) and the
+  next answer the server gave past its token check ends it: a success, or its own error envelope
+  but a 401 (`ApiError.fromServer`: a 403, a 404, a 500), to a request that carried the token the
+  connection holds, since the proxy let that request through and the token was taken. A public
+  route's answer (`/server`, the sign-in routes: `request`'s `publicRoute`) says nothing: a
+  revoked token behind a proxy that drops the mark is refused everywhere else while `/server`
+  answers 200, and ending the episode there raised it again at the next request and had every
+  queue send again each time. A gateway's page or no answer says nothing either (memory only; a removed connection's goes
   with it, and a renamed one's moves to its new id, or ends there when that is not signed in,
   `moveProxyRefusal`; an answer to a request sent with a set the connection no longer sends there counts for
   nothing, and so does a refusal of a token it no longer holds (sent before a Sign in again),
@@ -526,9 +534,15 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   `onAccountPage`), else asks a grown-up, as kids mode does over the stories (`useProxyNotice`,
   by the same rule: never for a connection that needs signing in again). A demo account that
   may not edit the set is only told what happened (`proxyHeaders.refusedPlain`): no grown-up is
-  behind a demo. A full account's banner, and the Account page's Proxy headers card while the
-  episode lasts, also offer Sign in again (`reconnectConnection`, the reconnect banner's flow):
-  a real revoke that a proxy dropping the mark turned into a refusal is otherwise a dead end.
+  behind a demo. A full account's banner, and the Account page's Proxy headers card while a 401
+  episode lasts, also offer Sign in again (`reconnectConnection`, the reconnect banner's flow;
+  its screen-reader name starts with its label, `reconnect.signInAgainTo`): a real revoke that a
+  proxy dropping the mark turned into a refusal is otherwise a dead end. A proxy's 403 offers
+  none (no sign-in gets past it); a kid's account, which never signs itself in, is told to ask a
+  grown-up to pair the device again (`proxyHeaders.refusedBannerPair`,
+  `refusedAskGrownUpPair`). The whole strip but the button opens Account, its padding too. The
+  Library's load errors say the proxy refused, with their Retry (`proxyHeaders.refusedRetry`),
+  not that the server did not answer.
   Nor is it refused for good (`isRefusedForGood`): the server never saw the request, so a
   progress or reading save it turned away is queued for once the headers are fixed, never dropped
   (nor is the car's bookmark, `addCarBookmark`, nor a waiting one: a replay stops at it as at a
