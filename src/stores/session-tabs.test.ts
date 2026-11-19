@@ -492,6 +492,33 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     expect(b.useSession.getState().proxySets[ORIGIN]).toEqual(set('kept'));
   });
 
+  // The sets as stored, too: a set another tab kept for the address leaves the list as it was,
+  // so only the sets' own read tells a tab that has not heard of it yet. A kid's sign-in here
+  // must not take the address as having none and write its own over it.
+  it("a kid's sign-in never writes over a set another tab kept meanwhile", async () => {
+    const { a, b, browser } = await twoTabs();
+    const ORIGIN = 'https://srv';
+    const set = (value: string) => ({ origin: ORIGIN, headers: [{ name: 'X-Proxy-Auth', value }] });
+    const release = browser.hold();
+    await b.useSession.getState().setProxySet(ORIGIN, set('kept'));
+    // This tab has not heard of the set yet.
+    expect(a.useSession.getState().proxySets).toEqual({});
+    await a.useSession.getState().setSession(
+      {
+        serverUrl: ORIGIN,
+        serverId: 'srv',
+        token: 'tk',
+        user: { ...mkUser(12, 'evie'), member_kind: 'kid' },
+        proxyHeaders: set('typed'),
+      },
+      { makeDefault: false },
+    );
+    release();
+    await settle();
+    expect(a.useSession.getState().proxySets[ORIGIN]).toEqual(set('kept'));
+    expect(b.useSession.getState().proxySets[ORIGIN]).toEqual(set('kept'));
+  });
+
   // A tab of an earlier build (the bundle before fe#295) keeps a set for its connection
   // after this tab launched: its mark in the list is one this tab never wrote. This tab's
   // writes of the list keep it, or the item behind it would never be moved.

@@ -697,18 +697,30 @@ function followStored(): Promise<void> {
   return following;
 }
 
-/** Web: bring this tab's list up to the stored one, so a tab that has not heard another
- * tab's latest write yet never works from its older copy. Web only: callers ask
- * `otherTabsEnv()` first, so native keeps its timing. */
+/** Web: bring this tab's list and proxy headers up to the stored ones, so a tab that has not
+ * heard another tab's latest write yet never works from its older copy. The headers are read
+ * too: a set another tab kept, changed or removed leaves the list as it was, and a sign-in
+ * here decides what to do with its own set against them (`proxyChoice`). Web only: callers
+ * ask `otherTabsEnv()` first, so native keeps its timing. */
 async function catchUp(): Promise<void> {
   if (following) await following;
   let stored: string;
+  let sets: ProxySets;
   try {
-    stored = JSON.stringify((await getItemStrict<PersistedConnection[]>(CONNECTIONS_KEY)) ?? null);
+    [stored, sets] = await Promise.all([
+      getItemStrict<PersistedConnection[]>(CONNECTIONS_KEY).then((m) => JSON.stringify(m ?? null)),
+      readProxySets(),
+    ]);
   } catch {
     return;
   }
-  if (stored === knownList) return;
+  // The sets this tab holds are the stored ones, with those it still uses in place where
+  // none is stored (`followInPlace`; a mark dropped since is a change of the list).
+  const mine = {
+    ...Object.fromEntries(Object.entries(inPlace).map(([o, p]) => [o, p.set])),
+    ...sets,
+  };
+  if (stored === knownList && sameSets(useSession.getState().proxySets, mine)) return;
   storageMoves++;
   await followStored();
 }
