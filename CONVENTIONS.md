@@ -3347,11 +3347,12 @@ media GETs only.
   and the reports are the store's book's, its start heard), nor while the store holds no
   book (a Cast session resumed with none loaded, the web's too: taken as before). An
   adoption of another book that gives up while the reports name none leaves the engine
-  holding that book all the same (FE-ANDROID-5, `unnamedOther`): its reports stay held and
-  the store's book's place is not saved (`persist`, unless the listener moved it or set its
-  speed since), past the end of the followed outside play (a Pause in the watchdog's grace,
-  `clearPlaybackIntent`), until a report names a book again or the store loads or holds
-  another (`ownLoadTakesEngine`, `switchBook`).
+  holding that book all the same (FE-ANDROID-5, `unnamedOther`; not while a load or a start
+  of the store's holds the engine, `ownLoadHoldsEngine`, whose book it is from that load): its
+  reports stay held and the store's book's place is not saved (`persist`, unless the listener
+  moved it or set its speed since), past the end of the followed outside play (a Pause in
+  the watchdog's grace, `clearPlaybackIntent`), until a report names a book again or the
+  store loads or holds another (`ownLoadTakesEngine`, `switchBook`).
   The store's `pause` is "stop the sound" (the sleep timer): while the store's book shows
   playing or loading, the engine pauses whatever it plays, the other book too, and the
   store's book shows paused; while it shows paused and the engine plays the other book

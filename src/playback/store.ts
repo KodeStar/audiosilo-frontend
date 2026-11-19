@@ -5069,7 +5069,10 @@ async function adoptLoadedBook(
     adopting.splice(adopting.indexOf(adoption), 1);
     // Gave up with the engine's reports naming no book and still held as this one's: the
     // engine holds that other book all the same, and they stay held (`unnamedOther`). Not once
-    // the store holds another book than when it began (another adoption landed meanwhile).
+    // the store holds another book than when it began (another adoption landed meanwhile), nor
+    // while a load or a start of the store's holds the engine (`ownLoadHoldsEngine`, one asked
+    // before this adoption began, so not marked `ownLoad`): the engine is that start's from
+    // its load, and held, its book's reports would never be heard.
     const own = selectBookKey(usePlayer.getState());
     if (
       !adopted &&
@@ -5079,6 +5082,7 @@ async function adoptLoadedBook(
       own !== adoption.key &&
       !lastReportNamesBook()
     ) {
+      !ownLoadHoldsEngine() &&
       unnamedOther ??= { key: own, moves: localMoves, speedSets: localSpeedSets };
     }
     // Gave up with the play still followed: the watchdog ends it, after its whole grace from

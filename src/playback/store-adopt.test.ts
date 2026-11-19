@@ -2068,6 +2068,33 @@ describe('a play asked from outside of another book after playback stopped', () 
     });
   });
 
+  // An adoption that began after the store's own start asked for its load (so not marked
+  // `ownLoad`) gives up, and the engine is the start's book from that load: its unnamed
+  // reports are that book's, never held as the other book's.
+  it("holds nothing after an adoption that gave up while the store's own load was out", async () => {
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    let land!: () => void;
+    (mockSvc.load as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          land = resolve;
+        }),
+    );
+    const starting = usePlayer.getState().playBook('c1', 2, twoFileBook, twoFileChapters, 0);
+    await flushMicrotasks();
+    expect(mockSvc.load).toHaveBeenCalledTimes(1);
+    expect(await usePlayer.getState().adoptLoaded(loadedS)).toBe(false);
+    land();
+    await starting;
+    await flushMicrotasks();
+    pushSnapshot(snap('playing', 0, 3));
+    await flushMicrotasks();
+    expect(usePlayer.getState()).toMatchObject({
+      nowPlaying: { path: 'B' },
+      snapshot: { state: 'playing', trackIndex: 0, position: 3 },
+    });
+  });
+
   it("is never paused by the store's watchdog while it is adopted", async () => {
     const read = await askedForS();
     jest.advanceTimersByTime(3_000);
