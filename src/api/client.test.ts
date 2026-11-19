@@ -4240,6 +4240,46 @@ describe("the server's 401 mark (WS-401-MARK)", () => {
     expect((e as ApiError).code).toBeUndefined();
   });
 
+  it('reads a wrong current password as no sign-out, by the body or by the mark alone', async () => {
+    // The session token was taken: only the typed password was wrong, so the connection
+    // stays signed in and the form asks again. The server's own answer all the same.
+    answer401(
+      JSON.stringify({
+        error: 'current password is incorrect',
+        code: 'current_password_incorrect',
+      }),
+      'current_password_incorrect',
+    );
+    const { c, onAuthError, heard } = client('https://away.example');
+    const e = await c.setPassword('newpass12', 'wrong').catch((err: unknown) => err);
+    expect(e).toMatchObject({
+      status: 401,
+      code: 'current_password_incorrect',
+      fromProxy: false,
+      fromServer: true,
+    });
+    expect(isSignedOutError(e)).toBe(false);
+    expect(isProxyRefusal(e)).toBe(false);
+    expect(isRefusedForGood(e)).toBe(true);
+    // A proxy rewrote the body into a page: the mark still names the code.
+    answer401('<html>Unauthorized</html>', 'current_password_incorrect');
+    const marked = await c.setPassword('newpass12', 'wrong').catch((err: unknown) => err);
+    expect(marked).toMatchObject({ status: 401, code: 'current_password_incorrect' });
+    expect(isSignedOutError(marked)).toBe(false);
+    // A server before the mark, behind the proxy: its exact body.
+    answer401(
+      JSON.stringify({
+        error: 'current password is incorrect',
+        code: 'current_password_incorrect',
+      }),
+    );
+    const older = await c.setPassword('newpass12', 'wrong').catch((err: unknown) => err);
+    expect(older).toMatchObject({ status: 401, fromProxy: false });
+    expect(isSignedOutError(older)).toBe(false);
+    expect(onAuthError).not.toHaveBeenCalled();
+    expect(heard).toEqual([false, false, false]);
+  });
+
   it("reads an older server's 401 behind a proxy as the server's by its exact body", async () => {
     // No mark (a server before it, or a proxy that passed the body on and dropped the
     // header): the server's own body is still its revoke, a sign-out.

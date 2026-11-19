@@ -496,7 +496,8 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   request that carried no proxy headers, whatever is known of the mark) the body decides, as for
   every 403: the server's own always carry its JSON `error`; one without it (a page, an empty
   body, someone else's JSON) is the proxy's (`ApiError.fromProxy`, `unauthorizedOrigin`).
-  `isSignedOutError` is false for it, and so is
+  `isSignedOutError` is false for it (and for the server's own 401 `current_password_incorrect`:
+  a wrong current password on `POST /auth/password` keeps the session), and so is
   `accessRefusal`'s no access (fe#280), so no reconnect banner and no sign-out, and the sign-in step
   says the proxy refused the request (`isProxyRefusal`, `connect.signIn.errors.proxyRefused`).
   Nor is its 403 "not in the library" (`isNotInLibraryError` is never a proxy's: the book, browse

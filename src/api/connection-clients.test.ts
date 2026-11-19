@@ -131,6 +131,22 @@ describe('connection-clients', () => {
     }
   });
 
+  // The server's 401 for a wrong current password (`POST /auth/password`) names its code so a
+  // client keeps its session: the token was taken, only the typed password was wrong.
+  it('a wrong current password (401 `current_password_incorrect`) does NOT flag reconnect', async () => {
+    setStore([{ id: 'c1', serverUrl: 'https://h', token: 'tok' }]);
+    installFetch(() => ({
+      status: 401,
+      body: { error: 'current password is incorrect', code: 'current_password_incorrect' },
+    }));
+    await expect(resolveClient('c1')!.setPassword('newpass12', 'wrong')).rejects.toMatchObject({
+      status: 401,
+      code: 'current_password_incorrect',
+      fromProxy: false,
+    });
+    expect(markNeedsReconnect).not.toHaveBeenCalled();
+  });
+
   // FU-SLOWOK: the save loop, the car and the downloads ask through this client, so every
   // answer it gets counts for its connection's reachability, as a provider-built one's does.
   it('counts each answer the resolved client gets against its connection, a 5xx included', async () => {

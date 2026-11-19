@@ -157,11 +157,20 @@ export function isRefusedForGood(e: unknown): e is ApiError {
   );
 }
 
+/** The server's 401 for a wrong current password (`POST /auth/password`): the session token
+ * was taken, only the typed password was wrong. */
+const WRONG_CURRENT_PASSWORD = 'current_password_incorrect';
+
 /** Whether `e` is the server refusing the session token (a 401): the connection needs
  * signing in again, not another try (frontend#124). Never an auth proxy's 401
- * (`ApiError.fromProxy`, fe#295): signing in to the server again can't get past the proxy. */
+ * (`ApiError.fromProxy`, fe#295): signing in to the server again can't get past the proxy.
+ * Nor the server's 401 for a wrong current password (`WRONG_CURRENT_PASSWORD`, its body's
+ * code or its mark's): the server names it so the session is kept and the form asks again
+ * (a server before the code sends a plain 401, read as before). */
 export function isSignedOutError(e: unknown): boolean {
-  return e instanceof ApiError && e.status === 401 && !e.fromProxy;
+  return (
+    e instanceof ApiError && e.status === 401 && !e.fromProxy && e.code !== WRONG_CURRENT_PASSWORD
+  );
 }
 
 /** Whether `e` is a proxy in front of the server turning the request away with a 401 or a
@@ -373,13 +382,15 @@ function unauthorizedMark(res: Response): string | undefined {
   return res.headers?.get?.(UNAUTHORIZED_HEADER)?.trim() || undefined;
 }
 
+type Server401Code = ApiErrorCode | typeof WRONG_CURRENT_PASSWORD;
+
 /** The codes a server's own 401 has ever carried (`writeErrorCode`): a server before the
  * mark is told by them (`serverUnauthorizedBody`). A later server marks its 401s, so a new
  * code needs no entry here. */
-const SERVER_401_CODES: ReadonlySet<string> = new Set<ApiErrorCode | 'current_password_incorrect'>([
+const SERVER_401_CODES: ReadonlySet<string> = new Set<Server401Code>([
   'invite_used',
   'invite_expired',
-  'current_password_incorrect',
+  WRONG_CURRENT_PASSWORD,
   'oidc_no_sign_in',
   'oidc_sign_in_expired',
 ]);
@@ -939,7 +950,8 @@ export class ApiClient {
       if (timedOut && !(e instanceof ApiError)) throw new TimeoutError(timeoutMs);
       // A 401 ApiError means the server answered and rejected our token - fire the
       // dead-token callback (every ApiError the readers throw lands here). A proxy's own
-      // 401 is not (`fromProxy`): signing in again can't get past it. A 403 is a scope
+      // 401 is not (`fromProxy`): signing in again can't get past it. Nor is the server's
+      // 401 for a wrong current password (`isSignedOutError`). A 403 is a scope
       // denial (valid token, forbidden) or a proxy's, and a network/timeout failure has no
       // status, so none is a dead token - the full rationale is on the constructor doc above.
       if (isSignedOutError(e)) this.onAuthError?.();
