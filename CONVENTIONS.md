@@ -2147,7 +2147,10 @@ media GETs only.
   items (`MediaItems.KEY_LOAD`) and iOS beside the book, and every report of that queue carries
   it back (`BookReport.load`). A tagged report of a load a later one superseded is dropped
   whole, whatever book it names (A, then B, then A again: B's late reports, which the one slot
-  above lets through); a report of the latest load ends the watch. A report with no tag (an
+  above lets through); a report of the latest load ends the watch. A `reset` takes a number of
+  its own and stands as a load does, so a tagged report of the queue it unloaded, heard after
+  it, is dropped too (the engine's own word after a reset names no book and carries no tag).
+  A report with no tag (an
   older binary, a queue the Android service loaded itself) keeps the rule above, and an older
   binary ignores the record field. The store drops a report of a book it does not hold
   (`reportedOtherBook`: one the car or a resumption started, or the one its own load

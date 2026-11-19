@@ -98,7 +98,9 @@ class NativePlaybackService implements PlaybackService {
    * landed, that one first, none that failed. `loadFloor`: the latest of them, below which a
    * tagged report is of a superseded load (`name`). A load that fails leaves the list, so the
    * floor goes back to the latest load still standing, also when two that overlap both fail
-   * (a floor put back to the first one's tag would drop every report of the load before it). */
+   * (a floor put back to the first one's tag would drop every report of the load before it).
+   * A `reset` takes a number of its own and stands as a load does: no report carries it, so
+   * every tagged report still on its way is of a queue the reset unloaded, and is dropped. */
   private readonly loadBase = Date.now();
   private lastLoad = this.loadBase;
   private standing: number[] = [];
@@ -162,6 +164,22 @@ class NativePlaybackService implements PlaybackService {
     }
     this.named = named;
     return true;
+  }
+  /** The tag of a load (or a reset) asked now: it stands, and is the floor (`loadFloor`). */
+  private nextLoad(): number {
+    const tag = ++this.lastLoad;
+    this.standing.push(tag);
+    this.loadFloor = tag;
+    return tag;
+  }
+  /** That load failed: it stands no more, and the floor is the latest one that does. */
+  private loadFailed(tag: number) {
+    this.standing = this.standing.filter((t) => t !== tag);
+    this.loadFloor = this.standing[this.standing.length - 1] ?? this.loadBase;
+  }
+  /** That load landed: every one asked before it is superseded for good, failed or not. */
+  private loadLanded(tag: number) {
+    this.standing = this.standing.filter((t) => t >= tag);
   }
   /** Is `load` a tag one of this run's loads gave the engine (`loadBase`)? */
   private isOwnLoad(load: unknown): load is number {
@@ -390,9 +408,7 @@ class NativePlaybackService implements PlaybackService {
     // (see `moduleTakesBook`), tagged with this load (`name`).
     const native = tracks.map(toNativeTrack);
     const told = book && moduleTakesBook() ? book : null;
-    const tag = ++this.lastLoad;
-    this.standing.push(tag);
-    this.loadFloor = tag;
+    const tag = this.nextLoad();
     // From the ask on, a report of the book the engine held is that book's last (`name`). A
     // reload of the same book keeps one a load before it replaced, as no report has named
     // another book since: that book's late reports may still be on their way. A load of that
@@ -413,12 +429,10 @@ class NativePlaybackService implements PlaybackService {
     } catch (err) {
       // Not loaded: the engine may still hold that book, and its reports are its own.
       this.replaced = null;
-      this.standing = this.standing.filter((t) => t !== tag);
-      this.loadFloor = this.standing[this.standing.length - 1] ?? this.loadBase;
+      this.loadFailed(tag);
       throw err;
     }
-    // Every load asked before this one is superseded for good, failed or not.
-    this.standing = this.standing.filter((t) => t >= tag);
+    this.loadLanded(tag);
     // The engine holds this queue now: the report below is its book's, as the engine's own
     // reports name it from here.
     this.named = told ? bookRefOf(told) : null;
@@ -487,7 +501,17 @@ class NativePlaybackService implements PlaybackService {
     }
   }
   async reset() {
-    await AudiosiloPlayer.reset();
+    // The queue is unloaded from the ask on: a tagged report of it heard after this (sent
+    // before the reset reached the engine) is dropped (`name`), never taken as the place or
+    // state of an engine that holds nothing, or of the book loaded next.
+    const tag = this.nextLoad();
+    try {
+      await AudiosiloPlayer.reset();
+    } catch (err) {
+      this.loadFailed(tag);
+      throw err;
+    }
+    this.loadLanded(tag);
     this.named = null;
     this.replaced = null;
     this.update({ ...INITIAL_SNAPSHOT, rate: this.snapshot.rate });

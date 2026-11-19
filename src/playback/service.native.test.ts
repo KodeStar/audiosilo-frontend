@@ -363,6 +363,43 @@ describe('the book a report names', () => {
     expect(svc.getSnapshot().position).toBe(40);
   });
 
+  // A reset supersedes the load before it as a later load does: a report of that queue sent
+  // before the reset and heard after it was taken as the place and state of an engine that
+  // holds nothing.
+  it('drops a late report of the load a reset unloaded', async () => {
+    const svc = await setUp();
+    mockModule.reset = jest.fn(async () => {});
+    await svc.load(tracks, 0, 0, [], book);
+    const a = ((mockModule.load as jest.Mock).mock.calls[0][4] as { load: number }).load;
+    await svc.reset();
+    send('onState', { state: 'playing', book, load: a });
+    send('onProgress', { position: 40, duration: 100, book, load: a });
+    expect(svc.reportedBook!()).toBeNull();
+    expect(svc.getSnapshot()).toMatchObject({ state: 'idle', position: 0 });
+    // The engine's own word after the reset names no book and carries no tag: taken.
+    send('onState', { state: 'idle' });
+    expect(svc.getSnapshot().state).toBe('idle');
+    // And the next load's reports are its own.
+    await svc.load(tracks, 0, 5, [], book);
+    const b = ((mockModule.load as jest.Mock).mock.calls[1][4] as { load: number }).load;
+    send('onProgress', { position: 90, duration: 100, book, load: a });
+    expect(svc.getSnapshot().position).toBe(5);
+    send('onProgress', { position: 6, duration: 100, book, load: b });
+    expect(svc.getSnapshot().position).toBe(6);
+  });
+
+  it('takes the loaded queue’s reports again once a reset failed', async () => {
+    const svc = await setUp();
+    mockModule.reset = jest.fn(async () => {
+      throw new Error('no');
+    });
+    await svc.load(tracks, 0, 0, [], book);
+    const a = ((mockModule.load as jest.Mock).mock.calls[0][4] as { load: number }).load;
+    await expect(svc.reset()).rejects.toThrow('no');
+    send('onProgress', { position: 40, duration: 100, book, load: a });
+    expect(svc.getSnapshot().position).toBe(40);
+  });
+
   it("keeps a report of the engine's book when the load failed", async () => {
     const svc = await setUp();
     send('onState', { state: 'playing', book: other });
