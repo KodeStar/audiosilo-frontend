@@ -21,10 +21,9 @@ export function liveClient(connectionId: string): ApiClient | null {
   let last: ApiClient = first;
   return new Proxy(first, {
     get(_held, prop) {
-      const now = resolveClient(connectionId) ?? last;
-      last = now;
-      const value: unknown = Reflect.get(now, prop, now);
-      return typeof value === 'function' ? value.bind(now) : value;
+      last = resolveClient(connectionId) ?? last;
+      const value: unknown = Reflect.get(last, prop, last);
+      return typeof value === 'function' ? value.bind(last) : value;
     },
   });
 }

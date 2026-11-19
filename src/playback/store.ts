@@ -155,7 +155,7 @@ let service: PlaybackService | null = null;
 let deviceId = '';
 /** The place a `stop` is saving and the book it stops (`selectBookKey`), until that save
  * ends (`saveForStop`). */
-let stopSave: { key: string | null; saved: Promise<unknown> } | null = null;
+let pendingStopSave: { key: string | null; saved: Promise<unknown> } | null = null;
 /** Where the playing listening began (`POST /history` when it ends); `sync`: begun on a
  * server taking listening events, whose spans carry it instead. */
 let historyStart: { position: number; at: number; sync: boolean } | null = null;
@@ -948,11 +948,11 @@ async function persist(opts?: {
  * Only the save is shared: each stop then goes on to its own teardown (the lists read
  * again, the engine reset), which is safe twice. */
 function saveForStop(key: string | null): Promise<unknown> {
-  if (stopSave?.key === key) return stopSave.saved;
+  if (pendingStopSave?.key === key) return pendingStopSave.saved;
   const entry = { key, saved: persist() };
-  stopSave = entry;
+  pendingStopSave = entry;
   const done = () => {
-    if (stopSave === entry) stopSave = null;
+    if (pendingStopSave === entry) pendingStopSave = null;
   };
   entry.saved.then(done, done);
   return entry.saved;
