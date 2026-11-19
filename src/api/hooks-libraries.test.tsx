@@ -125,6 +125,34 @@ it('says a whole-library read that waits for the network is offline, then loads 
   }
 });
 
+// The Library's "Couldn't load every book · Retry": a refetch of a list that had loaded every
+// page failed. There is no next page to ask for, so Retry reads the list again.
+it('sends the refetch again when a refetch of a fully loaded list failed', async () => {
+  const { listBooks, serverInfo } = mockApis[0].client;
+  serverInfo!.mockResolvedValue({ capabilities: {} });
+  listBooks!.mockReset().mockResolvedValue({ books: [{ rel_path: 'Dune' }], next_cursor: '' });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  );
+  try {
+    const { result } = await renderHook(() => useAllLibraryBooks(1, { sort: 'recent' }, 'a'), {
+      wrapper,
+    });
+    await waitFor(() => expect(result.current.complete).toBe(true));
+    listBooks!.mockRejectedValueOnce(new TypeError('Network request failed'));
+    await act(async () => result.current.refresh());
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    expect(listBooks).toHaveBeenCalledTimes(2);
+    await act(async () => result.current.retry());
+    await waitFor(() => expect(listBooks).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(result.current.error).toBeNull());
+    expect(result.current.books).toEqual([{ rel_path: 'Dune' }]);
+  } finally {
+    qc.clear();
+  }
+});
+
 // fe#147: a server's refusal (a 401) has its own sign-in state, so the fan-out's error is
 // another server's trouble when there is one, and the refusing server is named.
 it("names the server that refused the sign-in, and keeps another server's error", async () => {
