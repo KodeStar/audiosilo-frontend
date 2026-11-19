@@ -288,8 +288,10 @@ function otherBookReported(key: string, raw: PlaybackSnapshot) {
   armOtherBookDeadline();
   const was = otherReport?.key === key ? otherReport : null;
   const same = was !== null && was.trackIndex === raw.trackIndex;
-  // A book heard playing that buffers stays playing here: its return to `playing` is no news.
-  const playing = raw.state === 'playing' || (same && was.playing && raw.state === 'loading');
+  // A book heard playing that buffers stays playing here, in the same file or the next one it
+  // moved on to: its return to `playing` is no news (the move to that file was).
+  const playing =
+    raw.state === 'playing' || (was !== null && was.playing && raw.state === 'loading');
   const ended = raw.state === 'ended';
   otherReport = { key, trackIndex: raw.trackIndex, playing, ended };
   if (playing && !was?.playing) otherBookListener?.('playing');

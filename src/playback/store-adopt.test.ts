@@ -2368,6 +2368,10 @@ describe("a report of another book than the store's", () => {
       pushSnapshot(snap('playing', 0, 6));
       pushSnapshot(snap('playing', 1, 0));
       expect(told.mock.calls).toEqual([['moved'], ['playing'], ['moved']]);
+      // Moved on to a file that buffers first: the move is news, its return to playing is not.
+      pushSnapshot(snap('loading', 0, 0));
+      pushSnapshot(snap('playing', 0, 1));
+      expect(told.mock.calls).toEqual([['moved'], ['playing'], ['moved'], ['moved']]);
     } finally {
       off();
     }
