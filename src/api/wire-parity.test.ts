@@ -25,6 +25,7 @@ const ENVELOPES: Record<string, string> = {
   'auth-redeem': 'T.PairingPayload',
   'auth-exchange': 'T.AuthSession',
   'auth-oidc-finish': 'T.AuthSession',
+  'auth-password': 'T.PasswordChange',
   me: 'T.User',
   libraries: '{ libraries: T.Library[] }',
   fs: 'T.Listing',

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import { ApiError, isWrongCurrentPassword } from '@/api/client';
 import { useMyDevices, useReadMyDevicesAgain, useServerInfo } from '@/api/hooks';
-import type { MyDevice } from '@/api/types';
+import type { MyDevice, PasswordChange } from '@/api/types';
 import { useOptionalApi } from '@/api/provider';
 import { signedInSessions } from '@/components/account/account-model';
 import { toast } from '@/components/ui/toast';
@@ -73,10 +73,11 @@ export function usePasswordEditor(connectionId: string) {
     setCurrentError(null);
     setBusy(true);
     const othersBefore = othersSignedIn(devicesNow);
+    let answer: PasswordChange | undefined;
     try {
       // Changing an existing password requires the current one; setting a first
       // password (a password-less account) does not.
-      await api.setPassword(password, hasPassword ? current : undefined);
+      answer = await api.setPassword(password, hasPassword ? current : undefined);
     } catch (e) {
       if (isWrongCurrentPassword(e)) setCurrentError(t('settings.account.password.currentWrong'));
       else setError(e instanceof ApiError ? e.message : t('settings.account.password.updateError'));
@@ -96,27 +97,34 @@ export function usePasswordEditor(connectionId: string) {
       });
     // What the toast says of the other devices is what the server did: setting a first
     // password ends nothing; a change ends the other sessions on a server since
-    // server#281 and none before. The devices read again (which also clears the ended ones
-    // from the list) answer, against the list as it was, rather than the version: "signed
-    // out" only when there were others and none is left (server#285). No answer, or none
-    // before: only this device is sure.
-    let body:
-      | 'account.password.doneBody'
-      | 'account.password.doneThisDevice'
-      | 'account.password.doneSignedOut' = 'account.password.doneBody';
+    // server#281 and none before. A server since server#285 says how many it signed out
+    // (`signed_out`), which the toast names. An older one says nothing: the devices read
+    // again answer, against the list as it was, rather than the version: "signed out" only
+    // when there were others and none is left. No answer, or none before: only this
+    // device is sure. The devices are read again either way, which clears the ended ones
+    // from the list.
+    let description = t('account.password.doneBody');
     if (hasPassword) {
       if (endsPairing) {
         setChanges((n) => n + 1);
         // The change ended the account's open pairing tokens, the one on its way to a watch too.
         forgetPair(connectionId);
       }
-      const others = othersSignedIn(await readDevicesAgain());
-      if (others === 0 && othersBefore) body = 'account.password.doneSignedOut';
-      else if (!others) body = 'account.password.doneThisDevice';
+      const signedOut = answer?.signed_out;
+      if (typeof signedOut === 'number') {
+        void readDevicesAgain();
+        description = signedOut
+          ? t('account.password.doneSignedOutCount', { count: signedOut })
+          : t('account.password.doneThisDevice');
+      } else {
+        const others = othersSignedIn(await readDevicesAgain());
+        if (others === 0 && othersBefore) description = t('account.password.doneSignedOut');
+        else if (!others) description = t('account.password.doneThisDevice');
+      }
     }
     toast({
       title: t(hasPassword ? 'account.password.doneChanged' : 'account.password.doneSet'),
-      description: t(body),
+      description,
     });
     await refreshUser;
   };

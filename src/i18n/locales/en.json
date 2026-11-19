@@ -260,6 +260,8 @@
       "doneChanged": "Password changed",
       "doneBody": "Your other devices stay signed in.",
       "doneSignedOut": "Your other devices are signed out. This one stays signed in.",
+      "doneSignedOutCount_one": "Signed out of {{count}} other device. This one stays signed in.",
+      "doneSignedOutCount_other": "Signed out of {{count}} other devices. This one stays signed in.",
       "doneThisDevice": "This device stays signed in.",
       "bodyMember": "{{owner}} set up this account, so it has no password yet. Set one to sign in on a new device yourself.",
       "bodyKid": "A kid's account has no password. {{owner}} signs it in on a new device.",

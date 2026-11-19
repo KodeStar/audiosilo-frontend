@@ -61,6 +61,7 @@ import type {
   Page,
   PageQuery,
   PairingPayload,
+  PasswordChange,
   PeopleList,
   PersonCount,
   PodcastEpisodeOrder,
@@ -1112,8 +1113,10 @@ export class ApiClient {
   // one (pass currentPassword); setting a first password does not. The password
   // can't be empty (clearing is admin-only). The connect screen's code field still
   // redeems an admin invite code (redeemCode → exchange) as the other way in.
+  // Answers how many other devices the change signed out (`PasswordChange`), or undefined
+  // from a server before server#285, which answers 204.
   setPassword(password: string, currentPassword?: string) {
-    return this.request<void>('POST', '/auth/password', {
+    return this.request<PasswordChange | undefined>('POST', '/auth/password', {
       body: currentPassword ? { password, current_password: currentPassword } : { password },
     });
   }

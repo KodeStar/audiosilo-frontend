@@ -352,6 +352,14 @@ export type PairingPayload = {
   addresses?: ServerAddresses;
 };
 
+/** Response of POST /auth/password on a server since server#285 (v2.7.0): how many of the
+ * account's own other devices the change signed out (0 for a first password). Never anything
+ * of another person's: a household member signed out with them is not counted. An older
+ * server answers 204 with no body, which `setPassword` returns as undefined. */
+export type PasswordChange = {
+  signed_out: number;
+};
+
 /** A user-minted, named API key for headless integrations (dashboards, cron). The
  * key acts as its owner; there are no scopes in v1 and keys don't expire - revoke
  * is the lifecycle. Only metadata is ever listed; the plaintext secret is returned
