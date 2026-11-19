@@ -46,10 +46,10 @@ export const LIVE_POSITION_BUCKET_S = 15;
  * either way and an unmatched answer renders as the surface did without it. The book page,
  * the player's companion and reveal toast, Home's Now card and Previously on and the end
  * credits ask by it (fe#290); the offline copy, which runs for every download, keeps to the
- * books that can match by id (`matchableById`) or name their work (`work_id`, `canMatch`).
- * Never before the book is in: until then a route's path may be a file inside the book, and
- * an episode is not yet known to be one. The series page's anchor and Search's characters
- * pick their books by their own rules (`metadataAnchor`, `characterBooksToLoad`).
+ * books that can match by id (`matchableById`). Never before the book is in: until then a
+ * route's path may be a file inside the book, and an episode is not yet known to be one. The
+ * series page's anchor and Search's characters pick their books by their own rules
+ * (`metadataAnchor`, `characterBooksToLoad`).
  */
 export function metaEnabledFor(
   metadata: boolean | undefined,
@@ -58,12 +58,14 @@ export function metaEnabledFor(
   return metadata === true && !!book && !book.episode;
 }
 
-/** Whether a book can have community metadata without a console match: an ASIN or ISBN,
- * which the server matches by, or content `generated` on its server; never an episode. */
+/** Whether a book names something its community metadata is found by: an ASIN or ISBN,
+ * which the server matches by, content `generated` on its server, or the community work the
+ * server ties it to (`work_id`, also sent for a console match without ids since server#484,
+ * fe#290); never an episode. */
 export function matchableById(
-  book: Pick<Book, 'asin' | 'isbn' | 'generated' | 'episode'> | undefined,
+  book: Pick<Book, 'asin' | 'isbn' | 'generated' | 'work_id' | 'episode'> | undefined,
 ): boolean {
-  return !!book && !book.episode && !!(book.asin || book.isbn || book.generated);
+  return !!book && !book.episode && !!(book.asin || book.isbn || book.generated || book.work_id);
 }
 
 /**

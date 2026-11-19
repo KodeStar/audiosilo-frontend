@@ -261,17 +261,20 @@ describe('metaEnabledFor', () => {
 });
 
 describe('matchableById', () => {
-  it('is a book with an ASIN or ISBN, or with content generated on its server', () => {
+  it('is a book with an ASIN or ISBN, content generated on its server, or a work (fe#290)', () => {
     expect(matchableById({ asin: 'B0', isbn: undefined })).toBe(true);
     expect(matchableById({ asin: undefined, isbn: '978' })).toBe(true);
     expect(matchableById({ asin: '', isbn: '', generated: true })).toBe(true);
+    expect(matchableById({ asin: '', isbn: '', work_id: 'w_garden' })).toBe(true);
     expect(matchableById({ asin: '', isbn: '' })).toBe(false);
     expect(matchableById(undefined)).toBe(false);
   });
 
   it('never a podcast episode, whatever its tags carry', () => {
     const episode = { show_path: 'Show' } as PodcastEpisodeInfo;
-    expect(matchableById({ asin: 'B0', isbn: '978', generated: true, episode })).toBe(false);
+    expect(matchableById({ asin: 'B0', isbn: '978', generated: true, work_id: 'w', episode })).toBe(
+      false,
+    );
   });
 });
 

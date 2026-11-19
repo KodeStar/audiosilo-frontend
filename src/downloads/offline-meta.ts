@@ -19,8 +19,7 @@ import type { DownloadEntry } from './types';
  * The offline companion: a downloaded book keeps its community metadata (the `/meta`
  * envelope, the previous book's work, and the server's `/server` answer) so the book page
  * and the player's companion read exactly what they would online, with no network (kept
- * for a book that can match by id or that names its community work, `canMatch`; any other
- * reads as unmatched offline). The spoiler gate is unchanged: it still runs on the device
+ * for a book with something to match by, `canMatch`; any other reads as unmatched offline). The spoiler gate is unchanged: it still runs on the device
  * against the listener's place (`meta-gating.ts`); nothing here decides what to show.
  *
  * Where it lives: in its own file beside the book's audio (`OFFLINE_META_FILE`, through
@@ -181,22 +180,16 @@ export async function serverHasMetadata(connectionId: string): Promise<boolean> 
   }
 }
 
-/** Whether a downloaded book's metadata is kept: one that can match by id (`matchableById`:
- * an ASIN or ISBN, which the server matches by, or content generated on its server) or one
- * the server ties to a community work (`work_id`, sent since server#484 for a console match
- * without ids, a LibriVox download, fe#290); never an episode. The screens ask for any book
- * (`metaEnabledFor`), but this runs for every download, so it keeps to the books with
- * something to match by: offline, any other reads as unmatched (as every id-less match does
- * from an older server, which sends no `work_id`). The download's book can be the list
- * shape, so the full item is asked first. */
+/** Whether a downloaded book's metadata is kept (`matchableById`: an ASIN, an ISBN,
+ * generated content or a `work_id`). The screens ask for any book (`metaEnabledFor`), but
+ * this runs for every download, so it keeps to the books with something to match by:
+ * offline, any other reads as unmatched (an id-less console match from an older server,
+ * which sends no `work_id`). The download's book can be the list shape, so the full item is
+ * asked first. */
 export function canMatch(entry: DownloadEntry): boolean {
   const { connectionId, libraryId, path } = entry;
   const item = queryClient.getQueryData<Book>(qk.item(connectionId, libraryId, path));
-  return keepsMeta(item) || keepsMeta(entry.manifest.book);
-}
-
-function keepsMeta(book: Book | undefined): boolean {
-  return matchableById(book) || (!!book?.work_id && !book.episode);
+  return matchableById(item) || matchableById(entry.manifest.book);
 }
 
 /**
