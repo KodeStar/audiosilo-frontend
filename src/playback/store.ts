@@ -222,8 +222,16 @@ const engineIsAnothers = (): boolean => outsidePlay?.other === true;
  * played yet (`outsidePlay`). The car sync then asks whose book the engine holds
  * (`mayBeServiceChange`); a Retry or a play of the store's own asks nothing. */
 export const followsOutsidePlay = (): boolean => outsidePlay !== null;
-/** Adoptions of the engine's book under way (`adoptLoadedBook`). */
-let adoptions = 0;
+/** The books adoptions of the engine's book under way take (`adoptLoadedBook`, their content
+ * keys). While one is not the store's book (`adoptsAnother`), a report that names no book (an
+ * older binary) is that book's, never the store's book's place or state, even once a Pause
+ * ended the play followed from outside (`outsidePlay`). Once an adoption switched the store to
+ * its book, they are that book's own. */
+const adopting: string[] = [];
+const adoptsAnother = (): boolean => {
+  const own = selectBookKey(usePlayer.getState());
+  return adopting.some((key) => key !== own);
+};
 
 /**
  * The content key of the book the engine's last report named, when that is not the store's
@@ -266,6 +274,38 @@ export function engineOtherBook(): BookRef | null {
 /** The other book's report the car sync was last told of (`otherBookReported`), else null. */
 let otherReport: { key: string; trackIndex: number; playing: boolean; ended: boolean } | null =
   null;
+/**
+ * Whether the engine plays the book it holds that is not the store's (`engineOtherBook`, its
+ * last report `playing`): the sound plays whatever the store's book shows, paused included
+ * (`otherBookNotAdopted`, `pauseOwnBook`). The sleep timer counts down while it does
+ * (`selectIsTransportLive` alone would read the store's book's pause) and its `pause` stops it.
+ */
+export function engineOtherBookPlays(): boolean {
+  // `playing` is false for an `ended` report; a load of the store's holds the engine
+  // (`engineOtherBook`), and the report must still be of that book.
+  if (!otherReport?.playing || !service) return false;
+  if (usePlayer.getState().loadingBook || startsInFlight > 0) return false;
+  return reportedOtherBook(service) === otherReport.key;
+}
+/** Told when `engineOtherBookPlays` turns (`noteOtherBookPlays`): no write of the player store
+ * says so, as the store holds that book's reports. */
+const otherPlaysListeners = new Set<() => void>();
+let otherPlaysWas = false;
+function noteOtherBookPlays() {
+  const plays = engineOtherBookPlays();
+  if (plays === otherPlaysWas) return;
+  otherPlaysWas = plays;
+  for (const listener of otherPlaysListeners) listener();
+}
+/** Be told when the engine starts or stops playing a book that is not the store's
+ * (`engineOtherBookPlays`): the sleep timer freezes and thaws its countdown on it, as it does
+ * on the store's own book's play state. Returns the unsubscribe. */
+export function onOtherBookPlays(listener: () => void): () => void {
+  otherPlaysListeners.add(listener);
+  return () => {
+    otherPlaysListeners.delete(listener);
+  };
+}
 /** What the car sync is told of another book the engine holds (`otherBookReported`): it is new
  * or moved to another file (`moved`), it began playing (`playing`: the book a resumption
  * starts from now, `engineOtherBook`), or it played to its end (`ended`). */
@@ -354,7 +394,7 @@ function otherBookNotAdopted() {
   if (loadingBook || snapshot.state !== 'playing') return;
   if (!engineHoldsAnother()) return;
   // An adoption still under way (a slow server's chapters) lands or gives up first.
-  if (adoptions > 0) {
+  if (adopting.length > 0) {
     otherBookShown = nowPlaying;
     otherBookAdoption.start();
     return;
@@ -377,18 +417,37 @@ function showOwnBookPaused() {
   usePlayer.setState({ snapshot: { ...snapshot, state: 'paused' } });
 }
 
-/** The app's own Pause press (`toggle`). While a report names another book
- * (`engineHoldsAnother`, the state in which a play press reloads the store's book), the press
- * is the store's book's alone: it shows paused (`showOwnBookPaused`) and the other book plays
- * on. A report that names no book (an older binary) keeps the engine's pause: nothing would
- * keep that book's reports out of the store's. So does a load of the store's that holds the
- * engine (`loadingBook`, `startsInFlight`): the book named then is the one that load replaces
- * (`otherBookReported`), and left playing it would go on under the store's book, a failed
- * load's error included. */
+/** Whether the engine's reports are another book's, so a pause of the engine shows nothing of
+ * the store's book: its last report named that book (`engineHoldsAnother`), or an adoption of
+ * another book is under way (`adoptsAnother`) and its report names none (an older binary). */
+const pausesAnother = (): boolean =>
+  engineHoldsAnother() || (adoptsAnother() && !service?.reportedBook?.());
+
+/** The app's own Pause press (`toggle`). It always reaches the engine: whatever the engine
+ * plays stops, the other book too (the car's, not adopted), as a pause pressed in the app
+ * while the sound plays on is no pause. While the engine's reports are another book's
+ * (`pausesAnother`), the store's book shows paused itself (`showOwnBookPaused`), where it was
+ * last heard and nothing saved: the engine's pause is that book's report, which the store
+ * holds. Not while a load of the store's holds the engine (`loadingBook`, `startsInFlight`):
+ * the book named then is the one that load replaces (`otherBookReported`), and the store's
+ * book takes the engine's pause when its load lands. */
 async function pauseOwnBook(svc: PlaybackService) {
   const ownLoad = usePlayer.getState().loadingBook !== null || startsInFlight > 0;
-  if (engineHoldsAnother() && !ownLoad) showOwnBookPaused();
-  else await svc.pause();
+  if (pausesAnother() && !ownLoad) showOwnBookPaused();
+  await svc.pause();
+}
+
+/**
+ * The sleep timer's shake in its grace, when the timer stopped the book the engine holds that
+ * is not the store's (`engineOtherBookPlays` as it fired): that book plays again, as the
+ * car's play would, and nothing of the store's book changes (a play press of the store's
+ * reloads the store's book over it, `toggle`). False, asking nothing, once the engine no
+ * longer holds such a book, or it plays already.
+ */
+export async function resumeOtherBook(): Promise<boolean> {
+  if (!service || engineOtherBook() === null || engineOtherBookPlays()) return false;
+  await service.play();
+  return true;
 }
 
 /** Be told when the engine reports another book than the store's (`otherBookReported`; one
@@ -3022,7 +3081,7 @@ function fireStallWatchdog() {
   // a resumption started another book): the adoption takes it as its own asked play, or gives
   // up and leaves it to this watchdog, armed again. Stopped now, it was that other book that
   // was paused, as the store's.
-  if (adoptions > 0 && outsidePlay) {
+  if (adopting.length > 0 && outsidePlay) {
     armStallWatchdog();
     return;
   }
@@ -3395,10 +3454,12 @@ async function createService(): Promise<PlaybackService> {
     const other = reportedOtherBook(svc);
     if (other !== null) {
       otherBookReported(other, raw);
+      noteOtherBookPlays();
       holdReport();
       return;
     }
     otherReport = null;
+    noteOtherBookPlays();
     // The store's own book is heard again: the other book's adoption deadline is over, and a
     // later report of another book runs a whole one of its own.
     if (otherBookShown) cancelOtherBookDeadline();
@@ -3431,8 +3492,9 @@ async function createService(): Promise<PlaybackService> {
       return;
     }
     // Another book's reports, until it is adopted or its play is over (`engineIsAnothers`):
-    // the watchdog ends one that gave up.
-    if (engineIsAnothers()) {
+    // the watchdog ends one that gave up. One that names no book while another book is being
+    // adopted is that book's too (`adoptsAnother`): an older binary names none.
+    if (engineIsAnothers() || (!svc.reportedBook?.() && adoptsAnother())) {
       holdReport();
       return;
     }
@@ -4161,10 +4223,15 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     // the stream is buffering). The engine pause is idempotent in either state.
     const st = get().snapshot.state;
     if (pickUpWait) settlePickUpWaitPaused();
-    if (st !== 'playing' && st !== 'loading') return;
+    if (st !== 'playing' && st !== 'loading') {
+      // The store's book shows paused while the engine plays another book (the car's, not
+      // adopted, `otherBookNotAdopted`): the sound stops all the same.
+      if (engineOtherBookPlays()) await svc.pause();
+      return;
+    }
     // The engine plays another book (the car's, not adopted): that book stops too, and the
     // store's book, still shown playing, shows paused where it was last heard.
-    if (engineHoldsAnother()) showOwnBookPaused();
+    if (pausesAnother()) showOwnBookPaused();
     await svc.pause();
   },
 
@@ -4883,22 +4950,22 @@ async function adoptLoadedBook(
   service: LoadedBook,
   reread?: () => Promise<LoadedBook | null>,
 ): Promise<boolean> {
-  adoptions++;
   // A play asked from outside that the store follows as its own book's is this other book's:
   // the engine's reports are held from here (`engineIsAnothers`).
   const followed = outsidePlay;
   const loadedKey = resolvedKeyOf(service);
   if (followed && contentKeyOf(followed.np) !== loadedKey) followed.other = true;
+  adopting.push(loadedKey);
   let adopted = false;
   try {
     adopted = await adoptNow(service, reread);
     return adopted;
   } finally {
-    adoptions--;
+    adopting.splice(adopting.indexOf(loadedKey), 1);
     // Gave up with the play still followed: the watchdog ends it, after its whole grace from
     // here, so the engine's book by now (another again) can be adopted first (the car sync
     // reads the engine once more).
-    if (!adopted && adoptions === 0 && outsidePlay === followed && followed?.other) {
+    if (!adopted && adopting.length === 0 && outsidePlay === followed && followed?.other) {
       cancelStallWatchdog();
       armStallWatchdog();
     }
