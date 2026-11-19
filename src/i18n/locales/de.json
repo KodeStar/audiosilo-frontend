@@ -131,6 +131,7 @@
         "set": "Festgelegt",
         "notSet": "Nicht festgelegt",
         "current": "Aktuelles Passwort",
+        "currentWrong": "Das ist nicht dein aktuelles Passwort.",
         "currentPlaceholder": "Dein aktuelles Passwort",
         "new": "Neues Passwort",
         "newPlaceholder": "Mindestens {{min}} Zeichen",

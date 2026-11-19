@@ -131,6 +131,7 @@
         "set": "Set",
         "notSet": "Not set",
         "current": "Current password",
+        "currentWrong": "That isn't your current password.",
         "currentPlaceholder": "Your current password",
         "new": "New password",
         "newPlaceholder": "At least {{min}} characters",

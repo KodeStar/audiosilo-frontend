@@ -161,6 +161,12 @@ export function isRefusedForGood(e: unknown): e is ApiError {
  * was taken, only the typed password was wrong. */
 const WRONG_CURRENT_PASSWORD = 'current_password_incorrect';
 
+/** Whether `e` is the server's 401 for a wrong current password (`WRONG_CURRENT_PASSWORD`):
+ * the form asks for it again, under its field. */
+export function isWrongCurrentPassword(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 401 && e.code === WRONG_CURRENT_PASSWORD;
+}
+
 /** Whether `e` is the server refusing the session token (a 401): the connection needs
  * signing in again, not another try (frontend#124). Never an auth proxy's 401
  * (`ApiError.fromProxy`, fe#295): signing in to the server again can't get past the proxy.

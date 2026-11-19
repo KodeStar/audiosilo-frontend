@@ -131,6 +131,7 @@
         "set": "Establecida",
         "notSet": "Sin establecer",
         "current": "Contraseña actual",
+        "currentWrong": "Esa no es tu contraseña actual.",
         "currentPlaceholder": "Tu contraseña actual",
         "new": "Nueva contraseña",
         "newPlaceholder": "Al menos {{min}} caracteres",

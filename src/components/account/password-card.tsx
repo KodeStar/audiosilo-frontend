@@ -121,6 +121,7 @@ export function PasswordDialog({ editor }: { editor: PasswordEditor }) {
               textContentType="password"
               value={editor.current}
               onChangeText={editor.setCurrent}
+              error={editor.currentError ?? undefined}
             />
           ) : null}
           <Input

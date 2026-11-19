@@ -131,6 +131,7 @@
         "set": "Definida",
         "notSet": "Não definida",
         "current": "Palavra-passe atual",
+        "currentWrong": "Essa não é a tua palavra-passe atual.",
         "currentPlaceholder": "A sua palavra-passe atual",
         "new": "Nova palavra-passe",
         "newPlaceholder": "Pelo menos {{min}} caracteres",
