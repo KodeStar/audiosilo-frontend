@@ -2896,8 +2896,7 @@ media GETs only.
   - *Surfaces.* Home's pill counts listens waiting (`pendingSaves`, listen events only; the
     removal warnings count every event, a finish too, after a last send that first cuts the
     span playing through the connection into the outbox (`unsentListens`, `cutPlayingSpan` in
-    `span-cut.ts`: left open, it closed at the stop after the count, and a 429's wait then
-    purged it unseen)), the account's Listening sync
+    `span-cut.ts`)), the account's Listening sync
     card (`listening-sync-card.tsx`: waiting, last sync, the couldn't-sync list with Discard),
     the unsent-listens warning on sign-out, removing a server and removing a person, and the
     book History's "Waiting to sync" rows (`usePendingListens`), and the Journal's Diary

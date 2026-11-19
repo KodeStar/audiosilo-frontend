@@ -1486,10 +1486,7 @@ describe('flushOutbox', () => {
     }
   });
 
-  // v2.7.0 verify: a sign-out during a 429's wait sent only the held events. The span still
-  // playing closed at the sign-out's stop, after the last send, and the stop's flush waited
-  // out the 429, so the purge dropped the listening since the 429 with no warning. The
-  // playing span is cut into the last send now, and the stop's close gets a last send too.
+  // A sign-out during a 429's wait still sends the playing span, and its stop's close.
   it('a sign-out during a 429 sends the playing span once, then the close of its stop', async () => {
     await appendEvents('c1', [listen('held')]);
     const c = client(async (body) => answer(body));
