@@ -13,6 +13,7 @@ import {
   isProxyRefusal,
   isRefusedForGood,
   isServerBusyError,
+  isServerNotInLibraryError,
   isSignedOutError,
   NetworkError,
   PodcastFetchPendingError,
@@ -2948,6 +2949,37 @@ describe('ApiClient podcasts (Bridge Phase 2d-1)', () => {
     expect(e).toBeInstanceOf(ApiError);
     expect(e).not.toBeInstanceOf(PodcastFetchPendingError);
     expect((e as ApiError).status).toBe(503);
+  });
+
+  it("tells a proxy's 403 from the server's own (fe#280)", async () => {
+    const refusal = async (answer: Answer) => {
+      installAnswers(() => answer);
+      return (await client()
+        .prepareEpisodeStream(5, 'E')
+        .catch((err: unknown) => err)) as ApiError;
+    };
+    // The server's: JSON with its `error`.
+    const own = await refusal({ status: 403, body: { error: 'no access to this library' } });
+    expect(own).toMatchObject({ status: 403, fromProxy: false });
+    expect(isProxyRefusal(own)).toBe(false);
+    expect(isRefusedForGood(own)).toBe(true);
+    expect(isServerNotInLibraryError(own)).toBe(true);
+    // A proxy's page, and a proxy's own JSON with no `error`.
+    const page = await refusal({ status: 403, text: '<html>Forbidden</html>' });
+    expect(page).toMatchObject({ status: 403, fromProxy: true });
+    // The server never saw it: the proxy may let the next one through.
+    expect(isProxyRefusal(page)).toBe(true);
+    expect(isRefusedForGood(page)).toBe(false);
+    expect(isServerNotInLibraryError(page)).toBe(false);
+    expect(await refusal({ status: 403, body: { message: 'denied' } })).toMatchObject({
+      status: 403,
+      fromProxy: true,
+    });
+    // Any other status keeps the flag off.
+    expect(await refusal({ status: 404, text: '<html>Not Found</html>' })).toMatchObject({
+      status: 404,
+      fromProxy: false,
+    });
   });
 
   it('keeps a JSON 503 without a fetch, or with another code, a plain ApiError', async () => {

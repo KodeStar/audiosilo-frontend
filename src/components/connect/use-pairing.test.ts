@@ -179,6 +179,8 @@ describe('useLinkPairing', () => {
   const SERVER =
     "The server couldn't finish pairing. Try again, or enter your invite code on the sign-in screen.";
   const REACH = 'Could not reach the server to finish pairing.';
+  const PROXY =
+    "The server's sign-in proxy turned this device away. Check the proxy headers for this address, then try again.";
   it.each<[string, unknown, boolean, PairFailure['outcome'], string]>([
     ['401', new ApiError(401, 'x'), false, 'refused', EXPIRED],
     ['410', new ApiError(410, 'x'), false, 'refused', EXPIRED],
@@ -224,6 +226,9 @@ describe('useLinkPairing', () => {
       'temporary',
       'Too many tries from this network. Try again in 2 minutes.',
     ],
+    // A proxy in front of the server turned it away: its headers, never the server's.
+    ['a proxy 401', new ApiError(401, 'x', undefined, undefined, true), false, 'temporary', PROXY],
+    ['a proxy 403', new ApiError(403, 'x', undefined, undefined, true), false, 'temporary', PROXY],
     ['500', new ApiError(500, 'x'), false, 'temporary', SERVER],
     ['503', new ApiError(503, 'x'), false, 'temporary', SERVER],
     ['no answer', new TypeError('Network request failed'), false, 'temporary', REACH],

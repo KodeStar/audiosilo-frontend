@@ -25,6 +25,7 @@ describe('storage keys', () => {
       TIME_SAVED_KEY: 'audiosilo.timeSaved',
       DRIFT_STORAGE_KEY: 'audiosilo.driftOffs',
       WATCH_LEDGER_KEY: 'audiosilo.watchLedger',
+      LIBRIVOX_WATCHES_KEY: 'audiosilo.librivoxWatches',
       CONNECTION_ALIASES_KEY: 'audiosilo.connectionAliases',
       PROFILES_KEY: 'audiosilo.profiles',
     });

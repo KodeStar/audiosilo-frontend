@@ -548,7 +548,13 @@
       "openLink": "Open the link",
       "appOnly": "This link is for another server, and it opens only in the AudioSilo app. Open it on your phone or tablet."
     },
-    "memberNotReady": "This device isn't ready to sign them in yet. Try again in a moment."
+    "memberNotReady": "This device isn't ready to sign them in yet. Try again in a moment.",
+    "getApp": {
+      "title": "Get the AudioSilo app",
+      "appStore": "App Store",
+      "googlePlay": "Google Play",
+      "apk": "Android without Google Play? Download the APK"
+    }
   },
   "onboarding": {
     "step": "Step {{step}} of {{count}}",

@@ -548,7 +548,13 @@
       "openLink": "Ouvrir le lien",
       "appOnly": "Ce lien est pour un autre serveur et ne s'ouvre que dans l'app AudioSilo. Ouvrez-le sur votre téléphone ou votre tablette."
     },
-    "memberNotReady": "Cet appareil ne peut pas encore la connecter. Réessayez dans un instant."
+    "memberNotReady": "Cet appareil ne peut pas encore la connecter. Réessayez dans un instant.",
+    "getApp": {
+      "title": "Obtenir l'application AudioSilo",
+      "appStore": "App Store",
+      "googlePlay": "Google Play",
+      "apk": "Android sans Google Play ? Téléchargez l'APK"
+    }
   },
   "onboarding": {
     "step": "Étape {{step}} sur {{count}}",

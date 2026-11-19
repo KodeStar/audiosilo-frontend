@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { AppState } from 'react-native';
 import { WebView as BaseWebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { downloadedEntryOf } from '@/downloads/store';
+import { isOffScreen } from '@/lib/app-activity';
 import { contentKey } from '@/lib/content-key';
 import { useLatestRef } from '@/lib/use-latest';
 import { whenActive } from '@/lib/when-active';
@@ -271,7 +271,7 @@ export function ReaderHost({
     latest.current.onReopen?.();
     deferred.current?.();
     deferred.current = null;
-    if (AppState.currentState === 'background') {
+    if (isOffScreen()) {
       deferred.current = whenActive(() => {
         deferred.current = null;
         setGeneration((n) => n + 1);

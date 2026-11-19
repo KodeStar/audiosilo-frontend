@@ -53,6 +53,7 @@ import {
 import { KnownServerRow, type Probe, ProbeNotice } from './connect-parts';
 import { CoverFan } from './cover-cascade';
 import { finishConnect } from './finish-connect';
+import { GetAppLinks } from './get-app-links';
 import {
   beginInviteSignIn,
   openScanner,
@@ -513,7 +514,7 @@ export function ConnectStart() {
         e instanceof ApiError
           ? {
               kind: 'error',
-              // An auth proxy's own 401 (fe#295) or a 429: what to do about it, not the raw status.
+              // A proxy's own 401 or 403 (fe#295) or a 429: what to do about it, not the raw status.
               message: sharedRefusalText(e, t) ?? e.message,
             }
           : {
@@ -937,6 +938,8 @@ export function ConnectStart() {
           ))}
         </View>
       ) : null}
+      {/* The browser is where someone without the app starts: where to get it (fe#299). */}
+      {isWeb ? <GetAppLinks /> : null}
     </ConnectFrame>
   );
 }

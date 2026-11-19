@@ -75,8 +75,8 @@ import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import {
   ApiError,
-  isNotInLibraryError,
   isPlainSeriesQuery,
+  isServerNotInLibraryError,
   isSignedOutError,
   type ApiClient,
   type BookListQuery,
@@ -871,6 +871,10 @@ function useCapabilityQuery<T, S = T>(
     retry?: boolean;
     refetchInterval?: (query: Query<T, Error, T, readonly unknown[]>) => number | false;
     select?: (data: T) => S;
+    /** React Query's own: false, the caller reads no updates and is no observer of the
+     * query (its page hidden) until it is true again. */
+    subscribed?: boolean;
+    gcTime?: number;
   } = {},
 ) {
   const api = useOptionalApi(connectionId);
@@ -888,6 +892,8 @@ function useCapabilityQuery<T, S = T>(
     ...(opts.retry !== undefined ? { retry: opts.retry } : {}),
     ...(opts.refetchInterval !== undefined ? { refetchInterval: opts.refetchInterval } : {}),
     ...(opts.select !== undefined ? { select: opts.select } : {}),
+    ...(opts.subscribed !== undefined ? { subscribed: opts.subscribed } : {}),
+    ...(opts.gcTime !== undefined ? { gcTime: opts.gcTime } : {}),
   });
   // Only a read that would run once the flag is known, and holds nothing of its own. The
   // query's own fields are read last, and only then: reading one subscribes the caller to
@@ -2885,14 +2891,52 @@ export function useLibrivoxWork(id: string | null, connectionId?: string) {
   );
 }
 
+/** Where each query's run of failed reads began (`failuresInARow`): its answer count then,
+ * and its error count before the first failure. */
+const failureRuns = new WeakMap<object, { answers: number; errorsBefore: number }>();
+
+/** How many reads of `query` failed in a row since its last answer. Not TanStack's
+ * `fetchFailureCount`: each fetch starts it at 0 again, so with `retry: false` it never
+ * passes 1. Counted from `errorUpdateCount`, from where it stood at the last answer. */
+function failuresInARow(query: {
+  state: {
+    dataUpdateCount: number;
+    errorUpdateCount: number;
+    dataUpdatedAt: number;
+    errorUpdatedAt: number;
+  };
+}): number {
+  const { dataUpdateCount, errorUpdateCount, dataUpdatedAt, errorUpdatedAt } = query.state;
+  const failing = errorUpdateCount > 0 && errorUpdatedAt >= dataUpdatedAt;
+  let run = failureRuns.get(query);
+  if (!run || run.answers !== dataUpdateCount) {
+    // First seen, or answered since: a run of failures starts from here (the last one counts
+    // when it came after the answer, as the first seen may).
+    run = { answers: dataUpdateCount, errorsBefore: errorUpdateCount - (failing ? 1 : 0) };
+    failureRuns.set(query, run);
+  }
+  return failing ? errorUpdateCount - run.errorsBefore : 0;
+}
+
 /** A Bridge job by its id (a `librivox.fetch` the page queued or saw open), polled while
- * it is open and `active` (`librivoxJobPollInterval`) with the app in the foreground (only
+ * it is open and `active` (`librivoxJobPollInterval`: slower with no recording row reading it
+ * too, and backing off while reads fail) with the app in the foreground (only
  * the root's `LibrivoxFetchWatcher` asks it active; a recording row reads it), and
  * no more once it is gone (a 404: the last answer would read as open for ever). A first
  * read that failed with no answer or a server error is asked again (`retry: false`, and
  * nothing else reads it: its row would wait for ever); a refusal (a 400, 401 or 403) is
- * not. Its Cancel is `useCancelBridgeJob`. */
-export function useLibrivoxJob(id: number | undefined, active: boolean, connectionId?: string) {
+ * not, but a 401 or 403 from a proxy in front of the server (`isProxyRefusal`) is a read
+ * that failed, asked again. Its Cancel is `useCancelBridgeJob`. `shown` false (a recording
+ * row whose page is under another tab): that reader takes no updates and does not count as
+ * one (React Query's `subscribed`), so the watcher's poll leaves the on-screen pace until
+ * the page is focused again, and the row reads the job once it is (its last answer kept
+ * meanwhile, `gcTime`). */
+export function useLibrivoxJob(
+  id: number | undefined,
+  active: boolean,
+  connectionId?: string,
+  shown = true,
+) {
   return useCapabilityQuery<BridgeJob>(
     'bridge',
     (cid) => qk.bridgeJob(cid, id ?? 0),
@@ -2901,14 +2945,23 @@ export function useLibrivoxJob(id: number | undefined, active: boolean, connecti
     {
       ready: id !== undefined,
       retry: false,
+      subscribed: shown,
+      // Kept with no observer: a hidden page's row is none, and once the watcher let an ended
+      // job go its last answer (why a fetch failed) would otherwise be dropped before the
+      // page is shown again, and read as an open job (no data) that is watched once more.
+      gcTime: Infinity,
       refetchInterval: (query) => {
         const { data, error } = query.state;
+        // The server's refusal stays refused (the default retry's rule, `retryQuery`), and a
+        // 404 is gone. A proxy's own 401 or 403 is a read that failed: asked again, backing off.
+        if (isSignedOutError(error)) return false;
+        if (isServerNotInLibraryError(error)) return false;
         return librivoxJobPollInterval(
           data,
-          error instanceof ApiError && error.status === 404,
           active && AppState.currentState === 'active',
-          // A refusal stays refused (the default retry's rule, `retryQuery`).
-          !!error && !isSignedOutError(error) && !isNotInLibraryError(error),
+          !!error,
+          // A reader besides this one (a recording row on a focused page): a page shows it.
+          { seen: query.getObserversCount() > 1, failures: failuresInARow(query) },
         );
       },
     },
@@ -3265,8 +3318,9 @@ export function useUnfollowPodcast(connectionId?: string) {
 }
 
 /** An episode's fetch status, read once (capability `podcast_fetch`; never polled here:
- * the episode-fetch controller, `src/playback/episode-fetch.ts`, is the one poller and
- * keeps this entry up to date while it watches). `enabled` false asks nothing. */
+ * the episode-fetch controller, `src/playback/episode-fetch.ts`, and a download's wait for
+ * its episode, `watchEpisode` in `src/downloads/store.ts`, keep this entry up to date while
+ * they follow it). `enabled` false asks nothing. */
 export function usePodcastFetchStatus(
   libraryId: number,
   path: string,

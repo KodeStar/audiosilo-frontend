@@ -9,7 +9,9 @@ import { librivoxHit, librivoxJob, librivoxRecording } from '@/testing/librivox-
 import { mountWithPortal } from '@/testing/render-overlay';
 
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
-jest.mock('expo-router', () => ({ useIsFocused: () => true }));
+// Whether the page is focused (false: left under another tab).
+const mockFocused = create(() => ({ focused: true }));
+jest.mock('expo-router', () => ({ useIsFocused: () => mockFocused((s) => s.focused) }));
 jest.mock('@/api/provider', () => ({ useOptionalApi: () => null }));
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
@@ -43,6 +45,8 @@ const mockWorkAsked: (string | null)[] = [];
 let mockJobs: Record<number, ReadState<BridgeJob>> = {};
 // The `active` each job was read with (the row never polls: the watcher does).
 const mockJobActive = new Map<number, boolean[]>();
+// The `shown` each job was last read with (false: the row's page hidden).
+const mockJobShown = new Map<number, boolean>();
 // Moved on to have each job's row read `mockJobs` again (a poll's or a refetch's answer).
 const mockJobsRead = create(() => ({ n: 0 }));
 const mockAdd = jest.fn();
@@ -75,10 +79,11 @@ jest.mock('@/api/hooks', () => {
       mockWorkAsked.push(id);
       return { refetch: jest.fn(), isError: false, ...mockWork };
     },
-    useLibrivoxJob: (id: number | undefined, active: boolean) => {
+    useLibrivoxJob: (id: number | undefined, active: boolean, _cid?: string, shown = true) => {
       mockJobsRead((s) => s.n);
       if (id === undefined) return {};
       mockJobActive.set(id, [...new Set([...(mockJobActive.get(id) ?? []), active])]);
+      mockJobShown.set(id, shown);
       return mockJobs[id] ?? { isPending: true };
     },
     useAddLibrivox: () => ({ mutateAsync: mockAdd, isPending: false }),
@@ -147,6 +152,8 @@ beforeEach(() => {
   mockWork = { data: work() };
   mockJobs = {};
   mockJobActive.clear();
+  mockJobShown.clear();
+  mockFocused.setState({ focused: true });
   useLibrivoxWatches.setState({ watches: [] });
   mockAdd.mockReset();
   mockCancel.mockReset();
@@ -305,7 +312,9 @@ describe('LibrivoxSearch', () => {
     mockJobs = { 40: { data: librivoxJob({ id: 40, state: 'running' }) } };
     await mount();
     await openWork();
-    expect(useLibrivoxWatches.getState().watches).toEqual([{ cid: 'c1', id: 40 }]);
+    expect(useLibrivoxWatches.getState().watches).toEqual([
+      { cid: 'c1', id: 40, at: expect.any(Number) },
+    ]);
   });
 
   it('watches the job an Add queued, and reads it without polling of its own', async () => {
@@ -315,9 +324,24 @@ describe('LibrivoxSearch', () => {
     await openWork();
     await fireEvent.press(await screen.findByTestId('librivox-add'));
     expect(await screen.findByText('Adding')).toBeTruthy();
-    expect(useLibrivoxWatches.getState().watches).toEqual([{ cid: 'c1', id: 41 }]);
+    expect(useLibrivoxWatches.getState().watches).toEqual([
+      { cid: 'c1', id: 41, at: expect.any(Number) },
+    ]);
     // The watcher is the one poller: the row asks with `active` false.
     expect(mockJobActive.get(41)).toEqual([false]);
+  });
+
+  it("reads a fetch only while the page is focused, so a hidden page doesn't keep the watcher's on-screen pace", async () => {
+    mockWork = { data: work({ job: { id: 40, state: 'running' } }) };
+    mockJobs = { 40: { data: librivoxJob({ id: 40, state: 'running' }) } };
+    await mount();
+    await openWork();
+    expect(mockJobShown.get(40)).toBe(true);
+    // Left under another tab.
+    await act(async () => mockFocused.setState({ focused: false }));
+    expect(mockJobShown.get(40)).toBe(false);
+    await act(async () => mockFocused.setState({ focused: true }));
+    expect(mockJobShown.get(40)).toBe(true);
   });
 
   it('hands an open fetch back to the watcher when it is read again (signed in again)', async () => {
@@ -331,7 +355,9 @@ describe('LibrivoxSearch', () => {
     // Signed in again, the job is read again and is still open.
     mockJobs = { 41: { data: librivoxJob({ id: 41, state: 'running' }), dataUpdatedAt: 2 } };
     await act(async () => mockJobsRead.setState({ n: 1 }));
-    expect(useLibrivoxWatches.getState().watches).toEqual([{ cid: 'c1', id: 41 }]);
+    expect(useLibrivoxWatches.getState().watches).toEqual([
+      { cid: 'c1', id: 41, at: expect.any(Number) },
+    ]);
   });
 
   it('watches the job an Add queued when the page was left before the answer', async () => {
@@ -343,7 +369,9 @@ describe('LibrivoxSearch', () => {
     await screen.unmount();
     expect(useLibrivoxWatches.getState().watches).toEqual([]);
     await act(async () => answer({ job: librivoxJob({ id: 41, state: 'queued' }) }));
-    expect(useLibrivoxWatches.getState().watches).toEqual([{ cid: 'c1', id: 41 }]);
+    expect(useLibrivoxWatches.getState().watches).toEqual([
+      { cid: 'c1', id: 41, at: expect.any(Number) },
+    ]);
   });
 
   it('has nothing to do once a fetch is done: the watcher reads the Library again', async () => {

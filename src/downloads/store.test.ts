@@ -187,6 +187,7 @@ jest.mock('@/api/hooks', () => ({
     chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path],
     server: (cid: string) => ['server', cid],
     podcastShows: (cid: string, lib: number) => ['podcastShows', cid, lib],
+    podcastFetch: (cid: string, lib: number, path: string) => ['podcastFetch', cid, lib, path],
     podcastEpisodesOfLibrary: (cid: string, lib: number) => ['podcastEpisodes', cid, lib],
     podcastEpisodesOfShow: (cid: string, lib: number, show: string) => [
       'podcastEpisodes',
@@ -3035,9 +3036,16 @@ describe('podcast episodes', () => {
     expect(entry()?.status).toBe('queued');
     expect(mockEngine.downloadFile.mock.calls.some((c) => c[2] === 'Show/Monday.mp3')).toBe(false);
 
-    // The server's fetch moves: the row says how far.
-    mockWaits[0].hooks.onStatus({ state: 'fetching', bytes_received: 400, bytes_total: 1000 });
+    // The server's fetch moves: the row says how far, and the episode page and an open row
+    // menu read it (fe#280).
+    const { queryClient } = jest.requireMock('@/api/provider');
+    const fetching = { state: 'fetching', bytes_received: 400, bytes_total: 1000 } as const;
+    mockWaits[0].hooks.onStatus(fetching);
     expect(entry()?.serverFetch).toEqual({ percent: 40 });
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(
+      ['podcastFetch', 'c1', 2, 'Show/Monday.mp3'],
+      fetching,
+    );
 
     // On the server: read again (its file's own size), then downloaded like any book.
     const ready = episodeBook(true);
@@ -3050,7 +3058,6 @@ describe('podcast episodes', () => {
     expect(entry()?.serverFetch).toBeUndefined();
     expect(entry()?.manifest.book.episode?.downloaded).toBe(true);
     // Marked on its server in the show's cached lists, by its item (fe#280).
-    const { queryClient } = jest.requireMock('@/api/provider');
     expect(mockMarkEpisodeOnServer).toHaveBeenLastCalledWith(
       queryClient,
       'c1',
@@ -3087,6 +3094,60 @@ describe('podcast episodes', () => {
     expect(mockWaits).toHaveLength(2);
     expect(mockWaits[1].opts).toEqual({ retry: true });
     expect(entry()).toMatchObject({ status: 'queued', serverFetch: { percent: null } });
+  });
+
+  it("saves a Retry's POST until its server answers it (fe#280)", async () => {
+    await useDownloads.getState().download('c1', 2, episodeBook(false), chapters);
+    mockWaits[0].hooks.onEnd({ kind: 'failed', code: null });
+    await useDownloads.getState().download('c1', 2, entry()!.manifest.book, chapters);
+    expect(entry()?.serverFetch).toEqual({ percent: null, refetch: true });
+    await saved();
+    expect((await readPersisted())[key]?.serverFetch).toEqual({ percent: null, refetch: true });
+    // Five on their way already: the POST is asked again, still owed.
+    mockWaits[1].hooks.onStatus({ state: 'unavailable', error: { code: 'fetch_limit' } } as never);
+    expect(entry()?.serverFetch).toEqual({ percent: null, refetch: true });
+    // Still owed when that refusal names how far an earlier fetch got.
+    mockWaits[1].hooks.onStatus({
+      state: 'unavailable',
+      error: { code: 'fetch_limit' },
+      bytes_received: 400,
+      bytes_total: 1000,
+    } as never);
+    expect(entry()?.serverFetch).toEqual({ percent: 40, refetch: true });
+    // The server took the POST: the fetch is on its way, and a restart asks the stream.
+    mockWaits[1].hooks.onStatus({ state: 'queued' });
+    expect(entry()?.serverFetch).toEqual({ percent: null });
+    await saved();
+    expect((await readPersisted())[key]?.serverFetch).toEqual({ percent: null });
+  });
+
+  it('a Retry signed out before its POST got through POSTs after the sign-in (fe#280)', async () => {
+    await useDownloads.getState().download('c1', 2, episodeBook(false), chapters);
+    mockWaits[0].hooks.onEnd({ kind: 'failed', code: null });
+    await useDownloads.getState().download('c1', 2, entry()!.manifest.book, chapters);
+    mockWaits[1].hooks.onEnd({ kind: 'signedOut' });
+    expect(entry()?.failure).toEqual({ kind: 'signedOut', kept: 0, refetch: true });
+    await useDownloads.getState().download('c1', 2, entry()!.manifest.book, chapters);
+    expect(mockWaits[2].opts).toEqual({ retry: true });
+    mockWaits[2].hooks.onEnd({ kind: 'noAccess' });
+    expect(entry()?.failure).toEqual({ kind: 'noAccess', kept: 0, refetch: true });
+  });
+
+  it("an automatic download that starts the entry first sends the Retry's owed POST (fe#280)", async () => {
+    await useDownloads.getState().download('c1', 2, episodeBook(false), chapters);
+    mockWaits[0].hooks.onEnd({ kind: 'failed', code: null });
+    await useDownloads.getState().download('c1', 2, entry()!.manifest.book, chapters);
+    mockWaits[1].hooks.onEnd({ kind: 'signedOut' });
+    expect(entry()?.failure).toEqual({ kind: 'signedOut', kept: 0, refetch: true });
+    // The book started again (an automatic download) before the listener's next Retry: the
+    // POST they asked for goes with it, and stays owed until the server takes it.
+    await useDownloads.getState().download('c1', 2, entry()!.manifest.book, chapters, 'auto');
+    expect(mockWaits[2].opts).toEqual({ retry: true });
+    expect(entry()?.serverFetch).toEqual({ percent: null, refetch: true });
+    mockWaits[2].hooks.onEnd({ kind: 'signedOut' });
+    expect(entry()?.failure).toEqual({ kind: 'signedOut', kept: 0, refetch: true });
+    await useDownloads.getState().download('c1', 2, entry()!.manifest.book, chapters);
+    expect(mockWaits[3].opts).toEqual({ retry: true });
   });
 
   it("an automatic download's own retry never POSTs (the server's cool-down stands)", async () => {
@@ -3249,6 +3310,60 @@ describe('podcast episodes', () => {
       mockWaits[0].hooks.onEnd({ kind: 'ready' });
       await settle();
       expect(entry()?.status).toBe('downloaded');
+    });
+
+    it('asks the POST again for a Retry the server had not answered (fe#280)', async () => {
+      await seed({ [key]: { ...waiting, serverFetch: { percent: null, refetch: true } } });
+      await useDownloads.getState().hydrate();
+      await settle();
+      expect(mockWaits).toHaveLength(1);
+      expect(mockWaits[0].opts).toEqual({ retry: true });
+    });
+
+    it("keeps a Retry's POST owed when files a failed attempt finished are gone (fe#280)", async () => {
+      // The wait is over (a download cut short), whatever is left of its files.
+      const owing: DownloadEntry = {
+        ...waiting,
+        serverFetch: { percent: null, refetch: true },
+        manifest: { ...waiting.manifest, files: downloadedEntry().manifest.files },
+      };
+      expect(reviveEntry(owing, [true, false])).toMatchObject({
+        status: 'error',
+        failure: { kind: 'interrupted', refetch: true },
+      });
+      expect(reviveEntry(owing, [false, false])?.failure).toEqual({
+        kind: 'interrupted',
+        kept: 0,
+        refetch: true,
+      });
+      // A wait that owed none owes none.
+      const plain = { ...owing, serverFetch: { percent: null } };
+      expect(reviveEntry(plain, [true, false])?.failure).not.toHaveProperty('refetch');
+      expect(reviveEntry(plain, [false, false])?.failure).toEqual({ kind: 'interrupted', kept: 0 });
+
+      // The launch: the Retry on that row POSTs.
+      mockEngine.fileExists.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+      await seed({ [key]: owing });
+      await useDownloads.getState().hydrate();
+      await settle();
+      expect(entry()).toMatchObject({ status: 'error', failure: { refetch: true } });
+      expect(entry()?.serverFetch).toBeUndefined();
+      await useDownloads.getState().download('c1', 2, entry()!.manifest.book, chapters);
+      expect(mockWaits[0].opts).toEqual({ retry: true });
+    });
+
+    it("keeps a Retry's POST owed when it is cut short with no client (fe#280)", async () => {
+      mockResolveClient.mockReturnValue(null);
+      await seed({ [key]: { ...waiting, serverFetch: { percent: null, refetch: true } } });
+      await useDownloads.getState().hydrate();
+      await settle();
+      expect(entry()).toMatchObject({
+        status: 'error',
+        failure: { kind: 'interrupted', kept: 0, refetch: true },
+      });
+      mockResolveClient.mockReturnValue(api);
+      await useDownloads.getState().download('c1', 2, entry()!.manifest.book, chapters);
+      expect(mockWaits[0].opts).toEqual({ retry: true });
     });
 
     it('waits for the session to read its connections first', async () => {

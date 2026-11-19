@@ -11,8 +11,8 @@ export type SignInStage = 'redeem' | 'exchange' | 'login';
  * link), or `undefined` for one the caller words itself: a 429 names the wait from the
  * server's `Retry-After` when it sent one (in seconds under a minute, else in whole
  * minutes: 30 s never reads as "1 minute"), the server's `member_disabled`,
- * `invite_used` and `invite_expired` codes their own sentences, and an auth proxy's own 401
- * (`isProxyRefusal`, fe#295) the proxy headers, never a wrong code or password.
+ * `invite_used` and `invite_expired` codes their own sentences, and a proxy's own 401 or
+ * 403 (`isProxyRefusal`, fe#295) the proxy headers, never a wrong code or password.
  */
 export function sharedRefusalText(e: ApiError, t: TFunction): string | undefined {
   if (isProxyRefusal(e)) return t('connect.signIn.errors.proxyRefused');

@@ -688,6 +688,8 @@ describe('the app leads with the QR (fe#264)', () => {
     );
     // One scan action, not a second one under the field.
     expect(screen.getAllByText('Scan a QR code')).toHaveLength(1);
+    // The app needs no "get the app" links.
+    expect(screen.queryByTestId('connect-get-app')).toBeNull();
     await fireEvent.press(scanButton);
     expect(mockPush).toHaveBeenCalledWith('/connect/scan');
   });
@@ -796,6 +798,27 @@ describe('the player the server serves', () => {
       pathname: '/connect/sign-in',
       params: { serverName: 'Hearthside' },
     });
+  });
+
+  it("says where to get the app, with the server connect page's links (fe#299)", async () => {
+    mockApi.serverInfo.mockResolvedValue(info());
+    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
+    try {
+      await render(<ConnectStart />);
+      await waitFor(() => expect(screen.getByText('Found Hearthside')).toBeTruthy());
+      const links = within(screen.getByTestId('connect-get-app'));
+      expect(links.getByText('Get the AudioSilo app')).toBeTruthy();
+      await fireEvent.press(links.getByText('App Store'));
+      await fireEvent.press(links.getByText('Google Play'));
+      await fireEvent.press(links.getByText('Android without Google Play? Download the APK'));
+      expect(open.mock.calls.map(([url]) => url)).toEqual([
+        'https://apps.apple.com/us/app/audiosilo/id6783431375',
+        'https://play.google.com/store/apps/details?id=app.audiosilo',
+        'https://github.com/KodeStar/audiosilo-frontend/releases/latest',
+      ]);
+    } finally {
+      open.mockRestore();
+    }
   });
 
   // fe#160: it can reach only its own server, so "Add someone" offers no server of theirs.

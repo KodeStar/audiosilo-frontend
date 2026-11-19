@@ -3,6 +3,7 @@ import { AppState, type NativeEventSubscription } from 'react-native';
 import { ApiError, PodcastFetchPendingError } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
 import type { PodcastFetchStatus } from '@/api/types';
+import { isOffScreen } from '@/lib/app-activity';
 import { serverIdOf } from '@/lib/connection-id';
 import { accessRefusal, blipDelay, pollDelay } from '@/playback/episode-fetch-rules';
 
@@ -45,7 +46,8 @@ export type EpisodeWaitEnd =
   | { kind: 'removed' };
 
 export type EpisodeWaitHooks = {
-  /** The server's fetch moved (queued, fetching and how far). */
+  /** The server's fetch status, each time one is read (queued, fetching and how far, and the
+   * last one before a `ready` or `failed` end). */
   onStatus: (status: PodcastFetchStatus) => void;
   /** The wait is over (called once, never after `stopWaiting`). */
   onEnd: (end: EpisodeWaitEnd) => void;
@@ -190,7 +192,7 @@ function end(w: Waiter, how: EpisodeWaitEnd) {
 function schedule(w: Waiter, seconds: number) {
   if (!live(w)) return;
   const wait = pollDelay(seconds);
-  if (AppState.currentState === 'background') {
+  if (isOffScreen()) {
     w.paused = true;
     return;
   }
@@ -209,7 +211,7 @@ function askAgain(w: Waiter, retryAfter?: number) {
 
 async function step(w: Waiter) {
   if (!live(w)) return;
-  if (AppState.currentState === 'background') {
+  if (isOffScreen()) {
     w.paused = true;
     return;
   }
@@ -242,13 +244,13 @@ async function step(w: Waiter) {
 
 function settle(w: Waiter, status: PodcastFetchStatus, retryAfter?: number) {
   const code = status.error?.code ?? null;
+  w.hooks.onStatus(status);
   switch (status.state) {
     case 'ready':
       return end(w, { kind: 'ready' });
     case 'queued':
     case 'fetching':
       w.blips = 0;
-      w.hooks.onStatus(status);
       // On its way: its status from here on (a POST once is enough).
       w.action = 'poll';
       return schedule(w, retryAfter ?? status.retry_after_seconds);

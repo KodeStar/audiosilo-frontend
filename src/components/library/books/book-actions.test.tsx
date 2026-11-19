@@ -141,7 +141,7 @@ const progress = (over: Partial<Progress> = {}): Progress => ({
 
 const ALL = { collections: true, progress_edit: true };
 
-async function actions(b: Book, p?: Progress, opened?: boolean) {
+async function actions(b: Book, p?: Progress, opened?: boolean, open?: boolean) {
   const openCollect = jest.fn();
   const confirmRemove = jest.fn();
   const { result } = await renderHook(() =>
@@ -149,6 +149,7 @@ async function actions(b: Book, p?: Progress, opened?: boolean) {
       { connectionId: 'c', libraryId: 1, book: b, progress: p },
       { openCollect, confirmRemove },
       opened,
+      open,
     ),
   );
   return {
@@ -693,6 +694,20 @@ describe('useBookActions, a podcast episode', () => {
       // Closed, the row's own (older) status; open, the live one.
       expect((await actions(b)).find('download')).toBeDefined();
       expect((await actions(b, undefined, true)).find('download')).toBeUndefined();
+    } finally {
+      queryClient.removeQueries({ queryKey: key });
+    }
+  });
+
+  it('follows the live fetch status only while the menu is open, not once it closed (fe#280)', async () => {
+    mockCaps = { ...ALL, podcast_fetch: true };
+    const b = book({ episode: info(false) });
+    const key = qk.podcastFetch('c', 1, b.rel_path);
+    queryClient.setQueryData(key, notAvailable());
+    try {
+      // Opened once, closed now: no listener on the live status, the row's own is read.
+      expect((await actions(b, undefined, true, false)).find('download')).toBeDefined();
+      expect((await actions(b, undefined, true, true)).find('download')).toBeUndefined();
     } finally {
       queryClient.removeQueries({ queryKey: key });
     }

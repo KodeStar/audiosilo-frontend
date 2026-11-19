@@ -38,6 +38,11 @@ export type DownloadFailure = {
   status?: number;
   /** With `serverFetch`: the server's code for why (absent when it said none). */
   code?: string;
+  /** An episode whose fetch had failed on its server, ended (`signedOut`, `noAccess`, or
+   * `interrupted` by a launch with no client) before the listener's Retry of it got through
+   * (`DownloadEntry.serverFetch.refetch`): the next Retry asks the server to fetch it again
+   * (POST, past its cool-down), as Retry on the `serverFetch` failure would have (fe#280). */
+  refetch?: true;
   /** The share of the book (0..1) whose files finished before it stopped: they stay on
    * the device (across a restart, while every one of them is still there), and a retry
    * skips them. */
@@ -153,8 +158,10 @@ export type DownloadEntry = {
    * (`episode-ready.ts`, status `queued`, off the one-at-a-time queue): how far the server's
    * fetch is (`percent` once it knows the size). Gone once it goes on the queue or fails;
    * a launch keeps a saved one and waits again (`reviveEntry`, the store's
-   * `resumeEpisodeWaits`). */
-  serverFetch?: { percent: number | null };
+   * `resumeEpisodeWaits`). `refetch`: the wait is the listener's Retry of a failed fetch and
+   * its POST (which skips the server's cool-down) has not been answered yet; saved, so a
+   * restart inside the cool-down asks the same and never fails on it again (fe#280). */
+  serverFetch?: { percent: number | null; refetch?: true };
   manifest: DownloadManifest;
 };
 

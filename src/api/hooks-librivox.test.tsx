@@ -45,7 +45,7 @@ import {
   useLibrivoxSearch,
   useLibrivoxWork,
 } from '@/api/hooks';
-import { BRIDGE_IDLE_POLL_MS, LIBRIVOX_POLL_MS } from '@/lib/bridge-jobs';
+import { BRIDGE_IDLE_POLL_MS, LIBRIVOX_POLL_MS, LIBRIVOX_UNSEEN_POLL_MS } from '@/lib/bridge-jobs';
 import { driveAppState } from '@/testing/app-state';
 import { librivoxJob, librivoxServer } from '@/testing/librivox-fixtures';
 /* eslint-enable import/first */
@@ -125,6 +125,12 @@ describe('useLibrivoxSearch / useLibrivoxWork', () => {
 
 describe('useLibrivoxJob', () => {
   const useJob = () => useLibrivoxJob(41, true);
+  /** The watcher's read with a recording row reading the same job (a page shows it). */
+  const useSeenJob = () => {
+    const read = useLibrivoxJob(41, true);
+    useLibrivoxJob(41, false);
+    return read;
+  };
 
   it('asks nothing with the Bridge off, or with no job to follow', async () => {
     await mount(librivoxServer(), () => useLibrivoxJob(undefined, true));
@@ -147,7 +153,7 @@ describe('useLibrivoxJob', () => {
   it('polls an open job, slowly while parked, and stops once it ended', async () => {
     const { result, qc } = await mount(
       librivoxServer(),
-      () => useJob(),
+      () => useSeenJob(),
       (c) => c.bridgeJob.mockResolvedValue(librivoxJob({ state: 'running' })),
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -163,10 +169,85 @@ describe('useLibrivoxJob', () => {
     expect(intervalOf(qc)).toBe(false);
   });
 
-  it('does not poll while the app is in the background', async () => {
+  it('polls slower with no row reading it, and backs off while reads fail (fe#299)', async () => {
     const { result, qc } = await mount(
       librivoxServer(),
       () => useJob(),
+      (c) => c.bridgeJob.mockResolvedValue(librivoxJob({ state: 'running' })),
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(intervalOf(qc)).toBe(LIBRIVOX_UNSEEN_POLL_MS);
+    const query = qc.getQueryCache().find({ queryKey: qk.bridgeJob('c1', 41) })!;
+    // A read with no answer (the server out of reach), the last answer kept.
+    mockClients.c1.bridgeJob.mockRejectedValue(new ApiError(502, 'bad gateway'));
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(intervalOf(qc)).toBe(BRIDGE_IDLE_POLL_MS);
+    // A proxy's own 403 (its session lapsed) is a failed read too: asked again.
+    query.setState({
+      error: new ApiError(403, 'Request failed (403)', undefined, undefined, true),
+    });
+    expect(intervalOf(qc)).toBe(BRIDGE_IDLE_POLL_MS);
+    // The server's refusal stops it.
+    query.setState({ error: new ApiError(403, 'admin only') });
+    expect(intervalOf(qc)).toBe(false);
+  });
+
+  it('leaves the on-screen pace while the row reading it is on a hidden page, and takes it again once shown', async () => {
+    let shown = true;
+    const { result, qc, rerender } = await mount(
+      librivoxServer(),
+      () => {
+        const read = useLibrivoxJob(41, true);
+        useLibrivoxJob(41, false, undefined, shown);
+        return read;
+      },
+      (c) => c.bridgeJob.mockResolvedValue(librivoxJob({ state: 'running' })),
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(intervalOf(qc)).toBe(LIBRIVOX_POLL_MS);
+    // Its page under another tab: no reader besides the watcher.
+    shown = false;
+    await rerender({});
+    expect(intervalOf(qc)).toBe(LIBRIVOX_UNSEEN_POLL_MS);
+    shown = true;
+    await rerender({});
+    expect(intervalOf(qc)).toBe(LIBRIVOX_POLL_MS);
+  });
+
+  it('waits twice as long for each read that failed in a row, and keeps its pace once one is answered', async () => {
+    const running = librivoxJob({ state: 'running' });
+    const { result, qc } = await mount(
+      librivoxServer(),
+      () => useSeenJob(),
+      (c) => c.bridgeJob.mockResolvedValue(running),
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const refetch = () =>
+      act(async () => {
+        await result.current.refetch();
+      });
+    // Each fetch starts TanStack's own failure count at 0 again: the run is counted here.
+    mockClients.c1.bridgeJob.mockRejectedValue(new ApiError(502, 'bad gateway'));
+    await refetch();
+    expect(intervalOf(qc)).toBe(LIBRIVOX_POLL_MS * 2);
+    await refetch();
+    expect(intervalOf(qc)).toBe(LIBRIVOX_POLL_MS * 4);
+    await refetch();
+    expect(intervalOf(qc)).toBe(LIBRIVOX_POLL_MS * 8);
+    mockClients.c1.bridgeJob.mockResolvedValue(running);
+    await refetch();
+    expect(intervalOf(qc)).toBe(LIBRIVOX_POLL_MS);
+    mockClients.c1.bridgeJob.mockRejectedValue(new ApiError(502, 'bad gateway'));
+    await refetch();
+    expect(intervalOf(qc)).toBe(LIBRIVOX_POLL_MS * 2);
+  });
+
+  it('does not poll while the app is in the background', async () => {
+    const { result, qc } = await mount(
+      librivoxServer(),
+      () => useSeenJob(),
       (c) => c.bridgeJob.mockResolvedValue(librivoxJob({ state: 'running' })),
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -195,6 +276,26 @@ describe('useLibrivoxJob', () => {
     query.setState({ error: new ApiError(404, 'not found') });
     expect(intervalOf(qc)).toBe(false);
   });
+
+  it("keeps a job's last answer with no observer left, for a hidden page's row to read once shown", async () => {
+    mockClients.c1 = makeClient();
+    mockClients.c1.serverInfo.mockResolvedValue(librivoxServer());
+    mockClients.c1.bridgeJob.mockResolvedValue(librivoxJob({ state: 'failed' }));
+    // Queries otherwise dropped as soon as no one observes them.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    queryClients.push(qc);
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    const { result, unmount } = await renderHook(() => useLibrivoxJob(41, false), { wrapper });
+    await waitFor(() => expect(result.current.data?.state).toBe('failed'));
+    // The watcher let the ended job go, and the row's page is hidden: no observer is left,
+    // and the query is never dropped for it (`Query.gcTime`, the time it waits unobserved).
+    await unmount();
+    const query = qc.getQueryCache().find({ queryKey: qk.bridgeJob('c1', 41) });
+    expect((query?.state.data as BridgeJob | undefined)?.state).toBe('failed');
+    expect(query?.gcTime).toBe(Infinity);
+  });
 });
 
 describe('useLibrivoxJob, a first read that failed', () => {
@@ -214,6 +315,12 @@ describe('useLibrivoxJob, a first read that failed', () => {
   it('is asked again (nothing else would), at the slow pace', async () => {
     expect(await intervalAfter(new ApiError(500, 'boom'))).toBe(BRIDGE_IDLE_POLL_MS);
     expect(await intervalAfter(new TypeError('Network request failed'))).toBe(BRIDGE_IDLE_POLL_MS);
+    // A proxy in front of the server turned it away: the server never refused it.
+    for (const status of [401, 403]) {
+      expect(await intervalAfter(new ApiError(status, 'Refused', undefined, undefined, true))).toBe(
+        BRIDGE_IDLE_POLL_MS,
+      );
+    }
   });
 
   it('is not asked again after a refusal (signed out, not an admin any more)', async () => {
