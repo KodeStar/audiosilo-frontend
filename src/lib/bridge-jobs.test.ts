@@ -113,43 +113,37 @@ describe('estimatePollInterval', () => {
 
 describe('librivoxJobPollInterval', () => {
   it('polls an open fetch quickly, a parked one slowly', () => {
-    expect(librivoxJobPollInterval(job({ state: 'queued' }), false, true)).toBe(LIBRIVOX_POLL_MS);
-    expect(librivoxJobPollInterval(job({ state: 'running' }), false, true)).toBe(LIBRIVOX_POLL_MS);
-    expect(librivoxJobPollInterval(job({ state: 'needs_attention' }), false, true)).toBe(
+    expect(librivoxJobPollInterval(job({ state: 'queued' }), true)).toBe(LIBRIVOX_POLL_MS);
+    expect(librivoxJobPollInterval(job({ state: 'running' }), true)).toBe(LIBRIVOX_POLL_MS);
+    expect(librivoxJobPollInterval(job({ state: 'needs_attention' }), true)).toBe(
       BRIDGE_IDLE_POLL_MS,
     );
   });
 
-  it('stops once it ended or is gone, off screen, or before its first answer', () => {
-    expect(librivoxJobPollInterval(job({ state: 'done' }), false, true)).toBe(false);
-    expect(librivoxJobPollInterval(job({ state: 'failed' }), false, true)).toBe(false);
-    expect(librivoxJobPollInterval(job({ state: 'running' }), true, true)).toBe(false);
-    expect(librivoxJobPollInterval(job({ state: 'running' }), false, false)).toBe(false);
-    expect(librivoxJobPollInterval(undefined, false, true)).toBe(false);
+  it('stops once it ended, off screen, or before its first answer', () => {
+    expect(librivoxJobPollInterval(job({ state: 'done' }), true)).toBe(false);
+    expect(librivoxJobPollInterval(job({ state: 'failed' }), true)).toBe(false);
+    expect(librivoxJobPollInterval(job({ state: 'running' }), false)).toBe(false);
+    expect(librivoxJobPollInterval(undefined, true)).toBe(false);
   });
 
-  it('asks again, slowly, for a job whose first read failed (but never one that is gone)', () => {
-    expect(librivoxJobPollInterval(undefined, false, true, true)).toBe(BRIDGE_IDLE_POLL_MS);
-    expect(librivoxJobPollInterval(undefined, true, true, true)).toBe(false);
-    expect(librivoxJobPollInterval(undefined, false, false, true)).toBe(false);
+  it('asks again, slowly, for a job whose first read failed', () => {
+    expect(librivoxJobPollInterval(undefined, true, true)).toBe(BRIDGE_IDLE_POLL_MS);
+    expect(librivoxJobPollInterval(undefined, false, true)).toBe(false);
     // A later poll that failed leaves the last answer's pace.
-    expect(librivoxJobPollInterval(job({ state: 'running' }), false, true, true)).toBe(
-      LIBRIVOX_POLL_MS,
-    );
-    expect(librivoxJobPollInterval(job({ state: 'done' }), false, true, true)).toBe(false);
+    expect(librivoxJobPollInterval(job({ state: 'running' }), true, true)).toBe(LIBRIVOX_POLL_MS);
+    expect(librivoxJobPollInterval(job({ state: 'done' }), true, true)).toBe(false);
   });
 
   it('polls slower with no page showing it (fe#299)', () => {
     const running = job({ state: 'running' });
-    expect(librivoxJobPollInterval(running, false, true, false, { seen: false })).toBe(
+    expect(librivoxJobPollInterval(running, true, false, { seen: false })).toBe(
       LIBRIVOX_UNSEEN_POLL_MS,
     );
-    expect(librivoxJobPollInterval(running, false, true, false, { seen: true })).toBe(
-      LIBRIVOX_POLL_MS,
-    );
+    expect(librivoxJobPollInterval(running, true, false, { seen: true })).toBe(LIBRIVOX_POLL_MS);
     // Parked: its own pace, seen or not.
     expect(
-      librivoxJobPollInterval(job({ state: 'needs_attention' }), false, true, false, {
+      librivoxJobPollInterval(job({ state: 'needs_attention' }), true, false, {
         seen: false,
       }),
     ).toBe(BRIDGE_IDLE_POLL_MS);
@@ -158,7 +152,7 @@ describe('librivoxJobPollInterval', () => {
   it('waits twice as long for each failed read in a row, at most the idle pace (fe#299)', () => {
     const running = job({ state: 'running' });
     const after = (failures: number, seen = true) =>
-      librivoxJobPollInterval(running, false, true, true, { seen, failures });
+      librivoxJobPollInterval(running, true, true, { seen, failures });
     expect(after(1)).toBe(LIBRIVOX_POLL_MS * 2);
     expect(after(3)).toBe(LIBRIVOX_POLL_MS * 8);
     expect(after(10)).toBe(BRIDGE_IDLE_POLL_MS);

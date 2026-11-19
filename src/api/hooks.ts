@@ -2939,7 +2939,6 @@ export function useLibrivoxJob(id: number | undefined, active: boolean, connecti
         if (isNotInLibraryError(error) && !isProxyRefusalError(error)) return false;
         return librivoxJobPollInterval(
           data,
-          false,
           active && AppState.currentState === 'active',
           !!error,
           // A reader besides this one (a recording row on screen): a page shows it.
