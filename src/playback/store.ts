@@ -1957,7 +1957,8 @@ export function standByPlace(): void {
 
 /**
  * An offer answered by moving to its place (the player's Jump, the book page's Play from
- * there): the span of that book still open is cut first, and `answer` (the row
+ * there), and a move to another device's newer row (`decide` in place-reconcile.ts): the
+ * span of that book still open is cut first, and `answer` (the row
  * acknowledged) is made in the outbox's turn once that close is in (`afterInTurn`). What was
  * heard before the answer then goes on the version this device knew while it heard it
  * (`baseAtClose`), never the offered row's: on that one the place left behind would replace
@@ -1966,8 +1967,8 @@ export function standByPlace(): void {
  * In turn with no span of the book open too (a server taking listening events): a close
  * already on its way (a pause just before the answer) reads its base before the answer
  * lands. The span the cut opens while playing begins again where the engine is once the
- * answer is in: what it heard while the answer waited its turn would close on the row's
- * version, at the place left behind.
+ * answer is in, and is stored then: what it heard while the answer waited its turn would
+ * close on the row's version, at the place left behind.
  */
 export async function answerAfterSpan(ref: ContentRef, answer: () => Promise<void>): Promise<void> {
   let reopened: OpenSpan | null = null;
@@ -1989,6 +1990,9 @@ export async function answerAfterSpan(ref: ContentRef, answer: () => Promise<voi
     endedAt: now,
     start: 'continue',
   });
+  // Stored as it begins again (behind a keep made while the answer waited, at the place
+  // left): a kill before the next keep recovers this copy, not that one on the row's version.
+  void storeOpenSpan({ ...reopened });
 }
 
 /** Cut the playing span now (the server came back, the app went to the background); a

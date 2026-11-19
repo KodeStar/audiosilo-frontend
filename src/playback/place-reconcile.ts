@@ -475,13 +475,21 @@ async function decide(
     await offerLoadedPlace(bookKey, server, deviceId, mirror);
     return false;
   }
-  // The row it moved to is the place this device has now seen (Sync v2's ack).
+  // The row it moved to is the place this device has now seen (Sync v2's ack), acknowledged
+  // as a Jump is (`answerAfterSpan`): once the span heard before the move is in, so that span
+  // goes on the version it was heard on and only the move's own on the row's.
   if (server && server.version > 0) {
-    void ackVersion(np.connectionId, np.libraryId, np.path, server.version, server).catch(
-      () => undefined,
+    await answerAfterSpan(np, () =>
+      ackVersion(np.connectionId, np.libraryId, np.path, server.version, server).catch(
+        () => undefined,
+      ),
     );
+    // The answer waited its turn: another book, or a move of the listener's own, since wins.
+    if (selectBookKey(usePlayer.getState()) !== bookKey || localMoveCount() !== moves) {
+      return false;
+    }
   }
-  await now.seekBook(to);
+  await usePlayer.getState().seekBook(to);
   tell(bookKey, from, to);
   return true;
 }

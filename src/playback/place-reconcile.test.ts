@@ -685,6 +685,8 @@ describe('a loaded book another device has moved on', () => {
     mockServer = async () => record({ position: 700 });
     jest.clearAllMocks();
     await backInFront();
+    // The move's acknowledgement waits its turn in the outbox first (`answerAfterSpan`).
+    await settle();
     expect(mockSvc.skipToTrack).toHaveBeenCalledWith(1, 200);
     const now = usePlayer.getState();
     expect(now.snapshot.state).toBe('paused');
@@ -1415,9 +1417,36 @@ describe('on a server with listening_sync', () => {
   it("another device's newer row still moves the book with Undo (placeToMoveTo unchanged)", async () => {
     await loadedAndPaused();
     await backInFront();
+    for (let i = 0; i < 10; i++) await settle();
     expect(seeks()).toEqual([400]);
     // The row it moved to is acknowledged.
     expect(mockAckVersion).toHaveBeenCalledWith('c1', 2, 'A/Book.m4b', 3, expect.anything());
+  });
+
+  // fe#285: the move acknowledges the row as a Jump does, once the span heard before it is
+  // in (a pause just before, its close still on its way): that span goes on the version it
+  // was heard on, the move's own on the row's.
+  it("a move sends the span heard before it on the version before the row's", async () => {
+    await loadedAndPaused();
+    mockMirror = { ...mockMirror!, ack_version: 2 };
+    mockAckVersion.mockImplementationOnce(async (...a: unknown[]) => {
+      mockMirror = { ...mockMirror!, ack_version: a[3] as number };
+    });
+    pushSnapshot(snap('playing', 105));
+    await settle();
+    jest.setSystemTime(Date.now() + 3000);
+    pushSnapshot(snap('paused', 108));
+    await backInFront();
+    for (let i = 0; i < 10; i++) await settle();
+    expect(seeks()).toEqual([400]);
+    pushSnapshot(snap('playing', 400));
+    await settle();
+    jest.setSystemTime(Date.now() + 3000);
+    pushSnapshot(snap('paused', 403));
+    for (let i = 0; i < 10; i++) await settle();
+    const sent = sentEvents();
+    expect(sent.find((e) => e.to_pos === 108)).toMatchObject({ from_pos: 105, base_version: 2 });
+    expect(sent.find((e) => e.to_pos === 403)).toMatchObject({ from_pos: 400, base_version: 3 });
   });
 });
 
