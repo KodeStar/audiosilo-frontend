@@ -1712,8 +1712,9 @@ doubling to 10 min) while a reachable server keeps failing, through `replayQueue
 `queuedRoute` (claims, so two tabs never send one twice). The POST has no idempotency key, so
 a replay reads the book's bookmarks first and takes one at the same second with the same
 note, made at most a day before, as already sent; when that read fails, whatever the status (a
-403 or 404 too), the bookmarks
-wait, and only the POST's own refusal for good drops one. Order holds within a book only: a
+403 or 404 too), the bookmarks wait, and only the POST's own refusal for good drops one. A send
+puts the new bookmark in the book's cached list at once (`addBookmark`), so its waiting row and
+pin give way to it with no gap before the list is read again. Order holds within a book only: a
 bookmark that can't be sent yet holds back the rest of its book for that replay and the other
 books' go past it, so one that keeps failing never blocks the connection's queue; a replay stops
 only at a failure that is the connection's (no answer, a gateway's 502/504/52x, a 401). One still

@@ -6,7 +6,7 @@ jest.mock('@/playback/store', () =>
 );
 jest.mock('@/components/ui/toast', () => ({ toast: jest.fn(), dismissToast: jest.fn() }));
 jest.mock('@/api/provider', () => ({
-  queryClient: { invalidateQueries: jest.fn(), getQueryData: jest.fn() },
+  queryClient: { invalidateQueries: jest.fn(), getQueryData: jest.fn(), setQueryData: jest.fn() },
 }));
 jest.mock('@/api/connection-clients', () => ({ resolveClient: jest.fn() }));
 

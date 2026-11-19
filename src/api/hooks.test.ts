@@ -1,7 +1,7 @@
 import { focusManager, onlineManager, QueryObserver, skipToken } from '@tanstack/react-query';
 
 import { ApiError, TimeoutError, type ApiClient } from '@/api/client';
-import type { BookMeta, Capabilities, Progress, ServerInfo } from '@/api/types';
+import type { BookMeta, Bookmark, Capabilities, Progress, ServerInfo } from '@/api/types';
 
 // The fetch helper is deliberately framework-free, so the two collaborators it can reach
 // (the reachability layer and the durable progress mirror) are mocked and asserted on.
@@ -368,6 +368,25 @@ describe('addBookmark', () => {
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: qk.myBookmarks('srv'),
     });
+  });
+
+  // A waiting row the outbox settles as sent before the list is read again gives way to
+  // the server's bookmark with no gap.
+  it("puts the new bookmark in the book's cached list at once, once", async () => {
+    const key = qk.bookmarks('srv', 2, 'A/Book');
+    const old = { id: 3, position: 10 } as Bookmark;
+    queryClient.setQueryData(key, [old]);
+    mockResolveClient.mockReturnValue({ addBookmark: async () => ({ id: 7, position: 61 }) });
+    try {
+      await addBookmark('srv', 2, 'A/Book', 61);
+      await addBookmark('srv', 2, 'A/Book', 61);
+      expect(queryClient.getQueryData(key)).toEqual([old, { id: 7, position: 61 }]);
+      // A book whose list was never read is left to its first read.
+      await addBookmark('srv', 2, 'Other', 61);
+      expect(queryClient.getQueryData(qk.bookmarks('srv', 2, 'Other'))).toBeUndefined();
+    } finally {
+      queryClient.clear();
+    }
   });
 
   describe('a label', () => {

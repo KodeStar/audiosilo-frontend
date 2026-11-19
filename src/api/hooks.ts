@@ -681,6 +681,8 @@ function refreshAfterAdd(
  * bookmark; rejects when the connection is gone or the server refused. A bookmark that must
  * not be lost while the server can't take it (the playing book's shortcut, the sleep
  * timer's "Fell asleep") goes through the bookmark outbox (`annotation-outbox.ts`) instead.
+ * The new bookmark joins the book's cached list at once, before the list is read again: a
+ * waiting row the outbox settles as sent meanwhile gives way to it with no gap.
  */
 export async function addBookmark(
   connectionId: string,
@@ -699,6 +701,12 @@ export async function addBookmark(
     path,
     { position, note, label },
   );
+  // An answer with no bookmark in it (an older server) leaves the list to the read again.
+  if (created) {
+    queryClient.setQueryData<Bookmark[]>(qk.bookmarks(connectionId, libraryId, path), (list) =>
+      list && !list.some((b) => b.id === created.id) ? [...list, created] : undefined,
+    );
+  }
   void refreshAfterAdd(queryClient, 'bookmarks', connectionId, libraryId, path);
   return created;
 }
