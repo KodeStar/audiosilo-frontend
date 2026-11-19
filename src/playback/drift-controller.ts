@@ -28,8 +28,10 @@ import {
  *    where it fired, paused a playing book and its grace closed with the listener not
  *    stirring), a bookmark named "Fell asleep" goes on the playing book's server at the
  *    position where playback stopped, through that book's own connection
- *    (`resolveClient`). Best effort: offline, signed out or refused, it is simply not
- *    made - it never throws and never waits on anything the pause needs. The note is
+ *    (`resolveClient`). It is stored on the device first and sent from the bookmark
+ *    outbox (`queueBookmark`), so offline or signed out it waits for its server; with the
+ *    connection gone, storage refusing it or the server refusing it for good, it is
+ *    simply not made. It never throws and never waits on anything the pause needs. The note is
  *    translated when it is made, in the listener's language at that moment (it is
  *    stored on the server as text; a later language switch does not rename it).
  * 2. **The record.** The last touch of the player before the timer fired
