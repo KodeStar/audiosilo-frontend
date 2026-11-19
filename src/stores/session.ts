@@ -687,15 +687,7 @@ function applyStored(read: StoredSignIns): void {
     ...sets,
     ...(own !== signInProxySets ? { signInProxySets: own } : {}),
   });
-  for (const [from, to] of renamed) {
-    for (const fn of renameHooks) {
-      try {
-        fn(from, to);
-      } catch (e) {
-        console.warn('[session] connection-renamed hook failed', e);
-      }
-    }
-  }
+  for (const [from, to] of renamed) runIdHooks(renameHooks, 'renamed', from, to);
   for (const c of mine) if (!next.some((n) => n.id === idNow(c.id))) void leaveConnection(c.id);
 }
 
@@ -954,15 +946,25 @@ export function onConnectionReplaced(fn: (oldId: string, newId: string) => void)
   return () => replacementHooks.delete(fn);
 }
 
-/** Run the replacement hooks for `oldId` -> `newId`; one that throws is only warned of. */
-function replaced(oldId: string, newId: string): void {
-  for (const fn of replacementHooks) {
+/** Run `hooks` for `oldId` -> `newId`; one that throws is only warned of. */
+function runIdHooks(
+  hooks: ReadonlySet<(oldId: string, newId: string) => void>,
+  what: 'replaced' | 'renamed',
+  oldId: string,
+  newId: string,
+): void {
+  for (const fn of hooks) {
     try {
       fn(oldId, newId);
     } catch (e) {
-      console.warn('[session] connection-replaced hook failed', e);
+      console.warn(`[session] connection-${what} hook failed`, e);
     }
   }
+}
+
+/** Run the replacement hooks for `oldId` -> `newId`. */
+function replaced(oldId: string, newId: string): void {
+  runIdHooks(replacementHooks, 'replaced', oldId, newId);
 }
 
 // Told when this tab follows another tab's identity migration renaming a connection
