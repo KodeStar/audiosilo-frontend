@@ -3103,6 +3103,9 @@ describe('podcast episodes', () => {
     expect(entry()?.serverFetch).toEqual({ percent: null, refetch: true });
     await saved();
     expect((await readPersisted())[key]?.serverFetch).toEqual({ percent: null, refetch: true });
+    // Five on their way already: the POST is asked again, still owed.
+    mockWaits[1].hooks.onStatus({ state: 'unavailable', error: { code: 'fetch_limit' } } as never);
+    expect(entry()?.serverFetch).toEqual({ percent: null, refetch: true });
     // The server took the POST: the fetch is on its way, and a restart asks the stream.
     mockWaits[1].hooks.onStatus({ state: 'queued' });
     expect(entry()?.serverFetch).toEqual({ percent: null });

@@ -46,7 +46,8 @@ export type EpisodeWaitEnd =
   | { kind: 'removed' };
 
 export type EpisodeWaitHooks = {
-  /** The server's fetch moved (queued, fetching and how far). */
+  /** The server's fetch status, each time one is read (queued, fetching and how far, and the
+   * last one before a `ready` or `failed` end). */
   onStatus: (status: PodcastFetchStatus) => void;
   /** The wait is over (called once, never after `stopWaiting`). */
   onEnd: (end: EpisodeWaitEnd) => void;
@@ -243,13 +244,13 @@ async function step(w: Waiter) {
 
 function settle(w: Waiter, status: PodcastFetchStatus, retryAfter?: number) {
   const code = status.error?.code ?? null;
+  w.hooks.onStatus(status);
   switch (status.state) {
     case 'ready':
       return end(w, { kind: 'ready' });
     case 'queued':
     case 'fetching':
       w.blips = 0;
-      w.hooks.onStatus(status);
       // On its way: its status from here on (a POST once is enough).
       w.action = 'poll';
       return schedule(w, retryAfter ?? status.retry_after_seconds);

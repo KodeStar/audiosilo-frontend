@@ -99,6 +99,8 @@ describe('waitForEpisode', () => {
     await jest.advanceTimersByTimeAsync(3000);
     expect(client.podcastFetchStatus).toHaveBeenCalledTimes(2);
     expect(ends[key]).toEqual({ kind: 'ready' });
+    // Its last status too, before the end (fe#280: the episode page reads it).
+    expect(statuses[key].map((s) => s.state)).toEqual(['fetching', 'fetching', 'ready']);
     expect(isWaiting(key)).toBe(false);
     // Nothing is asked once it ended.
     await jest.advanceTimersByTimeAsync(60_000);
