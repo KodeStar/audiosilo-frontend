@@ -162,6 +162,8 @@ describe('ApiClient', () => {
     expect(apiErrorKind(new ApiError(429, 'too many attempts'))).toBe('too_many');
     expect(apiErrorKind(new ApiError(404, 'x'))).toBe('not_found');
     expect(apiErrorKind(new ApiError(403, 'x'))).toBe('forbidden');
+    // A proxy's own 403 says nothing of what the account may do (fe#295).
+    expect(apiErrorKind(new ApiError(403, 'Forbidden', undefined, undefined, true))).toBe('failed');
     expect(apiErrorKind(new ApiError(400, 'x'))).toBe('invalid');
     expect(apiErrorKind(new ApiError(500, 'x'))).toBe('failed');
     // No answer at all.

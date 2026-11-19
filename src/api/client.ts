@@ -296,9 +296,11 @@ const BY_STATUS: Readonly<Record<number, ApiErrorKind>> = {
 };
 
 /** The kind of failure `e` is (see {@link ApiErrorKind}). Screens branch on it and say it
- * in their own words: never the server's English (`message`). */
+ * in their own words: never the server's English (`message`). A proxy's own 401 or 403
+ * (`isProxyRefusal`, fe#295) is `failed`, never `forbidden`: the server never saw the
+ * request, so it says nothing of what the account may do. */
 export function apiErrorKind(e: unknown): ApiErrorKind {
-  if (!(e instanceof ApiError)) return 'failed';
+  if (!(e instanceof ApiError) || e.fromProxy) return 'failed';
   if (e.code && KNOWN_CODES.has(e.code)) return e.code as ApiErrorCode;
   return BY_STATUS[e.status] ?? 'failed';
 }
