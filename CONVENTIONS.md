@@ -1319,7 +1319,12 @@ answer says `chapters_source: "community"` and the rows are those chapters (not 
 or a server-glyph caption ("Chapters found in the narration on this server") for
 `chapters_source: "generated"` (Bridge Phase 1d: a Bridge found them in a chapterless book's
 narration; same rule), or a pen caption ("Chapters edited on this server") for
-`chapters_source: "edited"` (server#240: an admin edited the list in the console; same rule).
+`chapters_source: "edited"` (server#240: an admin edited the list in the console, and the edit
+applies to the files the book has now; a dormant edit, its files changed, sends the next
+source's chapters and caption; same rule), or a list caption ("Chapters from the episode file")
+for `chapters_source: "id3_chap"` (a podcast episode's own ID3 CHAP marks, Bridge Phase 2c-2;
+same rule). An episode never reads "edited": a podcast library offers no chapter edit (409
+`not_book_library`, server#471).
 `knownChaptersSource` (`book-page-model.ts`) reads the answer's open
 `chapters_source` (an own-key lookup: a source this build does not know is none, so no
 caption); the tab keeps the rule that a caption goes only under real chapters, and one
