@@ -483,14 +483,15 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
 - **A proxy's 401 is not a sign-out, nor its 403 no access.** The server marks every 401 of its
   own with `X-AudioSilo-Unauthorized` (WS-401-MARK; the body's `code`, or `unauthorized`; exposed
   cross-origin), and the mark decides first: a marked 401 is the server's whatever its body (a
-  proxy that rewrote the server's page), the mark's code standing in for a lost body `code`. An
-  unmarked 401 to an address the request carried proxy headers to is the proxy's even in the
-  server's JSON shape (`proxiedRefusal` in `send`, so every reader gets it). Else (no set for that
-  address, or a server before the mark, §15 of CROSS-REPO.md) the body decides, as for every 403:
+  proxy that rewrote the server's page), the mark's code standing in for a lost body `code`.
+  Next a body exactly the server's (`serverUnauthorizedBody`: `{error}` or `{error, code}` with
+  one of its 401 codes, nothing else) is the server's: a server before the mark (§15 of
+  CROSS-REPO.md, shipped clients meet older servers), or a proxy that passed it on. Else a 401 to
+  an address the request carried proxy headers to is the proxy's even with a JSON `error`
+  (`proxiedRefusal` in `send`, so every reader gets it). Else the body decides, as for every 403:
   the server's own always carry its JSON `error`; one without it (a page, an empty body, someone
-  else's JSON) is the proxy's (`ApiError.fromProxy`, `unauthorizedOrigin`). So an older server
-  behind a proxy with a set reads its own revoke as the proxy's (the refused banner, never a
-  sign-out) until it is updated. `isSignedOutError` is false for it, and so is
+  else's JSON) is the proxy's (`ApiError.fromProxy`, `unauthorizedOrigin`). `isSignedOutError`
+  is false for it, and so is
   `accessRefusal`'s no access (fe#280), so no reconnect banner and no sign-out, and the sign-in step
   says the proxy refused the request (`isProxyRefusal`, `connect.signIn.errors.proxyRefused`).
   Nor is its 403 "not in the library" (`isNotInLibraryError` is never a proxy's: the book, browse

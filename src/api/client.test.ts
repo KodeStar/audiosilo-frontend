@@ -4171,9 +4171,9 @@ describe('isServerBusyError', () => {
 });
 
 // WS-401-MARK: the server marks every 401 of its own (`X-AudioSilo-Unauthorized`, the body's
-// code or `unauthorized`). The mark decides first; a 401 without it is an auth proxy's when the
-// request carried proxy headers there; with neither (an older server, no proxy set) the body
-// decides as before (fe#295).
+// code or `unauthorized`). The mark decides first, then a body exactly the server's (a server
+// before the mark, CROSS-REPO §15); else a 401 is an auth proxy's when the request carried
+// proxy headers there, and otherwise the body decides as before (fe#295).
 describe("the server's 401 mark (WS-401-MARK)", () => {
   const realOS = Platform.OS;
   afterEach(() => {
@@ -4241,10 +4241,36 @@ describe("the server's 401 mark (WS-401-MARK)", () => {
     expect((e as ApiError).code).toBeUndefined();
   });
 
-  it("reads an unmarked 401 behind a proxy as the proxy's, even in the server's shape", async () => {
-    // Denied: a proxy answering `{error}` itself (or a server body it stood in for) is no
-    // sign-out while the request carried proxy headers.
+  it("reads an older server's 401 behind a proxy as the server's by its exact body", async () => {
+    // No mark (a server before it, or a proxy that passed the body on and dropped the
+    // header): the server's own body is still its revoke, a sign-out.
     answer401(serverBody);
+    const { c, onAuthError, heard } = client('https://away.example');
+    const e = await c.me().catch((err: unknown) => err);
+    expect(e).toMatchObject({ status: 401, fromProxy: false, fromServer: true });
+    expect(isSignedOutError(e)).toBe(true);
+    expect(isProxyRefusal(e)).toBe(false);
+    expect(onAuthError).toHaveBeenCalledTimes(1);
+    expect(heard).toEqual([false]);
+    // With one of its 401 codes too.
+    answer401(JSON.stringify({ error: 'invite has expired', code: 'invite_expired' }));
+    await expect(c.me()).rejects.toMatchObject({
+      status: 401,
+      code: 'invite_expired',
+      fromProxy: false,
+    });
+  });
+
+  it.each([
+    ['another JSON shape', JSON.stringify({ error: 'Unauthorized', status: 401 })],
+    ['a code the server never sent', JSON.stringify({ error: 'no', code: 'access_denied' })],
+    ['an empty error', JSON.stringify({ error: '' })],
+    ['a page', '<html>Sign in</html>'],
+    ['an empty body', ''],
+  ])("reads an unmarked 401 behind a proxy with %s as the proxy's", async (_, text) => {
+    // Denied: neither the mark nor the server's exact body, to an address the request
+    // carried proxy headers to, is never a sign-out.
+    answer401(text);
     const { c, onAuthError, heard } = client('https://away.example');
     const e = await c.me().catch((err: unknown) => err);
     expect(e).toMatchObject({ status: 401, fromProxy: true, fromServer: false });
@@ -4256,7 +4282,7 @@ describe("the server's 401 mark (WS-401-MARK)", () => {
   });
 
   it('reads it so on a hand-built request too (the ebook)', async () => {
-    answer401(serverBody);
+    answer401(JSON.stringify({ error: 'Unauthorized', status: 401 }));
     const { c, onAuthError } = client('https://away.example');
     await expect(c.ebook(1, 'B')).rejects.toMatchObject({ status: 401, fromProxy: true });
     expect(onAuthError).not.toHaveBeenCalled();
@@ -4270,11 +4296,15 @@ describe("the server's 401 mark (WS-401-MARK)", () => {
     expect(own).toMatchObject({ status: 401, fromProxy: false, fromServer: true });
     expect(isSignedOutError(own)).toBe(true);
     expect(home.onAuthError).toHaveBeenCalledTimes(1);
+    // Another JSON with an `error` is the server's too with no proxy set (as before).
+    answer401(JSON.stringify({ error: 'Unauthorized', status: 401 }));
+    await expect(home.c.me()).rejects.toMatchObject({ status: 401, fromProxy: false });
+    expect(home.onAuthError).toHaveBeenCalledTimes(2);
     // An older server's 401 without its `error` is still the proxy's.
     answer401('<html>Sign in</html>');
     const page = await home.c.me().catch((err: unknown) => err);
     expect(page).toMatchObject({ status: 401, fromProxy: true });
-    expect(home.onAuthError).toHaveBeenCalledTimes(1);
+    expect(home.onAuthError).toHaveBeenCalledTimes(2);
   });
 
   it("leaves a 403 to its body: the server's own behind a proxy is still its own", async () => {
