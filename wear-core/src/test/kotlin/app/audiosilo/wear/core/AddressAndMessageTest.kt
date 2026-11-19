@@ -507,6 +507,9 @@ class PhoneMessagesTest {
     assertEquals(3L, ref(JsonUnquotedLiteral("3e0")))
     assertNull(ref(JsonUnquotedLiteral("3.5")))
     assertNull(ref(JsonUnquotedLiteral("1e300")))
+    // A Long's least, whose abs() stays negative, is past the bound too.
+    assertNull(ref(JsonUnquotedLiteral("-9223372036854775808")))
+    assertNull(ref(JsonUnquotedLiteral("-1e300")))
     assertEquals(12L, ref(JsonPrimitive("12")))
     val user = (PhoneMessages.decode(pair.with("user_id", 2_147_483_648L)) as PhoneMessage.Pair).message
     assertEquals(2_147_483_648L, user.userId)

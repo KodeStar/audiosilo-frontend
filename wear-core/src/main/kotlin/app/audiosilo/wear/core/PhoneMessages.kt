@@ -397,10 +397,9 @@ object PhoneMessages {
    */
   fun id(v: JsonElement?): Long? {
     val p = v as? JsonPrimitive ?: return null
-    val n =
-      p.content.toLongOrNull()
-        ?: if (p.isString) null else p.doubleOrNull?.takeIf { it == kotlin.math.floor(it) && kotlin.math.abs(it) <= MAX_ID }?.toLong()
-    return n?.takeIf { kotlin.math.abs(it) <= MAX_ID }
+    // A Double past a Long saturates to one, which the range refuses.
+    val n = p.content.toLongOrNull() ?: p.takeUnless { it.isString }?.doubleOrNull?.takeIf { it == kotlin.math.floor(it) }?.toLong()
+    return n?.takeIf { it in -MAX_ID..MAX_ID }
   }
 
   private fun string(v: JsonElement?): String? = (v as? JsonPrimitive)?.takeIf { it.isString }?.content

@@ -314,7 +314,7 @@ object WearRules {
   fun integer(v: Any?): Long? =
     when (v) {
       is Long -> v
-      is Double -> if (v == Math.floor(v) && !v.isInfinite() && Math.abs(v) <= 9.007199254740991E15) v.toLong() else null
+      is Double -> if (v == Math.floor(v) && !v.isInfinite() && Math.abs(v) <= MAX_ID) v.toLong() else null
       is Number -> integer(v.toDouble())
       else -> null
     }
