@@ -244,8 +244,8 @@ describe('oidcFinishFailure', () => {
   // No Try again while the minute lasts either: a lockout, or a wait past what is left of it.
   it.each([
     ['a lockout', 900, t('connect.signIn.errors.wait', { count: 15 })],
-    ['a wait past the minute', 30, t('connect.signIn.errors.waitSeconds', { count: 30 })],
-  ] as const)('says to sign in again once %s inside the minute is over', (_, secs, message) => {
+    ['a wait past what is left', 30, t('connect.signIn.errors.waitSeconds', { count: 30 })],
+  ] as const)('says to sign in again after %s met inside the minute', (_, secs, message) => {
     const e = new ApiError(429, 'slow', undefined, secs);
     expect(oidcFinishFailure(e, t, NOW + 20_000, run)).toEqual({
       message,
