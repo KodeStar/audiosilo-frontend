@@ -727,6 +727,26 @@ describe('progress-sync', () => {
     }
   });
 
+  it('loadInitialProgress: a lookup with no wait leaves the early read to its start; a clock set back drops it', async () => {
+    const api = fakeGetApi(async () => makeProgress({ position: 10 }));
+    readPlaceEarly(api, 'c1', 1, 'A/Book');
+    // Previously on's lookup (no wait) reads afresh, the early read left for the start.
+    await loadInitialProgress(api, 'c1', 1, 'A/Book');
+    expect(api.getProgress).toHaveBeenCalledTimes(2);
+    await loadInitialProgress(api, 'c1', 1, 'A/Book', 3_000);
+    expect(api.getProgress).toHaveBeenCalledTimes(2);
+    jest.useFakeTimers();
+    try {
+      readPlaceEarly(api, 'c1', 1, 'A/Book');
+      // The device's clock set back a minute: the read reads as begun in the future.
+      jest.setSystemTime(Date.now() - 60_000);
+      await loadInitialProgress(api, 'c1', 1, 'A/Book', 3_000);
+      expect(api.getProgress).toHaveBeenCalledTimes(4);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("loadInitialProgress: a server answering inside the wait is the server's place", async () => {
     const api = fakeGetApi(() => Promise.resolve(makeProgress({ position: 60 })));
     const r = await loadInitialProgress(api, 'c1', 1, 'A/Book', 3_000);

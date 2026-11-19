@@ -265,6 +265,9 @@ const earlyReads = new Map<
 >();
 /** How long an early read stays the start's to take (`loadInitialProgress`). */
 export const EARLY_READ_MS = 15_000;
+/** Whether an early read begun `ageMs` ago may still be taken: within `EARLY_READ_MS`, and
+ * never one the device's clock dates in the future (set back since), whose wait would grow. */
+const freshEarly = (ageMs: number): boolean => ageMs >= 0 && ageMs <= EARLY_READ_MS;
 
 /**
  * Begin a book's place read now, for the `loadInitialProgress` that follows (a downloaded
@@ -281,7 +284,7 @@ export function readPlaceEarly(
 ): void {
   const now = Date.now();
   for (const [key, early] of earlyReads) {
-    if (now - early.at > EARLY_READ_MS) earlyReads.delete(key);
+    if (!freshEarly(now - early.at)) earlyReads.delete(key);
   }
   const read = api.getProgress(libraryId, path);
   // Never taken (the start was called off), it must not reject unhandled.
@@ -303,9 +306,7 @@ function takeEarlyRead(
   if (!early) return null;
   earlyReads.delete(key);
   const ageMs = Date.now() - early.at;
-  return early.baseUrl === api.baseUrl && ageMs <= EARLY_READ_MS
-    ? { read: early.read, ageMs }
-    : null;
+  return early.baseUrl === api.baseUrl && freshEarly(ageMs) ? { read: early.read, ageMs } : null;
 }
 
 /**
@@ -318,7 +319,9 @@ function takeEarlyRead(
  * again (`noteSuccess`, when the connection still uses the address that answered) and its
  * row goes into the mirror; it may hold another device's newer place, which the player then
  * moves to or offers as the place reconcile does (`onLatePlace`). A late read that fails
- * asks for no second check. A read the start began early is taken (`readPlaceEarly`).
+ * asks for no second check. A read the start began early is taken by a lookup with a wait
+ * (`readPlaceEarly`: a downloaded book's start); one with none (Previously on's) reads afresh,
+ * leaving it to the start that began it.
  */
 export async function loadInitialProgress(
   api: ApiClient | null,
@@ -342,7 +345,8 @@ export async function loadInitialProgress(
   // durable mirror / offline queue below - exactly the unreachable-server path.
   if (api) {
     // null = HTTP 200, no record (new book).
-    const early = takeEarlyRead(api, contentKey(connectionId, libraryId, path));
+    const early =
+      waitMs === undefined ? null : takeEarlyRead(api, contentKey(connectionId, libraryId, path));
     const read = early?.read ?? api.getProgress(libraryId, path);
     const wait = waitMs === undefined ? undefined : Math.max(0, waitMs - (early?.ageMs ?? 0));
     // Past the wait: the server is checked as for a read that timed out, and the read goes on.
