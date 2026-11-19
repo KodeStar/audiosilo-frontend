@@ -4546,11 +4546,11 @@ export async function teardownBeforeTokenRevoke(connectionId: string): Promise<v
  */
 export async function flushConnectionSaves(connectionId: string): Promise<void> {
   await Promise.all([
-    flushConnection(connectionId).catch(() => undefined),
+    flushConnection(connectionId, { lastChance: true }).catch(() => undefined),
     // Sync v2's listening outbox (the stop before this closed its span), as a last send.
     flushOutbox(connectionId, { lastChance: true }),
     // The ebook reader's queued places too (Bridge Phase 3b).
-    flushReadingConnection(connectionId).catch(() => undefined),
+    flushReadingConnection(connectionId, { lastChance: true }).catch(() => undefined),
     // And the bookmarks waiting on the device for the server (fe#356).
     sendBookmarksBeforeRemoval(connectionId),
   ]);

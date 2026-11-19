@@ -1,9 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 import { ApiError, NetworkError, TimeoutError } from '@/api/client';
+import { forgetRateLimit, noteRateLimit } from '@/api/rate-limit';
 import type { Bookmark } from '@/api/types';
-
-import { ANNOTATION_OUTBOX_KEY as KEY } from '@/lib/storage-keys';
+import { setConnectionAliases } from '@/lib/connection-id';
+import { ANNOTATION_OUTBOX_KEY as KEY, CONNECTIONS_KEY } from '@/lib/storage-keys';
 
 import type { QueuedBookmark } from './annotation-outbox';
 
@@ -891,6 +893,26 @@ describe('sending', () => {
     expect(await queuedBookmarks()).toEqual([]);
   });
 
+  // A web tab's session holds the connections it loaded: one signed in to in another tab
+  // since is stored, not in it, and this tab's replay dropped its bookmarks as gone.
+  it('on the web, keeps the bookmarks of a connection another tab is signed in to', async () => {
+    const os = Platform.OS;
+    Platform.OS = 'web';
+    try {
+      server('c1', offline());
+      await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+      mockClients.delete('c1');
+      await AsyncStorage.setItem(CONNECTIONS_KEY, JSON.stringify([{ id: 'c1' }]));
+      await flushBookmarks();
+      expect(await queuedBookmarks()).toHaveLength(1);
+      await AsyncStorage.setItem(CONNECTIONS_KEY, JSON.stringify([]));
+      await flushBookmarks();
+      expect(await queuedBookmarks()).toEqual([]);
+    } finally {
+      Platform.OS = os;
+    }
+  });
+
   it('does not send one taken out while the replay sends those ahead of it', async () => {
     const { client, held, state } = server('c1', offline());
     await addBookmarkOrQueue('c1', 1, 'a/book', 100);
@@ -907,6 +929,113 @@ describe('sending', () => {
     await replaying;
     expect(held.map((b) => b.position)).toEqual([100]);
     expect(await queuedBookmarks()).toEqual([]);
+  });
+
+  // A sign-out's last send in another tab took it over between this replay's claim check and
+  // the write before its first POST: both tabs sent it, and a POST has no idempotency key.
+  it('does not send a new one another replay took over after its claim check', async () => {
+    const { client } = server('c1');
+    mockOnline.c1 = false;
+    await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+    await idle();
+    expect(await queuedBookmarks()).toMatchObject([{ position: 100, fresh: true }]);
+    mockOnline.c1 = true;
+    const getItem = AsyncStorage.getItem as jest.Mock;
+    const read = getItem.getMockImplementation()!;
+    let taken = false;
+    getItem.mockImplementation(async (key: string) => {
+      const value = await read(key);
+      // The check reads the copy this replay claimed: the other tab's claim lands right after.
+      if (!taken && key === KEY && String(value).includes('"claim"')) {
+        taken = true;
+        const queue = JSON.parse(value) as Record<string, unknown>[];
+        const other = { id: 'other', until: Date.now() + 60_000 };
+        await AsyncStorage.setItem(key, JSON.stringify(queue.map((e) => ({ ...e, claim: other }))));
+      }
+      return value;
+    });
+    try {
+      await flushBookmarks();
+    } finally {
+      getItem.mockImplementation(read);
+    }
+    expect(taken).toBe(true);
+    expect(client.addBookmark).not.toHaveBeenCalled();
+    expect(await queuedBookmarks()).toMatchObject([{ position: 100, fresh: true }]);
+  });
+
+  /** The stored outbox with every entry claimed by another tab's replay. */
+  async function claimElsewhere() {
+    const queue = JSON.parse((await AsyncStorage.getItem(KEY)) ?? '[]');
+    const claim = { id: 'other', until: Date.now() + 60_000 };
+    await AsyncStorage.setItem(
+      KEY,
+      JSON.stringify((queue as Record<string, unknown>[]).map((e) => ({ ...e, claim }))),
+    );
+  }
+
+  // One a send has reached before is not written before its POST (`readyToSend` takes no
+  // lock for it): only the replay's claim check keeps it from going twice.
+  it('does not send one tried before that another replay took over while this one read its book', async () => {
+    const { client, state } = server('c1', offline());
+    await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+    await idle();
+    expect(await queuedBookmarks()).toHaveLength(1);
+    expect((await queuedBookmarks())[0]).not.toHaveProperty('fresh');
+    state.down = null;
+    const posts = client.addBookmark.mock.calls.length;
+    // The other tab's claim lands while this replay reads what the server holds.
+    client.bookmarks.mockImplementationOnce(async () => {
+      await claimElsewhere();
+      return [];
+    });
+    await flushBookmarks('c1');
+    expect(client.bookmarks).toHaveBeenCalled();
+    expect(client.addBookmark).toHaveBeenCalledTimes(posts);
+    expect(await queuedBookmarks()).toHaveLength(1);
+  });
+
+  // Signed out here, a bookmark another tab's replay had claimed was left to it, and the
+  // purge took it unsent.
+  describe("a sign-out's last send and another tab's claim", () => {
+    let os: typeof Platform.OS;
+    beforeEach(() => {
+      os = Platform.OS;
+    });
+    afterEach(() => {
+      Platform.OS = os;
+    });
+
+    const waitingElsewhere = async () => {
+      const made = server('c1');
+      mockOnline.c1 = false;
+      await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+      await idle();
+      mockOnline.c1 = true;
+      await claimElsewhere();
+      return made;
+    };
+
+    it('takes the claim over on the web; a replay leaves it', async () => {
+      Platform.OS = 'web';
+      const { client, held } = await waitingElsewhere();
+      await flushBookmarks('c1');
+      expect(client.addBookmark).not.toHaveBeenCalled();
+      await sendBookmarksBeforeRemoval('c1');
+      expect(held.map((b) => b.position)).toEqual([100]);
+      expect(await queuedBookmarks()).toEqual([]);
+    });
+
+    // Off the web the app is one process: a claim no replay of this launch is sending was
+    // left by a run killed mid-replay, and kept, the bookmark went with the purge unsent.
+    it('sends off the web one an earlier launch left claimed; a replay leaves it', async () => {
+      const { client, held } = await waitingElsewhere();
+      await flushBookmarks('c1');
+      expect(client.addBookmark).not.toHaveBeenCalled();
+      await sendBookmarksBeforeRemoval('c1');
+      expect(held.map((b) => b.position)).toEqual([100]);
+      expect(await queuedBookmarks()).toEqual([]);
+    });
   });
 
   it('puts one back through the outbox, so one sent just before its Delete is not made twice', async () => {
@@ -1762,6 +1891,35 @@ describe('sign-out and removal', () => {
     expect((await queuedBookmarks()).map((e) => e.connectionId)).toEqual(['c2']);
   });
 
+  // Its last send takes one naming the id the identity migration moved the connection from;
+  // the count and the purge matched the id alone, so it was neither warned of nor purged.
+  it('counts and purges one under the id its connection moved from', async () => {
+    setConnectionAliases({ legacy: 'c1' });
+    try {
+      const { client } = server('c1', offline());
+      // The real `resolveClient` resolves the old id to the connection's client.
+      mockClients.set('legacy', client);
+      server('c2', offline());
+      await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+      await addBookmarkOrQueue('c2', 1, 'a/book', 200);
+      await idle();
+      const stored = JSON.parse((await AsyncStorage.getItem(KEY)) ?? '[]');
+      await AsyncStorage.setItem(
+        KEY,
+        JSON.stringify(
+          stored.map((e: { connectionId: string }) =>
+            e.connectionId === 'c1' ? { ...e, connectionId: 'legacy' } : e,
+          ),
+        ),
+      );
+      expect(await unsentBookmarks('c1')).toBe(1);
+      await removed('c1');
+      expect((await queuedBookmarks()).map((e) => e.connectionId)).toEqual(['c2']);
+    } finally {
+      setConnectionAliases({});
+    }
+  });
+
   it('does not keep one made before the removal and stored after it', async () => {
     server('c1', offline());
     // Its add is on its way (no answer yet) when the connection is removed.
@@ -1804,6 +1962,29 @@ describe('startBookmarkSync', () => {
       expect(held.map((b) => b.position)).toEqual([100]);
     } finally {
       release();
+      jest.useRealTimers();
+    }
+  });
+
+  // Held by its server's wait (a 429 another queue was answered), no backoff runs: nothing
+  // but the wait's end sends them before the next focus or reconnect.
+  it('sends what a 429 held once its wait is over', async () => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick', 'queueMicrotask'] });
+    const { held } = server('c1');
+    const release = startBookmarkSync();
+    try {
+      noteRateLimit('c1', new ApiError(429, 'slow down', undefined, 5));
+      mockOnline.c1 = false;
+      await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+      mockOnline.c1 = true;
+      await flushBookmarks();
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(held).toEqual([]);
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(held.map((b) => b.position)).toEqual([100]);
+    } finally {
+      release();
+      forgetRateLimit('c1');
       jest.useRealTimers();
     }
   });

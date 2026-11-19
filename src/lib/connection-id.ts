@@ -129,6 +129,11 @@ export function resolveConnectionId(id: string): string {
   return Object.hasOwn(aliases, id) ? aliases[id] : id;
 }
 
+/** Whether `a` and `b` name one connection: the same id, or one the migration moved to the
+ * other (`resolveConnectionId`). */
+export const sameConnection = (a: string, b: string): boolean =>
+  resolveConnectionId(a) === resolveConnectionId(b);
+
 /**
  * The legacy id the migration moved `id` from, else `id` itself. The web keeps a moved
  * connection's downloaded files under that id (`engine.web.ts`): the Cache API can't rename,

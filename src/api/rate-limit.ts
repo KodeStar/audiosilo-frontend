@@ -1,3 +1,5 @@
+import { resolveConnectionId } from '@/lib/connection-id';
+
 import { ApiError } from './client';
 
 /**
@@ -7,7 +9,9 @@ import { ApiError } from './client';
  * asking again at once with every later save (fe#173). Per connection (one person on one
  * server: the server limits an authenticated route per credential), never per `ApiClient`:
  * `resolveClient` builds a client per call, so a hold kept on one was gone by the next
- * replay. Once the wait is over the queues are replayed (`onRateLimitOver`): nothing else may
+ * replay. Under the connection's id now (`resolveConnectionId`): a queued save naming the id
+ * the identity migration moved it from is held by the same wait. Once the wait is over that
+ * connection's queues are replayed (`onRateLimitOver`, told its id now): nothing else may
  * come to send what it held (the reader closed meanwhile, the app left open). Dropped with
  * its connection (`forgetRateLimit`); in memory only, so the next app start sends again.
  */
@@ -33,8 +37,9 @@ export function noteRateLimit(connectionId: string, e: unknown, now = Date.now()
   if (!(e instanceof ApiError) || e.status !== 429) return false;
   const asked = e.retryAfterSeconds ?? RATE_LIMIT_HOLD_S;
   const wait = Math.min(Math.max(asked, RATE_LIMIT_MIN_HOLD_S), RATE_LIMIT_MAX_HOLD_S) * 1000;
-  holds.set(connectionId, now + wait);
-  wakeAfter(connectionId, wait);
+  const id = resolveConnectionId(connectionId);
+  holds.set(id, now + wait);
+  wakeAfter(id, wait);
   return true;
 }
 
@@ -51,7 +56,8 @@ function wakeAfter(connectionId: string, ms: number): void {
         wakeAfter(connectionId, left);
         return;
       }
-      for (const listener of overListeners) listener(connectionId);
+      // Its id now: the identity migration can have moved it since the wait began.
+      for (const listener of overListeners) listener(resolveConnectionId(connectionId));
     }, ms),
   );
 }
@@ -68,15 +74,17 @@ export function stopsReplay(connectionId: string, e: unknown): boolean {
  * One further ahead than any is noted for (the clock set back since) is over too, as a
  * queue claim is (`claimStands`): it would hold for as long as the clock went back. */
 export function rateLimited(connectionId: string, now = Date.now()): boolean {
-  const until = holds.get(connectionId);
+  const id = resolveConnectionId(connectionId);
+  const until = holds.get(id);
   if (until === undefined) return false;
   if (now < until && until - now <= RATE_LIMIT_MAX_HOLD_S * 1000) return true;
-  holds.delete(connectionId);
+  holds.delete(id);
   return false;
 }
 
-/** Run `listener` with the connection whenever a wait a 429 asked for is over (a replay of
- * what it held). Returns the unsubscribe. */
+/** Run `listener` with the connection (its id now, `resolveConnectionId`) whenever a wait a
+ * 429 asked for is over (a replay of what it held, that connection's only). Returns the
+ * unsubscribe. */
 export function onRateLimitOver(listener: (connectionId: string) => void): () => void {
   overListeners.add(listener);
   return () => {
@@ -86,7 +94,8 @@ export function onRateLimitOver(listener: (connectionId: string) => void): () =>
 
 /** Drop `connectionId`'s wait (the connection is gone): a sign-in again starts with none. */
 export function forgetRateLimit(connectionId: string): void {
-  holds.delete(connectionId);
-  clearTimeout(wakes.get(connectionId));
-  wakes.delete(connectionId);
+  const id = resolveConnectionId(connectionId);
+  holds.delete(id);
+  clearTimeout(wakes.get(id));
+  wakes.delete(id);
 }

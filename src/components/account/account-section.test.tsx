@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import type { Capabilities, MyDevice, ServerAddresses, User } from '@/api/types';
 import { mountWithPortal } from '@/testing/render-overlay';
@@ -473,6 +473,26 @@ describe('AccountSection', () => {
     expect(teardownBeforeTokenRevoke).toHaveBeenCalledWith('c1');
     expect(mockLogout).toHaveBeenCalled();
     expect(mockRevoke).not.toHaveBeenCalled();
+  });
+
+  // The last send of the connection's saves can wait up to 30 s for another tab's.
+  it('shows the sign-out as working, and takes no second press, while the teardown runs', async () => {
+    let finish!: () => void;
+    (teardownBeforeTokenRevoke as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    );
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    const button = () => screen.getByRole('button', { name: 'Sign out of Hearthside' });
+    expect(button()).not.toBeBusy();
+    await fireEvent.press(button());
+    await waitFor(() => expect(button()).toBeBusy());
+    expect(button()).toBeDisabled();
+    expect(mockSession.removeConnection).not.toHaveBeenCalled();
+    await act(async () => {
+      finish();
+    });
+    await waitFor(() => expect(mockSession.removeConnection).toHaveBeenCalledWith('c1'));
+    await waitFor(() => expect(button()).not.toBeBusy());
   });
 
   it("offers a password-less user the password editor before they're stranded", async () => {

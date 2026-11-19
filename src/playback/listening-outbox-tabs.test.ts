@@ -211,6 +211,33 @@ describe("an Undo in one tab and another tab's send (withdrawFinish across tabs)
     expect(a.client.syncListening).not.toHaveBeenCalled();
   });
 
+  // A hidden tab's timers are throttled, its request's timeout too: the request was still
+  // out once its mark's time ran out, and the Undo took the finish back from under it.
+  it("waits for another tab's request past its mark's time while that tab holds its lock", async () => {
+    await a.appendEvents('c1', [finish('f')]);
+    const answer = gate();
+    b.sync(after(answer, applied));
+    const flushing = b.flushOutbox('c1');
+    await until(() => b.client.syncListening.mock.calls.length === 1, "B's request");
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 60_000);
+    let done = false;
+    try {
+      const withdrawing = a.withdrawFinish('c1', 3, 'Author/Book').then((w) => {
+        done = true;
+        return w;
+      });
+      await sleep(60);
+      expect(done).toBe(false);
+      expect(storedIds()).toEqual(['f']);
+      answer.resolve();
+      const [, taken] = await Promise.all([flushing, withdrawing]);
+      expect(taken.unsent).toBe(false);
+      expect(storedIds()).toEqual([]);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it("another tab's request got no answer: taken back, and the server may hold it", async () => {
     await a.appendEvents('c1', [finish('f')]);
     const answer = gate();

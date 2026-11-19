@@ -111,6 +111,29 @@ describe('useSignOut', () => {
     expect(teardownBeforeTokenRevoke).toHaveBeenCalledWith('c1');
   });
 
+  // The last send of its saves can wait up to 30 s for another tab's: the button shows it.
+  it('says it is signing out while the teardown runs, and no longer once it is over', async () => {
+    seed(user({ has_password: true }));
+    let finish!: () => void;
+    (teardownBeforeTokenRevoke as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    );
+    const hook = await mountHook(() => useSignOut('c1'));
+    expect(hook().signingOut).toBe(false);
+
+    await act(async () => {
+      await hook().requestSignOut();
+    });
+    expect(hook().signingOut).toBe(true);
+    expect(mockSessionState.removeConnection).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finish();
+    });
+    await waitFor(() => expect(mockSessionState.removeConnection).toHaveBeenCalledWith('c1'));
+    await waitFor(() => expect(hook().signingOut).toBe(false));
+  });
+
   it('refreshes unknown flags from /me before deciding (and warns when stranded)', async () => {
     seed(flaglessUser);
     mockApi.me.mockResolvedValue(user({ has_password: false, has_recovery: false }));

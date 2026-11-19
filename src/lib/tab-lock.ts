@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 
 import { randomUUID } from './random';
 import { serialQueue } from './serial-queue';
+import { sharedStart } from './shared-start';
 
 /**
  * A lock for a read-modify-write of one stored document that every tab of the web player
@@ -55,18 +56,32 @@ export function holdWebLock(name: string): () => void {
 /** The names of the Web Locks held now, by any tab of this browser (this one too). None
  * without Web Locks, or where they cannot be asked. */
 export async function heldWebLocks(): Promise<Set<string>> {
+  return (await queryWebLocks()) ?? new Set();
+}
+
+/** The names of the Web Locks held now (`heldWebLocks`), or null where no tab can tell:
+ * no Web Locks, or a browser that will not say. */
+export async function queryWebLocks(): Promise<Set<string> | null> {
   const locks = webLocks();
-  const names = new Set<string>();
-  if (typeof locks?.query !== 'function') return names;
+  if (typeof locks?.query !== 'function') return null;
   try {
+    const names = new Set<string>();
     for (const lock of (await locks.query()).held ?? []) {
       if (typeof lock.name === 'string') names.add(lock.name);
     }
+    return names;
   } catch {
-    // Not answerable here: none known.
+    return null;
   }
-  return names;
 }
+
+/**
+ * `holdWebLock` shared by several holders in this tab: held from the first hold to the last
+ * release (each release once). For a mark that stands while any of this tab's jobs of one
+ * kind runs (a claim's sends, the requests carrying a finish).
+ */
+export const sharedWebLock = (name: string): (() => () => void) =>
+  sharedStart(() => holdWebLock(name));
 
 /** Resolves once no tab holds the Web Lock `name` (its holder released it, or went away);
  * at once without Web Locks. */

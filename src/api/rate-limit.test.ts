@@ -1,3 +1,5 @@
+import { setConnectionAliases } from '@/lib/connection-id';
+
 import { ApiError } from './client';
 import {
   forgetRateLimit,
@@ -87,6 +89,47 @@ describe('rate-limit', () => {
       expect(over).not.toHaveBeenCalled();
     } finally {
       stop();
+      jest.useRealTimers();
+    }
+  });
+
+  // A queued save can still name the id the identity migration moved its connection from: its
+  // 429 held the old id, and the connection's own saves under the new one went on asking.
+  it('holds a connection under its id now, whichever of its ids answered', () => {
+    jest.useFakeTimers();
+    setConnectionAliases({ legacy: 'c1' });
+    const over = jest.fn();
+    const stop = onRateLimitOver(over);
+    try {
+      noteRateLimit('legacy', new ApiError(429, 'slow down', undefined, 5));
+      expect(rateLimited('c1')).toBe(true);
+      expect(rateLimited('legacy')).toBe(true);
+      jest.advanceTimersByTime(5_000);
+      expect(over).toHaveBeenCalledWith('c1');
+      noteRateLimit('c1', new ApiError(429, 'slow down', undefined, 5));
+      forgetRateLimit('legacy');
+      expect(rateLimited('c1')).toBe(false);
+    } finally {
+      stop();
+      setConnectionAliases({});
+      jest.useRealTimers();
+    }
+  });
+
+  it('tells the end of a wait under the id the connection has by then', () => {
+    jest.useFakeTimers();
+    const over = jest.fn();
+    const stop = onRateLimitOver(over);
+    try {
+      noteRateLimit('legacy', new ApiError(429, 'slow down', undefined, 5));
+      // The identity migration moves the connection during the wait.
+      setConnectionAliases({ legacy: 'c1' });
+      jest.advanceTimersByTime(5_000);
+      expect(over).toHaveBeenCalledWith('c1');
+    } finally {
+      stop();
+      setConnectionAliases({});
+      forgetRateLimit('legacy');
       jest.useRealTimers();
     }
   });

@@ -1201,11 +1201,14 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
 - **The place** (`reading-progress.ts`) is `progress-sync`'s pattern (offline queue, latest per
   book, durable mirror, 4xx dropped but a 408 or a 429, which is queued (`isRefusedForGood`),
   replay through each save's connection; a 429 stops the replay and queues the connection's
-  saves until its `Retry-After` is over, then replays them (`src/api/rate-limit.ts`, held per
-  connection, never per `ApiClient`: `resolveClient` builds one per call), as `progress-sync`'s
+  saves until its `Retry-After` is over, then replays that connection's only (`src/api/rate-limit.ts`,
+  held per connection under its id now, `resolveConnectionId`, so a save naming the id the
+  identity migration moved it from waits too; never per `ApiClient`: `resolveClient` builds
+  one per call; `routeOnly` in `progress-sync.ts`), as `progress-sync`'s
   legacy queue does (its live saves are queued meanwhile too, and a 429 one gets sets the
   hold) and the listening outbox (a flush sends nothing meanwhile, a 429 on a batch or an
-  event sent alone sets it, and its end flushes the connection); a sign-out's last flush of
+  event sent alone sets it, and its end flushes the connection, the events of an id it moved
+  from too); a sign-out's last flush of
   the queues still tries them, the outbox's too, and counts what is left unsent) plus `base_version`:
   the last version this device acknowledged, always sent (0 only when no row was ever seen).
   Every send of a book, the queue's replays and the open reader's saves alike, goes one at a
@@ -1215,11 +1218,15 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   A save on its way replaces an older queued one of its book before the request goes, and a
   sent or refused one drops it. One held behind a save of its book still on its way is queued
   as it starts to wait (the app closed under the hung request replays it). On the web that copy
-  is claimed by its own tab's wait (`heldForTurn`, `CLAIM_MS`, not renewed): sent by another
+  is claimed by its own wait (`heldForTurn`, `CLAIM_MS`, not renewed, and live while the
+  tab holds the claim's Web Lock through the wait and its send, `holdWaitClaim`; a claim per
+  wait, so one that ended holds nothing while another book's save still waits): sent by another
   tab while the save ahead was still out, it went on 0 too and the server kept the further
   place, so a move back was lost. This tab's replays leave it too, so a sign-out's last flush
   (`flushReadingConnection`) first waits for its connection's saves on their way
-  (`latestAsked`), then replays what they left queued. In its turn it is sent only while that copy is still queued
+  (`latestAsked`), then replays what they left queued. A sign-out in another tab (`lastChance`,
+  `ReplayQueue.takeOver`) waits for that claim while its lock is held (30 s at most), then
+  takes over whatever is still queued: left to the claim, it was purged unsent. In its turn it is sent only while that copy is still queued
   and no other tab's replay claimed it (one did only once the wait's claim ran out): that
   replay sends it (on the version its own earlier save's answer acknowledged, `onOwnVersion`,
   as the reader's send would), and one that left the queue went from another tab or gave way
@@ -1227,12 +1234,20 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   and the replay finds it settled: left to the replay, it went behind the other books' saves
   of its connection, and not at all once one of them stopped the replay. On the web a tab's
   replay drops a connection's saves as gone only once it is gone from the stored connections
-  too (`readerRoute`, `storedConnectionIds`): one signed in to in another tab is not in this
-  tab's session, and its saves (a live one waiting for its turn too) are that tab's to send.
+  too (`storedRoute` in `progress-sync.ts`, `storedConnectionIds`; the legacy queue and the
+  waiting bookmarks by the same rule; storage that can't be read drops nothing; a save naming
+  the id the identity migration moved its connection from is kept by the id it has now, and a
+  flush of one connection, `onlyConnection`, a sign-out's last one too, takes it as that
+  connection's, `routeOnly`): one signed in
+  to in another tab is not in this tab's session, and its saves (a live one waiting for its
+  turn too) are that tab's to send. Each save goes through its connection as it is when it is
+  sent (`liveClient`), the open reader's waiting one and a replay's: a turn waited for can be a
+  request's timeout, and a re-pair meanwhile changed the token.
   A book's captures in a tab are a millisecond apart at least (`lastCaptured`): the queue and
   `settledUntil` tell its saves apart by time. One a replay had claimed is never sent after it
-  (`settledUntil`), nor once it has left the queue (`stillQueued`: a newer save of its book
-  queued in its place, or another tab's sent one dropped it). The queue keeps
+  (`settledUntil`), nor once it has left the queue or another replay claimed it (the replay's
+  `ClaimCheck`: a newer save of its book queued in its place, another tab's sent one dropped
+  it, or took it over). The queue keeps
   the newest save per book by `updated_at`, whatever order the writes land in.
   The mirror and the stored queue are every tab's: their read-modify-writes take `tabLock`
   (storage only), and a replay claims what it sends (`replayQueue`, as the legacy queue; a
@@ -1769,10 +1784,12 @@ keeps to one bookmark. On an older server, or flags not read yet, nothing is sto
 POST (a resend there could make it twice), and a storage write refused leaves the add direct as
 before. The outbox is sent
 at launch and on reconnect (`startBookmarkSync`, a root service; also once a connection a 401
-flagged is signed in again, with no backoff meanwhile), with the stored queues in the
+flagged is signed in again, with no backoff meanwhile, and once the wait a 429 asked of its
+server is over, `onRateLimitOver`), with the stored queues in the
 foreground and on the web's focus and `online` (`startQueueReplays`), and on a backoff (30 s
 doubling to 10 min) while a reachable server keeps failing, through `replayQueue` routed by
-`queuedRoute` (claims, so two tabs never send one twice). A replay of every connection asked
+`storedRoute` (claims, so two tabs never send one twice; a connection another tab is signed in
+to keeps its bookmarks; a sign-out's last send takes another tab's claim over, `takeOver`). A replay of every connection asked
 for while one is out joins it (`flushBookmarks`: the web's `online` and focus fire together),
 so those two count a failure once; a connection's own replay (its reconnect, a sign-in, a new
 bookmark) is never joined and queues behind it. **Sent once (FE-BOOKMARK-IDEMPOTENCY):** every
@@ -2641,9 +2658,22 @@ media GETs only.
   `tabLock`, and a replay claims the saves it sends under it and sends them with it released,
   `replayQueue` in `src/lib/queue-claims.ts`: a plain-http lease runs out in 5 s, a replay can
   take longer; a replay still sending stamps its claims again every 30 s, and one not stamped
-  for two of those ran out, its tab gone; the queues are replayed on the foreground, the
-  window's focus and `online` too, `startQueueReplays`, so such saves do not wait for the
-  next save; storage that refuses the claim's write sends nothing, and entries sent whose
+  for two of those ran out, its tab gone; a hidden tab's timers are throttled to a minute or
+  more, so where the browser has Web Locks a replay also holds one named for its claim
+  (`claimLockName`) and a claim stands while it is held (`claimLive`), and before each entry
+  goes the replay checks the claim is still its own, stamping it there when near its end
+  (`ClaimCheck`); a sign-out's last send (`flushConnection`'s `lastChance`, web only) waits up
+  to 30 s for another tab's live claim on its connection's saves, then takes them over, and
+  within those 30 s waits again for one another tab's last send took from it meanwhile,
+  `ReplayQueue.takeOver`; off the web the app is one process, so a last send takes as free
+  any claim no replay of this launch is still sending (`sending`: its replay ended, killed
+  mid-replay or with its settle not stored); on every platform a last send also sends an
+  entry whose claim storage would not let it read or stamp, `ReplayQueue.readStrict`, where a
+  replay keeps it for the next one: kept there, it went with the purge unsent; the queues are
+  replayed on the foreground, the window's focus and `online` too, `startQueueReplays`, so
+  such saves do not wait for the next save; storage that refuses the claim's write sends nothing (a last send sends them
+  unclaimed: it has no next replay; not one whose claim's Web Lock a tab holds, which that
+  tab sends, so a bookmark is not posted twice), and entries sent whose
   removal it refused are remembered in the tab, `ReplayQueue.sent`, and never sent again from
   it; a tab's own replays go
   one at a time, `withReplayTurn`, so a sign-out's or a reconnect's flush waits for one out). `playBook` resumes from `progress`; on
@@ -2789,7 +2819,9 @@ media GETs only.
     `duplicate`). A sign-out sends the outbox only once the close of its stop has had its
     turn (`teardownBeforeTokenRevoke`: sent at once, the last span landed after the token
     was revoked and went with the purge), as a last send (`flushOutbox`'s `lastChance`, also
-    `unsentListens`'): it goes during a 429's wait too, since the purge drops what is left. A close or an event made
+    `unsentListens`'): it goes during a 429's wait too, since the purge drops what is left,
+    and takes the events under an id the identity migration moved the connection from
+    (`sameConnection`), which the purge and the unsent count take too. A close or an event made
     for a connection and appended after an await is dropped once that connection was removed
     meanwhile (`connectionGeneration`, bumped first thing in the outbox's removal purge: the
     same account signing in again has the same connection id, and an orphan appended after the
@@ -2920,7 +2952,8 @@ media GETs only.
     its lock, never announced on a channel (a message can arrive after the send it was meant
     to stop; the lock gives the two one order): a send that carries a `finish` first marks it
     as out there (`markOut`, `OutboxEntry.out`: one time per tab, `OUT_MARK_MS` past the
-    request's timeout) and drops the finishes no longer stored (taken back by an Undo in
+    request's timeout, and live while the tab holds its Web Lock, `holdOutMark`: a hidden tab's
+    throttled timeout can keep a request out past its time) and drops the finishes no longer stored (taken back by an Undo in
     another tab, or answered there), and when it ends takes its own mark off and marks what
     it carried with no answer (`maybeReached`, in the same write). `withdrawFinish` waits for
     a live mark (the other tab's answer shows as a change of the stored outbox, else it looks

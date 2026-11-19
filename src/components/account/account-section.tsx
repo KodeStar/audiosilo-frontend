@@ -235,6 +235,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
           icon="logout"
           title={t('settings.account.signOut')}
           accessibilityLabel={t('account.danger.title', { server: serverName })}
+          loading={signOut.signingOut}
           onPress={() => void signOut.requestSignOut()}
         />
       </Card>
