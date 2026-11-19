@@ -182,6 +182,13 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
    * reads it): nothing is written over it, and each commit tries the move again.
    */
   private var inTheWay = false
+
+  /**
+   * This launch read the index cleanly (it read, or there was none), so the records are every book
+   * on the disk (`dropOrphans`). Not after one that could not be read, moved aside or not: the
+   * books it named are unknown, and their folders are kept.
+   */
+  private var readCleanly = file == null
   private val flow = MutableStateFlow(this.file?.let(::restored) ?: emptyList())
 
   val records: StateFlow<List<DownloadRecord>> = flow.asStateFlow()
@@ -288,12 +295,13 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
 
   /**
    * Delete the book folders in `books` no record names (fe#285): a kill between a record's removal
-   * and its folder's, or a run that made its folder again before `whileKept`. Not while the index
-   * is in the way (unread: which books it holds is not known).
+   * and its folder's, or a run that made its folder again before `whileKept`. Only after an index
+   * read cleanly at this launch (`readCleanly`): one that could not be read, set aside or still in
+   * the way, says nothing of which books are here, so every folder stays.
    */
   fun dropOrphans(books: File) {
     synchronized(lock) {
-      if (inTheWay) return
+      if (!readCleanly) return
       val named = flow.value.map { it.folder }.toSet()
       books.listFiles()?.filter { it.isDirectory && it.name !in named }?.forEach { it.deleteRecursively() }
     }
@@ -306,8 +314,8 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
    */
   private fun restored(file: JsonFile<List<DownloadRecord>>): List<DownloadRecord> =
     when (val kept = file.load()) {
-      is JsonLoad.Value -> kept.value
-      JsonLoad.Missing -> emptyList()
+      is JsonLoad.Value -> kept.value.also { readCleanly = true }
+      JsonLoad.Missing -> emptyList<DownloadRecord>().also { readCleanly = true }
       JsonLoad.Unreadable,
       JsonLoad.Corrupt -> {
         inTheWay = !file.setAside(ASIDE_PREFIX)

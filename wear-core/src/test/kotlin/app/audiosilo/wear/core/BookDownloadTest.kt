@@ -460,6 +460,29 @@ class DownloadIndexTest {
     }
   }
 
+  // An index that could not be read is set aside and the watch starts with no books (fe#219), but
+  // that launch does not know which books the folders hold: it drops none of them. A later launch
+  // that reads its index (here none, as nothing was written since) drops the folders no record names.
+  @Test
+  fun anIndexSetAsideAsUnreadableDropsNoFolder() {
+    val books = File(dir, "books").apply { mkdirs() }
+    File(books, "folder-1/000.m4a").apply { parentFile.mkdirs() }.writeText("x")
+    File(books, "folder-2").mkdirs()
+    val index = File(dir, "downloads.json").apply { writeText("{not json") }
+    val unread = DownloadIndex(index)
+    assertTrue(unread.records.value.isEmpty())
+    assertFalse("set aside", index.exists())
+    unread.dropOrphans(books)
+    assertEquals(listOf("folder-1", "folder-2"), books.list()!!.sorted())
+    // A book queued since (its record written) does not make that launch's index a clean read.
+    unread.enqueue(REF, "Book", null, T0)
+    unread.dropOrphans(books)
+    assertEquals(listOf("folder-1", "folder-2"), books.list()!!.sorted())
+    unread.remove(REF)
+    DownloadIndex(index).dropOrphans(books)
+    assertTrue(books.list()!!.isEmpty())
+  }
+
   @Test
   fun aRecordQueuedWithoutTheSendTimeUsesItsOwn() {
     val idx = DownloadIndex(null)
