@@ -385,7 +385,10 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   failed hydrate would show the listener as signed out at every launch, and a sign-in then writes
   the list with its server alone); a set removed (or moved to another address) meanwhile takes
   its old items and their marks with it (`forgetLegacyProxySets`), or the next move would bring
-  it back. A tab also keeps, in its own writes of the list, a mark it
+  it back, while a sign-out or a retired identity, which leave a set, write one used from their
+  item to its origin's before the item goes (`keepInPlaceSets`, `inPlace`), and a tab that
+  follows another's write keeps the sets it uses in place while their marks stand
+  (`followInPlace`). A tab also keeps, in its own writes of the list, a mark it
   never wrote (an earlier build's tab keeping a set since this one launched, `applyStored`): a
   mark dropped would leave its item with nothing to move it.
 - **One https origin.** A set names the origin (scheme, host, port) it was entered for, and

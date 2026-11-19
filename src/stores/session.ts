@@ -425,6 +425,52 @@ function withLegacyMark<T extends { id: string }>(m: T): T & { hasProxyHeaders?:
 }
 
 /**
+ * The sets this launch uses from where an earlier build left them (their move could not be
+ * written, `moveLegacyProxySets`), by origin, with the connection whose item holds each. Kept
+ * by a tab that follows another's write while their marks stand (`followInPlace`), and
+ * written to their origin's before that item goes with its connection (`keepInPlaceSets`: a
+ * sign-out leaves a set). An origin leaves it once its set is written or removed
+ * (`setProxySet`).
+ */
+let inPlace: Readonly<Record<string, { id: string; set: ProxyHeaders }>> = {};
+
+/** `inPlace` without the origins `gone`. */
+const inPlaceWithout = (gone: (string | null)[]) =>
+  Object.fromEntries(Object.entries(inPlace).filter(([o]) => !gone.includes(o)));
+
+/** The sets the stored sign-ins `read` leave this tab: those stored, and the ones it uses in
+ * place, which stay in place while their marks do and their origins have none stored
+ * (another tab that removed one took its mark, `forgetLegacyProxySets`; one that wrote it
+ * stored it). */
+function followInPlace({ proxySets, marked }: StoredSignIns): ProxySets {
+  inPlace = Object.fromEntries(
+    Object.entries(inPlace).filter(([o, p]) => !proxySets[o] && marked.includes(p.id)),
+  );
+  const kept = Object.entries(inPlace);
+  return kept.length
+    ? { ...Object.fromEntries(kept.map(([o, p]) => [o, p.set])), ...proxySets }
+    : proxySets;
+}
+
+/** Before an earlier build's items go with their connections `ids` (a sign-out, a retired
+ * identity: neither removes a set, fe#295), the sets used from them in place, still this
+ * tab's, are written to their origins'. Best-effort: one that can't be written still goes
+ * with its item. */
+async function keepInPlaceSets(ids: readonly string[]): Promise<void> {
+  const { proxySets } = useSession.getState();
+  const keep = Object.entries(inPlace).filter(
+    ([o, p]) => ids.includes(p.id) && sameProxyHeaders(proxySets[o], p.set),
+  );
+  if (!keep.length) return;
+  try {
+    await saveProxySets(Object.fromEntries(keep.map(([o, p]) => [o, p.set])));
+    inPlace = inPlaceWithout(keep.map(([o]) => o));
+  } catch (e) {
+    console.warn('[session] keeping the proxy headers of a connection that went failed', e);
+  }
+}
+
+/**
  * Move the sets earlier builds kept per connection (`marked`, `readLegacyProxyHeaders`) into
  * the one item kept per origin (fe#295): each becomes its origin's set unless that origin
  * has one already (the set stored per origin wins, then the first connection's in the list),
@@ -444,19 +490,21 @@ async function moveLegacyProxySets(
   marked: readonly string[],
   stored: Record<string, ProxyHeaders>,
 ): Promise<Record<string, ProxyHeaders>> {
+  inPlace = {};
   if (!marked.length) {
     legacyMarks = new Set();
     return stored;
   }
   const read = await Promise.all(marked.map(readLegacyProxyHeaders));
   const adopt: Record<string, ProxyHeaders> = {};
-  for (const set of read) {
+  const from: Record<string, string> = {};
+  read.forEach((set, i) => {
     if (set && set !== 'unreadable' && !stored[set.origin] && !adopt[set.origin]) {
       adopt[set.origin] = set;
+      from[set.origin] = marked[i];
     }
-  }
+  });
   let sets = stored;
-  let moved = true;
   if (Object.keys(adopt).length) {
     try {
       await saveProxySets(adopt);
@@ -467,11 +515,14 @@ async function moveLegacyProxySets(
       sets = kept;
     } catch (e) {
       console.warn('[session] moving the proxy headers failed, trying again next launch', e);
-      moved = false;
+      inPlace = Object.fromEntries(
+        Object.entries(adopt).map(([o, set]) => [o, { id: from[o], set }]),
+      );
       sets = { ...stored, ...adopt };
     }
   }
   // Not moved: every old item stays, marked. Moved: only the ones this build can't read.
+  const moved = !Object.keys(inPlace).length;
   const keep = new Set(
     marked.filter((_, i) => (moved ? read[i] === 'unreadable' : read[i] !== null)),
   );
@@ -479,15 +530,9 @@ async function moveLegacyProxySets(
   await Promise.all(
     marked.filter((id, i) => read[i] !== null && !keep.has(id)).map(forgetProxyHeaders),
   );
-  await writeLegacyMarks();
-  return sets;
-}
-
-/** The markers as they now stand (`legacyMarks`) in the list as stored (the move runs before
- * the list is in memory): read again and written under the tabs' lock, so no other tab's
- * write is lost. */
-function writeLegacyMarks(): Promise<void> {
-  return writingList(async () => {
+  // The markers, as they now stand, in the list as stored (this runs before the list is in
+  // memory): read again and written under the tabs' lock, so no other tab's write is lost.
+  await writingList(async () => {
     const meta = await getItemStrict<PersistedConnection[]>(CONNECTIONS_KEY);
     if (!meta) return;
     const next = meta.map(({ hasProxyHeaders: _m, ...m }) => withLegacyMark(m));
@@ -497,6 +542,7 @@ function writeLegacyMarks(): Promise<void> {
     storageMoves++;
     await setItem(CONNECTIONS_KEY, next);
   });
+  return sets;
 }
 
 /**
@@ -576,7 +622,9 @@ function applyStored(read: StoredSignIns): void {
   }
   const { connections: mine, defaultConnectionId, status, proxySets } = useSession.getState();
   // Another tab's edit of a set (fe#295): every connection's client on that origin follows.
-  const sets = sameSets(proxySets, read.proxySets) ? null : { proxySets: read.proxySets };
+  // The sets this tab uses in place stay while their marks do (`followInPlace`).
+  const stored = followInPlace(read);
+  const sets = sameSets(proxySets, stored) ? null : { proxySets: stored };
   const next = (read.connections ?? []).map((c) => {
     const was = mine.find((m) => m.id === c.id);
     // A flag stays with the token it was raised for: a new one (signed in again in another
@@ -1211,7 +1259,9 @@ export const useSession = create<SessionState>()((set, get) => ({
       // Best-effort drop each stale identity's dead token. No server revoke - the token is
       // already dead, so there's nothing to call.
       // Their calendar links (Track U3) go with them, and any per-connection proxy headers
-      // an earlier build left (fe#167; the origin's set stays for whoever reaches it).
+      // an earlier build left (fe#167; the origin's set stays for whoever reaches it, one
+      // used from such an item written to its origin's first: `keepInPlaceSets`).
+      await keepInPlaceSets(stale.map((c) => c.id));
       await Promise.all(
         stale.flatMap((c) => [
           deleteSecure(tokenKey(c.id)).catch(() => undefined),
@@ -1271,6 +1321,8 @@ export const useSession = create<SessionState>()((set, get) => ({
     const from = movedFrom ? proxyOriginOf(movedFrom) : null;
     const gone = from && from !== o ? from : null;
     await saveProxySets({ ...(gone ? { [gone]: null } : {}), [o]: keep });
+    // Written or removed on purpose: no longer used from an earlier build's item.
+    inPlace = inPlaceWithout([o, gone]);
     // Set from the state as it is NOW (another origin's change may have landed meanwhile).
     const next = { ...get().proxySets };
     if (gone) delete next[gone];
@@ -1330,8 +1382,10 @@ export const useSession = create<SessionState>()((set, get) => ({
     // forgets it with the connection (the link itself keeps working until turned off), and
     // any proxy headers an earlier build kept for it alone. The origin's set stays (fe#295):
     // removed only on purpose, so signing in again there needs no typing. The token first:
-    // a delete of it that fails stops the removal.
+    // a delete of it that fails stops the removal. A set used from its old item in place is
+    // written to its origin's before that item goes (`keepInPlaceSets`).
     await deleteSecure(tokenKey(id));
+    await keepInPlaceSets([id]);
     await Promise.all([forgetCalendarLink(id), forgetProxyHeaders(id)]);
     await writingList(async () => {
       const { connections, defaultConnectionId } = get();

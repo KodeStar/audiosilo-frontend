@@ -1593,6 +1593,49 @@ describe('proxy headers (fe#167): one set per origin (fe#295)', () => {
       expect(stored.find((m) => m.id === a)).not.toHaveProperty('hasProxyHeaders');
     });
 
+    // A sign-out leaves a set (fe#295), the one still used from a signed-out connection's old
+    // item too: it is written to its origin's before that item goes with the connection.
+    it.each([
+      ['a sign-out', (id: string) => useSession.getState().removeConnection(id)],
+      [
+        'a retired identity',
+        (id: string) =>
+          useSession.getState().setSession({
+            serverUrl: 'https://a.example',
+            serverId: 'srv-a2',
+            token: 't2',
+            user: { ...mkUser('a'), id: 1 },
+            retire: [id],
+          }),
+      ],
+    ])(
+      'keeps a set used in place through %s of the connection whose old item holds it',
+      async (_, end) => {
+        const a = await signIn('a');
+        const member = await signIn('a', undefined, 2);
+        await legacy(a, JSON.stringify(set));
+        reset();
+        const original = store.setItemAsync;
+        store.setItemAsync = (k, v) =>
+          k === PROXY_SETS_KEY ? Promise.reject(new Error('keychain')) : original(k, v);
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+          await useSession.getState().hydrate();
+          expect(useSession.getState().proxySets).toEqual({ [A]: set });
+        } finally {
+          store.setItemAsync = original;
+          warn.mockRestore();
+        }
+        await end(a);
+        expect(await SecureStore.getItemAsync(legacyKey(a))).toBeNull();
+        expect(useSession.getState().connections.some((c) => c.id === member)).toBe(true);
+        reset();
+        useSession.setState({ proxySets: {} });
+        await useSession.getState().hydrate();
+        expect(useSession.getState().proxySets).toEqual({ [A]: set });
+      },
+    );
+
     it('fails the hydrate when an old item can not be read (as a token read does)', async () => {
       const a = await signIn('a');
       await legacy(a, JSON.stringify(set));

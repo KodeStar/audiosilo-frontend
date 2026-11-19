@@ -484,6 +484,40 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     );
   });
 
+  // A tab whose move of an earlier build's set could not be written uses the set from where
+  // it is (fe#295): another tab's write of the list must not take it from this tab.
+  it("keeps a set used in place from an earlier build's item through another tab's write", async () => {
+    const browser = fakeBrowser();
+    const { b, alex } = await twoTabs(browser);
+    type Stored = { id: string; hasProxyHeaders?: true };
+    const stored = () => JSON.parse(b.env.localStorage.getItem(CONNECTIONS_KEY)!) as Stored[];
+    const set = { origin: 'https://srv', headers: [{ name: 'X-Proxy', value: 'one' }] };
+    b.env.localStorage.setItem(`audiosilo.proxy-headers.${alex}`, JSON.stringify(set));
+    b.env.localStorage.setItem(
+      CONNECTIONS_KEY,
+      JSON.stringify(stored().map((m) => (m.id === alex ? { ...m, hasProxyHeaders: true } : m))),
+    );
+    const c = openTab(browser);
+    const write = c.env.localStorage.setItem;
+    c.env.localStorage.setItem = (key, value) => {
+      if (key === 'audiosilo.proxy-sets') throw new Error('quota');
+      write(key, value);
+    };
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await c.useSession.getState().hydrate();
+      expect(c.useSession.getState().proxySets).toEqual({ [set.origin]: set });
+      await b.useSession.getState().setConnectionUser(alex, mkUser(1, 'alexander'));
+      await settle();
+      expect(c.useSession.getState().connections.find((x) => x.id === alex)?.user.username).toBe(
+        'alexander',
+      );
+      expect(c.useSession.getState().proxySets).toEqual({ [set.origin]: set });
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   // Each tab builds the first document from the same list at once: the second to write finds
   // the first's people, and someone is still listening there.
   it('two tabs making the first people at once both have someone listening', async () => {
