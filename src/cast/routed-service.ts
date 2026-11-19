@@ -79,6 +79,12 @@ export class RoutedPlaybackService implements PlaybackService {
   /** The wait of the session `beginCast` is making the route (`localLoad`), stopped by a newer
    * session or the end of the session (`endCast`). */
   private beginning: { stop: () => void } | null = null;
+  /** The book a handover gives the receiver (`beginCast`): a session that ends before it is
+   * the route hands this book back, at the place being handed over (`handBack`). */
+  private handover: LastLoad | null = null;
+  /** The book a hand-back is of, while the router reports its place (`handBack`): it may not
+   * be the store's (`reportedBook`). */
+  private handingBack: BookRef | null = null;
   /** The hand-back of a session that ended, while it runs (a load the end interrupted
    * waits for it: `load`). */
   private ending: Promise<void> | null = null;
@@ -210,6 +216,7 @@ export class RoutedPlaybackService implements PlaybackService {
 
     const at = this.snapshot;
     const load = this.lastLoad;
+    this.handover = load;
     if (!load || at.state === 'idle' || at.state === 'ended') {
       this.mode = 'cast';
       // Nothing to hand over, but the phone's engine holds that other book: it stops here too,
@@ -277,9 +284,8 @@ export class RoutedPlaybackService implements PlaybackService {
     // it was started at: the receiver's snapshot is still the previous book's, and that
     // place mapped onto this book is one it never had. Mid-handover (the session ended
     // while the book was on its way to the receiver) the phone's engine is already
-    // unloaded: the place to restore is the one being handed over.
-    const pending =
-      this.pending && sameBookLoad(this.pending.load, this.lastLoad) ? this.pending : null;
+    // unloaded: the place to restore is the one being handed over, of the book handed over.
+    const pending = this.pending;
     this.pending = null;
     const at: PlaybackSnapshot = pending
       ? {
@@ -291,13 +297,26 @@ export class RoutedPlaybackService implements PlaybackService {
       : this.mode === 'cast'
         ? cast.getSnapshot()
         : this.snapshot;
+    // The book that place is of: the one on its way to the receiver, the one it holds, or the
+    // one being handed over. Never simply the queue the store remembered (`lastLoad`): an
+    // adoption that landed meanwhile remembers its own book, and that book back at the
+    // receiver's place would be a place it never had. The store's own copy of the same book
+    // (its download) comes back instead of the receiver's queue.
+    const held = pending ? pending.load : this.mode === 'cast' ? cast.loadedQueue() : this.handover;
+    const load = held && !sameBookLoad(held, this.lastLoad) ? held : this.lastLoad;
     this.mode = 'switching';
     this.dropCast();
-    const load = this.lastLoad;
     if (load && (pending || (at.state !== 'idle' && at.state !== 'ended'))) {
       const place = { ...at, state: 'paused' as const };
-      this.forward(place);
-      await this.loadLocal(load, place);
+      // Named, so a book that is not the store's is held as another book's, never saved at
+      // the store's book (`reportedBook`).
+      this.handingBack = load.book ?? null;
+      try {
+        this.forward(place);
+      } finally {
+        this.handingBack = null;
+      }
+      await this.loadLocal(load, place, load === this.lastLoad);
     }
     if (generation === this.generation) this.mode = 'local';
   }
@@ -397,7 +416,9 @@ export class RoutedPlaybackService implements PlaybackService {
     this.cast = null;
   }
 
-  private async loadLocal(load: LastLoad, place: PlaybackSnapshot) {
+  /** Load a book into the phone's engine at a place, the store's book (`own`, told as its own
+   * load) or the receiver's other book (`handBack`). */
+  private async loadLocal(load: LastLoad, place: PlaybackSnapshot, own = true) {
     try {
       const loaded = this.local.load(
         load.tracks,
@@ -407,8 +428,9 @@ export class RoutedPlaybackService implements PlaybackService {
         load.book,
       );
       // A load the store did not ask for: told as it is made, before the phone's engine
-      // reports from it (`PlaybackService.onOwnLoad`).
-      this.ownLoad?.(place.trackIndex, place.position, loaded);
+      // reports from it (`PlaybackService.onOwnLoad`). Not another book's: the store's book
+      // is not where it lands.
+      if (own) this.ownLoad?.(place.trackIndex, place.position, loaded);
       await loaded;
       await this.local.setRate(place.rate);
     } catch (err) {
@@ -572,9 +594,11 @@ export class RoutedPlaybackService implements PlaybackService {
    * book's (one the phone's engine held with no name, before the session began). Never the
    * queue the store remembered (`lastLoad`): an adoption landing mid-handover remembers its own
    * book while the receiver takes the one handed over. None while a load is on its way there
-   * (`pending`: the receiver still reports the book before it), nor during a switch. */
+   * (`pending`: the receiver still reports the book before it), nor during a switch, but for
+   * the place a hand-back reports (`handingBack`). */
   reportedBook() {
     if (this.mode === 'local') return this.local.reportedBook?.() ?? null;
+    if (this.handingBack) return this.handingBack;
     return this.mode === 'cast' && !this.pending ? (this.cast?.loadedBook() ?? null) : null;
   }
   getSnapshot() {

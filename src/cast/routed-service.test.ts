@@ -105,20 +105,22 @@ function fakeCast() {
     detach: jest.Mock;
     refresh: jest.Mock;
     loadedBook: () => BookRef | null;
+    loadedQueue: () => { tracks: PlaybackTrack[]; book: BookRef } | null;
   };
   engine.detach = jest.fn();
   engine.refresh = jest.fn(async () => {});
-  // The book of its last load (the receiver's), none after a reset since.
-  engine.loadedBook = () => {
+  // The queue of its last load (the receiver's), none after a reset since.
+  engine.loadedQueue = () => {
     const load = engine.load as jest.Mock;
     const reset = engine.reset as jest.Mock;
     const last = load.mock.invocationCallOrder.length - 1;
     if (last < 0) return null;
     const lastReset = Math.max(0, ...reset.mock.invocationCallOrder);
-    return load.mock.invocationCallOrder[last] > lastReset
-      ? ((load.mock.calls[last] as unknown[])[4] as BookRef)
-      : null;
+    if (load.mock.invocationCallOrder[last] < lastReset) return null;
+    const args = load.mock.calls[last] as unknown[];
+    return { tracks: args[0] as PlaybackTrack[], book: args[4] as BookRef };
   };
+  engine.loadedBook = () => engine.loadedQueue()?.book ?? null;
   return engine;
 }
 
@@ -825,6 +827,44 @@ describe('RoutedPlaybackService: a book started while the route is changing', ()
     await handover;
     expect(t.router.isCasting()).toBe(true);
     expect(t.router.reportedBook()).toEqual(BOOK);
+  });
+
+  // FE-ANDROID-5: the session ended once the receiver played the book handed over, while the
+  // store remembered the book an adoption took mid-handover. The phone got that book at the
+  // receiver's place, told the store as its own load and reported unnamed, so the store saved
+  // the receiver's place as its book's.
+  it('hands back the book the receiver holds, named, never one an adoption remembered', async () => {
+    const t = setup();
+    const told: unknown[][] = [];
+    t.router.onOwnLoad((...args) => told.push(args));
+    await playingLocally(t);
+    const { cast, held } = heldCast();
+    const handover = t.router.beginCast(cast as unknown as CastPlaybackService);
+    await settle();
+    t.router.rememberLoad({ tracks: OTHER_TRACKS, chapters: [], book: OTHER });
+    held[0].finish();
+    await handover;
+    cast.emit({ state: 'playing', trackIndex: 1, position: 400 });
+    const named: (BookRef | null)[] = [];
+    t.router.subscribe(() => named.push(t.router.reportedBook()));
+    await t.router.endCast();
+    expect(t.local.load).toHaveBeenLastCalledWith(TRACKS, 1, 400, undefined, BOOK);
+    expect(named[0]).toEqual(BOOK);
+    expect(t.seen.at(-1)).toMatchObject({ state: 'paused', trackIndex: 1, position: 400 });
+    expect(told).toEqual([]);
+  });
+
+  it('hands back the book being handed over when the session ends mid-handover', async () => {
+    const t = setup();
+    await playingLocally(t);
+    const { cast, held } = heldCast();
+    const handover = t.router.beginCast(cast as unknown as CastPlaybackService);
+    await settle();
+    t.router.rememberLoad({ tracks: OTHER_TRACKS, chapters: [], book: OTHER });
+    await t.router.endCast();
+    held[0].finish();
+    await handover;
+    expect(t.local.load).toHaveBeenLastCalledWith(TRACKS, 1, 120, [], BOOK);
   });
 
   /** A phone engine whose next load waits for `land()`, which reports it there. */

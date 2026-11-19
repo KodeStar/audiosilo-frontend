@@ -516,6 +516,12 @@ export class CastPlaybackService implements PlaybackService {
     return this.loaded?.book ?? null;
   }
 
+  /** The queue of the book this service gave the receiver (`loadedBook`), else null: the book
+   * a session that ends hands back to the phone (`RoutedPlaybackService.endCast`). */
+  loadedQueue(): { tracks: PlaybackTrack[]; book: BookRef } | null {
+    return this.loaded ? { tracks: this.loaded.tracks, book: this.loaded.book } : null;
+  }
+
   subscribe(listener: (s: PlaybackSnapshot) => void) {
     this.listeners.add(listener);
     return () => {

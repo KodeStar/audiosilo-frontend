@@ -4509,7 +4509,10 @@ on first need). NOT device-verified (no Cast device yet).
   for it to land (`localLoad`), so that book goes over from its own place, never the place of
   the book the load replaced; a session ended or replaced meanwhile never becomes the route.
   The wait is bounded (`LOCAL_LOAD_WAIT_MS`): a load that never lands goes over paused from
-  where it was asked to start.
+  where it was asked to start. A session that ends hands back the book the receiver holds
+  (`loadedQueue`; mid-handover the one handed over), at the receiver's place, its report named
+  (`handingBack`): when that is not the store's book (an adoption landed mid-handover) the
+  store holds it as another book's and is told of no load of its own.
   `startCastSync` (the root's services, `root-services-impl.tsx`) follows the driver's session events; `endCastForCar` and
   `stopCasting` end a session from the app. A user's Stop casting stops the receiver's app (from
   the app, the Cast dialog or the notification), so the TV never plays on while the book comes
