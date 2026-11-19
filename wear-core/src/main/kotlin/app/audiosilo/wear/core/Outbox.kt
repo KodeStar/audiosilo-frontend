@@ -17,8 +17,8 @@
 // that can't be moved either stays in the way, unwritten, until a later save can (`stuck`).
 //
 // Thread-safe: the app's main thread and the SyncWorker may both call it; one flush runs at a time.
-// Given a `DurableWriter`, `outbox.json` is written there, in the order the changes were made (each
-// write is queued under the lock that made its change).
+// Given a `DurableWriter`, `outbox.json` and `sync-state.json` are written there, in the order the
+// changes were made (each write is queued under the lock that made its change).
 package app.audiosilo.wear.core
 
 import java.io.File
@@ -53,13 +53,17 @@ class Outbox(
   private val directory: File?,
   private val acks: AckStore,
   private val deviceId: String,
-  /** Where `outbox.json`'s writes run (null: on the caller's thread). */
+  /**
+   * Where `outbox.json`'s writes run, and `sync-state.json`'s in order with them (an event moved to
+   * the couldn't-sync list never lands there while the outbox still holds it); null: on the
+   * caller's thread.
+   */
   writer: DurableWriter? = null,
   private val clock: () -> Instant = Instant::now,
 ) {
   private val lock = Any()
   private val eventsFile = directory?.let { JsonFile(File(it, "outbox.json"), EVENTS, durable = true, writer = writer) }
-  private val stateFile = directory?.let { JsonFile(File(it, "sync-state.json"), SyncState.serializer()) }
+  private val stateFile = directory?.let { JsonFile(File(it, "sync-state.json"), SyncState.serializer(), writer = writer) }
 
   /**
    * The outbox file is there, but could be neither read nor moved aside (`kept`; set before

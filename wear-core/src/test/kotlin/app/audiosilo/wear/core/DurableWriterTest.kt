@@ -170,6 +170,31 @@ class DurableWriterTest {
     assertEquals(listOf("old"), outbox.events.map { it.id })
   }
 
+  // An offer's Jump acknowledges the row before the move keeps its target: the acks go on the same
+  // queue, so a kill never leaves the acknowledgement on the disk without the move (the watch would
+  // resume at its old place on the other device's version, sending that place back).
+  @Test
+  fun theAcksAndTheSyncStateGoInOrderWithTheListening() {
+    val held = Held()
+    val writer = DurableWriter(held)
+    val acks = AckStore(File(dir, "acks.json"), writer)
+    val places = PlaceStore(File(dir, "places.json"), writer)
+    acks.ack(ref, 7)
+    places.set(ref, LocalPlace(40.0, at = clock.now))
+    assertEquals(emptyList<String>(), dir.list()!!.toList())
+    assertTrue(held.runOne())
+    assertEquals(listOf("acks.json"), dir.list()!!.toList())
+    assertTrue(held.runOne())
+    assertEquals(7, AckStore(File(dir, "acks.json")).ackVersion(ref))
+    assertEquals(40.0, PlaceStore(File(dir, "places.json")).place(ref)!!.position, 0.0)
+    // The sync state is queued behind the outbox write before it too.
+    val outbox = Outbox(dir, AckStore(null), DEVICE_ID, writer = writer)
+    outbox.discardFailed("none")
+    assertFalse(File(dir, "sync-state.json").exists())
+    while (held.runOne()) Unit
+    assertTrue(File(dir, "sync-state.json").exists())
+  }
+
   @Test
   fun aWriteThatFailsLeavesTheQueueGoing() {
     val writer = DurableWriter()

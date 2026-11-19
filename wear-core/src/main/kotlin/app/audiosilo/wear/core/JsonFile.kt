@@ -88,7 +88,10 @@ class JsonFile<T>(
   private val serializer: KSerializer<T>,
   /** Sync each write to the disk (see the header): for a file whose loss loses listening. */
   private val durable: Boolean = false,
-  /** Where a durable document's writes run (null: on the caller's thread). */
+  /**
+   * Where this document's writes run, in order with every other document given it (null: on the
+   * caller's thread): the durable ones, and the few whose order against them matters.
+   */
   private val writer: DurableWriter? = null,
 ) {
   /** The stored value, null when there is none or it can't be read (`load` tells them apart). */

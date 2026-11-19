@@ -131,10 +131,13 @@ class AppModel private constructor(private val context: Context) {
   val router = AddressRouter(scope)
   val library = ContinueListening(files)
   val downloads = DownloadIndex(files.downloadsIndex)
-  val acks = AckStore(files.acks)
 
-  /** The listening's durable files (outbox, open span, places) are written off the main looper, in order. */
+  /**
+   * The listening's durable files (outbox, open span, places), and the acks and sync state whose
+   * order against them matters, are written off the main looper, in order.
+   */
   private val durable = DurableWriter()
+  val acks = AckStore(files.acks, durable)
   val outbox = Outbox(files.root, acks, deviceId, writer = durable)
   private val held = HeldBooks(files.heldBooks)
   val places = PlaceStore(files.places, durable)

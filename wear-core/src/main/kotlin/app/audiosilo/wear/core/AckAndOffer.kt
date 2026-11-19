@@ -22,9 +22,14 @@ data class BookAck(
   val answered: List<String> = emptyList(),
 )
 
-/** The acknowledged versions, kept in a file (`acks.json`). Thread-safe. */
-class AckStore(file: File?) {
-  private val file = file?.let { JsonFile(it, SERIALIZER) }
+/**
+ * The acknowledged versions, kept in a file (`acks.json`). Thread-safe. Given the listening's
+ * `DurableWriter` (Wear, fe#285), the file is written there, in order with the outbox and the
+ * places: an offer's Jump acknowledged before its move must not land on the disk without the move
+ * (a kill between them would resume at the old place on the other device's version, sending it back).
+ */
+class AckStore(file: File?, writer: DurableWriter? = null) {
+  private val file = file?.let { JsonFile(it, SERIALIZER, writer = writer) }
   private var books: Map<String, BookAck> = this.file?.read() ?: emptyMap()
 
   @Synchronized fun ackVersion(ref: BookRef): Int? = books[ref.key]?.ackVersion
