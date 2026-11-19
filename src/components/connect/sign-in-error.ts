@@ -37,9 +37,9 @@ export function sharedRefusalText(e: ApiError, t: TFunction): string | undefined
 export type WaitOver = { at: number; text: string };
 
 /** The wait a 429's words name, in whole seconds (so 59.5 s reads as "1 minute", never "60
- * seconds"), or `undefined` for any error that names none: ONE rule for the words and for
- * when they give way (`refusalWaitOver`). */
-function namedWaitSeconds(e: unknown): number | undefined {
+ * seconds"), or `undefined` for any error that names none: ONE rule for the words, for
+ * when they give way (`refusalWaitOver`) and for a single sign-on's Try again (`oidcRetryWait`). */
+export function namedWaitSeconds(e: unknown): number | undefined {
   if (!(e instanceof ApiError) || e.status !== 429) return undefined;
   const s = e.retryAfterSeconds;
   return s === undefined || s <= 0 ? undefined : Math.ceil(s);
@@ -49,12 +49,19 @@ function namedWaitSeconds(e: unknown): number | undefined {
  * When the wait `sharedRefusalText` names (a 429 with a `Retry-After`) is over, and the words
  * then: the same refusal with no time in it, so "Try again in 30 seconds" never stays on
  * screen once trying again works (`useRefusalError` swaps it then). `undefined` for any error
- * whose words name no wait.
+ * whose words name no wait. A screen whose next step is signing in again, not trying again,
+ * names its own words (`over`, a single sign-on with no retry left).
  */
-export function refusalWaitOver(e: unknown, t: TFunction): WaitOver | undefined {
+export function refusalWaitOver(
+  e: unknown,
+  t: TFunction,
+  over:
+    | 'connect.signIn.errors.waitOver'
+    | 'connect.oidc.errors.waitOver' = 'connect.signIn.errors.waitOver',
+): WaitOver | undefined {
   const secs = namedWaitSeconds(e);
   if (secs === undefined) return undefined;
-  return { at: Date.now() + secs * 1000, text: t('connect.signIn.errors.waitOver') };
+  return { at: Date.now() + secs * 1000, text: t(over) };
 }
 
 /**

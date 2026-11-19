@@ -241,18 +241,15 @@ describe('oidcFinishFailure', () => {
     });
   });
 
-  it('says to sign in again once a lockout inside the minute is over', () => {
-    const failure = oidcFinishFailure(
-      new ApiError(429, 'slow', undefined, 900),
-      t,
-      NOW + 20_000,
-      run,
-    );
-    expect(failure.retry).toBeUndefined();
-    expect(failure.waitOver).toEqual({
-      at: NOW + 900_000,
-      text: t('connect.oidc.errors.waitOver'),
+  // No Try again while the minute lasts either: a lockout, or a wait past what is left of it.
+  it.each([
+    ['a lockout', 900, t('connect.signIn.errors.wait', { count: 15 })],
+    ['a wait past the minute', 30, t('connect.signIn.errors.waitSeconds', { count: 30 })],
+  ] as const)('says to sign in again once %s inside the minute is over', (_, secs, message) => {
+    const e = new ApiError(429, 'slow', undefined, secs);
+    expect(oidcFinishFailure(e, t, NOW + 20_000, run)).toEqual({
+      message,
+      waitOver: { at: NOW + secs * 1000, text: t('connect.oidc.errors.waitOver') },
     });
-    expect(failure.waitOver?.text).not.toBe(t('connect.signIn.errors.waitOver'));
   });
 });

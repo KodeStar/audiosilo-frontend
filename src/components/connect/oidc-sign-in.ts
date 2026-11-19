@@ -9,7 +9,12 @@ import { useSession } from '@/stores/session';
 
 import { finishConnect } from './finish-connect';
 import { oidcPassTag, settleOidcPass, takeOidcResumed } from './oidc-intent';
-import { refusalWaitOver, sharedRefusalText, type WaitOver } from './sign-in-error';
+import {
+  namedWaitSeconds,
+  refusalWaitOver,
+  sharedRefusalText,
+  type WaitOver,
+} from './sign-in-error';
 
 /**
  * Single sign-on (OpenID Connect, server#235) in the web player. The sign-in step offers
@@ -95,8 +100,8 @@ export function oidcRetryWait(e: unknown, leftMs: number): number | undefined {
   if (!(e instanceof ApiError)) return 0;
   if (e.status >= 500 || e.status === 408) return 0;
   if (e.status !== 429) return undefined;
-  // Whole seconds, as the words round it (`refusalWaitOver`): Try again and the text switch together.
-  const ms = Math.ceil(e.retryAfterSeconds ?? 0) * 1000;
+  // The words' own whole seconds: Try again and the text switch together.
+  const ms = (namedWaitSeconds(e) ?? 0) * 1000;
   return ms < leftMs ? ms : undefined;
 }
 
@@ -121,12 +126,9 @@ export function oidcFinishFailure(
   if (left <= 0 && keptThrough) return { message: t('connect.oidc.errors.expired') };
   const waitMs = oidcRetryWait(e, left);
   const message = oidcFinishText(e, t, waitMs !== undefined);
-  const waitOver = refusalWaitOver(e, t);
-  if (waitMs === undefined) {
-    const signInAgain = waitOver && { ...waitOver, text: t('connect.oidc.errors.waitOver') };
-    return { message, waitOver: signInAgain };
-  }
-  return { message, retry: { waitMs, doneBy, run }, waitOver };
+  if (waitMs === undefined)
+    return { message, waitOver: refusalWaitOver(e, t, 'connect.oidc.errors.waitOver') };
+  return { message, retry: { waitMs, doneBy, run }, waitOver: refusalWaitOver(e, t) };
 }
 
 /** The same finish sent again (`finishOidcSignIn`'s, with its flow, book and reconnect, all
