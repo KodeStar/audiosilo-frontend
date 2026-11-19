@@ -3094,7 +3094,9 @@ media GETs only.
     stream), notes the earliest such claim (`otherTabPlayed`: its place may be behind from
     then). Before it plays again it takes the place the tabs share (`otherTabsPlace`): the
     mirror's record of the loaded book (what a fresh load resumes from, by its file when the
-    queue holds it, fe#188), when this browser's `device_id` saved it at or after that
+    queue holds it, fe#188; for a connection another tab's identity migration renamed, the
+    latest under either id, as the claim, its answer and the give-way match either,
+    `sameConnection`), when this browser's `device_id` saved it at or after that
     claim and it is more than `SAME_PLACE_S` (2 s) from the engine's place, **earlier or
     later** (the other tab is the latest listening). Another book played there leaves this
     book's record as it was, so nothing moves; another device's record is the place

@@ -17,7 +17,7 @@ import {
 } from '@/downloads/store';
 import type { DownloadManifest } from '@/downloads/types';
 import { isAway, onAppStateEdge } from '@/lib/app-activity';
-import { resolveConnectionId, sameConnection } from '@/lib/connection-id';
+import { legacyIdOf, resolveConnectionId, sameConnection } from '@/lib/connection-id';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { isDeviceOnline } from '@/lib/device-online';
 import { canAutoDownload } from '@/lib/network';
@@ -1954,13 +1954,15 @@ function giveWayTo(claim: PlayingClaim) {
     askedAt: playAskedAt,
   };
   const gives = givesWayTo(claim, mine);
-  const wasBehind = catchingUp !== null || otherTabPlayed?.connectionId === claim.connectionId;
+  // Of its connection under either id the identity migration gave it (`sameConnection`), as
+  // `givesWayTo` reads it.
+  const ofClaim = (play: { connectionId: string } | null) =>
+    play !== null && sameConnection(play.connectionId, claim.connectionId);
+  const wasBehind = catchingUp !== null || ofClaim(otherTabPlayed);
   // The play already noted, going on: by its tab and when it was asked for, which only a new
   // play changes (a press, the OS media controls).
   const noted =
-    notedPlay?.connectionId === claim.connectionId &&
-    notedPlay.tab === claim.tab &&
-    notedPlay.askedAt === claim.askedAt;
+    ofClaim(notedPlay) && notedPlay?.tab === claim.tab && notedPlay.askedAt === claim.askedAt;
   // It gave way to that play already and no play was asked for here since (`own`): its
   // engine has not reported the pause yet, so the snapshot still reads `playing`. Nothing
   // is new: no second note (a seek the listener made here meanwhile stands), pause or
@@ -1968,12 +1970,7 @@ function giveWayTo(claim: PlayingClaim) {
   if (gives && noted && notedPlay?.own === playAskedAt) return;
   const goesOn = !gives && noted;
   // Not when it plays on (the newer play is this tab's: the other tab follows it).
-  if (
-    np &&
-    sameConnection(np.connectionId, claim.connectionId) &&
-    (gives || !mine.live) &&
-    !goesOn
-  ) {
+  if (ofClaim(np) && (gives || !mine.live) && !goesOn) {
     notedPlay = {
       connectionId: claim.connectionId,
       tab: claim.tab,
@@ -1985,7 +1982,7 @@ function giveWayTo(claim: PlayingClaim) {
     // Whatever place the listener chose here, the other tab's listening is the latest.
     placeChosen = false;
     // The earliest claim not caught up with yet: every save since may be past this place.
-    if (otherTabPlayed?.connectionId !== claim.connectionId) {
+    if (!ofClaim(otherTabPlayed)) {
       otherTabPlayed = {
         connectionId: claim.connectionId,
         since: Math.min(claim.sentAt, Date.now()),
@@ -1998,7 +1995,7 @@ function giveWayTo(claim: PlayingClaim) {
     // `playing` would read as a new play and take the connection back from the tab that
     // plays now. So its engine is stopped: the error stays, and a Retry here plays again.
     const died = !mine.live && snapshot.state === 'error';
-    if (died && mine.connectionId === claim.connectionId) {
+    if (died && ofClaim(np)) {
       void service?.pause().catch(() => undefined);
     }
     return;
@@ -2731,12 +2728,27 @@ async function otherTabsPlace(
   const loaded = usePlayer.getState().nowPlaying;
   if (!loaded) return null;
   const moves = localMoves;
-  const record = await readMirror(loaded.connectionId, loaded.libraryId, loaded.path).catch(
-    () => null,
+  // Under each id the connection goes by: a tab on the id another tab's identity migration
+  // renamed it to (or from) saves the book under that one. The latest of them.
+  const now = resolveConnectionId(loaded.connectionId);
+  const ids = [...new Set([loaded.connectionId, now, legacyIdOf(now)])];
+  const reads = await Promise.all(
+    ids.map(async (id) => {
+      const saved = await readMirror(id, loaded.libraryId, loaded.path).catch(() => null);
+      // By this device's clock: a server's row (this browser's own place read back) is
+      // stamped by the server's, which may be ahead (fe#262).
+      const at = saved ? await mirrorTimeOf(saved).catch(() => Number.NaN) : Number.NaN;
+      return { saved, at };
+    }),
   );
-  // By this device's clock: a server's row (this browser's own place read back) is stamped
-  // by the server's, which may be ahead (fe#262).
-  const savedAt = record ? await mirrorTimeOf(record).catch(() => Number.NaN) : Number.NaN;
+  let record: (typeof reads)[number]['saved'] = null;
+  let savedAt = Number.NaN;
+  for (const { saved, at } of reads) {
+    if (saved && (record === null || Number.isNaN(savedAt) || at > savedAt)) {
+      record = saved;
+      savedAt = at;
+    }
+  }
   const { nowPlaying: np, snapshot, loadingBook } = usePlayer.getState();
   // Another book, a place not known yet (a load), or the listener moved meanwhile.
   if (!np || !sameBook(np, loaded) || loadingBook || localMoves !== moves) return null;
@@ -2947,9 +2959,11 @@ function onGaveWayAnswer(answer: GaveWay) {
   const play = ownPlay;
   const { nowPlaying: np, loadingBook } = usePlayer.getState();
   if (!svc || !play || !np || loadingBook) return;
-  if (answer.askedAt !== play.askedAt || answer.connectionId !== play.connectionId) return;
+  // Its tab may name the id the identity migration moved the connection from, or to.
+  if (answer.askedAt !== play.askedAt || !sameConnection(answer.connectionId, play.connectionId))
+    return;
   if (Date.now() - play.since > GAVE_WAY_ANSWER_MS) return;
-  if (!sameBook(np, answer) || placeChosen || behindOtherTab(np)) return;
+  if (resolvedKeyOf(np) !== resolvedKeyOf(answer) || placeChosen || behindOtherTab(np)) return;
   // Against where this play began, not where it has played to since.
   const place = tabPlaceOf(np, play.pos, answer, { finished: false });
   if (!place) return;
@@ -4195,7 +4209,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     // Reloaded where another tab left the book, when one played it on meanwhile.
     const behind = otherTabPlayed;
     const place =
-      behind && behind.connectionId === asked.connectionId
+      behind && sameConnection(behind.connectionId, asked.connectionId)
         ? await otherTabsPlace(behind.since).catch(() => null)
         : null;
     // The book as it stands after those awaits: a hot-swap that landed meanwhile replaced it
