@@ -790,12 +790,13 @@ export async function flushReadingQueue(connectionId?: string): Promise<void> {
   );
 }
 
-// A wait the server asked for (a 429) is over: the places it held go now, the reader open
-// or not. That connection's only: another's are held by their own wait, or went already.
-onRateLimitOver((connectionId) => void flushReadingQueue(connectionId).catch(() => undefined));
-// A proxy's refusals of the connection ended (`onProxyRefusalsOver`): the places they held go
-// now, not at the next replay.
-onProxyRefusalsOver((connectionId) => void flushReadingQueue(connectionId).catch(() => undefined));
+// A wait the server asked for (a 429) is over, or a proxy's refusals of the connection ended
+// (`onProxyRefusalsOver`): the places they held go now, the reader open or not, not at the
+// next replay. That connection's only: another's are held by their own wait, or went already.
+const sendHeld = (connectionId: string) =>
+  void flushReadingQueue(connectionId).catch(() => undefined);
+onRateLimitOver(sendHeld);
+onProxyRefusalsOver(sendHeld);
 
 /** Replay one connection's queued saves whatever its recorded reachability or a wait its
  * server asked (`onlyConnection`): it just came back, or it is about to be signed out

@@ -1484,12 +1484,12 @@ export async function flushQueue(connectionId?: string): Promise<void> {
   );
 }
 
-// A wait the server asked for (a 429) is over: the saves it held go now. That connection's
-// only: another's are held by their own wait, or went already.
-onRateLimitOver((connectionId) => void flushQueue(connectionId).catch(() => undefined));
-// A proxy's refusals of the connection ended (`onProxyRefusalsOver`): the saves they held go
-// now, not at the next replay.
-onProxyRefusalsOver((connectionId) => void flushQueue(connectionId).catch(() => undefined));
+// A wait the server asked for (a 429) is over, or a proxy's refusals of the connection ended
+// (`onProxyRefusalsOver`): the saves they held go now, not at the next replay. That
+// connection's only: another's are held by their own wait, or went already.
+const sendHeld = (connectionId: string) => void flushQueue(connectionId).catch(() => undefined);
+onRateLimitOver(sendHeld);
+onProxyRefusalsOver(sendHeld);
 
 /** Where a replay of a stored queue (this one, the reader's) sends a connection's saves:
  * through its client, kept while its server is known down or asked to wait (a 429 until its

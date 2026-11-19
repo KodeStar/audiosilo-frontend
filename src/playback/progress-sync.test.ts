@@ -81,8 +81,6 @@ jest.mock('@/stores/session', () => ({
 const QUEUE_KEY = 'audiosilo.progressQueue';
 const MIRROR_KEY = 'audiosilo.progressMirror';
 
-// The purge callback progress-sync registered at import (captured before any
-// clearAllMocks wipes the mock's call log).
 // A proxy's refusals of a connection ended: the listeners registered at import (captured
 // before any clearAllMocks wipes the mock's call log).
 const proxyOverListeners = (onProxyRefusalsOver as jest.Mock).mock.calls.map(
@@ -90,6 +88,8 @@ const proxyOverListeners = (onProxyRefusalsOver as jest.Mock).mock.calls.map(
 );
 const proxyRefusalsOver = (cid: string) => proxyOverListeners.forEach((fn) => fn(cid));
 
+// The purge callback progress-sync registered at import (captured before any
+// clearAllMocks wipes the mock's call log).
 const removalCleanup = (onConnectionRemoved as jest.Mock).mock.calls[0]?.[0] as (
   id: string,
 ) => Promise<void>;

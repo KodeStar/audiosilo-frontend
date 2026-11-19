@@ -1454,17 +1454,13 @@ async function sendChunk(
   }
 }
 
-// A wait the server asked for (a 429) is over: the events it held go now. Told the
+// A wait the server asked for (a 429) is over, or a proxy's refusals of the connection ended
+// (`onProxyRefusalsOver`): the events they held go now, not at the next replay. Told the
 // connection's id now (`resolveConnectionId`), which held the events of an id the identity
 // migration moved it from too: those go as well, under the id they name.
-onRateLimitOver((connectionId) => {
-  void flushEveryId(connectionId).catch(() => undefined);
-});
-// A proxy's refusals of the connection ended (`onProxyRefusalsOver`): the events they held go
-// now, under every id they name, not at the next replay.
-onProxyRefusalsOver((connectionId) => {
-  void flushEveryId(connectionId).catch(() => undefined);
-});
+const sendHeld = (connectionId: string) => void flushEveryId(connectionId).catch(() => undefined);
+onRateLimitOver(sendHeld);
+onProxyRefusalsOver(sendHeld);
 
 /** A 400 on a batch: each event alone, once; one still refused alone can never be sent,
  * but a `stay` (a server rolled back under a stale cached `listening_stay`, whose decoder
