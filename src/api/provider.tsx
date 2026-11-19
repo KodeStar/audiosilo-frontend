@@ -361,8 +361,12 @@ function useDefaultCid(): string {
  */
 const ConnectionScopeContext = createContext<string>('');
 
-/** Wrap a subtree so its content hooks resolve to `connectionId` (used by the `(app)`
- * layout, which sources it from the content route's `?connection=` query param). */
+/** Wrap a subtree so its content hooks resolve to `connectionId` (`ContentScope`, from the
+ * content route's `?connection=` query param; Home's cards, from their book's). Nothing
+ * while that connection is not signed in: a subtree can outlive it for a render (the
+ * player still holds a book through a connection another tab removed, until its stop
+ * lands), and its hooks would throw (`useApi`). A route to an unknown connection shows its
+ * own not-found state first (`useRouteConnection`). */
 export function ConnectionScope({
   connectionId,
   children,
@@ -370,6 +374,8 @@ export function ConnectionScope({
   connectionId: string;
   children: ReactNode;
 }) {
+  const { clients } = useContext(ApiContext);
+  if (connectionId && !clients.has(connectionId)) return null;
   return (
     <ConnectionScopeContext.Provider value={connectionId}>
       {children}

@@ -1,5 +1,6 @@
 import { QueryObserver } from '@tanstack/react-query';
-import { act, render, waitFor } from '@testing-library/react-native';
+import { act, render, screen, waitFor } from '@testing-library/react-native';
+import { Text } from 'react-native';
 
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -12,8 +13,10 @@ import {
   type ApiConnection,
   ApiProvider,
   buildClients,
+  ConnectionScope,
   queryClient,
   retryQuery,
+  useApi,
   useApis,
 } from './provider';
 
@@ -128,6 +131,40 @@ describe('ApiProvider clients', () => {
     expect(seen.at(-1)![0].client.baseUrl).toBe(home);
     await act(async () => useAddressRoute.setState({ picks: {} }));
     expect(seen.at(-1)![0].client.baseUrl).toBe('https://h');
+  });
+});
+
+describe('ConnectionScope', () => {
+  beforeEach(() => resetProfilesForTests());
+
+  /** Content under a scope: its hooks resolve the scope's client (`useApi`). */
+  function Scoped() {
+    return <Text>{useApi().baseUrl}</Text>;
+  }
+  const at = (id: string) => ({ id, name: id, serverUrl: `https://${id}`, token: 't' });
+  const scoped = (id: string) => (
+    <ApiProvider>
+      <ConnectionScope connectionId={id}>
+        <Scoped />
+      </ConnectionScope>
+    </ApiProvider>
+  );
+
+  it('renders its content through a signed-in connection', async () => {
+    useSession.setState({ connections: [at('srv.1')] } as never);
+    await render(scoped('srv.1'));
+    expect(screen.getByText('https://srv.1')).toBeTruthy();
+  });
+
+  // Another tab removed the connection the player still plays through: the list goes
+  // before the stop lands, and Home's Now card, scoped to the playing book's connection,
+  // renders once more meanwhile. Nothing then, never a throw that blanks the page.
+  it('renders nothing once its connection is gone, never a useApi() throw', async () => {
+    useSession.setState({ connections: [at('srv.1'), at('srv.2')] } as never);
+    await render(scoped('srv.1'));
+    await act(async () => useSession.setState({ connections: [at('srv.2')] } as never));
+    expect(screen.queryByText('https://srv.1')).toBeNull();
+    expect(screen.toJSON()).toBeNull();
   });
 });
 
