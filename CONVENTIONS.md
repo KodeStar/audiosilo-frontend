@@ -383,7 +383,9 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   be written (storage full, a write refused, a copy that does not read back) never does: the sets
   are used from where they are for that launch, every old item and mark left for the next one (a
   failed hydrate would show the listener as signed out at every launch, and a sign-in then writes
-  the list with its server alone). A tab also keeps, in its own writes of the list, a mark it
+  the list with its server alone); a set removed (or moved to another address) meanwhile takes
+  its old items and their marks with it (`forgetLegacyProxySets`), or the next move would bring
+  it back. A tab also keeps, in its own writes of the list, a mark it
   never wrote (an earlier build's tab keeping a set since this one launched, `applyStored`): a
   mark dropped would leave its item with nothing to move it.
 - **One https origin.** A set names the origin (scheme, host, port) it was entered for, and

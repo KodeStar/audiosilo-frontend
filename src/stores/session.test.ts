@@ -1524,6 +1524,38 @@ describe('proxy headers (fe#167): one set per origin (fe#295)', () => {
       },
     );
 
+    // The set used in place still lives in the old item: removed only from the per-origin
+    // item, the next launch's move would bring it back.
+    it('keeps a set removed while its move could not be written removed at the next launch', async () => {
+      const a = await signIn('a');
+      const b = await signIn('b');
+      await legacy(a, JSON.stringify(set));
+      await legacy(b, JSON.stringify(setB));
+      reset();
+      const original = store.setItemAsync;
+      store.setItemAsync = (k, v) =>
+        k === PROXY_SETS_KEY ? Promise.reject(new Error('keychain')) : original(k, v);
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        await useSession.getState().hydrate();
+        expect(useSession.getState().proxySets).toEqual({ [A]: set, [setB.origin]: setB });
+        await useSession.getState().setProxySet(A, null);
+        expect(useSession.getState().proxySets).toEqual({ [setB.origin]: setB });
+      } finally {
+        store.setItemAsync = original;
+        warn.mockRestore();
+      }
+      expect(await SecureStore.getItemAsync(legacyKey(a))).toBeNull();
+      const stored = await list();
+      expect(stored.find((m) => m.id === a)).not.toHaveProperty('hasProxyHeaders');
+      // The other origin's, not removed, stays where it is for the next launch to move.
+      expect(stored.find((m) => m.id === b)?.hasProxyHeaders).toBe(true);
+      reset();
+      await useSession.getState().hydrate();
+      expect(useSession.getState().proxySets).toEqual({ [setB.origin]: setB });
+      expect(await storedSets()).toEqual({ [setB.origin]: { headers: setB.headers } });
+    });
+
     it('fails the hydrate when an old item can not be read (as a token read does)', async () => {
       const a = await signIn('a');
       await legacy(a, JSON.stringify(set));

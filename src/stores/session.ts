@@ -414,7 +414,8 @@ async function readStored(): Promise<StoredSignIns> {
  * be written at this launch (the next tries again), and one another tab marked since this
  * one launched (a tab of an earlier build keeping a set for its connection: moved at this
  * build's next launch, `applyStored`). A write of the list never drops a mark it does not
- * know of: the item behind it would stay in secure-store with nothing left to move it.
+ * know of: the item behind it would stay in secure-store with nothing left to move it. A set
+ * removed on purpose takes its old items and their marks with it (`forgetLegacyProxySets`).
  */
 let legacyMarks: ReadonlySet<string> = new Set();
 
@@ -478,9 +479,15 @@ async function moveLegacyProxySets(
   await Promise.all(
     marked.filter((id, i) => read[i] !== null && !keep.has(id)).map(forgetProxyHeaders),
   );
-  // The markers, as they now stand, in the list as stored (this runs before the list is in
-  // memory): read again and written under the tabs' lock, so no other tab's write is lost.
-  await writingList(async () => {
+  await writeLegacyMarks();
+  return sets;
+}
+
+/** The markers as they now stand (`legacyMarks`) in the list as stored (the move runs before
+ * the list is in memory): read again and written under the tabs' lock, so no other tab's
+ * write is lost. */
+function writeLegacyMarks(): Promise<void> {
+  return writingList(async () => {
     const meta = await getItemStrict<PersistedConnection[]>(CONNECTIONS_KEY);
     if (!meta) return;
     const next = meta.map(({ hasProxyHeaders: _m, ...m }) => withLegacyMark(m));
@@ -490,7 +497,33 @@ async function moveLegacyProxySets(
     storageMoves++;
     await setItem(CONNECTIONS_KEY, next);
   });
-  return sets;
+}
+
+/**
+ * Forget, with their marks, the sets an earlier build kept per connection for `origins` that
+ * are still where it left them (`legacyMarks`: a move that could not be written, or another
+ * tab's): a set removed on purpose must not be moved back in at the next launch. Best-effort
+ * (the set is removed already): a read or write the platform refuses is only warned of. An
+ * item this build can't read names no origin and stays.
+ */
+async function forgetLegacyProxySets(origins: readonly string[]): Promise<void> {
+  if (!legacyMarks.size || !origins.length) return;
+  try {
+    const ids = [...legacyMarks];
+    const read = await Promise.all(ids.map(readLegacyProxyHeaders));
+    const drop = new Set(
+      ids.filter((_, i) => {
+        const set = read[i];
+        return !!set && set !== 'unreadable' && origins.includes(set.origin);
+      }),
+    );
+    if (!drop.size) return;
+    await Promise.all([...drop].map(forgetProxyHeaders));
+    legacyMarks = new Set([...legacyMarks].filter((id) => !drop.has(id)));
+    await writeLegacyMarks();
+  } catch (e) {
+    console.warn("[session] forgetting an earlier build's proxy headers failed", e);
+  }
 }
 
 /** `readStored`, again while another write moved the stored sign-ins during the read
@@ -1233,6 +1266,9 @@ export const useSession = create<SessionState>()((set, get) => ({
     if (keep) next[o] = keep;
     else delete next[o];
     set({ proxySets: next });
+    // A set still used from an earlier build's item (its move not written yet) is removed
+    // there too, or the next launch would move it back.
+    await forgetLegacyProxySets([...(gone ? [gone] : []), ...(keep ? [] : [o])]);
   },
 
   setConnectionUser: (id, user) =>
