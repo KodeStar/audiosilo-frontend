@@ -464,7 +464,7 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   when the proxy refuses it, the kid's sign-in uses its typed set for itself until the app closes
   (`signInProxySets`, memory only, `connectionSetFor`: only while the address's kept set is still
   the one it stood in for, so a grown-up's update takes over), and kids mode and the shell ask a
-  grown-up to update the proxy headers (`useOnOwnProxySet`, `ProxyRefusedBanner`). A pairing QR or link
+  grown-up to update the proxy headers (`useProxyNotice`, `ProxyRefusedBanner`). A pairing QR or link
   pairs with them when its address is the field's: type the address and the headers first, then
   scan.
 - **A proxy's 401 is not a sign-out, nor its 403 no access.** The server's own 401s and 403s
