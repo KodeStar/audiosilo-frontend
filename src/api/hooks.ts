@@ -77,6 +77,7 @@ import {
   ApiError,
   isNotInLibraryError,
   isPlainSeriesQuery,
+  isProxyRefusalError,
   isSignedOutError,
   type ApiClient,
   type BookListQuery,
@@ -2919,7 +2920,8 @@ function failuresInARow(query: {
  * no more once it is gone (a 404: the last answer would read as open for ever). A first
  * read that failed with no answer or a server error is asked again (`retry: false`, and
  * nothing else reads it: its row would wait for ever); a refusal (a 400, 401 or 403) is
- * not. Its Cancel is `useCancelBridgeJob`. */
+ * not, but a 403 from a proxy in front of the server (`ApiError.fromProxy`) is a read that
+ * failed, asked again. Its Cancel is `useCancelBridgeJob`. */
 export function useLibrivoxJob(id: number | undefined, active: boolean, connectionId?: string) {
   return useCapabilityQuery<BridgeJob>(
     'bridge',
@@ -2931,8 +2933,10 @@ export function useLibrivoxJob(id: number | undefined, active: boolean, connecti
       retry: false,
       refetchInterval: (query) => {
         const { data, error } = query.state;
-        // A refusal stays refused (the default retry's rule, `retryQuery`), and a 404 is gone.
-        if (isSignedOutError(error) || isNotInLibraryError(error)) return false;
+        // The server's refusal stays refused (the default retry's rule, `retryQuery`), and a
+        // 404 is gone. A proxy's own 403 is a read that failed: asked again, backing off.
+        if (isSignedOutError(error)) return false;
+        if (isNotInLibraryError(error) && !isProxyRefusalError(error)) return false;
         return librivoxJobPollInterval(
           data,
           false,

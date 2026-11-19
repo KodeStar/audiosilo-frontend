@@ -889,7 +889,9 @@ in step.
   watcher asking, 60 s parked, doubling per failed read in a row up to 60 s), never after a 404
   nor a refusal. A first read that failed
   with no answer or a server error is asked again every 60 s (nothing else would: its row has no
-  status, Cancel or Add until one gets through); a refusal (400, 401, 403) is not.
+  status, Cancel or Add until one gets through); a refusal (400, 401, 403) is not, but a 403 from
+  a proxy in front of the server (`ApiError.fromProxy`, `isProxyRefusalError`) is a read that
+  failed, asked again.
 - **The fetch watcher** (`fetch-watcher.tsx`, fe#293): every open job a row follows is handed to
   `watchLibrivoxFetch(cid, id)` (a zustand list saved under `audiosilo.librivoxWatches`,
   `LIBRIVOX_WATCHES_KEY`, and read again by the watcher's first mount, so a fetch on its way when
@@ -902,8 +904,11 @@ in step.
   `librivoxFetchEnded` (the works asked again; a `done` one also `invalidateLibraryLists` and the
   works once more after `DONE_RECHECK_MS`, on a module timer that fires whatever is mounted by
   then) and drops the watch; it also drops one that is gone (404, the works asked again) or
-  refused (400, 403: nothing read again), judged only once `/server` has answered (until then the
-  gate lays that read's own failure over the job's, `useCapabilityQuery`). A connection signed
+  refused by the server (its own 400 or 403: nothing read again), judged only once `/server` has
+  answered (until then the gate lays that read's own failure over the job's,
+  `useCapabilityQuery`). A proxy's 403 (`ApiError.fromProxy`: its session lapsed, the server
+  never saw the request) is no refusal: the watch is kept and the poll asks again, backing off
+  as after any failed read. A connection signed
   out (gone, or `needsReconnect` after a 401) holds its watches unread; once signed in again they are read, and a fetch that
   ended meanwhile is handled then. One whose connection is not back `WATCH_TTL_MS` (7 days) after
   it was first watched is dropped. A row still open hands its fetch over again with each answer

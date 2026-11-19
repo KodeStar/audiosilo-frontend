@@ -172,6 +172,13 @@ export function isNotInLibraryError(e: unknown): boolean {
   return e instanceof ApiError && (e.status === 404 || e.status === 403 || e.status === 400);
 }
 
+/** Whether `e` is a 403 a proxy in front of the server sent (`ApiError.fromProxy`), not the
+ * server's own: the server never judged the request, and the proxy may let the next one
+ * through (its session signed in again), so a poll treats it as a read that failed. */
+export function isProxyRefusalError(e: unknown): boolean {
+  return e instanceof ApiError && e.fromProxy;
+}
+
 /** The refusal codes (`ApiError.code`) the app tells apart: the household members routes'
  * (Phase 8b-1; `member_disabled` is a 409 for a member the admin disabled, on their
  * session and their pairing), and `kid_account` on pairing too. One list, so the type and

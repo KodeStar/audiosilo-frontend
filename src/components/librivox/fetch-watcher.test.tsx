@@ -162,6 +162,20 @@ describe('LibrivoxFetchWatcher', () => {
     expect(mockInvalidateLists).not.toHaveBeenCalled();
   });
 
+  it("keeps the watch through a proxy's own 403: the server never refused it", async () => {
+    mockReads.setState({
+      41: { error: new ApiError(403, 'Request failed (403)', undefined, undefined, true) },
+    });
+    const { worksAsks } = await mount();
+    await act(async () => watchLibrivoxFetch('c1', 41));
+    expect(watches()).toEqual([{ cid: 'c1', id: 41 }]);
+    expect(worksAsks()).toBe(0);
+    // The proxy lets the next read through: the fetch ended meanwhile.
+    await answer(41, { data: librivoxJob({ id: 41, state: 'failed', error: 'exists' }) });
+    expect(worksAsks()).toBe(1);
+    expect(watches()).toEqual([]);
+  });
+
   it.each([403, 404])(
     'keeps the watch while `/server` is unknown: its failure (%i) is no answer about the job',
     async (status) => {

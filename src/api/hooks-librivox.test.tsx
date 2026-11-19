@@ -184,7 +184,12 @@ describe('useLibrivoxJob', () => {
       await result.current.refetch();
     });
     expect(intervalOf(qc)).toBe(BRIDGE_IDLE_POLL_MS);
-    // A refusal stops it.
+    // A proxy's own 403 (its session lapsed) is a failed read too: asked again.
+    query.setState({
+      error: new ApiError(403, 'Request failed (403)', undefined, undefined, true),
+    });
+    expect(intervalOf(qc)).toBe(BRIDGE_IDLE_POLL_MS);
+    // The server's refusal stops it.
     query.setState({ error: new ApiError(403, 'admin only') });
     expect(intervalOf(qc)).toBe(false);
   });
@@ -268,6 +273,10 @@ describe('useLibrivoxJob, a first read that failed', () => {
   it('is asked again (nothing else would), at the slow pace', async () => {
     expect(await intervalAfter(new ApiError(500, 'boom'))).toBe(BRIDGE_IDLE_POLL_MS);
     expect(await intervalAfter(new TypeError('Network request failed'))).toBe(BRIDGE_IDLE_POLL_MS);
+    // A proxy in front of the server turned it away: the server never refused it.
+    expect(
+      await intervalAfter(new ApiError(403, 'Request failed (403)', undefined, undefined, true)),
+    ).toBe(BRIDGE_IDLE_POLL_MS);
   });
 
   it('is not asked again after a refusal (signed out, not an admin any more)', async () => {
