@@ -343,6 +343,20 @@ describe('placeToMoveTo', () => {
         mirror: mirrorAt('2026-10-08T10:00:01Z'),
       }),
     ).toBeNull();
+    // Nor over a newer record the start read (another device's, or none's): the start's own
+    // lookup took that one, the newest.
+    for (const device_id of ['other-device', '']) {
+      const read = { ...mirrorAt('2026-10-08T10:00:01Z', 105), device_id };
+      expect(placeToMoveTo({ ...base, server: noDevice, late: true, mirror: read })).toBeNull();
+    }
+    expect(
+      placeToMoveTo({
+        ...base,
+        server: noDevice,
+        late: true,
+        mirror: { ...mirrorAt('2026-10-08T09:00:00Z', 105), device_id: 'other-device' },
+      }),
+    ).toBe(400);
   });
 });
 

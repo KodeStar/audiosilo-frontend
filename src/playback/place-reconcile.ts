@@ -106,6 +106,7 @@ const timeOf = (iso: string | undefined): number => {
  * knowledge of the book (its own saves, queued or synced, and records it read). Only a save
  * of its own keeps the engine where it is: a record read since (a downloaded book's page
  * and its download keep the mirror current) is where the book is, not where this engine is.
+ * A late place with no device id is weighed against any record, as the start's lookup was.
  */
 export function placeToMoveTo(input: {
   server: Progress | null;
@@ -118,8 +119,10 @@ export function placeToMoveTo(input: {
   const { server, deviceId, mirror, enginePosition, late = false } = input;
   if (!server || server.finished || !(server.position > 0)) return null;
   if (!byAnotherDevice(server.device_id, deviceId, late)) return null;
-  const ownSave = mirror?.device_id === deviceId ? mirror : null;
-  if (ownSave && timeOf(server.updated_at) <= timeOf(ownSave.updated_at)) return null;
+  // A late place with no device id stands in for the start's lookup, which took the newest of
+  // the row and the record the start read, whoever's: not newer than that record, it stays.
+  const weighed = !server.device_id || mirror?.device_id === deviceId ? mirror : null;
+  if (weighed && timeOf(server.updated_at) <= timeOf(weighed.updated_at)) return null;
   if (Math.abs(server.position - enginePosition) <= MOVE_THRESHOLD_S) return null;
   return server.position;
 }
