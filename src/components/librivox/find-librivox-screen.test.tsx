@@ -220,6 +220,22 @@ describe('FindLibrivoxScreen', () => {
       await readAgain({ ...ADMIN, role: 'user' });
       expect(screen.getByText('Only an admin can add books from LibriVox.')).toBeTruthy();
     });
+
+    it('stays closed once closed, when the Bridge then goes away (fe#299)', async () => {
+      await mountWithPortal(<FindLibrivoxScreen />);
+      const caps = librivoxServer().capabilities;
+      mockServer = librivoxServer({ capabilities: { ...caps, metadata: false } });
+      await readAgain();
+      expect(screen.getByText('Community metadata is off')).toBeTruthy();
+      // Metadata still off, the Bridge away now: the page never comes back as "away".
+      mockServer = librivoxServer({
+        capabilities: { ...caps, metadata: false },
+        bridge: { version: '0.7.0', features: [] },
+      });
+      await readAgain();
+      expect(screen.queryByTestId('librivox-search')).toBeNull();
+      expect(screen.getByTestId('find-librivox-closed')).toBeTruthy();
+    });
   });
 
   it('says a link without a library points to nothing', async () => {
