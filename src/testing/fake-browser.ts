@@ -79,6 +79,8 @@ export function fakeBrowser({
       localStorage: {
         getItem: (key) => data.get(key) ?? null,
         setItem: (key, value) => {
+          // As the browser does: a value set to what it already is tells nobody.
+          if (data.get(key) === value) return;
           data.set(key, value);
           tell(key, value);
         },
