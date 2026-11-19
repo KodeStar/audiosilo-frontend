@@ -4296,7 +4296,8 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   book's folder, opens each part file, renames it and keeps the item only inside
   `DownloadIndex.whileKept` (the index's lock, while the record is still there in that folder), and
   a removal takes the record, then deletes the files, under the same lock (`remove(ref) { files }`),
-  so a run going on never makes the folder again after; a kill between the record and the files
+  so a run going on never makes the folder again after (an index a full disk refused is written
+  again once the files made room); a kill between the record and the files
   leaves a folder no record names, which the next launch drops (`dropOrphans`, off the main thread).
   Not at a launch whose index could not be read, and not while one set aside
   (`downloads-unread-*.json`) is still there: it is never joined back, so the index written since

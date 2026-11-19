@@ -256,13 +256,16 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
    * Forget a book's record, then remove its files (`files`, the caller's) under the same lock, so a
    * book's run never makes its folder again after (`whileKept`, fe#285). Returns the record it was.
    * The record goes first: a kill between the two leaves a folder no record names, which the next
-   * launch drops (`dropOrphans`), never a record whose files are gone.
+   * launch drops (`dropOrphans`), never a record whose files are gone. An index a full disk would
+   * not take is written again once the files are gone (they made room), or that kill would bring
+   * the record back without them.
    */
   fun remove(ref: BookRef, files: (DownloadRecord) -> Unit = {}): DownloadRecord? =
     synchronized(lock) {
       val r = record(ref) ?: return null
       commit(flow.value.filter { it.ref != ref })
       files(r)
+      if (!saved) commit(flow.value)
       r
     }
 

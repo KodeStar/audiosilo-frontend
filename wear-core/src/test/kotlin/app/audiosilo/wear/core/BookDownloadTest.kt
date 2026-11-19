@@ -460,6 +460,27 @@ class DownloadIndexTest {
     }
   }
 
+  // A full disk does not take the index a removal writes; the files' going makes room, so it is
+  // written again then, and a kill after never brings the record back without its files.
+  @Test
+  fun aRemovalWritesTheIndexAgainOnceItsFilesMadeRoom() {
+    val file = File(dir, "downloads.json")
+    val idx = DownloadIndex(file)
+    idx.enqueue(REF, "Book", null, T0)
+    idx.enqueue(BookRef(3, "Author/Other"), "Other", null, T0)
+    // A folder in the file's way fails the write, as a full disk would (for any user).
+    file.delete()
+    File(file, "x").apply { parentFile.mkdirs() }.writeText("")
+    var savedWhileRemoving = true
+    idx.remove(REF) {
+      savedWhileRemoving = idx.saved
+      file.deleteRecursively()
+    }
+    assertFalse("the first write failed", savedWhileRemoving)
+    assertTrue(idx.saved)
+    assertEquals(listOf(BookRef(3, "Author/Other")), DownloadIndex(file).records.value.map { it.ref })
+  }
+
   // An index that could not be read is set aside and the watch starts with no books (fe#219), but
   // that launch does not know which books the folders hold: it drops none of them. Nor does a
   // later launch, whose new index reads cleanly but says nothing of the books the one set aside
