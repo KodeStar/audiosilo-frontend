@@ -634,6 +634,13 @@ final class AudioEngine: NSObject {
             self.pendingSeek == 0,
             let item = self.player.currentItem,
             item.status == .readyToPlay else { return }
+      // The player is already on the next file, and the hop to main that names it
+      // (`observePlayer`) has not run yet: this tick would tell the new file's place and
+      // length under the old file's index (`sendProgress`). The file change is told first; the
+      // next tick is the new file's.
+      if let playing = self.queued.first(where: { $0.item === item }), playing.index != self.currentIndex {
+        return
+      }
       let pos = time.seconds.isFinite ? time.seconds : 0
       self.sendProgress(pos)
       self.updateNowPlayingElapsed(pos)
