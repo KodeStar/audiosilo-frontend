@@ -4026,8 +4026,9 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     book's row. The exceptions spell out their codes (R8 renames the classes). Each message is a DataItem of UTF-8 JSON (`pair` at `/audiosilo/v1/to/<node>/pair`,
     `book`/`remove` sharing `/audiosilo/v1/to/<node>/book/<sha256 of server_id.user_id|library_id|path>`),
     every one with `sent_at` (`watch-model.ts`; an identical put sends nothing; a blank `server_id`,
-    `path` or `pairing_token`, a user or library id past 32 bits and a pair with no readable
-    `expires_at` are refused, as the watch refuses them). The watch never
+    `path` or `pairing_token`, a user or library id past 2^53 - 1 (JavaScript's exact range; the
+    watch read 32 bits until fe#285, its ids are Longs now, `PhoneMessages.id`) and a pair with no
+    readable `expires_at` are refused, as the watch refuses them). The watch never
     deletes them: it puts a receipt at `/audiosilo/v1/from/<node>/taken/<last segment>`
     (`{v:1,type:"taken",path,sent_at}`), and the phone deletes its own item only when the path and
     the `sent_at` text match what it holds (a newer send stays), from `WearLinkService` (Play

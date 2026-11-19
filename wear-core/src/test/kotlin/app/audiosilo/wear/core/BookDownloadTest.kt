@@ -64,7 +64,7 @@ private class FakeServer(val content: Map<String, ByteArray>) : BookServer {
 
   override suspend fun renditionStatus(ref: BookRef): RenditionsAnswer = next()
 
-  override suspend fun download(libraryId: Int, file: String, from: Long, ifRange: String?): Fetched {
+  override suspend fun download(libraryId: Long, file: String, from: Long, ifRange: String?): Fetched {
     downloadError?.let {
       downloadError = null
       throw it

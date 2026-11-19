@@ -21,7 +21,7 @@ data class Account(
   val serverId: String,
   /** The phone's server label, including its address when saved server names collide. */
   val serverName: String,
-  val userId: Int,
+  val userId: Long,
   val userName: String,
   /** The paired URL (the phone connection's). */
   val serverUrl: String,

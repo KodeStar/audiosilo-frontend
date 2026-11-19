@@ -8,8 +8,11 @@
 package app.audiosilo.wear.core
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonUnquotedLiteral
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -420,7 +423,7 @@ class PhoneMessagesTest {
       toMutableMap().apply {
         when (value) {
           null -> remove(key)
-          is JsonObject -> put(key, value)
+          is JsonElement -> put(key, value)
           is Number -> put(key, JsonPrimitive(value))
           else -> put(key, JsonPrimitive(value.toString()))
         }
@@ -486,6 +489,28 @@ class PhoneMessagesTest {
     put("library_id", 2)
     put("path", "A/Book")
     put("title", "Book")
+  }
+
+  // fe#285: an id is read to 2^53 - 1 either way (the phone's JavaScript numbers are exact that
+  // far; 32 bits refused a real account), from its own digits so none is rounded, never past it.
+  @OptIn(ExperimentalSerializationApi::class)
+  @Test
+  fun readsIdsTo2Pow53AndNoFurther() {
+    fun ref(lib: JsonElement) = (PhoneMessages.decode(book.with("library_id", lib)) as? PhoneMessage.Book)?.message?.ref?.libraryId
+    assertEquals(4_294_967_296L, ref(JsonPrimitive(4_294_967_296L)))
+    assertEquals(9_007_199_254_740_991L, ref(JsonPrimitive(9_007_199_254_740_991L)))
+    assertEquals(-9_007_199_254_740_991L, ref(JsonPrimitive(-9_007_199_254_740_991L)))
+    assertNull(ref(JsonPrimitive(9_007_199_254_740_992L)))
+    // As a double this rounds to 2^53; read from its digits it is past the bound, never another id.
+    assertNull(ref(JsonUnquotedLiteral("9007199254740993")))
+    assertEquals(3L, ref(JsonUnquotedLiteral("3.0")))
+    assertEquals(3L, ref(JsonUnquotedLiteral("3e0")))
+    assertNull(ref(JsonUnquotedLiteral("3.5")))
+    assertNull(ref(JsonUnquotedLiteral("1e300")))
+    assertEquals(12L, ref(JsonPrimitive("12")))
+    val user = (PhoneMessages.decode(pair.with("user_id", 2_147_483_648L)) as PhoneMessage.Pair).message
+    assertEquals(2_147_483_648L, user.userId)
+    assertEquals("srv.2147483648", user.accountId)
   }
 
   @Test
@@ -773,6 +798,19 @@ class ClientHeaderAndWireTest {
       )
     assertEquals(3600.0, r.files[0].retryAfterSeconds)
     assertEquals(123L, r.files[1].bytes)
+  }
+
+  // fe#285: the server's ids are 64 bits; one past 32 decodes (it failed the whole answer).
+  @Test
+  fun decodesIdsPast32Bits() {
+    val row =
+      decode(
+        """{"library_id":4294967296,"path":"A/Book","position":1,"duration":2,"finished":false,"version":3,"updated_at":"2026-10-25T07:33:30.000Z"}""",
+        ProgressRow.serializer(),
+      )
+    assertEquals(BookRef(4_294_967_296L, "A/Book"), row.ref)
+    val s = decode("""{"token":"t","server_id":"srv","user":{"id":9007199254740991,"username":"u"}}""", AuthSession.serializer())
+    assertEquals(9_007_199_254_740_991L, s.user.id)
   }
 
   @Test

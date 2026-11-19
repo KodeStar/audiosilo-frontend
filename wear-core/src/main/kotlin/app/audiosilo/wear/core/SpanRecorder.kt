@@ -26,7 +26,7 @@ import kotlinx.serialization.Serializable
 /** The span being played. */
 @Serializable
 data class OpenSpan(
-  val libraryId: Int,
+  val libraryId: Long,
   val path: String,
   val from: SpanEnd,
   val to: SpanEnd,

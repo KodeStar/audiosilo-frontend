@@ -41,7 +41,7 @@ interface BookServer {
    * A file's watch rendition from byte `from` (0: all of it), with `If-Range: ifRange` when
    * resuming. Throws `APIError` for any answer but 200 or 206, `IOException` for no answer.
    */
-  suspend fun download(libraryId: Int, file: String, from: Long, ifRange: String?): Fetched
+  suspend fun download(libraryId: Long, file: String, from: Long, ifRange: String?): Fetched
 }
 
 /** Where a book's run keeps things (wear's Files). */

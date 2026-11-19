@@ -40,7 +40,7 @@ object AccountRules {
    * refusal, a body with no id, no answer). With no answer the watch may only be at an address it
    * can't reach from here, and the exchange tries the pair's own.
    */
-  fun keepsToken(meUserId: Int?, userId: Int): Boolean = meUserId == userId
+  fun keepsToken(meUserId: Long?, userId: Long): Boolean = meUserId == userId
 
   /** Whether signing out may go ahead now. */
   fun signOut(unsent: Int, discard: Boolean): SignOutGate =

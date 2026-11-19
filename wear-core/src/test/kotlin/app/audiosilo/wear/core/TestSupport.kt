@@ -47,7 +47,7 @@ fun iso(s: String): Instant = ISOTime.parse(s)!!
 fun listen(
   id: String,
   endedAt: String = "2026-10-25T07:33:30.000Z",
-  lib: Int = 3,
+  lib: Long = 3,
   path: String = "Author/Book",
   start: ListeningStart = ListeningStart.RESUME,
 ): ListeningEvent =
@@ -78,7 +78,7 @@ fun answer(
     progress = progress,
   )
 
-fun row(lib: Int = 3, path: String = "Author/Book", version: Int, device: String? = DEVICE_ID) =
+fun row(lib: Long = 3, path: String = "Author/Book", version: Int, device: String? = DEVICE_ID) =
   ProgressRow(
     libraryId = lib,
     path = path,

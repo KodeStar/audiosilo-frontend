@@ -146,6 +146,6 @@ class ProvenBookServer(
 
   override suspend fun renditionStatus(ref: BookRef): RenditionsAnswer = proven().renditionStatus(ref)
 
-  override suspend fun download(libraryId: Int, file: String, from: Long, ifRange: String?): Fetched =
+  override suspend fun download(libraryId: Long, file: String, from: Long, ifRange: String?): Fetched =
     proven().download(libraryId, file, from, ifRange)
 }
