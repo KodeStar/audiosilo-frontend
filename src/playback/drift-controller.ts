@@ -7,7 +7,7 @@ import { formatWallClock } from '@/lib/format';
 import { quietly } from '@/lib/quietly';
 import { whenActive } from '@/lib/when-active';
 
-import { addBookmarkOrQueue } from './annotation-outbox';
+import { queueBookmark } from './annotation-outbox';
 import { driftOffer, saveDrift, takeDrift, type DriftRecord } from './drift';
 import { startInteractionWatch } from './last-interaction';
 import { onSleepTimerEnded, type FellAsleep } from './sleep-timer';
@@ -119,17 +119,20 @@ function fellAsleep(bookKey: string, fell: FellAsleep) {
 
 function makeBookmark(connectionId: string, libraryId: number, path: string, position: number) {
   try {
-    // A server that can't be reached gets it later (the bookmark outbox, fe#356).
-    void addBookmarkOrQueue(
+    // Stored on the device first and sent from there (the bookmark outbox, fe#356), never
+    // posted straight away: nobody is awake to see a failure, and an app killed while the
+    // request is out (the OS ending a paused app at night) would otherwise lose it.
+    void queueBookmark(
       connectionId,
       libraryId,
       path,
       Math.round(position),
       t('player.sleepTimer.fellAsleepNote'),
-      // Sent only to a server with `annotations` (addBookmark drops it elsewhere).
+      // Sent only to a server with `annotations`, once its flags are known (the outbox's
+      // `labelFlagKnown`).
       FELL_ASLEEP_LABEL,
     ).catch(() => {
-      // gone or refused: there is simply no bookmark this time
+      // the connection gone, or storage refused it: there is simply no bookmark this time
     });
   } catch {
     // never let a bookmark take the timer's ending path down with it

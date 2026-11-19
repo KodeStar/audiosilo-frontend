@@ -1696,19 +1696,23 @@ fixed-width UTC timestamps with milliseconds (so they compare as strings) and `[
 per-book list (the client still reads an older server's `null` as none).
 
 **Bookmarks made offline wait on the device (fe#356).** The one-tap bookmark (`addBookmarkHere`)
-and the sleep timer's "Fell asleep" go through `addBookmarkOrQueue`
-(`src/playback/annotation-outbox.ts`): straight to the server when none of its book waits and
-the server reads as reachable, else (or after no answer, a 5xx, 408, 429 or 401) into
-`audiosilo.annotationOutbox`, oldest first within a book, a new one always behind its book's
-waiting ones. A refusal for good (any other 4xx) or a write storage refuses is still the caller's
-error ("Couldn't add the bookmark"). The outbox is sent at launch and on reconnect
-(`startBookmarkSync`, a root service; also once a connection a 401 flagged is signed in
-again, with no backoff meanwhile), with the stored queues in the foreground and on the
-web's focus and `online` (`startQueueReplays`), and on a backoff (30 s doubling to 10 min)
-while a reachable server keeps failing, through `replayQueue` routed by `queuedRoute` (claims,
-so two tabs never send one twice). The POST has no idempotency key, so a replay reads the book's
-bookmarks first and takes one at the same second with the same note, made at most a day before,
-as already sent; when that read fails, whatever the status (a 403 or 404 too), the bookmarks
+goes through `addBookmarkOrQueue` (`src/playback/annotation-outbox.ts`): straight to the server
+when none of its book waits and the server reads as reachable, else (or after no answer, a 5xx,
+408, 429 or 401) into `audiosilo.annotationOutbox`, oldest first within a book, a new one always
+behind its book's waiting ones. A refusal for good (any other 4xx) or a write storage refuses is
+still the caller's error ("Couldn't add the bookmark"). The sleep timer's "Fell asleep" is stored
+first (`queueBookmark`) and sent only from the outbox: nobody is awake to retry it, and an app
+killed while a direct POST was out (up to its 15 s timeout) would lose it; it shows as waiting
+until a replay sends it. The one-tap keeps the direct send: its "Bookmark added" toast and Add
+note need the server's bookmark, and the listener is there to see a failure. The outbox is sent
+at launch and on reconnect (`startBookmarkSync`, a root service; also once a connection a 401
+flagged is signed in again, with no backoff meanwhile), with the stored queues in the
+foreground and on the web's focus and `online` (`startQueueReplays`), and on a backoff (30 s
+doubling to 10 min) while a reachable server keeps failing, through `replayQueue` routed by
+`queuedRoute` (claims, so two tabs never send one twice). The POST has no idempotency key, so
+a replay reads the book's bookmarks first and takes one at the same second with the same
+note, made at most a day before, as already sent; when that read fails, whatever the status (a
+403 or 404 too), the bookmarks
 wait, and only the POST's own refusal for good drops one. Order holds within a book only: a
 bookmark that can't be sent yet holds back the rest of its book for that replay and the other
 books' go past it, so one that keeps failing never blocks the connection's queue; a replay stops

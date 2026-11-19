@@ -679,8 +679,9 @@ function refreshAfterAdd(
  * book that is not the screen's (a delete's Undo, the car, the bookmark outbox's sends).
  * `label` follows `postBookmark`'s rule, on the cached `/server` answer. Resolves the new
  * bookmark; rejects when the connection is gone or the server refused. A bookmark that must
- * not be lost while the server can't take it (the playing book's shortcut, the sleep
- * timer's "Fell asleep") goes through `addBookmarkOrQueue` (`annotation-outbox.ts`) instead.
+ * not be lost while the server can't take it goes through the bookmark outbox
+ * (`annotation-outbox.ts`) instead: the playing book's shortcut through `addBookmarkOrQueue`,
+ * the sleep timer's "Fell asleep" through `queueBookmark`.
  */
 export async function addBookmark(
   connectionId: string,

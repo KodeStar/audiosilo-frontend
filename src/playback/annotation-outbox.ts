@@ -309,10 +309,12 @@ export async function addBookmarkOrQueue(
 }
 
 /**
- * Keep a bookmark in the outbox and send it from there, never straight to the server: how a
- * waiting one is put back (its row's Undo). A replay may have sent it just before the
- * Delete, and only a replay's read before its send tells, so it is not made twice. Rejects
- * when the connection is gone or the device could not store it.
+ * Keep a bookmark in the outbox and send it from there, never straight to the server. Two
+ * callers: a waiting one put back (its row's Undo: a replay may have sent it just before the
+ * Delete, and only a replay's read before its send tells, so it is not made twice), and the
+ * sleep timer's "Fell asleep" (stored before any request, so an app killed while one is out
+ * keeps it; it shows as waiting until a replay has sent it, once, under the replay's claim).
+ * Rejects when the connection is gone or the device could not store it.
  */
 export async function queueBookmark(
   connectionId: string,
