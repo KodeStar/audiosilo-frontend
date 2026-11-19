@@ -874,6 +874,7 @@ function useCapabilityQuery<T, S = T>(
     /** React Query's own: false, the caller reads no updates and is no observer of the
      * query (its page hidden) until it is true again. */
     subscribed?: boolean;
+    gcTime?: number;
   } = {},
 ) {
   const api = useOptionalApi(connectionId);
@@ -892,6 +893,7 @@ function useCapabilityQuery<T, S = T>(
     ...(opts.refetchInterval !== undefined ? { refetchInterval: opts.refetchInterval } : {}),
     ...(opts.select !== undefined ? { select: opts.select } : {}),
     ...(opts.subscribed !== undefined ? { subscribed: opts.subscribed } : {}),
+    ...(opts.gcTime !== undefined ? { gcTime: opts.gcTime } : {}),
   });
   // Only a read that would run once the flag is known, and holds nothing of its own. The
   // query's own fields are read last, and only then: reading one subscribes the caller to
@@ -2923,11 +2925,12 @@ function failuresInARow(query: {
  * no more once it is gone (a 404: the last answer would read as open for ever). A first
  * read that failed with no answer or a server error is asked again (`retry: false`, and
  * nothing else reads it: its row would wait for ever); a refusal (a 400, 401 or 403) is
- * not, but a 401 or 403 from a proxy in front of the server (`isServerNotInLibraryError`) is a read
+ * not, but a 401 or 403 from a proxy in front of the server (`isProxyRefusal`) is a read
  * that failed, asked again. Its Cancel is `useCancelBridgeJob`. `shown` false (a recording
  * row whose page is under another tab): that reader takes no updates and does not count as
  * one (React Query's `subscribed`), so the watcher's poll leaves the on-screen pace until
- * the page is focused again, and the row reads the job once it is. */
+ * the page is focused again, and the row reads the job once it is (its last answer kept
+ * meanwhile, `gcTime`). */
 export function useLibrivoxJob(
   id: number | undefined,
   active: boolean,
@@ -2943,6 +2946,10 @@ export function useLibrivoxJob(
       ready: id !== undefined,
       retry: false,
       subscribed: shown,
+      // Kept with no observer: a hidden page's row is none, and once the watcher let an ended
+      // job go its last answer (why a fetch failed) would otherwise be dropped before the
+      // page is shown again, and read as an open job (no data) that is watched once more.
+      gcTime: Infinity,
       refetchInterval: (query) => {
         const { data, error } = query.state;
         // The server's refusal stays refused (the default retry's rule, `retryQuery`), and a

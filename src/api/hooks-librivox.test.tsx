@@ -276,6 +276,26 @@ describe('useLibrivoxJob', () => {
     query.setState({ error: new ApiError(404, 'not found') });
     expect(intervalOf(qc)).toBe(false);
   });
+
+  it("keeps a job's last answer with no observer left, for a hidden page's row to read once shown", async () => {
+    mockClients.c1 = makeClient();
+    mockClients.c1.serverInfo.mockResolvedValue(librivoxServer());
+    mockClients.c1.bridgeJob.mockResolvedValue(librivoxJob({ state: 'failed' }));
+    // Queries otherwise dropped as soon as no one observes them.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    queryClients.push(qc);
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    const { result, unmount } = await renderHook(() => useLibrivoxJob(41, false), { wrapper });
+    await waitFor(() => expect(result.current.data?.state).toBe('failed'));
+    // The watcher let the ended job go, and the row's page is hidden: no observer is left,
+    // and the query is never dropped for it (`Query.gcTime`, the time it waits unobserved).
+    await unmount();
+    const query = qc.getQueryCache().find({ queryKey: qk.bridgeJob('c1', 41) });
+    expect((query?.state.data as BridgeJob | undefined)?.state).toBe('failed');
+    expect(query?.gcTime).toBe(Infinity);
+  });
 });
 
 describe('useLibrivoxJob, a first read that failed', () => {
