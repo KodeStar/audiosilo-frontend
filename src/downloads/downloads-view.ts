@@ -8,7 +8,9 @@ import type { DownloadEntry, StorageEstimate } from './types';
  * renders what these return.
  */
 
-/** Bytes a download holds on the device (written so far; the total once finished). */
+/** Bytes a download holds on the device (written so far; the total once finished). A
+ * download finished today saves its total as its bytes (fe#153); the `max` is for one an
+ * older app saved with the sizes the book lists. */
 export function entryBytes(e: Pick<DownloadEntry, 'bytes' | 'totalBytes' | 'status'>): number {
   return e.status === 'downloaded' ? Math.max(e.bytes, e.totalBytes) : e.bytes;
 }

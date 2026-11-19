@@ -310,17 +310,16 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     const key = downloadKey(connectionId, libraryId, path);
     noteStopped(key);
     declined.add(key);
-    const stop = () => {
+    // An entry the launch is still reading would come back from its merge, its files gone
+    // (fe#153): the stop waits for the read, as `remove` does. Marked stopped at once, so a
+    // download waiting for the read gives up on the book.
+    void (async () => {
+      if (hydrating) await hydrating;
       if (askOwnerToStop(key, { connectionId, libraryId, path, remove: false })) return;
       stopRun(key);
       void engine.removeBook(connectionId, libraryId, path);
       void removeEntry(key);
-    };
-    // An entry the launch is still reading would come back from its merge, its files gone
-    // (fe#153): the stop waits for the read, as `remove` does. Marked stopped at once, so a
-    // download waiting for the read gives up on the book.
-    if (hydrating) void hydrating.then(stop);
-    else stop();
+    })();
   },
 
   remove: async (connectionId, libraryId, path) => {
@@ -2000,13 +1999,18 @@ async function relocateEntry(e: DownloadEntry): Promise<DownloadEntry> {
     const index = savedIndex(f, i);
     return { index, name: storedName(index, f.localUri) ?? fileName(index, f.relPath) };
   });
+  // A copy under a name the entry lists is never dropped (`playableName`).
   const listed = new Set(names.map((n) => n.name));
   const removeFile = engine.removeFile;
-  const drop = removeFile && ((name: string) => removeFile(connectionId, libraryId, path, name));
+  const drop =
+    removeFile &&
+    (async (name: string) => {
+      if (!listed.has(name)) await removeFile(connectionId, libraryId, path, name);
+    });
   const files = await Promise.all(
     e.manifest.files.map(async (f, i) => {
       const { index, name } = names[i];
-      return { ...f, localUri: at(await playableName(index, name, at, listed, drop)) };
+      return { ...f, localUri: at(await playableName(index, name, at, drop)) };
     }),
   );
   const coverUri = e.manifest.coverUri ? at(COVER_FILE) : e.manifest.coverUri;
@@ -2021,8 +2025,8 @@ async function relocateEntry(e: DownloadEntry): Promise<DownloadEntry> {
  * update. One a launch already renamed before the registry was saved is found under the
  * new name. With both names on disk (fe#153), the file the entry lists is the one it
  * vouches for (finished files are listed as they land), and under its old name it never
- * plays here: the other copy (`drop`) goes so the rename lands, unless the entry lists that
- * name too (`listed`). Anything that fails keeps the old name: the file is never lost.
+ * plays here: the other copy goes so the rename lands (`drop`, which keeps a name the entry
+ * lists too). Anything that fails keeps the old name: the file is never lost.
  * Elsewhere (and for every other name) the name is kept as it is. The renamed entry is
  * saved, so each file is renamed once.
  */
@@ -2030,7 +2034,6 @@ async function playableName(
   index: number,
   name: string,
   at: (name: string) => string,
-  listed: ReadonlySet<string>,
   drop: ((name: string) => Promise<void>) | undefined,
 ): Promise<string> {
   const want = fileName(index, name);
@@ -2038,7 +2041,7 @@ async function playableName(
   const from = at(name);
   try {
     if (await engine.fileExists(from)) {
-      if (drop && !listed.has(want) && (await engine.fileExists(at(want)))) await drop(want);
+      if (drop && (await engine.fileExists(at(want)))) await drop(want);
       await engine.renameFile(from, want);
     }
   } catch {
@@ -2261,7 +2264,10 @@ async function runOne(key: string) {
     let knownTotal = specs.every((s) => s.size > 0)
       ? specs.reduce((sum, s) => sum + s.size, 0) + (ebook?.size ?? 0)
       : 0;
-    const landed = (listed: number, got: number) => {
+    let priorBytes = 0;
+    /** A file here: `got` bytes of the `listed` the book gave it, in both running counts. */
+    const land = (listed: number, got: number) => {
+      priorBytes += got;
       if (knownTotal > 0) knownTotal += got - listed;
     };
 
@@ -2294,7 +2300,6 @@ async function runOne(key: string) {
     const coverUrl = api.coverUrl(libraryId, path);
     const coverUri = (await extra(COVER_FILE, coverUrl, api.proxyHeadersFor(coverUrl))) ?? null;
 
-    let priorBytes = 0;
     let lastTick = 0;
     /** A progress tick, at most every PROGRESS_EVERY_MS: `step` steps done (fractional). */
     const tick = (step: number, bytes: number) => {
@@ -2309,8 +2314,7 @@ async function runOne(key: string) {
       const done = plan.kept(s.path);
       if (done && (await engine.fileExists(done.localUri))) {
         files.push(done);
-        priorBytes += done.bytes ?? s.size;
-        landed(s.size, done.bytes ?? s.size);
+        land(s.size, done.bytes ?? s.size);
         patch({ bytes: priorBytes, totalBytes: knownTotal, progress: (i + 1) / steps });
         continue;
       }
@@ -2333,8 +2337,7 @@ async function runOne(key: string) {
       // What the server sent, which an MP3-in-Matroska file's remuxed stream makes smaller
       // than the size the book lists (fe#153); that size only for an engine that said none.
       const got = curBytes > 0 ? curBytes : s.size;
-      priorBytes += got;
-      landed(s.size, got);
+      land(s.size, got);
       files.push({ relPath: s.path, localUri, bytes: got });
       // A partial copy an older app left under the name this file had then (an iOS 2.4.x
       // download cut short in a `<i>.mka`, fe#153) goes, unless a kept file is under it.
