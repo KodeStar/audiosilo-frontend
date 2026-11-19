@@ -725,6 +725,25 @@ describe('sign-out and removal', () => {
     expect(await queuedBookmarks('c1')).toHaveLength(1);
   });
 
+  it('does not wait behind a replay out for another server when none of its own wait', async () => {
+    server('c1');
+    const { client, state } = server('c2', offline());
+    await addBookmarkOrQueue('c2', 1, 'a/book', 200);
+    await idle();
+    // c2's server stops answering: the replay sending its bookmark is out until it does.
+    state.down = null;
+    let answer: (held: Bookmark[]) => void = () => {};
+    client.bookmarks.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    const replaying = flushBookmarks();
+    await idle();
+    let sent = false;
+    void sendBookmarksBeforeRemoval('c1').then(() => (sent = true));
+    await idle();
+    answer([]);
+    expect(sent).toBe(true);
+    await replaying;
+  });
+
   it("drops a removed connection's bookmarks and keeps the others'", async () => {
     server('c1', offline());
     server('c2', offline());

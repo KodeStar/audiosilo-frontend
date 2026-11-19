@@ -555,6 +555,9 @@ export async function unsentBookmarks(connectionId: string): Promise<number> {
 export async function sendBookmarksBeforeRemoval(connectionId: string): Promise<void> {
   const client = resolveClient(connectionId);
   if (!sessionReady() || !client) return;
+  // None of its own waiting, as last read: no turn behind a replay still out for another
+  // server (a sign-out would wait out that server's timeouts for nothing).
+  if (snapshotRead && !snapshot.some((e) => e.connectionId === connectionId)) return;
   await replay(onlyConnection(connectionId, client)).catch(() => undefined);
 }
 
