@@ -187,6 +187,11 @@ export function isProxyRefusal(e: unknown): boolean {
   return e instanceof ApiError && e.fromProxy;
 }
 
+/** The status of a proxy's own refusal (`isProxyRefusal`): a 401 may be the server's refusal
+ * of the token with its mark dropped (WS-401-MARK), so signing in again may help; a 403 never
+ * is. */
+export type ProxyRefusalStatus = 401 | 403;
+
 /** Whether `e` is the server saying the content isn't there for this caller: a 404 (no
  * such book or folder), a 403 (a library not shared with them) or a 400 (a path the
  * server refuses, such as one leaving the library). Asking again can't change it, so it
@@ -747,7 +752,7 @@ export class ApiClient {
   private readonly timeoutMs: number;
   private readonly onAuthError?: () => void;
   private readonly onAnswer?: (at: string) => void;
-  private readonly onProxyAnswer?: (refused: boolean) => void;
+  private readonly onProxyAnswer?: (refused: ProxyRefusalStatus | false) => void;
   private readonly marksUnauthorized?: () => boolean | undefined;
   /** The batch loader behind `seriesBooksPage`, one per `libraryId:limit` (so bounded
    * by libraries x page sizes), created on first use. */
@@ -789,11 +794,16 @@ export class ApiClient {
    * client's address is their origin (`proxyHeaderRecord`), so a client on the server's home
    * address, an http fallback or any other address sends none.
    *
-   * `onProxyAnswer` is told what each answer says of a proxy in front of the server: `true`
-   * when the proxy turned the request away (`isProxyRefusal`: its own 401 or 403), `false`
-   * when the server itself answered, so the proxy let the request through: a success, or the
-   * server's own error (`ApiError.fromServer`: its 401, a 404, a 500 in its envelope). Any
-   * other failure (no answer, a gateway's page) says nothing. A signed-in connection's
+   * `onProxyAnswer` is told what each answer says of a proxy in front of the server: the
+   * refusal's status when the proxy turned the request away (`isProxyRefusal`: its own 401 or
+   * 403), `false` when the server itself took the session token, so the proxy let the request
+   * through and the token is good: a success, or the server's own error other than a 401
+   * (`ApiError.fromServer`: a 403, a 404, a 500 in its envelope), to a request that carried
+   * the token to a route that checks it. A public route's answer (`/server`, the sign-in
+   * routes: `publicRoute`) says nothing of the token: a revoked one behind a proxy that drops
+   * the server's 401 mark reads as a refusal everywhere else, and `/server` answering would
+   * end that episode and raise it again at the next request (WS-401-MARK). Any other failure
+   * (no answer, a gateway's page) says nothing. A signed-in connection's
    * client passes it on, so the shell can say the proxy headers need updating while the
    * refusals last (`noteProxyAnswer`, `ProxyRefusedBanner`). Never a sign-out: the server
    * never judged the token.
@@ -813,7 +823,7 @@ export class ApiClient {
     onAuthError?: () => void,
     onAnswer?: (at: string) => void,
     proxy?: ProxyHeaders | null,
-    onProxyAnswer?: (refused: boolean) => void,
+    onProxyAnswer?: (refused: ProxyRefusalStatus | false) => void,
     marksUnauthorized?: () => boolean | undefined,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
@@ -869,6 +879,9 @@ export class ApiClient {
       signal?: AbortSignal;
       timeoutMs?: number;
       keepalive?: boolean;
+      /** A route the server answers whoever asks (`/server`, the sign-in routes): its
+       * answer says nothing of the session token (`onProxyAnswer`). */
+      publicRoute?: boolean;
     } = {},
   ): Promise<T> {
     const headers: Record<string, string> = { ...this.clientHeaders, ...this.authHeaders() };
@@ -889,9 +902,13 @@ export class ApiClient {
       timeoutMs?: number;
       /** The request outlives the page (web: a tab closing). */
       keepalive?: boolean;
+      /** `request`'s: the route never checks the token. */
+      publicRoute?: boolean;
     },
     read: (res: Response, touch: () => void) => Promise<T>,
   ): Promise<T> {
+    // Whether an answer the server gave says the token was taken (`onProxyAnswer`).
+    const tokenChecked = !opts.publicRoute && headers.Authorization !== undefined;
     // Abort after timeoutMs (the client's, unless this request sets its own) so a
     // frozen/unreachable server can't hang the caller (and the periodic save loop)
     // indefinitely; still honour a caller-supplied signal.
@@ -950,7 +967,7 @@ export class ApiClient {
       // And one from a server known to mark its own is told by the mark alone.
       if (res.status === 401 && this.marksUnauthorized?.() === true) markingServerAnswers.add(res);
       const answer = await read(res, touch);
-      this.onProxyAnswer?.(false);
+      if (tokenChecked) this.onProxyAnswer?.(false);
       return answer;
     } catch (e) {
       // Our timeout fired (not a caller cancel, and not a real server answer in
@@ -964,9 +981,11 @@ export class ApiClient {
       // status, so none is a dead token - the full rationale is on the constructor doc above.
       if (isSignedOutError(e)) this.onAuthError?.();
       // What the answer says of a proxy in front (`onProxyAnswer`): its own refusal, or the
-      // server's own error, which the proxy let through as it does a success.
-      if (isProxyRefusal(e)) this.onProxyAnswer?.(true);
-      else if (e instanceof ApiError && e.fromServer) this.onProxyAnswer?.(false);
+      // server's own error past the token check, which the proxy let through as it does a
+      // success (never its 401: the token refused, or a wrong current password's).
+      if (isProxyRefusal(e)) this.onProxyAnswer?.((e as ApiError).status === 403 ? 403 : 401);
+      else if (tokenChecked && e instanceof ApiError && e.fromServer && e.status !== 401)
+        this.onProxyAnswer?.(false);
       throw e;
     } finally {
       settled = true;
@@ -977,16 +996,18 @@ export class ApiClient {
 
   // --- Discovery & auth (public) -------------------------------------------
   serverInfo(signal?: AbortSignal) {
-    return this.request<ServerInfo>('GET', '/server', { signal });
+    return this.request<ServerInfo>('GET', '/server', { signal, publicRoute: true });
   }
   redeemCode(code: string) {
-    return this.request<PairingPayload>('POST', '/auth/redeem', { body: { code } }).then(
-      withCleanAddresses,
-    );
+    return this.request<PairingPayload>('POST', '/auth/redeem', {
+      body: { code },
+      publicRoute: true,
+    }).then(withCleanAddresses);
   }
   exchange(pairingToken: string, deviceName: string) {
     return this.request<AuthSession>('POST', '/auth/exchange', {
       body: { pairing_token: pairingToken, device_name: deviceName },
+      publicRoute: true,
     }).then(withCleanAddresses);
   }
   /** Where the web player sends the browser (a full page load, never a fetch) to sign in
@@ -1013,6 +1034,7 @@ export class ApiClient {
   oidcFinish(deviceName: string, intent?: string, flow?: string) {
     return this.request<AuthSession>('POST', '/auth/oidc/finish', {
       body: { device_name: deviceName, ...(intent ? { intent } : {}), ...(flow ? { flow } : {}) },
+      publicRoute: true,
     }).then(withCleanAddresses);
   }
   /** Sign in with a password. `deviceId`: this install's own random sign-in key for this
@@ -1028,6 +1050,7 @@ export class ApiClient {
           device_name: deviceName,
           ...(withId && deviceId ? { device_id: deviceId } : {}),
         },
+        publicRoute: true,
       }).then(withCleanAddresses);
     try {
       return await send(true);
@@ -1042,6 +1065,7 @@ export class ApiClient {
   demoSession(deviceName: string) {
     return this.request<DemoSession>('POST', '/demo/session', {
       body: { device_name: deviceName },
+      publicRoute: true,
     }).then(withCleanAddresses);
   }
 

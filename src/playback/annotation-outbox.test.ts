@@ -2004,14 +2004,14 @@ describe('startBookmarkSync', () => {
     const release = startBookmarkSync();
     try {
       state.down = new ApiError(403, 'Forbidden', undefined, undefined, true);
-      noteProxyAnswer('c1', true);
+      noteProxyAnswer('c1', 401);
       await addBookmarkOrQueue('c1', 1, 'a/book', 100);
       expect(await queuedBookmarks()).toHaveLength(1);
       state.down = null;
       client.bookmarks.mockClear();
       // Another connection's episode ending sends none of c1's (c2 signed in: its end is told).
       server('c2');
-      noteProxyAnswer('c2', true);
+      noteProxyAnswer('c2', 401);
       noteProxyAnswer('c2', false);
       await jest.advanceTimersByTimeAsync(0);
       expect(client.bookmarks).not.toHaveBeenCalled();

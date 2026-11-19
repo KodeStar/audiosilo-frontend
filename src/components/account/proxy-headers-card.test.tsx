@@ -189,7 +189,7 @@ describe('ProxyHeadersCard (fe#167)', () => {
     await signIn(SET);
     await mountWithPortal(<ProxyHeadersCard connectionId="srv.1" />);
     expect(screen.queryByTestId('proxy-headers-sign-in-again')).toBeNull();
-    await act(async () => noteProxyAnswer('srv.1', true));
+    await act(async () => noteProxyAnswer('srv.1', 401));
     expect(
       screen.getByText(
         'If the proxy headers are right, your sign-in to books.example.com may have ended: sign in again.',
@@ -204,6 +204,16 @@ describe('ProxyHeadersCard (fe#167)', () => {
     );
   });
 
+  // A proxy's own 403 is no revoke in disguise: no sign-in gets past it.
+  it("offers no Sign in again for a proxy's 403", async () => {
+    await signIn(SET);
+    noteProxyAnswer('srv.1', 403);
+    await mountWithPortal(<ProxyHeadersCard connectionId="srv.1" />);
+    expect(screen.queryByTestId('proxy-headers-sign-in-again')).toBeNull();
+    await act(async () => noteProxyAnswer('srv.1', 401));
+    expect(screen.getByTestId('proxy-headers-sign-in-again')).toBeTruthy();
+  });
+
   it('offers no Sign in again to a kid, who signs in some other way', async () => {
     await useSession.getState().setSession({
       serverUrl: AWAY,
@@ -212,7 +222,7 @@ describe('ProxyHeadersCard (fe#167)', () => {
       user: { ...user, id: 12, username: 'evie', member_kind: 'kid' },
       addresses: { home: HOME, away: AWAY },
     });
-    noteProxyAnswer('srv.12', true);
+    noteProxyAnswer('srv.12', 401);
     await mountWithPortal(<ProxyHeadersCard connectionId="srv.12" />);
     expect(screen.queryByTestId('proxy-headers-sign-in-again')).toBeNull();
   });

@@ -266,7 +266,7 @@ it("asks a grown-up when the kid's sign-in ended, with no way into the connect f
 // grown-up's to update, said as a line, never a sign-out.
 it("asks a grown-up to update the proxy headers while a proxy turns the kid's requests away", async () => {
   mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false, more: 'none' };
-  noteProxyAnswer('c', true);
+  noteProxyAnswer('c', 401);
   try {
     await render(<KidsScreen />);
     const notice = screen.getByTestId('kids-proxy-refused');
@@ -317,7 +317,7 @@ it('asks nothing of the proxy headers once the kid needs signing in again', asyn
       } as Connection,
     ],
   });
-  noteProxyAnswer('c', true);
+  noteProxyAnswer('c', 401);
   try {
     await render(<KidsScreen />);
     expect(screen.getByText('Ask a grown-up to sign Leo in again.')).toBeTruthy();

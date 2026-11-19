@@ -57,9 +57,9 @@ it('starts an episode at the first refusal and ends it at the next success, once
   const states: unknown[] = [];
   const stop = useProxyRefusals.subscribe((s) => states.push(s.refused));
   try {
-    noteProxyAnswer('srv-1.1', true);
-    noteProxyAnswer('srv-1.1', true);
-    expect(refused()).toEqual({ 'srv-1.1': true });
+    noteProxyAnswer('srv-1.1', 401);
+    noteProxyAnswer('srv-1.1', 401);
+    expect(refused()).toEqual({ 'srv-1.1': 401 });
     noteProxyAnswer('srv-1.1', false);
     noteProxyAnswer('srv-1.1', false);
     expect(refused()).toEqual({});
@@ -70,11 +70,24 @@ it('starts an episode at the first refusal and ends it at the next success, once
   }
 });
 
+// WS-401-MARK: only a 401 may be the server's refusal of the token behind a proxy that drops
+// its mark (Sign in again is offered then); a 403 never is. Once a 401 came, the episode keeps it.
+it("keeps the refusals' status, a 401 once any was", () => {
+  noteProxyAnswer('srv-1.1', 403);
+  expect(refused()).toEqual({ 'srv-1.1': 403 });
+  noteProxyAnswer('srv-1.1', 401);
+  expect(refused()).toEqual({ 'srv-1.1': 401 });
+  noteProxyAnswer('srv-1.1', 403);
+  expect(refused()).toEqual({ 'srv-1.1': 401 });
+  noteProxyAnswer('srv-1.1', false);
+  expect(refused()).toEqual({});
+});
+
 it("a signed-in connection's client starts and ends the episode itself, and it is never a sign-out", async () => {
   const client = resolveClient('srv-1.1')!;
   answerAll(403, '<html>Forbidden</html>');
   await expect(client.me()).rejects.toBeInstanceOf(ApiError);
-  expect(refused()).toEqual({ 'srv-1.1': true });
+  expect(refused()).toEqual({ 'srv-1.1': 403 });
   expect(useSession.getState().connections[0].needsReconnect).toBeUndefined();
   answerAll(200, JSON.stringify(user));
   await client.me();
@@ -91,7 +104,7 @@ it('a connection signed out takes its episode with it, telling no queue to send'
   const over = jest.fn();
   const stop = onProxyRefusalsOver(over);
   try {
-    noteProxyAnswer('srv-1.1', true);
+    noteProxyAnswer('srv-1.1', 401);
     await useSession.getState().removeConnection('srv-1.1');
     expect(refused()).toEqual({});
     expect(over).not.toHaveBeenCalled();
@@ -105,7 +118,7 @@ it("tells the queues once an episode ends, that connection's only and once", () 
   const over = jest.fn();
   const stop = onProxyRefusalsOver(over);
   try {
-    noteProxyAnswer('srv-1.1', true);
+    noteProxyAnswer('srv-1.1', 401);
     expect(over).not.toHaveBeenCalled();
     noteProxyAnswer('srv-1.1', false);
     noteProxyAnswer('srv-1.1', false);
@@ -119,7 +132,7 @@ it('tells no queue of an episode ended on a connection that needs signing in aga
   const over = jest.fn();
   const stop = onProxyRefusalsOver(over);
   try {
-    noteProxyAnswer('srv-1.1', true);
+    noteProxyAnswer('srv-1.1', 401);
     useSession.getState().markNeedsReconnect('srv-1.1', 'auth');
     noteProxyAnswer('srv-1.1', false);
     expect(refused()).toEqual({});
@@ -141,10 +154,11 @@ describe('a rename (moveProxyRefusal)', () => {
     const over = jest.fn();
     const stop = onProxyRefusalsOver(over);
     try {
-      noteProxyAnswer('srv-1.1', true);
+      noteProxyAnswer('srv-1.1', 403);
       renameTo('srv-1.7');
       moveProxyRefusal('srv-1.1', 'srv-1.7');
-      expect(refused()).toEqual({ 'srv-1.7': true });
+      // Its status with it.
+      expect(refused()).toEqual({ 'srv-1.7': 403 });
       // Moved, not ended: nothing to send yet.
       expect(over).not.toHaveBeenCalled();
       noteProxyAnswer('srv-1.7', false);
@@ -156,7 +170,7 @@ describe('a rename (moveProxyRefusal)', () => {
   });
 
   it('ends the episode when the new id is not signed in', () => {
-    noteProxyAnswer('srv-1.1', true);
+    noteProxyAnswer('srv-1.1', 401);
     renameTo('srv-1.7');
     useSession.getState().markNeedsReconnect('srv-1.7', 'auth');
     moveProxyRefusal('srv-1.1', 'srv-1.7');
@@ -164,9 +178,9 @@ describe('a rename (moveProxyRefusal)', () => {
   });
 
   it('moves nothing for a connection with no episode', () => {
-    noteProxyAnswer('other', true);
+    noteProxyAnswer('other', 401);
     moveProxyRefusal('srv-1.1', 'srv-1.7');
-    expect(refused()).toEqual({ other: true });
+    expect(refused()).toEqual({ other: 401 });
   });
 });
 
@@ -183,7 +197,7 @@ it('a late refusal of a set since replaced starts no episode', async () => {
     expect(refused()).toEqual({});
     // The set it sends now, refused: that one says so.
     await expect(resolveClient('srv-1.1')!.me()).rejects.toBeInstanceOf(ApiError);
-    expect(refused()).toEqual({ 'srv-1.1': true });
+    expect(refused()).toEqual({ 'srv-1.1': 403 });
   } finally {
     await useSession.getState().setProxySet(AWAY, null);
   }

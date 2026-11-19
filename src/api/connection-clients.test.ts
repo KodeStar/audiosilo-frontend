@@ -202,7 +202,7 @@ describe('connection-clients', () => {
         fromProxy: true,
       });
       expect(markNeedsReconnect).not.toHaveBeenCalled();
-      expect(useProxyRefusals.getState().refused).toEqual({ c1: true });
+      expect(useProxyRefusals.getState().refused).toEqual({ c1: 401 });
     });
 
     it.each([
@@ -243,7 +243,7 @@ describe('connection-clients', () => {
           expect(useProxyRefusals.getState().refused).toEqual({});
         } else {
           expect(markNeedsReconnect).not.toHaveBeenCalled();
-          expect(useProxyRefusals.getState().refused).toEqual({ c1: true });
+          expect(useProxyRefusals.getState().refused).toEqual({ c1: 401 });
         }
       },
     );
@@ -264,8 +264,37 @@ describe('connection-clients', () => {
       expect(useProxyRefusals.getState().refused).toEqual({});
       // Allowed: the token it holds now is still refused.
       await expect(resolveClient('c1')!.me()).rejects.toMatchObject({ status: 401 });
-      expect(useProxyRefusals.getState().refused).toEqual({ c1: true });
+      expect(useProxyRefusals.getState().refused).toEqual({ c1: 401 });
       expect(markNeedsReconnect).not.toHaveBeenCalled();
+    });
+
+    // A revoked token behind a proxy that drops the mark: every route that checks the token
+    // is refused, while the public `/server` answers 200. The episode lasts until a request
+    // carrying the token the connection holds gets an answer past the check, so the notice
+    // stays up and the queues are not told to send again at each `/server`.
+    it('ends the episode only on an answer past the token check, for the token it holds', async () => {
+      known.set('c1', { unauthorized_mark: true } as Capabilities);
+      const stale = resolveClient('c1')!;
+      await expect(stale.me()).rejects.toMatchObject({ status: 401, fromProxy: true });
+      expect(useProxyRefusals.getState().refused).toEqual({ c1: 401 });
+      // Denied: the public `/server` says nothing of the token.
+      installFetch(() => ({ status: 200, body: { server_name: 'H', capabilities: {} } }));
+      await stale.serverInfo();
+      expect(useProxyRefusals.getState().refused).toEqual({ c1: 401 });
+      // Denied: an answer to the token the connection held before Sign in again.
+      getState.mockReturnValue({
+        connections: [{ id: 'c1', serverUrl: 'https://h', token: 'new' }],
+        markNeedsReconnect,
+        proxySets,
+        signInProxySets: {},
+        status: 'ready',
+      });
+      installFetch(() => ({ status: 200, body: { id: 1, username: 'chris' } }));
+      await stale.me();
+      expect(useProxyRefusals.getState().refused).toEqual({ c1: 401 });
+      // Allowed: the token it holds now, taken.
+      await resolveClient('c1')!.me();
+      expect(useProxyRefusals.getState().refused).toEqual({});
     });
 
     it("reads the flag under the connection's id now (a client built before the identity migration)", async () => {
