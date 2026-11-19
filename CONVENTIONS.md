@@ -1730,7 +1730,10 @@ media GETs only.
   lengths, `smartSpeed`, `voiceBoost`), `setCarSnapshot(json)`, `getLoadedBook()` (Android; iOS
   null) and `consumePendingBookmarks()` (Android; iOS `[]`); events `onRemoteMove`,
   `onRateChange`, `onRemoteBookmark`, `onCarConnection`, `onCarPlayRequest`,
-  `onCarPlayCancel` (Android) and `onProgress.silenceSaved`. The transport reports (`onState`,
+  `onCarPlayCancel` (Android), `onProgress.silenceSaved` and `onProgress.trackIndex` (the file
+  the tick is in, both platforms: Media3 reports a new item's place before its item change, so
+  `TimelineMap.sample` names the file, and the service takes the tick under it, never the old
+  file's place or length). The transport reports (`onState`,
   `onProgress`, `onTrackChange`, `onRemoteMove`, `onRateChange`) name the book they are of
   (`book`, the module's `BookReport`: Android the current item's, iOS `load`'s; on Android a
   remote move, a speed and a failure are the service's own item's, passed through
@@ -1764,7 +1767,12 @@ media GETs only.
   span at the landed place before the move is heard. A pause or the book's end leaves a held
   tick held (taken then, it would end the span at the landed place): the save made as playing
   stops has the place before the jump, the move's own save follows, and a held tick no move
-  replaces is told once taken (`onLanded`), which saves again. The store's handler (`userMoved`) lowers
+  replaces is told once taken (`onLanded`), which saves again. A tick naming another file
+  (`onProgress.trackIndex`) is held the same way unless playing explains it (a run on from the
+  file's end); paused, it is the new file's at once. A tick while the app's own `seekTo` or
+  `skipToTrack` is out is never held (no `onRemoteMove` follows it): held, the call's place would
+  replace it as the call resolved, so a seek the engine took clamped at a short measure read as
+  landed while playing (fe#351). The store's handler (`userMoved`) lowers
   the floor to it, counts it in `localMoves` (a place reconcile in flight stands back) and
   persists once the landed place is in the snapshot (a microtask later). Without it a lock-screen
   scrub back past the 60 s tolerance never saved. Never sent for JS-asked moves (`seekTo`,
@@ -2129,7 +2137,9 @@ media GETs only.
   the asked file at the end of the engine's own measure of it (its `duration`) with the asked
   place past that measure, the server's length going on (`pastMeasure`): the engine took the
   move clamped there (Media3 on a VBR MP3 whose seek header measures it short), landed or not
-  (Android tells a paused seek's clamped place once, inside the call), at once, paused or
+  (Android tells a paused seek's clamped place once, inside the call, a move into another file
+  under that file, `onProgress.trackIndex`; the native service takes every tick while the call
+  is out at once), at once, paused or
   playing, so the clamped place never shows and nothing plays on into the next file; the move's
   own `listenerMove` then shows nothing more (`EngineAsk.faultShown`). An end while a
   start shows its spinner is one too, from an ask inside its file, at once (not the stall
@@ -2162,9 +2172,9 @@ media GETs only.
   palette too), at the place of a move whose call is still out (`reloadPlace`: Android takes
   up to a second to rebuild the engine for a move on a book in error), else at the place shown.
   Not at a place past the engine's own measure of its file (`stuckPastMeasure`, the length it
-  last reported for the file in a report not the first of a file change, nor one sent while a
-  move of the store's is out (Android tells a paused move into another file's place, with the
-  new file's length, under the old file's index; a load is told with the server's length),
+  last reported for the file in a report not the first of a file change (iOS's keeps the old
+  file's length), nor one sent while a move of the store's is out (a load is told with the
+  server's length), or the clamp a fault was read from (`pastMeasure`, its file's measure),
   `engineLengths`, kept per `NowPlaying` and per route, the phone's
   engine or a Cast receiver, each measuring a file its own way, `castRouted`): the
   engine would clamp and play into the next file before its fault stopped it, so nothing is

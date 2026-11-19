@@ -53,4 +53,21 @@ class TimelineMapTest {
   @Test fun unknownItemFallsBackToIdentity() {
     assertEquals(Pair(7, 1.5), TimelineMap(emptyList()).itemToFile(7, 1_500L))
   }
+
+  // fe#351: Media3 reports a new item's place before its item change, so a tick names its file.
+  @Test fun aWholeFileTickNamesItsFileWithTheEnginesOwnLength() {
+    val files = TimelineMap(
+      listOf(TimelineMap.Entry(0, 0.0, 0.0, 900.0, false), TimelineMap.Entry(1, 0.0, 0.0, 900.0, false)),
+    )
+    // A VBR file the engine measures short (600 s against the server's 900 s): its measure.
+    assertEquals(TimelineMap.Sample(1, 600.0, 600.0), files.sample(1, 600_000L, 600_000L))
+    // Not measured yet: the server's.
+    assertEquals(TimelineMap.Sample(1, 2.5, 900.0), files.sample(1, 2_500L, Long.MIN_VALUE + 1))
+  }
+
+  @Test fun aClipTickNamesItsFileWithTheFilesLength() {
+    // Item 3 is file 1's only chapter; item 1 the second of file 0's.
+    assertEquals(TimelineMap.Sample(1, 2.0, 1800.0), clips.sample(3, 2_000L, 30_000L))
+    assertEquals(TimelineMap.Sample(0, 112.5, 3600.0), clips.sample(1, 12_500L, 150_000L))
+  }
 }

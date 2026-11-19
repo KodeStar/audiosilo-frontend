@@ -4706,12 +4706,12 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     pushSnapshot(snap('playing', 10.5, { trackIndex: 0, duration: 139.42 }));
     await usePlayer.getState().pause();
     pushSnapshot(snap('paused', 11, { trackIndex: 0, duration: 139.42 }));
-    // Media3 tells a paused move's place, with the new file's length, before its file change.
+    // Media3 tells a paused move's place, with the new file's length, before its file change:
+    // the tick names its file.
     (mockSvc.skipToTrack as jest.Mock).mockImplementationOnce(async () => {
-      pushSnapshot(snap('paused', 5, { trackIndex: 0, duration: short }));
+      pushSnapshot(snap('paused', 5, { trackIndex: 1, duration: short }));
     });
     await usePlayer.getState().seekBook(lengths[0] + 5);
-    pushSnapshot(snap('paused', 5, { trackIndex: 1, duration: short }));
     pushSnapshot(snap('paused', 5, { trackIndex: 1, duration: short }));
     // A paused scrub past file 2's measure faults there.
     (mockSvc.seekTo as jest.Mock).mockImplementationOnce(async () => {
@@ -4730,6 +4730,31 @@ describe('an engine that measured a file short (a VBR MP3 with no seek header)',
     (mockSvc.load as jest.Mock).mockClear();
     await usePlayer.getState().toggle();
     expect(lastLoad()).toEqual([0, 100]);
+  });
+
+  // fe#351: Media3 tells a paused move into another file at its clamped place, naming that file.
+  it('a paused move into another file past its measure is an error at once, and a press plays nothing', async () => {
+    await resume(10);
+    pushSnapshot(snap('playing', 10.5, { trackIndex: 0, duration: 139.42 }));
+    await usePlayer.getState().pause();
+    pushSnapshot(snap('paused', 11, { trackIndex: 0, duration: 139.42 }));
+    (mockSvc.skipToTrack as jest.Mock).mockImplementationOnce(async () => {
+      pushSnapshot(snap('paused', short, { trackIndex: 1, duration: short }));
+    });
+    await usePlayer.getState().seekBook(lengths[0] + 60);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'error',
+      trackIndex: 1,
+      position: 60,
+      duration: lengths[1],
+    });
+    // The clamp is the engine's measure of file 2: a press reloads nothing past it.
+    (mockSvc.load as jest.Mock).mockClear();
+    (mockSvc.play as jest.Mock).mockClear();
+    await usePlayer.getState().toggle();
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    expect(mockSvc.play).not.toHaveBeenCalled();
   });
 
   it("a reload's own report of the server's length never replaces the engine's measure", async () => {

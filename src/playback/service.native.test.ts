@@ -412,6 +412,25 @@ describe('a progress tick that jumped while playing', () => {
     expect(heard()).toEqual([11, 80, 80.2]);
   });
 
+  // fe#351: held, the engine's clamped place (a VBR file it measures short) was replaced by the
+  // asked one as the call resolved, and the store heard of the clamp only as the engine ran on
+  // into the next file.
+  it('takes a tick at once while its own seek is out, the clamped place too', async () => {
+    const { svc, heard } = await playing();
+    (mockModule as Record<string, unknown>).seekTo = jest.fn(async () => {
+      send('onProgress', { position: 90, duration: 90 }); // clamped at its measure
+    });
+    await svc.seekTo(95);
+    expect(heard()).toEqual([11, 90, 95]);
+    // Measured from the call's place after it: a later jump is held again.
+    jest.advanceTimersByTime(1_000);
+    send('onProgress', { position: 30, duration: 100 });
+    expect(heard()).toEqual([11, 90, 95, 30]);
+    jest.advanceTimersByTime(1_000);
+    send('onProgress', { position: 80, duration: 100 });
+    expect(heard()).toEqual([11, 90, 95, 30]);
+  });
+
   it('takes a held tick before the file changes (iOS: the change comes first)', async () => {
     const { svc, heard } = await playing();
     send('onProgress', { position: 70, duration: 100 });
@@ -447,14 +466,15 @@ describe('a progress tick that jumped while playing', () => {
       Platform.OS = 'ios';
     });
 
-    /** The new file's tick, then its change: a move into file 1, its report still to come. */
+    /** The new file's tick, naming it, then its change: a move into file 1, its report still
+     * to come. */
     function moveIntoFile1(position: number) {
-      send('onProgress', { position, duration: 250 });
+      send('onProgress', { position, duration: 250, trackIndex: 1 });
       send('onTrackChange', { index: 1 });
     }
-    /** File 1's first tick (held, a jump back), then its change: a run-on from `nearTheEnd`. */
+    /** File 1's first tick, then its change: a run-on from `nearTheEnd`. */
     function runOnIntoFile1() {
-      send('onProgress', { position: 0.05, duration: 200 });
+      send('onProgress', { position: 0.05, duration: 200, trackIndex: 1 });
       send('onTrackChange', { index: 1 });
     }
 
@@ -513,6 +533,56 @@ describe('a progress tick that jumped while playing', () => {
       runOnIntoFile1();
       expect(places).toEqual([[1, 0.05]]);
       expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 0.05, duration: 200 });
+    });
+
+    // fe#351: told under the old file, a paused move's place past the new file's measure read
+    // as the old file's, so no fault, and its length was kept for the wrong file.
+    it('takes a paused tick naming another file at once, its place and length that file’s', async () => {
+      const svc = await setUp();
+      const places: [number, number, number][] = [];
+      svc.subscribe((s) => places.push([s.trackIndex, s.position, s.duration]));
+      send('onState', { state: 'paused' });
+      send('onProgress', { position: 11, duration: 100, trackIndex: 0 });
+      send('onProgress', { position: 600, duration: 600, trackIndex: 1 });
+      send('onTrackChange', { index: 1 });
+      expect(places).toEqual([
+        [0, 0, 0],
+        [0, 11, 100],
+        [1, 600, 600],
+      ]);
+    });
+
+    it('holds a tick naming another file that playing does not explain, told with its file', async () => {
+      const { places } = await heardPlaces();
+      send('onProgress', { position: 3, duration: 250, trackIndex: 1 });
+      expect(places).toEqual([]);
+      jest.advanceTimersByTime(600);
+      send('onTrackChange', { index: 1 }); // after the wait: told already
+      expect(places).toEqual([[1, 3]]);
+    });
+
+    it('tells a file change no tick told under the new file, its place to follow', async () => {
+      const { svc, places } = await heardPlaces();
+      send('onTrackChange', { index: 1 });
+      expect(places).toEqual([[1, 11]]);
+      jest.advanceTimersByTime(1_000);
+      send('onProgress', { position: 1, duration: 200, trackIndex: 1 });
+      expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 1, duration: 200 });
+    });
+
+    it('takes its own move’s tick into another file at once, while the call is out', async () => {
+      const { svc, places } = await heardPlaces();
+      Object.assign(mockModule, {
+        skipToTrack: jest.fn(async () => {
+          send('onProgress', { position: 40, duration: 250, trackIndex: 1 });
+          send('onTrackChange', { index: 1 });
+        }),
+      });
+      await svc.skipToTrack(1, 40);
+      expect(places).toEqual([
+        [1, 40],
+        [1, 40],
+      ]);
     });
 
     it('saves a pause right after a run-on in the new file, never at the old one’s end', async () => {

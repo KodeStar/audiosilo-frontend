@@ -441,6 +441,22 @@ class TimelineMap(val entries: List<Entry>) {
   /** The FILE duration for an item (seconds, 0 when unknown). */
   fun fileDurationAt(itemIndex: Int): Double = entries.getOrNull(itemIndex)?.fileDuration ?: 0.0
 
+  /** One progress tick in the store's terms: the FILE it is in, the place in that file and the
+   * file's duration, in seconds. */
+  data class Sample(val fileIndex: Int, val position: Double, val duration: Double)
+
+  /** The tick for the controller at [positionMs] in item [itemIndex], whose own duration is
+   * [durationMs] (not positive when unknown). A whole-file item's duration is the engine's own
+   * measure of the file; a chapter clip's is the clip's, so the file's comes from the entry. The
+   * file index rides along: Media3 reports a new item's place before its item change, and the
+   * store must not read that place, or that length, as the old file's. */
+  fun sample(itemIndex: Int, positionMs: Long, durationMs: Long): Sample {
+    val (fileIndex, inFile) = itemToFile(itemIndex, positionMs)
+    val position = if (clipped) inFile else positionMs / 1000.0
+    val duration = if (!clipped && durationMs > 0) durationMs / 1000.0 else fileDurationAt(itemIndex)
+    return Sample(fileIndex, position, duration)
+  }
+
   companion object {
     /** One item's (entry, index, item-relative ms) -> (fileIndex, seconds-within-file). An item
      * without our extras (null [entry]) is taken as a whole file at its own index. */

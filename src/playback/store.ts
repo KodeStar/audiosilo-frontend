@@ -2484,6 +2484,10 @@ function engineFault(
     if (s.trackIndex > asked.trackIndex) setAsk(null);
     return null;
   }
+  // The clamp is the engine's own measure of the asked file, whatever its file's first report
+  // or a move still out keep from the lengths (`noteEngineLength`): a press then reloads
+  // nothing past it (`stuckPastMeasure`).
+  if (clamped) noteEngineLength(np, s.trackIndex, s.duration);
   faultedBook = np;
   asked.faultShown = true;
   setAsk(null);
@@ -3322,11 +3326,10 @@ async function createService(): Promise<PlaybackService> {
     const { nowPlaying: np, loadingBook } = usePlayer.getState();
     if (np && !loadingBook) {
       // The engine's own length of the file, for a reload's check (`retry`). Not from the first
-      // report of another file, which the native service sends with the old file's length
-      // (`fileChanged`), nor a place the hot-swap could not map, which keeps the store's. Nor
-      // while a move of the store's is out: Android tells a paused move into another file's
-      // place, and the new file's length, under the old file's index before its file change,
-      // and a load is told with the server's length before the engine measured anything.
+      // report of another file, which the native service may send with the old file's length
+      // (iOS's `fileChanged`), nor a place the hot-swap could not map, which keeps the store's.
+      // Nor while a move of the store's is out: a load is told with the server's length before
+      // the engine measured anything (a clamp it took is noted with its fault, `engineFault`).
       const moving = askedPlace?.np === np && !askedPlace.landed;
       if (
         !moving &&

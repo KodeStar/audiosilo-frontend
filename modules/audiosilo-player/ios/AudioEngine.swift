@@ -536,8 +536,10 @@ final class AudioEngine: NSObject {
   /// Whether the engine is playing or about to (a start waiting for its deferred seek).
   var isPlaying: Bool { player.timeControlStatus != .paused || wantsPlay }
 
+  /// `onProgress` with the file it is in (`trackIndex`), as Android's tells it: JS reads the
+  /// place and the length as that file's whatever order the events reach it in.
   private func sendProgress(_ position: Double) {
-    send("onProgress", ["position": position, "duration": currentDuration()])
+    send("onProgress", ["position": position, "duration": currentDuration(), "trackIndex": currentIndex])
   }
 
   /// `onRemoteMove` with where the engine now is (file index + seconds in that file).
