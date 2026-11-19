@@ -36,7 +36,7 @@ import {
 import { pickedUrl, useAddressRoute } from './address-route';
 import { type ApiClient, isNotInLibraryError, isSignedOutError } from './client';
 import { connectionClient, readKnownCapabilitiesFrom } from './connection-clients';
-import { moveProxyRefusal, noteProxyAnswer } from './proxy-refusal';
+import { moveProxyRefusal, noteNewToken, noteProxyAnswer } from './proxy-refusal';
 import {
   anyOffline,
   noteFailure,
@@ -207,6 +207,14 @@ onConnectionRemoved((id) => {
 });
 // Another tab's identity migration renamed it: a proxy's refusals of it go on under the new id.
 onConnectionRenamed(moveProxyRefusal);
+// Signed in again: a 401 refusal of the old token says nothing of the new one (`noteNewToken`).
+useSession.subscribe((state, prev) => {
+  if (state.connections === prev.connections) return;
+  for (const c of state.connections) {
+    const was = prev.connections.find((p) => p.id === c.id);
+    if (was && was.token !== c.token) noteNewToken(c.id);
+  }
+});
 
 /** A book's read-along map that is in (`qk.readalong`, `qk.readalongLocal`): keyed by its
  * `generated_at`, so the copy held is that very map after any reconnect, and reading up to

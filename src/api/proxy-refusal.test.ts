@@ -85,6 +85,28 @@ it("keeps the refusals' status, a 401 once any was", () => {
   expect(refused()).toEqual({});
 });
 
+// A 401 episode raised by the old token offered Sign in again; the new token's 403s must not
+// keep offering it, while its own 401s offer it once more.
+it('makes a 401 episode a 403 one when the connection signs in again', async () => {
+  noteProxyAnswer('srv-1.1', 401);
+  const signIn = (token: string) =>
+    useSession.getState().setSession({
+      serverUrl: AWAY,
+      serverId: 'srv-1',
+      token,
+      user,
+      name: 'Hearthside',
+    });
+  await signIn('tok-2');
+  expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv-1.1']);
+  expect(refused()).toEqual({ 'srv-1.1': 403 });
+  noteProxyAnswer('srv-1.1', 401);
+  expect(refused()).toEqual({ 'srv-1.1': 401 });
+  // Denied: a change that keeps the token leaves the 401 as it is.
+  useSession.setState((s) => ({ connections: s.connections.map((c) => ({ ...c, name: 'Den' })) }));
+  expect(refused()).toEqual({ 'srv-1.1': 401 });
+});
+
 it("a signed-in connection's client starts and ends the episode itself, and it is never a sign-out", async () => {
   const client = resolveClient('srv-1.1')!;
   answerAll(403, '<html>Forbidden</html>');

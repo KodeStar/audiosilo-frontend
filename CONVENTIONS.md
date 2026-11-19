@@ -515,7 +515,8 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   **Signed in, it is said once per run** (`src/api/proxy-refusal.ts`): every signed-in
   connection's client tells, per answer, whether the proxy refused it or let it through
   (`ApiClient`'s `onProxyAnswer` -> `noteProxyAnswer`); the first refusal starts the
-  connection's episode (keeping its status: a 401 once any was, `ProxyRefusalStatus`) and the
+  connection's episode (keeping its status: a 401 once any was, `ProxyRefusalStatus`, back to a
+  403 when the connection signs in again, `noteNewToken`) and the
   next answer the server gave past its token check ends it: a success, or its own error envelope
   but a 401, a 429 or a 503, which it writes before or instead of its token check (`ApiError.fromServer`:
   a 403, a 404, a 500), to a request that carried the token the

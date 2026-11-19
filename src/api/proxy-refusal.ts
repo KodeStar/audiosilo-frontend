@@ -47,6 +47,17 @@ export function noteProxyAnswer(connectionId: string, refused: ProxyRefusalStatu
   refusalsOver(connectionId);
 }
 
+/** `connectionId` holds a new token (a Sign in again): its episode's 401, which may have been
+ * the old token's revoke with its mark dropped (WS-401-MARK), says nothing of the new one, so
+ * the episode goes on as a 403 one until the new token's own refusals say otherwise (a 401
+ * offers Sign in again once more). Without this, a proxy that answers the new token with 403s
+ * only would keep offering a sign-in that cannot help. The provider calls it on each change. */
+export function noteNewToken(connectionId: string): void {
+  const now = useProxyRefusals.getState().refused;
+  if (now[connectionId] !== 401) return;
+  useProxyRefusals.setState({ refused: { ...now, [connectionId]: 403 } });
+}
+
 const overListeners = new Set<(connectionId: string) => void>();
 
 /** Whether `connectionId` is signed in now: in the list, its token not refused. */
