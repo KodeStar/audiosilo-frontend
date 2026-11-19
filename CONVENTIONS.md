@@ -5176,7 +5176,7 @@ are asked, at most 10,000 rows.
   The Text tab reads it offline (`readDownloadedReadalong`, `qk.readalongLocal`, `networkMode:
   'always'`) with the EPUB on the device.
 - **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community
-  metadata (asked by `canMatch`: `matchableById`, so a book with content generated on its server too, or a `work_id`, so a console match without ids, fe#290; the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
+  metadata (asked by `canMatch`: `matchableById`, so a book with content generated on its server too, or a `work_id`, so a console match without ids, fe#290, which a download made before its server sent one takes from the next `/item` answer, keeping the copy then: `adoptWorkId`; the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
   `meta.json` beside its audio (`engine.writeText`: the book's folder on native, its Cache API
   prefix on web), so it is scoped by connection and deleted with the files. **Not in the registry**:
   that is ONE JSON document rewritten every couple of seconds while a download runs, an envelope

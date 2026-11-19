@@ -225,7 +225,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     }
     // An `/item` answer can reach the cache before this read the registry (the web's
     // refresh starts after paint, its own sweep then finding no downloads yet).
-    if (readalongRefreshOn) refreshCachedReadalongs(Object.values(cleaned));
+    if (readalongRefreshOn) takeCachedItems(Object.values(cleaned));
     await persist();
     // Web: what other tabs changed while this one read (their `storage` events are not
     // followed then) shows now, not at their next save.
@@ -1233,19 +1233,21 @@ const readalongTried = new Set<string>();
  * the web starts it after the first paint, when a screen's `/item` can have landed already.
  * The store's own seeds name the map the download keeps (`namingReadalong`), so they change
  * nothing but a map the download could not fetch, which is tried again (`readalongTried`).
+ *
+ * The same answers carry a downloaded book's community work id to its download
+ * (`adoptWorkId`, fe#290).
  */
 export const startReadalongRefresh = sharedStart(runReadalongRefresh);
 
 function runReadalongRefresh(): () => void {
   readalongRefreshOn = true;
-  refreshCachedReadalongs(Object.values(useDownloads.getState().entries));
+  takeCachedItems(Object.values(useDownloads.getState().entries));
   const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
     if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
     const ref = bookKeyParts(event.query.queryKey, 'item');
     const book = event.action.data as Book | undefined;
     if (!ref || !book) return;
-    const { cid, libraryId, path } = ref;
-    void refreshReadalong({ connectionId: cid, libraryId, path }, book).catch(() => {});
+    takeItemAnswer({ connectionId: ref.cid, libraryId: ref.libraryId, path: ref.path }, book);
   });
   return () => {
     readalongRefreshOn = false;
@@ -1258,18 +1260,45 @@ function runReadalongRefresh(): () => void {
 let readalongRefreshOn = false;
 
 /** The `/item` answers the cache holds for these downloaded books, each taken as an answer
- * that just landed (`refreshReadalong`). */
-function refreshCachedReadalongs(entries: Iterable<DownloadEntry>): void {
+ * that just landed (`takeItemAnswer`). */
+function takeCachedItems(entries: Iterable<DownloadEntry>): void {
   for (const entry of entries) {
     if (entry.status !== 'downloaded') continue;
     const cached = queryClient.getQueryData<Book>(
       qk.item(entry.connectionId, entry.libraryId, entry.path),
     );
-    if (cached) void refreshReadalong(bookRefOf(entry), cached).catch(() => {});
+    if (cached) takeItemAnswer(bookRefOf(entry), cached);
   }
 }
 
-/** One answer's work for `startReadalongRefresh`. */
+/** One `/item` answer's work for `startReadalongRefresh`. */
+function takeItemAnswer(ref: BookRef, book: Book): void {
+  adoptWorkId(ref, book);
+  void refreshReadalong(ref, book).catch(() => {});
+}
+
+/**
+ * A downloaded book takes the community work an `/item` answer names (`work_id`) when its
+ * download's book names none or another (fe#290): one downloaded before its server sent the
+ * id for a console match without an ASIN or ISBN (server#484), or before that match. The
+ * download's book is what `canMatch` reads once the session's answer is gone, so without the
+ * id such a book keeps no metadata and reads as unmatched offline; with it the copy is kept
+ * at once (`keepOfflineMeta`, past this launch's try, which found nothing to match by) and on
+ * every later launch's fill-in. No request of its own: it rides the answers the screens
+ * fetch. An answer naming no work (an older server) changes nothing; never an episode.
+ */
+function adoptWorkId(ref: BookRef, book: Book): void {
+  const entry = downloadedEntryOf(ref);
+  const workId = book.work_id;
+  if (!entry || !workId || book.episode || entry.manifest.book.work_id === workId) return;
+  const key = contentKeyOf(ref);
+  const { manifest } = entry;
+  patchEntry(key, { manifest: { ...manifest, book: { ...manifest.book, work_id: workId } } });
+  persistSoon();
+  keepOfflineMeta(key, { force: true }).catch(() => {});
+}
+
+/** One answer's read-along work for `startReadalongRefresh`. */
 async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
   const entry = downloadedEntryOf(ref);
   if (!entry || cachedCapability(ref.connectionId, 'readalong') !== true) return;

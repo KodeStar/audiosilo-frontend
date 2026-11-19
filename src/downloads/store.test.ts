@@ -4188,6 +4188,61 @@ describe('the offline companion (community metadata kept with a download)', () =
     expect(useDownloads.getState().entries[downloadKey('c1', 2, path)]?.manifest.meta?.job).toBe(7);
   });
 
+  // fe#290: a book downloaded before its server named its work (a console match without
+  // ids) kept nothing; the next `/item` answer naming it gives the download the id and keeps
+  // the copy, with no request of its own.
+  it('takes the work an /item answer names and keeps the copy then, once', async () => {
+    const path = nextPath();
+    const key = downloadKey('c1', 2, path);
+    await downloadOne(path); // its own keep found nothing to match by
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+    const answer = (book: Book) => {
+      for (const l of mockCacheListeners) {
+        l({
+          type: 'updated',
+          query: { queryKey: ['item', 'c1', 2, path] },
+          action: { type: 'success', data: book },
+        });
+      }
+    };
+    const watch = jest.spyOn(AppState, 'addEventListener');
+    const stop = startReadalongRefresh();
+    try {
+      // An older server names no work, and an episode never keeps: nothing changes.
+      answer(makeBook({ rel_path: path }));
+      answer(makeBook({ rel_path: path, work_id: 'w1', episode: { show_path: 'Show' } as never }));
+      await settle();
+      expect(mockCapture).toHaveBeenCalledTimes(1);
+      expect(useDownloads.getState().entries[key]?.manifest.book.work_id).toBeUndefined();
+
+      const p = payload();
+      mockCapture.mockResolvedValue(p);
+      answer(makeBook({ rel_path: path, work_id: 'w1' }));
+      await settle();
+      await settle();
+      expect(mockCapture).toHaveBeenCalledTimes(2);
+      expect(mockWriteMeta).toHaveBeenLastCalledWith(expect.objectContaining({ path }), p);
+      const { manifest } = useDownloads.getState().entries[key]!;
+      expect(manifest.book.work_id).toBe('w1');
+      expect(manifest.meta).toEqual({ savedAt: '2026-05-01T10:00:00.000Z' });
+      // The id reaches storage, so a later launch's fill-in keeps it too (`canMatch`).
+      watch.mock.calls.findLast(([type]) => type === 'change')?.[1]('background');
+      await settle();
+      expect((await readPersisted())[key]?.manifest.book.work_id).toBe('w1');
+
+      // The same work again asks nothing more; another work keeps the copy again.
+      answer(makeBook({ rel_path: path, work_id: 'w1' }));
+      await settle();
+      expect(mockCapture).toHaveBeenCalledTimes(2);
+      answer(makeBook({ rel_path: path, work_id: 'w2' }));
+      await settle();
+      await settle();
+      expect(mockCapture).toHaveBeenCalledTimes(3);
+    } finally {
+      stop();
+    }
+  });
+
   it('a removed book stops keeping its cache entries for good', async () => {
     const path = nextPath();
     mockCapture.mockResolvedValue(payload());
