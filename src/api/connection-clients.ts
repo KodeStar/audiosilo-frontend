@@ -4,6 +4,7 @@ import { type Connection, sessionHydrateFailed, useSession } from '@/stores/sess
 
 import { effectiveUrl } from './address-route';
 import { ApiClient } from './client';
+import { noteProxyAnswer } from './proxy-refusal';
 import { noteAnswer } from './reachability';
 
 /**
@@ -35,7 +36,9 @@ export function resolveClient(connectionId: string): ApiClient | null {
  * screen or in the save loop) flags the connection for reconnect: the client is the one choke
  * point every request path shares. Not once the connection holds another token (a re-pair): a
  * client built before it is stale, and the connection's sign-in is not dead. Every answer it
- * gets counts for reachability (`noteAnswer`, FU-SLOWOK), by the address it came from.
+ * gets counts for reachability (`noteAnswer`, FU-SLOWOK), by the address it came from, and
+ * tells whether a proxy in front of the server is turning the connection away
+ * (`noteProxyAnswer`: the shell's notice, never a sign-out).
  */
 export function connectionClient(
   conn: Connection,
@@ -57,6 +60,11 @@ export function connectionClient(
     // migration moved it names the old one, which no reachability reader asks for.
     (at) => noteAnswer(connectionOf(conn.id)?.id ?? conn.id, at),
     proxy,
+    // Under its id now, as above; a connection no longer signed in has nothing to say.
+    (refused) => {
+      const now = connectionOf(conn.id);
+      if (now) noteProxyAnswer(now.id, refused);
+    },
   );
 }
 

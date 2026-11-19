@@ -1,0 +1,74 @@
+import { useTranslation } from 'react-i18next';
+import { Pressable, View } from 'react-native';
+
+import { useProxyRefusals } from '@/api/proxy-refusal';
+import { canManageProxySet } from '@/components/account/account-model';
+import { Icon } from '@/components/ui/icon';
+import { Text } from '@/components/ui/text';
+import { pushInShell } from '@/lib/open';
+import { accountHref } from '@/lib/paths';
+import { connectionProxySet } from '@/lib/proxy-headers';
+import { cn } from '@/lib/utils';
+import { useProfileConnections } from '@/stores/profiles';
+import { useSession } from '@/stores/session';
+import { useThemeColors } from '@/theme/use-theme-colors';
+
+import { RECONNECT_STRIP_CLASS } from './reconnect-banner';
+
+/**
+ * A slim bar, beside the reconnect banner, while a proxy in front of a server turns this
+ * device's requests away (fe#295, `useProxyRefusals`: from the first refusal until a request
+ * succeeds again, so once for the whole run, never once per request). It is not a sign-out:
+ * the person listening's connection stays signed in, and the way past is the proxy headers.
+ * Where they can change them (`canManageProxySet`, the Account card's own rule) it opens the
+ * connection's Account page, whose Proxy headers card edits them; a kid's or a demo account
+ * that may not (someone else here reaches that address through the same set) is told to ask
+ * a grown-up instead, with nothing to tap. A connection that needs signing in again shows the
+ * reconnect banner only. The first such connection, in connection order.
+ */
+export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
+  const themed = useThemeColors();
+  const { t } = useTranslation();
+  const refused = useProxyRefusals((s) => s.refused);
+  const connections = useSession((s) => s.connections);
+  const sets = useSession((s) => s.proxySets);
+  const conn = useProfileConnections().find((c) => refused[c.id] && !c.needsReconnect);
+  if (!conn) return null;
+
+  const canManage = canManageProxySet(conn, connectionProxySet(sets, conn), connections);
+  const content = (
+    <>
+      <Icon name="key" size={13} color={themed.brand} />
+      <Text variant="caption" className="flex-1 text-brand-ink">
+        {canManage
+          ? t('proxyHeaders.refusedBanner', { name: conn.name })
+          : t('proxyHeaders.refusedAskGrownUp', { name: conn.name })}
+      </Text>
+    </>
+  );
+  const strip = cn(
+    'flex-row items-center gap-2 border-b border-b-border px-3 py-2',
+    RECONNECT_STRIP_CLASS,
+    className,
+  );
+
+  if (!canManage) {
+    return (
+      <View testID="proxy-refused-banner" accessibilityRole="alert" className={strip}>
+        {content}
+      </View>
+    );
+  }
+  return (
+    <Pressable
+      testID="proxy-refused-banner"
+      accessibilityRole="button"
+      accessibilityHint={t('proxyHeaders.refusedBannerHint')}
+      onPress={() => pushInShell(accountHref(conn.id))}
+      className={cn(strip, 'active:opacity-80')}
+    >
+      {content}
+      <Icon name="chevron-right" size={13} color={themed.brand} />
+    </Pressable>
+  );
+}

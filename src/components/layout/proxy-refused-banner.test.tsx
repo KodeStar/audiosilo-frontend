@@ -1,0 +1,102 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
+
+import { noteProxyAnswer, resetProxyRefusalsForTests } from '@/api/proxy-refusal';
+import type { User } from '@/api/types';
+import { resetProfilesForTests } from '@/stores/profiles';
+import { useSession } from '@/stores/session';
+
+import { ProxyRefusedBanner } from './proxy-refused-banner';
+
+const mockPush = jest.fn();
+jest.mock('@/lib/open', () => ({ pushInShell: (h: unknown) => mockPush(h) }));
+
+const user: User = {
+  id: 1,
+  username: 'chris',
+  role: 'user',
+  disabled: false,
+  has_password: true,
+  has_recovery: false,
+};
+const kid: User = { ...user, id: 12, username: 'evie', member_kind: 'kid' };
+const AWAY = 'https://books.example.com';
+
+async function signIn(who: User) {
+  await useSession.getState().setSession({
+    serverUrl: AWAY,
+    serverId: 'srv-1',
+    token: `tok-${who.id}`,
+    user: who,
+    name: 'Hearthside',
+  });
+}
+
+beforeEach(async () => {
+  resetProfilesForTests();
+  resetProxyRefusalsForTests();
+  mockPush.mockClear();
+  await AsyncStorage.clear();
+  useSession.setState({
+    status: 'unauthenticated',
+    connections: [],
+    defaultConnectionId: null,
+    proxySets: {},
+  });
+});
+
+it('shows nothing while no proxy turns a connection away', async () => {
+  await signIn(user);
+  await render(<ProxyRefusedBanner />);
+  expect(screen.queryByTestId('proxy-refused-banner')).toBeNull();
+});
+
+it("says the proxy turned the device away and opens the connection's Account, until a request gets through", async () => {
+  await signIn(user);
+  noteProxyAnswer('srv-1.1', true);
+  await render(<ProxyRefusedBanner />);
+  expect(
+    screen.getByText(
+      'The sign-in proxy for Hearthside turned this device away: update the proxy headers in Account',
+    ),
+  ).toBeTruthy();
+  await fireEvent.press(screen.getByTestId('proxy-refused-banner'));
+  expect(mockPush).toHaveBeenCalledWith({
+    pathname: '/account',
+    params: { connection: 'srv-1.1' },
+  });
+  // It is not a sign-out: the connection stays as it was.
+  expect(useSession.getState().connections.map((c) => [c.id, c.needsReconnect])).toEqual([
+    ['srv-1.1', undefined],
+  ]);
+  await act(async () => noteProxyAnswer('srv-1.1', false));
+  expect(screen.queryByTestId('proxy-refused-banner')).toBeNull();
+});
+
+it('leaves a connection that needs signing in again to the reconnect banner', async () => {
+  await signIn(user);
+  useSession.getState().markNeedsReconnect('srv-1.1', 'auth');
+  noteProxyAnswer('srv-1.1', true);
+  await render(<ProxyRefusedBanner />);
+  expect(screen.queryByTestId('proxy-refused-banner')).toBeNull();
+});
+
+it("asks a kid to get a grown-up when the set is a full account's here too", async () => {
+  await signIn(user);
+  await signIn(kid);
+  await act(async () => {
+    await useSession.getState().setProxySet(AWAY, {
+      origin: AWAY,
+      headers: [{ name: 'X-Proxy', value: 'kept' }],
+    });
+  });
+  noteProxyAnswer('srv-1.12', true);
+  await render(<ProxyRefusedBanner />);
+  expect(
+    screen.getByText(
+      'The sign-in proxy for Hearthside turned this device away: ask a grown-up to update the proxy headers',
+    ),
+  ).toBeTruthy();
+  await fireEvent.press(screen.getByTestId('proxy-refused-banner'));
+  expect(mockPush).not.toHaveBeenCalled();
+});

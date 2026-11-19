@@ -3,6 +3,7 @@ import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OfflineBanner } from '@/components/layout/offline-banner';
+import { ProxyRefusedBanner } from '@/components/layout/proxy-refused-banner';
 import { ReconnectBanner } from '@/components/layout/reconnect-banner';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Text } from '@/components/ui/text';
@@ -84,6 +85,7 @@ export function PhoneHeader({
         </View>
       )}
       <ReconnectBanner />
+      <ProxyRefusedBanner />
       <OfflineBanner connectionId={connectionId} />
     </View>
   );

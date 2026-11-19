@@ -2425,7 +2425,11 @@
       "reserved": "A app já envia {{name}} por si.",
       "duplicate": "{{name}} já está na lista.",
       "value": "Introduza um valor numa só linha."
-    }
+    },
+    "refusedBanner": "O proxy de início de sessão de {{name}} recusou este dispositivo: atualiza os cabeçalhos de proxy em Conta",
+    "refusedBannerHint": "Abre a conta deste servidor",
+    "refusedAskGrownUp": "O proxy de início de sessão de {{name}} recusou este dispositivo: pede a um adulto para atualizar os cabeçalhos de proxy",
+    "askGrownUp": "Pede a um adulto para atualizar os cabeçalhos de proxy."
   },
   "year": {
     "eyebrow": "O teu ano de audição",

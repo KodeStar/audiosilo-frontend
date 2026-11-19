@@ -2425,7 +2425,11 @@
       "reserved": "L'app invia già {{name}} da sola.",
       "duplicate": "{{name}} è già nell'elenco.",
       "value": "Inserisci un valore su una sola riga."
-    }
+    },
+    "refusedBanner": "Il proxy di accesso di {{name}} ha respinto questo dispositivo: aggiorna le intestazioni proxy in Account",
+    "refusedBannerHint": "Apre l'account di questo server",
+    "refusedAskGrownUp": "Il proxy di accesso di {{name}} ha respinto questo dispositivo: chiedi a un adulto di aggiornare le intestazioni proxy",
+    "askGrownUp": "Chiedi a un adulto di aggiornare le intestazioni proxy."
   },
   "year": {
     "eyebrow": "Il tuo anno di ascolto",

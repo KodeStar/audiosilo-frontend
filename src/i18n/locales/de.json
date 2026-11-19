@@ -2425,7 +2425,11 @@
       "reserved": "Die App sendet {{name}} selbst.",
       "duplicate": "{{name}} ist schon in der Liste.",
       "value": "Gib einen Wert in einer Zeile ein."
-    }
+    },
+    "refusedBanner": "Der Anmelde-Proxy für {{name}} hat dieses Gerät abgewiesen: Aktualisiere die Proxy-Header unter Konto",
+    "refusedBannerHint": "Öffnet das Konto für diesen Server",
+    "refusedAskGrownUp": "Der Anmelde-Proxy für {{name}} hat dieses Gerät abgewiesen: Bitte einen Erwachsenen, die Proxy-Header zu aktualisieren",
+    "askGrownUp": "Bitte einen Erwachsenen, die Proxy-Header zu aktualisieren."
   },
   "year": {
     "eyebrow": "Dein Hörjahr",

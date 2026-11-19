@@ -61,6 +61,7 @@ jest.mock('@/lib/layout', () => ({
 }));
 
 /* eslint-disable import/first */
+import { noteProxyAnswer, resetProxyRefusalsForTests } from '@/api/proxy-refusal';
 import { DISPLAY_MAX_FONT_SCALE } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { contentKey } from '@/lib/content-key';
@@ -258,6 +259,23 @@ it("asks a grown-up when the kid's sign-in ended, with no way into the connect f
   expect(labels).toEqual(['Grown-ups', 'Play A']);
   await fireEvent.press(screen.getByText('Ask a grown-up to sign Leo in again.'));
   expect(mockPush).not.toHaveBeenCalled();
+});
+
+// A proxy in front of the server turns the kid's requests away (fe#295): its headers are a
+// grown-up's to update, said as a line, never a sign-out.
+it("asks a grown-up to update the proxy headers while a proxy turns the kid's requests away", async () => {
+  mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false, more: 'none' };
+  noteProxyAnswer('c', true);
+  try {
+    await render(<KidsScreen />);
+    const notice = screen.getByTestId('kids-proxy-refused');
+    expect(within(notice).getByText('Ask a grown-up to update the proxy headers.')).toBeTruthy();
+    expect(screen.queryByTestId('kids-signed-out')).toBeNull();
+    await act(async () => noteProxyAnswer('c', false));
+    expect(screen.queryByTestId('kids-proxy-refused')).toBeNull();
+  } finally {
+    resetProxyRefusalsForTests();
+  }
 });
 
 it('says the sign-in ended (not "isn\'t answering") and offers no Try again (D4)', async () => {

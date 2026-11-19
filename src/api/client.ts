@@ -637,6 +637,7 @@ export class ApiClient {
   private readonly timeoutMs: number;
   private readonly onAuthError?: () => void;
   private readonly onAnswer?: (at: string) => void;
+  private readonly onProxyAnswer?: (refused: boolean) => void;
   /** The batch loader behind `seriesBooksPage`, one per `libraryId:limit` (so bounded
    * by libraries x page sizes), created on first use. */
   private readonly seriesLoaders = new Map<string, (name: string) => Promise<BookPage>>();
@@ -676,6 +677,13 @@ export class ApiClient {
    * client in the connect flow the set entered for that address. They go only when this
    * client's address is their origin (`proxyHeaderRecord`), so a client on the server's home
    * address, an http fallback or any other address sends none.
+   *
+   * `onProxyAnswer` is told what each answer says of a proxy in front of the server: `true`
+   * when the proxy turned the request away (`isProxyRefusal`: its own 401 or 403), `false`
+   * when the request succeeded (the proxy let it through). A signed-in connection's client
+   * passes it on, so the shell can say the proxy headers need updating while the refusals
+   * last (`noteProxyAnswer`, `ProxyRefusedBanner`). Never a sign-out: the server never
+   * judged the token.
    */
   constructor(
     baseUrl: string,
@@ -684,12 +692,14 @@ export class ApiClient {
     onAuthError?: () => void,
     onAnswer?: (at: string) => void,
     proxy?: ProxyHeaders | null,
+    onProxyAnswer?: (refused: boolean) => void,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.token = token;
     this.timeoutMs = timeoutMs;
     this.onAuthError = onAuthError;
     this.onAnswer = onAnswer;
+    this.onProxyAnswer = onProxyAnswer;
     const page = webOrigin();
     this.clientHeaders = shouldIdentify(this.baseUrl, Platform.OS, page)
       ? { [CLIENT_HEADER]: clientIdentity(APP_VERSION, Platform.OS) }
@@ -808,7 +818,9 @@ export class ApiClient {
         throw new NetworkError(e);
       }
       this.onAnswer?.(this.baseUrl);
-      return await read(res, touch);
+      const answer = await read(res, touch);
+      this.onProxyAnswer?.(false);
+      return answer;
     } catch (e) {
       // Our timeout fired (not a caller cancel, and not a real server answer in
       // the same tick): report it as a timeout so it's classified as unreachable.
@@ -819,6 +831,7 @@ export class ApiClient {
       // denial (valid token, forbidden) or a proxy's, and a network/timeout failure has no
       // status, so none is a dead token - the full rationale is on the constructor doc above.
       if (isSignedOutError(e)) this.onAuthError?.();
+      else if (isProxyRefusal(e)) this.onProxyAnswer?.(true);
       throw e;
     } finally {
       settled = true;

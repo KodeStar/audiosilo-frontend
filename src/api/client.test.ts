@@ -2985,6 +2985,31 @@ describe('ApiClient podcasts (Bridge Phase 2d-1)', () => {
     });
   });
 
+  // What each answer says of the proxy (the shell's notice, `noteProxyAnswer`): refused on its
+  // own 401 or 403, let through on a success; never on the server's own refusal (a sign-out).
+  it("tells its owner a proxy's refusal and the next success, never the server's 401", async () => {
+    const heard: boolean[] = [];
+    const onAuth = jest.fn();
+    const api = new ApiClient('https://h', 'tok', undefined, onAuth, undefined, null, (r) =>
+      heard.push(r),
+    );
+    installAnswers(() => ({ status: 403, text: '<html>Forbidden</html>' }));
+    await expect(api.me()).rejects.toMatchObject({ fromProxy: true });
+    installAnswers(() => ({ status: 401, text: '' }));
+    await expect(api.me()).rejects.toMatchObject({ fromProxy: true });
+    expect(heard).toEqual([true, true]);
+    expect(onAuth).not.toHaveBeenCalled();
+    installAnswers(() => ({ status: 401, body: { error: 'invalid or expired token' } }));
+    await expect(api.me()).rejects.toMatchObject({ status: 401, fromProxy: false });
+    installAnswers(() => ({ status: 404, body: { error: 'not found' } }));
+    await expect(api.me()).rejects.toMatchObject({ status: 404 });
+    expect(heard).toEqual([true, true]);
+    expect(onAuth).toHaveBeenCalledTimes(1);
+    installAnswers(() => ({ status: 200, body: { id: 1, username: 'chris' } }));
+    await api.me();
+    expect(heard).toEqual([true, true, false]);
+  });
+
   it('keeps a JSON 503 without a fetch, or with another code, a plain ApiError', async () => {
     installAnswers(() => ({ status: 503, body: { error: 'down', code: 'podcast_fetching' } }));
     await expect(client().prepareEpisodeStream(5, 'E')).rejects.not.toBeInstanceOf(

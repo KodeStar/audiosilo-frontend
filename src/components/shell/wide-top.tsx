@@ -1,6 +1,7 @@
 import { useGlobalSearchParams } from 'expo-router';
 
 import { OfflineBanner } from '@/components/layout/offline-banner';
+import { ProxyRefusedBanner } from '@/components/layout/proxy-refused-banner';
 import { ReconnectBanner } from '@/components/layout/reconnect-banner';
 import { connectionParam } from '@/lib/paths';
 
@@ -17,6 +18,7 @@ export function WideTop() {
       <TopBar />
       <SubNav />
       <ReconnectBanner />
+      <ProxyRefusedBanner />
       <OfflineBanner connectionId={connectionParam(connection)} />
     </>
   );

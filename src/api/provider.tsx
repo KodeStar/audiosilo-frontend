@@ -25,6 +25,7 @@ import { onConnectionRemoved, useSession, type Connection } from '@/stores/sessi
 import { pickedUrl, useAddressRoute } from './address-route';
 import { type ApiClient, isNotInLibraryError, isSignedOutError } from './client';
 import { connectionClient } from './connection-clients';
+import { noteProxyAnswer } from './proxy-refusal';
 import {
   anyOffline,
   noteFailure,
@@ -182,6 +183,8 @@ startupCache.startSaving(queryClient, (key) => cidOfKey(key) !== null);
 onConnectionRemoved((id) => {
   queryClient.removeQueries({ predicate: (q) => q.queryKey.includes(id) });
   startupCache.forget(id);
+  // A proxy's refusals of it end with it (`ProxyRefusedBanner`).
+  noteProxyAnswer(id, false);
 });
 
 /** A book's read-along map that is in (`qk.readalong`, `qk.readalongLocal`): keyed by its

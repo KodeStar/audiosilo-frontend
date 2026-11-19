@@ -6,6 +6,7 @@ import { BackHandler, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useProxyRefused } from '@/api/proxy-refusal';
 import type { Book } from '@/api/types';
 import type { PlayTarget } from '@/components/player/play-route';
 import { RECONNECT_STRIP_CLASS } from '@/components/layout/reconnect-banner';
@@ -56,10 +57,15 @@ async function playStory(target: PlayTarget): Promise<void> {
  * Grown-ups hold, never the connect flow from here. */
 function SignedOutNotice({ name }: { name: string }) {
   const { t } = useTranslation();
+  return <GrownUpNotice testID="kids-signed-out" text={askToSignIn(name, t)} />;
+}
+
+/** A line over the stories that only a grown-up can act on: a plain line, not a button. */
+function GrownUpNotice({ testID, text }: { testID: string; text: string }) {
   const themed = useThemeColors();
   return (
     <View
-      testID="kids-signed-out"
+      testID={testID}
       accessibilityRole="alert"
       className={cn(
         'mb-4 flex-row items-center gap-2.5 rounded-lg px-3.5 py-3',
@@ -67,9 +73,7 @@ function SignedOutNotice({ name }: { name: string }) {
       )}
     >
       <Icon name="key" size={16} color={themed.brand} />
-      <Text className="flex-1 font-sans-semibold text-base text-brand-ink">
-        {askToSignIn(name, t)}
-      </Text>
+      <Text className="flex-1 font-sans-semibold text-base text-brand-ink">{text}</Text>
     </View>
   );
 }
@@ -98,6 +102,9 @@ export function KidsScreen() {
   // The kid's sign-in ended, with stories still on screen (the downloaded ones, or what was
   // read before): a line over them asks a grown-up (the list's own state says it otherwise).
   const signedOut = stories.status === 'ready' && stories.signedOut;
+  // A proxy in front of the server turns the kid's requests away (fe#295): the proxy headers
+  // are a grown-up's to update (`ProxyRefusedBanner` in the grown-up shell).
+  const proxyRefused = useProxyRefused(connectionId ?? undefined);
   const loaded = usePlayer((s) => s.nowPlaying !== null);
   const list = useRef<FlashListRef<KidsRow>>(null);
   const [outer, setOuter] = useState(0);
@@ -136,7 +143,11 @@ export function KidsScreen() {
   // flow (8b-1, D1).
   const header = (
     <View>
-      {signedOut ? <SignedOutNotice name={name} /> : null}
+      {signedOut ? (
+        <SignedOutNotice name={name} />
+      ) : proxyRefused ? (
+        <GrownUpNotice testID="kids-proxy-refused" text={t('proxyHeaders.askGrownUp')} />
+      ) : null}
       <View className="flex-row flex-wrap items-center justify-between gap-3">
         <Text
           variant="display"
