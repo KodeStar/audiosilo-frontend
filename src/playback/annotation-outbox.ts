@@ -90,7 +90,9 @@ import { onlyConnection, queuedRoute } from './progress-sync';
  * A bookmark the server refuses for good (its POST answered with a 4xx other than 401, 408
  * and 429: the book is gone or out of the account's reach) is dropped, logged, as is one whose
  * `client_id` its server holds on another book (its 409 `client_id_conflict`: that bookmark
- * landed, and its book has moved since). The read
+ * landed, and its book has moved since). Not one sent with its `client_id` that a 400 refuses
+ * while its server's flags, read again, say it no longer takes one (a server rolled back since
+ * its `/server` answer was kept, `refusedForItsId`): that waits and goes without the id. The read
  * before the send drops nothing: when it fails, whatever the status, the bookmark waits.
  * Labels and ids follow `postBookmark`'s rule at send time (`addBookmark`), on flags that are
  * known: a labelled bookmark is sent only once its server's `/server` has been read (`readFlags`),
@@ -309,9 +311,29 @@ const clientIdConflict = (err: unknown) => apiErrorKind(err) === 'client_id_conf
 const worthKeeping = (err: unknown) =>
   isUnreachableError(err) || (err instanceof ApiError && !refusedForGood(err));
 
+/** A refusal before the server took the request (a token it refuses, a 401, its own or a
+ * proxy's; asked to slow down, a 429): a bookmark POST so answered never landed. */
+const turnedAway = (err: unknown) =>
+  err instanceof ApiError && (err.status === 401 || err.status === 429);
+
 /** Whether `connectionId`'s server is known to take a bookmark's `client_id`. */
 const takesClientId = (connectionId: string) =>
   cachedCapability(connectionId, 'bookmark_client_id') === true;
+
+/** After a 400 to a POST that carried a bookmark's `client_id`: whether the id is why, its
+ * server's flags read again (`fetchCapabilities`: a kept answer is stale, so it asks) saying
+ * it no longer takes one. A server rolled back since its `/server` answer was kept
+ * (`server-snapshots.ts`) refuses the unknown field, and that says nothing about the
+ * bookmark, which then waits and goes without the id. */
+async function refusedForItsId(
+  connectionId: string,
+  client: ApiClient,
+  err: unknown,
+): Promise<boolean> {
+  if (!(err instanceof ApiError) || err.status !== 400 || clientIdConflict(err)) return false;
+  await fetchCapabilities(connectionId, client).catch(() => undefined);
+  return !takesClientId(connectionId);
+}
 
 /** Read `connectionId`'s flags when they are not known yet (whether its server takes a
  * bookmark's label, `annotations`, and its `client_id`, `bookmark_client_id`: one `/server`
@@ -368,7 +390,8 @@ export async function addBookmarkOrQueue(
       if (!worthKeeping(err)) throw err;
       noteFailure(connectionId, err);
       failed = true;
-      sentBare = !withId;
+      // A 401 or a 429 turned it away before the server took it: nothing landed.
+      sentBare = !withId && !turnedAway(err);
     }
   }
   const queued = await append(
@@ -478,12 +501,15 @@ const atItsPlace = (onServer: Bookmark, queued: QueuedBookmark) =>
   onServer.position === queued.position && onServer.note === queued.note;
 
 /** Whether `onServer` is `queued`, sent before (see the module): the one with its
- * `client_id`. Else, never while no send of it without that id has gone out (`fresh`); after
+ * `client_id`, never one with another. Else (one made with no id), never while no send of it
+ * without that id has gone out (`fresh`); after
  * the first such, one at its place the server did not hold then (`othersHeld`); else, when a
  * send may have reached the server before it was stored, one at its place made no earlier
  * than `SAME_BOOKMARK_WINDOW_MS` before it. */
 function isThisOne(onServer: Bookmark, queued: QueuedBookmark): boolean {
-  if (queued.client_id !== undefined && onServer.client_id === queued.client_id) return true;
+  // One made with a `client_id` is the bookmark that id names: never this one under another
+  // (another of this device's at its place, another device's), whatever its place.
+  if (onServer.client_id) return onServer.client_id === queued.client_id;
   if (queued.fresh || !atItsPlace(onServer, queued)) return false;
   if (queued.othersHeld) return !queued.othersHeld.includes(onServer.id);
   return Date.parse(onServer.created_at) >= Date.parse(queued.updated_at) - SAME_BOOKMARK_WINDOW_MS;
@@ -661,6 +687,8 @@ async function sendGroup(
     }
     // How far this try has come: a failure is that step's.
     let step: SendStep = 'flags';
+    // Whether its POST carries its `client_id`: decided once, before `readyToSend`.
+    let withId = false;
     try {
       // Its label goes only on flags that are known: it waits, label and all, while they
       // can't be read. What it waits for is the flags, not its turn: the book's unlabelled
@@ -682,7 +710,7 @@ async function sendGroup(
         continue;
       }
       step = 'read';
-      const withId = e.client_id !== undefined && takesClientId(connectionId);
+      withId = e.client_id !== undefined && takesClientId(connectionId);
       // With its id and no send without it out, the POST alone tells: a 200 is the one the
       // server already holds. Else what its book holds first (an older server, an entry an
       // older build stored, one an add without its id may have reached).
@@ -704,6 +732,14 @@ async function sendGroup(
       // Claimed by this replay, but taken out while it sent those ahead of it: the claim
       // keeps no Delete out, so the send checks, right before the POST.
       if (!(await readyToSend(e, held, withId))) continue;
+      // Its server's flags answered again meanwhile (a kept answer replaced) and say it no
+      // longer takes the id: `addBookmark` would send it bare, with nothing stored for that
+      // (`othersHeld`), so a lost answer would make it twice. It waits for the next replay.
+      if (withId && !takesClientId(connectionId)) {
+        kept.push(e);
+        heldBack.add(book);
+        continue;
+      }
       step = 'post';
       // `addBookmark` shows the server's bookmark, a 200's (held already) as a 201's.
       const made = await addBookmark(
@@ -725,6 +761,12 @@ async function sendGroup(
         // book moved between a lost answer and this replay), so a fresh id would make it
         // twice: dropped, said in the log, never sent again.
         console.warn('[bookmarks] dropped a queued bookmark whose client_id is on another book');
+        continue;
+      }
+      if (step === 'post' && withId && (await refusedForItsId(connectionId, client, err))) {
+        // Its id refused, not the bookmark: kept, its book behind it, for the next replay.
+        kept.push(e);
+        heldBack.add(book);
         continue;
       }
       if (step === 'post' && refusedForGood(err)) {

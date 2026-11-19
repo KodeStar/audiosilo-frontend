@@ -1742,9 +1742,9 @@ decoder refuses unknown fields (a 400, and the bookmark is lost): the one owner 
 without its label). Never call `client.addBookmark` with a label directly. The same gate holds
 `client_id` (`AddBookmarkVars.clientId`, the device's UUID for a bookmark) to a server known to
 have `bookmark_client_id`, which makes a bookmark at most once per user and `client_id`: the same
-one posted again answers 200 with the bookmark it holds, and `Bookmark.client_id` carries it. The server answers
-fixed-width UTC timestamps with milliseconds (so they compare as strings) and `[]` for an empty
-per-book list (the client still reads an older server's `null` as none).
+one posted again answers 200 with the bookmark it holds, and `Bookmark.client_id` carries it. The
+server answers fixed-width UTC timestamps with milliseconds (so they compare as strings) and `[]`
+for an empty per-book list (the client still reads an older server's `null` as none).
 
 **Bookmarks made offline wait on the device (fe#356).** The one-tap bookmark (`addBookmarkHere`)
 goes through `addBookmarkOrQueue` (`src/playback/annotation-outbox.ts`): straight to the server
@@ -1771,16 +1771,20 @@ when not known, `readFlags`) a replay just posts again with it, no read first: a
 bookmark already held and settles the entry like a 201 (`addBookmark` shows it). An older
 server's POST has no idempotency key, so there (and for an entry an older build stored with no
 `client_id`, or while the flags can't be read) a replay reads the book's bookmarks first and
-takes one with its `client_id`, else one at the same second with the same note, as already
-sent: one the replay did not see there before its first send of it without the id
-(`othersHeld`, stored right before that send), else, for one a send may have reached before it
-was stored (a direct add whose answer was lost), one made at most a day before. One no send
-without its `client_id` has reached (`fresh`: the Fell asleep, a one-tap kept without trying the
-server, any sent only with its id) is never taken for one at its place, so the night before's at
-the same second never stands in for tonight's, and two made in the same second never settle on
-one; a send with its id leaves `fresh` alone (nothing is written before it). When the read
-fails, whatever the status (a 403 or 404 too), the bookmarks wait, and only the POST's own
-refusal for good drops one (a 409 `client_id_conflict` too: that id landed, and its book moved since, so a fresh id would make it twice). A send
+takes one with its `client_id` (never one made under another), else one made with no id at the
+same second with the same note, as already sent: one the replay did not see there before its
+first send of it without the id (`othersHeld`, stored right before that send), else, for one a
+send may have reached before it was stored (a direct add whose answer was lost; not one a 401 or
+429 turned away), one made at most a day before. One no send without its `client_id` has reached
+(`fresh`: the Fell asleep, a one-tap kept without trying the server, any sent only with its id)
+is never taken for one at its place, so the night before's at the same second never stands in
+for tonight's, and two made in the same second never settle on one; a send with its id leaves
+`fresh` alone (nothing is written before it), so it goes with its id only on flags that still
+say so right before the POST (else it waits for the next replay). When the read fails, whatever
+the status (a 403 or 404 too), the bookmarks wait, and only the POST's own refusal for good drops
+one (a 409 `client_id_conflict` too: that id landed, and its book moved since, so a fresh id
+would make it twice; not a 400 to one sent with its id while the flags, read again, say the
+server no longer takes one: a server rolled back since its kept `/server` answer). A send
 puts the new bookmark in the book's cached list at once (`addBookmark`), and a replay that finds
 one already there puts the server's in it the same way (`showServerBookmark`), so its waiting row
 and pin give way to it with no gap before the list is read again. Order holds within a book only: a
