@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { ApiError, type ApiClient } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { liveClient } from '@/api/live-client';
+import { noteRateLimit, onRateLimitOver, rateLimited } from '@/api/rate-limit';
 import { cachedCapability, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
@@ -1296,6 +1297,9 @@ async function flushOnce(connectionId: string): Promise<void> {
   // A connection gone: its events are purged with it (`onConnectionRemoved`).
   if (!client) return;
   await giveUpOld(connectionId);
+  // The server asked to wait (a 429 until its `Retry-After`): the events stay, and go once
+  // the wait is over (`onRateLimitOver`, below).
+  if (rateLimited(connectionId)) return;
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const pending = await outboxEvents(connectionId);
     if (pending.length === 0) return;
@@ -1382,10 +1386,16 @@ async function sendChunk(
       return 'more';
     }
     if (e.status === 400) return sendOneByOne(connectionId, client, chunk);
-    // 401 (the client has flagged the sign-in), 403, 5xx: keep them for a later try.
+    // A 429 (the rate limit) is the connection's: its flushes, and the legacy queue's
+    // replays and live saves, wait out its `Retry-After` (`rateLimited`). 401 (the client
+    // has flagged the sign-in), 403, 5xx: keep them for a later try.
+    noteRateLimit(connectionId, e);
     return 'stop';
   }
 }
+
+// A wait the server asked for (a 429) is over: the events it held go now.
+onRateLimitOver((connectionId) => void flushOutbox(connectionId));
 
 /** A 400 on a batch: each event alone, once; one still refused alone can never be sent,
  * but a `stay` (a server rolled back under a stale cached `listening_stay`, whose decoder
@@ -1438,6 +1448,7 @@ async function sendAlone(
   } catch (e) {
     if (e instanceof ApiError && e.status === 400) return 'refused';
     if (!(e instanceof ApiError)) noteFailure(connectionId, e);
+    noteRateLimit(connectionId, e);
     return 'stop';
   }
 }

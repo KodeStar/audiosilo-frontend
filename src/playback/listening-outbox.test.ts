@@ -45,6 +45,7 @@ jest.mock('@/api/server-snapshots', () => ({
 /* eslint-disable import/first */
 import { resolveClient } from '@/api/connection-clients';
 import { queryClient } from '@/api/provider';
+import { forgetRateLimit, rateLimited } from '@/api/rate-limit';
 import * as reachability from '@/api/reachability';
 import { keepServerAnswer, keepServerFlag } from '@/api/server-snapshots';
 import { setDownloadEndCheck, setDownloadLengthCheck } from '@/downloads/kept-offline';
@@ -688,6 +689,58 @@ describe('flushOutbox', () => {
     expect(sent(before).map((b) => b.events.length)).toEqual([200]);
     expect(sent(repaired!).map((b) => b.events.length)).toEqual([200, 50]);
     expect(await outboxEvents('c1')).toEqual([]);
+  });
+
+  // The server's rate limit is the connection's (fe#173): its events wait out the 429's
+  // `Retry-After`, rather than going again with every later save, then go by themselves.
+  it("holds the connection's events through a 429's Retry-After, then sends them", async () => {
+    await appendEvents('c1', [listen('a')]);
+    let limited = true;
+    const c = client(async (body) => {
+      if (limited) throw new ApiError(429, 'slow down', undefined, 60);
+      return answer(body);
+    });
+    jest.useFakeTimers({ now: new Date('2026-10-25T08:00:00.000Z') });
+    try {
+      await flushOutbox('c1');
+      expect(c.syncListening).toHaveBeenCalledTimes(1);
+      expect(rateLimited('c1')).toBe(true);
+      limited = false;
+      // A save during the wait sends nothing.
+      await flushOutbox('c1');
+      expect(c.syncListening).toHaveBeenCalledTimes(1);
+      expect(await outboxEvents('c1')).toHaveLength(1);
+      // The wait is over: the events held go without another save to send them.
+      await jest.advanceTimersByTimeAsync(60_000);
+      for (let i = 0; i < 50 && c.syncListening.mock.calls.length < 2; i++) {
+        await jest.advanceTimersByTimeAsync(10);
+      }
+      expect(c.syncListening).toHaveBeenCalledTimes(2);
+      await flushOutbox('c1');
+      expect(await outboxEvents('c1')).toEqual([]);
+    } finally {
+      jest.useRealTimers();
+      forgetRateLimit('c1');
+    }
+  });
+
+  it('holds the connection after a 429 on an event sent alone', async () => {
+    await appendEvents('c1', [listen('a'), listen('b')]);
+    let calls = 0;
+    client(async () => {
+      calls++;
+      throw calls === 1
+        ? new ApiError(400, 'invalid request')
+        : new ApiError(429, 'slow down', undefined, 60);
+    });
+    try {
+      await flushOutbox('c1');
+      expect(calls).toBe(2);
+      expect(rateLimited('c1')).toBe(true);
+      expect(await outboxEvents('c1')).toHaveLength(2);
+    } finally {
+      forgetRateLimit('c1');
+    }
   });
 
   it('halves the chunk on a 413 or too_many_events', async () => {
