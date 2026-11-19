@@ -152,7 +152,7 @@ function JobStatus({
       tone={failed ? 'destructive' : parked ? 'warning' : 'mutedForeground'}
       title={title}
       line={statusLine(t, view)}
-      lineLines={failed ? 4 : 2}
+      lineLines={failed ? 4 : parked ? 3 : 2}
       fraction={fraction}
       action={
         failed ? (
