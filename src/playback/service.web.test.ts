@@ -509,6 +509,17 @@ describe('WebPlaybackService (transcoded tracks)', () => {
     expect(a.paused).toBe(false);
   });
 
+  it('a pause the element made after a play inside a load ends that load autoplay', async () => {
+    await svc.load(transcodedTracks, 0, 200);
+    const a = el();
+    await svc.play(); // asked before the metadata: the element plays from here
+    a.pause(); // an OS interruption, still before the metadata
+    const plays = a.plays;
+    a.emit('loadedmetadata');
+    expect(a.plays).toBe(plays); // the load does not start the book after it
+    expect(a.paused).toBe(true);
+  });
+
   it("a 'pause' that lands after a play went out keeps the play intent", async () => {
     await svc.load(transcodedTracks, 0, 200);
     el().emit('loadedmetadata');

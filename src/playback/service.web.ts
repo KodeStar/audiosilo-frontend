@@ -233,6 +233,10 @@ class WebPlaybackService implements PlaybackService {
    * the seek (fe#155). */
   private awaitingMetadata: HTMLAudioElement | null = null;
   private placeAt: number | null = null;
+  /** A play went out (`playElement`) since the current load began: from then, a 'pause' the
+   * element makes while that load still awaits its metadata is a real one (see the 'pause'
+   * listener), not the browser's own around the src change. */
+  private playedSinceLoad = false;
   /** The source (as `sourceFor` gives it) of the load in flight, and the last one that
    * failed: a load of a failed source asks for it afresh (`freshUrl`). */
   private loadingUrl: string | null = null;
@@ -351,12 +355,13 @@ class WebPlaybackService implements PlaybackService {
       // through `pause()`: the stream goes unread, and the play intent ends, in the start
       // window too (a play out, no 'playing' yet), or a later transcoded seek or skip would
       // start the book by itself (`intendsToPlay`). Two 'pause' events are not that pause:
-      // - one while the current load waits on its metadata (`awaitingMetadata`): the load
-      //   algorithm paused the element and nothing has played it since, so it is the
-      //   browser's own around the src change (or one queued before it), and that load's
-      //   autoplay stands (the load stamped the clock itself);
+      // - one while the current load waits on its metadata (`awaitingMetadata`) with no play
+      //   out since (`playedSinceLoad`): the load algorithm paused the element and nothing
+      //   has played it since, so it is the browser's own around the src change (or one
+      //   queued before it), and that load's autoplay stands (the load stamped the clock
+      //   itself);
       // - one that lands with the element no longer paused: a play went out after it.
-      if (a.paused && !a.ended && this.awaitingMetadata !== a) {
+      if (a.paused && !a.ended && (this.awaitingMetadata !== a || this.playedSinceLoad)) {
         this.unreadSince ??= Date.now();
         this.pendingAutoplay = false;
       }
@@ -403,6 +408,7 @@ class WebPlaybackService implements PlaybackService {
     const seq = ++this.loadSeq;
     this.placing = a;
     this.awaitingMetadata = a;
+    this.playedSinceLoad = false;
     this.placeAt = null;
     this.loadingUrl = source.url;
     a.crossOrigin = crossOriginFor(source.url);
@@ -721,6 +727,7 @@ class WebPlaybackService implements PlaybackService {
    * - anything else is rethrown as is.
    */
   private async playElement(a: HTMLAudioElement) {
+    this.playedSinceLoad = true;
     try {
       await a.play();
     } catch (err) {
