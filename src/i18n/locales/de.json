@@ -3154,7 +3154,9 @@
         "denied": "Der Feed hat die Anfrage abgelehnt. Vielleicht braucht er eine Anmeldung.",
         "localAddress": "Diese Adresse liegt in einem lokalen Netzwerk. Die Person, die deinen Server betreibt, kann sie erlauben.",
         "tooLarge": "Dieser Feed ist zu groß.",
-        "feedError": "Der Server des Feeds hat mit einem Fehler geantwortet. Versuch es später noch einmal."
+        "feedError": "Der Server des Feeds hat mit einem Fehler geantwortet. Versuch es später noch einmal.",
+        "redirectLoop": "Die Adresse des Feeds leitet zu oft weiter.",
+        "interrupted": "Das Hinzufügen wurde unterbrochen. Folge dem Feed noch einmal, um es erneut zu versuchen."
       }
     },
     "import": {

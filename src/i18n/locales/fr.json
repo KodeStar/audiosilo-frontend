@@ -3154,7 +3154,9 @@
         "denied": "Le flux a refusé la demande. Il nécessite peut-être une connexion.",
         "localAddress": "Cette adresse est sur un réseau local. La personne qui gère votre serveur peut l’autoriser.",
         "tooLarge": "Ce flux est trop volumineux.",
-        "feedError": "Le serveur du flux a répondu par une erreur. Réessayez plus tard."
+        "feedError": "Le serveur du flux a répondu par une erreur. Réessayez plus tard.",
+        "redirectLoop": "L'adresse du flux redirige trop de fois.",
+        "interrupted": "L'ajout a été interrompu. Suivez à nouveau le flux pour réessayer."
       }
     },
     "import": {

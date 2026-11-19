@@ -3154,7 +3154,9 @@
         "denied": "El feed rechazó la solicitud. Puede que necesite iniciar sesión.",
         "localAddress": "Esa dirección está en una red local. Quien administra tu servidor puede permitirla.",
         "tooLarge": "Ese feed es demasiado grande.",
-        "feedError": "El servidor del feed respondió con un error. Inténtalo más tarde."
+        "feedError": "El servidor del feed respondió con un error. Inténtalo más tarde.",
+        "redirectLoop": "La dirección del feed redirige demasiadas veces.",
+        "interrupted": "Se interrumpió al añadirlo. Vuelve a seguir el feed para intentarlo de nuevo."
       }
     },
     "import": {

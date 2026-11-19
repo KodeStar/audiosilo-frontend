@@ -3154,7 +3154,9 @@
         "denied": "O feed recusou o pedido. Talvez ele exija login.",
         "localAddress": "Esse endereço está em uma rede local. Quem administra seu servidor pode permiti-lo.",
         "tooLarge": "Esse feed é grande demais.",
-        "feedError": "O servidor do feed respondeu com um erro. Tente mais tarde."
+        "feedError": "O servidor do feed respondeu com um erro. Tente mais tarde.",
+        "redirectLoop": "O endereço do feed redireciona vezes demais.",
+        "interrupted": "A adição foi interrompida. Siga o feed de novo para tentar outra vez."
       }
     },
     "import": {

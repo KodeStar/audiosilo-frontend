@@ -229,7 +229,10 @@ describe('import rows and requests', () => {
       ['too_large', 'tooLarge'],
       ['request_expired', 'followAgain'],
       ['feed_secret_missing', 'followAgain'],
-      ['bridge_lost', 'other'],
+      // The feed redirects in a loop, and the Bridge doing it stopped reporting (server#403).
+      ['redirect_loop', 'redirectLoop'],
+      ['bridge_lost', 'interrupted'],
+      ['write_failed', 'other'],
       [null, 'other'],
     ] as const) {
       expect(requestReasonKey(code)).toBe(`podcasts.requests.reason.${key}`);

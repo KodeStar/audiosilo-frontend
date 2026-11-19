@@ -3154,7 +3154,9 @@
         "denied": "The feed refused the request. It may need a login.",
         "localAddress": "That address is on a local network. The person who runs your server can allow it.",
         "tooLarge": "That feed is too large.",
-        "feedError": "The feed's server answered with an error. Try again later."
+        "feedError": "The feed's server answered with an error. Try again later.",
+        "redirectLoop": "The feed's address redirects too many times.",
+        "interrupted": "Adding it was interrupted. Follow the feed again to try once more."
       }
     },
     "import": {
