@@ -3367,7 +3367,8 @@ media GETs only.
   that place, and a play press reloads there, never the other book's place past it. So does a
   play asked from outside while the store's book stood still (paused, not in error), which the
   store does not follow: where it stood is kept (`pausedAsk`) until it plays or the store
-  starts a play of its own.
+  starts a play of its own, and the book shows paused there again (not the other book's
+  `ready`).
   These holds come before a faulted book's stop (`loadedFaulted`), as a named other book's
   report does: a faulted store's book never pauses the other book's play nor reloads over it.
   Whether that unnamed book plays is kept from its held reports (`unnamedPlays`), so

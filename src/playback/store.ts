@@ -3265,19 +3265,26 @@ function stoodWhenAsked(): PlaybackSnapshot | null {
 
 /**
  * The store's book shows where it stood when a play was asked from outside (`stood`: the
- * followed play's, `stoodWhenAsked`, or one asked while it stood still, `pausedAsk`), its state
- * kept, as the adoption of another book begins. A report that names no book, taken as the
+ * followed play's, `stoodWhenAsked`, its state kept, or one asked while it stood still,
+ * `pausedAsk`, in the `state` given), as the adoption of another book begins. A report that names no book, taken as the
  * store's book's before that adoption began, left the other book's place in the snapshot: held
  * from saves only while the listener touched nothing (`persist`), it was saved as this book's
  * by a speed change, during the adoption or after a Pause in the watchdog's grace, and a play
  * press reloaded this book there.
  */
-function standWhereAsked(stood: PlaybackSnapshot | null) {
+function standWhereAsked(stood: PlaybackSnapshot | null, state?: PlaybackState) {
   if (!stood) return;
   const { snapshot } = usePlayer.getState();
   const { trackIndex, position, duration } = stood;
-  if (snapshot.trackIndex === trackIndex && snapshot.position === position) return;
-  usePlayer.setState({ snapshot: { ...snapshot, trackIndex, position, duration } });
+  const shown = state ?? snapshot.state;
+  if (
+    snapshot.trackIndex === trackIndex &&
+    snapshot.position === position &&
+    snapshot.state === shown
+  ) {
+    return;
+  }
+  usePlayer.setState({ snapshot: { ...snapshot, trackIndex, position, duration, state: shown } });
 }
 
 /**
@@ -5148,8 +5155,10 @@ async function adoptLoadedBook(
     standWhereAsked(stoodWhenAsked());
   } else if (!followed && pausedAsk && contentKeyOf(pausedAsk.np) !== loadedKey) {
     // Asked to play while the store's book stood still (`pausedAsk`): no play followed, and
-    // the unnamed reports since were this book's too.
-    standWhereAsked(stoodAt(pausedAsk));
+    // the unnamed reports since were this book's too, their state (a `ready` of its load)
+    // included. The store's book shows paused, as it stood (or ended).
+    const stood = stoodAt(pausedAsk);
+    standWhereAsked(stood, stood?.state === 'ended' ? 'ended' : 'paused');
   }
   const adoption = { key: loadedKey, ownLoad: false };
   const ownBefore = selectBookKey(usePlayer.getState());

@@ -2247,12 +2247,16 @@ describe('a play asked from outside of another book after playback stopped', () 
   /** B adopted paused at (1, 30); the engine asked to play from outside (no error, so no play
    * followed) and its unnamed `loading` report at `heard` taken; S's adoption then begins and
    * gives up (the engine read again names nothing). Returns once it gave up. */
-  async function askedForSWhilePaused(heard: { trackIndex: number; position: number }) {
+  async function askedForSWhilePaused(heard: {
+    trackIndex: number;
+    position: number;
+    state?: PlaybackState;
+  }) {
     useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
     await usePlayer.getState().adoptLoaded(loadedB({ playing: false }));
     jest.clearAllMocks();
     playAsked?.();
-    pushSnapshot(snap('loading', heard.trackIndex, heard.position));
+    pushSnapshot(snap(heard.state ?? 'loading', heard.trackIndex, heard.position));
     const answers: (() => void)[] = [];
     mockFetchQuery.mockImplementation(
       (opts: unknown) =>
@@ -2284,6 +2288,18 @@ describe('a play asked from outside of another book after playback stopped', () 
     await flushMicrotasks();
     expect(savedPaths()).toEqual(['B']);
     expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 130 });
+  });
+
+  // The other book's report taken as B's said `ready` (the car loaded S): B stands where it
+  // was, and shows paused as it stood, never S's state.
+  it("shows a paused store's book paused when another book's ready report was taken as its", async () => {
+    const during = await askedForSWhilePaused({ trackIndex: 1, position: 80, state: 'ready' });
+    expect(during).toMatchObject({ state: 'paused', trackIndex: 1, position: 30 });
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'paused',
+      trackIndex: 1,
+      position: 30,
+    });
   });
 
   // Not once the store's book played from that ask (the lock screen's play of B itself): its
