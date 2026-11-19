@@ -9,7 +9,6 @@ import {
   generateOffer,
   jobStatusView,
   mayGenerate,
-  parkEndsByItself,
   parkReason,
   queueInOrder,
   queueOrder,
@@ -142,18 +141,12 @@ describe('parkReason', () => {
     expect(parkReason('chapters_not_detected')).toBe('chaptersNotDetected');
     expect(parkReason('qa_no_converge')).toBe('review');
     expect(parkReason('core_needed')).toBe('core');
+    expect(parkReason('share_unconfirmed')).toBe('share');
     expect(parkReason('a_new_code')).toBe('other');
     expect(parkReason(undefined)).toBe('other');
     // A code that names an Object member is no reason either.
     expect(parkReason('constructor')).toBe('other');
     expect(parkReason('toString')).toBe('other');
-  });
-
-  // A book waiting for a worker goes on once one connects, with no time to name.
-  it('says which parks end by themselves', () => {
-    expect(parkEndsByItself('worker')).toBe(true);
-    expect(parkEndsByItself('asr')).toBe(false);
-    expect(parkEndsByItself('other')).toBe(false);
   });
 });
 
@@ -195,10 +188,34 @@ describe('jobStatusView', () => {
       phase: 'parked',
       reason: 'rateLimited',
       retryAt: new Date('2026-10-15T14:05:00Z'),
+      endsByItself: true,
     });
     expect(
       jobStatusView(bridgeJob({ state: 'needs_attention', progress: { park: { code: 'x' } } })),
-    ).toEqual({ phase: 'parked', reason: 'other', retryAt: undefined });
+    ).toEqual({ phase: 'parked', reason: 'other', retryAt: undefined, endsByItself: false });
+  });
+
+  // The server's transientParks: the parks the Bridge resumes once they pass, each one a
+  // reason the player can say. A refused credential shares the agent's reason but waits
+  // for a person.
+  it('says which parks end by themselves, as the server counts them', () => {
+    const parked = (code?: string) =>
+      jobStatusView(
+        bridgeJob({ state: 'needs_attention', progress: { park: code ? { code } : undefined } }),
+      );
+    for (const code of [
+      'agent_rate_limited',
+      'agent_unavailable',
+      'asr_worker_waiting',
+      'share_unconfirmed',
+    ]) {
+      const view = parked(code);
+      expect(view).toMatchObject({ phase: 'parked', endsByItself: true });
+      expect(view).not.toMatchObject({ reason: 'other' });
+    }
+    for (const code of ['agent_credential_refused', 'budget_exceeded', 'a_new_code', undefined]) {
+      expect(parked(code)).toMatchObject({ phase: 'parked', endsByItself: false });
+    }
   });
 
   // server#218: a park code the player doesn't know says the Bridge's own words; a known
@@ -216,11 +233,13 @@ describe('jobStatusView', () => {
       reason: 'other',
       hint: 'The disk is full. Free some space.',
       retryAt: undefined,
+      endsByItself: false,
     });
     expect(parked('budget_exceeded')).toEqual({
       phase: 'parked',
       reason: 'budget',
       retryAt: undefined,
+      endsByItself: false,
     });
   });
 

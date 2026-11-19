@@ -1619,6 +1619,7 @@
       "ebook": "The ebook couldn't be read.",
       "core": "The book needs a record on AudioSilo Meta first.",
       "contrib": "Contributing isn't set up in the Bridge.",
+      "share": "Waiting to confirm this book is still to be shared. Nothing more is shared until then.",
       "changed": "The book's files changed while it was being read.",
       "review": "The checks couldn't settle the results.",
       "other": "It needs a person to look at it."

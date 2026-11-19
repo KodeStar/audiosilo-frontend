@@ -224,6 +224,10 @@ const PARK_REASON: Readonly<Record<string, ParkReason>> = {
   core_needed: 'core',
   core_pending: 'core',
   contrib_unavailable: 'contrib',
+  // A generate-and-share job that couldn't ask the server, just before filing, whether
+  // the book is still to be shared (Contributions may have been turned off): the Bridge
+  // asks again by itself about once a minute and carries on once the server answers.
+  share_unconfirmed: 'share',
   manifest_changed: 'changed',
   qa_no_converge: 'review',
   fix_loop_exhausted: 'review',
@@ -246,6 +250,7 @@ export type ParkReason =
   | 'ebook'
   | 'core'
   | 'contrib'
+  | 'share'
   | 'changed'
   | 'review'
   | 'other';
@@ -255,11 +260,15 @@ export function parkReason(code: string | undefined): ParkReason {
   return code && Object.hasOwn(PARK_REASON, code) ? PARK_REASON[code] : 'other';
 }
 
-/** Whether a park ends by itself with no time to name, so there is nothing to fix in
- * the console: the Bridge takes a book waiting for a worker on once one connects. */
-export function parkEndsByItself(reason: ParkReason): boolean {
-  return reason === 'worker';
-}
+/** The park codes the Bridge resumes by itself once they pass, the server's
+ * `transientParks` (internal/bridge/jobs.go): the agent's rate limit, a short outage of
+ * the agent container, a wait for an ASR worker, and a share it couldn't confirm. */
+const TRANSIENT_PARKS: ReadonlySet<string> = new Set([
+  'agent_rate_limited',
+  'agent_unavailable',
+  'asr_worker_waiting',
+  'share_unconfirmed',
+]);
 
 /** How a job's status reads: its phase, the stage, the counts and ETA when known, the
  * park's reason and when it resumes by itself, the failure's text. */
@@ -279,6 +288,10 @@ export type JobStatusView =
        * says why rather than nothing (server#218); the console shows the same. */
       hint?: string;
       retryAt?: Date;
+      /** It resumes by itself (`TRANSIENT_PARKS`), whether or not `retryAt` names when, so
+       * there is nothing to fix in the console. By the code, not the reason: `agent` also
+       * groups a refused credential. */
+      endsByItself: boolean;
     }
   | { phase: 'failed'; error: string };
 
@@ -290,12 +303,14 @@ export function jobStatusView(job: BridgeJob): JobStatusView {
   if (job.cancel_requested) return { phase: 'stopping' };
   if (job.state === 'needs_attention') {
     const retry = p?.park?.retry_at ? new Date(p.park.retry_at) : undefined;
-    const reason = parkReason(p?.park?.code);
+    const code = p?.park?.code;
+    const reason = parkReason(code);
     return {
       phase: 'parked',
       reason,
       hint: reason === 'other' ? p?.park?.hint?.trim() || undefined : undefined,
       retryAt: retry && Number.isFinite(retry.getTime()) ? retry : undefined,
+      endsByItself: code !== undefined && TRANSIENT_PARKS.has(code),
     };
   }
   if (job.state !== 'running') return { phase: 'waiting' };

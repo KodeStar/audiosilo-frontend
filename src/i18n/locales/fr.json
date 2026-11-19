@@ -1619,6 +1619,7 @@
       "ebook": "Le livre numérique n'a pas pu être lu.",
       "core": "Le livre a d'abord besoin d'une fiche sur AudioSilo Meta.",
       "contrib": "La contribution n'est pas configurée dans le Bridge.",
+      "share": "En attente de la confirmation que ce livre doit toujours être partagé. D'ici là, rien d'autre n'est partagé.",
       "changed": "Les fichiers du livre ont changé pendant sa lecture.",
       "review": "Les vérifications n'ont pas pu valider les résultats.",
       "other": "Quelqu'un doit y jeter un œil."

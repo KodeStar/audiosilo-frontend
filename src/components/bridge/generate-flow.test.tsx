@@ -508,6 +508,56 @@ describe('the status while a job runs', () => {
     expect(screen.queryByText('Open the console to fix it.')).toBeNull();
   });
 
+  // The server counts a short outage of the agent container as a park that resumes by
+  // itself (transientParks): with no time to name, it says so, not "open the console".
+  it('says a job waiting for the agent carries on by itself', async () => {
+    mockBridgeJobs.mockResolvedValue([
+      bridgeJob({
+        state: 'needs_attention',
+        progress: { step: 'synthesizing', park: { code: 'agent_unavailable' } },
+      }),
+    ]);
+    await mount();
+    expect(await screen.findByText("The AI agent isn't available.")).toBeTruthy();
+    expect(screen.getByText('It carries on by itself.')).toBeTruthy();
+    expect(screen.queryByText('Open the console to fix it.')).toBeNull();
+  });
+
+  // A refused credential reads the same but waits for a person to replace it.
+  it('sends a refused agent credential to the console', async () => {
+    mockBridgeJobs.mockResolvedValue([
+      bridgeJob({
+        state: 'needs_attention',
+        progress: { step: 'synthesizing', park: { code: 'agent_credential_refused' } },
+      }),
+    ]);
+    await mount();
+    expect(await screen.findByText("The AI agent isn't available.")).toBeTruthy();
+    expect(screen.getByText('Open the console to fix it.')).toBeTruthy();
+    expect(screen.queryByText('It carries on by itself.')).toBeNull();
+  });
+
+  // The Bridge couldn't ask the server whether the book is still to be shared: it asks
+  // again by itself and carries on once the server answers, so nothing to fix.
+  it('says a job waiting to confirm its share carries on by itself', async () => {
+    mockBridgeJobs.mockResolvedValue([
+      bridgeJob({
+        state: 'needs_attention',
+        progress: {
+          step: 'contributing',
+          park: { code: 'share_unconfirmed', hint: 'the server could not be reached' },
+        },
+      }),
+    ]);
+    await mount();
+    expect(
+      await screen.findByText(
+        'Waiting to confirm this book is still to be shared. Nothing more is shared until then.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('It carries on by itself.')).toBeTruthy();
+  });
+
   // A spent monthly budget resumes when the month turns: a bare time would read as today.
   it('names the day a park resumes by itself when that is not today', async () => {
     const later = new Date(Date.now() + 3 * 24 * 3600_000);
