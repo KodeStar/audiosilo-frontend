@@ -2,12 +2,11 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { useProxyRefusals } from '@/api/proxy-refusal';
-import { canManageProxySet } from '@/components/account/account-model';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { pushInShell } from '@/lib/open';
 import { accountHref } from '@/lib/paths';
-import { connectionProxySet } from '@/lib/proxy-headers';
+import { canManageProxySet, connectionProxySet, ownSetInUse } from '@/lib/proxy-headers';
 import { cn } from '@/lib/utils';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -23,8 +22,10 @@ import { RECONNECT_STRIP_CLASS } from './reconnect-banner';
  * Where they can change them (`canManageProxySet`, the Account card's own rule) it opens the
  * connection's Account page, whose Proxy headers card edits them; a kid's or a demo account
  * that may not (someone else here reaches that address through the same set) is told to ask
- * a grown-up instead, with nothing to tap. A connection that needs signing in again shows the
- * reconnect banner only. The first such connection, in connection order.
+ * a grown-up instead, with nothing to tap. So is a kid's account that gets in only on the
+ * headers typed for its sign-in (`signInProxySets`, the kept set stale), until a grown-up
+ * updates the address's set. A connection that needs signing in again shows the reconnect
+ * banner only. The first such connection, in connection order.
  */
 export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
   const themed = useThemeColors();
@@ -32,17 +33,23 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
   const refused = useProxyRefusals((s) => s.refused);
   const connections = useSession((s) => s.connections);
   const sets = useSession((s) => s.proxySets);
-  const conn = useProfileConnections().find((c) => refused[c.id] && !c.needsReconnect);
+  const own = useSession((s) => s.signInProxySets);
+  const conn = useProfileConnections().find(
+    (c) => !c.needsReconnect && (refused[c.id] || ownSetInUse(sets, own[c.id])),
+  );
   if (!conn) return null;
 
-  const canManage = canManageProxySet(conn, connectionProxySet(sets, conn), connections);
+  const canManage =
+    !!refused[conn.id] && canManageProxySet(conn, connectionProxySet(sets, conn), connections);
   const content = (
     <>
       <Icon name="key" size={13} color={themed.brand} />
       <Text variant="caption" className="flex-1 text-brand-ink">
         {canManage
           ? t('proxyHeaders.refusedBanner', { name: conn.name })
-          : t('proxyHeaders.refusedAskGrownUp', { name: conn.name })}
+          : refused[conn.id]
+            ? t('proxyHeaders.refusedAskGrownUp', { name: conn.name })
+            : t('proxyHeaders.askGrownUp')}
       </Text>
     </>
   );

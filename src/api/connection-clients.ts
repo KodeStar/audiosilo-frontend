@@ -1,5 +1,5 @@
 import { resolveConnectionId } from '@/lib/connection-id';
-import { type ProxyHeaders, proxySetFor } from '@/lib/proxy-headers';
+import { connectionSetFor, type ProxyHeaders } from '@/lib/proxy-headers';
 import { type Connection, sessionHydrateFailed, useSession } from '@/stores/session';
 
 import { effectiveUrl } from './address-route';
@@ -31,7 +31,8 @@ export function resolveClient(connectionId: string): ApiClient | null {
  * A connection's client on `url` (the address it uses now, never straight from `serverUrl`),
  * the one way one is built: `resolveClient` for the framework-free modules (the progress-sync
  * save loop, the car, the downloads) and the provider's `buildClients` for every screen. It
- * carries the token and the proxy headers kept for `url`'s origin (fe#167, `proxySetFor`), and
+ * carries the token and the proxy headers kept for `url`'s origin (fe#167, `connectionSetFor`:
+ * or its sign-in's own, `signInProxySets`), and
  * injects the dead-token callback, so a 401 on ANY request through it (query or mutation, on
  * screen or in the save loop) flags the connection for reconnect: the client is the one choke
  * point every request path shares. Not once the connection holds another token (a re-pair): a
@@ -43,7 +44,7 @@ export function resolveClient(connectionId: string): ApiClient | null {
 export function connectionClient(
   conn: Connection,
   url: string,
-  proxy: ProxyHeaders | null = proxySetFor(useSession.getState().proxySets, url),
+  proxy: ProxyHeaders | null = connectionProxyFor(conn.id, url),
 ): ApiClient {
   return new ApiClient(
     url,
@@ -66,6 +67,13 @@ export function connectionClient(
       if (now) noteProxyAnswer(now.id, refused);
     },
   );
+}
+
+/** The proxy headers a request of the connection `connectionId` to `url` carries now
+ * (`connectionSetFor`: the set kept for that origin, or its sign-in's own). */
+export function connectionProxyFor(connectionId: string, url: string): ProxyHeaders | null {
+  const { proxySets, signInProxySets } = useSession.getState();
+  return connectionSetFor(proxySets, url, signInProxySets[connectionId]);
 }
 
 /** The signed-in connection an id names: itself, else the connection an old id moved to

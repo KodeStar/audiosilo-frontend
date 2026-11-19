@@ -13,7 +13,12 @@ const getState = (useSession as unknown as { getState: jest.Mock }).getState;
 const markNeedsReconnect = jest.fn();
 
 function setStore(connections: { id: string; serverUrl: string; token: string | null }[]) {
-  getState.mockReturnValue({ connections, markNeedsReconnect, status: 'ready' });
+  getState.mockReturnValue({
+    connections,
+    markNeedsReconnect,
+    signInProxySets: {},
+    status: 'ready',
+  });
 }
 
 /** A fake fetch answering 200 to everything; returns the Authorization header of each call. */

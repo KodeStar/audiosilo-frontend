@@ -47,7 +47,12 @@ function setStore(
     addresses?: { home?: string; away?: string };
   }[],
 ) {
-  getState.mockReturnValue({ connections, markNeedsReconnect, status: 'ready' });
+  getState.mockReturnValue({
+    connections,
+    markNeedsReconnect,
+    signInProxySets: {},
+    status: 'ready',
+  });
 }
 
 describe('connection-clients', () => {
@@ -184,14 +189,29 @@ describe('connection-clients', () => {
   });
 
   it('sessionReady reflects the store status', () => {
-    getState.mockReturnValue({ connections: [], markNeedsReconnect, status: 'loading' });
+    getState.mockReturnValue({
+      connections: [],
+      markNeedsReconnect,
+      signInProxySets: {},
+      status: 'loading',
+    });
     expect(sessionReady()).toBe(false);
-    getState.mockReturnValue({ connections: [], markNeedsReconnect, status: 'ready' });
+    getState.mockReturnValue({
+      connections: [],
+      markNeedsReconnect,
+      signInProxySets: {},
+      status: 'ready',
+    });
     expect(sessionReady()).toBe(true);
   });
 
   it('is not ready after a hydrate that failed (the list never loaded), until one succeeds', () => {
-    getState.mockReturnValue({ connections: [], markNeedsReconnect, status: 'unauthenticated' });
+    getState.mockReturnValue({
+      connections: [],
+      markNeedsReconnect,
+      signInProxySets: {},
+      status: 'unauthenticated',
+    });
     hydrateFailed.mockReturnValueOnce(true);
     expect(sessionReady()).toBe(false);
     expect(sessionReady()).toBe(true);

@@ -62,6 +62,7 @@ jest.mock('@/lib/layout', () => ({
 
 /* eslint-disable import/first */
 import { noteProxyAnswer, resetProxyRefusalsForTests } from '@/api/proxy-refusal';
+import { type Connection, useSession } from '@/stores/session';
 import { DISPLAY_MAX_FONT_SCALE } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { contentKey } from '@/lib/content-key';
@@ -275,6 +276,29 @@ it("asks a grown-up to update the proxy headers while a proxy turns the kid's re
     expect(screen.queryByTestId('kids-proxy-refused')).toBeNull();
   } finally {
     resetProxyRefusalsForTests();
+  }
+});
+
+// The kid got in on the headers typed for its sign-in, the address's kept set being one the
+// proxy refuses (`signInProxySets`): the stories play, and a grown-up is asked to update it.
+it("asks a grown-up to update the proxy headers while the kid is on its sign-in's own set", async () => {
+  const AWAY = 'https://books.example.com';
+  const KEPT = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'kept' }] };
+  const OWN = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'own' }] };
+  mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false, more: 'none' };
+  useSession.setState({
+    connections: [{ id: 'c', serverUrl: AWAY, name: 'Hearthside', token: 't' } as Connection],
+    proxySets: { [AWAY]: KEPT },
+    signInProxySets: { c: { set: OWN, over: KEPT } },
+  });
+  try {
+    await render(<KidsScreen />);
+    expect(screen.getByTestId('kids-proxy-refused')).toBeTruthy();
+    // A grown-up updated the address's set: the kid's requests carry it, nothing to ask.
+    await act(async () => useSession.setState({ proxySets: { [AWAY]: OWN } }));
+    expect(screen.queryByTestId('kids-proxy-refused')).toBeNull();
+  } finally {
+    useSession.setState({ connections: [], proxySets: {}, signInProxySets: {} });
   }
 });
 

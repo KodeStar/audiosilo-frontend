@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 import { effectiveUrl, useAddressRoute } from '@/api/address-route';
+import { connectionProxyFor, resolveClient } from '@/api/connection-clients';
 import type { AuthSession, User } from '@/api/types';
 import { checkPin, setPin } from '@/lib/profile-pin';
 import { forgetProxySets, readProxySets } from '@/lib/proxy-headers-store';
@@ -15,6 +16,17 @@ jest.mock('@/playback/store', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('@/testing/player-store-mock').createPlayerStoreMock(),
 );
+
+// Whether the proxy turns the address's kept set away (`keptSetRefused`'s probe).
+let mockKeptRefused = false;
+const mockProbe = jest.fn();
+jest.mock('@/api/connect-client', () => ({
+  ...jest.requireActual('@/api/connect-client'),
+  keptSetRefused: async (set: unknown) => {
+    mockProbe(set);
+    return mockKeptRefused;
+  },
+}));
 
 const mockReplace = jest.fn();
 const mockDismissTo = jest.fn();
@@ -220,7 +232,9 @@ describe('proxy headers the sign-in came through (fe#167): one set per address (
   const kept = () => useSession.getState().proxySets;
   beforeEach(async () => {
     await forgetProxySets();
-    useSession.setState({ pendingProxyHeaders: null, proxySets: {} });
+    useSession.setState({ pendingProxyHeaders: null, proxySets: {}, signInProxySets: {} });
+    mockKeptRefused = false;
+    mockProbe.mockClear();
   });
 
   it("keeps the ones typed for the address signed in through as that address's, in secure-store only", async () => {
@@ -364,6 +378,82 @@ describe('proxy headers the sign-in came through (fe#167): one set per address (
         carried: THEIRS,
       });
       expect(kept()).toEqual({ [AWAY]: THEIRS });
+    });
+
+    // A full account here signs in through the kept set, so the kid's typed set can't replace
+    // it. When the proxy turns that kept set away, the kid is not left on it: the set that got
+    // the kid in is used for this sign-in alone, and a grown-up is asked to update the
+    // address's set.
+    describe("a kid's set that got in where the kept set is stale", () => {
+      async function kidSignsInOverKept() {
+        useSession.setState({ pendingProxyHeaders: SET });
+        await finishConnect({ serverUrl: AWAY, session: session('srv-1'), carried: SET });
+        useSession.setState({ pendingProxyHeaders: THEIRS });
+        await finishConnect({
+          serverUrl: AWAY,
+          session: session('srv-1', { user: kid }),
+          carried: THEIRS,
+        });
+      }
+
+      it('probes the kept set, and uses its own for this sign-in when the proxy refuses it', async () => {
+        mockKeptRefused = true;
+        await kidSignsInOverKept();
+        expect(mockProbe).toHaveBeenCalledWith(SET);
+        // The address's set stays the full account's, stored and in memory.
+        expect(kept()).toEqual({ [AWAY]: SET });
+        expect(await readProxySets()).toEqual({ [AWAY]: SET });
+        // The kid's requests carry the set that got it in; the full account's the kept one.
+        expect(connectionProxyFor('srv-1.12', AWAY)).toEqual(THEIRS);
+        expect(resolveClient('srv-1.12')!.authHeaders()['X-Proxy']).toBe('their-own');
+        expect(connectionProxyFor('srv-1.1', AWAY)).toEqual(SET);
+        expect(useSession.getState().signInProxySets).toEqual({
+          'srv-1.12': { set: THEIRS, over: SET },
+        });
+        // Never stored: the next launch has the address's set alone.
+        expect(await AsyncStorage.getItem(CONNECTIONS_KEY)).not.toContain('their-own');
+      });
+
+      it("gives way once a grown-up updates the address's set", async () => {
+        mockKeptRefused = true;
+        await kidSignsInOverKept();
+        const FRESH = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'fresh' }] };
+        await useSession.getState().setProxySet(AWAY, FRESH);
+        expect(connectionProxyFor('srv-1.12', AWAY)).toEqual(FRESH);
+      });
+
+      it('drops the typed set, as before, when the kept one still works', async () => {
+        await kidSignsInOverKept();
+        expect(mockProbe).toHaveBeenCalledWith(SET);
+        expect(useSession.getState().signInProxySets).toEqual({});
+        expect(connectionProxyFor('srv-1.12', AWAY)).toEqual(SET);
+      });
+
+      it('never probes for a full account, nor for a set that is the kept one', async () => {
+        useSession.setState({ pendingProxyHeaders: SET });
+        await finishConnect({ serverUrl: AWAY, session: session('srv-1'), carried: SET });
+        useSession.setState({ pendingProxyHeaders: THEIRS });
+        await finishConnect({
+          serverUrl: AWAY,
+          session: { ...session('srv-1'), user: { ...user, id: 2 } },
+          carried: THEIRS,
+        });
+        useSession.setState({ pendingProxyHeaders: THEIRS });
+        await finishConnect({
+          serverUrl: AWAY,
+          session: session('srv-1', { user: kid }),
+          carried: THEIRS,
+        });
+        expect(mockProbe).not.toHaveBeenCalled();
+      });
+
+      it('a sign-in again without it goes back to the kept set', async () => {
+        mockKeptRefused = true;
+        await kidSignsInOverKept();
+        await finishConnect({ serverUrl: AWAY, session: session('srv-1', { user: kid }) });
+        expect(useSession.getState().signInProxySets).toEqual({});
+        expect(connectionProxyFor('srv-1.12', AWAY)).toEqual(SET);
+      });
     });
 
     // A reset server: the person's full account there is a dead identity this sign-in retires,

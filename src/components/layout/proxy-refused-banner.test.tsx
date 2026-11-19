@@ -42,6 +42,7 @@ beforeEach(async () => {
     connections: [],
     defaultConnectionId: null,
     proxySets: {},
+    signInProxySets: {},
   });
 });
 
@@ -99,4 +100,26 @@ it("asks a kid to get a grown-up when the set is a full account's here too", asy
   ).toBeTruthy();
   await fireEvent.press(screen.getByTestId('proxy-refused-banner'));
   expect(mockPush).not.toHaveBeenCalled();
+});
+
+// A kid's sign-in that got in on its own typed set where the kept one is stale (fe#295,
+// `signInProxySets`): its requests get through, and a grown-up is asked to update the set.
+it("asks a grown-up while a kid's sign-in is on its own set, until the address's set changes", async () => {
+  const KEPT = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'kept' }] };
+  const THEIRS = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'theirs' }] };
+  await signIn(user);
+  await signIn(kid);
+  await act(async () => {
+    await useSession.getState().setProxySet(AWAY, KEPT);
+    useSession.setState({ signInProxySets: { 'srv-1.12': { set: THEIRS, over: KEPT } } });
+  });
+  await render(<ProxyRefusedBanner />);
+  expect(screen.getByText('Ask a grown-up to update the proxy headers.')).toBeTruthy();
+  await act(async () => {
+    await useSession.getState().setProxySet(AWAY, {
+      origin: AWAY,
+      headers: [{ name: 'X-Proxy', value: 'fresh' }],
+    });
+  });
+  expect(screen.queryByTestId('proxy-refused-banner')).toBeNull();
 });

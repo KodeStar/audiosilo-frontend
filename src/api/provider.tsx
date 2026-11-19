@@ -10,11 +10,12 @@ import { Platform } from 'react-native';
 
 import { connectionIdFromKey, isServerInfoKey, serverResetCid } from '@/lib/auth-failure';
 import {
+  connectionSetFor,
   type ProxyHeaders,
   type ProxySets,
   proxyOriginChoices,
-  proxySetFor,
   sameProxyHeaders,
+  type SignInProxySet,
 } from '@/lib/proxy-headers';
 import { watchDeviceOnline } from '@/lib/device-online';
 import { flushConnection } from '@/playback/progress-sync';
@@ -233,8 +234,8 @@ type BuiltClient = {
 
 /**
  * Each connection's client on the address it uses now (`pickedUrl`), reusing the one in
- * `previous` while its address, token and the proxy headers kept for that address (`sets`,
- * fe#295) are unchanged, so a switch of one connection's address (home / away) rebuilds only
+ * `previous` while its address, token and the proxy headers it sends there (`sets`, fe#295, or
+ * its sign-in's own, `own`, `connectionSetFor`) are unchanged, so a switch of one connection's address (home / away) rebuilds only
  * that connection's client: every memo keyed on another connection's client (the Journal's
  * per-server queries, a capability query's function) and its in-flight reachability probe
  * survive.
@@ -244,11 +245,12 @@ export function buildClients(
   picks: Record<string, string>,
   previous: ReadonlyMap<string, BuiltClient>,
   sets: ProxySets,
+  own: Readonly<Record<string, SignInProxySet>> = {},
 ): Map<string, BuiltClient> {
   const built = new Map<string, BuiltClient>();
   for (const c of connections) {
     const url = pickedUrl(c, picks[c.id]);
-    const proxyHeaders = proxySetFor(sets, url);
+    const proxyHeaders = connectionSetFor(sets, url, own[c.id]);
     const kept = previous.get(c.id);
     built.set(
       c.id,
@@ -278,8 +280,9 @@ function connectionClients(
   connections: readonly Connection[],
   picks: Record<string, string>,
   sets: ProxySets,
+  own: Readonly<Record<string, SignInProxySet>>,
 ): Map<string, ApiClient> {
-  const built = buildClients(connections, picks, lastBuilt, sets);
+  const built = buildClients(connections, picks, lastBuilt, sets, own);
   lastBuilt.clear();
   for (const [id, b] of built) lastBuilt.set(id, b);
   return new Map([...built].map(([id, b]) => [id, b.client]));
@@ -334,6 +337,8 @@ export function ApiProvider({ children }: { children: ReactNode }) {
   const connections = useSession((s) => s.connections);
   // Every origin's proxy headers (fe#295): an edit rebuilds the clients on that origin.
   const proxySets = useSession((s) => s.proxySets);
+  // A sign-in's own set, where it uses one in place of the kept set (`signInProxySets`).
+  const ownSets = useSession((s) => s.signInProxySets);
   // Which of each connection's addresses (home / away) requests go to right now.
   const picks = useAddressRoute((s) => s.picks);
 
@@ -342,8 +347,8 @@ export function ApiProvider({ children }: { children: ReactNode }) {
   // re-creating a client drops its in-flight reachability probe and force-refetches its
   // queries.
   const clients = useMemo(
-    () => connectionClients(connections, picks, proxySets),
-    [connections, picks, proxySets],
+    () => connectionClients(connections, picks, proxySets, ownSets),
+    [connections, picks, proxySets, ownSets],
   );
 
   const registry = useMemo<ApiRegistry>(() => ({ clients, connections }), [clients, connections]);

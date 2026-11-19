@@ -1,3 +1,5 @@
+import type { User } from '@/api/types';
+import { isKidAccount } from '@/lib/account';
 import { CLIENT_HEADER } from '@/lib/client-id';
 import { sameOrigin } from '@/lib/same-origin';
 
@@ -160,6 +162,36 @@ export function proxySetFor(sets: ProxySets | null | undefined, url: string): Pr
 }
 
 /**
+ * A set one sign-in uses in place of its address's kept one, for as long as the app runs
+ * (`useSession`'s `signInProxySets`, by connection; never stored): a kid's account that got in
+ * with a set typed on the connect screen, where the kept set, which a full account here also
+ * signs in through, is one the proxy refused (`setSession`). `over` is that kept set: once the
+ * address's set is anything else (a grown-up updated it), the kept one is used again.
+ */
+export type SignInProxySet = { set: ProxyHeaders; over: ProxyHeaders };
+
+/** The set a signed-in connection's request to `url` carries: its sign-in's own (`own`,
+ * `SignInProxySet`) while that is for `url`'s origin and the kept set there is still the one
+ * it stands in for, else the set kept for that origin (`proxySetFor`). */
+export function connectionSetFor(
+  sets: ProxySets | null | undefined,
+  url: string,
+  own?: SignInProxySet | null,
+): ProxyHeaders | null {
+  if (own?.set.origin === proxyOriginOf(url) && ownSetInUse(sets, own)) return own.set;
+  return proxySetFor(sets, url);
+}
+
+/** Whether a sign-in's own set (`own`) is in use: the kept set it stands in for is still its
+ * address's (a grown-up has not updated it since). */
+export function ownSetInUse(
+  sets: ProxySets | null | undefined,
+  own: SignInProxySet | null | undefined,
+): own is SignInProxySet {
+  return !!own && sameProxyHeaders(sets?.[own.set.origin], own.over);
+}
+
+/**
  * The origins a connection's headers can be for, best first: `first` (the one a set is kept
  * for now), the server's away address (the public one a proxy guards), the address it was
  * paired with, then its home address. Distinct, https only (headers never go over plain
@@ -202,5 +234,61 @@ export function sameProxyHeaders(
     a.origin === b.origin &&
     a.headers.length === b.headers.length &&
     a.headers.every((h, i) => h.name === b.headers[i].name && h.value === b.headers[i].value)
+  );
+}
+
+/** What the proxy headers card's rule reads of a connection. */
+export type ProxyCardConnection = {
+  id: string;
+  serverUrl: string;
+  addresses?: { home?: string; away?: string };
+  user?: Pick<User, 'is_demo' | 'member_kind'> | null;
+};
+
+/** A demo or a kid's account: one that never decides for the others on the device. */
+const isLimitedAccount = (user: ProxyCardConnection['user']) =>
+  !!user?.is_demo || isKidAccount(user);
+
+/**
+ * Whether `conn`'s account page shows the "Proxy headers" card (fe#167), where the set kept
+ * for one of its addresses (`set`, null: none) is added, changed, moved to another of them
+ * and removed. A set is its address's, shared by everyone on the device who signs in there
+ * (fe#295), so a demo or a kid's account never gets the card while a full account here
+ * (`connections`) reaches any address the card could write to: removing or replacing a set
+ * there would turn that person's requests away too. With no such account it does (their own
+ * to manage, like anyone's), except a demo with no set at all, which has no use for one.
+ */
+export function canManageProxySet(
+  conn: ProxyCardConnection | null,
+  set: ProxyHeaders | null,
+  connections: readonly ProxyCardConnection[],
+): boolean {
+  if (!conn) return false;
+  if (!isLimitedAccount(conn.user)) return true;
+  if (!set && conn.user?.is_demo) return false;
+  return proxyOriginChoices(conn, set?.origin).every((o) =>
+    mayReplaceProxySet(conn.user, conn.id, o, connections),
+  );
+}
+
+/**
+ * Whether `user` (the connection `connId`) may write the set for `origin`: `canManageProxySet`'s
+ * rule for that one address (the card asks it of every address it could write to, a set kept
+ * there or not), and what a sign-in asks before replacing a kept set with the one it got in
+ * with (`finishConnect`, fe#167; where none is kept yet, any sign-in keeps its own). A full
+ * account always may; a demo or a kid's account only while no full account on the device
+ * (`connections`) reaches `origin`, since the set is theirs too.
+ */
+export function mayReplaceProxySet(
+  user: ProxyCardConnection['user'],
+  connId: string,
+  origin: string,
+  connections: readonly ProxyCardConnection[],
+): boolean {
+  return (
+    !isLimitedAccount(user) ||
+    !connections.some(
+      (c) => c.id !== connId && !isLimitedAccount(c.user) && proxyOriginChoices(c).includes(origin),
+    )
   );
 }

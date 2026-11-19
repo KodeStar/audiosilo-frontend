@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 
+import { ownSetInUse } from '@/lib/proxy-headers';
+import { useSession } from '@/stores/session';
+
 /**
  * The signed-in connections a proxy in front of their server is turning away now (fe#295):
  * a request through the connection's client answered with the proxy's own 401 or 403
@@ -32,6 +35,16 @@ export function noteProxyAnswer(connectionId: string, refused: boolean): void {
 /** Whether a proxy is turning `connectionId`'s requests away now. */
 export function useProxyRefused(connectionId: string | undefined): boolean {
   return useProxyRefusals((s) => !!connectionId && s.refused[connectionId] === true);
+}
+
+/** Whether `connectionId` is on its sign-in's own proxy headers (`signInProxySets`: a kid's
+ * account the address's kept set no longer gets past, `setSession`) while that kept set is
+ * still the one it stands in for: the address's set needs a grown-up to update it. */
+export function useOnOwnProxySet(connectionId: string | undefined): boolean {
+  return useSession((s) => {
+    const own = connectionId ? s.signInProxySets[connectionId] : undefined;
+    return ownSetInUse(s.proxySets, own) && s.connections.some((c) => c.id === connectionId);
+  });
 }
 
 /** Tests: no connection refused. */

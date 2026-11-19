@@ -461,6 +461,37 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     expect(a.useSession.getState().proxySets).toEqual({});
   });
 
+  // The proxy headers rule is read against the list as stored (fe#295): a full account another
+  // tab signed in through the address, which this tab has not heard of yet, still keeps a kid's
+  // sign-in here from replacing the set they share.
+  it("a kid's sign-in never replaces a set a full account signed in through in another tab", async () => {
+    const browser = fakeBrowser();
+    const a = openTab(browser);
+    const b = openTab(browser);
+    await a.useSession.getState().hydrate();
+    await b.useSession.getState().hydrate();
+    const ORIGIN = 'https://srv';
+    const set = (value: string) => ({ origin: ORIGIN, headers: [{ name: 'X-Proxy-Auth', value }] });
+    await b.useSession.getState().setProxySet(ORIGIN, set('kept'));
+    await settle();
+    expect(a.useSession.getState().proxySets[ORIGIN]).toEqual(set('kept'));
+    const release = browser.hold();
+    await signIn(b, 1, 'alex', 'ta');
+    // This tab has not heard of alex yet.
+    expect(a.useSession.getState().connections).toEqual([]);
+    await a.useSession.getState().setSession({
+      serverUrl: ORIGIN,
+      serverId: 'srv',
+      token: 'tk',
+      user: { ...mkUser(12, 'evie'), member_kind: 'kid' },
+      proxyHeaders: set('typed'),
+    });
+    release();
+    await settle();
+    expect(a.useSession.getState().proxySets[ORIGIN]).toEqual(set('kept'));
+    expect(b.useSession.getState().proxySets[ORIGIN]).toEqual(set('kept'));
+  });
+
   // A tab of an earlier build (the bundle before fe#295) keeps a set for its connection
   // after this tab launched: its mark in the list is one this tab never wrote. This tab's
   // writes of the list keep it, or the item behind it would never be moved.

@@ -9,16 +9,19 @@ import {
   remember as rememberServer,
   rememberAddresses,
 } from '@/lib/known-servers';
+import { isKidAccount } from '@/lib/account';
 import { connectionIdOf, priorConnection, serverIdOf } from '@/lib/connection-id';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
 import { forgetCalendarLink } from '@/lib/upcoming-calendar';
 import { hostOf } from '@/lib/pairing';
 import {
+  mayReplaceProxySet,
   type ProxyHeaders,
   proxyOriginOf,
   type ProxySets,
   proxySetFor,
   sameProxyHeaders,
+  type SignInProxySet,
 } from '@/lib/proxy-headers';
 import {
   forgetProxyHeaders,
@@ -979,6 +982,11 @@ type SessionState = {
    * secure-store (`src/lib/proxy-headers-store.ts`), never in the AsyncStorage metadata.
    * A client on an origin sends that origin's set (`proxySetFor`, `src/lib/proxy-headers.ts`). */
   proxySets: ProxySets;
+  /** By connection, a set its sign-in uses in place of its address's kept one until the app
+   * closes (`SignInProxySet`, `connectionSetFor`): in memory only, set by `setSession` for a
+   * kid's sign-in whose typed set got in where the kept one is refused, and dropped by the
+   * connection's next sign-in. */
+  signInProxySets: Readonly<Record<string, SignInProxySet>>;
   /** Mirror of the default connection's user, for ergonomic selectors. */
   user: User | null;
 
@@ -1010,10 +1018,23 @@ type SessionState = {
        * it would delete them (their profile, PIN and kids settings) from the device. Absent:
        * none is retired. */
       retire?: readonly string[];
-      /** The proxy headers the connect flow reached the server with (fe#167): kept as their
-       * origin's set when they differ from it (a set typed for the address, which got in).
-       * Absent (or null) changes nothing: a sign-in never removes a set. */
+      /** A set typed on the connect screen for one of this server's addresses (fe#167),
+       * which this sign-in may keep as that origin's set (fe#295), decided here against the
+       * list as stored, so a full account another tab signed in meanwhile counts too: where
+       * none is kept, it is kept (anyone's, a kid's own device included); else only when it
+       * carried the sign-in (not `proxyUnsent`) and the account may replace the kept one
+       * (`mayReplaceProxySet`: a full account, or a demo or a kid's while no full account here
+       * reaches that address, the identities `retire` drops aside). A kid's account that may
+       * not, whose address's kept set the proxy refused just now (`proxyKeptRefused`, still
+       * the kept one), uses its set for this sign-in only (`signInProxySets`). Absent (or
+       * null) changes nothing: a sign-in never removes a set. */
       proxyHeaders?: ProxyHeaders | null;
+      /** `proxyHeaders` was never sent (typed for another of the server's addresses than the
+       * one signed in through): it proved nothing, so it replaces no kept set. */
+      proxyUnsent?: boolean;
+      /** The address's kept set as a probe found the proxy refusing it (`keptSetRefused`),
+       * for a kid's account whose typed set got in. */
+      proxyKeptRefused?: ProxyHeaders | null;
     },
     opts?: {
       /** False: the default connection stays where it is (a household member signed in on
@@ -1142,6 +1163,31 @@ async function persist(connections: Connection[], defaultId: string | null) {
   await Promise.all([setItem(CONNECTIONS_KEY, meta), setItem(DEFAULT_KEY, defaultId)]);
 }
 
+/**
+ * What a sign-in does with the proxy headers typed for it (`typed`, `setSession`): `keep` them
+ * as their origin's set, or use them as its `own` until the app closes, or neither (undefined).
+ * Read against the sets kept now (`sets`) and the other connections (`others`, as stored).
+ */
+function proxyChoice(
+  typed: ProxyHeaders | null | undefined,
+  sets: ProxySets,
+  how: { unsent: boolean; keptRefused?: ProxyHeaders | null },
+  who: { user: User; id: string; others: readonly Connection[] },
+): { keep?: ProxyHeaders; own?: SignInProxySet } | undefined {
+  if (!typed?.headers.length) return undefined;
+  const kept = sets[typed.origin];
+  if (!kept) return { keep: typed };
+  if (how.unsent || sameProxyHeaders(kept, typed)) return undefined;
+  if (mayReplaceProxySet(who.user, who.id, typed.origin, who.others)) return { keep: typed };
+  // Not theirs to replace: a full account here signs in through it. Where the proxy refused
+  // it just now (and it is still the kept one), a kid's set that got in is used by this
+  // sign-in alone, so the kid can listen until a grown-up updates the address's set.
+  if (isKidAccount(who.user) && how.keptRefused && sameProxyHeaders(kept, how.keptRefused)) {
+    return { own: { set: typed, over: kept } };
+  }
+  return undefined;
+}
+
 export const useSession = create<SessionState>()((set, get) => ({
   status: 'loading',
   connections: [],
@@ -1149,6 +1195,7 @@ export const useSession = create<SessionState>()((set, get) => ({
   pendingServerUrl: null,
   pendingProxyHeaders: null,
   proxySets: {},
+  signInProxySets: {},
   user: null,
 
   hydrate: async () => {
@@ -1187,7 +1234,18 @@ export const useSession = create<SessionState>()((set, get) => ({
   },
 
   setSession: async (
-    { serverUrl, serverId, token, user, name, addresses, retire, proxyHeaders },
+    {
+      serverUrl,
+      serverId,
+      token,
+      user,
+      name,
+      addresses,
+      retire,
+      proxyHeaders,
+      proxyUnsent,
+      proxyKeptRefused,
+    },
     { makeDefault = true } = {},
   ) => {
     // The connection id is the server-minted server_id plus the user's id
@@ -1200,16 +1258,6 @@ export const useSession = create<SessionState>()((set, get) => ({
     // The persisted connections first, when they never loaded: the list written below would
     // otherwise hold this server alone and drop every other one.
     if (hydrateFailed) await get().hydrate();
-    // The proxy headers this sign-in got in with (fe#167), when they are not already their
-    // origin's set (a set typed on the connect screen): kept for that origin, for everyone
-    // on this device who reaches it (fe#295). First, so a set that can't be kept stores
-    // nothing. A sign-in never removes a set.
-    if (
-      proxyHeaders?.headers.length &&
-      !sameProxyHeaders(get().proxySets[proxyHeaders.origin], proxyHeaders)
-    ) {
-      await get().setProxySet(proxyHeaders.origin, proxyHeaders);
-    }
     // On the web, the list as stored, with what another tab signed in or out since this tab
     // last heard, and no other tab's write between that read and this one (`writingList`).
     const { id, stale } = await writingList(async () => {
@@ -1234,6 +1282,22 @@ export const useSession = create<SessionState>()((set, get) => ({
       );
       const stale = candidates.filter((c) => retire?.includes(c.id));
       const kept = new Set(candidates.filter((c) => !stale.includes(c)));
+      // The proxy headers typed for this sign-in (fe#167), against the list and the sets as
+      // stored now (another tab's sign-in included): kept as their origin's set for everyone
+      // here who reaches it (fe#295), or used by this sign-in alone (`proxyChoice`). First, so
+      // a set that can't be kept stores nothing.
+      const proxy = proxyChoice(
+        proxyHeaders,
+        get().proxySets,
+        { unsent: !!proxyUnsent, keptRefused: proxyKeptRefused },
+        { user, id, others: existing.filter((c) => !stale.includes(c)) },
+      );
+      // A keep removes and moves nothing, so `setProxySet` never takes the list's lock again
+      // (`forgetLegacyProxySets` has no origin to forget): the sets' own lock only.
+      if (proxy?.keep) await get().setProxySet(proxy.keep.origin, proxy.keep);
+      const ownSets = { ...get().signInProxySets };
+      if (proxy?.own) ownSets[id] = proxy.own;
+      else delete ownSets[id];
       // What the device knew of this server's addresses: the connection's, else another
       // user's connection to the same server, else (a sign-in again after signing out, from
       // the connect screen's remembered servers) the remembered server's, so a sign-in
@@ -1291,6 +1355,7 @@ export const useSession = create<SessionState>()((set, get) => ({
         connections,
         pendingServerUrl: null,
         pendingProxyHeaders: null,
+        signInProxySets: ownSets,
         ...mirror(connections, defaultId),
       });
       return { id, stale };
