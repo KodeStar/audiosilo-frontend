@@ -32,8 +32,10 @@ export function resolveClient(connectionId: string): ApiClient | null {
  * save loop, the car, the downloads) and the provider's `buildClients` for every screen. It
  * carries the token and the proxy headers kept for `url`'s origin (fe#167, `proxySetFor`), and
  * injects the dead-token callback, so a 401 on ANY request through it (query or mutation, on
- * screen or in the save loop) flags the connection for reconnect: the client is the one choke point every request path shares. Every
- * answer it gets counts for reachability (`noteAnswer`, FU-SLOWOK), by the address it came from.
+ * screen or in the save loop) flags the connection for reconnect: the client is the one choke
+ * point every request path shares. Not once the connection holds another token (a re-pair): a
+ * client built before it is stale, and the connection's sign-in is not dead. Every answer it
+ * gets counts for reachability (`noteAnswer`, FU-SLOWOK), by the address it came from.
  */
 export function connectionClient(
   conn: Connection,
@@ -44,8 +46,16 @@ export function connectionClient(
     url,
     conn.token,
     undefined,
-    () => useSession.getState().markNeedsReconnect(conn.id, 'auth'),
-    (at) => noteAnswer(conn.id, at),
+    () => {
+      // Only while the connection still holds this token: a request sent before a re-pair
+      // that comes back 401 after it says nothing of the new token. Flagged under its id now
+      // (a client built before the identity migration moved it names the old one).
+      const now = connectionOf(conn.id);
+      if (now?.token === conn.token) useSession.getState().markNeedsReconnect(now.id, 'auth');
+    },
+    // Under the connection's id now, as the 401 above: a client built before the identity
+    // migration moved it names the old one, which no reachability reader asks for.
+    (at) => noteAnswer(connectionOf(conn.id)?.id ?? conn.id, at),
     proxy,
   );
 }

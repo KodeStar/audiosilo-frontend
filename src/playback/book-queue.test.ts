@@ -13,6 +13,7 @@ import {
   type FileSpec,
   locate,
   nextChapterEnd,
+  restreamTracks,
   shortOfFileEnd,
   synthesizeChapters,
   toBookPosition,
@@ -742,5 +743,65 @@ describe('file lengths the engine measured short', () => {
     expect(endsShortOfBook(two, 1, 29.889)).toBe(true);
     expect(endsShortOfBook(two, 1, 134)).toBe(false);
     expect(endsShortOfBook({ tracks: [{}] }, 0, 3)).toBe(false); // unknown length: the engine's
+  });
+});
+
+describe('restreamTracks (a re-pair while a book is loaded)', () => {
+  /** A client on `token`, its media urls carrying it as the real one's do. */
+  const clientOn = (token: string) =>
+    ({
+      coverUrl: (lib: number, path: string) => `cover:${lib}:${path}?token=${token}`,
+      streamUrl: (lib: number, path: string, _d?: boolean, opts?: { transcode?: boolean }) =>
+        `stream:${lib}:${path}${opts?.transcode ? ':transcode' : ''}?token=${token}`,
+      authHeaders: () => ({ Authorization: `Bearer ${token}` }),
+    }) as unknown as ApiClient;
+  const book = makeBook({
+    rel_path: 'A/Book',
+    is_folder: true,
+    files: [
+      { rel_path: 'A/Book/01.mp3', seq: 1, duration: 60, format: 'mp3', size: 5 },
+      { rel_path: 'A/Book/02.mp3', seq: 2, duration: 100, format: 'mp3', size: 10 },
+    ],
+  });
+
+  it("gives each streamed track the new token's url, headers and cover, in the same order", () => {
+    const q = buildBookQueue(clientOn('old'), 2, book);
+    const next = restreamTracks(q.tracks, clientOn('new'), 2, 'A/Book');
+    expect(next?.map((t) => [t.id, t.url, t.headers, t.artwork])).toEqual([
+      [
+        '2:A/Book/01.mp3',
+        'stream:2:A/Book/01.mp3?token=new',
+        { Authorization: 'Bearer new' },
+        'cover:2:A/Book?token=new',
+      ],
+      [
+        '2:A/Book/02.mp3',
+        'stream:2:A/Book/02.mp3?token=new',
+        { Authorization: 'Bearer new' },
+        'cover:2:A/Book?token=new',
+      ],
+    ]);
+    expect(next?.[1].duration).toBe(100);
+  });
+
+  it('keeps a transcoded stream transcoded and leaves a downloaded file and its cover alone', () => {
+    const local = {
+      files: new Map([['A/Book/01.mp3', 'file:///01.mp3']]),
+      artwork: 'file:///c.jpg',
+    };
+    const q = buildBookQueue(clientOn('old'), 2, book, undefined, local, undefined, true);
+    const next = restreamTracks(q.tracks, clientOn('new'), 2, 'A/Book');
+    expect(next?.[0]).toBe(q.tracks[0]);
+    expect(next?.[1]).toMatchObject({
+      url: 'stream:2:A/Book/02.mp3:transcode?token=new',
+      transcoded: true,
+      artwork: 'file:///c.jpg',
+    });
+  });
+
+  it('changes nothing with no client or the same token', () => {
+    const q = buildBookQueue(clientOn('old'), 2, book);
+    expect(restreamTracks(q.tracks, null, 2, 'A/Book')).toBeNull();
+    expect(restreamTracks(q.tracks, clientOn('old'), 2, 'A/Book')).toBeNull();
   });
 });

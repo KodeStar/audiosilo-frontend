@@ -56,6 +56,7 @@ const mockSvc = {
   setRate: jest.fn(async () => {}),
   setVolume: jest.fn(async () => {}),
   reset: jest.fn(async () => {}),
+  restream: jest.fn(),
   getSnapshot: jest.fn(() => ({ ...INITIAL })),
   subscribe: jest.fn((listener: (s: PlaybackSnapshot) => void) => {
     pushSnapshot = listener;
@@ -155,6 +156,12 @@ jest.mock('@/api/connection-clients', () => ({
   resolveClient: (cid: string) => mockResolveClient(cid),
   sessionReady: jest.fn(() => true),
 }));
+// The save's client, read at each call (its own tests: `live-client.test.ts`): here the one
+// the connection resolves to when the save is made, so a test sees which client it went to.
+const mockLiveClient = jest.fn((cid: string) => mockResolveClient(cid));
+jest.mock('@/api/live-client', () => ({
+  liveClient: (cid: string) => mockLiveClient(cid),
+}));
 
 /* eslint-disable import/first */
 import { Platform } from 'react-native';
@@ -166,6 +173,7 @@ import { isDeclined, useDownloads } from '@/downloads/store';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 import { resetProfilesForTests, switchProfile, useProfiles } from '@/stores/profiles';
 import * as session from '@/stores/session';
+import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 
 import { bookFileSpecs } from './book-queue';
@@ -1450,6 +1458,238 @@ describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
 
     expect(mockSvc.reset).not.toHaveBeenCalled();
     expect(usePlayer.getState().nowPlaying).not.toBeNull();
+  });
+});
+
+// --- a re-pair while a book plays, and stops that overlap --------------------
+
+describe("the connection's client at each save", () => {
+  afterEach(() => mockResolveClient.mockImplementation(() => fakeClient));
+
+  it('saves and posts the listening through the client of a re-pair made while the book plays', async () => {
+    await startBook(makeBook(), 0, 'c1');
+    pushSnapshot(snap('playing', 40));
+    // A re-pair: the connection is the same, its token (and so its client) another.
+    const repaired = { ...fakeClient, addHistory: jest.fn(async () => {}) };
+    mockResolveClient.mockImplementation(() => repaired);
+    mockSaveProgress.mockClear();
+    mockLiveClient.mockClear();
+    (fakeClient.addHistory as jest.Mock).mockClear();
+    jest.advanceTimersByTime(45_000);
+    pushSnapshot(snap('paused', 85));
+    await flushMicrotasks();
+    expect(mockSaveProgress).toHaveBeenCalledWith(
+      repaired,
+      expect.objectContaining({ connectionId: 'c1', position: 85 }),
+    );
+    expect(mockSaveProgress).not.toHaveBeenCalledWith(fakeClient, expect.anything());
+    // Through the client read again at each send (`liveClient`), not one taken up front:
+    // `saveProgress` sends only after awaits of its own (the mirror, a guard's check).
+    expect(mockLiveClient).toHaveBeenCalledWith('c1');
+    expect(repaired.addHistory).toHaveBeenCalled();
+    expect(fakeClient.addHistory).not.toHaveBeenCalled();
+  });
+});
+
+describe('a re-pair while a book is loaded', () => {
+  afterEach(() => mockResolveClient.mockImplementation(() => fakeClient));
+
+  /** The same connection on a new token: its media urls and headers carry it. */
+  const repaired = {
+    ...fakeClient,
+    coverUrl: (lib: number, path: string) => `cover:${lib}:${path}?token=new`,
+    streamUrl: (lib: number, path: string) => `stream:${lib}:${path}?token=new`,
+    authHeaders: () => ({ Authorization: 'Bearer new' }),
+  };
+
+  it("streams the book's next request with the new token, in the queue the book holds", async () => {
+    await startBook(makeBook(), 0, 'c1');
+    pushSnapshot(snap('playing', 40));
+    await flushMicrotasks();
+    const before = usePlayer.getState().nowPlaying!;
+    mockResolveClient.mockImplementation(() => repaired);
+    useSession.setState({ connections: [...useSession.getState().connections] });
+    const after = usePlayer.getState().nowPlaying!;
+    // The same book and queue (a start's and a swap's checks compare them).
+    expect(after).toBe(before);
+    expect(after.queue.tracks[0]).toMatchObject({
+      url: 'stream:2:A/Book.m4b?token=new',
+      headers: { Authorization: 'Bearer new' },
+    });
+    // The engine's next request (its next file, a transcoded seek) and a Retry's reload.
+    expect(mockSvc.restream).toHaveBeenCalledWith(after.queue.tracks);
+    (mockSvc.load as jest.Mock).mockClear();
+    await usePlayer.getState().retry();
+    expect(mockSvc.load).toHaveBeenCalledWith(
+      [expect.objectContaining({ url: 'stream:2:A/Book.m4b?token=new' })],
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it("shows the book's cover with the new token", async () => {
+    await startBook(makeBook(), 0, 'c1');
+    const before = usePlayer.getState().nowPlaying!;
+    mockResolveClient.mockImplementation(() => repaired);
+    useSession.setState({ connections: [...useSession.getState().connections] });
+    expect(usePlayer.getState().nowPlaying).toBe(before);
+    expect(usePlayer.getState().nowPlaying?.cover).toBe('cover:2:A/Book.m4b?token=new');
+  });
+
+  it('changes nothing when the connection list changes and the token does not', async () => {
+    await startBook(makeBook(), 0, 'c1');
+    const tracks = usePlayer.getState().nowPlaying!.queue.tracks;
+    (mockSvc.restream as jest.Mock).mockClear();
+    useSession.setState({ connections: [...useSession.getState().connections] });
+    expect(usePlayer.getState().nowPlaying!.queue.tracks).toBe(tracks);
+    expect(mockSvc.restream).not.toHaveBeenCalled();
+  });
+
+  it('loads a start with the token of a re-pair made while its place was looked up', async () => {
+    mockLoadInitialProgress.mockImplementationOnce(async () => {
+      mockResolveClient.mockImplementation(() => repaired);
+      return { kind: 'empty' };
+    });
+    (mockSvc.load as jest.Mock).mockClear();
+    // A resume: its place is looked up.
+    await usePlayer.getState().playBook('c1', 2, makeBook());
+    expect(mockLoadInitialProgress).toHaveBeenCalled();
+    expect(mockSvc.load).toHaveBeenCalledWith(
+      [expect.objectContaining({ url: 'stream:2:A/Book.m4b?token=new' })],
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(usePlayer.getState().nowPlaying?.cover).toBe('cover:2:A/Book.m4b?token=new');
+  });
+});
+
+describe('stops of one book that overlap', () => {
+  it('save its place once (a tab told the connection is going, then that it is gone)', async () => {
+    await startBook(makeBook(), 0, 'c1');
+    pushSnapshot(snap('playing', 40));
+    await flushMicrotasks();
+    mockSaveProgress.mockClear();
+    let saved: () => void = () => {};
+    mockSaveProgress.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (saved = () => resolve())),
+    );
+    const going = usePlayer.getState().stop();
+    await flushMicrotasks();
+    const removed = usePlayer.getState().stop();
+    await flushMicrotasks();
+    saved();
+    await Promise.all([going, removed]);
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+  });
+
+  it('saves again for a stop made once the first one has saved', async () => {
+    await startBook(makeBook(), 0, 'c1');
+    pushSnapshot(snap('playing', 40));
+    await flushMicrotasks();
+    mockSaveProgress.mockClear();
+    await usePlayer.getState().stop();
+    await startBook(makeBook(), 0, 'c1');
+    pushSnapshot(snap('playing', 50));
+    await flushMicrotasks();
+    mockSaveProgress.mockClear();
+    await usePlayer.getState().stop();
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+  });
+
+  it('saves its own place for a stop of the book started again while the first stop still saves', async () => {
+    await startBook(makeBook(), 0, 'c1');
+    pushSnapshot(snap('playing', 40));
+    await flushMicrotasks();
+    let saved: () => void = () => {};
+    mockSaveProgress.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (saved = () => resolve())),
+    );
+    const first = usePlayer.getState().stop();
+    await flushMicrotasks();
+    // The same book again while that save is still out (a slow server), heard further on.
+    await startBook(makeBook(), 0, 'c1');
+    pushSnapshot(snap('playing', 70));
+    await flushMicrotasks();
+    mockSaveProgress.mockClear();
+    const second = usePlayer.getState().stop();
+    await flushMicrotasks();
+    expect(mockSaveProgress).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ connectionId: 'c1', position: 70 }),
+    );
+    saved();
+    await Promise.all([first, second]);
+  });
+});
+
+describe('a stop whose save is still out when a start is made', () => {
+  /** Start the book, playing at 40, and stop it with its save held; returns the release. */
+  async function stopHeld(): Promise<{ stopping: Promise<void>; save: () => void }> {
+    await startBook(makeBook(), 0, 'c1');
+    pushSnapshot(snap('playing', 40));
+    await flushMicrotasks();
+    let save: () => void = () => {};
+    mockSaveProgress.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (save = () => resolve())),
+    );
+    const stopping = usePlayer.getState().stop();
+    await flushMicrotasks();
+    return { stopping, save };
+  }
+
+  it('leaves the same book started again loaded when the save lands', async () => {
+    const { stopping, save } = await stopHeld();
+    await startBook(makeBook(), 0, 'c1');
+    (mockSvc.reset as jest.Mock).mockClear();
+    save();
+    await stopping;
+    expect(mockSvc.reset).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying).toMatchObject({ connectionId: 'c1' });
+  });
+
+  it('leaves a start of the same book that failed as it is: the listener asked for it after the stop', async () => {
+    const { stopping, save } = await stopHeld();
+    (mockSvc.load as jest.Mock).mockRejectedValueOnce(new Error('no source'));
+    await expect(startBook(makeBook(), 0, 'c1')).rejects.toThrow('no source');
+    (mockSvc.reset as jest.Mock).mockClear();
+    save();
+    await stopping;
+    expect(mockSvc.reset).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying).toMatchObject({ connectionId: 'c1' });
+  });
+
+  // A start that returned before it loaded anything (its person gone, called off) took
+  // nothing from the stop: the stopped book is unloaded, not left in the engine.
+  it('still unloads the book when a start made meanwhile returned early', async () => {
+    const { stopping, save } = await stopHeld();
+    await usePlayer.getState().playBook(
+      'c1',
+      2,
+      makeBook(),
+      undefined,
+      0,
+      undefined,
+      undefined,
+      () => false,
+      () => true,
+    );
+    save();
+    await stopping;
+    expect(mockSvc.reset).toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+  });
+
+  it('still unloads the book when nothing was started meanwhile', async () => {
+    const { stopping, save } = await stopHeld();
+    save();
+    await stopping;
+    expect(mockSvc.reset).toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
   });
 });
 

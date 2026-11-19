@@ -3,6 +3,7 @@ import { createStore } from 'zustand';
 
 import type { ApiClient } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
+import { liveClient } from '@/api/live-client';
 import { invalidateFinishedProgress, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
@@ -25,7 +26,7 @@ import { flushReadingConnection } from '@/reader/reading-progress';
 import { quietOffScreen } from '@/lib/visible-store';
 import { withTimeout } from '@/lib/with-timeout';
 import { mayActFor } from '@/stores/profiles';
-import { tellOtherTabsGoing } from '@/stores/session';
+import { tellOtherTabsGoing, useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 
 import type { LoadedBook } from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
@@ -39,6 +40,7 @@ import {
   fileDurationOf,
   FINISHED_TOLERANCE,
   locate,
+  restreamQueue,
   shortOfFileEnd,
   toBookPosition,
   trackIdOf,
@@ -100,6 +102,7 @@ import { listenerSettings } from './listener-settings';
 import { type GaveWay, givesWayTo, type PlayingClaim, tabClaims } from './playing-claim';
 import { clampRate } from './rate';
 import { createPlaybackService } from './service';
+import { provideSpanCut } from './span-cut';
 import { bookSpeed } from './time-left';
 import { flushTimeSaved, noteSilenceSaved } from './time-saved';
 import { mayNeedWebTranscode } from './transcode';
@@ -151,10 +154,13 @@ function isTransportLiveState(state: PlaybackState): boolean {
 }
 
 let service: PlaybackService | null = null;
-let apiRef: ApiClient | null = null;
-/** The connection `apiRef` belongs to (set by `switchBook`, with it). */
-let apiRefFor: string | null = null;
 let deviceId = '';
+/** The place a `stop` is saving and the book it stops (`selectBookKey`), until that save
+ * ends (`saveForStop`). */
+let pendingStopSave: { key: string | null; saved: Promise<unknown> } | null = null;
+/** Counts the starts (`switchBook`: a play or an adoption, one that then fails included), so a
+ * `stop` still saving tells a start made meanwhile, the same book's again too. */
+let playGeneration = 0;
 /** Where the playing listening began (`POST /history` when it ends); `sync`: begun on a
  * server taking listening events, whose spans carry it instead. */
 let historyStart: { position: number; at: number; sync: boolean } | null = null;
@@ -851,16 +857,6 @@ async function persist(opts?: {
   // Nor a place another tab has played past (`otherTabPlayed`), nor one on its way to that
   // tab's (`catchingUp`): dated now, it would be the newest in the mirror the tabs share.
   if (behindOtherTab(nowPlaying) && !opts?.forceFinished) return;
-  // A downloaded book started while its connection wasn't there (a session that could not
-  // be read yet: a CarPlay launch with the phone locked) keeps this device's record of its
-  // place meanwhile, and sends from when it is back (below).
-  // A switch takes the next book's client before that book is `nowPlaying` (`switchBook`;
-  // its resume lookup and load are awaits away): a save meanwhile (a lock-screen pause, the
-  // sleep timer) is still the previous book's, and goes to its own server.
-  const api =
-    apiRefFor !== null && apiRefFor !== nowPlaying.connectionId
-      ? resolveClient(nowPlaying.connectionId)
-      : (apiRef ??= resolveClient(nowPlaying.connectionId));
   const forceFinished = opts?.forceFinished ?? false;
   // Held while a reconcile check is out (a finish is the listener's own and still saves).
   // Past its deadline the hold is over even when its timer has not fired (Android pauses
@@ -927,6 +923,14 @@ async function persist(opts?: {
     if (span && sameBook(span, nowPlaying) && !forceFinished && end) span.to = end;
     return position;
   }
+  // The book named's own server (during a switch, `nowPlaying` is still the previous book
+  // until the next one loads: a save meanwhile goes to the previous book's server). Read
+  // again when the save is sent (`liveClient`): a re-pair since this capture changed the
+  // token, and the old one is refused (401) and would lose the save.
+  // A downloaded book started while its connection wasn't there (a session that could not
+  // be read yet: a CarPlay launch with the phone locked) keeps this device's record of its
+  // place meanwhile, and sends from when it is back.
+  const api = liveClient(nowPlaying.connectionId);
   // The legacy PUT path's own record alone (`placeLoop`): the mirror, and no request. A
   // server known to be away is sent nothing either way (`saveProgress` writes the mirror
   // and queues the save), so that capture goes whole and the queue holds the same place.
@@ -941,6 +945,24 @@ async function persist(opts?: {
   // straight on from here.
   if (guarded && outcome === 'saved' && placeGuard === guard) placeGuard = null;
   return outcome === 'saved' || outcome === 'queued' ? position : undefined;
+}
+
+/** The stopping book `key`'s place, saved once for the stops of it that overlap: a second
+ * stop while the first still saves waits for that save rather than sending its own (a tab
+ * told a connection is going stops, and is told it is gone while that stop still saves).
+ * Only the save is shared: each stop then goes on to its own teardown (the lists read
+ * again, the engine reset), which is safe twice. Not across a start (`switchBook`): the same
+ * book started again while the first stop still saves is heard further on, and its stop
+ * saves that place. */
+function saveForStop(key: string | null): Promise<unknown> {
+  if (pendingStopSave?.key === key) return pendingStopSave.saved;
+  const entry = { key, saved: persist() };
+  pendingStopSave = entry;
+  const done = () => {
+    if (pendingStopSave === entry) pendingStopSave = null;
+  };
+  entry.saved.then(done, done);
+  return entry.saved;
 }
 
 /** Save the loaded book's place now: the listener answered Stay to a place its server held
@@ -1852,6 +1874,8 @@ export function cutListeningSpanNow(connectionId?: string): void {
   if (!span || (connectionId !== undefined && span.connectionId !== connectionId)) return;
   cutListeningSpan();
 }
+// A sign-out's or a removal's last send carries the playing span (`unsentListens`).
+provideSpanCut(cutListeningSpanNow);
 
 /** Web `pagehide`: close the span and send what waits in a keepalive request. */
 function closeSpanOnPageHide() {
@@ -3168,11 +3192,9 @@ function endHistory({ leaving = false }: { leaving?: boolean } = {}) {
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (!np) return;
-  // A switch takes the next book's client before that book is `nowPlaying` (`switchBook`), as
-  // `persist` reads it: a span of the book still named goes to its own server, also when the
-  // next book has no client (a download whose connection is gone).
-  const api =
-    apiRefFor !== null && apiRefFor !== np.connectionId ? resolveClient(np.connectionId) : apiRef;
+  // The book named's own server, as it is signed in now (a re-pair changes the token), as
+  // `persist` reads it: during a switch, the book still named, the previous one.
+  const api = resolveClient(np.connectionId);
   if (!api) return;
   // Listening spans are best-effort; don't fire at a server we know is unreachable
   // (reachability is per-connection, so key it on the playing book's own server).
@@ -3252,11 +3274,12 @@ if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !=
  * after an early return, would map the OLD engine position through the NEW book's queue and
  * persist it under the new book's path, corrupting its progress; the loop restarts on the
  * engine's next `playing` transition for the new book), counted as the listener's own move,
- * and the new book's server (null for a downloaded book whose connection is gone: history
- * is then a no-op, and persist saves nothing until the connection is back) and retry
- * request taken.
+ * and the retry request taken. Nothing holds the new book's client: each save and span reads
+ * its book's connection as it is then (`persist`, `endHistory`), so a re-pair's new token is
+ * the one sent, and a downloaded book whose connection is gone saves only this device's
+ * record until it is back.
  */
-function switchBook(api: ApiClient | null, request: PlayRequest) {
+function switchBook(request: PlayRequest) {
   endHistory();
   closeListeningSpan();
   // The next book's first span begins as its start says (`playBook`), an adopted one's as a
@@ -3273,8 +3296,10 @@ function switchBook(api: ApiClient | null, request: PlayRequest) {
   catchingUp = null;
   // The play another tab made before this book was here is noted again as it goes on.
   notedPlay = null;
-  apiRef = api;
-  apiRefFor = request.connectionId;
+  // A stop still saving (`saveForStop`) saved the book as it was loaded before this start:
+  // a stop of this one, the same book started again included, saves its own place.
+  pendingStopSave = null;
+  playGeneration++;
   lastPlayRequest = request; // so retry() can re-run resume
   resumeLookupFailed = false;
 }
@@ -3729,6 +3754,10 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // Resolve the client from the connection id (single source of truth), mirroring the
       // downloads store - so a caller can't pass an `api` that disagrees with `connectionId`.
       const api = resolveClient(connectionId);
+      // The client as the connection is now, read again after each await below: a re-pair
+      // meanwhile changed the token, and the streams, the cover and the place lookup would
+      // otherwise carry the old one. A connection gone since keeps the one it had.
+      const clientNow = () => resolveClient(connectionId) ?? api;
 
       // Play from local files when the book is downloaded (works fully offline).
       const ref = { connectionId, libraryId, path: book.rel_path };
@@ -3748,7 +3777,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // is not that book's).
       void persist();
       const request = { connectionId, libraryId, book, chapterData };
-      switchBook(api, request);
+      switchBook(request);
       // Called off (a car play its native side gave up on) with another start made since
       // (the play that took its place, the listener's own tap), or for a play native made in
       // its place (`superseded`: the car's tap on the loaded book, fe#350): that one owns the
@@ -3772,7 +3801,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       const transcode =
         !local &&
         mayNeedWebTranscode(book, chapterData) &&
-        (await resolveWebTranscode(connectionId, api, book, chapterData));
+        (await resolveWebTranscode(connectionId, clientNow(), book, chapterData));
       // A downloaded book given no chapters (its chapters read failed) plays its download's
       // files and chapters, the order its manifest holds, so the engine never holds an order
       // the manifest does not (`adoptStartedChapters`). So does one that ends before its book
@@ -3789,7 +3818,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       const own = dl && (!chapterData || offlineShort) ? dl.manifest : undefined;
       const queueChapters = own ? (own.chapters ?? undefined) : chapterData;
       const queue = buildBookQueue(
-        api,
+        clientNow(),
         libraryId,
         own ? { ...book, files: own.book.files, chapters: own.book.chapters } : book,
         queueChapters,
@@ -3804,7 +3833,14 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       if (endsBefore && trackIndexById(queue, trackIdOf(libraryId, endsBefore)) < 0) {
         partialQueues.set(queue, serverLengthOf(dl?.manifest, chapterData));
       }
-      const nowPlaying = nowPlayingOf(ref, book, queue, api, local);
+      // The book as it loads, built once the awaits below are over: its streams go with the
+      // token the connection holds then (`restreamTracks`), in the queue the place was found
+      // in (the same object: `partialQueues` keys on it).
+      const loadedBook = (): NowPlaying => {
+        const now = clientNow();
+        restreamQueue(queue, now, libraryId, book.rel_path);
+        return nowPlayingOf(ref, book, queue, now, local);
+      };
       const svc = await ensureService();
 
       let startAt = startBookPosition ?? 0;
@@ -3832,7 +3868,8 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         // start for the whole request timeout, and the car gave up on it). Started from this
         // device's records, as offline: its saves go guarded (`unchecked`, fe#198). A server
         // that answers later is followed once the book is loaded (`followLatePlace`).
-        const placeApi = dl && (!isDeviceOnline() || !isReachable(connectionId)) ? null : api;
+        const placeApi =
+          dl && (!isDeviceOnline() || !isReachable(connectionId)) ? null : clientNow();
         const r = await loadInitialProgress(
           placeApi,
           connectionId,
@@ -3887,7 +3924,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
           if (!current()) return;
           set({
             rate: speed,
-            nowPlaying,
+            nowPlaying: loadedBook(),
             snapshot: { ...INITIAL_SNAPSHOT, state: 'error', rate: speed },
           });
           restoreOutputGain(svc);
@@ -3935,6 +3972,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       const key = contentKey(connectionId, libraryId, book.rel_path);
       const prev = get();
       const loadingBook = selectBookKey(prev) === key ? prev.loadingBook : key;
+      const nowPlaying = loadedBook();
       set({ rate: speed, nowPlaying, loadingBook });
       // An explicit place is the listener's own: unguarded, like a resume checked against
       // the server.
@@ -4286,19 +4324,28 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
   },
 
   stop: async () => {
+    const stopped = get().nowPlaying;
     const stopping = selectBookKey(get());
+    const generation = playGeneration;
+    // A start made since (`switchBook`) that is still on its way or put its book in the
+    // store (loaded, or failed with the book shown). One that returned early (its person
+    // gone, called off) changed nothing: the stopped book is still loaded, and is unloaded.
+    const started = () =>
+      playGeneration !== generation && (startsInFlight > 0 || get().nowPlaying !== stopped);
     clearPlaybackIntent();
     cancelOtherBookDeadline();
     stopSaveLoop();
     closeListeningSpan();
-    await persist();
-    // Another book was started while the place saved (a switch of person whose route
-    // starts the new person's book at once): it owns the engine now, and a reset would cut
-    // it off and leave the player with nothing.
-    if (selectBookKey(get()) !== stopping) return;
+    await saveForStop(stopping);
+    // A book was started while the place saved (a switch of person whose route starts the
+    // new person's book at once, the same book played again): it owns the engine now, and a
+    // reset would cut it off and leave the player with nothing. By the start, not the book
+    // shown: the same book started again is another play, and one that failed still holds
+    // what the listener asked for after the stop.
+    if (started()) return;
     invalidateProgressLists();
     if (service) await service.reset();
-    if (selectBookKey(get()) !== stopping) return;
+    if (started()) return;
     set({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate: get().rate } });
   },
 
@@ -4500,8 +4547,8 @@ export async function teardownBeforeTokenRevoke(connectionId: string): Promise<v
 export async function flushConnectionSaves(connectionId: string): Promise<void> {
   await Promise.all([
     flushConnection(connectionId).catch(() => undefined),
-    // Sync v2's listening outbox (the stop before this closed its span).
-    flushOutbox(connectionId),
+    // Sync v2's listening outbox (the stop before this closed its span), as a last send.
+    flushOutbox(connectionId, { lastChance: true }),
     // The ebook reader's queued places too (Bridge Phase 3b).
     flushReadingConnection(connectionId).catch(() => undefined),
     // And the bookmarks waiting on the device for the server (fe#356).
@@ -4565,8 +4612,9 @@ function localSwapOf(
   }
   const dl = downloadedEntryOf(nowPlaying) ?? landed; // with the chapters it took, if any
   const local = localFromManifest(dl.manifest);
+  // The connection's client as it is now: a stream track left in the queue carries its token.
   const queue = buildBookQueue(
-    apiRef,
+    resolveClient(nowPlaying.connectionId),
     nowPlaying.libraryId,
     dl.manifest.book,
     dl.manifest.chapters ?? undefined,
@@ -4655,7 +4703,7 @@ function commitLocalSwap(nowPlaying: NowPlaying, swap: LocalSwap): NowPlaying | 
 async function switchCurrentBookToLocal() {
   const state = usePlayer.getState();
   const { nowPlaying, snapshot } = state;
-  if (!nowPlaying || !apiRef) return;
+  if (!nowPlaying || !resolveClient(nowPlaying.connectionId)) return;
   // A load holding the store (a start, an adoption's reload: `loadingBook`) leaves the
   // snapshot the PREVIOUS place until it lands, and so does a start of this same book at
   // another place, which holds nothing (`startsInFlight`): the swap runs once they are
@@ -4842,7 +4890,6 @@ async function adoptNow(
   // account (`mayActFor`).
   if (!mayActFor(loaded.connectionId)) return false;
   const before = usePlayer.getState().nowPlaying;
-  const api = resolveClient(loaded.connectionId);
   let source: Awaited<ReturnType<typeof bookSourceOf>>;
   let id: string;
   let svc: PlaybackService;
@@ -4870,7 +4917,10 @@ async function adoptNow(
   const inEngineOrder = (chapters: ChaptersResponse | undefined) =>
     engineIds !== null && sameIds(specIds(bookFileSpecs(book, chapters), libraryId), engineIds);
   let otherOrder = engineIds !== null && !inEngineOrder(chapterData);
-  const served = otherOrder && local ? await serverChaptersOf(ref, api) : null;
+  // The connection's client read at each use, never one taken before an await: a re-pair
+  // meanwhile changed the token.
+  const served =
+    otherOrder && local ? await serverChaptersOf(ref, resolveClient(connectionId)) : null;
   if (reread) {
     // The engine played on while the book was read: where it is, whether it plays and at what
     // speed now (a pause, a move or a speed change made meanwhile stands), and nothing to
@@ -4907,6 +4957,8 @@ async function adoptNow(
     const own = idsIn(chapterData);
     if (engineIds.some((id) => servedIds.has(id) && !own.has(id))) chapterData = served;
   }
+  // After the last await: the token the connection holds now.
+  const api = resolveClient(connectionId);
   const queue = buildBookQueue(
     api,
     libraryId,
@@ -4965,7 +5017,7 @@ async function adoptNow(
     rate,
   };
 
-  switchBook(api, { connectionId, libraryId, book, chapterData });
+  switchBook({ connectionId, libraryId, book, chapterData });
   clearPlaybackIntent();
   deviceId = id;
   resumeFloor = toBookPosition(queue.offsets, trackIndex, position);
@@ -5273,6 +5325,29 @@ usePlayer.subscribe((state, prev) => {
   if (!state.nowPlaying || contentKeyOf(state.nowPlaying) !== due) return;
   if (state.snapshot.state === 'playing') void pickedUpAgainListener?.();
   else pausedAt = 0;
+});
+
+/**
+ * The loaded book's streams on its connection as it is now (a re-pair's token), in the
+ * store's queue, which a Retry, a reload and the download hot-swap load from, and in the
+ * engine (`PlaybackService.restream`). Run on each change of the connection list.
+ */
+function restreamLoaded(): void {
+  const np = usePlayer.getState().nowPlaying;
+  if (!np) return;
+  const api = resolveClient(np.connectionId);
+  const tracks = restreamQueue(np.queue, api, np.libraryId, np.path);
+  if (tracks) service?.restream?.(tracks);
+  // The book's server cover too (`nowPlayingOf`; the widget and the end of the book read
+  // it), in place as the queue (a start's and an adoption's checks compare `nowPlaying` by
+  // identity): its old token may be revoked.
+  const cover = api?.coverUrl(np.libraryId, np.path);
+  if (cover && np.cover !== cover && np.cover.split('?')[0] === cover.split('?')[0]) {
+    np.cover = cover;
+  }
+}
+useSession.subscribe((state, prev) => {
+  if (state.connections !== prev.connections) restreamLoaded();
 });
 
 /** Whether `np`'s queue streams a file its download holds (a download that landed and was

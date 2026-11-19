@@ -78,6 +78,20 @@ describe('connection-clients', () => {
     expect(markNeedsReconnect).toHaveBeenCalledWith('c1', 'auth');
   });
 
+  it('a 401 through a client built before a re-pair does NOT flag the re-paired connection', async () => {
+    // A request sent with the old token that comes back after the re-pair: the new token is
+    // not dead, and the connection must not ask to be reconnected again.
+    setStore([{ id: 'c1', serverUrl: 'https://h', token: 'old' }]);
+    installFetch(() => ({ status: 401, body: { error: 'invalid or expired token' } }));
+    const stale = resolveClient('c1')!;
+    setStore([{ id: 'c1', serverUrl: 'https://h', token: 'new' }]);
+    await expect(stale.me()).rejects.toMatchObject({ status: 401 });
+    expect(markNeedsReconnect).not.toHaveBeenCalled();
+    // The connection's own client, on its token now, still flags it.
+    await expect(resolveClient('c1')!.me()).rejects.toMatchObject({ status: 401 });
+    expect(markNeedsReconnect).toHaveBeenCalledWith('c1', 'auth');
+  });
+
   it('resolves an old id the identity migration moved (an offline save, a car bookmark) to its connection', async () => {
     setConnectionAliases({ srv: 'srv.3' });
     try {
@@ -95,6 +109,21 @@ describe('connection-clients', () => {
     }
   });
 
+  it('a 401 through a client built before the identity migration flags the connection under its new id', async () => {
+    setStore([{ id: 'srv', serverUrl: 'https://h', token: 'dead' }]);
+    installFetch(() => ({ status: 401, body: { error: 'invalid or expired token' } }));
+    const client = resolveClient('srv')!;
+    // The migration re-keys the connection (the same sign-in, the same token) meanwhile.
+    setConnectionAliases({ srv: 'srv.3' });
+    try {
+      setStore([{ id: 'srv.3', serverUrl: 'https://h', token: 'dead' }]);
+      await expect(client.me()).rejects.toMatchObject({ status: 401 });
+      expect(markNeedsReconnect).toHaveBeenCalledWith('srv.3', 'auth');
+    } finally {
+      setConnectionAliases({});
+    }
+  });
+
   // FU-SLOWOK: the save loop, the car and the downloads ask through this client, so every
   // answer it gets counts for its connection's reachability, as a provider-built one's does.
   it('counts each answer the resolved client gets against its connection, a 5xx included', async () => {
@@ -104,6 +133,21 @@ describe('connection-clients', () => {
     // With the address that answered, so one the connection has left counts for nothing.
     expect(mockNoteAnswer).toHaveBeenCalledWith('c1', 'https://h');
     expect(mockNoteAnswer).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts an answer to a client built before the identity migration under the new id', async () => {
+    setStore([{ id: 'srv', serverUrl: 'https://h', token: 'tok' }]);
+    installFetch(() => ({ status: 503, body: { error: 'busy' } }));
+    const client = resolveClient('srv')!;
+    setConnectionAliases({ srv: 'srv.3' });
+    try {
+      setStore([{ id: 'srv.3', serverUrl: 'https://h', token: 'tok' }]);
+      await expect(client.me()).rejects.toMatchObject({ status: 503 });
+      expect(mockNoteAnswer).toHaveBeenCalledWith('srv.3', 'https://h');
+      expect(mockNoteAnswer).toHaveBeenCalledTimes(1);
+    } finally {
+      setConnectionAliases({});
+    }
   });
 
   it('a 403 through the resolved client does NOT flag reconnect (valid token, forbidden)', async () => {

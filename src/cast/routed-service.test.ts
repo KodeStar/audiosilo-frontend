@@ -348,6 +348,43 @@ describe('RoutedPlaybackService', () => {
     expect(t.local.calls.at(-1)).toBe('local.play');
   });
 
+  // A re-pair while casting: the receiver streams on its cast token, and the book handed
+  // back to the phone at the session's end streams with the connection's new one.
+  it('hands back a book restreamed while casting at its new addresses, and tells the phone engine', async () => {
+    const restream = jest.fn();
+    const t = setup({ restream });
+    await playingLocally(t);
+    const cast = fakeCast();
+    await t.router.beginCast(cast as unknown as CastPlaybackService);
+    const renewed = TRACKS.map((tr) => ({ ...tr, url: `${tr.url}?token=new` }));
+    t.router.restream(renewed);
+    expect(restream).toHaveBeenCalledWith(renewed);
+    await t.router.endCast();
+    expect(t.local.load).toHaveBeenLastCalledWith(
+      renewed,
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it('keeps the queue it hands over when a restream is of other files', async () => {
+    const t = setup();
+    await playingLocally(t);
+    const cast = fakeCast();
+    await t.router.beginCast(cast as unknown as CastPlaybackService);
+    t.router.restream([{ ...TRACKS[0], id: '2:other' }]);
+    await t.router.endCast();
+    expect(t.local.load).toHaveBeenLastCalledWith(
+      TRACKS,
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
   it('tells the store of the load it makes on the phone as the session ends', async () => {
     const t = setup();
     const told: unknown[][] = [];

@@ -77,6 +77,8 @@ jest.mock('@/api/connection-clients', () => ({
   resolveClient: () => mockClient,
   sessionReady: () => true,
 }));
+// The save's client, read at each call (its own tests: `live-client.test.ts`): the same one.
+jest.mock('@/api/live-client', () => ({ liveClient: () => mockClient }));
 
 /* eslint-disable import/first */
 import { initializePlayback, usePlayer } from '@/playback/store';

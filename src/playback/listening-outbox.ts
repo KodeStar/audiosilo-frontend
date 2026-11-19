@@ -2,6 +2,8 @@ import { Platform } from 'react-native';
 
 import { ApiError, type ApiClient } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
+import { liveClient } from '@/api/live-client';
+import { noteRateLimit, onRateLimitOver, rateLimited } from '@/api/rate-limit';
 import { cachedCapability, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
@@ -42,6 +44,7 @@ import {
   saveProgress,
 } from './progress-sync';
 import { wallClockSeconds } from './rate';
+import { cutPlayingSpan } from './span-cut';
 import { provideStoredSkews } from './stored-skews';
 
 export type { OpenSpan, SpanEnd } from './open-span-doc';
@@ -1182,11 +1185,31 @@ export async function withdrawFinish(
   };
 }
 
+/** Connections making their last send (`flushOutbox`'s `lastChance`), by how many such
+ * calls are still out: a flush already running for another caller goes round again under
+ * it, and one call ending never takes the bypass from another still waiting (a removal
+ * asked twice, a flush begun just as the first ended). */
+const lastChance = new Map<string, number>();
+
 /**
  * Send a connection's outbox. One flush at a time per connection: a call while one runs
  * makes it go round once more when it ends (a sync that left more goes on by itself).
+ * `lastChance`: the connection's sign-out or removal is making its last send, which tries
+ * the events whatever wait its server asked (a 429), as the legacy queue's does
+ * (`onlyConnection`): the purge after it drops what is left.
  */
-export function flushOutbox(connectionId: string): Promise<void> {
+export function flushOutbox(
+  connectionId: string,
+  opts: { lastChance?: boolean } = {},
+): Promise<void> {
+  if (opts.lastChance) {
+    lastChance.set(connectionId, (lastChance.get(connectionId) ?? 0) + 1);
+    return flushOutbox(connectionId).finally(() => {
+      const left = (lastChance.get(connectionId) ?? 1) - 1;
+      if (left > 0) lastChance.set(connectionId, left);
+      else lastChance.delete(connectionId);
+    });
+  }
   const running = inFlight.get(connectionId);
   if (running) {
     flushAgain.add(connectionId);
@@ -1266,10 +1289,14 @@ export async function flushAllOutboxes(): Promise<void> {
  * (sign-out and removing a server confirm when any is left): its events, a waiting finish
  * or unfinish too, since removal drops them all. A span another tab left (closed before its
  * close landed) goes into the outbox first, so it is sent or counted, not dropped unseen.
+ * So does the span playing through it (`cutPlayingSpan`, a span opening where it ended).
  */
 export async function unsentListens(connectionId: string): Promise<number> {
   await sweepLeftBehind().catch(() => undefined);
-  if (isReachable(connectionId)) await flushOutbox(connectionId);
+  cutPlayingSpan(connectionId);
+  // Behind its close's turn (`closeSpan`), as a sign-out's stop waits it out.
+  await appendInTurn(connectionId, []).catch(() => undefined);
+  if (isReachable(connectionId)) await flushOutbox(connectionId, { lastChance: true });
   return (await pendingSaves(connectionId)).events;
 }
 
@@ -1289,7 +1316,12 @@ const MAX_ROUNDS = 50;
 async function flushOnce(connectionId: string): Promise<void> {
   if (!sessionReady()) return;
   await recoverOpenSpan();
-  const client = resolveClient(connectionId);
+  // The server asked to wait (a 429 until its `Retry-After`): the events stay, and go once
+  // the wait is over (`onRateLimitOver`, below). Not a sign-out's last chance.
+  if (rateLimited(connectionId) && !lastChance.has(connectionId)) return;
+  // Read again at each round's send (`liveClient`): a re-pair during the flush changes the
+  // token, and a round sent with the old one is refused (401).
+  const client = liveClient(connectionId);
   // A connection gone: its events are purged with it (`onConnectionRemoved`).
   if (!client) return;
   await giveUpOld(connectionId);
@@ -1379,10 +1411,16 @@ async function sendChunk(
       return 'more';
     }
     if (e.status === 400) return sendOneByOne(connectionId, client, chunk);
-    // 401 (the client has flagged the sign-in), 403, 5xx: keep them for a later try.
+    // A 429 (the rate limit) is the connection's: its flushes, and the legacy queue's
+    // replays and live saves, wait out its `Retry-After` (`rateLimited`). 401 (the client
+    // has flagged the sign-in), 403, 5xx: keep them for a later try.
+    noteRateLimit(connectionId, e);
     return 'stop';
   }
 }
+
+// A wait the server asked for (a 429) is over: the events it held go now.
+onRateLimitOver((connectionId) => void flushOutbox(connectionId));
 
 /** A 400 on a batch: each event alone, once; one still refused alone can never be sent,
  * but a `stay` (a server rolled back under a stale cached `listening_stay`, whose decoder
@@ -1435,6 +1473,7 @@ async function sendAlone(
   } catch (e) {
     if (e instanceof ApiError && e.status === 400) return 'refused';
     if (!(e instanceof ApiError)) noteFailure(connectionId, e);
+    noteRateLimit(connectionId, e);
     return 'stop';
   }
 }
@@ -1829,5 +1868,6 @@ export function resetOutboxForTests(): void {
   maybeReached.clear();
   inFlight.clear();
   flushAgain.clear();
+  lastChance.clear();
   answerListeners.clear();
 }

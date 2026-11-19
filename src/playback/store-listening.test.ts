@@ -217,6 +217,7 @@ import {
   undoFinish,
 } from './finish-route';
 import { closeSpan } from './listening-outbox';
+import { cutPlayingSpan } from './span-cut';
 import {
   cutListeningSpanNow,
   flushHistoryOnHide,
@@ -571,10 +572,37 @@ describe('with listening_sync', () => {
       pass();
       await leaving;
       expect(order.slice(order.indexOf('turn 0'))).toEqual(['turn 0', 'flush']);
+      // Its last send, whatever wait a 429 asked: the purge after it drops what is left.
+      expect(mockFlushOutbox).toHaveBeenLastCalledWith('c1', { lastChance: true });
     } finally {
       pass();
       mockFlushOutbox.mockImplementation(async () => {});
     }
+  });
+
+  // A sign-out's or a removal's last send (`unsentListens`) cuts the span playing through
+  // its connection, so that listening is sent or counted before the confirm.
+  it("the outbox's last send cuts the span playing through its connection only", async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(4_000);
+    pushSnapshot(snap('playing', 0, 9));
+    cutPlayingSpan('c2');
+    await settle();
+    expect(mockClosed).toHaveLength(0);
+    cutPlayingSpan('c1');
+    // Closed at the call, before any await: the outbox's last send waits its turn behind it.
+    expect(mockClosed.map((s) => [s.from.pos, s.to.pos])).toEqual([[5, 9]]);
+    await settle();
+    // Still playing: the next span opens where the cut ended.
+    jest.advanceTimersByTime(3_000);
+    pushSnapshot(snap('paused', 0, 12));
+    await settle();
+    expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([
+      ['resume', 5, 9],
+      ['continue', 9, 12],
+    ]);
   });
 
   it('a play to a pause is one span with both file places, and no PUT and no POST /history', async () => {

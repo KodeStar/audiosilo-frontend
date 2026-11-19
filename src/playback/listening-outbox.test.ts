@@ -45,6 +45,7 @@ jest.mock('@/api/server-snapshots', () => ({
 /* eslint-disable import/first */
 import { resolveClient } from '@/api/connection-clients';
 import { queryClient } from '@/api/provider';
+import { forgetRateLimit, noteRateLimit, rateLimited } from '@/api/rate-limit';
 import * as reachability from '@/api/reachability';
 import { keepServerAnswer, keepServerFlag } from '@/api/server-snapshots';
 import { setDownloadEndCheck, setDownloadLengthCheck } from '@/downloads/kept-offline';
@@ -101,6 +102,7 @@ import {
   resumeLookupOf,
   writeMirror,
 } from './progress-sync';
+import { provideSpanCut } from './span-cut';
 /* eslint-enable import/first */
 
 const OUTBOX = 'audiosilo.listeningOutbox';
@@ -671,6 +673,75 @@ describe('flushOutbox', () => {
     expect(sent(c).map((b) => b.events.length)).toEqual([200, 200, 50]);
     expect(sent(c)[1].events[0].id).toBe('e200');
     expect(await outboxEvents('c1')).toEqual([]);
+  });
+
+  it("sends each round with the connection's client then (a re-pair mid-flush: its new token)", async () => {
+    await appendEvents(
+      'c1',
+      Array.from({ length: 450 }, (_, i) => listen(`e${i}`)),
+    );
+    let repaired: ReturnType<typeof client> | null = null;
+    const before = client(async (body) => {
+      // The re-pair lands while the first round is out: the connection's client is another.
+      repaired ??= client(async (later) => answer(later));
+      return answer(body);
+    });
+    await flushOutbox('c1');
+    expect(sent(before).map((b) => b.events.length)).toEqual([200]);
+    expect(sent(repaired!).map((b) => b.events.length)).toEqual([200, 50]);
+    expect(await outboxEvents('c1')).toEqual([]);
+  });
+
+  // The server's rate limit is the connection's (fe#173): its events wait out the 429's
+  // `Retry-After`, rather than going again with every later save, then go by themselves.
+  it("holds the connection's events through a 429's Retry-After, then sends them", async () => {
+    await appendEvents('c1', [listen('a')]);
+    let limited = true;
+    const c = client(async (body) => {
+      if (limited) throw new ApiError(429, 'slow down', undefined, 60);
+      return answer(body);
+    });
+    jest.useFakeTimers({ now: new Date('2026-10-25T08:00:00.000Z') });
+    try {
+      await flushOutbox('c1');
+      expect(c.syncListening).toHaveBeenCalledTimes(1);
+      expect(rateLimited('c1')).toBe(true);
+      limited = false;
+      // A save during the wait sends nothing.
+      await flushOutbox('c1');
+      expect(c.syncListening).toHaveBeenCalledTimes(1);
+      expect(await outboxEvents('c1')).toHaveLength(1);
+      // The wait is over: the events held go without another save to send them.
+      await jest.advanceTimersByTimeAsync(60_000);
+      for (let i = 0; i < 50 && c.syncListening.mock.calls.length < 2; i++) {
+        await jest.advanceTimersByTimeAsync(10);
+      }
+      expect(c.syncListening).toHaveBeenCalledTimes(2);
+      await flushOutbox('c1');
+      expect(await outboxEvents('c1')).toEqual([]);
+    } finally {
+      jest.useRealTimers();
+      forgetRateLimit('c1');
+    }
+  });
+
+  it('holds the connection after a 429 on an event sent alone', async () => {
+    await appendEvents('c1', [listen('a'), listen('b')]);
+    let calls = 0;
+    client(async () => {
+      calls++;
+      throw calls === 1
+        ? new ApiError(400, 'invalid request')
+        : new ApiError(429, 'slow down', undefined, 60);
+    });
+    try {
+      await flushOutbox('c1');
+      expect(calls).toBe(2);
+      expect(rateLimited('c1')).toBe(true);
+      expect(await outboxEvents('c1')).toHaveLength(2);
+    } finally {
+      forgetRateLimit('c1');
+    }
   });
 
   it('halves the chunk on a 413 or too_many_events', async () => {
@@ -1397,6 +1468,106 @@ describe('flushOutbox', () => {
     expect(c.syncListening).not.toHaveBeenCalled();
     (reachability.isReachable as jest.Mock).mockReturnValue(true);
     expect(await unsentListens('c1')).toBe(0);
+  });
+
+  // A sign-out's last chance: what a 429's wait held is tried once more, as the legacy
+  // queue's last chance does, before the events are purged with the connection.
+  it('unsentListens tries the events a 429 holds', async () => {
+    await appendEvents('c1', [listen('a')]);
+    const c = client(async (body) => answer(body));
+    noteRateLimit('c1', new ApiError(429, 'slow down', undefined, 60));
+    try {
+      await flushOutbox('c1');
+      expect(c.syncListening).not.toHaveBeenCalled();
+      expect(await unsentListens('c1')).toBe(0);
+      expect(c.syncListening).toHaveBeenCalledTimes(1);
+    } finally {
+      forgetRateLimit('c1');
+    }
+  });
+
+  // A sign-out during a 429's wait still sends the playing span, and its stop's close.
+  it('a sign-out during a 429 sends the playing span once, then the close of its stop', async () => {
+    await appendEvents('c1', [listen('held')]);
+    const c = client(async (body) => answer(body));
+    noteRateLimit('c1', new ApiError(429, 'slow down', undefined, 60));
+    const cuts: string[] = [];
+    provideSpanCut((cid) => {
+      cuts.push(cid);
+      void closeSpan(span({ from: { pos: 100 }, to: { pos: 200 } }));
+    });
+    try {
+      expect(await unsentListens('c1')).toBe(0);
+      expect(cuts).toEqual(['c1']);
+      expect(sent(c).map((b) => b.events.map((e) => e.kind === 'listen' && e.from_pos))).toEqual([
+        [14400, 100],
+      ]);
+      // The sign-out's stop closes what played since the cut: an ordinary flush still waits
+      // out the 429, the teardown's last send (`flushConnectionSaves`) does not.
+      await closeSpan(span({ from: { pos: 200 }, to: { pos: 230 } }));
+      await flushOutbox('c1');
+      expect(c.syncListening).toHaveBeenCalledTimes(1);
+      await flushOutbox('c1', { lastChance: true });
+      expect(sent(c).map((b) => b.events.map((e) => e.kind === 'listen' && e.from_pos))).toEqual([
+        [14400, 100],
+        [200],
+      ]);
+      expect(await outboxEvents('c1')).toEqual([]);
+      expect(rateLimited('c1')).toBe(true);
+    } finally {
+      provideSpanCut(null);
+      forgetRateLimit('c1');
+    }
+  });
+
+  // Two last sends overlapping on one connection: the first ending never takes the wait's
+  // bypass from the second, begun as the first's flush ended.
+  it("a last send begun as another ends still goes during a 429's wait", async () => {
+    await appendEvents('c1', [listen('held')]);
+    const c = client(async () => {
+      throw new ApiError(429, 'slow down', undefined, 60);
+    });
+    noteRateLimit('c1', new ApiError(429, 'slow down', undefined, 60));
+    try {
+      let second: Promise<void> | undefined;
+      let before = 0;
+      const running = flushOutbox('c1');
+      // Runs as the flush ends, before the first last send's own end.
+      void running.then(() => {
+        before = c.syncListening.mock.calls.length;
+        second = flushOutbox('c1', { lastChance: true });
+      });
+      await flushOutbox('c1', { lastChance: true });
+      await second;
+      expect(before).toBeGreaterThan(0);
+      // The second's own flush sent too, not held by the 429 its first answered.
+      expect(c.syncListening).toHaveBeenCalledTimes(before + 1);
+    } finally {
+      forgetRateLimit('c1');
+    }
+  });
+
+  // What the last send could not deliver is in the count the confirm names, the playing
+  // span's listening too, not purged unseen.
+  it('unsentListens counts the playing span when the last send fails', async () => {
+    await appendEvents('c1', [listen('held')]);
+    const c = client(async () => {
+      throw new ApiError(429, 'slow down', undefined, 60);
+    });
+    noteRateLimit('c1', new ApiError(429, 'slow down', undefined, 60));
+    provideSpanCut(() => void closeSpan(span({ from: { pos: 100 }, to: { pos: 200 } })));
+    try {
+      expect(await unsentListens('c1')).toBe(2);
+      expect(c.syncListening).toHaveBeenCalledTimes(1);
+      expect(sent(c)[0].events).toHaveLength(2);
+      // Unreachable, nothing is tried, and a span cut then is counted too.
+      (reachability.isReachable as jest.Mock).mockReturnValue(false);
+      expect(await unsentListens('c1')).toBe(3);
+      expect(c.syncListening).toHaveBeenCalledTimes(1);
+    } finally {
+      provideSpanCut(null);
+      forgetRateLimit('c1');
+    }
   });
 });
 

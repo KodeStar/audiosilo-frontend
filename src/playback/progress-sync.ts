@@ -1,5 +1,6 @@
 import { ApiError, type ApiClient, isRefusedForGood, TimeoutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
+import { liveClient } from '@/api/live-client';
 import {
   forgetRateLimit,
   noteRateLimit,
@@ -1284,7 +1285,9 @@ export type SaveOutcome = 'saved' | 'queued' | 'held' | 'dropped';
 
 /** Save progress now; if the network fails, queue it for later replay. version
  * is left 0 so the server reconciles by (updated_at, version). A guarded save is checked
- * first (`guardPasses`). */
+ * first (`guardPasses`). Sent through the save's connection as it is at each request
+ * (`liveClient`; `api` only when it is not signed in now): a re-pair while the mirror was
+ * written or the guard read changed the token, and the old one is refused (401). */
 export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<SaveOutcome> {
   // Reachability is per-connection: this save's success/failure notes ONLY its own
   // server. A book keeps playing on a connection the user has navigated away from, and
@@ -1292,18 +1295,21 @@ export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<
   // Always record the latest position in the durable mirror, independent of the network
   // outcome - this is what a future resume falls back to when the server can't be reached.
   await writeMirror(save);
-  // This server known to be unreachable: queue locally without hitting the network, so
-  // the periodic save loop doesn't fire a doomed request every tick while it's offline.
-  if (!isReachable(save.connectionId)) {
+  // This server known to be unreachable, or one that asked to wait (a 429 until its
+  // `Retry-After`, `rateLimited`): queue locally without hitting the network, so the
+  // periodic save loop doesn't fire a doomed request every tick. The queue's replay sends
+  // it once the server is back or the wait is over (`onRateLimitOver`).
+  if (!isReachable(save.connectionId) || rateLimited(save.connectionId)) {
     await enqueue(save);
     return 'queued';
   }
+  const client = liveClient(save.connectionId) ?? api;
   try {
-    if (!(await guardPasses(api, save))) {
+    if (!(await guardPasses(client, save))) {
       noteSuccess(save.connectionId);
       return 'held';
     }
-    await api.saveProgress(save.libraryId, save.path, putBody(save));
+    await client.saveProgress(save.libraryId, save.path, putBody(save));
     notePut(save);
     noteSuccess(save.connectionId);
     void flushQueue();
@@ -1315,8 +1321,9 @@ export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<
     // No answer only asks for a check of the server (`noteFailure`): one slow save never
     // marks a healthy server down; the check does when it gets no answer either.
     noteFailure(save.connectionId, e);
-    // A 429 is the connection's: the queue's replays wait out its `Retry-After`, and the one
-    // that follows it sends this save (the last before a pause has no later save to do it).
+    // A 429 is the connection's: its live saves and the queue's replays wait out its
+    // `Retry-After`, and the replay that follows it sends this save (the last before a pause
+    // has no later save to do it).
     noteRateLimit(save.connectionId, e);
     await enqueue(save);
     return 'queued';
@@ -1364,13 +1371,17 @@ async function enqueue(save: ProgressSave): Promise<void> {
 /**
  * Replay one connection's queued saves in order through its client. Returns the saves
  * that must stay queued (unflushed). Success/failure is noted against THIS connection's
- * own reachability (per-connection banner + probe).
+ * own reachability (per-connection banner + probe). Each request goes through the
+ * connection as it is when it is sent (`liveClient`; the route's `routed` client only when
+ * it is not signed in now, a sign-out's last flush): a re-pair during the replay changes
+ * the token, and the saves after it would go with the old one and be refused (401).
  */
 async function flushGroup(
   cid: string,
-  client: ApiClient,
+  routed: ApiClient,
   saves: ProgressSave[],
 ): Promise<ProgressSave[]> {
+  const client = liveClient(cid) ?? routed;
   const remaining: ProgressSave[] = [];
   // Stop the group only when the server is UNREACHABLE (no point hammering the rest of
   // it) or asked to wait (a 429: later replays wait out its `Retry-After`, `queuedRoute`); a
