@@ -26,6 +26,7 @@ import { identityMovePending } from '@/lib/connection-id';
 import { contentKey, contentKeyOf, isKeyOf } from '@/lib/content-key';
 import { mapLimit } from '@/lib/map-limit';
 import { canAutoDownload } from '@/lib/network';
+import { serialQueue } from '@/lib/serial-queue';
 import { sharedStart } from '@/lib/shared-start';
 import { getItem, getItemStrict, setItemStrict } from '@/lib/storage';
 import { DOWNLOADS_KEY, isRecord } from '@/lib/storage-keys';
@@ -1309,7 +1310,7 @@ function withCachedMatch(ref: BookRef, book: Book): Book {
 }
 
 /** The keeps `keepForWork` was asked for: one book at a time. */
-let workKeeps: Promise<void> = Promise.resolve();
+const oneWorkKeep = serialQueue();
 
 /**
  * Keep a download's copy for the work its book now names, past this launch's try: a
@@ -1320,18 +1321,16 @@ let workKeeps: Promise<void> = Promise.resolve();
  * burst of requests.
  */
 function keepForWork(key: string, workId: string): void {
-  workKeeps = workKeeps
-    .then(async () => {
-      // A keep under way for the book (its download's own) writes the copy read here.
-      await metaKeeps.get(key);
-      const entry = useDownloads.getState().entries[key];
-      if (entry?.status !== 'downloaded' || entry.manifest.book.work_id !== workId) return;
-      const kept = entry.manifest.meta ? (await readOfflineMeta(entry))?.meta : undefined;
-      if (kept?.matched && kept.work.id === workId) return;
-      staleMetaNotNaming(entry, workId);
-      await keepOfflineMeta(key, { force: true });
-    })
-    .catch(() => {});
+  void oneWorkKeep(async () => {
+    // A keep under way for the book (its download's own) writes the copy read here.
+    await metaKeeps.get(key);
+    const entry = useDownloads.getState().entries[key];
+    if (entry?.status !== 'downloaded' || entry.manifest.book.work_id !== workId) return;
+    const kept = entry.manifest.meta ? (await readOfflineMeta(entry))?.meta : undefined;
+    if (kept?.matched && kept.work.id === workId) return;
+    staleMetaNotNaming(entry, workId);
+    await keepOfflineMeta(key, { force: true });
+  }).catch(() => {});
 }
 
 /** Mark stale the `/meta` answers the cache holds for a book that do not name `workId`,
