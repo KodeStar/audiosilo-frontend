@@ -776,11 +776,19 @@ onRateLimitOver(() => void flushReadingQueue().catch(() => undefined));
 
 /** Replay one connection's queued saves whatever its recorded reachability or a wait its
  * server asked (`onlyConnection`): it just came back, or it is about to be signed out
- * (`teardownBeforeTokenRevoke`), the queued places' last chance. */
+ * (`teardownBeforeTokenRevoke`), the queued places' last chance. Its books' saves still on
+ * their way go first: on the web one waiting for its turn holds its queued copy for that turn
+ * (`heldForTurn`), so a replay leaves it, and the token was revoked under it. One its turn
+ * queued instead (the server marked down by the hung save ahead) goes with the replay. */
 export async function flushReadingConnection(connectionId: string): Promise<void> {
   if (!sessionReady()) return;
   const client = resolveClient(connectionId);
   if (!client) return;
+  await Promise.all(
+    [...latestAsked.keys()]
+      .filter((key) => isKeyOf(key, connectionId))
+      .map((key) => withSendTurn(key, async () => undefined)),
+  );
   await replayReadingSaves(onlyConnection(connectionId, client));
 }
 

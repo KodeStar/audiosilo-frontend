@@ -1717,6 +1717,61 @@ describe('reading places across tabs', () => {
       expect(await readQueue()).toEqual([]);
     });
 
+    // The wait's claim kept this tab's own replay off the copy too: a sign-out's last flush
+    // was over at once, and the token was revoked under the waiting save.
+    it('sends a waiting save before a sign-out’s last flush is over', async () => {
+      const { api, release } = hangs(firstOnly());
+      routeClients({ c1: api });
+      const first = saveReadingPlace(api, save({ cfi: CFI_A, progression: 0.5 }));
+      await nextMacrotask();
+      const waiting = saveReadingPlace(
+        api,
+        save({ cfi: CFI_B, progression: 0.6, updated_at: '2026-10-01T10:05:00.000Z' }),
+      );
+      await nextMacrotask();
+      let done = false;
+      const last = flushReadingConnection('c1').then(() => (done = true));
+      await nextMacrotask();
+      const doneEarly = done;
+      release();
+      await last;
+      expect(doneEarly).toBe(false);
+      expect(cfisSent(api)).toEqual([CFI_A, CFI_B]);
+      await Promise.all([first, waiting]);
+      expect(await readQueue()).toEqual([]);
+    });
+
+    // The hung save failed and marked the server down: the waiting one's turn queued it, and
+    // the last flush, replaying before that turn, left it to be purged with the connection.
+    it('sends a waiting save its turn queued before a sign-out’s last flush is over', async () => {
+      const { api, release } = hangs(firstOnly());
+      const answer = api.saveReadingProgress.getMockImplementation()!;
+      let calls = 0;
+      api.saveReadingProgress.mockImplementation(async (...args: Parameters<typeof answer>) => {
+        calls += 1;
+        const result = await answer(...args);
+        if (calls === 1) {
+          reachable.mockReturnValue(false);
+          throw new TypeError('offline');
+        }
+        return result;
+      });
+      routeClients({ c1: api });
+      const first = saveReadingPlace(api, save({ cfi: CFI_A, progression: 0.5 }));
+      await nextMacrotask();
+      const waiting = saveReadingPlace(
+        api,
+        save({ cfi: CFI_B, progression: 0.6, updated_at: '2026-10-01T10:05:00.000Z' }),
+      );
+      await nextMacrotask();
+      const last = flushReadingConnection('c1');
+      await nextMacrotask();
+      release();
+      await Promise.all([first, waiting, last]);
+      expect(cfisSent(api)).toEqual([CFI_A, CFI_B]);
+      expect(await readQueue()).toEqual([]);
+    });
+
     it('sends a waiting save once when another tab replays it after its claim ran out', async () => {
       const { api, release } = hangs(firstOnly());
       routeClients({ c1: api });

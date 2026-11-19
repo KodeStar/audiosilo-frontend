@@ -1110,7 +1110,9 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   as it starts to wait (the app closed under the hung request replays it). On the web that copy
   is claimed by its own tab's wait (`heldForTurn`, `CLAIM_MS`, not renewed): sent by another
   tab while the save ahead was still out, it went on 0 too and the server kept the further
-  place, so a move back was lost. In its turn it is sent only while that copy is still queued
+  place, so a move back was lost. This tab's replays leave it too, so a sign-out's last flush
+  (`flushReadingConnection`) first waits for its connection's saves on their way
+  (`latestAsked`), then replays what they left queued. In its turn it is sent only while that copy is still queued
   and no other tab's replay claimed it (one did only once the wait's claim ran out): that
   replay sends it (on the version its own earlier save's answer acknowledged, `onOwnVersion`,
   as the reader's send would), and one that left the queue went from another tab or gave way
