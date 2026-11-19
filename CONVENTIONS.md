@@ -1798,8 +1798,11 @@ failures (`failedSince`, `failures`, `GIVE_UP_MS`, `GIVE_UP_TRIES`), is dropped 
 never on its first failures; a 503 or 429, a server that is away and a 401 do not count. At most
 one failure counts per entry per `RETRY_MIN_MS` (stored `lastFailure`: a connection's own replay
 right behind a sweep meets the same failure), and a try that gets past the step its failures came
-to (`failingStep`: `flags`, `read`, `post`) starts the count again, so one old failure and an hour
-of 500s are not a week of failing, while a POST that keeps failing still gives up (a stored step
+to (`failingStep`: `flags`, `read`, `post`) starts the count again, as does a gap of more than a
+day since the last counted failure (`RUN_GAP_MS`: the app closed, its server away; an older
+build's entry with no `lastFailure` goes by `failedSince`), so one old failure and, a week on, an
+hour of 500s are not a week of failing, while a POST that fails on every day it is tried still
+gives up (a stored step
 a build does not know, a later build's in the queue two tabs share, starts the count again too:
 `isQueued` takes any name, since an entry it turned down would be left out of the next write). A
 labelled one (Fell asleep) is sent only once its server's flags are known (`readFlags` reads

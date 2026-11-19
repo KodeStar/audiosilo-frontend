@@ -593,6 +593,14 @@ describe('sending', () => {
         await flushBookmarks();
       }
     }
+    /** Failing on, a try a day (the app opened once a day): a gap of a day at most keeps the
+     * run going. */
+    async function failDaily(days: number) {
+      for (let i = 0; i < days; i++) {
+        jest.setSystemTime(Date.now() + DAY);
+        await flushBookmarks();
+      }
+    }
 
     it('drops one still failing a week after its first failure, said in the log', async () => {
       const { client, held } = await waiting();
@@ -603,13 +611,11 @@ describe('sending', () => {
       // Its first failures: kept, as on every try of the week after them.
       await failFor(10);
       expect(await positions()).toEqual([100, 200]);
-      jest.setSystemTime(Date.now() + 6 * DAY);
-      await flushBookmarks();
+      await failDaily(6);
       expect(await positions()).toEqual([100, 200]);
       expect(warn).not.toHaveBeenCalled();
       // A week on: given up, and the one behind it (which never failed itself) goes.
-      jest.setSystemTime(Date.now() + 2 * DAY);
-      await flushBookmarks();
+      await failDaily(1);
       expect(warn).toHaveBeenCalledTimes(1);
       expect(await positions()).toEqual([]);
       expect(held.map((b) => b.position)).toEqual([300, 200]);
@@ -622,13 +628,11 @@ describe('sending', () => {
         args[1] === 'a/book' ? Promise.reject(new ApiError(404, 'not found')) : read?.(...args),
       );
       await failFor(10);
-      jest.setSystemTime(Date.now() + 6 * DAY);
-      await flushBookmarks();
+      await failDaily(6);
       expect(await positions()).toEqual([100, 200]);
       expect(warn).not.toHaveBeenCalled();
       client.bookmarks.mockClear();
-      jest.setSystemTime(Date.now() + 2 * DAY);
-      await flushBookmarks();
+      await failDaily(1);
       expect(warn).toHaveBeenCalledTimes(2);
       expect(await positions()).toEqual([]);
       // One read of the book told both.
@@ -643,12 +647,10 @@ describe('sending', () => {
       mockAnnotations = undefined;
       mockCapsDown = new ApiError(404, 'not found');
       await failFor(10);
-      jest.setSystemTime(Date.now() + 6 * DAY);
-      await flushBookmarks();
+      await failDaily(6);
       expect(await positions()).toEqual([100]);
       expect(warn).not.toHaveBeenCalled();
-      jest.setSystemTime(Date.now() + 2 * DAY);
-      await flushBookmarks();
+      await failDaily(1);
       expect(warn).toHaveBeenCalledTimes(1);
       expect(await positions()).toEqual([]);
       expect(s.held).toEqual([]);
@@ -681,6 +683,39 @@ describe('sending', () => {
       expect(warn).not.toHaveBeenCalled();
       await flushBookmarks();
       expect(held.map((b) => b.position)).toEqual([300, 100, 200]);
+    });
+
+    it('starts the count again after a long gap with no failure', async () => {
+      const { client } = await waiting();
+      const send = client.addBookmark.getMockImplementation();
+      client.addBookmark.mockImplementation((...args: unknown[]) =>
+        args[2] === 100 ? Promise.reject(new ApiError(500, 'boom')) : send?.(...args),
+      );
+      // One failed POST, then the app closed for 8 days, then an hour of 500s at the same
+      // step: a fresh run, not the end of a week of failing.
+      await failFor(1);
+      jest.setSystemTime(Date.now() + 8 * DAY);
+      await failFor(12);
+      expect(warn).not.toHaveBeenCalled();
+      const [entry] = await queuedBookmarks();
+      expect(entry).toMatchObject({ position: 100, failures: 12, failingStep: 'post' });
+      expect(Date.now() - Date.parse(entry.failedSince ?? '')).toBeLessThan(DAY);
+    });
+
+    it("starts again a run an older build stored, with no lastFailure, after a day's gap", async () => {
+      const { client } = await waiting();
+      client.addBookmark.mockRejectedValue(new ApiError(500, 'boom'));
+      const [first, ...rest] = await queuedBookmarks();
+      const old = {
+        ...first,
+        failedSince: new Date(Date.now() - 8 * DAY).toISOString(),
+        failures: 20,
+      };
+      await AsyncStorage.setItem('audiosilo.annotationOutbox', JSON.stringify([old, ...rest]));
+      resetAnnotationOutboxForTests();
+      await failFor(1);
+      expect(warn).not.toHaveBeenCalled();
+      expect((await queuedBookmarks())[0]).toMatchObject({ position: 100, failures: 1 });
     });
 
     it.each([

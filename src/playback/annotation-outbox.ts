@@ -60,7 +60,9 @@ import { onlyConnection, queuedRoute } from './progress-sync';
  *   one failure counts per `RETRY_MIN_MS` (`lastFailure`: a connection's own replay right
  *   behind a sweep does not count the same failure again), and the run of failures starts
  *   again once a send of it gets past the step those failed at (`failingStep`: its flags, its
- *   book's read), so one old failure and an hour of 500s are not a week of failing.
+ *   book's read) or after a day with no failure counted (`RUN_GAP_MS`: the app closed, its
+ *   server away), so one old failure and, a week on, an hour of 500s are not a week of
+ *   failing.
  * - Retried: at launch, on the server's reconnect and once a connection a 401 flagged is
  *   signed in again (`startBookmarkSync`), with the stored queues in the foreground and on the
  *   web's focus and `online` (`startQueueReplays`), and with a backoff while a reachable
@@ -162,6 +164,11 @@ const GIVE_UP_MS = 7 * 24 * 60 * 60_000;
 /** ...and how many failed sends at least: two a week apart, with no try between them (the
  * app closed, the server away), are not a week of failing. */
 const GIVE_UP_TRIES = 10;
+/** A gap longer than this since its last counted failure (the app closed, its server away)
+ * starts a bookmark's run of failures again (`runAt`): one old failure and, a week on, an
+ * hour of 500s are not a week of failing. A week of failing is then one that failed on every
+ * day it was tried, at least once a day. */
+const RUN_GAP_MS = 24 * 60 * 60_000;
 /** The backoff while a server answers but fails (a 5xx, a 429): from this... */
 const RETRY_MIN_MS = 30_000;
 /** ...doubling up to this. */
@@ -605,14 +612,20 @@ const askedToWait = (err: unknown) =>
  * whether that failure counts toward giving up on it. */
 type Tried = { step: SendStep; counts: boolean };
 
-/** `e` as a try that came to `step` finds its run of failures: with none once the try got
- * past the step they came to (`failingStep`), so the count starts again (any success for it
- * ends the run: one old failure is not the start of a week of failing). */
-function runAt<T extends QueuedBookmark>(e: T, step: SendStep): T {
-  if (e.failingStep === undefined) return e;
-  // A stored step this build has no place for says nothing to compare: the count starts again.
-  const known = Object.hasOwn(STEP_ORDER, e.failingStep);
-  if (known && STEP_ORDER[step] <= STEP_ORDER[e.failingStep]) return e;
+/** `e` as a try that came to `step` at `now` finds its run of failures: with none once the
+ * try got past the step they came to (`failingStep`), or once its last counted failure is
+ * more than `RUN_GAP_MS` old, so the count starts again (any success for it ends the run, and
+ * a long gap breaks it: one old failure is not the start of a week of failing). */
+function runAt<T extends QueuedBookmark>(e: T, step: SendStep, now: number): T {
+  // An older build's entry has no `lastFailure`: its run's start stands in for it.
+  const last = Date.parse(e.lastFailure ?? e.failedSince ?? '');
+  if (!(now - last > RUN_GAP_MS)) {
+    if (e.failingStep === undefined) return e;
+    // A stored step this build has no place for says nothing to compare: the count starts
+    // again.
+    const known = Object.hasOwn(STEP_ORDER, e.failingStep);
+    if (known && STEP_ORDER[step] <= STEP_ORDER[e.failingStep]) return e;
+  }
   const { failedSince: _since, failures: _n, lastFailure: _last, failingStep: _step, ...rest } = e;
   return rest as T;
 }
@@ -637,7 +650,7 @@ const givenUp = (e: QueuedBookmark) =>
  * before (`runAt`), and one failure more when this one counts (`countsNow`). The same object
  * when nothing changed. */
 function afterTry<T extends QueuedBookmark>(e: T, { step, counts }: Tried, now: number): T {
-  const run = runAt(e, step);
+  const run = runAt(e, step, now);
   if (!counts || !countsNow(run, now)) return run;
   const at = new Date(now).toISOString();
   return {
@@ -697,8 +710,9 @@ async function sendGroup(
    * failure counting when it `counts`), or given up on when such failures have gone on long
    * enough (`givenUp`). Whether it was kept. */
   const keepOrGiveUp = (e: QueuedBookmark, err: unknown, step: SendStep, counts: boolean) => {
-    const run = runAt(e, step);
-    const counted = counts && countsNow(run, Date.now());
+    const now = Date.now();
+    const run = runAt(e, step, now);
+    const counted = counts && countsNow(run, now);
     if (counted && givenUp(run)) {
       console.warn('[bookmarks] gave up on a queued bookmark that kept failing', err);
       return false;
