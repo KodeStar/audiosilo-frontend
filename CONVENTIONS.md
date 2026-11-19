@@ -60,8 +60,10 @@ own (the default follows only once it is gone). A connection another tab's ident
 renamed (the same token under `<server_id>.<user_id>`, `renamesIn` by `renamedIn`'s rule) has
 not gone: its flag, its being the default and its own proxy set go on under the new id, the
 move joins this tab's aliases (`setConnectionAliases`: the book it plays and its saves, spans
-and bookmarks reach the new id, the web's files are found under the old), and it is never left
-(`leaveConnection`). Before
+and bookmarks reach the new id, the web's files are found under the old; anything comparing a
+playing book's or a queue's connection id takes either id, `sameConnection`), what this tab holds
+in memory under the old id moves (`onConnectionRenamed`: a proxy's refusals of it,
+`moveProxyRefusal`), and it is never left (`leaveConnection`). Before
 its teardown's flush the removing tab tells the others the connection is going
 (`tellOtherTabsGoing`): a tab playing through it stops and sends its place and listening while
 the token works (`onConnectionGoingInOtherTab`), and the removing tab waits on it
@@ -442,7 +444,8 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
 - **Before a connection exists.** The connect screen's "Proxy headers" section is for the address
   as the listener typed it, and hands its set to the session (`pendingProxyHeaders`, in memory
   only) as the flow moves on, never at each keystroke (`holdTyped`: Continue, a remembered
-  server's row, a link, the scanner, Sign in, an invite, the demo; a handler holds them before its
+  server's row, a link, the scanner, Sign in, an invite, the demo; `/web/demo`'s request carries
+  the origin's set too, `connectClient`, and stores none; a handler holds them before its
   first await, never after, since its render's rows are stale by then). Closing the section only
   hides them, with a caption saying how many are held for which address (`proxy-headers-held`).
   An address the flow fills in by itself (a link that failed) is theirs only when none was typed
@@ -493,8 +496,11 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   connection's episode and the next answer the server itself gave ends it: a success, or its own
   error envelope (`ApiError.fromServer`: its 401, a 404, a 500), since the proxy let that request
   through; a gateway's page or no answer says nothing (memory only; a removed connection's goes
-  with it; an answer to a request sent with a set the connection no longer sends there counts for
-  nothing, `connectionClient`). While it lasts the shell shows `ProxyRefusedBanner` beside the reconnect banner (not
+  with it, and a renamed one's moves to its new id, or ends there when that is not signed in,
+  `moveProxyRefusal`; an answer to a request sent with a set the connection no longer sends there counts for
+  nothing, `connectionClient`). Its end tells the stored queues (`onProxyRefusalsOver`, a signed-in
+  connection only): bookmarks, progress, reading places and listening events each send what the
+  refusals held at once, by the same kick as a 429's end. While it lasts the shell shows `ProxyRefusedBanner` beside the reconnect banner (not
   for a connection that needs signing in again): it opens the connection's Account page when the
   listener may edit the set (`canManageProxySet`; on that page already a tap pushes nothing,
   `onAccountPage`), else asks a grown-up, as kids mode does over the stories (`useProxyNotice`,
@@ -1829,7 +1835,7 @@ flagged is signed in again, with no backoff meanwhile, and once the wait a 429 a
 server is over, `onRateLimitOver`; a 429 on a bookmark's own send, the tap's or a replay's, sets
 that wait, `noteRateLimit`: a replay stops there and a tap made meanwhile is stored unsent,
 `rateLimited`; and once a proxy's refusals of it end, the server answering itself again,
-`useProxyRefusals`), with the stored queues in the
+`onProxyRefusalsOver`, as the stored queues are), with the stored queues in the
 foreground and on the web's focus and `online` (`startQueueReplays`), and on a backoff (30 s
 doubling to 10 min) while a reachable server keeps failing, through `replayQueue` routed by
 `storedRoute` (claims, so two tabs never send one twice; a connection another tab is signed in
