@@ -235,8 +235,7 @@ describe('useLinkPairing', () => {
       "This link was used, but signing in didn't finish. Ask for a new link.",
     ],
   ])('classifies %s as one outcome with its words', (_row, e, exchanged, outcome, message) => {
-    const failure = pairFailure(e, exchanged, false, t);
-    expect({ outcome: failure.outcome, message: failure.message }).toEqual({ outcome, message });
+    expect(pairFailure(e, exchanged, false, t)).toMatchObject({ outcome, message });
   });
 
   it("gives a 429's named wait its words for once it is over, and nothing else any", () => {

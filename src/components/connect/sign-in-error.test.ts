@@ -115,6 +115,14 @@ describe('refusalWaitOver', () => {
     expect(refusalWaitOver(new ApiError(429, 'x', undefined, 900), t)?.at).toBe(1_900_000);
   });
 
+  it('swaps at the whole second the words name, never before it', () => {
+    const wait = new ApiError(429, 'x', undefined, 0.3);
+    expect(signInErrorText(wait, 'login', t)).toBe(
+      'Too many tries from this network. Try again in 1 second.',
+    );
+    expect(refusalWaitOver(wait, t)?.at).toBe(1_001_000);
+  });
+
   it('has nothing to swap for words that name no wait', () => {
     expect(refusalWaitOver(new ApiError(429, 'x'), t)).toBeUndefined();
     expect(refusalWaitOver(new ApiError(429, 'x', undefined, 0), t)).toBeUndefined();

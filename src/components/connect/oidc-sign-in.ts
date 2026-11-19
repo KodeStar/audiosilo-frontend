@@ -119,9 +119,8 @@ export function oidcFinishFailure(
   const waitMs = oidcRetryWait(e, left);
   const message = oidcFinishText(e, t, waitMs !== undefined);
   const waitOver = refusalWaitOver(e, t);
-  return waitMs === undefined
-    ? { message, waitOver }
-    : { message, retry: { waitMs, doneBy, run }, waitOver };
+  if (waitMs === undefined) return { message, waitOver };
+  return { message, retry: { waitMs, doneBy, run }, waitOver };
 }
 
 /** The same finish sent again (`finishOidcSignIn`'s, with its flow, book and reconnect, all
