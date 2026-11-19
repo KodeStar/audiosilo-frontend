@@ -21,9 +21,10 @@ const path = jest.requireActual<{
 // Jest runs from the repo root (`npm test`).
 const APP = path.join(process.cwd(), 'src', 'app');
 
-// Every suite on this tree renders the whole router and drives it through many navigations
+// The suites on the real tree render the whole router and drive it through many navigations
 // in one test: half a second on an idle machine, past Jest's 5 s on a loaded one (a full
-// run beside another). Room for that, for each suite that imports this.
+// run beside another). Room for that, for every suite that imports this (the ones that
+// take only `nav` or `router` for a small tree of their own get it too).
 jest.setTimeout(20_000);
 
 type RouteModule = ComponentType | { default: ComponentType; unstable_settings?: unknown };
