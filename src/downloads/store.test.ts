@@ -1312,6 +1312,29 @@ describe("a book's ebook rides along with its download (Bridge Phase 3b-2)", () 
   });
 
   it("takes the app reader's cached copy instead of fetching the ebook again", async () => {
+  // Everything it will hold is here: its total is that, not the sizes the book lists (with
+  // the ebook it carries on without).
+  it('gives a download saved but not servable the bytes it holds as its total too', async () => {
+    api();
+    mockEngine.verify = async () => false;
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string, _u, onProgress?: (w: number, t: number) => void) => {
+        if (name === 'book.epub') throw new Error('Network request failed');
+        if (name === '0.mp3') onProgress?.(100, 100);
+        return `live:c1:2:A/Book:${name}`;
+      },
+    );
+    useDownloads.getState().download('c1', 2, withEbook());
+    await settle();
+
+    expect(entry()).toMatchObject({
+      status: 'error',
+      failure: { kind: 'unservable' },
+      bytes: 100,
+      totalBytes: 100,
+    });
+  });
+
     api();
     mockEngine.copyFile = jest.fn(
       async (_c: string, _l: number, _p: string, name: string) => `live:c1:2:A/Book:${name}`,

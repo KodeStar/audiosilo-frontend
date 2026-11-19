@@ -2458,6 +2458,7 @@ async function runOne(key: string) {
       return;
     }
     if (!live()) return void (await dropFiles());
+        totalBytes: bytes,
 
     patchEntry(key, { status: 'downloaded', progress: 1, bytes, totalBytes: bytes, manifest });
     void persist();
