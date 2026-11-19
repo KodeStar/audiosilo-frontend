@@ -2886,7 +2886,8 @@ export function useLibrivoxWork(id: string | null, connectionId?: string) {
 }
 
 /** A Bridge job by its id (a `librivox.fetch` the page queued or saw open), polled while
- * it is open and `active` (`librivoxJobPollInterval`) with the app in the foreground (only
+ * it is open and `active` (`librivoxJobPollInterval`: slower with no recording row reading it
+ * too, and backing off while reads fail) with the app in the foreground (only
  * the root's `LibrivoxFetchWatcher` asks it active; a recording row reads it), and
  * no more once it is gone (a 404: the last answer would read as open for ever). A first
  * read that failed with no answer or a server error is asked again (`retry: false`, and
@@ -2902,13 +2903,18 @@ export function useLibrivoxJob(id: number | undefined, active: boolean, connecti
       ready: id !== undefined,
       retry: false,
       refetchInterval: (query) => {
-        const { data, error } = query.state;
+        const { data, error, fetchFailureCount } = query.state;
+        // A refusal stays refused (the default retry's rule, `retryQuery`).
+        const refused = !!error && (isSignedOutError(error) || isNotInLibraryError(error));
+        const gone = error instanceof ApiError && error.status === 404;
+        if (refused && !gone) return false;
         return librivoxJobPollInterval(
           data,
-          error instanceof ApiError && error.status === 404,
+          gone,
           active && AppState.currentState === 'active',
-          // A refusal stays refused (the default retry's rule, `retryQuery`).
-          !!error && !isSignedOutError(error) && !isNotInLibraryError(error),
+          !!error,
+          // A reader besides this one (a recording row on screen): a page shows it.
+          { seen: query.getObserversCount() > 1, failures: fetchFailureCount },
         );
       },
     },

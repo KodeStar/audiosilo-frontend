@@ -138,26 +138,38 @@ export const LIBRIVOX_FEATURE = 'librivox';
  * download in minutes, one after another. */
 export const LIBRIVOX_POLL_MS = 5_000;
 
+/** How often a followed `librivox.fetch` no page shows is read again (only the root's
+ * watcher asks): soon enough to read the Library again shortly after it ends. */
+export const LIBRIVOX_UNSEEN_POLL_MS = 30_000;
+
 /**
  * How often a `librivox.fetch` followed by its id is read again while `active` (the root's
- * `LibrivoxFetchWatcher` asking, the app in the foreground): every `LIBRIVOX_POLL_MS` while it is queued, claimed
- * or running, every `BRIDGE_IDLE_POLL_MS` while it is parked (someone has to look, or its
- * retry time has to come), never once it ended or is gone (`gone`: a 404, deleted with its
- * library), nor while its first answer is on its way. A first read that `failed` in a way
- * asking again can mend (no answer, or a server error: the caller leaves out a refusal) is
- * asked again every `BRIDGE_IDLE_POLL_MS`: the read is never retried by itself, and its row
- * has nothing to show until one gets through.
+ * `LibrivoxFetchWatcher` asking, the app in the foreground): while it is queued, claimed or
+ * running, every `LIBRIVOX_POLL_MS` while a page shows it (`seen`: a recording row reads it
+ * too), else every `LIBRIVOX_UNSEEN_POLL_MS`; every `BRIDGE_IDLE_POLL_MS` while it is parked
+ * (someone has to look, or its retry time has to come); never once it ended or is gone
+ * (`gone`: a 404, deleted with its library), nor while its first answer is on its way. A read
+ * that `failed` in a way asking again can mend (no answer, or a server error: the caller
+ * leaves out a refusal) waits twice as long for each of the `failures` in a row, at most
+ * `BRIDGE_IDLE_POLL_MS`, so a server out of reach is not asked every few seconds (fe#299); a
+ * first read that failed, with nothing to show, is asked again every `BRIDGE_IDLE_POLL_MS`:
+ * the read is never retried by itself, and its row has nothing to show until one gets
+ * through.
  */
 export function librivoxJobPollInterval(
   job: Pick<BridgeJob, 'state'> | undefined,
   gone: boolean,
   active: boolean,
   failed = false,
+  { seen = true, failures = 0 }: { seen?: boolean; failures?: number } = {},
 ): number | false {
   if (!active || gone) return false;
   if (!job) return failed ? BRIDGE_IDLE_POLL_MS : false;
   if (!isOpenJob(job)) return false;
-  return job.state === 'needs_attention' ? BRIDGE_IDLE_POLL_MS : LIBRIVOX_POLL_MS;
+  if (job.state === 'needs_attention') return BRIDGE_IDLE_POLL_MS;
+  const pace = seen ? LIBRIVOX_POLL_MS : LIBRIVOX_UNSEEN_POLL_MS;
+  if (!failed || failures <= 0) return pace;
+  return Math.max(pace, Math.min(BRIDGE_IDLE_POLL_MS, pace * 2 ** failures));
 }
 
 /**

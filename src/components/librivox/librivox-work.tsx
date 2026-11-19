@@ -340,8 +340,8 @@ function useFollowedFetch(connectionId: string, r: LibrivoxRecording) {
   // answer first, which still names the fetch whose end was handled when it came.
   const { job, ended } = followedRead(read);
   // Handed over again with each answer that reads it open (nothing changes while it is
-  // watched): the watcher drops a watch its read was refused (a 401, the token revoked),
-  // and once signed in again the row would show a fetch nobody polls.
+  // watched): the watcher drops a watch its read was refused (a 400 or 403), and a row
+  // still showing it would otherwise show a fetch nobody polls.
   const readAt = read.dataUpdatedAt;
   useEffect(() => {
     if (followed !== undefined && !ended) watchLibrivoxFetch(connectionId, followed);

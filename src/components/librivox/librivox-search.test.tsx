@@ -305,7 +305,9 @@ describe('LibrivoxSearch', () => {
     mockJobs = { 40: { data: librivoxJob({ id: 40, state: 'running' }) } };
     await mount();
     await openWork();
-    expect(useLibrivoxWatches.getState().watches).toEqual([{ cid: 'c1', id: 40 }]);
+    expect(useLibrivoxWatches.getState().watches).toEqual([
+      { cid: 'c1', id: 40, at: expect.any(Number) },
+    ]);
   });
 
   it('watches the job an Add queued, and reads it without polling of its own', async () => {
@@ -315,7 +317,9 @@ describe('LibrivoxSearch', () => {
     await openWork();
     await fireEvent.press(await screen.findByTestId('librivox-add'));
     expect(await screen.findByText('Adding')).toBeTruthy();
-    expect(useLibrivoxWatches.getState().watches).toEqual([{ cid: 'c1', id: 41 }]);
+    expect(useLibrivoxWatches.getState().watches).toEqual([
+      { cid: 'c1', id: 41, at: expect.any(Number) },
+    ]);
     // The watcher is the one poller: the row asks with `active` false.
     expect(mockJobActive.get(41)).toEqual([false]);
   });
@@ -331,7 +335,9 @@ describe('LibrivoxSearch', () => {
     // Signed in again, the job is read again and is still open.
     mockJobs = { 41: { data: librivoxJob({ id: 41, state: 'running' }), dataUpdatedAt: 2 } };
     await act(async () => mockJobsRead.setState({ n: 1 }));
-    expect(useLibrivoxWatches.getState().watches).toEqual([{ cid: 'c1', id: 41 }]);
+    expect(useLibrivoxWatches.getState().watches).toEqual([
+      { cid: 'c1', id: 41, at: expect.any(Number) },
+    ]);
   });
 
   it('watches the job an Add queued when the page was left before the answer', async () => {
@@ -343,7 +349,9 @@ describe('LibrivoxSearch', () => {
     await screen.unmount();
     expect(useLibrivoxWatches.getState().watches).toEqual([]);
     await act(async () => answer({ job: librivoxJob({ id: 41, state: 'queued' }) }));
-    expect(useLibrivoxWatches.getState().watches).toEqual([{ cid: 'c1', id: 41 }]);
+    expect(useLibrivoxWatches.getState().watches).toEqual([
+      { cid: 'c1', id: 41, at: expect.any(Number) },
+    ]);
   });
 
   it('has nothing to do once a fetch is done: the watcher reads the Library again', async () => {

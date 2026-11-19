@@ -10,6 +10,7 @@ import {
   latestDone,
   latestJob,
   LIBRIVOX_POLL_MS,
+  LIBRIVOX_UNSEEN_POLL_MS,
   librivoxJobPollInterval,
   midRunCheckpoint,
   READALONG_ALIGN,
@@ -136,6 +137,34 @@ describe('librivoxJobPollInterval', () => {
       LIBRIVOX_POLL_MS,
     );
     expect(librivoxJobPollInterval(job({ state: 'done' }), false, true, true)).toBe(false);
+  });
+
+  it('polls slower with no page showing it (fe#299)', () => {
+    const running = job({ state: 'running' });
+    expect(librivoxJobPollInterval(running, false, true, false, { seen: false })).toBe(
+      LIBRIVOX_UNSEEN_POLL_MS,
+    );
+    expect(librivoxJobPollInterval(running, false, true, false, { seen: true })).toBe(
+      LIBRIVOX_POLL_MS,
+    );
+    // Parked: its own pace, seen or not.
+    expect(
+      librivoxJobPollInterval(job({ state: 'needs_attention' }), false, true, false, {
+        seen: false,
+      }),
+    ).toBe(BRIDGE_IDLE_POLL_MS);
+  });
+
+  it('waits twice as long for each failed read in a row, at most the idle pace (fe#299)', () => {
+    const running = job({ state: 'running' });
+    const after = (failures: number, seen = true) =>
+      librivoxJobPollInterval(running, false, true, true, { seen, failures });
+    expect(after(1)).toBe(LIBRIVOX_POLL_MS * 2);
+    expect(after(3)).toBe(LIBRIVOX_POLL_MS * 8);
+    expect(after(10)).toBe(BRIDGE_IDLE_POLL_MS);
+    expect(after(1, false)).toBe(BRIDGE_IDLE_POLL_MS);
+    // An answer since (no failure in a row): the pace again.
+    expect(after(0)).toBe(LIBRIVOX_POLL_MS);
   });
 });
 

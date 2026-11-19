@@ -45,7 +45,7 @@ import {
   useLibrivoxSearch,
   useLibrivoxWork,
 } from '@/api/hooks';
-import { BRIDGE_IDLE_POLL_MS, LIBRIVOX_POLL_MS } from '@/lib/bridge-jobs';
+import { BRIDGE_IDLE_POLL_MS, LIBRIVOX_POLL_MS, LIBRIVOX_UNSEEN_POLL_MS } from '@/lib/bridge-jobs';
 import { driveAppState } from '@/testing/app-state';
 import { librivoxJob, librivoxServer } from '@/testing/librivox-fixtures';
 /* eslint-enable import/first */
@@ -125,6 +125,12 @@ describe('useLibrivoxSearch / useLibrivoxWork', () => {
 
 describe('useLibrivoxJob', () => {
   const useJob = () => useLibrivoxJob(41, true);
+  /** The watcher's read with a recording row reading the same job (a page shows it). */
+  const useSeenJob = () => {
+    const read = useLibrivoxJob(41, true);
+    useLibrivoxJob(41, false);
+    return read;
+  };
 
   it('asks nothing with the Bridge off, or with no job to follow', async () => {
     await mount(librivoxServer(), () => useLibrivoxJob(undefined, true));
@@ -147,7 +153,7 @@ describe('useLibrivoxJob', () => {
   it('polls an open job, slowly while parked, and stops once it ended', async () => {
     const { result, qc } = await mount(
       librivoxServer(),
-      () => useJob(),
+      () => useSeenJob(),
       (c) => c.bridgeJob.mockResolvedValue(librivoxJob({ state: 'running' })),
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -163,10 +169,27 @@ describe('useLibrivoxJob', () => {
     expect(intervalOf(qc)).toBe(false);
   });
 
-  it('does not poll while the app is in the background', async () => {
+  it('polls slower with no row reading it, and backs off while reads fail (fe#299)', async () => {
     const { result, qc } = await mount(
       librivoxServer(),
       () => useJob(),
+      (c) => c.bridgeJob.mockResolvedValue(librivoxJob({ state: 'running' })),
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(intervalOf(qc)).toBe(LIBRIVOX_UNSEEN_POLL_MS);
+    const query = qc.getQueryCache().find({ queryKey: qk.bridgeJob('c1', 41) })!;
+    // Two reads in a row with no answer (the server out of reach), the last answer kept.
+    query.setState({ error: new ApiError(502, 'bad gateway'), fetchFailureCount: 2 });
+    expect(intervalOf(qc)).toBe(BRIDGE_IDLE_POLL_MS);
+    // A refusal stops it.
+    query.setState({ error: new ApiError(403, 'admin only'), fetchFailureCount: 1 });
+    expect(intervalOf(qc)).toBe(false);
+  });
+
+  it('does not poll while the app is in the background', async () => {
+    const { result, qc } = await mount(
+      librivoxServer(),
+      () => useSeenJob(),
       (c) => c.bridgeJob.mockResolvedValue(librivoxJob({ state: 'running' })),
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
