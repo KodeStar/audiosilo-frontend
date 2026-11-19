@@ -3375,8 +3375,9 @@ media GETs only.
   by `RoutedPlaybackService.beginCast`: the router's own snapshot is the other book's, and is
   the store's place from then, so a session that ends mid-switch hands that place back; a
   store's book with no place to hand over, ended, still unloads the phone's engine), and
-  the receiver's reports name the book loaded there (the router's `reportedBook`, null only
-  while a load is on its way to the receiver or nothing is loaded), which ends the hold.
+  the receiver's reports name the book loaded there (the router's `reportedBook`, the
+  receiver's own `loadedBook`, null only while a load is on its way to the receiver or
+  nothing is loaded), which ends the hold.
   The store's `pause` is "stop the sound" (the sleep timer): while the store's book shows
   playing or loading, the engine pauses whatever it plays, the other book too, and the
   store's book shows paused; while it shows paused and the engine plays the other book
@@ -4497,7 +4498,11 @@ on first need). NOT device-verified (no Cast device yet).
   started while playing plays on, and the phone never plays by itself when a cast ends. While
   the phone's engine holds another book than the store's (Android: the car's, not adopted) the
   place handed over is the store's (`onLoadedPlace`), paused, and that other book stops with
-  the phone's engine; the receiver's reports name the book loaded there (`reportedBook`).
+  the phone's engine; the receiver's reports name the book loaded there (`reportedBook`, by
+  `CastPlaybackService.loadedBook`, never the queue an adoption remembered mid-handover). A
+  session that begins while the store's own load is on its way into the phone's engine waits
+  for it to land (`localLoad`), so that book goes over from its own place, never the place of
+  the book the load replaced; a session ended meanwhile never becomes the route.
   `startCastSync` (the root's services, `root-services-impl.tsx`) follows the driver's session events; `endCastForCar` and
   `stopCasting` end a session from the app. A user's Stop casting stops the receiver's app (from
   the app, the Cast dialog or the notification), so the TV never plays on while the book comes

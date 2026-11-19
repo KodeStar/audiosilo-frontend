@@ -509,6 +509,13 @@ export class CastPlaybackService implements PlaybackService {
     return this.snapshot;
   }
 
+  /** The book this service gave the receiver (`load`, `adoptQueue`), else null (none yet, or
+   * a reset): what its reports are of. Set as its queue is sent, so not yet landed there while
+   * a load is on its way (the route switch names nothing then). */
+  loadedBook(): BookRef | null {
+    return this.loaded?.book ?? null;
+  }
+
   subscribe(listener: (s: PlaybackSnapshot) => void) {
     this.listeners.add(listener);
     return () => {

@@ -1,4 +1,5 @@
 import {
+  type BookRef,
   INITIAL_SNAPSHOT,
   type PlaybackService,
   type PlaybackSnapshot,
@@ -102,9 +103,21 @@ function fakeCast() {
   const engine = fakeEngine('cast') as Fake & {
     detach: jest.Mock;
     refresh: jest.Mock;
+    loadedBook: () => BookRef | null;
   };
   engine.detach = jest.fn();
   engine.refresh = jest.fn(async () => {});
+  // The book of its last load (the receiver's), none after a reset since.
+  engine.loadedBook = () => {
+    const load = engine.load as jest.Mock;
+    const reset = engine.reset as jest.Mock;
+    const last = load.mock.invocationCallOrder.length - 1;
+    if (last < 0) return null;
+    const lastReset = Math.max(0, ...reset.mock.invocationCallOrder);
+    return load.mock.invocationCallOrder[last] > lastReset
+      ? ((load.mock.calls[last] as unknown[])[4] as BookRef)
+      : null;
+  };
   return engine;
 }
 
@@ -794,6 +807,78 @@ describe('RoutedPlaybackService: a book started while the route is changing', ()
     await start;
     expect(t.local.calls).toContain('local.reset');
     expect(cast.calls).toContain('cast.load(0,30)');
+  });
+
+  // FE-ANDROID-5: an adoption (the Android service's book) that landed while a handover was on
+  // its way remembered its own book, and the receiver's reports were named as that book while
+  // it played the one handed over.
+  it('names the book the receiver took, never one an adoption remembered mid-handover', async () => {
+    const t = setup();
+    await playingLocally(t);
+    const { cast, held } = heldCast();
+    const handover = t.router.beginCast(cast as unknown as CastPlaybackService);
+    await settle();
+    expect(held).toHaveLength(1);
+    t.router.rememberLoad({ tracks: OTHER_TRACKS, chapters: [], book: OTHER });
+    held[0].finish();
+    await handover;
+    expect(t.router.isCasting()).toBe(true);
+    expect(t.router.reportedBook()).toEqual(BOOK);
+  });
+
+  /** A phone engine whose next load waits for `land()`, which reports it there. */
+  function heldLocalLoad(t: ReturnType<typeof setup>) {
+    const hold: { land: () => void } = { land: () => {} };
+    (t.local.load as jest.Mock).mockImplementationOnce(
+      (_t: unknown, index: number, position: number) =>
+        new Promise<void>((resolve) => {
+          t.local.calls.push(`local.load(${index},${position})`);
+          hold.land = () => {
+            t.local.emit({ state: 'ready', trackIndex: index, position });
+            resolve();
+          };
+        }),
+    );
+    return hold;
+  }
+
+  // FE-ANDROID-5: a session that began while the store's own load was on its way into the
+  // phone's engine handed the new book over at the place (and play state) of the book that
+  // load replaced.
+  it('hands over a book still loading into the phone from where its load lands', async () => {
+    const t = setup();
+    await playingLocally(t); // BOOK plays at (1, 120)
+    const hold = heldLocalLoad(t);
+    const start = t.router.load(OTHER_TRACKS, 0, 30, [], OTHER);
+    await settle();
+    const cast = fakeCast();
+    const handover = t.router.beginCast(cast as unknown as CastPlaybackService);
+    await settle();
+    expect(cast.calls).toEqual([]); // waits for the load
+    hold.land();
+    await start;
+    await handover;
+    expect(cast.calls).toContain('cast.load(0,30)');
+    expect(cast.calls).not.toContain('cast.load(1,120)');
+    expect(t.router.reportedBook()).toEqual(OTHER);
+  });
+
+  it('makes no route of a session that ended while it waited for the phone to load', async () => {
+    const t = setup();
+    await playingLocally(t);
+    const hold = heldLocalLoad(t);
+    const start = t.router.load(OTHER_TRACKS, 0, 30, [], OTHER);
+    await settle();
+    const cast = fakeCast();
+    const handover = t.router.beginCast(cast as unknown as CastPlaybackService);
+    await settle();
+    await t.router.endCast();
+    hold.land();
+    await start;
+    await handover;
+    expect(t.router.isCasting()).toBe(false);
+    expect(cast.calls).toEqual([]);
+    expect(t.local.calls).not.toContain('local.reset');
   });
 
   it("hands over a book the store took over without loading it (the Android service's)", async () => {

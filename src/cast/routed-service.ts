@@ -62,6 +62,13 @@ export class RoutedPlaybackService implements PlaybackService {
    * asked to start: until it lands the receiver's snapshot is still the previous book's,
    * so a session ending meanwhile hands this place back instead (`endCast`). */
   private pending: { load: LastLoad; trackIndex: number; position: number } | null = null;
+  /** A book `load` on its way into the phone's engine (the store's own start): until it lands
+   * the engine's snapshot is still the book it replaces, so a session that begins meanwhile
+   * waits for it (`beginCast`). */
+  private localLoad: Promise<void> | null = null;
+  /** The session `beginCast` waits to make the route (`localLoad`): a newer one, or the end
+   * of the session (`endCast`), takes its place. */
+  private beginning: CastPlaybackService | null = null;
   /** The hand-back of a session that ended, while it runs (a load the end interrupted
    * waits for it: `load`). */
   private ending: Promise<void> | null = null;
@@ -156,6 +163,19 @@ export class RoutedPlaybackService implements PlaybackService {
    */
   async beginCast(cast: CastPlaybackService): Promise<void> {
     if (this.cast === cast) return;
+    // A load of the store's own still on its way into the phone's engine: the engine's place
+    // is the book it replaces until it lands, and the loaded book would go over at that one's
+    // place. It goes over from where its load put it, so the session waits for that.
+    if (this.localLoad) {
+      this.beginning = cast;
+      for (let loading: Promise<void> | null = this.localLoad; loading;) {
+        await loading.catch(() => undefined);
+        // Ended, or another session began, meanwhile.
+        if (this.beginning !== cast) return;
+        loading = this.localLoad === loading ? null : this.localLoad;
+      }
+      this.beginning = null;
+    }
     if (this.cast) await this.endCast();
     // Asked while the phone is still the route: the store reads the phone's last report.
     const own = this.loadedPlace?.() ?? null;
@@ -230,6 +250,7 @@ export class RoutedPlaybackService implements PlaybackService {
    * as a pause, so the store saves it, then loaded into the phone's engine there.
    */
   async endCast(): Promise<void> {
+    this.beginning = null;
     const cast = this.cast;
     if (!cast) return;
     const run = this.handBack(cast);
@@ -366,7 +387,13 @@ export class RoutedPlaybackService implements PlaybackService {
     }
     const cast = this.mode === 'cast' ? this.cast : null;
     if (!cast) {
-      await this.local.load(tracks, startIndex, positionInTrack, chapters, book);
+      const loading = this.local.load(tracks, startIndex, positionInTrack, chapters, book);
+      this.localLoad = loading;
+      try {
+        await loading;
+      } finally {
+        if (this.localLoad === loading) this.localLoad = null;
+      }
       return;
     }
     this.pending = { load: mine, trackIndex: startIndex, position: positionInTrack };
@@ -464,13 +491,15 @@ export class RoutedPlaybackService implements PlaybackService {
     this.route().adoptPlace?.(snapshot);
   }
   /** The phone's engine names its own reports' book. A receiver's reports are of the book
-   * loaded there (`load`, a handover, the queue the store remembered: `lastLoad`), so they name
-   * it, and the store never holds them as another book's (one the phone's engine held with no
-   * name, before the session began). None while a load is on its way there (`pending`: the
-   * receiver still reports the book before it), nor during a switch. */
+   * loaded there (`CastPlaybackService.loadedBook`: a `load`, a handover, the queue of a
+   * session the app did not load), so they name it, and the store never holds them as another
+   * book's (one the phone's engine held with no name, before the session began). Never the
+   * queue the store remembered (`lastLoad`): an adoption landing mid-handover remembers its own
+   * book while the receiver takes the one handed over. None while a load is on its way there
+   * (`pending`: the receiver still reports the book before it), nor during a switch. */
   reportedBook() {
     if (this.mode === 'local') return this.local.reportedBook?.() ?? null;
-    return this.mode === 'cast' && !this.pending ? (this.lastLoad?.book ?? null) : null;
+    return this.mode === 'cast' && !this.pending ? (this.cast?.loadedBook() ?? null) : null;
   }
   getSnapshot() {
     return this.snapshot;
