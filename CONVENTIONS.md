@@ -3282,7 +3282,8 @@ media GETs only.
   The store's `pause` is "stop the sound" (the sleep timer): while the store's book shows
   playing or loading, the engine pauses whatever it plays, the other book too, and the
   store's book shows paused; while it shows paused and the engine plays the other book
-  (`engineOtherBookPlays`, told to `onOtherBookPlays` as it turns), the engine is paused all
+  (`engineOtherBookPlays`, told to `onOtherBookPlays` as it turns; its pause during a start
+  of the store's that then gives up is kept, `otherBookReported`), the engine is paused all
   the same. The sleep timer's duration countdown runs while either plays (`soundPlays` in
   `sleep-timer.ts`), freezes and thaws on `onOtherBookPlays` too, and a shake in the grace
   after it stopped the other book plays that book again (`resumeOtherBook`, nothing once the

@@ -2704,6 +2704,52 @@ describe("a report of another book than the store's", () => {
     expect(mockSvc.play).toHaveBeenCalledTimes(1);
   });
 
+  // A start of the store's that gave up before its load (its place lookup called off) left S
+  // in the engine; S's pause during that lookup went unread, and S read as playing after it,
+  // the sleep timer counting on with nothing heard.
+  it('reads the other book as stopped after a start that gave up while it paused', async () => {
+    const progressSync = jest.requireMock('./progress-sync') as {
+      loadInitialProgress: jest.Mock;
+    };
+    let answer!: (r: { kind: 'empty' }) => void;
+    progressSync.loadInitialProgress.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    await carPlaysSOverB();
+    jest.advanceTimersByTime(6_000);
+    await flushMicrotasks();
+    expect(engineOtherBookPlays()).toBe(true);
+    let superseded = false;
+    const starting = usePlayer
+      .getState()
+      .playBook(
+        'c1',
+        2,
+        makeBook({ rel_path: 'Y' }),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        () => superseded,
+      );
+    await flushMicrotasks();
+    // S pauses (the car) while Y's place is looked up, then that start is called off.
+    pushSnapshot(snap('paused', 0, 9));
+    superseded = true;
+    answer({ kind: 'empty' });
+    await starting;
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying?.path).toBe('B');
+    expect(engineOtherBookPlays()).toBe(false);
+    // Playing again, it is read as playing again.
+    pushSnapshot(snap('playing', 0, 10));
+    expect(engineOtherBookPlays()).toBe(true);
+  });
+
   /** S plays (the engine's reports name it), then a start of B whose load is held: B is the
    * store's book while the engine's last report still names S, the book that load replaces.
    * Returns the load's landing. */

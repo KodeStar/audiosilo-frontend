@@ -337,7 +337,15 @@ let otherBookListener: ((news: OtherBookNews) => void) | null = null;
  * again. Not while a load of the store's holds it: that is the book the load replaces. */
 function otherBookReported(key: string, raw: PlaybackSnapshot) {
   if (outsidePlay) outsidePlay.other = true;
-  if (ownLoadHoldsEngine()) return;
+  if (ownLoadHoldsEngine()) {
+    // A start that gives up before its load (its place lookup called off) leaves this book in
+    // the engine: one that stopped playing meanwhile is not read as playing after it
+    // (`engineOtherBookPlays`: the sleep timer would count on with nothing heard).
+    if (otherReport?.key === key && otherReport.playing && !isTransportLiveState(raw.state)) {
+      otherReport = { ...otherReport, playing: false };
+    }
+    return;
+  }
   // The store's book stopped playing here: its listening ends now, where it was last heard
   // (the store's snapshot, which took none of this book's reports), not when the adoption
   // lands seconds later. None opens again while the engine holds this book
@@ -849,9 +857,9 @@ type PlayerState = {
   /** The app's Play/Pause press. Its pause stops whatever the engine plays, another book not
    * adopted included (`pauseOwnBook`). */
   toggle: () => Promise<void>;
-  /** Stop the sound (the sleep timer) while the store's book shows playing or loading: the
-   * engine pauses whatever book it plays, the car's not adopted included, and the store's
-   * book shows paused. */
+  /** Stop the sound (the sleep timer): the engine pauses whatever book it plays, the car's not
+   * adopted included (also while the store's book shows paused, `engineOtherBookPlays`), and
+   * the store's book, shown playing or loading, shows paused. */
   pause: () => Promise<void>;
   /** Re-load the current track at the current position and resume - recovery after
    * the engine reports an `error` (e.g. the stream became unreachable). */
