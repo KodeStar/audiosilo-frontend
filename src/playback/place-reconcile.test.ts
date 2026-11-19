@@ -233,6 +233,11 @@ async function settle(turns = 12) {
 
 const saved = () => mockSaveProgress.mock.calls.map((c) => (c[1] as { position: number }).position);
 const seeks = () => (mockSvc.seekTo as jest.Mock).mock.calls.map((c) => c[0] as number);
+/** Every event sent to `POST /me/listening/sync`, in order. */
+const sentEvents = () =>
+  mockClient.syncListening.mock.calls.flatMap(
+    (c) => (c[0] as { events: { start?: string; from_pos?: number; to_pos?: number }[] }).events,
+  );
 
 let foreground: ((s: AppStateStatus) => void) | null = null;
 let stop: () => void = () => {};
@@ -1205,9 +1210,7 @@ describe('on a server with listening_sync', () => {
     jest.setSystemTime(Date.now() + 3000);
     pushSnapshot(snap('paused', 643));
     for (let i = 0; i < 10; i++) await settle();
-    const sent = mockClient.syncListening.mock.calls.flatMap(
-      (c) => (c[0] as { events: { to_pos?: number }[] }).events,
-    );
+    const sent = sentEvents();
     // An earlier test's events may still wait in the outbox: these are this test's.
     expect(sent.find((e) => e.to_pos === 108)).toMatchObject({
       start: 'resume',
@@ -1341,10 +1344,7 @@ describe('on a server with listening_sync', () => {
       heldAnswer(device);
       lastToast().onClose();
       for (let i = 0; i < 10; i++) await settle();
-      const sent = mockClient.syncListening.mock.calls.flatMap(
-        (c) => (c[0] as { events: { start?: string }[] }).events,
-      );
-      return sent.map((e) => e.start);
+      return sentEvents().map((e) => e.start);
     };
 
     it('offers the place the other Stay kept at once', async () => {

@@ -456,7 +456,7 @@ export async function appendInTurn(
  * answered by a move acknowledges its row there, once the span it ends is in the outbox
  * (`answerAfterSpan` in store.ts). */
 export function afterInTurn(connectionId: string, op: () => Promise<void>): Promise<void> {
-  return inTurn(connectionId, [], () => op());
+  return inTurn(connectionId, [], op);
 }
 
 /** Run `op` in its turn (`spanOps`, after a crashed tab's span is recovered), with `events`
