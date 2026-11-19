@@ -11,6 +11,8 @@ import type { PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
 // AudioSilo app on the same phone) moved its place on.
 
 let pushSnapshot: (s: PlaybackSnapshot) => void = () => {};
+/** The book the engine's reports name (`reportedBook`): null names none, as most tests. */
+let mockEngineBook: { connectionId: string; libraryId: number; path: string } | null = null;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const mockPlayerSnapshot = (): PlaybackSnapshot => require('./store').usePlayer.getState().snapshot;
 const mockSvc = {
@@ -27,6 +29,7 @@ const mockSvc = {
   setRate: jest.fn(async () => {}),
   setVolume: jest.fn(async () => {}),
   reset: jest.fn(async () => {}),
+  reportedBook: () => mockEngineBook,
   subscribe: jest.fn((listener: (s: PlaybackSnapshot) => void) => {
     pushSnapshot = listener;
     return () => {};
@@ -258,6 +261,7 @@ beforeEach(() => {
   useSettings.setState({ autoDownloadNext: 'never' });
   usePlayer.setState({ nowPlaying: null, snapshot: snap('idle', 0), rate: 1 });
   mockMirror = null;
+  mockEngineBook = null;
   mockReachable = true;
   // The other device played on to 400 s after this one paused.
   mockServer = async () => record();
@@ -859,6 +863,27 @@ describe('a downloaded book whose server answered only after it started', () => 
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'On another device you were at 6:40. Jump there?' }),
       );
+    } finally {
+      noServerCaps();
+    }
+  });
+
+  // The car started another book in the engine meanwhile, not adopted (yet): the store's
+  // book is still this one, and a move (or an offer's Jump) would seek the car's book.
+  it('neither moves nor offers while the engine plays another book than this one', async () => {
+    serverCaps({});
+    try {
+      const answer = await startedWithoutItsServer();
+      mockEngineBook = { connectionId: 'c1', libraryId: 2, path: 'Car/Book' };
+      pushSnapshot(snap('playing', 5));
+      answer();
+      await settle();
+      expect(seeks()).toEqual([]);
+      expect(mockToast).not.toHaveBeenCalled();
+      // Nor a check's answer (the app back in front while that book plays on).
+      await backInFront();
+      expect(seeks()).toEqual([]);
+      expect(mockToast).not.toHaveBeenCalled();
     } finally {
       noServerCaps();
     }

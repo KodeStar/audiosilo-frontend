@@ -2922,7 +2922,9 @@ media GETs only.
   report of its own book in between ends that deadline, and a play press then reloads it, as
   Retry does, from its download when one landed meanwhile; the deadline is the book's, so a
   `NowPlaying` replaced for the same book in the window still shows paused, and the download
-  hot swap never loads the store's book over the other one: `switchCurrentBookToLocal`). A
+  hot swap never loads the store's book over the other one: `switchCurrentBookToLocal`; nor
+  does the place reconcile move or offer anything while the engine holds another book,
+  `engineHoldsOtherBook`, a late place included: its seek would land in that book). A
   resumption meanwhile plays the other book, the one heard (`engineOtherBook`, the car
   snapshot's `resume`), until it played to its end: the car sync is told of that end
   (`onOtherBookReported`'s `ended`) and writes the snapshot again, naming the loaded book; one

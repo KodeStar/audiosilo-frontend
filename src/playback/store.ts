@@ -235,6 +235,11 @@ function reportedOtherBook(svc: PlaybackService): string | null {
 /** Whether the engine's last report named another book than the store's
  * (`reportedOtherBook`): no listening of the store's book opens then. */
 const engineHoldsAnother = (): boolean => service !== null && reportedOtherBook(service) !== null;
+/** Whether the engine holds another book than the store's, by its last report's name
+ * (`engineHoldsAnother`) or because its adoption is under way (`engineIsAnothers`): the
+ * engine's reports are that book's, and so would any move asked of it be. The place
+ * reconcile moves and offers nothing then (`decide`: its seek would land in the other book). */
+export const engineHoldsOtherBook = (): boolean => engineIsAnothers() || engineHoldsAnother();
 /**
  * The book the engine plays when it is not the store's (`reportedOtherBook`: Android's car or
  * a resumption started it and it was not adopted; after `otherBookNotAdopted` the store's book
@@ -3249,7 +3254,7 @@ async function createService(): Promise<PlaybackService> {
   // its adoption is under way (`engineIsAnothers`): none is the store's book's place, state,
   // move or speed. Read inside the service's listeners only: `reportedBook` is the book of
   // the report being handled.
-  const heldForAnother = () => engineIsAnothers() || engineHoldsAnother();
+  const heldForAnother = engineHoldsOtherBook;
   // A report held for another book: the watchdog still runs (re-armed while an adoption is
   // under way), and the adoption reads the engine itself when it lands.
   const holdReport = () => {
@@ -4561,7 +4566,7 @@ async function switchCurrentBookToLocal() {
   // this book would cut that one off, and this book's own report would end its adoption
   // deadline. Nothing of this book plays to move onto the download: a play press reloads it
   // from there (`retry`), and an adoption replaces it.
-  if (engineIsAnothers() || engineHoldsAnother()) return;
+  if (engineHoldsOtherBook()) return;
   const swap = localSwapOf(nowPlaying, snapshot);
   if (!swap) return;
   const { queue, index, positionInTrack, sameOrder } = swap;

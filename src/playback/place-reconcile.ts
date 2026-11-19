@@ -30,6 +30,7 @@ import {
   type ProgressSave,
 } from './progress-sync';
 import {
+  engineHoldsOtherBook,
   holdSaves,
   localMoveCount,
   type NowPlaying,
@@ -462,6 +463,9 @@ async function decide(
   if (selectBookKey(now) !== bookKey || localMoveCount() !== moves) return false;
   // A book that played to its end stays there: its finish is already sent.
   if (now.snapshot.state === 'ended') return false;
+  // The engine plays another book (Android's car started it, adopted or not yet): a move,
+  // or an offer's Jump, would seek that book, not this one.
+  if (engineHoldsOtherBook()) return false;
   const from = selectBookPosition(now);
   const to = placeToMoveTo({ server, deviceId, mirror, enginePosition: from, late });
   if (to === null) {
