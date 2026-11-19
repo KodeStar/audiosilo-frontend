@@ -1619,7 +1619,7 @@
       "ebook": "No se pudo leer el libro electrónico.",
       "core": "El libro necesita antes una ficha en AudioSilo Meta.",
       "contrib": "Contribuir no está configurado en el Bridge.",
-      "share": "Esperando a confirmar con el servidor que este libro se sigue compartiendo. Aún no se ha compartido nada.",
+      "share": "Esperando a confirmar con el servidor que este libro aún debe compartirse. Todavía no se ha compartido nada.",
       "changed": "Los archivos del libro cambiaron mientras se leía.",
       "review": "Las comprobaciones no pudieron dar por buenos los resultados.",
       "other": "Necesita que una persona lo revise."
