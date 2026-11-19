@@ -479,9 +479,10 @@ async function onOwnVersion(save: ReadingSave): Promise<ReadingSave> {
  * turn (a save of its book still on its way, up to the client's timeout) is queued as it
  * starts to wait (`queueSave`), not only once its turn comes: the app closed meanwhile, the
  * server kept the older page until this device's next save of the book. In its turn it is
- * sent only while that queued copy is still there unclaimed (`waitingUnclaimed`): one a
- * replay claimed meanwhile is that replay's to send (here too, it went twice), and one that
- * left the queue went from another tab or gave way to a newer save. */
+ * sent only while that queued copy is still there, unclaimed or claimed by a replay of this
+ * tab's (`waitingUnclaimed`): one another tab's replay claimed meanwhile is that replay's to
+ * send (here too, it went twice), and one that left the queue went from another tab or gave
+ * way to a newer save. */
 async function sendThenFlush(
   api: ApiClient | null,
   captured: ReadingSave,
@@ -634,11 +635,19 @@ async function queuedCopy(save: ReadingSave): Promise<Claimed<ReadingSave> | und
   return (await readQueue()).find((s) => queuedKey(s) === key);
 }
 
+/** The queued saves (`queuedKey`) this tab's replays claimed and are working through
+ * (`flushGroup`). A save waiting for its send turn whose copy one of them claimed goes in its
+ * own turn, and that replay finds it settled (`settledHere`): left to it, the save went in
+ * the replay's order, behind the other books' saves of its connection (each up to the
+ * client's timeout), and not at all once one of them stopped the replay. */
+const replayingHere = new Set<string>();
+
 /** Whether a save queued as it started to wait for its send turn (`sendThenFlush`) is still
- * queued with no replay's claim standing on it, so it is this turn's to send. */
+ * queued with no claim of another tab's replay standing on it, so it is this turn's to
+ * send. */
 async function waitingUnclaimed(save: ReadingSave): Promise<boolean> {
   const copy = await queuedCopy(save);
-  return copy !== undefined && !claimStands(copy);
+  return copy !== undefined && (!claimStands(copy) || replayingHere.has(queuedKey(copy)));
 }
 
 /** Replay one connection's saves through its client, each in its book's send turn; returns
@@ -653,36 +662,42 @@ async function flushGroup(
   saves: ReadingSave[],
 ): Promise<ReadingSave[]> {
   const remaining: ReadingSave[] = [];
+  const claimed = saves.map(queuedKey);
+  for (const key of claimed) replayingHere.add(key);
   // No answer, or the server asked to wait (a 429: later replays wait out its
   // `Retry-After`, `queuedRoute`): the rest of the group waits too.
   let stop = false;
-  for (const save of saves) {
-    if (stop) {
-      remaining.push(save);
-      continue;
-    }
-    const sent = await withSendTurn(contentKeyOf(save), async () => {
-      if (settledHere(save)) return 'settled';
-      if (!(await stillQueued(save))) return 'kept';
-      try {
-        // A save queued as it waited behind its book's own (`sendThenFlush`).
-        await put(client, await onOwnVersion(save));
-        noteSuccess(cid);
-        noteSettled(save);
-        return 'settled';
-      } catch (e) {
-        if (isRefusedForGood(e)) {
-          refused(save, e);
+  try {
+    for (const save of saves) {
+      if (stop) {
+        remaining.push(save);
+        continue;
+      }
+      const sent = await withSendTurn(contentKeyOf(save), async () => {
+        if (settledHere(save)) return 'settled';
+        if (!(await stillQueued(save))) return 'kept';
+        try {
+          // A save queued as it waited behind its book's own (`sendThenFlush`).
+          await put(client, await onOwnVersion(save));
+          noteSuccess(cid);
           noteSettled(save);
           return 'settled';
+        } catch (e) {
+          if (isRefusedForGood(e)) {
+            refused(save, e);
+            noteSettled(save);
+            return 'settled';
+          }
+          noteFailure(cid, e);
+          return stopsReplay(cid, e) ? 'stop' : 'kept';
         }
-        noteFailure(cid, e);
-        return stopsReplay(cid, e) ? 'stop' : 'kept';
-      }
-    });
-    if (sent === 'settled') continue;
-    remaining.push(save);
-    if (sent === 'stop') stop = true;
+      });
+      if (sent === 'settled') continue;
+      remaining.push(save);
+      if (sent === 'stop') stop = true;
+    }
+  } finally {
+    for (const key of claimed) replayingHere.delete(key);
   }
   return remaining;
 }

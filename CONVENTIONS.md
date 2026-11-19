@@ -1108,10 +1108,13 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   A save on its way replaces an older queued one of its book before the request goes, and a
   sent or refused one drops it. One held behind a save of its book still on its way is queued
   as it starts to wait (the app closed under the hung request replays it), and in its turn is
-  sent only while that copy is still queued unclaimed: a replay that claimed it sends it (on
-  the version its own earlier save's answer acknowledged, `onOwnVersion`, as the reader's
-  send would), and one that left the queue went from another tab or gave way to a newer save.
-  A book's captures are a millisecond apart at least (`lastCaptured`): the queue and
+  sent only while that copy is still queued and no other tab's replay claimed it: that replay
+  sends it (on the version its own earlier save's answer acknowledged, `onOwnVersion`, as the
+  reader's send would), and one that left the queue went from another tab or gave way to a
+  newer save. One this tab's replay claimed still goes in its own turn (`replayingHere`), and
+  the replay finds it settled: left to the replay, it went behind the other books' saves of
+  its connection, and not at all once one of them stopped the replay.
+  A book's captures in a tab are a millisecond apart at least (`lastCaptured`): the queue and
   `settledUntil` tell its saves apart by time. One a replay had claimed is never sent after it
   (`settledUntil`), nor once it has left the queue (`stillQueued`: a newer save of its book
   queued in its place, or another tab's sent one dropped it). The queue keeps

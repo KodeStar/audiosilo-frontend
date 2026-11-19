@@ -1070,7 +1070,8 @@ describe('reading-progress', () => {
         save({ cfi: CFI_B, progression: 0.3, updated_at: '2026-10-01T10:05:00.000Z' }),
       );
       await nextMacrotask();
-      // A sign-out's last flush claims the waiting save: its own turn leaves it to the replay.
+      // A sign-out's last flush claims the waiting save and waits for its turn: its own turn
+      // sends it, and the replay finds it settled.
       const replay = flushReadingConnection('c1');
       await nextMacrotask();
       release();
@@ -1080,6 +1081,64 @@ describe('reading-progress', () => {
       // Sent on 0 it diverged, and the server kept the further page.
       expect(server.row()).toMatchObject({ cfi: CFI_B, progression: 0.3 });
       expect(await readQueue()).toEqual([]);
+    });
+
+    it('a waiting save this tab’s replay claimed goes in its own turn, not behind another book', async () => {
+      // Another book's place queued before: the replay claims it first, and its request hangs
+      // until it times out (no answer: it stops the replay).
+      await AsyncStorage.setItem(
+        READING_QUEUE_KEY,
+        JSON.stringify([save({ path: 'B/Other', updated_at: '2026-10-01T09:00:00.000Z' })]),
+      );
+      let timeOut = () => {};
+      const timedOut = new Promise<void>((resolve) => (timeOut = resolve));
+      const server = fakeApi();
+      const answer = server.saveReadingProgress.getMockImplementation()!;
+      server.saveReadingProgress.mockImplementation(
+        async (lib: number, path: string, input: Record<string, unknown>) => {
+          if (path !== 'B/Other') return answer(lib, path, input);
+          await timedOut;
+          throw new TimeoutError(15_000);
+        },
+      );
+      const { api, release } = hangs(firstOnly(), server);
+      routeClients({ c1: api });
+      const first = saveReadingPlace(api, save({ cfi: CFI_A, progression: 0.5 }));
+      await nextMacrotask();
+      const waiting = saveReadingPlace(
+        api,
+        save({ cfi: CFI_B, progression: 0.6, updated_at: '2026-10-01T10:05:00.000Z' }),
+      );
+      await nextMacrotask();
+      // The window focused while the first hung: this tab's replay claims both queued saves.
+      const replay = flushReadingQueue();
+      await nextMacrotask();
+      release();
+      await Promise.all([first, waiting]);
+      const sentBeforeTimeout = sent(api, 'cfi', 'A/Book');
+      timeOut();
+      await replay;
+      // The replays the two answers asked for, done too.
+      await flushReadingQueue();
+      expect(sentBeforeTimeout).toEqual([CFI_A, CFI_B]);
+      expect(sent(api, 'cfi', 'A/Book')).toEqual([CFI_A, CFI_B]);
+      expect((await readQueue()).map((s) => s.path)).toEqual(['B/Other']);
+    });
+
+    it('replays a save made on 0 on the version its own save acknowledged since', async () => {
+      const api = fakeApi();
+      routeClients({ c1: api });
+      await saveReadingPlace(api, save({ progression: 0.5 }));
+      // Queued as it waited behind that save, then the app closed before its turn.
+      await AsyncStorage.setItem(
+        READING_QUEUE_KEY,
+        JSON.stringify([
+          save({ cfi: CFI_B, progression: 0.3, updated_at: '2026-10-01T10:05:00.000Z' }),
+        ]),
+      );
+      await flushReadingQueue();
+      expect(sent(api, 'cfi')).toEqual([CFI_A, CFI_B]);
+      expect(sent(api, 'base_version')).toEqual([0, 5]);
     });
 
     it('a replay asked while one is out waits for it (a sign-out’s last flush)', async () => {
