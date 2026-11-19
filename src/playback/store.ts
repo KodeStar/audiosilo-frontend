@@ -946,7 +946,9 @@ async function persist(opts?: {
  * stop while the first still saves waits for that save rather than sending its own (a tab
  * told a connection is going stops, and is told it is gone while that stop still saves).
  * Only the save is shared: each stop then goes on to its own teardown (the lists read
- * again, the engine reset), which is safe twice. */
+ * again, the engine reset), which is safe twice. Not across a start (`switchBook`): the same
+ * book started again while the first stop still saves is heard further on, and its stop
+ * saves that place. */
 function saveForStop(key: string | null): Promise<unknown> {
   if (pendingStopSave?.key === key) return pendingStopSave.saved;
   const entry = { key, saved: persist() };
@@ -3287,6 +3289,9 @@ function switchBook(request: PlayRequest) {
   catchingUp = null;
   // The play another tab made before this book was here is noted again as it goes on.
   notedPlay = null;
+  // A stop still saving (`saveForStop`) saved the book as it was loaded before this start:
+  // a stop of this one, the same book started again included, saves its own place.
+  pendingStopSave = null;
   lastPlayRequest = request; // so retry() can re-run resume
   resumeLookupFailed = false;
 }
