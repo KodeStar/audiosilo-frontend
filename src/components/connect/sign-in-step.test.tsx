@@ -421,6 +421,26 @@ it('a reconnect away from home: "At home and away" up front, and the paired addr
   expect(conn('srv-1')).toMatchObject({ serverUrl: HOME, token: 'fresh' });
 });
 
+// Sign in again (the reconnect banner, the proxy banner) opens on the account's own way in.
+it('a reconnect opens on the password for an account that has one', async () => {
+  await useSession.getState().setSession({ serverUrl: AWAY, serverId: 'srv-1', token: 't', user });
+  await render(<SignInStep server={AWAY} reconnectId="srv-1.1" />);
+  expect(screen.getByLabelText('Username')).toBeTruthy();
+});
+
+// Denied: an account paired by code alone has no password to type (a plain sign-in opens on
+// the code too: 'prompts for an empty invite code').
+it('a reconnect opens on the code for an account with no password', async () => {
+  await useSession.getState().setSession({
+    serverUrl: AWAY,
+    serverId: 'srv-1',
+    token: 't',
+    user: { ...user, has_password: false },
+  });
+  await render(<SignInStep server={AWAY} reconnectId="srv-1.1" />);
+  expect(screen.queryByLabelText('Username')).toBeNull();
+});
+
 it("a reconnect signs in with the set kept for the address, whoever's sign-in kept it (fe#295)", async () => {
   const kept = { origin: AWAY, headers: [{ name: 'X-Kept', value: 'kept-secret' }] };
   const s = useSession.getState();

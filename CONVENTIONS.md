@@ -544,7 +544,8 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   grown-up to pair the device again (`proxyHeaders.refusedBannerPair`,
   `refusedAskGrownUpPair`, kids mode's `askGrownUpPair`). The whole strip but the button opens
   Account, its padding and edges too; beside the button no chevron is drawn, and on a phone the
-  button always wraps under the words. The
+  button always wraps under the words. Sign in again opens the sign-in step on the password for
+  an account that has one (`has_password`), else on the code. The
   Library's load errors say the proxy refused, with their Retry (`proxyHeaders.refusedRetry`),
   not that the server did not answer, while a refusal lasts (`useProxyRefused`: never for a sign-in's
   own set gone stale alone).

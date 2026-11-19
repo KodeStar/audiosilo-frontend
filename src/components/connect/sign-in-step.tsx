@@ -124,7 +124,11 @@ export function SignInStep({
   const reconnecting = useSession((s) =>
     reconnectId ? s.connections.find((c) => c.id === reconnectId) : undefined,
   );
-  const [mode, setMode] = useState<Mode>('code');
+  // A reconnect of an account with a password opens on the password: its own way in. One that
+  // has none (a kid's, one paired by code alone) or an invite link's code opens on the code.
+  const [mode, setMode] = useState<Mode>(() =>
+    reconnecting?.user?.has_password && !initialCode ? 'password' : 'code',
+  );
   const [code, setCode] = useState(initialCode ?? '');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
