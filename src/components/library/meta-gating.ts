@@ -58,14 +58,29 @@ export function metaEnabledFor(
   return metadata === true && !!book && !book.episode;
 }
 
-/** Whether a book names something its community metadata is found by: an ASIN or ISBN,
- * which the server matches by, content `generated` on its server, or the community work the
- * server ties it to (`work_id`, also sent for a console match without ids since server#484,
- * fe#290); never an episode. */
-export function matchableById(
-  book: Pick<Book, 'asin' | 'isbn' | 'generated' | 'work_id' | 'episode'> | undefined,
-): boolean {
-  return !!book && !book.episode && !!(book.asin || book.isbn || book.generated || book.work_id);
+/** What a book's community metadata is found by: an ASIN or ISBN, which the server matches
+ * by, content `generated` on its server, or the community work the server ties it to
+ * (`work_id`, also sent for a console match without ids since server#484, fe#290). */
+const MATCH_FIELDS = ['asin', 'isbn', 'generated', 'work_id'] as const;
+
+type MatchFields = Pick<Book, (typeof MATCH_FIELDS)[number]>;
+
+/** Whether a book names something its community metadata is found by (`MATCH_FIELDS`);
+ * never an episode. */
+export function matchableById(book: (MatchFields & Pick<Book, 'episode'>) | undefined): boolean {
+  return !!book && !book.episode && MATCH_FIELDS.some((field) => !!book[field]);
+}
+
+/** `book` with every match field (`MATCH_FIELDS`) `answer` names and it lacks or names
+ * otherwise; the same object when there is none. A field the answer leaves out stays: an
+ * older server, or a list row, names fewer. */
+export function withMatchFields<B extends MatchFields>(book: B, answer: MatchFields): B {
+  let next = book;
+  for (const field of MATCH_FIELDS) {
+    const value = answer[field];
+    if (value && value !== book[field]) next = { ...next, [field]: value };
+  }
+  return next;
 }
 
 /**

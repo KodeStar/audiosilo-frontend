@@ -4244,20 +4244,155 @@ describe('the offline companion (community metadata kept with a download)', () =
     }
   });
 
-  // A copy kept by the book's ASIN stays: a download made before its server sent work ids at
-  // all (server#241) takes the id without reading the copy again.
-  it('takes the work without keeping again when the copy was kept already', async () => {
+  // A copy kept by the book's ASIN that names the work stays: a download made before its
+  // server sent work ids at all (server#241) takes the id and reads its own file, no more.
+  it('takes the work without keeping again when the copy names it already', async () => {
     const path = nextPath();
     const key = downloadKey('c1', 2, path);
-    mockCapture.mockResolvedValue(payload());
+    const kept = { ...payload(), meta: { matched: true, work: { id: 'w1' } } };
+    mockCapture.mockResolvedValue(kept);
     await downloadOne(path);
     expect(useDownloads.getState().entries[key]?.manifest.meta).toBeDefined();
+    mockReadMeta.mockResolvedValue(kept);
+    const { queryClient } = jest.requireMock('@/api/provider');
+    queryClient.invalidateQueries.mockClear();
     const stop = startItemRefresh();
     try {
       emitAnswer(['item', 'c1', 2, path], makeBook({ rel_path: path, work_id: 'w1' }));
       await settle();
       expect(useDownloads.getState().entries[key]?.manifest.book.work_id).toBe('w1');
+      expect(mockReadMeta).toHaveBeenCalledTimes(1);
       expect(mockCapture).toHaveBeenCalledTimes(1);
+      expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+    } finally {
+      stop();
+    }
+  });
+
+  // A book with an ASIN the community did not know kept an unmatched copy; an admin's
+  // console match then names its work, and the copy is kept again, not a week later.
+  it('keeps the copy again when the one kept by an ASIN was unmatched', async () => {
+    const path = nextPath();
+    const key = downloadKey('c1', 2, path);
+    const unmatched = payload();
+    mockCapture.mockResolvedValue(unmatched);
+    useDownloads
+      .getState()
+      .download('c1', 2, makeBook({ rel_path: path, files: undefined, asin: 'B0' }));
+    await settle();
+    await settle();
+    expect(useDownloads.getState().entries[key]?.manifest.meta).toBeDefined();
+    mockReadMeta.mockResolvedValue(unmatched);
+    const matched = { ...payload(), meta: { matched: true, work: { id: 'w1' } } };
+    mockCapture.mockResolvedValue(matched);
+    const stop = startItemRefresh();
+    try {
+      emitAnswer(['item', 'c1', 2, path], makeBook({ rel_path: path, asin: 'B0', work_id: 'w1' }));
+      await settle();
+      await settle();
+      expect(mockCapture).toHaveBeenCalledTimes(2);
+      expect(mockWriteMeta).toHaveBeenLastCalledWith(expect.objectContaining({ path }), matched);
+    } finally {
+      stop();
+    }
+  });
+
+  // The download's own book can be a list row, or older than a tag the file gained: on a
+  // launch with no network it is all `canMatch` reads, so it takes every field the answer
+  // names. Only a work asks for a keep.
+  it('takes the ASIN, ISBN and generated flag an /item answer names, with no keep', async () => {
+    const path = nextPath();
+    const key = downloadKey('c1', 2, path);
+    await downloadOne(path);
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+    const watch = jest.spyOn(AppState, 'addEventListener');
+    const stop = startItemRefresh();
+    try {
+      emitAnswer(
+        ['item', 'c1', 2, path],
+        makeBook({ rel_path: path, asin: 'B0', isbn: '978', generated: true }),
+      );
+      await settle();
+      expect(useDownloads.getState().entries[key]?.manifest.book).toMatchObject({
+        asin: 'B0',
+        isbn: '978',
+        generated: true,
+      });
+      expect(mockCapture).toHaveBeenCalledTimes(1);
+      watch.mock.calls.findLast(([type]) => type === 'change')?.[1]('background');
+      await settle();
+      expect((await readPersisted())[key]?.manifest.book).toMatchObject({
+        asin: 'B0',
+        isbn: '978',
+      });
+      // An answer naming fewer drops nothing.
+      emitAnswer(['item', 'c1', 2, path], makeBook({ rel_path: path }));
+      await settle();
+      expect(useDownloads.getState().entries[key]?.manifest.book.asin).toBe('B0');
+    } finally {
+      stop();
+    }
+  });
+
+  // An answer that lands while the files do finds no downloaded book to give its fields
+  // to: the finished download takes them from the cache, and its own keep is for that work.
+  it('a download that finishes takes what the cached /item answer names', async () => {
+    const path = nextPath();
+    const key = downloadKey('c1', 2, path);
+    mockGetQueryData.mockImplementation((k) => {
+      const [kind, , , p] = k as unknown[];
+      return kind === 'item' && p === path
+        ? makeBook({ rel_path: path, asin: 'B0', work_id: 'w1' })
+        : undefined;
+    });
+    const { queryClient } = jest.requireMock('@/api/provider');
+    queryClient.invalidateQueries.mockClear();
+    await downloadOne(path);
+    const entry = useDownloads.getState().entries[key];
+    expect(entry?.status).toBe('downloaded');
+    expect(entry?.manifest.book).toMatchObject({ asin: 'B0', work_id: 'w1' });
+    expect((await readPersisted())[key]?.manifest.book.work_id).toBe('w1');
+    // A `/meta` answer read before the book named the work is not kept as it is.
+    expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(1);
+    expect(queryClient.invalidateQueries.mock.calls[0][0]).toMatchObject({
+      queryKey: ['bookMeta', 'c1', 2, path],
+      refetchType: 'none',
+    });
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+    expect(mockCapture.mock.calls[0][0].manifest.book.work_id).toBe('w1');
+  });
+
+  // Many answers at once (the cached ones, as the refresh starts) are no burst of `/meta`
+  // requests: the keeps they ask for run one book at a time.
+  it('keeps for the works several answers name one book at a time', async () => {
+    const paths = [nextPath(), nextPath(), nextPath()];
+    for (const path of paths) await downloadOne(path);
+    mockCapture.mockClear();
+    const ends: (() => void)[] = [];
+    let running = 0;
+    let most = 0;
+    mockCapture.mockImplementation(async () => {
+      most = Math.max(most, ++running);
+      await new Promise<void>((r) => ends.push(r));
+      running--;
+      return null;
+    });
+    const stop = startItemRefresh();
+    try {
+      for (const path of paths) {
+        emitAnswer(['item', 'c1', 2, path], makeBook({ rel_path: path, work_id: 'w1' }));
+      }
+      for (let i = 0; i < paths.length; i++) {
+        await settle();
+        expect(mockCapture).toHaveBeenCalledTimes(i + 1);
+        ends[i]();
+      }
+      await settle();
+      expect(most).toBe(1);
+      for (const path of paths) {
+        const book = useDownloads.getState().entries[downloadKey('c1', 2, path)]?.manifest.book;
+        expect(book?.work_id).toBe('w1');
+      }
     } finally {
       stop();
     }

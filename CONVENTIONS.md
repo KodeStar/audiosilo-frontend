@@ -1697,7 +1697,8 @@ credits go through it (fe#290: a console-matched book without ids shows its comm
 the player too, and the companion offers no Generate for a book the community covers). **The
 offline copy alone keeps a narrower rule, `canMatch`** (`offline-meta.ts`: `matchableById`, an
 ASIN, an ISBN, **`generated`** or a `work_id`, which the server sends since server#484 for a
-console match without ids too; never an episode): it runs for every download, so a book with none
+console match without ids too; never an episode, by the download's book or its cached item: a
+list row never says one is): it runs for every download, so a book with none
 of them reads as unmatched offline, as an id-less match does from an older server. The series page's anchor (`metadataAnchor`, an
 ASIN or ISBN) and Search's characters (`characterBooksToLoad`, the started books, capped,
 ids or not) pick their books by their own rules. Two readers of the envelope, and each
@@ -5180,9 +5181,14 @@ are asked, at most 10,000 rows.
   too, or a console match without ids by its `work_id`, fe#290; the `/meta` envelope, plus the
   previous work(s) the envelope doesn't hold) as
   `meta.json` beside its audio (`engine.writeText`: the book's folder on native, its Cache API
-  prefix on web), so it is scoped by connection and deleted with the files. A download made before its
-  server sent the `work_id` takes it from the next `/item` answer (`adoptWorkId`, in
-  `startItemRefresh`) and keeps its copy then (one it already kept stays, unless the answer names another work). **Not in the registry**:
+  prefix on web), so it is scoped by connection and deleted with the files. A download's book takes every
+  match field an `/item` answer names that it lacks or names otherwise (`adoptMatch`, in
+  `startItemRefresh`; `withMatchFields`, the list `matchableById` reads; a download that finishes
+  takes them from the cached answer), so `canMatch` is right on a launch with no network, where
+  the download's book is all it reads. A work the book did not name has its copy kept then
+  (`keepForWork`): a download made before its server sent the `work_id`, or one kept as unmatched
+  before a console match; a copy that names the work already stays (read from its file, no
+  request). One book at a time across the downloads. **Not in the registry**:
   that is ONE JSON document rewritten every couple of seconds while a download runs, an envelope
   can be hundreds of KB, and AsyncStorage on Android / localStorage on web cap the whole store at a
   few MB; the registry carries only a marker (`DownloadManifest.meta`). The seeds fill exactly the
