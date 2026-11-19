@@ -3069,6 +3069,7 @@
         "identity_changed": "Este episódio mudou no feed. Abra o programa para encontrá-lo de novo.",
         "signed_out": "A tua sessão neste servidor terminou. Inicia sessão de novo e tenta outra vez.",
         "no_access": "Esta conta não tem acesso a este episódio.",
+        "proxy_refused": "O proxy de início de sessão do servidor recusou este dispositivo. Atualiza os cabeçalhos de proxy em Conta e tenta outra vez.",
         "other": "Algo deu errado ao baixar. Tente de novo mais tarde."
       }
     },

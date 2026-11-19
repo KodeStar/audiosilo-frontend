@@ -161,14 +161,14 @@ describe('waitForEpisode', () => {
   });
 
   it.each([401, 403])(
-    "ends failed, never signed out or no access, on a proxy's own %i (fe#295, fe#280)",
+    "ends failed with the proxy's own reason, never signed out or no access, on a proxy's %i (fe#295, fe#280)",
     async (status) => {
       client.prepareEpisodeStream.mockRejectedValueOnce(
         new ApiError(status, 'Refused', undefined, undefined, true),
       );
       const key = wait(1);
       await flush();
-      expect(ends[key]).toEqual({ kind: 'failed', code: null });
+      expect(ends[key]).toEqual({ kind: 'failed', code: 'proxy_refused' });
     },
   );
 

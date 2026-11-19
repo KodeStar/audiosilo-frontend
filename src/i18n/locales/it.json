@@ -3069,6 +3069,7 @@
         "identity_changed": "Questo episodio è cambiato nel suo feed. Apri il programma per ritrovarlo.",
         "signed_out": "Sei disconnesso da questo server. Accedi di nuovo, poi riprova.",
         "no_access": "Questo account non ha accesso a questo episodio.",
+        "proxy_refused": "Il proxy di accesso del server ha respinto questo dispositivo. Aggiorna le intestazioni proxy in Account, poi riprova.",
         "other": "Qualcosa è andato storto durante il download. Riprova più tardi."
       }
     },

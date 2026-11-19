@@ -169,16 +169,16 @@ export function isProxyRefusal(e: unknown): boolean {
 /** Whether `e` is the server saying the content isn't there for this caller: a 404 (no
  * such book or folder), a 403 (a library not shared with them) or a 400 (a path the
  * server refuses, such as one leaving the library). Asking again can't change it, so it
- * is never retried and a page shows `NotInLibraryState`, never a Retry (CONNECT-13). */
+ * is never retried and a page shows `NotInLibraryState`, never a Retry (CONNECT-13). Never
+ * a proxy's own 403 (`isProxyRefusal`, fe#295): the server never saw the request, so it
+ * says nothing of the content, and the same read gets past once the proxy headers are
+ * fixed (the shell says so, `ProxyRefusedBanner`). */
 export function isNotInLibraryError(e: unknown): boolean {
-  return e instanceof ApiError && (e.status === 404 || e.status === 403 || e.status === 400);
-}
-
-/** `isNotInLibraryError` from the server itself: a proxy's own 401 or 403
- * (`isProxyRefusal`) never reached it, so it says nothing of the content and the same read
- * may get past next time. The LibriVox job poll's and its watcher's ONE rule for a refusal. */
-export function isServerNotInLibraryError(e: unknown): boolean {
-  return isNotInLibraryError(e) && !isProxyRefusal(e);
+  return (
+    e instanceof ApiError &&
+    !e.fromProxy &&
+    (e.status === 404 || e.status === 403 || e.status === 400)
+  );
 }
 
 /** The refusal codes (`ApiError.code`) the app tells apart: the household members routes'

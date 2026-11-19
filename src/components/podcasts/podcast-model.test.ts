@@ -31,6 +31,7 @@ describe('fetchReasonKey', () => {
       'identity_changed',
       'signed_out',
       'no_access',
+      'proxy_refused',
     ]) {
       expect(fetchReasonKey(code)).toBe(`podcasts.fetch.reason.${code}`);
     }

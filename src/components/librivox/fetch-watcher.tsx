@@ -2,7 +2,7 @@ import { hashKey, type QueryClient, useQueryClient } from '@tanstack/react-query
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { create } from 'zustand';
 
-import { ApiError, isServerNotInLibraryError } from '@/api/client';
+import { ApiError, isNotInLibraryError } from '@/api/client';
 import { invalidateLibraryLists, qk, useLibrivoxJob, useServerInfo } from '@/api/hooks';
 import type { BridgeJob, ServerInfo } from '@/api/types';
 import { isAway } from '@/lib/app-activity';
@@ -207,7 +207,7 @@ function WatchedFetch({ cid, id, at, awaySince }: Watch) {
   // rule (`useLibrivoxJob`), which stops too. A proxy's 401 or 403 is a read that failed:
   // the poll asks again. A 404 is `gone`: an end, not a refusal. The server's 401 holds the
   // watch until the connection is signed in again (`reading`).
-  const refused = !gone && isServerNotInLibraryError(own.error);
+  const refused = !gone && isNotInLibraryError(own.error);
   const signedIn = !!conn;
   // Who is signed in is known only once the session has read its connections.
   const sessionRead = useSession((s) => s.status !== 'loading');

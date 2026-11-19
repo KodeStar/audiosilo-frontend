@@ -434,7 +434,7 @@ describe('requestEpisodeFetch', () => {
   });
 
   it.each([401, 403])(
-    "fails a proxy's own %i with no reason, never signed out or no access (fe#295, fe#280)",
+    "fails a proxy's own %i with the proxy's reason, never signed out or no access (fe#295, fe#280)",
     async (status) => {
       mockClient!.prepareEpisodeStream.mockRejectedValue(
         new ApiError(status, 'Refused', undefined, undefined, true),
@@ -442,7 +442,7 @@ describe('requestEpisodeFetch', () => {
       requestEpisodeFetch(target, book);
       await flush();
       expect(phase()).toBe('failed');
-      expect(useEpisodeFetch.getState().pending?.code).toBeNull();
+      expect(useEpisodeFetch.getState().pending?.code).toBe('proxy_refused');
     },
   );
 

@@ -75,8 +75,8 @@ import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import {
   ApiError,
+  isNotInLibraryError,
   isPlainSeriesQuery,
-  isServerNotInLibraryError,
   isSignedOutError,
   type ApiClient,
   type BookListQuery,
@@ -2984,7 +2984,7 @@ export function useLibrivoxJob(
         // The server's refusal stays refused (the default retry's rule, `retryQuery`), and a
         // 404 is gone. A proxy's own 401 or 403 is a read that failed: asked again, backing off.
         if (isSignedOutError(error)) return false;
-        if (isServerNotInLibraryError(error)) return false;
+        if (isNotInLibraryError(error)) return false;
         return librivoxJobPollInterval(
           data,
           active && AppState.currentState === 'active',

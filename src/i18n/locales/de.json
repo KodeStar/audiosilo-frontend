@@ -3069,6 +3069,7 @@
         "identity_changed": "Diese Episode hat sich in ihrem Feed geändert. Öffne die Sendung, um sie wiederzufinden.",
         "signed_out": "Du bist von diesem Server abgemeldet. Melde dich wieder an und versuche es dann erneut.",
         "no_access": "Dieses Konto hat keinen Zugriff auf diese Folge.",
+        "proxy_refused": "Der Anmelde-Proxy des Servers hat dieses Gerät abgewiesen. Aktualisiere die Proxy-Header unter Konto und versuche es dann erneut.",
         "other": "Beim Holen ist etwas schiefgegangen. Versuch es später noch einmal."
       }
     },

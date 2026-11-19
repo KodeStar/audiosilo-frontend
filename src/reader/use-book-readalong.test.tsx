@@ -112,6 +112,9 @@ describe('readalongFailure', () => {
     expect(readalongFailure(new ApiError(409, 'x', 'readalong_stale'))).toBeNull();
     expect(readalongFailure(new ApiError(401, 'x'))).toBe('signedOut');
     expect(readalongFailure(new ApiError(403, 'x'))).toBe('denied');
+    // A proxy's 401 or 403 is no refusal of the server's: Try again.
+    expect(readalongFailure(new ApiError(403, 'x', undefined, undefined, true))).toBe('retry');
+    expect(readalongFailure(new ApiError(401, 'x', undefined, undefined, true))).toBe('retry');
     expect(readalongFailure(new ApiError(404, 'x'))).toBe('missing');
     expect(readalongFailure(new ApiError(503, 'x'))).toBe('retry');
     expect(readalongFailure(new TypeError('Network request failed'))).toBe('retry');

@@ -473,6 +473,16 @@ describe('a book that is not in the library', () => {
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
+  // A proxy in front of the server turned the read away (fe#295): it says nothing of the
+  // book, and Retry gets past once the proxy headers are fixed.
+  it("never reads a proxy's 403 as not in the library", async () => {
+    mockBook = undefined;
+    mockBookError = new ApiError(403, 'Forbidden', undefined, undefined, true);
+    await mountAt('desktop');
+    expect(screen.queryByText("This book isn't in the library")).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
   it.each([
     ['a library id that is not a number', { libraryId: 'abc', path: 'Author/Book' }],
     ['no path', { libraryId: '1' }],
