@@ -130,8 +130,11 @@ export type DownloadManifest = {
    * saved every couple of seconds while a download runs, stays small. Absent on
    * downloads made before it existed (they are filled in once, in the background). `job`:
    * the finished Bridge job the copy was last kept again for (`refreshKeptMeta`), so a
-   * later launch that meets the same job does not keep it once more. */
-  meta?: { savedAt: string; job?: number };
+   * later launch that meets the same job does not keep it once more. `rematched`: `book`
+   * named a new work after the copy was kept (`adoptMatch`); gone with the next copy kept,
+   * and until then a launch reads a copy not naming that work again (the keep asked for at
+   * the time did not land). */
+  meta?: { savedAt: string; job?: number; rematched?: true };
 };
 
 export type DownloadEntry = {

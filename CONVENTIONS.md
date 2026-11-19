@@ -5188,7 +5188,14 @@ are asked, at most 10,000 rows.
   the download's book is all it reads. A work the book did not name has its copy kept then
   (`keepForWork`): a download made before its server sent the `work_id`, or one kept as unmatched
   before a console match; a copy that names the work already stays (read from its file, no
-  request). One book at a time across the downloads. **Not in the registry**:
+  request). One book at a time across the downloads. The copy it had is marked in the same save as
+  the id (`meta.rematched`, gone with the next copy kept): a keep cut short (the app closed, a
+  request that failed) leaves it, and the next launch reads again a marked copy that does not name
+  the book's work, as it does one a week old; no later answer would, the id being taken. Every
+  keep first marks stale the cached `/meta` answers that do not name the work its book names
+  (`staleMetaNotNaming` in `keepOfflineMetaNow`, no request of its own), and the launch does the
+  same for a copy it seeds, so no keep saves an answer from before a console match as it is.
+  **Not in the registry**:
   that is ONE JSON document rewritten every couple of seconds while a download runs, an envelope
   can be hundreds of KB, and AsyncStorage on Android / localStorage on web cap the whole store at a
   few MB; the registry carries only a marker (`DownloadManifest.meta`). The seeds fill exactly the

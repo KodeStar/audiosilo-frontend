@@ -4288,13 +4288,46 @@ describe('the offline companion (community metadata kept with a download)', () =
     const stop = startItemRefresh();
     try {
       emitAnswer(['item', 'c1', 2, path], makeBook({ rel_path: path, asin: 'B0', work_id: 'w1' }));
+      // Its copy is from before the work, said in the same save as the id: a keep cut short
+      // is the next launch's to read again.
+      expect(useDownloads.getState().entries[key]?.manifest.meta?.rematched).toBe(true);
       await settle();
       await settle();
       expect(mockCapture).toHaveBeenCalledTimes(2);
       expect(mockWriteMeta).toHaveBeenLastCalledWith(expect.objectContaining({ path }), matched);
+      // The copy kept for the work says so no more.
+      expect(useDownloads.getState().entries[key]?.manifest.meta).toEqual({
+        savedAt: '2026-05-01T10:00:00.000Z',
+      });
     } finally {
       stop();
     }
+  });
+
+  // A keep reads `/meta` again when the answer the cache holds is from before the book's
+  // work: a console match made within the hour, a book removed and downloaded again.
+  it('keeps no cached /meta answer from before the work the book names', async () => {
+    const { queryClient } = jest.requireMock('@/api/provider');
+    queryClient.invalidateQueries.mockClear();
+    await downloadOne(nextPath());
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled(); // no work, nothing to mark
+    const path = nextPath();
+    useDownloads
+      .getState()
+      .download('c1', 2, makeBook({ rel_path: path, files: undefined, work_id: 'w1' }));
+    await settle();
+    await settle();
+    expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(1);
+    const [filters] = queryClient.invalidateQueries.mock.calls[0];
+    expect(filters).toMatchObject({ queryKey: ['bookMeta', 'c1', 2, path], refetchType: 'none' });
+    expect(filters.predicate({ state: { data: { matched: false } } })).toBe(true);
+    expect(filters.predicate({ state: { data: { matched: true, work: { id: 'w1' } } } })).toBe(
+      false,
+    );
+    // Marked before the read.
+    expect(queryClient.invalidateQueries.mock.invocationCallOrder[0]).toBeLessThan(
+      mockCapture.mock.invocationCallOrder[1],
+    );
   });
 
   // The download's own book can be a list row, or older than a tag the file gained: on a
@@ -4535,6 +4568,60 @@ describe('the offline companion (community metadata kept with a download)', () =
     // The capture found nothing: the kept copy and its marker stay.
     expect(mockWriteMeta).not.toHaveBeenCalled();
     expect(useDownloads.getState().entries[key]?.manifest.meta).toBeDefined();
+  });
+
+  // The id an `/item` answer named was saved, its keep cut short (the app closed, a request
+  // that failed): no later answer names a new work, so the launch reads the copy again.
+  describe('a copy from before the work its book names, at launch', () => {
+    const launch = async (path: string, rematched: boolean, meta: unknown) => {
+      const base = downloadedEntry().manifest;
+      await seed({
+        [downloadKey('c1', 2, path)]: downloadedEntry({
+          path,
+          manifest: {
+            ...base,
+            book: { ...base.book, work_id: 'w1' },
+            meta: { savedAt: '2026-05-01T10:00:00Z', ...(rematched && { rematched: true }) },
+          },
+        }),
+      });
+      mockReadMeta.mockResolvedValue({ ...payload(Date.now() - 60_000), meta });
+      const { queryClient } = jest.requireMock('@/api/provider');
+      queryClient.invalidateQueries.mockClear();
+      await useDownloads.getState().hydrate();
+      await settle();
+      await settle();
+      return queryClient.invalidateQueries as jest.Mock;
+    };
+
+    it('is read again when the keep for that work did not land, and seeded stale', async () => {
+      const path = nextPath();
+      const matched = { ...payload(), meta: { matched: true, work: { id: 'w1' } } };
+      mockCapture.mockResolvedValue(matched);
+      const invalidate = await launch(path, true, { matched: false });
+      // A keep under way for the work reads `/meta`, not the copy just seeded.
+      expect(invalidate).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: ['bookMeta', 'c1', 2, path], refetchType: 'none' }),
+      );
+      expect(mockCapture).toHaveBeenCalledTimes(1);
+      expect(mockWriteMeta).toHaveBeenCalledWith(expect.objectContaining({ path }), matched);
+      const kept = useDownloads.getState().entries[downloadKey('c1', 2, path)]?.manifest.meta;
+      expect(kept).toEqual({ savedAt: '2026-05-01T10:00:00.000Z' });
+    });
+
+    it('is left alone once a keep landed, whatever it answered', async () => {
+      // Kept since for a work the community answers otherwise: seeded stale, not asked for
+      // at every launch.
+      const invalidate = await launch(nextPath(), false, { matched: false });
+      expect(invalidate).toHaveBeenCalledTimes(1);
+      expect(mockCapture).not.toHaveBeenCalled();
+    });
+
+    it('is no such copy when it names the work', async () => {
+      const invalidate = await launch(nextPath(), true, { matched: true, work: { id: 'w1' } });
+      expect(invalidate).not.toHaveBeenCalled();
+      expect(mockCapture).not.toHaveBeenCalled();
+    });
   });
 
   it('leaves a copy from this week alone', async () => {

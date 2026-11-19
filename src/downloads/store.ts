@@ -1286,8 +1286,10 @@ function takeItemAnswer(ref: BookRef, book: Book): void {
  * one made before its server sent the work's id (server#484, a console match without ids)
  * names none: on a launch with no network that book is all `canMatch` reads, which would
  * leave the download out of the fill-in and the weekly refresh, unmatched offline. A work
- * the book did not name has its copy kept for it (`keepForWork`). Never an episode; no
- * request of its own.
+ * the book did not name has its copy kept for it (`keepForWork`), and the copy it has is
+ * marked as from before the work (`meta.rematched`) in the same save as the id: the id alone,
+ * saved with the keep cut short (the app closed, a request that failed), would leave that
+ * copy a week, no later answer naming a new work. Never an episode; no request of its own.
  */
 function adoptMatch(ref: BookRef, book: Book): void {
   const entry = downloadedEntryOf(ref);
@@ -1296,9 +1298,11 @@ function adoptMatch(ref: BookRef, book: Book): void {
   const taken = withMatchFields(manifest.book, book);
   if (taken === manifest.book) return;
   const key = contentKeyOf(ref);
-  patchEntry(key, { manifest: { ...manifest, book: taken } });
+  const newWork = taken.work_id !== manifest.book.work_id ? taken.work_id : undefined;
+  const meta = newWork && manifest.meta ? { ...manifest.meta, rematched: true as const } : null;
+  patchEntry(key, { manifest: { ...manifest, book: taken, ...(meta && { meta }) } });
   persistSoon();
-  if (taken.work_id && taken.work_id !== manifest.book.work_id) keepForWork(key, taken.work_id);
+  if (newWork) keepForWork(key, newWork);
 }
 
 /** A download's book with what the `/item` answer the cache holds says it is found by
@@ -1318,7 +1322,8 @@ const oneWorkKeep = serialQueue();
  * another work. A copy that names the work already stays as it is (a book matched by its
  * ASIN or ISBN all along; read from its file, no request). One book at a time across the
  * downloads, so many answers at once (the cached ones, as the refresh starts) are never a
- * burst of requests.
+ * burst of requests. The keep reads `/meta` again, not an answer from before the work
+ * (`keepOfflineMetaNow`).
  */
 function keepForWork(key: string, workId: string): void {
   void oneWorkKeep(async () => {
@@ -1327,11 +1332,14 @@ function keepForWork(key: string, workId: string): void {
     const entry = useDownloads.getState().entries[key];
     if (entry?.status !== 'downloaded' || entry.manifest.book.work_id !== workId) return;
     const kept = entry.manifest.meta ? (await readOfflineMeta(entry))?.meta : undefined;
-    if (kept?.matched && kept.work.id === workId) return;
-    staleMetaNotNaming(entry, workId);
+    if (namesWork(kept, workId)) return;
     await keepOfflineMeta(key, { force: true });
   }).catch(() => {});
 }
+
+/** Whether a `/meta` answer is a match to the work `workId`. */
+const namesWork = (meta: BookMeta | undefined, workId: string | undefined): boolean =>
+  !!meta?.matched && meta.work.id === workId;
 
 /** Mark stale the `/meta` answers the cache holds for a book that do not name `workId`,
  * with no request: one read before the book named the work stays fresh for an hour, and a
@@ -1339,10 +1347,7 @@ function keepForWork(key: string, workId: string): void {
 function staleMetaNotNaming(ref: BookRef, workId: string): void {
   void queryClient.invalidateQueries({
     queryKey: qk.bookMeta(ref.connectionId, ref.libraryId, ref.path),
-    predicate: (q) => {
-      const meta = q.state.data as BookMeta | undefined;
-      return !meta?.matched || meta.work.id !== workId;
-    },
+    predicate: (q) => !namesWork(q.state.data as BookMeta | undefined, workId),
     refetchType: 'none',
   });
 }
@@ -2011,6 +2016,10 @@ async function keepOfflineMetaNow(key: string, { force = false, job }: KeepOptio
   const attempt = `${key}@${entry.manifest.savedAt}`;
   if (metaTried.has(attempt) && !force) return;
   metaTried.add(attempt);
+  // Never a cached answer from before the book named its work (a console match made since,
+  // a book removed and downloaded again within the hour): that one is read again.
+  const workId = entry.manifest.book.work_id;
+  if (workId) staleMetaNotNaming(entry, workId);
   const payload = await captureOfflineMeta(entry);
   if (!payload || !stillDownloaded(key, entry)) return;
   if (!(await writeOfflineMeta(entry, payload))) return;
@@ -2049,7 +2058,8 @@ const RESTORE_READS_AT_ONCE = 3;
  * `restoreServerSnapshots`; a file from before that answer had its own key carries it
  * over, unless one read later is kept), then fill in, one book at a time, the downloads
  * that kept none (made before this existed, or whose file is gone or unreadable), then
- * refresh the copies older than a week. That asks only a server with `metadata`, each
+ * refresh the copies older than a week, and those from before the work their book names
+ * whose keep did not land (`meta.rematched`). That asks only a server with `metadata`, each
  * server's flags once; a failure keeps what the book had. */
 async function restoreOfflineMeta(keys: string[]): Promise<void> {
   const downloaded = keys
@@ -2074,7 +2084,16 @@ async function restoreOfflineMeta(keys: string[]): Promise<void> {
     if (payload.server && !carried.has(entry.connectionId)) {
       carried.set(entry.connectionId, payload.server);
     }
-    if (Date.now() - payload.savedAt > KEPT_META_REFRESH_MS) old.push(key);
+    // A copy from before the work its book names now (`adoptMatch`, as late as this
+    // launch's own cached answers) is seeded stale, so a keep under way for that work reads
+    // `/meta`, not this copy; and one whose keep never landed is read again below.
+    const now = useDownloads.getState().entries[key]?.manifest;
+    const workId = now?.book.work_id;
+    const before = !!workId && !namesWork(payload.meta, workId);
+    if (before) staleMetaNotNaming(entry, workId);
+    if ((before && now?.meta?.rematched) || Date.now() - payload.savedAt > KEPT_META_REFRESH_MS) {
+      old.push(key);
+    }
   }
   // Neither replaces an answer read later (the launch's seed, the server's own).
   for (const [cid, snapshot] of carried) {
@@ -2580,11 +2599,7 @@ async function runOne(key: string) {
     void persist();
     seedQueryCache(connectionId, libraryId, path, manifest);
     // Keep its community metadata for offline use, after the download and apart from it:
-    // a failure there never fails (or holds up) the book. A work named only while the files
-    // landed is read for (`staleMetaNotNaming`).
-    if (book.work_id && book.work_id !== entry.manifest.book.work_id) {
-      staleMetaNotNaming(entry, book.work_id);
-    }
+    // a failure there never fails (or holds up) the book.
     keepOfflineMeta(key).catch(() => {});
   } catch (e) {
     // Cancelled only when this download's own signal aborted (`cancel`, `remove`, a removed
