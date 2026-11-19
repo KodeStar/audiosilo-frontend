@@ -673,6 +673,23 @@ describe('flushOutbox', () => {
     expect(await outboxEvents('c1')).toEqual([]);
   });
 
+  it("sends each round with the connection's client then (a re-pair mid-flush: its new token)", async () => {
+    await appendEvents(
+      'c1',
+      Array.from({ length: 450 }, (_, i) => listen(`e${i}`)),
+    );
+    let repaired: ReturnType<typeof client> | null = null;
+    const before = client(async (body) => {
+      // The re-pair lands while the first round is out: the connection's client is another.
+      repaired ??= client(async (later) => answer(later));
+      return answer(body);
+    });
+    await flushOutbox('c1');
+    expect(sent(before).map((b) => b.events.length)).toEqual([200]);
+    expect(sent(repaired!).map((b) => b.events.length)).toEqual([200, 50]);
+    expect(await outboxEvents('c1')).toEqual([]);
+  });
+
   it('halves the chunk on a 413 or too_many_events', async () => {
     await appendEvents(
       'c1',

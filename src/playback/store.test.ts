@@ -155,6 +155,11 @@ jest.mock('@/api/connection-clients', () => ({
   resolveClient: (cid: string) => mockResolveClient(cid),
   sessionReady: jest.fn(() => true),
 }));
+// The save's client, read at each call (its own tests: `live-client.test.ts`): here the one
+// the connection resolves to when the save is made, so a test sees which client it went to.
+jest.mock('@/api/live-client', () => ({
+  liveClient: (cid: string) => mockResolveClient(cid),
+}));
 
 /* eslint-disable import/first */
 import { Platform } from 'react-native';
@@ -1450,6 +1455,32 @@ describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
 
     expect(mockSvc.reset).not.toHaveBeenCalled();
     expect(usePlayer.getState().nowPlaying).not.toBeNull();
+  });
+});
+
+// --- a re-pair while a book plays, and stops that overlap --------------------
+
+describe("the connection's client at each save", () => {
+  afterEach(() => mockResolveClient.mockImplementation(() => fakeClient));
+
+  it('saves and posts the listening through the client of a re-pair made while the book plays', async () => {
+    await startBook(makeBook(), 0, 'c1');
+    pushSnapshot(snap('playing', 40));
+    // A re-pair: the connection is the same, its token (and so its client) another.
+    const repaired = { ...fakeClient, addHistory: jest.fn(async () => {}) };
+    mockResolveClient.mockImplementation(() => repaired);
+    mockSaveProgress.mockClear();
+    (fakeClient.addHistory as jest.Mock).mockClear();
+    jest.advanceTimersByTime(45_000);
+    pushSnapshot(snap('paused', 85));
+    await flushMicrotasks();
+    expect(mockSaveProgress).toHaveBeenCalledWith(
+      repaired,
+      expect.objectContaining({ connectionId: 'c1', position: 85 }),
+    );
+    expect(mockSaveProgress).not.toHaveBeenCalledWith(fakeClient, expect.anything());
+    expect(repaired.addHistory).toHaveBeenCalled();
+    expect(fakeClient.addHistory).not.toHaveBeenCalled();
   });
 });
 

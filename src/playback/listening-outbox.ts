@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 
 import { ApiError, type ApiClient } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
+import { liveClient } from '@/api/live-client';
 import { cachedCapability, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
@@ -1289,7 +1290,9 @@ const MAX_ROUNDS = 50;
 async function flushOnce(connectionId: string): Promise<void> {
   if (!sessionReady()) return;
   await recoverOpenSpan();
-  const client = resolveClient(connectionId);
+  // Read again at each round's send (`liveClient`): a re-pair during the flush changes the
+  // token, and a round sent with the old one is refused (401).
+  const client = liveClient(connectionId);
   // A connection gone: its events are purged with it (`onConnectionRemoved`).
   if (!client) return;
   await giveUpOld(connectionId);

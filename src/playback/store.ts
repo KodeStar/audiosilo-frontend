@@ -3,6 +3,7 @@ import { createStore } from 'zustand';
 
 import type { ApiClient } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
+import { liveClient } from '@/api/live-client';
 import { invalidateFinishedProgress, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
@@ -151,9 +152,6 @@ function isTransportLiveState(state: PlaybackState): boolean {
 }
 
 let service: PlaybackService | null = null;
-let apiRef: ApiClient | null = null;
-/** The connection `apiRef` belongs to (set by `switchBook`, with it). */
-let apiRefFor: string | null = null;
 let deviceId = '';
 /** Where the playing listening began (`POST /history` when it ends); `sync`: begun on a
  * server taking listening events, whose spans carry it instead. */
@@ -854,13 +852,11 @@ async function persist(opts?: {
   // A downloaded book started while its connection wasn't there (a session that could not
   // be read yet: a CarPlay launch with the phone locked) keeps this device's record of its
   // place meanwhile, and sends from when it is back (below).
-  // A switch takes the next book's client before that book is `nowPlaying` (`switchBook`;
-  // its resume lookup and load are awaits away): a save meanwhile (a lock-screen pause, the
-  // sleep timer) is still the previous book's, and goes to its own server.
-  const api =
-    apiRefFor !== null && apiRefFor !== nowPlaying.connectionId
-      ? resolveClient(nowPlaying.connectionId)
-      : (apiRef ??= resolveClient(nowPlaying.connectionId));
+  // The book named's own server (during a switch, `nowPlaying` is still the previous book
+  // until the next one loads: a save meanwhile goes to the previous book's server). Read
+  // again when the save is sent (`liveClient`): a re-pair since this capture changed the
+  // token, and the old one is refused (401) and would lose the save.
+  const api = liveClient(nowPlaying.connectionId);
   const forceFinished = opts?.forceFinished ?? false;
   // Held while a reconcile check is out (a finish is the listener's own and still saves).
   // Past its deadline the hold is over even when its timer has not fired (Android pauses
@@ -3168,11 +3164,9 @@ function endHistory({ leaving = false }: { leaving?: boolean } = {}) {
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (!np) return;
-  // A switch takes the next book's client before that book is `nowPlaying` (`switchBook`), as
-  // `persist` reads it: a span of the book still named goes to its own server, also when the
-  // next book has no client (a download whose connection is gone).
-  const api =
-    apiRefFor !== null && apiRefFor !== np.connectionId ? resolveClient(np.connectionId) : apiRef;
+  // The book named's own server, as it is signed in now (a re-pair changes the token), as
+  // `persist` reads it: during a switch, the book still named, the previous one.
+  const api = resolveClient(np.connectionId);
   if (!api) return;
   // Listening spans are best-effort; don't fire at a server we know is unreachable
   // (reachability is per-connection, so key it on the playing book's own server).
@@ -3252,11 +3246,12 @@ if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !=
  * after an early return, would map the OLD engine position through the NEW book's queue and
  * persist it under the new book's path, corrupting its progress; the loop restarts on the
  * engine's next `playing` transition for the new book), counted as the listener's own move,
- * and the new book's server (null for a downloaded book whose connection is gone: history
- * is then a no-op, and persist saves nothing until the connection is back) and retry
- * request taken.
+ * and the retry request taken. Nothing holds the new book's client: each save and span reads
+ * its book's connection as it is then (`persist`, `endHistory`), so a re-pair's new token is
+ * the one sent, and a downloaded book whose connection is gone saves only this device's
+ * record until it is back.
  */
-function switchBook(api: ApiClient | null, request: PlayRequest) {
+function switchBook(request: PlayRequest) {
   endHistory();
   closeListeningSpan();
   // The next book's first span begins as its start says (`playBook`), an adopted one's as a
@@ -3273,8 +3268,6 @@ function switchBook(api: ApiClient | null, request: PlayRequest) {
   catchingUp = null;
   // The play another tab made before this book was here is noted again as it goes on.
   notedPlay = null;
-  apiRef = api;
-  apiRefFor = request.connectionId;
   lastPlayRequest = request; // so retry() can re-run resume
   resumeLookupFailed = false;
 }
@@ -3748,7 +3741,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // is not that book's).
       void persist();
       const request = { connectionId, libraryId, book, chapterData };
-      switchBook(api, request);
+      switchBook(request);
       // Called off (a car play its native side gave up on) with another start made since
       // (the play that took its place, the listener's own tap), or for a play native made in
       // its place (`superseded`: the car's tap on the loaded book, fe#350): that one owns the
@@ -4565,8 +4558,9 @@ function localSwapOf(
   }
   const dl = downloadedEntryOf(nowPlaying) ?? landed; // with the chapters it took, if any
   const local = localFromManifest(dl.manifest);
+  // The connection's client as it is now: a stream track left in the queue carries its token.
   const queue = buildBookQueue(
-    apiRef,
+    resolveClient(nowPlaying.connectionId),
     nowPlaying.libraryId,
     dl.manifest.book,
     dl.manifest.chapters ?? undefined,
@@ -4655,7 +4649,7 @@ function commitLocalSwap(nowPlaying: NowPlaying, swap: LocalSwap): NowPlaying | 
 async function switchCurrentBookToLocal() {
   const state = usePlayer.getState();
   const { nowPlaying, snapshot } = state;
-  if (!nowPlaying || !apiRef) return;
+  if (!nowPlaying || !resolveClient(nowPlaying.connectionId)) return;
   // A load holding the store (a start, an adoption's reload: `loadingBook`) leaves the
   // snapshot the PREVIOUS place until it lands, and so does a start of this same book at
   // another place, which holds nothing (`startsInFlight`): the swap runs once they are
@@ -4965,7 +4959,7 @@ async function adoptNow(
     rate,
   };
 
-  switchBook(api, { connectionId, libraryId, book, chapterData });
+  switchBook({ connectionId, libraryId, book, chapterData });
   clearPlaybackIntent();
   deviceId = id;
   resumeFloor = toBookPosition(queue.offsets, trackIndex, position);
