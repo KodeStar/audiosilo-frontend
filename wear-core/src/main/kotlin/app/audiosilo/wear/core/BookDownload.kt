@@ -231,11 +231,8 @@ class BookDownload(
     if (f.done) return FileResult.LANDED
     val folder = storage.folder(r)
     // Made only while the book is here: a removal meanwhile never finds it made again after.
-    when (index.whileKept(r) { folder.isDirectory || folder.mkdirs() }) {
-      null -> return FileResult.GONE
-      false -> return keepFailed()
-      true -> {}
-    }
+    val made = index.whileKept(r) { folder.isDirectory || folder.mkdirs() } ?: return FileResult.GONE
+    if (!made) return keepFailed()
     val out = File(folder, f.local)
     val part = File(folder, f.local + PART)
     val etagFile = File(folder, f.local + ETAG)
@@ -302,11 +299,8 @@ class BookDownload(
       throw IOException("short file: ${part.length()} of $expected bytes")
     }
     out.delete()
-    when (index.whileKept(r) { part.renameTo(out) }) {
-      null -> return FileResult.GONE
-      false -> return keepFailed()
-      true -> {}
-    }
+    val moved = index.whileKept(r) { part.renameTo(out) } ?: return FileResult.GONE
+    if (!moved) return keepFailed()
     etagFile.delete()
     val size = out.length()
     index.update(ref) { rec -> rec.copy(files = rec.files.map { if (it.path == file.path) it.copy(bytes = size, done = true) else it }) }

@@ -216,6 +216,14 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
   }
 
   /**
+   * Close the span at `at`. A span closed keeps the place itself, between its event and its file's
+   * removal (fe#285); with none open the place is saved here.
+   */
+  private fun closeSpan(at: Instant?) {
+    if (spans.close(spanEnd(), at) == null) savePlace(at)
+  }
+
+  /**
    * Kept only as the book plays or moves, with the time that happened (`at`, else now): a place
    * stamped later than it was heard would read as newer than another device's real one. `save`
    * false (the plain 5 s tick) keeps it in memory only: the open span stored on that tick carries
@@ -346,8 +354,7 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     playing = false
     exo?.pause()
     pausedAt = stoppedAt ?: Instant.now()
-    // A span closed keeps the place itself, between its event and its file's removal (fe#285).
-    if (spans.close(spanEnd(), stoppedAt) == null) savePlace(stoppedAt)
+    closeSpan(stoppedAt)
     sleep = sleep?.paused(Instant.now())
     publish()
   }
@@ -488,7 +495,7 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
         if (!playing) return
         if (SystemPause.keepsPlaying(halt)) {
           // A call or an alert holds the audio: the span ends where it last moved, the wish to play stays.
-          if (spans.close(spanEnd(), lastAdvance) == null) savePlace(lastAdvance)
+          closeSpan(lastAdvance)
           return
         }
         systemPause(halt)

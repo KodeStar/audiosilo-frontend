@@ -242,10 +242,17 @@ object WearLink {
    */
   private fun armPrune(context: Context, own: List<Item>) {
     val at = WearRules.nextPairExpiry(own)
-    if (at == pruneArmedAt) return
+    if (at != pruneArmedAt) setPruneAlarm(context, at)
+  }
+
+  /**
+   * The prune's one alarm at `at` (null: none), its `attempt`th retry when above 0, with the boot
+   * receiver on while it is set.
+   */
+  private fun setPruneAlarm(context: Context, at: Long?, attempt: Int = 0) {
     quietly("prune alarm") {
       val alarms = context.getSystemService(AlarmManager::class.java) ?: return@quietly
-      val due = PairPruneReceiver.pending(context)
+      val due = PairPruneReceiver.pending(context, attempt)
       // Inexact, and allowed while the phone dozes: a minute late is fine, never kept for hours.
       if (at == null) alarms.cancel(due) else alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, due)
       pruneArmedAt = at
@@ -273,13 +280,7 @@ object WearLink {
    */
   fun armRetry(context: Context, attempt: Int) {
     val delay = WearRules.pruneRetryDelayMs(attempt) ?: return
-    val at = System.currentTimeMillis() + delay
-    quietly("prune retry") {
-      val alarms = context.getSystemService(AlarmManager::class.java) ?: return@quietly
-      alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, PairPruneReceiver.pending(context, attempt))
-      pruneArmedAt = at
-      bootReceiver(context, on = true)
-    }
+    setPruneAlarm(context, System.currentTimeMillis() + delay, attempt)
   }
 
   /**
