@@ -15,7 +15,7 @@ import {
   whenSessionReady,
 } from '@/api/connection-clients';
 import { addBookmark, cachedCapability, fetchCapabilities, showServerBookmark } from '@/api/hooks';
-import { onRateLimitOver } from '@/api/rate-limit';
+import { noteRateLimit, onRateLimitOver, rateLimited } from '@/api/rate-limit';
 import { isReachable, noteFailure, onReconnect } from '@/api/reachability';
 import { keepServerAnswer } from '@/api/server-snapshots';
 import type { Bookmark, BookmarkLabel, ServerInfo } from '@/api/types';
@@ -460,7 +460,9 @@ export async function addBookmarkOrQueue(
     settled = true;
     await discardQueuedBookmark(stored.id).catch(() => undefined);
   };
-  if (!waiting && isReachable(connectionId)) {
+  // Not while its server's rate limit holds (a 429's `Retry-After`, `rateLimited`): stored,
+  // and sent once the wait is over (`onRateLimitOver`).
+  if (!waiting && isReachable(connectionId) && !rateLimited(connectionId)) {
     // Its id makes a resend safe, so it is kept before any request (no send without its id
     // has gone out: `fresh`), and a kill while the POST is out leaves it to a replay. Out of
     // sight meanwhile (`posting`): it is waiting only once that POST has failed.
@@ -501,6 +503,8 @@ export async function addBookmarkOrQueue(
           throw err;
         }
         noteFailure(connectionId, err);
+        // A 429 holds the connection's sends for its `Retry-After` (the other queues' rule).
+        noteRateLimit(connectionId, err);
         failed = true;
         // A 401 or a 429 turned it away before the server took it: nothing landed.
         sentBare = !withId && !turnedAway(err);
@@ -701,11 +705,13 @@ async function readyToSend(
 const connectionFailure = (err: unknown) =>
   !(err instanceof ApiError) || isServerAwayError(err) || isSignedOutError(err);
 
+/** The server's rate limit (a 429): the connection's, so a replay stops there. */
+const tooMany = (err: unknown) => err instanceof ApiError && err.status === 429;
+
 /** A server asking for a moment (its 503, a proxy's, a 429): the bookmark's book waits for
  * the next replay, and the wait does not count toward giving up on it (a proxy answers a
  * 503 for as long as the server behind it is off). */
-const askedToWait = (err: unknown) =>
-  isServerBusyError(err) || (err instanceof ApiError && err.status === 429);
+const askedToWait = (err: unknown) => isServerBusyError(err) || tooMany(err);
 
 /** What a replay's try of a bookmark it keeps came to: the step it failed or stopped at, and
  * whether that failure counts toward giving up on it. */
@@ -844,9 +850,12 @@ async function sendGroup(
         e.label !== undefined || e.client_id !== undefined
           ? await (flags ??= readFlags(connectionId, client))
           : undefined;
-      // Nothing the server said (no answer, a cancelled read), a gateway's or a 401: the
-      // connection's, as a send's (the read and POST behind it would only wait it out again).
-      if (unread && connectionFailure(unread.failed)) throw unread.failed;
+      // Nothing the server said (no answer, a cancelled read), a gateway's, a 401 or a 429:
+      // the connection's, as a send's (the read and POST behind it would only wait it out
+      // again).
+      if (unread && (connectionFailure(unread.failed) || tooMany(unread.failed))) {
+        throw unread.failed;
+      }
       if (unread && e.label !== undefined) {
         noteFailure(connectionId, unread.failed);
         // A send's rule: a 503 or a 429 does not count.
@@ -937,7 +946,10 @@ async function sendGroup(
         continue;
       }
       noteFailure(connectionId, err);
-      if (connectionFailure(err)) {
+      // The connection's, not this bookmark's: no answer, a gateway's, a 401, or its server's
+      // rate limit (a 429, noted so the connection's sends wait out its `Retry-After`, as the
+      // other queues' do: `stopsReplay`).
+      if (connectionFailure(err) || noteRateLimit(connectionId, err)) {
         // Not counted, but how far it came still ends a run of failures before that step.
         tries.set(e.id, { step, counts: false });
         kept.push(...entries.slice(i));
