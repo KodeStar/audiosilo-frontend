@@ -86,6 +86,12 @@ class NativePlaybackService implements PlaybackService {
   private lastTick: { position: number; at: number } | null = null;
   /** The book the engine's last report named (`reportedBook`), else null. */
   private named: BookRef | null = null;
+  /** The book the app's load replaced in the engine (`load`, its content key), until a report
+   * names another book: a report of it the engine sent before the load reaches JS after the
+   * load landed (the events and the load's answer are two channels), and it is dropped
+   * (`stale`), never read as the loaded book's nor as another book the engine plays (the
+   * car's), so the store's Pause and place are the loaded book's. */
+  private replaced: string | null = null;
   /** The app's own moves out (`seekTo`, `skipToTrack`), and when the latest was made: their
    * ticks are never held (`progress`, `ownMoveOut`). */
   private moving = 0;
@@ -115,6 +121,17 @@ class NativePlaybackService implements PlaybackService {
   private dropHeld() {
     if (this.held) clearTimeout(this.held.timer);
     this.held = null;
+  }
+  /** Whether a report names the book a load replaced (`replaced`): dropped whole. A report
+   * naming any other book ends that, as the engine's reports come in order: the replaced
+   * book's late ones are over, and one naming it later is a new play of it (the car). */
+  private stale(book: unknown): boolean {
+    if (this.replaced === null) return false;
+    const named = nativeBookOf(book);
+    if (!named) return false;
+    if (contentKeyOf(named) === this.replaced) return true;
+    this.replaced = null;
+    return false;
   }
   /** Take the book a report names, before the report itself. Another book than the last one
    * named starts the measure afresh: a tick held back, or the last one taken, was the other
@@ -277,6 +294,7 @@ class NativePlaybackService implements PlaybackService {
     if (this.setupDone) return;
     this.subscriptions.push(
       AudiosiloPlayer.addListener('onState', ({ state, playWhenReady, book }) => {
+        if (this.stale(book)) return;
         this.name(book);
         // Android: the engine turned to wanting to play, or stopped (asked by anyone), told
         // first.
@@ -291,6 +309,7 @@ class NativePlaybackService implements PlaybackService {
       }),
       AudiosiloPlayer.addListener('onProgress', (tick) => {
         const { position, duration, silenceSaved, book } = tick;
+        if (this.stale(book)) return;
         this.name(book);
         const file = nativeNumber(tick.trackIndex, -1);
         this.progress(position, duration, Number.isInteger(file) && file >= 0 ? file : undefined);
@@ -300,6 +319,7 @@ class NativePlaybackService implements PlaybackService {
         }
       }),
       AudiosiloPlayer.addListener('onTrackChange', ({ index, book }) => {
+        if (this.stale(book)) return;
         this.name(book);
         this.fileChanged(index);
       }),
@@ -311,6 +331,7 @@ class NativePlaybackService implements PlaybackService {
       // does.
       AudiosiloPlayer.addListener('onRemoteMove', ({ trackIndex, position, book }) => {
         if (!Number.isFinite(trackIndex) || !Number.isFinite(position)) return;
+        if (this.stale(book)) return;
         this.name(book);
         const duration = this.held?.duration ?? this.snapshot.duration;
         this.dropHeld();
@@ -323,6 +344,7 @@ class NativePlaybackService implements PlaybackService {
       }),
       AudiosiloPlayer.addListener('onRateChange', ({ rate, book }) => {
         if (!Number.isFinite(rate) || rate <= 0) return;
+        if (this.stale(book)) return;
         this.name(book);
         this.update({ rate });
         this.rateChange?.(rate);
@@ -351,10 +373,19 @@ class NativePlaybackService implements PlaybackService {
     // (see `moduleTakesBook`).
     const native = tracks.map(toNativeTrack);
     const told = book && moduleTakesBook() ? book : null;
-    if (told) {
-      await AudiosiloPlayer.load(native, startIndex, positionInTrack, chapters ?? [], told);
-    } else {
-      await AudiosiloPlayer.load(native, startIndex, positionInTrack, chapters);
+    // From the ask on, a report of the book the engine held is that book's last (`stale`).
+    const was = this.named && contentKeyOf(this.named);
+    this.replaced = told && was && was !== contentKeyOf(told) ? was : null;
+    try {
+      if (told) {
+        await AudiosiloPlayer.load(native, startIndex, positionInTrack, chapters ?? [], told);
+      } else {
+        await AudiosiloPlayer.load(native, startIndex, positionInTrack, chapters);
+      }
+    } catch (err) {
+      // Not loaded: the engine may still hold that book, and its reports are its own.
+      this.replaced = null;
+      throw err;
     }
     // The engine holds this queue now: the report below is its book's, as the engine's own
     // reports name it from here.
@@ -426,6 +457,7 @@ class NativePlaybackService implements PlaybackService {
   async reset() {
     await AudiosiloPlayer.reset();
     this.named = null;
+    this.replaced = null;
     this.update({ ...INITIAL_SNAPSHOT, rate: this.snapshot.rate });
   }
   // The native picker is a system UI affordance, always available on iOS/Android.
