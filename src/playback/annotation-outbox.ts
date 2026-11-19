@@ -47,7 +47,8 @@ import { onlyConnection, queuedRoute } from './progress-sync';
  *   signed in again (`startBookmarkSync`), with the stored queues in the foreground and on the
  *   web's focus and `online` (`startQueueReplays`), and with a backoff while the server
  *   answers but fails (`scheduleRetry`). A replay claims what it sends (`replayQueue`,
- *   `src/lib/queue-claims.ts`), so two tabs never send the same bookmark at once.
+ *   `src/lib/queue-claims.ts`), so two tabs never send the same bookmark at once; one taken
+ *   out while a replay sends those ahead of it is not sent (`stillWaiting`).
  * - Sent once: the server's bookmark POST has no idempotency key, and a request that got no
  *   answer may still have landed (or a tab may have died mid-send). So a replay reads the
  *   book's bookmarks first and takes one already there (the same second, the same note, made
@@ -262,7 +263,8 @@ export async function addBookmarkOrQueue(
 }
 
 /** Take a waiting bookmark out of the outbox, unsent (the pending row's delete). Resolves to
- * whether it was still waiting. One a replay is sending right now may still land. */
+ * whether it was still waiting. One whose POST a replay has already sent may still land; one
+ * a replay claimed but has not sent yet is skipped (`stillWaiting`). */
 export function discardQueuedBookmark(id: string): Promise<boolean> {
   return withLock(async () => {
     const queue = await readQueue();
@@ -282,6 +284,18 @@ function isThisOne(onServer: Bookmark, queued: QueuedBookmark): boolean {
     onServer.note === queued.note &&
     Date.parse(onServer.created_at) >= Date.parse(queued.updated_at) - SAME_BOOKMARK_WINDOW_MS
   );
+}
+
+/** Whether `entry` is still in the stored outbox: one taken out meanwhile (its row's Delete,
+ * here or in another tab, the connection's removal) is not sent. Read from storage, not the
+ * snapshot, which follows another tab's writes only as their `storage` events arrive. Storage
+ * that can't be read says yes (the claim stands). */
+async function stillWaiting(entry: QueuedBookmark): Promise<boolean> {
+  try {
+    return (await readQueue()).some((e) => e.id === entry.id);
+  } catch {
+    return true;
+  }
 }
 
 /** Send one connection's claimed bookmarks in order; resolves to those to keep. */
@@ -305,6 +319,9 @@ async function sendGroup(
       if (e.label && cachedCapability(connectionId, 'annotations') === undefined) {
         await fetchCapabilities(connectionId, client).catch(() => undefined);
       }
+      // Claimed by this replay, but taken out while it sent those ahead of it: the claim
+      // keeps no Delete out, so the send checks, right before the POST.
+      if (!(await stillWaiting(e))) continue;
       held.push(await addBookmark(connectionId, e.libraryId, e.path, e.position, e.note, e.label));
     } catch (err) {
       if (refusedForGood(err)) {

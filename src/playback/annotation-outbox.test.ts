@@ -358,6 +358,28 @@ describe('sending', () => {
     expect(await queuedBookmarks()).toEqual([]);
   });
 
+  it('does not send one taken out while the replay sends those ahead of it', async () => {
+    const { client, held, state } = server('c1', offline());
+    await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+    await addBookmarkOrQueue('c1', 1, 'a/book', 200);
+    await idle();
+    state.down = null;
+    // The first send is on its way when the second's row is deleted.
+    let land: () => void = () => {};
+    const send = client.addBookmark.getMockImplementation();
+    client.addBookmark.mockImplementationOnce(
+      (...args: unknown[]) => new Promise((resolve) => (land = () => resolve(send?.(...args)))),
+    );
+    const replaying = flushBookmarks();
+    await idle();
+    const second = (await queuedBookmarks()).find((e) => e.position === 200);
+    expect(await discardQueuedBookmark(second?.id ?? '')).toBe(true);
+    land();
+    await replaying;
+    expect(held.map((b) => b.position)).toEqual([100]);
+    expect(await queuedBookmarks()).toEqual([]);
+  });
+
   it('a pending one taken out unsent is never sent', async () => {
     const { held, state } = server('c1', offline());
     await addBookmarkOrQueue('c1', 1, 'a/book', 100);
