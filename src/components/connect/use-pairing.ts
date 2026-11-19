@@ -62,22 +62,20 @@ export function pairFailure(
     );
   }
   const { status } = e;
-  // A 429 has shared words too (the wait).
-  const shared = sharedRefusalText(e, t);
-  if (isRefusedForGood(e)) {
-    return refused(
-      shared ??
-        (status === 401 || status === 410
-          ? t('connect.server.pairingRefused')
-          : t('connect.server.pairingUnusable')),
-    );
+  // Not refused for good (the rule every save queue keeps): a 408, a 429 (its shared words
+  // name the wait) or no 4xx at all.
+  if (!isRefusedForGood(e)) {
+    if (status === 408) return temporary(t('connect.server.pairingReachError'));
+    const wait = status === 429 ? sharedRefusalText(e, t) : undefined;
+    if (wait !== undefined) return { ...temporary(wait), waitOver: refusalWaitOver(e, t) };
+    return temporary(t('connect.server.pairingServerError'));
   }
-  // Not refused for good (the rule every save queue keeps): a 408, a 429 or no 4xx at all.
-  if (status === 408) return temporary(t('connect.server.pairingReachError'));
-  if (status === 429 && shared !== undefined) {
-    return { ...temporary(shared), waitOver: refusalWaitOver(e, t) };
-  }
-  return temporary(t('connect.server.pairingServerError'));
+  return refused(
+    sharedRefusalText(e, t) ??
+      (status === 401 || status === 410
+        ? t('connect.server.pairingRefused')
+        : t('connect.server.pairingUnusable')),
+  );
 }
 
 export type LinkPairing = {
