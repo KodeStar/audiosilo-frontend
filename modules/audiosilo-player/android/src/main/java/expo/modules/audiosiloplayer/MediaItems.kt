@@ -446,18 +446,39 @@ class TimelineMap(val entries: List<Entry>) {
   data class Sample(val fileIndex: Int, val position: Double, val duration: Double)
 
   /** The tick for the controller at [positionMs] in item [itemIndex], whose own duration is
-   * [durationMs] (not positive when unknown). A whole-file item's duration is the engine's own
-   * measure of the file; a chapter clip's is the clip's, so the file's comes from the entry. The
-   * file index rides along: Media3 reports a new item's place before its item change, and the
-   * store must not read that place, or that length, as the old file's. */
+   * [durationMs] (not positive when unknown). The duration is the engine's own measure of the
+   * FILE where the item tells it ([measureOf]: the store stops a move past it, fe#351), else the
+   * file's from the entry (the server's). The file index rides along: Media3 reports a new
+   * item's place before its item change, and the store must not read that place, or that
+   * length, as the old file's. */
   fun sample(itemIndex: Int, positionMs: Long, durationMs: Long): Sample {
     val (fileIndex, inFile) = itemToFile(itemIndex, positionMs)
     val position = if (clipped) inFile else positionMs / 1000.0
-    val duration = if (!clipped && durationMs > 0) durationMs / 1000.0 else fileDurationAt(itemIndex)
-    return Sample(fileIndex, position, duration)
+    return Sample(fileIndex, position, measureOf(itemIndex, durationMs) ?: fileDurationAt(itemIndex))
+  }
+
+  /** The engine's own measure of item [itemIndex]'s FILE in seconds, read from the item's
+   * duration [durationMs], or null when the item does not tell it (no duration yet, or a clip
+   * that ends inside its file). A whole-file item's duration is the file's. A chapter clip's is
+   * the clip's, which ends where the engine has the file end when the clip runs to the file's
+   * end (the file's last chapter, and the only one of a book with a chapter per file: most
+   * multi-file MP3 books, the ones an engine measures short), or when it came out shorter than
+   * its bounds (the file ends inside the chapter, as the engine measures it): the file's
+   * measure is then the clip's start plus its length. */
+  private fun measureOf(itemIndex: Int, durationMs: Long): Double? {
+    if (durationMs <= 0) return null
+    val length = durationMs / 1000.0
+    val entry = entries.getOrNull(itemIndex)
+    if (entry == null || !entry.clip) return length
+    val bounds = entry.endInFile - entry.startInFile
+    return if (bounds <= 0 || length < bounds - CLIP_CUT_SHORT_S) entry.startInFile + length else null
   }
 
   companion object {
+    /** How much shorter than its bounds a clip's duration must be for the engine to have ended
+     * the file inside it ([measureOf]): a clip is its bounds long to the millisecond otherwise. */
+    const val CLIP_CUT_SHORT_S = 0.5
+
     /** One item's (entry, index, item-relative ms) -> (fileIndex, seconds-within-file). An item
      * without our extras (null [entry]) is taken as a whole file at its own index. */
     fun toFile(entry: Entry?, itemIndex: Int, itemRelMs: Long): Pair<Int, Double> =

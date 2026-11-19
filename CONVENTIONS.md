@@ -1733,7 +1733,12 @@ media GETs only.
   `onCarPlayCancel` (Android), `onProgress.silenceSaved` and `onProgress.trackIndex` (the file
   the tick is in, both platforms: Media3 reports a new item's place before its item change, so
   `TimelineMap.sample` names the file, and the service takes the tick under it, never the old
-  file's place or length). The transport reports (`onState`,
+  file's place or length). `onProgress.duration` is the engine's own measure of the FILE
+  wherever the item tells it (the store stops a move past it, `pastMeasure`): a whole-file
+  item's, and on Android a chapter clip's start plus its length when the clip runs to its
+  file's end (a book with a chapter per file, so most multi-file MP3 books, plays as such
+  clips) or came out shorter than its bounds; from any other clip, or with no duration yet, the
+  server's (`TimelineMap.measureOf`). The transport reports (`onState`,
   `onProgress`, `onTrackChange`, `onRemoteMove`, `onRateChange`) name the book they are of
   (`book`, the module's `BookReport`: Android the current item's, iOS `load`'s; on Android a
   remote move, a speed and a failure are the service's own item's, passed through
