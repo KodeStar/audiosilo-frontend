@@ -565,6 +565,21 @@ describe('sending', () => {
       expect(s.held).toEqual([]);
     });
 
+    it("keeps a labelled one whose flags read said nothing of the server's (cancelled)", async () => {
+      const s = server('c1', offline());
+      await queueBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+      s.state.down = null;
+      mockAnnotations = undefined;
+      // Not an answer: the shared `/server` read cancelled under it, as a send's no answer.
+      mockCapsDown = Object.assign(new Error('cancelled'), { name: 'CancelledError' });
+      await failFor(10);
+      jest.setSystemTime(Date.now() + 8 * DAY);
+      await flushBookmarks();
+      expect(warn).not.toHaveBeenCalled();
+      expect(await positions()).toEqual([100]);
+      expect(s.held).toEqual([]);
+    });
+
     it('keeps one that failed twice a week apart, with no try between', async () => {
       const { client, held } = await waiting();
       client.addBookmark.mockRejectedValueOnce(new ApiError(500, 'boom'));

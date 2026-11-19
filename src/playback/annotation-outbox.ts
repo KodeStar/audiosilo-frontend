@@ -561,11 +561,9 @@ async function sendGroup(
         : undefined;
       if (unread) {
         noteFailure(connectionId, unread.failed);
-        const counts = !(
-          isServerAwayError(unread.failed) ||
-          isSignedOutError(unread.failed) ||
-          askedToWait(unread.failed)
-        );
+        // A send's rule: nothing the server said (no answer, a cancelled read), a gateway's,
+        // a 401, a 503 or a 429 does not count.
+        const counts = !(connectionFailure(unread.failed) || askedToWait(unread.failed));
         keepOrGiveUp(e, unread.failed, counts);
         continue;
       }
