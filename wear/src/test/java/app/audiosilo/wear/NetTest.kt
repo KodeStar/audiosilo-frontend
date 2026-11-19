@@ -256,7 +256,7 @@ class AddressRouterTest {
 
     override suspend fun progress(ref: BookRef): ProgressRow? = null
 
-    override suspend fun download(libraryId: Int, file: String, from: Long, ifRange: String?): Fetched = error("not asked")
+    override suspend fun download(libraryId: Long, file: String, from: Long, ifRange: String?): Fetched = error("not asked")
   }
 
   @Test
