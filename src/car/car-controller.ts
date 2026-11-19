@@ -1286,7 +1286,7 @@ async function addCarBookmark(b: CarBookmark): Promise<CarBookmark | null> {
     await addBookmark(b.connectionId, b.libraryId, b.path, position);
     return null;
   } catch (err) {
-    // Refused for good only: an auth proxy's own 401 (fe#295), a 408 or a 429 never reached
+    // Refused for good only: a proxy's own 401 or 403 (fe#295), a 408 or a 429 never reached
     // the server's answer about the bookmark, so it is kept and tried again.
     if (isRefusedForGood(err)) {
       console.warn('[car] the server refused a bookmark', err);

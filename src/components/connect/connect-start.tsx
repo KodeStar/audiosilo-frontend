@@ -514,7 +514,7 @@ export function ConnectStart() {
         e instanceof ApiError
           ? {
               kind: 'error',
-              // An auth proxy's own 401 (fe#295) or a 429: what to do about it, not the raw status.
+              // A proxy's own 401 or 403 (fe#295) or a 429: what to do about it, not the raw status.
               message: sharedRefusalText(e, t) ?? e.message,
             }
           : {

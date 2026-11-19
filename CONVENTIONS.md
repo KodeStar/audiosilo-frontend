@@ -928,8 +928,8 @@ in step.
   watch; cleared once it is online again), and is dropped at the first answer still away
   `WATCH_TTL_MS` later, so with the connection's last watch the asking stops. Nothing shows
   the drop (no surface shows a watch, and Find on LibriVox opens closed while the Bridge is
-  away); a row that reads the fetch open once it is back watches it again. It renders again as a recording row starts or
-  stops reading a job (`useReadElsewhere`), so the poll takes the row's pace at once.
+  away); a row that reads the fetch open once it is back watches it again. The watcher renders
+  again as a recording row starts or stops reading a job (`useReadElsewhere`), so the poll takes the row's pace at once.
 - **The page**: `/find-librivox?connection=&library=` (`findLibrivoxHref`, `openFindLibrivox`),
   the Library tab's own page like Find shows (a browse page too, `BROWSE_PATHS`: opening it
   keeps the Library's scroll memory), opened from the Books mode's ... menu (`LibrivoxMenu`,
@@ -1033,9 +1033,9 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   is one this browser turns out to play transcoded. The fetch limit, 429 and blips ask again
   (`blipDelay`); a failed or impossible fetch ends as a `serverFetch` failure with the server's code
   (`failureText` reads it through `fetchReasonKey`; `identity_changed` also reads the item and the
-  library's episode lists again). A refusal of the listener (`accessRefusal`: a 401, or the
-  server's own 403 naming no code; a proxy's 403, `ApiError.fromProxy`, is a fetch that failed
-  for no named reason) is its own failure, `signedOut` or `noAccess`, and the player's fetch says
+  library's episode lists again). A refusal of the listener (`accessRefusal`: the server's own
+  401, or its own 403 naming no code; a proxy's 401 or 403, `ApiError.fromProxy`, is a fetch
+  that failed for no named reason) is its own failure, `signedOut` or `noAccess`, and the player's fetch says
   it as the reasons `signed_out` / `no_access`. The listener's Retry of a failed fetch POSTs
   (past the server's cool-down); until the server answers that POST the waiting entry saves it
   (`serverFetch.refetch`), so a launch asks it again, and a wait that ends signed out, with no
