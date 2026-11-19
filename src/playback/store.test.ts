@@ -157,8 +157,9 @@ jest.mock('@/api/connection-clients', () => ({
 }));
 // The save's client, read at each call (its own tests: `live-client.test.ts`): here the one
 // the connection resolves to when the save is made, so a test sees which client it went to.
+const mockLiveClient = jest.fn((cid: string) => mockResolveClient(cid));
 jest.mock('@/api/live-client', () => ({
-  liveClient: (cid: string) => mockResolveClient(cid),
+  liveClient: (cid: string) => mockLiveClient(cid),
 }));
 
 /* eslint-disable import/first */
@@ -1470,6 +1471,7 @@ describe("the connection's client at each save", () => {
     const repaired = { ...fakeClient, addHistory: jest.fn(async () => {}) };
     mockResolveClient.mockImplementation(() => repaired);
     mockSaveProgress.mockClear();
+    mockLiveClient.mockClear();
     (fakeClient.addHistory as jest.Mock).mockClear();
     jest.advanceTimersByTime(45_000);
     pushSnapshot(snap('paused', 85));
@@ -1479,6 +1481,9 @@ describe("the connection's client at each save", () => {
       expect.objectContaining({ connectionId: 'c1', position: 85 }),
     );
     expect(mockSaveProgress).not.toHaveBeenCalledWith(fakeClient, expect.anything());
+    // Through the client read again at each send (`liveClient`), not one taken up front:
+    // `saveProgress` sends only after awaits of its own (the mirror, a guard's check).
+    expect(mockLiveClient).toHaveBeenCalledWith('c1');
     expect(repaired.addHistory).toHaveBeenCalled();
     expect(fakeClient.addHistory).not.toHaveBeenCalled();
   });

@@ -852,14 +852,6 @@ async function persist(opts?: {
   // Nor a place another tab has played past (`otherTabPlayed`), nor one on its way to that
   // tab's (`catchingUp`): dated now, it would be the newest in the mirror the tabs share.
   if (behindOtherTab(nowPlaying) && !opts?.forceFinished) return;
-  // A downloaded book started while its connection wasn't there (a session that could not
-  // be read yet: a CarPlay launch with the phone locked) keeps this device's record of its
-  // place meanwhile, and sends from when it is back (below).
-  // The book named's own server (during a switch, `nowPlaying` is still the previous book
-  // until the next one loads: a save meanwhile goes to the previous book's server). Read
-  // again when the save is sent (`liveClient`): a re-pair since this capture changed the
-  // token, and the old one is refused (401) and would lose the save.
-  const api = liveClient(nowPlaying.connectionId);
   const forceFinished = opts?.forceFinished ?? false;
   // Held while a reconcile check is out (a finish is the listener's own and still saves).
   // Past its deadline the hold is over even when its timer has not fired (Android pauses
@@ -926,6 +918,14 @@ async function persist(opts?: {
     if (span && sameBook(span, nowPlaying) && !forceFinished && end) span.to = end;
     return position;
   }
+  // The book named's own server (during a switch, `nowPlaying` is still the previous book
+  // until the next one loads: a save meanwhile goes to the previous book's server). Read
+  // again when the save is sent (`liveClient`): a re-pair since this capture changed the
+  // token, and the old one is refused (401) and would lose the save.
+  // A downloaded book started while its connection wasn't there (a session that could not
+  // be read yet: a CarPlay launch with the phone locked) keeps this device's record of its
+  // place meanwhile, and sends from when it is back.
+  const api = liveClient(nowPlaying.connectionId);
   // The legacy PUT path's own record alone (`placeLoop`): the mirror, and no request. A
   // server known to be away is sent nothing either way (`saveProgress` writes the mirror
   // and queues the save), so that capture goes whole and the queue holds the same place.
