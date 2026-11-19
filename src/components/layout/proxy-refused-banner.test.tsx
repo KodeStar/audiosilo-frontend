@@ -6,7 +6,7 @@ import type { User } from '@/api/types';
 import { resetProfilesForTests } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
-import { ProxyRefusedBanner } from './proxy-refused-banner';
+import { onAccountPage, ProxyRefusedBanner } from './proxy-refused-banner';
 
 const mockPush = jest.fn();
 jest.mock('@/lib/open', () => ({ pushInShell: (h: unknown) => mockPush(h) }));
@@ -72,6 +72,19 @@ it("says the proxy turned the device away and opens the connection's Account, un
   ]);
   await act(async () => noteProxyAnswer('srv-1.1', false));
   expect(screen.queryByTestId('proxy-refused-banner')).toBeNull();
+});
+
+// The banner stays up on the Account page while the headers are edited: a tap there must
+// not stack the page again.
+it("knows the connection's own Account page, which a tap does not push again", () => {
+  const at = (name: string, params?: object) => ({
+    routes: [{ name: '(app)', state: { routes: [{ name: 'index' }, { name, params }] } }],
+  });
+  expect(onAccountPage(at('account', { connection: 'srv-1.1' }), 'srv-1.1')).toBe(true);
+  expect(onAccountPage(at('account', { connection: 'srv-2.1' }), 'srv-1.1')).toBe(false);
+  expect(onAccountPage(at('account'), 'srv-1.1')).toBe(false);
+  expect(onAccountPage(at('settings', { connection: 'srv-1.1' }), 'srv-1.1')).toBe(false);
+  expect(onAccountPage(undefined, 'srv-1.1')).toBe(false);
 });
 
 it('leaves a connection that needs signing in again to the reconnect banner', async () => {
