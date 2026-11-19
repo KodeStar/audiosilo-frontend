@@ -306,6 +306,70 @@ describe('progress-sync', () => {
     expect(await readQueue()).toHaveLength(0);
   });
 
+  // A live save sent into a wait the server asked for would only be refused again: it is
+  // queued, and the replay at the wait's end sends it.
+  it('queues a live save while its connection waits out a 429, and sends it once the wait is over', async () => {
+    const limited = fakeApi(() => Promise.reject(new ApiError(429, 'slow down', undefined, 60)));
+    await expect(saveProgress(limited, save)).resolves.toBe('queued');
+    const ok = fakeApi(() => Promise.resolve());
+    routeClients({ c1: ok });
+    const now = jest.spyOn(Date, 'now');
+    try {
+      await expect(saveProgress(ok, { ...save, position: 20 })).resolves.toBe('queued');
+      expect(ok.saveProgress).not.toHaveBeenCalled();
+      expect(await readQueue()).toEqual([expect.objectContaining({ position: 20 })]);
+      now.mockReturnValue(Date.now() + 61_000);
+      await expect(saveProgress(ok, { ...save, position: 30 })).resolves.toBe('saved');
+    } finally {
+      now.mockRestore();
+    }
+    expect(ok.saveProgress).toHaveBeenCalledWith(
+      1,
+      'A/Book',
+      expect.objectContaining({ position: 30 }),
+    );
+  });
+
+  // A re-pair while the save waited (the mirror's write, the guard's read): the PUT goes
+  // with the token the connection holds then, never the one it held when the save began.
+  it("sends a live save through the connection's client at the PUT, not the one it was given", async () => {
+    const old = fakeGetApi(async () => {
+      routeClients({ c1: fresh });
+      return null;
+    });
+    const fresh = fakeApi(() => Promise.resolve());
+    routeClients({ c1: old });
+    await expect(saveProgress(old, { ...save, guard: true })).resolves.toBe('saved');
+    expect(old.getProgress).toHaveBeenCalledTimes(1);
+    expect(old.saveProgress).not.toHaveBeenCalled();
+    expect(fresh.saveProgress).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends a live save through the client it was given when the connection is not signed in', async () => {
+    const api = fakeApi(() => Promise.resolve());
+    await expect(saveProgress(api, save)).resolves.toBe('saved');
+    expect(api.saveProgress).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends each replayed save through the connection as it is then (a re-pair mid-replay)', async () => {
+    reachable.mockReturnValue(false);
+    const offline = fakeApi(() => Promise.resolve());
+    await saveProgress(offline, { ...save, path: 'A/one' });
+    await saveProgress(offline, { ...save, path: 'A/two' });
+    reachable.mockReturnValue(true);
+    const fresh = fakeApi(() => Promise.resolve());
+    const old = fakeApi(async () => {
+      routeClients({ c1: fresh });
+    });
+    routeClients({ c1: old });
+    await flushQueue();
+    expect(old.saveProgress).toHaveBeenCalledTimes(1);
+    expect(old.saveProgress).toHaveBeenCalledWith(1, 'A/one', expect.anything());
+    expect(fresh.saveProgress).toHaveBeenCalledTimes(1);
+    expect(fresh.saveProgress).toHaveBeenCalledWith(1, 'A/two', expect.anything());
+    expect(await readQueue()).toHaveLength(0);
+  });
+
   it('enqueues on a connection error, then replays it on the next flush', async () => {
     const failing = fakeApi(() => Promise.reject(new Error('network down')));
     await saveProgress(failing, save);

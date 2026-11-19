@@ -7,9 +7,15 @@ import { pendingSaveCount, type ProgressSave, saveProgress } from '@/playback/pr
 // FU-NOTEERR: a progress save that got no answer only asks for a check of its server,
 // against the real reachability module; only the check marks the server down.
 const mockServerInfo = jest.fn();
+const mockSave = jest.fn();
 jest.mock('@/api/connection-clients', () => ({
-  // Both the check (`/server`) and the queue replay resolve the connection's client here.
-  resolveClient: () => ({ baseUrl: 'https://h', serverInfo: mockServerInfo }),
+  // The check (`/server`), the save (sent through the connection's client at the request)
+  // and the queue replay all resolve the connection's client here.
+  resolveClient: () => ({
+    baseUrl: 'https://h',
+    serverInfo: mockServerInfo,
+    saveProgress: mockSave,
+  }),
   sessionReady: () => true,
 }));
 jest.mock('@/stores/session', () => ({ onConnectionRemoved: () => () => {} }));
@@ -26,13 +32,17 @@ const save: ProgressSave = {
   updated_at: '2026-01-01T00:00:00Z',
 };
 
-const failingApi = (e: Error) =>
-  ({ saveProgress: jest.fn(() => Promise.reject(e)) }) as unknown as ApiClient;
+/** The connection's client, its saves failing with `e`. */
+const failingApi = (e: Error) => {
+  mockSave.mockImplementation(() => Promise.reject(e));
+  return { saveProgress: mockSave } as unknown as ApiClient;
+};
 
 beforeEach(async () => {
   jest.useFakeTimers();
   await AsyncStorage.clear();
   mockServerInfo.mockReset();
+  mockSave.mockReset();
   useReachability.setState({ online: {} });
 });
 afterEach(() => {
