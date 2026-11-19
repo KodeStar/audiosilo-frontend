@@ -236,7 +236,17 @@ const seeks = () => (mockSvc.seekTo as jest.Mock).mock.calls.map((c) => c[0] as 
 /** Every event sent to `POST /me/listening/sync`, in order. */
 const sentEvents = () =>
   mockClient.syncListening.mock.calls.flatMap(
-    (c) => (c[0] as { events: { start?: string; from_pos?: number; to_pos?: number }[] }).events,
+    (c) =>
+      (
+        c[0] as {
+          events: {
+            start?: string;
+            from_pos?: number;
+            to_pos?: number;
+            base_version?: number;
+          }[];
+        }
+      ).events,
   );
 
 let foreground: ((s: AppStateStatus) => void) | null = null;
@@ -1222,6 +1232,46 @@ describe('on a server with listening_sync', () => {
       from_pos: 640,
       base_version: 7,
     });
+  });
+
+  // What plays on while the answer waits its turn (the cut's own span) never closes on the
+  // row's version at the place left behind.
+  it('a Jump sends nothing heard while its answer waited on the row it answered', async () => {
+    await loadedAndPaused();
+    mockMirror = { ...mockMirror!, ack_version: 5 };
+    mockAckVersion.mockImplementationOnce(async (...a: unknown[]) => {
+      mockMirror = { ...mockMirror!, ack_version: a[3] as number };
+    });
+    mockServer = async () =>
+      record({
+        device_id: 'this-device',
+        position: 105,
+        version: 7,
+        other_place: {
+          position: 640,
+          device_id: 'wait-watch',
+          device_name: "Chris's Watch",
+          updated_at: '2026-10-08T11:06:00Z',
+        },
+      });
+    await backInFront();
+    const offer = lastToast();
+    pushSnapshot(snap('playing', 105));
+    await settle();
+    jest.setSystemTime(Date.now() + 3000);
+    pushSnapshot(snap('playing', 108));
+    offer.action.onPress();
+    // Still playing at the old place while the answer waits its turn.
+    jest.setSystemTime(Date.now() + 2000);
+    pushSnapshot(snap('playing', 110));
+    for (let i = 0; i < 10; i++) await settle();
+    expect(seeks()).toEqual([640]);
+    jest.setSystemTime(Date.now() + 3000);
+    pushSnapshot(snap('paused', 643));
+    for (let i = 0; i < 10; i++) await settle();
+    const sent = sentEvents();
+    expect(sent.filter((e) => e.base_version === 7 && (e.to_pos ?? 0) < 640)).toEqual([]);
+    expect(sent.find((e) => e.to_pos === 643)).toMatchObject({ start: 'jump', base_version: 7 });
   });
 
   it('Stay acknowledges and stays; the same offer is not shown again', async () => {

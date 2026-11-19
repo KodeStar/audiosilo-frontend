@@ -3016,10 +3016,13 @@ media GETs only.
     `base_version` is the mirror's `ack_version` at the close (0 when none: a cold start). An
     offer answered by a move (the toast's Jump, the book page's Play from there) cuts that
     book's open span first and acknowledges the row in the outbox's turn after its close
-    (`answerAfterSpan`, `afterInTurn`), so what was heard before the answer never goes on the
-    row's version (the place left behind would replace the other device's newer one, sent
-    alone after a kill; fe#285); the move goes on the row's. The Wear OS app does the same
-    (`SpanRecorder.move`'s `acknowledge`); the Apple Watch still acknowledges before the move.
+    (`answerAfterSpan`, `afterInTurn`; in turn with no span open too, behind a close already
+    on its way), so what was heard before the answer never goes on the row's version (the
+    place left behind would replace the other device's newer one, sent alone after a kill;
+    fe#285); the span the cut opens begins again where the engine is once the answer is in
+    (what it heard meanwhile would close on the row's at the old place); the move goes on the
+    row's. The Wear OS app does the same (`SpanRecorder.move`'s `acknowledge`); the Apple Watch
+    still acknowledges before the move.
   - *Storage* (all connection-scoped, in `SCOPED_STORAGE_KEYS` and the identity migration, purged
     with the connection): `audiosilo.listeningOutbox` (closed events with their `connectionId`,
     immutable once there; a `finish` entry also carries its sends' marks, see *Across tabs*),

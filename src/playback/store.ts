@@ -1963,13 +1963,32 @@ export function standByPlace(): void {
  * (`baseAtClose`), never the offered row's: on that one the place left behind would replace
  * the other device's newer place on the server, sent alone when the app is killed before
  * the move's own span is kept (fe#285). The move made once this resolves goes on the row's.
- * No span of the book open: just `answer`.
+ * In turn with no span of the book open too (a server taking listening events): a close
+ * already on its way (a pause just before the answer) reads its base before the answer
+ * lands. The span the cut opens while playing begins again where the engine is once the
+ * answer is in: what it heard while the answer waited its turn would close on the row's
+ * version, at the place left behind.
  */
 export async function answerAfterSpan(ref: ContentRef, answer: () => Promise<void>): Promise<void> {
-  if (!span || !sameBook(span, ref)) return answer();
-  const { connectionId } = span;
-  cutListeningSpan();
-  await afterInTurn(connectionId, answer);
+  let reopened: OpenSpan | null = null;
+  if (span && sameBook(span, ref)) {
+    cutListeningSpan();
+    reopened = span;
+  } else if (!usesListeningSync(ref.connectionId)) {
+    // No spans there (the PUT path): nothing to wait for.
+    return answer();
+  }
+  await afterInTurn(ref.connectionId, answer);
+  if (!reopened || span !== reopened) return;
+  const here = engineEnd() ?? reopened.to;
+  const now = new Date().toISOString();
+  Object.assign(reopened, {
+    from: here,
+    to: here,
+    startedAt: now,
+    endedAt: now,
+    start: 'continue',
+  });
 }
 
 /** Cut the playing span now (the server came back, the app went to the background); a
