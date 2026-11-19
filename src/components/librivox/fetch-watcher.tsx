@@ -8,7 +8,7 @@ import type { BridgeJob } from '@/api/types';
 import { isAway } from '@/lib/app-activity';
 import { BRIDGE_IDLE_POLL_MS, isOpenJob } from '@/lib/bridge-jobs';
 import { getItem, setItem } from '@/lib/storage';
-import { isRecord } from '@/lib/storage-keys';
+import { isRecord, LIBRIVOX_WATCHES_KEY } from '@/lib/storage-keys';
 import { useSession } from '@/stores/session';
 
 import { DONE_RECHECK_MS } from './librivox-model';
@@ -17,8 +17,8 @@ import { DONE_RECHECK_MS } from './librivox-model';
  * The `librivox.fetch` jobs Find on LibriVox follows, watched past the page (fe#293): a
  * fetch added (or seen open) and then left, the page closed or the work folded, still ends
  * with the Library read again, as if the page were open. Saved on the device
- * (`WATCHES_KEY`), so a fetch still on its way when the app closed is followed again at the
- * next launch (fe#299).
+ * (`LIBRIVOX_WATCHES_KEY`), so a fetch still on its way when the app closed is followed again
+ * at the next launch (fe#299).
  *
  * `LibrivoxFetchWatcher` (a root listener) is the ONE poller of each followed job
  * (`useLibrivoxJob`, active: its rules, polled while the app is in the foreground, slower
@@ -34,9 +34,6 @@ import { DONE_RECHECK_MS } from './librivox-model';
  * again every `BRIDGE_IDLE_POLL_MS` in the foreground until the Bridge is back.
  */
 type Watch = { cid: string; id: number; /** When it was first watched (ms). */ at: number };
-
-/** Where the watches are saved (only this module reads it). */
-const WATCHES_KEY = 'audiosilo.librivoxWatches';
 
 /** How long a watch whose connection is signed out is kept: a fetch ends in hours at most,
  * and a connection not back by then is taken as gone for good. */
@@ -79,9 +76,9 @@ let stopSaving: (() => void) | null = null;
  * save the list at every change. */
 export function restoreLibrivoxWatches(): Promise<void> {
   restoring ??= (async () => {
-    const saved = savedWatches(await getItem<unknown>(WATCHES_KEY), Date.now());
+    const saved = savedWatches(await getItem<unknown>(LIBRIVOX_WATCHES_KEY), Date.now());
     stopSaving = useLibrivoxWatches.subscribe((s, prev) => {
-      if (s.watches !== prev.watches) void setItem(WATCHES_KEY, s.watches);
+      if (s.watches !== prev.watches) void setItem(LIBRIVOX_WATCHES_KEY, s.watches);
     });
     // A new list, so the merge is saved too (the ones past their hold left out).
     useLibrivoxWatches.setState((s) => ({

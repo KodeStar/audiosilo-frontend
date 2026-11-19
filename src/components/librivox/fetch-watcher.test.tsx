@@ -38,6 +38,7 @@ jest.mock('@/api/hooks', () => ({
 
 /* eslint-disable import/first */
 import { BRIDGE_IDLE_POLL_MS } from '@/lib/bridge-jobs';
+import { LIBRIVOX_WATCHES_KEY } from '@/lib/storage-keys';
 import { driveAppState } from '@/testing/app-state';
 
 import {
@@ -52,7 +53,6 @@ import { DONE_RECHECK_MS } from './librivox-model';
 /* eslint-enable import/first */
 
 const app = driveAppState();
-const WATCHES_KEY = 'audiosilo.librivoxWatches';
 
 const signIn = (...ids: string[]) =>
   useSession.setState({
@@ -280,7 +280,7 @@ describe('LibrivoxFetchWatcher', () => {
       mockReads.setState({ 41: { data: librivoxJob({ id: 41, state: 'running' }) } });
       await mount();
       await act(async () => watchLibrivoxFetch('c1', 41));
-      const saved = JSON.parse((await AsyncStorage.getItem(WATCHES_KEY))!);
+      const saved = JSON.parse((await AsyncStorage.getItem(LIBRIVOX_WATCHES_KEY))!);
       expect(saved).toEqual([{ cid: 'c1', id: 41, at: expect.any(Number) }]);
 
       // The next launch: nothing in memory, the saved list read once by the first mount.
@@ -294,7 +294,7 @@ describe('LibrivoxFetchWatcher', () => {
 
     it('drops saved watches past their time, and anything not a watch', async () => {
       await AsyncStorage.setItem(
-        WATCHES_KEY,
+        LIBRIVOX_WATCHES_KEY,
         JSON.stringify([
           { cid: 'c1', id: 41, at: Date.now() - WATCH_TTL_MS },
           { cid: 'c1', id: 42, at: Date.now() },
@@ -309,7 +309,7 @@ describe('LibrivoxFetchWatcher', () => {
 
     it('keeps a fetch watched before the saved list was read', async () => {
       await AsyncStorage.setItem(
-        WATCHES_KEY,
+        LIBRIVOX_WATCHES_KEY,
         JSON.stringify([{ cid: 'c1', id: 42, at: Date.now() }]),
       );
       resetLibrivoxWatchesForTests();

@@ -891,9 +891,9 @@ in step.
   with no answer or a server error is asked again every 60 s (nothing else would: its row has no
   status, Cancel or Add until one gets through); a refusal (400, 401, 403) is not.
 - **The fetch watcher** (`fetch-watcher.tsx`, fe#293): every open job a row follows is handed to
-  `watchLibrivoxFetch(cid, id)` (a zustand list saved under `audiosilo.librivoxWatches` and read
-  again by the watcher's first mount, so a fetch on its way when the app closed is followed at
-  the next launch, fe#299; an Add's job as it answers, row or no row by then, and
+  `watchLibrivoxFetch(cid, id)` (a zustand list saved under `audiosilo.librivoxWatches`,
+  `LIBRIVOX_WATCHES_KEY`, and read again by the watcher's first mount, so a fetch on its way when
+  the app closed is followed at the next launch, fe#299; an Add's job as it answers, row or no row by then, and
   never one the row already reads as ended, whose end the watcher handled), and
   `LibrivoxFetchWatcher` (a root listener,
   `RootListeners`) is its ONE poller: one `useLibrivoxJob(id, true, cid)` per watch, whatever
