@@ -1,10 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 import { ApiError, type ApiClient, TimeoutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import * as reachability from '@/api/reachability';
 import type { ReadingProgress, ReadingProgressSaved } from '@/api/types';
-import { READING_MIRROR_KEY, READING_QUEUE_KEY } from '@/lib/storage-keys';
+import { CLAIM_MS } from '@/lib/queue-claims';
+import { CONNECTIONS_KEY, READING_MIRROR_KEY, READING_QUEUE_KEY } from '@/lib/storage-keys';
 import { getDeviceId } from '@/playback/progress-sync';
 import { onConnectionRemoved } from '@/stores/session';
 
@@ -1647,35 +1649,111 @@ describe('reading places across tabs', () => {
     expect(cfisSent(api)).toEqual([CFI_A]);
   });
 
-  it('sends a waiting save once when another tab replays it first', async () => {
+  // The session of a tab holds the connections it loaded: one signed in to in another tab
+  // since is stored, not in it. Its replay dropped that connection's saves as gone, a live
+  // one waiting behind its own tab's hung save included, which was then never sent.
+  it('leaves a save of a connection this tab does not know to the tab signed in to it', async () => {
+    await AsyncStorage.setItem(CONNECTIONS_KEY, JSON.stringify([{ id: 'c1' }]));
+    const other = otherTab();
     const { api, release } = hangs(firstOnly());
-    routeClients({ c1: api });
-    const first = saveReadingPlace(api, save({ cfi: CFI_A, progression: 0.5 }));
+    const first = other.saveReadingPlace(api, save({ cfi: CFI_A, progression: 0.5 }));
     await nextMacrotask();
-    const waiting = saveReadingPlace(
+    const waiting = other.saveReadingPlace(
       api,
       save({ cfi: CFI_B, progression: 0.6, updated_at: '2026-10-01T10:05:00.000Z' }),
     );
     await nextMacrotask();
-    // The other tab claims it, then this tab's turn comes while its request is still out.
-    let answer = () => {};
-    const answered = new Promise<void>((resolve) => (answer = resolve));
-    const otherApi = fakeApi(async (input) => {
-      await answered;
-      return { reading_progress: row({ ...(input as Partial<ReadingProgress>), version: 5 }) };
-    });
-    routeClients({ c1: otherApi });
-    const replaying = otherTab().flushReadingQueue();
-    await nextMacrotask();
-    const claimedElsewhere = cfisSent(otherApi);
+    routeClients({});
+    await flushReadingQueue();
+    const queuedHere = (await readQueue()).map((s) => s.cfi);
     release();
     await Promise.all([first, waiting]);
-    answer();
-    await replaying;
-    expect(claimedElsewhere).toEqual([CFI_B]);
-    expect(cfisSent(api)).toEqual([CFI_A]);
-    expect(cfisSent(otherApi)).toEqual([CFI_B]);
+    expect(queuedHere).toEqual([CFI_B]);
+    expect(cfisSent(api)).toEqual([CFI_A, CFI_B]);
     expect(await readQueue()).toEqual([]);
+  });
+
+  it('drops a save whose connection is gone from every tab', async () => {
+    await AsyncStorage.setItem(CONNECTIONS_KEY, JSON.stringify([{ id: 'c2' }]));
+    await AsyncStorage.setItem(READING_QUEUE_KEY, JSON.stringify([save()]));
+    routeClients({});
+    await flushReadingQueue();
+    expect(await readQueue()).toEqual([]);
+  });
+
+  // The web player: a save waiting for its turn claims its queued copy for its own tab.
+  describe('on the web', () => {
+    let os: typeof Platform.OS;
+    beforeEach(() => {
+      os = Platform.OS;
+      Platform.OS = 'web';
+    });
+    afterEach(() => {
+      Platform.OS = os;
+    });
+
+    // Another tab's replay sent the waiting copy while its own tab's earlier save of the book
+    // was still out: both on 0, the server took them as diverged and kept the further place.
+    it('never lets another tab send a save while its tab still has the book’s earlier one out', async () => {
+      const server = ruleServer('This browser');
+      const { api, release } = hangs(firstOnly(), server.api);
+      routeClients({ c1: api });
+      const first = saveReadingPlace(api, save({ cfi: CFI_B, progression: 0.5 }));
+      await nextMacrotask();
+      // The reader moved back while the first hung.
+      const back = saveReadingPlace(
+        api,
+        save({ cfi: CFI_A, progression: 0.3, updated_at: '2026-10-01T10:05:00.000Z' }),
+      );
+      await nextMacrotask();
+      await otherTab().flushReadingQueue();
+      const sentMeanwhile = cfisSent(api);
+      release();
+      await Promise.all([first, back]);
+      // The move back applied: sent on the first's version once it was answered.
+      expect(server.row()).toMatchObject({ cfi: CFI_A, progression: 0.3, version: 2 });
+      expect(sentMeanwhile).toEqual([CFI_B]);
+      expect(sent(api, 'base_version')).toEqual([0, 1]);
+      expect(await readQueue()).toEqual([]);
+    });
+
+    it('sends a waiting save once when another tab replays it after its claim ran out', async () => {
+      const { api, release } = hangs(firstOnly());
+      routeClients({ c1: api });
+      const first = saveReadingPlace(api, save({ cfi: CFI_A, progression: 0.5 }));
+      await nextMacrotask();
+      const waiting = saveReadingPlace(
+        api,
+        save({ cfi: CFI_B, progression: 0.6, updated_at: '2026-10-01T10:05:00.000Z' }),
+      );
+      await nextMacrotask();
+      // Still waiting once the claim ran out: the other tab claims it, then this tab's turn
+      // comes while its request is still out.
+      const now = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(now + CLAIM_MS + 1);
+      try {
+        let answer = () => {};
+        const answered = new Promise<void>((resolve) => (answer = resolve));
+        const otherApi = fakeApi(async (input) => {
+          await answered;
+          return { reading_progress: row({ ...(input as Partial<ReadingProgress>), version: 5 }) };
+        });
+        routeClients({ c1: otherApi });
+        const replaying = otherTab().flushReadingQueue();
+        await nextMacrotask();
+        const claimedElsewhere = cfisSent(otherApi);
+        release();
+        await Promise.all([first, waiting]);
+        answer();
+        await replaying;
+        expect(claimedElsewhere).toEqual([CFI_B]);
+        expect(cfisSent(api)).toEqual([CFI_A]);
+        expect(cfisSent(otherApi)).toEqual([CFI_B]);
+        expect(await readQueue()).toEqual([]);
+      } finally {
+        clock.mockRestore();
+      }
+    });
   });
 
   // Storage full: the drop of the older queued place after a newer one was sent is refused,

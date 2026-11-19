@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { contentKey } from '@/lib/content-key';
-import { CONNECTION_ALIASES_KEY } from '@/lib/storage-keys';
+import { CONNECTION_ALIASES_KEY, CONNECTIONS_KEY } from '@/lib/storage-keys';
 
 import {
   connectionAliases,
@@ -15,6 +15,7 @@ import {
   resolveConnectionId,
   serverIdOf,
   setConnectionAliases,
+  storedConnectionIds,
   usableUserId,
 } from './connection-id';
 
@@ -173,5 +174,30 @@ describe('aliases', () => {
     await AsyncStorage.setItem(CONNECTION_ALIASES_KEY, '{nope');
     await expect(loadConnectionAliases()).resolves.toBeUndefined();
     expect(connectionAliases()).toEqual({});
+  });
+});
+
+describe('storedConnectionIds', () => {
+  afterEach(() => AsyncStorage.clear());
+
+  it('reads the ids of the stored connections, skipping malformed records', async () => {
+    await AsyncStorage.setItem(
+      CONNECTIONS_KEY,
+      JSON.stringify([{ id: 'srv.1' }, { id: '' }, { serverId: 'x' }, null, { id: 'srv.2' }]),
+    );
+    expect(await storedConnectionIds()).toEqual(new Set(['srv.1', 'srv.2']));
+  });
+
+  it('knows none when nothing is stored', async () => {
+    expect(await storedConnectionIds()).toEqual(new Set());
+  });
+
+  it('is null when storage cannot be read', async () => {
+    const getItem = jest.spyOn(AsyncStorage, 'getItem').mockRejectedValueOnce(new Error('io'));
+    try {
+      expect(await storedConnectionIds()).toBeNull();
+    } finally {
+      getItem.mockRestore();
+    }
   });
 });

@@ -1,5 +1,5 @@
-import { getItem } from '@/lib/storage';
-import { CONNECTION_ALIASES_KEY, isRecord } from '@/lib/storage-keys';
+import { getItem, getItemStrict } from '@/lib/storage';
+import { CONNECTION_ALIASES_KEY, CONNECTIONS_KEY, isRecord } from '@/lib/storage-keys';
 
 /**
  * The connection id: which signed-in account on which server a piece of state belongs to.
@@ -173,4 +173,24 @@ export function setIdentityMovePending(pending: boolean): void {
 /** Whether an identity move is still on its way (`setIdentityMovePending`). */
 export function identityMovePending(): boolean {
   return movePending;
+}
+
+// --- The stored connections -------------------------------------------------------------
+
+/** The ids of the connections stored on this device (`CONNECTIONS_KEY`), whichever tab of
+ * the web player signed in to them: a tab's session holds the ones it loaded, and one
+ * signed in to in another tab since is stored but not in it. Null when storage could not be
+ * read: no id is known to be gone then. */
+export async function storedConnectionIds(): Promise<Set<string> | null> {
+  let raw: unknown;
+  try {
+    raw = await getItemStrict<unknown>(CONNECTIONS_KEY);
+  } catch {
+    return null;
+  }
+  const ids = new Set<string>();
+  if (Array.isArray(raw)) {
+    for (const c of raw) if (isRecord(c) && typeof c.id === 'string' && c.id) ids.add(c.id);
+  }
+  return ids;
 }
