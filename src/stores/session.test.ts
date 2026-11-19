@@ -1486,26 +1486,61 @@ describe('proxy headers (fe#167): one set per origin (fe#295)', () => {
       expect((await list()).find((m) => m.id === a)).not.toHaveProperty('hasProxyHeaders');
     });
 
-    it('deletes no old item when the move is not kept (the hydrate fails, and moves it later)', async () => {
+    // A move that can't be written must not fail the hydrate: at every launch the listener
+    // would look signed out, and a sign-in would then write the list with its server alone.
+    it.each([
+      ['refuses the write', () => Promise.reject(new Error('keychain'))],
+      ['drops the write', () => Promise.resolve()],
+    ])(
+      'uses the sets from where they are when storage %s, and moves them at a later launch',
+      async (_, refuse) => {
+        const a = await signIn('a');
+        const b = await signIn('b');
+        await legacy(a, JSON.stringify(set));
+        reset();
+        const original = store.setItemAsync;
+        store.setItemAsync = (k, v) => (k === PROXY_SETS_KEY ? refuse() : original(k, v));
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+          await useSession.getState().hydrate();
+          expect(sessionHydrateFailed()).toBe(false);
+          expect(useSession.getState().connections.map((c) => c.id)).toEqual([a, b]);
+          expect(useSession.getState().proxySets).toEqual({ [A]: set });
+          // Nothing deleted, and the mark outlives a later write of the list.
+          await signIn('c');
+          expect(useSession.getState().connections.map((c) => c.id)).toHaveLength(3);
+        } finally {
+          store.setItemAsync = original;
+          warn.mockRestore();
+        }
+        expect(await SecureStore.getItemAsync(legacyKey(a))).toBe(JSON.stringify(set));
+        expect((await list()).find((m) => m.id === a)?.hasProxyHeaders).toBe(true);
+        reset();
+        await useSession.getState().hydrate();
+        expect(useSession.getState().proxySets).toEqual({ [A]: set });
+        expect(await storedSets()).toEqual({ [A]: { headers: set.headers } });
+        expect(await SecureStore.getItemAsync(legacyKey(a))).toBeNull();
+        expect((await list()).some((m) => m.hasProxyHeaders)).toBe(false);
+      },
+    );
+
+    it('fails the hydrate when an old item can not be read (as a token read does)', async () => {
       const a = await signIn('a');
       await legacy(a, JSON.stringify(set));
       reset();
-      const original = store.setItemAsync;
-      store.setItemAsync = (k, v) =>
-        k === PROXY_SETS_KEY ? Promise.reject(new Error('keychain')) : original(k, v);
+      const original = store.getItemAsync;
+      store.getItemAsync = (k) =>
+        k === legacyKey(a) ? Promise.reject(new Error('keychain')) : original(k);
       const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
       try {
         await useSession.getState().hydrate();
         expect(sessionHydrateFailed()).toBe(true);
       } finally {
-        store.setItemAsync = original;
+        store.getItemAsync = original;
         warn.mockRestore();
       }
       expect(await SecureStore.getItemAsync(legacyKey(a))).toBe(JSON.stringify(set));
       expect((await list()).find((m) => m.id === a)?.hasProxyHeaders).toBe(true);
-      await useSession.getState().hydrate();
-      expect(useSession.getState().proxySets).toEqual({ [A]: set });
-      expect(await SecureStore.getItemAsync(legacyKey(a))).toBeNull();
     });
   });
 });

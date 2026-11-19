@@ -407,15 +407,19 @@ async function readStored(): Promise<StoredSignIns> {
 }
 
 /**
- * The stored connections whose own set (an earlier build's) this build could not read: their
- * `hasProxyHeaders` marker is written again with the list (`persist`), so a build that can
- * read the set still finds it. Every other connection's set is moved at launch.
+ * The stored connections whose `hasProxyHeaders` mark is written again with the list
+ * (`persist`): the ones whose own set (an earlier build's) is still where that build left it.
+ * One this build could not read (a build that can still finds it), one whose move could not
+ * be written at this launch (the next tries again), and one another tab marked since this
+ * one launched (a tab of an earlier build keeping a set for its connection: moved at this
+ * build's next launch, `applyStored`). A write of the list never drops a mark it does not
+ * know of: the item behind it would stay in secure-store with nothing left to move it.
  */
-let unreadableLegacy: ReadonlySet<string> = new Set();
+let legacyMarks: ReadonlySet<string> = new Set();
 
-/** `m` as stored: marked again when its earlier build's set is unreadable (`unreadableLegacy`). */
+/** `m` as stored: marked again while its earlier build's set is not moved (`legacyMarks`). */
 function withLegacyMark<T extends { id: string }>(m: T): T & { hasProxyHeaders?: true } {
-  return unreadableLegacy.has(m.id) ? { ...m, hasProxyHeaders: true } : m;
+  return legacyMarks.has(m.id) ? { ...m, hasProxyHeaders: true } : m;
 }
 
 /**
@@ -423,17 +427,23 @@ function withLegacyMark<T extends { id: string }>(m: T): T & { hasProxyHeaders?:
  * the one item kept per origin (fe#295): each becomes its origin's set unless that origin
  * has one already (the set stored per origin wins, then the first connection's in the list),
  * written and read back before any old item is deleted. A set this build can't read stays
- * where it is, marked (`unreadableLegacy`); a marker with no item behind it is dropped. The
+ * where it is, marked (`legacyMarks`); a marker with no item behind it is dropped. The
  * markers are rewritten in the stored list here, so the next launch reads no old item again.
- * Rejects, with nothing deleted, when a read or the write fails (the hydrate fails, and
- * tries again). Returns every origin's set after the move.
+ *
+ * A read the platform refuses rejects (the hydrate fails, as for a token: never a connection
+ * that goes on without its headers). A move that can't be WRITTEN (storage full, a keystore
+ * that refuses the write, a copy that does not read back) never fails the hydrate: the sets
+ * are used from where they are for this launch, with every old item and its mark left for the
+ * next one to move. A failed hydrate would show the listener as signed out at every launch,
+ * and a sign-in then writes the list with that server alone (`setSession`).
+ * Returns every origin's set after the move.
  */
 async function moveLegacyProxySets(
   marked: readonly string[],
   stored: Record<string, ProxyHeaders>,
 ): Promise<Record<string, ProxyHeaders>> {
   if (!marked.length) {
-    unreadableLegacy = new Set();
+    legacyMarks = new Set();
     return stored;
   }
   const read = await Promise.all(marked.map(readLegacyProxyHeaders));
@@ -444,15 +454,26 @@ async function moveLegacyProxySets(
     }
   }
   let sets = stored;
+  let moved = true;
   if (Object.keys(adopt).length) {
-    await saveProxySets(adopt);
-    sets = await readProxySets();
-    if (!Object.values(adopt).every((s) => sameProxyHeaders(sets[s.origin], s))) {
-      throw new Error('the proxy headers move did not read back');
+    try {
+      await saveProxySets(adopt);
+      const kept = await readProxySets();
+      if (!Object.values(adopt).every((s) => sameProxyHeaders(kept[s.origin], s))) {
+        throw new Error('the proxy headers move did not read back');
+      }
+      sets = kept;
+    } catch (e) {
+      console.warn('[session] moving the proxy headers failed, trying again next launch', e);
+      moved = false;
+      sets = { ...stored, ...adopt };
     }
   }
-  const keep = new Set(marked.filter((_, i) => read[i] === 'unreadable'));
-  unreadableLegacy = keep;
+  // Not moved: every old item stays, marked. Moved: only the ones this build can't read.
+  const keep = new Set(
+    marked.filter((_, i) => (moved ? read[i] === 'unreadable' : read[i] !== null)),
+  );
+  legacyMarks = keep;
   await Promise.all(
     marked.filter((id, i) => read[i] !== null && !keep.has(id)).map(forgetProxyHeaders),
   );
@@ -832,7 +853,7 @@ export type Connection = {
  * excluded - see secure-store / `needsReconnect`). `serverId` is absent on a connection saved
  * before Phase 8. `hasProxyHeaders`: an earlier build's mark of a set kept for this connection
  * alone (no secret), which `hydrate` moves to its origin's (`moveLegacyProxySets`); written
- * again only for a set this build can't read (`unreadableLegacy`). */
+ * again only while that set is not moved (`legacyMarks`). */
 export type PersistedConnection = Omit<Connection, 'token' | 'needsReconnect'> & {
   hasProxyHeaders?: true;
 };
@@ -1011,7 +1032,7 @@ function hydrateEnded(failed: boolean, locked = false) {
 async function persist(connections: Connection[], defaultId: string | null) {
   // Strip the token (→ secure-store) AND the in-memory `needsReconnect` flag, so a stale
   // reconnect prompt never survives a restart (it's recomputed from the next failure). An
-  // earlier build's set this build can't read keeps its mark (`unreadableLegacy`).
+  // earlier build's set that is not moved keeps its mark (`legacyMarks`).
   const meta: PersistedConnection[] = connections.map(
     ({ token: _t, needsReconnect: _r, ...rest }) => withLegacyMark(rest),
   );
@@ -1039,8 +1060,8 @@ export const useSession = create<SessionState>()((set, get) => ({
       // against it), never "no connections". Read again when another tab wrote it meanwhile.
       const read = await readSettled();
       knownList = read.list;
-      // An earlier build's per-connection sets go to their origins first (fe#295): a failure
-      // fails the hydrate, as a token read's does.
+      // An earlier build's per-connection sets go to their origins first (fe#295): a read
+      // the platform refuses fails the hydrate, as a token read's does.
       const proxySets = await moveLegacyProxySets(read.marked, read.proxySets);
       hydrateEnded(false);
       if (read.connections) {
