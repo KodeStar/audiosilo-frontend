@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
-import { ApiError, isProxyRefusal } from '@/api/client';
+import { ApiError } from '@/api/client';
 import { connectClient, connectClientFor } from '@/api/connect-client';
 import { probeServerId } from '@/api/server-id-probe';
 import type { ServerInfo } from '@/api/types';
@@ -72,6 +72,7 @@ import {
 } from './oidc-sign-in';
 import { ProxyHeadersEditor } from './proxy-headers-editor';
 import { draftOf, draftToSet, type HeaderDraftRow } from './proxy-headers-model';
+import { sharedRefusalText } from './sign-in-error';
 import { useLinkPairing } from './use-pairing';
 
 /**
@@ -512,8 +513,8 @@ export function ConnectStart() {
         e instanceof ApiError
           ? {
               kind: 'error',
-              // An auth proxy's own 401 (fe#295): what to do about it, not "Unauthorized".
-              message: isProxyRefusal(e) ? t('connect.signIn.errors.proxyRefused') : e.message,
+              // An auth proxy's own 401 (fe#295) or a 429: what to do about it, not the raw status.
+              message: sharedRefusalText(e, t) ?? e.message,
             }
           : {
               kind: 'unreachable',
