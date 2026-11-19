@@ -1,9 +1,10 @@
 import { resolveConnectionId } from '@/lib/connection-id';
-import { type ProxyHeaders, proxySetFor } from '@/lib/proxy-headers';
+import { connectionSetFor, type ProxyHeaders, sameProxyHeaders } from '@/lib/proxy-headers';
 import { type Connection, sessionHydrateFailed, useSession } from '@/stores/session';
 
 import { effectiveUrl } from './address-route';
 import { ApiClient } from './client';
+import { noteProxyAnswer, useProxyRefusals } from './proxy-refusal';
 import { noteAnswer } from './reachability';
 
 /**
@@ -30,17 +31,20 @@ export function resolveClient(connectionId: string): ApiClient | null {
  * A connection's client on `url` (the address it uses now, never straight from `serverUrl`),
  * the one way one is built: `resolveClient` for the framework-free modules (the progress-sync
  * save loop, the car, the downloads) and the provider's `buildClients` for every screen. It
- * carries the token and the proxy headers kept for `url`'s origin (fe#167, `proxySetFor`), and
+ * carries the token and the proxy headers kept for `url`'s origin (fe#167, `connectionSetFor`:
+ * or its sign-in's own, `signInProxySets`), and
  * injects the dead-token callback, so a 401 on ANY request through it (query or mutation, on
  * screen or in the save loop) flags the connection for reconnect: the client is the one choke
  * point every request path shares. Not once the connection holds another token (a re-pair): a
  * client built before it is stale, and the connection's sign-in is not dead. Every answer it
- * gets counts for reachability (`noteAnswer`, FU-SLOWOK), by the address it came from.
+ * gets counts for reachability (`noteAnswer`, FU-SLOWOK), by the address it came from, and
+ * tells whether a proxy in front of the server is turning the connection away
+ * (`noteProxyAnswer`: the shell's notice, never a sign-out).
  */
 export function connectionClient(
   conn: Connection,
   url: string,
-  proxy: ProxyHeaders | null = proxySetFor(useSession.getState().proxySets, url),
+  proxy: ProxyHeaders | null = connectionProxyFor(conn.id, url),
 ): ApiClient {
   return new ApiClient(
     url,
@@ -57,7 +61,26 @@ export function connectionClient(
     // migration moved it names the old one, which no reachability reader asks for.
     (at) => noteAnswer(connectionOf(conn.id)?.id ?? conn.id, at),
     proxy,
+    // Under its id now, as above; a connection no longer signed in has nothing to say. Only
+    // while the connection still sends these headers there: a request sent with a set since
+    // replaced (a grown-up's update) that answers late says nothing of the one it sends now,
+    // and would raise the notice again after the new set got through. Nearly every answer is
+    // the server's own with no episode to end: that one stops at the first check.
+    (refused) => {
+      const now = connectionOf(conn.id);
+      if (!now || (!refused && !useProxyRefusals.getState().refused[now.id])) return;
+      if (sameProxyHeaders(connectionProxyFor(now.id, url), proxy)) {
+        noteProxyAnswer(now.id, refused);
+      }
+    },
   );
+}
+
+/** The proxy headers a request of the connection `connectionId` to `url` carries now
+ * (`connectionSetFor`: the set kept for that origin, or its sign-in's own). */
+export function connectionProxyFor(connectionId: string, url: string): ProxyHeaders | null {
+  const { proxySets, signInProxySets } = useSession.getState();
+  return connectionSetFor(proxySets, url, signInProxySets[connectionId]);
 }
 
 /** The signed-in connection an id names: itself, else the connection an old id moved to

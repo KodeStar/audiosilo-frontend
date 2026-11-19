@@ -75,8 +75,8 @@ import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import {
   ApiError,
+  isNotInLibraryError,
   isPlainSeriesQuery,
-  isServerNotInLibraryError,
   isSignedOutError,
   type ApiClient,
   type BookListQuery,
@@ -1395,7 +1395,8 @@ export function useLibraryBooks(
  * screen that orders or filters them on the device. The pages so far are usable at once
  * (`complete` false while more are coming); the second page is asked for once the first
  * has painted (`afterPaint`). A failed page stops the run and keeps what
- * loaded; `retry` carries on from there (or starts over when the first page failed).
+ * loaded; `retry` carries on from there (or reads the list again when the first page, or a
+ * refetch of the whole list, failed).
  */
 export function useAllLibraryBooks(
   libraryId: number,
@@ -1430,7 +1431,9 @@ export function useAllLibraryBooks(
      * hasn't yet (a series filter waiting for `/server`). */
     isIdle: q.isPending && q.fetchStatus === 'idle',
     error: q.error,
-    retry: () => void (data ? fetchNextPage() : refetch()),
+    /** Send again the request that failed: the next page when that is what failed, else the
+     * list (its first page, or a refetch of a list already fully loaded). */
+    retry: () => void (data && isFetchNextPageError ? fetchNextPage() : refetch()),
     /** Read the whole list again (an empty library: the server may have scanned since). */
     refresh: () => void refetch(),
   };
@@ -2984,7 +2987,7 @@ export function useLibrivoxJob(
         // The server's refusal stays refused (the default retry's rule, `retryQuery`), and a
         // 404 is gone. A proxy's own 401 or 403 is a read that failed: asked again, backing off.
         if (isSignedOutError(error)) return false;
-        if (isServerNotInLibraryError(error)) return false;
+        if (isNotInLibraryError(error)) return false;
         return librivoxJobPollInterval(
           data,
           active && AppState.currentState === 'active',

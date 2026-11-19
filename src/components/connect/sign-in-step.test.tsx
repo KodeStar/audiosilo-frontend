@@ -394,6 +394,44 @@ it("a reconnect signs in with the set kept for the address, whoever's sign-in ke
   again.unmount();
 });
 
+// A kid's typed set that got in where a full account's kept set differs: the kept one is asked
+// of the proxy before the sign-in is stored (`keptSetRefused`, up to 8 s behind a proxy that
+// does not answer). The button stays busy for all of it: the wait is never a still screen.
+it("stays busy while a kid's sign-in asks the proxy about the kept set (fe#295)", async () => {
+  const kept = { origin: AWAY, headers: [{ name: 'X-Kept', value: 'kept-secret' }] };
+  const typed = { origin: AWAY, headers: [{ name: 'X-Typed', value: 'typed-secret' }] };
+  const kid = { ...user, id: 12, username: 'evie', member_kind: 'kid' as const };
+  const s = useSession.getState();
+  await s.setSession({
+    serverUrl: AWAY,
+    serverId: 'srv-1',
+    token: 't',
+    user,
+    proxyHeaders: kept,
+  });
+  useSession.setState({ pendingServerUrl: AWAY, pendingProxyHeaders: typed });
+  mockApi.login.mockResolvedValue({ token: 'k', server_id: 'srv-1', user: kid });
+  await render(<SignInStep server={AWAY} />);
+  let answer: (v: unknown) => void = () => {};
+  mockApi.serverInfo.mockImplementation(() => new Promise((r) => (answer = r)));
+  mockProxies.length = 0;
+  await fireEvent.press(screen.getByLabelText('Username and password'));
+  await fireEvent.changeText(screen.getByLabelText('Username'), 'evie');
+  await fireEvent.changeText(screen.getByLabelText('Password'), 'pw');
+  // Not awaited: the press ends with the sign-in, which waits on the probe.
+  const pressed = fireEvent.press(screen.getByRole('button', { name: 'Sign in' }));
+  // The sign-in went out with the typed set; the probe carries the kept one, unanswered yet.
+  await waitFor(() => expect(mockProxies).toEqual([typed, kept]));
+  expect(screen.getByRole('button', { name: 'Sign in' })).toBeBusy();
+  expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv-1.1']);
+  // The proxy takes the kept set: the kid is signed in through it, the typed one dropped.
+  await act(async () => answer({ capabilities: {} }));
+  await pressed;
+  expect(useSession.getState().connections.map((c) => c.id)).toContain('srv-1.12');
+  expect(useSession.getState().proxySets[AWAY]).toEqual(kept);
+  expect(useSession.getState().signInProxySets).toEqual({});
+});
+
 it('reads the set as the sign-in is sent: one removed meanwhile goes with nothing (fe#295)', async () => {
   const kept = { origin: AWAY, headers: [{ name: 'X-Kept', value: 'kept-secret' }] };
   const other = { ...user, id: 2, username: 'sam' };

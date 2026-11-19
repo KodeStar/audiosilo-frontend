@@ -18,8 +18,9 @@ import { fetchPercent } from '@/playback/episode-fetch-rules';
  */
 
 /** The fetch refusals and failure codes a listener has a sentence for
- * (`podcasts.fetch.reason.*`); any other code reads as `other`. `signed_out` and `no_access`
- * are this app's own, for a 401 and a codeless 403 (`accessRefusal`). */
+ * (`podcasts.fetch.reason.*`); any other code reads as `other`. `signed_out`, `no_access` and
+ * `proxy_refused` are this app's own, for a 401, a codeless 403 and a proxy's own 401 or 403
+ * (`accessRefusal`, `REFUSAL_CODES`). */
 const FETCH_REASONS = [
   'module_off',
   'bridge_unavailable',
@@ -30,6 +31,7 @@ const FETCH_REASONS = [
   'identity_changed',
   'signed_out',
   'no_access',
+  'proxy_refused',
 ] as const;
 
 type FetchReason = (typeof FETCH_REASONS)[number] | 'other';

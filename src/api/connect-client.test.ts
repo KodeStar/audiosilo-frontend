@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 
 import { useSession } from '@/stores/session';
 
-import { connectClient, connectClientFor } from './connect-client';
+import { connectClient, connectClientFor, keptSetRefused } from './connect-client';
 import { probeServerId } from './server-id-probe';
 
 // The connect flow's bare clients (fe#167): the proxy headers entered on the connect screen,
@@ -112,5 +112,55 @@ describe('the connect flow carries proxy headers to their address only', () => {
     expect(connectClientFor('http://books.example.com').proxy).toBeUndefined();
     useSession.setState({ pendingProxyHeaders: null });
     expect(connectClientFor('https://books.example.com').proxy).toBeUndefined();
+  });
+
+  // The probe of a kept set a kid's sign-in may not replace (`finishConnect`): one tokenless
+  // `GET /server` to the set's origin carrying it, whatever the connect screen holds. Only the
+  // proxy's own 401 or 403 says the set is stale.
+  describe('keptSetRefused', () => {
+    const KEPT = { origin: SET.origin, headers: [{ name: 'X-Kept', value: 'kept-secret' }] };
+    const answer = (status: number, text: string) => {
+      const mock = jest.fn(async () => ({
+        ok: status >= 200 && status < 300,
+        status,
+        statusText: '',
+        headers: { get: () => null },
+        text: async () => text,
+      }));
+      globalThis.fetch = mock as unknown as typeof fetch;
+      return mock;
+    };
+
+    it("asks the set's origin for /server with the kept set and no token", async () => {
+      const fetchMock = installFetch();
+      expect(await keptSetRefused(KEPT)).toBe(false);
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [
+        string,
+        { headers: Record<string, string> },
+      ];
+      expect(url).toBe('https://books.example.com/api/v1/server');
+      expect(init.headers['X-Kept']).toBe('kept-secret');
+      // Never the set typed on the connect screen, nor a token.
+      expect(init.headers['CF-Access-Client-Secret']).toBeUndefined();
+      expect(init.headers.Authorization).toBeUndefined();
+    });
+
+    it("is refused only by the proxy's own 401 or 403", async () => {
+      answer(403, '<html>Forbidden</html>');
+      expect(await keptSetRefused(KEPT)).toBe(true);
+      answer(401, '');
+      expect(await keptSetRefused(KEPT)).toBe(true);
+    });
+
+    it("takes the server's own refusal, a gateway's answer and no answer as no sign of a stale set", async () => {
+      answer(403, JSON.stringify({ error: 'forbidden' }));
+      expect(await keptSetRefused(KEPT)).toBe(false);
+      answer(502, '<html>Bad gateway</html>');
+      expect(await keptSetRefused(KEPT)).toBe(false);
+      globalThis.fetch = jest.fn(async () => {
+        throw new TypeError('Network request failed');
+      }) as unknown as typeof fetch;
+      expect(await keptSetRefused(KEPT)).toBe(false);
+    });
   });
 });

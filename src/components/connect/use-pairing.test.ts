@@ -455,6 +455,16 @@ describe('useLinkPairing: a link that names a book', () => {
     expect(mockEnd).not.toHaveBeenCalled();
   });
 
+  // A proxy in front of the server turned the check away (`fromProxy`): the token was never
+  // judged, so it is no lost sign-in, and a new exchange would meet the same proxy.
+  it.each([401, 403])('opens the book when a proxy turned the check away with a %s', async (st) => {
+    useSession.setState({ connections: [chris] });
+    mockMe.mockRejectedValueOnce(new ApiError(st, 'Forbidden', undefined, undefined, true));
+    expect(await pairWith(bookScan)).toBe('paired');
+    expect(mockEnd).toHaveBeenCalledWith('srv-1.1', book);
+    expect(mockExchange).not.toHaveBeenCalled();
+  });
+
   it('opens the book when the server could not be asked', async () => {
     useSession.setState({ connections: [chris] });
     mockMe.mockRejectedValueOnce(new TimeoutError(15000));

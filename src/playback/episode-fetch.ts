@@ -14,7 +14,13 @@ import { onForeground } from '@/lib/when-active';
 import { mayActFor, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
-import { accessRefusal, blipDelay, isAbsentEpisode, pollDelay } from './episode-fetch-rules';
+import {
+  accessRefusal,
+  blipDelay,
+  isAbsentEpisode,
+  pollDelay,
+  REFUSAL_CODES,
+} from './episode-fetch-rules';
 
 /**
  * Playing an episode that is not on the server yet (Bridge Phase 2d-1). The server fetches
@@ -374,7 +380,7 @@ function refused(r: Run, e: unknown) {
   if (!pending) return;
   const refusal = e instanceof ApiError ? accessRefusal(e) : null;
   if (refusal) {
-    patch(r, { phase: 'failed', code: refusal === 'signedOut' ? 'signed_out' : 'no_access' });
+    patch(r, { phase: 'failed', code: REFUSAL_CODES[refusal] });
     return;
   }
   const code = e instanceof ApiError ? (e.code ?? null) : null;

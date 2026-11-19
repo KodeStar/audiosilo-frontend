@@ -20,6 +20,14 @@ let mockEngineState = 'playing';
 jest.mock('@/playback/store', () => ({
   usePlayer: {
     getState: () => ({
+      // The loaded book as `selectIsLoaded` reads it: the key's connection, library and path.
+      nowPlaying: mockLoadedKey
+        ? {
+            connectionId: mockLoadedKey.split(':')[0],
+            libraryId: Number(mockLoadedKey.split(':')[1]),
+            path: mockLoadedKey.split(':').slice(2).join(':'),
+          }
+        : null,
       playBook: (...a: unknown[]) => mockPlayBook(...a),
       setRate: (r: number) => mockSetRate(r),
       toggle: () => mockToggle(),

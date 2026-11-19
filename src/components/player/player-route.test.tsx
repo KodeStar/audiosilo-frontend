@@ -82,6 +82,7 @@ jest.mock('@/playback/store', () => {
 /* eslint-disable import/first */
 import { ApiError } from '@/api/client';
 import PlayerScreen from '@/app/player';
+import { setConnectionAliases } from '@/lib/connection-id';
 import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { usePlayer } from '@/playback/store';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
@@ -133,6 +134,21 @@ describe('the player route', () => {
     await act(async () => setNowPlaying(THIS_BOOK));
     expect(mockSeekBook.mock.calls).toEqual([[600]]);
     expect(mockPlayBook).not.toHaveBeenCalled();
+  });
+
+  // Another tab's identity migration renamed the connection (`old` -> `c`) after this tab
+  // loaded the book: it is the route's book still, so it is jumped in, never started again.
+  it('jumps in a book loaded under the id its connection was renamed from', async () => {
+    setConnectionAliases({ old: 'c' });
+    try {
+      setNowPlaying({ ...THIS_BOOK, connectionId: 'old' });
+      routeTo({ position: '600' });
+      await render(<PlayerScreen />);
+      expect(mockSeekBook.mock.calls).toEqual([[600]]);
+      expect(mockPlayBook).not.toHaveBeenCalled();
+    } finally {
+      setConnectionAliases({});
+    }
   });
 
   // fe#197 PLAYER-13: the "Bookmark added" toast goes with the player.

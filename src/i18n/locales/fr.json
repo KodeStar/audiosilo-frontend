@@ -2425,7 +2425,12 @@
       "reserved": "L'app envoie déjà {{name}} elle-même.",
       "duplicate": "{{name}} est déjà dans la liste.",
       "value": "Saisissez une valeur sur une seule ligne."
-    }
+    },
+    "refusedBanner": "Le proxy de connexion de {{name}} a refusé cet appareil : mettez à jour les en-têtes de proxy dans Compte",
+    "refusedBannerHint": "Ouvre le compte de ce serveur",
+    "refusedAskGrownUp": "Le proxy de connexion de {{name}} a refusé cet appareil : demande à un adulte de mettre à jour les en-têtes de proxy",
+    "refusedPlain": "Le proxy de connexion de {{name}} a refusé cet appareil",
+    "askGrownUp": "Demande à un adulte de mettre à jour les en-têtes de proxy."
   },
   "year": {
     "eyebrow": "Ton année d’écoute",
@@ -3069,6 +3074,7 @@
         "identity_changed": "Cet épisode a changé dans son flux. Ouvrez l'émission pour le retrouver.",
         "signed_out": "Vous êtes déconnecté de ce serveur. Reconnectez-vous, puis réessayez.",
         "no_access": "Ce compte n'a pas accès à cet épisode.",
+        "proxy_refused": "Le proxy de connexion du serveur a refusé cet appareil. Mettez à jour les en-têtes de proxy dans Compte, puis réessayez.",
         "other": "Un problème est survenu pendant la récupération. Réessayez plus tard."
       }
     },

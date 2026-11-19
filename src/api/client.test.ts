@@ -9,11 +9,11 @@ import {
   ApiClient,
   ApiError,
   apiErrorKind,
+  isNotInLibraryError,
   isPlainSeriesQuery,
   isProxyRefusal,
   isRefusedForGood,
   isServerBusyError,
-  isServerNotInLibraryError,
   isSignedOutError,
   NetworkError,
   PodcastFetchPendingError,
@@ -162,6 +162,8 @@ describe('ApiClient', () => {
     expect(apiErrorKind(new ApiError(429, 'too many attempts'))).toBe('too_many');
     expect(apiErrorKind(new ApiError(404, 'x'))).toBe('not_found');
     expect(apiErrorKind(new ApiError(403, 'x'))).toBe('forbidden');
+    // A proxy's own 403 says nothing of what the account may do (fe#295).
+    expect(apiErrorKind(new ApiError(403, 'Forbidden', undefined, undefined, true))).toBe('failed');
     expect(apiErrorKind(new ApiError(400, 'x'))).toBe('invalid');
     expect(apiErrorKind(new ApiError(500, 'x'))).toBe('failed');
     // No answer at all.
@@ -2966,14 +2968,14 @@ describe('ApiClient podcasts (Bridge Phase 2d-1)', () => {
     expect(own).toMatchObject({ status: 403, fromProxy: false });
     expect(isProxyRefusal(own)).toBe(false);
     expect(isRefusedForGood(own)).toBe(true);
-    expect(isServerNotInLibraryError(own)).toBe(true);
+    expect(isNotInLibraryError(own)).toBe(true);
     // A proxy's page, and a proxy's own JSON with no `error`.
     const page = await refusal({ status: 403, text: '<html>Forbidden</html>' });
     expect(page).toMatchObject({ status: 403, fromProxy: true });
     // The server never saw it: the proxy may let the next one through.
     expect(isProxyRefusal(page)).toBe(true);
     expect(isRefusedForGood(page)).toBe(false);
-    expect(isServerNotInLibraryError(page)).toBe(false);
+    expect(isNotInLibraryError(page)).toBe(false);
     expect(await refusal({ status: 403, body: { message: 'denied' } })).toMatchObject({
       status: 403,
       fromProxy: true,
@@ -2983,6 +2985,45 @@ describe('ApiClient podcasts (Bridge Phase 2d-1)', () => {
       status: 404,
       fromProxy: false,
     });
+  });
+
+  // What each answer says of the proxy (the shell's notice, `noteProxyAnswer`): refused on its
+  // own 401 or 403, let through on any answer the server itself gave (a success, or its own
+  // error envelope: the proxy passed that request too). An error that is neither says nothing.
+  it("tells its owner a proxy's refusal, and that the server itself answered", async () => {
+    const heard: boolean[] = [];
+    const onAuth = jest.fn();
+    const api = new ApiClient('https://h', 'tok', undefined, onAuth, undefined, null, (r) =>
+      heard.push(r),
+    );
+    installAnswers(() => ({ status: 403, text: '<html>Forbidden</html>' }));
+    await expect(api.me()).rejects.toMatchObject({ fromProxy: true });
+    installAnswers(() => ({ status: 401, text: '' }));
+    await expect(api.me()).rejects.toMatchObject({ fromProxy: true });
+    expect(heard).toEqual([true, true]);
+    expect(onAuth).not.toHaveBeenCalled();
+    // A gateway's page, or no JSON envelope at all: nothing said either way.
+    installAnswers(() => ({ status: 502, text: '<html>Bad Gateway</html>' }));
+    await expect(api.me()).rejects.toMatchObject({ status: 502, fromServer: false });
+    installAnswers(() => ({ status: 404, text: '<html>Not Found</html>' }));
+    await expect(api.me()).rejects.toMatchObject({ status: 404, fromServer: false });
+    expect(heard).toEqual([true, true]);
+    // The server's own errors: the proxy let each through.
+    installAnswers(() => ({ status: 401, body: { error: 'invalid or expired token' } }));
+    await expect(api.me()).rejects.toMatchObject({
+      status: 401,
+      fromProxy: false,
+      fromServer: true,
+    });
+    expect(onAuth).toHaveBeenCalledTimes(1);
+    installAnswers(() => ({ status: 404, body: { error: 'not found' } }));
+    await expect(api.me()).rejects.toMatchObject({ status: 404, fromServer: true });
+    installAnswers(() => ({ status: 500, body: { error: 'internal error' } }));
+    await expect(api.me()).rejects.toMatchObject({ status: 500, fromServer: true });
+    expect(heard).toEqual([true, true, false, false, false]);
+    installAnswers(() => ({ status: 200, body: { id: 1, username: 'chris' } }));
+    await api.me();
+    expect(heard).toEqual([true, true, false, false, false, false]);
   });
 
   it('keeps a JSON 503 without a fetch, or with another code, a plain ApiError', async () => {

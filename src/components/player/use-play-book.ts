@@ -1,11 +1,11 @@
-import { contentKey } from '@/lib/content-key';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import type { BookPlace } from '@/lib/paths';
 import { currentNavState } from '@/lib/root-stack';
-import { selectBookKey, selectIsTransportLive, usePlayer } from '@/playback/store';
+import { selectIsTransportLive, usePlayer } from '@/playback/store';
 
 import { navFor, type PlayTarget, playRoute } from './play-route';
+import { selectIsLoaded } from './playing-target';
 import { startBookInPlace } from './start-book';
 
 export type { PlayTarget } from './play-route';
@@ -47,7 +47,9 @@ export function usePlayBook() {
     const { connectionId, libraryId, path } = target;
     const { at = {} } = opts;
     const store = usePlayer.getState();
-    const loaded = selectBookKey(store) === contentKey(connectionId, libraryId, path);
+    // As the book page's and Now card's primary read it (`selectIsLoaded`): a book loaded
+    // under the id another tab's identity migration renamed is this one, toggled in place.
+    const loaded = selectIsLoaded(target)(store);
     // Read at the press, not subscribed: every Library row holds this hook, and a
     // subscription re-rendered them all on every navigation.
     const route = playRoute({

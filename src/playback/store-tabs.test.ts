@@ -49,8 +49,13 @@ const mirrorKey = (connectionId: string, libraryId: number, path: string) =>
 jest.mock('@/lib/storage', () => {
   // The web's storage is the browser's `localStorage`: each tab's copy reads and writes its
   // own tab's, so a write tells the OTHER tabs.
+  // None for this file's own imports (`playing-claim` reads the connection aliases' module),
+  // loaded before any tab: only a tab's modules read storage.
   const { tabStorage } = jest.requireActual('@/testing/fake-browser');
-  return { ...jest.requireActual('@/lib/storage'), ...tabStorage(mockTab.localStorage) };
+  return {
+    ...jest.requireActual('@/lib/storage'),
+    ...(mockTab ? tabStorage(mockTab.localStorage) : {}),
+  };
 });
 jest.mock('./service', () => {
   const engine = mockEngine;
@@ -346,6 +351,7 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
   let jumpUndo!: typeof import('./jump-undo');
   let types!: typeof import('./types');
   let downloads!: typeof import('@/downloads/store');
+  let ids!: typeof import('@/lib/connection-id');
   try {
     jest.isolateModules(() => {
       /* eslint-disable @typescript-eslint/no-require-imports */
@@ -354,6 +360,7 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
       jumpUndo = require('./jump-undo') as typeof import('./jump-undo');
       types = require('./types') as typeof import('./types');
       downloads = require('@/downloads/store') as typeof import('@/downloads/store');
+      ids = require('@/lib/connection-id') as typeof import('@/lib/connection-id');
       /* eslint-enable @typescript-eslint/no-require-imports */
     });
     await store.initializePlayback();
@@ -420,6 +427,9 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
         },
       });
     },
+    /** The tab's connection aliases (`old -> new`), as after another tab's identity migration
+     * renamed a connection it holds (`applyStored`). */
+    alias: (map: Record<string, string>) => ids.setConnectionAliases(map),
     /** Save the place now, as the 15 s save does while it plays. */
     save: async () => {
       store.saveLoadedPlace();
@@ -573,7 +583,7 @@ describe.each([
     for (const tab of [a, b]) {
       await tab.outbox.storeOpenSpan(null);
       await sleep(0);
-      await Promise.all(['c1', 'c2'].map((cid) => tab.outbox.flushOutbox(cid)));
+      await Promise.all(['c1', 'c2', 'old'].map((cid) => tab.outbox.flushOutbox(cid)));
     }
     await until(async () => (await a.outbox.outboxEvents()).length === 0, 'the outbox to empty');
     expect(mockNoteFailure).not.toHaveBeenCalled();
@@ -698,6 +708,37 @@ describe.each([
     await a.player().retry();
     await until(() => b.player().snapshot.state === 'paused', 'B to give way');
     expect(a.player().snapshot.state).toBe('playing');
+  });
+
+  // Another tab's identity migration renamed the connection (`old` -> `c1`) after A loaded
+  // its book: B's play under the new id is of the same connection.
+  it('a tab whose stream died under the id its connection was renamed from is stopped too', async () => {
+    a.alias({ old: 'c1' });
+    await a.start(5, 'old');
+    a.engine.fail();
+    await sleep(5); // B's play is asked for later than A's
+    await b.start(30, 'c1');
+    await until(() => a.engine.svc.pause.mock.calls.length === 1, "A's engine to stop");
+    expect(a.player().snapshot.state).toBe('error');
+    expect(b.player().snapshot.state).toBe('playing');
+  });
+
+  // The same rename: B, which loaded the book under the new id, answers A's play with where
+  // it stopped, and A (under the old id) takes that place.
+  it('a tab on the id its connection was renamed from takes the place the other tab answers', async () => {
+    a.alias({ old: 'c1' });
+    b.alias({ old: 'c1' });
+    await a.start(5, 'old');
+    await sleep(10);
+    a.engine.at(10);
+    await b.start(30, 'c1');
+    await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+    await sleep(10);
+    b.engine.at(40);
+    await a.player().toggle();
+    await until(() => b.player().snapshot.state === 'paused', 'B to give way');
+    await until(() => a.player().snapshot.position === 40, "A to take B's place");
+    await a.player().pause();
   });
 
   it('a tab whose stream died on another connection is left alone', async () => {

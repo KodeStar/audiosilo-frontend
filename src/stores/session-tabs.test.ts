@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 import type { User } from '@/api/types';
-import { CONNECTIONS_KEY, PROFILES_KEY } from '@/lib/storage-keys';
+import { CONNECTIONS_KEY, DEFAULT_CONNECTION_KEY, PROFILES_KEY } from '@/lib/storage-keys';
 import { tabChannel } from '@/lib/tab-channel';
 import { fakeBrowser, type FakeTab, sleep, tabStorage, until } from '@/testing/fake-browser';
 import { fakeWebLocks } from '@/testing/fake-web-locks';
@@ -16,7 +16,12 @@ import { fakeWebLocks } from '@/testing/fake-web-locks';
 
 type Session = typeof import('@/stores/session');
 type Profiles = typeof import('@/stores/profiles');
-type Tab = Session & { profiles: Profiles; env: FakeTab };
+type Tab = Session & {
+  profiles: Profiles;
+  env: FakeTab;
+  clients: typeof import('@/api/connection-clients');
+  ids: typeof import('@/lib/connection-id');
+};
 
 const REMOVAL_CHANNEL = 'audiosilo-connection-removed';
 
@@ -28,6 +33,8 @@ function openTab(browser: ReturnType<typeof fakeBrowser>, gate: Gate = { wait: n
   const env = browser.tab();
   let session!: Session;
   let profiles!: Profiles;
+  let clients!: Tab['clients'];
+  let ids!: Tab['ids'];
   jest.isolateModules(() => {
     jest.doMock('@/lib/storage', () => tabStorage(env.localStorage));
     jest.doMock('@/lib/secure-store', () => ({
@@ -42,10 +49,12 @@ function openTab(browser: ReturnType<typeof fakeBrowser>, gate: Gate = { wait: n
     /* eslint-disable @typescript-eslint/no-require-imports */
     session = require('@/stores/session') as Session;
     profiles = require('@/stores/profiles') as Profiles;
+    clients = require('@/api/connection-clients') as Tab['clients'];
+    ids = require('@/lib/connection-id') as Tab['ids'];
     /* eslint-enable @typescript-eslint/no-require-imports */
   });
   session.setTabsForTests({ channel: asWeb(() => tabChannel(REMOVAL_CHANNEL, env)), env });
-  return { ...session, profiles, env };
+  return { ...session, profiles, env, clients, ids };
 }
 
 /** Run `fn` as on the web, where a tab channel is made; the rest of the store runs as on the
@@ -461,6 +470,170 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     expect(a.useSession.getState().proxySets).toEqual({});
   });
 
+  // The proxy headers rule is read against the list as stored (fe#295): a full account another
+  // tab signed in through the address, which this tab has not heard of yet, still keeps a kid's
+  // sign-in here from replacing the set they share.
+  it("a kid's sign-in never replaces a set a full account signed in through in another tab", async () => {
+    const browser = fakeBrowser();
+    const a = openTab(browser);
+    const b = openTab(browser);
+    await a.useSession.getState().hydrate();
+    await b.useSession.getState().hydrate();
+    const ORIGIN = 'https://srv';
+    const set = (value: string) => ({ origin: ORIGIN, headers: [{ name: 'X-Proxy-Auth', value }] });
+    await b.useSession.getState().setProxySet(ORIGIN, set('kept'));
+    await settle();
+    expect(a.useSession.getState().proxySets[ORIGIN]).toEqual(set('kept'));
+    const release = browser.hold();
+    await signIn(b, 1, 'alex', 'ta');
+    // This tab has not heard of alex yet.
+    expect(a.useSession.getState().connections).toEqual([]);
+    await a.useSession.getState().setSession({
+      serverUrl: ORIGIN,
+      serverId: 'srv',
+      token: 'tk',
+      user: { ...mkUser(12, 'evie'), member_kind: 'kid' },
+      proxyHeaders: set('typed'),
+    });
+    release();
+    await settle();
+    expect(a.useSession.getState().proxySets[ORIGIN]).toEqual(set('kept'));
+    expect(b.useSession.getState().proxySets[ORIGIN]).toEqual(set('kept'));
+  });
+
+  // The sets as stored, too: a set another tab kept for the address leaves the list as it was,
+  // so only the sets' own read tells a tab that has not heard of it yet. A kid's sign-in here
+  // must not take the address as having none and write its own over it.
+  it("a kid's sign-in never writes over a set another tab kept meanwhile", async () => {
+    const { a, b, browser } = await twoTabs();
+    const ORIGIN = 'https://srv';
+    const set = (value: string) => ({ origin: ORIGIN, headers: [{ name: 'X-Proxy-Auth', value }] });
+    const release = browser.hold();
+    await b.useSession.getState().setProxySet(ORIGIN, set('kept'));
+    // This tab has not heard of the set yet.
+    expect(a.useSession.getState().proxySets).toEqual({});
+    await a.useSession.getState().setSession(
+      {
+        serverUrl: ORIGIN,
+        serverId: 'srv',
+        token: 'tk',
+        user: { ...mkUser(12, 'evie'), member_kind: 'kid' },
+        proxyHeaders: set('typed'),
+      },
+      { makeDefault: false },
+    );
+    release();
+    await settle();
+    expect(a.useSession.getState().proxySets[ORIGIN]).toEqual(set('kept'));
+    expect(b.useSession.getState().proxySets[ORIGIN]).toEqual(set('kept'));
+  });
+
+  // A kid's sign-in on its own typed set (the kept one stale, `signInProxySets`) holds it for
+  // that sign-in alone: it ends when another tab signs the kid out or in again, and stays
+  // through another tab's writes that leave the kid's sign-in as it was.
+  describe("a kid's sign-in on its own proxy headers", () => {
+    const ORIGIN = 'https://srv';
+    const set = (value: string) => ({ origin: ORIGIN, headers: [{ name: 'X-Proxy-Auth', value }] });
+    const evie = { ...mkUser(12, 'evie'), member_kind: 'kid' as const };
+
+    /** Tabs A and B with alex and sam signed in; the kid signs in here (A) on its own set. */
+    async function kidOnItsOwnSet() {
+      const { a, b, alex } = await twoTabs();
+      await a.useSession.getState().setProxySet(ORIGIN, set('kept'));
+      const kid = await a.useSession.getState().setSession(
+        {
+          serverUrl: ORIGIN,
+          serverId: 'srv',
+          token: 'tk',
+          user: evie,
+          proxyHeaders: set('typed'),
+          proxyKeptRefused: set('kept'),
+        },
+        { makeDefault: false },
+      );
+      await settle();
+      expect(a.useSession.getState().signInProxySets).toEqual({
+        [kid]: { set: set('typed'), over: set('kept') },
+      });
+      expect(b.useSession.getState().connections.map((c) => c.id)).toContain(kid);
+      return { a, b, alex, kid };
+    }
+
+    it('ends when another tab signs the kid out', async () => {
+      const { a, b, kid } = await kidOnItsOwnSet();
+      await b.useSession.getState().removeConnection(kid);
+      await settle();
+      expect(a.useSession.getState().connections.map((c) => c.id)).not.toContain(kid);
+      expect(a.useSession.getState().signInProxySets).toEqual({});
+    });
+
+    it('ends when another tab signs the kid in again', async () => {
+      const { a, b, kid } = await kidOnItsOwnSet();
+      await b.useSession
+        .getState()
+        .setSession(
+          { serverUrl: ORIGIN, serverId: 'srv', token: 'tk2', user: evie },
+          { makeDefault: false },
+        );
+      await settle();
+      expect(a.useSession.getState().connections.find((c) => c.id === kid)?.token).toBe('tk2');
+      expect(a.useSession.getState().signInProxySets).toEqual({});
+    });
+
+    // A connection still on its legacy id (the bare `server_id`) is moved to
+    // `<server_id>.<user_id>` by the identity migration at another tab's launch, its token
+    // copied with it: the same sign-in under a new id, so its own set goes with it.
+    it("moves with the sign-in when another tab's identity migration renames it", async () => {
+      const browser = fakeBrowser();
+      const kid = { id: 'srv', serverId: 'srv', serverUrl: ORIGIN, name: 'srv', user: evie };
+      browser.data.set(CONNECTIONS_KEY, JSON.stringify([kid]));
+      browser.data.set('audiosilo.token.srv', 'tk0');
+      const a = openTab(browser);
+      await a.useSession.getState().hydrate();
+      await a.useSession.getState().setProxySet(ORIGIN, set('kept'));
+      await signIn(a, 1, 'alex', 'ta');
+      // Signed in again on the legacy id, which stays until the migration moves it.
+      const id = await a.useSession.getState().setSession(
+        {
+          serverUrl: ORIGIN,
+          serverId: 'srv',
+          token: 'tk',
+          user: evie,
+          proxyHeaders: set('typed'),
+          proxyKeptRefused: set('kept'),
+        },
+        { makeDefault: false },
+      );
+      expect(id).toBe('srv');
+      const own = { set: set('typed'), over: set('kept') };
+      expect(a.useSession.getState().signInProxySets).toEqual({ srv: own });
+      // Another tab's launch: the token copied, then the list written with the new id.
+      const other = browser.tab();
+      const stored = JSON.parse(browser.data.get(CONNECTIONS_KEY) ?? '[]') as { id: string }[];
+      other.localStorage.setItem('audiosilo.token.srv.12', 'tk');
+      other.localStorage.setItem(
+        CONNECTIONS_KEY,
+        JSON.stringify(stored.map((c) => (c.id === 'srv' ? { ...c, id: 'srv.12' } : c))),
+      );
+      other.localStorage.removeItem('audiosilo.token.srv');
+      await settle();
+      expect(a.useSession.getState().connections.map((c) => c.id)).toContain('srv.12');
+      expect(a.useSession.getState().signInProxySets).toEqual({ 'srv.12': own });
+    });
+
+    it("stays through another tab's write that leaves the kid's sign-in as it was", async () => {
+      const { a, b, alex, kid } = await kidOnItsOwnSet();
+      await b.useSession.getState().setConnectionUser(alex, mkUser(1, 'alexander'));
+      await settle();
+      expect(a.useSession.getState().connections.find((c) => c.id === alex)?.user.username).toBe(
+        'alexander',
+      );
+      expect(a.useSession.getState().signInProxySets).toEqual({
+        [kid]: { set: set('typed'), over: set('kept') },
+      });
+    });
+  });
+
   // A tab of an earlier build (the bundle before fe#295) keeps a set for its connection
   // after this tab launched: its mark in the list is one this tab never wrote. This tab's
   // writes of the list keep it, or the item behind it would never be moved.
@@ -592,6 +765,72 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     expect(s.connections.find((c) => c.id === alex)?.user.username).toBe('alexander');
     expect(s.defaultConnectionId).toBe(alex);
     expect(s.connections.find((c) => c.id === sam)?.needsReconnect).toBe('auth');
+  });
+
+  // A tab signed in to `srv` under its legacy id (the bare `server_id`), its reconnect flag
+  // raised, and the stored list another tab's launch writes as it moves the id to
+  // `<server_id>.<user_id>` with the token `token` (the one copied, or another sign-in's).
+  async function legacyTab() {
+    const browser = fakeBrowser();
+    const legacy = { id: 'srv', serverId: 'srv', serverUrl: 'https://srv', name: 'srv' };
+    browser.data.set(CONNECTIONS_KEY, JSON.stringify([{ ...legacy, user: mkUser(12, 'evie') }]));
+    browser.data.set('audiosilo.token.srv', 'tk');
+    const a = openTab(browser);
+    await a.useSession.getState().hydrate();
+    a.useSession.getState().markNeedsReconnect('srv', 'auth');
+    const left: string[] = [];
+    a.onConnectionRemovedInOtherTab((id) => void left.push(id));
+    // What this tab holds in memory under the old id (a proxy's refusals of it) is told.
+    const renames: [string, string][] = [];
+    a.onConnectionRenamed((from, to) => void renames.push([from, to]));
+    const migrate = (token: string, before?: (other: FakeTab) => void) => {
+      const other = browser.tab();
+      const stored = JSON.parse(browser.data.get(CONNECTIONS_KEY) ?? '[]') as { id: string }[];
+      other.localStorage.setItem('audiosilo.token.srv.12', token);
+      before?.(other);
+      other.localStorage.setItem(
+        CONNECTIONS_KEY,
+        JSON.stringify(stored.map((c) => (c.id === 'srv' ? { ...c, id: 'srv.12' } : c))),
+      );
+      other.localStorage.removeItem('audiosilo.token.srv');
+    };
+    return { a, left, renames, migrate };
+  }
+
+  // Another tab's launch moves the legacy id, the token copied with it: the same sign-in, so
+  // this tab's flag and default go with it, and nothing playing through it is stopped.
+  it("carries a connection another tab's identity migration renamed, never leaving it", async () => {
+    const { a, left, renames, migrate } = await legacyTab();
+    const alex = await signIn(a, 1, 'alex', 'ta', 'other');
+    await a.useSession.getState().setDefaultConnection('srv');
+    a.useSession.getState().markNeedsReconnect('srv', 'auth');
+    // The stored default that tab's own.
+    migrate('tk', (other) =>
+      other.localStorage.setItem(DEFAULT_CONNECTION_KEY, JSON.stringify(alex)),
+    );
+    await settle();
+    const s = a.useSession.getState();
+    expect(s.connections.map((c) => c.id).sort()).toEqual([alex, 'srv.12'].sort());
+    expect(s.connections.find((c) => c.id === 'srv.12')?.needsReconnect).toBe('auth');
+    expect(s.defaultConnectionId).toBe('srv.12');
+    expect(left).toEqual([]);
+    expect(renames).toEqual([['srv', 'srv.12']]);
+    // The book it plays (and its saves, spans and bookmarks) still names `srv`: that reaches
+    // the renamed connection, and the web's files are found where they were kept.
+    expect(a.clients.connectionOf('srv')?.id).toBe('srv.12');
+    expect(a.ids.legacyIdOf('srv.12')).toBe('srv');
+  });
+
+  it('leaves a connection the stored list drops for one on a new token', async () => {
+    const { a, left, renames, migrate } = await legacyTab();
+    // Not a rename: the new id holds another sign-in's token.
+    migrate('tk2');
+    await settle();
+    expect(renames).toEqual([]);
+    const conn = a.useSession.getState().connections.find((c) => c.id === 'srv.12');
+    expect(conn?.needsReconnect).toBeUndefined();
+    expect(left).toEqual(['srv']);
+    expect(a.clients.connectionOf('srv')).toBeUndefined();
   });
 
   // The tab that changed the list writes the people that go with it; a tab following it

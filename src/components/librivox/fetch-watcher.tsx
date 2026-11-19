@@ -2,7 +2,7 @@ import { hashKey, type QueryClient, useQueryClient } from '@tanstack/react-query
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { create } from 'zustand';
 
-import { ApiError, isServerNotInLibraryError } from '@/api/client';
+import { ApiError, isNotInLibraryError } from '@/api/client';
 import { invalidateLibraryLists, qk, useLibrivoxJob, useServerInfo } from '@/api/hooks';
 import type { BridgeJob, ServerInfo } from '@/api/types';
 import { isAway } from '@/lib/app-activity';
@@ -121,13 +121,16 @@ export function resetLibrivoxWatchesForTests() {
 
 /**
  * A followed fetch's read (`useLibrivoxJob`), as the watcher and a recording row both take
- * it: `gone` (a 404, deleted with its library: the last answer no longer stands), its
- * `job` (none once gone) and whether it `ended` (gone, or no longer open).
+ * it: `refused` (the server's own 400 or 403, `isNotInLibraryError`: asking again can't
+ * help, so nothing follows it any more, and its last answer no longer stands; a proxy's 401
+ * or 403 is a read that failed, not this), its `job` (none once gone, a 404 deleted with its
+ * library, or refused) and whether it `ended` (gone, or no longer open).
  */
 export function followedRead(read: { data?: BridgeJob; error: unknown }) {
   const gone = read.error instanceof ApiError && read.error.status === 404;
-  const job = gone ? undefined : read.data;
-  return { gone, job, ended: gone || (!!job && !isOpenJob(job)) };
+  const refused = !gone && isNotInLibraryError(read.error);
+  const job = gone || refused ? undefined : read.data;
+  return { refused, job, ended: gone || (!!job && !isOpenJob(job)) };
 }
 
 /**
@@ -201,13 +204,12 @@ function WatchedFetch({ cid, id, at, awaySince }: Watch) {
   // answer yet, nothing judged).
   const answeredAt = reading && info.data !== undefined ? info.dataUpdatedAt : 0;
   const bridgeAway = isBridgeAway(info.data);
-  const { gone, job, ended } = followedRead(own);
+  // `refused`: the server's own 400 or 403, asking again can't help, by the poll's own rule
+  // (`useLibrivoxJob`), which stops too. A proxy's 401 or 403 is a read that failed: the poll
+  // asks again. A 404 is `gone`: an end, not a refusal. The server's 401 holds the watch
+  // until the connection is signed in again (`reading`).
+  const { refused, job, ended } = followedRead(own);
   const doneIn = job?.state === 'done' ? job.library_id : null;
-  // The server's refusal (its own 400 or 403): asking again can't help, by the poll's own
-  // rule (`useLibrivoxJob`), which stops too. A proxy's 401 or 403 is a read that failed:
-  // the poll asks again. A 404 is `gone`: an end, not a refusal. The server's 401 holds the
-  // watch until the connection is signed in again (`reading`).
-  const refused = !gone && isServerNotInLibraryError(own.error);
   const signedIn = !!conn;
   // Who is signed in is known only once the session has read its connections.
   const sessionRead = useSession((s) => s.status !== 'loading');

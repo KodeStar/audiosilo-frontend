@@ -18,6 +18,7 @@ import { Icon, type IconName } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { openUpNext } from '@/components/upnext/up-next-store';
 import { useUpNextBadge } from '@/components/upnext/use-up-next';
+import { sameConnection } from '@/lib/connection-id';
 import { formatCount, formatSpeed } from '@/lib/format';
 import { pushInShell } from '@/lib/open';
 import { bookHref, finishedHref } from '@/lib/paths';
@@ -67,11 +68,11 @@ export function PlayerHeader({
   const themed = useThemeColors();
   const np = usePlayer((s) => s.nowPlaying);
   const server = useSession(
-    (s) => s.connections.find((c) => c.id === np?.connectionId)?.name ?? '',
+    (s) => (np && s.connections.find((c) => sameConnection(c.id, np.connectionId))?.name) ?? '',
   );
   const { libraries } = useLibrariesAll();
   const library = libraries.find(
-    (l) => l.connectionId === np?.connectionId && l.id === np?.libraryId,
+    (l) => !!np && sameConnection(l.connectionId, np.connectionId) && l.id === np.libraryId,
   )?.name;
   const context = playerContext(book, library);
   // Under large text the two lines wrap rather than end in "...".

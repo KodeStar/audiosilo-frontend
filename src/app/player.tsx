@@ -16,6 +16,7 @@ import { dismissBookmarkToast } from '@/components/player/player-shortcuts';
 import { EpisodeFetchPanel } from '@/components/podcasts/episode-fetch-panel';
 import { Spinner } from '@/components/ui/spinner';
 import { useIsDownloaded } from '@/downloads/store';
+import { sameConnection } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { bookTitle, idParam, segmentsToPath } from '@/lib/paths';
 import { quietly } from '@/lib/quietly';
@@ -110,7 +111,8 @@ export default function PlayerScreen() {
   const routeKey = book ? contentKey(cid, libraryId, book.rel_path) : null;
   const routePlaying =
     routeKey !== null &&
-    nowPlaying?.connectionId === cid &&
+    nowPlaying !== null &&
+    sameConnection(nowPlaying.connectionId, cid) &&
     nowPlaying.libraryId === libraryId &&
     nowPlaying.path === book?.rel_path;
   // The route's book once it has played here (set during render, React's pattern for state
@@ -142,11 +144,7 @@ export default function PlayerScreen() {
     // nowPlaying.path, which can differ from the decoded route param. Using the
     // route param here made the guard never match for some paths, re-invoking
     // playBook every render (hammering getProgress + restarting playback).
-    if (
-      nowPlaying?.connectionId === cid &&
-      nowPlaying?.libraryId === libraryId &&
-      nowPlaying?.path === book.rel_path
-    ) {
+    if (routePlaying) {
       startedKeyRef.current = key; // this target is handled; don't auto-start it again
       if (jumpedKeyRef.current === jumpKey) return; // this jump is already done
       jumpedKeyRef.current = jumpKey;
@@ -195,6 +193,7 @@ export default function PlayerScreen() {
     position,
     track,
     nowPlaying,
+    routePlaying,
     seekBook,
     goToTrack,
     gated,

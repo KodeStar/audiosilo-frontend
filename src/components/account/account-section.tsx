@@ -20,11 +20,11 @@ import { addressKind, mergeAddresses } from '@/lib/server-address';
 import { serverDisplayName } from '@/lib/server-display-name';
 import { APP_VERSION } from '@/lib/version';
 import { useProfileConnections } from '@/stores/profiles';
-import { connectionProxySet } from '@/lib/proxy-headers';
+import { canManageProxySet, connectionProxySet } from '@/lib/proxy-headers';
 import { useSession } from '@/stores/session';
 import { watchLink } from '@/watch/link';
 
-import { canManageProxySet, resolveAccountCid, signedInSessions } from './account-model';
+import { resolveAccountCid, signedInSessions } from './account-model';
 import { ApiKeyCreatedModal } from './api-key-created-modal';
 import { ApiKeysSection, ApiKeysUnavailable } from './api-keys-section';
 import { WatchCard } from './watch-card';

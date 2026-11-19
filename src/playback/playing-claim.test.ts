@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 
+import { setConnectionAliases } from '@/lib/connection-id';
 import { tabChannel } from '@/lib/tab-channel';
 import { fakeBrowser } from '@/testing/fake-browser';
 
@@ -39,6 +40,17 @@ describe('givesWayTo (one tab plays at a time per connection)', () => {
   it('a tab with nothing playing gives way to nothing', () => {
     expect(givesWayTo(claim(), mine({ live: false }))).toBe(false);
     expect(givesWayTo(claim(), mine({ connectionId: null, live: false }))).toBe(false);
+  });
+
+  // A tab that followed another tab's identity migration claims under the new id; this one
+  // loaded its book before it, under the old.
+  it('gives way to a claim on its connection under the id it was renamed to', () => {
+    setConnectionAliases({ c1: 'c1.7' });
+    try {
+      expect(givesWayTo(claim({ connectionId: 'c1.7' }), mine())).toBe(true);
+    } finally {
+      setConnectionAliases({});
+    }
   });
 
   it('another connection plays on: the rule is per connection', () => {

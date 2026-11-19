@@ -1,8 +1,8 @@
 import { router } from 'expo-router';
 
 import { setAddressPick } from '@/api/address-route';
+import { keptSetRefused } from '@/api/connect-client';
 import type { AuthSession, ServerAddresses } from '@/api/types';
-import { mayReplaceProxySet } from '@/components/account/account-model';
 import { KIDS_PATH } from '@/components/kids/kids-model';
 import { connectForNewProfile, mayAddPerson } from '@/components/profiles/connect-intent';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
@@ -61,7 +61,10 @@ export function readyHref(connectionId: string) {
  * successful exchange or sign-in went out with (`connectClientFor`): kept as its origin's
  * set only when it is the one typed on the connect screen (`pendingProxyHeaders`), never a
  * kept set written back, and never over a set a full account here reaches when the sign-in is
- * a demo or a kid's account (`mayReplaceProxySet`).
+ * a demo or a kid's account (`setSession` decides, `mayReplaceProxySet`). A kid's account in
+ * that place has the kept set probed first (`keptSetRefused`): one the proxy refuses leaves
+ * the kid on the typed set for this sign-in, and kids mode and the shell ask a grown-up to
+ * update the address's set (`useProxyNotice`).
  */
 export async function finishConnect(input: {
   serverUrl: string;
@@ -145,29 +148,36 @@ export async function finishConnect(input: {
   // every store at once (and the screens render), so nothing goes to `serverUrl` first.
   // Under the id `setSession` gives the connection (the prior one's, else `connectionIdOf`).
   const pickId = existing?.id ?? connectionIdOf(serverId, input.session.user.id);
-  // The proxy headers to keep (fe#167), only ever a set typed on the connect screen: the one
-  // the sign-in got in with, else one typed for another of this server's addresses (typed
-  // for its away address, signed in at home) that has no set yet. There is one set per origin
-  // on the device (fe#295): a kept one that carried the sign-in is kept already, and is never
+  // The proxy headers this sign-in may keep (fe#167), only ever a set typed on the connect
+  // screen: the one the sign-in got in with, else one typed for another of this server's
+  // addresses (typed for its away address, signed in at home). There is one set per origin on
+  // the device (fe#295): a kept one that carried the sign-in is kept already, and is never
   // written back (it may have been removed or changed on purpose while the sign-in was on its
-  // way); a typed one that was never sent proved nothing, so it replaces no kept set. Nor does
-  // a demo or a kid's account replace one a full account here reaches (`mayReplaceProxySet`,
-  // the Account card's rule; the identities this sign-in retires reach nothing after it): it
-  // would turn that person's requests away. A sign-in never removes one.
+  // way). Whether it replaces a kept set is `setSession`'s to decide, against the list as
+  // stored (another tab's full account counts): a typed one that was never sent proved
+  // nothing, and a demo or a kid's account never replaces one a full account here reaches
+  // (`mayReplaceProxySet`). A sign-in never removes one.
   const { pendingProxyHeaders: typed, proxySets } = useSession.getState();
   const gotIn = sameProxyHeaders(input.carried, typed);
-  const keepTyped =
-    !!typed &&
-    (proxySets[typed.origin]
-      ? gotIn &&
-        mayReplaceProxySet(
-          input.session.user,
-          pickId,
-          typed.origin,
-          connections.filter((c) => !retire.includes(c.id)),
-        )
-      : gotIn || proxyOriginChoices(plan, input.serverUrl).includes(typed.origin));
-  const proxyHeaders = keepTyped ? typed : undefined;
+  const proxyHeaders =
+    typed && (gotIn || proxyOriginChoices(plan, input.serverUrl).includes(typed.origin))
+      ? typed
+      : undefined;
+  // A kid's set that got in where another set is kept: the kept one is asked of the proxy
+  // first, so a stale one does not leave the kid on headers the proxy turns away. Asked even
+  // where this tab sees no full account reaching the address: whether the kid may replace the
+  // set is `setSession`'s to decide, against the list as stored (another tab's sign-in
+  // counts), so its answer must be in hand by then.
+  const kept = proxyHeaders ? proxySets[proxyHeaders.origin] : undefined;
+  const keptRefused =
+    proxyHeaders &&
+    kept &&
+    gotIn &&
+    isKidAccount(input.session.user) &&
+    !sameProxyHeaders(kept, proxyHeaders) &&
+    (await keptSetRefused(kept))
+      ? kept
+      : undefined;
   if (input.answeredAt) setAddressPick(pickId, input.answeredAt);
   const id = await setSession({
     serverUrl: plan.serverUrl,
@@ -177,7 +187,8 @@ export async function finishConnect(input: {
     ...(input.name ? { name: input.name } : {}),
     addresses: plan.addresses,
     retire,
-    ...(proxyHeaders ? { proxyHeaders } : {}),
+    ...(proxyHeaders ? { proxyHeaders, proxyUnsent: !gotIn } : {}),
+    ...(keptRefused ? { proxyKeptRefused: keptRefused } : {}),
   }).catch((e: unknown) => {
     // Nothing was stored: a new connection's pick goes with it.
     if (input.answeredAt && !existing) setAddressPick(pickId, null);

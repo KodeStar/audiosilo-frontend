@@ -20,6 +20,8 @@ jest.mock('@/api/connection-clients', () => ({
   sessionReady: jest.fn(() => true),
 }));
 jest.mock('@/stores/session', () => ({ onConnectionRemoved: jest.fn(() => () => {}) }));
+// The queues each register a replay for a proxy's refusals ending (captured below).
+jest.mock('@/api/proxy-refusal', () => ({ onProxyRefusalsOver: jest.fn(() => () => {}) }));
 let mockCaps: Record<string, unknown> | undefined;
 jest.mock('@/api/hooks', () => ({
   cachedCapability: (_cid: string, flag: string) => (mockCaps ? !!mockCaps[flag] : undefined),
@@ -45,6 +47,7 @@ jest.mock('@/api/server-snapshots', () => ({
 /* eslint-disable import/first */
 import { resolveClient } from '@/api/connection-clients';
 import { queryClient } from '@/api/provider';
+import { onProxyRefusalsOver } from '@/api/proxy-refusal';
 import { forgetRateLimit, noteRateLimit, rateLimited } from '@/api/rate-limit';
 import * as reachability from '@/api/reachability';
 import { keepServerAnswer, keepServerFlag } from '@/api/server-snapshots';
@@ -105,6 +108,13 @@ import {
 } from './progress-sync';
 import { provideSpanCut } from './span-cut';
 /* eslint-enable import/first */
+
+// A proxy's refusals of a connection ended: the listeners registered at import (captured
+// before any clearAllMocks wipes the mock's call log).
+const proxyOverListeners = (onProxyRefusalsOver as jest.Mock).mock.calls.map(
+  ([fn]) => fn as (cid: string) => void,
+);
+const proxyRefusalsOver = (cid: string) => proxyOverListeners.forEach((fn) => fn(cid));
 
 const OUTBOX = 'audiosilo.listeningOutbox';
 const OPEN_SPAN = 'audiosilo.listeningOpenSpan';
@@ -723,6 +733,38 @@ describe('flushOutbox', () => {
     } finally {
       jest.useRealTimers();
       forgetRateLimit('c1');
+    }
+  });
+
+  // A proxy turning the device away (fe#295) holds the events; the server's own answer ends
+  // the episode, and they go then, under every id they name, not at the next save.
+  it("sends the events a proxy's refusals held once the episode ends", async () => {
+    setConnectionAliases({ legacy: 'c1' });
+    await appendEvents('c1', [listen('a')]);
+    await appendEvents('legacy', [listen('b')]);
+    let refusing = true;
+    const c = client(async (body) => {
+      if (refusing) throw new ApiError(403, 'Forbidden', undefined, undefined, true);
+      return answer(body);
+    });
+    (resolveClient as jest.Mock).mockImplementation((cid: string) =>
+      cid === 'c1' || cid === 'legacy' ? (c as unknown as ApiClient) : null,
+    );
+    try {
+      await flushOutbox('c1');
+      expect(c.syncListening).toHaveBeenCalled();
+      expect(await outboxEvents('c1')).toHaveLength(1);
+      refusing = false;
+      c.syncListening.mockClear();
+      proxyRefusalsOver('c1');
+      for (let i = 0; i < 50 && c.syncListening.mock.calls.length < 2; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(c.syncListening).toHaveBeenCalledTimes(2);
+      expect(await outboxEvents('c1')).toEqual([]);
+      expect(await outboxEvents('legacy')).toEqual([]);
+    } finally {
+      setConnectionAliases({});
     }
   });
 

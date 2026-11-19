@@ -26,6 +26,8 @@ jest.mock('./store', () => ({
 }));
 
 /* eslint-disable import/first */
+import { setConnectionAliases } from '@/lib/connection-id';
+
 import { startRemovedInOtherTab } from './removed-in-other-tab';
 /* eslint-enable import/first */
 
@@ -65,6 +67,23 @@ describe('startRemovedInOtherTab', () => {
     startRemovedInOtherTab();
     await mockGoing!('srv.1');
     expect(mockOrder).toEqual(['stop srv.1', 'flush srv.1']);
+  });
+
+  // A book loaded before another tab's identity migration renamed its connection names the
+  // old id: removing the connection under its new one stops it all the same.
+  it('stops a book that names the id its connection moved from', async () => {
+    setConnectionAliases({ srv: 'srv.1' });
+    try {
+      mockNowPlaying = { connectionId: 'srv' };
+      startRemovedInOtherTab();
+      await mockGoing!('srv.1');
+      expect(mockOrder).toEqual(['stop srv.1', 'flush srv.1']);
+      mockOrder.length = 0;
+      await mockStep!('srv.1');
+      expect(mockOrder).toEqual(['stop srv.1']);
+    } finally {
+      setConnectionAliases({});
+    }
   });
 
   it('has no work before the token goes in a tab not playing through it', () => {

@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import { ApiError, type ApiClient, TimeoutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
+import { onProxyRefusalsOver } from '@/api/proxy-refusal';
 import * as reachability from '@/api/reachability';
 import type { ReadingProgress, ReadingProgressSaved } from '@/api/types';
 import { CLAIM_MS, claimLockName } from '@/lib/queue-claims';
@@ -41,6 +42,8 @@ jest.mock('@/api/connection-clients', () => ({
 jest.mock('@/stores/session', () => ({
   onConnectionRemoved: jest.fn(() => () => {}),
 }));
+// The queues each register a replay for a proxy's refusals ending (captured below).
+jest.mock('@/api/proxy-refusal', () => ({ onProxyRefusalsOver: jest.fn(() => () => {}) }));
 // The app's EPUB cache (ebook-file.native.ts has its own tests): dropped with its connection.
 const mockClearEbookCache = jest.fn(async (_id: string) => {});
 jest.mock('./ebook-file', () => ({
@@ -52,6 +55,13 @@ const removalCleanups = (onConnectionRemoved as jest.Mock).mock.calls.map(
   ([cleanup]) => cleanup as (id: string) => Promise<void>,
 );
 const removalCleanup = removalCleanups.at(-1)!;
+
+// A proxy's refusals of a connection ended: the listeners registered at import (captured
+// before any clearAllMocks wipes the mock's call log).
+const proxyOverListeners = (onProxyRefusalsOver as jest.Mock).mock.calls.map(
+  ([fn]) => fn as (cid: string) => void,
+);
+const proxyRefusalsOver = (cid: string) => proxyOverListeners.forEach((fn) => fn(cid));
 
 const reachable = reachability.isReachable as jest.Mock;
 const mockResolveClient = resolveClient as jest.Mock;
@@ -1272,6 +1282,27 @@ describe('reading-progress', () => {
       }
       expect(next.saveReadingProgress).toHaveBeenCalledTimes(1);
       expect(await readQueue()).toEqual([]);
+    });
+
+    // A proxy turning the device away (fe#295) holds the places; the server's own answer ends
+    // the episode, and that connection's places go then, not at the next replay.
+    it('replays only the connection whose proxy refusals ended', async () => {
+      const refusing = fakeApi(() =>
+        Promise.reject(new ApiError(403, 'Forbidden', undefined, undefined, true)),
+      );
+      await saveReadingPlace(refusing, save());
+      await saveReadingPlace(null, save({ connectionId: 'c2', path: 'B/Other' }));
+      expect(await readQueue()).toHaveLength(2);
+      const one = fakeApi();
+      const two = fakeApi();
+      routeClients({ c1: one, c2: two });
+      proxyRefusalsOver('c1');
+      for (let i = 0; i < 60 && (await readQueue()).length > 1; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(one.saveReadingProgress).toHaveBeenCalledTimes(1);
+      expect(two.saveReadingProgress).not.toHaveBeenCalled();
+      expect((await readQueue()).map((s) => s.connectionId)).toEqual(['c2']);
     });
 
     // Every connection's queue went at a hold's end, not only the one it held.

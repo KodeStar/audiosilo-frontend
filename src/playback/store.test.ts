@@ -171,6 +171,7 @@ import { queryClient } from '@/api/provider';
 import { engine as downloadEngine } from '@/downloads/engine';
 import { isDeclined, useDownloads } from '@/downloads/store';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
+import { setConnectionAliases } from '@/lib/connection-id';
 import { resetProfilesForTests, switchProfile, useProfiles } from '@/stores/profiles';
 import * as session from '@/stores/session';
 import { useSession } from '@/stores/session';
@@ -1405,6 +1406,25 @@ describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
 
     expect(mockSvc.reset).toHaveBeenCalled();
     expect(usePlayer.getState().nowPlaying).toBeNull();
+  });
+
+  // Another tab's identity migration renamed the connection after the book was loaded: the
+  // book still names the old id, and removing the connection under its new one stops it.
+  it('stops a book loaded under the id its connection moved from', async () => {
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 0);
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    (mockSvc.reset as jest.Mock).mockClear();
+    setConnectionAliases({ c1: 'c1.7' });
+    try {
+      await stopPlaybackForConnection('c2');
+      expect(usePlayer.getState().nowPlaying).not.toBeNull();
+      await stopPlaybackForConnection('c1.7');
+      expect(mockSvc.reset).toHaveBeenCalled();
+      expect(usePlayer.getState().nowPlaying).toBeNull();
+    } finally {
+      setConnectionAliases({});
+    }
   });
 
   it('teardownBeforeTokenRevoke stops playback and flushes the connection being revoked', async () => {

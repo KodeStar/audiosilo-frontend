@@ -1,3 +1,4 @@
+import { sameConnection } from '@/lib/connection-id';
 import { onConnectionGoingInOtherTab, onConnectionRemovedInOtherTab } from '@/stores/session';
 
 import { flushConnectionSaves, stopPlaybackAndCloseSpan, usePlayer } from './store';
@@ -28,7 +29,12 @@ import { flushConnectionSaves, stopPlaybackAndCloseSpan, usePlayer } from './sto
  * Started with the root's services; returns the stop.
  */
 export function startRemovedInOtherTab(): () => void {
-  const playingThrough = (id: string) => usePlayer.getState().nowPlaying?.connectionId === id;
+  // A book loaded before another tab's identity migration renamed the connection names its
+  // old id (`sameConnection`), and plays through it all the same.
+  const playingThrough = (id: string) => {
+    const playing = usePlayer.getState().nowPlaying?.connectionId;
+    return playing !== undefined && sameConnection(playing, id);
+  };
   const stopGoing = onConnectionGoingInOtherTab((id) =>
     playingThrough(id) ? stopPlaybackAndCloseSpan(id).then(() => flushConnectionSaves(id)) : null,
   );

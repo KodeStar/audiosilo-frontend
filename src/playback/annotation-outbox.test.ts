@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
 import { ApiError, NetworkError, TimeoutError } from '@/api/client';
+import { noteProxyAnswer, resetProxyRefusalsForTests } from '@/api/proxy-refusal';
 import { forgetRateLimit, noteRateLimit } from '@/api/rate-limit';
 import type { Bookmark } from '@/api/types';
 import { setConnectionAliases } from '@/lib/connection-id';
@@ -106,6 +107,13 @@ let mockSessionListener: ((state: MockSession, prev: MockSession) => void) | nul
 jest.mock('@/stores/session', () => ({
   onConnectionRemoved: jest.fn(() => () => {}),
   useSession: {
+    // The signed-in list a proxy refusal's end is told for (`onProxyRefusalsOver`).
+    getState: () => ({
+      connections: [...mockClients.keys()].map((id) => ({
+        id,
+        needsReconnect: mockFlagged.has(id) || undefined,
+      })),
+    }),
     subscribe: (fn: (state: MockSession, prev: MockSession) => void) => {
       mockSessionListener = fn;
       return () => (mockSessionListener = null);
@@ -229,7 +237,11 @@ beforeEach(async () => {
   await AsyncStorage.clear();
 });
 
-afterEach(() => resetAnnotationOutboxForTests());
+afterEach(() => {
+  resetAnnotationOutboxForTests();
+  forgetRateLimit('c1');
+  forgetRateLimit('c2');
+});
 
 describe('adding', () => {
   it('goes straight to a reachable server with nothing waiting', async () => {
@@ -651,6 +663,20 @@ describe('sending', () => {
       expect(warn).toHaveBeenCalledTimes(1);
       expect(await positions()).toEqual([]);
       expect(held.map((b) => b.position)).toEqual([300, 200]);
+    });
+
+    // A proxy in front of the server turning the device away (fe#295) is the connection's:
+    // the server never saw the bookmark, so a week of it gives up on none.
+    it('never gives up while a proxy refuses the device, a week or more', async () => {
+      const { state, held } = await waiting();
+      state.down = new ApiError(403, 'Forbidden', undefined, undefined, true);
+      await failFor(10);
+      await failFor(8, DAY);
+      expect(await positions()).toEqual([100, 200, 300]);
+      expect(warn).not.toHaveBeenCalled();
+      state.down = null;
+      await flushBookmarks();
+      expect(held.map((b) => b.position).sort()).toEqual([100, 200, 300]);
     });
 
     it("drops a book's bookmarks whose read has failed for a week", async () => {
@@ -1596,6 +1622,8 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
     });
     client.addBookmark.mockRejectedValueOnce(err);
     expect(await addBookmarkOrQueue('c1', 1, 'a/book', 120)).toHaveProperty('queued');
+    // The wait a 429 asked for is over (`rateLimited`).
+    forgetRateLimit('c1');
     await flushBookmarks();
     expect(held.map((b) => b.id)).toEqual([9, 1]);
     expect(await queuedBookmarks()).toEqual([]);
@@ -1803,6 +1831,8 @@ describe('to an older server', () => {
     expect(await addBookmarkOrQueue('c1', 1, 'a/book', 120)).toHaveProperty('queued');
     // Turned away before the server took it: no send of it has landed.
     expect(await queuedBookmarks()).toMatchObject([{ fresh: true }]);
+    // The wait a 429 asked for is over (`rateLimited`).
+    forgetRateLimit('c1');
     await flushBookmarks();
     expect(held.map((b) => b.id)).toEqual([9, 1]);
     expect(await queuedBookmarks()).toEqual([]);
@@ -1966,6 +1996,35 @@ describe('startBookmarkSync', () => {
     }
   });
 
+  // A proxy turning the device away (fe#295) holds the bookmarks; the server's own answer
+  // ends the episode (`noteProxyAnswer`), and what waited goes then, not at the backoff.
+  it("sends what a proxy's refusals held once the episode ends", async () => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick', 'queueMicrotask'] });
+    const { client, held, state } = server('c1');
+    const release = startBookmarkSync();
+    try {
+      state.down = new ApiError(403, 'Forbidden', undefined, undefined, true);
+      noteProxyAnswer('c1', true);
+      await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+      expect(await queuedBookmarks()).toHaveLength(1);
+      state.down = null;
+      client.bookmarks.mockClear();
+      // Another connection's episode ending sends none of c1's (c2 signed in: its end is told).
+      server('c2');
+      noteProxyAnswer('c2', true);
+      noteProxyAnswer('c2', false);
+      await jest.advanceTimersByTimeAsync(0);
+      expect(client.bookmarks).not.toHaveBeenCalled();
+      noteProxyAnswer('c1', false);
+      await jest.advanceTimersByTimeAsync(0);
+      expect(held.map((b) => b.position)).toEqual([100]);
+    } finally {
+      release();
+      resetProxyRefusalsForTests();
+      jest.useRealTimers();
+    }
+  });
+
   // Held by its server's wait (a 429 another queue was answered), no backoff runs: nothing
   // but the wait's end sends them before the next focus or reconnect.
   it('sends what a 429 held once its wait is over', async () => {
@@ -1987,6 +2046,50 @@ describe('startBookmarkSync', () => {
       forgetRateLimit('c1');
       jest.useRealTimers();
     }
+  });
+
+  // A bookmark-only replay answered with a 429 holds the connection for its `Retry-After`
+  // (as the other queues do), not the 30 s backoff: nothing more goes until then, then it does.
+  it("waits out a 429's Retry-After on a bookmark replay, then sends", async () => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick', 'queueMicrotask'] });
+    const { client, held, state } = server('c1', offline());
+    const release = startBookmarkSync();
+    try {
+      mockOnline.c1 = false;
+      await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+      await addBookmarkOrQueue('c1', 1, 'b/book', 200);
+      mockOnline.c1 = true;
+      state.down = new ApiError(429, 'slow down', undefined, 90);
+      client.bookmarks.mockClear();
+      await flushBookmarks();
+      // The replay stops at the 429 (its first book's read): the other book's waits with it.
+      expect(client.bookmarks).toHaveBeenCalledTimes(1);
+      state.down = null;
+      // The backoff's 30 s and a replay asked meanwhile send nothing while the wait holds.
+      await jest.advanceTimersByTimeAsync(60_000);
+      await flushBookmarks();
+      expect(held).toEqual([]);
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(held.map((b) => b.position).sort()).toEqual([100, 200]);
+    } finally {
+      release();
+      jest.useRealTimers();
+    }
+  });
+
+  it("keeps a tap made while a 429's wait holds without asking the server", async () => {
+    const { client } = server('c1');
+    noteRateLimit('c1', new ApiError(429, 'slow down', undefined, 60));
+    expect(await addBookmarkOrQueue('c1', 1, 'a/book', 120)).toHaveProperty('queued');
+    expect(client.addBookmark).not.toHaveBeenCalled();
+  });
+
+  it("a tap's own 429 holds the connection's replays for its Retry-After", async () => {
+    const { client } = server('c1');
+    client.addBookmark.mockRejectedValueOnce(new ApiError(429, 'slow down', undefined, 60));
+    expect(await addBookmarkOrQueue('c1', 1, 'a/book', 120)).toHaveProperty('queued');
+    await flushBookmarks();
+    expect(client.addBookmark).toHaveBeenCalledTimes(1);
   });
 
   it('sends at launch and when a server comes back', async () => {

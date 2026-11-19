@@ -5,7 +5,7 @@ import { resolveClient } from '@/api/connection-clients';
 import type { PodcastFetchStatus } from '@/api/types';
 import { isOffScreen } from '@/lib/app-activity';
 import { serverIdOf } from '@/lib/connection-id';
-import { accessRefusal, blipDelay, pollDelay } from '@/playback/episode-fetch-rules';
+import { accessRefusal, blipDelay, pollDelay, REFUSAL_CODES } from '@/playback/episode-fetch-rules';
 
 /**
  * Waiting for a podcast episode to be on its server before it downloads (fe#166, D2). An
@@ -238,6 +238,9 @@ async function step(w: Waiter) {
       return askAgain(w, e.retryAfterSeconds);
     }
     const refusal = accessRefusal(e);
+    // A proxy's own refusal is a failed fetch with the app's code for it, worded as the proxy
+    // headers (`podcasts.fetch.reason.proxy_refused`), never the server's refusal.
+    if (refusal === 'proxy') return end(w, { kind: 'failed', code: REFUSAL_CODES.proxy });
     end(w, refusal ? { kind: refusal } : { kind: 'failed', code: e.code ?? null });
   }
 }

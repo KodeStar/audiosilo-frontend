@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
-import { ApiError, isProxyRefusal, isRefusedForGood } from '@/api/client';
+import { ApiError, isProxyRefusal, isRefusedForGood, isSignedOutError } from '@/api/client';
 import { connectClientFor } from '@/api/connect-client';
 import { resolveClient } from '@/api/connection-clients';
 import { probeServerId } from '@/api/server-id-probe';
@@ -101,8 +101,10 @@ export type LinkPairing = {
  * Whether the server still takes the stored token of `connectionId` (`GET /me` through the
  * connection's own client, which flags a refused one for reconnect). `needsReconnect` is
  * in memory only, so a fresh tab (the console's "Listen in player" always opens one) can't
- * tell a revoked token from a good one without asking. Only a 401 says no: a server that
- * doesn't answer leaves the book to open as it would offline. Never through the link's
+ * tell a revoked token from a good one without asking. Only the server's own 401 says no
+ * (`isSignedOutError`): a server that doesn't answer, or a proxy in front of it turning the
+ * request away (`ApiError.fromProxy`: the token was never judged, and a new exchange would
+ * meet the same proxy), leaves the book to open as it would offline. Never through the link's
  * base: a link can name any address, and the stored token goes only where it always has.
  */
 async function stillSignedIn(connectionId: string): Promise<boolean> {
@@ -112,7 +114,7 @@ async function stillSignedIn(connectionId: string): Promise<boolean> {
     await client.me();
     return true;
   } catch (e) {
-    return !(e instanceof ApiError && e.status === 401);
+    return !isSignedOutError(e);
   }
 }
 
@@ -169,7 +171,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
     // The token's exchange at `base`, with the server's name read alongside, and the proxy
     // headers set it went out with (fe#167: the connection keeps the set that got it in).
     const exchangeAt = async (base: string) => {
-      const { client, proxy } = connectClientFor(base, undefined, reconnectId);
+      const { client, proxy } = connectClientFor(base);
       const [session, info] = await Promise.all([
         client.exchange(scan.token, getDeviceName()),
         client.serverInfo().catch(() => null),

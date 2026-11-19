@@ -57,6 +57,7 @@ jest.mock('@/playback/store', () => {
     selectIsTransportLive: (s: { live: boolean }) => s.live,
     usePlayer: create(() => ({
       key: null,
+      nowPlaying: null,
       live: false,
       playBook: (...a: unknown[]) => mockPlayBook(...a),
       toggle: () => mockToggle(),
@@ -68,14 +69,19 @@ jest.mock('@/playback/store', () => {
 
 /* eslint-disable import/first */
 import { queryClient } from '@/api/provider';
+import { setConnectionAliases } from '@/lib/connection-id';
 import { usePlayer } from '@/playback/store';
 
 import { type PlayOptions, usePlayBook } from './use-play-book';
 /* eslint-enable import/first */
 
 const target = { connectionId: 'c', libraryId: 1, path: 'Book' };
-const setPlayer = (s: { key: string | null; live: boolean }) =>
-  (usePlayer as unknown as { setState: (p: object) => void }).setState(s);
+// The loaded book by its content key, and as `selectIsLoaded` reads it (`nowPlaying`).
+const setPlayer = (s: { key: string | null; live: boolean }) => {
+  const [connectionId, libraryId, path] = s.key?.split(':') ?? [];
+  const nowPlaying = s.key ? { connectionId, libraryId: Number(libraryId), path } : null;
+  (usePlayer as unknown as { setState: (p: object) => void }).setState({ ...s, nowPlaying });
+};
 
 async function play(opts?: PlayOptions) {
   const { result } = await renderHook(() => usePlayBook());
@@ -153,6 +159,21 @@ describe('usePlayBook', () => {
     await play({ toggle: true });
     expect(mockToggle).toHaveBeenCalledTimes(2);
     expect(mockPlayBook).not.toHaveBeenCalled();
+  });
+
+  // Another tab's identity migration renamed the connection (`old` -> `c`) after this tab
+  // loaded the book: the book page's toggle (`selectIsLoaded`) pauses it, never loads it again.
+  it('toggles a book loaded under the id its connection was renamed from', async () => {
+    setConnectionAliases({ old: 'c' });
+    try {
+      setPlayer({ key: 'old:1:Book', live: true });
+      await play({ toggle: true });
+      expect(mockToggle).toHaveBeenCalledTimes(1);
+      expect(mockPlayBook).not.toHaveBeenCalled();
+      expect(mockItem).not.toHaveBeenCalled();
+    } finally {
+      setConnectionAliases({});
+    }
   });
 
   it('plays the loaded book on as it opens the player on a phone, when it was paused (fe#280)', async () => {

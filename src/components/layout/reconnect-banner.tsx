@@ -15,6 +15,9 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 /** The brand strip a reconnect line sits on (the banner, kids mode's signed-out line). */
 export const RECONNECT_STRIP_CLASS = 'border-l-4 border-l-brand bg-brand/10';
 
+/** The shell's slim bars' layout under the header (this banner, `ProxyRefusedBanner`). */
+export const BANNER_STRIP_CLASS = 'flex-row items-center gap-2 border-b border-b-border px-3 py-2';
+
 /** The connect flow's sign-in step, as the router names it (`src/app/connect/sign-in.tsx`). */
 const SIGN_IN_ROUTE = 'sign-in';
 
@@ -97,11 +100,7 @@ export function ReconnectBanner({ className }: { className?: string } = {}) {
       accessibilityRole="button"
       accessibilityHint={t('reconnect.banner.hint')}
       onPress={() => void reconnectConnection(conn)}
-      className={cn(
-        'flex-row items-center gap-2 border-b border-b-border px-3 py-2 active:opacity-80',
-        RECONNECT_STRIP_CLASS,
-        className,
-      )}
+      className={cn(BANNER_STRIP_CLASS, 'active:opacity-80', RECONNECT_STRIP_CLASS, className)}
     >
       <Icon name="server" size={13} color={themed.brand} />
       <Text variant="caption" className="flex-1 text-brand-ink">

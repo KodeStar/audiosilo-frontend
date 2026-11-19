@@ -12,7 +12,10 @@ jest.mock('@/playback/store', () => ({
   initializePlayback: () => mockInitialize(),
   usePlayer: { getState: () => mockPlayer },
 }));
-jest.mock('@/stores/session', () => ({ onConnectionRemoved: () => () => {} }));
+jest.mock('@/stores/session', () => ({
+  onConnectionRemoved: () => () => {},
+  onConnectionRenamed: () => () => {},
+}));
 
 /* eslint-disable import/first */
 import { CastBlockedError } from './cast-prepare';

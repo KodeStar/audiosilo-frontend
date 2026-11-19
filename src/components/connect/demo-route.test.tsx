@@ -8,10 +8,14 @@ jest.mock('@/api/client', () => {
   const actual = jest.requireActual('@/api/client');
   return {
     ...actual,
-    ApiClient: jest.fn().mockImplementation(() => ({ demoSession: mockDemoSession })),
+    // `connectClient` asks it which headers go to its own origin.
+    ApiClient: jest
+      .fn()
+      .mockImplementation(() => ({ demoSession: mockDemoSession, proxyHeadersFor: () => null })),
   };
 });
-jest.mock('@/lib/base-url', () => ({ webOrigin: () => 'http://127.0.0.1:8890' }));
+let mockOrigin = 'http://127.0.0.1:8890';
+jest.mock('@/lib/base-url', () => ({ webOrigin: () => mockOrigin }));
 const mockReplace = jest.fn();
 jest.mock('expo-router', () => ({ router: { replace: (h: unknown) => mockReplace(h) } }));
 jest.mock('@/lib/device', () => ({ getDeviceName: () => 'Test browser' }));
@@ -21,7 +25,7 @@ jest.mock('@/components/shell/leave-onboarding', () => ({
 }));
 
 /* eslint-disable import/first */
-import { ApiError } from '@/api/client';
+import { ApiClient, ApiError } from '@/api/client';
 import DemoScreen from '@/app/demo';
 /* eslint-enable import/first */
 
@@ -59,6 +63,30 @@ describe('/demo', () => {
     );
     // The QR stays on screen: the demo keeps its own flow.
     expect(await screen.findByLabelText(/QR/i)).toBeTruthy();
+  });
+
+  // Behind a header-only proxy the demo's request carries the set kept for the origin, as a
+  // sign-in's does (`connectClient`), and the demo's sign-in stores none of its own.
+  it("sends the origin's kept proxy headers with the demo request, storing none", async () => {
+    // Proxy headers are kept for an https origin only.
+    mockOrigin = 'https://demo.example.com';
+    const set = {
+      origin: mockOrigin,
+      headers: [{ name: 'CF-Access-Client-Id', value: 'id' }],
+    };
+    useSession.setState({ proxySets: { [set.origin]: set } } as never);
+    mockDemoSession.mockResolvedValueOnce(demo('AudioSilo demo'));
+    try {
+      await render(<DemoScreen />);
+      await waitFor(() => expect(setSession).toHaveBeenCalledTimes(1));
+      const made = jest.mocked(ApiClient).mock.calls.at(-1)!;
+      expect(made[0]).toBe('https://demo.example.com');
+      expect(made[5]).toEqual(set);
+      expect(setSession.mock.calls[0][0]).not.toHaveProperty('proxyHeaders');
+    } finally {
+      mockOrigin = 'http://127.0.0.1:8890';
+      useSession.setState({ proxySets: {} } as never);
+    }
   });
 
   it('leaves the name to the session when the server sends none', async () => {

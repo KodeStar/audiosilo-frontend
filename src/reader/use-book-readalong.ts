@@ -60,9 +60,10 @@ export function readalongSource(opts: {
 
 /** Why a book's map shows nothing though there may be one (`useBookReadalong`):
  * - `retry`: the read failed for a reason that says nothing about the map (offline, a 5xx,
- *   a timeout, a copy on the device that would not read): Try again can work;
+ *   a timeout, a copy on the device that would not read, a proxy in front of the server
+ *   turning it away, `isProxyRefusal`): Try again can work;
  * - `signedOut`: the server refused the token (401): signing in again is the way;
- * - `denied`: the book is outside the caller's access (403);
+ * - `denied`: the book is outside the caller's access (the server's own 403);
  * - `missing`: no such book on the server (a 404 without the read-along's own code);
  * - `ebookChanged`: the server's map was made from another ebook than the one this
  *   download holds (fe#193): downloading the book again is the way.
@@ -111,7 +112,9 @@ export function readalongNone(error: unknown): boolean {
 export function readalongFailure(error: unknown): ReadalongFailure | null {
   if (readalongNone(error)) return null;
   if (isSignedOutError(error)) return 'signedOut';
-  if (error instanceof ApiError) {
+  // A proxy's own 401 or 403 never reached the server: it says nothing of the book, and Try
+  // again gets past once the proxy headers are fixed (fe#295).
+  if (error instanceof ApiError && !error.fromProxy) {
     if (error.status === 403) return 'denied';
     if (error.status === 404) return 'missing';
   }

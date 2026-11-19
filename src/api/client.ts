@@ -130,6 +130,10 @@ export class ApiError extends Error {
      * The server never judged the request, so it is no sign the connection is signed out
      * (`isSignedOutError`) nor of a library the listener may not open (`accessRefusal`). */
     public fromProxy = false,
+    /** The answer is the AudioSilo server's own: its error envelope, a JSON body with an
+     * `error` string. Whatever stands in front of the server let this request through
+     * (`onProxyAnswer`); an error status without it (a gateway's page) says nothing of that. */
+    public fromServer = false,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -169,16 +173,16 @@ export function isProxyRefusal(e: unknown): boolean {
 /** Whether `e` is the server saying the content isn't there for this caller: a 404 (no
  * such book or folder), a 403 (a library not shared with them) or a 400 (a path the
  * server refuses, such as one leaving the library). Asking again can't change it, so it
- * is never retried and a page shows `NotInLibraryState`, never a Retry (CONNECT-13). */
+ * is never retried and a page shows `NotInLibraryState`, never a Retry (CONNECT-13). Never
+ * a proxy's own 403 (`isProxyRefusal`, fe#295): the server never saw the request, so it
+ * says nothing of the content, and the same read gets past once the proxy headers are
+ * fixed (the shell says so, `ProxyRefusedBanner`). */
 export function isNotInLibraryError(e: unknown): boolean {
-  return e instanceof ApiError && (e.status === 404 || e.status === 403 || e.status === 400);
-}
-
-/** `isNotInLibraryError` from the server itself: a proxy's own 401 or 403
- * (`isProxyRefusal`) never reached it, so it says nothing of the content and the same read
- * may get past next time. The LibriVox job poll's and its watcher's ONE rule for a refusal. */
-export function isServerNotInLibraryError(e: unknown): boolean {
-  return isNotInLibraryError(e) && !isProxyRefusal(e);
+  return (
+    e instanceof ApiError &&
+    !e.fromProxy &&
+    (e.status === 404 || e.status === 403 || e.status === 400)
+  );
 }
 
 /** The refusal codes (`ApiError.code`) the app tells apart: the household members routes'
@@ -296,9 +300,11 @@ const BY_STATUS: Readonly<Record<number, ApiErrorKind>> = {
 };
 
 /** The kind of failure `e` is (see {@link ApiErrorKind}). Screens branch on it and say it
- * in their own words: never the server's English (`message`). */
+ * in their own words: never the server's English (`message`). A proxy's own 401 or 403
+ * (`isProxyRefusal`, fe#295) is `failed`, never `forbidden`: the server never saw the
+ * request, so it says nothing of what the account may do. */
 export function apiErrorKind(e: unknown): ApiErrorKind {
-  if (!(e instanceof ApiError)) return 'failed';
+  if (!(e instanceof ApiError) || e.fromProxy) return 'failed';
   if (e.code && KNOWN_CODES.has(e.code)) return e.code as ApiErrorCode;
   return BY_STATUS[e.status] ?? 'failed';
 }
@@ -324,7 +330,8 @@ export class PodcastFetchPendingError extends ApiError {
     public fetch: PodcastFetchStatus,
     public retryAfterSeconds: number,
   ) {
-    super(503, message, code);
+    // The server's own answer (`fromServer`): its status of the fetch.
+    super(503, message, code, undefined, false, true);
     this.name = 'PodcastFetchPendingError';
   }
 }
@@ -378,6 +385,7 @@ function apiErrorOf(res: Response, data: unknown, fallbackMsg: string): ApiError
     // A 401 or 403 without the server's `error`: a proxy's own (JSON, Authelia's for one,
     // or a page).
     (res.status === 401 || res.status === 403) && !msg,
+    !!msg,
   );
 }
 
@@ -637,6 +645,7 @@ export class ApiClient {
   private readonly timeoutMs: number;
   private readonly onAuthError?: () => void;
   private readonly onAnswer?: (at: string) => void;
+  private readonly onProxyAnswer?: (refused: boolean) => void;
   /** The batch loader behind `seriesBooksPage`, one per `libraryId:limit` (so bounded
    * by libraries x page sizes), created on first use. */
   private readonly seriesLoaders = new Map<string, (name: string) => Promise<BookPage>>();
@@ -676,6 +685,15 @@ export class ApiClient {
    * client in the connect flow the set entered for that address. They go only when this
    * client's address is their origin (`proxyHeaderRecord`), so a client on the server's home
    * address, an http fallback or any other address sends none.
+   *
+   * `onProxyAnswer` is told what each answer says of a proxy in front of the server: `true`
+   * when the proxy turned the request away (`isProxyRefusal`: its own 401 or 403), `false`
+   * when the server itself answered, so the proxy let the request through: a success, or the
+   * server's own error (`ApiError.fromServer`: its 401, a 404, a 500 in its envelope). Any
+   * other failure (no answer, a gateway's page) says nothing. A signed-in connection's
+   * client passes it on, so the shell can say the proxy headers need updating while the
+   * refusals last (`noteProxyAnswer`, `ProxyRefusedBanner`). Never a sign-out: the server
+   * never judged the token.
    */
   constructor(
     baseUrl: string,
@@ -684,12 +702,14 @@ export class ApiClient {
     onAuthError?: () => void,
     onAnswer?: (at: string) => void,
     proxy?: ProxyHeaders | null,
+    onProxyAnswer?: (refused: boolean) => void,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.token = token;
     this.timeoutMs = timeoutMs;
     this.onAuthError = onAuthError;
     this.onAnswer = onAnswer;
+    this.onProxyAnswer = onProxyAnswer;
     const page = webOrigin();
     this.clientHeaders = shouldIdentify(this.baseUrl, Platform.OS, page)
       ? { [CLIENT_HEADER]: clientIdentity(APP_VERSION, Platform.OS) }
@@ -808,7 +828,9 @@ export class ApiClient {
         throw new NetworkError(e);
       }
       this.onAnswer?.(this.baseUrl);
-      return await read(res, touch);
+      const answer = await read(res, touch);
+      this.onProxyAnswer?.(false);
+      return answer;
     } catch (e) {
       // Our timeout fired (not a caller cancel, and not a real server answer in
       // the same tick): report it as a timeout so it's classified as unreachable.
@@ -819,6 +841,10 @@ export class ApiClient {
       // denial (valid token, forbidden) or a proxy's, and a network/timeout failure has no
       // status, so none is a dead token - the full rationale is on the constructor doc above.
       if (isSignedOutError(e)) this.onAuthError?.();
+      // What the answer says of a proxy in front (`onProxyAnswer`): its own refusal, or the
+      // server's own error, which the proxy let through as it does a success.
+      if (isProxyRefusal(e)) this.onProxyAnswer?.(true);
+      else if (e instanceof ApiError && e.fromServer) this.onProxyAnswer?.(false);
       throw e;
     } finally {
       settled = true;

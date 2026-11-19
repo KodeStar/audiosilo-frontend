@@ -9,16 +9,27 @@ import {
   remember as rememberServer,
   rememberAddresses,
 } from '@/lib/known-servers';
-import { connectionIdOf, priorConnection, serverIdOf } from '@/lib/connection-id';
+import { isKidAccount } from '@/lib/account';
+import {
+  connectionAliases,
+  connectionIdOf,
+  isLegacyConnectionId,
+  priorConnection,
+  serverIdOf,
+  setConnectionAliases,
+  usableUserId,
+} from '@/lib/connection-id';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
 import { forgetCalendarLink } from '@/lib/upcoming-calendar';
 import { hostOf } from '@/lib/pairing';
 import {
+  mayReplaceProxySet,
   type ProxyHeaders,
   proxyOriginOf,
   type ProxySets,
   proxySetFor,
   sameProxyHeaders,
+  type SignInProxySet,
 } from '@/lib/proxy-headers';
 import {
   forgetProxyHeaders,
@@ -614,21 +625,35 @@ const connectionText = (c: Connection) =>
  * where they still apply. Nothing changes when the list is the one it holds. A connection
  * the list drops is left at once (`leaveConnection`, the player's stop), the word on the
  * channel or not, and only once the list has changed (the stop's saves must not go out with
- * the revoked token); the cleanups wait for the word (`removedInOtherTab`). Why: CONVENTIONS.md
- * (`followStored`). */
+ * the revoked token); the cleanups wait for the word (`removedInOtherTab`). One another tab's
+ * identity migration renamed (`renamesIn`) is not dropped: its reconnect flag, its being the
+ * default, its own proxy set and what the rename hooks hold (`onConnectionRenamed`) go on
+ * under the new id. Why: CONVENTIONS.md (`followStored`). */
 function applyStored(read: StoredSignIns): void {
   knownList = read.list;
   // A mark this tab did not write (`legacyMarks`): kept in this tab's writes of the list.
   if (read.marked.some((id) => !legacyMarks.has(id))) {
     legacyMarks = new Set([...legacyMarks, ...read.marked]);
   }
-  const { connections: mine, defaultConnectionId, status, proxySets } = useSession.getState();
+  const {
+    connections: mine,
+    defaultConnectionId,
+    status,
+    proxySets,
+    signInProxySets,
+  } = useSession.getState();
   // Another tab's edit of a set (fe#295): every connection's client on that origin follows.
   // The sets this tab uses in place stay while their marks do (`followInPlace`).
   const stored = followInPlace(read);
   const sets = sameSets(proxySets, stored) ? null : { proxySets: stored };
-  const next = (read.connections ?? []).map((c) => {
-    const was = mine.find((m) => m.id === c.id);
+  const listed = read.connections ?? [];
+  // Another tab's identity migration renamed these (`renamedIn`, the token the same): the
+  // same sign-in under a new id, so what this tab holds of it goes on under that id and it
+  // is not left (the player's stop is for a connection that went).
+  const renamed = renamesIn(mine, listed);
+  const idNow = (id: string) => renamed.get(id) ?? id;
+  const next = listed.map((c) => {
+    const was = mine.find((m) => idNow(m.id) === c.id);
     // A flag stays with the token it was raised for: a new one (signed in again in another
     // tab) clears it.
     return was?.needsReconnect && was.token === c.token
@@ -638,7 +663,8 @@ function applyStored(read: StoredSignIns): void {
   const same =
     next.length === mine.length &&
     next.every((c, i) => connectionText(c) === connectionText(mine[i]));
-  const def = next.some((c) => c.id === defaultConnectionId) ? defaultConnectionId : read.defaultId;
+  const kept = defaultConnectionId && idNow(defaultConnectionId);
+  const def = kept && next.some((c) => c.id === kept) ? kept : read.defaultId;
   const mirrored = mirror(next, def);
   if (
     same &&
@@ -647,8 +673,37 @@ function applyStored(read: StoredSignIns): void {
     mirrored.status === status
   )
     return;
-  setFollowed({ connections: same ? mine : next, ...mirrored, ...sets });
-  for (const c of mine) if (!next.some((n) => n.id === c.id)) void leaveConnection(c.id);
+  // A sign-in's own proxy headers end with it: signed out, or signed in again, in another tab.
+  // One another tab's identity migration renamed keeps them under its new id.
+  const own = ownSetsStill(signInProxySets, next, mine, renamed);
+  // What still names the old id (the book this tab plays, its saves, spans and bookmarks, the
+  // web's files kept under it, `legacyIdOf`) resolves to the new one, as after a relaunch:
+  // this tab loaded the aliases before that tab's migration recorded them.
+  if (renamed.size > 0)
+    setConnectionAliases({ ...connectionAliases(), ...Object.fromEntries(renamed) });
+  setFollowed({
+    connections: same ? mine : next,
+    ...mirrored,
+    ...sets,
+    ...(own !== signInProxySets ? { signInProxySets: own } : {}),
+  });
+  for (const [from, to] of renamed) runIdHooks(renameHooks, 'renamed', from, to);
+  for (const c of mine) if (!next.some((n) => n.id === idNow(c.id))) void leaveConnection(c.id);
+}
+
+/** The connections of `mine` the stored list (`listed`) holds under a new id the identity
+ * migration gave them (`renamedIn`) with the token they held: old id to new. */
+function renamesIn(
+  mine: readonly Connection[],
+  listed: readonly Connection[],
+): ReadonlyMap<string, string> {
+  const moves = new Map<string, string>();
+  for (const m of mine) {
+    if (listed.some((c) => c.id === m.id)) continue;
+    const now = renamedIn(m, listed, mine);
+    if (now && now.token === m.token) moves.set(m.id, now.id);
+  }
+  return moves;
 }
 
 /** Whether two origins-to-sets maps hold the same sets. */
@@ -681,18 +736,30 @@ function followStored(): Promise<void> {
   return following;
 }
 
-/** Web: bring this tab's list up to the stored one, so a tab that has not heard another
- * tab's latest write yet never works from its older copy. Web only: callers ask
- * `otherTabsEnv()` first, so native keeps its timing. */
+/** Web: bring this tab's list and proxy headers up to the stored ones, so a tab that has not
+ * heard another tab's latest write yet never works from its older copy. The headers are read
+ * too: a set another tab kept, changed or removed leaves the list as it was, and a sign-in
+ * here decides what to do with its own set against them (`proxyChoice`). Web only: callers
+ * ask `otherTabsEnv()` first, so native keeps its timing. */
 async function catchUp(): Promise<void> {
   if (following) await following;
   let stored: string;
+  let sets: ProxySets;
   try {
-    stored = JSON.stringify((await getItemStrict<PersistedConnection[]>(CONNECTIONS_KEY)) ?? null);
+    [stored, sets] = await Promise.all([
+      getItemStrict<PersistedConnection[]>(CONNECTIONS_KEY).then((m) => JSON.stringify(m ?? null)),
+      readProxySets(),
+    ]);
   } catch {
     return;
   }
-  if (stored === knownList) return;
+  // The sets this tab holds are the stored ones, with those it still uses in place where
+  // none is stored (`followInPlace`; a mark dropped since is a change of the list).
+  const mine = {
+    ...Object.fromEntries(Object.entries(inPlace).map(([o, p]) => [o, p.set])),
+    ...sets,
+  };
+  if (stored === knownList && sameSets(useSession.getState().proxySets, mine)) return;
   storageMoves++;
   await followStored();
 }
@@ -775,7 +842,11 @@ async function removedInOtherTab(id: string, replacedBy?: string): Promise<void>
   const { connections, defaultConnectionId } = useSession.getState();
   if (connections.some((c) => c.id === id)) {
     const { next, nextDefault } = withoutConnection(connections, defaultConnectionId, id);
-    setFollowed({ connections: next, ...mirror(next, nextDefault) });
+    setFollowed({
+      connections: next,
+      signInProxySets: ownSetsStill(useSession.getState().signInProxySets, next),
+      ...mirror(next, nextDefault),
+    });
   }
   await leaveConnection(id);
   // Signed in again while this tab stopped (the stop waits its turn into the outbox): what
@@ -875,15 +946,38 @@ export function onConnectionReplaced(fn: (oldId: string, newId: string) => void)
   return () => replacementHooks.delete(fn);
 }
 
-/** Run the replacement hooks for `oldId` -> `newId`; one that throws is only warned of. */
-function replaced(oldId: string, newId: string): void {
-  for (const fn of replacementHooks) {
+/** Run `hooks` for `oldId` -> `newId`; one that throws is only warned of. */
+function runIdHooks(
+  hooks: ReadonlySet<(oldId: string, newId: string) => void>,
+  what: 'replaced' | 'renamed',
+  oldId: string,
+  newId: string,
+): void {
+  for (const fn of hooks) {
     try {
       fn(oldId, newId);
     } catch (e) {
-      console.warn('[session] connection-replaced hook failed', e);
+      console.warn(`[session] connection-${what} hook failed`, e);
     }
   }
+}
+
+/** Run the replacement hooks for `oldId` -> `newId`. */
+function replaced(oldId: string, newId: string): void {
+  runIdHooks(replacementHooks, 'replaced', oldId, newId);
+}
+
+// Told when this tab follows another tab's identity migration renaming a connection
+// (`renamesIn`: the same sign-in under a new id), once its list holds the new id: in-memory
+// state keyed by the old id moves with it (a proxy's refusals of it, `proxy-refusal.ts`). A
+// registry for the same cycle reason as `onConnectionRemoved`.
+const renameHooks = new Set<(oldId: string, newId: string) => void>();
+
+/** Register a hook run when another tab's identity migration renamed a connection this tab
+ * holds (`applyStored`). Returns an unsubscribe fn. */
+export function onConnectionRenamed(fn: (oldId: string, newId: string) => void): () => void {
+  renameHooks.add(fn);
+  return () => renameHooks.delete(fn);
 }
 
 /**
@@ -979,6 +1073,12 @@ type SessionState = {
    * secure-store (`src/lib/proxy-headers-store.ts`), never in the AsyncStorage metadata.
    * A client on an origin sends that origin's set (`proxySetFor`, `src/lib/proxy-headers.ts`). */
   proxySets: ProxySets;
+  /** By connection, a set its sign-in uses in place of its address's kept one until the app
+   * closes (`SignInProxySet`, `connectionSetFor`): in memory only, set by `setSession` for a
+   * kid's sign-in whose typed set got in where the kept one is refused, and dropped with that
+   * sign-in: the connection's sign-out, or its next sign-in, here or in another tab
+   * (`ownSetsStill`). */
+  signInProxySets: Readonly<Record<string, SignInProxySet>>;
   /** Mirror of the default connection's user, for ergonomic selectors. */
   user: User | null;
 
@@ -1010,10 +1110,23 @@ type SessionState = {
        * it would delete them (their profile, PIN and kids settings) from the device. Absent:
        * none is retired. */
       retire?: readonly string[];
-      /** The proxy headers the connect flow reached the server with (fe#167): kept as their
-       * origin's set when they differ from it (a set typed for the address, which got in).
-       * Absent (or null) changes nothing: a sign-in never removes a set. */
+      /** A set typed on the connect screen for one of this server's addresses (fe#167),
+       * which this sign-in may keep as that origin's set (fe#295), decided here against the
+       * list as stored, so a full account another tab signed in meanwhile counts too: where
+       * none is kept, it is kept (anyone's, a kid's own device included); else only when it
+       * carried the sign-in (not `proxyUnsent`) and the account may replace the kept one
+       * (`mayReplaceProxySet`: a full account, or a demo or a kid's while no full account here
+       * reaches that address, the identities `retire` drops aside). A kid's account that may
+       * not, whose address's kept set the proxy refused just now (`proxyKeptRefused`, still
+       * the kept one), uses its set for this sign-in only (`signInProxySets`). Absent (or
+       * null) changes nothing: a sign-in never removes a set. */
       proxyHeaders?: ProxyHeaders | null;
+      /** `proxyHeaders` was never sent (typed for another of the server's addresses than the
+       * one signed in through): it proved nothing, so it replaces no kept set. */
+      proxyUnsent?: boolean;
+      /** The address's kept set as a probe found the proxy refusing it (`keptSetRefused`),
+       * for a kid's account whose typed set got in. */
+      proxyKeptRefused?: ProxyHeaders | null;
     },
     opts?: {
       /** False: the default connection stays where it is (a household member signed in on
@@ -1142,6 +1255,74 @@ async function persist(connections: Connection[], defaultId: string | null) {
   await Promise.all([setItem(CONNECTIONS_KEY, meta), setItem(DEFAULT_KEY, defaultId)]);
 }
 
+/**
+ * What a sign-in does with the proxy headers typed for it (`typed`, `setSession`): `keep` them
+ * as their origin's set, or use them as its `own` until the app closes, or neither (undefined).
+ * Read against the sets kept now (`sets`) and the other connections (`others`, as stored).
+ */
+function proxyChoice(
+  typed: ProxyHeaders | null | undefined,
+  sets: ProxySets,
+  how: { unsent: boolean; keptRefused?: ProxyHeaders | null },
+  who: { user: User; id: string; others: readonly Connection[] },
+): { keep?: ProxyHeaders; own?: SignInProxySet } | undefined {
+  if (!typed?.headers.length) return undefined;
+  const kept = sets[typed.origin];
+  if (!kept) return { keep: typed };
+  if (how.unsent || sameProxyHeaders(kept, typed)) return undefined;
+  if (mayReplaceProxySet(who.user, who.id, typed.origin, who.others)) return { keep: typed };
+  // Not theirs to replace: a full account here signs in through it. Where the proxy refused
+  // it just now (and it is still the kept one), a kid's set that got in is used by this
+  // sign-in alone, so the kid can listen until a grown-up updates the address's set.
+  if (isKidAccount(who.user) && how.keptRefused && sameProxyHeaders(kept, how.keptRefused)) {
+    return { own: { set: typed, over: kept } };
+  }
+  return undefined;
+}
+
+/**
+ * `own` (`signInProxySets`) with only the sign-ins still on: each for a connection in
+ * `connections` that holds the token it held in `was`. A sign-out, a retired identity or a
+ * sign-in again (here or in another tab) ends it, its set with it: that set was the sign-in's
+ * alone, never to be sent for another. A sign-in the identity migration renamed (another
+ * tab's launch moving a legacy id, `renamed` from `renamesIn`) is still on: its set goes on
+ * under the new id. The same object when nothing changed.
+ */
+function ownSetsStill(
+  own: Readonly<Record<string, SignInProxySet>>,
+  connections: readonly Connection[],
+  was: readonly Connection[] = connections,
+  renamed: ReadonlyMap<string, string> = new Map(),
+): Readonly<Record<string, SignInProxySet>> {
+  const ids = Object.keys(own);
+  const on = ids.flatMap((id) => {
+    const before = was.find((c) => c.id === id);
+    const now = connections.find((c) => c.id === (renamed.get(id) ?? id));
+    return before && now && now.token === before.token ? [[now.id, own[id]] as const] : [];
+  });
+  return on.length === ids.length && on.every(([id], i) => id === ids[i])
+    ? own
+    : Object.fromEntries(on);
+}
+
+/**
+ * The connection in `connections` that `before` (one of `was`, no longer listed under its id)
+ * was renamed to by the identity migration (`src/lib/identity-migration.ts`): a legacy id
+ * moved to `<server_id>.<user_id>`, the token copied with it. Told by that id, new to the
+ * list, on the same server; the caller checks the token. Undefined when `before` simply
+ * went (a sign-out, a retired identity).
+ */
+function renamedIn(
+  before: Connection,
+  connections: readonly Connection[],
+  was: readonly Connection[],
+): Connection | undefined {
+  if (!isLegacyConnectionId(before.id)) return undefined;
+  const id = connectionIdOf(serverIdOf(before), usableUserId(before.user));
+  if (id === before.id || was.some((c) => c.id === id)) return undefined;
+  return connections.find((c) => c.id === id && serverIdOf(c) === serverIdOf(before));
+}
+
 export const useSession = create<SessionState>()((set, get) => ({
   status: 'loading',
   connections: [],
@@ -1149,6 +1330,7 @@ export const useSession = create<SessionState>()((set, get) => ({
   pendingServerUrl: null,
   pendingProxyHeaders: null,
   proxySets: {},
+  signInProxySets: {},
   user: null,
 
   hydrate: async () => {
@@ -1187,7 +1369,18 @@ export const useSession = create<SessionState>()((set, get) => ({
   },
 
   setSession: async (
-    { serverUrl, serverId, token, user, name, addresses, retire, proxyHeaders },
+    {
+      serverUrl,
+      serverId,
+      token,
+      user,
+      name,
+      addresses,
+      retire,
+      proxyHeaders,
+      proxyUnsent,
+      proxyKeptRefused,
+    },
     { makeDefault = true } = {},
   ) => {
     // The connection id is the server-minted server_id plus the user's id
@@ -1200,16 +1393,6 @@ export const useSession = create<SessionState>()((set, get) => ({
     // The persisted connections first, when they never loaded: the list written below would
     // otherwise hold this server alone and drop every other one.
     if (hydrateFailed) await get().hydrate();
-    // The proxy headers this sign-in got in with (fe#167), when they are not already their
-    // origin's set (a set typed on the connect screen): kept for that origin, for everyone
-    // on this device who reaches it (fe#295). First, so a set that can't be kept stores
-    // nothing. A sign-in never removes a set.
-    if (
-      proxyHeaders?.headers.length &&
-      !sameProxyHeaders(get().proxySets[proxyHeaders.origin], proxyHeaders)
-    ) {
-      await get().setProxySet(proxyHeaders.origin, proxyHeaders);
-    }
     // On the web, the list as stored, with what another tab signed in or out since this tab
     // last heard, and no other tab's write between that read and this one (`writingList`).
     const { id, stale } = await writingList(async () => {
@@ -1234,6 +1417,19 @@ export const useSession = create<SessionState>()((set, get) => ({
       );
       const stale = candidates.filter((c) => retire?.includes(c.id));
       const kept = new Set(candidates.filter((c) => !stale.includes(c)));
+      // The proxy headers typed for this sign-in (fe#167), against the list and the sets as
+      // stored now (another tab's sign-in included): kept as their origin's set for everyone
+      // here who reaches it (fe#295), or used by this sign-in alone (`proxyChoice`). First, so
+      // a set that can't be kept stores nothing.
+      const proxy = proxyChoice(
+        proxyHeaders,
+        get().proxySets,
+        { unsent: !!proxyUnsent, keptRefused: proxyKeptRefused },
+        { user, id, others: existing.filter((c) => !stale.includes(c)) },
+      );
+      // A keep removes and moves nothing, so `setProxySet` never takes the list's lock again
+      // (`forgetLegacyProxySets` has no origin to forget): the sets' own lock only.
+      if (proxy?.keep) await get().setProxySet(proxy.keep.origin, proxy.keep);
       // What the device knew of this server's addresses: the connection's, else another
       // user's connection to the same server, else (a sign-in again after signing out, from
       // the connect screen's remembered servers) the remembered server's, so a sign-in
@@ -1285,12 +1481,19 @@ export const useSession = create<SessionState>()((set, get) => ({
       await rememberServer({ serverUrl, name: conn.name, serverId, addresses: known });
       // The person keeps their profile: the new connection takes the retired one's place.
       for (const c of stale) replaced(c.id, id);
+      // This sign-in's own set (`proxyChoice`), or none: a set the connection's sign-in before
+      // used goes with it, as do a retired identity's. Read with the list it goes with, after
+      // the awaits above; the same object when nothing changed.
+      const still = ownSetsStill(get().signInProxySets, connections);
+      const { [id]: _before, ...others } = still;
+      const ownSets = proxy?.own ? { ...others, [id]: proxy.own } : still[id] ? others : still;
       // Building `conn` fresh (with no `needsReconnect`) inherently clears any prior flag on
       // a re-pair of an existing connection.
       set({
         connections,
         pendingServerUrl: null,
         pendingProxyHeaders: null,
+        signInProxySets: ownSets,
         ...mirror(connections, defaultId),
       });
       return { id, stale };
@@ -1393,7 +1596,12 @@ export const useSession = create<SessionState>()((set, get) => ({
       const { connections, defaultConnectionId } = get();
       const { next, nextDefault } = withoutConnection(connections, defaultConnectionId, id);
       await persist(next, nextDefault);
-      set({ connections: next, ...mirror(next, nextDefault) });
+      set({
+        connections: next,
+        // Its sign-in's own proxy headers (`signInProxySets`) go with it.
+        signInProxySets: ownSetsStill(get().signInProxySets, next),
+        ...mirror(next, nextDefault),
+      });
     });
     // The web's other tabs forget it too, and purge what they hold of it
     // (`removedInOtherTab`): told once the list is written and the token gone.

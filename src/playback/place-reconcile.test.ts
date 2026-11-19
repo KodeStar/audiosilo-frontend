@@ -155,6 +155,7 @@ jest.mock('@/lib/when-active', () => ({
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
 
+import { setConnectionAliases } from '@/lib/connection-id';
 import { useSettings } from '@/stores/settings';
 
 import { queryClient } from '@/api/provider';
@@ -677,6 +678,20 @@ describe('a loaded book another device has moved on', () => {
     jest.advanceTimersByTime(60_000);
     await settle();
     expect(saved()).toEqual([]);
+  });
+
+  // Told the connection's id now: a book loaded before another tab's identity migration
+  // renamed it names the old id, and is the book of that connection all the same.
+  it("on the book's server coming back under its new id, moves a paused book there", async () => {
+    await loadedAndPaused();
+    setConnectionAliases({ c1: 'c1.7' });
+    try {
+      mockReconnect?.('c1.7');
+      await settle();
+      expect(seeks()).toEqual([400]);
+    } finally {
+      setConnectionAliases({});
+    }
   });
 
   it("on the book's server coming back, moves a paused book there", async () => {

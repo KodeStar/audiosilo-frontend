@@ -1,3 +1,4 @@
+import { sameConnection } from '@/lib/connection-id';
 import { randomUUID } from '@/lib/random';
 import { isRecord } from '@/lib/storage-keys';
 import { tabChannel, type TabChannel } from '@/lib/tab-channel';
@@ -117,7 +118,14 @@ export type OwnPlay = {
  * millisecond: the greater tab id). A tab with nothing playing gives way to nothing.
  */
 export function givesWayTo(claim: PlayingClaim, mine: OwnPlay): boolean {
-  if (claim.tab === mine.tab || !mine.live || mine.connectionId !== claim.connectionId) {
+  // The same connection under an id the identity migration moved it from too: a tab that
+  // followed the rename and one that loaded its book before it (`sameConnection`).
+  if (
+    claim.tab === mine.tab ||
+    !mine.live ||
+    mine.connectionId === null ||
+    !sameConnection(mine.connectionId, claim.connectionId)
+  ) {
     return false;
   }
   if (claim.askedAt !== mine.askedAt) return claim.askedAt > mine.askedAt;

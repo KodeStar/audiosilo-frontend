@@ -12,20 +12,29 @@ export function isAbsentEpisode(book: Book): boolean {
   return !!book.episode && !book.episode.downloaded;
 }
 
-/** A refusal about the listener, not the episode: signed out (the server's 401), or no
- * access (the server's own 403 that names no code: its library scope; a 403 with a code,
- * the demo account's, says that instead). Null for any other answer, a proxy's own 401 or
- * 403 among them (`fromProxy`, as `isSignedOutError` reads it, fe#295, fe#280): the server
- * never saw the request, and signing in again can't get past the proxy. */
+/** A refusal about the listener, not the episode: signed out (the server's 401), no access
+ * (the server's own 403 that names no code: its library scope; a 403 with a code, the demo
+ * account's, says that instead), or a proxy in front of the server turning this device away
+ * (its own 401 or 403, `fromProxy`, as `isSignedOutError` reads it, fe#295, fe#280): the
+ * server never saw the request, and the proxy headers are the way past it, never signing in
+ * again. Null for any other answer. */
 export function accessRefusal(e: {
   status: number;
   code?: string | null;
   fromProxy?: boolean;
-}): 'signedOut' | 'noAccess' | null {
-  if (e.status === 401 && !e.fromProxy) return 'signedOut';
-  if (e.status === 403 && !e.code && !e.fromProxy) return 'noAccess';
+}): 'signedOut' | 'noAccess' | 'proxy' | null {
+  if (e.fromProxy && (e.status === 401 || e.status === 403)) return 'proxy';
+  if (e.status === 401) return 'signedOut';
+  if (e.status === 403 && !e.code) return 'noAccess';
   return null;
 }
+
+/** The fetch failure code this app gives an `accessRefusal` (`podcasts.fetch.reason.*`). */
+export const REFUSAL_CODES = {
+  signedOut: 'signed_out',
+  noAccess: 'no_access',
+  proxy: 'proxy_refused',
+} as const;
 
 /** The poll interval floor, seconds (the server's `Retry-After`). */
 const MIN_POLL_S = 2;

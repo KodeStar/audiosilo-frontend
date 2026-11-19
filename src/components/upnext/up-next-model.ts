@@ -1,4 +1,5 @@
 import type { BookRef, NextBook, Progress, QueueEntry } from '@/api/types';
+import { sameConnection } from '@/lib/connection-id';
 import type { ShortcutKey } from '@/lib/keyboard';
 import { percentHeard } from '@/lib/progress-view';
 import { railPositionLabel } from '@/lib/series-position';
@@ -124,9 +125,12 @@ export function parseDragPayload(raw: string | null | undefined): BookDragPayloa
   return null;
 }
 
-/** Whether a dragged book can go on the queue shown: only one of the same server. */
+/** Whether a dragged book can go on the queue shown: only one of the same connection
+ * (`sameConnection`: the loaded book's card may name the id it was renamed from). */
 export function canDrop(payload: BookDragPayload, queueConnection: string) {
-  return payload.connectionId === queueConnection ? ('ok' as const) : ('other-server' as const);
+  return sameConnection(payload.connectionId, queueConnection)
+    ? ('ok' as const)
+    : ('other-server' as const);
 }
 
 /** The listener's saved place in each book of one server, keyed like the queue. */

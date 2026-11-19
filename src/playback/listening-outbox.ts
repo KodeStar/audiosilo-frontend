@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { ApiError, type ApiClient } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { liveClient } from '@/api/live-client';
+import { onProxyRefusalsOver } from '@/api/proxy-refusal';
 import { noteRateLimit, onRateLimitOver, rateLimited } from '@/api/rate-limit';
 import { cachedCapability, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
@@ -1453,12 +1454,13 @@ async function sendChunk(
   }
 }
 
-// A wait the server asked for (a 429) is over: the events it held go now. Told the
+// A wait the server asked for (a 429) is over, or a proxy's refusals of the connection ended
+// (`onProxyRefusalsOver`): the events they held go now, not at the next replay. Told the
 // connection's id now (`resolveConnectionId`), which held the events of an id the identity
 // migration moved it from too: those go as well, under the id they name.
-onRateLimitOver((connectionId) => {
-  void flushEveryId(connectionId).catch(() => undefined);
-});
+const sendHeld = (connectionId: string) => void flushEveryId(connectionId).catch(() => undefined);
+onRateLimitOver(sendHeld);
+onProxyRefusalsOver(sendHeld);
 
 /** A 400 on a batch: each event alone, once; one still refused alone can never be sent,
  * but a `stay` (a server rolled back under a stale cached `listening_stay`, whose decoder

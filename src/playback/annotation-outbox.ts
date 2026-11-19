@@ -2,6 +2,7 @@ import {
   type ApiClient,
   ApiError,
   apiErrorKind,
+  isProxyRefusal,
   isRefusedForGood,
   isServerAwayError,
   isServerBusyError,
@@ -15,7 +16,8 @@ import {
   whenSessionReady,
 } from '@/api/connection-clients';
 import { addBookmark, cachedCapability, fetchCapabilities, showServerBookmark } from '@/api/hooks';
-import { onRateLimitOver } from '@/api/rate-limit';
+import { onProxyRefusalsOver } from '@/api/proxy-refusal';
+import { noteRateLimit, onRateLimitOver, rateLimited } from '@/api/rate-limit';
 import { isReachable, noteFailure, onReconnect } from '@/api/reachability';
 import { keepServerAnswer } from '@/api/server-snapshots';
 import type { Bookmark, BookmarkLabel, ServerInfo } from '@/api/types';
@@ -357,9 +359,10 @@ const worthKeeping = (err: unknown) =>
   isUnreachableError(err) || (err instanceof ApiError && !refusedForGood(err));
 
 /** A refusal before the server took the request (a token it refuses, a 401, its own or a
- * proxy's; asked to slow down, a 429): a bookmark POST so answered never landed. */
+ * proxy's; a proxy's own 403, `isProxyRefusal`; asked to slow down, a 429): a bookmark POST
+ * so answered never landed. */
 const turnedAway = (err: unknown) =>
-  err instanceof ApiError && (err.status === 401 || err.status === 429);
+  isProxyRefusal(err) || (err instanceof ApiError && (err.status === 401 || err.status === 429));
 
 /** Whether `connectionId`'s server is known to take a bookmark's `client_id`. */
 const takesClientId = (connectionId: string) =>
@@ -460,7 +463,9 @@ export async function addBookmarkOrQueue(
     settled = true;
     await discardQueuedBookmark(stored.id).catch(() => undefined);
   };
-  if (!waiting && isReachable(connectionId)) {
+  // Not while its server's rate limit holds (a 429's `Retry-After`, `rateLimited`): stored,
+  // and sent once the wait is over (`onRateLimitOver`).
+  if (!waiting && isReachable(connectionId) && !rateLimited(connectionId)) {
     // Its id makes a resend safe, so it is kept before any request (no send without its id
     // has gone out: `fresh`), and a kill while the POST is out leaves it to a replay. Out of
     // sight meanwhile (`posting`): it is waiting only once that POST has failed.
@@ -501,6 +506,8 @@ export async function addBookmarkOrQueue(
           throw err;
         }
         noteFailure(connectionId, err);
+        // A 429 holds the connection's sends for its `Retry-After` (the other queues' rule).
+        noteRateLimit(connectionId, err);
         failed = true;
         // A 401 or a 429 turned it away before the server took it: nothing landed.
         sentBare = !withId && !turnedAway(err);
@@ -695,17 +702,19 @@ async function readyToSend(
 }
 
 /** A failure that is the connection's, not the bookmark's: no answer, a gateway answering
- * for a server that is away, a token refused until the connection signs in again, or nothing
- * the server said at all (the connection gone meanwhile). The connection's other bookmarks
- * would fail the same way, so the replay stops there. */
+ * for a server that is away, a token refused until the connection signs in again, a proxy in
+ * front of the server turning the device away (`isProxyRefusal`: never counted toward giving
+ * up, as no save it turns away is dropped, fe#295), or nothing the server said at all (the
+ * connection gone meanwhile). The connection's other bookmarks would fail the same way, so
+ * the replay stops there. */
 const connectionFailure = (err: unknown) =>
-  !(err instanceof ApiError) || isServerAwayError(err) || isSignedOutError(err);
+  !(err instanceof ApiError) ||
+  isServerAwayError(err) ||
+  isSignedOutError(err) ||
+  isProxyRefusal(err);
 
-/** A server asking for a moment (its 503, a proxy's, a 429): the bookmark's book waits for
- * the next replay, and the wait does not count toward giving up on it (a proxy answers a
- * 503 for as long as the server behind it is off). */
-const askedToWait = (err: unknown) =>
-  isServerBusyError(err) || (err instanceof ApiError && err.status === 429);
+/** The server's rate limit (a 429): the connection's, so a replay stops there. */
+const tooMany = (err: unknown) => err instanceof ApiError && err.status === 429;
 
 /** What a replay's try of a bookmark it keeps came to: the step it failed or stopped at, and
  * whether that failure counts toward giving up on it. */
@@ -844,13 +853,16 @@ async function sendGroup(
         e.label !== undefined || e.client_id !== undefined
           ? await (flags ??= readFlags(connectionId, client))
           : undefined;
-      // Nothing the server said (no answer, a cancelled read), a gateway's or a 401: the
-      // connection's, as a send's (the read and POST behind it would only wait it out again).
-      if (unread && connectionFailure(unread.failed)) throw unread.failed;
+      // Nothing the server said (no answer, a cancelled read), a gateway's, a 401, a proxy's
+      // refusal or a 429: the connection's, as a send's (the read and POST behind it would only wait it out
+      // again).
+      if (unread && (connectionFailure(unread.failed) || tooMany(unread.failed))) {
+        throw unread.failed;
+      }
       if (unread && e.label !== undefined) {
         noteFailure(connectionId, unread.failed);
-        // A send's rule: a 503 or a 429 does not count.
-        keepOrGiveUp(e, unread.failed, 'flags', !askedToWait(unread.failed));
+        // A send's rule: a server asking for a moment (its 503, a proxy's) does not count.
+        keepOrGiveUp(e, unread.failed, 'flags', !isServerBusyError(unread.failed));
         continue;
       }
       step = 'read';
@@ -937,13 +949,18 @@ async function sendGroup(
         continue;
       }
       noteFailure(connectionId, err);
-      if (connectionFailure(err)) {
+      // The connection's, not this bookmark's: no answer, a gateway's, a 401, a proxy's
+      // refusal, or its server's rate limit (a 429, noted so the connection's sends wait out its `Retry-After`, as the
+      // other queues' do: `stopsReplay`).
+      if (connectionFailure(err) || noteRateLimit(connectionId, err)) {
         // Not counted, but how far it came still ends a run of failures before that step.
         tries.set(e.id, { step, counts: false });
         kept.push(...entries.slice(i));
         break;
       }
-      const counts = !askedToWait(err);
+      // A server asking for a moment (its 503, a proxy's: a proxy answers one for as long as
+      // the server behind it is off): the book waits for the next replay, not counted.
+      const counts = !isServerBusyError(err);
       if (!keepOrGiveUp(e, err, step, counts)) continue;
       heldBack.add(book);
       // A failed read is the failure of every one of the book's; a failed POST is its own.
@@ -1080,8 +1097,10 @@ function scheduleRetry(): void {
  * The outbox's own sending triggers, for the life of the app: every connection's bookmarks
  * once the session is ready (the launch), a connection's when its server comes back, a
  * connection's when the wait its server asked for (a 429, `rateLimited`) is over, as the
- * stored queues' (`onRateLimitOver`), and a connection's when it is signed in again (a new
- * token, or its reconnect flag cleared: what its 401s kept waiting goes at once). The
+ * stored queues' (`onRateLimitOver`), a connection's when it is signed in again (a new
+ * token, or its reconnect flag cleared: what its 401s kept waiting goes at once), and a
+ * connection's when a proxy's refusals of it end (`onProxyRefusalsOver`: the server itself
+ * answered, so what the proxy turned away goes at once, not at the backoff's next try). The
  * foreground, the web's focus and `online` are the stored queues' (`startQueueReplays`), and
  * the backoff is `scheduleRetry`'s. Started with the root's services; returns the stop.
  */
@@ -1091,6 +1110,7 @@ export const startBookmarkSync = sharedStart((): (() => void) => {
     whenSessionReady(() => flush()),
     onReconnect((cid) => flush(cid)),
     onRateLimitOver((cid) => flush(cid)),
+    onProxyRefusalsOver((cid) => flush(cid)),
     useSession.subscribe((state, prev) => {
       if (state.connections === prev.connections) return;
       for (const c of state.connections) {
