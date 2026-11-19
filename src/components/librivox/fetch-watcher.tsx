@@ -170,12 +170,16 @@ function WatchedFetch({ cid, id, at }: Watch) {
   const reading = !!conn && !conn.needsReconnect;
   useReadElsewhere(qc, qk.bridgeJob(cid, id));
   const read = useLibrivoxJob(reading ? id : undefined, true, cid);
-  const { gone, job, ended } = followedRead(read);
+  // Judged only once `/server` has answered: until then the hooks' gate lays that read's own
+  // failure over the job's (`useCapabilityQuery`), so a proxy's 403 or 404 for `/server` at
+  // launch would read as the job refused or gone.
+  const own = useServerInfo(cid).data !== undefined ? read : { data: read.data, error: null };
+  const { gone, job, ended } = followedRead(own);
   const doneIn = job?.state === 'done' ? job.library_id : null;
   // A refusal (a 400 or 403): asking again can't help, by the poll's own rule
   // (`useLibrivoxJob`), which stops too. A 404 is `gone`: an end, not a refusal. A 401 holds
   // the watch until the connection is signed in again (`reading`).
-  const refused = !gone && isNotInLibraryError(read.error);
+  const refused = !gone && isNotInLibraryError(own.error);
   const signedIn = !!conn;
 
   useEffect(() => {

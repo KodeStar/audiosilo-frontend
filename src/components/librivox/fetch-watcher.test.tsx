@@ -19,6 +19,8 @@ const mockAsked: { id: number | undefined; active: boolean; cid?: string }[] = [
 const mockInvalidateLists = jest.fn();
 // Each connection's `/server` answer: its `bridge` flag (the Bridge online), and its refetch.
 const mockBridge = create<Record<string, boolean>>(() => ({}));
+// Connections whose `/server` has not answered (nothing known of it).
+const mockServerUnknown = create<Record<string, boolean>>(() => ({}));
 const mockServerRefetch = jest.fn();
 jest.mock('@/api/hooks', () => ({
   qk: {
@@ -28,7 +30,11 @@ jest.mock('@/api/hooks', () => ({
   invalidateLibraryLists: (...a: unknown[]) => mockInvalidateLists(...a),
   useServerInfo: (cid: string) => {
     const bridge = mockBridge((s) => s[cid] ?? true);
-    return { data: { capabilities: { bridge } }, refetch: () => mockServerRefetch(cid) };
+    const unknown = mockServerUnknown((s) => s[cid] ?? false);
+    return {
+      data: unknown ? undefined : { capabilities: { bridge } },
+      refetch: () => mockServerRefetch(cid),
+    };
   },
   useLibrivoxJob: (id: number | undefined, active: boolean, cid?: string) => {
     mockAsked.push({ id, active, cid });
@@ -82,6 +88,7 @@ beforeEach(async () => {
   await restoreLibrivoxWatches();
   useLibrivoxWatches.setState({ watches: [] });
   mockBridge.setState({}, true);
+  mockServerUnknown.setState({}, true);
   mockServerRefetch.mockReset();
   mockReads.setState({}, true);
   mockAsked.length = 0;
@@ -154,6 +161,19 @@ describe('LibrivoxFetchWatcher', () => {
     expect(worksAsks()).toBe(0);
     expect(mockInvalidateLists).not.toHaveBeenCalled();
   });
+
+  it.each([403, 404])(
+    'keeps the watch while `/server` is unknown: its failure (%i) is no answer about the job',
+    async (status) => {
+      // The hooks' gate lays the failed `/server` read over the job's (`useCapabilityQuery`).
+      mockServerUnknown.setState({ c1: true });
+      mockReads.setState({ 41: { error: new ApiError(status, '') } });
+      const { worksAsks } = await mount();
+      await act(async () => watchLibrivoxFetch('c1', 41));
+      expect(watches()).toEqual([{ cid: 'c1', id: 41 }]);
+      expect(worksAsks()).toBe(0);
+    },
+  );
 
   it('keeps watching through a failed read (no answer, a 5xx): the poll asks again', async () => {
     mockReads.setState({ 41: { error: new ApiError(502, 'bad gateway') } });
