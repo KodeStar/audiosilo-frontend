@@ -3279,7 +3279,8 @@ media GETs only.
   Pause ended the followed outside play; not once a load of the store's book took the engine
   (`ownLoadTakesEngine` in `playBook` and `retry`: the adoption reads a book the engine no
   longer holds and gives up, also when its read of the engine came before that load landed,
-  and the reports are the store's book's, its start heard).
+  and the reports are the store's book's, its start heard), nor while the store holds no
+  book (a Cast session resumed with none loaded, the web's too: taken as before).
   The store's `pause` is "stop the sound" (the sleep timer): while the store's book shows
   playing or loading, the engine pauses whatever it plays, the other book too, and the
   store's book shows paused; while it shows paused and the engine plays the other book

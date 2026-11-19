@@ -233,11 +233,13 @@ const adopting: { key: string; ownLoad: boolean }[] = [];
 /** Whether the engine's last report named no book (an older binary) while an adoption of
  * another book than the store's is under way (`adopting`) and still holds the engine: that
  * report is the adopted book's. Not once a load of the store's took the engine: the report is
- * the store's book's, and that adoption gives up (`adoptNow`). */
+ * the store's book's, and that adoption gives up (`adoptNow`). Nor while the store holds no
+ * book (`reportedOtherBook`: a Cast session resumed with none loaded, the web's too): there is
+ * no place of the store's to keep it from, and its reports are taken as before. */
 const unnamedReportOfAdopted = (): boolean => {
-  if (service?.reportedBook?.()) return false;
+  if (adopting.length === 0 || service?.reportedBook?.()) return false;
   const own = selectBookKey(usePlayer.getState());
-  return adopting.some((a) => !a.ownLoad && a.key !== own);
+  return own !== null && adopting.some((a) => !a.ownLoad && a.key !== own);
 };
 /** A load of the store's own book is asked of the engine (`playBook`, `retry`): an adoption under
  * way reads a book the engine no longer holds, and its reports are the store's book's. */

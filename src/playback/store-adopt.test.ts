@@ -1925,6 +1925,27 @@ describe('a play asked from outside of another book after playback stopped', () 
     expect(mockSvc.pause).not.toHaveBeenCalled();
   });
 
+  // With no book in the store (a Cast session resumed with none loaded, on the web too) there
+  // is no place of the store's to keep an unnamed report from: it is taken as before.
+  it('takes an unnamed report as before while a book is adopted into a store holding none', async () => {
+    const answers: (() => void)[] = [];
+    mockFetchQuery.mockImplementation(
+      (opts: unknown) =>
+        new Promise((resolve) => {
+          const key = (opts as { queryKey: unknown[] }).queryKey;
+          answers.push(() => resolve(key[0] === 'item' ? book : chapters));
+        }),
+    );
+    const adopting = usePlayer.getState().adoptLoaded(loadedS);
+    await flushMicrotasks();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+    pushSnapshot(snap('playing', 0, 6));
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'playing', position: 6 });
+    for (const answer of answers) answer();
+    expect(await adopting).toBe(true);
+    expect(usePlayer.getState().nowPlaying?.path).toBe('S');
+  });
+
   // The car sync's read of the engine can answer before that reload lands in it, still naming
   // S: the adoption gives up all the same, as the engine holds B once the load lands (taken, S
   // would be the store's book with B's unnamed reports saved as its place).
