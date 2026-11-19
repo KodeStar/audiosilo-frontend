@@ -631,7 +631,9 @@ function queueBook(
  * waits there (`awaitEpisode`), anything else goes on the queue. An episode whose last try
  * failed on its server (the fetch, or a 503 from a file the server no longer had) asks it
  * again; one that failed its fetch POSTs when the listener asks (their Retry skips the
- * server's cool-down, which an automatic download's own retry respects). */
+ * server's cool-down, which an automatic download's own retry respects), and so does one
+ * whose Retry of a failed fetch ended before its POST was answered (`failure.refetch`: signed
+ * out, no access, cut short by a launch). */
 function begin(
   key: string,
   connectionId: string,
@@ -642,7 +644,7 @@ function begin(
 ) {
   const existing = useDownloads.getState().entries[key];
   const failure = existing?.status === 'error' ? existing.failure : undefined;
-  const fetchFailed = failure?.kind === 'serverFetch';
+  const fetchFailed = failure?.kind === 'serverFetch' || !!failure?.refetch;
   const wait =
     !!book.episode &&
     (isAbsentEpisode(book) ||
@@ -735,13 +737,18 @@ function awaitEpisode(
   retry: boolean,
 ) {
   putEntry(key, connectionId, libraryId, book, chapterData, origin, {
-    serverFetch: { percent: fetchPercent(book.episode?.fetch) },
+    serverFetch: { percent: fetchPercent(book.episode?.fetch), ...(retry ? REFETCH : {}) },
   });
   watchEpisode(key, connectionId, libraryId, book.rel_path, retry);
 }
 
+/** The mark of a wait (or a failure) whose Retry still has to POST (`serverFetch.refetch`). */
+const REFETCH = { refetch: true } as const;
+
 /** The wait for a waiting entry's episode (`awaitEpisode`, `resumeEpisodeWaits`): its
- * progress onto the entry, its end through `episodeWaitEnded`. */
+ * progress onto the entry, its end through `episodeWaitEnded`. The first status after a
+ * Retry's POST (`retry`) says the server took it: the saved mark goes (`serverFetch.refetch`),
+ * so a restart from then on asks the stream. */
 function watchEpisode(
   key: string,
   connectionId: string,
@@ -755,8 +762,11 @@ function watchEpisode(
       onStatus: (status) => {
         const cur = useDownloads.getState().entries[key];
         const percent = fetchPercent(status);
-        if (cur?.serverFetch && cur.serverFetch.percent !== percent) {
+        if (!cur?.serverFetch) return;
+        const posted = !!cur.serverFetch.refetch;
+        if (posted || cur.serverFetch.percent !== percent) {
           patchEntry(key, { serverFetch: { percent } });
+          if (posted) void persist();
         }
       },
       onEnd: (end) => void episodeWaitEnded(key, end).catch(() => {}),
@@ -779,7 +789,8 @@ function resumeEpisodeWaits() {
     // Another tab's wait is that tab's (`elsewhere`).
     if (e.status !== 'queued' || !e.serverFetch || isWaiting(key) || elsewhere[key]) continue;
     if (supported && resolveClient(e.connectionId)) {
-      watchEpisode(key, e.connectionId, e.libraryId, e.path, false);
+      // A Retry whose POST was not answered before the app closed asks it again.
+      watchEpisode(key, e.connectionId, e.libraryId, e.path, !!e.serverFetch.refetch);
     } else {
       // `reviveEntry` kept it only with every file it lists on disk. Dropped, or a row with no
       // finished file, its folder goes (as `readRegistry` does).
@@ -789,7 +800,14 @@ function resumeEpisodeWaits() {
       );
       if (!revived || revived.manifest.files.length === 0)
         void engine.removeBook(e.connectionId, e.libraryId, e.path);
-      cut.set(key, revived);
+      // Its Retry still owes the POST (`failure.refetch`).
+      const failure = revived?.failure;
+      cut.set(
+        key,
+        revived && failure && e.serverFetch.refetch
+          ? { ...revived, failure: { ...failure, ...REFETCH } }
+          : revived,
+      );
     }
   }
   if (cut.size === 0) return;
@@ -838,7 +856,9 @@ async function episodeWaitEnded(key: string, end: EpisodeWaitEnd): Promise<void>
               ? { kind: 'serverFetch', kept: 0, ...(end.code ? { code: end.code } : {}) }
               : end.kind === 'removed'
                 ? { kind: 'removed' }
-                : { kind: end.kind, kept: 0 },
+                : // Signed out or no access: a Retry of a failed fetch whose POST never got
+                  // through still owes it, after the sign-in (`begin`).
+                  { kind: end.kind, kept: 0, ...(entry.serverFetch.refetch ? REFETCH : {}) },
         },
       },
     });
