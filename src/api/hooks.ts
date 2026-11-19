@@ -872,6 +872,9 @@ function useCapabilityQuery<T, S = T>(
     retry?: boolean;
     refetchInterval?: (query: Query<T, Error, T, readonly unknown[]>) => number | false;
     select?: (data: T) => S;
+    /** React Query's own: false, the caller reads no updates and is no observer of the
+     * query (its page hidden) until it is true again. */
+    subscribed?: boolean;
   } = {},
 ) {
   const api = useOptionalApi(connectionId);
@@ -889,6 +892,7 @@ function useCapabilityQuery<T, S = T>(
     ...(opts.retry !== undefined ? { retry: opts.retry } : {}),
     ...(opts.refetchInterval !== undefined ? { refetchInterval: opts.refetchInterval } : {}),
     ...(opts.select !== undefined ? { select: opts.select } : {}),
+    ...(opts.subscribed !== undefined ? { subscribed: opts.subscribed } : {}),
   });
   // Only a read that would run once the flag is known, and holds nothing of its own. The
   // query's own fields are read last, and only then: reading one subscribes the caller to
@@ -2921,8 +2925,16 @@ function failuresInARow(query: {
  * read that failed with no answer or a server error is asked again (`retry: false`, and
  * nothing else reads it: its row would wait for ever); a refusal (a 400, 401 or 403) is
  * not, but a 401 or 403 from a proxy in front of the server (`isProxyRefusal`) is a read
- * that failed, asked again. Its Cancel is `useCancelBridgeJob`. */
-export function useLibrivoxJob(id: number | undefined, active: boolean, connectionId?: string) {
+ * that failed, asked again. Its Cancel is `useCancelBridgeJob`. `shown` false (a recording
+ * row whose page is under another tab): that reader takes no updates and does not count as
+ * one (React Query's `subscribed`), so the watcher's poll leaves the on-screen pace until
+ * the page is focused again, and the row reads the job once it is. */
+export function useLibrivoxJob(
+  id: number | undefined,
+  active: boolean,
+  connectionId?: string,
+  shown = true,
+) {
   return useCapabilityQuery<BridgeJob>(
     'bridge',
     (cid) => qk.bridgeJob(cid, id ?? 0),
@@ -2931,6 +2943,7 @@ export function useLibrivoxJob(id: number | undefined, active: boolean, connecti
     {
       ready: id !== undefined,
       retry: false,
+      subscribed: shown,
       refetchInterval: (query) => {
         const { data, error } = query.state;
         // The server's refusal stays refused (the default retry's rule, `retryQuery`), and a
@@ -2941,7 +2954,7 @@ export function useLibrivoxJob(id: number | undefined, active: boolean, connecti
           data,
           active && AppState.currentState === 'active',
           !!error,
-          // A reader besides this one (a recording row on screen): a page shows it.
+          // A reader besides this one (a recording row on a focused page): a page shows it.
           { seen: query.getObserversCount() > 1, failures: failuresInARow(query) },
         );
       },

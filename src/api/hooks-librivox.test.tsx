@@ -194,6 +194,28 @@ describe('useLibrivoxJob', () => {
     expect(intervalOf(qc)).toBe(false);
   });
 
+  it('leaves the on-screen pace while the row reading it is on a hidden page, and takes it again once shown', async () => {
+    let shown = true;
+    const { result, qc, rerender } = await mount(
+      librivoxServer(),
+      () => {
+        const read = useLibrivoxJob(41, true);
+        useLibrivoxJob(41, false, undefined, shown);
+        return read;
+      },
+      (c) => c.bridgeJob.mockResolvedValue(librivoxJob({ state: 'running' })),
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(intervalOf(qc)).toBe(LIBRIVOX_POLL_MS);
+    // Its page under another tab: no reader besides the watcher.
+    shown = false;
+    await rerender({});
+    expect(intervalOf(qc)).toBe(LIBRIVOX_UNSEEN_POLL_MS);
+    shown = true;
+    await rerender({});
+    expect(intervalOf(qc)).toBe(LIBRIVOX_POLL_MS);
+  });
+
   it('waits twice as long for each read that failed in a row, and keeps its pace once one is answered', async () => {
     const running = librivoxJob({ state: 'running' });
     const { result, qc } = await mount(

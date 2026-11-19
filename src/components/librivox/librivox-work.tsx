@@ -1,3 +1,4 @@
+import { useIsFocused } from 'expo-router';
 import type { TFunction } from 'i18next';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -321,7 +322,9 @@ function FetchStatus({
  * still says why. Each open one followed is watched past the page (`watchLibrivoxFetch`):
  * the root's `LibrivoxFetchWatcher` polls it and, when it ends, has the works and the
  * library's lists read again, whether or not the page is still open. The row only reads it (no poll of
- * its own); a job that is gone (a 404, deleted with its library) shows nothing.
+ * its own), and only while its page is focused: a page left under another tab is no reader,
+ * so the watcher polls at its own slower pace until the page is shown again. A job that is
+ * gone (a 404, deleted with its library) shows nothing.
  */
 function useFollowedFetch(connectionId: string, r: LibrivoxRecording) {
   const { t } = useTranslation();
@@ -334,7 +337,7 @@ function useFollowedFetch(connectionId: string, r: LibrivoxRecording) {
     setNamed(r.job?.id);
     if (r.job) setFollowed(r.job.id);
   }
-  const read = useLibrivoxJob(followed, false, connectionId);
+  const read = useLibrivoxJob(followed, false, connectionId, useIsFocused());
   const cancel = useCancelBridgeJob(connectionId);
   // One already known ended is the watcher's no more: a work opened again shows its last
   // answer first, which still names the fetch whose end was handled when it came.

@@ -887,7 +887,9 @@ in step.
   `librivox.fetch` has no book path, so it is followed by its id (not `useBridgeJobs` /
   `useBridgeJobSurface`, which are keyed on a book), polled while open and `active`
   (`librivoxJobPollInterval`: 5 s while a recording row reads it too, 30 s with only the
-  watcher asking, 60 s parked, doubling per failed read in a row up to 60 s), never after a 404
+  watcher asking, 60 s parked, doubling per failed read in a row up to 60 s; a row reads it
+  only while its page is focused, `useLibrivoxJob`'s `shown` from `useIsFocused`, React
+  Query's `subscribed`, so a page left under another tab drops the pace to 30 s), never after a 404
   nor a refusal. A first read that failed
   with no answer or a server error is asked again every 60 s (nothing else would: its row has no
   status, Cancel or Add until one gets through); a refusal (400, 401, 403) is not, but a 401 or 403
