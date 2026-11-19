@@ -1448,6 +1448,34 @@ describe('on a server with listening_sync', () => {
     expect(sent.find((e) => e.to_pos === 108)).toMatchObject({ from_pos: 105, base_version: 2 });
     expect(sent.find((e) => e.to_pos === 403)).toMatchObject({ from_pos: 400, base_version: 3 });
   });
+
+  // fe#285: a seek of the listener's own while the move's answer waits its turn wins, and the
+  // row it did not move to is not acknowledged (its next spans would go on the other
+  // device's version from a place that device never saw).
+  it("a seek while the move's answer waits its turn acknowledges nothing", async () => {
+    await loadedAndPaused();
+    pushSnapshot(snap('playing', 105));
+    await settle();
+    // The pause's close holds the outbox's turn until the test lets its write land.
+    let release: () => void = () => {};
+    const write = AsyncStorage.setItem;
+    jest
+      .spyOn(AsyncStorage, 'setItem')
+      .mockImplementationOnce((k: string, v: string) =>
+        new Promise<void>((r) => (release = r)).then(() => write(k, v)),
+      );
+    jest.setSystemTime(Date.now() + 3000);
+    pushSnapshot(snap('paused', 108));
+    await backInFront();
+    for (let i = 0; i < 4; i++) await settle();
+    expect(seeks()).toEqual([]);
+    void usePlayer.getState().seekBook(250);
+    await settle();
+    release();
+    for (let i = 0; i < 10; i++) await settle();
+    expect(seeks()).toEqual([250]);
+    expect(mockAckVersion).not.toHaveBeenCalledWith('c1', 2, 'A/Book.m4b', 3, expect.anything());
+  });
 });
 
 // fe#198: on the legacy PUT path a guarded save that another device's further place held

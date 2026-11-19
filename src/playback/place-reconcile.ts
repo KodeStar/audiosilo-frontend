@@ -479,15 +479,17 @@ async function decide(
   // as a Jump is (`answerAfterSpan`): once the span heard before the move is in, so that span
   // goes on the version it was heard on and only the move's own on the row's.
   if (server && server.version > 0) {
-    await answerAfterSpan(np, () =>
-      ackVersion(np.connectionId, np.libraryId, np.path, server.version, server).catch(
+    // The answer waits its turn: another book, or a move of the listener's own, since wins,
+    // and then the row is not acknowledged either (this device never moved to it).
+    const overtaken = () =>
+      selectBookKey(usePlayer.getState()) !== bookKey || localMoveCount() !== moves;
+    await answerAfterSpan(np, async () => {
+      if (overtaken()) return;
+      await ackVersion(np.connectionId, np.libraryId, np.path, server.version, server).catch(
         () => undefined,
-      ),
-    );
-    // The answer waited its turn: another book, or a move of the listener's own, since wins.
-    if (selectBookKey(usePlayer.getState()) !== bookKey || localMoveCount() !== moves) {
-      return false;
-    }
+      );
+    });
+    if (overtaken()) return false;
   }
   await usePlayer.getState().seekBook(to);
   tell(bookKey, from, to);
