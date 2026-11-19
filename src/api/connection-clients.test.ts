@@ -109,6 +109,21 @@ describe('connection-clients', () => {
     }
   });
 
+  it('a 401 through a client built before the identity migration flags the connection under its new id', async () => {
+    setStore([{ id: 'srv', serverUrl: 'https://h', token: 'dead' }]);
+    installFetch(() => ({ status: 401, body: { error: 'invalid or expired token' } }));
+    const client = resolveClient('srv')!;
+    // The migration re-keys the connection (the same sign-in, the same token) meanwhile.
+    setConnectionAliases({ srv: 'srv.3' });
+    try {
+      setStore([{ id: 'srv.3', serverUrl: 'https://h', token: 'dead' }]);
+      await expect(client.me()).rejects.toMatchObject({ status: 401 });
+      expect(markNeedsReconnect).toHaveBeenCalledWith('srv.3', 'auth');
+    } finally {
+      setConnectionAliases({});
+    }
+  });
+
   // FU-SLOWOK: the save loop, the car and the downloads ask through this client, so every
   // answer it gets counts for its connection's reachability, as a provider-built one's does.
   it('counts each answer the resolved client gets against its connection, a 5xx included', async () => {

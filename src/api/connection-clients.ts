@@ -48,9 +48,10 @@ export function connectionClient(
     undefined,
     () => {
       // Only while the connection still holds this token: a request sent before a re-pair
-      // that comes back 401 after it says nothing of the new token.
-      if (connectionOf(conn.id)?.token === conn.token)
-        useSession.getState().markNeedsReconnect(conn.id, 'auth');
+      // that comes back 401 after it says nothing of the new token. Flagged under its id now
+      // (a client built before the identity migration moved it names the old one).
+      const now = connectionOf(conn.id);
+      if (now?.token === conn.token) useSession.getState().markNeedsReconnect(now.id, 'auth');
     },
     (at) => noteAnswer(conn.id, at),
     proxy,
