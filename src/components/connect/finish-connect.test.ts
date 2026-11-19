@@ -312,6 +312,61 @@ describe('proxy headers the sign-in came through (fe#167): one set per address (
     expect(kept()).toEqual({ [AWAY]: SET });
     expect(await readProxySets()).toEqual({ [AWAY]: SET });
   });
+
+  // The set is shared by everyone here who reaches the address: a demo or a kid's account
+  // never replaces one a full account signs in through (the Account card's rule,
+  // `canManageProxySet`), even with the headers it got in with.
+  describe("a demo or a kid's account", () => {
+    const kid: User = { ...user, id: 12, username: 'evie', member_kind: 'kid' };
+    const demo: User = { ...user, id: 13, username: 'demo', is_demo: true };
+    const THEIRS = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'their-own' }] };
+
+    it.each([
+      ['kid', kid],
+      ['demo', demo],
+    ])("a %s's sign-in leaves the set a full account here uses as it is", async (_, who) => {
+      useSession.setState({ pendingProxyHeaders: SET });
+      await finishConnect({ serverUrl: AWAY, session: session('srv-1'), carried: SET });
+      useSession.setState({ pendingProxyHeaders: THEIRS });
+      await finishConnect({
+        serverUrl: AWAY,
+        session: session('srv-1', { user: who }),
+        carried: THEIRS,
+      });
+      expect(kept()).toEqual({ [AWAY]: SET });
+      expect(await readProxySets()).toEqual({ [AWAY]: SET });
+    });
+
+    it("a kid's own device keeps the set it typed, and a new one replaces it", async () => {
+      useSession.setState({ pendingProxyHeaders: THEIRS });
+      await finishConnect({
+        serverUrl: AWAY,
+        session: session('srv-1', { user: kid }),
+        carried: THEIRS,
+      });
+      expect(kept()).toEqual({ [AWAY]: THEIRS });
+      // No full account here reaches the address: the set is the kid's to replace.
+      useSession.setState({ pendingProxyHeaders: SET });
+      await finishConnect({
+        serverUrl: AWAY,
+        session: session('srv-1', { user: kid, token: 'fresh' }),
+        carried: SET,
+      });
+      expect(kept()).toEqual({ [AWAY]: SET });
+    });
+
+    it("a full account still replaces the set a kid's account typed", async () => {
+      useSession.setState({ pendingProxyHeaders: THEIRS });
+      await finishConnect({
+        serverUrl: AWAY,
+        session: session('srv-1', { user: kid }),
+        carried: THEIRS,
+      });
+      useSession.setState({ pendingProxyHeaders: SET });
+      await finishConnect({ serverUrl: AWAY, session: session('srv-1'), carried: SET });
+      expect(kept()).toEqual({ [AWAY]: SET });
+    });
+  });
 });
 
 describe('a reconnect is decided by the server that answered (fe#298)', () => {

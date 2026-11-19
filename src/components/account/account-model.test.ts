@@ -4,6 +4,7 @@ import {
   accountParentKey,
   ACTIVE_NOW_MS,
   canManageProxySet,
+  mayReplaceProxySet,
   canRevoke,
   clientAppName,
   deviceGlyph,
@@ -272,5 +273,25 @@ describe('canManageProxySet', () => {
     const atHome = { ...conn('other.1'), serverUrl: HOME };
     expect(canManageProxySet(both, set, [atHome, both])).toBe(false);
     expect(canManageProxySet(both, set, [both])).toBe(true);
+  });
+});
+
+describe('mayReplaceProxySet', () => {
+  const AWAY = 'https://books.example.com';
+  const owner = { id: 'srv.1', serverUrl: AWAY, user: {} };
+  const kid = { id: 'srv.2', serverUrl: AWAY, user: { member_kind: 'kid' as const } };
+  const demo = { id: 'srv.3', serverUrl: AWAY, user: { is_demo: true } };
+
+  it('lets a full account replace the set whoever else signs in through it', () => {
+    expect(mayReplaceProxySet(owner.user, owner.id, AWAY, [owner, kid])).toBe(true);
+  });
+
+  it("lets a demo or a kid's account replace it only while no full account here reaches it", () => {
+    expect(mayReplaceProxySet(kid.user, kid.id, AWAY, [owner, kid])).toBe(false);
+    expect(mayReplaceProxySet(demo.user, demo.id, AWAY, [owner, demo])).toBe(false);
+    expect(mayReplaceProxySet(kid.user, kid.id, AWAY, [kid, demo])).toBe(true);
+    // Only the address in question counts.
+    const elsewhere = { ...owner, serverUrl: 'http://192.168.1.5:8080' };
+    expect(mayReplaceProxySet(kid.user, kid.id, AWAY, [elsewhere, kid])).toBe(true);
   });
 });

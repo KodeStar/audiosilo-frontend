@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 
 import { setAddressPick } from '@/api/address-route';
 import type { AuthSession, ServerAddresses } from '@/api/types';
+import { mayReplaceProxySet } from '@/components/account/account-model';
 import { KIDS_PATH } from '@/components/kids/kids-model';
 import { connectForNewProfile, mayAddPerson } from '@/components/profiles/connect-intent';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
@@ -59,7 +60,8 @@ export function readyHref(connectionId: string) {
  * page instead, first connection or not. `carried` is the proxy headers set (fe#167) the
  * successful exchange or sign-in went out with (`connectClientFor`): kept as its origin's
  * set only when it is the one typed on the connect screen (`pendingProxyHeaders`), never a
- * kept set written back.
+ * kept set written back, and never over a set a full account here reaches when the sign-in is
+ * a demo or a kid's account (`mayReplaceProxySet`).
  */
 export async function finishConnect(input: {
   serverUrl: string;
@@ -148,14 +150,18 @@ export async function finishConnect(input: {
   // for its away address, signed in at home) that has no set yet. There is one set per origin
   // on the device (fe#295): a kept one that carried the sign-in is kept already, and is never
   // written back (it may have been removed or changed on purpose while the sign-in was on its
-  // way); a typed one that was never sent proved nothing, so it replaces no kept set. A
-  // sign-in never removes one.
+  // way); a typed one that was never sent proved nothing, so it replaces no kept set. Nor does
+  // a demo or a kid's account replace one a full account here reaches (`mayReplaceProxySet`,
+  // the Account card's rule): it would turn that person's requests away. A sign-in never
+  // removes one.
   const { pendingProxyHeaders: typed, proxySets } = useSession.getState();
   const keepTyped =
     !!typed &&
-    (sameProxyHeaders(input.carried, typed) ||
-      (!proxySets[typed.origin] &&
-        proxyOriginChoices(plan, input.serverUrl).includes(typed.origin)));
+    (!proxySets[typed.origin]
+      ? sameProxyHeaders(input.carried, typed) ||
+        proxyOriginChoices(plan, input.serverUrl).includes(typed.origin)
+      : sameProxyHeaders(input.carried, typed) &&
+        mayReplaceProxySet(input.session.user, pickId, typed.origin, connections));
   const proxyHeaders = keepTyped ? typed : undefined;
   if (input.answeredAt) setAddressPick(pickId, input.answeredAt);
   const id = await setSession({

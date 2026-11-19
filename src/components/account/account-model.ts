@@ -77,13 +77,38 @@ export function canManageProxySet(
   if (!conn) return false;
   if (!isLimitedAccount(conn.user)) return true;
   if (!set && conn.user?.is_demo) return false;
-  const writable = proxyOriginChoices(conn, set?.origin);
-  return !connections.some(
+  return !fullAccountReaches(proxyOriginChoices(conn, set?.origin), conn.id, connections);
+}
+
+/** Whether a full account among `connections` (other than `exceptId`) reaches one of
+ * `origins`: a set kept there is theirs too, so a demo or a kid's account leaves it be. */
+function fullAccountReaches(
+  origins: readonly string[],
+  exceptId: string,
+  connections: readonly ProxyCardConnection[],
+): boolean {
+  return connections.some(
     (c) =>
-      c.id !== conn.id &&
+      c.id !== exceptId &&
       !isLimitedAccount(c.user) &&
-      proxyOriginChoices(c).some((o) => writable.includes(o)),
+      proxyOriginChoices(c).some((o) => origins.includes(o)),
   );
+}
+
+/**
+ * Whether a sign-in by `user` (the connection `connId`) may replace the set kept for `origin`
+ * with the one it got in with (`finishConnect`, fe#167): `canManageProxySet`'s rule for that
+ * one address. A full account always may; a demo or a kid's account only while no full
+ * account on the device (`connections`) reaches `origin`, since the set is theirs too. A set
+ * the address does not have yet is not this rule's: any sign-in keeps one.
+ */
+export function mayReplaceProxySet(
+  user: ProxyCardConnection['user'],
+  connId: string,
+  origin: string,
+  connections: readonly ProxyCardConnection[],
+): boolean {
+  return !isLimitedAccount(user) || !fullAccountReaches([origin], connId, connections);
 }
 
 /**
