@@ -45,7 +45,7 @@ jest.mock('@/api/server-snapshots', () => ({
 /* eslint-disable import/first */
 import { resolveClient } from '@/api/connection-clients';
 import { queryClient } from '@/api/provider';
-import { forgetRateLimit, rateLimited } from '@/api/rate-limit';
+import { forgetRateLimit, noteRateLimit, rateLimited } from '@/api/rate-limit';
 import * as reachability from '@/api/reachability';
 import { keepServerAnswer, keepServerFlag } from '@/api/server-snapshots';
 import { setDownloadEndCheck, setDownloadLengthCheck } from '@/downloads/kept-offline';
@@ -1467,6 +1467,22 @@ describe('flushOutbox', () => {
     expect(c.syncListening).not.toHaveBeenCalled();
     (reachability.isReachable as jest.Mock).mockReturnValue(true);
     expect(await unsentListens('c1')).toBe(0);
+  });
+
+  // A sign-out's last chance: what a 429's wait held is tried once more, as the legacy
+  // queue's last chance does, before the events are purged with the connection.
+  it('unsentListens tries the events a 429 holds', async () => {
+    await appendEvents('c1', [listen('a')]);
+    const c = client(async (body) => answer(body));
+    noteRateLimit('c1', new ApiError(429, 'slow down', undefined, 60));
+    try {
+      await flushOutbox('c1');
+      expect(c.syncListening).not.toHaveBeenCalled();
+      expect(await unsentListens('c1')).toBe(0);
+      expect(c.syncListening).toHaveBeenCalledTimes(1);
+    } finally {
+      forgetRateLimit('c1');
+    }
   });
 });
 

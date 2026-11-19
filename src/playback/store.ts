@@ -4321,8 +4321,14 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
   },
 
   stop: async () => {
+    const stopped = get().nowPlaying;
     const stopping = selectBookKey(get());
     const generation = playGeneration;
+    // A start made since (`switchBook`) that is still on its way or put its book in the
+    // store (loaded, or failed with the book shown). One that returned early (its person
+    // gone, called off) changed nothing: the stopped book is still loaded, and is unloaded.
+    const started = () =>
+      playGeneration !== generation && (startsInFlight > 0 || get().nowPlaying !== stopped);
     clearPlaybackIntent();
     cancelOtherBookDeadline();
     stopSaveLoop();
@@ -4333,10 +4339,10 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     // reset would cut it off and leave the player with nothing. By the start, not the book
     // shown: the same book started again is another play, and one that failed still holds
     // what the listener asked for after the stop.
-    if (playGeneration !== generation) return;
+    if (started()) return;
     invalidateProgressLists();
     if (service) await service.reset();
-    if (playGeneration !== generation) return;
+    if (started()) return;
     set({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate: get().rate } });
   },
 
@@ -5326,8 +5332,17 @@ usePlayer.subscribe((state, prev) => {
 function restreamLoaded(): void {
   const np = usePlayer.getState().nowPlaying;
   if (!np) return;
-  const tracks = restreamQueue(np.queue, resolveClient(np.connectionId), np.libraryId, np.path);
+  const api = resolveClient(np.connectionId);
+  const tracks = restreamQueue(np.queue, api, np.libraryId, np.path);
   if (tracks) service?.restream?.(tracks);
+  // The book's server cover too (`nowPlayingOf`), in place as the queue (a start's and an
+  // adoption's checks compare `nowPlaying` by identity): its old token may be revoked. Told
+  // to the screens with the state as it is (`setState({})`).
+  const cover = api?.coverUrl(np.libraryId, np.path);
+  if (cover && np.cover !== cover && np.cover.split('?')[0] === cover.split('?')[0]) {
+    np.cover = cover;
+    usePlayer.setState({});
+  }
 }
 useSession.subscribe((state, prev) => {
   if (state.connections !== prev.connections) restreamLoaded();

@@ -1529,6 +1529,15 @@ describe('a re-pair while a book is loaded', () => {
     );
   });
 
+  it("shows the book's cover with the new token", async () => {
+    await startBook(makeBook(), 0, 'c1');
+    const before = usePlayer.getState().nowPlaying!;
+    mockResolveClient.mockImplementation(() => repaired);
+    useSession.setState({ connections: [...useSession.getState().connections] });
+    expect(usePlayer.getState().nowPlaying).toBe(before);
+    expect(usePlayer.getState().nowPlaying?.cover).toBe('cover:2:A/Book.m4b?token=new');
+  });
+
   it('changes nothing when the connection list changes and the token does not', async () => {
     await startBook(makeBook(), 0, 'c1');
     const tracks = usePlayer.getState().nowPlaying!.queue.tracks;
@@ -1652,6 +1661,27 @@ describe('a stop whose save is still out when a start is made', () => {
     await stopping;
     expect(mockSvc.reset).not.toHaveBeenCalled();
     expect(usePlayer.getState().nowPlaying).toMatchObject({ connectionId: 'c1' });
+  });
+
+  // A start that returned before it loaded anything (its person gone, called off) took
+  // nothing from the stop: the stopped book is unloaded, not left in the engine.
+  it('still unloads the book when a start made meanwhile returned early', async () => {
+    const { stopping, save } = await stopHeld();
+    await usePlayer.getState().playBook(
+      'c1',
+      2,
+      makeBook(),
+      undefined,
+      0,
+      undefined,
+      undefined,
+      () => false,
+      () => true,
+    );
+    save();
+    await stopping;
+    expect(mockSvc.reset).toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
   });
 
   it('still unloads the book when nothing was started meanwhile', async () => {

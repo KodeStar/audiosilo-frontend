@@ -1263,6 +1263,9 @@ export async function flushAllOutboxes(): Promise<void> {
   await Promise.all([...ids].map((cid) => flushOutbox(cid)));
 }
 
+/** Connections whose sign-out or removal is making its last send (`unsentListens`). */
+const lastChance = new Set<string>();
+
 /**
  * What hasn't reached `connectionId`'s server, after a last send while it is reachable
  * (sign-out and removing a server confirm when any is left): its events, a waiting finish
@@ -1271,7 +1274,16 @@ export async function flushAllOutboxes(): Promise<void> {
  */
 export async function unsentListens(connectionId: string): Promise<number> {
   await sweepLeftBehind().catch(() => undefined);
-  if (isReachable(connectionId)) await flushOutbox(connectionId);
+  if (isReachable(connectionId)) {
+    // Whatever wait its server asked (a 429): the last chance tries them, as the legacy
+    // queue's does (`onlyConnection`).
+    lastChance.add(connectionId);
+    try {
+      await flushOutbox(connectionId);
+    } finally {
+      lastChance.delete(connectionId);
+    }
+  }
   return (await pendingSaves(connectionId)).events;
 }
 
@@ -1292,8 +1304,8 @@ async function flushOnce(connectionId: string): Promise<void> {
   if (!sessionReady()) return;
   await recoverOpenSpan();
   // The server asked to wait (a 429 until its `Retry-After`): the events stay, and go once
-  // the wait is over (`onRateLimitOver`, below).
-  if (rateLimited(connectionId)) return;
+  // the wait is over (`onRateLimitOver`, below). Not a sign-out's last chance.
+  if (rateLimited(connectionId) && !lastChance.has(connectionId)) return;
   // Read again at each round's send (`liveClient`): a re-pair during the flush changes the
   // token, and a round sent with the old one is refused (401).
   const client = liveClient(connectionId);
