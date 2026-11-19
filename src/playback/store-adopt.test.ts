@@ -21,6 +21,9 @@ let playAsked: (() => void) | null = null;
  * set (`onRateChange`). */
 let remoteMove: ((trackIndex: number, positionInTrack: number) => void) | null = null;
 let rateChange: ((rate: number) => void) | null = null;
+/** The route switch's word of a load it made itself (`onOwnLoad`). */
+let ownLoad: ((trackIndex: number, position: number, loaded: Promise<unknown>) => void) | null =
+  null;
 /** The book the engine's last report named (`reportedBook`); null: it named none. */
 let engineBook: BookRef | null = null;
 const mockSvc = {
@@ -34,6 +37,9 @@ const mockSvc = {
   }),
   onRateChange: jest.fn((handler: typeof rateChange) => {
     rateChange = handler;
+  }),
+  onOwnLoad: jest.fn((handler: typeof ownLoad) => {
+    ownLoad = handler;
   }),
   setup: jest.fn(async () => {}),
   configure: jest.fn(async () => {}),
@@ -2184,6 +2190,26 @@ describe('a play asked from outside of another book after playback stopped', () 
     pushSnapshot(snap('playing', 1, 31));
     expect(engineOtherBookPlays()).toBe(false);
     expect(await resumeOtherBook()).toBe(false);
+  });
+
+  // The route switch loads B back into the phone's engine by itself (the book could not be
+  // cast, a session ended): the engine is B's from that load, and its reports, naming none,
+  // were held as S's for good, B's place never saved again.
+  it("takes the store's book's unnamed reports once the route switch loaded it during that hold", async () => {
+    const read = await askedForS(undefined, async () => null);
+    expect(await read()).toBe(false);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    ownLoad?.(1, 30, Promise.resolve());
+    await flushMicrotasks();
+    pushSnapshot(snap('paused', 1, 30));
+    pushSnapshot(snap('playing', 1, 31));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'playing',
+      trackIndex: 1,
+      position: 31,
+    });
   });
 
   // An adoption that began after the store's own start asked for its load (so not marked

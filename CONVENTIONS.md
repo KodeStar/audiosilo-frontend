@@ -3364,6 +3364,8 @@ media GETs only.
   Whether that unnamed book plays is kept from its held reports (`unnamedPlays`), so
   `engineOtherBookPlays` is true for it too: the sleep timer counts down on it, the store's
   `pause` stops it, and `resumeOtherBook` plays it again.
+  The route switch's own load of the store's book (`onOwnLoad`: a cast that ended or failed)
+  ends the hold as the store's own load does, or that book's reports stayed held for good.
   The store's `pause` is "stop the sound" (the sleep timer): while the store's book shows
   playing or loading, the engine pauses whatever it plays, the other book too, and the
   store's book shows paused; while it shows paused and the engine plays the other book

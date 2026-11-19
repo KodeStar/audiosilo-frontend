@@ -3924,6 +3924,10 @@ async function createService(): Promise<PlaybackService> {
   // and a file that engine measured short can't run off it unseen. Not a faulted book's (its
   // fault stands: a press reloads it), nor while a start holds the store.
   svc.onOwnLoad?.((trackIndex, positionInTrack, loaded) => {
+    // The engine is the store's book's from this load, as from one the store asks itself: a
+    // hold of another book's unnamed reports ends (`unnamedOther`; left standing, this book's
+    // own reports, naming none on such an engine, would be held and its place never saved).
+    ownLoadTakesEngine();
     const { nowPlaying: np, loadingBook } = usePlayer.getState();
     if (!np || loadingBook || loadedFaulted()) return;
     void engineTakes(askEngineTo(np, trackIndex, positionInTrack), loaded).catch(() => undefined);
