@@ -131,12 +131,11 @@ class Outbox(
    * there, joined in memory alone).
    */
   private fun restoredEvents(main: JsonFile<List<ListeningEvent>>): List<ListeningEvent> {
-    val directory = checkNotNull(main.file.parentFile)
     val current = kept(main)
     val have = (current ?: emptyList()).map { it.id }.toMutableSet()
     val older = ArrayList<ListeningEvent>()
     val joined = ArrayList<File>()
-    for (file in asideFiles(directory)) {
+    for (file in main.asides(ASIDE_PREFIX)) {
       val more = JsonFile(file, EVENTS).read() ?: continue
       older += more.filter { have.add(it.id) }
       joined += file
@@ -209,7 +208,7 @@ class Outbox(
       // Nothing waits, so nothing failed: the 15 s cut runs again (the cold-start state).
       lastFlushFailed = false
       // Never joined to another account's outbox at a later launch.
-      directory?.let { d -> asideFiles(d).forEach { it.delete() } }
+      eventsFile?.asides(ASIDE_PREFIX)?.forEach { it.delete() }
       // A file still in the way goes with them: the listener chose to drop what waits.
       stuck = false
       saveEventsLocked()
@@ -449,9 +448,6 @@ class Outbox(
      * missing file reads as an empty outbox at launch.
      */
     private fun JsonFile<List<ListeningEvent>>.save(events: List<ListeningEvent>): Boolean = write(events.ifEmpty { null })
-
-    private fun asideFiles(directory: File): List<File> =
-      directory.listFiles { f -> f.name.startsWith(ASIDE_PREFIX) }?.toList() ?: emptyList()
 
     /** Whether a couldn't-sync entry is still kept (30 days). */
     private fun stillKept(f: CouldNotSync, now: Instant): Boolean = now.secondsSince(f.at) < COULD_NOT_SYNC_KEEP

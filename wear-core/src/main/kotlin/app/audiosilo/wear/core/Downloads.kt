@@ -266,11 +266,16 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
       r
     }
 
-  /** Forget every record (the account was left), then remove their files (`files`) under the lock. */
+  /**
+   * Forget every record (the account was left), then remove their files (`files`) under the lock,
+   * and after them any index set aside as unreadable: the folders it kept from `dropOrphans` are
+   * gone with the account, and a kill before leaves them kept, not half dropped.
+   */
   fun removeAll(files: () -> Unit = {}) {
     synchronized(lock) {
       commit(emptyList())
       files()
+      file?.asides(ASIDE_PREFIX)?.forEach { it.delete() }
     }
   }
 
@@ -290,11 +295,14 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
    * Delete the book folders in `books` no record names (fe#285): a kill between a record's removal
    * and its folder's, or a run that made its folder again before `whileKept`. Only after an index
    * read cleanly at this launch (`readCleanly`): one that could not be read, set aside or still in
-   * the way, says nothing of which books are here, so every folder stays.
+   * the way, says nothing of which books are here, so every folder stays. And not while an index
+   * set aside at an earlier launch is still there: it is never joined back, so the index written
+   * since reads cleanly without the books that one named, and their folders would all go as
+   * orphans. Leaving the account removes it (`removeAll`), the only thing that does.
    */
   fun dropOrphans(books: File) {
     synchronized(lock) {
-      if (!readCleanly) return
+      if (!readCleanly || file?.asides(ASIDE_PREFIX)?.isNotEmpty() == true) return
       val named = flow.value.map { it.folder }.toSet()
       books.listFiles()?.filter { it.isDirectory && it.name !in named }?.forEach { it.deleteRecursively() }
     }

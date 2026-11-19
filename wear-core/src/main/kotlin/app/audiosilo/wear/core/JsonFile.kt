@@ -125,6 +125,10 @@ class JsonFile<T>(
    */
   fun setAside(prefix: String): Boolean = moveAside(prefix) || !file.exists()
 
+  /** The files `moveAside(prefix)` left beside this one. */
+  fun asides(prefix: String): List<File> =
+    file.absoluteFile.parentFile?.listFiles { f -> f.name.startsWith(prefix) }?.toList() ?: emptyList()
+
   /**
    * Store `value` (null removes the file). False when it could not be stored (a full disk: the
    * memory copy goes on; the next write tries again). With a `writer` it is queued there and true

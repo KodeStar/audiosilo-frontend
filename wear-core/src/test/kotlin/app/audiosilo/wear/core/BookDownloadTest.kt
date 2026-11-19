@@ -461,8 +461,9 @@ class DownloadIndexTest {
   }
 
   // An index that could not be read is set aside and the watch starts with no books (fe#219), but
-  // that launch does not know which books the folders hold: it drops none of them. A later launch
-  // that reads its index (here none, as nothing was written since) drops the folders no record names.
+  // that launch does not know which books the folders hold: it drops none of them. Nor does a
+  // later launch, whose new index reads cleanly but says nothing of the books the one set aside
+  // named: while that file is there, every folder stays. Leaving the account removes both.
   @Test
   fun anIndexSetAsideAsUnreadableDropsNoFolder() {
     val books = File(dir, "books").apply { mkdirs() }
@@ -478,7 +479,36 @@ class DownloadIndexTest {
     unread.enqueue(REF, "Book", null, T0)
     unread.dropOrphans(books)
     assertEquals(listOf("folder-1", "folder-2"), books.list()!!.sorted())
+    // The next launch reads the index written since, which names one book: the folders of the
+    // books the old index named are no orphans of it.
+    DownloadIndex(index).dropOrphans(books)
+    assertEquals(listOf("folder-1", "folder-2"), books.list()!!.sorted())
+    // Nor with no index at all (its last book removed).
     unread.remove(REF)
+    assertFalse(index.exists())
+    DownloadIndex(index).dropOrphans(books)
+    assertEquals(listOf("folder-1", "folder-2"), books.list()!!.sorted())
+    assertTrue("kept aside", dir.list()!!.any { it.startsWith("downloads-unread-") })
+  }
+
+  // Leaving the account removes every book and the index set aside with them, so the next
+  // account's launches drop orphans again.
+  @Test
+  fun leavingTheAccountRemovesTheIndexSetAside() {
+    val books = File(dir, "books").apply { mkdirs() }
+    File(books, "folder-1/000.m4a").apply { parentFile.mkdirs() }.writeText("x")
+    val index = File(dir, "downloads.json").apply { writeText("{not json") }
+    val unread = DownloadIndex(index)
+    assertTrue(dir.list()!!.any { it.startsWith("downloads-unread-") })
+    var asideWhileRemoving = false
+    unread.removeAll {
+      asideWhileRemoving = dir.list()!!.any { it.startsWith("downloads-unread-") }
+      books.deleteRecursively()
+    }
+    assertTrue("the books go first: a kill between leaves the folders kept, not orphans", asideWhileRemoving)
+    assertFalse(dir.list()!!.any { it.startsWith("downloads-unread-") })
+    // A kill inside a later removal leaves an orphan, and the launch drops it.
+    File(books, "folder-left/000.m4a").apply { parentFile.mkdirs() }.writeText("x")
     DownloadIndex(index).dropOrphans(books)
     assertTrue(books.list()!!.isEmpty())
   }

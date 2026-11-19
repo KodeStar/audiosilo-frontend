@@ -4295,8 +4295,11 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   `DownloadIndex.whileKept` (the index's lock, while the record is still there in that folder), and
   a removal takes the record, then deletes the files, under the same lock (`remove(ref) { files }`),
   so a run going on never makes the folder again after; a kill between the record and the files
-  leaves a folder no record names, which the next launch drops (`dropOrphans`, off the main thread,
-  not while the index is in the way).
+  leaves a folder no record names, which the next launch drops (`dropOrphans`, off the main thread).
+  Not at a launch whose index could not be read, and not while one set aside
+  (`downloads-unread-*.json`) is still there: it is never joined back, so the index written since
+  reads cleanly without the books that one named, and their folders stay rather than go as
+  orphans. Leaving the account removes them and it (`DownloadIndex.removeAll`); nothing else does.
 - **Storage (decision 11)**: `TokenStore` seals the token with a non-exportable Keystore
   AES-GCM key (`audiosilo.session`), ciphertext and `device_id` in `noBackupFilesDir`;
   `allowBackup=false` and `data_extraction_rules.xml` exclude every domain. `device_name` is
