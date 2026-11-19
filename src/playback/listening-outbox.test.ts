@@ -102,6 +102,7 @@ import {
   resumeLookupOf,
   writeMirror,
 } from './progress-sync';
+import { provideSpanCut } from './span-cut';
 /* eslint-enable import/first */
 
 const OUTBOX = 'audiosilo.listeningOutbox';
@@ -1481,6 +1482,66 @@ describe('flushOutbox', () => {
       expect(await unsentListens('c1')).toBe(0);
       expect(c.syncListening).toHaveBeenCalledTimes(1);
     } finally {
+      forgetRateLimit('c1');
+    }
+  });
+
+  // v2.7.0 verify: a sign-out during a 429's wait sent only the held events. The span still
+  // playing closed at the sign-out's stop, after the last send, and the stop's flush waited
+  // out the 429, so the purge dropped the listening since the 429 with no warning. The
+  // playing span is cut into the last send now, and the stop's close gets a last send too.
+  it('a sign-out during a 429 sends the playing span once, then the close of its stop', async () => {
+    await appendEvents('c1', [listen('held')]);
+    const c = client(async (body) => answer(body));
+    noteRateLimit('c1', new ApiError(429, 'slow down', undefined, 60));
+    const cuts: string[] = [];
+    provideSpanCut((cid) => {
+      cuts.push(cid);
+      void closeSpan(span({ from: { pos: 100 }, to: { pos: 200 } }));
+    });
+    try {
+      expect(await unsentListens('c1')).toBe(0);
+      expect(cuts).toEqual(['c1']);
+      expect(sent(c).map((b) => b.events.map((e) => e.kind === 'listen' && e.from_pos))).toEqual([
+        [14400, 100],
+      ]);
+      // The sign-out's stop closes what played since the cut: an ordinary flush still waits
+      // out the 429, the teardown's last send (`flushConnectionSaves`) does not.
+      await closeSpan(span({ from: { pos: 200 }, to: { pos: 230 } }));
+      await flushOutbox('c1');
+      expect(c.syncListening).toHaveBeenCalledTimes(1);
+      await flushOutbox('c1', { lastChance: true });
+      expect(sent(c).map((b) => b.events.map((e) => e.kind === 'listen' && e.from_pos))).toEqual([
+        [14400, 100],
+        [200],
+      ]);
+      expect(await outboxEvents('c1')).toEqual([]);
+      expect(rateLimited('c1')).toBe(true);
+    } finally {
+      provideSpanCut(null);
+      forgetRateLimit('c1');
+    }
+  });
+
+  // What the last send could not deliver is in the count the confirm names, the playing
+  // span's listening too, not purged unseen.
+  it('unsentListens counts the playing span when the last send fails', async () => {
+    await appendEvents('c1', [listen('held')]);
+    const c = client(async () => {
+      throw new ApiError(429, 'slow down', undefined, 60);
+    });
+    noteRateLimit('c1', new ApiError(429, 'slow down', undefined, 60));
+    provideSpanCut(() => void closeSpan(span({ from: { pos: 100 }, to: { pos: 200 } })));
+    try {
+      expect(await unsentListens('c1')).toBe(2);
+      expect(c.syncListening).toHaveBeenCalledTimes(1);
+      expect(sent(c)[0].events).toHaveLength(2);
+      // Unreachable, nothing is tried, and a span cut then is counted too.
+      (reachability.isReachable as jest.Mock).mockReturnValue(false);
+      expect(await unsentListens('c1')).toBe(3);
+      expect(c.syncListening).toHaveBeenCalledTimes(1);
+    } finally {
+      provideSpanCut(null);
       forgetRateLimit('c1');
     }
   });

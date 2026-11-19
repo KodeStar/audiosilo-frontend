@@ -44,6 +44,7 @@ import {
   saveProgress,
 } from './progress-sync';
 import { wallClockSeconds } from './rate';
+import { cutPlayingSpan } from './span-cut';
 import { provideStoredSkews } from './stored-skews';
 
 export type { OpenSpan, SpanEnd } from './open-span-doc';
@@ -1187,8 +1188,15 @@ export async function withdrawFinish(
 /**
  * Send a connection's outbox. One flush at a time per connection: a call while one runs
  * makes it go round once more when it ends (a sync that left more goes on by itself).
+ * `lastChance`: the connection's sign-out or removal is making its last send, which tries
+ * the events whatever wait its server asked (a 429), as the legacy queue's does
+ * (`onlyConnection`): the purge after it drops what is left.
  */
-export function flushOutbox(connectionId: string): Promise<void> {
+export function flushOutbox(
+  connectionId: string,
+  opts: { lastChance?: boolean } = {},
+): Promise<void> {
+  if (opts.lastChance) return asLastChance(connectionId, () => flushOutbox(connectionId));
   const running = inFlight.get(connectionId);
   if (running) {
     flushAgain.add(connectionId);
@@ -1263,27 +1271,34 @@ export async function flushAllOutboxes(): Promise<void> {
   await Promise.all([...ids].map((cid) => flushOutbox(cid)));
 }
 
-/** Connections whose sign-out or removal is making its last send (`unsentListens`). */
+/** Connections whose sign-out or removal is making its last send (`flushOutbox`'s
+ * `lastChance`): a flush already running for another caller goes round again under it. */
 const lastChance = new Set<string>();
+
+async function asLastChance(connectionId: string, send: () => Promise<void>): Promise<void> {
+  lastChance.add(connectionId);
+  try {
+    await send();
+  } finally {
+    lastChance.delete(connectionId);
+  }
+}
 
 /**
  * What hasn't reached `connectionId`'s server, after a last send while it is reachable
  * (sign-out and removing a server confirm when any is left): its events, a waiting finish
  * or unfinish too, since removal drops them all. A span another tab left (closed before its
  * close landed) goes into the outbox first, so it is sent or counted, not dropped unseen.
+ * So does the span playing through it (`cutPlayingSpan`, a span opening where it ended):
+ * left open, it closed only at the sign-out's stop, after this count, and a 429's wait
+ * then purged it unseen.
  */
 export async function unsentListens(connectionId: string): Promise<number> {
   await sweepLeftBehind().catch(() => undefined);
-  if (isReachable(connectionId)) {
-    // Whatever wait its server asked (a 429): the last chance tries them, as the legacy
-    // queue's does (`onlyConnection`).
-    lastChance.add(connectionId);
-    try {
-      await flushOutbox(connectionId);
-    } finally {
-      lastChance.delete(connectionId);
-    }
-  }
+  cutPlayingSpan(connectionId);
+  // Behind its close's turn (`closeSpan`), as a sign-out's stop waits it out.
+  await appendInTurn(connectionId, []).catch(() => undefined);
+  if (isReachable(connectionId)) await flushOutbox(connectionId, { lastChance: true });
   return (await pendingSaves(connectionId)).events;
 }
 

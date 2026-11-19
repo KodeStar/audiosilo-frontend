@@ -102,6 +102,7 @@ import { listenerSettings } from './listener-settings';
 import { type GaveWay, givesWayTo, type PlayingClaim, tabClaims } from './playing-claim';
 import { clampRate } from './rate';
 import { createPlaybackService } from './service';
+import { provideSpanCut } from './span-cut';
 import { bookSpeed } from './time-left';
 import { flushTimeSaved, noteSilenceSaved } from './time-saved';
 import { mayNeedWebTranscode } from './transcode';
@@ -1873,6 +1874,8 @@ export function cutListeningSpanNow(connectionId?: string): void {
   if (!span || (connectionId !== undefined && span.connectionId !== connectionId)) return;
   cutListeningSpan();
 }
+// A sign-out's or a removal's last send carries the playing span (`unsentListens`).
+provideSpanCut(cutListeningSpanNow);
 
 /** Web `pagehide`: close the span and send what waits in a keepalive request. */
 function closeSpanOnPageHide() {
@@ -4544,8 +4547,9 @@ export async function teardownBeforeTokenRevoke(connectionId: string): Promise<v
 export async function flushConnectionSaves(connectionId: string): Promise<void> {
   await Promise.all([
     flushConnection(connectionId).catch(() => undefined),
-    // Sync v2's listening outbox (the stop before this closed its span).
-    flushOutbox(connectionId),
+    // Sync v2's listening outbox (the stop before this closed its span), whatever wait its
+    // server asked (a 429): the purge after this drops what is left.
+    flushOutbox(connectionId, { lastChance: true }),
     // The ebook reader's queued places too (Bridge Phase 3b).
     flushReadingConnection(connectionId).catch(() => undefined),
     // And the bookmarks waiting on the device for the server (fe#356).
