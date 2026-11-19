@@ -5335,13 +5335,12 @@ function restreamLoaded(): void {
   const api = resolveClient(np.connectionId);
   const tracks = restreamQueue(np.queue, api, np.libraryId, np.path);
   if (tracks) service?.restream?.(tracks);
-  // The book's server cover too (`nowPlayingOf`), in place as the queue (a start's and an
-  // adoption's checks compare `nowPlaying` by identity): its old token may be revoked. Told
-  // to the screens with the state as it is (`setState({})`).
+  // The book's server cover too (`nowPlayingOf`; the widget and the end of the book read
+  // it), in place as the queue (a start's and an adoption's checks compare `nowPlaying` by
+  // identity): its old token may be revoked.
   const cover = api?.coverUrl(np.libraryId, np.path);
   if (cover && np.cover !== cover && np.cover.split('?')[0] === cover.split('?')[0]) {
     np.cover = cover;
-    usePlayer.setState({});
   }
 }
 useSession.subscribe((state, prev) => {
