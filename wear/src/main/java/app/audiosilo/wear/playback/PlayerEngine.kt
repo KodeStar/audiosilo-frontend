@@ -574,13 +574,13 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     where()?.let { w ->
       val p = b.timeline.bookPosition(w.index, w.positionInTrack)
       if (p.isFinite()) {
-        if (playing && p != position) {
+        if (audioMoved(playing, exo?.isPlaying == true, p, position)) {
           lastAdvance = now
           awaitingAudio = false
           // Moving again after a stall closed its span (SpanRecorder.tick): a player that stood
           // still while it said it played never calls onIsPlayingChanged again, so the span opens
           // here, not at the next 15 s cut with what was heard until then lost (fe#285).
-          if (spans.span == null && exo?.isPlaying == true) {
+          if (spans.span == null) {
             b.timeline.spanEnd(w.index, w.positionInTrack)?.let { spans.open(b.playing, it, rate) }
           }
         }
@@ -643,5 +643,14 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     private const val SPEAKER_KEY = "speakerConfirmed"
 
     fun ms(seconds: Double): Long = if (seconds.isFinite() && seconds > 0) (seconds * 1000).roundToLong() else 0L
+
+    /**
+     * Whether a tick saw the audio move (`lastAdvance`): the player plays (`audioPlaying`), not only
+     * the wish to (`wish`). Held by a call or an alert the wish stays, and the place a tick reads
+     * after the hold began (up to one tick past the last one) would stamp the hold later than its
+     * own stamp.
+     */
+    fun audioMoved(wish: Boolean, audioPlaying: Boolean, at: Double, last: Double): Boolean =
+      wish && audioPlaying && at != last
   }
 }
