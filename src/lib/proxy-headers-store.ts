@@ -36,6 +36,10 @@ export const PROXY_SETS_KEY = 'audiosilo.proxy-sets';
 /** AsyncStorage: `true` while `PROXY_SETS_KEY` holds something. Not a secret. */
 export const PROXY_SETS_MARKER_KEY = 'audiosilo.proxySets';
 
+/** Every write of the item and its marker, one at a time (on the web across the tabs too).
+ * Never taken by a job already holding it: `readProxySets` is not called under it. */
+const writing = tabLock(PROXY_SETS_KEY);
+
 /** The stored item as written: null when there is none, `damaged` when it is not a JSON
  * object (kept as it is). Rejects when the platform refuses the read (a locked keychain). */
 async function readDoc(): Promise<Record<string, unknown> | null | 'damaged'> {
@@ -70,14 +74,16 @@ export async function readProxySets(): Promise<Record<string, ProxyHeaders>> {
   if ((await getItemStrict<boolean>(PROXY_SETS_MARKER_KEY)) !== true) return {};
   const doc = await readDoc();
   if (doc === null) {
-    await removeItem(PROXY_SETS_MARKER_KEY);
+    // Under the writers' lock and only once the item is still missing: a save writes the
+    // marker before the item (`saveProxySets`), and clearing it between the two (another
+    // tab's save, a save in this runtime) would leave an item that is never read again.
+    await writing(async () => {
+      if (!(await getSecure(PROXY_SETS_KEY))) await removeItem(PROXY_SETS_MARKER_KEY);
+    });
     return {};
   }
   return doc === 'damaged' ? {} : setsOf(doc);
 }
-
-/** Every write of the item, one at a time (on the web across the tabs too). */
-const writing = tabLock(PROXY_SETS_KEY);
 
 /**
  * Keep each set of `change` as its origin's (by `set.origin` for a set, by the key for a

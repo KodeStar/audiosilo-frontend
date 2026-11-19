@@ -66,6 +66,33 @@ describe('proxy headers storage: one set per origin (fe#295)', () => {
     expect(await AsyncStorage.getItem(PROXY_SETS_MARKER_KEY)).toBeNull();
   });
 
+  it('keeps the marker of a save under way, its item not written yet', async () => {
+    const original = store.setItemAsync;
+    let release = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    store.setItemAsync = async (k, v, o) => {
+      if (k === PROXY_SETS_KEY) await held;
+      return original(k, v, o);
+    };
+    try {
+      const saving = saveProxySets({ [ORIGIN]: SET });
+      while ((await AsyncStorage.getItem(PROXY_SETS_MARKER_KEY)) !== 'true') {
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      // A read between the marker and the item (another tab's, a hydrate) finds no item
+      // and clears nothing.
+      const reading = readProxySets();
+      await new Promise((r) => setTimeout(r, 10));
+      release();
+      await saving;
+      expect(await reading).toEqual({});
+    } finally {
+      store.setItemAsync = original;
+    }
+    expect(await AsyncStorage.getItem(PROXY_SETS_MARKER_KEY)).toBe('true');
+    expect(await readProxySets()).toEqual({ [ORIGIN]: SET });
+  });
+
   // Hydrate never deletes what this build can't read: another build may (a rollback, a later
   // build with stricter rules).
   it('skips an entry it cannot read, and keeps it through a write of another origin', async () => {
