@@ -1291,15 +1291,15 @@ const MAX_ROUNDS = 50;
 async function flushOnce(connectionId: string): Promise<void> {
   if (!sessionReady()) return;
   await recoverOpenSpan();
+  // The server asked to wait (a 429 until its `Retry-After`): the events stay, and go once
+  // the wait is over (`onRateLimitOver`, below).
+  if (rateLimited(connectionId)) return;
   // Read again at each round's send (`liveClient`): a re-pair during the flush changes the
   // token, and a round sent with the old one is refused (401).
   const client = liveClient(connectionId);
   // A connection gone: its events are purged with it (`onConnectionRemoved`).
   if (!client) return;
   await giveUpOld(connectionId);
-  // The server asked to wait (a 429 until its `Retry-After`): the events stay, and go once
-  // the wait is over (`onRateLimitOver`, below).
-  if (rateLimited(connectionId)) return;
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const pending = await outboxEvents(connectionId);
     if (pending.length === 0) return;

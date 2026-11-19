@@ -3,6 +3,7 @@ import { routed } from '@/cast/routed-service';
 import { corsModeFor } from '@/lib/cors-mode';
 import { pageLocation, sameOrigin } from '@/lib/same-origin';
 
+import { sameTrackOrder } from './book-queue';
 import { supportsVoiceBoost } from './effects';
 import {
   AutoplayBlockedError,
@@ -586,9 +587,7 @@ class WebPlaybackService implements PlaybackService {
 
   restream(tracks: PlaybackTrack[]) {
     // The same files in the same order only: the index and the place read the same.
-    if (tracks.length !== this.tracks.length) return;
-    if (tracks.some((t, i) => t.id !== this.tracks[i].id)) return;
-    this.tracks = tracks;
+    if (sameTrackOrder(this.tracks, tracks)) this.tracks = tracks;
   }
 
   async swapTo(

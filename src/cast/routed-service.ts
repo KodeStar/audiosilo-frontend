@@ -1,3 +1,4 @@
+import { sameTrackOrder } from '@/playback/book-queue';
 import type {
   BookRef,
   PlaybackChapter,
@@ -25,10 +26,6 @@ function sameBookLoad(a: LastLoad | null, b: LastLoad | null): boolean {
     a.book.path === b.book.path
   );
 }
-
-/** The same files in the same order (a track's id is its file's path). */
-const sameOrder = (a: PlaybackTrack[], b: PlaybackTrack[]) =>
-  a.length === b.length && a.every((t, i) => t.id === b[i].id);
 
 type Mode = 'local' | 'cast' | 'switching';
 
@@ -109,7 +106,7 @@ export class RoutedPlaybackService implements PlaybackService {
         // files, or one landing after a reset or another book's load, is refused.
         if (this.mode !== 'local') {
           const now = this.lastLoad;
-          if (!now || !sameBookLoad(now, load) || !sameOrder(now.tracks, tracks)) {
+          if (!now || !sameBookLoad(now, load) || !sameTrackOrder(now.tracks, tracks)) {
             return 'refused';
           }
           this.lastLoad = load;
@@ -126,7 +123,7 @@ export class RoutedPlaybackService implements PlaybackService {
    * them, and so does the queue a route switch hands over (a receiver streams on its cast
    * token, never these). */
   restream(tracks: PlaybackTrack[]): void {
-    if (this.lastLoad && sameOrder(this.lastLoad.tracks, tracks)) {
+    if (this.lastLoad && sameTrackOrder(this.lastLoad.tracks, tracks)) {
       this.lastLoad = { ...this.lastLoad, tracks };
     }
     this.local.restream?.(tracks);

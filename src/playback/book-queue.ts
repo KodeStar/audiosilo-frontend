@@ -271,12 +271,7 @@ export function buildBookQueue(
       // A downloaded book has a local uri for every file; the `api?.streamUrl` fallback is
       // only for streaming (api present). The final `?? ''` is unreachable for a book the
       // caller vetted as playable (downloaded => all-local, or streaming => api present).
-      url:
-        localUri ??
-        (transcoded
-          ? api.streamUrl(libraryId, s.path, false, { transcode: true })
-          : api?.streamUrl(libraryId, s.path)) ??
-        '',
+      url: localUri ?? (api ? streamUrlOf(api, libraryId, s.path, transcoded) : ''),
       headers: localUri ? undefined : headers,
       title: book.title,
       album: book.series || book.title,
@@ -340,11 +335,19 @@ export function buildBookQueue(
   };
 }
 
-/** The same address, whatever its query (the media token rides in it). */
-const sameAddress = (a: string, b: string) => a.split('?')[0] === b.split('?')[0];
+/** A streamed file's url: through the transcoder when the track is `transcoded`. */
+function streamUrlOf(api: ApiClient, libraryId: number, path: string, transcoded?: boolean) {
+  return transcoded
+    ? api.streamUrl(libraryId, path, false, { transcode: true })
+    : api.streamUrl(libraryId, path);
+}
 
-const sameHeaders = (a?: Record<string, string>, b?: Record<string, string>) =>
-  JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+/** The same files in the same order (a track's id is its file's path). */
+export const sameTrackOrder = (a: PlaybackTrack[], b: PlaybackTrack[]) =>
+  a.length === b.length && a.every((t, i) => t.id === b[i].id);
+
+/** The address without its query (the media token rides in it). */
+const addressOf = (url: string) => url.split('?')[0];
 
 /**
  * A loaded queue's `tracks` with each one the server streams addressed through `api` as it
@@ -362,21 +365,35 @@ export function restreamTracks(
 ): PlaybackTrack[] | null {
   if (!api) return null;
   const headers = Platform.OS !== 'web' ? api.authHeaders() : undefined;
+  const headersKey = JSON.stringify(headers ?? null);
   const cover = api.coverUrl(libraryId, bookPath);
+  const coverAddress = addressOf(cover);
   const prefix = `${libraryId}:`;
   let changed = false;
   const next = tracks.map((t) => {
     if (t.local || !t.id.startsWith(prefix)) return t;
-    const path = t.id.slice(prefix.length);
-    const url = t.transcoded
-      ? api.streamUrl(libraryId, path, false, { transcode: true })
-      : api.streamUrl(libraryId, path);
-    const artwork = t.artwork !== undefined && sameAddress(t.artwork, cover) ? cover : t.artwork;
-    if (url === t.url && artwork === t.artwork && sameHeaders(t.headers, headers)) return t;
+    const url = streamUrlOf(api, libraryId, t.id.slice(prefix.length), t.transcoded);
+    const artwork =
+      t.artwork !== undefined && addressOf(t.artwork) === coverAddress ? cover : t.artwork;
+    const sameHeaders = JSON.stringify(t.headers ?? null) === headersKey;
+    if (url === t.url && artwork === t.artwork && sameHeaders) return t;
     changed = true;
     return { ...t, url, headers, artwork };
   });
   return changed ? next : null;
+}
+
+/** `restreamTracks` into `queue` in place (every check of a start or a swap compares the
+ * queue by identity); the new tracks, or null when nothing changed. */
+export function restreamQueue(
+  queue: BookQueue,
+  api: ApiClient | null,
+  libraryId: number,
+  bookPath: string,
+): PlaybackTrack[] | null {
+  const tracks = restreamTracks(queue.tracks, api, libraryId, bookPath);
+  if (tracks) queue.tracks = tracks;
+  return tracks;
 }
 
 /** Distinct audio files referenced by a book's chapters, in play order, with a

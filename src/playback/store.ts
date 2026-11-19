@@ -40,7 +40,7 @@ import {
   fileDurationOf,
   FINISHED_TOLERANCE,
   locate,
-  restreamTracks,
+  restreamQueue,
   shortOfFileEnd,
   toBookPosition,
   trackIdOf,
@@ -3835,8 +3835,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // in (the same object: `partialQueues` keys on it).
       const loadedBook = (): NowPlaying => {
         const now = clientNow();
-        const tracks = restreamTracks(queue.tracks, now, libraryId, book.rel_path);
-        if (tracks) queue.tracks = tracks;
+        restreamQueue(queue, now, libraryId, book.rel_path);
         return nowPlayingOf(ref, book, queue, now, local);
       };
       const svc = await ensureService();
@@ -5320,23 +5319,15 @@ usePlayer.subscribe((state, prev) => {
 });
 
 /**
- * The loaded book's streams on its connection as it is now: a re-pair gives it another token
- * (the old one may be revoked), and the tracks take it from the next request
- * (`restreamTracks`): the store's queue, which a Retry, a reload and the download hot-swap
- * load from, and the engine's (`restream`: its next file, a transcoded stream's seek). In
- * place, the queue still the book's: every check of a start or a swap compares `nowPlaying`
- * by identity. An engine without `restream` (native) keeps the items it loaded until its
- * next load. Run on each change of the connection list; nothing changes when the book's
- * streams already have those addresses.
+ * The loaded book's streams on its connection as it is now (a re-pair's token), in the
+ * store's queue, which a Retry, a reload and the download hot-swap load from, and in the
+ * engine (`PlaybackService.restream`). Run on each change of the connection list.
  */
 function restreamLoaded(): void {
   const np = usePlayer.getState().nowPlaying;
   if (!np) return;
-  const client = resolveClient(np.connectionId);
-  const tracks = restreamTracks(np.queue.tracks, client, np.libraryId, np.path);
-  if (!tracks) return;
-  np.queue.tracks = tracks;
-  service?.restream?.(tracks);
+  const tracks = restreamQueue(np.queue, resolveClient(np.connectionId), np.libraryId, np.path);
+  if (tracks) service?.restream?.(tracks);
 }
 useSession.subscribe((state, prev) => {
   if (state.connections !== prev.connections) restreamLoaded();
