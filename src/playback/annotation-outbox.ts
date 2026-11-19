@@ -459,7 +459,17 @@ async function sendGroup(
       // keeps no Delete out, so the send checks, right before the POST.
       if (!(await stillWaiting(e))) continue;
       posting = true;
-      held.push(await addBookmark(connectionId, e.libraryId, e.path, e.position, e.note, e.label));
+      const made = await addBookmark(
+        connectionId,
+        e.libraryId,
+        e.path,
+        e.position,
+        e.note,
+        e.label,
+      );
+      // Among the book's now, for those behind it (an answer with no bookmark in it says
+      // nothing to compare them with).
+      if (made) held.push(made);
     } catch (err) {
       if (posting && refusedForGood(err)) {
         console.warn('[bookmarks] the server refused a queued bookmark', err);

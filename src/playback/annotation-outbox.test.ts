@@ -335,6 +335,20 @@ describe('sending', () => {
     expect(held.map((b) => b.position)).toEqual([100, 200]);
   });
 
+  it("sends the rest of a book's after a POST that answered with no bookmark", async () => {
+    const { client, held, state } = server('c1', offline());
+    await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+    await addBookmarkOrQueue('c1', 1, 'a/book', 200);
+    await idle();
+    state.down = null;
+    client.addBookmark.mockClear();
+    client.addBookmark.mockResolvedValueOnce(undefined);
+    await flushBookmarks();
+    expect(client.addBookmark).toHaveBeenCalledTimes(2);
+    expect(held.map((b) => b.position)).toEqual([200]);
+    expect(await queuedBookmarks()).toEqual([]);
+  });
+
   it('drops one the server refuses for good and sends the rest', async () => {
     const { client, held, state } = server('c1', offline());
     await addBookmarkOrQueue('c1', 1, 'a/book', 100);
