@@ -3,6 +3,7 @@ import type { MyDevice } from '@/api/types';
 import {
   accountParentKey,
   ACTIVE_NOW_MS,
+  canManageProxySet,
   canRevoke,
   clientAppName,
   deviceGlyph,
@@ -212,5 +213,67 @@ describe('memberSignIns', () => {
     expect(memberSignIns({ ...d, current: false, member_sign_ins: m })).toEqual(m);
     expect(memberSignIns({ ...d, current: true, member_sign_ins: m })).toEqual([]);
     expect(memberSignIns({ ...d, current: false })).toEqual([]);
+  });
+});
+
+// fe#295: one set per address, shared by everyone on the device. A demo or a kid's account
+// must not remove it for the others.
+describe('canManageProxySet', () => {
+  const AWAY = 'https://books.example.com';
+  const set = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 's' }] };
+  const conn = (id: string, user: { is_demo?: boolean; member_kind?: 'kid' } = {}) => ({
+    id,
+    serverUrl: AWAY,
+    user,
+  });
+  const owner = conn('srv.1');
+  const kid = conn('srv.2', { member_kind: 'kid' });
+  const demo = conn('srv.3', { is_demo: true });
+
+  it('always lets a full account manage the set, shared or not', () => {
+    expect(canManageProxySet(owner, set, [owner, kid])).toBe(true);
+    expect(canManageProxySet(owner, null, [owner])).toBe(true);
+    expect(canManageProxySet(null, set, [owner])).toBe(false);
+  });
+
+  it("never lets a demo or a kid's account change a set a full account here signs in through", () => {
+    expect(canManageProxySet(kid, set, [owner, kid])).toBe(false);
+    expect(canManageProxySet(demo, set, [owner, demo])).toBe(false);
+    // Through any of that account's addresses.
+    const elsewhere = { ...conn('srv.1'), serverUrl: 'http://192.168.1.5:8080' };
+    expect(canManageProxySet(kid, set, [elsewhere, kid])).toBe(true);
+    expect(
+      canManageProxySet(kid, set, [{ ...elsewhere, addresses: { away: `${AWAY}/` } }, kid]),
+    ).toBe(false);
+  });
+
+  it('lets them manage one no full account here uses (theirs alone, or among themselves)', () => {
+    expect(canManageProxySet(kid, set, [kid])).toBe(true);
+    expect(canManageProxySet(demo, set, [demo, kid])).toBe(true);
+    expect(
+      canManageProxySet(
+        kid,
+        set,
+        [conn('other.1'), kid].map((c, i) =>
+          i === 0 ? { ...c, serverUrl: 'https://other.example.net' } : c,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("gives a kid's account the card to add a set only where no full account signs in", () => {
+    expect(canManageProxySet(kid, null, [kid])).toBe(true);
+    expect(canManageProxySet(kid, null, [owner, kid])).toBe(false);
+    expect(canManageProxySet(demo, null, [demo])).toBe(false);
+  });
+
+  // The card can move a set to another of the connection's addresses ("Send to"): one a
+  // full account signs in through is not theirs to write either.
+  it('counts every address the card could write to, not only the one the set is kept for', () => {
+    const HOME = 'https://home.example.org';
+    const both = { ...kid, addresses: { home: HOME } };
+    const atHome = { ...conn('other.1'), serverUrl: HOME };
+    expect(canManageProxySet(both, set, [atHome, both])).toBe(false);
+    expect(canManageProxySet(both, set, [both])).toBe(true);
   });
 });

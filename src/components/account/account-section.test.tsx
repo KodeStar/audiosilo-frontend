@@ -349,6 +349,27 @@ describe('AccountSection', () => {
     expect(screen.queryByText('proxy-secret')).toBeNull();
   });
 
+  // fe#295: the set is its address's, shared by everyone on the device: a demo or a kid's
+  // account can't remove it for a full account that signs in through it.
+  it.each([
+    ['a demo', { is_demo: true }],
+    ["a kid's", { member_kind: 'kid' as const, has_password: false }],
+  ])(
+    'hides the proxy headers from %s account while a full account here uses them',
+    async (_, limited) => {
+      mockSession.connections[0].user = user({ ...limited, role: 'user' });
+      mockSession.connections[1].serverUrl = 'https://books.example';
+      mockSession.proxySets = {
+        'https://books.example': {
+          origin: 'https://books.example',
+          headers: [{ name: 'X-Proxy', value: 'proxy-secret' }],
+        },
+      };
+      await mountWithPortal(<AccountSection connectionId="c1" />);
+      expect(screen.queryByTestId('proxy-headers-card')).toBeNull();
+    },
+  );
+
   it("hides API keys and pairing from a kid's account, which can't have either", async () => {
     mockSession.connections[0].user = user({
       role: 'user',

@@ -24,7 +24,7 @@ import { connectionProxySet } from '@/lib/proxy-headers';
 import { useSession } from '@/stores/session';
 import { watchLink } from '@/watch/link';
 
-import { resolveAccountCid, signedInSessions } from './account-model';
+import { canManageProxySet, resolveAccountCid, signedInSessions } from './account-model';
 import { ApiKeyCreatedModal } from './api-key-created-modal';
 import { ApiKeysSection, ApiKeysUnavailable } from './api-keys-section';
 import { WatchCard } from './watch-card';
@@ -130,11 +130,12 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   // reader, bring it back once the request failed, and ask again, twice a second for good.
   const capsUnread = !caps && (serverInfo.isPaused || serverInfo.errorUpdateCount > 0);
   const demo = !!user?.is_demo;
-  const hasDemoSet = useSession(
-    (st) => !!connection && !!connectionProxySet(st.proxySets, connection),
-  );
   // A kid's account (8b-1) can't pair a device or have API keys (the server refuses both).
   const kid = isKidAccount(user);
+  const proxySet = useSession((st) =>
+    connection ? connectionProxySet(st.proxySets, connection) : null,
+  );
+  const showProxyHeaders = canManageProxySet(connection, proxySet, connections);
 
   // Side by side where the measured column fits both (assumed until it is measured, off
   // a phone, so a desktop doesn't flash a single column first).
@@ -201,10 +202,9 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
       <AccountAddresses cid={cid} caps={caps} capsUnread={capsUnread} />
 
       {/* Not gated on the server's flags: needed most when a proxy turns every request
-          away (fe#167). A demo account has no use for it, unless its server's address has a
-          set (a demo started behind a proxy): then it can be seen and removed here like
-          anyone's. */}
-      {!demo || hasDemoSet ? <ProxyHeadersCard connectionId={cid} /> : null}
+          away (fe#167). Never a demo or kid account's to change while someone else here
+          signs in through the same set (`canManageProxySet`). */}
+      {showProxyHeaders ? <ProxyHeadersCard connectionId={cid} /> : null}
 
       {caps?.my_devices === true || capsUnread ? (
         <DevicesSection connectionId={cid} serverName={serverName} />

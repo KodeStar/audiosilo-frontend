@@ -442,7 +442,11 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
 - **Edited** on the Account page's Proxy headers card (`ProxyHeadersCard`, shown whatever the
   server's flags, since it is needed most when the proxy refuses everything; for a demo
   account only when a set is kept for one of its addresses, as for a demo started behind a
-  proxy), with a choice of the connection's origins (`proxyOriginChoices`). It edits the
+  proxy; never for a demo or a kid's account while a full account on the device reaches an
+  address the card could write to (the set's, or another of the connection's it could add or
+  move one to), `canManageProxySet`: the set is shared, and removing or replacing it would turn
+  that person's requests away too), with a choice of the connection's origins
+  (`proxyOriginChoices`). It edits the
   address's set, which it says is shared with everyone here who reaches that address
   (`proxy-headers-shared`); saving it for another of the connection's addresses moves it
   (`setProxySet(origin, set, movedFrom)`), and Remove removes it for everyone. A value is never

@@ -1,6 +1,8 @@
-import type { MyDevice } from '@/api/types';
+import type { MyDevice, User } from '@/api/types';
 import type { IconName } from '@/components/ui/icon';
 import { parseYouSection, youTitleKey } from '@/components/you/you-model';
+import { isKidAccount } from '@/lib/account';
+import { type ProxyHeaders, proxyOriginChoices } from '@/lib/proxy-headers';
 import type { NavRoute } from '@/lib/root-stack';
 
 /**
@@ -44,6 +46,44 @@ export function resolveAccountCid(
   if (picked && connectionIds.includes(picked)) return picked;
   if (defaultId && connectionIds.includes(defaultId)) return defaultId;
   return connectionIds[0] ?? null;
+}
+
+/** What the proxy headers card's rule reads of a connection. */
+type ProxyCardConnection = {
+  id: string;
+  serverUrl: string;
+  addresses?: { home?: string; away?: string };
+  user?: Pick<User, 'is_demo' | 'member_kind'> | null;
+};
+
+/** A demo or a kid's account: one that never decides for the others on the device. */
+const isLimitedAccount = (user: ProxyCardConnection['user']) =>
+  !!user?.is_demo || isKidAccount(user);
+
+/**
+ * Whether `conn`'s account page shows the "Proxy headers" card (fe#167), where the set kept
+ * for one of its addresses (`set`, null: none) is added, changed, moved to another of them
+ * and removed. A set is its address's, shared by everyone on the device who signs in there
+ * (fe#295), so a demo or a kid's account never gets the card while a full account here
+ * (`connections`) reaches any address the card could write to: removing or replacing a set
+ * there would turn that person's requests away too. With no such account it does (their own
+ * to manage, like anyone's), except a demo with no set at all, which has no use for one.
+ */
+export function canManageProxySet(
+  conn: ProxyCardConnection | null,
+  set: ProxyHeaders | null,
+  connections: readonly ProxyCardConnection[],
+): boolean {
+  if (!conn) return false;
+  if (!isLimitedAccount(conn.user)) return true;
+  if (!set && conn.user?.is_demo) return false;
+  const writable = proxyOriginChoices(conn, set?.origin);
+  return !connections.some(
+    (c) =>
+      c.id !== conn.id &&
+      !isLimitedAccount(c.user) &&
+      proxyOriginChoices(c).some((o) => writable.includes(o)),
+  );
 }
 
 /**
