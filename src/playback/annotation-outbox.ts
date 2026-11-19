@@ -49,8 +49,9 @@ import { onlyConnection, queuedRoute } from './progress-sync';
  *   holds up the connection's queue. A replay stops only at a failure that is the
  *   connection's (`connectionFailure`).
  * - Not for ever: one still failing `GIVE_UP_MS` after it first failed against a server that
- *   answered is dropped, logged (`givenUp`). Never on its first failure, and a server that is
- *   away, busy or waiting for a sign-in does not count.
+ *   answered, and after `GIVE_UP_TRIES` such failures, is dropped, logged (`givenUp`). Never
+ *   on its first failures, and a server that is away, busy or waiting for a sign-in does not
+ *   count.
  * - Retried: at launch, on the server's reconnect and once a connection a 401 flagged is
  *   signed in again (`startBookmarkSync`), with the stored queues in the foreground and on the
  *   web's focus and `online` (`startQueueReplays`), and with a backoff while a reachable
@@ -92,8 +93,10 @@ export type QueuedBookmark = {
    * replay's key for it (`queuedKey`). */
   updated_at: string;
   /** When a send of it first failed against a server that answered (ISO, this device's
-   * clock): the outbox gives up on it `GIVE_UP_MS` later (`givenUp`). Absent until then. */
+   * clock), and how many have failed so: the outbox gives up on it past `GIVE_UP_MS` and
+   * `GIVE_UP_TRIES` (`givenUp`). Absent until its first such failure. */
   failedSince?: string;
+  failures?: number;
 };
 
 /** What `addBookmarkOrQueue` did: made on the server, or kept here to send later. */
@@ -103,8 +106,11 @@ type AddBookmarkOutcome = { made: Bookmark } | { queued: QueuedBookmark };
  * than this before it (the server's clock may be a little behind the device's). */
 const SAME_BOOKMARK_WINDOW_MS = 24 * 60 * 60_000;
 /** How long a bookmark may keep failing against a server that answers before the outbox
- * gives up on it (`givenUp`). */
+ * gives up on it (`givenUp`)... */
 const GIVE_UP_MS = 7 * 24 * 60 * 60_000;
+/** ...and how many failed sends at least: two a week apart, with no try between them (the
+ * app closed, the server away), are not a week of failing. */
+const GIVE_UP_TRIES = 10;
 /** The backoff while a server answers but fails (a 5xx, a 429): from this... */
 const RETRY_MIN_MS = 30_000;
 /** ...doubling up to this. */
@@ -122,7 +128,8 @@ const isQueued = (v: unknown): v is Claimed<QueuedBookmark> =>
   typeof v.note === 'string' &&
   typeof v.updated_at === 'string' &&
   (v.label === undefined || typeof v.label === 'string') &&
-  (v.failedSince === undefined || typeof v.failedSince === 'string');
+  (v.failedSince === undefined || typeof v.failedSince === 'string') &&
+  (v.failures === undefined || typeof v.failures === 'number');
 
 const entriesOf = (raw: unknown): Claimed<QueuedBookmark>[] =>
   Array.isArray(raw) ? raw.filter(isQueued) : [];
@@ -204,7 +211,7 @@ export async function queuedBookmarks(connectionId?: string): Promise<QueuedBook
 
 // --- Adding -------------------------------------------------------------------------------
 
-type NewEntry = Omit<QueuedBookmark, 'id' | 'updated_at' | 'failedSince'>;
+type NewEntry = Omit<QueuedBookmark, 'id' | 'updated_at' | 'failedSince' | 'failures'>;
 
 /** Append a bookmark behind every other one waiting. Rejects when its connection was removed
  * since `since` (its sign-in, `connectionGeneration`), or when storage refused the write. */
@@ -355,21 +362,28 @@ const connectionFailure = (err: unknown) =>
 const askedToWait = (err: unknown) =>
   isServerBusyError(err) || (err instanceof ApiError && err.status === 429);
 
-/** Whether `e` has kept failing for long enough to give up on it (`GIVE_UP_MS` since its
- * first failure that counted). */
+/** Whether `e` has kept failing for long enough to give up on it: `GIVE_UP_MS` since its
+ * first failure that counted, and `GIVE_UP_TRIES` of them before this one. */
 const givenUp = (e: QueuedBookmark) =>
-  e.failedSince !== undefined && Date.now() - Date.parse(e.failedSince) >= GIVE_UP_MS;
+  e.failedSince !== undefined &&
+  (e.failures ?? 0) >= GIVE_UP_TRIES &&
+  Date.now() - Date.parse(e.failedSince) >= GIVE_UP_MS;
 
-/** Record when the bookmarks `ids` first failed (`failedSince`). Storage that refuses the
- * write leaves it to their next failure. */
+/** Record a failure that counts for the bookmarks `ids`: one more (`failures`), and when
+ * the first was (`failedSince`). Storage that refuses the write leaves it uncounted. */
 function noteFailing(ids: ReadonlySet<string>): Promise<void> {
   if (ids.size === 0) return Promise.resolve();
   return withLock(async () => {
     const queue = await readQueue();
-    const fresh = (e: QueuedBookmark) => ids.has(e.id) && e.failedSince === undefined;
-    if (!queue.some(fresh)) return;
-    const failedSince = new Date().toISOString();
-    await writeQueue(queue.map((e) => (fresh(e) ? { ...e, failedSince } : e)));
+    if (!queue.some((e) => ids.has(e.id))) return;
+    const now = new Date().toISOString();
+    await writeQueue(
+      queue.map((e) =>
+        ids.has(e.id)
+          ? { ...e, failedSince: e.failedSince ?? now, failures: (e.failures ?? 0) + 1 }
+          : e,
+      ),
+    );
   }).catch(() => undefined);
 }
 
@@ -391,7 +405,7 @@ async function sendGroup(
   const kept: QueuedBookmark[] = [];
   // The books a bookmark that could not be sent holds back for the rest of this replay.
   const heldBack = new Set<string>();
-  // Those failing for the first time in a way that counts toward giving up.
+  // Those whose failure in this replay counts toward giving up.
   const failing = new Set<string>();
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i];
@@ -442,7 +456,7 @@ async function sendGroup(
       if (!counts) continue;
       // A failed read is the failure of every one of the book's; a failed POST is its own.
       for (const f of posting ? [e] : entries.slice(i)) {
-        if (contentKeyOf(f) === book && f.failedSince === undefined) failing.add(f.id);
+        if (contentKeyOf(f) === book) failing.add(f.id);
       }
     }
   }

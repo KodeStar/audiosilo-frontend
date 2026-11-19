@@ -419,6 +419,10 @@ describe('sending', () => {
       return s;
     }
     const positions = async () => (await queuedBookmarks()).map((e) => e.position);
+    /** A spell of failing: the tries of an hour's backoff. */
+    async function failFor(tries: number) {
+      for (let i = 0; i < tries; i++) await flushBookmarks();
+    }
 
     it('drops one still failing a week after its first failure, said in the log', async () => {
       const { client, held } = await waiting();
@@ -426,8 +430,8 @@ describe('sending', () => {
       client.addBookmark.mockImplementation((...args: unknown[]) =>
         args[2] === 100 ? Promise.reject(new ApiError(500, 'boom')) : send?.(...args),
       );
-      // Its first failure: kept, as on every try of the week after it.
-      await flushBookmarks();
+      // Its first failures: kept, as on every try of the week after them.
+      await failFor(10);
       expect(await positions()).toEqual([100, 200]);
       jest.setSystemTime(Date.now() + 6 * DAY);
       await flushBookmarks();
@@ -447,7 +451,7 @@ describe('sending', () => {
       client.bookmarks.mockImplementation((...args: unknown[]) =>
         args[1] === 'a/book' ? Promise.reject(new ApiError(404, 'not found')) : read?.(...args),
       );
-      await flushBookmarks();
+      await failFor(10);
       jest.setSystemTime(Date.now() + 6 * DAY);
       await flushBookmarks();
       expect(await positions()).toEqual([100, 200]);
@@ -462,6 +466,20 @@ describe('sending', () => {
       expect(held.map((b) => b.position)).toEqual([300]);
     });
 
+    it('keeps one that failed twice a week apart, with no try between', async () => {
+      const { client, held } = await waiting();
+      client.addBookmark.mockRejectedValueOnce(new ApiError(500, 'boom'));
+      await flushBookmarks();
+      // The app closed, or its server away, for more than the week.
+      jest.setSystemTime(Date.now() + 8 * DAY);
+      client.addBookmark.mockRejectedValueOnce(new ApiError(500, 'boom'));
+      await flushBookmarks();
+      expect(await positions()).toEqual([100, 200]);
+      expect(warn).not.toHaveBeenCalled();
+      await flushBookmarks();
+      expect(held.map((b) => b.position)).toEqual([300, 100, 200]);
+    });
+
     it.each([
       ['is away (a gateway 502)', new ApiError(502, 'bad gateway')],
       ['is busy (a 503)', new ApiError(503, 'busy')],
@@ -470,7 +488,7 @@ describe('sending', () => {
     ])('never gives up while the server %s', async (_name, err) => {
       const { state, held } = await waiting();
       state.down = err;
-      await flushBookmarks();
+      await failFor(12);
       jest.setSystemTime(Date.now() + 30 * DAY);
       await flushBookmarks();
       expect(await positions()).toEqual([100, 200, 300]);

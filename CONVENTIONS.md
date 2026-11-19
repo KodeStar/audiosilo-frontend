@@ -1713,9 +1713,9 @@ wait, and only the POST's own refusal for good drops one. Order holds within a b
 bookmark that can't be sent yet holds back the rest of its book for that replay and the other
 books' go past it, so one that keeps failing never blocks the connection's queue; a replay stops
 only at a failure that is the connection's (no answer, a gateway's 502/504/52x, a 401). One still
-failing 7 days after its first failure against a server that answered (`failedSince`,
-`GIVE_UP_MS`) is dropped with a log line, never on its first failure; a 503 or 429, a server
-that is away and a 401 do not count. A labelled one (Fell asleep) is sent only once its server's flags are known
+failing 7 days after its first failure against a server that answered, and after 10 such
+failures (`failedSince`, `failures`, `GIVE_UP_MS`, `GIVE_UP_TRIES`), is dropped with a log line,
+never on its first failures; a 503 or 429, a server that is away and a 401 do not count. A labelled one (Fell asleep) is sent only once its server's flags are known
 (`labelFlagKnown` reads `/server` when they are not) and waits, label and all, while that read
 fails: here "not known yet" never sends it bare. Signing out or removing a server gives it a last send in
 `flushConnectionSaves` (`sendBookmarksBeforeRemoval`) and the removal purges what is left,
