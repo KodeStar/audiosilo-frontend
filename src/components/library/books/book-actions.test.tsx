@@ -625,6 +625,8 @@ describe('useBookActions, a podcast episode', () => {
     duration_source: 'file',
     removed: false,
   });
+  // The row as the app builds it (the React Compiler).
+  const compiled = withReactCompiler<typeof import('./book-actions')>(require, './book-actions');
   beforeEach(() => {
     mockDownload.mockReset();
     mockUseBook.mockReset();
@@ -733,10 +735,7 @@ describe('useBookActions, a podcast episode', () => {
   // As the app builds it: the React Compiler memoised a read at render against the row's
   // props, so a menu opened again offered what it read the first time (Jest leaves it off).
   it("reads the live fetch status again at each opening of a row's menu, compiled (fe#280)", async () => {
-    const { BookActionsButton: Button } = withReactCompiler<typeof import('./book-actions')>(
-      require,
-      './book-actions',
-    );
+    const { BookActionsButton: Button } = compiled();
     mockCaps = { ...ALL, podcast_fetch: true };
     const b = book({ episode: info(false) });
     const key = qk.podcastFetch('c', 1, b.rel_path);

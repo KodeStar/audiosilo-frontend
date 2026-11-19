@@ -238,7 +238,9 @@ callbacks, effects and framework-free code. One render read is held on purpose: 
 button's item and chapters (`use-cast-button.ts`), which a subscription would lose when the
 cache collects them with only the docked player showing. Jest leaves the compiler off, so a
 test of code that depends on it renders through `withReactCompiler(require, './module')`
-(`src/testing/react-compiler.ts`).
+(`src/testing/react-compiler.ts`), called in a `describe` or at a file's top level, never in
+a test: it builds once in that scope's `beforeAll` (the first build loads Babel and outlasts
+a test's 5 s on a loaded machine) and returns a getter its tests call.
 
 **Client identification.** `ApiClient.request()` sends
 `X-AudioSilo-Client: AudioSilo/<APP_VERSION or dev> (<Platform.OS>)` on every API call

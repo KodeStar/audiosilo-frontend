@@ -59,6 +59,12 @@ import {
 } from '@/components/profiles/connect-intent';
 /* eslint-enable import/first */
 
+// The layout as the app builds it (the React Compiler), built once for the file.
+const compiled = withReactCompiler<typeof import('@/app/connect/_layout')>(
+  require,
+  '../../app/connect/_layout',
+);
+
 beforeEach(() => {
   mockReturning = false;
   store.clear();
@@ -184,10 +190,7 @@ describe("a page restored from the browser's cache", () => {
   // As the app builds it: the React Compiler memoises what the render reads against its
   // inputs, so the gate must change with something the render holds (Jest leaves it off).
   it('takes the flow back in the built app too, compiled', async () => {
-    const { default: Compiled } = withReactCompiler<typeof import('@/app/connect/_layout')>(
-      require,
-      '../../app/connect/_layout',
-    );
+    const { default: Compiled } = compiled();
     seedProfile({ kids: true });
     openAddSomeone();
     const view = await render(<Compiled />);
@@ -300,10 +303,7 @@ describe("a single sign-on's return (a page load, fe#310)", () => {
     ['given', true],
     ['refused', false],
   ])('follows a pass %s in the built app too, compiled', async (_, given) => {
-    const { default: Compiled } = withReactCompiler<typeof import('@/app/connect/_layout')>(
-      require,
-      '../../app/connect/_layout',
-    );
+    const { default: Compiled } = compiled();
     leaveForProvider();
     mockReturning = true;
     await render(<Compiled />);
