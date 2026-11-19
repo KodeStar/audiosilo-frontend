@@ -4219,7 +4219,8 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   sweep and event plans), `FileSpanStore` and `Labels`. Wear-only additions to ported files, for
   the sync rate below (the Apple Watch writes `places.json` every 5 s, unsynced, so it needs none):
   `SpanRecorder.playingTick`, `recover(carry)`, `keep(heardAt)` and the cut's (`tick`, `cut`),
-  `OpenSpan.fromHeard`, `PlaceStore.set(save:)` and `PlaceStore.recover`, and the outbox removing
+  `OpenSpan.fromHeard`, the recorder's `keepPlace` and the stalled-span rule (`Spans.STALL`),
+  `PlaceStore.set(save:)` and `PlaceStore.recover`, the `DurableWriter`, and the outbox removing
   its file when empty. `JsonFile(durable = true)`
   syncs the bytes before its rename and the folder after (a battery death never empties the file): only
   `outbox.json`, `open-span.json`, `open-span-move.json` and `places.json`, whose loss loses listening; the rest
