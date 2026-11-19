@@ -87,7 +87,9 @@ import { onlyConnection, queuedRoute } from './progress-sync';
  *   way).
  *
  * A bookmark the server refuses for good (its POST answered with a 4xx other than 401, 408
- * and 429: the book is gone or out of the account's reach) is dropped, logged. The read
+ * and 429: the book is gone or out of the account's reach) is dropped, logged, as is one whose
+ * `client_id` its server holds on another book (its 409 `client_id_conflict`: that bookmark
+ * landed, and its book has moved since). The read
  * before the send drops nothing: when it fails, whatever the status, the bookmark waits.
  * Labels and ids follow `postBookmark`'s rule at send time (`addBookmark`), on flags that are
  * known: a labelled bookmark is sent only once its server's `/server` has been read (`readFlags`),
@@ -296,6 +298,11 @@ function append(fields: NewEntry, since: number): Promise<QueuedBookmark> {
 /** A server's refusal of a bookmark for good: a 4xx other than 401 (a token it refuses until
  * the connection signs in again), 408 and 429. */
 const refusedForGood = (err: unknown) => isRefusedForGood(err) && !isSignedOutError(err);
+
+/** The 409 a server with `bookmark_client_id` answers for a `client_id` the caller holds on
+ * another book: refused for good for that id (`sendGroup`). */
+const clientIdConflict = (err: unknown) =>
+  err instanceof ApiError && err.status === 409 && err.code === 'client_id_conflict';
 
 /** Whether a failed add is worth keeping to send later: no answer, a server failing or
  * asking for a moment (5xx, 408, 429), or a 401. Not a refusal for good, nor a code bug. */
@@ -711,6 +718,14 @@ async function sendGroup(
       // nothing to compare them with).
       if (made) held.push(made);
     } catch (err) {
+      if (step === 'post' && clientIdConflict(err)) {
+        // Its id is on another of the caller's books. A random UUID meets another only when
+        // this bookmark's own send landed and its server holds it at another path now (a
+        // book moved between a lost answer and this replay), so a fresh id would make it
+        // twice: dropped, said in the log, never sent again.
+        console.warn('[bookmarks] dropped a queued bookmark whose client_id is on another book');
+        continue;
+      }
       if (step === 'post' && refusedForGood(err)) {
         console.warn('[bookmarks] the server refused a queued bookmark', err);
         continue;

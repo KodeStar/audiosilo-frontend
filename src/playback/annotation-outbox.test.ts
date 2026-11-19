@@ -1086,6 +1086,28 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
     expect(held.map((b) => b.id)).toEqual([9]);
   });
 
+  it('drops one whose client_id the server holds on another book, once, and sends the rest', async () => {
+    const { client, held, state } = server('c1', offline());
+    await queueNewBookmark('c1', 1, 'a/book', 100, 'n');
+    await queueNewBookmark('c1', 1, 'a/book', 200, 'n');
+    await idle();
+    const [first] = await queuedBookmarks();
+    state.down = null;
+    client.addBookmark.mockClear();
+    client.addBookmark.mockRejectedValueOnce(
+      new ApiError(409, 'client_id names a bookmark on another book', 'client_id_conflict'),
+    );
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    await flushBookmarks();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('client_id is on another book'));
+    expect(held.map((b) => b.position)).toEqual([200]);
+    expect(await queuedBookmarks()).toEqual([]);
+    // Never sent again, under that id or a new one.
+    await flushBookmarks();
+    expect(sentIds(client).filter((id) => id === first.client_id)).toHaveLength(1);
+    expect(client.addBookmark).toHaveBeenCalledTimes(2);
+  });
+
   it('finds a waiting one on its server by its client_id alone', () => {
     const entry: QueuedBookmark = {
       id: 'e',

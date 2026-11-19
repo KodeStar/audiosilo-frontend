@@ -1780,7 +1780,7 @@ server, any sent only with its id) is never taken for one at its place, so the n
 the same second never stands in for tonight's, and two made in the same second never settle on
 one; a send with its id leaves `fresh` alone (nothing is written before it). When the read
 fails, whatever the status (a 403 or 404 too), the bookmarks wait, and only the POST's own
-refusal for good drops one. A send
+refusal for good drops one (a 409 `client_id_conflict` too: that id landed, and its book moved since, so a fresh id would make it twice). A send
 puts the new bookmark in the book's cached list at once (`addBookmark`), and a replay that finds
 one already there puts the server's in it the same way (`showServerBookmark`), so its waiting row
 and pin give way to it with no gap before the list is read again. Order holds within a book only: a
