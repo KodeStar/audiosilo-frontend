@@ -2091,9 +2091,12 @@ media GETs only.
   `PlayerBridge`, since the module's controller hears of an item change a message late, and a
   remote move held for the controller to catch up keeps the book it was made in); the service
   keeps it (`reportedBook`, set before its listeners hear the report, and `load`'s own book
-  once the load lands) and the store drops a report of a book it does not hold
+  once the load lands). A report of the book a `load` replaced, sent before the load and heard
+  after it landed (the events and the load's answer are two channels), is dropped whole in the
+  service until a report names another book (`stale`), so it is never read as the car's book
+  (a Pause or a place of the loaded book). The store drops a report of a book it does not hold
   (`reportedOtherBook`: one the car or a resumption started, or the one its own load
-  replaces), telling the car sync instead (`onOtherBookReported`, which adopts it on
+  replaces while that load holds the store), telling the car sync instead (`onOtherBookReported`, which adopts it on
   Android). A report that names none (an older binary, a queue loaded without a book, the
   web, a Cast receiver) is taken as before. **Feature-detect every function added after the first shipped
   builds**: the JS bundle can be newer than the installed binary (a store build lags), and an
@@ -3261,17 +3264,27 @@ media GETs only.
   store's book's, saved with it the same way and taken by the engine at that book's next
   load, `setRate`, a change counted as a move is, `localSpeedSets`; a start's load takes the
   store's speed as it stands when the load lands, `playBook`). The app's Pause press
-  (`toggle`) while a report names the other book, the state in which a play press reloads
-  the store's book, is the store's book's alone: it shows paused where it was last heard,
-  its intent over, nothing saved, and the other book plays on, deadline window included
-  (`pauseOwnBook`). A report that names no book (an older binary) keeps the engine's pause,
-  and so does a load of the store's holding the engine (`loadingBook`, `startsInFlight`):
-  the book named then is the one that load replaces.
+  (`toggle`) always reaches the engine (FE-ANDROID-4): whatever plays stops, the other book
+  too, since a report naming the wrong book (the one a load replaced, late) would otherwise
+  leave the sound playing under a paused button. While the reports are the other book's
+  (`pausesAnother`: a report names it, or an adoption of another book is under way and the
+  report names none, an older binary, `adoptsAnother`), the store's book shows paused where
+  it was last heard, its intent over, nothing saved (`pauseOwnBook`); not while a load of
+  the store's holds the engine (`loadingBook`, `startsInFlight`): the book named then is the
+  one that load replaces. While an adoption of another book is under way, a report that
+  names no book is held as that book's (never the store's book's place or state), even once
+  a Pause ended the followed outside play.
   The store's `pause` is "stop the sound" (the sleep timer): while the store's book shows
   playing or loading, the engine pauses whatever it plays, the other book too, and the
-  store's book shows paused. Only a press of the app's
-  own Pause leaves the other book alone; the lock screen, a headset and audio focus pause
-  the engine natively, never through the store. A resumption
+  store's book shows paused; while it shows paused and the engine plays the other book
+  (`engineOtherBookPlays`, told to `onOtherBookPlays` as it turns), the engine is paused all
+  the same. The sleep timer's duration countdown runs while either plays (`soundPlays` in
+  `sleep-timer.ts`), freezes and thaws on `onOtherBookPlays` too, and a shake in the grace
+  after it stopped the other book plays that book again (`resumeOtherBook`, nothing once the
+  engine no longer holds it), never a reload of the store's book; no drift-off is told of
+  the store's book then (it was not heard). An end-of-chapter timer counts the store's
+  book's position, which the other book never moves. The lock screen, a headset and audio
+  focus pause the engine natively, never through the store. A resumption
   meanwhile plays the other book, the one heard (`engineOtherBook`, the car snapshot's
   `resume`, whether the store's book shows paused or finished): the car sync writes the
   snapshot when that book begins playing (`onOtherBookReported`'s `playing`, adopted or

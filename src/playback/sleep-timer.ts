@@ -8,7 +8,15 @@ import { engineTicker } from './engine-ticks';
 import { lastInteraction, noteInteraction, type Interaction } from './last-interaction';
 import { prettifyChapterTitle } from './prettify-title';
 import { wallClockSeconds } from './rate';
-import { selectBookKey, selectBookPosition, selectIsTransportLive, usePlayer } from './store';
+import {
+  engineOtherBookPlays,
+  onOtherBookPlays,
+  resumeOtherBook,
+  selectBookKey,
+  selectBookPosition,
+  selectIsTransportLive,
+  usePlayer,
+} from './store';
 
 /**
  * Wall-clock seconds before the timer fires at which it enters its `ending` phase:
@@ -185,6 +193,10 @@ type Fired = FellAsleep & {
   /** The listener showed they were awake during the grace (resumed by hand, or moved the
    * position): when the window closes it is not a drift-off. Sticky. */
   stirred: boolean;
+  /** What it stopped was the engine's other book (`engineOtherBookPlays`: the car's, while
+   * the timer's book showed paused or was not heard): a shake plays that book again, and the
+   * timer's book was not heard, so no drift-off is told of it. */
+  other: boolean;
 };
 
 /**
@@ -258,17 +270,37 @@ let unwatchPlayback: (() => void) | null = null;
 const playbackWatch = {
   start() {
     if (unwatchPlayback) return;
-    unwatchPlayback = usePlayer.subscribe(() => {
+    const sync = () => {
       syncGrace();
       syncPlaybackFreeze();
       syncChapterHold();
-    });
+    };
+    // The engine's other book starting or stopping (the car's, `soundPlays`) writes nothing
+    // to the player store, so it is watched on its own.
+    const offPlayer = usePlayer.subscribe(sync);
+    const offOther = onOtherBookPlays(sync);
+    unwatchPlayback = () => {
+      offPlayer();
+      offOther();
+    };
   },
   stop() {
     unwatchPlayback?.();
     unwatchPlayback = null;
   },
 };
+
+/**
+ * Is sound playing, for a duration timer's countdown and its firing? The timer's book's
+ * transport (`selectIsTransportLive`), or the engine playing another book while the store
+ * holds the timer's (`engineOtherBookPlays`: Android's car started it and it was not adopted,
+ * so the store's book can show paused while it plays). "30 minutes" is 30 minutes of
+ * whatever plays, and the fire stops that book too (the store's `pause`). An end-of-chapter
+ * timer counts the timer's book's position, which the other book never moves.
+ */
+function soundPlays(player: Parameters<typeof selectIsTransportLive>[0]): boolean {
+  return selectIsTransportLive(player) || engineOtherBookPlays();
+}
 
 /** The countdown and the play-state watch always run together: the timer only cares
  * about play/pause while it has something counting down. */
@@ -533,7 +565,7 @@ function syncPlaybackFreeze() {
   // answer "nothing to do" on essentially all of them: there is no duration countdown to
   // freeze, or the freeze already matches the transport.
   if (state.endsAt === null || state.origin?.kind !== 'duration') return;
-  const live = selectIsTransportLive(usePlayer.getState());
+  const live = soundPlays(usePlayer.getState());
   if (live === (state.frozenAt === null)) return; // already in the right state
   // Only now, on a real freeze/thaw, pay for the book check: a timer whose book has been
   // replaced is over, and must not have its countdown slid (or re-armed) against whatever
@@ -599,7 +631,9 @@ function closeGrace(state: SleepTimerState) {
     .getState()
     .endTimer(
       'expired',
-      fired && !fired.stirred ? { stoppedAt: fired.stoppedAt, touch: fired.touch } : undefined,
+      fired && !fired.stirred && !fired.other
+        ? { stoppedAt: fired.stoppedAt, touch: fired.touch }
+        : undefined,
     );
 }
 
@@ -630,7 +664,7 @@ function syncGrace() {
   const fired = state.fired;
   if (!fired || fired.stirred) return;
   const player = usePlayer.getState();
-  const resumed = selectIsTransportLive(player) && now - fired.at >= PAUSE_SETTLE_MS;
+  const resumed = soundPlays(player) && now - fired.at >= PAUSE_SETTLE_MS;
   const scrubbed = Math.abs(selectBookPosition(player) - fired.stoppedAt) > SCRUB_SECONDS;
   if (resumed || scrubbed) useSleepTimer.setState({ fired: { ...fired, stirred: true } });
 }
@@ -938,13 +972,15 @@ const sleepTimerStore = createStore<SleepTimerState>()((set, get) => {
         return;
       }
       const wasPaused = phase === 'grace';
+      // Read before the re-arm drops it: what the fire stopped is what resumes.
+      const stoppedOther = get().fired?.other === true;
       // A shake or a tap: the listener is awake right here (`last-interaction`).
       noteInteraction();
       if (origin.kind === 'duration') get().startDuration(origin.minutes);
       // The listener asked for one more chapter, so the end of the book is an answer they
       // would accept - unlike the automatic arm, which must not be handed one.
       else get().startChapterTimer({ allowEndOfBook: true });
-      if (wasPaused) resumePlayback();
+      if (wasPaused) resumePlayback(stoppedOther);
     },
 
     cancel: () => get().endTimer('cancelled'),
@@ -1027,7 +1063,7 @@ const sleepTimerStore = createStore<SleepTimerState>()((set, get) => {
       // timer running its course however little it had left to stop.
       // (The `nowPlaying` half is defensive: with nothing loaded the timer has already
       // been ended by `cancelIfBookChanged` before the tick could get here.)
-      if (!player.nowPlaying || !selectIsTransportLive(player)) {
+      if (!player.nowPlaying || !soundPlays(player)) {
         get().endTimer('expired');
         return;
       }
@@ -1039,6 +1075,7 @@ const sleepTimerStore = createStore<SleepTimerState>()((set, get) => {
         stoppedAt: selectBookPosition(player),
         touch: bookKey === null ? null : lastInteraction(bookKey),
         stirred: false,
+        other: engineOtherBookPlays(),
       };
       // Pause FIRST, then restore the gain. The other order would blast the last
       // instant of audio back to full volume, and skipping the restore would leave a
@@ -1080,8 +1117,16 @@ export const useSleepTimer = quietOffScreen(sleepTimerStore, 'remaining', () => 
  * listener already resumed by hand during the grace, so the live state is checked.
  *
  * "Live" is `selectIsTransportLive` (see `store.ts`): a book still buffering its way
- * back has nothing left for us to resume either. */
-function resumePlayback() {
+ * back has nothing left for us to resume either.
+ *
+ * When the fire stopped the engine's other book (`Fired.other`, the car's), that book plays
+ * again (`resumeOtherBook`), or nothing does once the engine no longer holds it: `toggle`
+ * would reload the store's book over it. */
+function resumePlayback(stoppedOther: boolean) {
+  if (stoppedOther) {
+    void resumeOtherBook().catch(() => undefined);
+    return;
+  }
   const player = usePlayer.getState();
   // Nothing loaded (the book ended, or playback was stopped): `toggle` would start a
   // reset engine from nowhere and the stall watchdog would surface a spurious playback

@@ -80,8 +80,19 @@ function buildPlayerStoreMock() {
     /** Pure spies: what the drift prompt and the speed sheet ask the store to do. */
     seekBook: jest.fn((_position: number) => Promise.resolve()),
     setRate: jest.fn((_rate: number) => Promise.resolve()),
+    /** The store's `resumeOtherBook`: the engine's other book (the car's) asked to play. */
+    resumeOtherBook: jest.fn(() => Promise.resolve(true)),
   };
   let outputVolume = 1;
+  /** The store's `engineOtherBookPlays`: the engine plays a book that is not the store's
+   * (Android's car), told to `onOtherBookPlays` listeners as it turns. */
+  let otherPlays = false;
+  const otherPlaysListeners = new Set<() => void>();
+  const setOtherPlays = (on: boolean) => {
+    if (on === otherPlays) return;
+    otherPlays = on;
+    for (const listener of [...otherPlaysListeners]) listener();
+  };
   /** The store's `showsFaultPlace` (`setFaultPlace`). */
   let faultPlace = false;
 
@@ -103,6 +114,8 @@ function buildPlayerStoreMock() {
     pause: () => {
       const done = spies.pause();
       usePlayer.setState({ snapshot: { ...usePlayer.getState().snapshot, state: 'paused' } });
+      // The real `pause` stops whatever the engine plays, the other book too.
+      setOtherPlays(false);
       return done;
     },
     /** A pure spy: the real `toggle` goes through the engine, and a resume that
@@ -164,6 +177,14 @@ function buildPlayerStoreMock() {
       s.snapshot.state === 'playing' || s.snapshot.state === 'loading',
     /** Whether the snapshot is a faulted book's place (`setFaultPlace`). */
     showsFaultPlace: () => faultPlace,
+    engineOtherBookPlays: () => otherPlays,
+    onOtherBookPlays: (listener: () => void) => {
+      otherPlaysListeners.add(listener);
+      return () => {
+        otherPlaysListeners.delete(listener);
+      };
+    },
+    resumeOtherBook: () => spies.resumeOtherBook(),
 
     // --- driving the double ------------------------------------------------
 
@@ -172,6 +193,11 @@ function buildPlayerStoreMock() {
     /** Change the play state the way the real store does: a write that NOTIFIES. */
     setPlayState(state: string) {
       usePlayer.setState({ snapshot: { ...usePlayer.getState().snapshot, state } });
+    },
+    /** The engine starts or stops playing a book that is not the store's (the car's), told
+     * to the `onOtherBookPlays` listeners as the real store tells them. */
+    setOtherBookPlays(on: boolean) {
+      setOtherPlays(on);
     },
     /** Make the next snapshots a faulted book's place, as the store's fault and `showPlace` do. */
     setFaultPlace(on: boolean) {
@@ -196,6 +222,7 @@ function buildPlayerStoreMock() {
     reset() {
       outputVolume = 1;
       faultPlace = false;
+      otherPlays = false;
       usePlayer.setState(initialState(), true);
     },
     clearSpies() {
@@ -204,6 +231,7 @@ function buildPlayerStoreMock() {
       spies.setVolume.mockClear();
       spies.seekBook.mockClear();
       spies.setRate.mockClear();
+      spies.resumeOtherBook.mockClear();
     },
   };
 }
