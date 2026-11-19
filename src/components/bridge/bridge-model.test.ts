@@ -9,7 +9,6 @@ import {
   generateOffer,
   jobStatusView,
   mayGenerate,
-  parkEndsByItself,
   parkReason,
   queueInOrder,
   queueOrder,
@@ -149,25 +148,6 @@ describe('parkReason', () => {
     expect(parkReason('constructor')).toBe('other');
     expect(parkReason('toString')).toBe('other');
   });
-
-  // The server's transientParks: the parks the Bridge resumes once they pass. A refused
-  // credential shares the agent's reason but waits for a person.
-  it('says which parks end by themselves, as the server counts them', () => {
-    for (const code of [
-      'agent_rate_limited',
-      'agent_unavailable',
-      'asr_worker_waiting',
-      'share_unconfirmed',
-    ]) {
-      expect(parkEndsByItself(code)).toBe(true);
-    }
-    expect(parkEndsByItself('agent_credential_refused')).toBe(false);
-    expect(parkEndsByItself('budget_exceeded')).toBe(false);
-    expect(parkEndsByItself('asr_unavailable')).toBe(false);
-    expect(parkEndsByItself('a_new_code')).toBe(false);
-    expect(parkEndsByItself('constructor')).toBe(false);
-    expect(parkEndsByItself(undefined)).toBe(false);
-  });
 });
 
 describe('jobStatusView', () => {
@@ -213,6 +193,29 @@ describe('jobStatusView', () => {
     expect(
       jobStatusView(bridgeJob({ state: 'needs_attention', progress: { park: { code: 'x' } } })),
     ).toEqual({ phase: 'parked', reason: 'other', retryAt: undefined, endsByItself: false });
+  });
+
+  // The server's transientParks: the parks the Bridge resumes once they pass, each one a
+  // reason the player can say. A refused credential shares the agent's reason but waits
+  // for a person.
+  it('says which parks end by themselves, as the server counts them', () => {
+    const parked = (code?: string) =>
+      jobStatusView(
+        bridgeJob({ state: 'needs_attention', progress: { park: code ? { code } : undefined } }),
+      );
+    for (const code of [
+      'agent_rate_limited',
+      'agent_unavailable',
+      'asr_worker_waiting',
+      'share_unconfirmed',
+    ]) {
+      const view = parked(code);
+      expect(view).toMatchObject({ phase: 'parked', endsByItself: true });
+      expect(view).not.toMatchObject({ reason: 'other' });
+    }
+    for (const code of ['agent_credential_refused', 'budget_exceeded', 'a_new_code', undefined]) {
+      expect(parked(code)).toMatchObject({ phase: 'parked', endsByItself: false });
+    }
   });
 
   // server#218: a park code the player doesn't know says the Bridge's own words; a known

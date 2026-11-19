@@ -270,12 +270,6 @@ const TRANSIENT_PARKS: ReadonlySet<string> = new Set([
   'share_unconfirmed',
 ]);
 
-/** Whether a park ends by itself, so with no time to name there is nothing to fix in the
- * console. By the code, not the reason: `agent` also groups a refused credential. */
-export function parkEndsByItself(code: string | undefined): boolean {
-  return code !== undefined && TRANSIENT_PARKS.has(code);
-}
-
 /** How a job's status reads: its phase, the stage, the counts and ETA when known, the
  * park's reason and when it resumes by itself, the failure's text. */
 export type JobStatusView =
@@ -294,7 +288,9 @@ export type JobStatusView =
        * says why rather than nothing (server#218); the console shows the same. */
       hint?: string;
       retryAt?: Date;
-      /** It resumes by itself ({@link parkEndsByItself}), whether or not `retryAt` names when. */
+      /** It resumes by itself (`TRANSIENT_PARKS`), whether or not `retryAt` names when, so
+       * there is nothing to fix in the console. By the code, not the reason: `agent` also
+       * groups a refused credential. */
       endsByItself: boolean;
     }
   | { phase: 'failed'; error: string };
@@ -307,13 +303,14 @@ export function jobStatusView(job: BridgeJob): JobStatusView {
   if (job.cancel_requested) return { phase: 'stopping' };
   if (job.state === 'needs_attention') {
     const retry = p?.park?.retry_at ? new Date(p.park.retry_at) : undefined;
-    const reason = parkReason(p?.park?.code);
+    const code = p?.park?.code;
+    const reason = parkReason(code);
     return {
       phase: 'parked',
       reason,
       hint: reason === 'other' ? p?.park?.hint?.trim() || undefined : undefined,
       retryAt: retry && Number.isFinite(retry.getTime()) ? retry : undefined,
-      endsByItself: parkEndsByItself(p?.park?.code),
+      endsByItself: code !== undefined && TRANSIENT_PARKS.has(code),
     };
   }
   if (job.state !== 'running') return { phase: 'waiting' };

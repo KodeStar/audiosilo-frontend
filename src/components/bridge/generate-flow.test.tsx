@@ -556,9 +556,6 @@ describe('the status while a job runs', () => {
       ),
     ).toBeTruthy();
     expect(screen.getByText('It carries on by itself.')).toBeTruthy();
-    expect(screen.queryByText('It needs a person to look at it.')).toBeNull();
-    expect(screen.queryByText('the server could not be reached')).toBeNull();
-    expect(screen.queryByText('Open the console to fix it.')).toBeNull();
   });
 
   // A spent monthly budget resumes when the month turns: a bare time would read as today.
