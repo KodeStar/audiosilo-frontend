@@ -30,6 +30,7 @@ import {
   type ProgressSave,
 } from './progress-sync';
 import {
+  engineHoldsOtherBook,
   holdSaves,
   localMoveCount,
   type NowPlaying,
@@ -64,7 +65,8 @@ import {
  *   start's wait) gets it when the server answers after all (`onLatePlace`, `applyLatePlace`).
  *
  * It moves only when the server's record was written by another device (`device_id`, which
- * the server stores per record), is newer than this device's own last save of the book
+ * the server stores per record; for a late place, also a record with no device id:
+ * `byAnotherDevice`), is newer than this device's own last save of the book
  * (the durable mirror holds every save of this device, queued or not; it also keeps the
  * records this device read, and those say where the book is, not where this engine is), is
  * not finished, and is more than `MOVE_THRESHOLD_S` from the engine's place. A
@@ -83,6 +85,21 @@ export const MOVE_THRESHOLD_S = GUARD_SLACK_S;
 /** How long the server has to answer. */
 export const CHECK_TIMEOUT_MS = 5_000;
 
+/**
+ * Whether a place with device id `id` was written by another device than this one
+ * (`deviceId`). A place with no device id is no listening device's (a progress edit, a
+ * listening import, a `PUT` that named none: CROSS-REPO section 25; this device's own Mark as
+ * not finished writes one): another device's only for a late place (`late`, `applyLatePlace`),
+ * which stands in for the start's own resume lookup, where the newest record wins whoever
+ * wrote it. Then it is moved to as an unknown device's when it is newer than every record the
+ * start read (`placeToMoveTo`), and never offered (`offerOf`): the start's own lookup offers no
+ * such record either, and an older one is no place another device left (the listener's own
+ * Mark as not finished, an old import).
+ */
+function byAnotherDevice(id: string | undefined, deviceId: string, late: boolean): boolean {
+  return id ? id !== deviceId : late && deviceId !== '';
+}
+
 const timeOf = (iso: string | undefined): number => {
   const ms = iso ? Date.parse(iso) : NaN;
   return Number.isNaN(ms) ? 0 : ms;
@@ -93,18 +110,23 @@ const timeOf = (iso: string | undefined): number => {
  * knowledge of the book (its own saves, queued or synced, and records it read). Only a save
  * of its own keeps the engine where it is: a record read since (a downloaded book's page
  * and its download keep the mirror current) is where the book is, not where this engine is.
+ * A late place with no device id is weighed against any record, as the start's lookup was.
  */
 export function placeToMoveTo(input: {
   server: Progress | null;
   deviceId: string;
   mirror: Pick<ProgressSave, 'updated_at' | 'device_id'> | null;
   enginePosition: number;
+  /** A late place (`applyLatePlace`): a record with no device id counts (`byAnotherDevice`). */
+  late?: boolean;
 }): number | null {
-  const { server, deviceId, mirror, enginePosition } = input;
+  const { server, deviceId, mirror, enginePosition, late = false } = input;
   if (!server || server.finished || !(server.position > 0)) return null;
-  if (!server.device_id || server.device_id === deviceId) return null;
-  const ownSave = mirror?.device_id === deviceId ? mirror : null;
-  if (ownSave && timeOf(server.updated_at) <= timeOf(ownSave.updated_at)) return null;
+  if (!byAnotherDevice(server.device_id, deviceId, late)) return null;
+  // A late place with no device id stands in for the start's lookup, which took the newest of
+  // the row and the record the start read, whoever's: not newer than that record, it stays.
+  const weighed = !server.device_id || mirror?.device_id === deviceId ? mirror : null;
+  if (weighed && timeOf(server.updated_at) <= timeOf(weighed.updated_at)) return null;
   if (Math.abs(server.position - enginePosition) <= MOVE_THRESHOLD_S) return null;
   return server.position;
 }
@@ -119,7 +141,8 @@ export function placeToMoveTo(input: {
  *     diverged) when it is another device's, more than `MOVE_THRESHOLD_S` from here, and not
  *     answered yet (`answered` holds the `device_id|updated_at` keys this device answered).
  * Answering either (Jump or Stay) acknowledges the row's version and notes the key, so it
- * is offered once.
+ * is offered once. A place with no device id is no device's and is never offered, a late
+ * place's neither (`byAnotherDevice`).
  */
 export type PlaceOffer = {
   position: number;
@@ -413,7 +436,7 @@ async function moveOrOffer(
   for (let before = deciding.get(bookKey); before; before = deciding.get(bookKey)) {
     await before.catch(() => false);
   }
-  const decided = decide(np, bookKey, moves, server, deviceId, mirror);
+  const decided = decide(np, bookKey, moves, server, deviceId, mirror, late);
   answer.settle(decided.catch(() => false));
   deciding.set(bookKey, decided);
   try {
@@ -431,15 +454,20 @@ async function decide(
   server: Progress | null,
   deviceId: string,
   mirror: ProgressSave | null,
+  late: boolean,
 ): Promise<boolean> {
   const now = usePlayer.getState();
   if (selectBookKey(now) !== bookKey || localMoveCount() !== moves) return false;
   // A book that played to its end stays there: its finish is already sent.
   if (now.snapshot.state === 'ended') return false;
+  // The engine plays another book (Android's car started it, adopted or not yet): a move,
+  // or an offer's Jump, would seek that book, not this one.
+  if (engineHoldsOtherBook()) return false;
   const from = selectBookPosition(now);
-  const to = placeToMoveTo({ server, deviceId, mirror, enginePosition: from });
+  const to = placeToMoveTo({ server, deviceId, mirror, enginePosition: from, late });
   if (to === null) {
-    // Sync v2: a place another device left that the server did not move to is offered.
+    // Sync v2: a place another device left that the server did not move to is offered (never
+    // one with no device id, a late place's neither).
     await offerLoadedPlace(bookKey, server, deviceId, mirror);
     return false;
   }

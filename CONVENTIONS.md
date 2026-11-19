@@ -2043,6 +2043,9 @@ media GETs only.
   one that has not made its book the store's yet is seen by nothing) swaps once they are
   over (`swapDue`, `runDueSwap`), from the place that start put the book at, and not at all
   when it placed nothing (a failed load or resume lookup; the next start uses the download).
+  One landing while the engine plays another book (the car's, not adopted:
+  `engineHoldsOtherBook`) waits too, never loading over that book, and runs once the engine
+  reports the store's book again (a Retry or a press reloads from the download itself).
   The native load runs as a play attempt when it plays on, which is the intent
   (`wantsPlayback`), never the engine's `playing` alone: a pause or a stop the engine has
   not reported yet stands (`beginPlaybackAttempt`, so iOS's pause at `load` reads as the
@@ -2455,7 +2458,12 @@ media GETs only.
   for the answer, so a move lands before any of the old place sounds: `pickUpBeforePlay`,
   fe#158; one check is out at a time, and a press waits for the one already out, as when the
   app coming to the front started it), the loaded book asks its server for its progress, and meanwhile the store holds its saves (`holdSaves`: 5 s at most,
-  then it saves the held place). It moves only when the record is from another `device_id`,
+  then it saves the held place). It moves only when the record is from another `device_id`
+  (a record with no device id, a progress edit, an import or a `PUT` that named none, is no
+  device's: it counts only for a late place, `byAnotherDevice`, which stands in for the
+  start's own lookup, where the newest record wins; it is then moved to as an unknown
+  device's when it is newer than any record the start read, a read one too, and never
+  offered, an older one neither: `offerOf`),
   newer than this device's own last save in its mirror (a newer unsynced save here wins; a record
   it only read, which a downloaded book's page and its download keep there, does not), not
   finished, and more than 30 s away, and stands back if the listener moved meanwhile
@@ -2916,7 +2924,33 @@ media GETs only.
   when that book is not adopted within `OTHER_BOOK_ADOPT_MS` (6 s) it shows paused there,
   its intent over, nothing saved and the other book left playing (`otherBookNotAdopted`; a
   report of its own book in between ends that deadline, and a play press then reloads it, as
-  Retry does); one
+  Retry does, from its download when one landed meanwhile; the deadline is the book's, so a
+  `NowPlaying` replaced for the same book in the window still shows paused, and the download
+  hot swap never loads the store's book over the other one: `switchCurrentBookToLocal`; nor
+  does the place reconcile move or offer anything while the engine holds another book,
+  `engineHoldsOtherBook`, a late place included: its seek would land in that book; nor do
+  the app's own seek, skip and chapter jump ask the engine then: the store's book shows the
+  place, saved even while an adoption is under way (`persist`: the listener's own move since
+  the outside play), the play press reloads it there, `listenerMove`, and the car sync reads
+  no engine change from it, `mayBeServiceChange`; nor does the app's speed set, which is the
+  store's book's, saved with it the same way and taken by the engine at that book's next
+  load, `setRate`, a change counted as a move is, `localSpeedSets`; a start's load takes the
+  store's speed as it stands when the load lands, `playBook`). The app's Pause press
+  (`toggle`) while a report names the other book, the state in which a play press reloads
+  the store's book, is the store's book's alone: it shows paused where it was last heard,
+  its intent over, nothing saved, and the other book plays on, deadline window included
+  (`pauseOwnBook`). A report that names no book (an older binary) keeps the engine's pause,
+  and so does a load of the store's holding the engine (`loadingBook`, `startsInFlight`):
+  the book named then is the one that load replaces.
+  The store's `pause` is "stop the sound" (the sleep timer): while the store's book shows
+  playing or loading, the engine pauses whatever it plays, the other book too, and the
+  store's book shows paused. Only a press of the app's
+  own Pause leaves the other book alone; the lock screen, a headset and audio focus pause
+  the engine natively, never through the store. A resumption
+  meanwhile plays the other book, the one heard (`engineOtherBook`, the car snapshot's
+  `resume`, whether the store's book shows paused or finished): the car sync writes the
+  snapshot when that book begins playing (`onOtherBookReported`'s `playing`, adopted or
+  not) and again once it played to its end (`ended`), naming the loaded book then; one
   that still loaded or stalled, with no outside play followed, ends in `error` at its
   watchdog without the engine being paused (that book plays on, the car's play, for the car
   sync to adopt). An adoption that gave up leaves the play to the watchdog (its whole
@@ -3008,9 +3042,12 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   pruned, and no timer, so Bluetooth or a headset's play after a kill resumes the book with no
   car ever met. **The book a resumption starts is the one the snapshot names** (`resume`, an
   item id; `resumableBook`, the full snapshot's too), never just the first Continue listening
-  row, which after a stop is the newest book in progress: the loaded book while it is neither
-  stopped nor finished; until a book is loaded in this runtime, the book offered last
-  (`audiosilo.carResumable`, kept with whether kids mode was on, and dropped when that
+  row, which after a stop is the newest book in progress: the book the engine plays that the
+  store has not adopted (the car's, whether the loaded one shows paused or finished:
+  `engineOtherBook`) while it has not played to its end (its start and its end each rewrite
+  the snapshot, with no change of the store's to say so: `onOtherBookReported`), else the
+  loaded book while it is neither stopped nor finished; until a book is loaded in this runtime,
+  the book offered last (`audiosilo.carResumable`, kept with whether kids mode was on, and dropped when that
   changed), so opening the app after a kill without playing keeps it; once one was stopped or
   finished here, none. Native reads it in `CarSnapshot.resumable` (a snapshot kept from before
   the field still answers with its first Continue row), after the engine's own live place
@@ -3072,7 +3109,12 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   the download's copy at once (a Play offline spun for the whole wait). Its resume lookup
   follows the same rule (`DOWNLOADED_PLACE_WAIT_MS`, `loadInitialProgress`'s `waitMs`): no
   server asked when there is none to ask, else 3 s at most, then this device's records with
-  its saves guarded. A frozen server otherwise held a car's start for the whole request
+  its saves guarded. The place is read beside the item and chapters (`readPlaceEarly`, from
+  the saved place only; kept by connection, library and path, for the address it went to and
+  15 s at most, and dropped with its connection) and the lookup takes that read, its wait
+  counted from when it began,
+  so a frozen server holds the start for one wait, not one after the other (about 6 s in a
+  car run, FE-ANDROID-3). A frozen server otherwise held a car's start for the whole request
   timeout, past the car's 10 s wait. The read goes on (`InitialPlace.late`): a server that
   answers after the wait gets the place reconcile's rule once the book is loaded
   (`onLatePlace`, `applyLatePlace`: moved to another device's newer place with Undo, or offered

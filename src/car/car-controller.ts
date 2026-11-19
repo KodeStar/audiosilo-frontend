@@ -74,6 +74,8 @@ import { listenerSettings } from '@/playback/listener-settings';
 import { noteInteraction } from '@/playback/last-interaction';
 import { placeSavedAt, readLocalPlaces, resumeLookupOf } from '@/playback/progress-sync';
 import {
+  engineHoldsOtherBook,
+  engineOtherBook,
   followsOutsidePlay,
   onOtherBookReported,
   selectBookKey,
@@ -723,11 +725,13 @@ let loadedHere = false;
 
 /**
  * The book a playback resumption starts (Android; the snapshot's `resume`, both the full and
- * the minimal one's): the loaded book while it is neither stopped nor finished (`live`); with
- * none loaded yet in this runtime, the book offered before (`RESUMABLE_KEY`) while it is still
- * the person listening's, and kids mode is as it was (a book offered before kids mode was
- * turned on may not be on the kids shelf). Never the newest Continue listening row: a book
- * stopped or finished here stays stopped at a headset's play.
+ * the minimal one's): the book the engine plays when the store has not adopted it
+ * (`engineOtherBook`: the car's, whether the store's book shows paused or finished), which is
+ * the one heard and so the one resumed; else the loaded book while it is neither stopped nor
+ * finished (`live`); with none loaded yet in this runtime, the book offered before
+ * (`RESUMABLE_KEY`) while it is still the person listening's, and kids mode is as it was (a
+ * book offered before kids mode was turned on may not be on the kids shelf). Never the newest
+ * Continue listening row: a book stopped or finished here stays stopped at a headset's play.
  */
 async function resumableBook(player: PlayerState, live: LivePlace | null): Promise<BookRef | null> {
   if (player.nowPlaying) loadedHere = true;
@@ -737,6 +741,9 @@ async function resumableBook(player: PlayerState, live: LivePlace | null): Promi
       ? { ...stored, connectionId: resolveConnectionId(stored.connectionId) }
       : null;
   }
+  // Another person's book is never named: the car sync stops it (`checkLoadedBook`).
+  const heard = engineOtherBook();
+  if (heard && mayActFor(heard.connectionId)) return heard;
   if (live) return live.ref;
   const kept = loadedHere ? null : resumableRef;
   return kept && !!kept.kids === !!activeProfile()?.kids && mayActFor(kept.connectionId)
@@ -1050,7 +1057,8 @@ function writeForResumption(): void {
   void write(true);
 }
 
-/** Android: the listener paused, stopped, moved a paused book or changed book. With a car
+/** Android: the listener paused, stopped, moved a paused book or changed book, or the book
+ * the engine plays unadopted began playing or came to its end (`onOtherBookReported`). With a car
  * connected, the full snapshot as soon as the gap allows; with one met before but none
  * connected, the full one at once (`writeForResumption`), so the one native keeps for a
  * resumption names that book at that place; else the resumable one, at once
@@ -1497,10 +1505,15 @@ type PlayerState = ReturnType<typeof usePlayer.getState>;
 function mayBeServiceChange(s: PlayerState, prev: PlayerState): boolean {
   if (Platform.OS !== 'android' || !s.nowPlaying || s.nowPlaying !== prev.nowPlaying) return false;
   if (s.loadingBook || prev.loadingBook) return false;
+  if (s.snapshot.state === 'loading' && prev.snapshot.state === 'error' && followsOutsidePlay()) {
+    return true;
+  }
+  // While the engine holds another book the snapshot takes none of its reports: a move there
+  // is the app's own (`listenerMove`), and that book tells its own news (`onOtherBookReported`).
+  if (engineHoldsOtherBook()) return false;
   return (
     s.snapshot.trackIndex !== prev.snapshot.trackIndex ||
-    (s.snapshot.state === 'playing' && prev.snapshot.state !== 'playing') ||
-    (s.snapshot.state === 'loading' && prev.snapshot.state === 'error' && followsOutsidePlay())
+    (s.snapshot.state === 'playing' && prev.snapshot.state !== 'playing')
   );
 }
 
@@ -1601,9 +1614,16 @@ export function startCarSync(): () => void {
       if (mayBeServiceChange(s, prev)) checkServiceChange();
     }),
     // The engine reports another book than the store's (the store holds none of it): the
-    // service may have started it (Android).
-    onOtherBookReported(() => {
-      if (Platform.OS === 'android') checkServiceChange();
+    // service may have started it (Android). Begun playing, it is the book a resumption
+    // starts (`resumableBook`) whether or not it is adopted, and whatever the store's book
+    // shows (paused or finished, nothing of the store's changes): the snapshot names it now.
+    // Played to its end, there is nothing to adopt, and it is that book no longer: the
+    // snapshot that named it is written again, or a headset's play after a kill would start it
+    // once more.
+    onOtherBookReported((news) => {
+      if (Platform.OS !== 'android') return;
+      if (news !== 'ended') checkServiceChange();
+      if (news !== 'moved') placeChanged();
     }),
     useDownloads.subscribe((s, prev) => {
       if (s.entries === prev.entries) return;

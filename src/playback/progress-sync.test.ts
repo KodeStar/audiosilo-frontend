@@ -40,6 +40,8 @@ import {
   updateMirror,
   writeFinishedMirror,
   writeMirror,
+  readPlaceEarly,
+  EARLY_READ_MS,
 } from '@/playback/progress-sync';
 import { provideStoredSkews } from '@/playback/stored-skews';
 
@@ -92,8 +94,12 @@ function fakeApi(saveImpl: () => Promise<void>): ApiClient {
 }
 
 /** An api whose getProgress resolves to the given value (null = no record) or rejects. */
-function fakeGetApi(getImpl: () => Promise<Progress | null>): ApiClient {
+function fakeGetApi(
+  getImpl: () => Promise<Progress | null>,
+  baseUrl = 'http://home.lan:8080',
+): ApiClient {
   return {
+    baseUrl,
     getProgress: jest.fn(getImpl),
     saveProgress: jest.fn(async () => {}),
   } as unknown as ApiClient;
@@ -656,6 +662,102 @@ describe('progress-sync', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  // FE-ANDROID-3: a downloaded book's car start waited 3 s for its item and chapters, then
+  // 3 s more for its place, on a frozen server: one wait, not two.
+  it('loadInitialProgress: takes the early read, its wait counted from when that read began', async () => {
+    await saveProgress(
+      fakeApi(() => Promise.resolve()),
+      { ...save, position: 75 },
+    );
+    const frozen = fakeGetApi(() => new Promise<Progress | null>(() => {}));
+    jest.useFakeTimers();
+    try {
+      readPlaceEarly(frozen, 'c1', 1, 'A/Book');
+      // The start's item and chapters held it 2.5 s: half a second of the wait is left.
+      await jest.advanceTimersByTimeAsync(2_500);
+      let done = false;
+      const lookup = loadInitialProgress(frozen, 'c1', 1, 'A/Book', 3_000).then((r) => {
+        done = true;
+        return r;
+      });
+      await jest.advanceTimersByTimeAsync(499);
+      expect(done).toBe(false);
+      await jest.advanceTimersByTimeAsync(1);
+      await expect(lookup).resolves.toMatchObject({ kind: 'progress', unchecked: true });
+      // One read in all: the early one, going on as the late place.
+      expect(frozen.getProgress).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('loadInitialProgress: an early read that answered is the place, with no wait at all', async () => {
+    const api = fakeGetApi(async () => makeProgress({ position: 60 }));
+    jest.useFakeTimers();
+    try {
+      readPlaceEarly(api, 'c1', 1, 'A/Book');
+      await jest.advanceTimersByTimeAsync(5_000);
+      const r = await loadInitialProgress(api, 'c1', 1, 'A/Book', 3_000);
+      expect(r).toEqual({ kind: 'progress', progress: expect.objectContaining({ position: 60 }) });
+      expect(api.getProgress).toHaveBeenCalledTimes(1);
+      // Taken once: the next lookup reads afresh.
+      await loadInitialProgress(api, 'c1', 1, 'A/Book', 3_000);
+      expect(api.getProgress).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('loadInitialProgress: never takes an early read of another address, or one gone stale', async () => {
+    const home = fakeGetApi(async () => makeProgress({ position: 10 }));
+    const away = fakeGetApi(async () => makeProgress({ position: 20 }), 'https://away.example');
+    readPlaceEarly(home, 'c1', 1, 'A/Book');
+    const r = await loadInitialProgress(away, 'c1', 1, 'A/Book', 3_000);
+    expect(r).toMatchObject({ progress: { position: 20 } });
+    jest.useFakeTimers();
+    try {
+      readPlaceEarly(home, 'c1', 1, 'A/Book');
+      await jest.advanceTimersByTimeAsync(EARLY_READ_MS + 1);
+      await loadInitialProgress(home, 'c1', 1, 'A/Book', 3_000);
+      expect(home.getProgress).toHaveBeenCalledTimes(3);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('loadInitialProgress: a lookup with no wait leaves the early read to its start; a clock set back drops it', async () => {
+    const api = fakeGetApi(async () => makeProgress({ position: 10 }));
+    readPlaceEarly(api, 'c1', 1, 'A/Book');
+    // Previously on's lookup (no wait) reads afresh, the early read left for the start.
+    await loadInitialProgress(api, 'c1', 1, 'A/Book');
+    expect(api.getProgress).toHaveBeenCalledTimes(2);
+    await loadInitialProgress(api, 'c1', 1, 'A/Book', 3_000);
+    expect(api.getProgress).toHaveBeenCalledTimes(2);
+    jest.useFakeTimers();
+    try {
+      readPlaceEarly(api, 'c1', 1, 'A/Book');
+      // The device's clock set back a minute: the read reads as begun in the future.
+      jest.setSystemTime(Date.now() - 60_000);
+      await loadInitialProgress(api, 'c1', 1, 'A/Book', 3_000);
+      expect(api.getProgress).toHaveBeenCalledTimes(4);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // A connection signed out before the start took its read: whoever signs in to it next (one
+  // with no user id keeps its id) never starts from the read made for the one before.
+  it('loadInitialProgress: an early read is dropped with its connection, another one’s kept', async () => {
+    const api = fakeGetApi(async () => makeProgress({ position: 10 }));
+    readPlaceEarly(api, 'c1', 1, 'A/Book');
+    readPlaceEarly(api, 'c2', 1, 'A/Book');
+    await removalCleanup('c1');
+    await loadInitialProgress(api, 'c1', 1, 'A/Book', 3_000);
+    expect(api.getProgress).toHaveBeenCalledTimes(3);
+    await loadInitialProgress(api, 'c2', 1, 'A/Book', 3_000);
+    expect(api.getProgress).toHaveBeenCalledTimes(3);
   });
 
   it("loadInitialProgress: a server answering inside the wait is the server's place", async () => {

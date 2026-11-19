@@ -11,6 +11,8 @@ import type { PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
 // AudioSilo app on the same phone) moved its place on.
 
 let pushSnapshot: (s: PlaybackSnapshot) => void = () => {};
+/** The book the engine's reports name (`reportedBook`): null names none, as most tests. */
+let mockEngineBook: { connectionId: string; libraryId: number; path: string } | null = null;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const mockPlayerSnapshot = (): PlaybackSnapshot => require('./store').usePlayer.getState().snapshot;
 const mockSvc = {
@@ -27,6 +29,7 @@ const mockSvc = {
   setRate: jest.fn(async () => {}),
   setVolume: jest.fn(async () => {}),
   reset: jest.fn(async () => {}),
+  reportedBook: () => mockEngineBook,
   subscribe: jest.fn((listener: (s: PlaybackSnapshot) => void) => {
     pushSnapshot = listener;
     return () => {};
@@ -258,6 +261,7 @@ beforeEach(() => {
   useSettings.setState({ autoDownloadNext: 'never' });
   usePlayer.setState({ nowPlaying: null, snapshot: snap('idle', 0), rate: 1 });
   mockMirror = null;
+  mockEngineBook = null;
   mockReachable = true;
   // The other device played on to 400 s after this one paused.
   mockServer = async () => record();
@@ -286,6 +290,17 @@ async function backInFront() {
   await settle();
 }
 
+/** The server's flags as a listening_sync server's, with `capabilities` on top. */
+const serverCaps = (capabilities: Record<string, boolean>) =>
+  (queryClient.getQueryData as jest.Mock).mockImplementation((key: readonly unknown[]) =>
+    key[0] === 'server' ? { capabilities: { listening_sync: true, ...capabilities } } : undefined,
+  );
+/** The server's flags back to none (the PUT path, as the mock starts). */
+const noServerCaps = () =>
+  (queryClient.getQueryData as jest.Mock).mockImplementation((k: readonly unknown[]) =>
+    k?.[0] === 'server' ? { capabilities: {} } : undefined,
+  );
+
 describe('placeToMoveTo', () => {
   const base = {
     server: record(),
@@ -313,6 +328,39 @@ describe('placeToMoveTo', () => {
     expect(placeToMoveTo({ ...base, server: record({ finished: true }) })).toBeNull();
     expect(placeToMoveTo({ ...base, server: null })).toBeNull();
     expect(placeToMoveTo({ ...base, server: record({ device_id: '' }) })).toBeNull();
+  });
+
+  // FE-ANDROID-3: a record with no device id (a progress edit, an import, a PUT that named
+  // none) is no listening device's, but a late place stands in for the start's own resume
+  // lookup, which takes the newest record whoever wrote it.
+  it('counts a record with no device id for a late place only', () => {
+    const noDevice = record({ device_id: '' });
+    expect(placeToMoveTo({ ...base, server: noDevice, late: true })).toBe(400);
+    expect(placeToMoveTo({ ...base, server: noDevice, late: false })).toBeNull();
+    // Still never with this device's id unknown, nor over a newer save of its own.
+    expect(placeToMoveTo({ ...base, server: noDevice, late: true, deviceId: '' })).toBeNull();
+    expect(
+      placeToMoveTo({
+        ...base,
+        server: noDevice,
+        late: true,
+        mirror: mirrorAt('2026-10-08T10:00:01Z'),
+      }),
+    ).toBeNull();
+    // Nor over a newer record the start read (another device's, or none's): the start's own
+    // lookup took that one, the newest.
+    for (const device_id of ['other-device', '']) {
+      const read = { ...mirrorAt('2026-10-08T10:00:01Z', 105), device_id };
+      expect(placeToMoveTo({ ...base, server: noDevice, late: true, mirror: read })).toBeNull();
+    }
+    expect(
+      placeToMoveTo({
+        ...base,
+        server: noDevice,
+        late: true,
+        mirror: { ...mirrorAt('2026-10-08T09:00:00Z', 105), device_id: 'other-device' },
+      }),
+    ).toBe(400);
   });
 });
 
@@ -755,7 +803,7 @@ describe('a downloaded book whose server answered only after it started', () => 
     mockMirror = mirrorAt('2026-10-08T12:00:00Z', 110);
     jest.clearAllMocks();
     // The mirror as the start read it: this device's save from before the other device's.
-    return () => answer({ server: record(), mirror: mirrorAt('2026-10-08T09:00:00Z', 100) });
+    return (server = record()) => answer({ server, mirror: mirrorAt('2026-10-08T09:00:00Z', 100) });
   }
 
   it("moves to another device's newer place when the answer comes, and says so with Undo", async () => {
@@ -791,6 +839,83 @@ describe('a downloaded book whose server answered only after it started', () => 
     await settle();
     expect(seeks()).toEqual([]);
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  // FE-ANDROID-3 (a device run): the server's newer row had no device id (a PUT that named
+  // none), and the late answer neither moved the book nor offered it.
+  it('moves to a newer place with no device id, as the start would have resumed it', async () => {
+    const answer = await startedWithoutItsServer();
+    answer(record({ device_id: '' }));
+    await settle();
+    expect(seeks()).toEqual([400]);
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Picked up your place from another device' }),
+    );
+  });
+
+  // An older row with no device id is no place another device left (the listener's own Mark
+  // as not finished, an old import): the start's own lookup never offers one, nor does a late
+  // answer, whatever the row carries (a version not acknowledged, an `other_place` of no
+  // device's).
+  it('neither moves to nor offers an older place with no device id on a listening_sync server', async () => {
+    serverCaps({});
+    try {
+      const answer = await startedWithoutItsServer();
+      answer(
+        record({
+          device_id: '',
+          version: 4,
+          updated_at: '2026-10-08T08:00:00Z',
+          other_place: {
+            position: 900,
+            device_id: '',
+            device_name: '',
+            updated_at: '2026-10-08T07:00:00Z',
+          },
+        }),
+      );
+      await settle();
+      expect(seeks()).toEqual([]);
+      expect(mockToast).not.toHaveBeenCalled();
+    } finally {
+      noServerCaps();
+    }
+  });
+
+  it('still offers an older place of another device on a listening_sync server', async () => {
+    serverCaps({});
+    try {
+      const answer = await startedWithoutItsServer();
+      answer(record({ version: 4, updated_at: '2026-10-08T08:00:00Z' }));
+      await settle();
+      expect(seeks()).toEqual([]);
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: expect.stringContaining('Jump there?') }),
+      );
+    } finally {
+      noServerCaps();
+    }
+  });
+
+  // The car started another book in the engine meanwhile, not adopted (yet): the store's
+  // book is still this one, and a move (or an offer's Jump) would seek the car's book.
+  it('neither moves nor offers while the engine plays another book than this one', async () => {
+    serverCaps({});
+    try {
+      const answer = await startedWithoutItsServer();
+      mockEngineBook = { connectionId: 'c1', libraryId: 2, path: 'Car/Book' };
+      pushSnapshot(snap('playing', 5));
+      answer();
+      await settle();
+      expect(seeks()).toEqual([]);
+      expect(mockToast).not.toHaveBeenCalled();
+      // Nor a check's answer (the app back in front while that book plays on).
+      await backInFront();
+      expect(seeks()).toEqual([]);
+      expect(mockToast).not.toHaveBeenCalled();
+    } finally {
+      noServerCaps();
+    }
   });
 
   it('a book that played to its end meanwhile stays there', async () => {
@@ -969,19 +1094,23 @@ describe('offerOf', () => {
     ).toBe(900);
     expect(offerOf(null, 'this-device', 3, 105)).toBeNull();
   });
+
+  it('never offers a place with no device id, the kept row or its other place', () => {
+    const noDevice = record({ device_id: '', version: 4 });
+    expect(offerOf(noDevice, 'this-device', 3, 105)).toBeNull();
+    const other = {
+      position: 900,
+      device_id: '',
+      device_name: '',
+      updated_at: noDevice.updated_at,
+    };
+    expect(offerOf({ ...noDevice, other_place: other }, 'this-device', 3, 105)).toBeNull();
+  });
 });
 
 describe('on a server with listening_sync', () => {
-  const serverCaps = (capabilities: Record<string, boolean>) =>
-    (queryClient.getQueryData as jest.Mock).mockImplementation((key: readonly unknown[]) =>
-      key[0] === 'server' ? { capabilities: { listening_sync: true, ...capabilities } } : undefined,
-    );
   beforeEach(() => serverCaps({}));
-  afterEach(() =>
-    (queryClient.getQueryData as jest.Mock).mockImplementation((k: readonly unknown[]) =>
-      k?.[0] === 'server' ? { capabilities: {} } : undefined,
-    ),
-  );
+  afterEach(noServerCaps);
 
   type Toast = {
     title: string;

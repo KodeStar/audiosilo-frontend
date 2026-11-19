@@ -6,6 +6,7 @@ import type {
   Progress,
   QueueEntry,
 } from '@/api/types';
+import type { OtherBookNews } from '@/playback/store';
 
 import type { CarSnapshot } from './car-model';
 
@@ -120,8 +121,12 @@ type MockPlayerState = {
 };
 /** Whether the store follows a play asked from outside the app (`followsOutsidePlay`). */
 let mockOutsidePlay = true;
+/** The book the engine plays that the store has not adopted (`engineOtherBook`), else null. */
+let mockEngineOther: { connectionId: string; libraryId: number; path: string } | null = null;
+/** Whether the engine holds another book than the store's (`engineHoldsOtherBook`). */
+let mockEngineHolds = false;
 /** The store's word that the engine reported another book (`onOtherBookReported`). */
-let mockOtherBookReported: (() => void) | null = null;
+let mockOtherBookReported: ((news: OtherBookNews) => void) | null = null;
 jest.mock('@/playback/store', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { create } = require('zustand');
@@ -136,7 +141,9 @@ jest.mock('@/playback/store', () => {
   return {
     usePlayer,
     followsOutsidePlay: () => mockOutsidePlay,
-    onOtherBookReported: (listener: () => void) => {
+    engineOtherBook: () => mockEngineOther,
+    engineHoldsOtherBook: () => mockEngineHolds,
+    onOtherBookReported: (listener: (news: OtherBookNews) => void) => {
       mockOtherBookReported = listener;
       return () => {
         if (mockOtherBookReported === listener) mockOtherBookReported = null;
@@ -378,6 +385,8 @@ beforeEach(async () => {
     return { remove: () => {} };
   }) as never);
   forgetCarSync();
+  mockEngineOther = null;
+  mockEngineHolds = false;
   (queryClient.getQueryData as jest.Mock).mockImplementation(() => undefined);
   mockArtOnDisk.clear();
   for (const k of Object.keys(mockClients)) delete mockClients[k];
@@ -1545,6 +1554,105 @@ describe('the resumable snapshot (Android, fe#251)', () => {
       expect(snap.resume).toBe(carItemId({ connectionId: 'c1', libraryId: 2, path: 'E' }));
     });
 
+    // FE-ANDROID-3: the car's book plays on, never adopted, and the store's book showed
+    // paused at the adoption deadline: a resumption plays the book that was heard.
+    it("is the engine's book while it plays another book than the store's, not adopted", async () => {
+      usePlayer.setState(loaded('playing', 1, 20));
+      stop = startCarSync();
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      // The engine plays E (the car's tap); the deadline shows D paused.
+      mockEngineOther = { connectionId: 'c1', libraryId: 2, path: 'E' };
+      usePlayer.setState(loaded('paused', 1, 50));
+      await flushPromises();
+      const E = carItemId({ connectionId: 'c1', libraryId: 2, path: 'E' });
+      const snap = lastSnapshot();
+      expect(snap.resume).toBe(E);
+      // Listed with its play spec (the downloads), so native can start it.
+      expect(tab(snap, 'downloads')!.items.find((i) => i.id === E)?.play).toBeTruthy();
+      expect(await getItem('audiosilo.carResumable')).toMatchObject({ path: 'E' });
+
+      // Adopted, or the store's own book heard again: the loaded book is named once more.
+      mockEngineOther = null;
+      usePlayer.setState(loaded('paused', 1, 60));
+      await flushPromises();
+      expect(lastSnapshot().resume).toBe(D);
+    });
+
+    // The car's book played to its end with no change of the store's to say so: the snapshot
+    // that named it is written again (native drops its live place at the end, so the named
+    // book is the one a headset's play after a kill starts), and nothing is adopted.
+    it("names the loaded book again once the engine's other book played to its end", async () => {
+      usePlayer.setState(loaded('playing', 1, 20));
+      stop = startCarSync();
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      mockEngineOther = { connectionId: 'c1', libraryId: 2, path: 'E' };
+      usePlayer.setState(loaded('paused', 1, 50));
+      await flushPromises();
+      expect(lastSnapshot().resume).toBe(
+        carItemId({ connectionId: 'c1', libraryId: 2, path: 'E' }),
+      );
+      mockNative.getLoadedBook.mockClear();
+      // E ended (`engineOtherBook` names none from then): the store is unchanged.
+      mockEngineOther = null;
+      mockOtherBookReported?.('ended');
+      await flushPromises();
+      expect(lastSnapshot().resume).toBe(D);
+      expect(await getItem('audiosilo.carResumable')).toMatchObject({ path: 'D' });
+      expect(mockNative.getLoadedBook).not.toHaveBeenCalled();
+    });
+
+    // The review: the store's book was paused already when the car's book began playing, so
+    // nothing of the store's changed and no snapshot named the car's book; one the adoption
+    // gave up on was never resumed by a headset's play after a kill.
+    it("names the engine's book once it begins playing, the store's book paused", async () => {
+      usePlayer.setState(loaded('paused', 1, 50));
+      stop = startCarSync();
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      expect(lastSnapshot().resume).toBe(D);
+      mockNative.getLoadedBook.mockClear();
+      mockEngineOther = { connectionId: 'c1', libraryId: 2, path: 'E' };
+      mockOtherBookReported?.('playing');
+      await flushPromises();
+      const E = carItemId({ connectionId: 'c1', libraryId: 2, path: 'E' });
+      expect(lastSnapshot().resume).toBe(E);
+      expect(await getItem('audiosilo.carResumable')).toMatchObject({ path: 'E' });
+      // Its adoption is still asked for (the engine is read).
+      expect(mockNative.getLoadedBook).toHaveBeenCalled();
+    });
+
+    it("names the engine's book once it begins playing, the store's book finished", async () => {
+      usePlayer.setState(loaded('ended', 1, 100));
+      stop = startCarSync();
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      expect(lastSnapshot().resume).toBeNull();
+      mockEngineOther = { connectionId: 'c1', libraryId: 2, path: 'E' };
+      mockOtherBookReported?.('playing');
+      await flushPromises();
+      expect(lastSnapshot().resume).toBe(
+        carItemId({ connectionId: 'c1', libraryId: 2, path: 'E' }),
+      );
+    });
+
+    it("never names the engine's book when it is not the person listening's", async () => {
+      connect(['c1', 'c2']);
+      mockClients.c2 = fakeClient({});
+      useProfiles.setState({
+        hydrated: true,
+        profiles: [
+          { id: 'sam', name: 'Sam', connectionIds: ['c1'] },
+          { id: 'alex', name: 'Alex', connectionIds: ['c2'], hasPin: true },
+        ],
+        activeProfileId: 'sam',
+      });
+      usePlayer.setState(loaded('playing', 1, 20));
+      stop = startCarSync();
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      mockEngineOther = { connectionId: 'c2', libraryId: 2, path: 'E' };
+      usePlayer.setState(loaded('paused', 1, 50));
+      await flushPromises();
+      expect(lastSnapshot().resume).toBe(D);
+    });
+
     it('is not named on iOS (CarPlay has no resumption)', async () => {
       Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
       usePlayer.setState(loaded('paused', 1, 50));
@@ -2491,7 +2599,7 @@ describe('adopting the service’s book (Android)', () => {
     await settle();
     expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
     mockNative.getLoadedBook.mockResolvedValue(loaded);
-    mockOtherBookReported?.();
+    mockOtherBookReported?.('moved');
     await settle();
     expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded, expect.any(Function));
     // Not on iOS, whose engine only ever holds what the store loaded.
@@ -2500,7 +2608,7 @@ describe('adopting the service’s book (Android)', () => {
     Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
     stop = startCarSync();
     await settle();
-    mockOtherBookReported?.();
+    mockOtherBookReported?.('moved');
     await settle();
     expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
   });
@@ -2657,6 +2765,24 @@ describe('adopting the service’s book (Android)', () => {
     answer({ ...loaded, path: 'Other' });
     await settle();
     expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
+  });
+
+  // The app's own chapter jump on the store's book while the engine plays the car's book moves
+  // only the place shown (`listenerMove`): no engine change, so no adoption is asked of it.
+  it("asks nothing for the app's own move while the engine holds another book", async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    const paused = {
+      nowPlaying: { connectionId: 'c1', libraryId: 2, path: 'D', queue: { offsets: [0, 100] } },
+      snapshot: { state: 'paused', trackIndex: 0, position: 30, duration: 100, rate: 1 },
+    };
+    usePlayer.setState(paused);
+    stop = startCarSync();
+    await settle();
+    mockNative.getLoadedBook.mockClear();
+    mockEngineHolds = true;
+    usePlayer.setState({ snapshot: { ...paused.snapshot, trackIndex: 1, position: 0 } });
+    await settle();
+    expect(mockNative.getLoadedBook).not.toHaveBeenCalled();
   });
 
   it("asks nothing for the store's own changes: a book switch, its load, a pause, a stop", async () => {

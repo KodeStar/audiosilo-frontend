@@ -191,13 +191,14 @@ let stallPauseUntil = 0;
  * (`playAskedFromOutside`) while it is still starting, else null: over once it plays, is
  * given up (`clearPlaybackIntent`) or another play is asked for (`beginPlaybackAttempt`), so
  * a later stall is the store's book's own. The store's book, where it stood and the
- * listener's moves (`localMoves`) when the play was asked. `other`: the engine holds another
- * book, one the service started: its report named that book (`reportedOtherBook`), or its
- * adoption began (`adoptLoadedBook`). */
+ * listener's moves and speed changes (`localMoves`, `localSpeedSets`) when the play was
+ * asked. `other`: the engine holds another book, one the service started: its report named
+ * that book (`reportedOtherBook`), or its adoption began (`adoptLoadedBook`). */
 let outsidePlay: {
   np: NowPlaying;
   snapshot: PlaybackSnapshot;
   moves: number;
+  speedSets: number;
   other: boolean;
 } | null = null;
 /**
@@ -235,16 +236,44 @@ function reportedOtherBook(svc: PlaybackService): string | null {
 /** Whether the engine's last report named another book than the store's
  * (`reportedOtherBook`): no listening of the store's book opens then. */
 const engineHoldsAnother = (): boolean => service !== null && reportedOtherBook(service) !== null;
+/** Whether the engine holds another book than the store's, by its last report's name
+ * (`engineHoldsAnother`) or because its adoption is under way (`engineIsAnothers`): the
+ * engine's reports are that book's, and so would any move asked of it be. The place
+ * reconcile moves and offers nothing then (`decide`: its seek would land in the other book). */
+export const engineHoldsOtherBook = (): boolean => engineIsAnothers() || engineHoldsAnother();
+/**
+ * The book the engine plays when it is not the store's (`reportedOtherBook`: Android's car or
+ * a resumption started it and it was not adopted; after `otherBookNotAdopted` the store's book
+ * shows paused while this one plays on), its connection id resolved; else null. Null too
+ * while a load or a start of the store's holds it, when the engine still reports the book that
+ * load replaces, and once that book played to its end (a finished book never resumes, as the
+ * store's own does not). The car sync names it for a playback resumption (`resumableBook`).
+ */
+export function engineOtherBook(): BookRef | null {
+  if (!service || usePlayer.getState().loadingBook || startsInFlight > 0) return null;
+  const named = service.reportedBook?.();
+  if (!named || reportedOtherBook(service) === null) return null;
+  if (service.getSnapshot().state === 'ended') return null;
+  return { ...bookRefOf(named), connectionId: resolveConnectionId(named.connectionId) };
+}
 /** The other book's report the car sync was last told of (`otherBookReported`), else null. */
-let otherReport: { key: string; trackIndex: number; playing: boolean } | null = null;
-let otherBookListener: (() => void) | null = null;
+let otherReport: { key: string; trackIndex: number; playing: boolean; ended: boolean } | null =
+  null;
+/** What the car sync is told of another book the engine holds (`otherBookReported`): it is new
+ * or moved to another file (`moved`), it began playing (`playing`: the book a resumption
+ * starts from now, `engineOtherBook`), or it played to its end (`ended`). */
+export type OtherBookNews = 'moved' | 'playing' | 'ended';
+let otherBookListener: ((news: OtherBookNews) => void) | null = null;
 
 /** A report of another book than the store's (`reportedOtherBook`): a play the store follows
  * from outside is that book's (`outsidePlay.other`), and the car sync is told when it is new,
  * moved to another file or began playing (not when it plays again after buffering), as it is
  * of those changes of the store's own book (Android: the service may have started that book,
- * and the car sync adopts it). Not while a load of the store's holds it: that is the book the
- * load replaces. */
+ * and the car sync adopts it). A start of its play is told as one (`playing`), whatever the
+ * store's book shows: the snapshot names it for a resumption from then, adopted or not. It is
+ * told too, once, when that book played to its end (`ended`): nothing to adopt, but no longer
+ * the book a resumption starts (`engineOtherBook`), so the snapshot that named it is written
+ * again. Not while a load of the store's holds it: that is the book the load replaces. */
 function otherBookReported(key: string, raw: PlaybackSnapshot) {
   if (outsidePlay) outsidePlay.other = true;
   if (usePlayer.getState().loadingBook || startsInFlight > 0) return;
@@ -258,13 +287,17 @@ function otherBookReported(key: string, raw: PlaybackSnapshot) {
   // once, where it was last heard, and its save loop stops (an adopted book starts its own).
   if (saveLoop.running()) haltAndPersist();
   armOtherBookDeadline();
-  const was = otherReport;
-  const same = was?.key === key && was.trackIndex === raw.trackIndex;
-  // A book heard playing that buffers stays playing here: its return to `playing` is no news.
-  const playing = raw.state === 'playing' || (same && was.playing && raw.state === 'loading');
-  otherReport = { key, trackIndex: raw.trackIndex, playing };
-  if (same && (was.playing || !playing)) return;
-  otherBookListener?.();
+  const was = otherReport?.key === key ? otherReport : null;
+  const same = was !== null && was.trackIndex === raw.trackIndex;
+  // A book heard playing that buffers stays playing here, in the same file or the next one it
+  // moved on to: its return to `playing` is no news (the move to that file was).
+  const playing =
+    raw.state === 'playing' || (was !== null && was.playing && raw.state === 'loading');
+  const ended = raw.state === 'ended';
+  otherReport = { key, trackIndex: raw.trackIndex, playing, ended };
+  if (playing && !was?.playing) otherBookListener?.('playing');
+  else if (!same) otherBookListener?.('moved');
+  if (ended && !was?.ended) otherBookListener?.('ended');
 }
 
 /** How long the store's book may still show playing once the engine plays another book
@@ -273,7 +306,9 @@ function otherBookReported(key: string, raw: PlaybackSnapshot) {
  * chapters. */
 const OTHER_BOOK_ADOPT_MS = 6_000;
 /** The store's book shown playing when the engine began playing another book, while the
- * deadline for that book's adoption runs (`otherBookAdoption`), else null. */
+ * deadline for that book's adoption runs (`otherBookAdoption`), else null. Compared by book,
+ * never by object: a `NowPlaying` replaced for the same book meanwhile (a chapters refresh, a
+ * hot swap's commit) is still the book shown playing. */
 let otherBookShown: NowPlaying | null = null;
 /** That deadline: an `engineTicker`, so a held report runs it where Android has paused the
  * JS timers (screen off), and stopped at its first run. */
@@ -283,7 +318,8 @@ const otherBookAdoption = engineTicker(otherBookNotAdopted, OTHER_BOOK_ADOPT_MS)
  * book's adoption is overdue, it shows paused (`otherBookNotAdopted`). */
 function armOtherBookDeadline() {
   const { nowPlaying, snapshot } = usePlayer.getState();
-  if (!nowPlaying || snapshot.state !== 'playing' || otherBookShown === nowPlaying) return;
+  if (!nowPlaying || snapshot.state !== 'playing') return;
+  if (otherBookShown && sameBook(otherBookShown, nowPlaying)) return;
   cancelOtherBookDeadline();
   otherBookShown = nowPlaying;
   otherBookAdoption.start();
@@ -301,30 +337,58 @@ function cancelOtherBookDeadline() {
  * is saved: its place was saved once at the switch (`otherBookReported`), and saved again it
  * would be dated now. Not when the store holds another book by now (an adoption landed), a
  * load holds it, it no longer shows playing, or the engine's last report is its own again.
+ * The same book under a new `NowPlaying` (a chapters refresh) still shows paused.
  */
 function otherBookNotAdopted() {
   const shown = otherBookShown;
   cancelOtherBookDeadline();
   const { nowPlaying, snapshot, loadingBook } = usePlayer.getState();
-  if (!shown || nowPlaying !== shown || loadingBook || snapshot.state !== 'playing') return;
+  if (!shown || !nowPlaying || !sameBook(nowPlaying, shown)) return;
+  if (loadingBook || snapshot.state !== 'playing') return;
   if (!engineHoldsAnother()) return;
   // An adoption still under way (a slow server's chapters) lands or gives up first.
   if (adoptions > 0) {
-    otherBookShown = shown;
+    otherBookShown = nowPlaying;
     otherBookAdoption.start();
     return;
   }
+  showOwnBookPaused();
+}
+
+/** The store's book shows paused where it was last heard while the engine plays another
+ * book (`otherBookNotAdopted`, `pauseOwnBook`, and the store's `pause`, which then stops that
+ * book itself): its intent to play is over, the engine is not asked here (its pause would be
+ * that book's) and nothing is saved (its place was saved once as it stopped,
+ * `otherBookReported`; saved again it would be dated now). */
+function showOwnBookPaused() {
+  cancelOtherBookDeadline();
   clearPlaybackIntent();
   stopSaveLoop();
   // Paused from now, so a play after a long pause checks its place first (`pickUpBeforePlay`).
   pausedAt ??= Date.now();
+  const { snapshot } = usePlayer.getState();
   usePlayer.setState({ snapshot: { ...snapshot, state: 'paused' } });
 }
 
+/** The app's own Pause press (`toggle`). While a report names another book
+ * (`engineHoldsAnother`, the state in which a play press reloads the store's book), the press
+ * is the store's book's alone: it shows paused (`showOwnBookPaused`) and the other book plays
+ * on. A report that names no book (an older binary) keeps the engine's pause: nothing would
+ * keep that book's reports out of the store's. So does a load of the store's that holds the
+ * engine (`loadingBook`, `startsInFlight`): the book named then is the one that load replaces
+ * (`otherBookReported`), and left playing it would go on under the store's book, a failed
+ * load's error included. */
+async function pauseOwnBook(svc: PlaybackService) {
+  const ownLoad = usePlayer.getState().loadingBook !== null || startsInFlight > 0;
+  if (engineHoldsAnother() && !ownLoad) showOwnBookPaused();
+  else await svc.pause();
+}
+
 /** Be told when the engine reports another book than the store's (`otherBookReported`; one
- * listener: the car sync, which reads the engine's book and adopts it). Returns the
+ * listener: the car sync, which reads the engine's book and adopts it, names it for a
+ * resumption once it plays, and, told that book `ended`, names it no more). Returns the
  * unsubscribe. */
-export function onOtherBookReported(listener: () => void): () => void {
+export function onOtherBookReported(listener: (news: OtherBookNews) => void): () => void {
   otherBookListener = listener;
   return () => {
     if (otherBookListener === listener) otherBookListener = null;
@@ -455,9 +519,10 @@ let pickUpDue: string | null = null;
  * held the store (`loadingBook`) or a start was on its way (`startsInFlight`: a start of the
  * book already loaded holds nothing): the snapshot is the previous place until that load
  * lands, and a swap's own load made meanwhile would land after the start's, at that place.
- * Also one that landed before a start made the book the store's (nothing saw it land).
- * It runs once both are over (`runDueSwap`), and is dropped by a start or a reload that
- * placed nothing (a failed load releases the hold too). */
+ * Also one that landed before a start made the book the store's (nothing saw it land), and
+ * one that landed while the engine held another book (`engineHoldsOtherBook`), run once the
+ * engine reports the store's book again. It runs once both are over (`runDueSwap`), and is
+ * dropped by a start or a reload that placed nothing (a failed load releases the hold too). */
 let swapDue: string | null = null;
 
 /** The pick-up wait out now (`pickUpBeforePlay`): a press made while it is out waits for it
@@ -528,6 +593,10 @@ function pickUp() {
 /** Counts the listener's own moves in the loaded book (seeks, track jumps, a book
  * started): a reconcile that sees it change while its check was out stands back. */
 let localMoves = 0;
+/** Counts the listener's speed changes (`setRate`): kept apart from `localMoves`, which the
+ * place reconcile reads, and read by `persist` while another book is on its way to being
+ * adopted. */
+let localSpeedSets = 0;
 
 /** `playBook`s running now. An adoption that read while one ran stands back: the start
  * switches the book only after its own awaits, so an adoption landing between would take
@@ -556,8 +625,9 @@ function lastPlayRequestFor(ref: ContentRef): PlayRequest | null {
 const MIN_HISTORY_MS = 20_000; // ignore listening spans shorter than this
 const STALL_GRACE_MS = 3_000; // a 'loading' that outlasts this is treated as a dead stream
 /** How long a downloaded book waits for its server's place before it starts from this
- * device's records (`loadInitialProgress`): with the wait for its item and chapters
- * (`FRESH_SOURCE_WAIT_MS`, 3 s) well inside a car's 10 s wait for a start. */
+ * device's records (`loadInitialProgress`), well inside a car's 10 s wait for a start. A start
+ * from the saved place reads it beside its item and chapters (`readPlaceEarly`), so this wait
+ * and theirs (`FRESH_SOURCE_WAIT_MS`, 3 s) run together. */
 export const DOWNLOADED_PLACE_WAIT_MS = 3_000;
 
 // The periodic save's two paces (`saveIntervalMs`, perf P4). The server derives listening
@@ -693,7 +763,12 @@ type PlayerState = {
     wanted?: () => boolean,
     superseded?: () => boolean,
   ) => Promise<void>;
+  /** The app's Play/Pause press. Its pause leaves alone another book the engine plays, not
+   * adopted (`pauseOwnBook`). */
   toggle: () => Promise<void>;
+  /** Stop the sound (the sleep timer) while the store's book shows playing or loading: the
+   * engine pauses whatever book it plays, the car's not adopted included, and the store's
+   * book shows paused. */
   pause: () => Promise<void>;
   /** Re-load the current track at the current position and resume - recovery after
    * the engine reports an `error` (e.g. the stream became unreachable). */
@@ -760,8 +835,18 @@ async function persist(opts?: {
   // Nor an adoption's reloaded place, until it plays (`quietAdopted`).
   if (quietAdopted === contentKeyOf(nowPlaying) && !opts?.forceFinished) return;
   // Nor while the engine holds another book on its way to being adopted
-  // (`engineIsAnothers`): nothing of this book was heard since it stopped.
-  if (engineIsAnothers() && !opts?.forceFinished) return;
+  // (`engineIsAnothers`): nothing of this book was heard since it stopped. Unless the
+  // listener moved it or set its speed since that play was asked (`listenerMove` shows the
+  // place, `setRate` keeps the speed for this book): that is theirs, and an adoption that
+  // lands would otherwise drop it unsaved.
+  if (
+    engineIsAnothers() &&
+    outsidePlay?.moves === localMoves &&
+    outsidePlay.speedSets === localSpeedSets &&
+    !opts?.forceFinished
+  ) {
+    return;
+  }
   // Nor a place another tab has played past (`otherTabPlayed`), nor one on its way to that
   // tab's (`catchingUp`): dated now, it would be the newest in the mirror the tabs share.
   if (behindOtherTab(nowPlaying) && !opts?.forceFinished) return;
@@ -2179,12 +2264,18 @@ function pastMeasure(
  * (`faultPause`) may not have landed yet, so a late `playing` of the engine's is still paused
  * again; else none is out, and a `playing` from now on is the listener's. */
 function showPlace(np: NowPlaying, trackIndex: number, position: number, faulted: boolean) {
-  const { snapshot } = usePlayer.getState();
-  const engine = trackIndex === snapshot.trackIndex ? snapshot.duration : 0;
-  const duration = fileDurationOf(np.queue, trackIndex, engine);
   // Faulted before the snapshot is told: its subscribers read the place as the fault's
   // (`showsFaultPlace`).
   markFaulted(np, faulted);
+  placeShown(np, trackIndex, position);
+}
+
+/** The snapshot shows `(trackIndex, position)` of `np`'s queue, its state kept, at the file's
+ * server length (`showPlace`, without the fault). */
+function placeShown(np: NowPlaying, trackIndex: number, position: number) {
+  const { snapshot } = usePlayer.getState();
+  const engine = trackIndex === snapshot.trackIndex ? snapshot.duration : 0;
+  const duration = fileDurationOf(np.queue, trackIndex, engine);
   usePlayer.setState({ snapshot: { ...snapshot, trackIndex, position, duration } });
 }
 
@@ -2328,23 +2419,36 @@ function engineMove<T>(
  * a Retry's reload follow it: not when the engine refused it (it is still where the book
  * shows), nor once the listener moved again meanwhile, another book loaded or a play began.
  * Read once the move landed, not as it was made: an error surfacing meanwhile (the stall
- * watchdog, while a seek waits on a stalled stream) holds off the engine's report of it. */
-async function listenerMove<T>(
+ * watchdog, while a seek waits on a stalled stream) holds off the engine's report of it.
+ *
+ * While the engine holds another book (`engineHoldsOtherBook`: the car's, not adopted, the
+ * store's book shown where it was last heard) the engine is not asked at all: its move would
+ * be that book's. The store's book shows the place, which is saved: a play press while the
+ * engine's reports name the other book reloads it from there (`toggle`, `retry`), and an
+ * adoption under way replaces it, the moved place kept (`persist`). */
+async function listenerMove(
   np: NowPlaying | null,
   trackIndex: number,
   position: number,
-  move: () => Promise<T>,
-): Promise<T> {
-  if (!np) return move();
+  move: () => Promise<unknown>,
+): Promise<void> {
+  if (!np) {
+    await move();
+    return;
+  }
+  if (engineHoldsOtherBook()) {
+    // Not once another book is the store's (a start or an adoption landed meanwhile).
+    if (usePlayer.getState().nowPlaying === np) placeShown(np, trackIndex, position);
+    return;
+  }
   const moves = localMoves;
   const ask = askEngineTo(np, trackIndex, position);
   // Did the move call off a fault (whose pause may not have landed yet)?
   const faulted = holdsFault(ask);
-  const taken = await engineTakes(ask, move());
+  await engineTakes(ask, move());
   // Not a move whose own fault shows its place already (`EngineAsk.faultShown`).
   const still = usePlayer.getState().nowPlaying === np && localMoves === moves && !ask.faultShown;
   if (still && reportsUnheard()) showPlace(np, trackIndex, position, faulted);
-  return taken;
 }
 
 /** The store gave up on `ask`'s move (`moveToTabPlace`): it no longer stands. Left standing,
@@ -2939,7 +3043,13 @@ function playAskedFromOutside() {
   const { snapshot, nowPlaying, loadingBook } = usePlayer.getState();
   if (snapshot.state !== 'error' || !nowPlaying || loadingBook) return;
   beginPlaybackAttempt();
-  outsidePlay = { np: nowPlaying, snapshot, moves: localMoves, other: false };
+  outsidePlay = {
+    np: nowPlaying,
+    snapshot,
+    moves: localMoves,
+    speedSets: localSpeedSets,
+    other: false,
+  };
 }
 
 /** Begin a playback attempt: we intend to play, we're "connecting" until the engine
@@ -3223,7 +3333,7 @@ async function createService(): Promise<PlaybackService> {
   // its adoption is under way (`engineIsAnothers`): none is the store's book's place, state,
   // move or speed. Read inside the service's listeners only: `reportedBook` is the book of
   // the report being handled.
-  const heldForAnother = () => engineIsAnothers() || engineHoldsAnother();
+  const heldForAnother = engineHoldsOtherBook;
   // A report held for another book: the watchdog still runs (re-armed while an adoption is
   // under way), and the adoption reads the engine itself when it lands.
   const holdReport = () => {
@@ -3367,6 +3477,11 @@ async function createService(): Promise<PlaybackService> {
       }
     }
     usePlayer.setState({ snapshot });
+    // A download that landed while another book held the engine (`switchCurrentBookToLocal`)
+    // is swapped in once a report naming the store's book is taken as its place, past the
+    // holds above (a fault's press, an adoption under way, a held error reload it themselves).
+    // A load or a start still on its way keeps it (`runDueSwap`).
+    if (swapDue !== null && svc.reportedBook?.()) void Promise.resolve().then(runDueSwap);
     // Reached online (the network came back while it played): it plays on, streaming the
     // rest, when its server answers; else the listener is told.
     if (partialEnd && prev.state !== 'paused') {
@@ -3890,7 +4005,10 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // The engine holds the queue built from these chapters now: a download takes them,
       // with a new file order when its server re-ordered the files (`adoptStartedChapters`).
       if (dl && queueChapters) adoptStartedChapters(ref, queueChapters);
-      await svc.setRate(speed);
+      // The store's speed, this start's `speed` unless the listener set another while it
+      // loaded: that set left the engine alone (`setRate`: it still reported the book this
+      // load replaces), and this load is where the book takes it.
+      await svc.setRate(get().rate);
       if (!current()) return;
       // Unloaded while its speed was set (`stop`, a Mark as finished: their reset came after
       // this load), or another book started: not played on the engine they reset.
@@ -3936,7 +4054,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       if (playingOn) playOnStopped = true;
       // Before the engine is asked: its `paused` is then no transition (nothing to save).
       if (pickUpWait) settlePickUpWaitPaused();
-      await svc.pause();
+      await pauseOwnBook(svc);
     } else {
       // At the end of a partial download (D3, fe#185) nothing plays: the engine, ended,
       // reports no `playing`, and the stall watchdog would call the attempt an error. The
@@ -3979,7 +4097,11 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     // the stream is buffering). The engine pause is idempotent in either state.
     const st = get().snapshot.state;
     if (pickUpWait) settlePickUpWaitPaused();
-    if (st === 'playing' || st === 'loading') await svc.pause();
+    if (st !== 'playing' && st !== 'loading') return;
+    // The engine plays another book (the car's, not adopted): that book stops too, and the
+    // store's book, still shown playing, shows paused where it was last heard.
+    if (engineHoldsAnother()) showOwnBookPaused();
+    await svc.pause();
   },
 
   retry: async () => {
@@ -4139,9 +4261,17 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     const changed = clamped !== get().rate;
     set({ rate: clamped });
     // The span at the old speed ends here; the next runs at the new one.
-    if (changed) cutListeningSpan();
-    if (service) await service.setRate(clamped);
+    if (changed) {
+      cutListeningSpan();
+      localSpeedSets++;
+    }
+    // Saved with the book it was set for, read before the engine's await: an adoption landing
+    // in it would take the save (and this book's speed would go unsaved).
     void persist();
+    // Not while the engine holds another book (`engineHoldsOtherBook`: the car's, not
+    // adopted): its speed would be that book's. The speed is the store's book's, saved with
+    // it, and the engine takes it at that book's next load (a play press reloads it).
+    if (service && !engineHoldsOtherBook()) await service.setRate(clamped);
   },
 
   setOutputVolume: async (volume) => {
@@ -4526,8 +4656,13 @@ async function switchCurrentBookToLocal() {
   // A load holding the store (a start, an adoption's reload: `loadingBook`) leaves the
   // snapshot the PREVIOUS place until it lands, and so does a start of this same book at
   // another place, which holds nothing (`startsInFlight`): the swap runs once they are
-  // over (`swapDue`).
-  if (state.loadingBook || startsInFlight > 0) {
+  // over (`swapDue`). So does one while the engine plays another book (the car's, not
+  // adopted: `otherBookReported`): a load of this book would cut that one off, and this
+  // book's own report would end its adoption deadline. Nothing of this book plays to move
+  // onto the download then: the swap waits for the engine to hold this book again (its
+  // report, `createService`, or a start's or a load's end); a play press reloads it from the
+  // download itself (`retry`), and an adoption replaces it.
+  if (state.loadingBook || startsInFlight > 0 || engineHoldsOtherBook()) {
     swapDue = contentKeyOf(nowPlaying);
     return;
   }
@@ -5153,8 +5288,9 @@ function moveOntoDownload() {
 }
 
 /** Run the hot-swap that waited (`swapDue`) once no load holds the store and no start is on
- * its way, on the book it waited for (its own place in the snapshot by then). Asked at both
- * ends: the hold's release (below) and a start's end (`playBook`). */
+ * its way, on the book it waited for (its own place in the snapshot by then). Asked at the
+ * hold's release (below), a start's end (`playBook`) and each report naming the store's book
+ * taken as its place while one waits (`createService`). */
 function runDueSwap() {
   if (swapDue === null || startsInFlight > 0) return;
   const { nowPlaying, loadingBook } = usePlayer.getState();

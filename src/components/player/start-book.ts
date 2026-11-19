@@ -6,6 +6,7 @@ import { downloadedEntryOf } from '@/downloads/store';
 import { contentKeyOf } from '@/lib/content-key';
 import { isDeviceOnline } from '@/lib/device-online';
 import { type BookSource, bookSourceOf, fetchBookSource } from '@/playback/book-source';
+import { readPlaceEarly } from '@/playback/progress-sync';
 import {
   cancelEpisodeFetchOf,
   cancelEpisodeFetchUnless,
@@ -36,9 +37,16 @@ export type StartOptions = {
 };
 
 /** How long a downloaded book waits for its server's item and chapters before it starts
- * from its download's copy (under a car's 10 s wait for a start, with room for the resume
- * lookup). */
+ * from its download's copy (under a car's 10 s wait for a start). Its place is read in the
+ * same wait (`readPlaceEarly`), so a frozen server holds the start this long, once. */
 export const FRESH_SOURCE_WAIT_MS = 3_000;
+
+/** The client a downloaded book's start asks, when there is one to ask: its connection's,
+ * with the device online and the server not marked unreachable. Null for a streamed book. */
+function downloadedClient(target: PlayTarget) {
+  const client = downloadedEntryOf(target) ? resolveClient(target.connectionId) : null;
+  return client && isDeviceOnline() && isReachable(target.connectionId) ? client : null;
+}
 
 /**
  * Where a book starts from. A downloaded one still asks its server first, as a streamed one
@@ -49,11 +57,13 @@ export const FRESH_SOURCE_WAIT_MS = 3_000;
  * downloaded book still starts offline. With nothing to ask (the device has no network, or
  * its server is marked unreachable) it starts from that copy at once: Play offline showed a
  * spinner for the whole wait. Else `bookSourceOf` (a streamed book through the query cache,
- * or null when its connection is gone).
+ * or null when its connection is gone). `client` is `downloadedClient`'s.
  */
-async function startSourceOf(target: PlayTarget): Promise<BookSource | null> {
-  const client = downloadedEntryOf(target) ? resolveClient(target.connectionId) : null;
-  if (client && isDeviceOnline() && isReachable(target.connectionId)) {
+async function startSourceOf(
+  target: PlayTarget,
+  client: ReturnType<typeof downloadedClient>,
+): Promise<BookSource | null> {
+  if (client) {
     try {
       return await withTimeout(
         fetchBookSource(target, client),
@@ -179,7 +189,14 @@ async function playsOnLoaded(target: PlayTarget, book: Book, opts: StartOptions)
 
 async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): Promise<boolean> {
   if (!mayActFor(target.connectionId)) return false;
-  const source = await startSourceOf(target);
+  // A downloaded book from its saved place: its place is read beside its item and chapters
+  // (`readPlaceEarly`), so a frozen server holds the start for one wait, not two.
+  const asked = downloadedClient(target);
+  const saved = asked ? downloadedEntryOf(target)?.manifest.book : undefined;
+  if (asked && saved && opts.position === undefined && opts.track === undefined) {
+    readPlaceEarly(asked, target.connectionId, target.libraryId, saved.rel_path);
+  }
+  const source = await startSourceOf(target, asked);
   if (!source) return false;
   if (how.wanted && !how.wanted()) return false;
   if (!how.fetched && (await playsOnLoaded(target, source.book, opts))) return true;
