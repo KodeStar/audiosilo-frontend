@@ -2442,6 +2442,43 @@ describe("a report of another book than the store's", () => {
     expect(at).toBeCloseTo(31, 0);
   });
 
+  // The review: the swap waited on S's outside play (`engineIsAnothers`), and B's report held
+  // meanwhile took the only release there was (keyed on S's last report): once B was heard
+  // as its own again, it streamed on with its download landed.
+  it('swaps a download that waited on an outside play in once the store hears its book', async () => {
+    await usePlayer.getState().playBook('c1', 2, twoFileBook, twoFileChapters, 130);
+    engineBook = refB;
+    pushSnapshot(snap('playing', 1, 30));
+    await flushMicrotasks();
+    const { snapshot } = usePlayer.getState();
+    usePlayer.setState({ snapshot: { ...snapshot, state: 'error' } });
+    await usePlayer.getState().pause();
+    playAsked?.();
+    engineBook = refS;
+    pushSnapshot(snap('loading', 0, 5));
+    await flushMicrotasks();
+    jest.clearAllMocks();
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    await flushMicrotasks();
+    // B again, while the outside play is still followed as S's: held.
+    engineBook = refB;
+    pushSnapshot(snap('loading', 1, 30));
+    await flushMicrotasks(20);
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    // The outside play ends at its watchdog; B then plays (the car's tap on it).
+    jest.advanceTimersByTime(5_000);
+    await flushMicrotasks();
+    pushSnapshot(snap('playing', 1, 31));
+    await flushMicrotasks(20);
+    expect(mockSvc.load).toHaveBeenCalledTimes(1);
+    const [tracks, index] = (mockSvc.load as jest.Mock).mock.calls[0];
+    expect((tracks as { url: string }[]).map((t) => t.url)).toEqual([
+      'file:///d/1.mp3',
+      'file:///d/2.mp3',
+    ]);
+    expect(index).toBe(1);
+  });
+
   it('tells the car sync nothing new when the other book returns from buffering', async () => {
     const told = jest.fn();
     const off = onOtherBookReported(told);

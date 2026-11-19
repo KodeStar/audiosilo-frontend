@@ -3296,9 +3296,6 @@ async function createService(): Promise<PlaybackService> {
       holdReport();
       return;
     }
-    // A download that landed while the engine held the other book is swapped in now, once
-    // this report is the store's (`switchCurrentBookToLocal`).
-    if (otherReport !== null && swapDue !== null) void Promise.resolve().then(runDueSwap);
     otherReport = null;
     // The store's own book is heard again: the other book's adoption deadline is over, and a
     // later report of another book runs a whole one of its own.
@@ -3427,6 +3424,11 @@ async function createService(): Promise<PlaybackService> {
       }
     }
     usePlayer.setState({ snapshot });
+    // A download that landed while another book held the engine (`switchCurrentBookToLocal`)
+    // is swapped in once a report naming the store's book is taken as its place, past the
+    // holds above (a fault's press, an adoption under way, a held error reload it themselves).
+    // A load or a start still on its way keeps it (`runDueSwap`).
+    if (swapDue !== null && svc.reportedBook?.()) void Promise.resolve().then(runDueSwap);
     // Reached online (the network came back while it played): it plays on, streaming the
     // rest, when its server answers; else the listener is told.
     if (partialEnd && prev.state !== 'paused') {
@@ -5219,8 +5221,8 @@ function moveOntoDownload() {
 
 /** Run the hot-swap that waited (`swapDue`) once no load holds the store and no start is on
  * its way, on the book it waited for (its own place in the snapshot by then). Asked at the
- * hold's release (below), a start's end (`playBook`) and the store's book heard again after
- * another book's reports (`createService`). */
+ * hold's release (below), a start's end (`playBook`) and each report naming the store's book
+ * taken as its place while one waits (`createService`). */
 function runDueSwap() {
   if (swapDue === null || startsInFlight > 0) return;
   const { nowPlaying, loadingBook } = usePlayer.getState();
