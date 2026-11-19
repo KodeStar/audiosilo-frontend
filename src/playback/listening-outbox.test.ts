@@ -1520,6 +1520,33 @@ describe('flushOutbox', () => {
     }
   });
 
+  // Two last sends overlapping on one connection: the first ending never takes the wait's
+  // bypass from the second, begun as the first's flush ended.
+  it("a last send begun as another ends still goes during a 429's wait", async () => {
+    await appendEvents('c1', [listen('held')]);
+    const c = client(async () => {
+      throw new ApiError(429, 'slow down', undefined, 60);
+    });
+    noteRateLimit('c1', new ApiError(429, 'slow down', undefined, 60));
+    try {
+      let second: Promise<void> | undefined;
+      let before = 0;
+      const running = flushOutbox('c1');
+      // Runs as the flush ends, before the first last send's own end.
+      void running.then(() => {
+        before = c.syncListening.mock.calls.length;
+        second = flushOutbox('c1', { lastChance: true });
+      });
+      await flushOutbox('c1', { lastChance: true });
+      await second;
+      expect(before).toBeGreaterThan(0);
+      // The second's own flush sent too, not held by the 429 its first answered.
+      expect(c.syncListening).toHaveBeenCalledTimes(before + 1);
+    } finally {
+      forgetRateLimit('c1');
+    }
+  });
+
   // What the last send could not deliver is in the count the confirm names, the playing
   // span's listening too, not purged unseen.
   it('unsentListens counts the playing span when the last send fails', async () => {

@@ -1185,9 +1185,11 @@ export async function withdrawFinish(
   };
 }
 
-/** Connections making their last send (`flushOutbox`'s `lastChance`): a flush already
- * running for another caller goes round again under it. */
-const lastChance = new Set<string>();
+/** Connections making their last send (`flushOutbox`'s `lastChance`), by how many such
+ * calls are still out: a flush already running for another caller goes round again under
+ * it, and one call ending never takes the bypass from another still waiting (a removal
+ * asked twice, a flush begun just as the first ended). */
+const lastChance = new Map<string, number>();
 
 /**
  * Send a connection's outbox. One flush at a time per connection: a call while one runs
@@ -1201,8 +1203,12 @@ export function flushOutbox(
   opts: { lastChance?: boolean } = {},
 ): Promise<void> {
   if (opts.lastChance) {
-    lastChance.add(connectionId);
-    return flushOutbox(connectionId).finally(() => lastChance.delete(connectionId));
+    lastChance.set(connectionId, (lastChance.get(connectionId) ?? 0) + 1);
+    return flushOutbox(connectionId).finally(() => {
+      const left = (lastChance.get(connectionId) ?? 1) - 1;
+      if (left > 0) lastChance.set(connectionId, left);
+      else lastChance.delete(connectionId);
+    });
   }
   const running = inFlight.get(connectionId);
   if (running) {
@@ -1862,5 +1868,6 @@ export function resetOutboxForTests(): void {
   maybeReached.clear();
   inFlight.clear();
   flushAgain.clear();
+  lastChance.clear();
   answerListeners.clear();
 }
