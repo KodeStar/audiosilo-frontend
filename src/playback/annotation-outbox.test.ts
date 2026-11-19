@@ -336,6 +336,30 @@ describe('sending', () => {
     expect(await queuedBookmarks()).toEqual([]);
   });
 
+  it.each([
+    ['a 404', new ApiError(404, 'not found')],
+    ['a 403', new ApiError(403, 'forbidden')],
+  ])('keeps those whose read before the send fails with %s', async (_name, err) => {
+    const { client, held, state } = server('c1', offline());
+    await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+    await addBookmarkOrQueue('c1', 1, 'a/book', 200);
+    await idle();
+    state.down = null;
+    client.addBookmark.mockClear();
+    client.bookmarks.mockRejectedValueOnce(err);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    await flushBookmarks();
+    // Nothing sent blind, nothing dropped.
+    expect(client.addBookmark).not.toHaveBeenCalled();
+    expect((await queuedBookmarks()).map((e) => e.position)).toEqual([100, 200]);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+    // The book reads again: they go, in order.
+    await flushBookmarks();
+    expect(held.map((b) => b.position)).toEqual([100, 200]);
+    expect(await queuedBookmarks()).toEqual([]);
+  });
+
   it('keeps those a 401 refuses: the connection signs in again and they go then', async () => {
     const { state, held } = server('c1', offline());
     await addBookmarkOrQueue('c1', 1, 'a/book', 100);

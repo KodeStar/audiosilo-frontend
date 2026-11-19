@@ -61,8 +61,9 @@ import { onlyConnection, queuedRoute } from './progress-sync';
  *   reset) is dropped by the next replay (`queuedRoute`: not while an identity move is on its
  *   way).
  *
- * A bookmark the server refuses for good (a 4xx other than 401, 408 and 429: the book is gone
- * or out of the account's reach) is dropped, logged. Labels follow `postBookmark`'s rule at
+ * A bookmark the server refuses for good (its POST answered with a 4xx other than 401, 408
+ * and 429: the book is gone or out of the account's reach) is dropped, logged. The read
+ * before the send drops nothing: when it fails, whatever the status, the bookmark waits. Labels follow `postBookmark`'s rule at
  * send time (`addBookmark`), on flags that are known: a labelled bookmark is sent only once
  * its server's `/server` has been read (`labelFlagKnown`), and waits while it can't be, so
  * the label is never dropped just because that read failed.
@@ -334,13 +335,21 @@ async function sendGroup(
   const onServer = new Map<string, Bookmark[]>();
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i];
-    try {
-      const book = contentKeyOf(e);
-      let held = onServer.get(book);
-      if (!held) {
+    const book = contentKeyOf(e);
+    let held = onServer.get(book);
+    if (!held) {
+      try {
         held = (await client.bookmarks(e.libraryId, e.path)) ?? [];
-        onServer.set(book, held);
+      } catch (err) {
+        // The read failed, whatever the status (a 403 or 404 too: a library not shared for
+        // now, a book away during a rescan, a proxy's answer). That says nothing for good
+        // about the bookmark, so it waits: only the POST's own refusal drops one.
+        noteFailure(connectionId, err);
+        return entries.slice(i);
       }
+      onServer.set(book, held);
+    }
+    try {
       if (heldOnServer(e, held)) continue;
       // Its label goes only on flags that are known: it waits, label and all, while they
       // can't be read.
