@@ -1,18 +1,18 @@
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
-import { useProxyRefusals } from '@/api/proxy-refusal';
+import { needsProxyNotice, useProxyRefusals } from '@/api/proxy-refusal';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { pushInShell } from '@/lib/open';
 import { accountHref } from '@/lib/paths';
-import { canManageProxySet, connectionProxySet, ownSetInUse } from '@/lib/proxy-headers';
+import { canManageProxySet, connectionProxySet } from '@/lib/proxy-headers';
 import { cn } from '@/lib/utils';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { RECONNECT_STRIP_CLASS } from './reconnect-banner';
+import { BANNER_STRIP_CLASS, RECONNECT_STRIP_CLASS } from './reconnect-banner';
 
 /**
  * A slim bar, beside the reconnect banner, while a proxy in front of a server turns this
@@ -35,7 +35,7 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
   const sets = useSession((s) => s.proxySets);
   const own = useSession((s) => s.signInProxySets);
   const conn = useProfileConnections().find(
-    (c) => !c.needsReconnect && (refused[c.id] || ownSetInUse(sets, own[c.id])),
+    (c) => !c.needsReconnect && needsProxyNotice(c.id, refused, sets, own),
   );
   if (!conn) return null;
 
@@ -53,11 +53,7 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
       </Text>
     </>
   );
-  const strip = cn(
-    'flex-row items-center gap-2 border-b border-b-border px-3 py-2',
-    RECONNECT_STRIP_CLASS,
-    className,
-  );
+  const strip = cn(BANNER_STRIP_CLASS, RECONNECT_STRIP_CLASS, className);
 
   if (!canManage) {
     return (

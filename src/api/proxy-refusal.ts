@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import { ownSetInUse } from '@/lib/proxy-headers';
+import { ownSetInUse, type ProxySets, type SignInProxySet } from '@/lib/proxy-headers';
 import { useSession } from '@/stores/session';
 
 /**
@@ -32,19 +32,36 @@ export function noteProxyAnswer(connectionId: string, refused: boolean): void {
   useProxyRefusals.setState({ refused: rest });
 }
 
-/** Whether a proxy is turning `connectionId`'s requests away now. */
-export function useProxyRefused(connectionId: string | undefined): boolean {
-  return useProxyRefusals((s) => !!connectionId && s.refused[connectionId] === true);
+/**
+ * Whether the proxy notice is for `connectionId` (the shell's `ProxyRefusedBanner`, kids
+ * mode's line): a proxy is turning its requests away now (`refused`), or it is on its
+ * sign-in's own proxy headers (`own`, `signInProxySets`: a kid's account the address's kept
+ * set no longer gets past, `setSession`) while that kept set is still the one it stands in for
+ * (`ownSetInUse`), so the address's set needs a grown-up to update it.
+ */
+export function needsProxyNotice(
+  connectionId: string,
+  refused: Readonly<Record<string, true>>,
+  sets: ProxySets,
+  own: Readonly<Record<string, SignInProxySet>>,
+): boolean {
+  return refused[connectionId] === true || ownSetInUse(sets, own[connectionId]);
 }
 
-/** Whether `connectionId` is on its sign-in's own proxy headers (`signInProxySets`: a kid's
- * account the address's kept set no longer gets past, `setSession`) while that kept set is
- * still the one it stands in for: the address's set needs a grown-up to update it. */
-export function useOnOwnProxySet(connectionId: string | undefined): boolean {
-  return useSession((s) => {
-    const own = connectionId ? s.signInProxySets[connectionId] : undefined;
-    return ownSetInUse(s.proxySets, own) && s.connections.some((c) => c.id === connectionId);
-  });
+/** `needsProxyNotice` for one connection, kept current: a sign-in's own set only while the
+ * connection is still signed in. */
+export function useProxyNotice(connectionId: string | undefined): boolean {
+  const refused = useProxyRefusals((s) => s.refused);
+  return useSession(
+    (s) =>
+      !!connectionId &&
+      needsProxyNotice(
+        connectionId,
+        refused,
+        s.proxySets,
+        s.connections.some((c) => c.id === connectionId) ? s.signInProxySets : {},
+      ),
+  );
 }
 
 /** Tests: no connection refused. */

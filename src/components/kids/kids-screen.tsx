@@ -6,7 +6,7 @@ import { BackHandler, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useOnOwnProxySet, useProxyRefused } from '@/api/proxy-refusal';
+import { useProxyNotice } from '@/api/proxy-refusal';
 import type { Book } from '@/api/types';
 import type { PlayTarget } from '@/components/player/play-route';
 import { RECONNECT_STRIP_CLASS } from '@/components/layout/reconnect-banner';
@@ -105,8 +105,7 @@ export function KidsScreen() {
   // A proxy in front of the server turns the kid's requests away, or lets them through only on
   // the headers typed for this sign-in (fe#295): the address's set is a grown-up's to update
   // (`ProxyRefusedBanner` in the shell).
-  const refused = useProxyRefused(connectionId ?? undefined);
-  const proxyRefused = useOnOwnProxySet(connectionId ?? undefined) || refused;
+  const proxyRefused = useProxyNotice(connectionId ?? undefined);
   const loaded = usePlayer((s) => s.nowPlaying !== null);
   const list = useRef<FlashListRef<KidsRow>>(null);
   const [outer, setOuter] = useState(0);
