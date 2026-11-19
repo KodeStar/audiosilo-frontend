@@ -3,6 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ApiError, NetworkError, TimeoutError } from '@/api/client';
 import type { Bookmark } from '@/api/types';
 
+import { ANNOTATION_OUTBOX_KEY as KEY } from '@/lib/storage-keys';
+
 import type { QueuedBookmark } from './annotation-outbox';
 
 // The bookmark outbox (fe#356): what is kept, what is sent, once, in order, and what is
@@ -140,6 +142,25 @@ async function removed(id: string) {
 /** Let the replays an add started in the background finish. */
 async function idle() {
   for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+}
+
+/** The outbox as stored, whatever the screens are shown. */
+async function storedEntries(): Promise<QueuedBookmark[]> {
+  return JSON.parse((await AsyncStorage.getItem(KEY)) ?? '[]');
+}
+
+/** A tap whose POST is out until `answer` is called (with nothing: it lands and answers;
+ * with an error: it fails so). */
+function heldPost(client: Client) {
+  const send = client.addBookmark.getMockImplementation();
+  let answer: (err?: unknown) => void = () => {};
+  client.addBookmark.mockImplementationOnce(
+    (...args: unknown[]) =>
+      new Promise((resolve, reject) => {
+        answer = (err) => (err ? reject(err) : resolve(send?.(...args)));
+      }),
+  );
+  return { answer: (err?: unknown) => answer(err) };
 }
 
 /** A server that keeps what it is sent, failing while `down`. A `client_id` it holds already
@@ -601,19 +622,12 @@ describe('sending', () => {
       return s;
     }
     const positions = async () => (await queuedBookmarks()).map((e) => e.position);
-    /** A spell of failing: the tries of an hour's backoff (each at least `RETRY_MIN_MS`
-     * after the last, so each counts). */
-    async function failFor(tries: number) {
+    /** A spell of failing, a try `every` ms: by default the tries of an hour's backoff (each
+     * at least `RETRY_MIN_MS` after the last, so each counts); a day apart (the app opened
+     * once a day) keeps the run going. */
+    async function failFor(tries: number, every = 30_000) {
       for (let i = 0; i < tries; i++) {
-        jest.setSystemTime(Date.now() + 30_000);
-        await flushBookmarks();
-      }
-    }
-    /** Failing on, a try a day (the app opened once a day): a gap of a day at most keeps the
-     * run going. */
-    async function failDaily(days: number) {
-      for (let i = 0; i < days; i++) {
-        jest.setSystemTime(Date.now() + DAY);
+        jest.setSystemTime(Date.now() + every);
         await flushBookmarks();
       }
     }
@@ -627,11 +641,11 @@ describe('sending', () => {
       // Its first failures: kept, as on every try of the week after them.
       await failFor(10);
       expect(await positions()).toEqual([100, 200]);
-      await failDaily(6);
+      await failFor(6, DAY);
       expect(await positions()).toEqual([100, 200]);
       expect(warn).not.toHaveBeenCalled();
       // A week on: given up, and the one behind it (which never failed itself) goes.
-      await failDaily(1);
+      await failFor(1, DAY);
       expect(warn).toHaveBeenCalledTimes(1);
       expect(await positions()).toEqual([]);
       expect(held.map((b) => b.position)).toEqual([300, 200]);
@@ -644,11 +658,11 @@ describe('sending', () => {
         args[1] === 'a/book' ? Promise.reject(new ApiError(404, 'not found')) : read?.(...args),
       );
       await failFor(10);
-      await failDaily(6);
+      await failFor(6, DAY);
       expect(await positions()).toEqual([100, 200]);
       expect(warn).not.toHaveBeenCalled();
       client.bookmarks.mockClear();
-      await failDaily(1);
+      await failFor(1, DAY);
       expect(warn).toHaveBeenCalledTimes(2);
       expect(await positions()).toEqual([]);
       // One read of the book told both.
@@ -663,10 +677,10 @@ describe('sending', () => {
       mockAnnotations = undefined;
       mockCapsDown = new ApiError(404, 'not found');
       await failFor(10);
-      await failDaily(6);
+      await failFor(6, DAY);
       expect(await positions()).toEqual([100]);
       expect(warn).not.toHaveBeenCalled();
-      await failDaily(1);
+      await failFor(1, DAY);
       expect(warn).toHaveBeenCalledTimes(1);
       expect(await positions()).toEqual([]);
       expect(s.held).toEqual([]);
@@ -727,7 +741,7 @@ describe('sending', () => {
         failedSince: new Date(Date.now() - 8 * DAY).toISOString(),
         failures: 20,
       };
-      await AsyncStorage.setItem('audiosilo.annotationOutbox', JSON.stringify([old, ...rest]));
+      await AsyncStorage.setItem(KEY, JSON.stringify([old, ...rest]));
       resetAnnotationOutboxForTests();
       await failFor(1);
       expect(warn).not.toHaveBeenCalled();
@@ -884,16 +898,12 @@ describe('sending', () => {
     await idle();
     state.down = null;
     // The first send is on its way when the second's row is deleted.
-    let land: () => void = () => {};
-    const send = client.addBookmark.getMockImplementation();
-    client.addBookmark.mockImplementationOnce(
-      (...args: unknown[]) => new Promise((resolve) => (land = () => resolve(send?.(...args)))),
-    );
+    const post = heldPost(client);
     const replaying = flushBookmarks();
     await idle();
     const second = (await queuedBookmarks()).find((e) => e.position === 200);
     expect(await discardQueuedBookmark(second?.id ?? '')).toMatchObject({ position: 200 });
-    land();
+    post.answer();
     await replaying;
     expect(held.map((b) => b.position)).toEqual([100]);
     expect(await queuedBookmarks()).toEqual([]);
@@ -905,11 +915,7 @@ describe('sending', () => {
     await idle();
     state.down = null;
     // Its POST is on its way when its row is deleted.
-    let land: () => void = () => {};
-    const send = client.addBookmark.getMockImplementation();
-    client.addBookmark.mockImplementationOnce(
-      (...args: unknown[]) => new Promise((resolve) => (land = () => resolve(send?.(...args)))),
-    );
+    const post = heldPost(client);
     const replaying = flushBookmarks();
     await idle();
     const [entry] = await queuedBookmarks();
@@ -917,7 +923,7 @@ describe('sending', () => {
     expect(deleted).toMatchObject({ position: 100, note: 'n' });
     // Undo, then the POST lands after all.
     const back = requeueBookmark(deleted as QueuedBookmark);
-    land();
+    post.answer();
     await replaying;
     await back;
     await idle();
@@ -1206,25 +1212,6 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
     expect(await addBookmarkOrQueue('c1', 1, 'a/book', 130)).toHaveProperty('made');
   });
 
-  /** The outbox as stored, whatever the screens are shown. */
-  async function storedEntries(): Promise<QueuedBookmark[]> {
-    return JSON.parse((await AsyncStorage.getItem('audiosilo.annotationOutbox')) ?? '[]');
-  }
-
-  /** A tap whose POST is out until `answer` is called (with nothing: it lands and answers;
-   * with an error: it fails so). */
-  function heldPost(client: Client) {
-    const send = client.addBookmark.getMockImplementation();
-    let answer: (err?: unknown) => void = () => {};
-    client.addBookmark.mockImplementationOnce(
-      (...args: unknown[]) =>
-        new Promise((resolve, reject) => {
-          answer = (err) => (err ? reject(err) : resolve(send?.(...args)));
-        }),
-    );
-    return { answer: (err?: unknown) => answer(err) };
-  }
-
   it('stores a tap before its POST, out of sight, and takes it out once that works', async () => {
     const { client, held } = server('c1');
     const post = heldPost(client);
@@ -1264,7 +1251,8 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
     expect(await queuedBookmarks('c1')).toHaveLength(1);
     await flushBookmarks();
     expect(held).toMatchObject([{ position: 120 }]);
-    expect(sentIds(client)).toEqual([sentIds(client)[0], sentIds(client)[0]]);
+    const [first, ...again] = sentIds(client);
+    expect(again).toEqual([first]);
     expect(await queuedBookmarks()).toEqual([]);
   });
 
@@ -1305,7 +1293,7 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
     const [entry] = await storedEntries();
     // Another tab knows nothing of this one's POST: it sends the entry, with its id.
     await client.addBookmark(1, 'a/book', 120, '', undefined, entry.client_id);
-    await AsyncStorage.setItem('audiosilo.annotationOutbox', '[]');
+    await AsyncStorage.setItem(KEY, '[]');
     post.answer();
     expect(await out).toHaveProperty('made');
     expect(held).toHaveLength(1);
@@ -1358,7 +1346,7 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
     await client.addBookmark(1, 'a/book', 120, 'Fell asleep', undefined, entry.client_id);
     client.addBookmark.mockClear();
     const claim = { id: 'dead', until: Date.now() + 30_000 };
-    await AsyncStorage.setItem('audiosilo.annotationOutbox', JSON.stringify([{ ...entry, claim }]));
+    await AsyncStorage.setItem(KEY, JSON.stringify([{ ...entry, claim }]));
     resetAnnotationOutboxForTests();
     // The launch: left to the replay that claimed it.
     await flushBookmarks();
@@ -1489,7 +1477,7 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
       created_at: new Date().toISOString(),
     });
     await AsyncStorage.setItem(
-      'audiosilo.annotationOutbox',
+      KEY,
       JSON.stringify([
         {
           id: 'old',
@@ -1528,7 +1516,7 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
       lastFailure: new Date(Date.now() - 60 * 60_000).toISOString(),
       failingStep: 'confirm',
     };
-    await AsyncStorage.setItem('audiosilo.annotationOutbox', JSON.stringify([entry]));
+    await AsyncStorage.setItem(KEY, JSON.stringify([entry]));
     // Still waiting here, and a write of the queue (another bookmark stored) keeps it.
     mockOnline.c1 = false;
     await queueNewBookmark('c1', 1, 'b/book', 130, 'n');
@@ -1646,9 +1634,9 @@ it("shows a waiting bookmark under its connection's new id once an identity move
   await idle();
   expect(queuedBookmarksSnapshot().map((e) => e.connectionId)).toEqual(['c1']);
   // The identity migration's rewrite: the same entry, its connection id moved.
-  const stored = JSON.parse((await AsyncStorage.getItem('audiosilo.annotationOutbox')) ?? '[]');
+  const stored = await storedEntries();
   await AsyncStorage.setItem(
-    'audiosilo.annotationOutbox',
+    KEY,
     JSON.stringify(stored.map((e: object) => ({ ...e, connectionId: 'c1.7' }))),
   );
   await queuedBookmarks();

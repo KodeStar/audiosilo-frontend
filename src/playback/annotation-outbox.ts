@@ -164,8 +164,8 @@ const SAME_BOOKMARK_WINDOW_MS = 24 * 60 * 60_000;
 /** How long a bookmark may keep failing against a server that answers before the outbox
  * gives up on it (`givenUp`)... */
 const GIVE_UP_MS = 7 * 24 * 60 * 60_000;
-/** ...and how many failed sends at least: two a week apart, with no try between them (the
- * app closed, the server away), are not a week of failing. */
+/** ...and how many failed sends at least: a run kept going by one try a day (`RUN_GAP_MS`) is
+ * not given up on before this many. */
 const GIVE_UP_TRIES = 10;
 /** A gap longer than this since its last counted failure (the app closed, its server away)
  * starts a bookmark's run of failures again (`runAt`): one old failure and, a week on, an
@@ -449,43 +449,40 @@ export async function addBookmarkOrQueue(
     // has gone out: `fresh`), and a kill while the POST is out leaves it to a replay. Out of
     // sight meanwhile (`posting`): it is waiting only once that POST has failed.
     if (takesClientId(connectionId)) stored = await storePosting({ ...fields, fresh: true }, since);
+    // `addBookmark` sends the id on the flags as they are now, which the store's wait may
+    // have seen answered again.
+    const withId = takesClientId(connectionId);
     try {
-      // `addBookmark` sends the id on the flags as they are now, which the store's wait may
-      // have seen answered again.
-      const withId = takesClientId(connectionId);
       // Stored to go with its id to a server that no longer takes one: posted now it would
       // go bare with nothing stored for that (`othersHeld`), so a lost answer would make it
       // twice. Left to the replay, which reads its book first.
       if (!stored || withId) {
-        try {
-          const made = await addBookmark(
-            connectionId,
-            libraryId,
-            path,
-            position,
-            note,
-            undefined,
-            clientId,
-          );
+        const made = await addBookmark(
+          connectionId,
+          libraryId,
+          path,
+          position,
+          note,
+          undefined,
+          clientId,
+        );
+        await settle();
+        return { made };
+      }
+    } catch (err) {
+      // Its id refused by a server that no longer takes one (`whyRefused`), not the bookmark:
+      // nothing landed, and it is kept to go without the id, at once (the flags say so now).
+      const idRefused =
+        withId && badRequest(err) && (await whyRefused(connectionId, client)) === 'id';
+      if (!idRefused) {
+        if (!worthKeeping(err)) {
           await settle();
-          return { made };
-        } catch (err) {
-          // Its id refused by a server that no longer takes one (`whyRefused`), not the
-          // bookmark: nothing landed, and it is kept to go without the id, at once (the flags
-          // say so now).
-          const idRefused =
-            withId && badRequest(err) && (await whyRefused(connectionId, client)) === 'id';
-          if (!idRefused) {
-            if (!worthKeeping(err)) {
-              await settle();
-              throw err;
-            }
-            noteFailure(connectionId, err);
-            failed = true;
-            // A 401 or a 429 turned it away before the server took it: nothing landed.
-            sentBare = !withId && !turnedAway(err);
-          }
+          throw err;
         }
+        noteFailure(connectionId, err);
+        failed = true;
+        // A 401 or a 429 turned it away before the server took it: nothing landed.
+        sentBare = !withId && !turnedAway(err);
       }
     } finally {
       // Waiting from now on (or gone: settled).
@@ -690,13 +687,12 @@ type Tried = { step: SendStep; counts: boolean };
 function runAt<T extends QueuedBookmark>(e: T, step: SendStep, now: number): T {
   // An older build's entry has no `lastFailure`: its run's start stands in for it.
   const last = Date.parse(e.lastFailure ?? e.failedSince ?? '');
-  if (!(now - last > RUN_GAP_MS)) {
-    if (e.failingStep === undefined) return e;
-    // A stored step this build has no place for says nothing to compare: the count starts
-    // again.
-    const known = Object.hasOwn(STEP_ORDER, e.failingStep);
-    if (known && STEP_ORDER[step] <= STEP_ORDER[e.failingStep]) return e;
-  }
+  // No failure stamped (NaN) is no gap.
+  const gap = now - last > RUN_GAP_MS;
+  if (!gap && e.failingStep === undefined) return e;
+  // A stored step this build has no place for says nothing to compare: the count starts again.
+  const known = e.failingStep !== undefined && Object.hasOwn(STEP_ORDER, e.failingStep);
+  if (!gap && known && STEP_ORDER[step] <= STEP_ORDER[e.failingStep as SendStep]) return e;
   const { failedSince: _since, failures: _n, lastFailure: _last, failingStep: _step, ...rest } = e;
   return rest as T;
 }
@@ -967,7 +963,8 @@ async function replayWaiting(connectionId?: string): Promise<void> {
       ? queuedRoute
       : (cid: string): Route<ApiClient> => (cid === connectionId ? queuedRoute(cid) : 'keep');
   // Nothing this replay would send or drop, as last read: no storage read, no lock.
-  if (snapshotRead && snapshot.every((e) => route(e.connectionId) === 'keep')) {
+  // One whose tap's own POST is out (`posting`) is not waiting.
+  if (snapshotRead && shown.every((e) => route(e.connectionId) === 'keep')) {
     scheduleRetry();
     return;
   }
@@ -1004,7 +1001,7 @@ let retryDelay = RETRY_MIN_MS;
  * that refuses the token (a 401: `needsReconnect`) once it is signed in again
  * (`startBookmarkSync`), rather than asked every few minutes meanwhile. */
 function scheduleRetry(): void {
-  const due = snapshot.some(
+  const due = shown.some(
     (e) => queuedRoute(e.connectionId) !== 'keep' && !connectionOf(e.connectionId)?.needsReconnect,
   );
   if (!due) {
