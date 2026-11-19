@@ -2080,10 +2080,7 @@ describe('the download hot-swap across file orders', () => {
     // Streaming 20 s into 2.mp3 (index 0); the download holds a file before it, so its load
     // puts 2.mp3 at index 1, and the engine reports its own indexes until the commit.
     await streamIn(newOrder);
-    let landLoad!: () => void;
-    (mockSvc.load as jest.Mock).mockImplementationOnce(
-      () => new Promise<void>((resolve) => (landLoad = resolve)),
-    );
+    const landLoad = holdNextLoad();
     downloadLands(['A/Folder/a.mp3', ...newOrder]);
     await flushMicrotasks();
     expect(swapLoad()).toEqual({ url: urlOf('A/Folder/2.mp3'), index: 1, position: 20 });

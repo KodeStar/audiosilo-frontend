@@ -2110,7 +2110,7 @@ const loadedFaulted = () => faultedBook !== null && faultedBook === usePlayer.ge
  * when the engine went where the book is not, or a move made on the book in error
  * (`showPlace`), never the engine's own (it may sit clamped at a short measure)? Jump undo
  * takes such an `error` as a settled place. */
-export const showsFaultPlace = (): boolean => loadedFaulted();
+export const showsFaultPlace = loadedFaulted;
 
 /** Is the snapshot an error only a play replaces: no play wanted, so `onReport` holds it
  * against every report but a `playing` one? */
@@ -2136,15 +2136,20 @@ function noteEngineLength(np: NowPlaying, trackIndex: number, duration: number) 
   engineLengths.byFile.set(trackIndex, duration);
 }
 
+/** The engine's length of file `trackIndex` of `np`'s queue as it last reported it
+ * (`engineLengths`), 0 when unknown. */
+const engineLength = (np: NowPlaying, trackIndex: number): number =>
+  engineLengths?.np === np ? (engineLengths.byFile.get(trackIndex) ?? 0) : 0;
+
 /** Is `position` in file `trackIndex` of `np`'s queue past `measure`, the engine's own length of
- * that file (by default the one it last reported, `engineLengths`), while the server's length
- * goes on past the place (`shortOfFileEnd`)? An engine put there clamps at its measure and runs
- * on into the next file: it can't play the place. False with no measure known. */
+ * that file, while the server's length goes on past the place (`shortOfFileEnd`)? An engine put
+ * there clamps at its measure and runs on into the next file: it can't play the place. False
+ * with no measure known. */
 function pastMeasure(
   np: NowPlaying,
   trackIndex: number,
   position: number,
-  measure = engineLengths?.np === np ? (engineLengths.byFile.get(trackIndex) ?? 0) : 0,
+  measure: number,
 ): boolean {
   return (
     measure > 0 &&
@@ -2169,9 +2174,16 @@ function showPlace(np: NowPlaying, trackIndex: number, position: number, faulted
   const duration = fileDurationOf(np.queue, trackIndex, engine);
   // Faulted before the snapshot is told: its subscribers read the place as the fault's
   // (`showsFaultPlace`).
-  if (!faulted) faultPause = { resolved: true, stopped: true };
-  faultedBook = np;
+  markFaulted(np, faulted);
   usePlayer.setState({ snapshot: { ...snapshot, trackIndex, position, duration } });
+}
+
+/** `np`'s engine faulted from here (`faultedBook`). `pauseOut`: a fault's pause (`faultPause`)
+ * may not have landed yet, so a late `playing` of the engine's is still paused again; else none
+ * is out, and a `playing` from now on is the listener's. */
+function markFaulted(np: NowPlaying, pauseOut: boolean) {
+  if (!pauseOut) faultPause = { resolved: true, stopped: true };
+  faultedBook = np;
 }
 
 /** Where a reload of the loaded book `np` puts the engine (`retry`, and a press on a book in
@@ -2195,18 +2207,19 @@ function reloadPlace(np: NowPlaying): { index: number; positionInTrack: number }
 function stuckPastMeasure(np: NowPlaying): boolean {
   if (otherTabPlayed?.connectionId === np.connectionId || streamsDownloadedFile(np)) return false;
   const at = reloadPlace(np);
-  return pastMeasure(np, at.index, at.positionInTrack);
+  return pastMeasure(np, at.index, at.positionInTrack, engineLength(np, at.index));
 }
 
 /** The fault of `np` an ask called off (`askEngineTo` on a faulted book), while the engine may
- * still be where it faulted: no ask of the book made since (`from` on) has been taken. `latest`:
- * the store's last ask since (`EngineAsk.seq`), standing or given up on (`withdrawAsk`: a move
- * to another tab's place past `TAB_MOVE_MAX_MS`, whose call may still settle). The engine
- * refusing that ask's move (`engineTakes`) is the engine still where it faulted, so the fault
- * stands again; one of them taken clears it, and so does the ask's end any other way
- * (`setAsk(null)`: the engine played on from it or ran off it, the listener moved). One record
- * for the book, re-pointed with the asks at the download hot-swap's commit (`moveAsk`). */
-let calledOff: { np: NowPlaying; from: number; latest: number } | null = null;
+ * still be where it faulted: no ask of the book made since (`from` on) has been taken, and every
+ * ask since was of the book, so the store's last (`askSeq`) is one of them, standing or given up
+ * on (`withdrawAsk`: a move to another tab's place past `TAB_MOVE_MAX_MS`, whose call may still
+ * settle). The engine refusing that ask's move (`engineTakes`) is the engine still where it
+ * faulted, so the fault stands again; one of them taken clears it, and so does the ask's end any
+ * other way (`setAsk(null)`: the engine played on from it or ran off it, the listener moved).
+ * One record for the book, re-pointed with the asks at the download hot-swap's commit
+ * (`moveAsk`). */
+let calledOff: { np: NowPlaying; from: number } | null = null;
 /** The number of the store's last ask (`EngineAsk.seq`). */
 let askSeq = 0;
 
@@ -2245,18 +2258,17 @@ function askEngineTo(np: NowPlaying, trackIndex: number, position: number): Engi
   };
   // The ask calls the book's fault off, or is the latest of the asks since one did: the engine
   // may still be where it faulted, so the fault stands again if this one is refused.
-  if (faultedBook === np) calledOff = { np, from: seq, latest: seq };
-  else if (calledOff?.np === np) calledOff = { ...calledOff, latest: seq };
-  else calledOff = null;
+  if (faultedBook === np) calledOff = { np, from: seq };
+  else if (calledOff?.np !== np) calledOff = null;
   setAsk(ask);
   faultedBook = null;
   return ask;
 }
 
-/** Does `ask` hold off a fault it may have to bring back (`calledOff`): the latest ask since?
- * By its number only: the record follows the book onto the download's queue (`moveAsk`), and a
- * given-up ask's `np` does not. */
-const holdsFault = (ask: EngineAsk) => calledOff?.latest === ask.seq;
+/** Does `ask` hold off a fault it may have to bring back (`calledOff`): the store's last ask
+ * (`askSeq`), so the latest since? By its number only: the record follows the book onto the
+ * download's queue (`moveAsk`), and a given-up ask's `np` does not. */
+const holdsFault = (ask: EngineAsk) => calledOff !== null && ask.seq === askSeq;
 
 /** `move` is the engine call that makes `ask`'s move: once it resolves the engine took it
  * (`EngineAsk.landed`); one that rejects was refused, and its ask stands no longer, while a
@@ -3966,8 +3978,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       clearPlaybackIntent();
       // Faulted: a play the engine makes by itself is paused again (and asks this again), as
       // the engine sits paused at its measure; its pause, if one is out, is of no play of ours.
-      faultedBook = asked;
-      faultPause = { resolved: true, stopped: true };
+      markFaulted(asked, false);
       const { snapshot } = get();
       if (snapshot.state !== 'error') set({ snapshot: { ...snapshot, state: 'error' } });
       return;
@@ -4412,7 +4423,8 @@ function commitLocalSwap(nowPlaying: NowPlaying, swap: LocalSwap): NowPlaying | 
   const committed = { ...nowPlaying, cover: swap.cover ?? nowPlaying.cover, queue: swap.queue };
   // A faulted engine is still one on the download's queue (`engineFault`): the swap put it at
   // the place the store shows, and a press must still reload it there, never just resume it.
-  // So is an ask still standing: the engine has not played on from it yet (`moveAsk`).
+  // So is a fault an ask called off (a late refusal brings it back), and an ask still
+  // standing: the engine has not played on from it yet (`moveAsk`).
   moveAsk(nowPlaying, committed, { trackIndex: swap.index, position: swap.positionInTrack });
   // The store's place moves onto the download's queue with it, by the file: the engine's
   // report of the download's index can be held back (a stream in `error` holds every
