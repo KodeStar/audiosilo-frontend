@@ -161,10 +161,8 @@ function useReadElsewhere(qc: QueryClient, queryKey: readonly unknown[]): boolea
       }),
     [qc, hash],
   );
-  return useSyncExternalStore(
-    subscribe,
-    () => (qc.getQueryCache().get(hash)?.getObserversCount() ?? 0) > 1,
-  );
+  const read = () => (qc.getQueryCache().get(hash)?.getObserversCount() ?? 0) > 1;
+  return useSyncExternalStore(subscribe, read, read);
 }
 
 function WatchedFetch({ cid, id, at }: Watch) {
