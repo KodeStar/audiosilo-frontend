@@ -286,6 +286,14 @@ function isThisOne(onServer: Bookmark, queued: QueuedBookmark): boolean {
   );
 }
 
+/** Whether the server already holds `queued` among `onServer` (the replay's rule): a waiting
+ * row or pin for it would show the bookmark twice, between its send and its leaving the
+ * outbox (a replay settles once every connection's sends are done), or after an add whose
+ * answer was lost. */
+export function heldOnServer(queued: QueuedBookmark, onServer: readonly Bookmark[]): boolean {
+  return onServer.some((b) => isThisOne(b, queued));
+}
+
 /** Whether `entry` is still in the stored outbox: one taken out meanwhile (its row's Delete,
  * here or in another tab, the connection's removal) is not sent. Read from storage, not the
  * snapshot, which follows another tab's writes only as their `storage` events arrive. Storage
@@ -315,7 +323,7 @@ async function sendGroup(
         held = (await client.bookmarks(e.libraryId, e.path)) ?? [];
         onServer.set(book, held);
       }
-      if (held.some((b) => isThisOne(b, e))) continue;
+      if (heldOnServer(e, held)) continue;
       if (e.label && cachedCapability(connectionId, 'annotations') === undefined) {
         await fetchCapabilities(connectionId, client).catch(() => undefined);
       }

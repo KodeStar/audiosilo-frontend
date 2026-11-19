@@ -1715,10 +1715,10 @@ after its confirm names them beside the unsynced listens (`unsentBeforeSignOut`,
 drops the entries of a connection gone once the session has loaded. Waiting ones are listed
 among the book's bookmarks (`useQueuedBookmarks`, `QueuedBookmarkRow`: "Waiting to sync", Delete
 takes one out unsent, with Undo, and a replay skips one taken out after it claimed it) and
-pinned on the seek bar. The outbox is an `ID_DOCUMENTS` document of the identity migration.
-The editor's add and the delete's Undo still post directly (the listener sees the failure
-there); the car keeps its own retry list
-(`CAR_BOOKMARKS_KEY`).
+pinned on the seek bar, never beside the listed one the server already holds. The outbox is
+an `ID_DOCUMENTS` document of the identity migration. The editor's add and the delete's
+Undo still post directly (the listener sees the failure there); the car keeps its own
+retry list (`CAR_BOOKMARKS_KEY`).
 
 **Upcoming releases (Track U2; the wire is U1's, CROSS-REPO §8).** One flag, `upcoming` (false
 while community metadata or the server's job is off), and one read, `client.upcoming()` ->

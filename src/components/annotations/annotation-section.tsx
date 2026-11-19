@@ -6,6 +6,7 @@ import { Platform, View } from 'react-native';
 
 import { useBookmarks, useCapability, useNotes } from '@/api/hooks';
 import { useCid } from '@/api/provider';
+import type { Bookmark } from '@/api/types';
 import { OfflineState } from '@/components/layout/offline-state';
 import { EmptyState } from '@/components/ui/empty-state';
 import type { IconName } from '@/components/ui/icon';
@@ -107,10 +108,16 @@ export function AnnotationSection<K extends AnnotationKind>({
   const query = useList(libraryId, path, connectionId);
   const annotations = useCapability('annotations', cid);
   const chapterAt = useChapterNamer(target);
-  // Bookmarks still waiting on this device for the server (fe#356), among the listed ones.
-  const waiting = useQueuedBookmarks(kind === 'bookmark' ? cid : undefined, libraryId, path);
   const unread = useUnreadQuery(query);
   const listed = unread !== 'offline' && !query.isPending && !query.isError;
+  // Bookmarks still waiting on this device for the server (fe#356), among the listed ones
+  // (not one the list already shows: sent, and not yet out of the outbox).
+  const waiting = useQueuedBookmarks(
+    kind === 'bookmark' ? cid : undefined,
+    libraryId,
+    path,
+    kind === 'bookmark' && listed ? (query.data as Bookmark[] | undefined) : undefined,
+  );
   const items = useMemo(
     () =>
       [
