@@ -87,6 +87,30 @@ async function twoTabs(browser = fakeBrowser()) {
   return { a, b, alex, sam, browser };
 }
 
+/** Keep the words on the channel from reaching `tab` until the function returned is called
+ * (its `storage` events still arrive): a tab whose main thread was held while another tab
+ * removed a connection, which hears the stored list before the word. */
+type WordsChannel = NonNullable<NonNullable<Parameters<Session['setTabsForTests']>[0]>['channel']>;
+function holdWords(tab: Tab): () => void {
+  let release!: () => void;
+  const words = new Promise<void>((r) => (release = r));
+  const os = Platform.OS;
+  Platform.OS = 'web';
+  try {
+    const real = tabChannel(REMOVAL_CHANNEL, tab.env) as WordsChannel;
+    tab.setTabsForTests({
+      channel: {
+        post: real.post,
+        subscribe: (listener) => real.subscribe((m) => void words.then(() => listener(m))),
+      },
+      env: tab.env,
+    });
+  } finally {
+    Platform.OS = os;
+  }
+  return release;
+}
+
 /** The stored profiles document. */
 const storedDoc = (browser: ReturnType<typeof fakeBrowser>) =>
   JSON.parse(browser.data.get(PROFILES_KEY) ?? 'null') as import('@/stores/profiles').ProfilesDoc;
@@ -107,8 +131,9 @@ describe('a connection removed in another tab (web)', () => {
     // The screens follow the default the removing tab moved to.
     expect(s.defaultConnectionId).toBe(sam);
     expect(s.user?.username).toBe('sam');
-    // The player stops before the purges run (`removed-in-other-tab.ts`).
-    expect(order).toEqual([`step ${alex}`, `cleanup ${alex}`]);
+    // The player stops before the purges run (`removed-in-other-tab.ts`): at the stored list,
+    // and asked again at the word (nothing plays through it by then).
+    expect(order).toEqual([`step ${alex}`, `step ${alex}`, `cleanup ${alex}`]);
   });
 
   it('the last connection: this tab is signed out too', async () => {
@@ -180,6 +205,47 @@ describe('a connection removed in another tab (web)', () => {
       Platform.OS = os;
       globals.BroadcastChannel = real;
     }
+  });
+
+  // A tab held while another tab removed the connection it plays through (a busy main
+  // thread, a frozen background tab) hears the stored list before the word. It stops playing
+  // then, not at the word: the screens it shows leave the connection with the list, and the
+  // playing book must not stay on them through a connection it no longer holds. The list
+  // goes first, so the stop's saves never go out with the revoked token; the purges wait for
+  // the word (a retirement's moves the person first).
+  it('a tab playing through it stops once the stored list drops it, before the word', async () => {
+    const { a, b, alex, sam } = await twoTabs();
+    const releaseWords = holdWords(a);
+    let playing = true;
+    const listAtStop: string[][] = [];
+    const order: string[] = [];
+    a.onConnectionRemovedInOtherTab((id) => {
+      if (!playing || id !== alex) return;
+      playing = false;
+      listAtStop.push(a.useSession.getState().connections.map((c) => c.id));
+      order.push('stop');
+    });
+    a.onConnectionRemoved((id) => void order.push(`cleanup ${id}`));
+    await b.useSession.getState().removeConnection(alex);
+    await until(() => !playing, 'the stop');
+    expect(listAtStop).toEqual([[sam]]);
+    expect(order).toEqual(['stop']);
+    releaseWords();
+    await until(() => order.length === 2, 'the cleanups');
+    expect(order).toEqual(['stop', `cleanup ${alex}`]);
+  });
+
+  it('stops once when the stored list and the word arrive together', async () => {
+    const { a, b, alex } = await twoTabs();
+    const step = jest.fn(async () => {
+      await sleep(20);
+    });
+    const cleanup = jest.fn();
+    a.onConnectionRemovedInOtherTab(step);
+    a.onConnectionRemoved(cleanup);
+    await b.useSession.getState().removeConnection(alex);
+    await until(() => cleanup.mock.calls.length > 0, 'the cleanups');
+    expect(step).toHaveBeenCalledTimes(1);
   });
 
   it('the removing tab runs its own cleanups once, not again on its own word', async () => {

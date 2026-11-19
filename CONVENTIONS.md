@@ -66,6 +66,12 @@ takes the stored list (its screens leave it as the list changes, as the removing
 stops playing through it first (`onConnectionRemovedInOtherTab`,
 `playback/removed-in-other-tab.ts`; a tab with no book loaded through it has nothing to stop,
 and stays off the span lock the tabs share) and runs the same cleanups over its own copies.
+A tab stops as soon as the stored list drops the connection (`applyStored` ->
+`leaveConnection`, one stop at a time), the word or not: a tab held while another removed it
+hears the list first. Never before the list changes (the stop's saves would go out with the
+revoked token), so a screen can render once through a connection that is gone while the
+player still holds its book: `ConnectionScope` renders nothing then, never a `useApi()` throw.
+The cleanups still wait for the word.
 Not when the token is back (signed in again before the word arrived; no cleanups when it is
 back once the tab stopped playing). The channel and the `storage` events are listened to from
 `hydrate`, never at import (the static render imports the store in Node, where an open

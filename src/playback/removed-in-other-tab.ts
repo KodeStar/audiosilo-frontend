@@ -8,9 +8,10 @@ import { flushConnectionSaves, stopPlaybackAndCloseSpan, usePlayer } from './sto
  * - Before it revokes the token (`onConnectionGoingInOtherTab`, the removing tab waits a
  *   bounded time on it): this tab stops, and sends its place and its listening while the
  *   token still works (`flushConnectionSaves`), as the removing tab does for its own.
- * - Once it is removed (`onConnectionRemovedInOtherTab`), before the removal's cleanups run
- *   here: a book still playing through it stops, so the stop's place and its span's close
- *   are written before the purges take them, not after. Nothing is sent: the token is gone.
+ * - Once it is removed (`onConnectionRemovedInOtherTab`: the stored list dropped it here, or
+ *   the word came first), before the removal's cleanups run here: a book still playing
+ *   through it stops, so the stop's place and its span's close are written before the purges
+ *   take them, not after. Nothing is sent: the token is gone, and this tab's list with it.
  *   The same when a sign-in here retires a stale identity the book plays through (any
  *   platform: the connect flow runs no teardown of its own).
  *

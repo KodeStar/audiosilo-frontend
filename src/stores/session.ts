@@ -426,7 +426,15 @@ const connectionText = (c: Connection) =>
   ]);
 
 /** Take what is stored (`read`) as this tab's list: its own default and reconnect flags kept
- * where they still apply. Nothing changes when the list is the one it holds. */
+ * where they still apply. Nothing changes when the list is the one it holds. A connection
+ * gone from it (its token deleted or the list written without it: removed, signed out or
+ * retired in another tab) has this tab leave it at once (`leaveConnection`: the player
+ * stops playing through it), the word on the channel or not: a tab held while the other
+ * tab removed it hears the list before the word, and must not play on, or show the
+ * playing book, through a connection it no longer holds. Not before the list changes:
+ * the stop's saves would go out with the revoked token. The cleanups wait for the word
+ * (`removedInOtherTab`): a retirement's word moves the person to the new connection
+ * first. */
 function applyStored(read: StoredSignIns): void {
   knownList = read.list;
   const { connections: mine, defaultConnectionId, status } = useSession.getState();
@@ -446,6 +454,7 @@ function applyStored(read: StoredSignIns): void {
   if (same && mirrored.defaultConnectionId === defaultConnectionId && mirrored.status === status)
     return;
   setFollowed({ connections: same ? mine : next, ...mirrored });
+  for (const c of mine) if (!next.some((n) => n.id === c.id)) void leaveConnection(c.id);
 }
 
 /** Read what the other tabs stored and take it (web, once the session is loaded: the hydrate
@@ -512,8 +521,8 @@ function writingList<T>(job: () => Promise<T>): Promise<T> {
 
 // What a tab does first, before the cleanups, when a connection goes with no teardown run
 // here before it (the player stops playing through it): another tab removed it (that tab
-// ran its own, `teardownBeforeTokenRevoke`), or a sign-in here retired it as a stale
-// identity (`setSession`).
+// ran its own, `teardownBeforeTokenRevoke`; this one runs it at the stored list or the word,
+// whichever it hears first), or a sign-in here retired it as a stale identity (`setSession`).
 const otherTabRemovalSteps = new Set<(id: string) => void | Promise<void>>();
 
 /** Register a step run first when ANOTHER tab of the web player removed a connection (the
@@ -525,6 +534,24 @@ export function onConnectionRemovedInOtherTab(
 ): () => void {
   otherTabRemovalSteps.add(fn);
   return () => otherTabRemovalSteps.delete(fn);
+}
+
+/** The other-tab removal steps running now, by connection. */
+const leaving = new Map<string, Promise<void>>();
+
+/** Run the other-tab removal steps for `id` (the player's stop), once at a time: a tab that
+ * hears the stored list drop it (`applyStored`) and then the word (`removedInOtherTab`) waits
+ * on the one stop, never starting a second beside it. Once that one is done, the word asks
+ * again, and finds nothing playing through the connection. */
+function leaveConnection(id: string): Promise<void> {
+  let run = leaving.get(id);
+  if (!run) {
+    run = runEach(otherTabRemovalSteps, [id], 'other-tab removal step').finally(() =>
+      leaving.delete(id),
+    );
+    leaving.set(id, run);
+  }
+  return run;
 }
 
 /**
@@ -549,7 +576,7 @@ async function removedInOtherTab(id: string, replacedBy?: string): Promise<void>
     const { next, nextDefault } = withoutConnection(connections, defaultConnectionId, id);
     setFollowed({ connections: next, ...mirror(next, nextDefault) });
   }
-  await runEach(otherTabRemovalSteps, [id], 'other-tab removal step');
+  await leaveConnection(id);
   // Signed in again while this tab stopped (the stop waits its turn into the outbox): what
   // is stored of the connection now is the new sign-in's, in every tab, not this purge's.
   if ((await getSecure(tokenKey(id))) !== null) return;
@@ -1065,7 +1092,7 @@ export const useSession = create<SessionState>()((set, get) => ({
       // The web's other tabs move the person to this connection too, and purge what they
       // hold of each retired one (`removedInOtherTab`).
       for (const old of retired) tabsChannelOf()?.post({ retired: old, replacedBy: id });
-      await runEach(otherTabRemovalSteps, retired, 'stale-identity stop');
+      await Promise.all(retired.map(leaveConnection));
       await runEach(removalCleanups, retired, 'stale-identity cleanup');
     }
     return id;
