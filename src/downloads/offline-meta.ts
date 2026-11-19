@@ -186,11 +186,14 @@ export async function serverHasMetadata(connectionId: string): Promise<boolean> 
  * this runs for every download, so it keeps to the books with something to match by:
  * offline, any other reads as unmatched (an id-less console match from an older server,
  * which sends no `work_id`). The download's book can be the list shape, so the full item is
- * asked first. */
+ * asked first; that shape never says a podcast episode is one (and a feed's tags can carry
+ * an ISBN-like value), so an episode by either is none. */
 export function canMatch(entry: DownloadEntry): boolean {
   const { connectionId, libraryId, path } = entry;
   const item = queryClient.getQueryData<Book>(qk.item(connectionId, libraryId, path));
-  return matchableById(item) || matchableById(entry.manifest.book);
+  const { book } = entry.manifest;
+  if (item?.episode || book.episode) return false;
+  return matchableById(item) || matchableById(book);
 }
 
 /**

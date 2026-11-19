@@ -474,6 +474,17 @@ describe('captureOfflineMeta', () => {
     expect(canMatch(e)).toBe(false);
   });
 
+  // A list row never says an episode is one, and a feed's tags can carry an ISBN-like
+  // value: the full item decides.
+  it('keeps no episode downloaded from a list row, once its item says it is one', () => {
+    const e = entry();
+    expect(e.manifest.book.episode).toBeUndefined();
+    expect(canMatch(e)).toBe(true);
+    const episode = { show_path: 'Show' } as PodcastEpisodeInfo;
+    qc.setQueryData(qk.item('c1', 2, e.path), { ...e.manifest.book, episode });
+    expect(canMatch(e)).toBe(false);
+  });
+
   it('asks a server without metadata for nothing more', async () => {
     mockClient.serverInfo.mockResolvedValue(server({ meta_bundle: true }));
     await expect(captureOfflineMeta(entry())).resolves.toBeNull();
