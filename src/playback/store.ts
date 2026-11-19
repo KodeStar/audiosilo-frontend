@@ -4350,12 +4350,12 @@ export async function stopPlaybackAndCloseSpan(connectionId: string): Promise<vo
  * stop's span is in it (`stopPlaybackAndCloseSpan`): sent at once, the send found the outbox
  * without the span, which then landed after the token was revoked and went with the
  * connection's purge. On the web, a tab playing through the connection stops and sends its
- * own first, while the token still works (`tellOtherTabsGoing`, a bounded wait;
+ * own meanwhile, while the token still works (`tellOtherTabsGoing`, a bounded wait;
  * `removed-in-other-tab.ts`).
  */
 export async function teardownBeforeTokenRevoke(connectionId: string): Promise<void> {
-  await stopPlaybackAndCloseSpan(connectionId);
-  await tellOtherTabsGoing(connectionId);
+  // The other tabs' wait (at least its answer window) runs beside this tab's own stop.
+  await Promise.all([stopPlaybackAndCloseSpan(connectionId), tellOtherTabsGoing(connectionId)]);
   await flushConnectionSaves(connectionId);
 }
 

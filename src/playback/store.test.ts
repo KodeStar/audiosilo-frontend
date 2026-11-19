@@ -1409,20 +1409,24 @@ describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
   });
 
   // Web: a tab playing through the connection sends its own while the token still works,
-  // so the other tabs are told after this tab's stop and before its flush.
-  it('teardownBeforeTokenRevoke tells the other tabs between its stop and its flush', async () => {
+  // so this tab flushes only once the other tabs are done (their wait runs beside its stop).
+  it('teardownBeforeTokenRevoke flushes only once its stop and the other tabs are done', async () => {
     await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 0);
     pushSnapshot(snap('playing', 50));
     await Promise.resolve();
     (flushConnection as jest.Mock).mockClear();
-    const told = jest.spyOn(session, 'tellOtherTabsGoing').mockImplementation(async (id) => {
-      expect(id).toBe('c1');
-      expect(usePlayer.getState().nowPlaying).toBeNull();
-      expect(flushConnection).not.toHaveBeenCalled();
-    });
+    let othersDone: () => void = () => {};
+    const told = jest
+      .spyOn(session, 'tellOtherTabsGoing')
+      .mockImplementation(() => new Promise<void>((r) => (othersDone = r)));
     try {
-      await teardownBeforeTokenRevoke('c1');
-      expect(told).toHaveBeenCalledTimes(1);
+      const teardown = teardownBeforeTokenRevoke('c1');
+      await flushMicrotasks(20);
+      expect(usePlayer.getState().nowPlaying).toBeNull();
+      expect(told).toHaveBeenCalledWith('c1');
+      expect(flushConnection).not.toHaveBeenCalled();
+      othersDone();
+      await teardown;
       expect(flushConnection).toHaveBeenCalledWith('c1');
     } finally {
       told.mockRestore();
