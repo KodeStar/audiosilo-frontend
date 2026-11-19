@@ -2435,7 +2435,7 @@
     "refusedAskGrownUpPair": "Le proxy de connexion de {{name}} a refusé cet appareil : demande à un adulte de mettre à jour les en-têtes de proxy ou de jumeler à nouveau cet appareil",
     "refusedPlain": "Le proxy de connexion de {{name}} a refusé cet appareil",
     "askGrownUp": "Demande à un adulte de mettre à jour les en-têtes de proxy.",
-    "signInAgainBody": "Si les en-têtes de proxy sont corrects, ta connexion à {{name}} a peut-être expiré : reconnecte-toi.",
+    "signInAgainBody": "Si les en-têtes de proxy sont corrects, votre connexion à {{name}} a peut-être expiré : reconnectez-vous.",
     "refusedRetry": "Le proxy de connexion de {{name}} a refusé cet appareil. Rien n'est perdu : réessayez dès que le proxy le laisse passer."
   },
   "year": {
