@@ -1325,6 +1325,24 @@ describe('sleep timer', () => {
       expect(mockToggle).toHaveBeenCalledTimes(1);
       expect(player.spies.resumeOtherBook).not.toHaveBeenCalled();
     });
+
+    // The timer stopped the store's own book, and the car then started another in the grace:
+    // a shake's `toggle` would reload the store's book over the one playing.
+    it("resumes nothing on a shake once the car's book plays in the grace", async () => {
+      player.setOtherBookPlays(false);
+      setPlayStateSilently('playing');
+      useSleepTimer.getState().startDuration(1);
+      jest.advanceTimersByTime(60_000);
+      await flush();
+      expect(selectSleepPhase(useSleepTimer.getState())).toBe('grace');
+      jest.advanceTimersByTime(5_000);
+      player.setOtherBookPlays(true);
+      useSleepTimer.getState().keepListening();
+      expect(mockToggle).not.toHaveBeenCalled();
+      expect(player.spies.resumeOtherBook).not.toHaveBeenCalled();
+      // Re-armed and counting on the book that plays.
+      expect(useSleepTimer.getState()).toMatchObject({ phase: 'running', frozenAt: null });
+    });
   });
 
   // --- how the timer ended, said out loud ----------------------------------

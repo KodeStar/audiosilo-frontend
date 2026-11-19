@@ -3287,10 +3287,11 @@ media GETs only.
   `sleep-timer.ts`), freezes and thaws on `onOtherBookPlays` too, and a shake in the grace
   after it stopped the other book plays that book again (`resumeOtherBook`, nothing once the
   engine no longer holds it), never a reload of the store's book; no drift-off is told of
-  the store's book then (it was not heard). An end-of-chapter timer counts the store's
-  book's position, which the other book never moves, and fires only on the store's book's
-  own play: its target crossed by a move while that book shows paused stops nothing, the
-  other book playing on. The lock screen, a headset and audio
+  the store's book then (it was not heard). A shake after it stopped the store's own book
+  resumes nothing once the other book plays (`resumePlayback`). An end-of-chapter timer
+  counts the store's book's position, which the other book never moves, and fires only on
+  the store's book's own play: its target crossed by a move while that book shows paused
+  stops nothing, the other book playing on. The lock screen, a headset and audio
   focus pause the engine natively, never through the store. A resumption
   meanwhile plays the other book, the one heard (`engineOtherBook`, the car snapshot's
   `resume`, whether the store's book shows paused or finished): the car sync writes the

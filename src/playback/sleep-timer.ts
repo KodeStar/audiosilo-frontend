@@ -1134,8 +1134,10 @@ function resumePlayback(stoppedOther: boolean) {
   const player = usePlayer.getState();
   // Nothing loaded (the book ended, or playback was stopped): `toggle` would start a
   // reset engine from nowhere and the stall watchdog would surface a spurious playback
-  // error three seconds later.
-  if (!player.nowPlaying || selectIsTransportLive(player)) return;
+  // error three seconds later. Nor while the engine plays another book by now (the car
+  // started one during the grace, `soundPlays`): sound plays already, and `toggle` would
+  // reload the store's book over it.
+  if (!player.nowPlaying || soundPlays(player)) return;
   void player.toggle();
 }
 
