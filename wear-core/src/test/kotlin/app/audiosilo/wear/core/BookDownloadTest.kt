@@ -328,6 +328,33 @@ class BookDownloadTest {
     val idx = index()
     assertEquals(BookDownload.Outcome.Gone, run(FakeServer(content), idx).run())
   }
+
+  // fe#285: the book removed (on the main thread) just as its run is about to make the folder: the
+  // run never makes it again after the removal, so no folder is left that no record names.
+  @Test
+  fun aRemovalAsTheRunMakesTheFolderLeavesNoFolder() = runTest {
+    val idx = index()
+    idx.enqueue(REF, "Book", null, T0)
+    var asked = 0
+    val storage =
+      object : BookStorage by DirStorage(dir) {
+        override fun folder(record: DownloadRecord): File {
+          val folder = File(dir, record.folder)
+          // The first ask is the space check's; the second is the first file's, before its folder is made.
+          if (++asked == 2) {
+            // The listener's Remove on another thread, as AppModel.removeBook does it.
+            val other = Thread { idx.remove(REF) { folder.deleteRecursively() } }
+            other.start()
+            other.join(500)
+          }
+          return folder
+        }
+      }
+    val outcome = BookDownload(FakeServer(content), idx, storage, REF, clock = { now }, sleep = {}).run()
+    assertEquals(BookDownload.Outcome.Gone, outcome)
+    assertNull(idx.record(REF))
+    assertFalse("no folder made again", File(dir, "folder-1").exists())
+  }
 }
 
 class DownloadIndexTest {
@@ -394,6 +421,43 @@ class DownloadIndexTest {
     val idx = DownloadIndex(null)
     assertNull(idx.update(REF) { it.copy(title = "x") })
     assertNull(idx.remove(REF))
+  }
+
+  // fe#285: a removal takes the record first, then the files under the same lock (a kill between
+  // leaves a folder no record names), and the next launch drops such folders.
+  @Test
+  fun aRemovalTakesTheRecordThenItsFilesAndTheLaunchDropsOrphans() {
+    val books = File(dir, "books").apply { mkdirs() }
+    var n = 0
+    val idx = DownloadIndex(File(dir, "downloads.json")) { "folder-${++n}" }
+    idx.enqueue(REF, "Book", null, T0)
+    idx.enqueue(BookRef(3, "Author/Other"), "Other", null, T0)
+    File(books, "folder-1").mkdirs()
+    File(books, "folder-2/000.m4a").apply { parentFile.mkdirs() }.writeText("x")
+    File(books, "folder-left/000.m4a").apply { parentFile.mkdirs() }.writeText("x")
+    File(books, "not-a-folder").writeText("x")
+    var recordWhileRemoving: DownloadRecord? = idx.record(REF)
+    idx.remove(REF) { r ->
+      recordWhileRemoving = idx.record(REF)
+      assertEquals("folder-1", r.folder)
+    }
+    assertNull("the record went first", recordWhileRemoving)
+    // A kill there: folder-1 is still on the disk. The next launch drops it and folder-left.
+    DownloadIndex(File(dir, "downloads.json")).dropOrphans(books)
+    assertEquals(listOf("folder-2", "not-a-folder"), books.list()!!.sorted())
+    // An index that can't be read (nor moved aside) says nothing of the books: none are dropped.
+    val stuck = File(dir, "stuck").apply { mkdirs() }
+    File(stuck, "downloads.json").writeText("{not json")
+    stuck.setWritable(false)
+    try {
+      val unread = DownloadIndex(File(stuck, "downloads.json"))
+      if (File(stuck, "downloads.json").exists()) {
+        unread.dropOrphans(books)
+        assertEquals(listOf("folder-2", "not-a-folder"), books.list()!!.sorted())
+      }
+    } finally {
+      stuck.setWritable(true)
+    }
   }
 
   @Test

@@ -4276,7 +4276,13 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   resume the server answers 416 (a part already whole) starts that file again from 0. A success
   the watch can't decode (another build's format, a proxy's page) fails the book with "Your server
   sent something this watch can't read." (`RenditionPlan.UNREADABLE`, the Apple Watch's words): no
-  wait on the connection, and Try again asks afresh.
+  wait on the connection, and Try again asks afresh. **Remove vs a run** (fe#285): a run makes the
+  book's folder, opens each part file, renames it and keeps the item only inside
+  `DownloadIndex.whileKept` (the index's lock, while the record is still there in that folder), and
+  a removal takes the record, then deletes the files, under the same lock (`remove(ref) { files }`),
+  so a run going on never makes the folder again after; a kill between the record and the files
+  leaves a folder no record names, which the next launch drops (`dropOrphans`, off the main thread,
+  not while the index is in the way).
 - **Storage (decision 11)**: `TokenStore` seals the token with a non-exportable Keystore
   AES-GCM key (`audiosilo.session`), ciphertext and `device_id` in `noBackupFilesDir`;
   `allowBackup=false` and `data_extraction_rules.xml` exclude every domain. `device_name` is

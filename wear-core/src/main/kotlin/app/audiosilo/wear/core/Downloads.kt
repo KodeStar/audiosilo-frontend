@@ -251,21 +251,53 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
       next
     }
 
-  /** Forget a book's record (its files are the caller's). Returns the record it was. */
-  fun remove(ref: BookRef): DownloadRecord? =
+  /**
+   * Forget a book's record, then remove its files (`files`, the caller's) under the same lock, so a
+   * book's run never makes its folder again after (`whileKept`, fe#285). Returns the record it was.
+   * The record goes first: a kill between the two leaves a folder no record names, which the next
+   * launch drops (`dropOrphans`), never a record whose files are gone.
+   */
+  fun remove(ref: BookRef, files: (DownloadRecord) -> Unit = {}): DownloadRecord? =
     synchronized(lock) {
       val r = record(ref) ?: return null
       commit(flow.value.filter { it.ref != ref })
+      files(r)
       r
     }
 
-  /** Forget every record (the account was left). Returns what they were. */
-  fun removeAll(): List<DownloadRecord> =
+  /** Forget every record (the account was left), then remove their files (`files`) under the lock. Returns what they were. */
+  fun removeAll(files: (List<DownloadRecord>) -> Unit = {}): List<DownloadRecord> =
     synchronized(lock) {
       val all = flow.value
       commit(emptyList())
+      files(all)
       all
     }
+
+  /**
+   * Run `block` under the index's lock while `record`'s book is still here in that same folder
+   * (removed, or removed and queued again into a new one: null). A book's run makes its folder and
+   * each file in it only this way, so a removal (`remove`, the same lock) never leaves one behind
+   * (fe#285). Keep `block` short: the index waits on it.
+   */
+  fun <T> whileKept(record: DownloadRecord, block: () -> T): T? =
+    synchronized(lock) {
+      if (record(record.ref)?.folder != record.folder) return null
+      block()
+    }
+
+  /**
+   * Delete the book folders in `books` no record names (fe#285): a kill between a record's removal
+   * and its folder's, or a run that made its folder again before `whileKept`. Not while the index
+   * is in the way (unread: which books it holds is not known).
+   */
+  fun dropOrphans(books: File) {
+    synchronized(lock) {
+      if (inTheWay) return
+      val named = flow.value.map { it.folder }.toSet()
+      books.listFiles()?.filter { it.isDirectory && it.name !in named }?.forEach { it.deleteRecursively() }
+    }
+  }
 
   /**
    * The index kept. One that exists but can't be read or decoded is moved aside

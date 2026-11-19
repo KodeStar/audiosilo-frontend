@@ -239,6 +239,8 @@ class AppModel private constructor(private val context: Context) {
     spans.recover { left -> places.recover(left, outbox.events) }
     // Held across a kill: aged, and queued if a sign-in finished just before it.
     releaseHeld()
+    // Book folders no record names (a kill inside a removal) go, off the main thread.
+    scope.launch(Dispatchers.IO) { downloads.dropOrphans(files.books) }
     // The launch's publish (the flow's first value), then each move of a book's stage, or of
     // whether the index was saved: news for the phone (its Preparing and Downloading rows),
     // whoever moved it, a BookWorker run with the app closed too, as this model is the process's.
@@ -572,23 +574,23 @@ class AppModel private constructor(private val context: Context) {
 
   /** Remove a book from the watch: its work, its files, its item and its record. */
   fun removeBook(ref: BookRef) {
-    val r = downloads.record(ref) ?: return
+    downloads.record(ref) ?: return
     // Removing the playing book stops it and closes its span first (decision 3).
     willRemove(ref)
     BookWorker.cancel(context, ref)
-    files.folder(r).deleteRecursively()
-    files.item(ref).delete()
-    downloads.remove(ref)
+    // The record, then its files, under the index's lock: a run still going never makes the
+    // folder again after (`DownloadIndex.whileKept`, fe#285).
+    downloads.remove(ref) { r ->
+      files.folder(r).deleteRecursively()
+      files.item(ref).delete()
+    }
   }
 
   /** Remove every book (the account was left). */
   private fun removeAllBooks() {
     BookWorker.cancelAll(context)
-    for (r in downloads.removeAll()) {
-      willRemove(r.ref)
-      files.folder(r).deleteRecursively()
-    }
-    files.books.deleteRecursively()
+    for (r in downloads.records.value) willRemove(r.ref)
+    downloads.removeAll { files.books.deleteRecursively() }
   }
 
   private fun willRemove(ref: BookRef) {
