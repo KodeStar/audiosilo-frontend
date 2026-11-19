@@ -3,6 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ApiError, NetworkError, TimeoutError } from '@/api/client';
 import type { Bookmark } from '@/api/types';
 
+import type { QueuedBookmark } from './annotation-outbox';
+
 // The bookmark outbox (fe#356): what is kept, what is sent, once, in order, and what is
 // dropped. The server is a mock client per connection; `addBookmark` (hooks.ts) posts
 // through it, as the real one does through `resolveClient`.
@@ -40,16 +42,21 @@ jest.mock('@/api/reachability', () => ({
     return () => (mockReconnect = null);
   },
 }));
+// The server's flags as the cache holds them: `undefined` while its `/server` is unread.
 let mockAnnotations: boolean | undefined = true;
+// Whether it takes a bookmark's `client_id` (`bookmark_client_id`), once its flags are read:
+// false is an older server (the default here).
+let mockClientIds = false;
 // Its `/server` failing so (unread flags), while set.
 let mockCapsDown: unknown = null;
 const mockFetchCaps = jest.fn(async () => {
   if (mockCapsDown) throw mockCapsDown;
   mockAnnotations = true;
-  return { annotations: true };
+  return { annotations: true, bookmark_client_id: mockClientIds };
 });
 jest.mock('@/api/hooks', () => ({
-  // As the real one: the label only to a server known to have `annotations`.
+  // As the real one: the label only to a server known to have `annotations`, the id only to
+  // one known to have `bookmark_client_id`.
   addBookmark: (
     cid: string,
     lib: number,
@@ -57,14 +64,22 @@ jest.mock('@/api/hooks', () => ({
     position: number,
     note = '',
     label?: string,
+    clientId?: string,
   ) => {
     const client = mockClients.get(cid);
     if (!client) return Promise.reject(new Error('connection gone'));
-    return label !== undefined && mockAnnotations === true
+    const withLabel = label !== undefined && mockAnnotations === true;
+    if (clientId !== undefined && mockAnnotations !== undefined && mockClientIds) {
+      return client.addBookmark(lib, path, position, note, withLabel ? label : undefined, clientId);
+    }
+    return withLabel
       ? client.addBookmark(lib, path, position, note, label)
       : client.addBookmark(lib, path, position, note);
   },
-  cachedCapability: () => mockAnnotations,
+  cachedCapability: (_cid: string, flag: string) =>
+    flag === 'bookmark_client_id' && mockAnnotations !== undefined
+      ? mockClientIds
+      : mockAnnotations,
   fetchCapabilities: () => mockFetchCaps(),
   showServerBookmark: (...args: unknown[]) => mockShowServerBookmark(...args),
 }));
@@ -88,10 +103,11 @@ import {
   addBookmarkOrQueue,
   discardQueuedBookmark,
   flushBookmarks,
-  queueBookmark,
+  heldOnServer,
   queueNewBookmark,
   queuedBookmarks,
   queuedBookmarksSnapshot,
+  requeueBookmark,
   resetAnnotationOutboxForTests,
   sendBookmarksBeforeRemoval,
   startBookmarkSync,
@@ -114,7 +130,8 @@ async function idle() {
   for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
 }
 
-/** A server that keeps what it is sent, failing while `down`. */
+/** A server that keeps what it is sent, failing while `down`. A `client_id` it holds already
+ * gets that bookmark back (its 200), as a server with `bookmark_client_id` does. */
 function server(cid: string, down: unknown = null) {
   const held: Bookmark[] = [];
   const state = { down };
@@ -125,8 +142,17 @@ function server(cid: string, down: unknown = null) {
       return held.filter((b) => b.library_id === lib && b.path === path);
     }),
     addBookmark: jest.fn(
-      async (lib: number, path: string, position: number, note: string, label?: string) => {
+      async (
+        lib: number,
+        path: string,
+        position: number,
+        note: string,
+        label?: string,
+        clientId?: string,
+      ) => {
         if (state.down) throw state.down;
+        const already = clientId && held.find((b) => b.client_id === clientId);
+        if (already) return already;
         const made: Bookmark = {
           id: next++,
           library_id: lib,
@@ -134,6 +160,7 @@ function server(cid: string, down: unknown = null) {
           position,
           note,
           ...(label ? { label } : {}),
+          ...(clientId ? { client_id: clientId } : {}),
           created_at: new Date().toISOString(),
         };
         held.push(made);
@@ -154,6 +181,7 @@ beforeEach(async () => {
   for (const k of Object.keys(mockOnline)) delete mockOnline[k];
   mockReady = true;
   mockAnnotations = true;
+  mockClientIds = false;
   mockCapsDown = null;
   mockGenerations.clear();
   mockFlagged.clear();
@@ -404,10 +432,26 @@ describe('sending', () => {
     expect(client.bookmarks).toHaveBeenCalledTimes(1);
     expect(client.addBookmark).toHaveBeenCalledTimes(1);
     expect(await queuedBookmarks()).toMatchObject([{ position: 100, failures: 1 }]);
-    // Once settled, the next ask sends again.
+    // Once settled, the next ask sends again; its failure, so soon after, does not count.
     await flushBookmarks();
     expect(client.addBookmark).toHaveBeenCalledTimes(2);
-    expect(await queuedBookmarks()).toMatchObject([{ position: 100, failures: 2 }]);
+    expect(await queuedBookmarks()).toMatchObject([{ position: 100, failures: 1 }]);
+  });
+
+  it("counts one failure once when a connection's own replay runs right behind a sweep", async () => {
+    const { client, state } = server('c1', offline());
+    await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+    await idle();
+    state.down = null;
+    client.addBookmark.mockClear();
+    client.addBookmark.mockRejectedValue(new ApiError(500, 'boom'));
+    // The web's focus (every connection) and the connection's reconnect: never joined, the
+    // second replays behind the first and meets the same failure.
+    await Promise.all([flushBookmarks(), flushBookmarks('c1')]);
+    expect(client.addBookmark).toHaveBeenCalledTimes(2);
+    const [entry] = await queuedBookmarks();
+    expect(entry).toMatchObject({ failures: 1, failingStep: 'post' });
+    expect(entry.lastFailure).toBe(entry.failedSince);
   });
 
   it("stops at a failure that is the connection's and keeps it and those behind it", async () => {
@@ -524,9 +568,13 @@ describe('sending', () => {
       return s;
     }
     const positions = async () => (await queuedBookmarks()).map((e) => e.position);
-    /** A spell of failing: the tries of an hour's backoff. */
+    /** A spell of failing: the tries of an hour's backoff (each at least `RETRY_MIN_MS`
+     * after the last, so each counts). */
     async function failFor(tries: number) {
-      for (let i = 0; i < tries; i++) await flushBookmarks();
+      for (let i = 0; i < tries; i++) {
+        jest.setSystemTime(Date.now() + 30_000);
+        await flushBookmarks();
+      }
     }
 
     it('drops one still failing a week after its first failure, said in the log', async () => {
@@ -573,7 +621,7 @@ describe('sending', () => {
 
     it("drops a labelled one whose server's flags have not read for a week", async () => {
       const s = server('c1', offline());
-      await queueBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+      await queueNewBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
       s.state.down = null;
       mockAnnotations = undefined;
       mockCapsDown = new ApiError(404, 'not found');
@@ -591,7 +639,7 @@ describe('sending', () => {
 
     it("keeps a labelled one whose flags read said nothing of the server's (cancelled)", async () => {
       const s = server('c1', offline());
-      await queueBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+      await queueNewBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
       s.state.down = null;
       mockAnnotations = undefined;
       // Not an answer: the shared `/server` read cancelled under it, as a send's no answer.
@@ -635,6 +683,27 @@ describe('sending', () => {
       await flushBookmarks();
       expect(held.map((b) => b.position).sort()).toEqual([100, 200, 300]);
     });
+
+    it('starts the count again once a send gets past where it failed', async () => {
+      const { client } = server('c1');
+      mockAnnotations = undefined;
+      mockCapsDown = new ApiError(500, 'boom');
+      mockOnline.c1 = false;
+      await queueNewBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+      mockOnline.c1 = true;
+      // One old failure: its server's flags would not read.
+      await failFor(1);
+      expect(await queuedBookmarks()).toMatchObject([{ failures: 1, failingStep: 'flags' }]);
+      // More than a week on, the flags read, and an hour of 500s on the POST.
+      jest.setSystemTime(Date.now() + 8 * DAY);
+      mockCapsDown = null;
+      client.addBookmark.mockRejectedValue(new ApiError(500, 'boom'));
+      await failFor(12);
+      expect(warn).not.toHaveBeenCalled();
+      const [entry] = await queuedBookmarks();
+      expect(entry).toMatchObject({ position: 100, failures: 12, failingStep: 'post' });
+      expect(Date.now() - Date.parse(entry.failedSince ?? '')).toBeLessThan(DAY);
+    });
   });
 
   it.each([
@@ -674,7 +743,7 @@ describe('sending', () => {
 
   it("reads the server's flags first when they are not known, so a label is not lost", async () => {
     const { client, state } = server('c1', offline());
-    await queueBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+    await queueNewBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
     await idle(); // its own replay, against the server still down
     mockAnnotations = undefined;
     state.down = null;
@@ -686,7 +755,7 @@ describe('sending', () => {
 
   it('keeps a labelled one, label and all, while the flags cannot be read', async () => {
     const { client, state } = server('c1', offline());
-    await queueBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+    await queueNewBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
     await idle(); // its own replay, against the server still down
     mockAnnotations = undefined;
     state.down = null;
@@ -704,7 +773,7 @@ describe('sending', () => {
 
   it("lets the book's unlabelled ones past a labelled one waiting for its flags", async () => {
     const { client, held, state } = server('c1', offline());
-    await queueBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+    await queueNewBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
     await addBookmarkOrQueue('c1', 1, 'a/book', 200);
     await idle();
     mockAnnotations = undefined;
@@ -718,7 +787,7 @@ describe('sending', () => {
 
   it('sends a labelled one without its label to a server known not to take labels', async () => {
     const { client, state } = server('c1', offline());
-    await queueBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+    await queueNewBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
     await idle(); // its own replay, against the server still down
     mockAnnotations = false;
     state.down = null;
@@ -755,7 +824,7 @@ describe('sending', () => {
     const replaying = flushBookmarks();
     await idle();
     const second = (await queuedBookmarks()).find((e) => e.position === 200);
-    expect(await discardQueuedBookmark(second?.id ?? '')).toBe(true);
+    expect(await discardQueuedBookmark(second?.id ?? '')).toMatchObject({ position: 200 });
     land();
     await replaying;
     expect(held.map((b) => b.position)).toEqual([100]);
@@ -776,9 +845,10 @@ describe('sending', () => {
     const replaying = flushBookmarks();
     await idle();
     const [entry] = await queuedBookmarks();
-    expect(await discardQueuedBookmark(entry.id)).toBe(true);
+    const deleted = await discardQueuedBookmark(entry.id);
+    expect(deleted).toMatchObject({ position: 100, note: 'n' });
     // Undo, then the POST lands after all.
-    const back = queueBookmark('c1', 1, 'a/book', 100, 'n');
+    const back = requeueBookmark(deleted as QueuedBookmark);
     land();
     await replaying;
     await back;
@@ -793,23 +863,264 @@ describe('sending', () => {
     const { held, state } = server('c1', offline());
     await addBookmarkOrQueue('c1', 1, 'a/book', 100);
     const [entry] = await queuedBookmarks();
-    await discardQueuedBookmark(entry.id);
+    const deleted = (await discardQueuedBookmark(entry.id)) as QueuedBookmark;
     state.down = null;
-    expect(await queueBookmark('c1', 1, 'a/book', 100)).toMatchObject({ position: 100 });
+    const back = await requeueBookmark(deleted);
+    // A new entry, the same bookmark: its id for the server goes with it.
+    expect(back).toMatchObject({ position: 100, client_id: entry.client_id });
+    expect(back.id).not.toBe(entry.id);
     await idle();
     expect(held.map((b) => b.position)).toEqual([100]);
-    await expect(queueBookmark('gone', 1, 'a/book', 100)).rejects.toThrow('connection gone');
+    await expect(requeueBookmark({ ...deleted, connectionId: 'gone' })).rejects.toThrow(
+      'connection gone',
+    );
+  });
+
+  it("does not take another night's at the same place for an Undo of one no send reached", async () => {
+    const { held, state } = server('c1', offline());
+    held.push({
+      id: 9,
+      library_id: 1,
+      path: 'a/book',
+      position: 120,
+      note: 'Fell asleep',
+      created_at: new Date(Date.now() - 20 * 3_600_000).toISOString(),
+    });
+    mockOnline.c1 = false;
+    await queueNewBookmark('c1', 1, 'a/book', 120, 'Fell asleep');
+    const [entry] = await queuedBookmarks();
+    const deleted = (await discardQueuedBookmark(entry.id)) as QueuedBookmark;
+    await requeueBookmark(deleted);
+    // Still one no send has reached, on an older server too.
+    expect(await queuedBookmarks()).toMatchObject([{ fresh: true }]);
+    mockOnline.c1 = true;
+    state.down = null;
+    await flushBookmarks();
+    expect(held.map((b) => b.id)).toEqual([9, 1]);
   });
 
   it('a pending one taken out unsent is never sent', async () => {
     const { held, state } = server('c1', offline());
     await addBookmarkOrQueue('c1', 1, 'a/book', 100);
     const [entry] = await queuedBookmarks();
-    expect(await discardQueuedBookmark(entry.id)).toBe(true);
-    expect(await discardQueuedBookmark(entry.id)).toBe(false);
+    expect(await discardQueuedBookmark(entry.id)).toMatchObject({ id: entry.id });
+    expect(await discardQueuedBookmark(entry.id)).toBeUndefined();
     state.down = null;
     await flushBookmarks();
     expect(held).toEqual([]);
+  });
+});
+
+describe('to a server that takes a client_id (bookmark_client_id)', () => {
+  beforeEach(() => {
+    mockClientIds = true;
+  });
+
+  /** The server's bookmark POST lands, then its answer is lost (`times` times). */
+  function loseAnswers(client: Client, err: unknown = new TimeoutError(15_000), times = 1) {
+    const send = client.addBookmark.getMockImplementation();
+    for (let i = 0; i < times; i++) {
+      client.addBookmark.mockImplementationOnce(async (...args: unknown[]) => {
+        await send?.(...args);
+        throw err;
+      });
+    }
+  }
+  /** The `client_id` each POST carried. */
+  const sentIds = (client: Client) => client.addBookmark.mock.calls.map((c) => c[5]);
+
+  it('posts again after a lost answer, with no read first, and takes the 200 as held', async () => {
+    const { client, held } = server('c1');
+    loseAnswers(client);
+    await queueNewBookmark('c1', 1, 'a/book', 120, 'Fell asleep', 'fell_asleep');
+    await idle();
+    const [entry] = await queuedBookmarks();
+    // Still one no send without its id has reached: nothing at its place is taken for it.
+    expect(entry).toMatchObject({ fresh: true, client_id: expect.any(String) });
+    await flushBookmarks();
+    expect(held).toHaveLength(1);
+    expect(held[0]).toMatchObject({ label: 'fell_asleep', client_id: entry.client_id });
+    expect(sentIds(client)).toEqual([entry.client_id, entry.client_id]);
+    expect(client.bookmarks).not.toHaveBeenCalled();
+    // The 200's bookmark settles it (`addBookmark` shows it in the book's list, as a 201's).
+    expect(await queuedBookmarks()).toEqual([]);
+  });
+
+  it('does not make one twice when storage refuses a write before its send', async () => {
+    const { client, held } = server('c1');
+    // The older servers' way writes `othersHeld` before a send: that write is refused.
+    // The setup's storage mock, kept to put back.
+    const setItem = jest.mocked(AsyncStorage.setItem);
+    const store = setItem.getMockImplementation();
+    setItem.mockImplementation((key, value) =>
+      value.includes('othersHeld') || !store
+        ? Promise.reject(new Error('quota'))
+        : store(key, value),
+    );
+    try {
+      loseAnswers(client);
+      await queueNewBookmark('c1', 1, 'a/book', 120, 'Fell asleep');
+      await idle();
+      await flushBookmarks();
+      expect(client.addBookmark).toHaveBeenCalledTimes(2);
+      expect(held).toHaveLength(1);
+      expect(await queuedBookmarks()).toEqual([]);
+    } finally {
+      if (store) setItem.mockImplementation(store);
+    }
+  });
+
+  it('keeps an Undo from making one a replay sent just before its Delete', async () => {
+    const { client, held } = server('c1');
+    loseAnswers(client);
+    await queueNewBookmark('c1', 1, 'a/book', 120, 'Fell asleep');
+    await idle();
+    const [entry] = await queuedBookmarks();
+    const deleted = (await discardQueuedBookmark(entry.id)) as QueuedBookmark;
+    await requeueBookmark(deleted);
+    await idle();
+    expect(held).toHaveLength(1);
+    expect(sentIds(client)).toEqual([entry.client_id, entry.client_id]);
+    expect(await queuedBookmarks()).toEqual([]);
+  });
+
+  it('sends both of two made in the same second with the same note', async () => {
+    const { client, held } = server('c1');
+    // Two at once (another tab's, or a second tap before the first is stored): the first's
+    // add lands with no answer, the second's fails on the server.
+    loseAnswers(client);
+    client.addBookmark.mockRejectedValueOnce(new ApiError(500, 'boom'));
+    const outcomes = await Promise.all([
+      addBookmarkOrQueue('c1', 1, 'a/book', 120, 'n'),
+      addBookmarkOrQueue('c1', 1, 'a/book', 120, 'n'),
+    ]);
+    expect(outcomes.every((o) => 'queued' in o)).toBe(true);
+    expect(held).toHaveLength(1);
+    await flushBookmarks();
+    expect(held.map((b) => [b.position, b.note])).toEqual([
+      [120, 'n'],
+      [120, 'n'],
+    ]);
+    expect(new Set(held.map((b) => b.client_id)).size).toBe(2);
+    expect(await queuedBookmarks()).toEqual([]);
+  });
+
+  it.each([
+    ['a 401', new ApiError(401, 'unauthorized')],
+    ['a 429', new ApiError(429, 'slow down')],
+  ])('does not take an earlier one at its place for a tap refused with %s', async (_n, err) => {
+    const { client, held } = server('c1');
+    held.push({
+      id: 9,
+      library_id: 1,
+      path: 'a/book',
+      position: 120,
+      note: '',
+      created_at: new Date(Date.now() - 3_600_000).toISOString(),
+    });
+    client.addBookmark.mockRejectedValueOnce(err);
+    expect(await addBookmarkOrQueue('c1', 1, 'a/book', 120)).toHaveProperty('queued');
+    await flushBookmarks();
+    expect(held.map((b) => b.id)).toEqual([9, 1]);
+    expect(await queuedBookmarks()).toEqual([]);
+  });
+
+  it("reads the server's flags first when they are not known, then sends the id", async () => {
+    const { client, held, state } = server('c1', offline());
+    mockOnline.c1 = false;
+    await addBookmarkOrQueue('c1', 1, 'a/book', 120);
+    mockOnline.c1 = true;
+    mockAnnotations = undefined;
+    state.down = null;
+    await flushBookmarks();
+    expect(mockFetchCaps).toHaveBeenCalledTimes(1);
+    const [made] = held;
+    expect(made.client_id).toEqual(expect.any(String));
+    expect(client.bookmarks).not.toHaveBeenCalled();
+  });
+
+  it("goes the older servers' way while the flags cannot be read", async () => {
+    const { client, held, state } = server('c1', offline());
+    mockOnline.c1 = false;
+    await addBookmarkOrQueue('c1', 1, 'a/book', 120);
+    mockOnline.c1 = true;
+    mockAnnotations = undefined;
+    mockCapsDown = new ApiError(500, 'boom');
+    state.down = null;
+    await flushBookmarks();
+    // No id sent where it is not known to be taken, and the book read first.
+    expect(client.addBookmark).toHaveBeenCalledWith(1, 'a/book', 120, '');
+    expect(client.bookmarks).toHaveBeenCalledTimes(1);
+    expect(held).toHaveLength(1);
+    expect(held[0]).not.toHaveProperty('client_id');
+  });
+
+  it("sends one an older build stored (no client_id) the older servers' way", async () => {
+    const { client, held } = server('c1');
+    held.push({
+      id: 9,
+      library_id: 1,
+      path: 'a/book',
+      position: 120,
+      note: '',
+      created_at: new Date().toISOString(),
+    });
+    await AsyncStorage.setItem(
+      'audiosilo.annotationOutbox',
+      JSON.stringify([
+        {
+          id: 'old',
+          connectionId: 'c1',
+          libraryId: 1,
+          path: 'a/book',
+          position: 120,
+          note: '',
+          updated_at: new Date().toISOString(),
+        },
+      ]),
+    );
+    await flushBookmarks();
+    // Its add may have landed with no id to find it by: the one at its place is it.
+    expect(client.bookmarks).toHaveBeenCalledTimes(1);
+    expect(client.addBookmark).not.toHaveBeenCalled();
+    expect(held.map((b) => b.id)).toEqual([9]);
+  });
+
+  it('finds a waiting one on its server by its client_id alone', () => {
+    const entry: QueuedBookmark = {
+      id: 'e',
+      connectionId: 'c1',
+      libraryId: 1,
+      path: 'a/book',
+      position: 120,
+      note: '',
+      updated_at: new Date().toISOString(),
+      client_id: 'k1',
+      fresh: true,
+    };
+    const at = (id: number, client_id?: string): Bookmark => ({
+      id,
+      library_id: 1,
+      path: 'a/book',
+      position: 120,
+      note: '',
+      ...(client_id ? { client_id } : {}),
+      created_at: new Date().toISOString(),
+    });
+    expect(heldOnServer(entry, [at(1), at(2, 'k2')])).toBeUndefined();
+    expect(heldOnServer(entry, [at(1), at(3, 'k1')])?.id).toBe(3);
+  });
+});
+
+describe('to an older server', () => {
+  it('sends no client_id and reads the book before each send', async () => {
+    const { client, held, state } = server('c1', offline());
+    await addBookmarkOrQueue('c1', 1, 'a/book', 120, 'n');
+    state.down = null;
+    await flushBookmarks();
+    expect(client.addBookmark.mock.calls.map((c) => c.length)).toEqual([4, 4]);
+    expect(client.bookmarks).toHaveBeenCalledTimes(1);
+    expect(held[0]).not.toHaveProperty('client_id');
   });
 });
 

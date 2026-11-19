@@ -35,7 +35,7 @@ import { onlyConnection, queuedRoute } from './progress-sync';
  * busy or failing server, a token it refuses until the connection signs in again) waits here
  * on the device and is sent once the server is back, instead of being refused. The ways in:
  * `addBookmarkOrQueue` tries the server first and keeps the bookmark only when that can't
- * work now; `queueBookmark` (a delete's Undo) and `queueNewBookmark` (the sleep timer's)
+ * work now; `queueNewBookmark` (the sleep timer's) and `requeueBookmark` (a delete's Undo)
  * always store it first and leave the send to a replay. The same
  * guarantees as the listening outbox (`listening-outbox.ts`), on the simpler shape a bookmark
  * needs:
@@ -54,21 +54,30 @@ import { onlyConnection, queuedRoute } from './progress-sync';
  * - Not for ever: one still failing `GIVE_UP_MS` after it first failed against a server that
  *   answered, and after `GIVE_UP_TRIES` such failures, is dropped, logged (`givenUp`). Never
  *   on its first failures, and a server that is away, busy or waiting for a sign-in does not
- *   count. A labelled one held because its server's flags can't be read counts too.
+ *   count. A labelled one held because its server's flags can't be read counts too. At most
+ *   one failure counts per `RETRY_MIN_MS` (`lastFailure`: a connection's own replay right
+ *   behind a sweep does not count the same failure again), and the run of failures starts
+ *   again once a send of it gets past the step those failed at (`failingStep`: its flags, its
+ *   book's read), so one old failure and an hour of 500s are not a week of failing.
  * - Retried: at launch, on the server's reconnect and once a connection a 401 flagged is
  *   signed in again (`startBookmarkSync`), with the stored queues in the foreground and on the
  *   web's focus and `online` (`startQueueReplays`), and with a backoff while a reachable
  *   server still has some waiting (`scheduleRetry`). A replay claims what it sends (`replayQueue`,
  *   `src/lib/queue-claims.ts`), so two tabs never send the same bookmark at once; one taken
  *   out while a replay sends those ahead of it is not sent (`readyToSend`).
- * - Sent once: the server's bookmark POST has no idempotency key, and a request that got no
- *   answer may still have landed (or a tab may have died mid-send). So a replay reads the
- *   book's bookmarks first and takes one already there at the same second with the same note
- *   as this bookmark, sent: one it did not see before its first send of it (`othersHeld`),
- *   else, for one a send may have reached before it was stored (a direct add whose answer was
- *   lost, an Undo), one made no earlier than a day before it. A bookmark no send has reached
- *   (`fresh`: the sleep timer's, one kept without trying the server) is never taken for an
- *   earlier one at its place, such as the night before's.
+ * - Sent once: a request that got no answer may still have landed (or a tab may have died
+ *   mid-send). Every bookmark gets its own `client_id` when it is stored (or tried first),
+ *   kept across replays and a delete's Undo, and a server with `bookmark_client_id` makes it
+ *   at most once: a replay there just posts again, and a 200 with the bookmark it already
+ *   holds settles it (shown through `addBookmark`), with no read first. An older server's
+ *   POST has no idempotency key, so a replay there (or of an entry an older build stored with
+ *   no `client_id`) reads the book's bookmarks first and takes one already there at the same
+ *   second with the same note as this bookmark, sent: one it did not see before its first
+ *   send of it (`othersHeld`), else, for one a send may have reached before it was stored (a
+ *   direct add whose answer was lost), one made no earlier than a day before it. A bookmark
+ *   no send without its `client_id` has reached (`fresh`: the sleep timer's, one kept
+ *   without trying the server, any a server with `bookmark_client_id` was sent) is never
+ *   taken for an earlier one at its place, such as the night before's.
  * - Dropped on sign-out and when a connection is removed (`onConnectionRemoved`), like the
  *   listening outbox, after a last send while the token still works
  *   (`sendBookmarksBeforeRemoval`, in `flushConnectionSaves`): signing in again starts from
@@ -80,8 +89,8 @@ import { onlyConnection, queuedRoute } from './progress-sync';
  * A bookmark the server refuses for good (its POST answered with a 4xx other than 401, 408
  * and 429: the book is gone or out of the account's reach) is dropped, logged. The read
  * before the send drops nothing: when it fails, whatever the status, the bookmark waits.
- * Labels follow `postBookmark`'s rule at send time (`addBookmark`), on flags that are known: a
- * labelled bookmark is sent only once its server's `/server` has been read (`readLabelFlag`),
+ * Labels and ids follow `postBookmark`'s rule at send time (`addBookmark`), on flags that are
+ * known: a labelled bookmark is sent only once its server's `/server` has been read (`readFlags`),
  * and waits while it can't be, so the label is never dropped just because that read failed.
  * What it waits for is the flags, not its turn: the book's unlabelled ones behind it go past
  * it, and the wait counts toward giving up on it.
@@ -101,19 +110,37 @@ export type QueuedBookmark = {
   /** When it was made (ISO, this device's clock), unique among the book's entries: the
    * replay's key for it (`queuedKey`). */
   updated_at: string;
+  /** This device's id for it on its server (a UUID), sent with every POST of it to a server
+   * with `bookmark_client_id`, which makes it at most once. The same across replays and a
+   * delete's Undo (`requeueBookmark`). Absent on one an older build stored: such a one
+   * always goes the older servers' way. */
+  client_id?: string;
   /** When a send of it first failed against a server that answered (ISO, this device's
    * clock), and how many have failed so: the outbox gives up on it past `GIVE_UP_MS` and
-   * `GIVE_UP_TRIES` (`givenUp`). Absent until its first such failure. */
+   * `GIVE_UP_TRIES` (`givenUp`). Absent until its first such failure, and again once a send
+   * gets past the step they failed at (`failingStep`). */
   failedSince?: string;
   failures?: number;
-  /** Made here and not sent yet by anything (no add tried first, no Undo of one a replay may
-   * have sent): no bookmark on its server can be this one, however near. Cleared, with
-   * `othersHeld` set, by the replay's first send of it. */
+  /** When a failure of it last counted (ISO, this device's clock): at most one counts per
+   * `RETRY_MIN_MS`. */
+  lastFailure?: string;
+  /** The furthest step of a send (`SendStep`) its counted failures since `failedSince` came
+   * to: a later send that gets past it starts the count again. */
+  failingStep?: SendStep;
+  /** No send of it without its `client_id` has gone out (none at all, or only to a server
+   * with `bookmark_client_id`): no bookmark on its server but the one with its `client_id`
+   * can be this one, however near. Cleared, with `othersHeld` set, by a replay's first send
+   * of it without its `client_id` (an older server's). */
   fresh?: true;
   /** The ids of the bookmarks at its place (the same second, the same note) its server held
    * before its first send: never this one. Any other one there is it (`isThisOne`). */
   othersHeld?: number[];
 };
+
+/** The steps of a send, in order: its server's flags (`readFlags`, when it needs them), its
+ * book's bookmarks (the older servers' read before the POST), the POST. */
+type SendStep = 'flags' | 'read' | 'post';
+const STEP_ORDER: Record<SendStep, number> = { flags: 0, read: 1, post: 2 };
 
 /** What `addBookmarkOrQueue` did: made on the server, or kept here to send later. */
 type AddBookmarkOutcome = { made: Bookmark } | { queued: QueuedBookmark };
@@ -147,6 +174,10 @@ const isQueued = (v: unknown): v is Claimed<QueuedBookmark> =>
   (v.label === undefined || typeof v.label === 'string') &&
   (v.failedSince === undefined || typeof v.failedSince === 'string') &&
   (v.failures === undefined || typeof v.failures === 'number') &&
+  (v.client_id === undefined || typeof v.client_id === 'string') &&
+  (v.lastFailure === undefined || typeof v.lastFailure === 'string') &&
+  (v.failingStep === undefined ||
+    (typeof v.failingStep === 'string' && Object.hasOwn(STEP_ORDER, v.failingStep))) &&
   (v.fresh === undefined || v.fresh === true) &&
   (v.othersHeld === undefined ||
     (Array.isArray(v.othersHeld) && v.othersHeld.every((id) => typeof id === 'number')));
@@ -237,15 +268,13 @@ export async function queuedBookmarks(connectionId?: string): Promise<QueuedBook
 
 // --- Adding -------------------------------------------------------------------------------
 
-type NewEntry = Omit<
-  QueuedBookmark,
-  'id' | 'updated_at' | 'failedSince' | 'failures' | 'fresh' | 'othersHeld'
->;
+/** A bookmark to store: its fields, and what a send of it may already have done (`client_id`,
+ * `fresh`, `othersHeld`, the failures so far: the Undo of a deleted one keeps them). */
+type NewEntry = Omit<QueuedBookmark, 'id' | 'updated_at'>;
 
-/** Append a bookmark behind every other one waiting (`fresh`: no send of it has gone out).
- * Rejects when its connection was removed since `since` (its sign-in, `connectionGeneration`),
- * or when storage refused the write. */
-function append(fields: NewEntry, since: number, fresh: boolean): Promise<QueuedBookmark> {
+/** Append a bookmark behind every other one waiting. Rejects when its connection was removed
+ * since `since` (its sign-in, `connectionGeneration`), or when storage refused the write. */
+function append(fields: NewEntry, since: number): Promise<QueuedBookmark> {
   return withLock(async () => {
     if (connectionGeneration(fields.connectionId) !== since) throw new Error('connection gone');
     const queue = await readQueue();
@@ -258,7 +287,6 @@ function append(fields: NewEntry, since: number, fresh: boolean): Promise<Queued
       ...fields,
       id: randomUUID(),
       updated_at: new Date(at).toISOString(),
-      ...(fresh ? { fresh: true as const } : {}),
     };
     await writeQueue([...queue, entry]);
     return entry;
@@ -274,11 +302,16 @@ const refusedForGood = (err: unknown) => isRefusedForGood(err) && !isSignedOutEr
 const worthKeeping = (err: unknown) =>
   isUnreachableError(err) || (err instanceof ApiError && !refusedForGood(err));
 
-/** Read `connectionId`'s flags when whether its server takes a bookmark's label
- * (`annotations`) is not known yet. Resolves to nothing once it is known, else to the read's
- * failure: a queued bookmark then waits with its label, rather than going without it
- * (`postBookmark` drops a label on flags not known). */
-async function readLabelFlag(
+/** Whether `connectionId`'s server is known to take a bookmark's `client_id`. */
+const takesClientId = (connectionId: string) =>
+  cachedCapability(connectionId, 'bookmark_client_id') === true;
+
+/** Read `connectionId`'s flags when they are not known yet (whether its server takes a
+ * bookmark's label, `annotations`, and its `client_id`, `bookmark_client_id`: one `/server`
+ * answer). Resolves to nothing once they are known, else to the read's failure: a queued
+ * labelled bookmark then waits with its label, rather than going without it (`postBookmark`
+ * drops a label on flags not known), and an unlabelled one goes the older servers' way. */
+async function readFlags(
   connectionId: string,
   client: ApiClient,
 ): Promise<{ failed: unknown } | undefined> {
@@ -293,10 +326,10 @@ async function readLabelFlag(
  * Add a bookmark to a book on ONE connection's server, or keep it on the device when the
  * server can't take it now (see the module). Straight to the server when none of its book
  * is waiting and the server reads as reachable (`addBookmark`, which refreshes the book's lists);
- * otherwise, or when that fails with a failure worth another try, it goes into the outbox.
- * Unlabelled: a labelled one goes through `queueNewBookmark` or `queueBookmark`, whose replay
- * sends it once its server's flags are known. Rejects when the connection is gone, the server
- * refused it for good, or the device could not store it.
+ * otherwise, or when that fails with a failure worth another try, it goes into the outbox,
+ * with the `client_id` that add was sent with. Unlabelled: a labelled one goes through
+ * `queueNewBookmark`, whose replay sends it once its server's flags are known. Rejects when
+ * the connection is gone, the server refused it for good, or the device could not store it.
  */
 export async function addBookmarkOrQueue(
   connectionId: string,
@@ -307,6 +340,7 @@ export async function addBookmarkOrQueue(
 ): Promise<AddBookmarkOutcome> {
   if (!resolveClient(connectionId)) throw new Error('connection gone');
   const since = connectionGeneration(connectionId);
+  const clientId = randomUUID();
   // Behind any of its book still waiting: they reach the server in the order they were made
   // (another book's say nothing about this one). The copy here once read (another tab's
   // changes reach it through `storage` events).
@@ -314,17 +348,34 @@ export async function addBookmarkOrQueue(
   const book = contentKey(connectionId, libraryId, path);
   const waiting = queue.some((e) => contentKeyOf(e) === book);
   let failed = false;
+  // Whether a send of it without its `client_id` may have reached the server.
+  let sentBare = false;
   if (!waiting && isReachable(connectionId)) {
+    // `addBookmark` sends the id on the same flags.
+    const withId = takesClientId(connectionId);
     try {
-      return { made: await addBookmark(connectionId, libraryId, path, position, note) };
+      return {
+        made: await addBookmark(connectionId, libraryId, path, position, note, undefined, clientId),
+      };
     } catch (err) {
       if (!worthKeeping(err)) throw err;
       noteFailure(connectionId, err);
       failed = true;
+      sentBare = !withId;
     }
   }
-  // Fresh unless the add just tried may have landed.
-  const queued = await append({ connectionId, libraryId, path, position, note }, since, !failed);
+  const queued = await append(
+    {
+      connectionId,
+      libraryId,
+      path,
+      position,
+      note,
+      client_id: clientId,
+      ...(sentBare ? {} : { fresh: true as const }),
+    },
+    since,
+  );
   // Sent now behind the ones waiting when the server is up; after a failure just now, on
   // the backoff (its reconnect sends it when it is down).
   if (failed) scheduleRetry();
@@ -333,43 +384,37 @@ export async function addBookmarkOrQueue(
 }
 
 /**
- * Keep a bookmark in the outbox and send it from there, never straight to the server: stored
- * before any request, so an app killed while one is out still has it, and shown as waiting
- * until a replay has sent it, once, under the replay's claim (its read before the send keeps
- * one a replay already sent from being made twice: a delete's Undo, whose bookmark a replay
- * may have sent just before the delete). A labelled one waits for its server's flags
- * (`readLabelFlag`). Rejects when the connection is gone or the device could not store it.
+ * Put a waiting bookmark the listener deleted (`discardQueuedBookmark`) back in the outbox:
+ * the delete's Undo. Never a direct POST: a replay may have sent it just before the Delete.
+ * It keeps what a send of it may have done (its `client_id`, `fresh`, `othersHeld`), so its
+ * replay finds it on its server if it landed and never takes another for it, and goes behind
+ * its book's waiting ones. Rejects when the connection is gone or the device could not store
+ * it.
  */
-export async function queueBookmark(
-  connectionId: string,
-  libraryId: number,
-  path: string,
-  position: number,
-  note = '',
-  label?: BookmarkLabel,
-): Promise<QueuedBookmark> {
-  if (!resolveClient(connectionId)) throw new Error('connection gone');
-  return enqueue(
-    { connectionId, libraryId, path, position, note, ...(label ? { label } : {}) },
-    connectionGeneration(connectionId),
-    false,
-  );
+export async function requeueBookmark(deleted: QueuedBookmark): Promise<QueuedBookmark> {
+  if (!resolveClient(deleted.connectionId)) throw new Error('connection gone');
+  const { id: _id, updated_at: _at, ...fields } = deleted;
+  return enqueue(fields, connectionGeneration(deleted.connectionId));
 }
 
 /** Store a bookmark (`append`), then send what waits for its connection. */
-async function enqueue(fields: NewEntry, since: number, fresh: boolean): Promise<QueuedBookmark> {
-  const queued = await append(fields, since, fresh);
+async function enqueue(fields: NewEntry, since: number): Promise<QueuedBookmark> {
+  const queued = await append(fields, since);
   void flushBookmarks(fields.connectionId).catch(() => undefined);
   return queued;
 }
 
 /**
- * `queueBookmark` for a bookmark just made that nobody is awake to make again (the sleep
- * timer's "Fell asleep"). No send of it has gone out, so no bookmark its server already holds
- * is taken for it, however near (`fresh`: the night before's at the same second is another).
- * When the device can't store it, it is posted straight away, once, rather than lost, its
- * label on flags read first when they are not known (nothing would hold it for them). Rejects
- * when the connection is gone, or the device could not store it and that post failed too.
+ * Keep a bookmark just made that nobody is awake to make again (the sleep timer's "Fell
+ * asleep") in the outbox and send it from there, never straight to the server: stored before
+ * any request, so an app killed while one is out still has it, and shown as waiting until a
+ * replay has sent it, once, under the replay's claim. No send of it has gone out, so no
+ * bookmark its server already holds is taken for it, however near (`fresh`: the night
+ * before's at the same second is another). A labelled one waits for its server's flags
+ * (`readFlags`). When the device can't store it, it is posted straight away, once, rather
+ * than lost, its label on flags read first when they are not known (nothing would hold it
+ * for them). Rejects when the connection is gone, or the device could not store it and that
+ * post failed too.
  */
 export async function queueNewBookmark(
   connectionId: string,
@@ -381,32 +426,41 @@ export async function queueNewBookmark(
 ): Promise<void> {
   if (!resolveClient(connectionId)) throw new Error('connection gone');
   const since = connectionGeneration(connectionId);
+  const clientId = randomUUID();
   try {
     await enqueue(
-      { connectionId, libraryId, path, position, note, ...(label ? { label } : {}) },
+      {
+        connectionId,
+        libraryId,
+        path,
+        position,
+        note,
+        ...(label ? { label } : {}),
+        client_id: clientId,
+        fresh: true,
+      },
       since,
-      true,
     );
   } catch (err) {
     const client = resolveClient(connectionId);
     // Gone (signed out, removed) meanwhile: nothing to post it to.
     if (!client || connectionGeneration(connectionId) !== since) throw err;
-    if (label) await readLabelFlag(connectionId, client);
-    await addBookmark(connectionId, libraryId, path, position, note, label);
+    if (label) await readFlags(connectionId, client);
+    await addBookmark(connectionId, libraryId, path, position, note, label, clientId);
   }
 }
 
 /** Take a waiting bookmark out of the outbox, unsent (the pending row's delete). Resolves to
- * whether it was still waiting. One whose POST a replay has already sent may still land (its
- * Undo goes through `queueBookmark` for that); one a replay claimed but has not sent yet is
- * skipped (`readyToSend`). */
-export function discardQueuedBookmark(id: string): Promise<boolean> {
+ * the entry as it was stored (for its Undo, `requeueBookmark`), or undefined when it was no
+ * longer waiting. One whose POST a replay has already sent may still land; one a replay
+ * claimed but has not sent yet is skipped (`readyToSend`). */
+export function discardQueuedBookmark(id: string): Promise<QueuedBookmark | undefined> {
   return withLock(async () => {
     const queue = await readQueue();
-    const next = queue.filter((e) => e.id !== id);
-    if (next.length === queue.length) return false;
-    await writeQueue(next);
-    return true;
+    const stored = queue.find((e) => e.id === id);
+    if (!stored) return undefined;
+    await writeQueue(queue.filter((e) => e !== stored));
+    return unclaimed(stored);
   });
 }
 
@@ -416,11 +470,13 @@ export function discardQueuedBookmark(id: string): Promise<boolean> {
 const atItsPlace = (onServer: Bookmark, queued: QueuedBookmark) =>
   onServer.position === queued.position && onServer.note === queued.note;
 
-/** Whether `onServer` is `queued`, sent before (see the module): never while no send of it
- * has gone out (`fresh`); after its first, one at its place the server did not hold then
- * (`othersHeld`); else, when a send may have reached the server before it was stored, one at
- * its place made no earlier than `SAME_BOOKMARK_WINDOW_MS` before it. */
+/** Whether `onServer` is `queued`, sent before (see the module): the one with its
+ * `client_id`. Else, never while no send of it without that id has gone out (`fresh`); after
+ * the first such, one at its place the server did not hold then (`othersHeld`); else, when a
+ * send may have reached the server before it was stored, one at its place made no earlier
+ * than `SAME_BOOKMARK_WINDOW_MS` before it. */
 function isThisOne(onServer: Bookmark, queued: QueuedBookmark): boolean {
+  if (queued.client_id !== undefined && onServer.client_id === queued.client_id) return true;
   if (queued.fresh || !atItsPlace(onServer, queued)) return false;
   if (queued.othersHeld) return !queued.othersHeld.includes(onServer.id);
   return Date.parse(onServer.created_at) >= Date.parse(queued.updated_at) - SAME_BOOKMARK_WINDOW_MS;
@@ -440,15 +496,21 @@ export function heldOnServer(
 /** Right before a send of `entry`: whether it is still in the stored outbox, one taken out
  * meanwhile (its row's Delete, here or in another tab, the connection's removal) is not sent.
  * Read from storage, not the snapshot, which follows another tab's writes only as their
- * `storage` events arrive. Before its first send, what the server already holds at its place
- * (`held`, the replay's read) is stored with it as not it (`othersHeld`), so a send whose
- * answer is lost is found there by the next replay. Storage that can't be read or written
- * says yes (the claim stands; the bookmark is better made than kept for ever). */
-async function readyToSend(entry: QueuedBookmark, held: readonly Bookmark[]): Promise<boolean> {
+ * `storage` events arrive. Before its first send without its `client_id` (`withId` false: an
+ * older server's), what the server already holds at its place (`held`, the replay's read) is
+ * stored with it as not it (`othersHeld`), so a send whose answer is lost is found there by
+ * the next replay. A send with its `client_id` needs nothing stored: posting it again is safe.
+ * Storage that can't be read or written says yes (the claim stands; the bookmark is better
+ * made than kept for ever). */
+async function readyToSend(
+  entry: QueuedBookmark,
+  held: readonly Bookmark[],
+  withId: boolean,
+): Promise<boolean> {
   try {
-    // Only a fresh one is written: the others need no lock.
+    // Only a fresh one going without its id is written: the others need no lock.
     const seen = (await readQueue()).find((e) => e.id === entry.id);
-    if (!seen?.fresh) return seen !== undefined;
+    if (!seen?.fresh || withId) return seen !== undefined;
     return await withLock(async () => {
       const queue = await readQueue();
       const stored = queue.find((e) => e.id === entry.id);
@@ -480,6 +542,28 @@ const connectionFailure = (err: unknown) =>
 const askedToWait = (err: unknown) =>
   isServerBusyError(err) || (err instanceof ApiError && err.status === 429);
 
+/** What a replay's try of a bookmark it keeps came to: the step it failed or stopped at, and
+ * whether that failure counts toward giving up on it. */
+type Tried = { step: SendStep; counts: boolean };
+
+/** `e` as a try that came to `step` finds its run of failures: with none once the try got
+ * past the step they came to (`failingStep`), so the count starts again (any success for it
+ * ends the run: one old failure is not the start of a week of failing). */
+function runAt<T extends QueuedBookmark>(e: T, step: SendStep): T {
+  if (e.failingStep === undefined || STEP_ORDER[step] <= STEP_ORDER[e.failingStep]) return e;
+  const { failedSince: _since, failures: _n, lastFailure: _last, failingStep: _step, ...rest } = e;
+  return rest as T;
+}
+
+/** Whether a failure of `e` counts at `now`: at most one per `RETRY_MIN_MS` (a connection's
+ * own replay right behind a sweep meets the same failure again). A last one in the future
+ * (the clock set back since) does not hold it back. */
+function countsNow(e: QueuedBookmark, now: number): boolean {
+  if (e.lastFailure === undefined) return true;
+  const since = now - Date.parse(e.lastFailure);
+  return !(since >= 0 && since < RETRY_MIN_MS);
+}
+
 /** Whether `e` has kept failing for long enough to give up on it: `GIVE_UP_MS` since its
  * first failure that counted, and `GIVE_UP_TRIES` of them before this one. */
 const givenUp = (e: QueuedBookmark) =>
@@ -487,31 +571,51 @@ const givenUp = (e: QueuedBookmark) =>
   (e.failures ?? 0) >= GIVE_UP_TRIES &&
   Date.now() - Date.parse(e.failedSince) >= GIVE_UP_MS;
 
-/** Record a failure that counts for the bookmarks `ids`: one more (`failures`), and when
- * the first was (`failedSince`). Storage that refuses the write leaves it uncounted. */
-function noteFailing(ids: ReadonlySet<string>): Promise<void> {
-  if (ids.size === 0) return Promise.resolve();
+/** `e` after a try (`tried`): its run started again when the try got past where it failed
+ * before (`runAt`), and one failure more when this one counts (`countsNow`). The same object
+ * when nothing changed. */
+function afterTry<T extends QueuedBookmark>(e: T, { step, counts }: Tried, now: number): T {
+  const run = runAt(e, step);
+  if (!counts || !countsNow(run, now)) return run;
+  const at = new Date(now).toISOString();
+  const was = run.failingStep;
+  return {
+    ...run,
+    failedSince: run.failedSince ?? at,
+    failures: (run.failures ?? 0) + 1,
+    lastFailure: at,
+    failingStep: was !== undefined && STEP_ORDER[was] > STEP_ORDER[step] ? was : step,
+  };
+}
+
+/** Record what a replay's tries came to for the bookmarks it kept (`afterTry`), read again
+ * under the lock (another tab's replay may have counted meanwhile). Storage that refuses the
+ * write leaves them as they were. */
+function noteTries(tries: ReadonlyMap<string, Tried>): Promise<void> {
+  if (tries.size === 0) return Promise.resolve();
   return withLock(async () => {
     const queue = await readQueue();
-    if (!queue.some((e) => ids.has(e.id))) return;
-    const now = new Date().toISOString();
-    await writeQueue(
-      queue.map((e) =>
-        ids.has(e.id)
-          ? { ...e, failedSince: e.failedSince ?? now, failures: (e.failures ?? 0) + 1 }
-          : e,
-      ),
-    );
+    const now = Date.now();
+    let changed = false;
+    const next = queue.map((stored) => {
+      const tried = tries.get(stored.id);
+      const after = tried ? afterTry(stored, tried, now) : stored;
+      if (after !== stored) changed = true;
+      return after;
+    });
+    if (changed) await writeQueue(next);
   }).catch(() => undefined);
 }
 
 /**
  * Send one connection's claimed bookmarks, each book's in order; resolves to those to keep.
  * A bookmark that can't be sent yet holds back the rest of its book for this replay, and
- * the other books' go on past it. The read before a send drops nothing: when it fails,
- * whatever the status (a 403 or 404 too: a library not shared for now, a book away during a
- * rescan, a proxy's answer), that says nothing for good about the bookmark, so it waits.
- * Only the POST's own refusal for good drops one, and `givenUp`.
+ * the other books' go on past it. To a server with `bookmark_client_id` one with its
+ * `client_id` is just posted (again): the server makes it once. Otherwise the replay reads
+ * the book's bookmarks first, and that read drops nothing: when it fails, whatever the status
+ * (a 403 or 404 too: a library not shared for now, a book away during a rescan, a proxy's
+ * answer), that says nothing for good about the bookmark, so it waits. Only the POST's own
+ * refusal for good drops one, and `givenUp`.
  */
 async function sendGroup(
   connectionId: string,
@@ -523,20 +627,22 @@ async function sendGroup(
   const kept: QueuedBookmark[] = [];
   // The books a bookmark that could not be sent holds back for the rest of this replay.
   const heldBack = new Set<string>();
-  // Those whose failure in this replay counts toward giving up.
-  const failing = new Set<string>();
-  // The server's flags, when a labelled one needs them: read once per replay.
-  let labelFlag: Promise<{ failed: unknown } | undefined> | undefined;
-  /** After `e` failed (`err`): kept for the next replay, its failure recorded when it
-   * `counts`, or given up on when such failures have gone on long enough (`givenUp`).
-   * Whether it was kept. */
-  const keepOrGiveUp = (e: QueuedBookmark, err: unknown, counts: boolean): boolean => {
-    if (counts && givenUp(e)) {
+  // What the tries of those kept came to, for their failure count.
+  const tries = new Map<string, Tried>();
+  // The server's flags, when one needs them: read once per replay.
+  let flags: Promise<{ failed: unknown } | undefined> | undefined;
+  /** After `e` failed at `step` (`err`): kept for the next replay, the try recorded (its
+   * failure counting when it `counts`), or given up on when such failures have gone on long
+   * enough (`givenUp`). Whether it was kept. */
+  const keepOrGiveUp = (e: QueuedBookmark, err: unknown, step: SendStep, counts: boolean) => {
+    const run = runAt(e, step);
+    const counted = counts && countsNow(run, Date.now());
+    if (counted && givenUp(run)) {
       console.warn('[bookmarks] gave up on a queued bookmark that kept failing', err);
       return false;
     }
     kept.push(e);
-    if (counts) failing.add(e.id);
+    tries.set(e.id, { step, counts: counted });
     return true;
   };
   for (let i = 0; i < entries.length; i++) {
@@ -546,41 +652,52 @@ async function sendGroup(
       kept.push(e);
       continue;
     }
-    // Whether a failure is the POST's own, or comes before it (the read).
-    let posting = false;
+    // How far this try has come: a failure is that step's.
+    let step: SendStep = 'flags';
     try {
-      let read = reads.get(book);
-      if (!read) {
-        read = client.bookmarks(e.libraryId, e.path).then((held) => held ?? []);
-        reads.set(book, read);
-      }
-      const held = await read;
-      // Already there (an answer lost, an Undo of one a replay had sent): taken as sent.
-      const already = heldOnServer(e, held);
-      if (already) {
-        showServerBookmark(connectionId, e.libraryId, e.path, already);
-        continue;
-      }
       // Its label goes only on flags that are known: it waits, label and all, while they
       // can't be read. What it waits for is the flags, not its turn: the book's unlabelled
-      // ones behind it go on past it. The wait counts toward giving up on it as a failed send
-      // would (unless the server is away, busy or waiting for a sign-in), so a server whose
-      // flags never read does not keep it for ever.
-      const unread = e.label
-        ? await (labelFlag ??= readLabelFlag(connectionId, client))
-        : undefined;
-      if (unread) {
+      // ones behind it go on past it (an unlabelled one goes the older servers' way, without
+      // its id). The wait counts toward giving up on it as a failed send would (unless the
+      // server is away, busy or waiting for a sign-in), so a server whose flags never read
+      // does not keep it for ever.
+      const unread =
+        e.label !== undefined || e.client_id !== undefined
+          ? await (flags ??= readFlags(connectionId, client))
+          : undefined;
+      if (unread && e.label !== undefined) {
         noteFailure(connectionId, unread.failed);
         // A send's rule: nothing the server said (no answer, a cancelled read), a gateway's,
         // a 401, a 503 or a 429 does not count.
         const counts = !(connectionFailure(unread.failed) || askedToWait(unread.failed));
-        keepOrGiveUp(e, unread.failed, counts);
+        keepOrGiveUp(e, unread.failed, 'flags', counts);
         continue;
+      }
+      step = 'read';
+      const withId = e.client_id !== undefined && takesClientId(connectionId);
+      // With its id and no send without it out, the POST alone tells: a 200 is the one the
+      // server already holds. Else what its book holds first (an older server, an entry an
+      // older build stored, one an add without its id may have reached).
+      let held: Bookmark[] = [];
+      if (!withId || !e.fresh) {
+        let read = reads.get(book);
+        if (!read) {
+          read = client.bookmarks(e.libraryId, e.path).then((list) => list ?? []);
+          reads.set(book, read);
+        }
+        held = await read;
+        // Already there (an answer lost, an Undo of one a replay had sent): taken as sent.
+        const already = heldOnServer(e, held);
+        if (already) {
+          showServerBookmark(connectionId, e.libraryId, e.path, already);
+          continue;
+        }
       }
       // Claimed by this replay, but taken out while it sent those ahead of it: the claim
       // keeps no Delete out, so the send checks, right before the POST.
-      if (!(await readyToSend(e, held))) continue;
-      posting = true;
+      if (!(await readyToSend(e, held, withId))) continue;
+      step = 'post';
+      // `addBookmark` shows the server's bookmark, a 200's (held already) as a 201's.
       const made = await addBookmark(
         connectionId,
         e.libraryId,
@@ -588,31 +705,34 @@ async function sendGroup(
         e.position,
         e.note,
         e.label,
+        withId ? e.client_id : undefined,
       );
       // Among the book's now, for those behind it (an answer with no bookmark in it says
       // nothing to compare them with).
       if (made) held.push(made);
     } catch (err) {
-      if (posting && refusedForGood(err)) {
+      if (step === 'post' && refusedForGood(err)) {
         console.warn('[bookmarks] the server refused a queued bookmark', err);
         continue;
       }
       noteFailure(connectionId, err);
       if (connectionFailure(err)) {
+        // Not counted, but how far it came still ends a run of failures before that step.
+        tries.set(e.id, { step, counts: false });
         kept.push(...entries.slice(i));
         break;
       }
       const counts = !askedToWait(err);
-      if (!keepOrGiveUp(e, err, counts)) continue;
+      if (!keepOrGiveUp(e, err, step, counts)) continue;
       heldBack.add(book);
       // A failed read is the failure of every one of the book's; a failed POST is its own.
-      if (!counts || posting) continue;
+      if (!counts || step === 'post') continue;
       for (const f of entries.slice(i + 1)) {
-        if (contentKeyOf(f) === book) failing.add(f.id);
+        if (contentKeyOf(f) === book) tries.set(f.id, { step: 'read', counts: true });
       }
     }
   }
-  await noteFailing(failing);
+  await noteTries(tries);
   return kept;
 }
 
