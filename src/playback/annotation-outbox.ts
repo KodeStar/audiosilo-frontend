@@ -16,7 +16,8 @@ import {
 } from '@/api/connection-clients';
 import { addBookmark, cachedCapability, fetchCapabilities, showServerBookmark } from '@/api/hooks';
 import { isReachable, noteFailure, onReconnect } from '@/api/reachability';
-import type { Bookmark, BookmarkLabel } from '@/api/types';
+import { keepServerAnswer } from '@/api/server-snapshots';
+import type { Bookmark, BookmarkLabel, ServerInfo } from '@/api/types';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { type Claimed, replayQueue, type Route, unclaimed } from '@/lib/queue-claims';
 import { randomUUID } from '@/lib/random';
@@ -91,8 +92,9 @@ import { onlyConnection, queuedRoute } from './progress-sync';
  * and 429: the book is gone or out of the account's reach) is dropped, logged, as is one whose
  * `client_id` its server holds on another book (its 409 `client_id_conflict`: that bookmark
  * landed, and its book has moved since). Not one sent with its `client_id` that a 400 refuses
- * while its server's flags, read again, say it no longer takes one (a server rolled back since
- * its `/server` answer was kept, `refusedForItsId`): that waits and goes without the id. The read
+ * while its server, asked again (`whyRefused`: the server itself, never the cached flags),
+ * says it no longer takes one (a server rolled back since its `/server` answer was read): that
+ * waits and goes without the id, as does one whose server can't be asked. The read
  * before the send drops nothing: when it fails, whatever the status, the bookmark waits.
  * Labels and ids follow `postBookmark`'s rule at send time (`addBookmark`), on flags that are
  * known: a labelled bookmark is sent only once its server's `/server` has been read (`readFlags`),
@@ -320,19 +322,35 @@ const turnedAway = (err: unknown) =>
 const takesClientId = (connectionId: string) =>
   cachedCapability(connectionId, 'bookmark_client_id') === true;
 
-/** After a 400 to a POST that carried a bookmark's `client_id`: whether the id is why, its
- * server's flags read again (`fetchCapabilities`: a kept answer is stale, so it asks) saying
- * it no longer takes one. A server rolled back since its `/server` answer was kept
- * (`server-snapshots.ts`) refuses the unknown field, and that says nothing about the
- * bookmark, which then waits and goes without the id. */
-async function refusedForItsId(
+/** A 400, the answer of a server that does not know the `client_id` field (its strict
+ * decoder's), and of one that refuses the bookmark itself. */
+const badRequest = (err: unknown) => err instanceof ApiError && err.status === 400;
+
+/**
+ * After a 400 to a POST that carried a bookmark's `client_id`: what was refused, asked of the
+ * server itself (the listening outbox's rollback check does the same), never of the cached
+ * flags: an answer read minutes ago is still fresh there (`serverInfoQuery`), and a server
+ * rolled back since would have every waiting bookmark dropped for an id it does not know.
+ * - `'id'`: its `/server` no longer has `bookmark_client_id`. The refusal says nothing about
+ *   the bookmark, which then goes without the id; the answer is the connection's from now on
+ *   (`keepServerAnswer`), so the next send reads it.
+ * - `'bookmark'`: it still takes ids, so the 400 is the bookmark's own.
+ * - `failed`: it could not be asked (no answer, an error, another server at the address):
+ *   nothing is known yet, and the bookmark waits on that failure.
+ */
+async function whyRefused(
   connectionId: string,
   client: ApiClient,
-  err: unknown,
-): Promise<boolean> {
-  if (!(err instanceof ApiError) || err.status !== 400 || clientIdConflict(err)) return false;
-  await fetchCapabilities(connectionId, client).catch(() => undefined);
-  return !takesClientId(connectionId);
+): Promise<'id' | 'bookmark' | { failed: unknown }> {
+  let info: ServerInfo;
+  try {
+    info = await client.serverInfo();
+  } catch (failed) {
+    return { failed };
+  }
+  if (!isRecord(info) || !isRecord(info.capabilities)) return { failed: new Error('no flags') };
+  if (info.capabilities.bookmark_client_id) return 'bookmark';
+  return keepServerAnswer(connectionId, info) ? 'id' : { failed: new Error('server reset') };
 }
 
 /** Read `connectionId`'s flags when they are not known yet (whether its server takes a
@@ -367,7 +385,8 @@ export async function addBookmarkOrQueue(
   position: number,
   note = '',
 ): Promise<AddBookmarkOutcome> {
-  if (!resolveClient(connectionId)) throw new Error('connection gone');
+  const client = resolveClient(connectionId);
+  if (!client) throw new Error('connection gone');
   const since = connectionGeneration(connectionId);
   const clientId = randomUUID();
   // Behind any of its book still waiting: they reach the server in the order they were made
@@ -387,11 +406,17 @@ export async function addBookmarkOrQueue(
         made: await addBookmark(connectionId, libraryId, path, position, note, undefined, clientId),
       };
     } catch (err) {
-      if (!worthKeeping(err)) throw err;
-      noteFailure(connectionId, err);
-      failed = true;
-      // A 401 or a 429 turned it away before the server took it: nothing landed.
-      sentBare = !withId && !turnedAway(err);
+      // Its id refused by a server that no longer takes one (`whyRefused`), not the bookmark:
+      // nothing landed, and it is kept to go without the id, at once (the flags say so now).
+      const idRefused =
+        withId && badRequest(err) && (await whyRefused(connectionId, client)) === 'id';
+      if (!idRefused) {
+        if (!worthKeeping(err)) throw err;
+        noteFailure(connectionId, err);
+        failed = true;
+        // A 401 or a 429 turned it away before the server took it: nothing landed.
+        sentBare = !withId && !turnedAway(err);
+      }
     }
   }
   const queued = await append(
@@ -754,7 +779,10 @@ async function sendGroup(
       // Among the book's now, for those behind it (an answer with no bookmark in it says
       // nothing to compare them with).
       if (made) held.push(made);
-    } catch (err) {
+    } catch (thrown) {
+      // The failure this try is judged by: the send's, or (below) that of asking its server
+      // why it refused.
+      let err = thrown;
       if (step === 'post' && clientIdConflict(err)) {
         // Its id is on another of the caller's books. A random UUID meets another only when
         // this bookmark's own send landed and its server holds it at another path now (a
@@ -763,13 +791,19 @@ async function sendGroup(
         console.warn('[bookmarks] dropped a queued bookmark whose client_id is on another book');
         continue;
       }
-      if (step === 'post' && withId && (await refusedForItsId(connectionId, client, err))) {
-        // Its id refused, not the bookmark: kept, its book behind it, for the next replay.
-        kept.push(e);
-        heldBack.add(book);
-        continue;
+      if (step === 'post' && withId && badRequest(err)) {
+        const why = await whyRefused(connectionId, client);
+        if (why === 'id') {
+          // Its id refused, not the bookmark: kept, its book behind it, for the next replay.
+          kept.push(e);
+          heldBack.add(book);
+          continue;
+        }
+        // Its server could not be asked: the 400 says nothing for good yet, so it is never
+        // dropped on it. It waits as on any failed send, that read's failure its own.
+        if (why !== 'bookmark') err = why.failed;
       }
-      if (step === 'post' && refusedForGood(err)) {
+      if (step === 'post' && err === thrown && refusedForGood(err)) {
         console.warn('[bookmarks] the server refused a queued bookmark', err);
         continue;
       }

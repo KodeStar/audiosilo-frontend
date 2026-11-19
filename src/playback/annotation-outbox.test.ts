@@ -9,7 +9,7 @@ import type { QueuedBookmark } from './annotation-outbox';
 // dropped. The server is a mock client per connection; `addBookmark` (hooks.ts) posts
 // through it, as the real one does through `resolveClient`.
 
-type Client = { bookmarks: jest.Mock; addBookmark: jest.Mock };
+type Client = { bookmarks: jest.Mock; addBookmark: jest.Mock; serverInfo: jest.Mock };
 const mockClients = new Map<string, Client>();
 let mockReady = true;
 let mockLaunch: (() => void) | null = null;
@@ -85,6 +85,17 @@ jest.mock('@/api/hooks', () => ({
 }));
 // The book's cached list taking a bookmark its server already holds.
 const mockShowServerBookmark = jest.fn();
+// A `/server` answer the outbox asked the server for itself becomes the cached flags, unless
+// it names another server (a reset one: `mockOtherServer`), which says nothing of this one.
+let mockOtherServer = false;
+jest.mock('@/api/server-snapshots', () => ({
+  keepServerAnswer: (_cid: string, info: { capabilities: Record<string, boolean> }) => {
+    if (mockOtherServer) return false;
+    mockAnnotations = !!info.capabilities.annotations;
+    mockClientIds = !!info.capabilities.bookmark_client_id;
+    return true;
+  },
+}));
 // The session's changes `startBookmarkSync` follows (a connection signed in again).
 type MockSession = { connections: { id: string; token: string; needsReconnect?: string }[] };
 let mockSessionListener: ((state: MockSession, prev: MockSession) => void) | null = null;
@@ -167,6 +178,11 @@ function server(cid: string, down: unknown = null) {
         return made;
       },
     ),
+    // Its `/server`, asked directly: the flags it has now.
+    serverInfo: jest.fn(async () => {
+      if (state.down) throw state.down;
+      return { capabilities: { annotations: true, bookmark_client_id: mockClientIds } };
+    }),
   };
   mockClients.set(cid, client);
   return { client, held, state };
@@ -183,6 +199,7 @@ beforeEach(async () => {
   mockAnnotations = true;
   mockClientIds = false;
   mockCapsDown = null;
+  mockOtherServer = false;
   mockGenerations.clear();
   mockFlagged.clear();
   await AsyncStorage.clear();
@@ -1020,24 +1037,38 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
     expect(await queuedBookmarks()).toEqual([]);
   });
 
-  it('keeps one whose id a server rolled back since its flags were kept refuses', async () => {
+  /** The server rolled back: it refuses the unknown field, and its `/server` has no such flag. */
+  function rollBack(client: Client) {
+    const send = client.addBookmark.getMockImplementation();
+    client.addBookmark.mockImplementation((...args: unknown[]) =>
+      args[5] === undefined
+        ? send?.(...args)
+        : Promise.reject(new ApiError(400, 'invalid request')),
+    );
+    client.serverInfo.mockResolvedValue({ capabilities: { annotations: true } });
+  }
+
+  it('keeps one whose id a server rolled back since its flags were read refuses', async () => {
     const { client, held } = server('c1');
     mockOnline.c1 = false;
     await queueNewBookmark('c1', 1, 'a/book', 120, 'n');
+    await queueNewBookmark('c1', 1, 'b/book', 130, 'n');
     mockOnline.c1 = true;
-    // The kept flags take ids; the server refuses the unknown field, and says so when asked.
-    client.addBookmark.mockRejectedValueOnce(new ApiError(400, 'invalid request'));
-    mockFetchCaps.mockImplementationOnce(async () => {
-      mockClientIds = false;
-      return { annotations: true, bookmark_client_id: false };
-    });
+    // The cached flags take ids (read a minute ago, still fresh there): the server itself is
+    // asked, and says it does not.
+    rollBack(client);
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     await flushBookmarks();
-    expect(held).toEqual([]);
+    expect(client.serverInfo).toHaveBeenCalledTimes(1);
+    expect(mockFetchCaps).not.toHaveBeenCalled();
+    // The refused one waits; the other book's, behind it, already goes without its id.
+    expect(held.map((b) => b.position)).toEqual([130]);
     expect(await queuedBookmarks()).toMatchObject([{ position: 120 }]);
+    expect((await queuedBookmarks())[0]).not.toHaveProperty('failures');
     await flushBookmarks();
-    expect(held).toHaveLength(1);
-    expect(held[0]).not.toHaveProperty('client_id');
+    expect(held.map((b) => b.position)).toEqual([130, 120]);
+    expect(held.some((b) => 'client_id' in b)).toBe(false);
+    expect(await queuedBookmarks()).toEqual([]);
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   });
@@ -1050,7 +1081,7 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
     client.addBookmark.mockRejectedValueOnce(new ApiError(400, 'invalid request'));
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     await flushBookmarks();
-    expect(mockFetchCaps).toHaveBeenCalledTimes(1);
+    expect(client.serverInfo).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith(
       '[bookmarks] the server refused a queued bookmark',
       expect.any(ApiError),
@@ -1058,6 +1089,77 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
     expect(held).toEqual([]);
     expect(await queuedBookmarks()).toEqual([]);
     warn.mockRestore();
+  });
+
+  it.each([
+    ['fails', new ApiError(500, 'boom'), { failures: 1, failingStep: 'post' }],
+    ['is busy', new ApiError(503, 'busy'), {}],
+    // The connection's: the replay stops there.
+    ['gives no answer', offline(), {}],
+  ])(
+    'never drops one a 400 refuses while its server, asked why, %s',
+    async (_name, err, counted) => {
+      const { client, held } = server('c1');
+      mockOnline.c1 = false;
+      await queueNewBookmark('c1', 1, 'a/book', 120, 'n');
+      await queueNewBookmark('c1', 1, 'b/book', 130, 'n');
+      mockOnline.c1 = true;
+      rollBack(client);
+      client.serverInfo.mockRejectedValueOnce(err);
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      await flushBookmarks();
+      // Nothing known of the id yet: the 400 is not taken for the bookmark's own.
+      expect(warn).not.toHaveBeenCalled();
+      expect(held).toEqual([]);
+      const [entry, other] = await queuedBookmarks();
+      expect(entry).toMatchObject({ position: 120, ...counted });
+      if (!('failures' in counted)) expect(entry).not.toHaveProperty('failures');
+      expect(other).toMatchObject({ position: 130 });
+      // Asked again, the server says it takes no ids: they go without.
+      await flushBookmarks();
+      await flushBookmarks();
+      expect(held.map((b) => b.position).sort()).toEqual([120, 130]);
+      expect(held.some((b) => 'client_id' in b)).toBe(false);
+      expect(await queuedBookmarks()).toEqual([]);
+      warn.mockRestore();
+    },
+  );
+
+  it('keeps one a 400 refuses when another server answers at its address', async () => {
+    const { client, held } = server('c1');
+    mockOnline.c1 = false;
+    await queueNewBookmark('c1', 1, 'a/book', 120, 'n');
+    mockOnline.c1 = true;
+    rollBack(client);
+    // A reset server's `/server`: no answer about this connection's.
+    mockOtherServer = true;
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    await flushBookmarks();
+    expect(warn).not.toHaveBeenCalled();
+    expect(held).toEqual([]);
+    expect(await queuedBookmarks()).toMatchObject([{ position: 120 }]);
+    warn.mockRestore();
+  });
+
+  it('keeps a tap whose id a rolled back server refuses, and sends it without', async () => {
+    const { client, held } = server('c1');
+    rollBack(client);
+    // Not the bookmark's refusal: kept rather than failed, and sent at once on the new flags.
+    expect(await addBookmarkOrQueue('c1', 1, 'a/book', 120)).toHaveProperty('queued');
+    await idle();
+    expect(client.serverInfo).toHaveBeenCalledTimes(1);
+    expect(held).toMatchObject([{ position: 120 }]);
+    expect(held[0]).not.toHaveProperty('client_id');
+    expect(await queuedBookmarks()).toEqual([]);
+    // The next tap goes straight there, bare.
+    expect(await addBookmarkOrQueue('c1', 1, 'a/book', 130)).toHaveProperty('made');
+  });
+
+  it('fails a tap a 400 refuses while its server still takes ids', async () => {
+    const { client } = server('c1');
+    client.addBookmark.mockRejectedValueOnce(new ApiError(400, 'invalid request'));
+    await expect(addBookmarkOrQueue('c1', 1, 'a/book', 120)).rejects.toBeInstanceOf(ApiError);
+    expect(await queuedBookmarks()).toEqual([]);
   });
 
   it('keeps an Undo from making one a replay sent just before its Delete', async () => {

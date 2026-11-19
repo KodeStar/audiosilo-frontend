@@ -1783,8 +1783,10 @@ for tonight's, and two made in the same second never settle on one; a send with 
 say so right before the POST (else it waits for the next replay). When the read fails, whatever
 the status (a 403 or 404 too), the bookmarks wait, and only the POST's own refusal for good drops
 one (a 409 `client_id_conflict` too: that id landed, and its book moved since, so a fresh id
-would make it twice; not a 400 to one sent with its id while the flags, read again, say the
-server no longer takes one: a server rolled back since its kept `/server` answer). A send
+would make it twice; not a 400 to one sent with its id while the server, asked again, no longer
+takes one: `whyRefused` asks `/server` itself and keeps the answer (`keepServerAnswer`), never
+the cached flags, which stay fresh for minutes after a server is rolled back, and one whose
+server can't be asked waits; the one-tap's direct add is kept the same way). A send
 puts the new bookmark in the book's cached list at once (`addBookmark`), and a replay that finds
 one already there puts the server's in it the same way (`showServerBookmark`), so its waiting row
 and pin give way to it with no gap before the list is read again. Order holds within a book only: a
