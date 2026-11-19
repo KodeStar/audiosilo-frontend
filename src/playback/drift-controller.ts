@@ -2,12 +2,12 @@ import { t } from 'i18next';
 import { AppState } from 'react-native';
 
 import { FELL_ASLEEP_LABEL } from '@/api/bookmark-labels';
-import { addBookmark } from '@/api/hooks';
 import { toast } from '@/components/ui/toast';
 import { formatWallClock } from '@/lib/format';
 import { quietly } from '@/lib/quietly';
 import { whenActive } from '@/lib/when-active';
 
+import { addBookmarkOrQueue } from './annotation-outbox';
 import { driftOffer, saveDrift, takeDrift, type DriftRecord } from './drift';
 import { startInteractionWatch } from './last-interaction';
 import { onSleepTimerEnded, type FellAsleep } from './sleep-timer';
@@ -119,7 +119,8 @@ function fellAsleep(bookKey: string, fell: FellAsleep) {
 
 function makeBookmark(connectionId: string, libraryId: number, path: string, position: number) {
   try {
-    void addBookmark(
+    // A server that can't be reached gets it later (the bookmark outbox, fe#356).
+    void addBookmarkOrQueue(
       connectionId,
       libraryId,
       path,
@@ -128,7 +129,7 @@ function makeBookmark(connectionId: string, libraryId: number, path: string, pos
       // Sent only to a server with `annotations` (addBookmark drops it elsewhere).
       FELL_ASLEEP_LABEL,
     ).catch(() => {
-      // gone, offline or refused: there is simply no bookmark this time
+      // gone or refused: there is simply no bookmark this time
     });
   } catch {
     // never let a bookmark take the timer's ending path down with it

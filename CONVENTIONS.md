@@ -1695,6 +1695,25 @@ without its label). Never call `client.addBookmark` with a label directly. The s
 fixed-width UTC timestamps with milliseconds (so they compare as strings) and `[]` for an empty
 per-book list (the client still reads an older server's `null` as none).
 
+**Bookmarks made offline wait on the device (fe#356).** The one-tap bookmark (`addBookmarkHere`)
+and the sleep timer's "Fell asleep" go through `addBookmarkOrQueue`
+(`src/playback/annotation-outbox.ts`): straight to the server when nothing waits for it and it
+reads as reachable, else (or after no answer, a 5xx, 408, 429 or 401) into
+`audiosilo.annotationOutbox`, oldest first per connection, a new one always behind those
+waiting. A refusal for good (any other 4xx) or a write storage refuses is still the caller's
+error ("Couldn't add the bookmark"). The outbox is sent at launch, on reconnect, in the
+foreground, on the web's `online` and on a backoff (30 s doubling to 10 min) while a reachable
+server keeps failing (`startBookmarkSync`, a root service), through `replayQueue` (claims, so
+two tabs never send one twice). The POST has no idempotency key, so a replay reads the book's
+bookmarks first and takes one at the same second with the same note, made at most a day before,
+as already sent. Signing out or removing a server gives it a last send beside
+`teardownBeforeTokenRevoke` (`unsentBookmarks`) and the removal purges what is left; a replay
+drops the entries of a connection gone once the session has loaded. Waiting ones are listed
+among the book's bookmarks (`useQueuedBookmarks`, `QueuedBookmarkRow`: "Waiting to sync", Delete
+takes one out unsent, with Undo) and pinned on the seek bar. The editor's add and the delete's
+Undo still post directly (the listener sees the failure there); the car keeps its own retry list
+(`CAR_BOOKMARKS_KEY`).
+
 **Upcoming releases (Track U2; the wire is U1's, CROSS-REPO §8).** One flag, `upcoming` (false
 while community metadata or the server's job is off), and one read, `client.upcoming()` ->
 `GET /me/upcoming` (`UpcomingResponse {status, generated_at?, window_days, items}`, `items` never

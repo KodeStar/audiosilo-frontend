@@ -418,7 +418,8 @@
       "addNote": "Adicionar nota",
       "loadFailed": "Não foi possível carregar os seus marcadores",
       "emptyHintWeb": "Prima B enquanto ouve, ou toque no marcador no leitor.",
-      "emptyHintNative": "Toque no marcador no leitor enquanto ouve."
+      "emptyHintNative": "Toque no marcador no leitor enquanto ouve.",
+      "waiting": "À espera de sincronizar"
     },
     "note": {
       "title": "Nota",
@@ -1645,7 +1646,9 @@
       "label": "Marcadores",
       "empty": "Ainda não há marcadores.",
       "added": "Marcador adicionado",
-      "addFailed": "Não foi possível adicionar o marcador"
+      "addFailed": "Não foi possível adicionar o marcador",
+      "queued": "Marcador guardado neste dispositivo",
+      "queuedHint": "{{time}} · É sincronizado quando o servidor voltar"
     },
     "history": {
       "empty": "Ainda não há histórico."

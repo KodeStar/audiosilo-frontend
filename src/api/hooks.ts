@@ -676,10 +676,11 @@ function refreshAfterAdd(
 /**
  * Add a bookmark to a book on ONE connection's server, then refresh its lists
  * (`refreshAfterAdd`). Framework-free, for the callers that run outside React or for a
- * book that is not the screen's (the playing book's shortcut, the sleep timer's "Fell
- * asleep", a delete's Undo). `label` follows `postBookmark`'s rule, on the cached
- * `/server` answer. Resolves the new bookmark; rejects when the connection is gone or the
- * server refused.
+ * book that is not the screen's (a delete's Undo, the car, the bookmark outbox's sends).
+ * `label` follows `postBookmark`'s rule, on the cached `/server` answer. Resolves the new
+ * bookmark; rejects when the connection is gone or the server refused. A bookmark that must
+ * not be lost while the server can't take it (the playing book's shortcut, the sleep
+ * timer's "Fell asleep") goes through `addBookmarkOrQueue` (`annotation-outbox.ts`) instead.
  */
 export async function addBookmark(
   connectionId: string,

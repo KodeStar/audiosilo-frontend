@@ -418,7 +418,8 @@
       "addNote": "Notiz hinzufügen",
       "loadFailed": "Deine Lesezeichen konnten nicht geladen werden",
       "emptyHintWeb": "Drücke beim Hören B oder tippe im Player auf das Lesezeichen.",
-      "emptyHintNative": "Tippe beim Hören im Player auf das Lesezeichen."
+      "emptyHintNative": "Tippe beim Hören im Player auf das Lesezeichen.",
+      "waiting": "Wartet auf Synchronisierung"
     },
     "note": {
       "title": "Notiz",
@@ -1645,7 +1646,9 @@
       "label": "Lesezeichen",
       "empty": "Noch keine Lesezeichen.",
       "added": "Lesezeichen hinzugefügt",
-      "addFailed": "Lesezeichen konnte nicht hinzugefügt werden"
+      "addFailed": "Lesezeichen konnte nicht hinzugefügt werden",
+      "queued": "Lesezeichen auf diesem Gerät behalten",
+      "queuedHint": "{{time}} · Wird synchronisiert, sobald der Server wieder da ist"
     },
     "history": {
       "empty": "Noch kein Verlauf."

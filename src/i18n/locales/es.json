@@ -418,7 +418,8 @@
       "addNote": "Añadir nota",
       "loadFailed": "No se pudieron cargar tus marcadores",
       "emptyHintWeb": "Pulsa B mientras escuchas o toca el marcador en el reproductor.",
-      "emptyHintNative": "Toca el marcador en el reproductor mientras escuchas."
+      "emptyHintNative": "Toca el marcador en el reproductor mientras escuchas.",
+      "waiting": "Pendiente de sincronizar"
     },
     "note": {
       "title": "Nota",
@@ -1645,7 +1646,9 @@
       "label": "Marcadores",
       "empty": "Aún no hay marcadores.",
       "added": "Marcador añadido",
-      "addFailed": "No se pudo añadir el marcador"
+      "addFailed": "No se pudo añadir el marcador",
+      "queued": "Marcador guardado en este dispositivo",
+      "queuedHint": "{{time}} · Se sincroniza cuando el servidor vuelva"
     },
     "history": {
       "empty": "Aún no hay historial."

@@ -9,6 +9,10 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('@/api/provider', () => ({ useApiRegistry: () => ({ clients: new Map() }) }));
 jest.mock('@/playback/store', () => ({ teardownBeforeTokenRevoke: jest.fn() }));
+const mockUnsentBookmarks = jest.fn(async (_cid: string) => 0);
+jest.mock('@/playback/annotation-outbox', () => ({
+  unsentBookmarks: (cid: string) => mockUnsentBookmarks(cid),
+}));
 let mockDownloaded = 0;
 jest.mock('@/downloads/store', () => ({
   downloadedCountFor: () => mockDownloaded,
@@ -202,5 +206,7 @@ describe('removing a server', () => {
     expect(screen.queryByText(/first step/)).toBeNull();
     await fireEvent.press(screen.getByText('Remove server'));
     await waitFor(() => expect(remove).toHaveBeenCalledWith('c1'));
+    // The bookmarks waiting on the device got their last send first (fe#356).
+    expect(mockUnsentBookmarks).toHaveBeenCalledWith('c1');
   });
 });

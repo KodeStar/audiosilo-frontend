@@ -418,7 +418,8 @@
       "addNote": "Ajouter une note",
       "loadFailed": "Impossible de charger vos signets",
       "emptyHintWeb": "Appuyez sur B pendant l'écoute, ou touchez le signet dans le lecteur.",
-      "emptyHintNative": "Touchez le signet dans le lecteur pendant l'écoute."
+      "emptyHintNative": "Touchez le signet dans le lecteur pendant l'écoute.",
+      "waiting": "En attente de synchronisation"
     },
     "note": {
       "title": "Note",
@@ -1645,7 +1646,9 @@
       "label": "Signets",
       "empty": "Aucun signet pour l'instant.",
       "added": "Signet ajouté",
-      "addFailed": "Impossible d'ajouter le signet"
+      "addFailed": "Impossible d'ajouter le signet",
+      "queued": "Signet gardé sur cet appareil",
+      "queuedHint": "{{time}} · Il se synchronise dès le retour du serveur"
     },
     "history": {
       "empty": "Aucun historique pour l'instant."

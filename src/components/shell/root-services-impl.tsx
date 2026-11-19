@@ -9,6 +9,7 @@ import { CompanionRevealListener } from '@/components/player/companion/reveal-li
 import { ShakeToExtendListener } from '@/components/player/shake-to-extend-listener';
 import { startKeepAhead } from '@/downloads/keep-ahead-controller';
 import { startChapterRefresh, startReadalongRefresh } from '@/downloads/store';
+import { startBookmarkSync } from '@/playback/annotation-outbox';
 import { startAutoSleep } from '@/playback/auto-sleep-controller';
 import { startDriftWatch } from '@/playback/drift-controller';
 import { startJumpUndo } from '@/playback/jump-undo';
@@ -58,6 +59,9 @@ export function startRootServices({ late = false }: { late?: boolean } = {}): ()
     // Sync v2 (`listening_sync`): sends the listening outbox at launch, on reconnect and in
     // the foreground, and cuts the playing span when the app leaves; see the module.
     startListeningSync(),
+    // Bookmarks made while their server couldn't take them wait on the device and are sent
+    // at launch, on reconnect, in the foreground and when the browser is back online.
+    startBookmarkSync(),
     // The stored offline queues (progress saves, the reader's places) are replayed when the
     // app is picked up again, so a replay that died with its tab is not left waiting for
     // the next save; see the module.

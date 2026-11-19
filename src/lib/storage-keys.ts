@@ -33,6 +33,9 @@ export const LISTENING_OPEN_SPAN_KEY = 'audiosilo.listeningOpenSpan';
 /** Per connection id: when its outbox last synced, the events it couldn't sync and its
  * server's clock skew (`clockSkewMs`). */
 export const LISTENING_SYNC_KEY = 'audiosilo.listeningSync';
+/** The bookmarks made while their server couldn't take them (`src/playback/annotation-outbox.ts`):
+ * an array, oldest first, each with a `connectionId`. */
+export const ANNOTATION_OUTBOX_KEY = 'audiosilo.annotationOutbox';
 /** Each connection's last `/server` answer, keyed by connection id: kept on every answer
  * and seeded at launch (`src/api/server-snapshots.ts`), so a launch that can't reach a
  * server still knows what it serves. */

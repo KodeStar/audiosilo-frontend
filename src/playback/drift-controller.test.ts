@@ -19,6 +19,7 @@ jest.mock('@/api/connection-clients', () => ({ resolveClient: () => mockClient }
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import type { ServerInfo } from '@/api/types';
+import { queuedBookmarks, resetAnnotationOutboxForTests } from '@/playback/annotation-outbox';
 import { startDriftWatch } from '@/playback/drift-controller';
 import { resetInteractions } from '@/playback/last-interaction';
 import { GRACE_SECONDS, useSleepTimer } from '@/playback/sleep-timer';
@@ -90,6 +91,7 @@ describe('drift controller', () => {
     mockAddBookmark.mockClear();
     mockAddBookmark.mockImplementation(() => Promise.resolve({}));
     mockClient = { addBookmark: mockAddBookmark };
+    resetAnnotationOutboxForTests();
     await AsyncStorage.clear();
     player.patch({
       nowPlaying: {
@@ -190,12 +192,16 @@ describe('drift controller', () => {
     expect(mockToast).not.toHaveBeenCalled();
   });
 
-  it('skips the bookmark offline, and still offers the jump back', async () => {
+  // fe#356: the bookmark waits on the device for its server.
+  it('keeps the bookmark offline for later, and still offers the jump back', async () => {
     mockAddBookmark.mockImplementation(() => Promise.reject(new TypeError('Network')));
     await fallAsleep();
     jest.advanceTimersByTime(GRACE_SECONDS * 1000);
     await settle();
     expect(useSleepTimer.getState().phase).toBe('idle');
+    expect(await queuedBookmarks('srv-1')).toMatchObject([
+      { libraryId: 1, path: 'a.m4b', position: 1300, note: 'Fell asleep' },
+    ]);
     player.setPlayState('playing');
     await settle();
     expect(mockToast).toHaveBeenCalledTimes(1);

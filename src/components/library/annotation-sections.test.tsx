@@ -48,6 +48,29 @@ const mockAddHere = jest.fn((..._a: unknown[]) => Promise.resolve());
 jest.mock('@/components/player/player-shortcuts', () => ({
   addBookmarkHere: (...a: unknown[]) => mockAddHere(...a),
 }));
+// The bookmark outbox (fe#356): what waits on the device for this book's server.
+type Waiting = {
+  id: string;
+  connectionId: string;
+  libraryId: number;
+  path: string;
+  position: number;
+  note: string;
+  label?: string;
+  updated_at: string;
+};
+let mockWaiting: Waiting[] = [];
+jest.mock('@/playback/use-queued-bookmarks', () => ({
+  useQueuedBookmarks: (cid: string | undefined) => (cid ? mockWaiting : []),
+}));
+const mockDiscard = jest.fn(async (_id: string) => true);
+const mockRequeue = jest.fn(async (..._a: unknown[]) => ({}));
+jest.mock('@/playback/annotation-outbox', () => ({
+  discardQueuedBookmark: (id: string) => mockDiscard(id),
+  addBookmarkOrQueue: (...a: unknown[]) => mockRequeue(...a),
+}));
+const mockToast = jest.fn();
+jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
 const mockOpenJournal = jest.fn();
 jest.mock('@/lib/open', () => ({
   useOpen: () => ({ openBook: jest.fn() }),
@@ -96,6 +119,7 @@ beforeEach(() => {
   mockNotes = query([]);
   mockAnnotations = true;
   mockSaved = undefined;
+  mockWaiting = [];
   player.reset();
   usePlayerSheets.setState({ open: null, editor: null });
   Platform.OS = OS;
@@ -161,6 +185,54 @@ describe('BookmarksSection', () => {
     await render(<BookmarksSection libraryId={1} path="a/book" />);
     expect(screen.getByText('note 1')).toBeTruthy();
     expect(screen.queryByText("You're offline")).toBeNull();
+  });
+
+  // fe#356: a bookmark made while the server couldn't take it is listed, marked waiting.
+  const waiting = (id: string, position: number, note = ''): Waiting => ({
+    id,
+    connectionId: 'c',
+    libraryId: 1,
+    path: 'a/book',
+    position,
+    note,
+    updated_at: '2026-11-19T10:00:00.000Z',
+  });
+
+  it('lists the bookmarks waiting to sync among the others, in book order, with no Edit', async () => {
+    mockBookmarks = query([bookmark(1, 900), bookmark(2, 30)]);
+    mockWaiting = [waiting('w1', 400, 'kept here')];
+    await render(<BookmarksSection libraryId={1} path="a/book" />);
+    const notes = screen.getAllByText(/^(note \d|kept here)$/).map((n) => n.props.children);
+    expect(notes).toEqual(['note 2', 'kept here', 'note 1']);
+    expect(screen.getByTestId('bookmark-queued-w1')).toHaveTextContent(/Waiting to sync/);
+    expect(screen.getAllByRole('button', { name: /^Edit bookmark/ })).toHaveLength(2);
+    expect(screen.queryByText('No bookmarks yet.')).toBeNull();
+  });
+
+  it('shows a bookmark waiting to sync while the list itself waits for the network', async () => {
+    mockBookmarks = query<Bookmark[]>(undefined, 'held');
+    mockWaiting = [waiting('w1', 400, 'kept here')];
+    await render(<BookmarksSection libraryId={1} path="a/book" />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.getByText('kept here')).toBeTruthy();
+  });
+
+  it('takes a waiting bookmark out unsent, with an Undo that keeps it again', async () => {
+    mockWaiting = [waiting('w1', 400, 'kept here')];
+    await render(<BookmarksSection libraryId={1} path="a/book" />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Delete bookmark at 6:40' }));
+    expect(mockDiscard).toHaveBeenCalledWith('w1');
+    await Promise.resolve();
+    const shown = mockToast.mock.calls[0][0];
+    expect(shown).toMatchObject({ title: 'Bookmark deleted', description: '6:40' });
+    shown.action.onPress();
+    expect(mockRequeue).toHaveBeenCalledWith('c', 1, 'a/book', 400, 'kept here', undefined);
+  });
+
+  it('lists no waiting bookmark among the notes', async () => {
+    mockWaiting = [waiting('w1', 400, 'kept here')];
+    await render(<NotesSection libraryId={1} path="a/book" />);
+    expect(screen.queryByText('kept here')).toBeNull();
   });
 
   it('links to the journal where the server lists bookmarks across books', async () => {

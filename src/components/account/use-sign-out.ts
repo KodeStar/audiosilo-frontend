@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import type { ApiClient } from '@/api/client';
 import type { User } from '@/api/types';
 import { useOptionalApi } from '@/api/provider';
+import { unsentBookmarks } from '@/playback/annotation-outbox';
 import { unsentListens } from '@/playback/listening-outbox';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
 import { accountFlagsKnown, needsPasswordWarning } from '@/lib/account';
@@ -10,8 +11,9 @@ import { useSession } from '@/stores/session';
 
 /**
  * Sign this device out of one connection: stop playback through it and replay its queued
- * saves while its token still works (`teardownBeforeTokenRevoke`), revoke the token on the
- * server (best effort), then forget the connection here. The body of `useSignOut`'s
+ * saves and waiting bookmarks while its token still works (`teardownBeforeTokenRevoke`,
+ * `unsentBookmarks`), revoke the token on the server (best effort), then forget the
+ * connection here. The body of `useSignOut`'s
  * `signOut`, shared with removing a person from this device (the Household page), which
  * signs out each of their servers after the same password warning.
  */
@@ -21,7 +23,11 @@ export async function signOutConnection(
   removeConnection: (id: string) => Promise<void> = (id) =>
     useSession.getState().removeConnection(id),
 ) {
-  await teardownBeforeTokenRevoke(connectionId);
+  await Promise.all([
+    teardownBeforeTokenRevoke(connectionId),
+    // The bookmarks still waiting on the device: a last send (fe#356).
+    unsentBookmarks(connectionId).catch(() => 0),
+  ]);
   try {
     await api?.logout();
   } catch {

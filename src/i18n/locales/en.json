@@ -418,7 +418,8 @@
       "addNote": "Add note",
       "loadFailed": "Couldn't load your bookmarks",
       "emptyHintWeb": "Press B while listening, or tap the bookmark in the player.",
-      "emptyHintNative": "Tap the bookmark in the player while listening."
+      "emptyHintNative": "Tap the bookmark in the player while listening.",
+      "waiting": "Waiting to sync"
     },
     "note": {
       "title": "Note",
@@ -1645,7 +1646,9 @@
       "label": "Bookmarks",
       "empty": "No bookmarks yet.",
       "added": "Bookmark added",
-      "addFailed": "Couldn't add the bookmark"
+      "addFailed": "Couldn't add the bookmark",
+      "queued": "Bookmark kept on this device",
+      "queuedHint": "{{time}} · It syncs once the server is back"
     },
     "history": {
       "empty": "No history yet."
