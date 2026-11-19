@@ -121,17 +121,16 @@ export function resetLibrivoxWatchesForTests() {
 
 /**
  * A followed fetch's read (`useLibrivoxJob`), as the watcher and a recording row both take
- * it: `gone` (a 404, deleted with its library: the last answer no longer stands), `refused`
- * (the server's own 400 or 403, `isNotInLibraryError`: asking again can't help, so nothing
- * follows it any more, and its last answer no longer stands either; a proxy's 401 or 403 is
- * a read that failed, not this), its `job` (none once gone or refused) and whether it `ended`
- * (gone, or no longer open).
+ * it: `refused` (the server's own 400 or 403, `isNotInLibraryError`: asking again can't
+ * help, so nothing follows it any more, and its last answer no longer stands; a proxy's 401
+ * or 403 is a read that failed, not this), its `job` (none once gone, a 404 deleted with its
+ * library, or refused) and whether it `ended` (gone, or no longer open).
  */
 export function followedRead(read: { data?: BridgeJob; error: unknown }) {
   const gone = read.error instanceof ApiError && read.error.status === 404;
   const refused = !gone && isNotInLibraryError(read.error);
   const job = gone || refused ? undefined : read.data;
-  return { gone, refused, job, ended: gone || (!!job && !isOpenJob(job)) };
+  return { refused, job, ended: gone || (!!job && !isOpenJob(job)) };
 }
 
 /**
