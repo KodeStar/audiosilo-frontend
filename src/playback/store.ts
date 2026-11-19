@@ -202,13 +202,13 @@ let stallPauseUntil = 0;
  * listener's moves and speed changes (`localMoves`, `localSpeedSets`) when the play was
  * asked. `other`: the engine holds another book, one the service started: its report named
  * that book (`reportedOtherBook`), or its adoption began (`adoptLoadedBook`). */
-let outsidePlay: {
-  np: NowPlaying;
-  snapshot: PlaybackSnapshot;
-  moves: number;
-  speedSets: number;
-  other: boolean;
-} | null = null;
+let outsidePlay:
+  | (ListenerMark & {
+      np: NowPlaying;
+      snapshot: PlaybackSnapshot;
+      other: boolean;
+    })
+  | null = null;
 /**
  * The engine holds another book than the store's, asked to play from outside the app and not
  * adopted yet (`outsidePlay.other`): what the engine reports is that book's. The store acts
@@ -241,7 +241,7 @@ const adopting: { key: string; ownLoad: boolean }[] = [];
  * report names a book again or the store loads its own book (`ownLoadTakesEngine`), or holds
  * another (FE-ANDROID-5). Taken as the store's book's, that book's place would be saved as it.
  */
-let unnamedOther: { key: string; moves: number; speedSets: number } | null = null;
+let unnamedOther: (ListenerMark & { key: string }) | null = null;
 /** Whether the engine's last report named a book (`reportedBook`). */
 const lastReportNamesBook = (): boolean => !!service?.reportedBook?.();
 /** Whether the engine's last report named no book (an older binary) while an adoption of
@@ -265,10 +265,7 @@ const unnamedReportOfAdopted = (): boolean => {
 };
 /** Whether `unnamedOther` holds the store's book's place from saves. */
 const unnamedOtherHolds = (): boolean =>
-  unnamedReportOfAdopted() &&
-  unnamedOther !== null &&
-  unnamedOther.moves === localMoves &&
-  unnamedOther.speedSets === localSpeedSets;
+  unnamedReportOfAdopted() && listenerUntouchedSince(unnamedOther);
 /** A load of the store's own book is asked of the engine (`playBook`, `retry`): an adoption under
  * way reads a book the engine no longer holds, and its reports are the store's book's. */
 function ownLoadTakesEngine() {
@@ -714,6 +711,12 @@ let localMoves = 0;
  * place reconcile reads, and read by `persist` while another book is on its way to being
  * adopted. */
 let localSpeedSets = 0;
+/** The listener's moves and speed changes so far, kept by a hold of the store's book's saves
+ * (`outsidePlay`, `unnamedOther`), which ends once either count moves on. */
+type ListenerMark = { moves: number; speedSets: number };
+/** Whether the listener neither moved the book nor set its speed since `mark` was taken. */
+const listenerUntouchedSince = (mark: ListenerMark | null): boolean =>
+  mark !== null && mark.moves === localMoves && mark.speedSets === localSpeedSets;
 
 /** `playBook`s running now. An adoption that read while one ran stands back: the start
  * switches the book only after its own awaits, so an adoption landing between would take
@@ -961,12 +964,7 @@ async function persist(opts?: {
   // listener moved it or set its speed since that play was asked (`listenerMove` shows the
   // place, `setRate` keeps the speed for this book): that is theirs, and an adoption that
   // lands would otherwise drop it unsaved.
-  if (
-    engineIsAnothers() &&
-    outsidePlay?.moves === localMoves &&
-    outsidePlay.speedSets === localSpeedSets &&
-    !opts?.forceFinished
-  ) {
+  if (engineIsAnothers() && listenerUntouchedSince(outsidePlay) && !opts?.forceFinished) {
     return;
   }
   // Nor while the engine holds another book whose reports name none, its adoption given up
