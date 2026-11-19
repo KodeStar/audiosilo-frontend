@@ -93,7 +93,7 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
         if (!onAccountPage(currentNavState(), conn.id)) pushInShell(accountHref(conn.id));
       }}
       className={cn(
-        signInAgain ? 'flex-1 flex-row items-center gap-2' : strip,
+        signInAgain ? 'min-w-[200px] flex-1 flex-row items-center gap-2' : strip,
         'active:opacity-80',
       )}
     >
@@ -102,8 +102,10 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
     </Pressable>
   );
   if (!signInAgain) return toAccount;
+  // On a narrow phone (or a long label: "Voltar a iniciar sessão") the button wraps under the
+  // words rather than squeezing them into a column a few words wide.
   return (
-    <View className={strip}>
+    <View className={cn(strip, 'flex-wrap')}>
       {toAccount}
       <SignInAgainButton conn={conn} size="sm" variant="ghost" />
     </View>

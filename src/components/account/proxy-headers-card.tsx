@@ -10,10 +10,10 @@ import {
   draftToSet,
   type HeaderDraftRow,
 } from '@/components/connect/proxy-headers-model';
+import { SignInAgainButton } from '@/components/layout/reconnect-banner';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { SignInAgainButton } from '@/components/layout/reconnect-banner';
 import { FormError } from '@/components/ui/form-error';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
