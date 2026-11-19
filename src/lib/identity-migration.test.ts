@@ -110,6 +110,9 @@ async function seedLegacyInstall() {
     { connectionId: 'srvA', libraryId: 1, path: 'Book/One', position: 10 },
     { connectionId: 'srvB', libraryId: 1, path: 'Two', trackIndex: 1, positionInTrack: 5 },
   ]);
+  await set('audiosilo.annotationOutbox', [
+    { id: 'q1', connectionId: 'srvA', libraryId: 1, path: 'Book/One', position: 10, note: '' },
+  ]);
   await set('audiosilo.librarySelection', { selection: { connectionId: 'srvB', libraryId: 2 } });
   await set('audiosilo.timeSaved', {
     lifetime: 100,
@@ -159,6 +162,9 @@ async function expectMigrated() {
   expect(await get('audiosilo.carBookmarks')).toEqual([
     { connectionId: 'srvA.3', libraryId: 1, path: 'Book/One', position: 10 },
     { connectionId: 'srvB.7', libraryId: 1, path: 'Two', trackIndex: 1, positionInTrack: 5 },
+  ]);
+  expect(await get('audiosilo.annotationOutbox')).toEqual([
+    { id: 'q1', connectionId: 'srvA.3', libraryId: 1, path: 'Book/One', position: 10, note: '' },
   ]);
   expect(await get('audiosilo.librarySelection')).toEqual({
     selection: { connectionId: 'srvB.7', libraryId: 2 },

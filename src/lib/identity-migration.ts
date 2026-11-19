@@ -18,6 +18,7 @@ import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
 import { copyProxyHeaders, forgetProxyHeaders } from '@/lib/proxy-headers-store';
 import { moveCalendarLink } from '@/lib/upcoming-calendar';
 import {
+  ANNOTATION_OUTBOX_KEY,
   CAR_BOOKMARKS_KEY,
   CAR_SNAPSHOT_WRITTEN_KEY,
   CONNECTION_ALIASES_KEY,
@@ -100,6 +101,7 @@ export const ID_DOCUMENTS = {
   listeningSync: LISTENING_SYNC_KEY,
   offlineServers: OFFLINE_SERVERS_KEY,
   carBookmarks: CAR_BOOKMARKS_KEY,
+  annotationOutbox: ANNOTATION_OUTBOX_KEY,
   librarySelection: LIBRARY_SELECTION_KEY,
   timeSaved: TIME_SAVED_KEY,
   driftOffs: DRIFT_STORAGE_KEY,
@@ -271,6 +273,8 @@ export const rewrite = {
   listeningSync: byConnectionId,
   offlineServers: byConnectionId,
   carBookmarks: connectionList,
+  // The bookmarks waiting for their server (fe#356): an array, each with a `connectionId`.
+  annotationOutbox: connectionList,
   librarySelection(plan: Plan, doc: unknown): unknown {
     if (!isRecord(doc) || !isRecord(doc.selection)) return doc;
     return { ...doc, selection: withConnectionId(plan, doc.selection) };
