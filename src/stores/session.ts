@@ -537,12 +537,13 @@ const leaving = new Map<string, Promise<void>>();
 
 /** Run the other-tab removal steps for `id` (the player's stop), once at a time: a tab that
  * hears the stored list drop it (`applyStored`) and then the word (`removedInOtherTab`) waits
- * on the one stop, never starting a second beside it. Once that one is done, the word asks
- * again, and finds nothing playing through the connection. */
+ * on the one stop, never starting a second beside it. A word heard once that one is done
+ * asks again, and finds nothing playing through the connection. Also a sign-in's retirement
+ * here (`setSession`, any platform). */
 function leaveConnection(id: string): Promise<void> {
   let run = leaving.get(id);
   if (!run) {
-    run = runEach(otherTabRemovalSteps, [id], 'other-tab removal step').finally(() =>
+    run = runEach(otherTabRemovalSteps, [id], 'connection leave step').finally(() =>
       leaving.delete(id),
     );
     leaving.set(id, run);

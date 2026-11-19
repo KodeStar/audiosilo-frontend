@@ -11,7 +11,9 @@ import { flushConnectionSaves, stopPlaybackAndCloseSpan, usePlayer } from './sto
  * - Once it is removed (`onConnectionRemovedInOtherTab`: the stored list dropped it here, or
  *   the word came first), before the removal's cleanups run here: a book still playing
  *   through it stops, so the stop's place and its span's close are written before the purges
- *   take them, not after. Nothing is sent: the token is gone, and this tab's list with it.
+ *   take them, not after. Nothing goes through the session's clients: the token is gone,
+ *   and this tab's list with it (on a server without `listening_sync` the client the player
+ *   kept still PUTs the stop's place, and the server refuses it).
  *   The same when a sign-in here retires a stale identity the book plays through (any
  *   platform: the connect flow runs no teardown of its own).
  *
