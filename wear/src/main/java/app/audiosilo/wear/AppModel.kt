@@ -144,6 +144,8 @@ class AppModel private constructor(private val context: Context) {
         // Posted, not run inside the recorder's own call (a cut opens the next span after this).
         scope.launch(Dispatchers.Main) { schedule(SyncSchedule.Trigger.SPAN_CLOSED) }
       },
+      // The places a close or a move keeps, written in the files' order (fe#285).
+      keepPlace = { ref, place -> places.set(ref, place) },
     )
   val engine = PlayerEngine(context, spans, places)
   private val offers = OfferThrottle()

@@ -41,8 +41,9 @@ data class OpenSpan(
   /** Its event's id, chosen at open: a span closed twice is one event (`duplicate`). */
   val id: String,
   /**
-   * Wear only: it opened where the span before it ended, at that time (a cut's, a playing Stay's),
-   * so its `from` is a place heard, which `PlaceStore.recover` takes before any keep.
+   * Wear only: its `from` is a place in its own right, which `PlaceStore.recover` takes before any
+   * keep: where the span before it ended, at that time (a cut's, a playing Stay's), or the target
+   * of a move made while playing (the move's place is written after its span, fe#285).
    */
   val fromHeard: Boolean = false,
 ) {
@@ -72,6 +73,12 @@ object Spans {
 
   /** How often the open span is stored while playing. */
   const val OPEN_SPAN_KEEP: Double = 5.0
+
+  /**
+   * Wear only: the audio has not moved for this long at a 15 s tick (buffering, a player that
+   * hangs), so the span is stalled (`SpanRecorder.tick`).
+   */
+  const val STALL: Double = OPEN_SPAN_KEEP
 
   /**
    * A span's start as its event claims it: its own, unless it ran longer than `MAX_EVENT_SPAN`
@@ -185,6 +192,12 @@ class SpanRecorder(
   private val newId: () -> String = { UUID.randomUUID().toString().uppercase() },
   /** Takes closed events (the outbox's `append`; the caller sends after). */
   private val emit: (List<ListeningEvent>) -> Unit,
+  /**
+   * Wear only: keeps a book's place (`PlaceStore.set`, synced). The recorder writes the place where
+   * the order of the files matters (fe#285): a span closed with nothing to follow it keeps its
+   * place after its event and before it leaves its file, and a move keeps its target.
+   */
+  private val keepPlace: (BookRef, LocalPlace) -> Unit = { _, _ -> },
 ) {
   var span: OpenSpan? = null
     private set
@@ -356,7 +369,12 @@ class SpanRecorder(
     val ended = maxOf(closing.startedAt, minOf(now, stop))
     closing = closing.copy(endedAt = ended)
     append(closing, listOfNotNull(then?.invoke()))
-    if (clearStore) store.save(null)
+    if (clearStore) {
+      // The place in between (fe#285): a kill before it finds the span again (recovered with its
+      // event's end), a kill after it the place where the span ended; never neither.
+      keepPlace(closing.ref, LocalPlace.of(closing.to, closing.endedAt, closing.speed))
+      store.save(null)
+    }
     // Like a paused move: the next play begins with the same reason (`isBareMove`, `carried`).
     if (Spans.isBareMove(closing)) nextStart = Spans.carried(closing.start)
     return closing
@@ -387,6 +405,11 @@ class SpanRecorder(
    * The 15 s tick: cut while reachable, else only once the span has run `MAX_SPAN`. Playing with
    * none open (the play's own could not open one), one opens here. True when it cut. `heardAt`:
    * when the audio last moved (`cut`).
+   *
+   * Wear only, a stalled span is never cut (fe#285): when the audio has not moved for `STALL`, the
+   * span closes where and when it last moved and no span follows (a cut would end it now and open
+   * the next where it stands, a span every 15 s with nothing heard), and none opens here until the
+   * audio moves again (the engine opens it then, as after a hold). True: it closed.
    */
   fun tick(
     book: PlayingBook,
@@ -397,9 +420,14 @@ class SpanRecorder(
     heardAt: Instant? = null,
   ): Boolean {
     val s = span
+    val stalled = heardAt != null && clock().secondsSince(heardAt) >= Spans.STALL
     if (s == null) {
-      if (playing && at != null) open(book, at, speed)
+      if (playing && at != null && !stalled) open(book, at, speed)
       return false
+    }
+    if (playing && stalled) {
+      close(at, heardAt)
+      return true
     }
     if (reachable || clock().secondsSince(s.startedAt) >= Spans.MAX_SPAN) {
       cut(book, at, playing, speed, heardAt = heardAt)
@@ -450,7 +478,10 @@ class SpanRecorder(
    * A move of the place (a seek, a chapter, an offer's Jump) to `target`: the span ends where it was
    * (`from`, else where it was last seen), the next one begins at the target with the move's reason
    * (`moved_back` when behind, else `jump`). Paused, the move is sent at once as a span of its own
-   * that moved nowhere, and the next play begins with the same reason.
+   * that moved nowhere, and the next play begins with the same reason. The target is kept as the
+   * book's place (`keepPlace`): playing, after the next span replaces the closed one in its file (a
+   * kill before the place recovers it from that span, `fromHeard`); paused, before the move's event,
+   * so the watch never resumes behind a move the server has.
    */
   fun move(
     book: PlayingBook,
@@ -461,16 +492,18 @@ class SpanRecorder(
     speed: Double,
   ) {
     val before = from ?: span?.to
-    val closed = close(before)
+    val closed = close(before, null, clearStore = !playing || to == null)
     val target = to ?: return
     val why =
       reason
         ?: if (before != null && target.pos < before.pos - 1) ListeningStart.MOVED_BACK else ListeningStart.JUMP
     if (closed != null && playing) {
       nextStart = why
-      open(book, target, speed)
+      open(book, target, speed, fromHeard = true)
+      keepPlace(book.ref, LocalPlace.of(target, clock(), speed))
       return
     }
+    keepPlace(book.ref, LocalPlace.of(target, clock(), speed))
     sendStill(book, target, why, speed)
   }
 

@@ -743,8 +743,42 @@ class SpanRecorderTest {
     assertEquals(clock.now, store.stored?.endedAt)
   }
 
+  // fe#285: a stalled span (the audio still for `Spans.STALL` at the 15 s tick) is never cut: it
+  // closes where and when the audio last moved, no span opens while it stays still, and one opens
+  // where it stands once it moves again.
+  @Test
+  fun aStalledSpanClosesWhereTheAudioLastMovedAndNoneFollowsUntilItMoves() {
+    val r = recorder()
+    r.open(book, at(0.0), 1.0)
+    clock.advance(10.0)
+    val heard = clock.now
+    r.keep(at(10.0), heardAt = heard)
+    clock.advance(4.0)
+    // Still for 4 s: an ordinary cut.
+    assertTrue(r.tick(book, at(10.0), playing = true, reachable = true, speed = 1.0, heardAt = heard))
+    assertNotNull(r.span)
+    clock.advance(1.0)
+    assertTrue(r.tick(book, at(10.0), playing = true, reachable = true, speed = 1.0, heardAt = heard))
+    assertNull(r.span)
+    assertNull(store.stored)
+    // The span the cut opened heard nothing: closed then, it says nothing (no 15 s claimed).
+    assertEquals(listOf(0.0 to 10.0), listens.map { it.fromPos to it.toPos })
+    // Still stalled, offline too: nothing opens, nothing is sent.
+    for (reachable in listOf(true, false)) {
+      clock.advance(15.0)
+      assertFalse(r.tick(book, at(10.0), playing = true, reachable = reachable, speed = 1.0, heardAt = heard))
+      assertNull(r.span)
+    }
+    assertEquals(1, listens.size)
+    // It moves again: a span opens where it stands.
+    clock.advance(1.0)
+    r.tick(book, at(11.0), playing = true, reachable = true, speed = 1.0, heardAt = clock.now)
+    assertEquals(11.0, r.span!!.from.pos, 0.0)
+    assertEquals(clock.now, r.span!!.startedAt)
+  }
+
   // fe#285: a span that opens where the closed one ended (a cut, a playing Stay) starts at a place
-  // heard; a move's starts at its target, and a play's at the loaded place.
+  // heard, and a playing move's at its target, a place too; a play's at the loaded place.
   @Test
   fun aCutOrAPlayingStayOpensFromAPlaceHeard() {
     val r = recorder()
@@ -755,7 +789,7 @@ class SpanRecorderTest {
     assertTrue(store.stored!!.fromHeard)
     clock.advance(1.0)
     r.move(book, to = at(40.0), from = at(17.0), playing = true, speed = 1.0)
-    assertFalse(store.stored!!.fromHeard)
+    assertTrue(store.stored!!.fromHeard)
     clock.advance(5.0)
     r.standBy(book, at(45.0), playing = true, speed = 1.0, stay = true)
     assertTrue(store.stored!!.fromHeard)

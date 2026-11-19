@@ -4230,13 +4230,22 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   the outbox already holds it (a kill between a close's append and the span file's change), else
   its last keep's `to` and `endedAt`. Only a place heard: one the span moved to (a second or more,
   `Spans.EMPTY_SPAN`), or its start when
-  a cut or a playing Stay opened it where the closed span ended (`fromHeard`); a play's span that
-  never moved carries the loaded place, a move's its target (saved by the seek). Never by the
+  a cut or a playing Stay opened it where the closed span ended, or a move made while playing at
+  its target (`fromHeard`); a play's span that never moved carries the loaded place. **The write
+  order** (fe#285) is the recorder's, not the engine's: a span closed with nothing to follow it (a
+  pause, a hold, a stop, the end) keeps its place (`keepPlace`, `PlaceStore.set`) after its event
+  is in the outbox and before it leaves its file, so a kill finds the span again or the place,
+  never neither; a move while playing writes the event, then its span over the closed one, then
+  the target as the place (a kill before that recovers it from the span); a paused move keeps the
+  target before its event, so the watch never resumes behind a move the server is sent. Never by the
   clock: a book's place is saved only as its span opens, so the span a kill left is the newer, and
   a wall clock set back would hide it. The keep, and the span a cut opens (the tick's, a speed
   change's, the background's, whose place is stamped the same), end when the
   audio last moved (`heardAt` = the engine's `lastAdvance`), so buffering never stamps the place
-  later than it was heard. The book's last span and its `finish` go into the outbox in one append
+  later than it was heard. A stalled span (the audio still for `Spans.STALL`, 5 s, at the 15 s
+  tick) is never cut (fe#285): it closes where and when the audio last moved, and no span opens
+  until it moves again (the engine's `onIsPlayingChanged`, or the next tick), so a stall sends no
+  span every 15 s with nothing heard. The book's last span and its `finish` go into the outbox in one append
   (`SpanRecorder.finish`): the span's event alone would recover the book's end as the place with
   no `finish` behind it. A move a kill cut short (`recoveredMove`) is kept in `open-span-move.json` until a span
   opens (it takes it or drops it), `loadsFromRow` drops it, and so does sign-out

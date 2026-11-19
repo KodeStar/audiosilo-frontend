@@ -346,8 +346,8 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     playing = false
     exo?.pause()
     pausedAt = stoppedAt ?: Instant.now()
-    spans.close(spanEnd(), stoppedAt)
-    savePlace(stoppedAt)
+    // A span closed keeps the place itself, between its event and its file's removal (fe#285).
+    if (spans.close(spanEnd(), stoppedAt) == null) savePlace(stoppedAt)
     sleep = sleep?.paused(Instant.now())
     publish()
   }
@@ -394,8 +394,8 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     position = to
     // A chapter timer's stop crossed while paused has nothing left to stop.
     if (!playing && sleep?.due(to) == true) sleep = null
+    // The move kept its target as the place (`SpanRecorder.move`, in the files' order).
     val now = Instant.now()
-    end?.let { places.set(b.ref, LocalPlace.of(it, now, rate)) }
     lastKeep = now
     lastCut = now
     lastAdvance = now
@@ -488,8 +488,7 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
         if (!playing) return
         if (SystemPause.keepsPlaying(halt)) {
           // A call or an alert holds the audio: the span ends where it last moved, the wish to play stays.
-          spans.close(spanEnd(), lastAdvance)
-          savePlace(lastAdvance)
+          if (spans.close(spanEnd(), lastAdvance) == null) savePlace(lastAdvance)
           return
         }
         systemPause(halt)
@@ -597,7 +596,9 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     // Held by a call or an alert nothing moved: the place keeps the time the audio last did
     // (the hold saved it at `lastAdvance`), or it would look newer than another device's. Saved
     // to the disk when a span closed; on the plain 5 s tick the stored open span carries it.
-    if (exo?.isPlaying == true) savePlace(save = cut)
+    // Stamped when the audio last moved: a player that says it plays but stands still (stalled,
+    // SpanRecorder.tick) heard nothing since.
+    if (exo?.isPlaying == true) savePlace(lastAdvance, save = cut)
   }
 
   // Now Playing

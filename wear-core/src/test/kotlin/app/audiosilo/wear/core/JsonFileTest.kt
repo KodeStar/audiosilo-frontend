@@ -220,6 +220,9 @@ class DurableRateTest {
 
     /** Set: the process is killed right after the outbox keeps the next events. */
     var killAfterAppend = false
+
+    /** Set: the process is killed as the recorder keeps a place, before it is written. */
+    var killAtPlace = false
     val spans =
       SpanRecorder(
         fileSpanStore(dir),
@@ -232,6 +235,10 @@ class DurableRateTest {
         emit = {
           outbox.append(it)
           if (killAfterAppend) throw Kill()
+        },
+        keepPlace = { r, p ->
+          if (killAtPlace) throw Kill()
+          places.set(r, p)
         },
       )
 
@@ -340,10 +347,6 @@ class DurableRateTest {
     places.recover(OpenSpan(2, "A/Folder", at(10.0), at(10.0), 3600.0, 1.0, clock.now.addingSeconds(5.0),
       clock.now.addingSeconds(15.0), ListeningStart.RESUME, 0, "b"))
     assertEquals(saved, places.place(ref))
-    // A move's span at its open: its target, which the seek saved itself.
-    places.recover(OpenSpan(2, "A/Folder", at(90.0), at(90.0), 3600.0, 1.0, clock.now.addingSeconds(5.0),
-      clock.now.addingSeconds(5.0), ListeningStart.JUMP, 0, "c"))
-    assertEquals(saved, places.place(ref))
     // The player settled a hair off the place it was given: no second of it heard.
     places.recover(OpenSpan(2, "A/Folder", at(10.0), at(10.3), 3600.0, 1.0, clock.now.addingSeconds(5.0),
       clock.now.addingSeconds(15.0), ListeningStart.RESUME, 0, "d"))
@@ -444,11 +447,10 @@ class DurableRateTest {
     assertEquals(heard, place.at)
   }
 
-  // fe#285: a cut while buffering opens the next span where the audio stands, ended when it was
-  // last heard (no place is saved then: the audio is not playing), so a kill before that span's
-  // first keep recovers the place stamped when it was heard, not at the cut.
+  // fe#285: a cut while buffering (the audio still for `Spans.STALL`) is no cut: the span closes
+  // where and when the audio last moved, its place kept then, and no span follows to stand still.
   @Test
-  fun aKillAfterACutWhileBufferingStampsThePlaceWhenItWasHeard() {
+  fun aCutWhileBufferingKeepsThePlaceWhenItWasHeard() {
     val first = Launch()
     first.spans.open(book, at(0.0), 1.0)
     clock.advance(10.0)
@@ -456,7 +458,8 @@ class DurableRateTest {
     first.tick(10.0, keepDue = true, cutDue = false, heardAt = heard)
     clock.advance(5.0)
     first.tick(10.0, keepDue = false, cutDue = true, heardAt = heard, buffering = true)
-    assertEquals(heard, fileSpanStore(dir).load()!!.endedAt)
+    assertNull(fileSpanStore(dir).load())
+    assertEquals(heard, ISOTime.parse((first.outbox.events.single() as SpanEvent).endedAt))
     clock.advance(2.0)
     val next = Launch()
     next.recover()
@@ -532,6 +535,84 @@ class DurableRateTest {
     val place = next.places.place(ref)!!
     assertEquals(15.0, place.position, 0.0)
     assertEquals(cutAt, place.at)
+  }
+
+  // fe#285: a pause keeps the place after the span's event and before the span leaves its file,
+  // so no kill finds neither (the span was removed and the place not yet written).
+  @Test
+  fun aPauseKeepsThePlaceBetweenItsEventAndTheSpansRemoval() {
+    val l = Launch()
+    l.spans.open(book, at(0.0), 1.0)
+    clock.advance(5.0)
+    l.tick(5.0, keepDue = true, cutDue = false)
+    clock.advance(7.0)
+    assertEquals(listOf("outbox.json", "places.json", "open-span.json"), syncedBy { l.spans.close(at(12.0)) })
+    val place = PlaceStore(File(dir, "places.json")).place(ref)!!
+    assertEquals(12.0, place.position, 0.0)
+    assertEquals(clock.now, place.at)
+  }
+
+  // fe#285: killed at the pause's place write, the span is still in its file and its event in the
+  // outbox: the next launch resumes where the pause was, not at the last saved place.
+  @Test
+  fun aKillAtThePausesPlaceResumesWhereItPaused() {
+    val first = Launch()
+    first.spans.open(book, at(0.0), 1.0)
+    clock.advance(15.0)
+    first.tick(15.0, keepDue = true, cutDue = true) // saved: 15
+    clock.advance(5.0)
+    first.tick(20.0, keepDue = true, cutDue = false)
+    clock.advance(3.0)
+    val pausedAt = clock.now
+    first.killAtPlace = true
+    assertThrows(Kill::class.java) { first.spans.close(at(23.0)) }
+    clock.advance(30.0)
+    val next = Launch()
+    assertEquals(15.0, next.places.place(ref)!!.position, 0.0)
+    next.recover()
+    val place = next.places.place(ref)!!
+    assertEquals(23.0, place.position, 0.0)
+    assertEquals(pausedAt, place.at)
+  }
+
+  // fe#285: a move while playing keeps its target after the next span replaces the closed one; a
+  // kill before that place write recovers the target from the span (its `from` is a place).
+  @Test
+  fun aKillAtAPlayingMovesPlaceResumesAtItsTarget() {
+    val first = Launch()
+    first.spans.open(book, at(80.0), 1.0)
+    clock.advance(10.0)
+    val movedAt = clock.now
+    first.killAtPlace = true
+    assertThrows(Kill::class.java) {
+      first.spans.move(book, to = at(10.0), from = at(90.0), playing = true, speed = 1.0)
+    }
+    assertEquals(10.0, fileSpanStore(dir).load()!!.from.pos, 0.0)
+    val next = Launch()
+    next.recover()
+    val place = next.places.place(ref)!!
+    assertEquals(10.0, place.position, 0.0)
+    assertEquals(movedAt, place.at)
+    // Written in that order otherwise: the event, the next span over the closed one, the place.
+    val again = Launch()
+    again.spans.open(book, at(10.0), 1.0)
+    clock.advance(10.0)
+    assertEquals(
+      listOf("outbox.json", "open-span.json", "places.json"),
+      syncedBy { again.spans.move(book, to = at(50.0), from = at(20.0), playing = true, speed = 1.0) },
+    )
+  }
+
+  // fe#285: a move while paused keeps its target before its event goes into the outbox: a kill
+  // between the two leaves the watch at the target, never behind a move the server is sent.
+  @Test
+  fun aPausedMoveKeepsItsPlaceBeforeItsEvent() {
+    val l = Launch()
+    assertEquals(
+      listOf("places.json", "outbox.json"),
+      syncedBy { l.spans.move(book, to = at(40.0), from = at(10.0), playing = false, speed = 1.0) },
+    )
+    assertEquals(40.0, PlaceStore(File(dir, "places.json")).place(ref)!!.position, 0.0)
   }
 
   private fun answered(outbox: Outbox, id: String) {
