@@ -1095,10 +1095,18 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   the book.
 - **The place** (`reading-progress.ts`) is `progress-sync`'s pattern (offline queue, latest per
   book, durable mirror, 4xx dropped but a 408 or a 429, which is queued (`isRefusedForGood`),
-  replay through each save's connection) plus `base_version`:
+  replay through each save's connection; a 429 stops the replay and queues the client's saves
+  until its `Retry-After` is over, `src/api/rate-limit.ts`, as the listening queue's replay
+  does) plus `base_version`:
   the last version this device acknowledged, always sent (0 only when no row was ever seen).
-  Every send, the queue's replays and the open reader's saves alike, goes one at a time in the
-  tab (`withSendTurn`, fe#173), and a sent save drops a queued one of the book made before it.
+  Every send of a book, the queue's replays and the open reader's saves alike, goes one at a
+  time in the tab (`withSendTurn`, fe#173), per book: a request that hangs (up to the client's
+  timeout) holds only its own book's saves, and of the saves held behind it only the latest is
+  sent. A replay takes the turn per save (replays themselves one at a time, `withReplayTurn`).
+  A save on its way replaces an older queued one of its book before the request goes, and a
+  sent or refused one drops it; one a replay had claimed is never sent after it
+  (`settledUntil`). The queue keeps the newest save per book by `updated_at`, whatever order
+  the writes land in.
   The mirror and the stored queue are every tab's: their read-modify-writes take `tabLock`
   (storage only), and a replay claims what it sends (`replayQueue`, as the legacy queue; a
   queued place whose drop storage refused after a newer one was sent is remembered,
@@ -1123,7 +1131,9 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   the offer "Jump there?" (`jumpOffer`) is judged against the page on screen. The lookup opens at
   the newest place, or at a queued save the server will keep (diverged and further on);
   opening at a local place, a server row this device never saw comes back as `unseen` (no save
-  of the book queued), which the screen takes as the first answer, so Jump shows at the open
+  of the book queued; only a row further on than that place and no older than the version
+  this device acknowledged; the local places read once a save of the book in flight is
+  answered), which the screen takes as the first answer, so Jump shows at the open
   after a replay from Home (fe#173). The answer's `seen` also counts the very version this
   device acknowledged (one version is one write), so a late answer with an adopted row never
   offers it again. With no answer from the server and no place on this device it fails (the
