@@ -748,7 +748,8 @@ const REFETCH = { refetch: true } as const;
 /** The wait for a waiting entry's episode (`awaitEpisode`, `resumeEpisodeWaits`): its
  * progress onto the entry, its end through `episodeWaitEnded`. The first status after a
  * Retry's POST (`retry`) says the server took it: the saved mark goes (`serverFetch.refetch`),
- * so a restart from then on asks the stream. */
+ * so a restart from then on asks the stream. Each status is the one the episode page and an
+ * open row menu read too (`qk.podcastFetch`, as the player's fetch seeds it). */
 function watchEpisode(
   key: string,
   connectionId: string,
@@ -760,6 +761,7 @@ function watchEpisode(
     { key, connectionId, libraryId, path },
     {
       onStatus: (status) => {
+        queryClient.setQueryData(qk.podcastFetch(connectionId, libraryId, path), status);
         const cur = useDownloads.getState().entries[key];
         const percent = fetchPercent(status);
         if (!cur?.serverFetch) return;

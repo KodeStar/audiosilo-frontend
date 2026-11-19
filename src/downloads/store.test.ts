@@ -187,6 +187,7 @@ jest.mock('@/api/hooks', () => ({
     chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path],
     server: (cid: string) => ['server', cid],
     podcastShows: (cid: string, lib: number) => ['podcastShows', cid, lib],
+    podcastFetch: (cid: string, lib: number, path: string) => ['podcastFetch', cid, lib, path],
     podcastEpisodesOfLibrary: (cid: string, lib: number) => ['podcastEpisodes', cid, lib],
     podcastEpisodesOfShow: (cid: string, lib: number, show: string) => [
       'podcastEpisodes',
@@ -3035,9 +3036,16 @@ describe('podcast episodes', () => {
     expect(entry()?.status).toBe('queued');
     expect(mockEngine.downloadFile.mock.calls.some((c) => c[2] === 'Show/Monday.mp3')).toBe(false);
 
-    // The server's fetch moves: the row says how far.
-    mockWaits[0].hooks.onStatus({ state: 'fetching', bytes_received: 400, bytes_total: 1000 });
+    // The server's fetch moves: the row says how far, and the episode page and an open row
+    // menu read it (fe#280).
+    const { queryClient } = jest.requireMock('@/api/provider');
+    const fetching = { state: 'fetching', bytes_received: 400, bytes_total: 1000 } as const;
+    mockWaits[0].hooks.onStatus(fetching);
     expect(entry()?.serverFetch).toEqual({ percent: 40 });
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(
+      ['podcastFetch', 'c1', 2, 'Show/Monday.mp3'],
+      fetching,
+    );
 
     // On the server: read again (its file's own size), then downloaded like any book.
     const ready = episodeBook(true);
@@ -3050,7 +3058,6 @@ describe('podcast episodes', () => {
     expect(entry()?.serverFetch).toBeUndefined();
     expect(entry()?.manifest.book.episode?.downloaded).toBe(true);
     // Marked on its server in the show's cached lists, by its item (fe#280).
-    const { queryClient } = jest.requireMock('@/api/provider');
     expect(mockMarkEpisodeOnServer).toHaveBeenLastCalledWith(
       queryClient,
       'c1',

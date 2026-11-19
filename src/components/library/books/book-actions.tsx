@@ -124,11 +124,14 @@ function offersDownload(
  * per row of a list), and Download waits for it: offered only when the browser plays
  * the book directly, so the menu never offers a download that would be refused. So is an
  * item of a podcast library given without its `episode` (a tile's list shape), everywhere.
+ * An episode's live fetch status is followed only while the menu is `open` (default:
+ * `opened`), so a row never keeps a listener once its menu closed.
  */
 export function useBookActions(
   { connectionId, libraryId, book, progress }: Target,
   { openCollect, confirmRemove }: BookActionDialogs,
   opened = false,
+  open = opened,
 ): BookAction<BookActionKey>[] {
   const { t } = useTranslation();
   const path = book.rel_path;
@@ -149,11 +152,12 @@ export function useBookActions(
   // An empty path keeps the lookup off until it is wanted.
   const full = useBook(libraryId, unknown && opened ? path : '', connectionId);
   const known = unknown ? full.data : book;
-  // A list row's `episode.fetch` is as old as the list; the episode page and the player's
-  // fetch keep the live status in the cache. Followed there once the menu opened (no
-  // observer per row, never asked from here), so the menu offers what the page does (fe#280).
+  // A list row's `episode.fetch` is as old as the list; the episode page, the player's fetch
+  // and a download's wait keep the live status in the cache. Followed there while the menu is
+  // open (no observer per row, none left once it closed, never asked from here), so the menu
+  // offers what the page does (fe#280).
   const live = useCachedQueryData<PodcastFetchStatus>(
-    opened &&
+    open &&
       !!known?.episode &&
       !known.episode.downloaded &&
       qk.podcastFetch(connectionId, libraryId, path),
@@ -409,14 +413,17 @@ export function BookActionsMenu({
   const phone = useLayout() === 'phone';
   const [collect, setCollect] = useState(false);
   const [removing, setRemoving] = useState(false);
-  // Shown once (the sheet, or the menu): what the actions look up waits for it.
+  // Shown once (the sheet, or the menu): what the actions look up waits for it. Open now:
+  // what they follow live (`useBookActions`).
   const [opened, setOpened] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   if (sheetOpen && !opened) setOpened(true);
   const actions = [
     ...useBookActions(
       { connectionId, libraryId, book, progress },
       { openCollect: () => setCollect(true), confirmRemove: () => setRemoving(true) },
       opened,
+      phone ? sheetOpen : menuOpen,
     ).filter((a) => !omit.includes(a.key)),
     ...extra,
   ];
@@ -426,7 +433,12 @@ export function BookActionsMenu({
       {phone ? (
         trigger
       ) : (
-        <DropdownMenu onOpenChange={(open) => open && setOpened(true)}>
+        <DropdownMenu
+          onOpenChange={(open) => {
+            setMenuOpen(open);
+            if (open) setOpened(true);
+          }}
+        >
           <DropdownMenuTrigger ref={triggerRef} asChild>
             {trigger}
           </DropdownMenuTrigger>
