@@ -196,9 +196,7 @@ function buildPlayerStoreMock() {
     },
     /** The engine starts or stops playing a book that is not the store's (the car's), told
      * to the `onOtherBookPlays` listeners as the real store tells them. */
-    setOtherBookPlays(on: boolean) {
-      setOtherPlays(on);
-    },
+    setOtherBookPlays: setOtherPlays,
     /** Make the next snapshots a faulted book's place, as the store's fault and `showPlace` do. */
     setFaultPlace(on: boolean) {
       faultPlace = on;

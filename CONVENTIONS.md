@@ -2093,7 +2093,7 @@ media GETs only.
   keeps it (`reportedBook`, set before its listeners hear the report, and `load`'s own book
   once the load lands). A report of the book a `load` replaced, sent before the load and heard
   after it landed (the events and the load's answer are two channels), is dropped whole in the
-  service until a report names another book (`stale`), so it is never read as the car's book
+  service until a report names another book (`name`), so it is never read as the car's book
   (a Pause or a place of the loaded book). The store drops a report of a book it does not hold
   (`reportedOtherBook`: one the car or a resumption started, or the one its own load
   replaces while that load holds the store), telling the car sync instead (`onOtherBookReported`, which adopts it on
