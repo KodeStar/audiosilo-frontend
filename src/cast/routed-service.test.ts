@@ -11,6 +11,7 @@ import type { CastPlaybackService } from './cast-service';
 import {
   currentRouter,
   forgetRouter,
+  LOCAL_LOAD_WAIT_MS,
   routed,
   RoutedPlaybackService,
   whenRouter,
@@ -879,6 +880,85 @@ describe('RoutedPlaybackService: a book started while the route is changing', ()
     expect(t.router.isCasting()).toBe(false);
     expect(cast.calls).toEqual([]);
     expect(t.local.calls).not.toContain('local.reset');
+  });
+
+  describe('a load into the phone that never lands', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    // FE-ANDROID-5: the session waited for the store's load for as long as it took, so one
+    // that never landed kept the session from ever becoming the route.
+    it('hands the book over from where its load was asked to start, after the bound', async () => {
+      const t = setup();
+      await playingLocally(t);
+      heldLocalLoad(t); // never lands
+      void t.router.load(OTHER_TRACKS, 0, 30, [], OTHER);
+      await settle();
+      const cast = fakeCast();
+      const handover = t.router.beginCast(cast as unknown as CastPlaybackService);
+      await settle();
+      jest.advanceTimersByTime(LOCAL_LOAD_WAIT_MS - 1);
+      await settle();
+      expect(cast.calls).toEqual([]);
+      jest.advanceTimersByTime(1);
+      await handover;
+      expect(t.router.isCasting()).toBe(true);
+      expect(cast.calls).toContain('cast.load(0,30)');
+      expect(cast.calls).not.toContain('cast.play');
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('leaves no timer once the load lands or the session ends', async () => {
+      const t = setup();
+      await playingLocally(t);
+      const hold = heldLocalLoad(t);
+      const start = t.router.load(OTHER_TRACKS, 0, 30, [], OTHER);
+      await settle();
+      const cast = fakeCast();
+      const handover = t.router.beginCast(cast as unknown as CastPlaybackService);
+      await settle();
+      expect(jest.getTimerCount()).toBe(1);
+      hold.land();
+      await start;
+      await handover;
+      expect(jest.getTimerCount()).toBe(0);
+
+      await t.router.endCast();
+      heldLocalLoad(t); // never lands
+      void t.router.load(TRACKS, 1, 10, [], BOOK);
+      await settle();
+      const next = fakeCast();
+      const waiting = t.router.beginCast(next as unknown as CastPlaybackService);
+      await settle();
+      expect(jest.getTimerCount()).toBe(1);
+      await t.router.endCast();
+      await waiting;
+      expect(jest.getTimerCount()).toBe(0);
+      expect(t.router.isCasting()).toBe(false);
+      expect(next.calls).toEqual([]);
+    });
+
+    it('lets a newer session replace one still waiting for the load', async () => {
+      const t = setup();
+      await playingLocally(t);
+      const hold = heldLocalLoad(t);
+      const start = t.router.load(OTHER_TRACKS, 0, 30, [], OTHER);
+      await settle();
+      const first = fakeCast();
+      const second = fakeCast();
+      const one = t.router.beginCast(first as unknown as CastPlaybackService);
+      await settle();
+      const two = t.router.beginCast(second as unknown as CastPlaybackService);
+      await settle();
+      await one;
+      hold.land();
+      await start;
+      await two;
+      expect(t.router.castRoute()).toBe(second);
+      expect(first.calls).toEqual([]);
+      expect(second.calls).toContain('cast.load(0,30)');
+      expect(jest.getTimerCount()).toBe(0);
+    });
   });
 
   it("hands over a book the store took over without loading it (the Android service's)", async () => {

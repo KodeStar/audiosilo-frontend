@@ -4507,7 +4507,9 @@ on first need). NOT device-verified (no Cast device yet).
   `CastPlaybackService.loadedBook`, never the queue an adoption remembered mid-handover). A
   session that begins while the store's own load is on its way into the phone's engine waits
   for it to land (`localLoad`), so that book goes over from its own place, never the place of
-  the book the load replaced; a session ended meanwhile never becomes the route.
+  the book the load replaced; a session ended or replaced meanwhile never becomes the route.
+  The wait is bounded (`LOCAL_LOAD_WAIT_MS`): a load that never lands goes over paused from
+  where it was asked to start.
   `startCastSync` (the root's services, `root-services-impl.tsx`) follows the driver's session events; `endCastForCar` and
   `stopCasting` end a session from the app. A user's Stop casting stops the receiver's app (from
   the app, the Cast dialog or the notification), so the TV never plays on while the book comes

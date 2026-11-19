@@ -30,6 +30,11 @@ function sameBookLoad(a: LastLoad | null, b: LastLoad | null): boolean {
 
 type Mode = 'local' | 'cast' | 'switching';
 
+/** How long (ms) at most a session that begins waits for the store's own load into the
+ * phone's engine to land (`RoutedPlaybackService.beginCast`): one that never lands must not
+ * keep the session from becoming the route. */
+export const LOCAL_LOAD_WAIT_MS = 10_000;
+
 /**
  * The service indirection (decision 7): the ONE `PlaybackService` the store gets from
  * `createPlaybackService()` on every platform. It forwards every call to the route in use,
@@ -62,13 +67,18 @@ export class RoutedPlaybackService implements PlaybackService {
    * asked to start: until it lands the receiver's snapshot is still the previous book's,
    * so a session ending meanwhile hands this place back instead (`endCast`). */
   private pending: { load: LastLoad; trackIndex: number; position: number } | null = null;
-  /** A book `load` on its way into the phone's engine (the store's own start): until it lands
-   * the engine's snapshot is still the book it replaces, so a session that begins meanwhile
-   * waits for it (`beginCast`). */
-  private localLoad: Promise<void> | null = null;
-  /** The session `beginCast` waits to make the route (`localLoad`): a newer one, or the end
-   * of the session (`endCast`), takes its place. */
-  private beginning: CastPlaybackService | null = null;
+  /** A book `load` on its way into the phone's engine (the store's own start), and where it
+   * was asked to start: until it lands the engine's snapshot is still the book it replaces,
+   * so a session that begins meanwhile waits for it (`beginCast`). */
+  private localLoad: {
+    done: Promise<void>;
+    load: LastLoad;
+    trackIndex: number;
+    position: number;
+  } | null = null;
+  /** The wait of the session `beginCast` is making the route (`localLoad`), stopped by a newer
+   * session or the end of the session (`endCast`). */
+  private beginning: { stop: () => void } | null = null;
   /** The hand-back of a session that ended, while it runs (a load the end interrupted
    * waits for it: `load`). */
   private ending: Promise<void> | null = null;
@@ -163,22 +173,21 @@ export class RoutedPlaybackService implements PlaybackService {
    */
   async beginCast(cast: CastPlaybackService): Promise<void> {
     if (this.cast === cast) return;
+    // A session still waiting to become the route is replaced by this one.
+    this.stopBeginning();
     // A load of the store's own still on its way into the phone's engine: the engine's place
     // is the book it replaces until it lands, and the loaded book would go over at that one's
     // place. It goes over from where its load put it, so the session waits for that.
+    let asked: PlaybackSnapshot | null = null;
     if (this.localLoad) {
-      this.beginning = cast;
-      for (let loading: Promise<void> | null = this.localLoad; loading;) {
-        await loading.catch(() => undefined);
-        // Ended, or another session began, meanwhile.
-        if (this.beginning !== cast) return;
-        loading = this.localLoad === loading ? null : this.localLoad;
-      }
-      this.beginning = null;
+      const waited = await this.localLoadLands();
+      if (waited === false) return;
+      asked = waited;
     }
     if (this.cast) await this.endCast();
-    // Asked while the phone is still the route: the store reads the phone's last report.
-    const own = this.loadedPlace?.() ?? null;
+    // Asked while the phone is still the route: the store reads the phone's last report. A
+    // load that never landed leaves the engine holding the book it replaced, as another book.
+    const own = this.loadedPlace?.() ?? asked;
     // The router's snapshot is the engine's last report, that other book's: the loaded book's
     // place from here, so a session that ends mid-switch hands this one back (`handBack`),
     // never the loaded book at the other book's place.
@@ -250,7 +259,7 @@ export class RoutedPlaybackService implements PlaybackService {
    * as a pause, so the store saves it, then loaded into the phone's engine there.
    */
   async endCast(): Promise<void> {
-    this.beginning = null;
+    this.stopBeginning();
     const cast = this.cast;
     if (!cast) return;
     const run = this.handBack(cast);
@@ -291,6 +300,68 @@ export class RoutedPlaybackService implements PlaybackService {
       await this.loadLocal(load, place);
     }
     if (generation === this.generation) this.mode = 'local';
+  }
+
+  /** Stop the wait of a session that is still to become the route (`beginning`). */
+  private stopBeginning() {
+    const waiting = this.beginning;
+    this.beginning = null;
+    waiting?.stop();
+  }
+
+  /**
+   * Wait for the store's own load into the phone's engine to land (`localLoad`, and one that
+   * replaced it meanwhile), for at most `LOCAL_LOAD_WAIT_MS`: null once it landed. False when
+   * the session ended or another began meanwhile (`stopBeginning`): this one is not to become
+   * the route. A load that never landed is given up: the place it was asked to start at, the
+   * book's own to go over from (the engine's snapshot is still the book it replaced).
+   */
+  private async localLoadLands(): Promise<PlaybackSnapshot | null | false> {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cut = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, LOCAL_LOAD_WAIT_MS);
+      this.beginning = {
+        stop: () => {
+          stopped = true;
+          resolve();
+        },
+      };
+    });
+    const mine = this.beginning;
+    try {
+      for (let loading = this.localLoad; loading;) {
+        let landed = false;
+        const done = loading.done.then(
+          () => {
+            landed = true;
+          },
+          () => {
+            landed = true;
+          },
+        );
+        await Promise.race([done, cut]);
+        if (stopped) return false;
+        if (!landed) {
+          // The bound: the load never landed, and the handover's reset takes the engine.
+          if (this.localLoad === loading) this.localLoad = null;
+          if (!sameBookLoad(loading.load, this.lastLoad)) return null;
+          const { trackIndex, position, load } = loading;
+          return {
+            ...this.snapshot,
+            trackIndex,
+            position,
+            duration: load.tracks[trackIndex]?.duration ?? 0,
+            state: 'paused',
+          };
+        }
+        loading = this.localLoad === loading ? null : this.localLoad;
+      }
+      return null;
+    } finally {
+      clearTimeout(timer);
+      if (this.beginning === mine) this.beginning = null;
+    }
   }
 
   /** Save the cast's place now: the iPhone is about to be suspended (the Cast SDK stops
@@ -387,10 +458,15 @@ export class RoutedPlaybackService implements PlaybackService {
     }
     const cast = this.mode === 'cast' ? this.cast : null;
     if (!cast) {
-      const loading = this.local.load(tracks, startIndex, positionInTrack, chapters, book);
+      const loading = {
+        done: this.local.load(tracks, startIndex, positionInTrack, chapters, book),
+        load: mine,
+        trackIndex: startIndex,
+        position: positionInTrack,
+      };
       this.localLoad = loading;
       try {
-        await loading;
+        await loading.done;
       } finally {
         if (this.localLoad === loading) this.localLoad = null;
       }
