@@ -2491,33 +2491,59 @@ describe("a report of another book than the store's", () => {
 
   // The review: the app's pause while B still showed playing (the adoption's deadline) paused
   // the car's S. As a play press reloads B then, the pause is B's alone: S plays on.
-  it.each(['pause', 'toggle'] as const)(
-    "pauses only the store's book on the app's %s while the engine plays the other",
-    async (press) => {
-      await carPlaysSOverB();
-      jest.advanceTimersByTime(2_000);
-      expect(usePlayer.getState().snapshot.state).toBe('playing');
-      await usePlayer.getState()[press]();
-      await flushMicrotasks();
-      expect(mockSvc.pause).not.toHaveBeenCalled();
-      expect(usePlayer.getState()).toMatchObject({
-        nowPlaying: { path: 'B' },
-        snapshot: { state: 'paused', trackIndex: 1, position: 30 },
-      });
-      jest.advanceTimersByTime(LOCAL_SAVE_MS);
-      pushSnapshot(snap('playing', 0, 70));
-      await flushMicrotasks();
-      expectNothingSaved();
-      expect(mockSvc.pause).not.toHaveBeenCalled();
-      // The car sync's adoption still takes S, playing.
-      expect(await usePlayer.getState().adoptLoaded({ ...loadedS, position: 71 })).toBe(true);
-      pushSnapshot(snap('playing', 0, 72));
-      expect(usePlayer.getState()).toMatchObject({
-        nowPlaying: { path: 'S' },
-        snapshot: { state: 'playing', position: 72 },
-      });
-    },
-  );
+  it("pauses only the store's book on the app's Pause while the engine plays the other", async () => {
+    await carPlaysSOverB();
+    jest.advanceTimersByTime(2_000);
+    expect(usePlayer.getState().snapshot.state).toBe('playing');
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+    expect(usePlayer.getState()).toMatchObject({
+      nowPlaying: { path: 'B' },
+      snapshot: { state: 'paused', trackIndex: 1, position: 30 },
+    });
+    jest.advanceTimersByTime(LOCAL_SAVE_MS);
+    pushSnapshot(snap('playing', 0, 70));
+    await flushMicrotasks();
+    expectNothingSaved();
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+    // The car sync's adoption still takes S, playing.
+    expect(await usePlayer.getState().adoptLoaded({ ...loadedS, position: 71 })).toBe(true);
+    pushSnapshot(snap('playing', 0, 72));
+    expect(usePlayer.getState()).toMatchObject({
+      nowPlaying: { path: 'S' },
+      snapshot: { state: 'playing', position: 72 },
+    });
+  });
+
+  // The review: the store's `pause` is the sleep timer's, which must stop whatever plays. Given
+  // the app's Pause rule, it left the car's S playing.
+  it("stops the other book the engine plays on the store's pause (the sleep timer)", async () => {
+    await carPlaysSOverB();
+    jest.advanceTimersByTime(2_000);
+    await usePlayer.getState().pause();
+    await flushMicrotasks();
+    expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+    expect(usePlayer.getState()).toMatchObject({
+      nowPlaying: { path: 'B' },
+      snapshot: { state: 'paused', trackIndex: 1, position: 30 },
+    });
+    // S's pause is S's report: B stays where it was last heard, nothing saved, and the
+    // deadline that would have shown B paused is over.
+    pushSnapshot(snap('paused', 0, 7));
+    jest.advanceTimersByTime(LOCAL_SAVE_MS);
+    await flushMicrotasks();
+    expectNothingSaved();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'paused', position: 30 });
+    // An adoption that lands takes S as the engine holds it, paused.
+    expect(
+      await usePlayer.getState().adoptLoaded({ ...loadedS, position: 7, playing: false }),
+    ).toBe(true);
+    expect(usePlayer.getState()).toMatchObject({
+      nowPlaying: { path: 'S' },
+      snapshot: { state: 'paused', position: 7 },
+    });
+  });
 
   // The review: a download landing while the engine played S was dropped (no `swapDue`), so
   // the store's book streamed on once the engine held it again, until a Retry or a start.

@@ -369,13 +369,11 @@ function showOwnBookPaused() {
   usePlayer.setState({ snapshot: { ...snapshot, state: 'paused' } });
 }
 
-/** The app's own pause of the store's book (`pause`, `toggle`). While the engine's reports
- * name another book (`engineHoldsAnother`: the car's or a resumption's, not adopted, the
- * store's book still shown playing during its adoption's deadline or loading for an outside
- * play), the pause is the store's book's alone, as a play press then reloads the store's book
- * (`toggle`): it shows paused where it was last heard (`showOwnBookPaused`) and the other book
- * plays on. A report that names no book (an older binary) keeps the engine's pause: with the
- * outside play no longer followed, nothing would keep that book's reports out of the store's. */
+/** The app's own Pause press (`toggle`). While a report names another book
+ * (`engineHoldsAnother`, the state in which a play press reloads the store's book), the press
+ * is the store's book's alone: it shows paused (`showOwnBookPaused`) and the other book plays
+ * on. A report that names no book (an older binary) keeps the engine's pause: nothing would
+ * keep that book's reports out of the store's. */
 async function pauseOwnBook(svc: PlaybackService) {
   if (engineHoldsAnother()) showOwnBookPaused();
   else await svc.pause();
@@ -760,7 +758,11 @@ type PlayerState = {
     wanted?: () => boolean,
     superseded?: () => boolean,
   ) => Promise<void>;
+  /** The app's Play/Pause press. Its pause leaves alone another book the engine plays, not
+   * adopted (`pauseOwnBook`). */
   toggle: () => Promise<void>;
+  /** Stop the sound (the sleep timer): the engine pauses whatever book it plays, the car's
+   * not adopted included, and the store's book shows paused. */
   pause: () => Promise<void>;
   /** Re-load the current track at the current position and resume - recovery after
    * the engine reports an `error` (e.g. the stream became unreachable). */
@@ -4086,7 +4088,11 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     // the stream is buffering). The engine pause is idempotent in either state.
     const st = get().snapshot.state;
     if (pickUpWait) settlePickUpWaitPaused();
-    if (st === 'playing' || st === 'loading') await pauseOwnBook(svc);
+    if (st !== 'playing' && st !== 'loading') return;
+    // The engine plays another book (the car's, not adopted): that book stops too, and the
+    // store's book, still shown playing, shows paused where it was last heard.
+    if (engineHoldsAnother()) showOwnBookPaused();
+    await svc.pause();
   },
 
   retry: async () => {

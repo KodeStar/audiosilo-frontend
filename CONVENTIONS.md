@@ -2934,12 +2934,15 @@ media GETs only.
   the outside play), the play press reloads it there, `listenerMove`, and the car sync reads
   no engine change from it, `mayBeServiceChange`; nor does the app's speed set, which is the
   store's book's, saved with it the same way and taken by the engine at that book's next
-  load, `setRate`; nor the app's pause or a toggle's pause while a report names the other
-  book, the same state in which a play press reloads the store's book: the store's book
-  shows paused where it was last heard, its intent over, nothing saved, and the other book
-  plays on, deadline window included, `pauseOwnBook`; a report that names no book, an older
-  binary, keeps the engine's pause, since nothing would hold that book's reports apart
-  once the outside play is over). A resumption
+  load, `setRate`, a change counted as a move is, `localSpeedSets`). The app's Pause press
+  (`toggle`) while a report names the other book, the state in which a play press reloads
+  the store's book, is the store's book's alone: it shows paused where it was last heard,
+  its intent over, nothing saved, and the other book plays on, deadline window included
+  (`pauseOwnBook`). A report that names no book (an older binary) keeps the engine's pause.
+  The store's `pause` is "stop the sound" (the sleep timer): the engine pauses whatever it
+  plays, the other book too, and the store's book shows paused. Only a press of the app's
+  own Pause leaves the other book alone; the lock screen, a headset and audio focus pause
+  the engine natively, never through the store. A resumption
   meanwhile plays the other book, the one heard (`engineOtherBook`, the car snapshot's
   `resume`, whether the store's book shows paused or finished): the car sync writes the
   snapshot when that book begins playing (`onOtherBookReported`'s `playing`, adopted or
