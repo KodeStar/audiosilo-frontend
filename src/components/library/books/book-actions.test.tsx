@@ -102,7 +102,7 @@ import { fetchStatus } from '@/testing/podcast-fixtures';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
 import { mountWithPortal } from '@/testing/render-overlay';
-import { REACT_COMPILER_BUILD_MS, withReactCompiler } from '@/testing/react-compiler';
+import { withReactCompiler } from '@/testing/react-compiler';
 
 import { BookActionsButton, BookActionsMenu, useBookActions } from './book-actions';
 /* eslint-enable import/first */
@@ -625,15 +625,8 @@ describe('useBookActions, a podcast episode', () => {
     duration_source: 'file',
     removed: false,
   });
-  // The row as the app builds it (the React Compiler), built once: the build outlasts a
-  // test's timeout on a loaded machine.
-  let Button: typeof BookActionsButton;
-  beforeAll(() => {
-    ({ BookActionsButton: Button } = withReactCompiler<typeof import('./book-actions')>(
-      require,
-      './book-actions',
-    ));
-  }, REACT_COMPILER_BUILD_MS);
+  // The row as the app builds it (the React Compiler).
+  const compiled = withReactCompiler<typeof import('./book-actions')>(require, './book-actions');
   beforeEach(() => {
     mockDownload.mockReset();
     mockUseBook.mockReset();
@@ -742,6 +735,7 @@ describe('useBookActions, a podcast episode', () => {
   // As the app builds it: the React Compiler memoised a read at render against the row's
   // props, so a menu opened again offered what it read the first time (Jest leaves it off).
   it("reads the live fetch status again at each opening of a row's menu, compiled (fe#280)", async () => {
+    const { BookActionsButton: Button } = compiled();
     mockCaps = { ...ALL, podcast_fetch: true };
     const b = book({ episode: info(false) });
     const key = qk.podcastFetch('c', 1, b.rel_path);

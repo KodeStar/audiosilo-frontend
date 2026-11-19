@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
-import { REACT_COMPILER_BUILD_MS, withReactCompiler } from '@/testing/react-compiler';
+import { withReactCompiler } from '@/testing/react-compiler';
 import { seedProfile } from '@/testing/seed-profile';
 
 // The flow's screens, as the layout's Stack: whatever renders here would run (a pairing
@@ -59,15 +59,11 @@ import {
 } from '@/components/profiles/connect-intent';
 /* eslint-enable import/first */
 
-// The layout as the app builds it (the React Compiler), built once: the build outlasts a
-// test's timeout on a loaded machine.
-let Compiled: typeof ConnectLayout;
-beforeAll(() => {
-  ({ default: Compiled } = withReactCompiler<typeof import('@/app/connect/_layout')>(
-    require,
-    '../../app/connect/_layout',
-  ));
-}, REACT_COMPILER_BUILD_MS);
+// The layout as the app builds it (the React Compiler), built once for the file.
+const compiled = withReactCompiler<typeof import('@/app/connect/_layout')>(
+  require,
+  '../../app/connect/_layout',
+);
 
 beforeEach(() => {
   mockReturning = false;
@@ -194,6 +190,7 @@ describe("a page restored from the browser's cache", () => {
   // As the app builds it: the React Compiler memoises what the render reads against its
   // inputs, so the gate must change with something the render holds (Jest leaves it off).
   it('takes the flow back in the built app too, compiled', async () => {
+    const { default: Compiled } = compiled();
     seedProfile({ kids: true });
     openAddSomeone();
     const view = await render(<Compiled />);
@@ -306,6 +303,7 @@ describe("a single sign-on's return (a page load, fe#310)", () => {
     ['given', true],
     ['refused', false],
   ])('follows a pass %s in the built app too, compiled', async (_, given) => {
+    const { default: Compiled } = compiled();
     leaveForProvider();
     mockReturning = true;
     await render(<Compiled />);

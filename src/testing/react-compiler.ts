@@ -1,8 +1,8 @@
 import { transformFileSync } from '@babel/core';
 import { dirname, resolve } from 'path';
 
-/** The time a `beforeAll` gives `withReactCompiler`'s build (its first, cold, loads Babel). */
-export const REACT_COMPILER_BUILD_MS = 60_000;
+/** The time the `beforeAll` gives the build: the first in a file, cold, loads Babel. */
+const BUILD_MS = 60_000;
 
 /**
  * A source module as the app runs it: built by the repo's Babel config with the React
@@ -14,11 +14,23 @@ export const REACT_COMPILER_BUILD_MS = 60_000;
  * `load` is the test file's own `require`: the module's imports resolve from its folder
  * when the test sits beside it, and they take the test file's `jest.mock`s.
  *
- * Build it in a `beforeAll` given `REACT_COMPILER_BUILD_MS`, never inside a test: the first
- * build in a file loads Babel's preset and the compiler, which takes seconds and, on a
- * loaded machine, more than a test's own 5 s.
+ * Called in a `describe` (or at a file's top level), it builds the module once in a
+ * `beforeAll` of that scope and returns a getter for its tests. Never inside a test: the
+ * first build in a file loads Babel's preset and the compiler, which takes seconds and, on
+ * a loaded machine, more than a test's own 5 s.
  */
-export function withReactCompiler<T>(load: NodeJS.Require, path: string): T {
+export function withReactCompiler<T>(load: NodeJS.Require, path: string): () => T {
+  let built: T | undefined;
+  beforeAll(() => {
+    built = build<T>(load, path);
+  }, BUILD_MS);
+  return () => {
+    if (built === undefined) throw new Error(`${path} is built in a beforeAll, read it in a test`);
+    return built;
+  };
+}
+
+function build<T>(load: NodeJS.Require, path: string): T {
   const file = load.resolve(path);
   // `supportsReactCompiler` is babel-preset-expo's caller flag, which Babel's types don't name.
   const caller = { name: 'react-compiler-test', supportsReactCompiler: true };
