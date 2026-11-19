@@ -449,6 +449,14 @@ describe('proxy headers the sign-in came through (fe#167): one set per address (
         expect(mockProbe).not.toHaveBeenCalled();
       });
 
+      it('goes with the sign-in: a sign-out holds the set no more', async () => {
+        mockKeptRefused = true;
+        await kidSignsInOverKept();
+        await useSession.getState().removeConnection('srv-1.12');
+        expect(useSession.getState().signInProxySets).toEqual({});
+        expect(connectionProxyFor('srv-1.1', AWAY)).toEqual(SET);
+      });
+
       it('a sign-in again without it goes back to the kept set', async () => {
         mockKeptRefused = true;
         await kidSignsInOverKept();

@@ -625,7 +625,13 @@ function applyStored(read: StoredSignIns): void {
   if (read.marked.some((id) => !legacyMarks.has(id))) {
     legacyMarks = new Set([...legacyMarks, ...read.marked]);
   }
-  const { connections: mine, defaultConnectionId, status, proxySets } = useSession.getState();
+  const {
+    connections: mine,
+    defaultConnectionId,
+    status,
+    proxySets,
+    signInProxySets,
+  } = useSession.getState();
   // Another tab's edit of a set (fe#295): every connection's client on that origin follows.
   // The sets this tab uses in place stay while their marks do (`followInPlace`).
   const stored = followInPlace(read);
@@ -650,7 +656,14 @@ function applyStored(read: StoredSignIns): void {
     mirrored.status === status
   )
     return;
-  setFollowed({ connections: same ? mine : next, ...mirrored, ...sets });
+  // A sign-in's own proxy headers end with it: signed out, or signed in again, in another tab.
+  const own = ownSetsStill(signInProxySets, next, mine);
+  setFollowed({
+    connections: same ? mine : next,
+    ...mirrored,
+    ...sets,
+    ...(own !== signInProxySets ? { signInProxySets: own } : {}),
+  });
   for (const c of mine) if (!next.some((n) => n.id === c.id)) void leaveConnection(c.id);
 }
 
@@ -778,7 +791,11 @@ async function removedInOtherTab(id: string, replacedBy?: string): Promise<void>
   const { connections, defaultConnectionId } = useSession.getState();
   if (connections.some((c) => c.id === id)) {
     const { next, nextDefault } = withoutConnection(connections, defaultConnectionId, id);
-    setFollowed({ connections: next, ...mirror(next, nextDefault) });
+    setFollowed({
+      connections: next,
+      signInProxySets: ownSetsStill(useSession.getState().signInProxySets, next),
+      ...mirror(next, nextDefault),
+    });
   }
   await leaveConnection(id);
   // Signed in again while this tab stopped (the stop waits its turn into the outbox): what
@@ -984,8 +1001,9 @@ type SessionState = {
   proxySets: ProxySets;
   /** By connection, a set its sign-in uses in place of its address's kept one until the app
    * closes (`SignInProxySet`, `connectionSetFor`): in memory only, set by `setSession` for a
-   * kid's sign-in whose typed set got in where the kept one is refused, and dropped by the
-   * connection's next sign-in. */
+   * kid's sign-in whose typed set got in where the kept one is refused, and dropped with that
+   * sign-in: the connection's sign-out, or its next sign-in, here or in another tab
+   * (`ownSetsStill`). */
   signInProxySets: Readonly<Record<string, SignInProxySet>>;
   /** Mirror of the default connection's user, for ergonomic selectors. */
   user: User | null;
@@ -1188,6 +1206,25 @@ function proxyChoice(
   return undefined;
 }
 
+/**
+ * `own` (`signInProxySets`) with only the sign-ins still on: each for a connection in
+ * `connections` that holds the token it held in `was`. A sign-out, a retired identity or a
+ * sign-in again (here or in another tab) ends it, its set with it: that set was the sign-in's
+ * alone, never to be sent for another. The same object when none ended.
+ */
+function ownSetsStill(
+  own: Readonly<Record<string, SignInProxySet>>,
+  connections: readonly Connection[],
+  was: readonly Connection[] = connections,
+): Readonly<Record<string, SignInProxySet>> {
+  const ids = Object.keys(own);
+  const on = ids.filter((id) => {
+    const token = connections.find((c) => c.id === id)?.token;
+    return token !== undefined && was.find((c) => c.id === id)?.token === token;
+  });
+  return on.length === ids.length ? own : Object.fromEntries(on.map((id) => [id, own[id]]));
+}
+
 export const useSession = create<SessionState>()((set, get) => ({
   status: 'loading',
   connections: [],
@@ -1295,9 +1332,6 @@ export const useSession = create<SessionState>()((set, get) => ({
       // A keep removes and moves nothing, so `setProxySet` never takes the list's lock again
       // (`forgetLegacyProxySets` has no origin to forget): the sets' own lock only.
       if (proxy?.keep) await get().setProxySet(proxy.keep.origin, proxy.keep);
-      const ownSets = { ...get().signInProxySets };
-      if (proxy?.own) ownSets[id] = proxy.own;
-      else delete ownSets[id];
       // What the device knew of this server's addresses: the connection's, else another
       // user's connection to the same server, else (a sign-in again after signing out, from
       // the connect screen's remembered servers) the remembered server's, so a sign-in
@@ -1349,6 +1383,12 @@ export const useSession = create<SessionState>()((set, get) => ({
       await rememberServer({ serverUrl, name: conn.name, serverId, addresses: known });
       // The person keeps their profile: the new connection takes the retired one's place.
       for (const c of stale) replaced(c.id, id);
+      // This sign-in's own set (`proxyChoice`), or none: a set the connection's sign-in before
+      // used goes with it, as do a retired identity's. Read with the list it goes with, after
+      // the awaits above; the same object when nothing changed.
+      const still = ownSetsStill(get().signInProxySets, connections);
+      const { [id]: _before, ...others } = still;
+      const ownSets = proxy?.own ? { ...others, [id]: proxy.own } : still[id] ? others : still;
       // Building `conn` fresh (with no `needsReconnect`) inherently clears any prior flag on
       // a re-pair of an existing connection.
       set({
@@ -1458,7 +1498,12 @@ export const useSession = create<SessionState>()((set, get) => ({
       const { connections, defaultConnectionId } = get();
       const { next, nextDefault } = withoutConnection(connections, defaultConnectionId, id);
       await persist(next, nextDefault);
-      set({ connections: next, ...mirror(next, nextDefault) });
+      set({
+        connections: next,
+        // Its sign-in's own proxy headers (`signInProxySets`) go with it.
+        signInProxySets: ownSetsStill(get().signInProxySets, next),
+        ...mirror(next, nextDefault),
+      });
     });
     // The web's other tabs forget it too, and purge what they hold of it
     // (`removedInOtherTab`): told once the list is written and the token gone.
