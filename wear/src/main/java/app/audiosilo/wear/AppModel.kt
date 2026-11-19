@@ -239,10 +239,10 @@ class AppModel private constructor(private val context: Context) {
     spans.recover { left -> places.recover(left, outbox.events) }
     // Held across a kill: aged, and queued if a sign-in finished just before it.
     releaseHeld()
-    // The launch's publish (the flow's first value), then each move of a book's stage: news for the
-    // phone (its Preparing and Downloading rows), whoever moved it, a BookWorker run with the app
-    // closed too, as this model is the process's.
-    scope.launch { downloads.stages.collect { publishState() } }
+    // The launch's publish (the flow's first value), then each move of a book's stage, or of
+    // whether the index was saved: news for the phone (its Preparing and Downloading rows),
+    // whoever moved it, a BookWorker run with the app closed too, as this model is the process's.
+    scope.launch { downloads.news.collect { publishState() } }
   }
 
   /** The session token, null when signed out (or it no longer opens). */

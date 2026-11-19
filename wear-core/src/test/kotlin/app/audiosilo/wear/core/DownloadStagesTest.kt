@@ -90,4 +90,37 @@ class DownloadStagesTest {
 
     assertEquals(listOf(false), seen)
   }
+
+  // fe#285: `saved` flipping with no stage moving (the disk filling while bytes land, or space
+  // coming back) is news too, told once both are set, not when the book's run ends.
+  @OptIn(ExperimentalCoroutinesApi::class)
+  @Test
+  fun savedFlippingIsNewsWithNoStageMoving() = runTest {
+    val dir = tempDir()
+    try {
+      val index = DownloadIndex(File(dir, "downloads.json"))
+      val seen = ArrayList<Pair<Boolean, Int>>()
+      backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+        index.news.collect { seen += index.saved to index.records.value.size }
+      }
+      index.enqueue(REF, "Book", null, QUEUED_AT)
+      index.update(REF) { it.copy(state = WatchStateBook.State.DOWNLOADING) }
+      seen.clear()
+      // The disk is full: the next write fails while only bytes land (a folder in the file's way
+      // fails the move as a full disk would, for any user).
+      val inTheWay = File(dir, "downloads.json")
+      inTheWay.delete()
+      File(inTheWay, "x").apply { parentFile.mkdirs() }.writeText("")
+      index.update(REF) { it.copy(files = listOf(DownloadedFile("a.mp3", "a.mp3", 100))) }
+      assertEquals(listOf(false to 1), seen)
+      index.update(REF) { it.copy(files = listOf(DownloadedFile("a.mp3", "a.mp3", 200))) }
+      assertEquals("still not saved: nothing new", listOf(false to 1), seen)
+      // Space again.
+      inTheWay.deleteRecursively()
+      index.update(REF) { it.copy(files = listOf(DownloadedFile("a.mp3", "a.mp3", 300))) }
+      assertEquals(listOf(false to 1, true to 1), seen)
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
 }

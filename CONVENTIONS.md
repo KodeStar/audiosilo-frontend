@@ -4311,7 +4311,9 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   replaces). `watch-state` is put under its own lock, always `StatePublication.due` (an older
   state never lands last); `AppModel.publishState` works it out on the main thread only (posted
   from a worker or PhoneLink, never locked: `HeldBooks.finishRemove` publishes under its lock);
-  a book's stage moving publishes on its own (`DownloadIndex.stages`, collected once per process).
+  a book's stage moving publishes on its own, and so does the index's `saved` flipping with no
+  stage moving (a full disk, or space back; fe#285): `DownloadIndex.news`, bumped once both are
+  set, collected once per process.
   It sends none of the Apple Watch's optional "how far" fields (`progress`, `files_ready`,
   `files_total`, `waiting`, fe#241): bytes landing are no change here, so the phone's row keeps
   the plain phase for a Wear OS watch.

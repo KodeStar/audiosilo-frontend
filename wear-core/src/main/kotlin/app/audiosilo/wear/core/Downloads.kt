@@ -198,6 +198,16 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
   var saved: Boolean = true
     private set
 
+  private val newsFlow = MutableStateFlow(0)
+
+  /**
+   * Bumped once a change moves what `watch-state` is made of, after both parts are set: a stage
+   * (`stages`), or `saved` flipping (fe#285), which settles the phone's held books or keeps them
+   * with no stage moving (a full disk filling up while bytes land, or space coming back), so the
+   * phone hears of it then, not when the book's run ends.
+   */
+  val news: StateFlow<Int> = newsFlow.asStateFlow()
+
   fun record(ref: BookRef): DownloadRecord? = flow.value.firstOrNull { it.ref == ref }
 
   /**
@@ -276,10 +286,12 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
   private fun commit(next: List<DownloadRecord>) {
     // Never over an index still in the way: aside now if it moves, else these stay in memory alone.
     if (inTheWay) inTheWay = file?.setAside(ASIDE_PREFIX) == false
-    // Saved before the flow moves: the `stages` collector (AppModel's publish) reads `saved`, and it
-    // can run inside the assignment below (on the main thread) or while a worker's write is still on.
+    val before = flow.value.map { it.stateBook() } to saved
+    // Saved before the flow moves: a `stages` collector reads `saved`, and it can run inside the
+    // assignment below (on the main thread) or while a worker's write is still on.
     saved = if (inTheWay) false else file?.write(next.ifEmpty { null }) ?: true
     flow.value = next
+    if ((next.map { it.stateBook() } to saved) != before) newsFlow.value += 1
   }
 
   private companion object {
