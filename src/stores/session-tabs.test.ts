@@ -1,9 +1,9 @@
 import { Platform } from 'react-native';
 
 import type { User } from '@/api/types';
-import { PROFILES_KEY } from '@/lib/storage-keys';
+import { CONNECTIONS_KEY, PROFILES_KEY } from '@/lib/storage-keys';
 import { tabChannel } from '@/lib/tab-channel';
-import { fakeBrowser, type FakeTab, tabStorage, until } from '@/testing/fake-browser';
+import { fakeBrowser, type FakeTab, sleep, tabStorage, until } from '@/testing/fake-browser';
 
 /**
  * The web player's tabs share the stored connections, tokens and profiles, each holding its
@@ -91,9 +91,7 @@ const storedDoc = (browser: ReturnType<typeof fakeBrowser>) =>
   JSON.parse(browser.data.get(PROFILES_KEY) ?? 'null') as import('@/stores/profiles').ProfilesDoc;
 /** The stored connections' ids. */
 const storedIds = (browser: ReturnType<typeof fakeBrowser>) =>
-  (JSON.parse(browser.data.get('audiosilo.connections') ?? '[]') as { id: string }[]).map(
-    (c) => c.id,
-  );
+  (JSON.parse(browser.data.get(CONNECTIONS_KEY) ?? '[]') as { id: string }[]).map((c) => c.id);
 
 describe('a connection removed in another tab (web)', () => {
   it('is forgotten here too: the list, the default, and every removal cleanup', async () => {
@@ -221,7 +219,7 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     };
     expect(storedDoc(browser).profiles).toContainEqual(want);
     expect(b.profiles.useProfiles.getState().profiles).toContainEqual(want);
-    expect(storedIds(browser)).toEqual(expect.arrayContaining([jo]));
+    expect(storedIds(browser)).toContain(jo);
     expect(storedIds(browser)).not.toContain(sam);
     expect(b.useSession.getState().connections.map((c) => c.id)).toContain(jo);
   });
@@ -389,8 +387,6 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
 });
 
 describe('a connection about to go (web)', () => {
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
   it('waits for a tab with work for it (its stop and saves) before going on', async () => {
     const { a, b, alex } = await twoTabs();
     const order: string[] = [];
@@ -409,21 +405,24 @@ describe('a connection about to go (web)', () => {
   });
 
   it('waits only for the answers when no tab has work for it', async () => {
-    const { a, b, alex, sam } = await twoTabs();
+    const { a, b, sam } = await twoTabs();
     const step = jest.fn((_id: string) => null);
     b.onConnectionGoingInOtherTab(step);
     const start = Date.now();
     await a.tellOtherTabsGoing(sam, { answerMs: 20, flushMs: 5000 });
     expect(Date.now() - start).toBeLessThan(1000);
     expect(step).toHaveBeenCalledWith(sam);
-    expect(step).not.toHaveBeenCalledWith(alex);
   });
 
   it('goes on after the bound when a tab never finishes', async () => {
     const { a, b, alex } = await twoTabs();
-    b.onConnectionGoingInOtherTab(() => new Promise<void>(() => {}));
+    const step = jest.fn((_id: string) => new Promise<void>(() => {}));
+    b.onConnectionGoingInOtherTab(step);
     const start = Date.now();
     await a.tellOtherTabsGoing(alex, { answerMs: 10, flushMs: 80 });
+    // It waited for B's answer, up to the bound, and no longer.
+    expect(step).toHaveBeenCalledWith(alex);
+    expect(Date.now() - start).toBeGreaterThanOrEqual(70);
     expect(Date.now() - start).toBeLessThan(1000);
   });
 

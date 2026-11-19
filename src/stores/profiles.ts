@@ -127,10 +127,15 @@ function parseProfile(raw: unknown): Profile | null {
   };
 }
 
+/** Whether `raw` has a stored document's shape (`parseProfilesDoc` validates the rest). */
+function isProfilesDoc(raw: unknown): raw is Record<string, unknown> & { profiles: unknown[] } {
+  return isRecord(raw) && raw.version === 1 && Array.isArray(raw.profiles);
+}
+
 /** A stored document, validated: anything unreadable is an empty document (rebuilt from
  * the session by `reconcileProfiles`). */
 export function parseProfilesDoc(raw: unknown): ProfilesDoc {
-  if (!isRecord(raw) || raw.version !== 1 || !Array.isArray(raw.profiles)) return EMPTY_DOC;
+  if (!isProfilesDoc(raw)) return EMPTY_DOC;
   const seen = new Set<string>();
   const profiles: Profile[] = [];
   for (const p of raw.profiles.map(parseProfile)) {
@@ -522,7 +527,6 @@ let storedText: string | null = null;
 /** This tab's changes not written yet, in order, and the write under way. */
 let waitingChanges: DocChange[] = [];
 let writing: Promise<void> | null = null;
-let unfollowStored: (() => void) | null = null;
 
 /** A stored document's text, read; null when it does not parse as one. */
 function parseStored(text: string): ProfilesDoc | null {
@@ -532,7 +536,7 @@ function parseStored(text: string): ProfilesDoc | null {
   } catch {
     return null;
   }
-  return isRecord(raw) && raw.version === 1 ? parseProfilesDoc(raw) : null;
+  return isProfilesDoc(raw) ? parseProfilesDoc(raw) : null;
 }
 
 /** Another tab's document as this tab's: the person listening here stays, while they are
@@ -613,7 +617,6 @@ function reconcileNow(): void {
  * reconciles; this also covers a removal while the list counts as unsettled, and one another
  * tab made). */
 function onRemoved(id: string): void {
-  if (!useProfiles.getState().hydrated) return;
   commit((doc) =>
     profileOf(id, doc) ? withProfiles(doc, withoutConnection(doc.profiles, id)) : doc,
   );
@@ -645,13 +648,12 @@ function followSession(): void {
   const unsubRemoved = onConnectionRemoved(onRemoved);
   const unsubReplaced = onConnectionReplaced(onReplaced);
   const env = otherTabsEnv();
-  unfollowStored = env ? onStoredChange(PROFILES_KEY, followStoredDoc, env) : null;
+  const unfollowStored = env ? onStoredChange(PROFILES_KEY, followStoredDoc, env) : null;
   unsubscribeSession = () => {
     unsubChanges();
     unsubRemoved();
     unsubReplaced();
     unfollowStored?.();
-    unfollowStored = null;
   };
 }
 
@@ -955,9 +957,12 @@ export function placeConnection(connectionId: string, opts: PlaceOptions = {}): 
   // One id for a profile it makes, so the change made again over another tab's newer
   // document (`writeChanges`) makes the same person.
   const made = randomUUID();
-  const place = (doc: ProfilesDoc) => placeInDoc(doc, conn, connections, opts, () => made);
-  const { profileId } = place(docOf(s));
-  commit((doc) => place(doc).doc);
+  let profileId: string | null = null;
+  commit((doc) => {
+    const placed = placeInDoc(doc, conn, connections, opts, () => made);
+    profileId ??= placed.profileId;
+    return placed.doc;
+  });
   return profileId;
 }
 

@@ -300,9 +300,10 @@ function listenToOtherTabs(): void {
 
 function heard(m: unknown): void {
   if (!isRecord(m)) return;
-  if (typeof m.removed === 'string')
-    void removedInOtherTab(m as { removed: string }).catch(() => {});
-  else if (typeof m.going === 'string' && typeof m.ask === 'string')
+  if (typeof m.removed === 'string') {
+    const replacedBy = typeof m.replacedBy === 'string' ? m.replacedBy : undefined;
+    void removedInOtherTab(m.removed, replacedBy).catch(() => {});
+  } else if (typeof m.going === 'string' && typeof m.ask === 'string')
     goingInOtherTab(m.going, m.ask);
 }
 
@@ -392,7 +393,8 @@ async function readSettled(): Promise<StoredSignIns> {
   }
 }
 
-/** One connection as far as a tab's copy of it goes. */
+/** One connection as far as a tab's copy of it goes: every field of `Connection` (a field
+ * left out here is a change `applyStored` does not see). */
 const connectionText = (c: Connection) =>
   JSON.stringify([
     c.id,
@@ -410,7 +412,7 @@ const connectionText = (c: Connection) =>
  * where they still apply. Nothing changes when the list is the one it holds. */
 function applyStored(read: StoredSignIns): void {
   knownList = read.list;
-  const { connections: mine, defaultConnectionId } = useSession.getState();
+  const { connections: mine, defaultConnectionId, status } = useSession.getState();
   const next = (read.connections ?? []).map((c) => {
     const was = mine.find((m) => m.id === c.id);
     // A flag stays with the token it was raised for: a new one (signed in again in another
@@ -424,12 +426,7 @@ function applyStored(read: StoredSignIns): void {
     next.every((c, i) => connectionText(c) === connectionText(mine[i]));
   const def = next.some((c) => c.id === defaultConnectionId) ? defaultConnectionId : read.defaultId;
   const mirrored = mirror(next, def);
-  const s = useSession.getState();
-  if (
-    same &&
-    mirrored.defaultConnectionId === s.defaultConnectionId &&
-    mirrored.status === s.status
-  )
+  if (same && mirrored.defaultConnectionId === defaultConnectionId && mirrored.status === status)
     return;
   setFollowed({ connections: same ? mine : next, ...mirrored });
 }
@@ -454,8 +451,8 @@ function followStored(): Promise<void> {
 }
 
 /** Web: bring this tab's list up to the stored one before it writes the list, so a tab that
- * has not heard another tab's latest write yet never writes its older copy over it. A
- * no-op off the web (callers ask `otherTabsEnv()` first, so native keeps its timing). */
+ * has not heard another tab's latest write yet never writes its older copy over it. Web only:
+ * callers ask `otherTabsEnv()` first, so native keeps its timing. */
 async function catchUp(): Promise<void> {
   if (following) await following;
   let stored: string;
@@ -496,15 +493,10 @@ export function onConnectionRemovedInOtherTab(
  * cannot be read; and no cleanups when it is stored again by the time this tab stopped
  * playing.
  */
-async function removedInOtherTab(message: {
-  removed: string;
-  replacedBy?: unknown;
-}): Promise<void> {
-  const id = message.removed;
+async function removedInOtherTab(id: string, replacedBy?: string): Promise<void> {
   if (!id) return;
   storageMoves++;
   if ((await getSecure(tokenKey(id))) !== null) return;
-  const replacedBy = typeof message.replacedBy === 'string' ? message.replacedBy : '';
   if (replacedBy) replaced(id, replacedBy);
   await followStored();
   // Not taken from storage (it could not be read): dropped from this tab's copy all the same.
@@ -568,26 +560,23 @@ export async function tellOtherTabsGoing(
   const channel = tabsChannelOf();
   if (!channel) return;
   const ask = `${thisTab}.${Math.random().toString(36).slice(2)}`;
-  const flushing = new Set<string>();
-  const flushed = new Set<string>();
+  // The tabs that said they have work for it and have not said it is done.
+  const pending = new Set<string>();
   await new Promise<void>((resolve) => {
     let answered = false;
-    let finished = false;
     const finish = () => {
-      if (finished) return;
-      finished = true;
       clearTimeout(answerTimer);
       clearTimeout(flushTimer);
       unsubscribe();
       resolve();
     };
     const check = () => {
-      if (answered && [...flushing].every((t) => flushed.has(t))) finish();
+      if (answered && pending.size === 0) finish();
     };
     const unsubscribe = channel.subscribe((m: unknown) => {
       if (!isRecord(m) || m.ask !== ask || typeof m.tab !== 'string') return;
-      if (m.flushing === id) flushing.add(m.tab);
-      else if (m.flushed === id) flushed.add(m.tab);
+      if (m.flushing === id) pending.add(m.tab);
+      else if (m.flushed === id) pending.delete(m.tab);
       check();
     });
     const answerTimer = setTimeout(() => {
