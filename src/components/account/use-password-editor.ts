@@ -110,14 +110,14 @@ export function usePasswordEditor(connectionId: string) {
         // The change ended the account's open pairing tokens, the one on its way to a watch too.
         forgetPair(connectionId);
       }
+      const devicesAgain = readDevicesAgain();
       const signedOut = answer?.signed_out;
       if (typeof signedOut === 'number') {
-        void readDevicesAgain();
         description = signedOut
           ? t('account.password.doneSignedOutCount', { count: signedOut })
           : t('account.password.doneThisDevice');
       } else {
-        const others = othersSignedIn(await readDevicesAgain());
+        const others = othersSignedIn(await devicesAgain);
         if (others === 0 && othersBefore) description = t('account.password.doneSignedOut');
         else if (!others) description = t('account.password.doneThisDevice');
       }
