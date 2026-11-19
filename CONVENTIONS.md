@@ -4039,7 +4039,9 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     first pair's `expires_at` (`PairPruneReceiver`, inexact and allowed while idle). A boot or the
     app's update drops the alarm: `PairPruneBootReceiver` (BOOT_COMPLETED, MY_PACKAGE_REPLACED;
     `RECEIVE_BOOT_COMPLETED`) runs the sweep again, enabled only while a prune is due (`armPrune`
-    and `armRetry` turn it on, a sweep that leaves nothing to prune turns it off), so a phone with
+    and `armRetry` turn it on, a sweep that leaves nothing to prune turns it off, there under the
+    link's `lock` where a send arms too; `PruneAlarm` sets the alarm and the receiver under one
+    lock, so the receiver is never off with an alarm set), so a phone with
     no pair held is not woken at boot. A sweep that does not get through (the Data Layer failed or
     gave no answer in the receiver's 9 s, or the Wearable API did not answer: Play services not
     ready after a boot or an update, as a prune is due only after a pair was sent) sets a retry
