@@ -217,6 +217,38 @@ describe('progress-sync', () => {
     },
   );
 
+  // A 429 is the connection's, not one save's: the replay stops there and waits out the
+  // Retry-After, instead of sending every other queued book into the same limit (fe#173).
+  it('stops a replay at a 429 and sends nothing more until its Retry-After is over', async () => {
+    reachable.mockReturnValue(false);
+    const offline = fakeApi(() => Promise.resolve());
+    await saveProgress(offline, { ...save, path: 'A/one' });
+    await saveProgress(offline, { ...save, path: 'A/two' });
+    reachable.mockReturnValue(true);
+    let answer: () => Promise<void> = () =>
+      Promise.reject(new ApiError(429, 'slow down', undefined, 60));
+    const api = fakeApi(() => answer());
+    routeClients({ c1: api });
+    const now = jest.spyOn(Date, 'now');
+    try {
+      await flushQueue();
+      expect(api.saveProgress).toHaveBeenCalledTimes(1);
+      expect(await readQueue()).toHaveLength(2);
+      // Within the wait: nothing is sent.
+      answer = () => Promise.resolve();
+      await flushQueue();
+      expect(api.saveProgress).toHaveBeenCalledTimes(1);
+      // The wait is over: both go.
+      const later = Date.now() + 61_000;
+      now.mockReturnValue(later);
+      await flushQueue();
+      expect(api.saveProgress).toHaveBeenCalledTimes(3);
+      expect(await readQueue()).toHaveLength(0);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it('enqueues on a connection error, then replays it on the next flush', async () => {
     const failing = fakeApi(() => Promise.reject(new Error('network down')));
     await saveProgress(failing, save);

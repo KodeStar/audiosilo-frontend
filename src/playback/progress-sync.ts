@@ -1,5 +1,6 @@
 import { ApiError, type ApiClient, isRefusedForGood, TimeoutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
+import { noteRateLimit, rateLimited } from '@/api/rate-limit';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { Progress } from '@/api/types';
 import { downloadEndsBefore } from '@/downloads/kept-offline';
@@ -1363,8 +1364,9 @@ async function flushGroup(
 ): Promise<ProgressSave[]> {
   const remaining: ProgressSave[] = [];
   // Stop the group only when the server is UNREACHABLE (no point hammering the rest of
-  // it); a per-save server error still lets the rest of the group through.
-  let stop = false;
+  // it) or asked to wait (a 429, `rateLimited` until its `Retry-After`); a per-save server
+  // error still lets the rest of the group through.
+  let stop = rateLimited(client);
   for (const save of saves) {
     if (stop) {
       remaining.push(save);
@@ -1384,8 +1386,10 @@ async function flushGroup(
       // An `ApiError` means the server ANSWERED (even a 500), so the failure is specific
       // to this save - keep flushing the rest of the group past it rather than blocking
       // every later book behind one poison entry. A non-`ApiError` is a connection/
-      // network failure: the server is unreachable, so stop and retry the group later.
-      if (!(e instanceof ApiError)) stop = true;
+      // network failure: the server is unreachable, so stop and retry the group later. A
+      // 429 is the server's rate limit, the connection's and not this save's: the rest
+      // waits out its `Retry-After` too (fe#173).
+      if (!(e instanceof ApiError) || noteRateLimit(client, e)) stop = true;
     }
   }
   return remaining;
