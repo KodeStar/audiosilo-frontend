@@ -904,8 +904,12 @@ describe('a connection about to go (web)', () => {
   // busy the machine is.
   afterEach(() => jest.useRealTimers());
 
-  /** `a.tellOtherTabsGoing(id, bounds)` started; `done()` says whether it has returned. */
+  /**
+   * `a.tellOtherTabsGoing(id, bounds)` started on fake timers; `done()` says whether it has
+   * returned.
+   */
   function going(a: Tab, id: string, bounds: { answerMs: number; flushMs: number }) {
+    jest.useFakeTimers();
     let finished = false;
     void a.tellOtherTabsGoing(id, bounds).then(() => {
       finished = true;
@@ -915,7 +919,6 @@ describe('a connection about to go (web)', () => {
 
   it('waits for a tab with work for it (its stop and saves) before going on', async () => {
     const { a, b, alex } = await twoTabs();
-    jest.useFakeTimers();
     const order: string[] = [];
     b.onConnectionGoingInOtherTab((id) =>
       id === alex
@@ -938,7 +941,6 @@ describe('a connection about to go (web)', () => {
 
   it('waits only for the answers when no tab has work for it', async () => {
     const { a, b, sam } = await twoTabs();
-    jest.useFakeTimers();
     const step = jest.fn((_id: string) => null);
     b.onConnectionGoingInOtherTab(step);
     const done = going(a, sam, { answerMs: 20, flushMs: 5000 });
@@ -951,7 +953,6 @@ describe('a connection about to go (web)', () => {
 
   it('goes on after the bound when a tab never finishes', async () => {
     const { a, b, alex } = await twoTabs();
-    jest.useFakeTimers();
     const step = jest.fn((_id: string) => new Promise<void>(() => {}));
     b.onConnectionGoingInOtherTab(step);
     const done = going(a, alex, { answerMs: 10, flushMs: 80 });
