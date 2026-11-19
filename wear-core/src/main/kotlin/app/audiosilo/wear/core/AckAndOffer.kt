@@ -24,9 +24,11 @@ data class BookAck(
 
 /**
  * The acknowledged versions, kept in a file (`acks.json`). Thread-safe. Given the listening's
- * `DurableWriter` (Wear, fe#285), the file is written there, in order with the outbox and the
- * places: an offer's Jump acknowledged before its move must not land on the disk without the move
- * (a kill between them would resume at the old place on the other device's version, sending it back).
+ * `DurableWriter` (Wear, fe#285), the file is written there, in the order asked with the outbox
+ * and the places. An offer's Jump is acknowledged in memory before its move (the move's events go
+ * on the row's version) and written after it (`answerOffer(save = false)`, then `save`): the
+ * acknowledgement on the disk without the move would resume at the old place on the other device's
+ * version after a kill, sending that place back.
  */
 class AckStore(file: File?, writer: DurableWriter? = null) {
   private val file = file?.let { JsonFile(it, SERIALIZER, writer = writer) }
@@ -47,10 +49,11 @@ class AckStore(file: File?, writer: DurableWriter? = null) {
 
   /**
    * An offer answered (Jump or Stay): the row's version acknowledged (never lowered) and the
-   * offer's key noted, the newest `MAX_ANSWERED` kept.
+   * offer's key noted, the newest `MAX_ANSWERED` kept. `save` false keeps it in memory only until
+   * `save` (a Jump, whose move is written first).
    */
   @Synchronized
-  fun answerOffer(ref: BookRef, row: ProgressRow, key: String) {
+  fun answerOffer(ref: BookRef, row: ProgressRow, key: String, save: Boolean = true) {
     val b = books[ref.key] ?: BookAck()
     put(
       ref,
@@ -58,7 +61,14 @@ class AckStore(file: File?, writer: DurableWriter? = null) {
         ackVersion = max(b.ackVersion ?: row.version, row.version),
         answered = (b.answered.filter { it != key } + key).takeLast(MAX_ANSWERED),
       ),
+      save,
     )
+  }
+
+  /** Write what `answerOffer(save = false)` kept in memory. */
+  @Synchronized
+  fun save() {
+    file?.write(books)
   }
 
   /**
@@ -88,9 +98,9 @@ class AckStore(file: File?, writer: DurableWriter? = null) {
     file?.write(null)
   }
 
-  private fun put(ref: BookRef, ack: BookAck) {
+  private fun put(ref: BookRef, ack: BookAck, save: Boolean = true) {
     books = books + (ref.key to ack)
-    file?.write(books)
+    if (save) file?.write(books)
   }
 
   companion object {

@@ -170,9 +170,31 @@ class DurableWriterTest {
     assertEquals(listOf("old"), outbox.events.map { it.id })
   }
 
-  // An offer's Jump acknowledges the row before the move keeps its target: the acks go on the same
-  // queue, so a kill never leaves the acknowledgement on the disk without the move (the watch would
-  // resume at its old place on the other device's version, sending that place back).
+  // An offer's Jump acknowledges the row in memory before its move (the move's events go on the
+  // row's version) and writes it after: a kill never leaves the acknowledgement on the disk without
+  // the move (the watch would resume at its old place on the other device's version, sending that
+  // place back).
+  @Test
+  fun aJumpsAcknowledgementIsWrittenAfterItsMove() {
+    val held = Held()
+    val writer = DurableWriter(held)
+    val acks = AckStore(File(dir, "acks.json"), writer)
+    val places = PlaceStore(File(dir, "places.json"), writer)
+    val offered = row(lib = ref.libraryId, path = ref.path, version = 7, device = "other")
+    acks.answerOffer(ref, offered, "other|t", save = false)
+    assertEquals("the move's events go on the row's version", 7, acks.ackVersion(ref))
+    assertEquals("nothing asked of the disk yet", 0, held.queued.size)
+    places.set(ref, LocalPlace(offered.position, at = clock.now))
+    acks.save()
+    assertTrue(held.runOne())
+    assertEquals("the move first", listOf("places.json"), dir.list()!!.toList())
+    assertTrue(held.runOne())
+    val read = AckStore(File(dir, "acks.json"))
+    assertEquals(7, read.ackVersion(ref))
+    assertEquals(listOf("other|t"), read.answered(ref))
+  }
+
+  // The acks and the sync state go on the same queue as the listening, in the order asked.
   @Test
   fun theAcksAndTheSyncStateGoInOrderWithTheListening() {
     val held = Held()

@@ -533,11 +533,20 @@ class AppModel private constructor(private val context: Context) {
     _offerPrompt.value = OfferPrompt(ref, offer, row)
   }
 
-  /** Jump: move to the offered place (acknowledging the row). */
+  /**
+   * Jump: move to the offered place (acknowledging the row). Acknowledged in memory first (the
+   * move's events go on the row's version) and written after the move (fe#285): a kill between the
+   * two leaves the move without its acknowledgement (the watch is at the offered place, or is
+   * offered it again), never the acknowledgement without the move (the old place resumed on the
+   * other device's version, which sends that place back).
+   */
   fun jump(p: OfferPrompt) {
-    acks.answerOffer(p.ref, p.row, p.offer.key)
+    val moves = engine.loadedBook == p.ref
+    acks.answerOffer(p.ref, p.row, p.offer.key, save = !moves)
     _offerPrompt.value = null
-    if (engine.loadedBook == p.ref) engine.seek(p.offer.position, ListeningStart.JUMP)
+    if (!moves) return
+    engine.seek(p.offer.position, ListeningStart.JUMP)
+    acks.save()
   }
 
   /**
