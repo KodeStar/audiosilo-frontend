@@ -6,7 +6,7 @@ import {
   TimeoutError,
 } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
-import { noteRateLimit, rateLimited } from '@/api/rate-limit';
+import { noteRateLimit, rateLimited, stopsReplay } from '@/api/rate-limit';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { ReadingProgress, ReadingProgressSaved } from '@/api/types';
 import { contentKey, contentKeyOf, isKeyOf } from '@/lib/content-key';
@@ -436,21 +436,24 @@ export async function saveReadingPlace(
   save: ReadingSave,
 ): Promise<ReadingProgressSaved | null> {
   await updateMirror(save, withNewerPlace(save));
-  return sendThenFlush(api, save, async () => {
-    if (save.base_version) return save;
-    const entry = await readMirror(save.connectionId, save.libraryId, save.path);
-    return entry?.own ? { ...save, base_version: entry.version } : save;
-  });
+  return sendThenFlush(api, save);
 }
 
 /** The latest save asked for per book (`contentKey`), by the order asked: a save whose turn
  * comes once a newer one of its book is waiting behind it is not sent, so the saves held
  * behind a request that hangs (up to its timeout) go as one, not one timeout after another. */
-const latestAsked = new Map<string, number>();
-let asked = 0;
+const latestAsked = new Map<string, object>();
 
-/** Send the save `make` builds from `save` once it holds its book's `withSendTurn`, or queue
- * it; after a sent save, replay what is still queued. A save sent or refused supersedes a
+/** Made on 0, `save` on the version an answer to this device's own save acknowledged
+ * meanwhile (`saveReadingPlace`). */
+async function onOwnVersion(save: ReadingSave): Promise<ReadingSave> {
+  if (save.base_version) return save;
+  const entry = await readMirror(save.connectionId, save.libraryId, save.path);
+  return entry?.own ? { ...save, base_version: entry.version } : save;
+}
+
+/** Send `save` once it holds its book's `withSendTurn`, or queue it; after a sent save,
+ * replay what is still queued. A save sent or refused supersedes a
  * queued save of the same book made before it: the latest save per book wins, sent or
  * queued, so a replay never follows it with an older place (one made on 0 that is further on
  * would be kept, a place the reader had left). Such a save is replaced in the queue by this
@@ -458,15 +461,14 @@ let asked = 0;
  * app was closed under left the older place to be replayed. */
 async function sendThenFlush(
   api: ApiClient | null,
-  book: ReadingSave,
-  make: () => Promise<ReadingSave>,
+  captured: ReadingSave,
 ): Promise<ReadingProgressSaved | null> {
-  const key = contentKeyOf(book);
-  const turn = ++asked;
+  const key = contentKeyOf(captured);
+  const turn = {};
   latestAsked.set(key, turn);
   const { saved, more } = await withSendTurn(key, async () => {
     if (latestAsked.get(key) !== turn) return { saved: null, more: false };
-    const save = await make();
+    const save = await onOwnVersion(captured);
     if (!api || !isReachable(save.connectionId) || rateLimited(api)) {
       await queueSave(save);
       return { saved: null, more: false };
@@ -615,10 +617,7 @@ async function flushGroup(
           return 'settled';
         }
         noteFailure(cid, e);
-        // An ApiError is this save's own failure, but a 429 (the server's rate limit) is the
-        // connection's; anything else means the server is unreachable. Either way the rest
-        // of the group waits too.
-        return !(e instanceof ApiError) || noteRateLimit(client, e) ? 'stop' : 'kept';
+        return stopsReplay(client, e) ? 'stop' : 'kept';
       }
     });
     if (sent === 'settled') continue;

@@ -26,6 +26,14 @@ export function noteRateLimit(client: ApiClient, e: unknown, now = Date.now()): 
   return true;
 }
 
+/** Whether a replay's failed send of one save stops the rest of its group: no answer (the
+ * server is unreachable), or the server's rate limit, the connection's and not this save's
+ * (noted, so the group waits out its `Retry-After`). Any other answer, even a 500, is that
+ * save's own failure, and the rest still go. */
+export function stopsReplay(client: ApiClient, e: unknown): boolean {
+  return !(e instanceof ApiError) || noteRateLimit(client, e);
+}
+
 /** Whether `client`'s server asked to wait (a 429) and the wait is not over at `now`. */
 export function rateLimited(client: ApiClient, now = Date.now()): boolean {
   const until = holds.get(client);

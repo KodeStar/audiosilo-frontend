@@ -1096,8 +1096,8 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
 - **The place** (`reading-progress.ts`) is `progress-sync`'s pattern (offline queue, latest per
   book, durable mirror, 4xx dropped but a 408 or a 429, which is queued (`isRefusedForGood`),
   replay through each save's connection; a 429 stops the replay and queues the client's saves
-  until its `Retry-After` is over, `src/api/rate-limit.ts`, as the listening queue's replay
-  does) plus `base_version`:
+  until its `Retry-After` is over, `src/api/rate-limit.ts`, as `progress-sync`'s legacy
+  queue's replay does) plus `base_version`:
   the last version this device acknowledged, always sent (0 only when no row was ever seen).
   Every send of a book, the queue's replays and the open reader's saves alike, goes one at a
   time in the tab (`withSendTurn`, fe#173), per book: a request that hangs (up to the client's

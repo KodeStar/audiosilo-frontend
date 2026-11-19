@@ -1,6 +1,6 @@
 import { ApiError, type ApiClient, isRefusedForGood, TimeoutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
-import { noteRateLimit, rateLimited } from '@/api/rate-limit';
+import { rateLimited, stopsReplay } from '@/api/rate-limit';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { Progress } from '@/api/types';
 import { downloadEndsBefore } from '@/downloads/kept-offline';
@@ -1383,13 +1383,9 @@ async function flushGroup(
       if (isRefusedForGood(e)) continue; // 4xx: drop, can't ever succeed (not a 408 or a 429)
       noteFailure(cid, e); // only a check marks the server down
       remaining.push(save); // keep it to retry next time
-      // An `ApiError` means the server ANSWERED (even a 500), so the failure is specific
-      // to this save - keep flushing the rest of the group past it rather than blocking
-      // every later book behind one poison entry. A non-`ApiError` is a connection/
-      // network failure: the server is unreachable, so stop and retry the group later. A
-      // 429 is the server's rate limit, the connection's and not this save's: the rest
-      // waits out its `Retry-After` too (fe#173).
-      if (!(e instanceof ApiError) || noteRateLimit(client, e)) stop = true;
+      // A save's own failure lets the rest through, so one poison entry never blocks every
+      // later book; no answer or a 429 stops the group (fe#173).
+      if (stopsReplay(client, e)) stop = true;
     }
   }
   return remaining;
