@@ -4273,7 +4273,8 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   (`AckStore`: a Jump is acknowledged in memory before its move, whose events go on the row's
   version, and written after it, `AppModel.jump`; the acknowledgement on the disk without the move
   would resume at the old place on the other device's version) and `sync-state.json` (an event
-  moved to the couldn't-sync list never lands there while the outbox still holds it); one write at a time in the order asked across the files (each queued under the
+  moved to the couldn't-sync list lands there one write before it leaves the outbox, so a kill
+  between the two sends it again, never loses it); one write at a time in the order asked across the files (each queued under the
   lock that made its change, the value immutable), so the main looper never waits on an fsync and a
   kill leaves a state the in-order writes pass through: the write order above still holds. The
   launch's join of an outbox set aside waits for its write (`writeNow`) before it deletes what it

@@ -55,8 +55,8 @@ class Outbox(
   private val deviceId: String,
   /**
    * Where `outbox.json`'s writes run, and `sync-state.json`'s in order with them (an event moved to
-   * the couldn't-sync list never lands there while the outbox still holds it); null: on the
-   * caller's thread.
+   * the couldn't-sync list lands there one write before it leaves the outbox, so a kill between the
+   * two sends it again, never loses it); null: on the caller's thread.
    */
   writer: DurableWriter? = null,
   private val clock: () -> Instant = Instant::now,
