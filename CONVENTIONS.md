@@ -3278,7 +3278,8 @@ media GETs only.
   state), and so are its moves, speed and Smart Speed (`engineHoldsOtherBook`), even once a
   Pause ended the followed outside play; not once a load of the store's book took the engine
   (`ownLoadTakesEngine` in `playBook` and `retry`: the adoption reads a book the engine no
-  longer holds and gives up, and the reports are the store's book's, its start heard).
+  longer holds and gives up, also when its read of the engine came before that load landed,
+  and the reports are the store's book's, its start heard).
   The store's `pause` is "stop the sound" (the sleep timer): while the store's book shows
   playing or loading, the engine pauses whatever it plays, the other book too, and the
   store's book shows paused; while it shows paused and the engine plays the other book

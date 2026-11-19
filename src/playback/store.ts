@@ -4987,7 +4987,7 @@ async function adoptLoadedBook(
   adopting.push(adoption);
   let adopted = false;
   try {
-    adopted = await adoptNow(service, reread);
+    adopted = await adoptNow(service, reread, adoption);
     return adopted;
   } finally {
     adopting.splice(adopting.indexOf(adoption), 1);
@@ -5001,10 +5001,11 @@ async function adoptLoadedBook(
   }
 }
 
-/** `adoptLoadedBook` itself. */
+/** `adoptLoadedBook` itself, for its record in `adopting`. */
 async function adoptNow(
   service: LoadedBook,
-  reread?: () => Promise<LoadedBook | null>,
+  reread: (() => Promise<LoadedBook | null>) | undefined,
+  adoption: { ownLoad: boolean },
 ): Promise<boolean> {
   // The service's book can name an old connection id (a play spec from a car snapshot
   // written before the identity migration): the store keeps the new one.
@@ -5057,9 +5058,12 @@ async function adoptNow(
   // Asked again: the person may have switched while the source was read.
   if (!mayActFor(loaded.connectionId)) return false;
   // Another book started (or the same one was adopted) while we read, or a start is still
-  // on its way (it switches the book after its awaits): theirs stands.
+  // on its way (it switches the book after its awaits): theirs stands. So does a reload of
+  // the store's book asked meanwhile (`retry` keeps the same `nowPlaying`): the engine read
+  // above, before that load landed, still held the book it replaces.
   const now = usePlayer.getState();
   if (now.nowPlaying !== before || now.loadingBook !== null || startsInFlight > 0) return false;
+  if (adoption.ownLoad) return false;
 
   /** The track ids of the files `chapters` hold. */
   const idsIn = (chapters: ChaptersResponse | undefined) =>

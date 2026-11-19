@@ -1925,6 +1925,25 @@ describe('a play asked from outside of another book after playback stopped', () 
     expect(mockSvc.pause).not.toHaveBeenCalled();
   });
 
+  // The car sync's read of the engine can answer before that reload lands in it, still naming
+  // S: the adoption gives up all the same, as the engine holds B once the load lands (taken, S
+  // would be the store's book with B's unnamed reports saved as its place).
+  it("gives up once the store's book is reloaded, though its read still named the engine's", async () => {
+    const read = await askedForS(undefined, async () => loadedS);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    expect(mockSvc.load).toHaveBeenCalledTimes(1);
+    expect(await read()).toBe(false);
+    pushSnapshot(snap('playing', 1, 31));
+    await flushMicrotasks();
+    expect(usePlayer.getState()).toMatchObject({
+      nowPlaying: { path: 'B' },
+      snapshot: { state: 'playing', trackIndex: 1, position: 31 },
+    });
+  });
+
   it("is never paused by the store's watchdog while it is adopted", async () => {
     const read = await askedForS();
     jest.advanceTimersByTime(3_000);
