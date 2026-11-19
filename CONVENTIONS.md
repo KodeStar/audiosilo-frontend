@@ -459,9 +459,10 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   (a kid's own device works). A pairing QR or link
   pairs with them when its address is the field's: type the address and the headers first, then
   scan.
-- **A proxy's 401 is not a sign-out.** The server's own 401s always carry its JSON `error`; a 401
-  without one (a page, an empty body, someone else's JSON) is the proxy's (`ApiError.fromProxy`):
-  `isSignedOutError` is false for it, so no reconnect banner and no sign-out, and the sign-in step
+- **A proxy's 401 is not a sign-out, nor its 403 no access.** The server's own 401s and 403s
+  always carry its JSON `error`; a 401 or 403 without one (a page, an empty body, someone else's
+  JSON) is the proxy's (`ApiError.fromProxy`). `isSignedOutError` is false for it, and so is
+  `accessRefusal`'s no access (fe#280), so no reconnect banner and no sign-out, and the sign-in step
   says the proxy refused the request (`isProxyRefusal`, `connect.signIn.errors.proxyRefused`).
   Nor is it refused for good (`isRefusedForGood`): the server never saw the request, so a
   progress or reading save it turned away is queued for once the headers are fixed, never dropped
@@ -889,8 +890,8 @@ in step.
   watcher asking, 60 s parked, doubling per failed read in a row up to 60 s), never after a 404
   nor a refusal. A first read that failed
   with no answer or a server error is asked again every 60 s (nothing else would: its row has no
-  status, Cancel or Add until one gets through); a refusal (400, 401, 403) is not, but a 403 from
-  a proxy in front of the server (`ApiError.fromProxy`, `isProxyRefusalError`) is a read that
+  status, Cancel or Add until one gets through); a refusal (400, 401, 403) is not, but a 401 or 403
+  from a proxy in front of the server (`ApiError.fromProxy`, `isProxyRefusal`) is a read that
   failed, asked again.
 - **The fetch watcher** (`fetch-watcher.tsx`, fe#293): every open job a row follows is handed to
   `watchLibrivoxFetch(cid, id)` (a zustand list saved under `audiosilo.librivoxWatches`,
@@ -906,8 +907,8 @@ in step.
   then) and drops the watch; it also drops one that is gone (404, the works asked again) or
   refused by the server (its own 400 or 403: nothing read again), judged only once `/server` has
   answered (until then the gate lays that read's own failure over the job's,
-  `useCapabilityQuery`). A proxy's 403 (`ApiError.fromProxy`: its session lapsed, the server
-  never saw the request) is no refusal: the watch is kept and the poll asks again, backing off
+  `useCapabilityQuery`). A proxy's 401 or 403 (`ApiError.fromProxy`: its session lapsed, the
+  server never saw the request) is no refusal: the watch is kept and the poll asks again, backing off
   as after any failed read. A connection signed
   out (gone, or `needsReconnect` after a 401) holds its watches unread; once signed in again they are read, and a fetch that
   ended meanwhile is handled then. One whose connection is not back `WATCH_TTL_MS` (7 days) after

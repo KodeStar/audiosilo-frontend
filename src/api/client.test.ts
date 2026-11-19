@@ -2960,11 +2960,14 @@ describe('ApiClient podcasts (Bridge Phase 2d-1)', () => {
     // The server's: JSON with its `error`.
     const own = await refusal({ status: 403, body: { error: 'no access to this library' } });
     expect(own).toMatchObject({ status: 403, fromProxy: false });
+    expect(isProxyRefusal(own)).toBe(false);
+    expect(isRefusedForGood(own)).toBe(true);
     // A proxy's page, and a proxy's own JSON with no `error`.
-    expect(await refusal({ status: 403, text: '<html>Forbidden</html>' })).toMatchObject({
-      status: 403,
-      fromProxy: true,
-    });
+    const page = await refusal({ status: 403, text: '<html>Forbidden</html>' });
+    expect(page).toMatchObject({ status: 403, fromProxy: true });
+    // The server never saw it: the proxy may let the next one through.
+    expect(isProxyRefusal(page)).toBe(true);
+    expect(isRefusedForGood(page)).toBe(false);
     expect(await refusal({ status: 403, body: { message: 'denied' } })).toMatchObject({
       status: 403,
       fromProxy: true,

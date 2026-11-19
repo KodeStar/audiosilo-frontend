@@ -159,7 +159,9 @@ export function isSignedOutError(e: unknown): boolean {
 }
 
 /** Whether `e` is a proxy in front of the server turning the request away with a 401 or a
- * 403 of its own (`ApiError.fromProxy`): its proxy headers are missing or no longer taken. */
+ * 403 of its own (`ApiError.fromProxy`): its proxy headers are missing or no longer taken.
+ * The server never judged the request and the proxy may let the next one through, so a
+ * poll reads it as a read that failed, never as the server's refusal. */
 export function isProxyRefusal(e: unknown): boolean {
   return e instanceof ApiError && e.fromProxy;
 }
@@ -170,13 +172,6 @@ export function isProxyRefusal(e: unknown): boolean {
  * is never retried and a page shows `NotInLibraryState`, never a Retry (CONNECT-13). */
 export function isNotInLibraryError(e: unknown): boolean {
   return e instanceof ApiError && (e.status === 404 || e.status === 403 || e.status === 400);
-}
-
-/** Whether `e` is a 403 a proxy in front of the server sent (`ApiError.fromProxy`), not the
- * server's own: the server never judged the request, and the proxy may let the next one
- * through (its session signed in again), so a poll treats it as a read that failed. */
-export function isProxyRefusalError(e: unknown): boolean {
-  return e instanceof ApiError && e.fromProxy;
 }
 
 /** The refusal codes (`ApiError.code`) the app tells apart: the household members routes'

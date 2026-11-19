@@ -2,7 +2,7 @@ import { hashKey, type QueryClient, useQueryClient } from '@tanstack/react-query
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { create } from 'zustand';
 
-import { ApiError, isNotInLibraryError, isProxyRefusalError } from '@/api/client';
+import { ApiError, isNotInLibraryError, isProxyRefusal } from '@/api/client';
 import { invalidateLibraryLists, qk, useLibrivoxJob, useServerInfo } from '@/api/hooks';
 import type { BridgeJob } from '@/api/types';
 import { isAway } from '@/lib/app-activity';
@@ -180,10 +180,10 @@ function WatchedFetch({ cid, id, at }: Watch) {
   const { gone, job, ended } = followedRead(own);
   const doneIn = job?.state === 'done' ? job.library_id : null;
   // The server's refusal (its own 400 or 403): asking again can't help, by the poll's own
-  // rule (`useLibrivoxJob`), which stops too. A proxy's 403 is a read that failed: the poll
-  // asks again. A 404 is `gone`: an end, not a refusal. A 401 holds the watch until the
+  // rule (`useLibrivoxJob`), which stops too. A proxy's 401 or 403 is a read that failed:
+  // the poll asks again. A 404 is `gone`: an end, not a refusal. A 401 holds the watch until the
   // connection is signed in again (`reading`).
-  const refused = !gone && isNotInLibraryError(own.error) && !isProxyRefusalError(own.error);
+  const refused = !gone && isNotInLibraryError(own.error) && !isProxyRefusal(own.error);
   const signedIn = !!conn;
   // Who is signed in is known only once the session has read its connections.
   const sessionRead = useSession((s) => s.status !== 'loading');

@@ -274,9 +274,11 @@ describe('useLibrivoxJob, a first read that failed', () => {
     expect(await intervalAfter(new ApiError(500, 'boom'))).toBe(BRIDGE_IDLE_POLL_MS);
     expect(await intervalAfter(new TypeError('Network request failed'))).toBe(BRIDGE_IDLE_POLL_MS);
     // A proxy in front of the server turned it away: the server never refused it.
-    expect(
-      await intervalAfter(new ApiError(403, 'Request failed (403)', undefined, undefined, true)),
-    ).toBe(BRIDGE_IDLE_POLL_MS);
+    for (const status of [401, 403]) {
+      expect(await intervalAfter(new ApiError(status, 'Refused', undefined, undefined, true))).toBe(
+        BRIDGE_IDLE_POLL_MS,
+      );
+    }
   });
 
   it('is not asked again after a refusal (signed out, not an admin any more)', async () => {
