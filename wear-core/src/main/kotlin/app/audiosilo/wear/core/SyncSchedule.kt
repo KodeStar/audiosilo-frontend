@@ -111,7 +111,11 @@ class ExpediteGate {
     waiting = false
   }
 
-  /** The runs were cancelled (signed out): nothing waits to start. */
+  /**
+   * The runs were cancelled (signed out), or one threw: WorkManager fails every run appended after
+   * a failed one, so none of them will start. Nothing waits to start, and the next expedite
+   * enqueues afresh (else none would until a backstop run).
+   */
   @Synchronized
   fun cancelled() {
     waiting = false

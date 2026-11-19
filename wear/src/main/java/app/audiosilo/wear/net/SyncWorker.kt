@@ -28,13 +28,24 @@ import app.audiosilo.wear.AppModel
 import app.audiosilo.wear.R
 import app.audiosilo.wear.core.SyncSchedule
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
   override suspend fun doWork(): Result {
     val model = withContext(Dispatchers.Main) { AppModel.get(applicationContext) }
-    val outcome = withContext(Dispatchers.Main) { model.syncInBackground() }
+    val outcome =
+      try {
+        withContext(Dispatchers.Main) { model.syncInBackground() }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Throwable) {
+        // A run that throws fails, and so does every run appended after it (APPEND_OR_REPLACE):
+        // none of them starts, so the gate must not wait on one (fe#285).
+        withContext(Dispatchers.Main) { model.syncRunFailed() }
+        throw e
+      }
     return when (outcome) {
       SyncSchedule.Outcome.DONE -> Result.success()
       SyncSchedule.Outcome.RETRY -> Result.retry()

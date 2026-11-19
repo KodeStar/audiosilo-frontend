@@ -4354,7 +4354,8 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   `APPEND_OR_REPLACE`, CONNECTED, `RUN_AS_NON_EXPEDITED` out of quota) and the 15 min
   `sync-periodic` backstop while events wait. An expedite goes after any run already going, once
   per run (`ExpediteGate`: a run still waiting to start sends everything when it does; KEEP dropped
-  the ask of a span closed after a running run's last look, fe#285). A worker run (`AppModel.syncInBackground`) picks its own address with the probe (home
+  the ask of a span closed after a running run's last look, fe#285). A run that throws fails every
+  run appended after it, so it opens the gate again (`AppModel.syncRunFailed`). A worker run (`AppModel.syncInBackground`) picks its own address with the probe (home
   allowed), flushes up to `WORKER_ROUNDS` while spans close, and retries with backoff only on
   no answer (`SyncSchedule.outcome`). Sign out (`AppModel.signOut`) stops the player first, then
   is blocked while events wait unless discarded; a replacing account likewise (pass 1).

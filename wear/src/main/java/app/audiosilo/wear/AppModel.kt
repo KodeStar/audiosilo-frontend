@@ -433,6 +433,9 @@ class AppModel private constructor(private val context: Context) {
     return SyncSchedule.outcome(canSync, outbox.unsentCount, outbox.lastFlushFailed)
   }
 
+  /** A SyncWorker run threw: the runs appended after it fail with it, so none waits to start. */
+  fun syncRunFailed() = expedites.cancelled()
+
   // Playing
 
   /**
