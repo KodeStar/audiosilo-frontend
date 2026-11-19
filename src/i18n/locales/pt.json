@@ -480,6 +480,9 @@
       "errors": {
         "wait_one": "Demasiadas tentativas a partir desta rede. Tente novamente dentro de {{count}} minuto.",
         "wait_other": "Demasiadas tentativas a partir desta rede. Tente novamente dentro de {{count}} minutos.",
+        "waitSeconds_one": "Demasiadas tentativas a partir desta rede. Tente novamente dentro de {{count}} segundo.",
+        "waitSeconds_other": "Demasiadas tentativas a partir desta rede. Tente novamente dentro de {{count}} segundos.",
+        "waitOver": "Demasiadas tentativas a partir desta rede. Já pode tentar novamente.",
         "badCode": "Esse código de convite não funcionou. Verifique-o ou peça um novo convite ao seu administrador.",
         "usedInvite": "Este convite não pode adicionar outro dispositivo: esgotou-se ou expirou. Peça um novo convite ao seu administrador.",
         "inviteUsed": "Este convite já foi usado em todos os dispositivos que permite. Peça um novo convite ao seu administrador.",
@@ -503,7 +506,8 @@
         "needsUpdate": "Este servidor tem de ser atualizado para se poder adicionar alguém a partir do modo crianças com início de sessão único, por isso o início de sessão não foi guardado. Atualiza o servidor ou inicia sessão de outra forma.",
         "failed": "O início de sessão não foi concluído. Inicia sessão novamente.",
         "reachRetry": "Não foi possível contactar o servidor para concluir o início de sessão. Verifica a ligação e tenta novamente.",
-        "failedRetry": "O servidor não conseguiu concluir o início de sessão. Tenta novamente."
+        "failedRetry": "O servidor não conseguiu concluir o início de sessão. Tenta novamente.",
+        "waitOver": "Demasiadas tentativas a partir desta rede. Já podes iniciar sessão novamente."
       },
       "tryAgain": "Tentar novamente"
     },
@@ -3154,7 +3158,9 @@
         "denied": "O feed recusou o pedido. Talvez ele exija login.",
         "localAddress": "Esse endereço está em uma rede local. Quem administra seu servidor pode permiti-lo.",
         "tooLarge": "Esse feed é grande demais.",
-        "feedError": "O servidor do feed respondeu com um erro. Tente mais tarde."
+        "feedError": "O servidor do feed respondeu com um erro. Tente mais tarde.",
+        "redirectLoop": "O endereço do feed redireciona vezes demais.",
+        "interrupted": "A adição foi interrompida. Siga o feed de novo para tentar outra vez."
       }
     },
     "import": {

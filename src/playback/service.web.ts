@@ -200,6 +200,14 @@ class WebPlaybackService implements PlaybackService {
   /** Where each element's source node is connected now. */
   private routedTo = new Map<HTMLAudioElement, AudioNode>();
   private pausedAt: number | null = null;
+  /** Since when the active element's stream has gone unread: stamped by every load (a new
+   * request, unread until it plays) and by a pause (through `pause()` or the element's own)
+   * after one played, and cleared only by 'playing', so a play that never started (the
+   * browser refused it, a pause landed first) leaves the clock where it was. A transcode
+   * left unread this long may be gone (dropped by the server or a proxy), so the next
+   * `play()` re-requests it (`TRANSCODE_STALE_PAUSE_MS`): a book loaded and never played as
+   * much as one paused. */
+  private unreadSince: number | null = null;
   /** Track-absolute start (seconds) of the active element's source: the `t` a
    * transcoded stream was requested at, 0 for a direct stream. */
   private offset = 0;
@@ -225,15 +233,21 @@ class WebPlaybackService implements PlaybackService {
    * the seek (fe#155). */
   private awaitingMetadata: HTMLAudioElement | null = null;
   private placeAt: number | null = null;
+  /** A play went out (`playElement`) since the current load began: from then, a 'pause' the
+   * element makes while that load still awaits its metadata is a real one (see the 'pause'
+   * listener), not the browser's own around the src change. */
+  private playedSinceLoad = false;
   /** The source (as `sourceFor` gives it) of the load in flight, and the last one that
    * failed: a load of a failed source asks for it afresh (`freshUrl`). */
   private loadingUrl: string | null = null;
   private failedUrl: string | null = null;
   /** Playback is intended but hasn't started yet: set by an autoplaying load (the
    * advance to the next file, a skip or a transcoded seek while playing) and by `play()`
-   * on a transcoded track; cleared on `playing`, `error`, `pause()` and `reset()`. A load
-   * plays only if this is still set when its metadata arrives, so a pause inside the
-   * window (the listener's, or the sleep timer's at a chapter end) holds. A transcoded
+   * on a transcoded track; cleared on `playing`, `error`, `pause()`, `reset()` and a pause
+   * the element made itself (an OS interruption in the start window: see the 'pause'
+   * listener for the ones it ignores). A load plays only if this is still set when its
+   * metadata arrives, so a pause inside the window (the listener's, or the sleep timer's at
+   * a chapter end) holds. A transcoded
    * seek reloads the source, so the window recurs on every seek, and a second seek (or a
    * skip) inside it must keep playing. */
   private pendingAutoplay = false;
@@ -324,6 +338,8 @@ class WebPlaybackService implements PlaybackService {
       // (`playing-claim.ts`).
       if (!active() || a.paused) return;
       this.pendingAutoplay = false;
+      // Read again, however it started (a browser resuming it after a transient interruption).
+      this.unreadSince = null;
       this.update({ state: 'playing' });
     });
     a.addEventListener('pause', () => {
@@ -335,6 +351,20 @@ class WebPlaybackService implements PlaybackService {
       // book stopped, expire without pausing it, and let the next file play on. The last
       // file still reports the pause, then 'ended'.
       if (a.ended && this.index < this.tracks.length - 1) return;
+      // A pause the element made itself (an OS interruption, a headset unplugged) is one as
+      // through `pause()`: the stream goes unread, and the play intent ends, in the start
+      // window too (a play out, no 'playing' yet), or a later transcoded seek or skip would
+      // start the book by itself (`intendsToPlay`). Two 'pause' events are not that pause:
+      // - one while the current load waits on its metadata (`awaitingMetadata`) with no play
+      //   out since (`playedSinceLoad`): the load algorithm paused the element and nothing
+      //   has played it since, so it is the browser's own around the src change (or one
+      //   queued before it), and that load's autoplay stands (the load stamped the clock
+      //   itself);
+      // - one that lands with the element no longer paused: a play went out after it.
+      if (a.paused && !a.ended && (this.awaitingMetadata !== a || this.playedSinceLoad)) {
+        this.unreadSince ??= Date.now();
+        this.pendingAutoplay = false;
+      }
       this.update({ state: 'paused' });
     });
     a.addEventListener('waiting', () => active() && this.update({ state: 'loading' }));
@@ -373,9 +403,12 @@ class WebPlaybackService implements PlaybackService {
     this.offset = source.offset;
     this.earlyEndRetryAt = null; // handleEnded re-sets it for its own reload
     this.pendingAutoplay = autoplay;
+    // A new request, unread until its 'playing', autoplay or not.
+    this.unreadSince = Date.now();
     const seq = ++this.loadSeq;
     this.placing = a;
     this.awaitingMetadata = a;
+    this.playedSinceLoad = false;
     this.placeAt = null;
     this.loadingUrl = source.url;
     a.crossOrigin = crossOriginFor(source.url);
@@ -544,7 +577,7 @@ class WebPlaybackService implements PlaybackService {
   ) {
     this.tracks = tracks;
     // A pause belongs to what was loaded before: the first play() of a new load must not
-    // auto-rewind (or, transcoded, re-request the stream early) for it.
+    // auto-rewind for it.
     this.pausedAt = null;
     this.queueSeq++;
     this.loadTrack(startIndex, positionInTrack, false);
@@ -685,6 +718,7 @@ class WebPlaybackService implements PlaybackService {
    * `a.play()`, its refusals told apart:
    * - the browser's autoplay refusal (`NotAllowedError`: no user gesture yet) settles to
    *   `paused` and is reported as `AutoplayBlockedError`, so the store can read it as a pause;
+   *   the stream stays unread from when it was (`unreadSince`: only 'playing' clears it);
    * - a source that failed to load (`NotSupportedError`, "no supported sources", or an
    *   `AbortError` from an element that has errored) settles to `error` and is reported as
    *   `PlaybackStartError('audio')`, so the start can say why;
@@ -693,12 +727,14 @@ class WebPlaybackService implements PlaybackService {
    * - anything else is rethrown as is.
    */
   private async playElement(a: HTMLAudioElement) {
+    this.playedSinceLoad = true;
     try {
       await a.play();
     } catch (err) {
       const name = (err as { name?: unknown } | null)?.name;
       if (name === 'NotAllowedError') {
         this.pendingAutoplay = false;
+        this.unreadSince ??= Date.now();
         if (a === this.audio) this.update({ state: 'paused' });
         throw new AutoplayBlockedError();
       }
@@ -723,12 +759,16 @@ class WebPlaybackService implements PlaybackService {
         ? Math.min(this.config.autoRewindMax, pausedFor / 1000)
         : 0;
     this.pausedAt = null;
+    // Not cleared here: a play that never starts (refused, or paused before its 'playing')
+    // leaves the stream as unread as before it.
+    const unreadFor = this.unreadSince != null ? Date.now() - this.unreadSince : 0;
     if (this.current()?.transcoded) {
       this.pendingAutoplay = true;
       // A transcoded stream can't seek in place: an auto-rewind re-requests it further
-      // back, and so does a resume after a long pause (the paused transcode may have
-      // been dropped; resuming a dead connection would only stall into the watchdog).
-      if (rewind > 0.5 || pausedFor > TRANSCODE_STALE_PAUSE_MS) {
+      // back, and so does a play after the stream went unread a long time, paused or loaded
+      // and never played (the transcode may have been dropped; reading a dead connection
+      // would only stall into the watchdog).
+      if (rewind > 0.5 || unreadFor > TRANSCODE_STALE_PAUSE_MS) {
         this.reloadTranscodedAt(Math.max(0, this.snapshot.position - rewind), true);
         return;
       }
@@ -751,6 +791,8 @@ class WebPlaybackService implements PlaybackService {
     const settle = a.paused && this.snapshot.state === 'loading';
     a.pause();
     this.pausedAt = Date.now();
+    // Unread from the first pause, or from the load before it: a second one moves nothing.
+    this.unreadSince ??= Date.now();
     this.pendingAutoplay = false;
     if (settle) this.update({ state: 'paused' });
   }
@@ -819,6 +861,7 @@ class WebPlaybackService implements PlaybackService {
     this.index = 0;
     this.offset = 0;
     this.pausedAt = null;
+    this.unreadSince = null;
     this.loadSeq++;
     this.queueSeq++;
     this.placing = null;

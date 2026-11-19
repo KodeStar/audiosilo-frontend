@@ -135,10 +135,10 @@ export function isEarlyTranscodeEnd(
   return lastRetryAt == null || position - lastRetryAt >= EARLY_END_MIN_PROGRESS_S;
 }
 
-/** After a pause this long (ms), resuming a transcoded stream re-requests it at the
- * current position instead of resuming the old connection: a paused, back-pressured
- * transcode can be dropped by the server or a proxy, and a resume on a dead
- * connection would only stall into the watchdog's error. */
+/** After a pause this long (ms), or a load left unplayed this long, playing a transcoded
+ * stream re-requests it at the current position instead of reading the old connection: a
+ * paused, back-pressured transcode can be dropped by the server or a proxy,
+ * and a play on a dead connection would only stall into the watchdog's error. */
 export const TRANSCODE_STALE_PAUSE_MS = 30_000;
 
 /** Display names for the ffprobe codec names a browser can't decode, for the book

@@ -427,7 +427,8 @@ and `ConnectStart` takes the params off first (the screen's own `useNavigation()
 runs at mount), then `POST /auth/oidc/finish` naming the `flow` (so two tabs back at once each
 finish their own sign-in, server#406; none from a server before the key) (`finishOidcSignIn`, the
 exchange's answer) and `finishConnect`; a failure is worded above the served card
-(`oidcFinishText`), with Try again when the server kept the sign-in (`oidcRetryWait`: no answer,
+(`oidcFinishText`; a 429's named wait, there as on the sign-in step and a pairing link, gives way
+to words with no time once it is over: `refusalWaitOver`, `useRefusalError`), with Try again when the server kept the sign-in (`oidcRetryWait`: no answer,
 a 408, a 5xx, a 429 once its `Retry-After` is over, within the done cookie's minute and gone
 with it, the reason then the refusal's (`doneBy`, `OIDC_DONE_MS`); the same
 finish from memory, its flow key never in the address, storage or a log; never for a refusal, nor
@@ -1319,7 +1320,12 @@ answer says `chapters_source: "community"` and the rows are those chapters (not 
 or a server-glyph caption ("Chapters found in the narration on this server") for
 `chapters_source: "generated"` (Bridge Phase 1d: a Bridge found them in a chapterless book's
 narration; same rule), or a pen caption ("Chapters edited on this server") for
-`chapters_source: "edited"` (server#240: an admin edited the list in the console; same rule).
+`chapters_source: "edited"` (server#240: an admin edited the list in the console, and the edit
+applies to the files the book has now; a dormant edit, its files changed, sends the next
+source's chapters and caption; same rule), or a list caption ("Chapters from the episode file")
+for `chapters_source: "id3_chap"` (a podcast episode's own ID3 CHAP marks, Bridge Phase 2c-2;
+same rule). An episode never reads "edited": a podcast library offers no chapter edit (409
+`not_book_library`, server#471).
 `knownChaptersSource` (`book-page-model.ts`) reads the answer's open
 `chapters_source` (an own-key lookup: a source this build does not know is none, so no
 caption); the tab keeps the rule that a caption goes only under real chapters, and one
@@ -2915,9 +2921,16 @@ media GETs only.
   a transcoded seek), so a chapter sleep timer aimed at that boundary finds the book live and
   pauses it. A load plays on `loadedmetadata` only if `pendingAutoplay` is still set (a
   `pause()` inside the load, the listener's or the sleep timer's, clears it and settles the
-  snapshot on `paused`). A transcoded stream is never requested inside its last second
-  (`transcodeStartAt`): at the very end there is nothing to encode and the element errors
-  instead of ending.
+  snapshot on `paused`). A pause the element makes itself (an OS interruption) clears it too, in
+  the start window as well, so a later transcoded seek or skip never starts the book; a 'pause'
+  event while the current load awaits its metadata (the browser's own around a src change) or
+  one landing after a play went out is not that pause. A transcoded stream is never requested
+  inside its last second (`transcodeStartAt`): at the very end there is nothing to encode and
+  the element errors instead of ending. A transcode left unread more than
+  `TRANSCODE_STALE_PAUSE_MS` (30 s) (`unreadSince`: stamped by every load and by a pause,
+  cleared only by 'playing', so a play that never started leaves it running) is asked again at
+  the place on the next `play()`: the server (or a proxy) may have dropped it, and reading a
+  dead connection would only stall into the watchdog.
 
 **Car (CarPlay and Android Auto)** (`src/car/`, the native side in `modules/audiosilo-player`;
 the full write-up is the docs' `docs-developers/frontend/native-integrations.md`). No wire change.
@@ -4066,6 +4079,13 @@ tokens, type and components; its section 17 maps them onto these files.
   casting also stops the receiver's app (`RNGCStopCastingDialogFactory`, the Cast section
   above); the library is pinned exactly (4.9.1) and ignored by Dependabot the same way, and
   `plugins/withCast.test.ts` fails when the installed library lacks the factory or its wiring.
+  `@shopify+flash-list+<ver>.patch` makes the list's size check (`validateItemSize`, its
+  `dist/recyclerview/RecyclerView.js`) skip an index the data no longer has: on the web,
+  react-native-web reports an item's `onLayout` a tick after the resize, so a list whose data
+  just shrank (Home's Continue rail when a book is finished) threw "index out of bounds, not
+  enough layouts". `src/lib/flash-list-patch.test.tsx` guards it. FlashList is an exact SDK pin
+  ignored by Dependabot; an SDK upgrade that moves it regenerates the patch, or drops it once
+  upstream fixes it.
 - **Expo SDK pins, and one copy of each native module.** The SDK decides the versions of its
   native modules, react and react-native (`node_modules/expo/bundledNativeModules.json`). CI
   runs `npx expo install --check`, which fails on any drift; move them only with

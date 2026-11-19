@@ -315,8 +315,8 @@ export function ConnectStart() {
 
   // A failed finish says why, with its retry when the server left room for one
   // (`oidcRetryWait`); none: the sign-in is refused, so Sign in again.
-  const oidcFailed = ({ message, retry }: OidcFinishFailure) => {
-    fail(message);
+  const oidcFailed = ({ message, retry, waitOver }: OidcFinishFailure) => {
+    fail(message, waitOver);
     setOidcRetry(retry ?? null);
   };
   const retryOidc = () => {
@@ -360,10 +360,18 @@ export function ConnectStart() {
   // A book the signed-out visit was opening (`signedOutHref`) goes along, so the sign-in
   // ends on it (frontend#129). A pairing link's book goes through `pair` instead.
   const returnBook = token ? null : parseConnectBook({ book, path });
-  // Leaving for another sign-in drops a single sign-on's Try again: the screen stays under the
-  // flow (back from "Your library is ready."), where it must not finish that sign-in too.
-  const goSignIn = (name: string) => {
+  // Moving on to another address (Continue, a remembered server) or sign-in: a pairing link's
+  // error and its Try again are about the link, not this address, and go (fe#159).
+  const moveOn = () => {
+    setRetryLink(null);
     setOidcRetry(null);
+    clearPairError();
+  };
+
+  // The screen stays under the sign-in flow (Back from the sign-in step, or from "Your library
+  // is ready."), so leaving for it moves on too: no stale reason, no Try again to finish.
+  const goSignIn = (name: string) => {
+    moveOn();
     router.push({
       pathname: '/connect/sign-in',
       params: {
@@ -394,14 +402,6 @@ export function ConnectStart() {
     servedAsk.current = null;
     setBusy(null);
     setServed(null);
-  };
-
-  // Moving on to another address (Continue, a remembered server): a pairing link's error and
-  // its Try again are about the link, not this address, and go (fe#159).
-  const moveOn = () => {
-    setRetryLink(null);
-    setOidcRetry(null);
-    clearPairError();
   };
 
   // Ask the server who it is. The typed address and the served player's own server show what
@@ -559,7 +559,8 @@ export function ConnectStart() {
     }
     if (scan) void pairLink(scan);
     else if (invite) {
-      setOidcRetry(null);
+      // On to the sign-in step, as `goSignIn`: Back finds no stale reason or Try again.
+      moveOn();
       beginInviteSignIn(invite, () => router.push('/connect/sign-in'));
     }
   };

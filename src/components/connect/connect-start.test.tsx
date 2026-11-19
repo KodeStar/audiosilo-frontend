@@ -289,6 +289,27 @@ describe('a pairing link', () => {
     expect(mockSetParams).not.toHaveBeenCalled();
   });
 
+  it("drops a pairing link's wait from the words once it is over", async () => {
+    jest.useFakeTimers();
+    try {
+      mockParams = { token: 'tok', server: AWAY };
+      mockApi.exchange.mockRejectedValue(new ApiError(429, 'slow down', undefined, 30));
+      mockApi.serverInfo.mockResolvedValue(info());
+      await render(<ConnectStart />);
+      const waiting = 'Too many tries from this network. Try again in 30 seconds.';
+      expect(await screen.findByText(waiting)).toBeTruthy();
+      expect(screen.getByTestId('pairing-try-again')).toBeTruthy();
+      await act(async () => jest.advanceTimersByTime(30_000));
+      expect(screen.queryByText(waiting)).toBeNull();
+      expect(
+        screen.getByText('Too many tries from this network. You can try again now.'),
+      ).toBeTruthy();
+      expect(screen.getByTestId('pairing-try-again')).toBeTruthy();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it.each([
     ['the server failing itself', new ApiError(503, 'busy')],
     ['no answer', new TypeError('Network request failed')],
@@ -1617,12 +1638,31 @@ describe("a single sign-on's return (?oidc=1)", () => {
     expect(mockReplace).not.toHaveBeenCalled();
     // A refused sign-in has no Try again (`oidcRetryWait`).
     expect(screen.queryByTestId('oidc-try-again')).toBeNull();
-    // Sign in again from the card.
+    // Sign in again from the card: the reason goes with it, so Back from the sign-in step
+    // finds the card without it.
     await fireEvent.press(screen.getByText('Sign in'));
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/connect/sign-in',
       params: { serverName: 'Hearthside' },
     });
+    expect(screen.queryByText(words)).toBeNull();
+  });
+
+  it('drops the reason when a pasted invite link goes on to the sign-in step', async () => {
+    const words = "There's no sign-in to finish in this browser. Sign in again.";
+    mockApi.oidcFinish.mockRejectedValue(new ApiError(401, 'x', 'oidc_no_sign_in'));
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await waitFor(() => expect(screen.getByText('Found Hearthside')).toBeTruthy());
+    expect(screen.getByText(words)).toBeTruthy();
+    await fireEvent.press(screen.getByText('I have a pairing link'));
+    await fireEvent.changeText(
+      screen.getByLabelText('Pairing link'),
+      `${ORIGIN}/connect#code=ABCD-EFGH-JKMN-PQRS`,
+    );
+    await fireEvent.press(screen.getByText('Connect'));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/connect/sign-in'));
+    expect(screen.queryByText(words)).toBeNull();
   });
 
   // The server keeps the sign-in (its done cookie) on no answer, a 5xx and a 429 (server#406),
@@ -1695,6 +1735,10 @@ describe("a single sign-on's return (?oidc=1)", () => {
       await fireEvent.press(screen.getByText('Sign in'));
       expect(mockPush).toHaveBeenCalled();
       expect(screen.queryByTestId('oidc-try-again')).toBeNull();
+      // Nor its reason, red over the card when Back comes to it (SSO-DONE verify).
+      expect(
+        screen.queryByText("The server couldn't finish signing you in. Try again."),
+      ).toBeNull();
       expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
     });
 
@@ -1707,12 +1751,19 @@ describe("a single sign-on's return (?oidc=1)", () => {
         await render(<ConnectStart />);
         await waitFor(() => expect(screen.getByTestId('oidc-try-again')).toBeTruthy());
         expect(
-          screen.getByText('Too many tries from this network. Try again in 1 minute.'),
+          screen.getByText('Too many tries from this network. Try again in 30 seconds.'),
         ).toBeTruthy();
         // Not yet: pressed during the wait, it sends nothing.
         await fireEvent.press(screen.getByTestId('oidc-try-again'));
         expect(mockApi.oidcFinish).toHaveBeenCalledTimes(1);
         await act(async () => jest.advanceTimersByTime(30_000));
+        // Try again works again, and the words no longer name a wait.
+        expect(
+          screen.queryByText('Too many tries from this network. Try again in 30 seconds.'),
+        ).toBeNull();
+        expect(
+          screen.getByText('Too many tries from this network. You can try again now.'),
+        ).toBeTruthy();
         await fireEvent.press(screen.getByTestId('oidc-try-again'));
         await waitFor(() => expect(mockReplace).toHaveBeenCalled());
         expect(mockApi.oidcFinish).toHaveBeenLastCalledWith('Test device', undefined, FLOW);
@@ -1769,6 +1820,36 @@ describe("a single sign-on's return (?oidc=1)", () => {
       }
     });
 
+    // A Try again pressed near the end of the minute whose answer comes after it: the server
+    // holds the sign-in no more, so it reads as expired, not as a server to try again.
+    it('says the sign-in expired when a Try again fails just after the minute', async () => {
+      jest.useFakeTimers();
+      try {
+        mockApi.oidcFinish
+          .mockRejectedValueOnce(new ApiError(500, 'boom'))
+          .mockImplementationOnce(
+            () =>
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new TypeError('Failed to fetch')), 3_000),
+              ),
+          );
+        await render(<ConnectStart />);
+        await waitFor(() => expect(screen.getByTestId('oidc-try-again')).toBeTruthy());
+        await act(async () => jest.advanceTimersByTime(OIDC_DONE_MS - 2_000));
+        await fireEvent.press(screen.getByTestId('oidc-try-again'));
+        await act(async () => jest.advanceTimersByTime(3_000));
+        await waitFor(() =>
+          expect(
+            screen.getByText('That sign-in expired or was already used. Sign in again.'),
+          ).toBeTruthy(),
+        );
+        expect(screen.queryByTestId('oidc-try-again')).toBeNull();
+        expect(mockApi.oidcFinish).toHaveBeenCalledTimes(2);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it("drops a 429's Try again whose wait ends past the done cookie's minute", async () => {
       jest.useFakeTimers();
       try {
@@ -1783,7 +1864,7 @@ describe("a single sign-on's return (?oidc=1)", () => {
         await act(async () => jest.advanceTimersByTime(40_000));
         await waitFor(() =>
           expect(
-            screen.getByText('Too many tries from this network. Try again in 1 minute.'),
+            screen.getByText('Too many tries from this network. Try again in 30 seconds.'),
           ).toBeTruthy(),
         );
         expect(screen.queryByTestId('oidc-try-again')).toBeNull();

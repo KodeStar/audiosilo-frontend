@@ -242,9 +242,11 @@ export function episodeAsBook(ep: PodcastEpisode, show: PodcastShow): Book {
  * `tls`, `network`), is not a podcast (`not_a_feed`, `not_a_podcast`), is gone (`gone`:
  * HTTP 410), was not found (`http_404`), refused the request (`http_401`, `http_403`),
  * answered another error (`http_<status>`), is on a local network the server may not
- * reach (`blocked_address`: the admin can allow it), is too large (`too_large`), or needs
- * following again (`request_expired`: the server restarted before the request was taken
- * up; `feed_secret_missing`: a private feed's address was lost); anything else reads
+ * reach (`blocked_address`: the admin can allow it), is too large (`too_large`), redirects
+ * too many times (`redirect_loop`, an older Bridge's `http_310`), was cut off on its way
+ * (`bridge_lost`: the Bridge doing it stopped reporting), or needs following again
+ * (`request_expired`: the server restarted before the request was taken up;
+ * `feed_secret_missing`: a private feed's address was lost); anything else reads
  * generically. Never the server's English. */
 export function requestReasonKey(code: string | null | undefined): ParseKeys {
   switch (code) {
@@ -267,6 +269,11 @@ export function requestReasonKey(code: string | null | undefined): ParseKeys {
       return 'podcasts.requests.reason.localAddress';
     case 'too_large':
       return 'podcasts.requests.reason.tooLarge';
+    case 'redirect_loop':
+    case 'http_310': // an older Bridge's redirect loop, not a status (server#403)
+      return 'podcasts.requests.reason.redirectLoop';
+    case 'bridge_lost':
+      return 'podcasts.requests.reason.interrupted';
     case 'request_expired':
     case 'feed_secret_missing':
       return 'podcasts.requests.reason.followAgain';

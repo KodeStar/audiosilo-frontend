@@ -480,6 +480,9 @@
       "errors": {
         "wait_one": "Zu viele Versuche aus diesem Netzwerk. Versuch es in {{count}} Minute noch einmal.",
         "wait_other": "Zu viele Versuche aus diesem Netzwerk. Versuch es in {{count}} Minuten noch einmal.",
+        "waitSeconds_one": "Zu viele Versuche aus diesem Netzwerk. Versuch es in {{count}} Sekunde noch einmal.",
+        "waitSeconds_other": "Zu viele Versuche aus diesem Netzwerk. Versuch es in {{count}} Sekunden noch einmal.",
+        "waitOver": "Zu viele Versuche aus diesem Netzwerk. Du kannst es jetzt noch einmal versuchen.",
         "badCode": "Dieser Einladungscode hat nicht funktioniert. Prüfe ihn oder bitte deinen Admin um eine neue Einladung.",
         "usedInvite": "Diese Einladung kann kein weiteres Gerät hinzufügen: Sie ist aufgebraucht oder abgelaufen. Bitte deinen Admin um eine neue Einladung.",
         "inviteUsed": "Diese Einladung wurde schon auf allen erlaubten Geräten benutzt. Bitte deinen Admin um eine neue Einladung.",
@@ -503,7 +506,8 @@
         "needsUpdate": "Dieser Server muss aktualisiert werden, bevor im Kindermodus jemand per Single Sign-on hinzugefügt werden kann. Die Anmeldung wurde daher nicht gespeichert. Aktualisiere den Server oder melde dich auf andere Weise an.",
         "failed": "Die Anmeldung wurde nicht abgeschlossen. Melde dich erneut an.",
         "reachRetry": "Der Server war nicht erreichbar, um die Anmeldung abzuschließen. Prüfe deine Verbindung und versuch es noch einmal.",
-        "failedRetry": "Der Server konnte die Anmeldung nicht abschließen. Versuch es noch einmal."
+        "failedRetry": "Der Server konnte die Anmeldung nicht abschließen. Versuch es noch einmal.",
+        "waitOver": "Zu viele Versuche aus diesem Netzwerk. Du kannst dich jetzt erneut anmelden."
       },
       "tryAgain": "Erneut versuchen"
     },
@@ -3154,7 +3158,9 @@
         "denied": "Der Feed hat die Anfrage abgelehnt. Vielleicht braucht er eine Anmeldung.",
         "localAddress": "Diese Adresse liegt in einem lokalen Netzwerk. Die Person, die deinen Server betreibt, kann sie erlauben.",
         "tooLarge": "Dieser Feed ist zu groß.",
-        "feedError": "Der Server des Feeds hat mit einem Fehler geantwortet. Versuch es später noch einmal."
+        "feedError": "Der Server des Feeds hat mit einem Fehler geantwortet. Versuch es später noch einmal.",
+        "redirectLoop": "Die Adresse des Feeds leitet zu oft weiter.",
+        "interrupted": "Das Hinzufügen wurde unterbrochen. Folge dem Feed noch einmal, um es erneut zu versuchen."
       }
     },
     "import": {

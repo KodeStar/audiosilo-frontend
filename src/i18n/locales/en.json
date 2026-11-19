@@ -480,6 +480,9 @@
       "errors": {
         "wait_one": "Too many tries from this network. Try again in {{count}} minute.",
         "wait_other": "Too many tries from this network. Try again in {{count}} minutes.",
+        "waitSeconds_one": "Too many tries from this network. Try again in {{count}} second.",
+        "waitSeconds_other": "Too many tries from this network. Try again in {{count}} seconds.",
+        "waitOver": "Too many tries from this network. You can try again now.",
         "badCode": "That invite code didn't work. Check it, or ask your admin for a new invite.",
         "usedInvite": "This invite can't add another device: it is used up or has expired. Ask your admin for a new invite.",
         "inviteUsed": "This invite has been used on all the devices it allows. Ask your admin for a new invite.",
@@ -503,7 +506,8 @@
         "needsUpdate": "This server needs updating before single sign-on can add someone from kids mode, so the sign-in wasn't kept. Update the server, or sign in another way.",
         "failed": "Signing in didn't finish. Sign in again.",
         "reachRetry": "Could not reach the server to finish signing in. Check your connection and try again.",
-        "failedRetry": "The server couldn't finish signing you in. Try again."
+        "failedRetry": "The server couldn't finish signing you in. Try again.",
+        "waitOver": "Too many tries from this network. You can sign in again now."
       },
       "tryAgain": "Try again"
     },
@@ -3154,7 +3158,9 @@
         "denied": "The feed refused the request. It may need a login.",
         "localAddress": "That address is on a local network. The person who runs your server can allow it.",
         "tooLarge": "That feed is too large.",
-        "feedError": "The feed's server answered with an error. Try again later."
+        "feedError": "The feed's server answered with an error. Try again later.",
+        "redirectLoop": "The feed's address redirects too many times.",
+        "interrupted": "Adding it was interrupted. Follow the feed again to try once more."
       }
     },
     "import": {

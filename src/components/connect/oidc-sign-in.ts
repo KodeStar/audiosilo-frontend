@@ -9,7 +9,12 @@ import { useSession } from '@/stores/session';
 
 import { finishConnect } from './finish-connect';
 import { oidcPassTag, settleOidcPass, takeOidcResumed } from './oidc-intent';
-import { sharedRefusalText } from './sign-in-error';
+import {
+  namedWaitSeconds,
+  refusalWaitOver,
+  sharedRefusalText,
+  type WaitOver,
+} from './sign-in-error';
 
 /**
  * Single sign-on (OpenID Connect, server#235) in the web player. The sign-in step offers
@@ -95,8 +100,35 @@ export function oidcRetryWait(e: unknown, leftMs: number): number | undefined {
   if (!(e instanceof ApiError)) return 0;
   if (e.status >= 500 || e.status === 408) return 0;
   if (e.status !== 429) return undefined;
-  const ms = (e.retryAfterSeconds ?? 0) * 1000;
+  // The words' own whole seconds: Try again and the text switch together.
+  const ms = (namedWaitSeconds(e) ?? 0) * 1000;
   return ms < leftMs ? ms : undefined;
+}
+
+/**
+ * A failed finish as the screen shows it (`oidcFinishText`), with the same finish to send
+ * again (`run`) while the server keeps the sign-in (`oidcRetryWait`) until `doneBy`. Once
+ * that minute is over, a failure the server would have kept the sign-in through (no answer,
+ * a 408, a 5xx, a 429 shorter than the minute) has nothing left to finish: it reads as the
+ * expired sign-in it now is, as the screen says when the minute runs out with Try again up.
+ * With no retry (a lockout's 15 minutes), a 429's words give way to signing in again once
+ * its wait is over, never to trying again (`waitOver`): only Sign in again is on screen.
+ */
+export function oidcFinishFailure(
+  e: unknown,
+  t: TFunction,
+  doneBy: number,
+  run: () => Promise<OidcFinishFailure | null>,
+): OidcFinishFailure {
+  const left = oidcDoneLeft(doneBy);
+  // Whether the server keeps a sign-in through `e` at all: a wait inside a whole minute.
+  const keptThrough = oidcRetryWait(e, OIDC_DONE_MS) !== undefined;
+  if (left <= 0 && keptThrough) return { message: t('connect.oidc.errors.expired') };
+  const waitMs = oidcRetryWait(e, left);
+  const message = oidcFinishText(e, t, waitMs !== undefined);
+  if (waitMs === undefined)
+    return { message, waitOver: refusalWaitOver(e, t, 'connect.oidc.errors.waitOver') };
+  return { message, retry: { waitMs, doneBy, run }, waitOver: refusalWaitOver(e, t) };
 }
 
 /** The same finish sent again (`finishOidcSignIn`'s, with its flow, book and reconnect, all
@@ -109,9 +141,10 @@ export type OidcFinishRetry = {
   run: () => Promise<OidcFinishFailure | null>;
 };
 
-/** A finish that failed on the screen: why, in words, and the retry the server left room
- * for (`oidcRetryWait`), none once the sign-in is refused. */
-export type OidcFinishFailure = { message: string; retry?: OidcFinishRetry };
+/** A finish that failed on the screen: why, in words (and what they become once a 429's wait
+ * is over, `refusalWaitOver`), and the retry the server left room for (`oidcRetryWait`), none
+ * once the sign-in is refused. */
+export type OidcFinishFailure = { message: string; retry?: OidcFinishRetry; waitOver?: WaitOver };
 
 /**
  * Finish a single sign-on on the served player's own server (`origin`): `POST
@@ -177,11 +210,7 @@ export async function finishOidcSignIn(
         toast({ title: why });
         return null;
       }
-      const waitMs = oidcRetryWait(e, oidcDoneLeft(doneBy));
-      const message = oidcFinishText(e, t, waitMs !== undefined);
-      return waitMs === undefined
-        ? { message }
-        : { message, retry: { waitMs, doneBy, run: attempt } };
+      return oidcFinishFailure(e, t, doneBy, attempt);
     }
     // A session nothing keeps is signed out again (best effort): it would stay on the server
     // as a device.

@@ -480,6 +480,9 @@
       "errors": {
         "wait_one": "Trop de tentatives depuis ce réseau. Réessayez dans {{count}} minute.",
         "wait_other": "Trop de tentatives depuis ce réseau. Réessayez dans {{count}} minutes.",
+        "waitSeconds_one": "Trop de tentatives depuis ce réseau. Réessayez dans {{count}} seconde.",
+        "waitSeconds_other": "Trop de tentatives depuis ce réseau. Réessayez dans {{count}} secondes.",
+        "waitOver": "Trop de tentatives depuis ce réseau. Vous pouvez réessayer maintenant.",
         "badCode": "Ce code d'invitation n'a pas fonctionné. Vérifiez-le ou demandez une nouvelle invitation à votre administrateur.",
         "usedInvite": "Cette invitation ne peut plus ajouter d'appareil : elle est épuisée ou a expiré. Demandez une nouvelle invitation à votre administrateur.",
         "inviteUsed": "Cette invitation a déjà servi sur tous les appareils qu'elle permet. Demandez une nouvelle invitation à votre administrateur.",
@@ -503,7 +506,8 @@
         "needsUpdate": "Ce serveur doit être mis à jour pour qu'on puisse ajouter quelqu'un depuis le mode enfant avec l'authentification unique. La connexion n'a donc pas été gardée. Mettez le serveur à jour ou connectez-vous autrement.",
         "failed": "La connexion n'a pas abouti. Connectez-vous à nouveau.",
         "reachRetry": "Impossible de joindre le serveur pour terminer la connexion. Vérifiez votre connexion, puis réessayez.",
-        "failedRetry": "Le serveur n'a pas pu terminer la connexion. Réessayez."
+        "failedRetry": "Le serveur n'a pas pu terminer la connexion. Réessayez.",
+        "waitOver": "Trop de tentatives depuis ce réseau. Vous pouvez vous reconnecter maintenant."
       },
       "tryAgain": "Réessayer"
     },
@@ -3154,7 +3158,9 @@
         "denied": "Le flux a refusé la demande. Il nécessite peut-être une connexion.",
         "localAddress": "Cette adresse est sur un réseau local. La personne qui gère votre serveur peut l’autoriser.",
         "tooLarge": "Ce flux est trop volumineux.",
-        "feedError": "Le serveur du flux a répondu par une erreur. Réessayez plus tard."
+        "feedError": "Le serveur du flux a répondu par une erreur. Réessayez plus tard.",
+        "redirectLoop": "L'adresse du flux redirige trop de fois.",
+        "interrupted": "L'ajout a été interrompu. Suivez à nouveau le flux pour réessayer."
       }
     },
     "import": {

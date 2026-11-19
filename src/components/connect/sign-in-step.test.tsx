@@ -210,6 +210,27 @@ it("names the limiter's wait from Retry-After", async () => {
   ).toBeTruthy();
 });
 
+// Once the wait is over the Sign in button works again: the words no longer name a time.
+it('drops the wait from the words once it is over', async () => {
+  jest.useFakeTimers();
+  try {
+    mockApi.login.mockRejectedValue(new ApiError(429, 'too many attempts', undefined, 30));
+    await render(<SignInStep server={AWAY} />);
+    await signInWith('chris', 'pw');
+    const waiting = 'Too many tries from this network. Try again in 30 seconds.';
+    expect(await screen.findByText(waiting)).toBeTruthy();
+    await act(async () => jest.advanceTimersByTime(29_000));
+    expect(screen.getByText(waiting)).toBeTruthy();
+    await act(async () => jest.advanceTimersByTime(1_000));
+    expect(screen.queryByText(waiting)).toBeNull();
+    expect(
+      screen.getByText('Too many tries from this network. You can try again now.'),
+    ).toBeTruthy();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
 it('says an invite used up at the exchange is used up, not a bad code', async () => {
   mockApi.redeemCode.mockResolvedValue({ server_name: 'Hearthside', pairing_token: 'pt' });
   mockApi.exchange.mockRejectedValue(new ApiError(401, 'invite already used on all its devices'));

@@ -480,6 +480,9 @@
       "errors": {
         "wait_one": "Troppi tentativi da questa rete. Riprova tra {{count}} minuto.",
         "wait_other": "Troppi tentativi da questa rete. Riprova tra {{count}} minuti.",
+        "waitSeconds_one": "Troppi tentativi da questa rete. Riprova tra {{count}} secondo.",
+        "waitSeconds_other": "Troppi tentativi da questa rete. Riprova tra {{count}} secondi.",
+        "waitOver": "Troppi tentativi da questa rete. Ora puoi riprovare.",
         "badCode": "Questo codice di invito non ha funzionato. Controllalo o chiedi un nuovo invito al tuo amministratore.",
         "usedInvite": "Questo invito non può aggiungere un altro dispositivo: è esaurito o scaduto. Chiedi un nuovo invito al tuo amministratore.",
         "inviteUsed": "Questo invito è già stato usato su tutti i dispositivi consentiti. Chiedi un nuovo invito al tuo amministratore.",
@@ -503,7 +506,8 @@
         "needsUpdate": "Questo server va aggiornato prima di poter aggiungere qualcuno dalla modalità bambini con il single sign-on, quindi l'accesso non è stato conservato. Aggiorna il server o accedi in un altro modo.",
         "failed": "L'accesso non è stato completato. Accedi di nuovo.",
         "reachRetry": "Impossibile raggiungere il server per completare l'accesso. Controlla la connessione e riprova.",
-        "failedRetry": "Il server non è riuscito a completare l'accesso. Riprova."
+        "failedRetry": "Il server non è riuscito a completare l'accesso. Riprova.",
+        "waitOver": "Troppi tentativi da questa rete. Ora puoi accedere di nuovo."
       },
       "tryAgain": "Riprova"
     },
@@ -3154,7 +3158,9 @@
         "denied": "Il feed ha rifiutato la richiesta. Forse richiede l'accesso.",
         "localAddress": "Questo indirizzo è su una rete locale. Chi gestisce il tuo server può consentirlo.",
         "tooLarge": "Questo feed è troppo grande.",
-        "feedError": "Il server del feed ha risposto con un errore. Riprova più tardi."
+        "feedError": "Il server del feed ha risposto con un errore. Riprova più tardi.",
+        "redirectLoop": "L'indirizzo del feed reindirizza troppe volte.",
+        "interrupted": "L'aggiunta si è interrotta. Segui di nuovo il feed per riprovare."
       }
     },
     "import": {

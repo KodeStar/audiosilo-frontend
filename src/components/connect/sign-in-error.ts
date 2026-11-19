@@ -9,15 +9,17 @@ export type SignInStage = 'redeem' | 'exchange' | 'login';
 /**
  * The words for a refusal that reads the same wherever it lands (a sign-in, a pairing
  * link), or `undefined` for one the caller words itself: a 429 names the wait from the
- * server's `Retry-After` (in whole minutes) when it sent one, and the server's
- * `member_disabled`, `invite_used` and `invite_expired` codes their own sentences.
+ * server's `Retry-After` when it sent one (in seconds under a minute, else in whole
+ * minutes: 30 s never reads as "1 minute"), and the server's `member_disabled`,
+ * `invite_used` and `invite_expired` codes their own sentences.
  */
 export function sharedRefusalText(e: ApiError, t: TFunction): string | undefined {
   if (e.status === 429) {
-    const s = e.retryAfterSeconds;
-    return s !== undefined && s > 0
-      ? t('connect.signIn.errors.wait', { count: Math.ceil(s / 60) })
-      : t('common.tooManyTries');
+    const secs = namedWaitSeconds(e);
+    if (secs === undefined) return t('common.tooManyTries');
+    return secs < 60
+      ? t('connect.signIn.errors.waitSeconds', { count: secs })
+      : t('connect.signIn.errors.wait', { count: Math.ceil(secs / 60) });
   }
   switch (apiErrorKind(e)) {
     case 'member_disabled':
@@ -31,13 +33,44 @@ export function sharedRefusalText(e: ApiError, t: TFunction): string | undefined
   return undefined;
 }
 
+/** What a refusal that names a wait says once that wait is over: `text` from `at` (epoch ms). */
+export type WaitOver = { at: number; text: string };
+
+/** The wait a 429's words name, in whole seconds (so 59.5 s reads as "1 minute", never "60
+ * seconds"), or `undefined` for any error that names none: ONE rule for the words, for
+ * when they give way (`refusalWaitOver`) and for a single sign-on's Try again (`oidcRetryWait`). */
+export function namedWaitSeconds(e: unknown): number | undefined {
+  if (!(e instanceof ApiError) || e.status !== 429) return undefined;
+  const s = e.retryAfterSeconds;
+  return s === undefined || s <= 0 ? undefined : Math.ceil(s);
+}
+
+/**
+ * When the wait `sharedRefusalText` names (a 429 with a `Retry-After`) is over, and the words
+ * then: the same refusal with no time in it, so "Try again in 30 seconds" never stays on
+ * screen once trying again works (`useRefusalError` swaps it then). `undefined` for any error
+ * whose words name no wait. A screen whose next step is signing in again, not trying again,
+ * names its own words (`over`, a single sign-on with no retry left).
+ */
+export function refusalWaitOver(
+  e: unknown,
+  t: TFunction,
+  over:
+    | 'connect.signIn.errors.waitOver'
+    | 'connect.oidc.errors.waitOver' = 'connect.signIn.errors.waitOver',
+): WaitOver | undefined {
+  const secs = namedWaitSeconds(e);
+  if (secs === undefined) return undefined;
+  return { at: Date.now() + secs * 1000, text: t(over) };
+}
+
 /**
  * A failed sign-in as a sentence that says what to do next (CONNECT-08), never the
  * server's raw string ("invalid credentials"). Told apart by status and the request that
  * failed: a 401 at redeem is a code that didn't work, at exchange an invite used up or
  * expired, at login a wrong name or password (a redeem's `invite_used` and
  * `invite_expired` codes say which of those it is); a 429 names the wait from the server's
- * `Retry-After` (in whole minutes) when it sent one. Anything that is no answer from the
+ * `Retry-After` when it sent one (`sharedRefusalText`). Anything that is no answer from the
  * server is the generic "Sign in failed".
  */
 export function signInErrorText(e: unknown, stage: SignInStage, t: TFunction): string {

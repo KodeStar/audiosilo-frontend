@@ -24,7 +24,8 @@ import { finishConnect } from './finish-connect';
 import { openScanner } from './invite-handoff';
 import { holdOidcIntent } from './oidc-intent';
 import { oidcButtonName } from './oidc-sign-in';
-import { type SignInStage, signInErrorText } from './sign-in-error';
+import { refusalWaitOver, type SignInStage, signInErrorText } from './sign-in-error';
+import { useRefusalError } from './use-refusal-error';
 
 type Mode = 'code' | 'password';
 
@@ -125,7 +126,8 @@ export function SignInStep({
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // A 429's wait gives way to plain words once it is over (`useRefusalError`).
+  const [error, setError] = useRefusalError();
   // A field left empty says so under itself, and nothing is sent (CONNECT-09).
   const [missing, setMissing] = useState<Field | null>(null);
   // Typing in a field clears its "enter your ..." prompt.
@@ -225,7 +227,7 @@ export function SignInStep({
         });
       }
     } catch (e) {
-      setError(signInErrorText(e, stage, t));
+      setError(signInErrorText(e, stage, t), refusalWaitOver(e, t));
       setLoading(false);
     } finally {
       submitting.current = false;

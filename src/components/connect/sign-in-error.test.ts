@@ -1,7 +1,7 @@
 import { ApiError } from '@/api/client';
 import i18n, { ensureLanguage, SUPPORTED_CODES } from '@/i18n';
 
-import { signInErrorText } from './sign-in-error';
+import { refusalWaitOver, signInErrorText } from './sign-in-error';
 
 const t = i18n.t.bind(i18n);
 
@@ -38,13 +38,47 @@ describe('signInErrorText', () => {
     }
   });
 
-  it('names the wait in whole minutes, rounding up', () => {
+  it('names a wait of a minute or more in whole minutes, rounding up', () => {
     expect(signInErrorText(new ApiError(429, 'x', undefined, 61), 'login', t)).toBe(
       'Too many tries from this network. Try again in 2 minutes.',
     );
-    expect(signInErrorText(new ApiError(429, 'x', undefined, 30), 'redeem', t)).toBe(
+    expect(signInErrorText(new ApiError(429, 'x', undefined, 60), 'redeem', t)).toBe(
       'Too many tries from this network. Try again in 1 minute.',
     );
+    // Rounded to whole seconds first: never "60 seconds".
+    expect(signInErrorText(new ApiError(429, 'x', undefined, 59.5), 'login', t)).toBe(
+      'Too many tries from this network. Try again in 1 minute.',
+    );
+  });
+
+  // A single sign-on's finish offers Try again after a 429 shorter than its minute: 30 s
+  // once read "Try again in 1 minute" (SSO-DONE verify).
+  it('names a wait under a minute in seconds', () => {
+    expect(signInErrorText(new ApiError(429, 'x', undefined, 30), 'redeem', t)).toBe(
+      'Too many tries from this network. Try again in 30 seconds.',
+    );
+    expect(signInErrorText(new ApiError(429, 'x', undefined, 0.5), 'login', t)).toBe(
+      'Too many tries from this network. Try again in 1 second.',
+    );
+  });
+
+  it.each(SUPPORTED_CODES.filter((c) => c !== 'en'))('names a wait in seconds in %s', (lng) => {
+    const wait = new ApiError(429, 'x', undefined, 30);
+    const said = signInErrorText(wait, 'login', i18n.getFixedT(lng));
+    expect(said).toMatch(/30/);
+    // A missing key falls back to the English sentence.
+    expect(said).not.toBe(signInErrorText(wait, 'login', t));
+    expect(said).not.toBe(
+      signInErrorText(new ApiError(429, 'x', undefined, 60), 'login', i18n.getFixedT(lng)),
+    );
+  });
+
+  it.each(SUPPORTED_CODES.filter((c) => c !== 'en'))('words a wait that is over in %s', (lng) => {
+    const wait = new ApiError(429, 'x', undefined, 30);
+    const said = refusalWaitOver(wait, i18n.getFixedT(lng))?.text;
+    expect(said).toBeTruthy();
+    // A missing key falls back to the English sentence.
+    expect(said).not.toBe(refusalWaitOver(wait, t)?.text);
   });
 
   it('falls back to a few minutes when the server sent no wait', () => {
@@ -66,5 +100,33 @@ describe('signInErrorText', () => {
     expect(signInErrorText(new ApiError(500, 'boom'), 'login', t)).toBe(
       'Sign in failed. Please try again.',
     );
+  });
+});
+
+describe('refusalWaitOver', () => {
+  beforeEach(() => jest.spyOn(Date, 'now').mockReturnValue(1_000_000));
+  afterEach(() => jest.restoreAllMocks());
+
+  it('says a named wait is over at the Retry-After, with no time in the words', () => {
+    expect(refusalWaitOver(new ApiError(429, 'x', undefined, 30), t)).toEqual({
+      at: 1_030_000,
+      text: 'Too many tries from this network. You can try again now.',
+    });
+    expect(refusalWaitOver(new ApiError(429, 'x', undefined, 900), t)?.at).toBe(1_900_000);
+  });
+
+  it('swaps at the whole second the words name, never before it', () => {
+    const wait = new ApiError(429, 'x', undefined, 0.3);
+    expect(signInErrorText(wait, 'login', t)).toBe(
+      'Too many tries from this network. Try again in 1 second.',
+    );
+    expect(refusalWaitOver(wait, t)?.at).toBe(1_001_000);
+  });
+
+  it('has nothing to swap for words that name no wait', () => {
+    expect(refusalWaitOver(new ApiError(429, 'x'), t)).toBeUndefined();
+    expect(refusalWaitOver(new ApiError(429, 'x', undefined, 0), t)).toBeUndefined();
+    expect(refusalWaitOver(new ApiError(401, 'x', undefined, 30), t)).toBeUndefined();
+    expect(refusalWaitOver(new TypeError('Failed to fetch'), t)).toBeUndefined();
   });
 });
