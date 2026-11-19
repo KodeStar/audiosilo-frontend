@@ -542,8 +542,10 @@ identity. Whether that hand-off still re-pairs is decided once the server answer
 answered and as whom (`reconnectFor`, `connect-model.ts`, fe#298), never by the address alone: the
 connection's own `server_id` re-pairs it through any of its addresses; another `server_id` (the
 server reset) only through the connection's paired or away address (`scanReconnect`'s rule) and
-signed in to as the same person (`sameUser`); anything else is a new connection that retires
-nothing on the reconnect's account and takes none of its addresses. The sign-in step's "Scan a QR code
+signed in to as the same person (`sameUser`: the username the connection kept, both known);
+anything else is a new connection that retires nothing on the reconnect's account (`finishConnect`
+skips `staleToRetire` for it) and takes none of its addresses. Nor does a sign-in take over a
+connection saved without a user id unless it kept the signer's username (`priorConnection`). The sign-in step's "Scan a QR code
 instead" (fe#264) hands that reconnect to the scanner in memory (`openScanner` / `takeScanFor`,
 never a `/connect/scan` param: a link opens that route too, and every way into the scanner goes
 through `openScanner`, so one without a reconnect clears what was held; the flow's layout drops

@@ -485,6 +485,8 @@ describe('placing the new connection in a profile (Phase 8)', () => {
 
   describe('a server that was reset (another server_id at the same address)', () => {
     const kit: User = { ...user, id: 9, username: 'kit' };
+    /** Sam's account on the rebuilt server: the same username, a new id. */
+    const samAgain: User = { ...sam, id: 9 };
     /** Chris (PIN) and Sam on one server, Sam listening; then the server is rebuilt. */
     const household = async () => {
       await finishConnect({ serverUrl: AWAY, session: session('old') });
@@ -508,7 +510,7 @@ describe('placing the new connection in a profile (Phase 8)', () => {
         // Sam's reconnect banner: the rebuilt server, Sam's new account there.
         await finishConnect({
           serverUrl: AWAY,
-          session: session('new', { user: kit }),
+          session: session('new', { user: samAgain }),
           reconnectId: 'old.2',
         });
       } finally {
@@ -530,6 +532,32 @@ describe('placing the new connection in a profile (Phase 8)', () => {
       expect(await SecureStore.getItemAsync('audiosilo.token.old.1')).toBe('tok-old');
     });
 
+    it("a reconnect banner's sign-in as someone else at a public address retires nothing (fe#298)", async () => {
+      await household();
+      const removed: string[] = [];
+      /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+      const off = require('@/stores/session').onConnectionRemoved((id: string) => {
+        removed.push(id);
+      });
+      try {
+        // Sam's banner, but Kit signs in to the rebuilt server: a connection of Kit's own.
+        await finishConnect({
+          serverUrl: AWAY,
+          session: session('new', { user: kit }),
+          reconnectId: 'old.2',
+        });
+      } finally {
+        off();
+      }
+      expect(removed).toEqual([]);
+      expect(useSession.getState().connections.map((c) => [c.id, c.needsReconnect])).toEqual([
+        ['old.1', 'server-reset'],
+        ['old.2', 'server-reset'],
+        ['new.9', undefined],
+      ]);
+      expect(await SecureStore.getItemAsync('audiosilo.token.old.2')).not.toBeNull();
+    });
+
     it('"Add someone" on a reset server retires nobody\'s identity', async () => {
       await household();
       intent().setConnectForNewProfile(true);
@@ -549,7 +577,7 @@ describe('placing the new connection in a profile (Phase 8)', () => {
       });
       await finishConnect({
         serverUrl: AWAY,
-        session: session('new', { user: kit }),
+        session: session('new', { user: samAgain }),
         reconnectId: 'old.2',
       });
       const kid = profiles().activeProfile();

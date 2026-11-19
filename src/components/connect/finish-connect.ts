@@ -109,19 +109,22 @@ export async function finishConnect(input: {
   // A server that was reset (another server_id at this address): only the stale identity
   // of the person signing in is retired, and the new connection takes its place in their
   // profile; anyone else's stays for them (`staleToRetire`). At a home-network address only
-  // the reconnect's own is (`staleIdentities`: another box can answer there).
-  const retire = existing
-    ? []
-    : staleToRetire(
-        staleIdentities(
-          connections,
-          serverId,
-          plan.serverUrl,
-          reconnectId !== undefined ? [reconnectId] : [],
-        ).map((c) => c.id),
-        useProfiles.getState(),
-        { reconnectId, newPerson },
-      );
+  // the reconnect's own is (`staleIdentities`: another box can answer there). A reconnect
+  // `reconnectFor` declined (another server, as someone else) retires nothing (fe#298).
+  const declined = input.reconnectId !== undefined && reconnectId === undefined;
+  const retire =
+    existing || declined
+      ? []
+      : staleToRetire(
+          staleIdentities(
+            connections,
+            serverId,
+            plan.serverUrl,
+            reconnectId !== undefined ? [reconnectId] : [],
+          ).map((c) => c.id),
+          useProfiles.getState(),
+          { reconnectId, newPerson },
+        );
   const replaced = retire[0];
   const hadProfile = existing
     ? profileOf(existing.id)
