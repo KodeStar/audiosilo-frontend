@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
-import { ApiError } from '@/api/client';
+import { ApiError, isProxyRefusal } from '@/api/client';
 import { connectClient, connectClientFor } from '@/api/connect-client';
 import { probeServerId } from '@/api/server-id-probe';
 import type { ServerInfo } from '@/api/types';
@@ -492,7 +492,11 @@ export function ConnectStart() {
       }
       setProbe(
         e instanceof ApiError
-          ? { kind: 'error', message: e.message }
+          ? {
+              kind: 'error',
+              // An auth proxy's own 401 (fe#295): what to do about it, not "Unauthorized".
+              message: isProxyRefusal(e) ? t('connect.signIn.errors.proxyRefused') : e.message,
+            }
           : {
               kind: 'unreachable',
               address: hostOf(normalized),

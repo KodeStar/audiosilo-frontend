@@ -503,6 +503,18 @@ describe('the address field', () => {
     expect(mockBases).toEqual(['https://books.example.com']);
   });
 
+  // fe#295: an auth proxy's own 401 says what to do, not "Unauthorized".
+  it("says the proxy turned the device away when the answer is an auth proxy's own 401", async () => {
+    mockApi.serverInfo.mockRejectedValue(
+      new ApiError(401, 'Unauthorized', undefined, undefined, true),
+    );
+    await render(<ConnectStart />);
+    await fireEvent.changeText(screen.getByLabelText('Server address'), AWAY);
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(await screen.findByText(/sign-in proxy turned this device away/)).toBeTruthy();
+    expect(screen.queryByText('Unauthorized')).toBeNull();
+  });
+
   it('asks for an address when there is none', async () => {
     await render(<ConnectStart />);
     await fireEvent.press(screen.getByText('Continue'));
