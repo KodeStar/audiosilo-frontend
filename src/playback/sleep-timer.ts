@@ -1063,7 +1063,11 @@ const sleepTimerStore = createStore<SleepTimerState>()((set, get) => {
       // timer running its course however little it had left to stop.
       // (The `nowPlaying` half is defensive: with nothing loaded the timer has already
       // been ended by `cancelIfBookChanged` before the tick could get here.)
-      if (!player.nowPlaying || !soundPlays(player)) {
+      // An end-of-chapter timer is the timer's book's alone: its target crossed by a move of
+      // that book while it shows paused stops nothing, the car's book playing on included.
+      const live =
+        get().origin?.kind === 'duration' ? soundPlays(player) : selectIsTransportLive(player);
+      if (!player.nowPlaying || !live) {
         get().endTimer('expired');
         return;
       }

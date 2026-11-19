@@ -1300,6 +1300,20 @@ describe('sleep timer', () => {
       }
     });
 
+    // An end-of-chapter timer counts the store's book alone: a move of that book across its
+    // target while it shows paused stops nothing, the car's book playing on.
+    it("never stops it for an end-of-chapter timer crossed while the store's book shows paused", async () => {
+      setPosition(100);
+      useSleepTimer.getState().startUntilPosition(1800, endOf('Chapter 3'));
+      jest.advanceTimersByTime(1_000);
+      setPosition(1800);
+      jest.advanceTimersByTime(1_000);
+      await flush();
+      expect(mockPause).not.toHaveBeenCalled();
+      expect(selectSleepPhase(useSleepTimer.getState())).toBe('idle');
+      expect(player.spies.resumeOtherBook).not.toHaveBeenCalled();
+    });
+
     it("resumes the store's own book on a shake when that is what it stopped", async () => {
       player.setOtherBookPlays(false);
       setPlayStateSilently('playing');
