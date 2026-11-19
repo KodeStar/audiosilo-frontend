@@ -213,9 +213,10 @@ export type Capabilities = {
    * (absent means one recording per work, as before), so nothing waits on the flag. */
   other_recordings?: boolean;
   /** Whether the server marks every 401 of its own with `X-AudioSilo-Unauthorized`
-   * (WS-401-MARK, `UNAUTHORIZED_HEADER` in `client.ts`). True: a 401 without the mark is
-   * not the server's, whatever its body, so a proxy answering in the server's own shape
-   * signs nobody out (`unauthorizedOrigin`). Absent on older servers, and while a
+   * (WS-401-MARK, `UNAUTHORIZED_HEADER` in `client.ts`). True: a 401 without the mark, to a
+   * request that carried proxy headers, is not the server's, whatever its body, so a proxy
+   * answering in the server's own shape signs nobody out (`unauthorizedOrigin`; a request
+   * that carried none is left to its body). Absent on older servers, and while a
    * connection's `/server` is not known: a 401 in the server's exact body is still its own. */
   unauthorized_mark?: boolean;
 };

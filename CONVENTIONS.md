@@ -489,13 +489,14 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   CROSS-REPO.md, shipped clients meet older servers), or a proxy that passed it on. Not once the
   connection's last `/server` answer says the server marks its 401s (capability
   `unauthorized_mark`, read from the query cache by `connectionClient`, never a request on the
-  401 path; unknown keeps the body step): an unmarked 401 is then never the server's, so a proxy
-  answering in the server's exact shape signs nobody out. Else a 401 to
+  401 path; unknown keeps the body step): an unmarked 401 behind proxy headers is then never the
+  server's, so a proxy answering in the server's exact shape signs nobody out. Else a 401 to
   an address the request carried proxy headers to is the proxy's even with a JSON `error`
-  (`send` notes the answer, `unauthorizedOrigin` reads it, so every reader gets it). Else the body decides, as for every 403:
-  the server's own always carry its JSON `error`; one without it (a page, an empty body, someone
-  else's JSON) is the proxy's (`ApiError.fromProxy`, `unauthorizedOrigin`). `isSignedOutError`
-  is false for it, and so is
+  (`send` notes the answer, `unauthorizedOrigin` reads it, so every reader gets it). Else (a
+  request that carried no proxy headers, whatever is known of the mark) the body decides, as for
+  every 403: the server's own always carry its JSON `error`; one without it (a page, an empty
+  body, someone else's JSON) is the proxy's (`ApiError.fromProxy`, `unauthorizedOrigin`).
+  `isSignedOutError` is false for it, and so is
   `accessRefusal`'s no access (fe#280), so no reconnect banner and no sign-out, and the sign-in step
   says the proxy refused the request (`isProxyRefusal`, `connect.signIn.errors.proxyRefused`).
   Nor is its 403 "not in the library" (`isNotInLibraryError` is never a proxy's: the book, browse

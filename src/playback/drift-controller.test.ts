@@ -46,6 +46,8 @@ jest.mock('@/api/connection-clients', () => ({
   connectionOf: () => undefined,
   sessionReady: () => true,
   whenSessionReady: () => () => {},
+  // The provider (loaded through the real hooks) registers its cache reader at import.
+  readKnownCapabilitiesFrom: () => {},
 }));
 
 /* eslint-disable import/first */

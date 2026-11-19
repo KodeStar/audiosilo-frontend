@@ -412,16 +412,19 @@ const markingServerAnswers = new WeakSet<Response>();
  * answers in the server's exact shape signs nobody out. Else a 401 to a request that
  * carried proxy headers is the proxy's, even with a JSON `error`. Otherwise, and for every
  * 403, the body says: the server's every refusal is JSON with an `error` string, so one
- * without it is the proxy's (fe#295).
+ * without it is the proxy's (fe#295). So what is known of the mark changes the reading only
+ * of a request that carried proxy headers: one that carried none is left to its body, as
+ * before the mark (an `error` is the server's). `mark` is the answer's `unauthorizedMark`.
  */
 function unauthorizedOrigin(
   res: Response,
+  mark: string | undefined,
   data: unknown,
   hasServerError: boolean,
 ): 'server' | 'proxy' | 'unknown' {
   if (res.status !== 401 && res.status !== 403) return 'unknown';
   if (res.status === 401) {
-    if (unauthorizedMark(res) !== undefined) return 'server';
+    if (mark !== undefined) return 'server';
     if (!markingServerAnswers.has(res) && serverUnauthorizedBody(data)) return 'server';
     if (proxiedAnswers.has(res)) return 'proxy';
   }
@@ -456,7 +459,7 @@ function apiErrorOf(res: Response, data: unknown, fallbackMsg: string): ApiError
       retryAfterOf(res, fetch),
     );
   }
-  const origin = unauthorizedOrigin(res, data, !!msg);
+  const origin = unauthorizedOrigin(res, mark, data, !!msg);
   return new ApiError(
     res.status,
     msg || fallbackMsg,
@@ -779,9 +782,10 @@ export class ApiClient {
    * `marksUnauthorized` says whether the server is known to mark every 401 of its own
    * (capability `unauthorized_mark` on its last `/server` answer), asked when a 401
    * arrives and never by a request: a signed-in connection's client reads the flag the
-   * app already holds. True: a 401 without the mark is not the server's
-   * (`unauthorizedOrigin`). Anything else (not known yet, an older server, a bare client in
-   * the connect flow): the 401's body is read as before.
+   * app already holds. True: a 401 without the mark, to a request that carried proxy
+   * headers, is not the server's whatever its body (`unauthorizedOrigin`; one that carried
+   * none is left to its body). Anything else (not known yet, an older server, a bare client
+   * in the connect flow): the 401's body is read as before.
    */
   constructor(
     baseUrl: string,
