@@ -648,8 +648,9 @@ function applyStored(read: StoredSignIns): void {
   // same sign-in under a new id, so what this tab holds of it goes on under that id and it
   // is not left (the player's stop is for a connection that went).
   const renamed = renamesIn(mine, listed);
+  const idNow = (id: string) => renamed.get(id) ?? id;
   const next = listed.map((c) => {
-    const was = mine.find((m) => (renamed.get(m.id) ?? m.id) === c.id);
+    const was = mine.find((m) => idNow(m.id) === c.id);
     // A flag stays with the token it was raised for: a new one (signed in again in another
     // tab) clears it.
     return was?.needsReconnect && was.token === c.token
@@ -659,7 +660,7 @@ function applyStored(read: StoredSignIns): void {
   const same =
     next.length === mine.length &&
     next.every((c, i) => connectionText(c) === connectionText(mine[i]));
-  const kept = defaultConnectionId && (renamed.get(defaultConnectionId) ?? defaultConnectionId);
+  const kept = defaultConnectionId && idNow(defaultConnectionId);
   const def = kept && next.some((c) => c.id === kept) ? kept : read.defaultId;
   const mirrored = mirror(next, def);
   if (
@@ -671,16 +672,14 @@ function applyStored(read: StoredSignIns): void {
     return;
   // A sign-in's own proxy headers end with it: signed out, or signed in again, in another tab.
   // One another tab's identity migration renamed keeps them under its new id.
-  const own = ownSetsStill(signInProxySets, next, mine);
+  const own = ownSetsStill(signInProxySets, next, mine, renamed);
   setFollowed({
     connections: same ? mine : next,
     ...mirrored,
     ...sets,
     ...(own !== signInProxySets ? { signInProxySets: own } : {}),
   });
-  for (const c of mine) {
-    if (!renamed.has(c.id) && !next.some((n) => n.id === c.id)) void leaveConnection(c.id);
-  }
+  for (const c of mine) if (!next.some((n) => n.id === idNow(c.id))) void leaveConnection(c.id);
 }
 
 /** The connections of `mine` the stored list (`listed`) holds under a new id the identity
@@ -1254,20 +1253,20 @@ function proxyChoice(
  * `connections` that holds the token it held in `was`. A sign-out, a retired identity or a
  * sign-in again (here or in another tab) ends it, its set with it: that set was the sign-in's
  * alone, never to be sent for another. A sign-in the identity migration renamed (another
- * tab's launch moving a legacy id, `renamedIn`) is still on: its set goes on under the new
- * id. The same object when nothing changed.
+ * tab's launch moving a legacy id, `renamed` from `renamesIn`) is still on: its set goes on
+ * under the new id. The same object when nothing changed.
  */
 function ownSetsStill(
   own: Readonly<Record<string, SignInProxySet>>,
   connections: readonly Connection[],
   was: readonly Connection[] = connections,
+  renamed: ReadonlyMap<string, string> = new Map(),
 ): Readonly<Record<string, SignInProxySet>> {
   const ids = Object.keys(own);
   const on = ids.flatMap((id) => {
     const before = was.find((c) => c.id === id);
-    if (!before) return [];
-    const now = connections.find((c) => c.id === id) ?? renamedIn(before, connections, was);
-    return now && now.token === before.token ? [[now.id, own[id]] as const] : [];
+    const now = connections.find((c) => c.id === (renamed.get(id) ?? id));
+    return before && now && now.token === before.token ? [[now.id, own[id]] as const] : [];
   });
   return on.length === ids.length && on.every(([id], i) => id === ids[i])
     ? own

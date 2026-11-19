@@ -758,32 +758,44 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     expect(s.connections.find((c) => c.id === sam)?.needsReconnect).toBe('auth');
   });
 
-  // Another tab's launch moves a legacy id (the bare `server_id`) to `<server_id>.<user_id>`,
-  // the token copied with it: the same sign-in, so this tab's flag and default go with it,
-  // and nothing playing through it is stopped.
-  it("carries a connection another tab's identity migration renamed, never leaving it", async () => {
+  // A tab signed in to `srv` under its legacy id (the bare `server_id`), its reconnect flag
+  // raised, and the stored list another tab's launch writes as it moves the id to
+  // `<server_id>.<user_id>` with the token `token` (the one copied, or another sign-in's).
+  async function legacyTab() {
     const browser = fakeBrowser();
     const legacy = { id: 'srv', serverId: 'srv', serverUrl: 'https://srv', name: 'srv' };
     browser.data.set(CONNECTIONS_KEY, JSON.stringify([{ ...legacy, user: mkUser(12, 'evie') }]));
     browser.data.set('audiosilo.token.srv', 'tk');
     const a = openTab(browser);
     await a.useSession.getState().hydrate();
-    const alex = await signIn(a, 1, 'alex', 'ta', 'other');
-    await a.useSession.getState().setDefaultConnection('srv');
     a.useSession.getState().markNeedsReconnect('srv', 'auth');
     const left: string[] = [];
     a.onConnectionRemovedInOtherTab((id) => void left.push(id));
-    // Another tab's launch: the token copied, the list written with the new id, and the
-    // stored default that tab's own.
-    const other = browser.tab();
-    const stored = JSON.parse(browser.data.get(CONNECTIONS_KEY) ?? '[]') as { id: string }[];
-    other.localStorage.setItem('audiosilo.token.srv.12', 'tk');
-    other.localStorage.setItem(DEFAULT_CONNECTION_KEY, JSON.stringify(alex));
-    other.localStorage.setItem(
-      CONNECTIONS_KEY,
-      JSON.stringify(stored.map((c) => (c.id === 'srv' ? { ...c, id: 'srv.12' } : c))),
+    const migrate = (token: string, before?: (other: FakeTab) => void) => {
+      const other = browser.tab();
+      const stored = JSON.parse(browser.data.get(CONNECTIONS_KEY) ?? '[]') as { id: string }[];
+      other.localStorage.setItem('audiosilo.token.srv.12', token);
+      before?.(other);
+      other.localStorage.setItem(
+        CONNECTIONS_KEY,
+        JSON.stringify(stored.map((c) => (c.id === 'srv' ? { ...c, id: 'srv.12' } : c))),
+      );
+      other.localStorage.removeItem('audiosilo.token.srv');
+    };
+    return { a, left, migrate };
+  }
+
+  // Another tab's launch moves the legacy id, the token copied with it: the same sign-in, so
+  // this tab's flag and default go with it, and nothing playing through it is stopped.
+  it("carries a connection another tab's identity migration renamed, never leaving it", async () => {
+    const { a, left, migrate } = await legacyTab();
+    const alex = await signIn(a, 1, 'alex', 'ta', 'other');
+    await a.useSession.getState().setDefaultConnection('srv');
+    a.useSession.getState().markNeedsReconnect('srv', 'auth');
+    // The stored default that tab's own.
+    migrate('tk', (other) =>
+      other.localStorage.setItem(DEFAULT_CONNECTION_KEY, JSON.stringify(alex)),
     );
-    other.localStorage.removeItem('audiosilo.token.srv');
     await settle();
     const s = a.useSession.getState();
     expect(s.connections.map((c) => c.id).sort()).toEqual([alex, 'srv.12'].sort());
@@ -793,23 +805,9 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
   });
 
   it('leaves a connection the stored list drops for one on a new token', async () => {
-    const browser = fakeBrowser();
-    const legacy = { id: 'srv', serverId: 'srv', serverUrl: 'https://srv', name: 'srv' };
-    browser.data.set(CONNECTIONS_KEY, JSON.stringify([{ ...legacy, user: mkUser(12, 'evie') }]));
-    browser.data.set('audiosilo.token.srv', 'tk');
-    const a = openTab(browser);
-    await a.useSession.getState().hydrate();
-    a.useSession.getState().markNeedsReconnect('srv', 'auth');
-    const left: string[] = [];
-    a.onConnectionRemovedInOtherTab((id) => void left.push(id));
+    const { a, left, migrate } = await legacyTab();
     // Not a rename: the new id holds another sign-in's token.
-    const other = browser.tab();
-    other.localStorage.setItem('audiosilo.token.srv.12', 'tk2');
-    other.localStorage.setItem(
-      CONNECTIONS_KEY,
-      JSON.stringify([{ ...legacy, id: 'srv.12', user: mkUser(12, 'evie') }]),
-    );
-    other.localStorage.removeItem('audiosilo.token.srv');
+    migrate('tk2');
     await settle();
     const conn = a.useSession.getState().connections.find((c) => c.id === 'srv.12');
     expect(conn?.needsReconnect).toBeUndefined();
