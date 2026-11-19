@@ -305,9 +305,33 @@ export async function addBookmarkOrQueue(
   return { queued };
 }
 
+/**
+ * Keep a bookmark in the outbox and send it from there, never straight to the server: how a
+ * waiting one is put back (its row's Undo). A replay may have sent it just before the
+ * Delete, and only a replay's read before its send tells, so it is not made twice. Rejects
+ * when the connection is gone or the device could not store it.
+ */
+export async function queueBookmark(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  position: number,
+  note = '',
+  label?: BookmarkLabel,
+): Promise<QueuedBookmark> {
+  if (!resolveClient(connectionId)) throw new Error('connection gone');
+  const queued = await append(
+    { connectionId, libraryId, path, position, note, ...(label ? { label } : {}) },
+    connectionGeneration(connectionId),
+  );
+  void flushBookmarks(connectionId).catch(() => undefined);
+  return queued;
+}
+
 /** Take a waiting bookmark out of the outbox, unsent (the pending row's delete). Resolves to
- * whether it was still waiting. One whose POST a replay has already sent may still land; one
- * a replay claimed but has not sent yet is skipped (`stillWaiting`). */
+ * whether it was still waiting. One whose POST a replay has already sent may still land (its
+ * Undo goes through `queueBookmark` for that); one a replay claimed but has not sent yet is
+ * skipped (`stillWaiting`). */
 export function discardQueuedBookmark(id: string): Promise<boolean> {
   return withLock(async () => {
     const queue = await readQueue();

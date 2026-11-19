@@ -82,6 +82,7 @@ import {
   addBookmarkOrQueue,
   discardQueuedBookmark,
   flushBookmarks,
+  queueBookmark,
   queuedBookmarks,
   queuedBookmarksSnapshot,
   resetAnnotationOutboxForTests,
@@ -605,6 +606,43 @@ describe('sending', () => {
     await replaying;
     expect(held.map((b) => b.position)).toEqual([100]);
     expect(await queuedBookmarks()).toEqual([]);
+  });
+
+  it('puts one back through the outbox, so one sent just before its Delete is not made twice', async () => {
+    const { client, held, state } = server('c1', offline());
+    await addBookmarkOrQueue('c1', 1, 'a/book', 100, 'n');
+    await idle();
+    state.down = null;
+    // Its POST is on its way when its row is deleted.
+    let land: () => void = () => {};
+    const send = client.addBookmark.getMockImplementation();
+    client.addBookmark.mockImplementationOnce(
+      (...args: unknown[]) => new Promise((resolve) => (land = () => resolve(send?.(...args)))),
+    );
+    const replaying = flushBookmarks();
+    await idle();
+    const [entry] = await queuedBookmarks();
+    expect(await discardQueuedBookmark(entry.id)).toBe(true);
+    // Undo, then the POST lands after all.
+    const back = queueBookmark('c1', 1, 'a/book', 100, 'n');
+    land();
+    await replaying;
+    await back;
+    await idle();
+    expect(held.map((b) => b.position)).toEqual([100]);
+    expect(await queuedBookmarks()).toEqual([]);
+  });
+
+  it('puts one back for a server that never got it, and sends it', async () => {
+    const { held, state } = server('c1', offline());
+    await addBookmarkOrQueue('c1', 1, 'a/book', 100);
+    const [entry] = await queuedBookmarks();
+    await discardQueuedBookmark(entry.id);
+    state.down = null;
+    expect(await queueBookmark('c1', 1, 'a/book', 100)).toMatchObject({ position: 100 });
+    await idle();
+    expect(held.map((b) => b.position)).toEqual([100]);
+    await expect(queueBookmark('gone', 1, 'a/book', 100)).rejects.toThrow('connection gone');
   });
 
   it('a pending one taken out unsent is never sent', async () => {

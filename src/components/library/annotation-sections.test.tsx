@@ -58,7 +58,7 @@ const mockDiscard = jest.fn(async (_id: string) => true);
 const mockRequeue = jest.fn(async (..._a: unknown[]) => ({}));
 jest.mock('@/playback/annotation-outbox', () => ({
   discardQueuedBookmark: (id: string) => mockDiscard(id),
-  addBookmarkOrQueue: (...a: unknown[]) => mockRequeue(...a),
+  queueBookmark: (...a: unknown[]) => mockRequeue(...a),
 }));
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));

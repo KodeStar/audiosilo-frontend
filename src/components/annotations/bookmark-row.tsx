@@ -5,8 +5,8 @@ import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { formatClock } from '@/lib/format';
 import {
-  addBookmarkOrQueue,
   discardQueuedBookmark,
+  queueBookmark,
   type QueuedBookmark,
 } from '@/playback/annotation-outbox';
 
@@ -60,8 +60,10 @@ export function QueuedBookmarkRow({
     void discardQueuedBookmark(bookmark.id).then(
       (removed) => {
         if (!removed) return; // sent meanwhile: the list shows it as made
+        // Undo puts it back in the outbox, not on the server: a replay may have sent it
+        // just before the Delete, and its read before a send keeps it from being made twice.
         deletedToast(t, BOOKMARK_DELETE_COPY, position, () =>
-          addBookmarkOrQueue(connectionId, libraryId, path, position, note, label),
+          queueBookmark(connectionId, libraryId, path, position, note, label),
         );
       },
       () => toast({ title: t(BOOKMARK_DELETE_COPY.deleteFailed) }),
