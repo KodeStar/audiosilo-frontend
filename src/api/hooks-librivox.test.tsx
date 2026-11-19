@@ -178,12 +178,43 @@ describe('useLibrivoxJob', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(intervalOf(qc)).toBe(LIBRIVOX_UNSEEN_POLL_MS);
     const query = qc.getQueryCache().find({ queryKey: qk.bridgeJob('c1', 41) })!;
-    // Two reads in a row with no answer (the server out of reach), the last answer kept.
-    query.setState({ error: new ApiError(502, 'bad gateway'), fetchFailureCount: 2 });
+    // A read with no answer (the server out of reach), the last answer kept.
+    mockClients.c1.bridgeJob.mockRejectedValue(new ApiError(502, 'bad gateway'));
+    await act(async () => {
+      await result.current.refetch();
+    });
     expect(intervalOf(qc)).toBe(BRIDGE_IDLE_POLL_MS);
     // A refusal stops it.
-    query.setState({ error: new ApiError(403, 'admin only'), fetchFailureCount: 1 });
+    query.setState({ error: new ApiError(403, 'admin only') });
     expect(intervalOf(qc)).toBe(false);
+  });
+
+  it('waits twice as long for each read that failed in a row, and keeps its pace once one is answered', async () => {
+    const running = librivoxJob({ state: 'running' });
+    const { result, qc } = await mount(
+      librivoxServer(),
+      () => useSeenJob(),
+      (c) => c.bridgeJob.mockResolvedValue(running),
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const refetch = () =>
+      act(async () => {
+        await result.current.refetch();
+      });
+    // Each fetch starts TanStack's own failure count at 0 again: the run is counted here.
+    mockClients.c1.bridgeJob.mockRejectedValue(new ApiError(502, 'bad gateway'));
+    await refetch();
+    expect(intervalOf(qc)).toBe(LIBRIVOX_POLL_MS * 2);
+    await refetch();
+    expect(intervalOf(qc)).toBe(LIBRIVOX_POLL_MS * 4);
+    await refetch();
+    expect(intervalOf(qc)).toBe(LIBRIVOX_POLL_MS * 8);
+    mockClients.c1.bridgeJob.mockResolvedValue(running);
+    await refetch();
+    expect(intervalOf(qc)).toBe(LIBRIVOX_POLL_MS);
+    mockClients.c1.bridgeJob.mockRejectedValue(new ApiError(502, 'bad gateway'));
+    await refetch();
+    expect(intervalOf(qc)).toBe(LIBRIVOX_POLL_MS * 2);
   });
 
   it('does not poll while the app is in the background', async () => {

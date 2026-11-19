@@ -2885,6 +2885,33 @@ export function useLibrivoxWork(id: string | null, connectionId?: string) {
   );
 }
 
+/** Where each query's run of failed reads began (`failuresInARow`): its answer count then,
+ * and its error count before the first failure. */
+const failureRuns = new WeakMap<object, { answers: number; errorsBefore: number }>();
+
+/** How many reads of `query` failed in a row since its last answer. Not TanStack's
+ * `fetchFailureCount`: each fetch starts it at 0 again, so with `retry: false` it never
+ * passes 1. Counted from `errorUpdateCount`, from where it stood at the last answer. */
+function failuresInARow(query: {
+  state: {
+    dataUpdateCount: number;
+    errorUpdateCount: number;
+    dataUpdatedAt: number;
+    errorUpdatedAt: number;
+  };
+}): number {
+  const { dataUpdateCount, errorUpdateCount, dataUpdatedAt, errorUpdatedAt } = query.state;
+  const failing = errorUpdateCount > 0 && errorUpdatedAt >= dataUpdatedAt;
+  let run = failureRuns.get(query);
+  if (!run || run.answers !== dataUpdateCount) {
+    // First seen, or answered since: a run of failures starts from here (the last one counts
+    // when it came after the answer, as the first seen may).
+    run = { answers: dataUpdateCount, errorsBefore: errorUpdateCount - (failing ? 1 : 0) };
+    failureRuns.set(query, run);
+  }
+  return failing ? errorUpdateCount - run.errorsBefore : 0;
+}
+
 /** A Bridge job by its id (a `librivox.fetch` the page queued or saw open), polled while
  * it is open and `active` (`librivoxJobPollInterval`: slower with no recording row reading it
  * too, and backing off while reads fail) with the app in the foreground (only
@@ -2903,18 +2930,16 @@ export function useLibrivoxJob(id: number | undefined, active: boolean, connecti
       ready: id !== undefined,
       retry: false,
       refetchInterval: (query) => {
-        const { data, error, fetchFailureCount } = query.state;
-        // A refusal stays refused (the default retry's rule, `retryQuery`).
-        const refused = !!error && (isSignedOutError(error) || isNotInLibraryError(error));
-        const gone = error instanceof ApiError && error.status === 404;
-        if (refused && !gone) return false;
+        const { data, error } = query.state;
+        // A refusal stays refused (the default retry's rule, `retryQuery`), and a 404 is gone.
+        if (isSignedOutError(error) || isNotInLibraryError(error)) return false;
         return librivoxJobPollInterval(
           data,
-          gone,
+          false,
           active && AppState.currentState === 'active',
           !!error,
           // A reader besides this one (a recording row on screen): a page shows it.
-          { seen: query.getObserversCount() > 1, failures: fetchFailureCount },
+          { seen: query.getObserversCount() > 1, failures: failuresInARow(query) },
         );
       },
     },
