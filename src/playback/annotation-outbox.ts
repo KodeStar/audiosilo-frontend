@@ -16,7 +16,7 @@ import {
   whenSessionReady,
 } from '@/api/connection-clients';
 import { addBookmark, cachedCapability, fetchCapabilities, showServerBookmark } from '@/api/hooks';
-import { useProxyRefusals } from '@/api/proxy-refusal';
+import { onProxyRefusalsOver } from '@/api/proxy-refusal';
 import { noteRateLimit, onRateLimitOver, rateLimited } from '@/api/rate-limit';
 import { isReachable, noteFailure, onReconnect } from '@/api/reachability';
 import { keepServerAnswer } from '@/api/server-snapshots';
@@ -1099,7 +1099,7 @@ function scheduleRetry(): void {
  * connection's when the wait its server asked for (a 429, `rateLimited`) is over, as the
  * stored queues' (`onRateLimitOver`), a connection's when it is signed in again (a new
  * token, or its reconnect flag cleared: what its 401s kept waiting goes at once), and a
- * connection's when a proxy's refusals of it end (`useProxyRefusals`: the server itself
+ * connection's when a proxy's refusals of it end (`onProxyRefusalsOver`: the server itself
  * answered, so what the proxy turned away goes at once, not at the backoff's next try). The
  * foreground, the web's focus and `online` are the stored queues' (`startQueueReplays`), and
  * the backoff is `scheduleRetry`'s. Started with the root's services; returns the stop.
@@ -1110,12 +1110,7 @@ export const startBookmarkSync = sharedStart((): (() => void) => {
     whenSessionReady(() => flush()),
     onReconnect((cid) => flush(cid)),
     onRateLimitOver((cid) => flush(cid)),
-    useProxyRefusals.subscribe(({ refused }, prev) => {
-      // Not one that ended with its connection (signed out or removed: nothing to send).
-      for (const cid of Object.keys(prev.refused)) {
-        if (!refused[cid] && connectionOf(cid)) flush(cid);
-      }
-    }),
+    onProxyRefusalsOver((cid) => flush(cid)),
     useSession.subscribe((state, prev) => {
       if (state.connections === prev.connections) return;
       for (const c of state.connections) {

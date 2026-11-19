@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { ApiError, type ApiClient } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { liveClient } from '@/api/live-client';
+import { onProxyRefusalsOver } from '@/api/proxy-refusal';
 import { noteRateLimit, onRateLimitOver, rateLimited } from '@/api/rate-limit';
 import { cachedCapability, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
@@ -1457,6 +1458,11 @@ async function sendChunk(
 // connection's id now (`resolveConnectionId`), which held the events of an id the identity
 // migration moved it from too: those go as well, under the id they name.
 onRateLimitOver((connectionId) => {
+  void flushEveryId(connectionId).catch(() => undefined);
+});
+// A proxy's refusals of the connection ended (`onProxyRefusalsOver`): the events they held go
+// now, under every id they name, not at the next replay.
+onProxyRefusalsOver((connectionId) => {
   void flushEveryId(connectionId).catch(() => undefined);
 });
 

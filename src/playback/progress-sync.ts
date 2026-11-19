@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { ApiError, type ApiClient, isRefusedForGood, TimeoutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { liveClient } from '@/api/live-client';
+import { onProxyRefusalsOver } from '@/api/proxy-refusal';
 import {
   forgetRateLimit,
   noteRateLimit,
@@ -1486,6 +1487,9 @@ export async function flushQueue(connectionId?: string): Promise<void> {
 // A wait the server asked for (a 429) is over: the saves it held go now. That connection's
 // only: another's are held by their own wait, or went already.
 onRateLimitOver((connectionId) => void flushQueue(connectionId).catch(() => undefined));
+// A proxy's refusals of the connection ended (`onProxyRefusalsOver`): the saves they held go
+// now, not at the next replay.
+onProxyRefusalsOver((connectionId) => void flushQueue(connectionId).catch(() => undefined));
 
 /** Where a replay of a stored queue (this one, the reader's) sends a connection's saves:
  * through its client, kept while its server is known down or asked to wait (a 429 until its

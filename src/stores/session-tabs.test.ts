@@ -780,6 +780,9 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     a.useSession.getState().markNeedsReconnect('srv', 'auth');
     const left: string[] = [];
     a.onConnectionRemovedInOtherTab((id) => void left.push(id));
+    // What this tab holds in memory under the old id (a proxy's refusals of it) is told.
+    const renames: [string, string][] = [];
+    a.onConnectionRenamed((from, to) => void renames.push([from, to]));
     const migrate = (token: string, before?: (other: FakeTab) => void) => {
       const other = browser.tab();
       const stored = JSON.parse(browser.data.get(CONNECTIONS_KEY) ?? '[]') as { id: string }[];
@@ -791,13 +794,13 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
       );
       other.localStorage.removeItem('audiosilo.token.srv');
     };
-    return { a, left, migrate };
+    return { a, left, renames, migrate };
   }
 
   // Another tab's launch moves the legacy id, the token copied with it: the same sign-in, so
   // this tab's flag and default go with it, and nothing playing through it is stopped.
   it("carries a connection another tab's identity migration renamed, never leaving it", async () => {
-    const { a, left, migrate } = await legacyTab();
+    const { a, left, renames, migrate } = await legacyTab();
     const alex = await signIn(a, 1, 'alex', 'ta', 'other');
     await a.useSession.getState().setDefaultConnection('srv');
     a.useSession.getState().markNeedsReconnect('srv', 'auth');
@@ -811,6 +814,7 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
     expect(s.connections.find((c) => c.id === 'srv.12')?.needsReconnect).toBe('auth');
     expect(s.defaultConnectionId).toBe('srv.12');
     expect(left).toEqual([]);
+    expect(renames).toEqual([['srv', 'srv.12']]);
     // The book it plays (and its saves, spans and bookmarks) still names `srv`: that reaches
     // the renamed connection, and the web's files are found where they were kept.
     expect(a.clients.connectionOf('srv')?.id).toBe('srv.12');
@@ -818,10 +822,11 @@ describe('the stored sign-ins and people, followed across tabs (web)', () => {
   });
 
   it('leaves a connection the stored list drops for one on a new token', async () => {
-    const { a, left, migrate } = await legacyTab();
+    const { a, left, renames, migrate } = await legacyTab();
     // Not a rename: the new id holds another sign-in's token.
     migrate('tk2');
     await settle();
+    expect(renames).toEqual([]);
     const conn = a.useSession.getState().connections.find((c) => c.id === 'srv.12');
     expect(conn?.needsReconnect).toBeUndefined();
     expect(left).toEqual(['srv']);

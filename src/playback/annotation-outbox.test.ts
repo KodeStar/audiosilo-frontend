@@ -107,6 +107,13 @@ let mockSessionListener: ((state: MockSession, prev: MockSession) => void) | nul
 jest.mock('@/stores/session', () => ({
   onConnectionRemoved: jest.fn(() => () => {}),
   useSession: {
+    // The signed-in list a proxy refusal's end is told for (`onProxyRefusalsOver`).
+    getState: () => ({
+      connections: [...mockClients.keys()].map((id) => ({
+        id,
+        needsReconnect: mockFlagged.has(id) || undefined,
+      })),
+    }),
     subscribe: (fn: (state: MockSession, prev: MockSession) => void) => {
       mockSessionListener = fn;
       return () => (mockSessionListener = null);

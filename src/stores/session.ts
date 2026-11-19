@@ -627,7 +627,8 @@ const connectionText = (c: Connection) =>
  * channel or not, and only once the list has changed (the stop's saves must not go out with
  * the revoked token); the cleanups wait for the word (`removedInOtherTab`). One another tab's
  * identity migration renamed (`renamesIn`) is not dropped: its reconnect flag, its being the
- * default and its own proxy set go on under the new id. Why: CONVENTIONS.md (`followStored`). */
+ * default, its own proxy set and what the rename hooks hold (`onConnectionRenamed`) go on
+ * under the new id. Why: CONVENTIONS.md (`followStored`). */
 function applyStored(read: StoredSignIns): void {
   knownList = read.list;
   // A mark this tab did not write (`legacyMarks`): kept in this tab's writes of the list.
@@ -686,6 +687,15 @@ function applyStored(read: StoredSignIns): void {
     ...sets,
     ...(own !== signInProxySets ? { signInProxySets: own } : {}),
   });
+  for (const [from, to] of renamed) {
+    for (const fn of renameHooks) {
+      try {
+        fn(from, to);
+      } catch (e) {
+        console.warn('[session] connection-renamed hook failed', e);
+      }
+    }
+  }
   for (const c of mine) if (!next.some((n) => n.id === idNow(c.id))) void leaveConnection(c.id);
 }
 
@@ -953,6 +963,19 @@ function replaced(oldId: string, newId: string): void {
       console.warn('[session] connection-replaced hook failed', e);
     }
   }
+}
+
+// Told when this tab follows another tab's identity migration renaming a connection
+// (`renamesIn`: the same sign-in under a new id), once its list holds the new id: in-memory
+// state keyed by the old id moves with it (a proxy's refusals of it, `proxy-refusal.ts`). A
+// registry for the same cycle reason as `onConnectionRemoved`.
+const renameHooks = new Set<(oldId: string, newId: string) => void>();
+
+/** Register a hook run when another tab's identity migration renamed a connection this tab
+ * holds (`applyStored`). Returns an unsubscribe fn. */
+export function onConnectionRenamed(fn: (oldId: string, newId: string) => void): () => void {
+  renameHooks.add(fn);
+  return () => renameHooks.delete(fn);
 }
 
 /**

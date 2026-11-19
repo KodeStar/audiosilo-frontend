@@ -21,12 +21,17 @@ import { watchDeviceOnline } from '@/lib/device-online';
 import { flushConnection } from '@/playback/progress-sync';
 import { flushReadingConnection } from '@/reader/reading-progress';
 import { connectionsOfProfile, useProfiles, visibleConnectionIds } from '@/stores/profiles';
-import { onConnectionRemoved, useSession, type Connection } from '@/stores/session';
+import {
+  onConnectionRemoved,
+  onConnectionRenamed,
+  useSession,
+  type Connection,
+} from '@/stores/session';
 
 import { pickedUrl, useAddressRoute } from './address-route';
 import { type ApiClient, isNotInLibraryError, isSignedOutError } from './client';
 import { connectionClient } from './connection-clients';
-import { noteProxyAnswer } from './proxy-refusal';
+import { moveProxyRefusal, noteProxyAnswer } from './proxy-refusal';
 import {
   anyOffline,
   noteFailure,
@@ -187,6 +192,8 @@ onConnectionRemoved((id) => {
   // A proxy's refusals of it end with it (`ProxyRefusedBanner`).
   noteProxyAnswer(id, false);
 });
+// Another tab's identity migration renamed it: a proxy's refusals of it go on under the new id.
+onConnectionRenamed(moveProxyRefusal);
 
 /** A book's read-along map that is in (`qk.readalong`, `qk.readalongLocal`): keyed by its
  * `generated_at`, so the copy held is that very map after any reconnect, and reading up to

@@ -9,6 +9,7 @@ import {
 } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { liveClient } from '@/api/live-client';
+import { onProxyRefusalsOver } from '@/api/proxy-refusal';
 import { noteRateLimit, onRateLimitOver, rateLimited, stopsReplay } from '@/api/rate-limit';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { ReadingProgress, ReadingProgressSaved } from '@/api/types';
@@ -792,6 +793,9 @@ export async function flushReadingQueue(connectionId?: string): Promise<void> {
 // A wait the server asked for (a 429) is over: the places it held go now, the reader open
 // or not. That connection's only: another's are held by their own wait, or went already.
 onRateLimitOver((connectionId) => void flushReadingQueue(connectionId).catch(() => undefined));
+// A proxy's refusals of the connection ended (`onProxyRefusalsOver`): the places they held go
+// now, not at the next replay.
+onProxyRefusalsOver((connectionId) => void flushReadingQueue(connectionId).catch(() => undefined));
 
 /** Replay one connection's queued saves whatever its recorded reachability or a wait its
  * server asked (`onlyConnection`): it just came back, or it is about to be signed out

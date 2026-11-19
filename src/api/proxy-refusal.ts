@@ -13,7 +13,8 @@ import { useSession } from '@/stores/session';
  * sign-out and not a reconnect: the server never judged the token, and the way past is the
  * proxy headers (the Account page's card). In memory only: a launch starts with none, and a
  * connection signed out or removed takes its episode with it (the provider's
- * `onConnectionRemoved`).
+ * `onConnectionRemoved`), and one another tab's identity migration renamed carries it to its
+ * new id (`moveProxyRefusal`).
  */
 export const useProxyRefusals = create<{ refused: Readonly<Record<string, true>> }>(() => ({
   refused: {},
@@ -21,7 +22,8 @@ export const useProxyRefusals = create<{ refused: Readonly<Record<string, true>>
 
 /** What one answer through `connectionId`'s client said of its proxy (`ApiClient`'s
  * `onProxyAnswer`): `refused` starts the connection's episode, an answer of the server's own
- * ends it. Runs on every such answer, so one with nothing refused returns at once. */
+ * ends it (and tells `onProxyRefusalsOver`). Runs on every such answer, so one with nothing
+ * refused returns at once. */
 export function noteProxyAnswer(connectionId: string, refused: boolean): void {
   const now = useProxyRefusals.getState().refused;
   if (refused === (now[connectionId] === true)) return;
@@ -31,6 +33,49 @@ export function noteProxyAnswer(connectionId: string, refused: boolean): void {
   }
   const { [connectionId]: _ended, ...rest } = now;
   useProxyRefusals.setState({ refused: rest });
+  refusalsOver(connectionId);
+}
+
+const overListeners = new Set<(connectionId: string) => void>();
+
+/** Whether `connectionId` is signed in now: in the list, its token not refused. */
+const signedIn = (connectionId: string) =>
+  useSession.getState().connections.some((c) => c.id === connectionId && !c.needsReconnect);
+
+/** Tell `onProxyRefusalsOver`'s listeners that `connectionId`'s episode ended; not for one
+ * no longer signed in (signed out, removed or needing a sign-in again: nothing to send). */
+function refusalsOver(connectionId: string): void {
+  if (!signedIn(connectionId)) return;
+  for (const listener of overListeners) {
+    try {
+      listener(connectionId);
+    } catch (e) {
+      console.warn('[proxy-refusal] listener failed', e);
+    }
+  }
+}
+
+/** Run `listener` with the connection whenever a proxy's refusals of it end (the server
+ * itself answered, `noteProxyAnswer`), while it is still signed in: each stored queue sends
+ * what the refusals held at once (that connection's only), as after a 429's wait
+ * (`onRateLimitOver`), not at its backoff's next try or the next focus. Returns the
+ * unsubscribe. */
+export function onProxyRefusalsOver(listener: (connectionId: string) => void): () => void {
+  overListeners.add(listener);
+  return () => {
+    overListeners.delete(listener);
+  };
+}
+
+/** Another tab's identity migration renamed `from` to `to` (the provider's
+ * `onConnectionRenamed`): its episode goes on under `to`, where its client's answers now end
+ * it (`connection-clients.ts` notes them under the id now), and the banner on `to` keeps the
+ * notice. Ended instead, with nothing to tell, when `to` is not signed in. */
+export function moveProxyRefusal(from: string, to: string): void {
+  const now = useProxyRefusals.getState().refused;
+  if (!now[from]) return;
+  const { [from]: _moved, ...rest } = now;
+  useProxyRefusals.setState({ refused: signedIn(to) ? { ...rest, [to]: true } : rest });
 }
 
 /**

@@ -7,7 +7,13 @@ import { ApiError } from './client';
 import { resolveClient } from './connection-clients';
 // The provider's removal cleanup ends a removed connection's episode.
 import './provider';
-import { noteProxyAnswer, resetProxyRefusalsForTests, useProxyRefusals } from './proxy-refusal';
+import {
+  moveProxyRefusal,
+  noteProxyAnswer,
+  onProxyRefusalsOver,
+  resetProxyRefusalsForTests,
+  useProxyRefusals,
+} from './proxy-refusal';
 
 const user: User = {
   id: 1,
@@ -81,10 +87,87 @@ it("the server's own 403 starts no episode", async () => {
   expect(refused()).toEqual({});
 });
 
-it('a connection signed out takes its episode with it', async () => {
-  noteProxyAnswer('srv-1.1', true);
-  await useSession.getState().removeConnection('srv-1.1');
-  expect(refused()).toEqual({});
+it('a connection signed out takes its episode with it, telling no queue to send', async () => {
+  const over = jest.fn();
+  const stop = onProxyRefusalsOver(over);
+  try {
+    noteProxyAnswer('srv-1.1', true);
+    await useSession.getState().removeConnection('srv-1.1');
+    expect(refused()).toEqual({});
+    expect(over).not.toHaveBeenCalled();
+  } finally {
+    stop();
+  }
+});
+
+// The stored queues send what the refusals held at once (`onProxyRefusalsOver`).
+it("tells the queues once an episode ends, that connection's only and once", () => {
+  const over = jest.fn();
+  const stop = onProxyRefusalsOver(over);
+  try {
+    noteProxyAnswer('srv-1.1', true);
+    expect(over).not.toHaveBeenCalled();
+    noteProxyAnswer('srv-1.1', false);
+    noteProxyAnswer('srv-1.1', false);
+    expect(over.mock.calls).toEqual([['srv-1.1']]);
+  } finally {
+    stop();
+  }
+});
+
+it('tells no queue of an episode ended on a connection that needs signing in again', () => {
+  const over = jest.fn();
+  const stop = onProxyRefusalsOver(over);
+  try {
+    noteProxyAnswer('srv-1.1', true);
+    useSession.getState().markNeedsReconnect('srv-1.1', 'auth');
+    noteProxyAnswer('srv-1.1', false);
+    expect(refused()).toEqual({});
+    expect(over).not.toHaveBeenCalled();
+  } finally {
+    stop();
+  }
+});
+
+// Another tab's identity migration renamed the connection: its client's answers are noted
+// under the new id, so the episode goes there, where the next server answer ends it.
+describe('a rename (moveProxyRefusal)', () => {
+  const renameTo = (to: string) =>
+    useSession.setState((s) => ({
+      connections: s.connections.map((c) => (c.id === 'srv-1.1' ? { ...c, id: to } : c)),
+    }));
+
+  it('carries an open episode to the new id, which then ends it', () => {
+    const over = jest.fn();
+    const stop = onProxyRefusalsOver(over);
+    try {
+      noteProxyAnswer('srv-1.1', true);
+      renameTo('srv-1.7');
+      moveProxyRefusal('srv-1.1', 'srv-1.7');
+      expect(refused()).toEqual({ 'srv-1.7': true });
+      // Moved, not ended: nothing to send yet.
+      expect(over).not.toHaveBeenCalled();
+      noteProxyAnswer('srv-1.7', false);
+      expect(refused()).toEqual({});
+      expect(over.mock.calls).toEqual([['srv-1.7']]);
+    } finally {
+      stop();
+    }
+  });
+
+  it('ends the episode when the new id is not signed in', () => {
+    noteProxyAnswer('srv-1.1', true);
+    renameTo('srv-1.7');
+    useSession.getState().markNeedsReconnect('srv-1.7', 'auth');
+    moveProxyRefusal('srv-1.1', 'srv-1.7');
+    expect(refused()).toEqual({});
+  });
+
+  it('moves nothing for a connection with no episode', () => {
+    noteProxyAnswer('other', true);
+    moveProxyRefusal('srv-1.1', 'srv-1.7');
+    expect(refused()).toEqual({ other: true });
+  });
 });
 
 // The headers fixed meanwhile (a grown-up's update): a request still out with the set before

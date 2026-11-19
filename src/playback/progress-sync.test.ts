@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import { ApiClient, ApiError, TimeoutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
+import { onProxyRefusalsOver } from '@/api/proxy-refusal';
 import { forgetRateLimit, RATE_LIMIT_HOLD_S } from '@/api/rate-limit';
 import * as reachability from '@/api/reachability';
 import type { Progress } from '@/api/types';
@@ -69,6 +70,9 @@ jest.mock('@/api/connection-clients', () => ({
   sessionReady: jest.fn(() => true),
 }));
 
+// The queues each register a replay for a proxy's refusals ending (captured below).
+jest.mock('@/api/proxy-refusal', () => ({ onProxyRefusalsOver: jest.fn(() => () => {}) }));
+
 // progress-sync registers an onConnectionRemoved purge at import time.
 jest.mock('@/stores/session', () => ({
   onConnectionRemoved: jest.fn(() => () => {}),
@@ -79,6 +83,13 @@ const MIRROR_KEY = 'audiosilo.progressMirror';
 
 // The purge callback progress-sync registered at import (captured before any
 // clearAllMocks wipes the mock's call log).
+// A proxy's refusals of a connection ended: the listeners registered at import (captured
+// before any clearAllMocks wipes the mock's call log).
+const proxyOverListeners = (onProxyRefusalsOver as jest.Mock).mock.calls.map(
+  ([fn]) => fn as (cid: string) => void,
+);
+const proxyRefusalsOver = (cid: string) => proxyOverListeners.forEach((fn) => fn(cid));
+
 const removalCleanup = (onConnectionRemoved as jest.Mock).mock.calls[0]?.[0] as (
   id: string,
 ) => Promise<void>;
@@ -2553,6 +2564,27 @@ describe('which connections a replay of the legacy queue sends', () => {
         Platform.OS = os;
       }
     });
+  });
+
+  // A proxy turning the device away (fe#295) holds the saves; the server's own answer ends
+  // the episode, and that connection's saves go then, not at the next replay.
+  it('replays only the connection whose proxy refusals ended', async () => {
+    const refusing = fakeApi(() =>
+      Promise.reject(new ApiError(403, 'Forbidden', undefined, undefined, true)),
+    );
+    await expect(saveProgress(refusing, save)).resolves.toBe('queued');
+    const other = { ...save, connectionId: 'c2', path: 'B/Other' };
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([...(await readQueue()), other]));
+    const one = fakeApi(async () => {});
+    const two = fakeApi(async () => {});
+    routeClients({ c1: one, c2: two });
+    proxyRefusalsOver('c1');
+    for (let i = 0; i < 60 && (await readQueue()).length > 1; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(one.saveProgress).toHaveBeenCalledTimes(1);
+    expect(two.saveProgress).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([other]);
   });
 
   // Every connection's queue went at a hold's end, not only the one it held.
