@@ -10,7 +10,13 @@ import {
   rememberAddresses,
 } from '@/lib/known-servers';
 import { isKidAccount } from '@/lib/account';
-import { connectionIdOf, priorConnection, serverIdOf } from '@/lib/connection-id';
+import {
+  connectionIdOf,
+  isLegacyConnectionId,
+  priorConnection,
+  serverIdOf,
+  usableUserId,
+} from '@/lib/connection-id';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
 import { forgetCalendarLink } from '@/lib/upcoming-calendar';
 import { hostOf } from '@/lib/pairing';
@@ -657,6 +663,7 @@ function applyStored(read: StoredSignIns): void {
   )
     return;
   // A sign-in's own proxy headers end with it: signed out, or signed in again, in another tab.
+  // One another tab's identity migration renamed keeps them under its new id.
   const own = ownSetsStill(signInProxySets, next, mine);
   setFollowed({
     connections: same ? mine : next,
@@ -1222,7 +1229,9 @@ function proxyChoice(
  * `own` (`signInProxySets`) with only the sign-ins still on: each for a connection in
  * `connections` that holds the token it held in `was`. A sign-out, a retired identity or a
  * sign-in again (here or in another tab) ends it, its set with it: that set was the sign-in's
- * alone, never to be sent for another. The same object when none ended.
+ * alone, never to be sent for another. A sign-in the identity migration renamed (another
+ * tab's launch moving a legacy id, `renamedIn`) is still on: its set goes on under the new
+ * id. The same object when nothing changed.
  */
 function ownSetsStill(
   own: Readonly<Record<string, SignInProxySet>>,
@@ -1230,11 +1239,33 @@ function ownSetsStill(
   was: readonly Connection[] = connections,
 ): Readonly<Record<string, SignInProxySet>> {
   const ids = Object.keys(own);
-  const on = ids.filter((id) => {
-    const token = connections.find((c) => c.id === id)?.token;
-    return token !== undefined && was.find((c) => c.id === id)?.token === token;
+  const on = ids.flatMap((id) => {
+    const before = was.find((c) => c.id === id);
+    if (!before) return [];
+    const now = connections.find((c) => c.id === id) ?? renamedIn(before, connections, was);
+    return now && now.token === before.token ? [[now.id, own[id]] as const] : [];
   });
-  return on.length === ids.length ? own : Object.fromEntries(on.map((id) => [id, own[id]]));
+  return on.length === ids.length && on.every(([id], i) => id === ids[i])
+    ? own
+    : Object.fromEntries(on);
+}
+
+/**
+ * The connection in `connections` that `before` (one of `was`, no longer listed under its id)
+ * was renamed to by the identity migration (`src/lib/identity-migration.ts`): a legacy id
+ * moved to `<server_id>.<user_id>`, the token copied with it. Told by that id, new to the
+ * list, on the same server; the caller checks the token. Undefined when `before` simply
+ * went (a sign-out, a retired identity).
+ */
+function renamedIn(
+  before: Connection,
+  connections: readonly Connection[],
+  was: readonly Connection[],
+): Connection | undefined {
+  if (!isLegacyConnectionId(before.id)) return undefined;
+  const id = connectionIdOf(serverIdOf(before), usableUserId(before.user));
+  if (id === before.id || was.some((c) => c.id === id)) return undefined;
+  return connections.find((c) => c.id === id && serverIdOf(c) === serverIdOf(before));
 }
 
 export const useSession = create<SessionState>()((set, get) => ({
