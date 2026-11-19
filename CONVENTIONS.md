@@ -4250,8 +4250,11 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   audio last moved (`heardAt` = the engine's `lastAdvance`), so buffering never stamps the place
   later than it was heard. A stalled span (the audio still for `Spans.STALL`, 5 s, at the 15 s
   tick) is never cut (fe#285): it closes where and when the audio last moved, and no span opens
-  until it moves again (the engine's `onIsPlayingChanged`, or the next tick), so a stall sends no
-  span every 15 s with nothing heard. The book's last span and its `finish` go into the outbox in one append
+  until it moves again (the engine's `onIsPlayingChanged`, or its 500 ms tick seeing the audio
+  move while no span is open, for a player that stood still while it said it played), so a stall
+  sends no span every 15 s with nothing heard, and none of what is heard after it is lost. A span
+  closed with nothing to follow keeps its place stamped when the audio stopped (`stoppedAt`), not
+  held to the span's start as its event is. The book's last span and its `finish` go into the outbox in one append
   (`SpanRecorder.finish`): the span's event alone would recover the book's end as the place with
   no `finish` behind it. A move a kill cut short (`recoveredMove`) is kept in `open-span-move.json` until a span
   opens (it takes it or drops it), `loadsFromRow` drops it, and so does sign-out

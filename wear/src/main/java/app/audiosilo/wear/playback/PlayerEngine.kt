@@ -572,6 +572,12 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
         if (playing && p != position) {
           lastAdvance = now
           awaitingAudio = false
+          // Moving again after a stall closed its span (SpanRecorder.tick): a player that stood
+          // still while it said it played never calls onIsPlayingChanged again, so the span opens
+          // here, not at the next 15 s cut with what was heard until then lost (fe#285).
+          if (spans.span == null && exo?.isPlaying == true) {
+            b.timeline.spanEnd(w.index, w.positionInTrack)?.let { spans.open(b.playing, it, rate) }
+          }
         }
         position = p
       }

@@ -27,6 +27,7 @@ class SpanRecorderTest {
   private lateinit var store: MemorySpanStore
   private lateinit var acks: AckStore
   private val emitted = ArrayList<ListeningEvent>()
+  private val kept = ArrayList<LocalPlace>()
   private var ids = 0
 
   @Before
@@ -35,6 +36,7 @@ class SpanRecorderTest {
     store = MemorySpanStore()
     acks = AckStore(null)
     emitted.clear()
+    kept.clear()
     ids = 0
   }
 
@@ -48,6 +50,7 @@ class SpanRecorderTest {
         "e$ids"
       },
       emit = { emitted += it },
+      keepPlace = { _, p -> kept += p },
     )
 
   private val listens: List<SpanEvent>
@@ -741,6 +744,31 @@ class SpanRecorderTest {
     assertEquals("never after now", clock.now, store.stored?.endedAt)
     r.keep(at(6.0))
     assertEquals(clock.now, store.stored?.endedAt)
+  }
+
+  // fe#285: a span a cut opened while buffering starts after the audio last moved. Paused (or held,
+  // or failed) at that moment, its place is stamped then, not at the span's start as its event is:
+  // a place stamped later than it was heard reads as newer than another device's.
+  @Test
+  fun aSpanClosedWithNoneAfterItKeepsThePlaceWhenTheAudioStopped() {
+    val r = recorder()
+    r.open(book, at(0.0), 1.0)
+    clock.advance(10.0)
+    val heard = clock.now
+    r.keep(at(10.0), heardAt = heard)
+    clock.advance(4.0)
+    assertTrue(r.tick(book, at(10.0), playing = true, reachable = true, speed = 1.0, heardAt = heard))
+    val cutAt = clock.now
+    clock.advance(1.0)
+    r.close(at(10.0), stoppedAt = heard)
+    assertEquals(10.0, kept.last().position, 0.0)
+    assertEquals(heard, kept.last().at)
+    assertTrue(heard < cutAt)
+    // Stopped now (the listener's pause): stamped now.
+    r.open(book, at(10.0), 1.0)
+    clock.advance(3.0)
+    r.close(at(13.0))
+    assertEquals(clock.now, kept.last().at)
   }
 
   // fe#285: a stalled span (the audio still for `Spans.STALL` at the 15 s tick) is never cut: it

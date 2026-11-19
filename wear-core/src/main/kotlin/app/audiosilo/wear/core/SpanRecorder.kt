@@ -371,8 +371,11 @@ class SpanRecorder(
     append(closing, listOfNotNull(then?.invoke()))
     if (clearStore) {
       // The place in between (fe#285): a kill before it finds the span again (recovered with its
-      // event's end), a kill after it the place where the span ended; never neither.
-      keepPlace(closing.ref, LocalPlace.of(closing.to, closing.endedAt, closing.speed))
+      // event's end), a kill after it the place where the span ended; never neither. Stamped when
+      // the audio stopped, not held to the span's start as its event is: a span a cut opened while
+      // buffering starts after the audio last moved, and a place stamped later than it was heard
+      // reads as newer than another device's.
+      keepPlace(closing.ref, LocalPlace.of(closing.to, minOf(now, stop), closing.speed))
       store.save(null)
     }
     // Like a paused move: the next play begins with the same reason (`isBareMove`, `carried`).
