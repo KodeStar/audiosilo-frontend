@@ -488,6 +488,7 @@
         "inviteUsed": "Esta invitación ya se ha usado en todos los dispositivos que permite. Pide una nueva invitación a tu administrador.",
         "inviteExpired": "Esta invitación ha caducado. Pide una nueva invitación a tu administrador.",
         "badPassword": "El nombre de usuario o la contraseña no son correctos. Revísalos y vuelve a intentarlo.",
+        "proxyRefused": "El proxy de inicio de sesión del servidor ha rechazado este dispositivo. Revisa las cabeceras de proxy de esta dirección y vuelve a intentarlo.",
         "disabled": "Tu cuenta en este servidor está desactivada. Pide a tu administrador que la vuelva a activar.",
         "enterCode": "Introduce el código de invitación de tu administrador.",
         "enterUsername": "Introduce tu nombre de usuario.",

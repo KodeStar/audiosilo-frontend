@@ -10,7 +10,9 @@ import {
   ApiError,
   apiErrorKind,
   isPlainSeriesQuery,
+  isProxyRefusal,
   isServerBusyError,
+  isSignedOutError,
   NetworkError,
   PodcastFetchPendingError,
   ReadalongMapError,
@@ -979,6 +981,38 @@ describe('ApiClient', () => {
     const c = new ApiClient('https://h', 'tok', undefined, onAuthError);
     await expect(c.me()).rejects.toMatchObject({ status: 500 });
     expect(onAuthError).not.toHaveBeenCalled();
+  });
+
+  // fe#295: an auth proxy in front of the server answers a 401 of its own (a page, or JSON
+  // without the server's `error`). Signing in to the server again can't get past it.
+  it.each([
+    ['a page', '<html><body>Sign in to continue</body></html>'],
+    ['JSON without the server error', JSON.stringify({ status: 'KO', message: 'Unauthorized' })],
+    ['an empty body', ''],
+  ])('does NOT fire onAuthError on an auth proxy 401 (%s)', async (_, text) => {
+    globalThis.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        text: () => Promise.resolve(text),
+      } as Response),
+    ) as unknown as typeof globalThis.fetch;
+    const onAuthError = jest.fn();
+    const c = new ApiClient('https://h', 'tok', undefined, onAuthError);
+    const e = await c.me().catch((err: unknown) => err);
+    expect(e).toMatchObject({ name: 'ApiError', status: 401, fromProxy: true });
+    expect(isSignedOutError(e)).toBe(false);
+    expect(isProxyRefusal(e)).toBe(true);
+    expect(onAuthError).not.toHaveBeenCalled();
+  });
+
+  it("reads the server's own 401 as signed out, never as the proxy's", async () => {
+    installFetch(() => ({ status: 401, body: { error: 'invalid or expired token' } }));
+    const e = await new ApiClient('https://h', 'tok').me().catch((err: unknown) => err);
+    expect(e).toMatchObject({ status: 401, fromProxy: false });
+    expect(isSignedOutError(e)).toBe(true);
+    expect(isProxyRefusal(e)).toBe(false);
   });
 
   it('does NOT fire onAuthError on a network failure / timeout (no HTTP status)', async () => {

@@ -488,6 +488,7 @@
         "inviteUsed": "Diese Einladung wurde schon auf allen erlaubten Geräten benutzt. Bitte deinen Admin um eine neue Einladung.",
         "inviteExpired": "Diese Einladung ist abgelaufen. Bitte deinen Admin um eine neue Einladung.",
         "badPassword": "Benutzername oder Passwort ist falsch. Prüfe beides und versuch es noch einmal.",
+        "proxyRefused": "Der Anmelde-Proxy des Servers hat dieses Gerät abgewiesen. Prüfe die Proxy-Header für diese Adresse und versuch es noch einmal.",
         "disabled": "Dein Konto auf diesem Server ist ausgeschaltet. Bitte deinen Admin, es wieder einzuschalten.",
         "enterCode": "Gib den Einladungscode von deinem Admin ein.",
         "enterUsername": "Gib deinen Benutzernamen ein.",

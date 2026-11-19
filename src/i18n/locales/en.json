@@ -488,6 +488,7 @@
         "inviteUsed": "This invite has been used on all the devices it allows. Ask your admin for a new invite.",
         "inviteExpired": "This invite has expired. Ask your admin for a new invite.",
         "badPassword": "The username or password is wrong. Check them and try again.",
+        "proxyRefused": "The server's sign-in proxy turned this device away. Check the proxy headers for this address, then try again.",
         "disabled": "Your account on this server is turned off. Ask your admin to turn it back on.",
         "enterCode": "Enter the invite code from your admin.",
         "enterUsername": "Enter your username.",
