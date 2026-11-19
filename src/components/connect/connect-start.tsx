@@ -368,10 +368,8 @@ export function ConnectStart() {
     clearPairError();
   };
 
-  // Leaving for another sign-in drops a failed link's or single sign-on's reason and its Try
-  // again (`moveOn`): the screen stays under the flow (Back from the sign-in step, or from
-  // "Your library is ready."), where it must neither show that reason nor finish that sign-in
-  // too.
+  // The screen stays under the sign-in flow (Back from the sign-in step, or from "Your library
+  // is ready."), so leaving for it moves on too: no stale reason, no Try again to finish.
   const goSignIn = (name: string) => {
     moveOn();
     router.push({

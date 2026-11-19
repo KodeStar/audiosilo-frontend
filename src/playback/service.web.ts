@@ -551,7 +551,7 @@ class WebPlaybackService implements PlaybackService {
   ) {
     this.tracks = tracks;
     // A pause belongs to what was loaded before: the first play() of a new load must not
-    // auto-rewind (or, transcoded, re-request the stream early) for it.
+    // auto-rewind for it.
     this.pausedAt = null;
     this.queueSeq++;
     this.loadTrack(startIndex, positionInTrack, false);

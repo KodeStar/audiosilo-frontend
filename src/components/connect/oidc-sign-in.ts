@@ -113,8 +113,9 @@ export function oidcFinishFailure(
   run: () => Promise<OidcFinishFailure | null>,
 ): OidcFinishFailure {
   const left = oidcDoneLeft(doneBy);
-  if (left <= 0 && oidcRetryWait(e, OIDC_DONE_MS) !== undefined)
-    return { message: t('connect.oidc.errors.expired') };
+  // Whether the server keeps a sign-in through `e` at all: a wait inside a whole minute.
+  const keptThrough = oidcRetryWait(e, OIDC_DONE_MS) !== undefined;
+  if (left <= 0 && keptThrough) return { message: t('connect.oidc.errors.expired') };
   const waitMs = oidcRetryWait(e, left);
   const message = oidcFinishText(e, t, waitMs !== undefined);
   return waitMs === undefined ? { message } : { message, retry: { waitMs, doneBy, run } };
