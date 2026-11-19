@@ -191,6 +191,7 @@ keep this index in step (one line per topic).
   - The bytes and the place together
   - Read-along
   - Following the narration in the player
+  - Bookmarks made offline wait on the device (fe#356)
   - Upcoming releases
   - The upcoming calendar
   - The module's surface
