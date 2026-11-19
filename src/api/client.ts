@@ -130,6 +130,10 @@ export class ApiError extends Error {
      * The server never judged the request, so it is no sign the connection is signed out
      * (`isSignedOutError`) nor of a library the listener may not open (`accessRefusal`). */
     public fromProxy = false,
+    /** The answer is the AudioSilo server's own: its error envelope, a JSON body with an
+     * `error` string. Whatever stands in front of the server let this request through
+     * (`onProxyAnswer`); an error status without it (a gateway's page) says nothing of that. */
+    public fromServer = false,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -326,7 +330,8 @@ export class PodcastFetchPendingError extends ApiError {
     public fetch: PodcastFetchStatus,
     public retryAfterSeconds: number,
   ) {
-    super(503, message, code);
+    // The server's own answer (`fromServer`): its status of the fetch.
+    super(503, message, code, undefined, false, true);
     this.name = 'PodcastFetchPendingError';
   }
 }
@@ -380,6 +385,7 @@ function apiErrorOf(res: Response, data: unknown, fallbackMsg: string): ApiError
     // A 401 or 403 without the server's `error`: a proxy's own (JSON, Authelia's for one,
     // or a page).
     (res.status === 401 || res.status === 403) && !msg,
+    !!msg,
   );
 }
 
@@ -682,10 +688,12 @@ export class ApiClient {
    *
    * `onProxyAnswer` is told what each answer says of a proxy in front of the server: `true`
    * when the proxy turned the request away (`isProxyRefusal`: its own 401 or 403), `false`
-   * when the request succeeded (the proxy let it through). A signed-in connection's client
-   * passes it on, so the shell can say the proxy headers need updating while the refusals
-   * last (`noteProxyAnswer`, `ProxyRefusedBanner`). Never a sign-out: the server never
-   * judged the token.
+   * when the server itself answered, so the proxy let the request through: a success, or the
+   * server's own error (`ApiError.fromServer`: its 401, a 404, a 500 in its envelope). Any
+   * other failure (no answer, a gateway's page) says nothing. A signed-in connection's
+   * client passes it on, so the shell can say the proxy headers need updating while the
+   * refusals last (`noteProxyAnswer`, `ProxyRefusedBanner`). Never a sign-out: the server
+   * never judged the token.
    */
   constructor(
     baseUrl: string,
@@ -833,7 +841,10 @@ export class ApiClient {
       // denial (valid token, forbidden) or a proxy's, and a network/timeout failure has no
       // status, so none is a dead token - the full rationale is on the constructor doc above.
       if (isSignedOutError(e)) this.onAuthError?.();
-      else if (isProxyRefusal(e)) this.onProxyAnswer?.(true);
+      // What the answer says of a proxy in front (`onProxyAnswer`): its own refusal, or the
+      // server's own error, which the proxy let through as it does a success.
+      if (isProxyRefusal(e)) this.onProxyAnswer?.(true);
+      else if (e instanceof ApiError && e.fromServer) this.onProxyAnswer?.(false);
       throw e;
     } finally {
       settled = true;

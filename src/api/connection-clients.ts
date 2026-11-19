@@ -4,7 +4,7 @@ import { type Connection, sessionHydrateFailed, useSession } from '@/stores/sess
 
 import { effectiveUrl } from './address-route';
 import { ApiClient } from './client';
-import { noteProxyAnswer } from './proxy-refusal';
+import { noteProxyAnswer, useProxyRefusals } from './proxy-refusal';
 import { noteAnswer } from './reachability';
 
 /**
@@ -64,10 +64,12 @@ export function connectionClient(
     // Under its id now, as above; a connection no longer signed in has nothing to say. Only
     // while the connection still sends these headers there: a request sent with a set since
     // replaced (a grown-up's update) that answers late says nothing of the one it sends now,
-    // and would raise the notice again after the new set got through.
+    // and would raise the notice again after the new set got through. Nearly every answer is
+    // the server's own with no episode to end: that one stops at the first check.
     (refused) => {
       const now = connectionOf(conn.id);
-      if (now && sameProxyHeaders(connectionProxyFor(now.id, url), proxy)) {
+      if (!now || (!refused && !useProxyRefusals.getState().refused[now.id])) return;
+      if (sameProxyHeaders(connectionProxyFor(now.id, url), proxy)) {
         noteProxyAnswer(now.id, refused);
       }
     },
