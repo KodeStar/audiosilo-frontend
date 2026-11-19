@@ -14,7 +14,7 @@ import { AnnotationRow, type AnnotationRowProps } from './annotation-row';
 import { LabelChip, TimeChip } from './chips';
 import { isDriftBookmark, shownNote } from './drift-marker';
 import { AnnotationRowFrame, RowAction, RowMeta } from './row-parts';
-import { useJumpTo } from './use-annotation-actions';
+import { BOOKMARK_DELETE_COPY, deletedToast, useJumpTo } from './use-annotation-actions';
 
 type BookmarkRowProps = AnnotationRowProps & { bookmark: Bookmark };
 
@@ -60,20 +60,11 @@ export function QueuedBookmarkRow({
     void discardQueuedBookmark(bookmark.id).then(
       (removed) => {
         if (!removed) return; // sent meanwhile: the list shows it as made
-        toast({
-          title: t('annotations.bookmark.deleted'),
-          description: time,
-          action: {
-            label: t('annotations.undo'),
-            onPress: () => {
-              addBookmarkOrQueue(connectionId, libraryId, path, position, note, label).catch(() =>
-                toast({ title: t('annotations.bookmark.restoreFailed') }),
-              );
-            },
-          },
-        });
+        deletedToast(t, BOOKMARK_DELETE_COPY, position, () =>
+          addBookmarkOrQueue(connectionId, libraryId, path, position, note, label),
+        );
       },
-      () => toast({ title: t('annotations.bookmark.deleteFailed') }),
+      () => toast({ title: t(BOOKMARK_DELETE_COPY.deleteFailed) }),
     );
   return (
     <AnnotationRowFrame

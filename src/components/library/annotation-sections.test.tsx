@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
 import type { Bookmark, Note } from '@/api/types';
+import type { QueuedBookmark } from '@/playback/annotation-outbox';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() }, useSegments: () => [] }));
 jest.mock('@/playback/store', () =>
@@ -49,17 +50,7 @@ jest.mock('@/components/player/player-shortcuts', () => ({
   addBookmarkHere: (...a: unknown[]) => mockAddHere(...a),
 }));
 // The bookmark outbox (fe#356): what waits on the device for this book's server.
-type Waiting = {
-  id: string;
-  connectionId: string;
-  libraryId: number;
-  path: string;
-  position: number;
-  note: string;
-  label?: string;
-  updated_at: string;
-};
-let mockWaiting: Waiting[] = [];
+let mockWaiting: QueuedBookmark[] = [];
 jest.mock('@/playback/use-queued-bookmarks', () => ({
   useQueuedBookmarks: (cid: string | undefined) => (cid ? mockWaiting : []),
 }));
@@ -188,7 +179,7 @@ describe('BookmarksSection', () => {
   });
 
   // fe#356: a bookmark made while the server couldn't take it is listed, marked waiting.
-  const waiting = (id: string, position: number, note = ''): Waiting => ({
+  const waiting = (id: string, position: number, note = ''): QueuedBookmark => ({
     id,
     connectionId: 'c',
     libraryId: 1,

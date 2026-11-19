@@ -42,7 +42,7 @@ export function useBookAnnotations(
   const bookmarks = useQuery({ ...bookmarksQuery(cid, api, lib, path), staleTime }).data;
   const notes = useQuery({ ...notesQuery(cid, api, lib, path), staleTime }).data;
   // The bookmarks still waiting on this device for the server are pinned too (fe#356).
-  const queued = useQueuedBookmarks(path ? cid : undefined, lib, path);
+  const queued = useQueuedBookmarks(cid, lib, path);
   const pins = useMemo(
     () =>
       path && (bookmarks || notes || queued.length > 0)
