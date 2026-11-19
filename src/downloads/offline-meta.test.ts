@@ -309,6 +309,37 @@ describe('seedOfflineMeta', () => {
     expect(qc.getQueryData(qk.bookMeta('c1', 2, 'P', { hideSpoilers: true }))).toBeUndefined();
   });
 
+  // A keep with `meta_bundle` reads only the include=previous key: the plain one the screens
+  // read takes the copy over an answer read before it (unmatched, before a console match),
+  // never over one read since.
+  it('covers an answer read before the copy, never one read since', () => {
+    const plain = qk.bookMeta('c1', 2, 'P');
+    const fresh: OfflineMeta = {
+      v: 1,
+      savedAt: 5000,
+      previous: true,
+      meta: envelope({ previous: [work('w2')] }),
+      works: [],
+    };
+    qc.setQueryData(plain, { matched: false }, { updatedAt: 1000 });
+    qc.setQueryData(qk.metaWork('c1', 'w2'), work('w2', { title: 'older' }), { updatedAt: 1000 });
+    void qc.invalidateQueries({ queryKey: plain, refetchType: 'none' });
+    seedOfflineMeta('c1', 2, 'P', fresh);
+    expect(qc.getQueryData(plain)).toMatchObject({ matched: true, work: { id: 'w3' } });
+    expect(qc.getQueryState(plain)).toMatchObject({ dataUpdatedAt: 5000, isInvalidated: false });
+    expect(qc.getQueryData(qk.metaWork('c1', 'w2'))).toEqual(work('w2'));
+
+    qc.setQueryData(plain, { matched: false }, { updatedAt: 9000 });
+    seedOfflineMeta('c1', 2, 'P', fresh);
+    expect(qc.getQueryData(plain)).toEqual({ matched: false });
+    // A copy dated as the answer the cache holds (the launch reading one this session kept)
+    // changes nothing.
+    const bundle = qk.bookMeta('c1', 2, 'P', { includePrevious: true });
+    const held = qc.getQueryData(bundle);
+    seedOfflineMeta('c1', 2, 'P', { ...fresh, meta: envelope() });
+    expect(qc.getQueryData(bundle)).toBe(held);
+  });
+
   it('answers an unmatched book as unmatched, and only the plain request without previous', () => {
     seedOfflineMeta('c1', 2, 'P', {
       v: 1,

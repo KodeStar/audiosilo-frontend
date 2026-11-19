@@ -132,11 +132,18 @@ export function releaseOfflineBook(connectionId: string, libraryId: number, path
  * Put `data` in the cache under `key` unless the cache already holds an answer there (a
  * fresh one from the server always wins over a saved copy), dated `updatedAt` so it goes
  * stale on the screens' own schedule, and keep the entry for good (`keepForGood`). Used
- * for every seed of a downloaded book.
+ * for every seed of a downloaded book. `overOlder`: also over an answer read before
+ * `updatedAt`, for data that is itself the server's answer of that time.
  */
-export function seedQuery(key: QueryKey, data: unknown, updatedAt: number): void {
+export function seedQuery(
+  key: QueryKey,
+  data: unknown,
+  updatedAt: number,
+  overOlder = false,
+): void {
   keepForGood(key);
-  if (queryClient.getQueryData(key) === undefined) {
+  const held = queryClient.getQueryState(key);
+  if (held?.data === undefined || (overOlder && held.dataUpdatedAt < updatedAt)) {
     queryClient.setQueryData(key, data, { updatedAt });
   }
 }
@@ -145,7 +152,10 @@ export function seedQuery(key: QueryKey, data: unknown, updatedAt: number): void
  * server's answer, whose `metadata` flag opens the readers' gate, is seeded for every
  * connection at launch (`restoreServerSnapshots`); a reader that asked meanwhile takes
  * this copy when it lands (`seedQuery` fills a key with no data, a failed or waiting one
- * too). */
+ * too). Over an answer older than the payload too: a keep with `meta_bundle` reads only the
+ * `include=previous` key, and the plain one every screen reads would stay as it was read
+ * before (unmatched, before a console match), marked stale but all there is offline until
+ * the next launch. */
 export function seedOfflineMeta(
   connectionId: string,
   libraryId: number,
@@ -154,12 +164,13 @@ export function seedOfflineMeta(
 ): void {
   const { meta, savedAt } = payload;
   const plain: BookMeta = meta.matched && meta.previous ? withoutPrevious(meta) : meta;
-  seedQuery(qk.bookMeta(connectionId, libraryId, path), plain, savedAt);
+  seedQuery(qk.bookMeta(connectionId, libraryId, path), plain, savedAt, true);
   if (payload.previous) {
-    seedQuery(qk.bookMeta(connectionId, libraryId, path, { includePrevious: true }), meta, savedAt);
+    const bundle = qk.bookMeta(connectionId, libraryId, path, { includePrevious: true });
+    seedQuery(bundle, meta, savedAt, true);
   }
   const works = [...(meta.matched ? (meta.previous ?? []) : []), ...payload.works];
-  for (const w of works) seedQuery(qk.metaWork(connectionId, w.id), w, savedAt);
+  for (const w of works) seedQuery(qk.metaWork(connectionId, w.id), w, savedAt, true);
 }
 
 /** The plain request's answer from an `include=previous` one (the plain answer has no

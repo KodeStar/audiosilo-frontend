@@ -5194,7 +5194,10 @@ are asked, at most 10,000 rows.
   few MB; the registry carries only a marker (`DownloadManifest.meta`). The seeds fill exactly the
   keys the readers use (`qk.bookMeta`, its `includePrevious` variant when fetched that way,
   `qk.metaWork`, and the store's own `qk.item` / `qk.chapters`) through `seedQuery`: never over
-  data the cache already holds, dated by `savedAt` so an online screen still refetches on its own
+  data the cache already holds (the `/meta` seeds alone also cover an answer read before the copy
+  was, `overOlder`: a keep with `meta_bundle` reads only the `includePrevious` key, and the plain
+  one the screens read would otherwise stay as it was read before, all there is offline until the
+  next launch), dated by `savedAt` so an online screen still refetches on its own
   schedule, and kept for the session through `setQueryDefaults` (`gcTime: Infinity`; else a book
   downloaded an hour before the flight opens with nothing) until `releaseOfflineBook` on remove.
   Every reader first waits on the `metadata` flag, which a cold offline launch knows from the
