@@ -354,6 +354,36 @@ describe('proxy headers the sign-in came through (fe#167): one set per address (
       });
       expect(kept()).toEqual({ [AWAY]: SET });
     });
+
+    it("keeps a kid's set where none is kept yet, though a full account here reaches it", async () => {
+      await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+      useSession.setState({ pendingProxyHeaders: THEIRS });
+      await finishConnect({
+        serverUrl: AWAY,
+        session: session('srv-1', { user: kid }),
+        carried: THEIRS,
+      });
+      expect(kept()).toEqual({ [AWAY]: THEIRS });
+    });
+
+    // A reset server: the person's full account there is a dead identity this sign-in retires,
+    // so no full account reaches the address once it is in.
+    it("a full account's identity the sign-in retires does not hold the set back", async () => {
+      /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+      const { resetProfilesForTests, useProfiles } = require('@/stores/profiles');
+      resetProfilesForTests();
+      await useProfiles.getState().hydrate();
+      useSession.setState({ pendingProxyHeaders: SET });
+      await finishConnect({ serverUrl: AWAY, session: session('old'), carried: SET });
+      useSession.setState({ pendingProxyHeaders: THEIRS });
+      await finishConnect({
+        serverUrl: AWAY,
+        session: session('new', { user: kid }),
+        carried: THEIRS,
+      });
+      expect(useSession.getState().connections.map((c) => c.id)).toEqual(['new.12']);
+      expect(kept()).toEqual({ [AWAY]: THEIRS });
+    });
   });
 });
 

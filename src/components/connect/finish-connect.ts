@@ -152,16 +152,21 @@ export async function finishConnect(input: {
   // written back (it may have been removed or changed on purpose while the sign-in was on its
   // way); a typed one that was never sent proved nothing, so it replaces no kept set. Nor does
   // a demo or a kid's account replace one a full account here reaches (`mayReplaceProxySet`,
-  // the Account card's rule): it would turn that person's requests away. A sign-in never
-  // removes one.
+  // the Account card's rule; the identities this sign-in retires reach nothing after it): it
+  // would turn that person's requests away. A sign-in never removes one.
   const { pendingProxyHeaders: typed, proxySets } = useSession.getState();
+  const gotIn = sameProxyHeaders(input.carried, typed);
   const keepTyped =
     !!typed &&
     (proxySets[typed.origin]
-      ? sameProxyHeaders(input.carried, typed) &&
-        mayReplaceProxySet(input.session.user, pickId, typed.origin, connections)
-      : sameProxyHeaders(input.carried, typed) ||
-        proxyOriginChoices(plan, input.serverUrl).includes(typed.origin));
+      ? gotIn &&
+        mayReplaceProxySet(
+          input.session.user,
+          pickId,
+          typed.origin,
+          connections.filter((c) => !retire.includes(c.id)),
+        )
+      : gotIn || proxyOriginChoices(plan, input.serverUrl).includes(typed.origin));
   const proxyHeaders = keepTyped ? typed : undefined;
   if (input.answeredAt) setAddressPick(pickId, input.answeredAt);
   const id = await setSession({

@@ -439,11 +439,12 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   `finishConnect` keeps it (`carried`) only when it is the pending set (typed, and it got the
   sign-in or the exchange in): a kept set that carried the sign-in is kept already, and is never
   written back (it may have been removed or changed on purpose while the sign-in was on its way).
-  A demo or a kid's account replaces a kept set only while no full account on the device reaches
-  that address (`mayReplaceProxySet`, the Account card's `canManageProxySet` rule for one
-  address); where none is kept yet, its set is kept as anyone's (a kid's own device works).
   Else the pending set when its origin is one of the connection's addresses and has no set yet: a
-  typed set that was never sent proved nothing, so it replaces no kept one. A pairing QR or link
+  typed set that was never sent proved nothing, so it replaces no kept one. A demo or a kid's
+  account replaces a kept set only while no full account on the device reaches that address
+  (`mayReplaceProxySet`, the Account card's `canManageProxySet` rule for one address; the
+  identities the sign-in retires don't count); where none is kept yet, its set is kept as anyone's
+  (a kid's own device works). A pairing QR or link
   pairs with them when its address is the field's: type the address and the headers first, then
   scan.
 - **A proxy's 401 is not a sign-out.** The server's own 401s always carry its JSON `error`; a 401
