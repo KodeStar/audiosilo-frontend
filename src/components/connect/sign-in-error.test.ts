@@ -58,14 +58,12 @@ describe('signInErrorText', () => {
     );
   });
 
-  it.each(['de', 'es', 'fr', 'it', 'pt'])('names a wait in seconds in %s', (lng) => {
-    const said = signInErrorText(
-      new ApiError(429, 'x', undefined, 30),
-      'login',
-      i18n.getFixedT(lng),
-    );
+  it.each(SUPPORTED_CODES.filter((c) => c !== 'en'))('names a wait in seconds in %s', (lng) => {
+    const wait = new ApiError(429, 'x', undefined, 30);
+    const said = signInErrorText(wait, 'login', i18n.getFixedT(lng));
     expect(said).toMatch(/30/);
-    expect(said).not.toMatch(/connect\.signIn/);
+    // A missing key falls back to the English sentence.
+    expect(said).not.toBe(signInErrorText(wait, 'login', t));
     expect(said).not.toBe(
       signInErrorText(new ApiError(429, 'x', undefined, 60), 'login', i18n.getFixedT(lng)),
     );
