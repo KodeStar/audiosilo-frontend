@@ -16,12 +16,13 @@ import {
   requestEpisodeFetch,
 } from '@/playback/episode-fetch';
 import { isAbsentEpisode } from '@/playback/episode-fetch-rules';
-import { selectBookKey, selectIsTransportLive, usePlayer } from '@/playback/store';
+import { selectIsTransportLive, usePlayer } from '@/playback/store';
 import { mayActFor } from '@/stores/profiles';
 import { withTimeout } from '@/lib/with-timeout';
 
 import type { PlayTarget } from './play-route';
 import { dropStartedBook } from './drop-started';
+import { selectIsLoaded } from './playing-target';
 
 /** Where `startBookInPlace` starts a book, when not from its saved place. */
 export type StartOptions = {
@@ -179,7 +180,7 @@ async function playsOnLoaded(target: PlayTarget, book: Book, opts: StartOptions)
     return false;
   }
   const player = usePlayer.getState();
-  if (selectBookKey(player) !== contentKeyOf({ ...target, path: book.rel_path })) return false;
+  if (!selectIsLoaded({ ...target, path: book.rel_path })(player)) return false;
   const state = player.snapshot.state;
   if (state === 'ended' || state === 'error') return false;
   if (!selectIsTransportLive(player)) await player.toggle();
