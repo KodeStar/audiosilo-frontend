@@ -251,6 +251,29 @@ describe('startJumpUndo', () => {
     stop();
   });
 
+  it("takes a fault's error place as settled: a move from there is undone back to it", () => {
+    const { player, report, jump, stop } = playingAt(1000);
+    // A scrub the engine could not play: the error shows the place asked for (the store's
+    // fault), a jump from where it played.
+    player.setFaultPlace(true);
+    report('error', 1890);
+    expect(jump()?.from).toBe(1003);
+    jest.advanceTimersByTime(COALESCE_MS + 1);
+    // A move on the book in error (shown in its error state): back to the fault's place.
+    report('error', 0);
+    expect(jump()?.from).toBe(1890);
+    stop();
+  });
+
+  it("never takes another error's place: a failed resume lookup's 0 is no place", () => {
+    const { report, jump, stop } = playingAt(1000);
+    report('error', 0);
+    jest.advanceTimersByTime(COALESCE_MS + 1);
+    report('playing', 1003);
+    expect(jump()).toBeNull();
+    stop();
+  });
+
   it('ignores the app returning from a long suspension while playing', () => {
     const { report, jump, stop } = playingAt(1000);
     // JS suspended for an hour: no timers ran, the clock moved on.

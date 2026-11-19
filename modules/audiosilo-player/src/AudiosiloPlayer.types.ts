@@ -38,11 +38,14 @@ export type StateEvent = { state: NativeState; playWhenReady?: boolean } & BookR
 /** Position/duration within the current track, in seconds. `silenceSaved` (Android only):
  * book seconds removed by Smart speed since the app's process started, summed over every
  * player the service builds, so it never goes down. Absent on iOS (no Smart speed there) and on
- * binaries that predate Smart speed. */
+ * binaries that predate Smart speed. `trackIndex`: the FILE the place is in, as the engine has it
+ * as it sends the tick (Android tells a new file's tick before its `onTrackChange`, so without it
+ * the place and the new file's length read as the old file's). */
 export type ProgressEvent = {
   position: number;
   duration: number;
   silenceSaved?: number;
+  trackIndex?: number;
 } & BookReport;
 export type TrackChangeEvent = { index: number } & BookReport;
 
