@@ -3,7 +3,8 @@ import type { Book, ChaptersResponse } from '@/api/types';
 export type DownloadStatus = 'queued' | 'downloading' | 'downloaded' | 'error';
 
 /** A downloaded audio file: the book-relative path mapped to its local file:// uri.
- * `bytes` is what was written (absent on entries saved before it was recorded). */
+ * `bytes` is what the file came to (the size the book lists when the engine reported none;
+ * absent on entries saved before it was recorded). */
 export type DownloadedFile = { relPath: string; localUri: string; bytes?: number };
 
 /** Why a download stopped (`classifyDownloadError`), so the UI can say what went wrong
@@ -140,7 +141,8 @@ export type DownloadEntry = {
   progress: number;
   /** Bytes written so far (approximate while in flight). */
   bytes: number;
-  /** Total bytes when known (sum of file sizes), else 0. */
+  /** Total bytes when known, else 0: while in flight the sizes the book lists (each file's
+   * replaced by what it came to as it lands), once finished the bytes the download holds. */
   totalBytes: number;
   error?: string;
   /** The classified reason for an `error` status (absent on older saved entries). */
@@ -178,7 +180,8 @@ export interface DownloadEngine {
   readonly supported: boolean;
   /** Download `url` into the book's directory as `fileName`; returns the local uri.
    * `headers` go with the request only (the ebook's Authorization: its route takes no
-   * `?token=`), never stored. */
+   * `?token=`), never stored. `onProgress`'s last report is the whole file's bytes (the
+   * store keeps it as the file's size). */
   downloadFile(
     connectionId: string,
     libraryId: number,

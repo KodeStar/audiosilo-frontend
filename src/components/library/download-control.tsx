@@ -20,6 +20,7 @@ import { ProgressRing } from '@/components/ui/progress-ring';
 import { Text } from '@/components/ui/text';
 import { failureText } from '@/downloads/failure';
 import {
+  useDownloadBytes,
   useDownloadElsewhere,
   useDownloadEntry,
   useDownloadProgress,
@@ -234,7 +235,8 @@ const DownloadingButton = memo(function DownloadingButton({
   );
 });
 
-/** The Downloaded menu's "50 MB on this device" (nothing while the size is unknown). */
+/** The Downloaded menu's "50 MB on this device" (nothing while the size is unknown): the
+ * figure the remove confirmation and the Downloads page give (`useDownloadBytes`, fe#197). */
 function OnDeviceLabel({
   connectionId,
   libraryId,
@@ -245,11 +247,11 @@ function OnDeviceLabel({
   path: string;
 }) {
   const { t } = useTranslation();
-  const { totalBytes } = useDownloadProgress(connectionId, libraryId, path);
-  if (totalBytes <= 0) return null;
+  const bytes = useDownloadBytes(connectionId, libraryId, path);
+  if (bytes <= 0) return null;
   return (
     <DropdownMenuLabel>
-      {t('book.download.onDevice', { size: formatBytes(totalBytes) })}
+      {t('book.download.onDevice', { size: formatBytes(bytes) })}
     </DropdownMenuLabel>
   );
 }

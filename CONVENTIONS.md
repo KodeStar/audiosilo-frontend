@@ -2092,9 +2092,14 @@ media GETs only.
   `relocateEntry` keeps each saved file's own name (`storedName`, from its stored uri),
   except that on iOS an old `<i>.mka` is renamed on disk to `<i>.mp3` (`playableName`,
   `engine.renameFile`; a rename that fails keeps whichever name the file is under after
-  it). While hydrate reads the registry (`hydrating`), `download` and `remove` wait for it
-  and `persist` holds off, so a saved book is never fetched over, put back after a remove,
-  or saved over by the live entries. **The web's tabs share one registry** (fe#258's
+  it; with both names on disk the listed file wins, fe#153), and a new download removes the
+  `<i>.mka` an older app left beside the `<i>.mp3` it saves. A finished download's
+  `totalBytes` is the bytes its files came to (the engine's last progress report is the
+  whole file), not the sizes the book lists: a remuxed MP3 is smaller. While hydrate reads
+  the registry (`hydrating`, its entries read up to eight at once; a read that fails starts no
+  further one, and those under way end before it is thrown on), `download`, `remove` and
+  `cancel` wait for it and `persist` holds off, so a saved book is never fetched over, put
+  back after a remove or cancel, or saved over by the live entries. **The web's tabs share one registry** (fe#258's
   follow-up): `persist` writes only the entries this tab changed since it last wrote or read
   them (`known`, compared by object; the launch's read knows an entry it kept as stored by
   its live copy, so a reload never writes back what another tab changed meanwhile), into the
@@ -4746,7 +4751,10 @@ are asked, at most 10,000 rows.
   fetches each other file under a name no kept file holds (its index when free, else the next
   free number past the list), and keeps the kept files of the paths it never reached listed when
   it fails. One with no file left (most books
-  are one M4B) stays as a row to retry from the start, its folder emptied, unless keep-ahead
+  are one M4B) stays as a row to retry from the start, its folder emptied (by `runOne` as it
+  fails, by the launch that finds it cut short; the app's launch empties a row already saved
+  with no file again, since an older app left its partial file until its own next launch,
+  and the web's leaves it alone, fe#197), unless keep-ahead
   started it (keep-ahead plans it again); a downloaded book with no file left is dropped with its
   folder. While an identity move is pending an entry is kept exactly as stored. No storage format
   change.

@@ -77,6 +77,18 @@ export const engine: DownloadEngine = {
     });
     const file = await task.downloadAsync();
     if (!file) throw new Error('Download did not complete.');
+    // The bytes on disk, reported last: the module's reports are throttled, and with no
+    // Content-Length the final count may never come. The store keeps it as the file's
+    // size (a remuxed MP3 is smaller than the `.mka` the book lists, fe#153).
+    if (onProgress) {
+      let size = -1;
+      try {
+        size = nativeNumber(dest.size, -1);
+      } catch {
+        // unknown: the reports already given stand
+      }
+      if (size > 0) onProgress(size, size);
+    }
     return file.uri;
   },
 

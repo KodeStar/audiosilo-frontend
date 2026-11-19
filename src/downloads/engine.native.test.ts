@@ -268,6 +268,24 @@ describe('engine.native downloadFile', () => {
     );
     expect(onProgress).toHaveBeenCalledWith(2, 4);
   });
+
+  // fe#153: the module's reports are throttled (and with no Content-Length never final), and
+  // the store keeps the last one as the file's size.
+  it('reports the bytes on disk last, once the file is saved', async () => {
+    const onProgress = jest.fn();
+    mockDownloadTask.mockImplementationOnce((_url, dest, opts) => ({
+      downloadAsync: async () => {
+        opts.onProgress?.({ bytesWritten: BigInt(1), totalBytes: BigInt(-1) });
+        mockTree.set(dest.uri, 'remuxed');
+        return { uri: dest.uri };
+      },
+    }));
+    await engine.downloadFile('srv', 1, 'A/Book', '0.mp3', 'https://h/stream', onProgress);
+    expect(onProgress.mock.calls).toEqual([
+      [1, -1],
+      [7, 7],
+    ]);
+  });
 });
 
 describe('engine.native storage', () => {
