@@ -41,7 +41,10 @@ jest.mock('@/api/reachability', () => ({
   },
 }));
 let mockAnnotations: boolean | undefined = true;
+// Its `/server` failing so (unread flags), while set.
+let mockCapsDown: unknown = null;
 const mockFetchCaps = jest.fn(async () => {
+  if (mockCapsDown) throw mockCapsDown;
   mockAnnotations = true;
   return { annotations: true };
 });
@@ -83,6 +86,7 @@ import {
   discardQueuedBookmark,
   flushBookmarks,
   queueBookmark,
+  queueNewBookmark,
   queuedBookmarks,
   queuedBookmarksSnapshot,
   resetAnnotationOutboxForTests,
@@ -147,6 +151,7 @@ beforeEach(async () => {
   for (const k of Object.keys(mockOnline)) delete mockOnline[k];
   mockReady = true;
   mockAnnotations = true;
+  mockCapsDown = null;
   mockGenerations.clear();
   mockFlagged.clear();
   await AsyncStorage.clear();
@@ -295,6 +300,81 @@ describe('sending', () => {
     state.down = null;
     await flushBookmarks();
     expect(held).toHaveLength(2);
+  });
+
+  it("does not take another night's at the same place for a new one no send has reached", async () => {
+    const { held } = server('c1');
+    // The night before's, well within the day.
+    held.push({
+      id: 9,
+      library_id: 1,
+      path: 'a/book',
+      position: 120,
+      note: 'Fell asleep',
+      created_at: new Date(Date.now() - 20 * 3_600_000).toISOString(),
+    });
+    await queueNewBookmark('c1', 1, 'a/book', 120, 'Fell asleep');
+    await idle();
+    expect(held.map((b) => b.id)).toEqual([9, 1]);
+    expect(await queuedBookmarks()).toEqual([]);
+  });
+
+  it('takes a new one whose send landed with no answer as sent, beside an earlier one', async () => {
+    const { client, held } = server('c1');
+    held.push({
+      id: 9,
+      library_id: 1,
+      path: 'a/book',
+      position: 120,
+      note: 'Fell asleep',
+      created_at: new Date(Date.now() - 20 * 3_600_000).toISOString(),
+    });
+    // Its first send lands, but its answer is lost.
+    const send = client.addBookmark.getMockImplementation();
+    client.addBookmark.mockImplementationOnce(async (...args: unknown[]) => {
+      await send?.(...args);
+      throw new TimeoutError(15_000);
+    });
+    await queueNewBookmark('c1', 1, 'a/book', 120, 'Fell asleep');
+    await idle();
+    // Waiting, no longer fresh, for the screens too (its row gives way to what landed).
+    const [waiting] = queuedBookmarksSnapshot();
+    expect(waiting).toMatchObject({ position: 120, othersHeld: [9] });
+    expect(waiting).not.toHaveProperty('fresh');
+    await flushBookmarks();
+    expect(client.addBookmark).toHaveBeenCalledTimes(1);
+    expect(held.map((b) => b.id)).toEqual([9, 1]);
+    expect(await queuedBookmarks()).toEqual([]);
+  });
+
+  it('sends a new one again after a send that failed, beside an earlier one at its place', async () => {
+    const { client, held } = server('c1');
+    held.push({
+      id: 9,
+      library_id: 1,
+      path: 'a/book',
+      position: 120,
+      note: 'Fell asleep',
+      created_at: new Date(Date.now() - 20 * 3_600_000).toISOString(),
+    });
+    client.addBookmark.mockRejectedValueOnce(new ApiError(500, 'boom'));
+    await queueNewBookmark('c1', 1, 'a/book', 120, 'Fell asleep');
+    await idle();
+    await flushBookmarks();
+    expect(client.addBookmark).toHaveBeenCalledTimes(2);
+    expect(held.map((b) => b.id)).toEqual([9, 1]);
+    expect(await queuedBookmarks()).toEqual([]);
+  });
+
+  it('posts a new one straight away, once, when the device cannot store it', async () => {
+    const { client, held } = server('c1');
+    jest.spyOn(AsyncStorage, 'setItem').mockRejectedValueOnce(new Error('quota'));
+    await queueNewBookmark('c1', 1, 'a/book', 120, 'Fell asleep', 'fell_asleep');
+    expect(client.addBookmark).toHaveBeenCalledTimes(1);
+    expect(held).toMatchObject([{ position: 120, label: 'fell_asleep' }]);
+    expect(await queuedBookmarks()).toEqual([]);
+    // The connection gone: nothing stored, nothing posted, and it says so.
+    await expect(queueNewBookmark('gone', 1, 'a/book', 120)).rejects.toThrow('connection gone');
   });
 
   it('sends each once when two replays run at once (another tab)', async () => {
@@ -469,6 +549,24 @@ describe('sending', () => {
       expect(held.map((b) => b.position)).toEqual([300]);
     });
 
+    it("drops a labelled one whose server's flags have not read for a week", async () => {
+      const s = server('c1', offline());
+      await queueBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+      s.state.down = null;
+      mockAnnotations = undefined;
+      mockCapsDown = new ApiError(404, 'not found');
+      await failFor(10);
+      jest.setSystemTime(Date.now() + 6 * DAY);
+      await flushBookmarks();
+      expect(await positions()).toEqual([100]);
+      expect(warn).not.toHaveBeenCalled();
+      jest.setSystemTime(Date.now() + 2 * DAY);
+      await flushBookmarks();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(await positions()).toEqual([]);
+      expect(s.held).toEqual([]);
+    });
+
     it('keeps one that failed twice a week apart, with no try between', async () => {
       const { client, held } = await waiting();
       client.addBookmark.mockRejectedValueOnce(new ApiError(500, 'boom'));
@@ -565,6 +663,20 @@ describe('sending', () => {
     expect(client.addBookmark).toHaveBeenCalledTimes(1);
     expect(client.addBookmark).toHaveBeenCalledWith(1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
     expect(await queuedBookmarks()).toEqual([]);
+  });
+
+  it("lets the book's unlabelled ones past a labelled one waiting for its flags", async () => {
+    const { client, held, state } = server('c1', offline());
+    await queueBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+    await addBookmarkOrQueue('c1', 1, 'a/book', 200);
+    await idle();
+    mockAnnotations = undefined;
+    mockCapsDown = new ApiError(500, 'boom');
+    state.down = null;
+    client.addBookmark.mockClear();
+    await flushBookmarks();
+    expect(held.map((b) => b.position)).toEqual([200]);
+    expect(await queuedBookmarks()).toMatchObject([{ position: 100, label: 'fell_asleep' }]);
   });
 
   it('sends a labelled one without its label to a server known not to take labels', async () => {

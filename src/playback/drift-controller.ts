@@ -7,7 +7,7 @@ import { formatWallClock } from '@/lib/format';
 import { quietly } from '@/lib/quietly';
 import { whenActive } from '@/lib/when-active';
 
-import { queueBookmark } from './annotation-outbox';
+import { queueNewBookmark } from './annotation-outbox';
 import { driftOffer, saveDrift, takeDrift, type DriftRecord } from './drift';
 import { startInteractionWatch } from './last-interaction';
 import { onSleepTimerEnded, type FellAsleep } from './sleep-timer';
@@ -29,9 +29,11 @@ import {
  *    stirring), a bookmark named "Fell asleep" goes on the playing book's server at the
  *    position where playback stopped, through that book's own connection
  *    (`resolveClient`). It is stored on the device first and sent from the bookmark
- *    outbox (`queueBookmark`), so offline or signed out it waits for its server; with the
- *    connection gone, storage refusing it or the server refusing it for good, it is
- *    simply not made. It never throws and never waits on anything the pause needs. The note is
+ *    outbox (`queueNewBookmark`), so offline or signed out it waits for its server; when
+ *    storage refuses it, it is posted straight away instead, once. With the connection
+ *    gone, or the server refusing it for good, it is simply not made. Another night's
+ *    bookmark at the same second is never taken for it. It never throws and never waits on
+ *    anything the pause needs. The note is
  *    translated when it is made, in the listener's language at that moment (it is
  *    stored on the server as text; a later language switch does not rename it).
  * 2. **The record.** The last touch of the player before the timer fired
@@ -124,17 +126,18 @@ function makeBookmark(connectionId: string, libraryId: number, path: string, pos
     // Stored on the device first and sent from there (the bookmark outbox, fe#356), never
     // posted straight away: nobody is awake to see a failure, and an app killed while the
     // request is out (the OS ending a paused app at night) would otherwise lose it.
-    void queueBookmark(
+    void queueNewBookmark(
       connectionId,
       libraryId,
       path,
       Math.round(position),
       t('player.sleepTimer.fellAsleepNote'),
       // Sent only to a server with `annotations`, once its flags are known (the outbox's
-      // `labelFlagKnown`).
+      // `readLabelFlag`).
       FELL_ASLEEP_LABEL,
     ).catch(() => {
-      // the connection gone, or storage refused it: there is simply no bookmark this time
+      // the connection gone, or storage refused it and so did the server: there is simply
+      // no bookmark this time
     });
   } catch {
     // never let a bookmark take the timer's ending path down with it

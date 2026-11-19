@@ -52,6 +52,7 @@ jest.mock('@/api/connection-clients', () => ({
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import type { Bookmark, ServerInfo } from '@/api/types';
+import { ANNOTATION_OUTBOX_KEY } from '@/lib/storage-keys';
 import { queuedBookmarks, resetAnnotationOutboxForTests } from '@/playback/annotation-outbox';
 import { startDriftWatch } from '@/playback/drift-controller';
 import { resetInteractions } from '@/playback/last-interaction';
@@ -269,6 +270,44 @@ describe('drift controller', () => {
     player.setPlayState('playing');
     await settle();
     expect(mockToast).toHaveBeenCalledTimes(1);
+  });
+
+  it('posts the bookmark straight away, once, when the device cannot store it', async () => {
+    mockServerInfo.mockClear();
+    // The shared storage mock's own function (a spy on it would lose its store on restore).
+    const setItem = jest.mocked(AsyncStorage.setItem);
+    const store = setItem.getMockImplementation();
+    setItem.mockImplementation((key, value) =>
+      key === ANNOTATION_OUTBOX_KEY ? Promise.reject(new Error('quota')) : store!(key, value),
+    );
+    try {
+      await fallAsleep();
+      jest.advanceTimersByTime(GRACE_SECONDS * 1000);
+      await settle();
+    } finally {
+      setItem.mockImplementation(store);
+    }
+    // Its server's flags read first (no annotations here: sent without the label).
+    expect(mockServerInfo).toHaveBeenCalled();
+    expect(mockAddBookmark).toHaveBeenCalledTimes(1);
+    expect(mockAddBookmark).toHaveBeenCalledWith(1, 'a.m4b', 1300, 'Fell asleep');
+    expect(mockHeld).toHaveLength(1);
+  });
+
+  it("makes the next night's bookmark at the same second as the night before's", async () => {
+    await fallAsleep();
+    jest.advanceTimersByTime(GRACE_SECONDS * 1000);
+    await settle();
+    expect(mockHeld).toHaveLength(1);
+    // The next night, within the day: played from the same place, asleep at the same second.
+    jest.setSystemTime(NOW + 20 * 3600_000);
+    player.setPlayState('paused');
+    player.patch({ bookPosition: 1000 });
+    await fallAsleep();
+    jest.advanceTimersByTime(GRACE_SECONDS * 1000);
+    await settle();
+    expect(mockHeld.map((b) => b.position)).toEqual([1300, 1300]);
+    expect(await queuedBookmarks('srv-1')).toEqual([]);
   });
 
   it('survives a connection that no longer exists', async () => {

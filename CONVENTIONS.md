@@ -1701,9 +1701,10 @@ when none of its book waits and the server reads as reachable, else (or after no
 408, 429 or 401) into `audiosilo.annotationOutbox`, oldest first within a book, a new one always
 behind its book's waiting ones. A refusal for good (any other 4xx) or a write storage refuses is
 still the caller's error ("Couldn't add the bookmark"). The sleep timer's "Fell asleep" is stored
-first (`queueBookmark`) and sent only from the outbox: nobody is awake to retry it, and an app
+first (`queueNewBookmark`) and sent only from the outbox: nobody is awake to retry it, and an app
 killed while a direct POST was out (up to its 15 s timeout) would lose it; it shows as waiting
-until a replay sends it. The one-tap keeps the direct send: its "Bookmark added" toast and Add
+until a replay sends it. Only when storage refuses it is it posted straight away, once (its
+label on flags read first). The one-tap keeps the direct send: its "Bookmark added" toast and Add
 note need the server's bookmark, and the listener is there to see a failure. The outbox is sent
 at launch and on reconnect (`startBookmarkSync`, a root service; also once a connection a 401
 flagged is signed in again, with no backoff meanwhile), with the stored queues in the
@@ -1711,7 +1712,12 @@ foreground and on the web's focus and `online` (`startQueueReplays`), and on a b
 doubling to 10 min) while a reachable server keeps failing, through `replayQueue` routed by
 `queuedRoute` (claims, so two tabs never send one twice). The POST has no idempotency key, so
 a replay reads the book's bookmarks first and takes one at the same second with the same
-note, made at most a day before, as already sent; when that read fails, whatever the status (a
+note as already sent: one the replay did not see there before its first send of it
+(`othersHeld`, stored right before that send), else, for one a send may have reached before it
+was stored (a direct add whose answer was lost, a delete's Undo), one made at most a day before.
+One no send has reached (`fresh`: the Fell asleep, a one-tap kept without trying the server) is
+never taken for one already there, so the night before's at the same second never stands in for
+tonight's; when that read fails, whatever the status (a
 403 or 404 too), the bookmarks wait, and only the POST's own refusal for good drops one. A send
 puts the new bookmark in the book's cached list at once (`addBookmark`), so its waiting row and
 pin give way to it with no gap before the list is read again. Order holds within a book only: a
@@ -1720,9 +1726,12 @@ books' go past it, so one that keeps failing never blocks the connection's queue
 only at a failure that is the connection's (no answer, a gateway's 502/504/52x, a 401). One still
 failing 7 days after its first failure against a server that answered, and after 10 such
 failures (`failedSince`, `failures`, `GIVE_UP_MS`, `GIVE_UP_TRIES`), is dropped with a log line,
-never on its first failures; a 503 or 429, a server that is away and a 401 do not count. A labelled one (Fell asleep) is sent only once its server's flags are known
-(`labelFlagKnown` reads `/server` when they are not) and waits, label and all, while that read
-fails: here "not known yet" never sends it bare. Signing out or removing a server gives it a last send in
+never on its first failures; a 503 or 429, a server that is away and a 401 do not count. A
+labelled one (Fell asleep) is sent only once its server's flags are known (`readLabelFlag` reads
+`/server` when they are not) and waits, label and all, while that read fails: here "not known
+yet" never sends it bare. That wait is for the flags, not its turn: it holds back none of its
+book's unlabelled ones (order holds within a book only among those that can be sent), and it
+counts toward giving up on it like a failed send. Signing out or removing a server gives it a last send in
 `flushConnectionSaves` (`sendBookmarksBeforeRemoval`) and the removal purges what is left,
 after its confirm names them beside the unsynced listens (`unsentBeforeSignOut`,
 `src/components/account/unsent.ts`: the sign-out, remove-server and remove-person confirms); a replay
