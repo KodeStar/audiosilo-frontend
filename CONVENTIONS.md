@@ -2934,7 +2934,8 @@ media GETs only.
   the outside play), the play press reloads it there, `listenerMove`, and the car sync reads
   no engine change from it, `mayBeServiceChange`; nor does the app's speed set, which is the
   store's book's, saved with it the same way and taken by the engine at that book's next
-  load, `setRate`, a change counted as a move is, `localSpeedSets`). The app's Pause press
+  load, `setRate`, a change counted as a move is, `localSpeedSets`; a start's load takes the
+  store's speed as it stands when the load lands, `playBook`). The app's Pause press
   (`toggle`) while a report names the other book, the state in which a play press reloads
   the store's book, is the store's book's alone: it shows paused where it was last heard,
   its intent over, nothing saved, and the other book plays on, deadline window included

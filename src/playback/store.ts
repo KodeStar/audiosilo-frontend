@@ -4005,7 +4005,10 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // The engine holds the queue built from these chapters now: a download takes them,
       // with a new file order when its server re-ordered the files (`adoptStartedChapters`).
       if (dl && queueChapters) adoptStartedChapters(ref, queueChapters);
-      await svc.setRate(speed);
+      // The store's speed, this start's `speed` unless the listener set another while it
+      // loaded: that set left the engine alone (`setRate`: it still reported the book this
+      // load replaces), and this load is where the book takes it.
+      await svc.setRate(get().rate);
       if (!current()) return;
       // Unloaded while its speed was set (`stop`, a Mark as finished: their reset came after
       // this load), or another book started: not played on the engine they reset.
@@ -4262,11 +4265,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       cutListeningSpan();
       localSpeedSets++;
     }
+    // Saved with the book it was set for, read before the engine's await: an adoption landing
+    // in it would take the save (and this book's speed would go unsaved).
+    void persist();
     // Not while the engine holds another book (`engineHoldsOtherBook`: the car's, not
     // adopted): its speed would be that book's. The speed is the store's book's, saved with
     // it, and the engine takes it at that book's next load (a play press reloads it).
     if (service && !engineHoldsOtherBook()) await service.setRate(clamped);
-    void persist();
   },
 
   setOutputVolume: async (volume) => {

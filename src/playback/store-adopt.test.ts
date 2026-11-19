@@ -2586,6 +2586,18 @@ describe("a report of another book than the store's", () => {
     await flushMicrotasks(30);
   });
 
+  // The review: a speed set while a start loaded left the engine alone (its report named the
+  // book being replaced), and the start then set the engine to its own speed.
+  it('gives the engine the speed set while a start of the store loaded', async () => {
+    const land = await startBOverPlayingS();
+    await usePlayer.getState().setRate(2);
+    expect(mockSvc.setRate).not.toHaveBeenCalled();
+    land();
+    await flushMicrotasks(30);
+    expect(mockSvc.setRate).toHaveBeenLastCalledWith(2);
+    expect(usePlayer.getState().rate).toBe(2);
+  });
+
   // The review: a download landing while the engine played S was dropped (no `swapDue`), so
   // the store's book streamed on once the engine held it again, until a Retry or a start.
   it("swaps a download that landed meanwhile in once the engine holds the store's book again", async () => {
