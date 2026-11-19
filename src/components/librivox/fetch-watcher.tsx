@@ -9,7 +9,7 @@ import { isAway } from '@/lib/app-activity';
 import { BRIDGE_IDLE_POLL_MS, isOpenJob } from '@/lib/bridge-jobs';
 import { getItem, setItem } from '@/lib/storage';
 import { isRecord, LIBRIVOX_WATCHES_KEY } from '@/lib/storage-keys';
-import { useSession } from '@/stores/session';
+import { sessionHydrateFailed, useSession } from '@/stores/session';
 
 import { DONE_RECHECK_MS } from './librivox-model';
 
@@ -31,9 +31,11 @@ import { DONE_RECHECK_MS } from './librivox-model';
  * backing off). A connection signed out (gone, or needing its sign-in again after
  * a 401) holds the watch, unread, and reads it again once signed in: a fetch that ended
  * meanwhile is handled then. One whose connection never comes back is let go `WATCH_TTL_MS`
- * after it was first watched. The read keeps its `bridge` gate (true only while the Bridge
- * is online): a lapsed heartbeat pauses it, the watch kept, and the watcher asks `/server`
- * again every `BRIDGE_IDLE_POLL_MS` in the foreground until the Bridge is back.
+ * after it was first watched; a signed-in connection's watch is kept however old (a fetch
+ * parked for longer than that is still followed, also by the next launch). The read keeps
+ * its `bridge` gate (true only while the Bridge is online): a lapsed heartbeat pauses it,
+ * the watch kept, and the watcher asks `/server` again every `BRIDGE_IDLE_POLL_MS` in the
+ * foreground until the Bridge is back.
  */
 type Watch = { cid: string; id: number; /** When it was first watched (ms). */ at: number };
 
@@ -58,16 +60,17 @@ function dropWatch(w: Pick<Watch, 'cid' | 'id'>) {
   useLibrivoxWatches.setState((s) => ({ watches: s.watches.filter((x) => !same(x, w)) }));
 }
 
-/** The saved watches still worth following (well formed, not past `WATCH_TTL_MS`). */
-function savedWatches(raw: unknown, now: number): Watch[] {
+/** The saved watches (the well formed ones). None is judged by its age here: only a
+ * signed-out connection's watch runs out (`WATCH_TTL_MS`), and who is signed in is known
+ * only once the session has read its connections (`WatchedFetch`). */
+function savedWatches(raw: unknown): Watch[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter(
     (w): w is Watch =>
       isRecord(w) &&
       typeof w.cid === 'string' &&
       typeof w.id === 'number' &&
-      typeof w.at === 'number' &&
-      now - w.at < WATCH_TTL_MS,
+      typeof w.at === 'number',
   );
 }
 
@@ -78,11 +81,11 @@ let stopSaving: (() => void) | null = null;
  * save the list at every change. */
 export function restoreLibrivoxWatches(): Promise<void> {
   restoring ??= (async () => {
-    const saved = savedWatches(await getItem<unknown>(LIBRIVOX_WATCHES_KEY), Date.now());
+    const saved = savedWatches(await getItem<unknown>(LIBRIVOX_WATCHES_KEY));
     stopSaving = useLibrivoxWatches.subscribe((s, prev) => {
       if (s.watches !== prev.watches) void setItem(LIBRIVOX_WATCHES_KEY, s.watches);
     });
-    // A new list, so the merge is saved too (the ones past their hold left out).
+    // A new list, so the merge is saved too (anything not a watch left out).
     useLibrivoxWatches.setState((s) => ({
       watches: [...saved.filter((w) => !s.watches.some((x) => same(x, w))), ...s.watches],
     }));
@@ -184,15 +187,19 @@ function WatchedFetch({ cid, id, at }: Watch) {
   // connection is signed in again (`reading`).
   const refused = !gone && isNotInLibraryError(own.error) && !isProxyRefusalError(own.error);
   const signedIn = !!conn;
+  // Who is signed in is known only once the session has read its connections.
+  const sessionRead = useSession((s) => s.status !== 'loading');
 
   useEffect(() => {
-    // Signed out for longer than any fetch takes: gone for good.
-    const expired = !signedIn && Date.now() - at >= WATCH_TTL_MS;
+    // Signed out for longer than any fetch takes: gone for good. Never judged from a list
+    // that is not the real one (still loading, or a read that failed and is tried again).
+    const expired =
+      sessionRead && !sessionHydrateFailed() && !signedIn && Date.now() - at >= WATCH_TTL_MS;
     if (expired || refused) return dropWatch({ cid, id });
     if (!reading || !ended) return;
     librivoxFetchEnded(qc, cid, doneIn);
     dropWatch({ cid, id });
-  }, [signedIn, at, refused, reading, ended, doneIn, qc, cid, id]);
+  }, [sessionRead, signedIn, at, refused, reading, ended, doneIn, qc, cid, id]);
 
   return null;
 }

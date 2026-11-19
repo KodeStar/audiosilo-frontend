@@ -60,8 +60,10 @@ import { DONE_RECHECK_MS } from './librivox-model';
 
 const app = driveAppState();
 
+/** The session, read: these connections signed in. */
 const signIn = (...ids: string[]) =>
   useSession.setState({
+    status: ids.length ? 'authenticated' : 'unauthenticated',
     connections: ids.map((id) => ({ id, name: id, serverUrl: 'u', token: 't' }) as never),
   });
 
@@ -326,19 +328,44 @@ describe('LibrivoxFetchWatcher', () => {
       expect(mockAsked).toContainEqual({ id: 41, active: true, cid: 'c1' });
     });
 
-    it('drops saved watches past their time, and anything not a watch', async () => {
+    it('drops anything saved that is not a watch', async () => {
       await AsyncStorage.setItem(
         LIBRIVOX_WATCHES_KEY,
-        JSON.stringify([
-          { cid: 'c1', id: 41, at: Date.now() - WATCH_TTL_MS },
-          { cid: 'c1', id: 42, at: Date.now() },
-          { cid: 'c1', id: '43' },
-          'junk',
-        ]),
+        JSON.stringify([{ cid: 'c1', id: 42, at: Date.now() }, { cid: 'c1', id: '43' }, 'junk']),
       );
       resetLibrivoxWatchesForTests();
       await restoreLibrivoxWatches();
       expect(watches()).toEqual([{ cid: 'c1', id: 42 }]);
+    });
+
+    it("follows a signed-in connection's saved watch however old, and lets a signed-out one's go", async () => {
+      // A fetch parked for over a week on c1; c2 signed out as long ago.
+      const old = Date.now() - WATCH_TTL_MS - 24 * 60 * 60 * 1000;
+      await AsyncStorage.setItem(
+        LIBRIVOX_WATCHES_KEY,
+        JSON.stringify([
+          { cid: 'c1', id: 41, at: old },
+          { cid: 'c2', id: 42, at: old },
+          { cid: 'c2', id: 43, at: Date.now() },
+        ]),
+      );
+      mockReads.setState({ 41: { data: librivoxJob({ id: 41, state: 'needs_attention' }) } });
+      resetLibrivoxWatchesForTests();
+      // The launch: the session has not read its connections yet, so nobody reads as signed
+      // in. Nothing is let go on that.
+      useSession.setState({ status: 'loading', connections: [] });
+      await mount();
+      expect(watches()).toEqual([
+        { cid: 'c1', id: 41 },
+        { cid: 'c2', id: 42 },
+        { cid: 'c2', id: 43 },
+      ]);
+      await act(async () => signIn('c1'));
+      expect(watches()).toEqual([
+        { cid: 'c1', id: 41 },
+        { cid: 'c2', id: 43 },
+      ]);
+      expect(mockAsked).toContainEqual({ id: 41, active: true, cid: 'c1' });
     });
 
     it('keeps a fetch watched before the saved list was read', async () => {

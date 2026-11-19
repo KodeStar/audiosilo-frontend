@@ -911,7 +911,9 @@ in step.
   as after any failed read. A connection signed
   out (gone, or `needsReconnect` after a 401) holds its watches unread; once signed in again they are read, and a fetch that
   ended meanwhile is handled then. One whose connection is not back `WATCH_TTL_MS` (7 days) after
-  it was first watched is dropped. A row still open hands its fetch over again with each answer
+  it was first watched is dropped, judged only once the session has read its connections; a
+  signed-in connection's watch is kept however old, across launches too (a fetch parked in
+  `needs_attention` for longer is still followed). A row still open hands its fetch over again with each answer
   that reads it open (a no-op while watched). A failed read (no answer, a 5xx) keeps the watch:
   the poll asks again, backing off. The watcher keeps the hooks' own gate (`bridge`, which
   `/server` sends true only while the Bridge is online) and does not ask `librivoxAccess`: a
