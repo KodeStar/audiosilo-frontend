@@ -178,7 +178,8 @@ export interface DownloadEngine {
   readonly supported: boolean;
   /** Download `url` into the book's directory as `fileName`; returns the local uri.
    * `headers` go with the request only (the ebook's Authorization: its route takes no
-   * `?token=`), never stored. */
+   * `?token=`), never stored. `onProgress`'s last report is the whole file's bytes (the
+   * store keeps it as the file's size). */
   downloadFile(
     connectionId: string,
     libraryId: number,

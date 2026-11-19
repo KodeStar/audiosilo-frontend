@@ -309,10 +309,17 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     const key = downloadKey(connectionId, libraryId, path);
     noteStopped(key);
     declined.add(key);
-    if (askOwnerToStop(key, { connectionId, libraryId, path, remove: false })) return;
-    stopRun(key);
-    void engine.removeBook(connectionId, libraryId, path);
-    void removeEntry(key);
+    const stop = () => {
+      if (askOwnerToStop(key, { connectionId, libraryId, path, remove: false })) return;
+      stopRun(key);
+      void engine.removeBook(connectionId, libraryId, path);
+      void removeEntry(key);
+    };
+    // An entry the launch is still reading would come back from its merge, its files gone
+    // (fe#153): the stop waits for the read, as `remove` does. Marked stopped at once, so a
+    // download waiting for the read gives up on the book.
+    if (hydrating) void hydrating.then(stop);
+    else stop();
   },
 
   remove: async (connectionId, libraryId, path) => {
@@ -375,49 +382,11 @@ async function readRegistry(): Promise<Registry> {
   // as the retry starting there, `runningElsewhere`): never checked on disk, revived as cut
   // short or emptied, under a transfer that is still writing.
   const { saved, away } = await readStoredWithOwners();
+  // Each entry on its own (its own folder: relocated, renamed, checked on disk), all at once:
+  // a launch with many downloads waits for the slowest, not for the sum (fe#153).
+  const outcomes = await Promise.all(Object.values(saved).map((raw) => readSavedEntry(raw, away)));
   const cleaned: Registry = {};
-  for (const raw of Object.values(saved)) {
-    const rawKey = downloadKey(raw.connectionId, raw.libraryId, raw.path);
-    if (away.has(rawKey) && raw.status !== 'downloaded') {
-      cleaned[rawKey] = runningElsewhere(rawKey, raw);
-      continue;
-    }
-    // Re-resolve stored file uris against the live storage root first: the app's
-    // document-container path can change between installs/launches (notably dev
-    // rebuilds), which leaves the persisted absolute uris stale even though the
-    // files are still on disk. Without this the existence check below fails and
-    // the book is dropped *and deleted* - the download vanishes after a rebuild.
-    const e = await relocateEntry(raw);
-    // Key on the entry's own connection-scoped id (stale un-scoped entries from before
-    // scoping were already wiped by resetStaleStorage, so every entry here has a real id).
-    const key = downloadKey(e.connectionId, e.libraryId, e.path);
-    // Which of the files the entry lists are still on disk (`reviveEntry` has the rules).
-    const present = await Promise.all(e.manifest.files.map((f) => engine.fileExists(f.localUri)));
-    const revived = reviveEntry(e, present);
-    if (
-      (!revived || revived.manifest.files.length !== e.manifest.files.length) &&
-      identityMovePending()
-    ) {
-      // The identity migration gave up mid-move this launch: the files can be under the
-      // new id while this entry names the old one (or the reverse). Kept as stored, never
-      // trimmed, dropped or deleted; the launch that finishes the move finds them.
-      cleaned[key] = raw;
-      continue;
-    }
-    // A row kept with no finished file: what its folder holds is partial.
-    if (revived && revived.manifest.files.length === 0)
-      void engine.removeBook(e.connectionId, e.libraryId, e.path);
-    if (revived?.status === 'downloaded') {
-      // A chapters answer can reach the cache before this read the registry.
-      const manifest = withCachedChapters(e, revived.manifest);
-      cleaned[key] = manifest === revived.manifest ? revived : { ...revived, manifest };
-      seedQueryCache(e.connectionId, e.libraryId, e.path, manifest);
-    } else if (revived) {
-      cleaned[key] = revived;
-    } else {
-      void engine.removeBook(e.connectionId, e.libraryId, e.path);
-    }
-  }
+  for (const [key, entry] of outcomes) if (entry) cleaned[key] = entry;
   // Merge, don't overwrite: a live entry made during the read's async window (per-book
   // file moves and renames, fileExists probes; `download` itself waits for the read,
   // `hydrating`) would be clobbered by a blind set(cleaned) built from the stale
@@ -452,6 +421,54 @@ async function readRegistry(): Promise<Registry> {
   });
   for (const key of Object.keys(elsewhere)) watchOwner(key);
   return cleaned;
+}
+
+/** One saved entry as the launch reads it (`readRegistry`): its key, and what it is now
+ * (null: dropped, its folder deleted). */
+async function readSavedEntry(
+  raw: DownloadEntry,
+  away: ReadonlySet<string>,
+): Promise<[string, DownloadEntry | null]> {
+  const rawKey = downloadKey(raw.connectionId, raw.libraryId, raw.path);
+  if (away.has(rawKey) && raw.status !== 'downloaded')
+    return [rawKey, runningElsewhere(rawKey, raw)];
+  // Re-resolve stored file uris against the live storage root first: the app's
+  // document-container path can change between installs/launches (notably dev
+  // rebuilds), which leaves the persisted absolute uris stale even though the
+  // files are still on disk. Without this the existence check below fails and
+  // the book is dropped *and deleted* - the download vanishes after a rebuild.
+  const e = await relocateEntry(raw);
+  // Key on the entry's own connection-scoped id (stale un-scoped entries from before
+  // scoping were already wiped by resetStaleStorage, so every entry here has a real id).
+  const key = downloadKey(e.connectionId, e.libraryId, e.path);
+  // Which of the files the entry lists are still on disk (`reviveEntry` has the rules).
+  const present = await Promise.all(e.manifest.files.map((f) => engine.fileExists(f.localUri)));
+  const revived = reviveEntry(e, present);
+  if (
+    (!revived || revived.manifest.files.length !== e.manifest.files.length) &&
+    identityMovePending()
+  ) {
+    // The identity migration gave up mid-move this launch: the files can be under the
+    // new id while this entry names the old one (or the reverse). Kept as stored, never
+    // trimmed, dropped or deleted; the launch that finishes the move finds them.
+    return [key, raw];
+  }
+  if (!revived) {
+    void engine.removeBook(e.connectionId, e.libraryId, e.path);
+    return [key, null];
+  }
+  // A row kept with no finished file: what its folder holds is partial. Emptied by the
+  // launch that made it so; a row saved that way already (a failure listing no file, an
+  // episode waiting for its server) has no folder left, and was emptied again on every
+  // launch (fe#197).
+  const emptied = raw.manifest.files.length === 0 && (raw.status === 'error' || !!raw.serverFetch);
+  if (revived.manifest.files.length === 0 && !emptied)
+    void engine.removeBook(e.connectionId, e.libraryId, e.path);
+  if (revived.status !== 'downloaded') return [key, revived];
+  // A chapters answer can reach the cache before this read the registry.
+  const manifest = withCachedChapters(e, revived.manifest);
+  seedQueryCache(e.connectionId, e.libraryId, e.path, manifest);
+  return [key, manifest === revived.manifest ? revived : { ...revived, manifest }];
 }
 
 /** The downloads another tab holds the lock of while the stored registry still shows them
@@ -1978,11 +1995,17 @@ async function relocateEntry(e: DownloadEntry): Promise<DownloadEntry> {
   if (!resolve) return e;
   const { connectionId, libraryId, path } = e;
   const at = (name: string) => resolve(connectionId, libraryId, path, name);
+  const names = e.manifest.files.map((f, i) => {
+    const index = savedIndex(f, i);
+    return { index, name: storedName(index, f.localUri) ?? fileName(index, f.relPath) };
+  });
+  const listed = new Set(names.map((n) => n.name));
+  const removeFile = engine.removeFile;
+  const drop = removeFile && ((name: string) => removeFile(connectionId, libraryId, path, name));
   const files = await Promise.all(
     e.manifest.files.map(async (f, i) => {
-      const index = savedIndex(f, i);
-      const name = storedName(index, f.localUri) ?? fileName(index, f.relPath);
-      return { ...f, localUri: at(await playableName(index, name, at)) };
+      const { index, name } = names[i];
+      return { ...f, localUri: at(await playableName(index, name, at, listed, drop)) };
     }),
   );
   const coverUri = e.manifest.coverUri ? at(COVER_FILE) : e.manifest.coverUri;
@@ -1995,19 +2018,28 @@ async function relocateEntry(e: DownloadEntry): Promise<DownloadEntry> {
  * bytes from a server that remuxes, or raw Matroska iOS can't play under any name) is
  * renamed on disk to the `<i>.mp3` `fileName` gives it today, so it plays after the
  * update. One a launch already renamed before the registry was saved is found under the
- * new name. Anything that fails keeps the old name: the file is never lost. Elsewhere
- * (and for every other name) the name is kept as it is.
+ * new name. With both names on disk (fe#153), the file the entry lists is the one it
+ * vouches for (finished files are listed as they land), and under its old name it never
+ * plays here: the other copy (`drop`) goes so the rename lands, unless the entry lists that
+ * name too (`listed`). Anything that fails keeps the old name: the file is never lost.
+ * Elsewhere (and for every other name) the name is kept as it is. The renamed entry is
+ * saved, so each file is renamed once.
  */
 async function playableName(
   index: number,
   name: string,
   at: (name: string) => string,
+  listed: ReadonlySet<string>,
+  drop: ((name: string) => Promise<void>) | undefined,
 ): Promise<string> {
   const want = fileName(index, name);
   if (want === name || !engine.renameFile) return name;
   const from = at(name);
   try {
-    if (await engine.fileExists(from)) await engine.renameFile(from, want);
+    if (await engine.fileExists(from)) {
+      if (drop && !listed.has(want) && (await engine.fileExists(at(want)))) await drop(want);
+      await engine.renameFile(from, want);
+    }
   } catch {
     // the probe below finds the file under whichever name it has now
   }
@@ -2031,9 +2063,27 @@ const EBOOK_FILE = 'book.epub';
  * plays by Content-Type, so they keep `.mka` and raw Matroska is never mislabelled.
  */
 function fileName(index: number, relPath: string): string {
-  const dot = relPath.lastIndexOf('.');
-  const ext = dot > relPath.lastIndexOf('/') ? relPath.slice(dot) : '';
+  const ext = extensionOf(relPath);
   return `${index}${Platform.OS === 'ios' && ext.toLowerCase() === '.mka' ? '.mp3' : ext}`;
+}
+
+/** A path's extension with its dot (`.mka`), or '' when its last segment has none. */
+function extensionOf(relPath: string): string {
+  const dot = relPath.lastIndexOf('.');
+  return dot > relPath.lastIndexOf('/') ? relPath.slice(dot) : '';
+}
+
+/** The name an older app saved a file under (`<index>` plus its source's own extension)
+ * when `fileName` gives it another now (iOS: a `.mka` saved as `.mp3`), else undefined. */
+function olderName(name: string, relPath: string): string | undefined {
+  const index = storedIndex(name);
+  const older = index === undefined ? undefined : `${index}${extensionOf(relPath)}`;
+  return older === name ? undefined : older;
+}
+
+/** The last segment of a stored uri: the file's name, as `storedName` reads it. */
+function nameOf(localUri: string): string {
+  return localUri.slice(localUri.lastIndexOf('/') + 1);
 }
 
 /**
@@ -2044,15 +2094,13 @@ function fileName(index: number, relPath: string): string {
  * `file://` uri carries, which is not the name on disk) falls back to `fileName`.
  */
 function storedName(index: number, localUri: string): string | undefined {
-  return storedIndex(localUri) === index
-    ? localUri.slice(localUri.lastIndexOf('/') + 1)
-    : undefined;
+  return storedIndex(localUri) === index ? nameOf(localUri) : undefined;
 }
 
 /** The index a saved file's stored name says, when it is one `fileName` could have given
  * (`<index>` plus an optional extension, as `storedName` reads it), else undefined. */
 function storedIndex(localUri: string): number | undefined {
-  const m = /^(\d+)(\.[^./:?#%]+)?$/.exec(localUri.slice(localUri.lastIndexOf('/') + 1));
+  const m = /^(\d+)(\.[^./:?#%]+)?$/.exec(nameOf(localUri));
   return m ? Number(m[1]) : undefined;
 }
 
@@ -2206,9 +2254,15 @@ async function runOne(key: string) {
     const serves = cachedCapability(connectionId, 'readalong');
     const mapLikely = !!ebook && wantsReadalong(serves, entry.manifest.book, EBOOK_FILE);
     const steps = specs.length + (ebook ? 1 : 0) + (mapLikely ? 1 : 0);
-    const knownTotal = specs.every((s) => s.size > 0)
+    // The sizes the book lists, each file's replaced by what it came to once it is here (an
+    // MP3-in-Matroska file's remuxed stream is smaller than the file it lists, fe#153); 0
+    // while one is unknown.
+    let knownTotal = specs.every((s) => s.size > 0)
       ? specs.reduce((sum, s) => sum + s.size, 0) + (ebook?.size ?? 0)
       : 0;
+    const landed = (listed: number, got: number) => {
+      if (knownTotal > 0) knownTotal += got - listed;
+    };
 
     // The book's extras beside its audio: optional (a failure never fails the audio
     // download, the book carries on without it), but a cancel during one cancels the book.
@@ -2255,16 +2309,18 @@ async function runOne(key: string) {
       if (done && (await engine.fileExists(done.localUri))) {
         files.push(done);
         priorBytes += done.bytes ?? s.size;
+        landed(s.size, done.bytes ?? s.size);
         patch({ bytes: priorBytes, totalBytes: knownTotal, progress: (i + 1) / steps });
         continue;
       }
       let curBytes = 0;
       const fileUrl = api.streamUrl(libraryId, s.path, true);
+      const name = plan.nameFor(i, s.path);
       const localUri = await engine.downloadFile(
         connectionId,
         libraryId,
         path,
-        plan.nameFor(i, s.path),
+        name,
         fileUrl,
         (bytesWritten, totalBytes) => {
           curBytes = bytesWritten;
@@ -2273,8 +2329,17 @@ async function runOne(key: string) {
         ctrl.signal,
         api.proxyHeadersFor(fileUrl),
       );
-      priorBytes += curBytes;
-      files.push({ relPath: s.path, localUri, bytes: curBytes });
+      // What the server sent, which an MP3-in-Matroska file's remuxed stream makes smaller
+      // than the size the book lists (fe#153); that size only for an engine that said none.
+      const got = curBytes > 0 ? curBytes : s.size;
+      priorBytes += got;
+      landed(s.size, got);
+      files.push({ relPath: s.path, localUri, bytes: got });
+      // A partial copy an older app left under the name this file had then (an iOS 2.4.x
+      // download cut short in a `<i>.mka`, fe#153) goes, unless a kept file is under it.
+      const older = olderName(name, s.path);
+      if (older && !earlier.some((f) => nameOf(f.localUri) === older))
+        await engine.removeFile?.(connectionId, libraryId, path, older);
       // List each finished file as it lands, so a download the app is closed in the
       // middle of keeps them across the restart (`reviveEntry`). Kept files of the paths
       // not reached yet stay listed (`retryPlan` never fetches over them).
@@ -2333,13 +2398,9 @@ async function runOne(key: string) {
       );
     }
     const mapBytes = readalong?.bytes ?? 0;
+    // Once it is all here, its total is what it holds: the bytes each file came to (not the
+    // sizes the book lists, fe#153), without an ebook whose fetch failed, with the map.
     const bytes = priorBytes + ebookBytes + mapBytes;
-    // A book that carries on without its ebook (its fetch failed) holds only its audio; the
-    // map's size is known only now.
-    const totalBytes =
-      knownTotal > 0
-        ? (ebook && !ebookUri ? knownTotal - ebook.size : knownTotal) + mapBytes
-        : knownTotal;
 
     // With the server's chapters answer when one landed while the files did.
     const manifest = withCachedChapters(entry, {
@@ -2374,7 +2435,7 @@ async function runOne(key: string) {
     }
     if (!live()) return void (await dropFiles());
 
-    patchEntry(key, { status: 'downloaded', progress: 1, bytes, totalBytes, manifest });
+    patchEntry(key, { status: 'downloaded', progress: 1, bytes, totalBytes: bytes, manifest });
     void persist();
     seedQueryCache(connectionId, libraryId, path, manifest);
     // Keep its community metadata for offline use, after the download and apart from it:
@@ -2395,6 +2456,13 @@ async function runOne(key: string) {
       // the paths this one never reached (a download with a file gone, fe#158: a retry that
       // fails on the gone file must not unlist the rest).
       const held = [...files, ...(plan ? plan.notReached(handled) : earlier)];
+      // Nothing finished: what the folder holds is partial, emptied now rather than by a
+      // launch (which leaves a row saved with no file alone, fe#197). Before the row shows
+      // the failure, so a Retry starts after it.
+      if (held.length === 0) {
+        await dropFiles();
+        if (!live()) return;
+      }
       const kept = fileCount > 0 ? Math.min(1, held.length / fileCount) : 0;
       const failure: DownloadFailure = { ...classifyDownloadError(e), kept };
       const cur = useDownloads.getState().entries[key];

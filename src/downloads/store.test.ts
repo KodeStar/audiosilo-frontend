@@ -32,6 +32,9 @@ jest.mock('@/downloads/engine', () => ({
     totalBytesUsed: jest.fn(async () => 0),
     // iOS's rename of an old `<i>.mka` (set per test; the web engine has none).
     renameFile: undefined,
+    removeFile: jest.fn(
+      async (_cid: string, _libraryId: number, _path: string, _name: string) => {},
+    ),
     // The offline companion's payload file (its IO goes through offline-meta, mocked
     // below); only its presence gates keeping metadata.
     writeText: jest.fn(async () => true),
@@ -249,6 +252,7 @@ const mockEngine = engine as unknown as {
   verify: ((uri: string) => Promise<boolean>) | undefined;
   probe: (() => Promise<boolean>) | undefined;
   renameFile: jest.Mock | undefined;
+  removeFile: jest.Mock;
   copyFile: jest.Mock | undefined;
 };
 
@@ -355,6 +359,7 @@ beforeEach(async () => {
   mockEngine.verify = undefined;
   mockEngine.probe = undefined;
   mockEngine.renameFile = undefined;
+  mockEngine.removeFile.mockReset().mockResolvedValue(undefined);
   mockEngine.copyFile = undefined;
   mockCachedEbook.mockReset().mockResolvedValue(null);
   Platform.OS = defaultOS;
@@ -789,6 +794,42 @@ describe('relocateEntry keeps a saved file its own name', () => {
     });
   });
 
+  // fe#153: with both names on disk the rename never landed, and the entry kept naming the
+  // `.mka` iOS can't play, trying again every launch.
+  it("gives the listed '.mka' the '.mp3' name when both are on disk, once", async () => {
+    Platform.OS = 'ios';
+    onDisk('0.mka', '0.mp3');
+    mockEngine.removeFile.mockImplementation(
+      async (_c: string, _l: number, _p: string, name: string) => void disk.delete(at(name)),
+    );
+    expect(await relocated([{ relPath: 'A/Book/01.mka', localUri: at('0.mka') }])).toEqual([
+      at('0.mp3'),
+    ]);
+    expect(mockEngine.removeFile).toHaveBeenCalledWith('c1', 2, 'A/Book', '0.mp3');
+    expect(renames()).toEqual([[at('0.mka'), '0.mp3']]);
+    expect([...disk]).toEqual([at('0.mp3')]);
+    expect((await readPersisted())[key]?.manifest.files.map((f) => f.localUri)).toEqual([
+      at('0.mp3'),
+    ]);
+    mockEngine.renameFile?.mockClear();
+    await hydrateAgain();
+    expect(renames()).toEqual([]);
+  });
+
+  it('never drops a copy the entry lists under the other name', async () => {
+    Platform.OS = 'ios';
+    // Saved as index 3 by its stored name, beside a later file whose own name is `3.mp3`.
+    onDisk('3.mka', '3.mp3');
+    expect(
+      await relocated([
+        { relPath: 'A/Book/01.mka', localUri: at('3.mka') },
+        { relPath: 'A/Book/04.mp3', localUri: at('3.mp3') },
+      ]),
+    ).toEqual([at('3.mka'), at('3.mp3')]);
+    expect(mockEngine.removeFile).not.toHaveBeenCalled();
+    expect([...disk].sort()).toEqual([at('3.mka'), at('3.mp3')]);
+  });
+
   it('keeps an iOS .mka name where the engine cannot rename', async () => {
     Platform.OS = 'ios';
     onDisk('0.mka');
@@ -843,6 +884,140 @@ describe('a new download names each file by fileName', () => {
   it("keeps '.mka' on Android", async () => {
     Platform.OS = 'android';
     expect(await savedNames()).toEqual(['0.mka', '1.m4a', '2.mp3']);
+  });
+});
+
+describe("a download's size and the files it leaves (fe#153, fe#197)", () => {
+  const key = downloadKey('c1', 2, 'A/Book');
+  const entry = () => useDownloads.getState().entries[key];
+  const settle = async () => {
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+  };
+  function api() {
+    mockResolveClient.mockReturnValue({
+      coverUrl: () => 'cover',
+      proxyHeadersFor: () => undefined,
+      streamUrl: (_lib: number, p: string) => `stream:${p}`,
+    } as unknown as ApiClient);
+  }
+  /** A book of `.mka` files, each listed at 1000 bytes. */
+  const mkaBook = (n: number) =>
+    makeBook({
+      files: Array.from({ length: n }, (_, i) => ({
+        rel_path: `A/Book/0${i}.mka`,
+        seq: i,
+        duration: 60,
+        format: 'mka',
+        size: 1000,
+      })),
+    });
+
+  it('takes the bytes each file came to, not the larger size the book lists (a remuxed MP3)', async () => {
+    api();
+    const seen: number[] = [];
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string, _u, onProgress?: (w: number, t: number) => void) => {
+        if (name !== 'cover.jpg') {
+          seen.push(entry()?.totalBytes ?? -1);
+          onProgress?.(800, 800);
+        }
+        return `live:c1:2:A/Book:${name}`;
+      },
+    );
+    useDownloads.getState().download('c1', 2, mkaBook(2));
+    await settle();
+    // The second file's progress counts against the first's real size.
+    expect(seen).toEqual([0, 1800]);
+    expect(entry()).toMatchObject({ status: 'downloaded', bytes: 1600, totalBytes: 1600 });
+    expect(entry()?.manifest.files.map((f) => f.bytes)).toEqual([800, 800]);
+  });
+
+  it("removes the '.mka' an older iOS app left of a file it now saves as '.mp3'", async () => {
+    Platform.OS = 'ios';
+    api();
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `file:///docs/c1/2/A%2FBook/${name}`,
+    );
+    useDownloads.getState().download('c1', 2, mkaBook(2));
+    await settle();
+    expect(entry()?.status).toBe('downloaded');
+    expect(mockEngine.removeFile.mock.calls).toEqual([
+      ['c1', 2, 'A/Book', '0.mka'],
+      ['c1', 2, 'A/Book', '1.mka'],
+    ]);
+  });
+
+  it("never removes a kept file's '.mka', nor anything on Android", async () => {
+    Platform.OS = 'ios';
+    api();
+    // A failed attempt kept the first file under its old name (its rename failed).
+    await seed({
+      [key]: {
+        ...downloadedEntry(),
+        status: 'error',
+        failure: { kind: 'network', kept: 0.5 },
+        manifest: {
+          ...downloadedEntry().manifest,
+          book: mkaBook(2),
+          files: [{ relPath: 'A/Book/00.mka', localUri: 'file:///docs/c1/2/A%2FBook/0.mka' }],
+        },
+      },
+    });
+    mockEngine.localUri = undefined;
+    await useDownloads.getState().hydrate();
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `file:///docs/c1/2/A%2FBook/${name}`,
+    );
+    useDownloads.getState().download('c1', 2, mkaBook(2));
+    await settle();
+    expect(entry()?.status).toBe('downloaded');
+    expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg', '1.mp3']);
+    expect(mockEngine.removeFile.mock.calls).toEqual([['c1', 2, 'A/Book', '1.mka']]);
+
+    Platform.OS = 'android';
+    mockEngine.removeFile.mockClear();
+    useDownloads.setState({ entries: {} });
+    useDownloads.getState().download('c1', 2, mkaBook(2));
+    await settle();
+    expect(entry()?.status).toBe('downloaded');
+    expect(mockEngine.removeFile).not.toHaveBeenCalled();
+  });
+
+  it('empties the folder of a failure that finished no file before the row shows it', async () => {
+    api();
+    let shown: string | undefined;
+    mockEngine.removeBook.mockImplementation(async () => {
+      shown = entry()?.status;
+    });
+    mockEngine.downloadFile.mockImplementation(async (_c, _l, _p, name: string) => {
+      if (name !== 'cover.jpg') throw new Error('Network request failed');
+      return `live:c1:2:A/Book:${name}`;
+    });
+    useDownloads.getState().download('c1', 2, mkaBook(1));
+    await settle();
+    expect(entry()).toMatchObject({ status: 'error', failure: { kept: 0 } });
+    expect(mockEngine.removeBook).toHaveBeenCalledTimes(1);
+    expect(shown).toBe('downloading');
+
+    // The next launch leaves the row (saved with no file) alone.
+    mockEngine.removeBook.mockClear();
+    useDownloads.setState({ entries: {}, hydrated: false });
+    await useDownloads.getState().hydrate();
+    expect(entry()?.status).toBe('error');
+    expect(mockEngine.removeBook).not.toHaveBeenCalled();
+  });
+
+  it('keeps the folder of a failure that finished a file', async () => {
+    api();
+    mockEngine.downloadFile.mockImplementation(async (_c, _l, _p, name: string) => {
+      if (name === '1.mka' || name === '1.mp3') throw new Error('Network request failed');
+      return `live:c1:2:A/Book:${name}`;
+    });
+    useDownloads.getState().download('c1', 2, mkaBook(2));
+    await settle();
+    expect(entry()).toMatchObject({ status: 'error', failure: { kept: 0.5 } });
+    expect(mockEngine.removeBook).not.toHaveBeenCalled();
   });
 });
 
@@ -1136,7 +1311,8 @@ describe("a book's ebook rides along with its download (Bridge Phase 3b-2)", () 
     );
     expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg', '0.mp3']);
     expect(entry()?.manifest.ebookUri).toBe('live:c1:2:A/Book:book.epub');
-    expect(entry()?.bytes).toBe(1000);
+    // The copied EPUB's size, and the audio's as the book lists it (the engine said none).
+    expect(entry()?.bytes).toBe(1100);
   });
 
   it("a cancel while the reader's copy is looked up drops the copy landing after it", async () => {
@@ -1262,7 +1438,7 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
       .getState()
       .download('c1', 2, withEbook({ readalong: { state: 'ready', generated_at: 'g1' } }));
     await settle();
-    expect(entry()).toMatchObject({ status: 'downloaded', bytes: 1300, totalBytes: 1400 });
+    expect(entry()).toMatchObject({ status: 'downloaded', bytes: 1400, totalBytes: 1400 });
     expect(entry()?.manifest).toMatchObject({ readalongBytes: 300, ebookSha256: 'sha-1' });
   });
 
@@ -1689,6 +1865,30 @@ describe('hydrate pruning', () => {
     // Its partial bytes go; the row stays.
     expect(mockEngine.removeBook).toHaveBeenCalledWith('c1', 2, 'A/Book');
     expect((await readPersisted())[key]?.status).toBe('error');
+  });
+
+  // fe#197: a row saved with no file has no folder left, and was emptied again every launch.
+  it('leaves alone a failure, or a waiting episode, saved with no file', async () => {
+    const failed = downloadedEntry({
+      status: 'error',
+      progress: 0,
+      failure: { kind: 'interrupted', kept: 0 },
+    });
+    failed.manifest.files = [];
+    failed.manifest.coverUri = null;
+    const waiting = downloadedEntry({
+      path: 'B/Book',
+      status: 'queued',
+      serverFetch: { percent: null },
+    });
+    waiting.manifest.files = [];
+    const key = downloadKey('c1', 2, 'A/Book');
+    await seed({ [key]: failed, [downloadKey('c1', 2, 'B/Book')]: waiting });
+
+    await useDownloads.getState().hydrate();
+
+    expect(useDownloads.getState().entries[key]).toMatchObject({ status: 'error' });
+    expect(mockEngine.removeBook).not.toHaveBeenCalled();
   });
 
   it('drops a keep-ahead download that finished no file (keep-ahead plans it again)', async () => {
@@ -2400,6 +2600,39 @@ describe('hydrate holds off what needs the registry', () => {
     await useDownloads.getState().hydrate();
     expect(Object.keys(mid ?? {})).toEqual([savedKey]);
     expect(Object.keys(await readPersisted())).toEqual([savedKey]);
+  });
+
+  // fe#153: the cancel deleted the files at once, and the read's merge put the entry back.
+  it('a cancel() during hydrate stays cancelled, its files deleted after the read', async () => {
+    await seed({ [savedKey]: { ...downloadedEntry(), status: 'error' } });
+    let deletedMidRead = false;
+    mockEngine.fileExists.mockImplementationOnce(async () => {
+      useDownloads.getState().cancel('c1', 2, 'A/Book');
+      await new Promise((r) => setTimeout(r, 0));
+      deletedMidRead = mockEngine.removeBook.mock.calls.length > 0;
+      return true;
+    });
+    await useDownloads.getState().hydrate();
+    await saved();
+    expect(deletedMidRead).toBe(false);
+    expect(mockEngine.removeBook).toHaveBeenCalledWith('c1', 2, 'A/Book');
+    expect(useDownloads.getState().entries[savedKey]).toBeUndefined();
+    expect((await readPersisted())[savedKey]).toBeUndefined();
+  });
+
+  it('reads the saved entries side by side, not one after another', async () => {
+    const other = downloadKey('c1', 2, 'B/Book');
+    await seed({ [savedKey]: downloadedEntry(), [other]: downloadedEntry({ path: 'B/Book' }) });
+    // The first book's check waits until the second book's has started.
+    let started!: () => void;
+    const secondStarted = new Promise<void>((r) => (started = r));
+    mockEngine.fileExists.mockImplementation(async (uri: string) => {
+      if (uri.includes('B/Book')) started();
+      else await secondStarted;
+      return true;
+    });
+    await useDownloads.getState().hydrate();
+    expect(Object.keys(useDownloads.getState().entries)).toEqual([savedKey, other]);
   });
 
   it('a remove() during hydrate stays removed', async () => {
