@@ -168,7 +168,7 @@ export function SignInStep({
       // A server that doesn't answer offers no single sign-on; the other ways stay.
       .catch(() => {});
     return () => ask.abort();
-  }, [api, canSso, server]);
+  }, [api, canSso]);
   const sso = canSso ? ssoName : null;
 
   const modes = MODE_VALUES.map((value) => ({
