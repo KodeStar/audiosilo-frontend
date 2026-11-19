@@ -899,8 +899,23 @@ describe('two tabs writing at once (web, Web Locks)', () => {
 });
 
 describe('a connection about to go (web)', () => {
+  // On fake timers once the tabs are open: the bounds are timers, and the words cross in
+  // microtasks, so what each bound lets through is decided by the clock and never by how
+  // busy the machine is.
+  afterEach(() => jest.useRealTimers());
+
+  /** `a.tellOtherTabsGoing(id, bounds)` started; `done()` says whether it has returned. */
+  function going(a: Tab, id: string, bounds: { answerMs: number; flushMs: number }) {
+    let finished = false;
+    void a.tellOtherTabsGoing(id, bounds).then(() => {
+      finished = true;
+    });
+    return () => finished;
+  }
+
   it('waits for a tab with work for it (its stop and saves) before going on', async () => {
     const { a, b, alex } = await twoTabs();
+    jest.useFakeTimers();
     const order: string[] = [];
     b.onConnectionGoingInOtherTab((id) =>
       id === alex
@@ -911,31 +926,41 @@ describe('a connection about to go (web)', () => {
           })()
         : null,
     );
-    await a.tellOtherTabsGoing(alex, { answerMs: 20, flushMs: 2000 });
-    order.push('A revokes');
-    expect(order).toEqual(['B stops', 'B sent', 'A revokes']);
+    const done = going(a, alex, { answerMs: 20, flushMs: 2000 });
+    // Past the answers: B said it has work, so A waits on it.
+    await jest.advanceTimersByTimeAsync(39);
+    expect(order).toEqual(['B stops']);
+    expect(done()).toBe(false);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(order).toEqual(['B stops', 'B sent']);
+    expect(done()).toBe(true);
   });
 
   it('waits only for the answers when no tab has work for it', async () => {
     const { a, b, sam } = await twoTabs();
+    jest.useFakeTimers();
     const step = jest.fn((_id: string) => null);
     b.onConnectionGoingInOtherTab(step);
-    const start = Date.now();
-    await a.tellOtherTabsGoing(sam, { answerMs: 20, flushMs: 5000 });
-    expect(Date.now() - start).toBeLessThan(1000);
+    const done = going(a, sam, { answerMs: 20, flushMs: 5000 });
+    await jest.advanceTimersByTimeAsync(19);
+    expect(done()).toBe(false);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(done()).toBe(true);
     expect(step).toHaveBeenCalledWith(sam);
   });
 
   it('goes on after the bound when a tab never finishes', async () => {
     const { a, b, alex } = await twoTabs();
+    jest.useFakeTimers();
     const step = jest.fn((_id: string) => new Promise<void>(() => {}));
     b.onConnectionGoingInOtherTab(step);
-    const start = Date.now();
-    await a.tellOtherTabsGoing(alex, { answerMs: 10, flushMs: 80 });
+    const done = going(a, alex, { answerMs: 10, flushMs: 80 });
     // It waited for B's answer, up to the bound, and no longer.
+    await jest.advanceTimersByTimeAsync(79);
     expect(step).toHaveBeenCalledWith(alex);
-    expect(Date.now() - start).toBeGreaterThanOrEqual(70);
-    expect(Date.now() - start).toBeLessThan(1000);
+    expect(done()).toBe(false);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(done()).toBe(true);
   });
 
   it('is nothing off the web', async () => {
