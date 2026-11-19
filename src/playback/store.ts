@@ -3266,11 +3266,11 @@ function stoodWhenAsked(): PlaybackSnapshot | null {
 /**
  * The store's book shows where it stood when a play was asked from outside (`stood`: the
  * followed play's, `stoodWhenAsked`, its state kept, or one asked while it stood still,
- * `pausedAsk`, in the `state` given), as the adoption of another book begins. A report that names no book, taken as the
- * store's book's before that adoption began, left the other book's place in the snapshot: held
- * from saves only while the listener touched nothing (`persist`), it was saved as this book's
- * by a speed change, during the adoption or after a Pause in the watchdog's grace, and a play
- * press reloaded this book there.
+ * `pausedAsk`, in the `state` given), as the adoption of another book begins. A report that
+ * names no book, taken as the store's book's before that adoption began, left the other book's
+ * place in the snapshot: held from saves only while the listener touched nothing (`persist`),
+ * it was saved as this book's by a speed change, during the adoption or after a Pause in the
+ * watchdog's grace, and a play press reloaded this book there.
  */
 function standWhereAsked(stood: PlaybackSnapshot | null, state?: PlaybackState) {
   if (!stood) return;
