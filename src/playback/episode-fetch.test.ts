@@ -433,6 +433,16 @@ describe('requestEpisodeFetch', () => {
     expect(useEpisodeFetch.getState().pending?.code).toBe(code);
   });
 
+  it("fails an auth proxy's 401 without asking the listener to sign in (fe#295)", async () => {
+    mockClient!.prepareEpisodeStream.mockRejectedValue(
+      new ApiError(401, 'Unauthorized', undefined, undefined, true),
+    );
+    requestEpisodeFetch(target, book);
+    await flush();
+    expect(phase()).toBe('failed');
+    expect(useEpisodeFetch.getState().pending?.code).toBeNull();
+  });
+
   it('reads the episode again when its identity changed, and fails', async () => {
     const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
     mockClient!.retryPodcastFetch.mockRejectedValue(
