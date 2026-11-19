@@ -115,7 +115,8 @@ export function ReconnectBanner({ className }: { className?: string } = {}) {
 
 /** "Sign in again" for `conn` beside a proxy's refusal (`ProxyRefusedBanner`, the Account
  * page's Proxy headers card): this banner's flow (`reconnectConnection`), named for its
- * server. A server known to mark its 401s has every unmarked one read as a refusal
+ * server in words that start with the label shown (`reconnect.signInAgainTo`), so a voice
+ * command of the label finds it. A server known to mark its 401s has every unmarked one read as a refusal
  * (WS-401-MARK), so a real revoke behind a proxy that drops the mark is answered here. */
 export function SignInAgainButton({
   conn,
@@ -126,7 +127,7 @@ export function SignInAgainButton({
     <Button
       {...style}
       title={t('profiles.signIn.action')}
-      accessibilityLabel={t('reconnect.state.title', { name: conn.name })}
+      accessibilityLabel={t('reconnect.signInAgainTo', { name: conn.name })}
       onPress={() => void reconnectConnection(conn)}
     />
   );

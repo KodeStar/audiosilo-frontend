@@ -1931,7 +1931,8 @@
       "hint": "Ta connexion à {{name}} a pris fin, il ne peut donc pas afficher tes livres ici. Rien n’est perdu.",
       "titleReset": "{{name}} a été réinitialisé",
       "hintReset": "Réappaire cet appareil avec {{name}} pour afficher tes livres ici."
-    }
+    },
+    "signInAgainTo": "Reconnecter à {{name}}"
   },
   "nav": {
     "home": "Accueil",
@@ -2428,11 +2429,14 @@
       "value": "Saisissez une valeur sur une seule ligne."
     },
     "refusedBanner": "Le proxy de connexion de {{name}} a refusé cet appareil : mettez à jour les en-têtes de proxy dans Compte",
+    "refusedBannerPair": "Le proxy de connexion de {{name}} a refusé cet appareil : mets à jour les en-têtes de proxy dans Compte, ou demande à un adulte de jumeler à nouveau cet appareil",
     "refusedBannerHint": "Ouvre le compte de ce serveur",
     "refusedAskGrownUp": "Le proxy de connexion de {{name}} a refusé cet appareil : demande à un adulte de mettre à jour les en-têtes de proxy",
+    "refusedAskGrownUpPair": "Le proxy de connexion de {{name}} a refusé cet appareil : demande à un adulte de mettre à jour les en-têtes de proxy ou de jumeler à nouveau cet appareil",
     "refusedPlain": "Le proxy de connexion de {{name}} a refusé cet appareil",
     "askGrownUp": "Demande à un adulte de mettre à jour les en-têtes de proxy.",
-    "signInAgainBody": "Si les en-têtes de proxy sont corrects, ta connexion à {{name}} a peut-être expiré : reconnecte-toi."
+    "signInAgainBody": "Si les en-têtes de proxy sont corrects, ta connexion à {{name}} a peut-être expiré : reconnecte-toi.",
+    "refusedRetry": "Le proxy de connexion de {{name}} a refusé cet appareil. Rien n'est perdu : réessayez dès que le proxy le laisse passer."
   },
   "year": {
     "eyebrow": "Ton année d’écoute",

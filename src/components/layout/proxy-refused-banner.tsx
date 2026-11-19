@@ -4,6 +4,8 @@ import { Pressable, View } from 'react-native';
 import { needsProxyNotice, useProxyRefusals } from '@/api/proxy-refusal';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { isKidAccount } from '@/lib/account';
+import { useLayout } from '@/lib/layout';
 import { pushInShell } from '@/lib/open';
 import { accountHref } from '@/lib/paths';
 import { canManageProxySet, connectionProxySet, isLimitedAccount } from '@/lib/proxy-headers';
@@ -39,14 +41,17 @@ export function onAccountPage(state: NavState | undefined, connectionId: string)
  * headers typed for its sign-in (`signInProxySets`, the kept set stale), until a grown-up
  * updates the address's set. A connection that needs signing in again shows the reconnect
  * banner only. The first such connection, in connection order. On that connection's Account
- * page already, a tap pushes nothing (`onAccountPage`). A full account's refusal also offers
- * Sign in again (`reconnectConnection`, the reconnect banner's flow): a server known to mark
- * its 401s has every unmarked one read as a refusal (WS-401-MARK), so a real revoke behind a
- * proxy that drops the mark lands here, and signing in again is its way out.
+ * page already, a tap pushes nothing (`onAccountPage`). A full account's 401 refusal also
+ * offers Sign in again (`reconnectConnection`, the reconnect banner's flow): a server known to
+ * mark its 401s has every unmarked one read as a refusal (WS-401-MARK), so a real revoke
+ * behind a proxy that drops the mark lands here, and signing in again is its way out. A kid's
+ * account, which never signs itself in, is told to ask a grown-up to pair it again; a
+ * proxy's 403 offers neither (no sign-in gets past it).
  */
 export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
   const themed = useThemeColors();
   const { t } = useTranslation();
+  const phone = useLayout() === 'phone';
   const refused = useProxyRefusals((s) => s.refused);
   const connections = useSession((s) => s.connections);
   const sets = useSession((s) => s.proxySets);
@@ -56,22 +61,33 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
   );
   if (!conn) return null;
 
+  const status = refused[conn.id];
   const canManage =
-    !!refused[conn.id] && canManageProxySet(conn, connectionProxySet(sets, conn), connections);
+    status !== undefined && canManageProxySet(conn, connectionProxySet(sets, conn), connections);
+  // A 401 may be the server's refusal of the token with its mark dropped (WS-401-MARK): a
+  // full account signs in again here, a kid's account (which never signs itself in) is told
+  // who can pair it again. A proxy's 403 is no such thing.
+  const mayBeSignedOut = status === 401;
+  const kid = isKidAccount(conn.user);
   const content = (
     <>
       <Icon name="key" size={13} color={themed.brand} />
       <Text variant="caption" className="flex-1 text-brand-ink">
         {canManage
-          ? t('proxyHeaders.refusedBanner', { name: conn.name })
+          ? kid && mayBeSignedOut
+            ? t('proxyHeaders.refusedBannerPair', { name: conn.name })
+            : t('proxyHeaders.refusedBanner', { name: conn.name })
           : conn.user?.is_demo
             ? t('proxyHeaders.refusedPlain', { name: conn.name })
-            : refused[conn.id]
-              ? t('proxyHeaders.refusedAskGrownUp', { name: conn.name })
-              : t('proxyHeaders.askGrownUp')}
+            : status === undefined
+              ? t('proxyHeaders.askGrownUp')
+              : mayBeSignedOut
+                ? t('proxyHeaders.refusedAskGrownUpPair', { name: conn.name })
+                : t('proxyHeaders.refusedAskGrownUp', { name: conn.name })}
       </Text>
     </>
   );
+
   const strip = cn(BANNER_STRIP_CLASS, RECONNECT_STRIP_CLASS, className);
 
   if (!canManage) {
@@ -83,7 +99,10 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
   }
   // Never a kid's or a demo's account (which may still manage a set no full account
   // reaches): they sign in some other way.
-  const signInAgain = !isLimitedAccount(conn.user);
+  const signInAgain = mayBeSignedOut && !isLimitedAccount(conn.user);
+  // The whole strip opens Account, its padding too, but for Sign in again beside the words or,
+  // on a narrow phone (or a long label: "Voltar a iniciar sessão"), wrapped under them rather
+  // than squeezing them into a column a few words wide.
   const toAccount = (
     <Pressable
       testID="proxy-refused-banner"
@@ -93,21 +112,29 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
         if (!onAccountPage(currentNavState(), conn.id)) pushInShell(accountHref(conn.id));
       }}
       className={cn(
-        signInAgain ? 'min-w-[200px] flex-1 flex-row items-center gap-2' : strip,
+        // Inside the strip, the strip's own row and padding: the edges open Account too.
+        signInAgain
+          ? 'min-w-[200px] flex-1 flex-row items-center gap-2 self-stretch px-3 py-2'
+          : strip,
         'active:opacity-80',
       )}
     >
       {content}
-      <Icon name="chevron-right" size={13} color={themed.brand} />
+      {/* Beside Sign in again on a wide screen, a chevron would read as the button's. */}
+      {signInAgain && !phone ? null : <Icon name="chevron-right" size={13} color={themed.brand} />}
     </Pressable>
   );
   if (!signInAgain) return toAccount;
-  // On a narrow phone (or a long label: "Voltar a iniciar sessão") the button wraps under the
-  // words rather than squeezing them into a column a few words wide.
   return (
-    <View className={cn(strip, 'flex-wrap')}>
+    <View
+      className={cn(
+        'flex-row flex-wrap items-center border-b border-b-border',
+        RECONNECT_STRIP_CLASS,
+        className,
+      )}
+    >
       {toAccount}
-      <SignInAgainButton conn={conn} size="sm" variant="ghost" />
+      <SignInAgainButton conn={conn} size="sm" variant="ghost" className="mx-1" />
     </View>
   );
 }

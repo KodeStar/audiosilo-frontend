@@ -1931,7 +1931,8 @@
       "hint": "Your sign-in to {{name}} ended, so it can't show your books here. Nothing is lost.",
       "titleReset": "{{name}} was reset",
       "hintReset": "Pair this device with {{name}} again to show your books here."
-    }
+    },
+    "signInAgainTo": "Sign in again to {{name}}"
   },
   "nav": {
     "home": "Home",
@@ -2428,11 +2429,14 @@
       "value": "Enter a value on one line."
     },
     "refusedBanner": "The sign-in proxy for {{name}} turned this device away: update the proxy headers in Account",
+    "refusedBannerPair": "The sign-in proxy for {{name}} turned this device away: update the proxy headers in Account, or ask a grown-up to pair this device again",
     "refusedBannerHint": "Opens Account for this server",
     "refusedAskGrownUp": "The sign-in proxy for {{name}} turned this device away: ask a grown-up to update the proxy headers",
+    "refusedAskGrownUpPair": "The sign-in proxy for {{name}} turned this device away: ask a grown-up to update the proxy headers or to pair this device again",
     "refusedPlain": "The sign-in proxy for {{name}} turned this device away",
     "askGrownUp": "Ask a grown-up to update the proxy headers.",
-    "signInAgainBody": "If the proxy headers are right, your sign-in to {{name}} may have ended: sign in again."
+    "signInAgainBody": "If the proxy headers are right, your sign-in to {{name}} may have ended: sign in again.",
+    "refusedRetry": "The sign-in proxy for {{name}} turned this device away. Nothing is lost: try again once the proxy lets it in."
   },
   "year": {
     "eyebrow": "Year in listening",
