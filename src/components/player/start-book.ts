@@ -57,10 +57,12 @@ function downloadedClient(target: PlayTarget) {
  * downloaded book still starts offline. With nothing to ask (the device has no network, or
  * its server is marked unreachable) it starts from that copy at once: Play offline showed a
  * spinner for the whole wait. Else `bookSourceOf` (a streamed book through the query cache,
- * or null when its connection is gone).
+ * or null when its connection is gone). `client` is `downloadedClient`'s.
  */
-async function startSourceOf(target: PlayTarget): Promise<BookSource | null> {
-  const client = downloadedClient(target);
+async function startSourceOf(
+  target: PlayTarget,
+  client: ReturnType<typeof downloadedClient>,
+): Promise<BookSource | null> {
   if (client) {
     try {
       return await withTimeout(
@@ -187,15 +189,14 @@ async function playsOnLoaded(target: PlayTarget, book: Book, opts: StartOptions)
 
 async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): Promise<boolean> {
   if (!mayActFor(target.connectionId)) return false;
-  // A downloaded book from its saved place: its place is read beside its item and chapters,
-  // so the store's resume lookup waits only for what is left of this wait, not a second one
-  // after it (a frozen server held a car's start about 6 s, two waits of 3 s).
+  // A downloaded book from its saved place: its place is read beside its item and chapters
+  // (`readPlaceEarly`), so a frozen server holds the start for one wait, not two.
   const asked = downloadedClient(target);
-  const saved = downloadedEntryOf(target)?.manifest.book;
+  const saved = asked ? downloadedEntryOf(target)?.manifest.book : undefined;
   if (asked && saved && opts.position === undefined && opts.track === undefined) {
     readPlaceEarly(asked, target.connectionId, target.libraryId, saved.rel_path);
   }
-  const source = await startSourceOf(target);
+  const source = await startSourceOf(target, asked);
   if (!source) return false;
   if (how.wanted && !how.wanted()) return false;
   if (!how.fetched && (await playsOnLoaded(target, source.book, opts))) return true;

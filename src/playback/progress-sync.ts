@@ -341,8 +341,7 @@ export async function loadInitialProgress(
   // failed to hydrate). There's no server to ask, so skip the fetch and resume from the
   // durable mirror / offline queue below - exactly the unreachable-server path.
   if (api) {
-    // null = HTTP 200, no record (new book). A read the start began early is taken, and the
-    // wait counts from when it began (`readPlaceEarly`).
+    // null = HTTP 200, no record (new book).
     const early = takeEarlyRead(api, contentKey(connectionId, libraryId, path));
     const read = early?.read ?? api.getProgress(libraryId, path);
     const wait = waitMs === undefined ? undefined : Math.max(0, waitMs - (early?.ageMs ?? 0));
