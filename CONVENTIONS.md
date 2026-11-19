@@ -459,12 +459,14 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   yet, its set is kept as anyone's (a kid's own device works). The keep is decided inside
   `setSession`, under the list's lock against the list and sets as stored (`proxyChoice`;
   `finishConnect` hands it the typed set, `proxyUnsent`), so a full account another tab signed in
-  meanwhile counts. A kid's set that got in where such a kept set differs has the kept one probed
+  meanwhile counts, and so does a set another tab kept or changed (`catchUp` reads the sets as
+  well as the list: a change to a set alone leaves the list as it was). A kid's set that got in where such a kept set differs has the kept one probed
   first (`keptSetRefused`: a tokenless `GET /server` carrying it, refused by the proxy itself):
   when the proxy refuses it, the kid's sign-in uses its typed set for itself until the app closes
   (`signInProxySets`, memory only, `connectionSetFor`: only while the address's kept set is still
   the one it stood in for, so a grown-up's update takes over; it ends with that sign-in, signed out
-  or signed in again here or in another tab, `ownSetsStill`), and kids mode and the shell ask a
+  or signed in again here or in another tab, `ownSetsStill`, and goes on under the new id when
+  another tab's identity migration renames the connection, `renamedIn`), and kids mode and the shell ask a
   grown-up to update the proxy headers (`useProxyNotice`, `ProxyRefusedBanner`). A pairing QR or link
   pairs with them when its address is the field's: type the address and the headers first, then
   scan.
@@ -474,7 +476,8 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   `accessRefusal`'s no access (fe#280), so no reconnect banner and no sign-out, and the sign-in step
   says the proxy refused the request (`isProxyRefusal`, `connect.signIn.errors.proxyRefused`).
   Nor is its 403 "not in the library" (`isNotInLibraryError` is never a proxy's: the book, browse
-  and player pages keep their Retry, read-along its Try again), and `accessRefusal` names it
+  and player pages keep their Retry, read-along its Try again, and a podcast show's page never
+  reads it as a bad link), and `accessRefusal` names it
   `proxy` (an episode's fetch and its download wait fail with the app's `proxy_refused` reason,
   worded as the proxy headers). A pairing link naming a book opens it when a proxy turns the
   token check away (`stillSignedIn` counts only the server's own 401), and `apiErrorKind` reads it
@@ -482,12 +485,17 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   **Signed in, it is said once per run** (`src/api/proxy-refusal.ts`): every signed-in
   connection's client tells, per answer, whether the proxy refused it or let it through
   (`ApiClient`'s `onProxyAnswer` -> `noteProxyAnswer`); the first refusal starts the
-  connection's episode and the next success ends it (memory only; a removed connection's goes
+  connection's episode and the next answer the server itself gave ends it: a success, or its own
+  error envelope (`ApiError.fromServer`: its 401, a 404, a 500), since the proxy let that request
+  through; a gateway's page or no answer says nothing (memory only; a removed connection's goes
   with it; an answer to a request sent with a set the connection no longer sends there counts for
   nothing, `connectionClient`). While it lasts the shell shows `ProxyRefusedBanner` beside the reconnect banner (not
   for a connection that needs signing in again): it opens the connection's Account page when the
-  listener may edit the set (`canManageProxySet`), else asks a grown-up, as kids mode does over
-  the stories.
+  listener may edit the set (`canManageProxySet`; on that page already a tap pushes nothing,
+  `onAccountPage`), else asks a grown-up, as kids mode does over the stories (`useProxyNotice`,
+  by the same rule: never for a connection that needs signing in again). A demo account that
+  may not edit the set is only told what happened (`proxyHeaders.refusedPlain`): no grown-up is
+  behind a demo.
   Nor is it refused for good (`isRefusedForGood`): the server never saw the request, so a
   progress or reading save it turned away is queued for once the headers are fixed, never dropped
   (nor is the car's bookmark, `addCarBookmark`, nor a waiting one: a replay stops at it as at a
