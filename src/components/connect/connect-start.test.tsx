@@ -10,6 +10,7 @@ import { forgetProxySets } from '@/lib/proxy-headers-store';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import i18n from '@/i18n';
 import { useSession } from '@/stores/session';
+import { mountWithPortal } from '@/testing/render-overlay';
 import { seedProfile } from '@/testing/seed-profile';
 
 import { ConnectStart } from './connect-start';
@@ -587,6 +588,28 @@ describe('remembered servers', () => {
     await fireEvent.press(await screen.findByLabelText('Reconnect to Hearthside'));
     await waitFor(() => expect(mockPush).toHaveBeenCalled());
     expect(useSession.getState().pendingServerUrl).toBe(AWAY);
+  });
+
+  // fe#295: a set stays through every sign-out; forgetting its server removes it, unless
+  // someone signed in still reaches that address.
+  it("forgetting a server forgets the proxy headers kept for its address, never a signed-in one's", async () => {
+    const set = (origin: string) => ({ origin, headers: [{ name: 'X-Proxy', value: 's' }] });
+    const OTHER = 'https://other.example.net';
+    await remember({ serverId: 'srv-1', serverUrl: AWAY, name: 'Hearthside' });
+    await remember({ serverId: 'srv-2', serverUrl: OTHER, name: 'Elsewhere' });
+    await useSession.getState().setProxySet(AWAY, set(AWAY));
+    await useSession.getState().setProxySet(OTHER, set(OTHER));
+    useSession.setState({
+      connections: [
+        { id: 'srv-3.1', serverId: 'srv-3', serverUrl: OTHER, name: 'Third', token: 't', user: {} },
+      ] as never,
+    });
+    await render(<ConnectStart />);
+    await fireEvent.press(await screen.findByLabelText('Forget Hearthside'));
+    await waitFor(() => expect(useSession.getState().proxySets).toEqual({ [OTHER]: set(OTHER) }));
+    await fireEvent.press(screen.getByLabelText('Forget Elsewhere'));
+    await waitFor(() => expect(screen.queryByLabelText('Forget Elsewhere')).toBeNull());
+    expect(useSession.getState().proxySets).toEqual({ [OTHER]: set(OTHER) });
   });
 
   it('"Add someone" offers the same servers as a sign-in, not a reconnect', async () => {
@@ -1174,6 +1197,50 @@ describe('proxy headers for a server behind an auth proxy (fe#167)', () => {
     expect(mockBases).toEqual(['https://other.example.com']);
     expect(mockProxies).toEqual([null]);
     expect(useSession.getState().proxySets).toEqual({});
+  });
+
+  // fe#295: a set outlives every sign-out. With nobody signed in through its address the
+  // Account page no longer shows it: here it is seen (never its values) and removed.
+  it('shows the set kept for the typed address while nobody is signed in there, and removes it after asking', async () => {
+    const kept = { origin: AWAY, headers: [{ name: 'X-Auth', value: 'proxy-secret' }] };
+    await useSession.getState().setProxySet(AWAY, kept);
+    await mountWithPortal(<ConnectStart />);
+    await fireEvent.changeText(screen.getByLabelText('Server address'), AWAY);
+    await fireEvent.press(screen.getByTestId('proxy-headers-toggle'));
+    expect(
+      within(screen.getByTestId('proxy-headers-kept')).getByText(
+        `1 proxy header is sent with requests to ${AWAY}.`,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('proxy-secret')).toBeNull();
+    await fireEvent.press(screen.getByTestId('proxy-headers-kept-remove'));
+    expect(screen.getByText('Remove the proxy headers?')).toBeTruthy();
+    await fireEvent.press(screen.getAllByText('Remove headers').at(-1)!);
+    await waitFor(() => expect(useSession.getState().proxySets).toEqual({}));
+    expect(screen.queryByTestId('proxy-headers-kept')).toBeNull();
+  });
+
+  it('leaves a set someone is signed in through to their Account page, and one typed over it unsaid', async () => {
+    const kept = { origin: AWAY, headers: [{ name: 'X-Auth', value: 'proxy-secret' }] };
+    await useSession.getState().setProxySet(AWAY, kept);
+    await render(<ConnectStart />);
+    await fireEvent.changeText(screen.getByLabelText('Server address'), AWAY);
+    await fireEvent.press(screen.getByTestId('proxy-headers-toggle'));
+    expect(screen.getByTestId('proxy-headers-kept')).toBeTruthy();
+    // Typed for this address: those go with the flow now, not the kept ones.
+    await fireEvent.changeText(screen.getByTestId('proxy-headers-editor-name'), 'X-New');
+    await fireEvent.changeText(screen.getByTestId('proxy-headers-editor-value'), 'v');
+    expect(screen.queryByTestId('proxy-headers-kept')).toBeNull();
+    await fireEvent.changeText(screen.getByTestId('proxy-headers-editor-value'), '');
+    expect(screen.getByTestId('proxy-headers-kept')).toBeTruthy();
+    await act(async () => {
+      useSession.setState({
+        connections: [
+          { id: 'srv-9.1', serverId: 'srv-9', serverUrl: HOME, name: 'N', token: 't', user: {} },
+        ].map((c) => ({ ...c, addresses: { away: AWAY } })) as never,
+      });
+    });
+    expect(screen.queryByTestId('proxy-headers-kept')).toBeNull();
   });
 
   it('takes up the headers the flow holds when the scanner hands a code back (a new screen)', async () => {

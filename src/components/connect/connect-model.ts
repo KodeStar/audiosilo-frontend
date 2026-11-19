@@ -3,6 +3,7 @@ import type { PeopleList, Progress, ServerAddresses } from '@/api/types';
 import { priorConnection, sameUser, serverIdOf } from '@/lib/connection-id';
 import type { KnownServer } from '@/lib/known-servers';
 import { normalizeUrl, type PairingScan } from '@/lib/pairing';
+import { type ProxyHeaders, proxyOriginChoices, type ProxySets } from '@/lib/proxy-headers';
 import {
   type AddressedConnection,
   isOwnAddress,
@@ -130,6 +131,38 @@ export function reconnectFor(
     scanReconnect(target.id, answer.base, connections) !== undefined &&
     sameUser(target.user?.username, answer.username);
   return reset ? target.id : undefined;
+}
+
+/**
+ * The proxy header sets (fe#295) that go with a remembered server the listener forgets: the
+ * ones kept for its addresses (`entry`) that nobody reaches any more, neither a signed-in
+ * connection nor another remembered server (`others`). A set outlives every sign-out so that
+ * signing in again needs no typing; once its server is forgotten too, nothing on the device
+ * would show it or remove it (the Account card needs a connection).
+ */
+export function proxyOriginsToForget(
+  entry: Pick<KnownServer, 'serverUrl' | 'addresses'>,
+  sets: ProxySets,
+  others: readonly Pick<KnownServer, 'serverUrl' | 'addresses'>[],
+): string[] {
+  const used = new Set(others.flatMap((o) => proxyOriginChoices(o)));
+  return proxyOriginChoices(entry).filter((o) => !!sets[o] && !used.has(o));
+}
+
+/**
+ * The set kept for `origin` (fe#295) when no signed-in connection reaches that address, null
+ * otherwise: the one the connect screen shows and can remove. A set outlives every sign-out,
+ * so once nobody is signed in through it the Account page (which needs a connection) no
+ * longer shows it. One someone is signed in through is theirs to manage there, never here.
+ */
+export function unusedProxySet(
+  origin: string | null,
+  sets: ProxySets,
+  connections: readonly Pick<KnownServer, 'serverUrl' | 'addresses'>[],
+): ProxyHeaders | null {
+  const set = origin ? sets[origin] : undefined;
+  if (!origin || !set) return null;
+  return connections.some((c) => proxyOriginChoices(c).includes(origin)) ? null : set;
 }
 
 /**

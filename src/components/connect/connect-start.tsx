@@ -9,6 +9,7 @@ import { probeServerId } from '@/api/server-id-probe';
 import type { ServerInfo } from '@/api/types';
 import { Logo } from '@/components/brand/logo';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
@@ -43,9 +44,11 @@ import { BrandLockup, ConnectFrame, ConnectInput, ConnectReveal, StepDots } from
 import {
   httpFallback,
   knownToOffer,
+  proxyOriginsToForget,
   reconnectAddress,
   scanReconnect,
   selfSignedMayBeWhy,
+  unusedProxySet,
 } from './connect-model';
 import { KnownServerRow, type Probe, ProbeNotice } from './connect-parts';
 import { CoverFan } from './cover-cascade';
@@ -218,6 +221,21 @@ export function ConnectStart() {
   const typedOrigin = originOf(normalizeUrl(typedUrl));
   const proxyOrigin = typedOrigin ? proxyOriginOf(typedOrigin) : null;
   const typedSet = draftToSet(proxyOrigin, proxyRows);
+  // The set this device keeps for that address while nobody is signed in through it
+  // (fe#295): it goes with the flow's requests there, and this is the one place it can be
+  // seen and removed (the Account page's card needs a connection).
+  const keptUnused = useSession((s) => unusedProxySet(proxyOrigin, s.proxySets, s.connections));
+  const [confirmForgetKept, setConfirmForgetKept] = useState(false);
+  const forgetKept = async () => {
+    setConfirmForgetKept(false);
+    // A removal that can't be stored leaves the set, and its line here, as they were.
+    if (keptUnused) {
+      await useSession
+        .getState()
+        .setProxySet(keptUnused.origin, null)
+        .catch(() => undefined);
+    }
+  };
   // `address`: the one the headers are for when this very handler set it (the state is not
   // read again until the next render). A handler that goes on after an await holds them
   // before it, never after: its render's rows and address are stale by then.
@@ -537,8 +555,16 @@ export function ConnectStart() {
   };
 
   const onForget = async (serverId: string) => {
+    const entry = known.find((e) => e.serverId === serverId);
+    const rest = known.filter((e) => e.serverId !== serverId);
     await forgetServer(serverId);
     setKnown((k) => k.filter((e) => e.serverId !== serverId));
+    if (!entry) return;
+    // The proxy headers kept for its addresses go with it, unless someone signed in (or
+    // another remembered server) still reaches them: nothing else would ever remove them.
+    const { proxySets, connections, setProxySet } = useSession.getState();
+    const gone = proxyOriginsToForget(entry, proxySets, [...connections, ...rest]);
+    await Promise.all(gone.map((origin) => setProxySet(origin, null).catch(() => undefined)));
   };
 
   const onTryDemo = async (base: string, name: string) => {
@@ -808,10 +834,38 @@ export function ConnectStart() {
                 ? t('proxyHeaders.connectHttp')
                 : t('proxyHeaders.connectNoAddress')}
           </Text>
+          {keptUnused && !typedSet ? (
+            <View className="flex-row flex-wrap items-center gap-2" testID="proxy-headers-kept">
+              <Text variant="caption" className="min-w-0 flex-1">
+                {t('proxyHeaders.held', {
+                  count: keptUnused.headers.length,
+                  origin: keptUnused.origin,
+                })}
+              </Text>
+              <Button
+                variant="destructive-outline"
+                size="sm"
+                icon="trash"
+                title={t('proxyHeaders.removeAll')}
+                onPress={() => setConfirmForgetKept(true)}
+                testID="proxy-headers-kept-remove"
+              />
+            </View>
+          ) : null}
           <ProxyHeadersEditor rows={proxyRows} onChange={setProxyRows} />
           <Text variant="caption">
             {isWeb ? t('proxyHeaders.webNote') : t('proxyHeaders.notCarried')}
           </Text>
+          <ConfirmDialog
+            visible={confirmForgetKept}
+            title={t('proxyHeaders.removeTitle')}
+            message={t('proxyHeaders.removeBody')}
+            confirmLabel={t('proxyHeaders.removeAll')}
+            confirmIcon="trash"
+            destructive
+            onConfirm={() => void forgetKept()}
+            onCancel={() => setConfirmForgetKept(false)}
+          />
         </View>
       ) : null}
       {isWeb && linkOpen ? (

@@ -18,8 +18,9 @@ import { tabLock } from '@/lib/tab-lock';
  * One secure-store item, `PROXY_SETS_KEY`, holds them all: `{ "<origin>": { headers } }`.
  * A set is never a copy held by a connection, so it outlives no one's sign-out by accident
  * and a re-pair never brings back a set someone removed: it stays until it is removed or
- * replaced on purpose (the Account page's card, or a sign-in that got in with a set typed on
- * the connect screen), whoever signs out. A non-secret marker in AsyncStorage
+ * replaced on purpose (the Account page's card, a sign-in that got in with a set typed on
+ * the connect screen, or forgetting its remembered server once nobody is signed in through
+ * it), whoever signs out. A non-secret marker in AsyncStorage
  * (`PROXY_SETS_MARKER_KEY`) says the item exists, so a device with no set costs no keychain
  * read at launch (a locked-phone CarPlay start included).
  *

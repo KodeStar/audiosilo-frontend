@@ -10,6 +10,7 @@ import {
   knownToOffer,
   latestPlace,
   pairingFallback,
+  proxyOriginsToForget,
   readyLine,
   reconnectAddress,
   repairPlan,
@@ -19,6 +20,7 @@ import {
   scanReconnect,
   selfSignedMayBeWhy,
   signedInAs,
+  unusedProxySet,
   withFallback,
 } from './connect-model';
 
@@ -554,5 +556,44 @@ it("scanParams carries the addresses, the server's id, the user and the book onl
     uid: '1',
     book: '2',
     path: 'A/B & C',
+  });
+});
+
+// fe#295: a set outlives every sign-out; forgetting its server is what removes it.
+describe('proxyOriginsToForget', () => {
+  const set = (origin: string) => ({ origin, headers: [{ name: 'X-Proxy', value: 's' }] });
+  const entry = { serverUrl: AWAY, addresses: { home: HOME, away: AWAY } };
+  const sets = { [AWAY]: set(AWAY), 'https://other.example.net': set('https://other.example.net') };
+
+  it("names the sets kept for the forgotten server's addresses, and no other server's", () => {
+    expect(proxyOriginsToForget(entry, sets, [])).toEqual([AWAY]);
+    expect(proxyOriginsToForget(entry, {}, [])).toEqual([]);
+    expect(proxyOriginsToForget({ serverUrl: HOME }, sets, [])).toEqual([]);
+  });
+
+  it('keeps a set someone signed in, or another remembered server, still reaches', () => {
+    expect(proxyOriginsToForget(entry, sets, [{ serverUrl: `${AWAY}/` }])).toEqual([]);
+    expect(
+      proxyOriginsToForget(entry, sets, [{ serverUrl: HOME, addresses: { away: AWAY } }]),
+    ).toEqual([]);
+    expect(proxyOriginsToForget(entry, sets, [{ serverUrl: HOME }])).toEqual([AWAY]);
+  });
+});
+
+// fe#295: the connect screen shows and removes a set only while nobody is signed in through it.
+describe('unusedProxySet', () => {
+  const set = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 's' }] };
+  const sets = { [AWAY]: set };
+
+  it("is the address's kept set while no connection reaches that address", () => {
+    expect(unusedProxySet(AWAY, sets, [])).toBe(set);
+    expect(unusedProxySet(AWAY, sets, [{ serverUrl: HOME }])).toBe(set);
+    expect(unusedProxySet(AWAY, {}, [])).toBeNull();
+    expect(unusedProxySet(null, sets, [])).toBeNull();
+  });
+
+  it('is none once someone is signed in through it, at any of their addresses', () => {
+    expect(unusedProxySet(AWAY, sets, [{ serverUrl: `${AWAY}/` }])).toBeNull();
+    expect(unusedProxySet(AWAY, sets, [{ serverUrl: HOME, addresses: { away: AWAY } }])).toBeNull();
   });
 });

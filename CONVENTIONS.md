@@ -362,7 +362,12 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   set for a request's origin. A set stays until it is removed or replaced on purpose (the Account
   card, or a sign-in that got in with a set typed for that address: `setSession`'s `proxyHeaders`,
   saved before the list is written); a sign-out, a retired identity and a sign-in without headers
-  leave it, and only the auth reset forgets every set (`forgetProxySets`). `hydrate` reads them
+  leave it. With nobody signed in through it, it goes when its remembered server is forgotten on
+  the connect screen (`proxyOriginsToForget`: never one a signed-in connection or another
+  remembered server still reaches), and the connect screen's Proxy headers section says it is
+  sent to the typed address and removes it after asking (`unusedProxySet`, `proxy-headers-kept`:
+  only while no signed-in connection reaches that address, and nothing is typed over it). The
+  auth reset forgets every set (`forgetProxySets`). `hydrate` reads them
   beside the tokens, and a refused read fails the hydrate as a token read does. What this build
   can't read is kept as it is, never deleted: an entry of the item it can't use is skipped and
   written back untouched, a damaged item is read as none and replaced only by an explicit save.

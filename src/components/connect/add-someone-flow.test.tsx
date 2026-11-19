@@ -12,6 +12,8 @@ jest.mock('@/playback/store', () =>
 jest.mock('@/lib/device', () => ({ getDeviceName: () => 'Test device' }));
 // The connect layout's kids-mode toast (none here): its overlay needs the native animations.
 jest.mock('@/components/ui/toast', () => ({ toast: jest.fn() }));
+// So does the connect screen's "Remove headers" dialog (never opened here).
+jest.mock('@/components/ui/confirm-dialog', () => ({ ConfirmDialog: () => null }));
 
 const dad: User = {
   id: 1,
