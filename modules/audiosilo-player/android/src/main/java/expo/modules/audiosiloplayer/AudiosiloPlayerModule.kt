@@ -703,6 +703,6 @@ class AudiosiloPlayerModule : Module() {
     /** A remote move is emitted at the controller's next discontinuity, or after this if
      * none comes (the service already moved; never lose the event). */
     const val REMOTE_MOVE_FALLBACK_MS = 300L
-    const val TAG = "AudiosiloPlayer"
+    private const val TAG = "AudiosiloPlayer"
   }
 }
