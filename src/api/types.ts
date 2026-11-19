@@ -84,8 +84,8 @@ export type Capabilities = {
    * treat missing as false, never send a `label` (such a server rejects the unknown field
    * with a 400) and never call the routes it gates. */
   annotations?: boolean;
-  /** Whether the bookmark POST takes an optional `client_id` (a UUID the device chose, at
-   * most 64 characters) and makes it at most once per user: the same `client_id` posted
+  /** Whether the bookmark POST takes an optional `client_id` (a UUID the device chose, in
+   * its hyphenated form) and makes it at most once per user: the same `client_id` posted
    * again answers 200 with the bookmark it already holds (201 for a new one), and the
    * bookmark's JSON carries it ({@link Bookmark.client_id}). The bookmark outbox keeps one
    * per waiting bookmark, so a replay after a lost answer just posts again
