@@ -94,9 +94,11 @@ class NativePlaybackService implements PlaybackService {
   private replaced: string | null = null;
   /** The tags of this run's loads (`load`): each takes the next number past `lastLoad`, from
    * one past `loadBase` (the time this service was made, so a tag an earlier run of the JS gave
-   * the engine is none of this run's). `standing`: the loads asked since the last one that
-   * landed, that one first, none that failed. `loadFloor`: the latest of them, below which a
-   * tagged report is of a superseded load (`name`). A load that fails leaves the list, so the
+   * the engine is below every one of this run's). `standing`: the loads asked since the last
+   * one that landed, that one first, none that failed. `loadFloor`: the latest of them, below
+   * which a tagged report is of a superseded load (`name`); 0 while none stands (this run has
+   * loaded and reset nothing yet, so the queue an earlier run left in the engine, adopted, is
+   * the one it holds, and its reports are taken). A load that fails leaves the list, so the
    * floor goes back to the latest load still standing, also when two that overlap both fail
    * (a floor put back to the first one's tag would drop every report of the load before it).
    * A `reset` takes a number of its own and stands as a load does: no report carries it, so
@@ -104,7 +106,7 @@ class NativePlaybackService implements PlaybackService {
   private readonly loadBase = Date.now();
   private lastLoad = this.loadBase;
   private standing: number[] = [];
-  private loadFloor = this.loadBase;
+  private loadFloor = 0;
   /** The app's own moves out (`seekTo`, `skipToTrack`), and when the latest was made: their
    * ticks are never held (`progress`, `ownMoveOut`). */
   private moving = 0;
@@ -136,11 +138,13 @@ class NativePlaybackService implements PlaybackService {
     this.held = null;
   }
   /** Take the book a report names, before the report itself; false when the report is to be
-   * dropped whole. A report tagged with a load of this run's (`load`, `isOwnLoad`) is dropped
-   * when a later load superseded it (its tag below `loadFloor`: sent before that load, heard
-   * after it), whatever book it names (FE-ANDROID-5: on A, then B, then A again, the one slot
-   * below let B's late reports pass); one of the latest load ends the watch below. A report
-   * with no such tag (an older binary, a queue the Android service loaded itself) is dropped
+   * dropped whole. A report tagged with a load (`load`, `isLoadTag`: one of this run's, or of
+   * an earlier run of the JS, whose queue this run adopted) is dropped when a later load
+   * superseded it (its tag below `loadFloor`: sent before that load, heard after it), whatever
+   * book it names (FE-ANDROID-5: on A, then B, then A again, the one slot below let B's late
+   * reports pass; an adopted book loaded again, its old queue's late tick named the same
+   * book); one of the latest load ends the watch below. A report with no such tag (an older
+   * binary, a queue the Android service loaded itself) is dropped
    * when it names the book a load replaced (`replaced`). A report naming any other book ends
    * that, as the engine's reports come in order: the replaced book's late ones are over, and
    * one naming it later is a new play of it (the car). Another book than the last
@@ -149,7 +153,7 @@ class NativePlaybackService implements PlaybackService {
   private name(book: unknown, load: unknown): boolean {
     const named = nativeBookOf(book);
     const key = named && contentKeyOf(named);
-    if (named && this.isOwnLoad(load)) {
+    if (named && this.isLoadTag(load)) {
       if (load < this.loadFloor) return false;
       this.replaced = null;
     }
@@ -175,15 +179,17 @@ class NativePlaybackService implements PlaybackService {
   /** That load failed: it stands no more, and the floor is the latest one that does. */
   private loadFailed(tag: number) {
     this.standing = this.standing.filter((t) => t !== tag);
-    this.loadFloor = this.standing[this.standing.length - 1] ?? this.loadBase;
+    this.loadFloor = this.standing[this.standing.length - 1] ?? 0;
   }
   /** That load landed: every one asked before it is superseded for good, failed or not. */
   private loadLanded(tag: number) {
     this.standing = this.standing.filter((t) => t >= tag);
   }
-  /** Is `load` a tag one of this run's loads gave the engine (`loadBase`)? */
-  private isOwnLoad(load: unknown): load is number {
-    return typeof load === 'number' && load > this.loadBase && load <= this.lastLoad;
+  /** Is `load` a tag the floor measures: one of this run's loads, or of an earlier run's (below
+   * `loadBase`, so below every load of this run)? Not one past this run's latest (a clock set
+   * back since the run that gave it): told apart from no load, it is taken as untagged. */
+  private isLoadTag(load: unknown): load is number {
+    return typeof load === 'number' && load > 0 && load <= this.lastLoad;
   }
 
   /**

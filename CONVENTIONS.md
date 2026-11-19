@@ -2150,6 +2150,10 @@ media GETs only.
   above lets through); a report of the latest load ends the watch. A `reset` takes a number of
   its own and stands as a load does, so a tagged report of the queue it unloaded, heard after
   it, is dropped too (the engine's own word after a reset names no book and carries no tag).
+  A tag an earlier run of the JS gave (Android: the service played on, and this run adopted
+  its queue) is below every one of this run's: its reports are taken until this run loads or
+  resets, and dropped after (the adopted book loaded again names the same book, so the rule
+  above lets its old queue's late tick through).
   A report with no tag (an
   older binary, a queue the Android service loaded itself) keeps the rule above, and an older
   binary ignores the record field. The store drops a report of a book it does not hold

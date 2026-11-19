@@ -319,15 +319,39 @@ describe('the book a report names', () => {
     expect(svc.reportedBook!()).toEqual(other);
   });
 
-  it('takes an untagged report as before, and one with a tag of no load of its own', async () => {
+  it('takes an untagged report as before, and one with a tag past its own loads', async () => {
     const svc = await setUp();
     await svc.load(tracks, 0, 0, [], book);
+    const a = ((mockModule.load as jest.Mock).mock.calls[0][4] as { load: number }).load;
     // An untagged report of the loaded book (an older binary) is taken.
     send('onProgress', { position: 3, duration: 100, book });
     expect(svc.getSnapshot().position).toBe(3);
-    // A tag the app never gave (an earlier run of its JS) is no load of this one's.
-    send('onProgress', { position: 4, duration: 100, book, load: 1 });
+    // A tag past every load of this run (an earlier run's, the clock set back since) can't be
+    // told from this run's: taken as untagged.
+    send('onProgress', { position: 4, duration: 100, book, load: a + 1_000 });
     expect(svc.getSnapshot().position).toBe(4);
+  });
+
+  // The queue an earlier run of the JS left in the engine (Android: the service played on, and
+  // this run adopted it) carries that run's tag, below every one of this run's. Its reports are
+  // the engine's until this run loads or resets; a late one heard after that named the same
+  // book the load did (an adopted book loaded again in another file order, or at a chapter),
+  // so nothing dropped it and its place was read as the new queue's.
+  it("takes an earlier run's queue until this run loads, and drops its late reports after", async () => {
+    const svc = await setUp();
+    send('onState', { state: 'playing', book, load: 1 });
+    send('onProgress', { position: 30, duration: 100, book, load: 1 });
+    expect(svc.reportedBook!()).toEqual(book);
+    expect(svc.getSnapshot()).toMatchObject({ state: 'playing', position: 30 });
+    // A load that fails leaves that queue in the engine: still taken.
+    (mockModule.load as jest.Mock).mockRejectedValueOnce(new Error('no'));
+    await expect(svc.load(tracks, 0, 0, [], book)).rejects.toThrow('no');
+    send('onProgress', { position: 31, duration: 100, book, load: 1 });
+    expect(svc.getSnapshot().position).toBe(31);
+    // The same book loaded again: the old queue's late tick is dropped.
+    await svc.load(tracks, 1, 5, [], book);
+    send('onProgress', { position: 32, duration: 100, trackIndex: 0, book, load: 1 });
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 5 });
   });
 
   it('takes a superseded load’s reports again once the load after it failed', async () => {
