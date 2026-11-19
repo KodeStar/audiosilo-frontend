@@ -212,6 +212,18 @@ describe('adding', () => {
     expect(await queuedBookmarks()).toEqual([]);
   });
 
+  it('keeps a labelled one made while the flags cannot be read, instead of sending it bare', async () => {
+    const { client } = server('c1');
+    mockAnnotations = undefined;
+    mockFetchCaps.mockRejectedValueOnce(new ApiError(500, 'boom'));
+    const out = await addBookmarkOrQueue('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+    expect(out).toMatchObject({ queued: { position: 100, label: 'fell_asleep' } });
+    expect(client.addBookmark).not.toHaveBeenCalled();
+    // The flags are read next time: it goes with its label.
+    await flushBookmarks();
+    expect(client.addBookmark).toHaveBeenCalledWith(1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+  });
+
   it('refuses one for a connection that is gone', async () => {
     await expect(addBookmarkOrQueue('gone', 1, 'a/book', 120)).rejects.toThrow('connection gone');
     expect(await queuedBookmarks()).toEqual([]);
@@ -344,6 +356,34 @@ describe('sending', () => {
     await flushBookmarks();
     expect(mockFetchCaps).toHaveBeenCalledTimes(1);
     expect(client.addBookmark).toHaveBeenCalledWith(1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+  });
+
+  it('keeps a labelled one, label and all, while the flags cannot be read', async () => {
+    const { client, state } = server('c1', offline());
+    await addBookmarkOrQueue('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+    mockAnnotations = undefined;
+    state.down = null;
+    client.addBookmark.mockClear();
+    mockFetchCaps.mockRejectedValueOnce(new ApiError(500, 'boom'));
+    await flushBookmarks();
+    // Not sent without its label: it waits for the flags.
+    expect(client.addBookmark).not.toHaveBeenCalled();
+    expect(await queuedBookmarks()).toMatchObject([{ position: 100, label: 'fell_asleep' }]);
+    await flushBookmarks();
+    expect(client.addBookmark).toHaveBeenCalledTimes(1);
+    expect(client.addBookmark).toHaveBeenCalledWith(1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+    expect(await queuedBookmarks()).toEqual([]);
+  });
+
+  it('sends a labelled one without its label to a server known not to take labels', async () => {
+    const { client, state } = server('c1', offline());
+    await addBookmarkOrQueue('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+    mockAnnotations = false;
+    state.down = null;
+    client.addBookmark.mockClear();
+    await flushBookmarks();
+    expect(mockFetchCaps).not.toHaveBeenCalled();
+    expect(client.addBookmark).toHaveBeenCalledWith(1, 'a/book', 100, 'Fell asleep');
   });
 
   it('drops the bookmarks of a connection gone once the session has loaded', async () => {

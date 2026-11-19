@@ -63,8 +63,9 @@ import { onlyConnection, queuedRoute } from './progress-sync';
  *
  * A bookmark the server refuses for good (a 4xx other than 401, 408 and 429: the book is gone
  * or out of the account's reach) is dropped, logged. Labels follow `postBookmark`'s rule at
- * send time (`addBookmark`); a replay with a label reads the server's flags first when they
- * are not known yet, so the label is not dropped just because `/server` was not read again.
+ * send time (`addBookmark`), on flags that are known: a labelled bookmark is sent only once
+ * its server's `/server` has been read (`labelFlagKnown`), and waits while it can't be, so
+ * the label is never dropped just because that read failed.
  */
 
 /** A bookmark waiting for its server. */
@@ -219,11 +220,24 @@ const refusedForGood = (err: unknown) => isRefusedForGood(err) && !isSignedOutEr
 const worthKeeping = (err: unknown) =>
   isUnreachableError(err) || (err instanceof ApiError && !refusedForGood(err));
 
+/** Whether `connectionId`'s server is known to take a bookmark's label or not (`annotations`),
+ * reading its flags when they are not known yet. False when they can't be read: the bookmark
+ * then waits with its label, rather than going without it (`postBookmark` drops a label on
+ * flags not known). */
+async function labelFlagKnown(connectionId: string, client: ApiClient): Promise<boolean> {
+  if (cachedCapability(connectionId, 'annotations') !== undefined) return true;
+  return fetchCapabilities(connectionId, client).then(
+    () => true,
+    () => false,
+  );
+}
+
 /**
  * Add a bookmark to a book on ONE connection's server, or keep it on the device when the
  * server can't take it now (see the module). Straight to the server when nothing is waiting
  * for it and it reads as reachable (`addBookmark`, which refreshes the book's lists);
- * otherwise, or when that fails with a failure worth another try, it goes into the outbox.
+ * otherwise, or when that fails with a failure worth another try, it goes into the outbox,
+ * as a labelled one does while the server's flags can't be read (`labelFlagKnown`).
  * Rejects when the connection is gone, the server refused it for good, or the device could
  * not store it.
  */
@@ -235,7 +249,8 @@ export async function addBookmarkOrQueue(
   note = '',
   label?: BookmarkLabel,
 ): Promise<AddBookmarkOutcome> {
-  if (!resolveClient(connectionId)) throw new Error('connection gone');
+  const client = resolveClient(connectionId);
+  if (!client) throw new Error('connection gone');
   const since = connectionGeneration(connectionId);
   // Behind any still waiting for this server: they reach it in the order they were made. The
   // copy here once read (another tab's changes reach it through `storage` events).
@@ -243,12 +258,15 @@ export async function addBookmarkOrQueue(
   const waiting = queue.some((e) => e.connectionId === connectionId);
   let failed = false;
   if (!waiting && isReachable(connectionId)) {
-    try {
-      return { made: await addBookmark(connectionId, libraryId, path, position, note, label) };
-    } catch (err) {
-      if (!worthKeeping(err)) throw err;
-      noteFailure(connectionId, err);
-      failed = true;
+    if (label && !(await labelFlagKnown(connectionId, client))) failed = true;
+    else {
+      try {
+        return { made: await addBookmark(connectionId, libraryId, path, position, note, label) };
+      } catch (err) {
+        if (!worthKeeping(err)) throw err;
+        noteFailure(connectionId, err);
+        failed = true;
+      }
     }
   }
   const queued = await append(
@@ -324,9 +342,9 @@ async function sendGroup(
         onServer.set(book, held);
       }
       if (heldOnServer(e, held)) continue;
-      if (e.label && cachedCapability(connectionId, 'annotations') === undefined) {
-        await fetchCapabilities(connectionId, client).catch(() => undefined);
-      }
+      // Its label goes only on flags that are known: it waits, label and all, while they
+      // can't be read.
+      if (e.label && !(await labelFlagKnown(connectionId, client))) return entries.slice(i);
       // Claimed by this replay, but taken out while it sent those ahead of it: the claim
       // keeps no Delete out, so the send checks, right before the POST.
       if (!(await stillWaiting(e))) continue;

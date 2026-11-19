@@ -1708,7 +1708,9 @@ web's focus and `online` (`startQueueReplays`), and on a backoff (30 s doubling 
 while a reachable server keeps failing, through `replayQueue` routed by `queuedRoute` (claims,
 so two tabs never send one twice). The POST has no idempotency key, so a replay reads the book's
 bookmarks first and takes one at the same second with the same note, made at most a day before,
-as already sent. Signing out or removing a server gives it a last send in
+as already sent. A labelled one (Fell asleep) is sent only once its server's flags are known
+(`labelFlagKnown` reads `/server` when they are not) and waits, label and all, while that read
+fails: here "not known yet" never sends it bare. Signing out or removing a server gives it a last send in
 `flushConnectionSaves` (`sendBookmarksBeforeRemoval`) and the removal purges what is left,
 after its confirm names them beside the unsynced listens (`unsentBeforeSignOut`,
 `src/components/account/unsent.ts`: the sign-out, remove-server and remove-person confirms); a replay
