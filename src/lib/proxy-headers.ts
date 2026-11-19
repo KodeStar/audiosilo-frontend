@@ -159,15 +159,33 @@ export function proxySetFor(sets: ProxySets | null | undefined, url: string): Pr
   return (origin && sets?.[origin]) || null;
 }
 
-/** Whether any address of `conn` (the one it was paired with, its away and home ones) has a
- * set kept for it in `sets`. */
-export function hasProxySet(
+/**
+ * The origins a connection's headers can be for, best first: `first` (the one a set is kept
+ * for now), the server's away address (the public one a proxy guards), the address it was
+ * paired with, then its home address. Distinct, https only (headers never go over plain
+ * http): none when the connection knows no https address.
+ */
+export function proxyOriginChoices(
+  conn: {
+    serverUrl: string;
+    addresses?: { home?: string; away?: string };
+  },
+  first?: string | null,
+): string[] {
+  const all = [first, conn.addresses?.away, conn.serverUrl, conn.addresses?.home].map((u) =>
+    u ? proxyOriginOf(u) : null,
+  );
+  return [...new Set(all.filter((o): o is string => !!o))];
+}
+
+/** The set kept for the first of `conn`'s addresses that has one (`proxyOriginChoices`'s
+ * order), null when none has. */
+export function connectionProxySet(
   sets: ProxySets | null | undefined,
   conn: { serverUrl: string; addresses?: { home?: string; away?: string } },
-): boolean {
-  return [conn.serverUrl, conn.addresses?.away, conn.addresses?.home].some(
-    (u) => !!u && !!proxySetFor(sets, u),
-  );
+): ProxyHeaders | null {
+  for (const o of proxyOriginChoices(conn)) if (sets?.[o]) return sets[o];
+  return null;
 }
 
 /** What the screen shows in place of a value: the same dots for every one, so what is drawn

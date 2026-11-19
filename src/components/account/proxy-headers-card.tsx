@@ -8,7 +8,6 @@ import {
   draftProblems,
   draftToSet,
   type HeaderDraftRow,
-  proxyOriginChoices,
 } from '@/components/connect/proxy-headers-model';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -17,7 +16,7 @@ import { FormError } from '@/components/ui/form-error';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { hostOf } from '@/lib/pairing';
-import { MASKED_PROXY_VALUE } from '@/lib/proxy-headers';
+import { connectionProxySet, MASKED_PROXY_VALUE, proxyOriginChoices } from '@/lib/proxy-headers';
 import { cn } from '@/lib/utils';
 import { useSession } from '@/stores/session';
 
@@ -44,10 +43,7 @@ export function ProxyHeadersCard({ connectionId }: { connectionId: string }) {
   if (!conn) return null;
 
   // The set kept for the first of the connection's addresses that has one.
-  const set =
-    proxyOriginChoices(conn)
-      .map((o) => sets[o])
-      .find((s) => !!s) ?? null;
+  const set = connectionProxySet(sets, conn);
   const choices = proxyOriginChoices(conn, set?.origin);
   const editing = rows !== null;
   const target = origin ?? choices[0] ?? null;
@@ -132,7 +128,7 @@ export function ProxyHeadersCard({ connectionId }: { connectionId: string }) {
       ) : set ? (
         <View className="gap-3">
           <View className="overflow-hidden rounded-card border border-border">
-            {set.headers.map((h, i: number) => (
+            {set.headers.map((h, i) => (
               <View
                 key={h.name}
                 accessible

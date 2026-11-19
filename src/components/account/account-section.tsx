@@ -20,7 +20,7 @@ import { addressKind, mergeAddresses } from '@/lib/server-address';
 import { serverDisplayName } from '@/lib/server-display-name';
 import { APP_VERSION } from '@/lib/version';
 import { useProfileConnections } from '@/stores/profiles';
-import { hasProxySet } from '@/lib/proxy-headers';
+import { connectionProxySet } from '@/lib/proxy-headers';
 import { useSession } from '@/stores/session';
 import { watchLink } from '@/watch/link';
 
@@ -130,7 +130,9 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   // reader, bring it back once the request failed, and ask again, twice a second for good.
   const capsUnread = !caps && (serverInfo.isPaused || serverInfo.errorUpdateCount > 0);
   const demo = !!user?.is_demo;
-  const hasDemoSet = useSession((st) => !!connection && hasProxySet(st.proxySets, connection));
+  const hasDemoSet = useSession(
+    (st) => !!connection && !!connectionProxySet(st.proxySets, connection),
+  );
   // A kid's account (8b-1) can't pair a device or have API keys (the server refuses both).
   const kid = isKidAccount(user);
 

@@ -1,11 +1,5 @@
-import {
-  blankRow,
-  canAddRow,
-  draftOf,
-  draftProblems,
-  draftToSet,
-  proxyOriginChoices,
-} from './proxy-headers-model';
+import { blankRow, canAddRow, draftOf, draftProblems, draftToSet } from './proxy-headers-model';
+import { proxyOriginChoices } from '@/lib/proxy-headers';
 
 const SET = {
   origin: 'https://books.example.com',

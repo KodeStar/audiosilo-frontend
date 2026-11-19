@@ -379,13 +379,7 @@ async function readJson<T>(res: Response): Promise<T> {
     data = text ? JSON.parse(text) : undefined;
   } catch {
     // Not JSON: a reverse proxy's page. A 401 of that kind is an auth proxy's (`fromProxy`).
-    throw new ApiError(
-      res.status,
-      fallbackMsg,
-      undefined,
-      retryAfterHeader(res),
-      res.status === 401,
-    );
+    throw apiErrorOf(res, undefined, fallbackMsg);
   }
   if (!res.ok) throw apiErrorOf(res, data, fallbackMsg);
   return data as T;

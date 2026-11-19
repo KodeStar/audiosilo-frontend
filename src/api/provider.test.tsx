@@ -194,8 +194,8 @@ describe('buildClients', () => {
   ] as never[];
 
   it('rebuilds only the client whose address or token moved', () => {
-    const first = buildClients(conns, {}, new Map());
-    const switched = buildClients(conns, { c1: home }, first);
+    const first = buildClients(conns, {}, new Map(), {});
+    const switched = buildClients(conns, { c1: home }, first, {});
     expect(switched.get('c1')!.client).not.toBe(first.get('c1')!.client);
     expect(switched.get('c1')!.client.baseUrl).toBe(home);
     expect(switched.get('c2')!.client).toBe(first.get('c2')!.client);
@@ -203,6 +203,7 @@ describe('buildClients', () => {
       [conns[0], { ...(conns[1] as object), token: 'fresh' }] as never[],
       { c1: home },
       switched,
+      {},
     );
     expect(repaired.get('c1')!.client).toBe(switched.get('c1')!.client);
     expect(repaired.get('c2')!.client).not.toBe(switched.get('c2')!.client);
@@ -241,7 +242,7 @@ describe('buildClients', () => {
     })) as unknown as typeof globalThis.fetch;
     try {
       mockNoteAnswer.mockClear();
-      const built = buildClients(conns, {}, new Map());
+      const built = buildClients(conns, {}, new Map(), {});
       await expect(built.get('c2')!.client.serverInfo()).rejects.toBeInstanceOf(ApiError);
       expect(mockNoteAnswer).toHaveBeenCalledWith('c2');
       expect(mockNoteAnswer).toHaveBeenCalledTimes(1);
@@ -251,8 +252,8 @@ describe('buildClients', () => {
   });
 
   it('drops a removed connection', () => {
-    const first = buildClients(conns, {}, new Map());
-    expect([...buildClients([conns[0]], {}, first).keys()]).toEqual(['c1']);
+    const first = buildClients(conns, {}, new Map(), {});
+    expect([...buildClients([conns[0]], {}, first, {}).keys()]).toEqual(['c1']);
   });
 });
 

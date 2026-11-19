@@ -413,6 +413,11 @@ async function readStored(): Promise<StoredSignIns> {
  */
 let unreadableLegacy: ReadonlySet<string> = new Set();
 
+/** `m` as stored: marked again when its earlier build's set is unreadable (`unreadableLegacy`). */
+function withLegacyMark<T extends { id: string }>(m: T): T & { hasProxyHeaders?: true } {
+  return unreadableLegacy.has(m.id) ? { ...m, hasProxyHeaders: true } : m;
+}
+
 /**
  * Move the sets earlier builds kept per connection (`marked`, `readLegacyProxyHeaders`) into
  * the one item kept per origin (fe#295): each becomes its origin's set unless that origin
@@ -427,6 +432,10 @@ async function moveLegacyProxySets(
   marked: readonly string[],
   stored: Record<string, ProxyHeaders>,
 ): Promise<Record<string, ProxyHeaders>> {
+  if (!marked.length) {
+    unreadableLegacy = new Set();
+    return stored;
+  }
   const read = await Promise.all(marked.map(readLegacyProxyHeaders));
   const adopt: Record<string, ProxyHeaders> = {};
   for (const set of read) {
@@ -452,9 +461,7 @@ async function moveLegacyProxySets(
   await writingList(async () => {
     const meta = await getItemStrict<PersistedConnection[]>(CONNECTIONS_KEY);
     if (!meta) return;
-    const next = meta.map(({ hasProxyHeaders: _m, ...m }) =>
-      keep.has(m.id) ? { ...m, hasProxyHeaders: true as const } : m,
-    );
+    const next = meta.map(({ hasProxyHeaders: _m, ...m }) => withLegacyMark(m));
     const text = JSON.stringify(next);
     if (text === JSON.stringify(meta)) return;
     knownList = text;
@@ -1006,8 +1013,7 @@ async function persist(connections: Connection[], defaultId: string | null) {
   // reconnect prompt never survives a restart (it's recomputed from the next failure). An
   // earlier build's set this build can't read keeps its mark (`unreadableLegacy`).
   const meta: PersistedConnection[] = connections.map(
-    ({ token: _t, needsReconnect: _r, ...rest }) =>
-      unreadableLegacy.has(rest.id) ? { ...rest, hasProxyHeaders: true } : rest,
+    ({ token: _t, needsReconnect: _r, ...rest }) => withLegacyMark(rest),
   );
   // What this tab knows is stored now (`catchUp`), and a read of another tab's write that is
   // under way reads again, past this one.
@@ -1035,10 +1041,7 @@ export const useSession = create<SessionState>()((set, get) => ({
       knownList = read.list;
       // An earlier build's per-connection sets go to their origins first (fe#295): a failure
       // fails the hydrate, as a token read's does.
-      if (!read.marked.length) unreadableLegacy = new Set();
-      const proxySets = read.marked.length
-        ? await moveLegacyProxySets(read.marked, read.proxySets)
-        : read.proxySets;
+      const proxySets = await moveLegacyProxySets(read.marked, read.proxySets);
       hydrateEnded(false);
       if (read.connections) {
         set({
@@ -1081,12 +1084,11 @@ export const useSession = create<SessionState>()((set, get) => ({
     // origin's set (a set typed on the connect screen): kept for that origin, for everyone
     // on this device who reaches it (fe#295). First, so a set that can't be kept stores
     // nothing. A sign-in never removes a set.
-    if (proxyHeaders?.headers.length) {
-      const origin = proxyHeaders.origin;
-      if (!sameProxyHeaders(get().proxySets[origin], proxyHeaders)) {
-        await saveProxySets({ [origin]: proxyHeaders });
-        set({ proxySets: { ...get().proxySets, [origin]: proxyHeaders } });
-      }
+    if (
+      proxyHeaders?.headers.length &&
+      !sameProxyHeaders(get().proxySets[proxyHeaders.origin], proxyHeaders)
+    ) {
+      await get().setProxySet(proxyHeaders.origin, proxyHeaders);
     }
     // On the web, the list as stored, with what another tab signed in or out since this tab
     // last heard, and no other tab's write between that read and this one (`writingList`).

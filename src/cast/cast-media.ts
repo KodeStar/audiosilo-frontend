@@ -1,5 +1,5 @@
 import type { Book, ChaptersResponse } from '@/api/types';
-import { originOf, type ProxyHeaders } from '@/lib/proxy-headers';
+import { proxySetFor, type ProxySets } from '@/lib/proxy-headers';
 import { isLoopbackHost, urlHost } from '@/lib/url-host';
 import { isBrowserUndecodable, transcodeUrlAt } from '@/playback/transcode';
 import type { BookRef, PlaybackTrack } from '@/playback/types';
@@ -65,15 +65,12 @@ export type CastBlockReason =
   | 'proxy';
 
 /**
- * Whether `baseUrl` is the origin proxy headers go to (fe#167, the set kept for it): a server
+ * Whether `baseUrl`'s origin has proxy headers kept for it (fe#167, `proxySetFor`): a server
  * behind an auth proxy there, which a Cast receiver can't pass. Whatever the platform: the
  * web, which sends no headers cross-origin, can't hand the receiver a way past it either.
  */
-export function behindProxy(
-  proxyHeaders: ProxyHeaders | null | undefined,
-  baseUrl: string | null,
-): boolean {
-  return !!proxyHeaders?.headers.length && !!baseUrl && originOf(baseUrl) === proxyHeaders.origin;
+export function behindProxy(sets: ProxySets | null | undefined, baseUrl: string | null): boolean {
+  return !!baseUrl && !!proxySetFor(sets, baseUrl)?.headers.length;
 }
 
 /**

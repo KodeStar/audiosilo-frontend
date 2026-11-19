@@ -5,7 +5,6 @@ import {
   type ProxyHeaderProblem,
   proxyHeaderProblems,
   type ProxyHeaders,
-  proxyOriginOf,
 } from '@/lib/proxy-headers';
 
 /**
@@ -74,23 +73,4 @@ export function draftToSet(
   rows: readonly HeaderDraftRow[],
 ): ProxyHeaders | null {
   return cleanProxyHeaders(origin, filledHeaders(rows));
-}
-
-/**
- * The origins a connection's headers can be for, best first: `first` (the one a set is kept
- * for now), the server's away address (the public one a proxy guards), the address it was
- * paired with, then its home address. Distinct, https only (headers never go over plain
- * http): none when the connection knows no https address.
- */
-export function proxyOriginChoices(
-  conn: {
-    serverUrl: string;
-    addresses?: { home?: string; away?: string };
-  },
-  first?: string | null,
-): string[] {
-  const all = [first, conn.addresses?.away, conn.serverUrl, conn.addresses?.home].map((u) =>
-    u ? proxyOriginOf(u) : null,
-  );
-  return [...new Set(all.filter((o): o is string => !!o))];
 }

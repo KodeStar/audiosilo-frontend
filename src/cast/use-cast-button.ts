@@ -5,7 +5,6 @@ import { qk, useCapability } from '@/api/hooks';
 import type { Book, ChaptersResponse } from '@/api/types';
 import { useDeviceOnline } from '@/lib/device-online';
 import { usePlayer } from '@/playback/store';
-import { proxySetFor } from '@/lib/proxy-headers';
 import { useSession } from '@/stores/session';
 
 import { type CastButtonModel, castButtonModel } from './cast-button-model';
@@ -20,8 +19,8 @@ export function useCastButton(): CastButtonModel {
   const canCast = useCapability('cast', cid);
   const canTranscode = useCapability('transcode', cid);
   const { url } = useActiveAddress(cid ?? '');
-  // The set kept for the address in use (one per origin, fe#295).
-  const proxyHeaders = useSession((s) => (url ? proxySetFor(s.proxySets, url) : null));
+  // Every origin's proxy headers (one set per origin, fe#295).
+  const proxySets = useSession((s) => s.proxySets);
   const { supported, status, deviceName } = useCast();
   const online = useDeviceOnline();
   const queryClient = useQueryClient();
@@ -45,6 +44,6 @@ export function useCastButton(): CastButtonModel {
     chapters,
     status,
     deviceName,
-    proxied: behindProxy(proxyHeaders, url || null),
+    proxied: behindProxy(proxySets, url || null),
   });
 }

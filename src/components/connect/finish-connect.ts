@@ -11,7 +11,7 @@ import { connectionIdOf, priorConnection } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
 import { bookHref, type ConnectBook } from '@/lib/paths';
 import { popTabToRoot } from '@/lib/root-stack';
-import { type ProxyHeaders, proxyOriginOf } from '@/lib/proxy-headers';
+import { type ProxyHeaders, proxyOriginChoices } from '@/lib/proxy-headers';
 import { mergeAddresses } from '@/lib/server-address';
 import {
   activeProfile,
@@ -145,12 +145,7 @@ export async function finishConnect(input: {
   // is everyone's who signs in there, and a sign-in never removes one.
   const typed = useSession.getState().pendingProxyHeaders;
   const typedHere =
-    typed &&
-    [input.serverUrl, plan.serverUrl, plan.addresses?.away, plan.addresses?.home].some(
-      (u) => !!u && proxyOriginOf(u) === typed.origin,
-    )
-      ? typed
-      : undefined;
+    typed && proxyOriginChoices(plan, input.serverUrl).includes(typed.origin) ? typed : undefined;
   const proxyHeaders = input.carried ?? typedHere;
   if (input.answeredAt) setAddressPick(pickId, input.answeredAt);
   const id = await setSession({

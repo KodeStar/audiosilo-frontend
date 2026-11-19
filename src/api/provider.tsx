@@ -12,6 +12,7 @@ import { connectionIdFromKey, isServerInfoKey, serverResetCid } from '@/lib/auth
 import {
   type ProxyHeaders,
   type ProxySets,
+  proxyOriginChoices,
   proxySetFor,
   sameProxyHeaders,
 } from '@/lib/proxy-headers';
@@ -239,7 +240,7 @@ export function buildClients(
   connections: readonly Connection[],
   picks: Record<string, string>,
   previous: ReadonlyMap<string, BuiltClient>,
-  sets: ProxySets | undefined = useSession.getState().proxySets,
+  sets: ProxySets,
 ): Map<string, BuiltClient> {
   const built = new Map<string, BuiltClient>();
   for (const c of connections) {
@@ -323,11 +324,7 @@ function useReadAgainOnSignIn(connections: readonly Connection[], sets: ProxySet
 
 /** The proxy headers kept for each of a connection's addresses, as one comparable text. */
 function proxySetsText(c: Connection, sets: ProxySets): string {
-  return JSON.stringify(
-    [c.serverUrl, c.addresses?.away, c.addresses?.home].map((u) =>
-      u ? proxySetFor(sets, u) : null,
-    ),
-  );
+  return JSON.stringify(proxyOriginChoices(c).map((o) => sets[o] ?? null));
 }
 
 export function ApiProvider({ children }: { children: ReactNode }) {

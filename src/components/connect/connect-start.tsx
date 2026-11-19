@@ -217,7 +217,7 @@ export function ConnectStart() {
   // Only an https address takes them (never sent over plain http); an http one says so.
   const typedOrigin = originOf(normalizeUrl(typedUrl));
   const proxyOrigin = typedOrigin ? proxyOriginOf(typedOrigin) : null;
-  const typedSet = setFor(typedUrl, proxyRows);
+  const typedSet = draftToSet(proxyOrigin, proxyRows);
   // `address`: the one the headers are for when this very handler set it (the state is not
   // read again until the next render). A handler that goes on after an await holds them
   // before it, never after: its render's rows and address are stale by then.
@@ -885,8 +885,7 @@ export function ConnectStart() {
 /** The set the editor's rows make for the address `typed` as the listener entered it (none
  * unless it is an https one). */
 function setFor(typed: string, rows: readonly HeaderDraftRow[]) {
-  const origin = originOf(normalizeUrl(typed));
-  return draftToSet(origin ? proxyOriginOf(origin) : null, rows);
+  return draftToSet(proxyOriginOf(normalizeUrl(typed)), rows);
 }
 
 /** A link for the AudioSilo app (`audiosilo://`), which a browser can't open. */
