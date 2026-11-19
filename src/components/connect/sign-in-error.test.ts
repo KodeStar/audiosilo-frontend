@@ -38,12 +38,36 @@ describe('signInErrorText', () => {
     }
   });
 
-  it('names the wait in whole minutes, rounding up', () => {
+  it('names a wait of a minute or more in whole minutes, rounding up', () => {
     expect(signInErrorText(new ApiError(429, 'x', undefined, 61), 'login', t)).toBe(
       'Too many tries from this network. Try again in 2 minutes.',
     );
-    expect(signInErrorText(new ApiError(429, 'x', undefined, 30), 'redeem', t)).toBe(
+    expect(signInErrorText(new ApiError(429, 'x', undefined, 60), 'redeem', t)).toBe(
       'Too many tries from this network. Try again in 1 minute.',
+    );
+  });
+
+  // A single sign-on's finish offers Try again after a 429 shorter than its minute: 30 s
+  // once read "Try again in 1 minute" (SSO-DONE verify).
+  it('names a wait under a minute in seconds', () => {
+    expect(signInErrorText(new ApiError(429, 'x', undefined, 30), 'redeem', t)).toBe(
+      'Too many tries from this network. Try again in 30 seconds.',
+    );
+    expect(signInErrorText(new ApiError(429, 'x', undefined, 0.5), 'login', t)).toBe(
+      'Too many tries from this network. Try again in 1 second.',
+    );
+  });
+
+  it.each(['de', 'es', 'fr', 'it', 'pt'])('names a wait in seconds in %s', (lng) => {
+    const said = signInErrorText(
+      new ApiError(429, 'x', undefined, 30),
+      'login',
+      i18n.getFixedT(lng),
+    );
+    expect(said).toMatch(/30/);
+    expect(said).not.toMatch(/connect\.signIn/);
+    expect(said).not.toBe(
+      signInErrorText(new ApiError(429, 'x', undefined, 60), 'login', i18n.getFixedT(lng)),
     );
   });
 

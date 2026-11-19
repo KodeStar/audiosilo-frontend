@@ -360,10 +360,20 @@ export function ConnectStart() {
   // A book the signed-out visit was opening (`signedOutHref`) goes along, so the sign-in
   // ends on it (frontend#129). A pairing link's book goes through `pair` instead.
   const returnBook = token ? null : parseConnectBook({ book, path });
-  // Leaving for another sign-in drops a single sign-on's Try again: the screen stays under the
-  // flow (back from "Your library is ready."), where it must not finish that sign-in too.
-  const goSignIn = (name: string) => {
+  // Moving on to another address (Continue, a remembered server) or sign-in: a pairing link's
+  // error and its Try again are about the link, not this address, and go (fe#159).
+  const moveOn = () => {
+    setRetryLink(null);
     setOidcRetry(null);
+    clearPairError();
+  };
+
+  // Leaving for another sign-in drops a failed link's or single sign-on's reason and its Try
+  // again (`moveOn`): the screen stays under the flow (Back from the sign-in step, or from
+  // "Your library is ready."), where it must neither show that reason nor finish that sign-in
+  // too.
+  const goSignIn = (name: string) => {
+    moveOn();
     router.push({
       pathname: '/connect/sign-in',
       params: {
@@ -394,14 +404,6 @@ export function ConnectStart() {
     servedAsk.current = null;
     setBusy(null);
     setServed(null);
-  };
-
-  // Moving on to another address (Continue, a remembered server): a pairing link's error and
-  // its Try again are about the link, not this address, and go (fe#159).
-  const moveOn = () => {
-    setRetryLink(null);
-    setOidcRetry(null);
-    clearPairError();
   };
 
   // Ask the server who it is. The typed address and the served player's own server show what

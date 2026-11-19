@@ -6,6 +6,7 @@ import {
   OIDC_DONE_MS,
   oidcButtonName,
   oidcDoneLeft,
+  oidcFinishFailure,
   oidcFinishText,
   oidcRetryWait,
   oidcReturnOnLoad,
@@ -184,5 +185,49 @@ describe('oidcDoneLeft', () => {
     const doneBy = 1_000_000 + OIDC_DONE_MS;
     jest.spyOn(Date, 'now').mockReturnValue(1_000_000 - 3_600_000);
     expect(oidcDoneLeft(doneBy)).toBe(0);
+  });
+});
+
+describe('oidcFinishFailure', () => {
+  const NOW = 1_000_000;
+  const run = jest.fn(async () => null);
+  beforeEach(() => jest.spyOn(Date, 'now').mockReturnValue(NOW));
+  afterEach(() => jest.restoreAllMocks());
+
+  it('offers the same finish again while the minute lasts', () => {
+    const doneBy = NOW + 20_000;
+    expect(oidcFinishFailure(new ApiError(500, 'boom'), t, doneBy, run)).toEqual({
+      message: t('connect.oidc.errors.failedRetry'),
+      retry: { waitMs: 0, doneBy, run },
+    });
+    expect(oidcFinishFailure(new ApiError(429, 'slow', undefined, 10), t, doneBy, run)).toEqual({
+      message: t('connect.signIn.errors.waitSeconds', { count: 10 }),
+      retry: { waitMs: 10_000, doneBy, run },
+    });
+  });
+
+  // A Try again sent near the end of the minute and failing just after it (SSO-DONE verify):
+  // the server holds the sign-in no more, so it reads as expired, never "Sign in again" for
+  // an unreachable server or a wait to sit out.
+  it.each([
+    ['no answer', new NetworkError(new Error('offline'))],
+    ['a 500', new ApiError(500, 'boom')],
+    ["a proxy's 408", new ApiError(408, 'request timeout')],
+    ['a 429 shorter than the minute', new ApiError(429, 'slow', undefined, 30)],
+  ] as const)('says the sign-in expired for %s just after the minute', (_, e) => {
+    expect(oidcFinishFailure(e, t, NOW - 1, run)).toEqual({
+      message: t('connect.oidc.errors.expired'),
+    });
+  });
+
+  it('words a refusal as itself, minute or not', () => {
+    const e = new ApiError(403, 'x', 'oidc_intent_mismatch');
+    expect(oidcFinishFailure(e, t, NOW - 1, run)).toEqual({
+      message: t('connect.oidc.errors.notThisTrip'),
+    });
+    // A lockout outlives any minute: its own wait, not an expired sign-in.
+    expect(oidcFinishFailure(new ApiError(429, 'slow', undefined, 900), t, NOW - 1, run)).toEqual({
+      message: t('connect.signIn.errors.wait', { count: 15 }),
+    });
   });
 });

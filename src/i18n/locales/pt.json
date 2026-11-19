@@ -480,6 +480,8 @@
       "errors": {
         "wait_one": "Demasiadas tentativas a partir desta rede. Tente novamente dentro de {{count}} minuto.",
         "wait_other": "Demasiadas tentativas a partir desta rede. Tente novamente dentro de {{count}} minutos.",
+        "waitSeconds_one": "Demasiadas tentativas a partir desta rede. Tente novamente dentro de {{count}} segundo.",
+        "waitSeconds_other": "Demasiadas tentativas a partir desta rede. Tente novamente dentro de {{count}} segundos.",
         "badCode": "Esse código de convite não funcionou. Verifique-o ou peça um novo convite ao seu administrador.",
         "usedInvite": "Este convite não pode adicionar outro dispositivo: esgotou-se ou expirou. Peça um novo convite ao seu administrador.",
         "inviteUsed": "Este convite já foi usado em todos os dispositivos que permite. Peça um novo convite ao seu administrador.",

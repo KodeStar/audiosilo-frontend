@@ -99,6 +99,27 @@ export function oidcRetryWait(e: unknown, leftMs: number): number | undefined {
   return ms < leftMs ? ms : undefined;
 }
 
+/**
+ * A failed finish as the screen shows it (`oidcFinishText`), with the same finish to send
+ * again (`run`) while the server keeps the sign-in (`oidcRetryWait`) until `doneBy`. Once
+ * that minute is over, a failure the server would have kept the sign-in through (no answer,
+ * a 408, a 5xx, a 429 shorter than the minute) has nothing left to finish: it reads as the
+ * expired sign-in it now is, as the screen says when the minute runs out with Try again up.
+ */
+export function oidcFinishFailure(
+  e: unknown,
+  t: TFunction,
+  doneBy: number,
+  run: () => Promise<OidcFinishFailure | null>,
+): OidcFinishFailure {
+  const left = oidcDoneLeft(doneBy);
+  if (left <= 0 && oidcRetryWait(e, OIDC_DONE_MS) !== undefined)
+    return { message: t('connect.oidc.errors.expired') };
+  const waitMs = oidcRetryWait(e, left);
+  const message = oidcFinishText(e, t, waitMs !== undefined);
+  return waitMs === undefined ? { message } : { message, retry: { waitMs, doneBy, run } };
+}
+
 /** The same finish sent again (`finishOidcSignIn`'s, with its flow, book and reconnect, all
  * in memory only), offered as Try again once `waitMs` has passed and until `doneBy` (epoch
  * ms: the done cookie's minute from the provider's return, `OIDC_DONE_MS`), when the server
@@ -177,11 +198,7 @@ export async function finishOidcSignIn(
         toast({ title: why });
         return null;
       }
-      const waitMs = oidcRetryWait(e, oidcDoneLeft(doneBy));
-      const message = oidcFinishText(e, t, waitMs !== undefined);
-      return waitMs === undefined
-        ? { message }
-        : { message, retry: { waitMs, doneBy, run: attempt } };
+      return oidcFinishFailure(e, t, doneBy, attempt);
     }
     // A session nothing keeps is signed out again (best effort): it would stay on the server
     // as a device.

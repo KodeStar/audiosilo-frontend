@@ -480,6 +480,8 @@
       "errors": {
         "wait_one": "Zu viele Versuche aus diesem Netzwerk. Versuch es in {{count}} Minute noch einmal.",
         "wait_other": "Zu viele Versuche aus diesem Netzwerk. Versuch es in {{count}} Minuten noch einmal.",
+        "waitSeconds_one": "Zu viele Versuche aus diesem Netzwerk. Versuch es in {{count}} Sekunde noch einmal.",
+        "waitSeconds_other": "Zu viele Versuche aus diesem Netzwerk. Versuch es in {{count}} Sekunden noch einmal.",
         "badCode": "Dieser Einladungscode hat nicht funktioniert. Prüfe ihn oder bitte deinen Admin um eine neue Einladung.",
         "usedInvite": "Diese Einladung kann kein weiteres Gerät hinzufügen: Sie ist aufgebraucht oder abgelaufen. Bitte deinen Admin um eine neue Einladung.",
         "inviteUsed": "Diese Einladung wurde schon auf allen erlaubten Geräten benutzt. Bitte deinen Admin um eine neue Einladung.",

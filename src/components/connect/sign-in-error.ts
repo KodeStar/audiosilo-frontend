@@ -9,15 +9,17 @@ export type SignInStage = 'redeem' | 'exchange' | 'login';
 /**
  * The words for a refusal that reads the same wherever it lands (a sign-in, a pairing
  * link), or `undefined` for one the caller words itself: a 429 names the wait from the
- * server's `Retry-After` (in whole minutes) when it sent one, and the server's
- * `member_disabled`, `invite_used` and `invite_expired` codes their own sentences.
+ * server's `Retry-After` when it sent one (in seconds under a minute, else in whole
+ * minutes: 30 s never reads as "1 minute"), and the server's `member_disabled`,
+ * `invite_used` and `invite_expired` codes their own sentences.
  */
 export function sharedRefusalText(e: ApiError, t: TFunction): string | undefined {
   if (e.status === 429) {
     const s = e.retryAfterSeconds;
-    return s !== undefined && s > 0
-      ? t('connect.signIn.errors.wait', { count: Math.ceil(s / 60) })
-      : t('common.tooManyTries');
+    if (s === undefined || s <= 0) return t('common.tooManyTries');
+    return s < 60
+      ? t('connect.signIn.errors.waitSeconds', { count: Math.ceil(s) })
+      : t('connect.signIn.errors.wait', { count: Math.ceil(s / 60) });
   }
   switch (apiErrorKind(e)) {
     case 'member_disabled':
@@ -37,7 +39,7 @@ export function sharedRefusalText(e: ApiError, t: TFunction): string | undefined
  * failed: a 401 at redeem is a code that didn't work, at exchange an invite used up or
  * expired, at login a wrong name or password (a redeem's `invite_used` and
  * `invite_expired` codes say which of those it is); a 429 names the wait from the server's
- * `Retry-After` (in whole minutes) when it sent one. Anything that is no answer from the
+ * `Retry-After` when it sent one (`sharedRefusalText`). Anything that is no answer from the
  * server is the generic "Sign in failed".
  */
 export function signInErrorText(e: unknown, stage: SignInStage, t: TFunction): string {
