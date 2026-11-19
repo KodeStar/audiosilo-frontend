@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
+import { useProxyRefusals } from '@/api/proxy-refusal';
 import { ProxyHeadersEditor } from '@/components/connect/proxy-headers-editor';
 import {
   draftOf,
@@ -12,11 +13,17 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { reconnectConnection } from '@/components/layout/reconnect-banner';
 import { FormError } from '@/components/ui/form-error';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { hostOf } from '@/lib/pairing';
-import { connectionProxySet, MASKED_PROXY_VALUE, proxyOriginChoices } from '@/lib/proxy-headers';
+import {
+  connectionProxySet,
+  isLimitedAccount,
+  MASKED_PROXY_VALUE,
+  proxyOriginChoices,
+} from '@/lib/proxy-headers';
 import { cn } from '@/lib/utils';
 import { useSession } from '@/stores/session';
 
@@ -27,13 +34,17 @@ import { useSession } from '@/stores/session';
  * there (fe#295), and stays until it is changed or removed here, whoever signs out. Shown
  * whatever the server's flags: it is needed most when the proxy turns every request away.
  * Values are never shown, not even while editing (a stored value's field says "Kept as it
- * is"). Saving rebuilds the clients on that address, and what failed is read again.
+ * is"). Saving rebuilds the clients on that address, and what failed is read again. While a
+ * proxy turns a full account's requests away (`useProxyRefusals`) it also offers Sign in again
+ * (`reconnectConnection`): a real revoke behind a proxy that drops the server's 401 mark reads
+ * as a refusal (WS-401-MARK), and no change of headers gets past that.
  */
 export function ProxyHeadersCard({ connectionId }: { connectionId: string }) {
   const { t } = useTranslation();
   const conn = useSession((s) => s.connections.find((c) => c.id === connectionId));
   const sets = useSession((s) => s.proxySets);
   const setProxySet = useSession((s) => s.setProxySet);
+  const refused = useProxyRefusals((s) => s.refused[connectionId] === true);
   const [rows, setRows] = useState<HeaderDraftRow[] | null>(null);
   const [origin, setOrigin] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
@@ -184,6 +195,19 @@ export function ProxyHeadersCard({ connectionId }: { connectionId: string }) {
       )}
 
       <FormError error={error} />
+      {refused && !isLimitedAccount(conn.user) ? (
+        <View className="gap-2" testID="proxy-headers-sign-in-again">
+          <Text variant="caption">{t('proxyHeaders.signInAgainBody', { name: conn.name })}</Text>
+          <Button
+            className="self-start"
+            variant="outline"
+            title={t('proxyHeaders.signInAgain')}
+            accessibilityLabel={t('reconnect.state.title', { name: conn.name })}
+            onPress={() => void reconnectConnection(conn)}
+            testID="proxy-headers-sign-in-again-button"
+          />
+        </View>
+      ) : null}
       <Text variant="caption">
         {Platform.OS === 'web' ? t('proxyHeaders.webNote') : t('proxyHeaders.notCarried')}
       </Text>

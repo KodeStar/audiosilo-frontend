@@ -1,13 +1,20 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import * as SecureStore from 'expo-secure-store';
 
+import { noteProxyAnswer, resetProxyRefusalsForTests } from '@/api/proxy-refusal';
 import type { User } from '@/api/types';
 import { forgetProxySets, readProxySets } from '@/lib/proxy-headers-store';
 import { useSession } from '@/stores/session';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 import { ProxyHeadersCard } from './proxy-headers-card';
+
+const mockReconnect = jest.fn((_conn: unknown) => Promise.resolve());
+jest.mock('@/components/layout/reconnect-banner', () => ({
+  ...jest.requireActual('@/components/layout/reconnect-banner'),
+  reconnectConnection: (conn: unknown) => mockReconnect(conn),
+}));
 
 const user: User = {
   id: 1,
@@ -40,6 +47,8 @@ async function signIn(proxyHeaders?: typeof SET) {
 }
 
 beforeEach(async () => {
+  resetProxyRefusalsForTests();
+  mockReconnect.mockClear();
   await forgetProxySets();
   await AsyncStorage.clear();
   useSession.setState({
@@ -176,5 +185,34 @@ describe('ProxyHeadersCard (fe#167)', () => {
     await fireEvent.press(screen.getAllByText('Remove headers').at(-1)!);
     await waitFor(() => expect(kept()[AWAY]).toBeUndefined());
     expect(await SecureStore.getItemAsync('audiosilo.proxy-sets')).toBeNull();
+  });
+  // WS-401-MARK: a real revoke behind a proxy that drops the server's 401 mark reads as the
+  // proxy's refusal; the card's way out is the app's normal sign-in for the connection.
+  it('offers Sign in again while a proxy turns a full account away, through the reconnect flow', async () => {
+    await signIn(SET);
+    await mountWithPortal(<ProxyHeadersCard connectionId="srv.1" />);
+    expect(screen.queryByTestId('proxy-headers-sign-in-again')).toBeNull();
+    await act(async () => noteProxyAnswer('srv.1', true));
+    expect(
+      screen.getByText(
+        'If the proxy headers are right, your sign-in to books.example.com may have ended: sign in again.',
+      ),
+    ).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Sign in again to books.example.com'));
+    expect(mockReconnect).toHaveBeenCalledTimes(1);
+    expect(mockReconnect).toHaveBeenCalledWith(expect.objectContaining({ id: 'srv.1' }));
+  });
+
+  it('offers no Sign in again to a kid, who signs in some other way', async () => {
+    await useSession.getState().setSession({
+      serverUrl: AWAY,
+      serverId: 'srv',
+      token: 't',
+      user: { ...user, id: 12, username: 'evie', member_kind: 'kid' },
+      addresses: { home: HOME, away: AWAY },
+    });
+    noteProxyAnswer('srv.12', true);
+    await mountWithPortal(<ProxyHeadersCard connectionId="srv.12" />);
+    expect(screen.queryByTestId('proxy-headers-sign-in-again')).toBeNull();
   });
 });

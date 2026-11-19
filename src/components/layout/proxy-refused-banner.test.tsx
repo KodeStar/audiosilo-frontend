@@ -10,6 +10,11 @@ import { onAccountPage, ProxyRefusedBanner } from './proxy-refused-banner';
 
 const mockPush = jest.fn();
 jest.mock('@/lib/open', () => ({ pushInShell: (h: unknown) => mockPush(h) }));
+const mockReconnect = jest.fn((_conn: unknown) => Promise.resolve());
+jest.mock('./reconnect-banner', () => ({
+  ...jest.requireActual('./reconnect-banner'),
+  reconnectConnection: (conn: unknown) => mockReconnect(conn),
+}));
 
 const user: User = {
   id: 1,
@@ -36,6 +41,7 @@ beforeEach(async () => {
   resetProfilesForTests();
   resetProxyRefusalsForTests();
   mockPush.mockClear();
+  mockReconnect.mockClear();
   await AsyncStorage.clear();
   useSession.setState({
     status: 'unauthenticated',
@@ -72,6 +78,21 @@ it("says the proxy turned the device away and opens the connection's Account, un
   ]);
   await act(async () => noteProxyAnswer('srv-1.1', false));
   expect(screen.queryByTestId('proxy-refused-banner')).toBeNull();
+});
+
+// WS-401-MARK: a server that marks its 401s has every unmarked one read as a refusal, so a
+// real revoke behind a proxy that drops the mark lands here: Sign in again runs the app's
+// normal sign-in for the connection, and the rest of the banner still opens Account.
+it('offers a full account Sign in again, through the reconnect flow', async () => {
+  await signIn(user);
+  noteProxyAnswer('srv-1.1', true);
+  await render(<ProxyRefusedBanner />);
+  await fireEvent.press(screen.getByLabelText('Sign in again to Hearthside'));
+  expect(mockReconnect).toHaveBeenCalledTimes(1);
+  expect(mockReconnect).toHaveBeenCalledWith(expect.objectContaining({ id: 'srv-1.1' }));
+  expect(mockPush).not.toHaveBeenCalled();
+  await fireEvent.press(screen.getByTestId('proxy-refused-banner'));
+  expect(mockPush).toHaveBeenCalledTimes(1);
 });
 
 // The banner stays up on the Account page while the headers are edited: a tap there must
@@ -113,6 +134,7 @@ it("asks a kid to get a grown-up when the set is a full account's here too", asy
   ).toBeTruthy();
   await fireEvent.press(screen.getByTestId('proxy-refused-banner'));
   expect(mockPush).not.toHaveBeenCalled();
+  expect(screen.queryByText('Sign in again')).toBeNull();
 });
 
 // A demo account with no set to edit (`canManageProxySet`): nothing to tap, and no grown-up to
@@ -123,6 +145,7 @@ it('only says what happened to a demo account, with no grown-up to ask', async (
   await render(<ProxyRefusedBanner />);
   expect(screen.getByText('The sign-in proxy for Hearthside turned this device away')).toBeTruthy();
   expect(screen.queryByText(/grown-up/)).toBeNull();
+  expect(screen.queryByText('Sign in again')).toBeNull();
   await fireEvent.press(screen.getByTestId('proxy-refused-banner'));
   expect(mockPush).not.toHaveBeenCalled();
 });

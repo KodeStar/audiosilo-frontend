@@ -489,13 +489,15 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   CROSS-REPO.md, shipped clients meet older servers), or a proxy that passed it on. Not once the
   connection's last `/server` answer says the server marks its 401s (capability
   `unauthorized_mark`, read from the query cache by `connectionClient`, never a request on the
-  401 path; unknown keeps the body step): an unmarked 401 behind proxy headers is then never the
-  server's, so a proxy answering in the server's exact shape signs nobody out. Else a 401 to
-  an address the request carried proxy headers to is the proxy's even with a JSON `error`
-  (`send` notes the answer, `unauthorizedOrigin` reads it, so every reader gets it). Else (a
-  request that carried no proxy headers, whatever is known of the mark) the body decides, as for
-  every 403: the server's own always carry its JSON `error`; one without it (a page, an empty
-  body, someone else's JSON) is the proxy's (`ApiError.fromProxy`, `unauthorizedOrigin`).
+  401 path; unknown or false keeps the steps below): an unmarked 401 is then never the
+  server's, whatever its body and whether or not the request carried proxy headers, so
+  something in front of it answering in the server's exact shape signs nobody out (the proxy
+  notice instead; a real revoke behind a proxy that drops the mark has its Sign in again,
+  below). Else a 401 to an address the request carried proxy headers to is the proxy's even
+  with a JSON `error` (`send` notes the answer, `unauthorizedOrigin` reads it, so every reader
+  gets it). Else the body decides, as for every 403: the server's own always carry its JSON
+  `error`; one without it (a page, an empty body, someone else's JSON) is the proxy's
+  (`ApiError.fromProxy`, `unauthorizedOrigin`).
   `isSignedOutError` is false for it (and for the server's own 401 `current_password_incorrect`:
   a wrong current password on `POST /auth/password` keeps the session), and so is
   `accessRefusal`'s no access (fe#280), so no reconnect banner and no sign-out, and the sign-in step
@@ -523,7 +525,9 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   `onAccountPage`), else asks a grown-up, as kids mode does over the stories (`useProxyNotice`,
   by the same rule: never for a connection that needs signing in again). A demo account that
   may not edit the set is only told what happened (`proxyHeaders.refusedPlain`): no grown-up is
-  behind a demo.
+  behind a demo. A full account's banner, and the Account page's Proxy headers card while the
+  episode lasts, also offer Sign in again (`reconnectConnection`, the reconnect banner's flow):
+  a real revoke that a proxy dropping the mark turned into a refusal is otherwise a dead end.
   Nor is it refused for good (`isRefusedForGood`): the server never saw the request, so a
   progress or reading save it turned away is queued for once the headers are fixed, never dropped
   (nor is the car's bookmark, `addCarBookmark`, nor a waiting one: a replay stops at it as at a

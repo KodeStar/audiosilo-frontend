@@ -2430,7 +2430,9 @@
     "refusedBannerHint": "Apre l'account di questo server",
     "refusedAskGrownUp": "Il proxy di accesso di {{name}} ha respinto questo dispositivo: chiedi a un adulto di aggiornare le intestazioni proxy",
     "refusedPlain": "Il proxy di accesso di {{name}} ha respinto questo dispositivo",
-    "askGrownUp": "Chiedi a un adulto di aggiornare le intestazioni proxy."
+    "askGrownUp": "Chiedi a un adulto di aggiornare le intestazioni proxy.",
+    "signInAgain": "Accedi di nuovo",
+    "signInAgainBody": "Se le intestazioni proxy sono corrette, il tuo accesso a {{name}} potrebbe essere scaduto: accedi di nuovo."
   },
   "year": {
     "eyebrow": "Il tuo anno di ascolto",

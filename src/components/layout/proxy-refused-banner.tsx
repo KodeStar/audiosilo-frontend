@@ -2,18 +2,19 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { needsProxyNotice, useProxyRefusals } from '@/api/proxy-refusal';
+import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { pushInShell } from '@/lib/open';
 import { accountHref } from '@/lib/paths';
-import { canManageProxySet, connectionProxySet } from '@/lib/proxy-headers';
+import { canManageProxySet, connectionProxySet, isLimitedAccount } from '@/lib/proxy-headers';
 import { currentNavState, focusedRoute, type NavState } from '@/lib/root-stack';
 import { cn } from '@/lib/utils';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { BANNER_STRIP_CLASS, RECONNECT_STRIP_CLASS } from './reconnect-banner';
+import { BANNER_STRIP_CLASS, RECONNECT_STRIP_CLASS, reconnectConnection } from './reconnect-banner';
 
 /** The Account page's route name in the shell's stacks (`src/app/(app)/.../account.tsx`). */
 const ACCOUNT_ROUTE = 'account';
@@ -39,7 +40,10 @@ export function onAccountPage(state: NavState | undefined, connectionId: string)
  * headers typed for its sign-in (`signInProxySets`, the kept set stale), until a grown-up
  * updates the address's set. A connection that needs signing in again shows the reconnect
  * banner only. The first such connection, in connection order. On that connection's Account
- * page already, a tap pushes nothing (`onAccountPage`).
+ * page already, a tap pushes nothing (`onAccountPage`). A full account's refusal also offers
+ * Sign in again (`reconnectConnection`, the reconnect banner's flow): a server known to mark
+ * its 401s has every unmarked one read as a refusal (WS-401-MARK), so a real revoke behind a
+ * proxy that drops the mark lands here, and signing in again is its way out.
  */
 export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
   const themed = useThemeColors();
@@ -70,6 +74,9 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
     </>
   );
   const strip = cn(BANNER_STRIP_CLASS, RECONNECT_STRIP_CLASS, className);
+  // Only where the banner opens Account (a refusal now); never a kid's or a demo's account,
+  // which signs in some other way.
+  const signInAgain = canManage && !isLimitedAccount(conn.user);
 
   if (!canManage) {
     return (
@@ -78,7 +85,7 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
       </View>
     );
   }
-  return (
+  const toAccount = (
     <Pressable
       testID="proxy-refused-banner"
       accessibilityRole="button"
@@ -86,10 +93,27 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
       onPress={() => {
         if (!onAccountPage(currentNavState(), conn.id)) pushInShell(accountHref(conn.id));
       }}
-      className={cn(strip, 'active:opacity-80')}
+      className={cn(
+        signInAgain ? 'flex-1 flex-row items-center gap-2' : strip,
+        'active:opacity-80',
+      )}
     >
       {content}
       <Icon name="chevron-right" size={13} color={themed.brand} />
     </Pressable>
+  );
+  if (!signInAgain) return toAccount;
+  return (
+    <View className={strip}>
+      {toAccount}
+      <Button
+        size="sm"
+        variant="ghost"
+        title={t('proxyHeaders.signInAgain')}
+        accessibilityLabel={t('reconnect.state.title', { name: conn.name })}
+        onPress={() => void reconnectConnection(conn)}
+        testID="proxy-refused-sign-in-again"
+      />
+    </View>
   );
 }
