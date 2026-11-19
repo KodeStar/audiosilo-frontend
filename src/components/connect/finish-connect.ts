@@ -11,7 +11,7 @@ import { connectionIdOf, priorConnection } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
 import { bookHref, type ConnectBook } from '@/lib/paths';
 import { popTabToRoot } from '@/lib/root-stack';
-import { type ProxyHeaders, proxyOriginChoices } from '@/lib/proxy-headers';
+import { type ProxyHeaders, proxyOriginChoices, sameProxyHeaders } from '@/lib/proxy-headers';
 import { mergeAddresses } from '@/lib/server-address';
 import {
   activeProfile,
@@ -58,7 +58,8 @@ export function readyHref(connectionId: string) {
  * book the link asked to open (the admin console's "Listen in player"): the flow ends on its
  * page instead, first connection or not. `carried` is the proxy headers set (fe#167) the
  * successful exchange or sign-in went out with (`connectClientFor`): kept as its origin's
- * set when it was one typed on the connect screen (`setSession`).
+ * set only when it is the one typed on the connect screen (`pendingProxyHeaders`), never a
+ * kept set written back.
  */
 export async function finishConnect(input: {
   serverUrl: string;
@@ -142,14 +143,22 @@ export async function finishConnect(input: {
   // every store at once (and the screens render), so nothing goes to `serverUrl` first.
   // Under the id `setSession` gives the connection (the prior one's, else `connectionIdOf`).
   const pickId = existing?.id ?? connectionIdOf(serverId, input.session.user.id);
-  // The proxy headers to keep (fe#167): the set the sign-in got in with, else one typed on
-  // the connect screen for another of this server's addresses (typed for its away address,
-  // signed in at home). There is one set per origin on the device (fe#295): one kept already
-  // is everyone's who signs in there, and a sign-in never removes one.
-  const typed = useSession.getState().pendingProxyHeaders;
+  // The proxy headers to keep (fe#167), only ever a set typed on the connect screen: the one
+  // the sign-in got in with, else one typed for another of this server's addresses (typed
+  // for its away address, signed in at home) that has no set yet. There is one set per origin
+  // on the device (fe#295): a kept one that carried the sign-in is kept already, and is never
+  // written back (it may have been removed or changed on purpose while the sign-in was on its
+  // way); a typed one that was never sent proved nothing, so it replaces no kept set. A
+  // sign-in never removes one.
+  const { pendingProxyHeaders: typed, proxySets } = useSession.getState();
+  const gotIn = typed && sameProxyHeaders(input.carried, typed) ? typed : undefined;
   const typedHere =
-    typed && proxyOriginChoices(plan, input.serverUrl).includes(typed.origin) ? typed : undefined;
-  const proxyHeaders = input.carried ?? typedHere;
+    typed &&
+    !proxySets[typed.origin] &&
+    proxyOriginChoices(plan, input.serverUrl).includes(typed.origin)
+      ? typed
+      : undefined;
+  const proxyHeaders = gotIn ?? typedHere;
   if (input.answeredAt) setAddressPick(pickId, input.answeredAt);
   const id = await setSession({
     serverUrl: plan.serverUrl,

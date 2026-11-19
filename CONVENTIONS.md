@@ -426,8 +426,11 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   flow's bare clients are `connectClient(base)` (`src/api/connect-client.ts`) and `probeServerId`
   (built by it), through `connectProxyHeaders(url)`: the pending set for that origin, else the set
   kept for it. `connectClientFor` names the set its client was built with (`proxy`), and
-  `finishConnect` keeps it as `carried` (a link or QR pairing: the set that got the exchange in),
-  else the pending set when its origin is one of the connection's addresses. A pairing QR or link
+  `finishConnect` keeps it (`carried`) only when it is the pending set (typed, and it got the
+  sign-in or the exchange in): a kept set that carried the sign-in is kept already, and is never
+  written back (it may have been removed or changed on purpose while the sign-in was on its way).
+  Else the pending set when its origin is one of the connection's addresses and has no set yet: a
+  typed set that was never sent proved nothing, so it replaces no kept one. A pairing QR or link
   pairs with them when its address is the field's: type the address and the headers first, then
   scan.
 - **A proxy's 401 is not a sign-out.** The server's own 401s always carry its JSON `error`; a 401

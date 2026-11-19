@@ -252,6 +252,7 @@ describe('proxy headers the sign-in came through (fe#167): one set per address (
   });
 
   it('a sign-in on the kept set writes nothing; one with a new set typed replaces it for everyone', async () => {
+    useSession.setState({ pendingProxyHeaders: SET });
     await finishConnect({ serverUrl: AWAY, session: session('srv-1'), carried: SET });
     const write = SecureStore.setItemAsync as jest.Mock;
     write.mockClear();
@@ -270,9 +271,44 @@ describe('proxy headers the sign-in came through (fe#167): one set per address (
   });
 
   it('a sign-in never removes a set: none carried and none typed leaves it as it is', async () => {
+    useSession.setState({ pendingProxyHeaders: SET });
     await finishConnect({ serverUrl: AWAY, session: session('srv-1'), carried: SET });
     await finishConnect({ serverUrl: HOME, session: session('srv-1') });
     await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    expect(kept()).toEqual({ [AWAY]: SET });
+    expect(await readProxySets()).toEqual({ [AWAY]: SET });
+  });
+
+  // The sign-in went out with the address's kept set, which was removed (or changed) on the
+  // Account page, in another tab, before the server answered: it is not written back.
+  it.each([
+    ['removed', null],
+    ['changed', { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'newer' }] }],
+  ])('never writes back a kept set %s while the sign-in was on its way', async (_, now) => {
+    useSession.setState({ pendingProxyHeaders: SET });
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1'), carried: SET });
+    await useSession.getState().setProxySet(AWAY, now);
+    await finishConnect({
+      serverUrl: AWAY,
+      session: { ...session('srv-1'), user: { ...user, id: 2 } },
+      carried: SET,
+    });
+    expect(kept()).toEqual(now ? { [AWAY]: now } : {});
+    expect(await readProxySets()).toEqual(now ? { [AWAY]: now } : {});
+  });
+
+  // Typed for the away address but never sent there (the sign-in went through home): it
+  // proved nothing, so the set that works for that address stays.
+  it("never replaces an address's kept set with one typed for it that was never sent", async () => {
+    useSession.setState({ pendingProxyHeaders: SET });
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1'), carried: SET });
+    const UNSENT = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'unsent' }] };
+    useSession.setState({ pendingProxyHeaders: UNSENT });
+    await finishConnect({
+      serverUrl: HOME,
+      session: session('srv-1'),
+      linkAddresses: { home: HOME, away: AWAY },
+    });
     expect(kept()).toEqual({ [AWAY]: SET });
     expect(await readProxySets()).toEqual({ [AWAY]: SET });
   });
