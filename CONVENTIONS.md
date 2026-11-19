@@ -438,7 +438,11 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   `isSignedOutError` is false for it, so no reconnect banner and no sign-out, and the sign-in step
   says the proxy refused the request (`isProxyRefusal`, `connect.signIn.errors.proxyRefused`).
   Nor is it refused for good (`isRefusedForGood`): the server never saw the request, so a
-  progress or reading save it turned away is queued for once the headers are fixed, never dropped.
+  progress or reading save it turned away is queued for once the headers are fixed, never dropped
+  (nor is the car's bookmark, `addCarBookmark`). A download task hands back the status alone (the
+  reader's EPUB, `ebook-file.native.ts`): its 401 reads as signed out only when the server itself
+  then refuses the token (`refusalOf` asks `me`). The connect screen's own probe says the proxy
+  refused it too.
 - **Edited** on the Account page's Proxy headers card (`ProxyHeadersCard`, shown whatever the
   server's flags, since it is needed most when the proxy refuses everything; for a demo
   account only when a set is kept for one of its addresses, as for a demo started behind a

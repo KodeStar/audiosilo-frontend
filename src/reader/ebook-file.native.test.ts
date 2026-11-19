@@ -120,7 +120,7 @@ jest.mock('expo-file-system/legacy', () => ({
 }));
 
 /* eslint-disable import/first */
-import { ApiError } from '@/api/client';
+import { ApiError, isSignedOutError } from '@/api/client';
 
 import { EbookStorageError, EbookTooLargeError, MAX_EBOOK_BYTES } from './ebook-errors';
 import {
@@ -280,6 +280,23 @@ describe('localEbook', () => {
     expect(failed).toBeInstanceOf(ApiError);
     expect((failed as ApiError).status).toBe(404);
     expect(mockDownload.mock.calls[0][1]).toMatch(PART);
+    expect(files()).toEqual([]);
+  });
+
+  // fe#295: the download task gives the status alone, so the server is asked whose 401 it is.
+  it.each([
+    ['the server refusing the token', new ApiError(401, 'invalid or expired token'), false],
+    ["an auth proxy's own", new ApiError(401, 'Unauthorized', undefined, undefined, true), true],
+    ['one the server does not repeat', null, true],
+    ['one with no answer after it', new Error('Network request failed'), true],
+  ])('reads a 401 as signed out only for %s', async (_, meFails, fromProxy) => {
+    mockDownload.mockRejectedValue(new Error('server returned HTTP 401'));
+    const me = jest.fn(() => (meFails ? Promise.reject(meFails) : Promise.resolve({})));
+    const failed = await localEbook({ ...args, api: { ...api, me } as unknown as ApiClient }).catch(
+      (e: unknown) => e,
+    );
+    expect(failed).toMatchObject({ name: 'ApiError', status: 401, fromProxy });
+    expect(isSignedOutError(failed)).toBe(!fromProxy);
     expect(files()).toEqual([]);
   });
 
