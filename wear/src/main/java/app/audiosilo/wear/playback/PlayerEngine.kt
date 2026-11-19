@@ -610,8 +610,9 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     // (the hold saved it at `lastAdvance`), or it would look newer than another device's. Saved
     // to the disk when a span closed; on the plain 5 s tick the stored open span carries it.
     // Stamped when the audio last moved: a player that says it plays but stands still (stalled,
-    // SpanRecorder.tick) heard nothing since.
-    if (exo?.isPlaying == true) savePlace(lastAdvance, save = cut)
+    // SpanRecorder.tick) heard nothing since. A stalled span closed with none after it kept this
+    // place itself (`keepPlace`): in memory only here, not written twice.
+    if (exo?.isPlaying == true) savePlace(lastAdvance, save = cut && spans.span != null)
   }
 
   // Now Playing

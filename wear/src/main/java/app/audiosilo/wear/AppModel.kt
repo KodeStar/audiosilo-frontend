@@ -592,10 +592,13 @@ class AppModel private constructor(private val context: Context) {
     }
   }
 
-  /** Remove every book (the account was left). */
+  /**
+   * Remove every book (the account was left). No `willRemove` per book: `forgetAccount` has stopped
+   * the player and clears the places and the offer, so a durable write per book would only lengthen
+   * the sign-out's drain on the main thread.
+   */
   private fun removeAllBooks() {
     BookWorker.cancelAll(context)
-    for (r in downloads.records.value) willRemove(r.ref)
     downloads.removeAll { files.books.deleteRecursively() }
   }
 
