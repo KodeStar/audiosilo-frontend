@@ -1759,8 +1759,11 @@ label on flags read first). The one-tap keeps the direct send: its "Bookmark add
 note need the server's bookmark, and the listener is there to see a failure. To a server known to
 take a `client_id` (`bookmark_client_id`) it is stored first too, `fresh` with its id, then
 posted with that id and taken out once that works or is refused for good, so a kill mid-POST
-leaves it to a replay, whose POST with the same id makes it once at most; while that POST is out
-it shows as waiting. On an older server, or flags not read yet, nothing is stored before the
+leaves it to a replay, whose POST with the same id makes it once at most. While that POST is out
+it is not waiting: no row, pin or count shows it and no replay from that tab sends it (`posting`,
+memory only, so after a kill it shows and replays at the next launch); it shows once the POST has
+failed. Another tab knows nothing of that POST: it may show or send it meanwhile, which its id
+keeps to one bookmark. On an older server, or flags not read yet, nothing is stored before the
 POST (a resend there could make it twice), and a storage write refused leaves the add direct as
 before. The outbox is sent
 at launch and on reconnect (`startBookmarkSync`, a root service; also once a connection a 401

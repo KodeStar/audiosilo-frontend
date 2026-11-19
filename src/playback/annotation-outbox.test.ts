@@ -115,6 +115,7 @@ import {
   discardQueuedBookmark,
   flushBookmarks,
   heldOnServer,
+  onQueuedBookmarksChange,
   queueNewBookmark,
   queuedBookmarks,
   queuedBookmarksSnapshot,
@@ -1205,21 +1206,65 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
     expect(await addBookmarkOrQueue('c1', 1, 'a/book', 130)).toHaveProperty('made');
   });
 
-  it('stores a tap before its POST and takes it out once that works', async () => {
-    const { client, held } = server('c1');
+  /** The outbox as stored, whatever the screens are shown. */
+  async function storedEntries(): Promise<QueuedBookmark[]> {
+    return JSON.parse((await AsyncStorage.getItem('audiosilo.annotationOutbox')) ?? '[]');
+  }
+
+  /** A tap whose POST is out until `answer` is called (with nothing: it lands and answers;
+   * with an error: it fails so). */
+  function heldPost(client: Client) {
     const send = client.addBookmark.getMockImplementation();
-    let storedDuringPost: QueuedBookmark[] = [];
-    client.addBookmark.mockImplementationOnce(async (...args: unknown[]) => {
-      storedDuringPost = await queuedBookmarks();
-      return send?.(...args);
-    });
-    expect(await addBookmarkOrQueue('c1', 1, 'a/book', 120)).toMatchObject({
-      made: { position: 120 },
-    });
-    expect(storedDuringPost).toMatchObject([
+    let answer: (err?: unknown) => void = () => {};
+    client.addBookmark.mockImplementationOnce(
+      (...args: unknown[]) =>
+        new Promise((resolve, reject) => {
+          answer = (err) => (err ? reject(err) : resolve(send?.(...args)));
+        }),
+    );
+    return { answer: (err?: unknown) => answer(err) };
+  }
+
+  it('stores a tap before its POST, out of sight, and takes it out once that works', async () => {
+    const { client, held } = server('c1');
+    const post = heldPost(client);
+    const changed = jest.fn();
+    const stop = onQueuedBookmarksChange(changed);
+    const out = addBookmarkOrQueue('c1', 1, 'a/book', 120);
+    await idle();
+    // Stored, fresh with the id its POST carries...
+    expect(await storedEntries()).toMatchObject([
       { position: 120, fresh: true, client_id: sentIds(client)[0] },
     ]);
+    // ...but not waiting: no row, pin or count while its own POST is out.
+    expect(queuedBookmarksSnapshot()).toEqual([]);
+    expect(await queuedBookmarks()).toEqual([]);
+    expect(await unsentBookmarks('c1')).toBe(0);
+    // That replay (and any other from here) leaves it to the tap's POST.
+    await flushBookmarks();
+    expect(client.addBookmark).toHaveBeenCalledTimes(1);
+    post.answer();
+    expect(await out).toMatchObject({ made: { position: 120 } });
     expect(held).toHaveLength(1);
+    expect(await storedEntries()).toEqual([]);
+    expect(changed).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it('shows a tap as waiting once its POST has failed, and sends it from there', async () => {
+    const { client, held } = server('c1');
+    const post = heldPost(client);
+    const out = addBookmarkOrQueue('c1', 1, 'a/book', 120);
+    await idle();
+    expect(queuedBookmarksSnapshot()).toEqual([]);
+    post.answer(new ApiError(500, 'boom'));
+    const outcome = await out;
+    expect(outcome).toMatchObject({ queued: { position: 120, fresh: true } });
+    expect(queuedBookmarksSnapshot()).toMatchObject([{ position: 120 }]);
+    expect(await queuedBookmarks('c1')).toHaveLength(1);
+    await flushBookmarks();
+    expect(held).toMatchObject([{ position: 120 }]);
+    expect(sentIds(client)).toEqual([sentIds(client)[0], sentIds(client)[0]]);
     expect(await queuedBookmarks()).toEqual([]);
   });
 
@@ -1236,16 +1281,62 @@ describe('to a server that takes a client_id (bookmark_client_id)', () => {
     });
     void addBookmarkOrQueue('c1', 1, 'a/book', 120);
     await idle();
-    const [entry] = await queuedBookmarks();
+    expect(await queuedBookmarks()).toEqual([]);
+    const [entry] = await storedEntries();
     expect(entry).toMatchObject({ position: 120, fresh: true, client_id: expect.any(String) });
     expect(sentIds(client)).toEqual([entry.client_id]);
-    // The next launch: what was in memory is gone, the stored entry is not.
+    // The next launch: what was in memory is gone, the stored entry is not, and it waits.
     resetAnnotationOutboxForTests();
+    expect(await queuedBookmarks()).toMatchObject([{ id: entry.id }]);
+    expect(queuedBookmarksSnapshot()).toMatchObject([{ id: entry.id }]);
     await flushBookmarks();
     await flushBookmarks();
     expect(sentIds(client)).toEqual([entry.client_id, entry.client_id]);
     expect(client.bookmarks).not.toHaveBeenCalled();
     expect(held).toMatchObject([{ position: 120, client_id: entry.client_id }]);
+    expect(await queuedBookmarks()).toEqual([]);
+  });
+
+  it("makes it once when another tab's replay sends a tap whose POST is out", async () => {
+    const { client, held } = server('c1');
+    const post = heldPost(client);
+    const out = addBookmarkOrQueue('c1', 1, 'a/book', 120);
+    await idle();
+    const [entry] = await storedEntries();
+    // Another tab knows nothing of this one's POST: it sends the entry, with its id.
+    await client.addBookmark(1, 'a/book', 120, '', undefined, entry.client_id);
+    await AsyncStorage.setItem('audiosilo.annotationOutbox', '[]');
+    post.answer();
+    expect(await out).toHaveProperty('made');
+    expect(held).toHaveLength(1);
+    expect(await storedEntries()).toEqual([]);
+  });
+
+  it('posts a tap as before when storage refuses to keep it first', async () => {
+    const { client, held } = server('c1');
+    const setItem = jest.mocked(AsyncStorage.setItem);
+    setItem.mockRejectedValueOnce(new Error('quota'));
+    expect(await addBookmarkOrQueue('c1', 1, 'a/book', 120)).toHaveProperty('made');
+    expect(sentIds(client)).toEqual([expect.any(String)]);
+    expect(held).toHaveLength(1);
+    expect(await storedEntries()).toEqual([]);
+  });
+
+  it('leaves a stored tap to the replay when its flags drop ids while it is stored', async () => {
+    const { client, held } = server('c1');
+    // A server rolled back: its flags answer again, without ids, while the tap is stored.
+    const setItem = jest.mocked(AsyncStorage.setItem);
+    const store = setItem.getMockImplementation();
+    setItem.mockImplementationOnce(async (key, value) => {
+      mockClientIds = false;
+      return store?.(key, value);
+    });
+    // Never posted bare with nothing stored for it (`othersHeld`): the replay reads first.
+    expect(await addBookmarkOrQueue('c1', 1, 'a/book', 120)).toHaveProperty('queued');
+    await idle();
+    expect(client.bookmarks).toHaveBeenCalledTimes(1);
+    expect(sentIds(client)).toEqual([undefined]);
+    expect(held).toHaveLength(1);
     expect(await queuedBookmarks()).toEqual([]);
   });
 

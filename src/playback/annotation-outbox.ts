@@ -37,8 +37,9 @@ import { onlyConnection, queuedRoute } from './progress-sync';
  * busy or failing server, a token it refuses until the connection signs in again) waits here
  * on the device and is sent once the server is back, instead of being refused. The ways in:
  * `addBookmarkOrQueue` tries the server first and keeps the bookmark only when that can't
- * work now (to a server with `bookmark_client_id` it is stored before that try, and settled
- * when it works, so an app killed mid-POST still has it); `queueNewBookmark` (the sleep
+ * work now (to a server with `bookmark_client_id` it is stored before that try, out of sight
+ * while it is out, and settled when it works, so an app killed mid-POST still has it);
+ * `queueNewBookmark` (the sleep
  * timer's) and `requeueBookmark` (a delete's Undo) always store it first and leave the send
  * to a replay. The same
  * guarantees as the listening outbox (`listening-outbox.ts`), on the simpler shape a bookmark
@@ -225,6 +226,14 @@ let snapshot: readonly QueuedBookmark[] = [];
 let snapshotRead = false;
 const listeners = new Set<() => void>();
 
+/** The entries a tap here stored before its own POST (`addBookmarkOrQueue`), while that POST
+ * is out: not waiting yet, so no screen shows them (row, pin, count: `shown`) and no replay
+ * from here sends them. Memory only: an app killed meanwhile shows and sends them as any
+ * other at its next launch. */
+const posting = new Set<string>();
+/** `snapshot` without those (`posting`): what the screens read. */
+let shown: readonly QueuedBookmark[] = [];
+
 /** Whether the screens would read the same from both: the same entries in the same order,
  * each for the same connection (an identity move rewrites the ids in place) and, for
  * `heldOnServer`, the same since its first send. */
@@ -239,6 +248,14 @@ function setSnapshot(queue: Claimed<QueuedBookmark>[]): void {
   const next = queue.map((e) => unclaimed(e));
   if (sameEntries(snapshot, next)) return;
   snapshot = next;
+  publish();
+}
+
+/** Tell the screens when what they show (`shown`) changed. */
+function publish(): void {
+  const next = posting.size === 0 ? snapshot : snapshot.filter((e) => !posting.has(e.id));
+  if (sameEntries(shown, next)) return;
+  shown = next;
   for (const listener of listeners) listener();
 }
 
@@ -254,7 +271,7 @@ onStoredChange(KEY, (raw) => {
 /** Every bookmark waiting, oldest first, as last read (`loadQueuedBookmarks`). The same
  * array until the queue changes (a `useSyncExternalStore` snapshot). */
 export function queuedBookmarksSnapshot(): readonly QueuedBookmark[] {
-  return snapshot;
+  return shown;
 }
 
 /** Be told when the waiting bookmarks change; returns the unsubscribe. */
@@ -277,10 +294,14 @@ export function loadQueuedBookmarks(): Promise<void> {
   return firstLoad;
 }
 
-/** The bookmarks waiting for `connectionId`'s server, oldest first (all when absent). */
+/** The bookmarks waiting for `connectionId`'s server, oldest first (all when absent): not
+ * one whose tap's own POST is out (`posting`). */
 export async function queuedBookmarks(connectionId?: string): Promise<QueuedBookmark[]> {
-  const queue = (await readQueue()).map((e) => unclaimed(e));
-  return connectionId === undefined ? queue : queue.filter((e) => e.connectionId === connectionId);
+  return (await readQueue())
+    .filter(
+      (e) => !posting.has(e.id) && (connectionId === undefined || e.connectionId === connectionId),
+    )
+    .map((e) => unclaimed(e));
 }
 
 // --- Adding -------------------------------------------------------------------------------
@@ -289,9 +310,10 @@ export async function queuedBookmarks(connectionId?: string): Promise<QueuedBook
  * `fresh`, `othersHeld`, the failures so far: the Undo of a deleted one keeps them). */
 type NewEntry = Omit<QueuedBookmark, 'id' | 'updated_at'>;
 
-/** Append a bookmark behind every other one waiting. Rejects when its connection was removed
- * since `since` (its sign-in, `connectionGeneration`), or when storage refused the write. */
-function append(fields: NewEntry, since: number): Promise<QueuedBookmark> {
+/** Append a bookmark behind every other one waiting, as `id`. Rejects when its connection was
+ * removed since `since` (its sign-in, `connectionGeneration`), or when storage refused the
+ * write. */
+function append(fields: NewEntry, since: number, id = randomUUID()): Promise<QueuedBookmark> {
   return withLock(async () => {
     if (connectionGeneration(fields.connectionId) !== since) throw new Error('connection gone');
     const queue = await readQueue();
@@ -302,7 +324,7 @@ function append(fields: NewEntry, since: number): Promise<QueuedBookmark> {
     while (taken.has(new Date(at).toISOString())) at++;
     const entry: QueuedBookmark = {
       ...fields,
-      id: randomUUID(),
+      id,
       updated_at: new Date(at).toISOString(),
     };
     await writeQueue([...queue, entry]);
@@ -387,8 +409,10 @@ async function readFlags(
  * with the `client_id` that add was sent with. To a server known to take that id
  * (`bookmark_client_id`) it is stored first, as the sleep timer's is, then posted with its
  * id and taken out once that works: an app killed while the POST is out leaves it to a
- * replay, whose POST with the same id makes it once at most. Storage that refuses it then
- * leaves the add as it was, straight to the server. Unlabelled: a labelled one goes through
+ * replay, whose POST with the same id makes it once at most. Until that POST has failed it
+ * is not shown as waiting, nor sent by a replay from here (`posting`). Storage that refuses
+ * it then leaves the add as it was, straight to the server; its server's flags dropping the
+ * id while it is stored leave it to the replay. Unlabelled: a labelled one goes through
  * `queueNewBookmark`, whose replay sends it once its server's flags are known. Rejects when
  * the connection is gone, the server refused it for good, or the device could not store it.
  */
@@ -421,37 +445,53 @@ export async function addBookmarkOrQueue(
     if (stored) await discardQueuedBookmark(stored.id).catch(() => undefined);
   };
   if (!waiting && isReachable(connectionId)) {
-    // `addBookmark` sends the id on the same flags.
-    const withId = takesClientId(connectionId);
     // Its id makes a resend safe, so it is kept before any request (no send without its id
-    // has gone out: `fresh`), and a kill while the POST is out leaves it to a replay.
-    if (withId) stored = await append({ ...fields, fresh: true }, since).catch(() => undefined);
+    // has gone out: `fresh`), and a kill while the POST is out leaves it to a replay. Out of
+    // sight meanwhile (`posting`): it is waiting only once that POST has failed.
+    if (takesClientId(connectionId)) stored = await storePosting({ ...fields, fresh: true }, since);
     try {
-      const made = await addBookmark(
-        connectionId,
-        libraryId,
-        path,
-        position,
-        note,
-        undefined,
-        clientId,
-      );
-      await settle();
-      return { made };
-    } catch (err) {
-      // Its id refused by a server that no longer takes one (`whyRefused`), not the bookmark:
-      // nothing landed, and it is kept to go without the id, at once (the flags say so now).
-      const idRefused =
-        withId && badRequest(err) && (await whyRefused(connectionId, client)) === 'id';
-      if (!idRefused) {
-        if (!worthKeeping(err)) {
+      // `addBookmark` sends the id on the flags as they are now, which the store's wait may
+      // have seen answered again.
+      const withId = takesClientId(connectionId);
+      // Stored to go with its id to a server that no longer takes one: posted now it would
+      // go bare with nothing stored for that (`othersHeld`), so a lost answer would make it
+      // twice. Left to the replay, which reads its book first.
+      if (!stored || withId) {
+        try {
+          const made = await addBookmark(
+            connectionId,
+            libraryId,
+            path,
+            position,
+            note,
+            undefined,
+            clientId,
+          );
           await settle();
-          throw err;
+          return { made };
+        } catch (err) {
+          // Its id refused by a server that no longer takes one (`whyRefused`), not the
+          // bookmark: nothing landed, and it is kept to go without the id, at once (the flags
+          // say so now).
+          const idRefused =
+            withId && badRequest(err) && (await whyRefused(connectionId, client)) === 'id';
+          if (!idRefused) {
+            if (!worthKeeping(err)) {
+              await settle();
+              throw err;
+            }
+            noteFailure(connectionId, err);
+            failed = true;
+            // A 401 or a 429 turned it away before the server took it: nothing landed.
+            sentBare = !withId && !turnedAway(err);
+          }
         }
-        noteFailure(connectionId, err);
-        failed = true;
-        // A 401 or a 429 turned it away before the server took it: nothing landed.
-        sentBare = !withId && !turnedAway(err);
+      }
+    } finally {
+      // Waiting from now on (or gone: settled).
+      if (stored) {
+        posting.delete(stored.id);
+        publish();
       }
     }
   }
@@ -462,6 +502,19 @@ export async function addBookmarkOrQueue(
   if (failed) scheduleRetry();
   else void flushBookmarks(connectionId).catch(() => undefined);
   return { queued };
+}
+
+/** Store a tap's bookmark before its own POST (`append`), out of sight while that is out
+ * (`posting`). Undefined when storage refused it: the tap is then posted as before. */
+async function storePosting(fields: NewEntry, since: number): Promise<QueuedBookmark | undefined> {
+  const id = randomUUID();
+  posting.add(id);
+  try {
+    return await append(fields, since, id);
+  } catch {
+    posting.delete(id);
+    return undefined;
+  }
 }
 
 /**
@@ -742,8 +795,10 @@ async function sendGroup(
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i];
     const book = contentKeyOf(e);
-    if (heldBack.has(book)) {
+    // Its tap's own POST is out (`posting`): that settles it. Its book waits behind it.
+    if (heldBack.has(book) || posting.has(e.id)) {
       kept.push(e);
+      heldBack.add(book);
       continue;
     }
     // How far this try has come: a failure is that step's.
@@ -1016,6 +1071,8 @@ onConnectionRemoved(async (id) => {
 /** Test-only: forget what this module holds in memory. */
 export function resetAnnotationOutboxForTests(): void {
   snapshot = [];
+  shown = [];
+  posting.clear();
   snapshotRead = false;
   firstLoad = null;
   sweep = null;
