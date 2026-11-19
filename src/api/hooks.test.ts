@@ -441,6 +441,37 @@ describe('addBookmark', () => {
     });
   });
 
+  describe('a client_id', () => {
+    const caps = (flags?: object) =>
+      queryClient.setQueryData(qk.server('srv'), { capabilities: flags ?? {} } as ServerInfo);
+    afterEach(() => queryClient.clear());
+
+    it('is sent, with the label, to a server with bookmark_client_id', async () => {
+      const add = jest.fn(async () => ({ id: 7 }));
+      mockResolveClient.mockReturnValue({ addBookmark: add });
+      caps({ annotations: true, bookmark_client_id: true });
+      await addBookmark('srv', 2, 'A/Book', 61, 'Fell asleep', 'fell_asleep', 'k1');
+      await addBookmark('srv', 2, 'A/Book', 62, '', undefined, 'k2');
+      expect(add.mock.calls).toEqual([
+        [2, 'A/Book', 61, 'Fell asleep', 'fell_asleep', 'k1'],
+        [2, 'A/Book', 62, '', undefined, 'k2'],
+      ]);
+    });
+
+    it('is dropped without bookmark_client_id, or before /server is known', async () => {
+      const add = jest.fn(async () => ({ id: 7 }));
+      mockResolveClient.mockReturnValue({ addBookmark: add });
+      caps({ annotations: true });
+      await addBookmark('srv', 2, 'A/Book', 61, '', 'quote', 'k1');
+      queryClient.clear();
+      await addBookmark('srv', 2, 'A/Book', 62, '', undefined, 'k2');
+      expect(add.mock.calls).toEqual([
+        [2, 'A/Book', 61, '', 'quote'],
+        [2, 'A/Book', 62, ''],
+      ]);
+    });
+  });
+
   it('rejects without touching the cache when the connection is gone or the add fails', async () => {
     mockResolveClient.mockReturnValue(null);
     await expect(addBookmark('gone', 2, 'A/Book', 61)).rejects.toThrow('connection gone');

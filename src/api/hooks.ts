@@ -636,21 +636,43 @@ export function historyQuery(
   });
 }
 
-/** What a bookmark add sends: `label` only reaches a server with `annotations`. */
-export type AddBookmarkVars = { position: number; note?: string; label?: BookmarkLabel };
+/** What a bookmark add sends: `label` only reaches a server with `annotations`, `clientId`
+ * (the device's id for the bookmark, so a resend is not made twice) only one with
+ * `bookmark_client_id`. */
+export type AddBookmarkVars = {
+  position: number;
+  note?: string;
+  label?: BookmarkLabel;
+  clientId?: string;
+};
 
-/** The add request, with the one rule for its label (`addBookmark` and `useAddBookmark`
- * both send through it): `label` goes only to a server known to have `annotations` (not
- * known yet counts as no, since an older server rejects the unknown field); otherwise it
- * is dropped and the bookmark is still made. */
+/** The flags of a connection's server an add's optional fields go by (`postBookmark`). */
+type AddBookmarkFlags = Pick<Capabilities, 'annotations' | 'bookmark_client_id'>;
+
+/** The add request, with the one rule for its optional fields (`addBookmark` and
+ * `useAddBookmark` both send through it): `label` goes only to a server known to have
+ * `annotations`, `clientId` only to one known to have `bookmark_client_id` (not known yet
+ * counts as no, since an older server rejects an unknown field); otherwise they are dropped
+ * and the bookmark is still made. */
 function postBookmark(
   client: ApiClient,
-  annotations: boolean | undefined,
+  flags: AddBookmarkFlags,
   libraryId: number,
   path: string,
-  { position, note = '', label }: AddBookmarkVars,
+  { position, note = '', label, clientId }: AddBookmarkVars,
 ): Promise<Bookmark> {
-  return label !== undefined && annotations === true
+  const withLabel = label !== undefined && flags.annotations === true;
+  if (clientId !== undefined && flags.bookmark_client_id === true) {
+    return client.addBookmark(
+      libraryId,
+      path,
+      position,
+      note,
+      withLabel ? label : undefined,
+      clientId,
+    );
+  }
+  return withLabel
     ? client.addBookmark(libraryId, path, position, note, label)
     : client.addBookmark(libraryId, path, position, note);
 }
@@ -677,11 +699,12 @@ function refreshAfterAdd(
  * Add a bookmark to a book on ONE connection's server, then refresh its lists
  * (`refreshAfterAdd`). Framework-free, for the callers that run outside React or for a
  * book that is not the screen's (a delete's Undo, the car, the bookmark outbox's sends).
- * `label` follows `postBookmark`'s rule, on the cached `/server` answer. Resolves the new
- * bookmark; rejects when the connection is gone or the server refused. A bookmark that must
+ * `label` and `clientId` follow `postBookmark`'s rule, on the cached `/server` answer.
+ * Resolves the new bookmark (or, for a `clientId` its server already took, the one it made
+ * then); rejects when the connection is gone or the server refused. A bookmark that must
  * not be lost while the server can't take it (the playing book's shortcut, the sleep
  * timer's "Fell asleep") goes through the bookmark outbox (`annotation-outbox.ts`) instead.
- * The new bookmark joins the book's cached list at once (`showServerBookmark`).
+ * The bookmark joins the book's cached list at once (`showServerBookmark`).
  */
 export async function addBookmark(
   connectionId: string,
@@ -690,15 +713,19 @@ export async function addBookmark(
   position: number,
   note = '',
   label?: BookmarkLabel,
+  clientId?: string,
 ): Promise<Bookmark> {
   const client = resolveClient(connectionId);
   if (!client) throw new Error('connection gone');
   const created = await postBookmark(
     client,
-    cachedCapability(connectionId, 'annotations'),
+    {
+      annotations: cachedCapability(connectionId, 'annotations'),
+      bookmark_client_id: cachedCapability(connectionId, 'bookmark_client_id'),
+    },
     libraryId,
     path,
-    { position, note, label },
+    { position, note, label, clientId },
   );
   showServerBookmark(connectionId, libraryId, path, created);
   return created;
@@ -1636,17 +1663,19 @@ export function useBookmarks(libraryId: number, path: string, connectionId?: str
   return useQuery(bookmarksQuery(useCid(connectionId), useApi(connectionId), libraryId, path));
 }
 
-/** Bookmark a book at `position`, with an optional `note` and `label`, then refresh the
- * book's bookmarks and the across-books list. Works on every server: `label` follows
- * `postBookmark`'s rule, on this connection's `useCapability`. Resolves the new
+/** Bookmark a book at `position`, with an optional `note`, `label` and `clientId`, then
+ * refresh the book's bookmarks and the across-books list. Works on every server: `label` and
+ * `clientId` follow `postBookmark`'s rule, on this connection's `useCapability`. Resolves the new
  * bookmark. */
 export function useAddBookmark(libraryId: number, path: string, connectionId?: string) {
   const api = useApi(connectionId);
   const cid = useCid(connectionId);
   const annotations = useCapability('annotations', connectionId);
+  const clientIds = useCapability('bookmark_client_id', connectionId);
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (vars: AddBookmarkVars) => postBookmark(api, annotations, libraryId, path, vars),
+    mutationFn: (vars: AddBookmarkVars) =>
+      postBookmark(api, { annotations, bookmark_client_id: clientIds }, libraryId, path, vars),
     onSuccess: () => refreshAfterAdd(qc, 'bookmarks', cid, libraryId, path),
   });
 }

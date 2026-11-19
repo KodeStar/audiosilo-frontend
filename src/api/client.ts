@@ -1595,14 +1595,27 @@ export class ApiClient {
     );
     return r.bookmarks ?? [];
   }
-  /** Bookmark a book at `position`. `label` is sent only when given, and only a server
-   * with `annotations` takes it: an older one rejects the unknown field with a 400, so
-   * prefer the `addBookmark` helper or `useAddBookmark` (src/api/hooks.ts), which drop it
-   * there. */
-  addBookmark(libraryId: number, path: string, position: number, note = '', label?: BookmarkLabel) {
+  /** Bookmark a book at `position`. `label` and `clientId` are sent only when given, and
+   * only a server with `annotations` takes a label, only one with `bookmark_client_id` a
+   * `client_id` (the same one again answers 200 with the bookmark already made): an older
+   * one rejects an unknown field with a 400, so prefer the `addBookmark` helper or
+   * `useAddBookmark` (src/api/hooks.ts), which drop them there. */
+  addBookmark(
+    libraryId: number,
+    path: string,
+    position: number,
+    note = '',
+    label?: BookmarkLabel,
+    clientId?: string,
+  ) {
     return this.request<Bookmark>('POST', `/libraries/${libraryId}/bookmarks`, {
       query: { path },
-      body: label === undefined ? { position, note } : { position, note, label },
+      body: {
+        position,
+        note,
+        ...(label === undefined ? {} : { label }),
+        ...(clientId === undefined ? {} : { client_id: clientId }),
+      },
     });
   }
   /** Edit one of the caller's bookmarks (capability `annotations`; see

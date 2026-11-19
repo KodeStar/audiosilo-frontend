@@ -1839,6 +1839,9 @@ describe('ApiClient annotations (Phase 4)', () => {
     });
     // An older server rejects an unknown field, so no label means no `label` key at all.
     expect(sent(fetchMock, 1).body).toEqual({ position: 61, note: '' });
+    // A client_id goes only when given (the caller knows the server takes it).
+    await c().addBookmark(2, 'Saga/Book 1', 61, '', undefined, 'k1');
+    expect(sent(fetchMock, 2).body).toEqual({ position: 61, note: '', client_id: 'k1' });
   });
 
   it('edits a bookmark with PATCH /bookmarks/{id}, sending only the given fields', async () => {
