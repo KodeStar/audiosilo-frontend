@@ -248,6 +248,26 @@ describe('connection-clients', () => {
       },
     );
 
+    // A request sent before Sign in again that answers after it: the old token's refusal says
+    // nothing of the new one, so the notice (and its Sign in again) does not come back.
+    it('notes no refusal for a token the connection no longer holds', async () => {
+      known.set('c1', { unauthorized_mark: true } as Capabilities);
+      const stale = resolveClient('c1')!;
+      getState.mockReturnValue({
+        connections: [{ id: 'c1', serverUrl: 'https://h', token: 'new' }],
+        markNeedsReconnect,
+        proxySets,
+        signInProxySets: {},
+        status: 'ready',
+      });
+      await expect(stale.me()).rejects.toMatchObject({ status: 401, fromProxy: true });
+      expect(useProxyRefusals.getState().refused).toEqual({});
+      // Allowed: the token it holds now is still refused.
+      await expect(resolveClient('c1')!.me()).rejects.toMatchObject({ status: 401 });
+      expect(useProxyRefusals.getState().refused).toEqual({ c1: true });
+      expect(markNeedsReconnect).not.toHaveBeenCalled();
+    });
+
     it("reads the flag under the connection's id now (a client built before the identity migration)", async () => {
       getState.mockReturnValue({
         connections: [{ id: 'old', serverUrl: 'https://h', token: 'tok' }],

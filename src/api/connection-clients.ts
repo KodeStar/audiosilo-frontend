@@ -83,10 +83,14 @@ export function connectionClient(
     // while the connection still sends these headers there: a request sent with a set since
     // replaced (a grown-up's update) that answers late says nothing of the one it sends now,
     // and would raise the notice again after the new set got through. Nearly every answer is
-    // the server's own with no episode to end: that one stops at the first check.
+    // the server's own with no episode to end: that one stops at the first check. A refusal
+    // counts only while the connection still holds this token, as the 401 above: one sent
+    // before a Sign in again that answers late (a revoke that a proxy dropping the mark turned
+    // into a refusal, WS-401-MARK) says nothing of the new token.
     (refused) => {
       const now = connectionOf(conn.id);
       if (!now || (!refused && !useProxyRefusals.getState().refused[now.id])) return;
+      if (refused && now.token !== conn.token) return;
       if (sameProxyHeaders(connectionProxyFor(now.id, url), proxy)) {
         noteProxyAnswer(now.id, refused);
       }

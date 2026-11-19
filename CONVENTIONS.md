@@ -517,7 +517,8 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   through; a gateway's page or no answer says nothing (memory only; a removed connection's goes
   with it, and a renamed one's moves to its new id, or ends there when that is not signed in,
   `moveProxyRefusal`; an answer to a request sent with a set the connection no longer sends there counts for
-  nothing, `connectionClient`). Its end tells the stored queues (`onProxyRefusalsOver`, a signed-in
+  nothing, and so does a refusal of a token it no longer holds (sent before a Sign in again),
+  `connectionClient`). Its end tells the stored queues (`onProxyRefusalsOver`, a signed-in
   connection only): bookmarks, progress, reading places and listening events each send what the
   refusals held at once, by the same kick as a 429's end. While it lasts the shell shows `ProxyRefusedBanner` beside the reconnect banner (not
   for a connection that needs signing in again): it opens the connection's Account page when the
