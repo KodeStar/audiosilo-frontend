@@ -1025,7 +1025,10 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   (past the server's cool-down); until the server answers that POST the waiting entry saves it
   (`serverFetch.refetch`), so a launch asks it again, and a wait that ends signed out, with no
   access or cut short by a launch keeps it on its failure (`failure.refetch`), so the Retry after
-  a sign-in POSTs too. Each status a wait reads is written where the episode page and an open
+  a sign-in POSTs too. The mark stays through every status until one says the fetch is on its
+  way, through a launch that finds files of the waiting entry gone (`reviveEntry`), and it goes
+  with whoever starts the entry again first: an automatic download that gets there before the
+  listener's next Retry sends the POST they asked for (`begin`). Each status a wait reads is written where the episode page and an open
   row menu read it (`qk.podcastFetch`, as the player's fetch does); a row menu follows it only
   while it is open. A wait outlives a reload or restart: `reviveEntry` keeps
   the waiting entry and `resumeEpisodeWaits` asks again once the session has read its connections

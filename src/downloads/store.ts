@@ -633,7 +633,8 @@ function queueBook(
  * again; one that failed its fetch POSTs when the listener asks (their Retry skips the
  * server's cool-down, which an automatic download's own retry respects), and so does one
  * whose Retry of a failed fetch ended before its POST was answered (`failure.refetch`: signed
- * out, no access, cut short by a launch). */
+ * out, no access, cut short by a launch), whoever starts it again: the POST is the listener's
+ * ask, still owed when an automatic download gets to the entry before their next Retry. */
 function begin(
   key: string,
   connectionId: string,
@@ -644,14 +645,15 @@ function begin(
 ) {
   const existing = useDownloads.getState().entries[key];
   const failure = existing?.status === 'error' ? existing.failure : undefined;
-  const fetchFailed = failure?.kind === 'serverFetch' || !!failure?.refetch;
+  const owed = !!failure?.refetch;
+  const fetchFailed = failure?.kind === 'serverFetch' || owed;
   const wait =
     !!book.episode &&
     (isAbsentEpisode(book) ||
       fetchFailed ||
       (failure?.kind === 'server' && failure.status === 503));
   if (wait) {
-    const retry = fetchFailed && origin === 'listener';
+    const retry = owed || (fetchFailed && origin === 'listener');
     awaitEpisode(key, connectionId, libraryId, book, chapterData, origin, retry);
   } else enqueue(key, connectionId, libraryId, book, chapterData, origin);
 }
@@ -765,11 +767,12 @@ function watchEpisode(
         const cur = useDownloads.getState().entries[key];
         const percent = fetchPercent(status);
         if (!cur?.serverFetch) return;
-        // On its way: the POST took (the fetch limit's refusal is asked again, still owed).
-        const posted =
-          !!cur.serverFetch.refetch && (status.state === 'queued' || status.state === 'fetching');
+        // On its way: the POST took. Until then the mark stays, whatever else the status says
+        // (the fetch limit's refusal is asked again, still owed).
+        const owed = !!cur.serverFetch.refetch;
+        const posted = owed && (status.state === 'queued' || status.state === 'fetching');
         if (posted || cur.serverFetch.percent !== percent) {
-          patchEntry(key, { serverFetch: { percent } });
+          patchEntry(key, { serverFetch: { percent, ...(owed && !posted ? REFETCH : {}) } });
           if (posted) void persist();
         }
       },
@@ -967,6 +970,9 @@ export function reviveEntry(
   // a failed attempt finished still there; one whose files went is a download cut short.
   if (saved.serverFetch && (listed.length === 0 || allPresent)) return saved;
   const e = saved.serverFetch ? withoutServerFetch(saved) : saved;
+  // A wait that was the listener's Retry of a failed fetch, its POST not answered yet: the
+  // failure it becomes still owes it (`failure.refetch`, `begin`).
+  const owed = saved.serverFetch?.refetch ? REFETCH : {};
   if (e.status === 'downloaded') {
     if (allPresent) return e;
     if (files.length === 0 || e.origin === 'keep-ahead') return null;
@@ -982,7 +988,7 @@ export function reviveEntry(
       failure:
         e.status === 'error' && e.failure
           ? { ...e.failure, kept: 0 }
-          : { kind: 'interrupted', kept: 0 },
+          : { kind: 'interrupted', kept: 0, ...owed },
       // Its folder goes (a cut-short transfer's partial bytes, the cover): the retry
       // fetches them again.
       manifest: { ...e.manifest, files: [], coverUri: null, ebookUri: undefined },
@@ -998,7 +1004,7 @@ export function reviveEntry(
       ? { kind: 'missing', kept }
       : e.status === 'error' && e.failure
         ? { ...e.failure, kept }
-        : { kind: onlyCheckLeft ? 'unservable' : 'interrupted', kept };
+        : { kind: onlyCheckLeft ? 'unservable' : 'interrupted', kept, ...owed };
   return {
     ...e,
     status: 'error',

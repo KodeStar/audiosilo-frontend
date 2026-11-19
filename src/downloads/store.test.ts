@@ -3106,6 +3106,14 @@ describe('podcast episodes', () => {
     // Five on their way already: the POST is asked again, still owed.
     mockWaits[1].hooks.onStatus({ state: 'unavailable', error: { code: 'fetch_limit' } } as never);
     expect(entry()?.serverFetch).toEqual({ percent: null, refetch: true });
+    // Still owed when that refusal names how far an earlier fetch got.
+    mockWaits[1].hooks.onStatus({
+      state: 'unavailable',
+      error: { code: 'fetch_limit' },
+      bytes_received: 400,
+      bytes_total: 1000,
+    } as never);
+    expect(entry()?.serverFetch).toEqual({ percent: 40, refetch: true });
     // The server took the POST: the fetch is on its way, and a restart asks the stream.
     mockWaits[1].hooks.onStatus({ state: 'queued' });
     expect(entry()?.serverFetch).toEqual({ percent: null });
@@ -3121,11 +3129,25 @@ describe('podcast episodes', () => {
     expect(entry()?.failure).toEqual({ kind: 'signedOut', kept: 0, refetch: true });
     await useDownloads.getState().download('c1', 2, entry()!.manifest.book, chapters);
     expect(mockWaits[2].opts).toEqual({ retry: true });
-    // An automatic download's retry still respects the cool-down.
     mockWaits[2].hooks.onEnd({ kind: 'noAccess' });
     expect(entry()?.failure).toEqual({ kind: 'noAccess', kept: 0, refetch: true });
+  });
+
+  it("an automatic download that starts the entry first sends the Retry's owed POST (fe#280)", async () => {
+    await useDownloads.getState().download('c1', 2, episodeBook(false), chapters);
+    mockWaits[0].hooks.onEnd({ kind: 'failed', code: null });
+    await useDownloads.getState().download('c1', 2, entry()!.manifest.book, chapters);
+    mockWaits[1].hooks.onEnd({ kind: 'signedOut' });
+    expect(entry()?.failure).toEqual({ kind: 'signedOut', kept: 0, refetch: true });
+    // The book started again (an automatic download) before the listener's next Retry: the
+    // POST they asked for goes with it, and stays owed until the server takes it.
     await useDownloads.getState().download('c1', 2, entry()!.manifest.book, chapters, 'auto');
-    expect(mockWaits[3].opts).toEqual({ retry: false });
+    expect(mockWaits[2].opts).toEqual({ retry: true });
+    expect(entry()?.serverFetch).toEqual({ percent: null, refetch: true });
+    mockWaits[2].hooks.onEnd({ kind: 'signedOut' });
+    expect(entry()?.failure).toEqual({ kind: 'signedOut', kept: 0, refetch: true });
+    await useDownloads.getState().download('c1', 2, entry()!.manifest.book, chapters);
+    expect(mockWaits[3].opts).toEqual({ retry: true });
   });
 
   it("an automatic download's own retry never POSTs (the server's cool-down stands)", async () => {
@@ -3295,6 +3317,38 @@ describe('podcast episodes', () => {
       await useDownloads.getState().hydrate();
       await settle();
       expect(mockWaits).toHaveLength(1);
+      expect(mockWaits[0].opts).toEqual({ retry: true });
+    });
+
+    it("keeps a Retry's POST owed when files a failed attempt finished are gone (fe#280)", async () => {
+      // The wait is over (a download cut short), whatever is left of its files.
+      const owing: DownloadEntry = {
+        ...waiting,
+        serverFetch: { percent: null, refetch: true },
+        manifest: { ...waiting.manifest, files: downloadedEntry().manifest.files },
+      };
+      expect(reviveEntry(owing, [true, false])).toMatchObject({
+        status: 'error',
+        failure: { kind: 'interrupted', refetch: true },
+      });
+      expect(reviveEntry(owing, [false, false])?.failure).toEqual({
+        kind: 'interrupted',
+        kept: 0,
+        refetch: true,
+      });
+      // A wait that owed none owes none.
+      const plain = { ...owing, serverFetch: { percent: null } };
+      expect(reviveEntry(plain, [true, false])?.failure).not.toHaveProperty('refetch');
+      expect(reviveEntry(plain, [false, false])?.failure).toEqual({ kind: 'interrupted', kept: 0 });
+
+      // The launch: the Retry on that row POSTs.
+      mockEngine.fileExists.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+      await seed({ [key]: owing });
+      await useDownloads.getState().hydrate();
+      await settle();
+      expect(entry()).toMatchObject({ status: 'error', failure: { refetch: true } });
+      expect(entry()?.serverFetch).toBeUndefined();
+      await useDownloads.getState().download('c1', 2, entry()!.manifest.book, chapters);
       expect(mockWaits[0].opts).toEqual({ retry: true });
     });
 
