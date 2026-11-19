@@ -192,6 +192,12 @@ export function isProxyRefusal(e: unknown): boolean {
  * is. */
 export type ProxyRefusalStatus = 401 | 403;
 
+/** Whether the server's own error `status`, to a request that carried the session token,
+ * says it took the token (`ApiClient`'s `onProxyAnswer`): never its 401 (the token refused),
+ * nor a 429 or a 503, which it writes before or instead of checking the token (the address's
+ * rate limit, a token it could not check). */
+const tokenTaken = (status: number) => status !== 401 && status !== 429 && status !== 503;
+
 /** Whether `e` is the server saying the content isn't there for this caller: a 404 (no
  * such book or folder), a 403 (a library not shared with them) or a 400 (a path the
  * server refuses, such as one leaving the library). Asking again can't change it, so it
@@ -982,9 +988,12 @@ export class ApiClient {
       if (isSignedOutError(e)) this.onAuthError?.();
       // What the answer says of a proxy in front (`onProxyAnswer`): its own refusal, or the
       // server's own error past the token check, which the proxy let through as it does a
-      // success (never its 401: the token refused, or a wrong current password's).
+      // success (never its 401: the token refused, or a wrong current password's; nor a 429
+      // or a 503, which the server writes before or instead of checking the token: its
+      // address's rate limit, which a revoked token's 401s fill, or a token it could not
+      // check, so ending the episode there would raise it again at the next 401).
       if (isProxyRefusal(e)) this.onProxyAnswer?.((e as ApiError).status === 403 ? 403 : 401);
-      else if (tokenChecked && e instanceof ApiError && e.fromServer && e.status !== 401)
+      else if (tokenChecked && e instanceof ApiError && e.fromServer && tokenTaken(e.status))
         this.onProxyAnswer?.(false);
       throw e;
     } finally {

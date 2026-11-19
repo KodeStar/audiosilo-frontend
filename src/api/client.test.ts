@@ -3059,6 +3059,13 @@ describe('ApiClient podcasts (Bridge Phase 2d-1)', () => {
     installAnswers(() => ({ status: 403, text: '<html>Forbidden</html>' }));
     await expect(api.serverInfo()).rejects.toMatchObject({ fromProxy: true });
     expect(heard).toEqual([401, 403]);
+    // Denied: the server's 429 and 503 are written before or instead of its token check (the
+    // address's rate limit, which a revoked token's 401s fill; a token it could not check).
+    installAnswers(() => ({ status: 429, body: { error: 'rate limit exceeded' } }));
+    await expect(api.me()).rejects.toMatchObject({ status: 429, fromServer: true });
+    installAnswers(() => ({ status: 503, body: { error: 'could not check the token' } }));
+    await expect(api.me()).rejects.toMatchObject({ status: 503, fromServer: true });
+    expect(heard).toEqual([401, 403]);
     // Allowed: a route that checks the token answered, so the token was taken.
     installAnswers(() => ({ status: 200, body: { id: 1, username: 'chris' } }));
     await api.me();

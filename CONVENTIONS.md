@@ -517,7 +517,8 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   (`ApiClient`'s `onProxyAnswer` -> `noteProxyAnswer`); the first refusal starts the
   connection's episode (keeping its status: a 401 once any was, `ProxyRefusalStatus`) and the
   next answer the server gave past its token check ends it: a success, or its own error envelope
-  but a 401 (`ApiError.fromServer`: a 403, a 404, a 500), to a request that carried the token the
+  but a 401, a 429 or a 503, which it writes before or instead of its token check (`ApiError.fromServer`:
+  a 403, a 404, a 500), to a request that carried the token the
   connection holds, since the proxy let that request through and the token was taken. A public
   route's answer (`/server`, the sign-in routes: `request`'s `publicRoute`) says nothing: a
   revoked token behind a proxy that drops the mark is refused everywhere else while `/server`
