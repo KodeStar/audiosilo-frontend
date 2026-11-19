@@ -1712,7 +1712,8 @@ foreground and on the web's focus and `online` (`startQueueReplays`), and on a b
 doubling to 10 min) while a reachable server keeps failing, through `replayQueue` routed by
 `queuedRoute` (claims, so two tabs never send one twice). A replay of every connection asked
 for while one is out joins it (`flushBookmarks`: the web's `online` and focus fire together),
-so one failure counts once. The POST has no idempotency key, so
+so those two count a failure once; a connection's own replay (its reconnect, a sign-in, a new
+bookmark) is never joined and queues behind it. The POST has no idempotency key, so
 a replay reads the book's bookmarks first and takes one at the same second with the same
 note as already sent: one the replay did not see there before its first send of it
 (`othersHeld`, stored right before that send), else, for one a send may have reached before it

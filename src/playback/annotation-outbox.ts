@@ -643,15 +643,18 @@ let sweep: Promise<void> | null = null;
 /** Send the waiting bookmarks of every reachable connection (or only `connectionId`'s), as
  * the stored queues do (`queuedRoute`). Waits for the session. Bookmarks another tab is
  * sending are left to it. A send to every connection asked for while one is out (the web's
- * `online` and `focus` fire together) joins it rather than sending again behind it, so one
- * failing bookmark fails once, not twice, toward giving up on it. A bookmark stored
- * meanwhile asks for its own connection's send (`enqueue`), which is never joined. */
+ * `online` and `focus` fire together) joins it rather than sending again behind it, so those
+ * two count a failing bookmark once toward giving up on it. A connection's own send (its
+ * reconnect, a sign-in, a bookmark stored meanwhile through `enqueue`) is never joined. */
 export function flushBookmarks(connectionId?: string): Promise<void> {
   if (connectionId !== undefined) return replayWaiting(connectionId);
-  sweep ??= replayWaiting().finally(() => {
-    sweep = null;
+  if (sweep) return sweep;
+  const running = replayWaiting().finally(() => {
+    // Only this one's: a reset (tests) may have started another since.
+    if (sweep === running) sweep = null;
   });
-  return sweep;
+  sweep = running;
+  return running;
 }
 
 async function replayWaiting(connectionId?: string): Promise<void> {
