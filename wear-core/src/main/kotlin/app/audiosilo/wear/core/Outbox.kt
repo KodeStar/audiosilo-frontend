@@ -65,6 +65,10 @@ class Outbox(
   private val eventsFile = directory?.let { JsonFile(File(it, "outbox.json"), EVENTS, durable = true, writer = writer) }
   private val stateFile = directory?.let { JsonFile(File(it, "sync-state.json"), SyncState.serializer(), writer = writer) }
 
+  /** The files it keeps (signing out forgets their writes: `DurableWriter.forget`). */
+  val files: List<File>
+    get() = listOfNotNull(eventsFile?.file, stateFile?.file)
+
   /**
    * The outbox file is there, but could be neither read nor moved aside (`kept`; set before
    * `events` reads it): nothing is written over it, so what waits is in memory alone until a save
@@ -142,8 +146,8 @@ class Outbox(
     }
     val events = older + (current ?: emptyList())
     if (joined.isEmpty() || stuck) return events
-    // Gone only once they are safely in the outbox (a full disk: tried again next launch).
-    // Waits for the write's answer, not only its turn on the writer.
+    // Gone only once they are safely in the outbox. Waits for the write's first try alone: one
+    // that fails is tried again in the background, and what it joined stays for the next launch.
     if (main.writeNow(events.ifEmpty { null })) joined.forEach { it.delete() }
     return events
   }

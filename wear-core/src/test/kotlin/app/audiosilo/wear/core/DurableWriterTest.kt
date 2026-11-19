@@ -4,7 +4,10 @@
 package app.audiosilo.wear.core
 
 import java.io.File
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
+import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -277,32 +280,57 @@ class DurableWriterTest {
     assertFalse("nothing more to try", retries.fire())
   }
 
-  // The tries are bounded: once a round is spent nothing runs (the writes behind still wait), until
-  // the next write asked starts a new round.
+  // A disk that stays full (fe#285): the failed write is tried again with a doubling wait, capped,
+  // until it lands; a write asked meanwhile never starts its tries over.
   @Test
-  fun aSpentRoundWaitsForTheNextWriteToTryAgain() {
+  fun aWriteThatStillFailsBacksOffAndANewWriteDoesNotTryItSooner() {
     val held = Held()
     val retries = Retries()
     val writer = DurableWriter(held, retries::after)
     val disk = FakeDisk()
-    writer.submit("open-span", disk.write("open-span"))
-    writer.submit("places", disk.write("places"))
-    while (held.runOne()) Unit
-    while (retries.fire()) while (held.runOne()) Unit
-    assertEquals(listOf(500L, 1000L, 2000L, 4000L, 8000L), retries.delays)
-    disk.full = false
-    while (held.runOne()) Unit
-    assertEquals("parked until asked", emptyList<String>(), disk.landed)
     writer.submit("outbox", disk.write("outbox"))
+    assertTrue(held.runOne())
+    repeat(8) {
+      writer.submit("places", disk.write("places"))
+      assertEquals("a new write runs nothing", 0, held.queued.size)
+      assertTrue(retries.fire())
+    }
+    assertEquals(listOf(500L, 1000L, 2000L, 4000L, 8000L, 16000L, 30000L, 30000L, 30000L), retries.delays)
+    disk.full = false
+    assertTrue(retries.fire())
     while (held.runOne()) Unit
-    assertEquals(listOf("open-span", "places", "outbox"), disk.landed)
+    assertEquals(listOf("outbox", "places"), disk.landed)
+    assertFalse("nothing more to try", retries.fire())
   }
 
-  // A `now` (the launch's join, the sign-out's drain) behind a write that still fails is told so
-  // once the round is spent, its op not run; a later one, the disk back, goes through.
+  // While a write fails, the writes asked behind it take the place of their file's earlier ones (the
+  // latest content), so the queue stays one write per file however long the disk is full.
   @Test
-  fun aNowBehindAWriteThatStillFailsIsToldItIsStuck() {
-    val writer = DurableWriter(retryAfter = { _, r -> r.run() })
+  fun writesBehindAFailingOneCoalesceByFile() {
+    val held = Held()
+    val retries = Retries()
+    val writer = DurableWriter(held, retries::after)
+    val disk = FakeDisk()
+    writer.submit("outbox", disk.write("outbox 0"))
+    assertTrue(held.runOne())
+    for (i in 1..100) {
+      writer.submit("places", disk.write("places $i"))
+      writer.submit("outbox", disk.write("outbox $i"))
+    }
+    assertEquals("the failing write and one per file", 3, writer.queued)
+    disk.full = false
+    assertTrue(retries.fire())
+    while (held.runOne()) Unit
+    assertEquals(listOf("outbox 0", "places 100", "outbox 100"), disk.landed)
+  }
+
+  // A `now` (the sign-out's drain) behind a write that fails is told so at once, its op not run,
+  // rather than waiting for the write to land; a later one, the disk back, goes through.
+  @Test
+  fun aNowBehindAWriteThatFailsIsToldItIsStuckAtOnce() {
+    // Retries never fire on their own: a `now` that waited for one would wait for ever.
+    val retries = Retries()
+    val writer = DurableWriter(retryAfter = retries::after)
     val disk = FakeDisk()
     writer.submit("outbox", disk.write("outbox"))
     var ran = false
@@ -310,49 +338,139 @@ class DurableWriterTest {
     assertFalse(ran)
     assertFalse(writer.drain())
     disk.full = false
+    assertTrue(retries.fire())
     assertTrue(writer.drain())
     assertEquals(listOf("outbox"), disk.landed)
   }
 
-  // Signing out: the removals that follow replace a write the disk still refuses, so it is dropped
-  // rather than held in front of them (or landing after them).
+  // The launch's join (`attempt`): one try, then the caller goes on; a write that failed is tried
+  // again in the background, before anything asked after it.
   @Test
-  fun signingOutDropsAFailedWriteALaterOneOfItsFileReplaces() {
+  fun anAttemptWaitsForItsFirstTryAloneAndIsTriedAgainInTheBackground() {
+    val retries = Retries()
+    val writer = DurableWriter(retryAfter = retries::after)
+    val disk = FakeDisk()
+    assertFalse(writer.attempt("outbox", disk.write("outbox")))
+    assertEquals("one retry waits", listOf(500L), retries.delays)
+    disk.full = false
+    assertTrue(retries.fire())
+    assertTrue(writer.drain())
+    assertEquals(listOf("outbox"), disk.landed)
+    assertTrue("the disk back, a try that lands says so", writer.attempt("places", disk.write("places")))
+  }
+
+  // Behind a write that fails, an attempt is answered at once (no retry waited for) and lands after
+  // that write once the disk has room.
+  @Test
+  fun anAttemptBehindAFailingWriteIsAnsweredAtOnce() {
+    val retries = Retries()
+    val writer = DurableWriter(retryAfter = retries::after)
+    val disk = FakeDisk()
+    writer.submit("places", disk.write("places"))
+    assertFalse(writer.attempt("outbox", disk.write("outbox")))
+    disk.full = false
+    assertTrue(retries.fire())
+    assertTrue(writer.drain())
+    assertEquals(listOf("places", "outbox"), disk.landed)
+  }
+
+  // The launch's join on a full disk: the outbox keeps what it joined in memory, the files set
+  // aside stay for the next launch, and the join's write lands in the background once there is room.
+  @Test
+  fun aLaunchJoinThatFailsKeepsWhatItJoinedAndWritesItLater() {
+    val aside = File(dir, "outbox-unread-1.json")
+    aside.writeText(JsonFile.FORMAT.encodeToString(kotlinx.serialization.builtins.ListSerializer(ListeningEvent.serializer()), listOf(listen("old"))))
+    // The write's temp file can't be made while a folder has its name.
+    val blocker = File(dir, ".outbox.json.tmp").apply { mkdirs() }
+    val retries = Retries()
+    val writer = DurableWriter(retryAfter = retries::after)
+    val outbox = Outbox(dir, AckStore(null), DEVICE_ID, writer = writer)
+    assertEquals(listOf("old"), outbox.events.map { it.id })
+    assertTrue("kept for the next launch", aside.exists())
+    assertEquals(listOf(500L), retries.delays)
+    blocker.delete()
+    assertTrue(retries.fire())
+    assertTrue(writer.drain())
+    assertEquals(listOf("old"), JsonFile(File(dir, "outbox.json"), kotlinx.serialization.builtins.ListSerializer(ListeningEvent.serializer())).read()!!.map { it.id })
+  }
+
+  // Signing out on a full disk: the account's writes still queued are dropped with the retry the
+  // first waits for, so its removals run at once and the sign-out waits out no tries; another
+  // file's writes keep their order.
+  @Test
+  fun signingOutDropsTheAccountsWritesAndKeepsTheOthersInOrder() {
     val held = Held()
     val retries = Retries()
     val writer = DurableWriter(held, retries::after)
     val disk = FakeDisk()
+    val other = FakeDisk().apply { full = false }
     writer.submit("outbox", disk.write("outbox"))
     assertTrue(held.runOne())
-    assertEquals(1, retries.delays.size)
+    writer.submit("downloads", other.write("downloads"))
+    writer.submit("places", disk.write("places"))
+    writer.submit("index", other.write("index"))
+    writer.forget(listOf("outbox", "places", "sync-state"))
     val removals = FakeDisk().apply { full = false }
-    writer.submit("places", removals.write("places removed"))
     writer.submit("outbox", removals.write("outbox removed"))
-    writer.dropSuperseded()
+    writer.submit("places", removals.write("places removed"))
     while (held.runOne()) Unit
-    assertEquals(listOf("places removed", "outbox removed"), removals.landed)
+    assertEquals(listOf("downloads", "index"), other.landed)
+    assertEquals(listOf("outbox removed", "places removed"), removals.landed)
     disk.full = false
-    retries.fire()
+    assertTrue("the dropped write's retry", retries.fire())
     while (held.runOne()) Unit
     assertEquals("never lands after its removal", emptyList<String>(), disk.landed)
+    assertEquals(listOf(500L), retries.delays)
   }
 
-  // Signing out while the write it replaces is being tried: that write, failing, is dropped there
-  // rather than tried again in front of the removals (the sign-out's drain would wait out a round).
+  // Signing out while one of the account's writes is being tried: that write is gone once its try
+  // ends, not tried again in front of the removals.
   @Test
-  fun signingOutDropsTheReplacedWriteItFindsRunningOnceItFails() {
+  fun signingOutDropsTheAccountsWriteItFindsRunningOnceItsTryEnds() {
     val held = Held()
     val retries = Retries()
     val writer = DurableWriter(held, retries::after)
     val removals = FakeDisk().apply { full = false }
     writer.submit("outbox") {
+      writer.forget(listOf("outbox"))
       writer.submit("outbox", removals.write("outbox removed"))
-      writer.dropSuperseded()
       false
     }
     while (held.runOne()) Unit
     assertEquals(listOf("outbox removed"), removals.landed)
     assertEquals("not tried again", emptyList<Long>(), retries.delays)
+  }
+
+  // Signing out while a failed write of the account is tried again: the drain behind the removals
+  // waits for that one try and the removals, not told `Stuck` by the failure the write had before.
+  @Test
+  fun aSignOutDuringARetryDrainsItsRemovals() {
+    val retries = Retries()
+    val writer = DurableWriter(retryAfter = retries::after)
+    val trying = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    var tries = 0
+    writer.submit("outbox") {
+      if (++tries == 2) {
+        trying.countDown()
+        release.await()
+      }
+      false
+    }
+    assertFalse(writer.drain())
+    val retry = Thread { retries.fire() }.apply { start() }
+    trying.await()
+    writer.forget(listOf("outbox"))
+    val removals = FakeDisk().apply { full = false }
+    writer.submit("outbox", removals.write("outbox removed"))
+    val drained = CompletableFuture.supplyAsync { writer.drain() }
+    // The drain asked (queued behind the removal, or answered) before the try ends.
+    while (!drained.isDone && writer.queued < 3) Thread.onSpinWait()
+    release.countDown()
+    assertTrue(drained.get(10, TimeUnit.SECONDS))
+    retry.join()
+    assertEquals(listOf("outbox removed"), removals.landed)
+    assertEquals(2, tries)
   }
 
   // A retry still waiting for the write a sign-out dropped runs nothing: the write now first keeps
@@ -365,8 +483,8 @@ class DurableWriterTest {
     var tries = 0
     writer.submit("outbox") { false }
     assertTrue(held.runOne())
-    writer.submit("outbox") { tries++ >= 1 }
-    writer.dropSuperseded()
+    writer.submit("downloads") { tries++ >= 1 }
+    writer.forget(listOf("outbox"))
     while (held.runOne()) Unit
     assertEquals(1, tries)
     assertTrue("the dropped write's retry", retries.fire())

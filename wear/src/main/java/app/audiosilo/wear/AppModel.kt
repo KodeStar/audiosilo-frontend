@@ -878,6 +878,9 @@ class AppModel private constructor(private val context: Context) {
     if (leaving != null) scope.launch { orNull { leaving.logout() } }
   }
 
+  /** The account's files on the `durable` writer. */
+  private fun accountFiles(): List<File> = listOf(files.acks, files.places, files.openSpan, files.openSpanMove) + outbox.files
+
   /** Drop everything of the account (AccountRules was asked first). */
   internal fun forgetAccount() {
     engine.stop()
@@ -886,6 +889,9 @@ class AppModel private constructor(private val context: Context) {
     removeAllBooks()
     library.clear()
     files.items.deleteRecursively()
+    // The account's listening writes still queued go, its files removed next: one a full disk
+    // still refuses neither holds the removals back nor keeps the main looper on its tries.
+    durable.forget(accountFiles().map { JsonFile.writerKey(it) })
     acks.clear()
     places.clear()
     spans.forgetMove()
@@ -900,9 +906,8 @@ class AppModel private constructor(private val context: Context) {
     _pendingReplace.value = null
     pendingPair = null
     // The account's listening is off the disk before the account is: a kill in between must not
-    // leave its outbox to be sent under the next one. The removals above replace each of its
-    // files, so a write of them a full disk still refuses is dropped rather than waited for.
-    durable.dropSuperseded()
+    // leave its outbox to be sent under the next one. Each removal above is tried once, in order;
+    // a write that fails is not waited for (`drain` answers at once, the writer tries it again).
     durable.drain()
     tokens.setToken(null)
     accountFile.write(null)

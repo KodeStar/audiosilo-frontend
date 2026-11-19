@@ -3014,14 +3014,16 @@ media GETs only.
     overhangs: the server refuses a span more than 10 s off, `duration_mismatch`); a place that
     is not a finite number never reaches a span or an event (`finiteEnd`, `eventIsFinite`).
     `base_version` is the mirror's `ack_version` at the close (0 when none: a cold start). An
-    offer answered by a move (the toast's Jump, the book page's Play from there) cuts that
+    offer answered by a move (the toast's Jump, the book page's Play from there), and a move to
+    another device's newer row (`decide` in `place-reconcile.ts`), cuts that
     book's open span first and acknowledges the row in the outbox's turn after its close
     (`answerAfterSpan`, `afterInTurn`; in turn with no span open too, behind a close already
     on its way), so what was heard before the answer never goes on the row's version (the
     place left behind would replace the other device's newer one, sent alone after a kill;
-    fe#285); the span the cut opens begins again where the engine is once the answer is in
-    (what it heard meanwhile would close on the row's at the old place); the move goes on the
-    row's. The Wear OS app does the same (`SpanRecorder.move`'s `acknowledge`); the Apple Watch
+    fe#285); the span the cut opens begins again where the engine is once the answer is in,
+    and is stored then (what it heard meanwhile would close on the row's at the old place, a
+    keep's copy too after a kill); the move goes on the row's (`decide` makes it only if the
+    book and the listener's moves are as they were). The Wear OS app does the same (`SpanRecorder.move`'s `acknowledge`); the Apple Watch
     still acknowledges before the move.
   - *Storage* (all connection-scoped, in `SCOPED_STORAGE_KEYS` and the identity migration, purged
     with the connection): `audiosilo.listeningOutbox` (closed events with their `connectionId`,
@@ -4288,15 +4290,21 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   between the two sends it again, never loses it); one write at a time in the order asked across the files (each queued under the
   lock that made its change, the value immutable), so the main looper never waits on an fsync and a
   kill leaves a state the in-order writes pass through: the write order above still holds. A write
-  that fails (a full disk) stays first and is tried again before anything asked after it, 6 tries
-  a round with a doubling wait from 0.5 s to 8 s (`DurableWriter.MAX_TRIES`, `retryDelayMs`); a
-  spent round waits, the write still first, until the next write or `now` asked starts another,
-  and a `now` behind it is told `Stuck` (its op not run). The launch's join of an outbox set
-  aside waits for its write (`writeNow`, false when stuck) before it deletes what it joined;
-  signing out drops the writes its removals replace (`dropSuperseded`, so one the disk still
-  refuses neither holds them back nor lands after them; one being tried then is dropped once it
-  fails) and drains the writer before the account and token go, so a kill between them never
-  leaves one account's outbox to the next.
+  that fails (a full disk) stays first and is tried again before anything asked after it, with a
+  doubling wait from 0.5 s capped at 30 s, until it lands (`retryDelayMs`,
+  `MAX_RETRY_DELAY_MS`); a write asked meanwhile never tries it sooner. While it fails, a write
+  asked behind it replaces the one of its file still waiting there (the latest content, at the
+  later place), so the queue holds one write per file however long the disk is full; once it has
+  room the files catch up in the order of their last writes (a mix of the two states for those
+  few writes, the trade for a bounded queue). Nothing waits on a failing write: a `now` behind it
+  is told `Stuck` at once (its op not run), and the launch's join of an outbox set aside makes one
+  try (`writeNow`, `DurableWriter.attempt`): it deletes what it joined only once that try lands;
+  one that fails stays queued and is tried again in the background, the asides kept for the next
+  launch. Signing out drops every write of the account's files still queued
+  (`DurableWriter.forget`, with the retry the first waits for; one being tried is gone once that
+  try ends; other files' writes keep their order), then asks the removals and drains the writer
+  (each removal tried once, nothing waited out) before the account and token go, so a kill
+  between them never leaves one account's outbox to the next.
 - **Downloads (decision 8)**: one WorkManager `BookWorker` per book (unique `book:<safe name>`,
   KEEP; `CONNECTED`; exponential backoff from 1 min) runs `BookDownload`: item + chapters (kept
   in `items/`), `POST .../renditions`, polls at `retry_after_seconds` (15 s at least) for up to
