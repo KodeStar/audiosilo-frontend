@@ -1,6 +1,12 @@
 import { ApiError, type ApiClient, isRefusedForGood, TimeoutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
-import { forgetRateLimit, onRateLimitOver, rateLimited, stopsReplay } from '@/api/rate-limit';
+import {
+  forgetRateLimit,
+  noteRateLimit,
+  onRateLimitOver,
+  rateLimited,
+  stopsReplay,
+} from '@/api/rate-limit';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { Progress } from '@/api/types';
 import { downloadEndsBefore } from '@/downloads/kept-offline';
@@ -1309,6 +1315,9 @@ export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<
     // No answer only asks for a check of the server (`noteFailure`): one slow save never
     // marks a healthy server down; the check does when it gets no answer either.
     noteFailure(save.connectionId, e);
+    // A 429 is the connection's: the queue's replays wait out its `Retry-After`, and the one
+    // that follows it sends this save (the last before a pause has no later save to do it).
+    noteRateLimit(save.connectionId, e);
     await enqueue(save);
     return 'queued';
   }

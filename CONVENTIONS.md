@@ -1098,7 +1098,8 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   replay through each save's connection; a 429 stops the replay and queues the connection's
   saves until its `Retry-After` is over, then replays them (`src/api/rate-limit.ts`, held per
   connection, never per `ApiClient`: `resolveClient` builds one per call), as `progress-sync`'s
-  legacy queue's replay does; a sign-out's last flush still tries them) plus `base_version`:
+  legacy queue's replay does (a live listening save is still sent meanwhile, and a 429 it gets
+  is noted too); a sign-out's last flush still tries them) plus `base_version`:
   the last version this device acknowledged, always sent (0 only when no row was ever seen).
   Every send of a book, the queue's replays and the open reader's saves alike, goes one at a
   time in the tab (`withSendTurn`, fe#173), per book: a request that hangs (up to the client's

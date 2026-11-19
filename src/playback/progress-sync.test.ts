@@ -232,6 +232,25 @@ describe('progress-sync', () => {
     },
   );
 
+  it('holds the connection from a live save answered 429: its replay waits too', async () => {
+    const limited = fakeApi(() => Promise.reject(new ApiError(429, 'slow down', undefined, 60)));
+    await expect(saveProgress(limited, save)).resolves.toBe('queued');
+    const ok = fakeApi(() => Promise.resolve());
+    routeClients({ c1: ok });
+    const now = jest.spyOn(Date, 'now');
+    try {
+      await flushQueue();
+      expect(ok.saveProgress).not.toHaveBeenCalled();
+      expect(await readQueue()).toHaveLength(1);
+      now.mockReturnValue(Date.now() + 61_000);
+      await flushQueue();
+    } finally {
+      now.mockRestore();
+    }
+    expect(ok.saveProgress).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toHaveLength(0);
+  });
+
   // A 429 is the connection's, not one save's: the replay stops there and waits out the
   // Retry-After, instead of sending every other queued book into the same limit (fe#173).
   it('stops a replay at a 429 and sends nothing more until its Retry-After is over', async () => {
