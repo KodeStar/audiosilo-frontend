@@ -1556,6 +1556,43 @@ describe('proxy headers (fe#167): one set per origin (fe#295)', () => {
       expect(await storedSets()).toEqual({ [setB.origin]: { headers: setB.headers } });
     });
 
+    // Dropping the removed set's marks writes this tab's list, never a stored copy read
+    // again: a write of the list made while that copy was read would be undone.
+    it("keeps a list write made while a removed set's old items go", async () => {
+      const a = await signIn('a');
+      const b = await signIn('b');
+      await legacy(a, JSON.stringify(set));
+      reset();
+      const original = store.setItemAsync;
+      store.setItemAsync = (k, v) =>
+        k === PROXY_SETS_KEY ? Promise.reject(new Error('keychain')) : original(k, v);
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const rename = () =>
+        useSession.getState().setConnectionUser(b, { ...mkUser('b'), username: 'bea' });
+      const plain = AsyncStorage.getItem;
+      try {
+        await useSession.getState().hydrate();
+        let renamed = false;
+        AsyncStorage.getItem = async (k: string) => {
+          const value = await plain(k);
+          if (k === 'audiosilo.connections' && !renamed) {
+            renamed = true;
+            await rename();
+          }
+          return value;
+        };
+        await useSession.getState().setProxySet(A, null);
+        if (!renamed) await rename();
+      } finally {
+        AsyncStorage.getItem = plain;
+        store.setItemAsync = original;
+        warn.mockRestore();
+      }
+      const stored = (await list()) as { id: string; user?: { username?: string } }[];
+      expect(stored.find((m) => m.id === b)?.user?.username).toBe('bea');
+      expect(stored.find((m) => m.id === a)).not.toHaveProperty('hasProxyHeaders');
+    });
+
     it('fails the hydrate when an old item can not be read (as a token read does)', async () => {
       const a = await signIn('a');
       await legacy(a, JSON.stringify(set));

@@ -519,8 +519,19 @@ async function forgetLegacyProxySets(origins: readonly string[]): Promise<void> 
     );
     if (!drop.size) return;
     await Promise.all([...drop].map(forgetProxyHeaders));
-    legacyMarks = new Set([...legacyMarks].filter((id) => !drop.has(id)));
-    await writeLegacyMarks();
+    const unmark = () => {
+      legacyMarks = new Set([...legacyMarks].filter((id) => !drop.has(id)));
+    };
+    // A list that never loaded is not written (a mark with no item behind it is dropped at
+    // the next launch). Else this tab's list as it is, never the stored copy read again (that
+    // write could undo one of the list made meanwhile), unmarked once it is caught up with
+    // the other tabs' (`applyStored` takes their marks in).
+    if (useSession.getState().status === 'loading' || hydrateFailed) return unmark();
+    await writingList(async () => {
+      unmark();
+      const { connections, defaultConnectionId } = useSession.getState();
+      await persist(connections, defaultConnectionId);
+    });
   } catch (e) {
     console.warn("[session] forgetting an earlier build's proxy headers failed", e);
   }
