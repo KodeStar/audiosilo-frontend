@@ -39,6 +39,7 @@ import { cachedEbookUri } from '@/reader/ebook-file';
 import { onConnectionRemoved } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 
+import { entryBytes } from './downloads-view';
 import { engine } from './engine';
 import { type EpisodeWaitEnd, isWaiting, stopWaiting, waitForEpisode } from './episode-ready';
 import {
@@ -2595,6 +2596,15 @@ export function useDownloadEntry(
   path: string,
 ): DownloadEntry | undefined {
   return useDownloads((s) => s.entries[downloadKey(connectionId, libraryId, path)]);
+}
+
+/** The bytes a book's download holds on the device (`entryBytes`; 0 with no entry): the one
+ * figure the Downloaded menu and the remove confirmation give (fe#197). */
+export function useDownloadBytes(connectionId: string, libraryId: number, path: string): number {
+  return useDownloads((s) => {
+    const e = s.entries[downloadKey(connectionId, libraryId, path)];
+    return e ? entryBytes(e) : 0;
+  });
 }
 
 /** A book's entry in `entries` when it is fully downloaded, else undefined: the one

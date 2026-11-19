@@ -48,6 +48,7 @@ const mockRemove = jest.fn();
 let mockEntry: { status: string } | undefined;
 jest.mock('@/downloads/store', () => ({
   useDownloadEntry: () => mockEntry,
+  useDownloadBytes: () => 0,
   useDownloadState: () => ({ status: mockEntry?.status, failure: undefined }),
   useDownloads: Object.assign(
     (select: (s: { supported: boolean }) => unknown) =>

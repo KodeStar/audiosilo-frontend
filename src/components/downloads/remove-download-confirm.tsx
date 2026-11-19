@@ -1,8 +1,7 @@
 import { useTranslation } from 'react-i18next';
 
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { entryBytes } from '@/downloads/downloads-view';
-import { useDownloadEntry, useDownloads } from '@/downloads/store';
+import { useDownloadBytes, useDownloads } from '@/downloads/store';
 import { formatBytes } from '@/lib/format';
 
 /** A downloaded book to remove. */
@@ -17,7 +16,7 @@ export type RemoveDownloadTarget = {
  * "Remove this download?": the one confirm for deleting a downloaded book, from the
  * Downloads page, the book page and a book's actions alike. Getting it back means
  * downloading it again, so it asks first and says how much room it frees (the
- * registry's `entryBytes`). Open while `target` is set; it removes the download itself,
+ * registry's `useDownloadBytes`). Open while `target` is set; it removes the download itself,
  * then `onClose` (and `onRemoved`, for a caller that says so).
  */
 export function RemoveDownloadConfirm({
@@ -30,12 +29,11 @@ export function RemoveDownloadConfirm({
   onRemoved?: () => void;
 }) {
   const { t } = useTranslation();
-  const entry = useDownloadEntry(
+  const bytes = useDownloadBytes(
     target?.connectionId ?? '',
     target?.libraryId ?? 0,
     target?.path ?? '',
   );
-  const bytes = entry ? entryBytes(entry) : 0;
   const message = target
     ? [
         t('downloads.remove.message', { title: target.title }),

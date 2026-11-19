@@ -64,6 +64,9 @@ jest.mock('@/downloads/engine', () => ({
 jest.mock('@/downloads/store', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { create: make } = require('zustand');
+  const { entryBytes } = jest.requireActual<typeof import('@/downloads/downloads-view')>(
+    '@/downloads/downloads-view',
+  );
   const key = (c: string, l: number, p: string) => `${c}:${l}:${p}`;
   const useDownloads = make(() => ({
     entries: {},
@@ -78,6 +81,11 @@ jest.mock('@/downloads/store', () => {
     useDownloads,
     useDownloadEntry: (c: string, l: number, p: string) =>
       useDownloads((s: { entries: Record<string, unknown> }) => s.entries[key(c, l, p)]),
+    useDownloadBytes: (c: string, l: number, p: string) =>
+      useDownloads((s: { entries: Record<string, DownloadEntry> }) => {
+        const e = s.entries[key(c, l, p)];
+        return e ? entryBytes(e) : 0;
+      }),
     useDownloadElsewhere: (c: string, l: number, p: string) =>
       useDownloads((s: { elsewhere?: Record<string, true> }) => !!s.elsewhere?.[key(c, l, p)]),
     useDownloadedCoverUri: () => null,

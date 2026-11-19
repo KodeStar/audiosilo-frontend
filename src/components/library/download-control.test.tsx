@@ -37,6 +37,13 @@ jest.mock('@/downloads/use-download-controls', () => ({
 let mockElsewhere = false;
 jest.mock('@/downloads/store', () => ({
   useDownloadEntry: () => mockDownload(),
+  useDownloadBytes: () => {
+    const { entryBytes } = jest.requireActual<typeof import('@/downloads/downloads-view')>(
+      '@/downloads/downloads-view',
+    );
+    const d = mockDownload();
+    return d ? entryBytes(d as Parameters<typeof entryBytes>[0]) : 0;
+  },
   useDownloadElsewhere: () => mockElsewhere,
   useDownloadProgress: () => {
     const { useSyncExternalStore } = jest.requireActual<typeof import('react')>('react');
