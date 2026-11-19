@@ -20,13 +20,26 @@ export function connectClient(base: string, timeoutMs?: number): ApiClient {
  * `base`, as the client itself decides): what a successful exchange or sign-in went out
  * with, which `finishConnect` keeps as the origin's set when it is the typed one. A
  * reconnect carries the same set as anyone: there is one per origin (fe#295).
+ * `marksUnauthorized`: what the server's `/server` said of its 401 mark (`ApiClient`'s), for
+ * a sign-in that read it first: a 401 without the mark from a server that marks its own is
+ * something in front of it refusing, never a wrong password (WS-401-MARK).
  */
 export function connectClientFor(
   base: string,
   timeoutMs?: number,
+  marksUnauthorized?: () => boolean | undefined,
 ): { client: ApiClient; proxy?: ProxyHeaders } {
   const set = connectProxyHeaders(base);
-  const client = new ApiClient(base, null, timeoutMs, undefined, undefined, set);
+  const client = new ApiClient(
+    base,
+    null,
+    timeoutMs,
+    undefined,
+    undefined,
+    set,
+    undefined,
+    marksUnauthorized,
+  );
   return { client, proxy: set && client.proxyHeadersFor(base) ? set : undefined };
 }
 
