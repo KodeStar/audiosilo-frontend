@@ -12,12 +12,7 @@ import { connectionIdOf, priorConnection } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
 import { bookHref, type ConnectBook } from '@/lib/paths';
 import { popTabToRoot } from '@/lib/root-stack';
-import {
-  mayReplaceProxySet,
-  type ProxyHeaders,
-  proxyOriginChoices,
-  sameProxyHeaders,
-} from '@/lib/proxy-headers';
+import { type ProxyHeaders, proxyOriginChoices, sameProxyHeaders } from '@/lib/proxy-headers';
 import { mergeAddresses } from '@/lib/server-address';
 import {
   activeProfile,
@@ -168,9 +163,11 @@ export async function finishConnect(input: {
     typed && (gotIn || proxyOriginChoices(plan, input.serverUrl).includes(typed.origin))
       ? typed
       : undefined;
-  // A kid's set that got in where another set is kept and is not the kid's to replace: the
-  // kept one is asked of the proxy first, so a stale one does not leave the kid on headers
-  // the proxy turns away. Where it may replace it, the answer would change nothing.
+  // A kid's set that got in where another set is kept: the kept one is asked of the proxy
+  // first, so a stale one does not leave the kid on headers the proxy turns away. Asked even
+  // where this tab sees no full account reaching the address: whether the kid may replace the
+  // set is `setSession`'s to decide, against the list as stored (another tab's sign-in
+  // counts), so its answer must be in hand by then.
   const kept = proxyHeaders ? proxySets[proxyHeaders.origin] : undefined;
   const keptRefused =
     proxyHeaders &&
@@ -178,12 +175,6 @@ export async function finishConnect(input: {
     gotIn &&
     isKidAccount(input.session.user) &&
     !sameProxyHeaders(kept, proxyHeaders) &&
-    !mayReplaceProxySet(
-      input.session.user,
-      pickId,
-      proxyHeaders.origin,
-      connections.filter((c) => !retire.includes(c.id)),
-    ) &&
     (await keptSetRefused(kept))
       ? kept
       : undefined;

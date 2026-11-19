@@ -367,8 +367,8 @@ describe('proxy headers the sign-in came through (fe#167): one set per address (
         carried: SET,
       });
       expect(kept()).toEqual({ [AWAY]: SET });
-      // Its to replace: the kept set's answer would change nothing, so it is never asked.
-      expect(mockProbe).not.toHaveBeenCalled();
+      // Asked all the same: another tab's full account could still turn up in `setSession`.
+      expect(mockProbe).toHaveBeenCalledWith(THEIRS);
     });
 
     it("keeps a kid's set where none is kept yet, though a full account here reaches it", async () => {
