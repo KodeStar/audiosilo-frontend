@@ -4413,13 +4413,34 @@ describe("the server's 401 mark (WS-401-MARK)", () => {
       expect(onAuthError).toHaveBeenCalledTimes(1);
     });
 
-    it('leaves a request that carried no proxy headers to its body, as before', async () => {
-      // The home address: no proxy set goes there, so a JSON `error` is the server's.
-      answer401(serverBody);
-      const { c, onAuthError } = marking('http://192.168.1.10:8080', true);
+    it('reads an unmarked 401 to a request without proxy headers as a refusal too: no sign-out', async () => {
+      // Denied: the home address, where no proxy set goes; something in front of the server
+      // answering with any JSON `error` still can't sign the listener out.
+      answer401(JSON.stringify({ error: 'x' }));
+      const { c, onAuthError, heard } = marking('http://192.168.1.10:8080', true);
+      const e = await c.me().catch((err: unknown) => err);
+      expect(e).toMatchObject({ status: 401, fromProxy: true, fromServer: false });
+      expect(isSignedOutError(e)).toBe(false);
+      expect(onAuthError).not.toHaveBeenCalled();
+      expect(heard).toEqual([true]);
+      // Allowed: the server's own marked 401 there is still the sign-out.
+      answer401(JSON.stringify({ error: 'x' }), 'unauthorized');
       await expect(c.me()).rejects.toMatchObject({ status: 401, fromProxy: false });
       expect(onAuthError).toHaveBeenCalledTimes(1);
     });
+
+    it.each([
+      ['not known yet', undefined],
+      ['an older server', false],
+    ])(
+      'leaves a request without proxy headers to its body while the mark is %s',
+      async (_, known) => {
+        answer401(JSON.stringify({ error: 'x' }));
+        const { c, onAuthError } = marking('http://192.168.1.10:8080', known);
+        await expect(c.me()).rejects.toMatchObject({ status: 401, fromProxy: false });
+        expect(onAuthError).toHaveBeenCalledTimes(1);
+      },
+    );
 
     it('asks what is known only when a 401 arrives, and sends no request for it', async () => {
       const fetchMock = installFetch(() => ({ status: 200, body: { id: 1 } }));

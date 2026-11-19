@@ -218,6 +218,36 @@ describe('connection-clients', () => {
       expect(useProxyRefusals.getState().refused).toEqual({});
     });
 
+    // With no proxy headers at all: still never the server's once it marks its 401s.
+    it.each([
+      ['marks its 401s', { unauthorized_mark: true } as Capabilities, false],
+      ['is not known', undefined, true],
+    ])(
+      'with no proxy headers sent, a server that %s signs out on an unmarked 401: %s',
+      async (_, caps, signsOut) => {
+        getState.mockReturnValue({
+          connections: [{ id: 'c1', serverUrl: 'https://h', token: 'tok' }],
+          markNeedsReconnect,
+          proxySets: {},
+          signInProxySets: {},
+          status: 'ready',
+        });
+        installFetch(() => ({ status: 401, body: { error: 'x' } }));
+        if (caps) known.set('c1', caps);
+        await expect(resolveClient('c1')!.me()).rejects.toMatchObject({
+          status: 401,
+          fromProxy: !signsOut,
+        });
+        if (signsOut) {
+          expect(markNeedsReconnect).toHaveBeenCalledWith('c1', 'auth');
+          expect(useProxyRefusals.getState().refused).toEqual({});
+        } else {
+          expect(markNeedsReconnect).not.toHaveBeenCalled();
+          expect(useProxyRefusals.getState().refused).toEqual({ c1: true });
+        }
+      },
+    );
+
     it("reads the flag under the connection's id now (a client built before the identity migration)", async () => {
       getState.mockReturnValue({
         connections: [{ id: 'old', serverUrl: 'https://h', token: 'tok' }],

@@ -56,8 +56,8 @@ export function resolveClient(connectionId: string): ApiClient | null {
  * tells whether a proxy in front of the server is turning the connection away
  * (`noteProxyAnswer`: the shell's notice, never a sign-out). A 401 is read by what the
  * connection's last `/server` answer said of the server's mark (`unauthorized_mark`,
- * WS-401-MARK): once the server is known to mark its 401s, one without the mark to a request
- * that carried proxy headers is never its own.
+ * WS-401-MARK): once the server is known to mark its 401s, one without the mark is never its
+ * own (the proxy notice, never a sign-out).
  */
 export function connectionClient(
   conn: Connection,
