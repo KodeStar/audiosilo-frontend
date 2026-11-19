@@ -1057,7 +1057,8 @@ function writeForResumption(): void {
   void write(true);
 }
 
-/** Android: the listener paused, stopped, moved a paused book or changed book. With a car
+/** Android: the listener paused, stopped, moved a paused book or changed book, or the book
+ * the engine played unadopted came to its end (`onOtherBookReported`). With a car
  * connected, the full snapshot as soon as the gap allows; with one met before but none
  * connected, the full one at once (`writeForResumption`), so the one native keeps for a
  * resumption names that book at that place; else the resumable one, at once
@@ -1608,9 +1609,13 @@ export function startCarSync(): () => void {
       if (mayBeServiceChange(s, prev)) checkServiceChange();
     }),
     // The engine reports another book than the store's (the store holds none of it): the
-    // service may have started it (Android).
-    onOtherBookReported(() => {
-      if (Platform.OS === 'android') checkServiceChange();
+    // service may have started it (Android). Played to its end, there is nothing to adopt,
+    // and it is no longer the book a resumption starts (`resumableBook`): the snapshot that
+    // named it is written again, or a headset's play after a kill would start it once more.
+    onOtherBookReported((ended) => {
+      if (Platform.OS !== 'android') return;
+      if (ended) placeChanged();
+      else checkServiceChange();
     }),
     useDownloads.subscribe((s, prev) => {
       if (s.entries === prev.entries) return;

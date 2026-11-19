@@ -2327,6 +2327,32 @@ describe("a report of another book than the store's", () => {
     expect(engineOtherBook()).toBeNull();
   });
 
+  // The other book's end changes nothing of the store's, and the car sync named it for a
+  // resumption (`engineOtherBook`): told once, as an end (nothing to adopt).
+  it('tells the car sync once, as an end, when the other book played to its end', async () => {
+    const told = jest.fn();
+    const off = onOtherBookReported(told);
+    try {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+      await usePlayer.getState().adoptLoaded(loadedB({ playing: false }));
+      engineBook = refB;
+      pushSnapshot(snap('paused', 1, 30));
+      engineBook = refS;
+      pushSnapshot(snap('playing', 0, 5));
+      expect(told.mock.calls).toEqual([[false]]);
+      pushSnapshot(snap('ended', 0, 50));
+      pushSnapshot(snap('ended', 0, 50));
+      expect(told.mock.calls).toEqual([[false], [true]]);
+      // Played again from the car: a play the car sync hears of, and a later end is one more.
+      pushSnapshot(snap('playing', 0, 1));
+      pushSnapshot(snap('ended', 0, 50));
+      expect(told.mock.calls).toEqual([[false], [true], [false], [true]]);
+      expect(usePlayer.getState().nowPlaying?.path).toBe('B');
+    } finally {
+      off();
+    }
+  });
+
   it('tells the car sync nothing new when the other book returns from buffering', async () => {
     const told = jest.fn();
     const off = onOtherBookReported(told);

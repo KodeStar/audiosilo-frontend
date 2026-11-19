@@ -123,7 +123,7 @@ let mockOutsidePlay = true;
 /** The book the engine plays that the store has not adopted (`engineOtherBook`), else null. */
 let mockEngineOther: { connectionId: string; libraryId: number; path: string } | null = null;
 /** The store's word that the engine reported another book (`onOtherBookReported`). */
-let mockOtherBookReported: (() => void) | null = null;
+let mockOtherBookReported: ((ended?: boolean) => void) | null = null;
 jest.mock('@/playback/store', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { create } = require('zustand');
@@ -139,7 +139,7 @@ jest.mock('@/playback/store', () => {
     usePlayer,
     followsOutsidePlay: () => mockOutsidePlay,
     engineOtherBook: () => mockEngineOther,
-    onOtherBookReported: (listener: () => void) => {
+    onOtherBookReported: (listener: (ended?: boolean) => void) => {
       mockOtherBookReported = listener;
       return () => {
         if (mockOtherBookReported === listener) mockOtherBookReported = null;
@@ -1571,6 +1571,29 @@ describe('the resumable snapshot (Android, fe#251)', () => {
       usePlayer.setState(loaded('paused', 1, 60));
       await flushPromises();
       expect(lastSnapshot().resume).toBe(D);
+    });
+
+    // The car's book played to its end with no change of the store's to say so: the snapshot
+    // that named it is written again (native drops its live place at the end, so the named
+    // book is the one a headset's play after a kill starts), and nothing is adopted.
+    it("names the loaded book again once the engine's other book played to its end", async () => {
+      usePlayer.setState(loaded('playing', 1, 20));
+      stop = startCarSync();
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      mockEngineOther = { connectionId: 'c1', libraryId: 2, path: 'E' };
+      usePlayer.setState(loaded('paused', 1, 50));
+      await flushPromises();
+      expect(lastSnapshot().resume).toBe(
+        carItemId({ connectionId: 'c1', libraryId: 2, path: 'E' }),
+      );
+      mockNative.getLoadedBook.mockClear();
+      // E ended (`engineOtherBook` names none from then): the store is unchanged.
+      mockEngineOther = null;
+      mockOtherBookReported?.(true);
+      await flushPromises();
+      expect(lastSnapshot().resume).toBe(D);
+      expect(await getItem('audiosilo.carResumable')).toMatchObject({ path: 'D' });
+      expect(mockNative.getLoadedBook).not.toHaveBeenCalled();
     });
 
     it("never names the engine's book when it is not the person listening's", async () => {

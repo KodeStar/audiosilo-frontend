@@ -251,15 +251,18 @@ export function engineOtherBook(): BookRef | null {
   return { ...bookRefOf(named), connectionId: resolveConnectionId(named.connectionId) };
 }
 /** The other book's report the car sync was last told of (`otherBookReported`), else null. */
-let otherReport: { key: string; trackIndex: number; playing: boolean } | null = null;
-let otherBookListener: (() => void) | null = null;
+let otherReport: { key: string; trackIndex: number; playing: boolean; ended: boolean } | null =
+  null;
+let otherBookListener: ((ended: boolean) => void) | null = null;
 
 /** A report of another book than the store's (`reportedOtherBook`): a play the store follows
  * from outside is that book's (`outsidePlay.other`), and the car sync is told when it is new,
  * moved to another file or began playing (not when it plays again after buffering), as it is
  * of those changes of the store's own book (Android: the service may have started that book,
- * and the car sync adopts it). Not while a load of the store's holds it: that is the book the
- * load replaces. */
+ * and the car sync adopts it). It is told too, once, when that book played to its end (`ended`):
+ * nothing to adopt, but no longer the book a resumption starts (`engineOtherBook`), so the
+ * snapshot that named it is written again. Not while a load of the store's holds it: that is
+ * the book the load replaces. */
 function otherBookReported(key: string, raw: PlaybackSnapshot) {
   if (outsidePlay) outsidePlay.other = true;
   if (usePlayer.getState().loadingBook || startsInFlight > 0) return;
@@ -277,9 +280,11 @@ function otherBookReported(key: string, raw: PlaybackSnapshot) {
   const same = was?.key === key && was.trackIndex === raw.trackIndex;
   // A book heard playing that buffers stays playing here: its return to `playing` is no news.
   const playing = raw.state === 'playing' || (same && was.playing && raw.state === 'loading');
-  otherReport = { key, trackIndex: raw.trackIndex, playing };
-  if (same && (was.playing || !playing)) return;
-  otherBookListener?.();
+  const ended = raw.state === 'ended';
+  const endedNow = ended && !(was?.key === key && was.ended);
+  otherReport = { key, trackIndex: raw.trackIndex, playing, ended };
+  if (!(same && (was.playing || !playing))) otherBookListener?.(false);
+  if (endedNow) otherBookListener?.(true);
 }
 
 /** How long the store's book may still show playing once the engine plays another book
@@ -342,9 +347,9 @@ function otherBookNotAdopted() {
 }
 
 /** Be told when the engine reports another book than the store's (`otherBookReported`; one
- * listener: the car sync, which reads the engine's book and adopts it). Returns the
- * unsubscribe. */
-export function onOtherBookReported(listener: () => void): () => void {
+ * listener: the car sync, which reads the engine's book and adopts it, or, told that book
+ * `ended`, names it for a resumption no more). Returns the unsubscribe. */
+export function onOtherBookReported(listener: (ended: boolean) => void): () => void {
   otherBookListener = listener;
   return () => {
     if (otherBookListener === listener) otherBookListener = null;
