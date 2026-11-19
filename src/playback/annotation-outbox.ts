@@ -33,7 +33,9 @@ import { onlyConnection, queuedRoute } from './progress-sync';
 /**
  * The bookmark outbox (fe#356): a bookmark made while its server can't take it (no answer, a
  * busy or failing server, a token it refuses until the connection signs in again) waits here
- * on the device and is sent once the server is back, instead of being refused. The same
+ * on the device and is sent once the server is back, instead of being refused. Two ways in:
+ * `addBookmarkOrQueue` tries the server first and keeps the bookmark only when that can't
+ * work now; `queueBookmark` always stores it first and leaves the send to a replay. The same
  * guarantees as the listening outbox (`listening-outbox.ts`), on the simpler shape a bookmark
  * needs:
  *
@@ -262,10 +264,10 @@ async function labelFlagKnown(connectionId: string, client: ApiClient): Promise<
  * Add a bookmark to a book on ONE connection's server, or keep it on the device when the
  * server can't take it now (see the module). Straight to the server when none of its book
  * is waiting and the server reads as reachable (`addBookmark`, which refreshes the book's lists);
- * otherwise, or when that fails with a failure worth another try, it goes into the outbox,
- * as a labelled one does while the server's flags can't be read (`labelFlagKnown`).
- * Rejects when the connection is gone, the server refused it for good, or the device could
- * not store it.
+ * otherwise, or when that fails with a failure worth another try, it goes into the outbox.
+ * Unlabelled: a labelled one goes through `queueBookmark`, whose replay sends it once its
+ * server's flags are known. Rejects when the connection is gone, the server refused it for
+ * good, or the device could not store it.
  */
 export async function addBookmarkOrQueue(
   connectionId: string,
@@ -273,10 +275,8 @@ export async function addBookmarkOrQueue(
   path: string,
   position: number,
   note = '',
-  label?: BookmarkLabel,
 ): Promise<AddBookmarkOutcome> {
-  const client = resolveClient(connectionId);
-  if (!client) throw new Error('connection gone');
+  if (!resolveClient(connectionId)) throw new Error('connection gone');
   const since = connectionGeneration(connectionId);
   // Behind any of its book still waiting: they reach the server in the order they were made
   // (another book's say nothing about this one). The copy here once read (another tab's
@@ -286,21 +286,15 @@ export async function addBookmarkOrQueue(
   const waiting = queue.some((e) => contentKeyOf(e) === book);
   let failed = false;
   if (!waiting && isReachable(connectionId)) {
-    if (label && !(await labelFlagKnown(connectionId, client))) failed = true;
-    else {
-      try {
-        return { made: await addBookmark(connectionId, libraryId, path, position, note, label) };
-      } catch (err) {
-        if (!worthKeeping(err)) throw err;
-        noteFailure(connectionId, err);
-        failed = true;
-      }
+    try {
+      return { made: await addBookmark(connectionId, libraryId, path, position, note) };
+    } catch (err) {
+      if (!worthKeeping(err)) throw err;
+      noteFailure(connectionId, err);
+      failed = true;
     }
   }
-  const queued = await append(
-    { connectionId, libraryId, path, position, note, ...(label ? { label } : {}) },
-    since,
-  );
+  const queued = await append({ connectionId, libraryId, path, position, note }, since);
   // Sent now behind the ones waiting when the server is up; after a failure just now, on
   // the backoff (its reconnect sends it when it is down).
   if (failed) scheduleRetry();
@@ -309,12 +303,12 @@ export async function addBookmarkOrQueue(
 }
 
 /**
- * Keep a bookmark in the outbox and send it from there, never straight to the server. Two
- * callers: a waiting one put back (its row's Undo: a replay may have sent it just before the
- * Delete, and only a replay's read before its send tells, so it is not made twice), and the
- * sleep timer's "Fell asleep" (stored before any request, so an app killed while one is out
- * keeps it; it shows as waiting until a replay has sent it, once, under the replay's claim).
- * Rejects when the connection is gone or the device could not store it.
+ * Keep a bookmark in the outbox and send it from there, never straight to the server: stored
+ * before any request, so an app killed while one is out still has it, and shown as waiting
+ * until a replay has sent it, once, under the replay's claim (its read before the send keeps
+ * one a replay already sent from being made twice). A labelled one waits for its server's
+ * flags (`labelFlagKnown`). Rejects when the connection is gone or the device could not store
+ * it.
  */
 export async function queueBookmark(
   connectionId: string,

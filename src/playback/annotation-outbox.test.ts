@@ -213,18 +213,6 @@ describe('adding', () => {
     expect(await queuedBookmarks()).toEqual([]);
   });
 
-  it('keeps a labelled one made while the flags cannot be read, instead of sending it bare', async () => {
-    const { client } = server('c1');
-    mockAnnotations = undefined;
-    mockFetchCaps.mockRejectedValueOnce(new ApiError(500, 'boom'));
-    const out = await addBookmarkOrQueue('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
-    expect(out).toMatchObject({ queued: { position: 100, label: 'fell_asleep' } });
-    expect(client.addBookmark).not.toHaveBeenCalled();
-    // The flags are read next time: it goes with its label.
-    await flushBookmarks();
-    expect(client.addBookmark).toHaveBeenCalledWith(1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
-  });
-
   it('refuses one for a connection that is gone', async () => {
     await expect(addBookmarkOrQueue('gone', 1, 'a/book', 120)).rejects.toThrow('connection gone');
     expect(await queuedBookmarks()).toEqual([]);
@@ -551,7 +539,8 @@ describe('sending', () => {
 
   it("reads the server's flags first when they are not known, so a label is not lost", async () => {
     const { client, state } = server('c1', offline());
-    await addBookmarkOrQueue('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+    await queueBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+    await idle(); // its own replay, against the server still down
     mockAnnotations = undefined;
     state.down = null;
     client.addBookmark.mockClear();
@@ -562,7 +551,8 @@ describe('sending', () => {
 
   it('keeps a labelled one, label and all, while the flags cannot be read', async () => {
     const { client, state } = server('c1', offline());
-    await addBookmarkOrQueue('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+    await queueBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+    await idle(); // its own replay, against the server still down
     mockAnnotations = undefined;
     state.down = null;
     client.addBookmark.mockClear();
@@ -579,7 +569,8 @@ describe('sending', () => {
 
   it('sends a labelled one without its label to a server known not to take labels', async () => {
     const { client, state } = server('c1', offline());
-    await addBookmarkOrQueue('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+    await queueBookmark('c1', 1, 'a/book', 100, 'Fell asleep', 'fell_asleep');
+    await idle(); // its own replay, against the server still down
     mockAnnotations = false;
     state.down = null;
     client.addBookmark.mockClear();
