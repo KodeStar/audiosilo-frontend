@@ -12,6 +12,17 @@ const mockPush = jest.fn();
 jest.mock('@/lib/open', () => ({ pushInShell: (h: unknown) => mockPush(h) }));
 const mockRouterPush = jest.fn();
 jest.mock('expo-router', () => ({ router: { push: (to: unknown) => mockRouterPush(to) } }));
+let mockLayout: 'phone' | 'tablet' = 'tablet';
+jest.mock('@/lib/layout', () => ({
+  ...jest.requireActual('@/lib/layout'),
+  useLayout: () => mockLayout,
+}));
+// Each icon by its name, so a test can tell whether the chevron is drawn.
+jest.mock('@/components/ui/icon', () => {
+  const { createElement } = jest.requireActual('react');
+  const { View } = jest.requireActual('react-native');
+  return { Icon: ({ name }: { name: string }) => createElement(View, { testID: `icon-${name}` }) };
+});
 
 const user: User = {
   id: 1,
@@ -35,6 +46,7 @@ async function signIn(who: User) {
 }
 
 beforeEach(async () => {
+  mockLayout = 'tablet';
   resetProfilesForTests();
   resetProxyRefusalsForTests();
   mockPush.mockClear();
@@ -123,6 +135,42 @@ it('keeps the strip padding inside the Account part beside Sign in again', async
   const account = screen.getByTestId('proxy-refused-banner');
   expect(account.props.className).toEqual(expect.stringContaining('px-3 py-2'));
   expect(account.parent?.props.className ?? '').not.toContain('px-3');
+});
+
+// Beside Sign in again no chevron is drawn (it would read as the button's), and the strip
+// around the words and the button opens Account too: its edges, the room beside the button.
+it('opens Account from the whole strip but the button, with no chevron beside Sign in again', async () => {
+  await signIn(user);
+  noteProxyAnswer('srv-1.1', 401);
+  await render(<ProxyRefusedBanner />);
+  expect(screen.queryByTestId('icon-chevron-right')).toBeNull();
+  const strip = screen.getByTestId('proxy-refused-strip');
+  // Only the words are the button a screen reader meets.
+  expect(strip.props.accessible).toBe(false);
+  await fireEvent.press(strip);
+  expect(mockPush).toHaveBeenCalledTimes(1);
+  // On a wide screen the button sits beside the words.
+  expect(screen.getByTestId('proxy-refused-banner').props.className).not.toContain('basis-full');
+});
+
+// On a phone the button always wraps under the words, whatever the label's length.
+it('puts Sign in again under the words on a phone', async () => {
+  mockLayout = 'phone';
+  await signIn(user);
+  noteProxyAnswer('srv-1.1', 401);
+  await render(<ProxyRefusedBanner />);
+  expect(screen.getByTestId('proxy-refused-banner').props.className).toContain('basis-full');
+  expect(screen.queryByTestId('icon-chevron-right')).toBeNull();
+});
+
+// Denied: with no Sign in again (a proxy's 403) the strip is the Account button, chevron and all.
+it('draws the chevron when there is no Sign in again', async () => {
+  mockLayout = 'phone';
+  await signIn(user);
+  noteProxyAnswer('srv-1.1', 403);
+  await render(<ProxyRefusedBanner />);
+  expect(screen.getByTestId('icon-chevron-right')).toBeTruthy();
+  expect(screen.queryByTestId('proxy-refused-strip')).toBeNull();
 });
 
 // The banner stays up on the Account page while the headers are edited: a tap there must

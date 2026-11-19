@@ -107,33 +107,43 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
   // Never a kid's or a demo's account (which may still manage a set no full account
   // reaches): they sign in some other way.
   const signInAgain = mayBeSignedOut && !isLimitedAccount(conn.user);
-  // The whole strip opens Account, its padding too, but for Sign in again beside the words or,
-  // on a narrow phone (or a long label: "Voltar a iniciar sessão"), wrapped under them rather
-  // than squeezing them into a column a few words wide.
+  const openAccount = () => {
+    if (!onAccountPage(currentNavState(), conn.id)) pushInShell(accountHref(conn.id));
+  };
   const toAccount = (
     <Pressable
       testID="proxy-refused-banner"
       accessibilityRole="button"
       accessibilityHint={t('proxyHeaders.refusedBannerHint')}
-      onPress={() => {
-        if (!onAccountPage(currentNavState(), conn.id)) pushInShell(accountHref(conn.id));
-      }}
+      onPress={openAccount}
       className={cn(
-        // Inside the strip, the strip's own row and padding: the edges open Account too.
+        // Beside Sign in again: the strip's own row and padding, and on a phone the whole
+        // first line, so the button wraps under the words rather than squeezing them into a
+        // column a few words wide.
         signInAgain
-          ? 'min-w-[200px] flex-1 flex-row items-center gap-2 self-stretch px-3 py-2'
+          ? cn(
+              'min-w-[200px] flex-1 flex-row items-center gap-2 self-stretch px-3 py-2',
+              phone && 'basis-full',
+            )
           : strip,
         'active:opacity-80',
       )}
     >
       {content}
-      {/* Beside Sign in again on a wide screen, a chevron would read as the button's. */}
-      {signInAgain && !phone ? null : <Icon name="chevron-right" size={13} color={themed.brand} />}
+      {/* Beside Sign in again, a chevron would read as the button's. */}
+      {signInAgain ? null : <Icon name="chevron-right" size={13} color={themed.brand} />}
     </Pressable>
   );
   if (!signInAgain) return toAccount;
+  // The whole strip but the button opens Account, its edges and the room around the button
+  // too. Only the words are the button screen readers meet: the strip around them is just more
+  // of it to tap.
   return (
-    <View
+    <Pressable
+      testID="proxy-refused-strip"
+      accessible={false}
+      focusable={false}
+      onPress={openAccount}
       className={cn(
         'flex-row flex-wrap items-center border-b border-b-border',
         RECONNECT_STRIP_CLASS,
@@ -141,7 +151,12 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
       )}
     >
       {toAccount}
-      <SignInAgainButton conn={conn} size="sm" variant="ghost" className="mx-1" />
-    </View>
+      <SignInAgainButton
+        conn={conn}
+        size="sm"
+        variant="ghost"
+        className={cn('mx-1', phone && 'mb-1')}
+      />
+    </Pressable>
   );
 }
