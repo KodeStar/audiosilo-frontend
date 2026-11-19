@@ -8,7 +8,12 @@ import {
 import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 
-import { connectionIdFromKey, isServerInfoKey, serverResetCid } from '@/lib/auth-failure';
+import {
+  connectionIdFromKey,
+  isServerInfoKey,
+  serverInfoKey,
+  serverResetCid,
+} from '@/lib/auth-failure';
 import {
   connectionSetFor,
   type ProxyHeaders,
@@ -30,7 +35,7 @@ import {
 
 import { pickedUrl, useAddressRoute } from './address-route';
 import { type ApiClient, isNotInLibraryError, isSignedOutError } from './client';
-import { connectionClient } from './connection-clients';
+import { connectionClient, readKnownCapabilitiesFrom } from './connection-clients';
 import { moveProxyRefusal, noteProxyAnswer } from './proxy-refusal';
 import {
   anyOffline,
@@ -42,6 +47,7 @@ import {
   useReachability,
 } from './reachability';
 import * as startupCache from './startup-cache';
+import type { ServerInfo } from './types';
 
 // --- Dead-token / server-reset detection -----------------------------------------------
 // Dead-token detection (a 401 on an authenticated request ⇒ re-pair) rides on the
@@ -162,6 +168,13 @@ export const queryClient = new QueryClient({
     mutations: Platform.OS === 'web' ? undefined : { networkMode: 'always' },
   },
 });
+
+// A connection's client reads its server's flags from the cache's `/server` answer (seeded
+// at launch from the kept copy, `server-snapshots.ts`), to tell whose a 401 is
+// (`unauthorized_mark`): a read of what is held, never a request.
+readKnownCapabilitiesFrom(
+  (cid) => queryClient.getQueryData<ServerInfo>(serverInfoKey(cid))?.capabilities,
+);
 
 // React Query's online flag follows the signal `useDeviceOnline` shows (fe#179). With no
 // network a query waits (`paused`) and is asked as soon as the network is back, where it

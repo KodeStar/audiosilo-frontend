@@ -4311,4 +4311,88 @@ describe("the server's 401 mark (WS-401-MARK)", () => {
     const { c } = client('https://away.example');
     await expect(c.me()).rejects.toMatchObject({ status: 403, fromProxy: false, fromServer: true });
   });
+
+  // Capability `unauthorized_mark`: a server known to mark its 401s never sends one without
+  // the mark, so its exact body on an unmarked 401 is somebody else's.
+  describe('a server known to mark its 401s (`unauthorized_mark`)', () => {
+    /** As `client`, on a server whose marking is `known` (read when a 401 arrives). */
+    function marking(base: string, known: boolean | undefined) {
+      (Platform as { OS: string }).OS = 'ios';
+      const onAuthError = jest.fn();
+      const heard: boolean[] = [];
+      const marks = jest.fn(() => known);
+      const c = new ApiClient(
+        base,
+        'tok',
+        undefined,
+        onAuthError,
+        undefined,
+        SET,
+        (r) => heard.push(r),
+        marks,
+      );
+      return { c, onAuthError, heard, marks };
+    }
+
+    it("reads an unmarked 401 in the server's exact body as the proxy's: no sign-out", async () => {
+      // Denied: a proxy answering exactly `{"error": "..."}` can't sign the listener out.
+      answer401(serverBody);
+      const { c, onAuthError, heard } = marking('https://away.example', true);
+      const e = await c.me().catch((err: unknown) => err);
+      expect(e).toMatchObject({ status: 401, fromProxy: true, fromServer: false });
+      expect(isSignedOutError(e)).toBe(false);
+      expect(isProxyRefusal(e)).toBe(true);
+      expect(isRefusedForGood(e)).toBe(false);
+      expect(onAuthError).not.toHaveBeenCalled();
+      expect(heard).toEqual([true]);
+      // With one of the server's 401 codes too.
+      answer401(JSON.stringify({ error: 'invite has expired', code: 'invite_expired' }));
+      await expect(c.me()).rejects.toMatchObject({ status: 401, fromProxy: true });
+      expect(onAuthError).not.toHaveBeenCalled();
+    });
+
+    it("still reads a marked 401 as the server's: the sign-out", async () => {
+      // Allowed: the server's own revoke carries the mark.
+      answer401(serverBody, 'unauthorized');
+      const { c, onAuthError, heard } = marking('https://away.example', true);
+      const e = await c.me().catch((err: unknown) => err);
+      expect(e).toMatchObject({ status: 401, fromProxy: false, fromServer: true });
+      expect(isSignedOutError(e)).toBe(true);
+      expect(onAuthError).toHaveBeenCalledTimes(1);
+      expect(heard).toEqual([false]);
+    });
+
+    it.each([
+      ['not known yet', undefined],
+      ['an older server', false],
+    ])("keeps the exact body as the server's while the mark is %s", async (_, known) => {
+      answer401(serverBody);
+      const { c, onAuthError } = marking('https://away.example', known);
+      const e = await c.me().catch((err: unknown) => err);
+      expect(e).toMatchObject({ status: 401, fromProxy: false, fromServer: true });
+      expect(onAuthError).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves a request that carried no proxy headers to its body, as before', async () => {
+      // The home address: no proxy set goes there, so a JSON `error` is the server's.
+      answer401(serverBody);
+      const { c, onAuthError } = marking('http://192.168.1.10:8080', true);
+      await expect(c.me()).rejects.toMatchObject({ status: 401, fromProxy: false });
+      expect(onAuthError).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks what is known only when a 401 arrives, and sends no request for it', async () => {
+      const fetchMock = installFetch(() => ({ status: 200, body: { id: 1 } }));
+      const { c, marks } = marking('https://away.example', true);
+      await c.me();
+      installFetch(() => ({ status: 403, body: { error: 'no access to this path' } }));
+      await expect(c.me()).rejects.toMatchObject({ status: 403, fromProxy: false });
+      expect(marks).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const refused = installFetch(() => ({ status: 401, text: serverBody }));
+      await expect(c.me()).rejects.toMatchObject({ status: 401, fromProxy: true });
+      expect(marks).toHaveBeenCalledTimes(1);
+      expect(refused).toHaveBeenCalledTimes(1);
+    });
+  });
 });

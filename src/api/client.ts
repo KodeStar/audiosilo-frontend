@@ -397,6 +397,9 @@ function serverUnauthorizedBody(data: unknown): boolean {
 
 /** The answers to requests that carried proxy headers (`send`), for `unauthorizedOrigin`. */
 const proxiedAnswers = new WeakSet<Response>();
+/** The 401s of a server known to mark its own (`send`: capability `unauthorized_mark` on
+ * its last `/server` answer), for `unauthorizedOrigin`. */
+const markingServerAnswers = new WeakSet<Response>();
 
 /**
  * Whose a 401 or 403 answer is: `server` (its own refusal: act on it), `proxy` (an auth
@@ -404,10 +407,12 @@ const proxiedAnswers = new WeakSet<Response>();
  * other status. A 401 is the server's when it carries the mark, whatever its body (a proxy
  * that rewrote the server's page), or when its body is exactly the server's
  * (`serverUnauthorizedBody`: a server before the mark, CROSS-REPO §15, or a proxy that
- * passed the body on and dropped the header). Else a 401 to a request that carried proxy
- * headers is the proxy's, even with a JSON `error`. Otherwise, and for every 403, the body
- * says: the server's every refusal is JSON with an `error` string, so one without it is the
- * proxy's (fe#295).
+ * passed the body on and dropped the header). The body is not asked of a server known to
+ * mark its 401s (`markingServerAnswers`): an unmarked one is not its own, so a proxy that
+ * answers in the server's exact shape signs nobody out. Else a 401 to a request that
+ * carried proxy headers is the proxy's, even with a JSON `error`. Otherwise, and for every
+ * 403, the body says: the server's every refusal is JSON with an `error` string, so one
+ * without it is the proxy's (fe#295).
  */
 function unauthorizedOrigin(
   res: Response,
@@ -416,7 +421,8 @@ function unauthorizedOrigin(
 ): 'server' | 'proxy' | 'unknown' {
   if (res.status !== 401 && res.status !== 403) return 'unknown';
   if (res.status === 401) {
-    if (unauthorizedMark(res) !== undefined || serverUnauthorizedBody(data)) return 'server';
+    if (unauthorizedMark(res) !== undefined) return 'server';
+    if (!markingServerAnswers.has(res) && serverUnauthorizedBody(data)) return 'server';
     if (proxiedAnswers.has(res)) return 'proxy';
   }
   return hasServerError ? 'server' : 'proxy';
@@ -720,6 +726,7 @@ export class ApiClient {
   private readonly onAuthError?: () => void;
   private readonly onAnswer?: (at: string) => void;
   private readonly onProxyAnswer?: (refused: boolean) => void;
+  private readonly marksUnauthorized?: () => boolean | undefined;
   /** The batch loader behind `seriesBooksPage`, one per `libraryId:limit` (so bounded
    * by libraries x page sizes), created on first use. */
   private readonly seriesLoaders = new Map<string, (name: string) => Promise<BookPage>>();
@@ -768,6 +775,13 @@ export class ApiClient {
    * client passes it on, so the shell can say the proxy headers need updating while the
    * refusals last (`noteProxyAnswer`, `ProxyRefusedBanner`). Never a sign-out: the server
    * never judged the token.
+   *
+   * `marksUnauthorized` says whether the server is known to mark every 401 of its own
+   * (capability `unauthorized_mark` on its last `/server` answer), asked when a 401
+   * arrives and never by a request: a signed-in connection's client reads the flag the
+   * app already holds. True: a 401 without the mark is not the server's
+   * (`unauthorizedOrigin`). Anything else (not known yet, an older server, a bare client in
+   * the connect flow): the 401's body is read as before.
    */
   constructor(
     baseUrl: string,
@@ -777,6 +791,7 @@ export class ApiClient {
     onAnswer?: (at: string) => void,
     proxy?: ProxyHeaders | null,
     onProxyAnswer?: (refused: boolean) => void,
+    marksUnauthorized?: () => boolean | undefined,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.token = token;
@@ -784,6 +799,7 @@ export class ApiClient {
     this.onAuthError = onAuthError;
     this.onAnswer = onAnswer;
     this.onProxyAnswer = onProxyAnswer;
+    this.marksUnauthorized = marksUnauthorized;
     const page = webOrigin();
     this.clientHeaders = shouldIdentify(this.baseUrl, Platform.OS, page)
       ? { [CLIENT_HEADER]: clientIdentity(APP_VERSION, Platform.OS) }
@@ -908,6 +924,8 @@ export class ApiClient {
       this.onAnswer?.(this.baseUrl);
       // A 401 to a request that carried proxy headers may be the proxy's (`unauthorizedOrigin`).
       if (!res.ok && this.sendsProxyHeadersTo(url)) proxiedAnswers.add(res);
+      // And one from a server known to mark its own is told by the mark alone.
+      if (res.status === 401 && this.marksUnauthorized?.() === true) markingServerAnswers.add(res);
       const answer = await read(res, touch);
       this.onProxyAnswer?.(false);
       return answer;

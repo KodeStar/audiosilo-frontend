@@ -6,12 +6,27 @@ import { effectiveUrl } from './address-route';
 import { ApiClient } from './client';
 import { noteProxyAnswer, useProxyRefusals } from './proxy-refusal';
 import { noteAnswer } from './reachability';
+import type { Capabilities } from './types';
 
 /**
  * The seam that lets framework-free modules (progress-sync, the downloads store)
  * resolve a connection id to its `ApiClient` without importing React or the provider.
  * Everything reads straight from the session Zustand store via `useSession.getState()`.
  */
+
+/** A connection's server flags as the app holds them now, undefined while not known. */
+type KnownCapabilities = (connectionId: string) => Capabilities | undefined;
+
+let knownCapabilities: KnownCapabilities = () => undefined;
+
+/**
+ * Where a connection's client reads its server's flags from: the query cache's `/server`
+ * answer (`provider.tsx`, the one copy: `server-snapshots.ts`), handed in because this
+ * module is below the provider. Read without a request, and unknown until it is set.
+ */
+export function readKnownCapabilitiesFrom(read: KnownCapabilities): void {
+  knownCapabilities = read;
+}
 
 /**
  * The `ApiClient` for a connection id, or null when that connection no longer
@@ -39,7 +54,10 @@ export function resolveClient(connectionId: string): ApiClient | null {
  * client built before it is stale, and the connection's sign-in is not dead. Every answer it
  * gets counts for reachability (`noteAnswer`, FU-SLOWOK), by the address it came from, and
  * tells whether a proxy in front of the server is turning the connection away
- * (`noteProxyAnswer`: the shell's notice, never a sign-out).
+ * (`noteProxyAnswer`: the shell's notice, never a sign-out). A 401 is read by what the
+ * connection's last `/server` answer said of the server's mark (`unauthorized_mark`,
+ * WS-401-MARK): once the server is known to mark its 401s, one without the mark is never
+ * its own.
  */
 export function connectionClient(
   conn: Connection,
@@ -73,6 +91,8 @@ export function connectionClient(
         noteProxyAnswer(now.id, refused);
       }
     },
+    // Under its id now, as above. What the cache holds, never a request.
+    () => knownCapabilities(connectionOf(conn.id)?.id ?? conn.id)?.unauthorized_mark,
   );
 }
 

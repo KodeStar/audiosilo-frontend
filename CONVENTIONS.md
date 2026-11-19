@@ -486,7 +486,11 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   proxy that rewrote the server's page), the mark's code standing in for a lost body `code`.
   Next a body exactly the server's (`serverUnauthorizedBody`: `{error}` or `{error, code}` with
   one of its 401 codes, nothing else) is the server's: a server before the mark (§15 of
-  CROSS-REPO.md, shipped clients meet older servers), or a proxy that passed it on. Else a 401 to
+  CROSS-REPO.md, shipped clients meet older servers), or a proxy that passed it on. Not once the
+  connection's last `/server` answer says the server marks its 401s (capability
+  `unauthorized_mark`, read from the query cache by `connectionClient`, never a request on the
+  401 path; unknown keeps the body step): an unmarked 401 is then never the server's, so a proxy
+  answering in the server's exact shape signs nobody out. Else a 401 to
   an address the request carried proxy headers to is the proxy's even with a JSON `error`
   (`send` notes the answer, `unauthorizedOrigin` reads it, so every reader gets it). Else the body decides, as for every 403:
   the server's own always carry its JSON `error`; one without it (a page, an empty body, someone

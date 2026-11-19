@@ -1,6 +1,8 @@
 import { setAddressPick, useAddressRoute } from '@/api/address-route';
 import { setConnectionAliases } from '@/lib/connection-id';
-import { resolveClient, sessionReady } from '@/api/connection-clients';
+import { readKnownCapabilitiesFrom, resolveClient, sessionReady } from '@/api/connection-clients';
+import { resetProxyRefusalsForTests, useProxyRefusals } from '@/api/proxy-refusal';
+import type { Capabilities } from '@/api/types';
 import { sessionHydrateFailed, useSession } from '@/stores/session';
 
 // resolveClient reads the connection list and calls markNeedsReconnect straight off the
@@ -153,6 +155,78 @@ describe('connection-clients', () => {
     } finally {
       setConnectionAliases({});
     }
+  });
+
+  // WS-401-MARK: once the connection's last `/server` answer says the server marks its 401s
+  // (`unauthorized_mark`), an unmarked 401 behind the proxy is never the server's.
+  describe('a 401 behind a proxy, by what is known of the server', () => {
+    const proxySets = {
+      'https://h': { origin: 'https://h', headers: [{ name: 'X-Proxy', value: 'one' }] },
+    };
+    const known = new Map<string, Capabilities>();
+    beforeEach(() => {
+      known.clear();
+      resetProxyRefusalsForTests();
+      readKnownCapabilitiesFrom((cid) => known.get(cid));
+      getState.mockReturnValue({
+        connections: [{ id: 'c1', serverUrl: 'https://h', token: 'tok' }],
+        markNeedsReconnect,
+        proxySets,
+        signInProxySets: {},
+        status: 'ready',
+      });
+      installFetch(() => ({ status: 401, body: { error: 'invalid or expired token' } }));
+    });
+    afterEach(() => readKnownCapabilitiesFrom(() => undefined));
+
+    it("does not sign out on the server's exact body once the server marks its 401s", async () => {
+      known.set('c1', { unauthorized_mark: true } as Capabilities);
+      await expect(resolveClient('c1')!.me()).rejects.toMatchObject({
+        status: 401,
+        fromProxy: true,
+      });
+      expect(markNeedsReconnect).not.toHaveBeenCalled();
+      expect(useProxyRefusals.getState().refused).toEqual({ c1: true });
+    });
+
+    it.each([
+      ['its /server is not known', undefined],
+      ['an older server', {} as Capabilities],
+    ])('signs out on it while %s', async (_, caps) => {
+      if (caps) known.set('c1', caps);
+      await expect(resolveClient('c1')!.me()).rejects.toMatchObject({
+        status: 401,
+        fromProxy: false,
+      });
+      expect(markNeedsReconnect).toHaveBeenCalledWith('c1', 'auth');
+      expect(useProxyRefusals.getState().refused).toEqual({});
+    });
+
+    it("reads the flag under the connection's id now (a client built before the identity migration)", async () => {
+      getState.mockReturnValue({
+        connections: [{ id: 'old', serverUrl: 'https://h', token: 'tok' }],
+        markNeedsReconnect,
+        proxySets,
+        signInProxySets: {},
+        status: 'ready',
+      });
+      const stale = resolveClient('old')!;
+      getState.mockReturnValue({
+        connections: [{ id: 'srv.7', serverUrl: 'https://h', token: 'tok' }],
+        markNeedsReconnect,
+        proxySets,
+        signInProxySets: {},
+        status: 'ready',
+      });
+      setConnectionAliases({ old: 'srv.7' });
+      try {
+        known.set('srv.7', { unauthorized_mark: true } as Capabilities);
+        await expect(stale.me()).rejects.toMatchObject({ status: 401, fromProxy: true });
+        expect(markNeedsReconnect).not.toHaveBeenCalled();
+      } finally {
+        setConnectionAliases({});
+      }
+    });
   });
 
   it('a 403 through the resolved client does NOT flag reconnect (valid token, forbidden)', async () => {
