@@ -346,16 +346,21 @@ class PlaceStore(file: File?, writer: DurableWriter? = null) {
     set(span.ref, LocalPlace.of(to, at, span.speed))
   }
 
-  /** A cut can reach the outbox or the server before its place lands. Newer local seeks stand. */
+  /**
+   * A cut can reach the outbox or the server before its place lands. Newer local seeks stand.
+   * Among `cuts` the last heard one per book is taken, in the order given (the outbox's, the order
+   * they happened): a wall clock set back between two of them must not pick the older.
+   */
   @Synchronized
   fun recoverCuts(cuts: List<SpanEvent>) {
+    val last = LinkedHashMap<String, SpanEvent>()
+    for (cut in cuts) if (cut.heardPlace && cut.time != null) last[cut.ref.key] = cut
     val updated = places.toMutableMap()
-    for (cut in cuts) {
+    for ((key, cut) in last) {
       val at = cut.time ?: continue
-      val previous = updated[cut.ref.key]
-      if (!cut.heardPlace) continue
+      val previous = updated[key]
       if (previous != null && previous.at >= at) continue
-      updated[cut.ref.key] = LocalPlace(cut.toPos, cut.toFile, cut.toFilePos, at, cut.playbackSpeed ?: 1.0)
+      updated[key] = LocalPlace(cut.toPos, cut.toFile, cut.toFilePos, at, cut.playbackSpeed ?: 1.0)
     }
     if (updated != places) {
       places = updated

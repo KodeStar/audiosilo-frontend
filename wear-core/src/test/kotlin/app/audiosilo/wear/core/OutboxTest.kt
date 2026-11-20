@@ -133,6 +133,26 @@ class OutboxTest {
     }
   }
 
+  @Test
+  fun launchTakesTheLaterQueuedSeekWhenTheClockWasSetBackBetweenThem() {
+    val dir = tempDir()
+    try {
+      val heard = (listen("heard", endedAt = "2026-10-25T07:40:00.000Z") as SpanEvent).copy(fromPos = 600.0, toPos = 640.0)
+      // The wall clock went back five minutes, then the listener moved back while paused.
+      val rewind = (listen("rewind", endedAt = "2026-10-25T07:35:00.000Z", start = ListeningStart.MOVED_BACK) as SpanEvent)
+        .copy(fromPos = 300.0, toPos = 300.0)
+      outbox(dir).append(listOf(heard, rewind))
+      val places = PlaceStore(File(dir, "places.json"))
+      // The rewind's own place landed: the older heard cut must not replace it.
+      places.set(ref, LocalPlace(300.0, at = rewind.time!!))
+      val box = outbox(dir)
+      box.recoverListening("a", places, SpanRecorder(MemorySpanStore(), acks, emit = box::append))
+      assertEquals(300.0, places.place(ref)!!.position, 0.0)
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
   // Stay wins (row 9c-2): a queued `stay` goes as a `jump` once the server lacks
   // `listening_stay`, as it is otherwise; the stored event keeps its start and id.
   @Test
