@@ -4,6 +4,7 @@ import { Pressable } from 'react-native';
 
 import { effectiveUrl } from '@/api/address-route';
 import { holdReconnect } from '@/components/connect/invite-handoff';
+import { Button, type ButtonProps } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { currentNavState, focusedRoute } from '@/lib/root-stack';
@@ -109,5 +110,25 @@ export function ReconnectBanner({ className }: { className?: string } = {}) {
       </Text>
       <Icon name="chevron-right" size={13} color={themed.brand} />
     </Pressable>
+  );
+}
+
+/** "Sign in again" for `conn` beside a proxy's refusal (`ProxyRefusedBanner`, the Account
+ * page's Proxy headers card): this banner's flow (`reconnectConnection`), named for its
+ * server in words that start with the label shown (`reconnect.signInAgainTo`), so a voice
+ * command of the label finds it. A server known to mark its 401s has every unmarked one read as a refusal
+ * (WS-401-MARK), so a real revoke behind a proxy that drops the mark is answered here. */
+export function SignInAgainButton({
+  conn,
+  ...style
+}: { conn: Connection } & Pick<ButtonProps, 'variant' | 'size' | 'className'>) {
+  const { t } = useTranslation();
+  return (
+    <Button
+      {...style}
+      title={t('profiles.signIn.action')}
+      accessibilityLabel={t('reconnect.signInAgainTo', { name: conn.name })}
+      onPress={() => void reconnectConnection(conn)}
+    />
   );
 }

@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { ApiError } from '@/api/client';
+import { ApiError, isWrongCurrentPassword } from '@/api/client';
 import { useMyDevices, useReadMyDevicesAgain, useServerInfo } from '@/api/hooks';
 import type { MyDevice } from '@/api/types';
 import { useOptionalApi } from '@/api/provider';
@@ -45,6 +45,8 @@ export function usePasswordEditor(connectionId: string) {
   const [current, setCurrent] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A wrong current password, shown under its own field rather than the new one's.
+  const [currentError, setCurrentError] = useState<string | null>(null);
   // Counts the changes of an existing password that ended the open pairing codes (a server
   // that ends the person's other sessions on one, `endsPairing`), so a code on screen is
   // put away.
@@ -55,6 +57,7 @@ export function usePasswordEditor(connectionId: string) {
     setPassword('');
     setCurrent('');
     setError(null);
+    setCurrentError(null);
   }, []);
 
   const canSave = password.length >= PW_MIN && (!hasPassword || current.length > 0) && !busy;
@@ -67,6 +70,7 @@ export function usePasswordEditor(connectionId: string) {
     }
     if (hasPassword && current.length === 0) return;
     setError(null);
+    setCurrentError(null);
     setBusy(true);
     const othersBefore = othersSignedIn(devicesNow);
     try {
@@ -74,7 +78,8 @@ export function usePasswordEditor(connectionId: string) {
       // password (a password-less account) does not.
       await api.setPassword(password, hasPassword ? current : undefined);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t('settings.account.password.updateError'));
+      if (isWrongCurrentPassword(e)) setCurrentError(t('settings.account.password.currentWrong'));
+      else setError(e instanceof ApiError ? e.message : t('settings.account.password.updateError'));
       setBusy(false);
       return;
     }
@@ -127,6 +132,7 @@ export function usePasswordEditor(connectionId: string) {
     setCurrent,
     busy,
     error,
+    currentError,
     canSave,
     save,
     changes,

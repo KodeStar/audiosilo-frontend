@@ -82,6 +82,7 @@ jest.mock('@/lib/layout', () => ({
 
 /* eslint-disable import/first */
 import { ApiError } from '@/api/client';
+import { noteProxyAnswer, resetProxyRefusalsForTests } from '@/api/proxy-refusal';
 import { resetProfilesForTests } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
@@ -385,6 +386,37 @@ describe('BooksMode', () => {
     mockWhole = { ...mockWhole, offline: false, error: new TypeError('offline') };
     await mount();
     expect(screen.queryByText("Couldn't load every book")).toBeNull();
+  });
+
+  // WS-401-MARK: a proxy turning the device away is not a server that did not answer.
+  it('says a proxy turned the device away, with Retry, while one refuses', async () => {
+    const before = useSession.getState().connections;
+    useSession.setState({
+      connections: [
+        { id: 'c', name: 'Hearthside', serverUrl: 'https://h', token: 't' },
+      ] as Connection[],
+    });
+    noteProxyAnswer('c', 401);
+    try {
+      mockWhole.books = [];
+      mockWhole.error = new ApiError(401, 'Unauthorized', undefined, undefined, true);
+      await mount();
+      expect(screen.getByText("Couldn't load the books")).toBeTruthy();
+      expect(
+        screen.getByText(
+          'The sign-in proxy for Hearthside turned this device away. Nothing is lost: try again once the proxy lets it in.',
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText("The server didn't answer. Nothing is lost: try again."),
+      ).toBeNull();
+      await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
+      expect(mockWhole.retry).toHaveBeenCalled();
+    } finally {
+      screen.unmount();
+      resetProxyRefusalsForTests();
+      useSession.setState({ connections: before });
+    }
   });
 
   // frontend#124: a refused session is one sign-in state, never a Retry.

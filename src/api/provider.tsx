@@ -8,7 +8,12 @@ import {
 import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 
-import { connectionIdFromKey, isServerInfoKey, serverResetCid } from '@/lib/auth-failure';
+import {
+  connectionIdFromKey,
+  isServerInfoKey,
+  serverInfoKey,
+  serverResetCid,
+} from '@/lib/auth-failure';
 import {
   connectionSetFor,
   type ProxyHeaders,
@@ -30,8 +35,8 @@ import {
 
 import { pickedUrl, useAddressRoute } from './address-route';
 import { type ApiClient, isNotInLibraryError, isSignedOutError } from './client';
-import { connectionClient } from './connection-clients';
-import { moveProxyRefusal, noteProxyAnswer } from './proxy-refusal';
+import { connectionClient, readKnownCapabilitiesFrom } from './connection-clients';
+import { moveProxyRefusal, noteNewToken, noteProxyAnswer } from './proxy-refusal';
 import {
   anyOffline,
   noteFailure,
@@ -42,6 +47,7 @@ import {
   useReachability,
 } from './reachability';
 import * as startupCache from './startup-cache';
+import type { ServerInfo } from './types';
 
 // --- Dead-token / server-reset detection -----------------------------------------------
 // Dead-token detection (a 401 on an authenticated request ⇒ re-pair) rides on the
@@ -163,6 +169,13 @@ export const queryClient = new QueryClient({
   },
 });
 
+// A connection's client reads its server's flags from the cache's `/server` answer (seeded
+// at launch from the kept copy, `server-snapshots.ts`), to tell whose a 401 is
+// (`unauthorized_mark`): a read of what is held, never a request.
+readKnownCapabilitiesFrom(
+  (cid) => queryClient.getQueryData<ServerInfo>(serverInfoKey(cid))?.capabilities,
+);
+
 // React Query's online flag follows the signal `useDeviceOnline` shows (fe#179). With no
 // network a query waits (`paused`) and is asked as soon as the network is back, where it
 // used to fail at once and stay failed; a read that must settle either way asks with
@@ -194,6 +207,14 @@ onConnectionRemoved((id) => {
 });
 // Another tab's identity migration renamed it: a proxy's refusals of it go on under the new id.
 onConnectionRenamed(moveProxyRefusal);
+// Signed in again: a 401 refusal of the old token says nothing of the new one (`noteNewToken`).
+useSession.subscribe((state, prev) => {
+  if (state.connections === prev.connections) return;
+  for (const c of state.connections) {
+    const was = prev.connections.find((p) => p.id === c.id);
+    if (was && was.token !== c.token) noteNewToken(c.id);
+  }
+});
 
 /** A book's read-along map that is in (`qk.readalong`, `qk.readalongLocal`): keyed by its
  * `generated_at`, so the copy held is that very map after any reconnect, and reading up to

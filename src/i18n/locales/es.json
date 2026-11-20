@@ -131,6 +131,7 @@
         "set": "Establecida",
         "notSet": "Sin establecer",
         "current": "Contraseña actual",
+        "currentWrong": "Esa no es tu contraseña actual.",
         "currentPlaceholder": "Tu contraseña actual",
         "new": "Nueva contraseña",
         "newPlaceholder": "Al menos {{min}} caracteres",
@@ -1930,7 +1931,8 @@
       "hint": "Tu sesión en {{name}} terminó, así que no puede mostrar tus libros aquí. No se ha perdido nada.",
       "titleReset": "{{name}} se restableció",
       "hintReset": "Vuelve a emparejar este dispositivo con {{name}} para ver tus libros aquí."
-    }
+    },
+    "signInAgainTo": "Volver a iniciar sesión en {{name}}"
   },
   "nav": {
     "home": "Inicio",
@@ -2427,10 +2429,15 @@
       "value": "Escribe un valor en una sola línea."
     },
     "refusedBanner": "El proxy de inicio de sesión de {{name}} ha rechazado este dispositivo: actualiza las cabeceras de proxy en Cuenta",
+    "refusedBannerPair": "El proxy de inicio de sesión de {{name}} ha rechazado este dispositivo: actualiza las cabeceras de proxy en Cuenta o pide a un adulto que vuelva a vincular este dispositivo",
     "refusedBannerHint": "Abre la cuenta de este servidor",
     "refusedAskGrownUp": "El proxy de inicio de sesión de {{name}} ha rechazado este dispositivo: pide a un adulto que actualice las cabeceras de proxy",
+    "refusedAskGrownUpPair": "El proxy de inicio de sesión de {{name}} ha rechazado este dispositivo: pide a un adulto que actualice las cabeceras de proxy o que vuelva a vincular este dispositivo",
     "refusedPlain": "El proxy de inicio de sesión de {{name}} ha rechazado este dispositivo",
-    "askGrownUp": "Pide a un adulto que actualice las cabeceras de proxy."
+    "askGrownUp": "Pide a un adulto que actualice las cabeceras de proxy.",
+    "askGrownUpPair": "Pide a un adulto que actualice las cabeceras de proxy o que vuelva a vincular este dispositivo.",
+    "signInAgainBody": "Si las cabeceras de proxy son correctas, puede que tu sesión en {{name}} haya terminado: vuelve a iniciar sesión.",
+    "refusedRetry": "El proxy de inicio de sesión de {{name}} ha rechazado este dispositivo. No se pierde nada: vuelve a intentarlo cuando el proxy lo deje pasar."
   },
   "year": {
     "eyebrow": "Tu año de escucha",

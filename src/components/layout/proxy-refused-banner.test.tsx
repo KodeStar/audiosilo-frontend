@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { noteProxyAnswer, resetProxyRefusalsForTests } from '@/api/proxy-refusal';
 import type { User } from '@/api/types';
@@ -10,6 +10,19 @@ import { onAccountPage, ProxyRefusedBanner } from './proxy-refused-banner';
 
 const mockPush = jest.fn();
 jest.mock('@/lib/open', () => ({ pushInShell: (h: unknown) => mockPush(h) }));
+const mockRouterPush = jest.fn();
+jest.mock('expo-router', () => ({ router: { push: (to: unknown) => mockRouterPush(to) } }));
+let mockLayout: 'phone' | 'tablet' = 'tablet';
+jest.mock('@/lib/layout', () => ({
+  ...jest.requireActual('@/lib/layout'),
+  useLayout: () => mockLayout,
+}));
+// Each icon by its name, so a test can tell whether the chevron is drawn.
+jest.mock('@/components/ui/icon', () => {
+  const { createElement } = jest.requireActual('react');
+  const { View } = jest.requireActual('react-native');
+  return { Icon: ({ name }: { name: string }) => createElement(View, { testID: `icon-${name}` }) };
+});
 
 const user: User = {
   id: 1,
@@ -33,9 +46,11 @@ async function signIn(who: User) {
 }
 
 beforeEach(async () => {
+  mockLayout = 'tablet';
   resetProfilesForTests();
   resetProxyRefusalsForTests();
   mockPush.mockClear();
+  mockRouterPush.mockClear();
   await AsyncStorage.clear();
   useSession.setState({
     status: 'unauthenticated',
@@ -54,7 +69,7 @@ it('shows nothing while no proxy turns a connection away', async () => {
 
 it("says the proxy turned the device away and opens the connection's Account, until a request gets through", async () => {
   await signIn(user);
-  noteProxyAnswer('srv-1.1', true);
+  noteProxyAnswer('srv-1.1', 401);
   await render(<ProxyRefusedBanner />);
   expect(
     screen.getByText(
@@ -74,6 +89,90 @@ it("says the proxy turned the device away and opens the connection's Account, un
   expect(screen.queryByTestId('proxy-refused-banner')).toBeNull();
 });
 
+// WS-401-MARK: a server that marks its 401s has every unmarked one read as a refusal, so a
+// real revoke behind a proxy that drops the mark lands here: Sign in again runs the app's
+// normal sign-in for the connection, and the rest of the banner still opens Account.
+it('offers a full account Sign in again, through the reconnect flow', async () => {
+  await signIn(user);
+  noteProxyAnswer('srv-1.1', 401);
+  await render(<ProxyRefusedBanner />);
+  await fireEvent.press(screen.getByLabelText('Sign in again to Hearthside'));
+  await waitFor(() =>
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      pathname: '/connect/sign-in',
+      params: { serverName: 'Hearthside' },
+    }),
+  );
+  expect(mockPush).not.toHaveBeenCalled();
+  await fireEvent.press(screen.getByTestId('proxy-refused-banner'));
+  expect(mockPush).toHaveBeenCalledTimes(1);
+});
+
+// A proxy's own 403 is no revoke in disguise: no sign-in gets past it, so only the headers.
+it("offers no Sign in again for a proxy's 403", async () => {
+  await signIn(user);
+  noteProxyAnswer('srv-1.1', 403);
+  await render(<ProxyRefusedBanner />);
+  expect(
+    screen.getByText(
+      'The sign-in proxy for Hearthside turned this device away: update the proxy headers in Account',
+    ),
+  ).toBeTruthy();
+  expect(screen.queryByLabelText('Sign in again to Hearthside')).toBeNull();
+  await fireEvent.press(screen.getByTestId('proxy-refused-banner'));
+  expect(mockPush).toHaveBeenCalledTimes(1);
+  // A 401 later in the same run may be the revoke: then it is offered.
+  await act(async () => noteProxyAnswer('srv-1.1', 401));
+  expect(screen.getByLabelText('Sign in again to Hearthside')).toBeTruthy();
+});
+
+// Beside Sign in again the whole strip still opens Account, its padding too: the strip's
+// padding is the Account part's own, not the row's around it.
+it('keeps the strip padding inside the Account part beside Sign in again', async () => {
+  await signIn(user);
+  noteProxyAnswer('srv-1.1', 401);
+  await render(<ProxyRefusedBanner />);
+  const account = screen.getByTestId('proxy-refused-banner');
+  expect(account.props.className).toEqual(expect.stringContaining('px-3 py-2'));
+  expect(account.parent?.props.className ?? '').not.toContain('px-3');
+});
+
+// Beside Sign in again no chevron is drawn (it would read as the button's), and the strip
+// around the words and the button opens Account too: its edges, the room beside the button.
+it('opens Account from the whole strip but the button, with no chevron beside Sign in again', async () => {
+  await signIn(user);
+  noteProxyAnswer('srv-1.1', 401);
+  await render(<ProxyRefusedBanner />);
+  expect(screen.queryByTestId('icon-chevron-right')).toBeNull();
+  const strip = screen.getByTestId('proxy-refused-strip');
+  // Only the words are the button a screen reader meets.
+  expect(strip.props.accessible).toBe(false);
+  await fireEvent.press(strip);
+  expect(mockPush).toHaveBeenCalledTimes(1);
+  // On a wide screen the button sits beside the words.
+  expect(screen.getByTestId('proxy-refused-banner').props.className).not.toContain('basis-full');
+});
+
+// On a phone the button always wraps under the words, whatever the label's length.
+it('puts Sign in again under the words on a phone', async () => {
+  mockLayout = 'phone';
+  await signIn(user);
+  noteProxyAnswer('srv-1.1', 401);
+  await render(<ProxyRefusedBanner />);
+  expect(screen.getByTestId('proxy-refused-banner').props.className).toContain('basis-full');
+  expect(screen.queryByTestId('icon-chevron-right')).toBeNull();
+});
+
+// Denied: with no Sign in again (a proxy's 403) the strip is the Account button, chevron and all.
+it('draws the chevron when there is no Sign in again', async () => {
+  mockLayout = 'phone';
+  await signIn(user);
+  noteProxyAnswer('srv-1.1', 403);
+  await render(<ProxyRefusedBanner />);
+  expect(screen.getByTestId('icon-chevron-right')).toBeTruthy();
+  expect(screen.queryByTestId('proxy-refused-strip')).toBeNull();
+});
+
 // The banner stays up on the Account page while the headers are edited: a tap there must
 // not stack the page again.
 it("knows the connection's own Account page, which a tap does not push again", () => {
@@ -90,7 +189,7 @@ it("knows the connection's own Account page, which a tap does not push again", (
 it('leaves a connection that needs signing in again to the reconnect banner', async () => {
   await signIn(user);
   useSession.getState().markNeedsReconnect('srv-1.1', 'auth');
-  noteProxyAnswer('srv-1.1', true);
+  noteProxyAnswer('srv-1.1', 401);
   await render(<ProxyRefusedBanner />);
   expect(screen.queryByTestId('proxy-refused-banner')).toBeNull();
 });
@@ -104,7 +203,7 @@ it("asks a kid to get a grown-up when the set is a full account's here too", asy
       headers: [{ name: 'X-Proxy', value: 'kept' }],
     });
   });
-  noteProxyAnswer('srv-1.12', true);
+  noteProxyAnswer('srv-1.12', 403);
   await render(<ProxyRefusedBanner />);
   expect(
     screen.getByText(
@@ -113,16 +212,53 @@ it("asks a kid to get a grown-up when the set is a full account's here too", asy
   ).toBeTruthy();
   await fireEvent.press(screen.getByTestId('proxy-refused-banner'));
   expect(mockPush).not.toHaveBeenCalled();
+  expect(screen.queryByText('Sign in again')).toBeNull();
+});
+
+// WS-401-MARK: a kid's 401 refusal may be the server's revoke of its token behind a proxy
+// that drops the mark. A kid never signs itself in, so the banner says who can pair it again.
+it('asks a grown-up to pair a kid again on a 401', async () => {
+  await signIn(user);
+  await signIn(kid);
+  await act(async () => {
+    await useSession.getState().setProxySet(AWAY, {
+      origin: AWAY,
+      headers: [{ name: 'X-Proxy', value: 'kept' }],
+    });
+  });
+  noteProxyAnswer('srv-1.12', 401);
+  await render(<ProxyRefusedBanner />);
+  expect(
+    screen.getByText(
+      'The sign-in proxy for Hearthside turned this device away: ask a grown-up to update the proxy headers or to pair this device again',
+    ),
+  ).toBeTruthy();
+  expect(screen.queryByText('Sign in again')).toBeNull();
+});
+
+it('tells a kid who manages its own set that a grown-up can pair it again', async () => {
+  await signIn(kid);
+  noteProxyAnswer('srv-1.12', 401);
+  await render(<ProxyRefusedBanner />);
+  expect(
+    screen.getByText(
+      'The sign-in proxy for Hearthside turned this device away: update the proxy headers in Account, or ask a grown-up to pair this device again',
+    ),
+  ).toBeTruthy();
+  expect(screen.queryByText('Sign in again')).toBeNull();
+  await fireEvent.press(screen.getByTestId('proxy-refused-banner'));
+  expect(mockPush).toHaveBeenCalledTimes(1);
 });
 
 // A demo account with no set to edit (`canManageProxySet`): nothing to tap, and no grown-up to
 // ask either, so it only says what happened.
 it('only says what happened to a demo account, with no grown-up to ask', async () => {
   await signIn({ ...user, id: 7, username: 'demo', is_demo: true });
-  noteProxyAnswer('srv-1.7', true);
+  noteProxyAnswer('srv-1.7', 401);
   await render(<ProxyRefusedBanner />);
   expect(screen.getByText('The sign-in proxy for Hearthside turned this device away')).toBeTruthy();
   expect(screen.queryByText(/grown-up/)).toBeNull();
+  expect(screen.queryByText('Sign in again')).toBeNull();
   await fireEvent.press(screen.getByTestId('proxy-refused-banner'));
   expect(mockPush).not.toHaveBeenCalled();
 });

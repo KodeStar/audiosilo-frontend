@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
+import { noteProxyAnswer, resetProxyRefusalsForTests } from '@/api/proxy-refusal';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 let mockParams: { mode?: string } = {};
@@ -302,6 +303,27 @@ describe('LibraryScreen', () => {
     expect(screen.queryByText('No libraries are shared with your account yet.')).toBeNull();
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
     expect(mockRetry).toHaveBeenCalledWith('a');
+  });
+
+  // WS-401-MARK: a proxy in front of the server turning the device away is not a server that
+  // did not answer: the words say so, and Retry stays (the shell's banner says what to do).
+  it('says a proxy turned the device away, with Retry, while one refuses', async () => {
+    mockGroups = [unread('a', 'error')];
+    pick(null);
+    noteProxyAnswer('a', 401);
+    try {
+      await render(<LibraryScreen />);
+      expect(screen.getByText('Could not load libraries.')).toBeTruthy();
+      expect(
+        screen.getByText(
+          'The sign-in proxy for Hearthside turned this device away. Nothing is lost: try again once the proxy lets it in.',
+        ),
+      ).toBeTruthy();
+      await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
+      expect(mockRetry).toHaveBeenCalledWith('a');
+    } finally {
+      resetProxyRefusalsForTests();
+    }
   });
 
   // fe#142: a slow, failing or signed-out server used to hand the Library to the other

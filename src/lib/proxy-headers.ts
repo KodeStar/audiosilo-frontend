@@ -246,7 +246,7 @@ export type ProxyCardConnection = {
 };
 
 /** A demo or a kid's account: one that never decides for the others on the device. */
-const isLimitedAccount = (user: ProxyCardConnection['user']) =>
+export const isLimitedAccount = (user: ProxyCardConnection['user']) =>
   !!user?.is_demo || isKidAccount(user);
 
 /**

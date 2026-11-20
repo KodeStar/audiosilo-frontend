@@ -98,7 +98,10 @@ async function signInWithCode(
  * `initialCode`: an invite link's code (a scanned or pasted invite, #98), filled in and
  * signed in with once, as if typed; a refused one stays in the field with the reason.
  *
- * The player the server serves, signing in to its own server, asks it once whether single
+ * The step asks the server's `/server` once. Whether it marks its own 401s
+ * (`unauthorized_mark`, WS-401-MARK) decides whose a sign-in's 401 is: one without the mark
+ * then says something between the device and the server refused it, not a wrong password.
+ * The player the server serves, signing in to its own server, also reads whether single
  * sign-on is on (capability `oidc`, server#235) and then offers "Sign in with <name>", a
  * full page load of the server's start route (`oidc-sign-in.ts` has the whole flow).
  */
@@ -121,7 +124,11 @@ export function SignInStep({
   const reconnecting = useSession((s) =>
     reconnectId ? s.connections.find((c) => c.id === reconnectId) : undefined,
   );
-  const [mode, setMode] = useState<Mode>('code');
+  // A reconnect of an account with a password opens on the password: its own way in. One that
+  // has none (a kid's, one paired by code alone) or an invite link's code opens on the code.
+  const [mode, setMode] = useState<Mode>(() =>
+    reconnecting?.user?.has_password && !initialCode ? 'password' : 'code',
+  );
   const [code, setCode] = useState(initialCode ?? '');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -147,13 +154,20 @@ export function SignInStep({
   const canSso = onlyOwnServer(servedOrigin(), [server]);
   // The button's name once the server said single sign-on is on (`oidcButtonName`).
   const [ssoName, setSsoName] = useState<string | null>(null);
+  // Whether the server marks every 401 of its own (`unauthorized_mark`, WS-401-MARK), as its
+  // `/server` said: a sign-in's unmarked 401 is then something in front of it refusing, never
+  // a wrong password or code (`onSubmit`). Unknown until it answers, and for a server before
+  // the mark: the 401's body decides, as before.
+  const marks = useRef<boolean | undefined>(undefined);
   useEffect(() => {
-    if (!canSso) return;
+    marks.current = undefined;
     const ask = new AbortController();
     api
       .serverInfo(ask.signal)
       .then((info) => {
-        if (!ask.signal.aborted) setSsoName(oidcButtonName(info));
+        if (ask.signal.aborted) return;
+        marks.current = info.capabilities?.unauthorized_mark;
+        if (canSso) setSsoName(oidcButtonName(info));
       })
       // A server that doesn't answer offers no single sign-on; the other ways stay.
       .catch(() => {});
@@ -185,7 +199,7 @@ export function SignInStep({
     let stage: SignInStage = mode === 'code' ? 'redeem' : 'login';
     // The proxy set read as the sign-in is sent, not as the step opened (fe#295): one changed
     // or removed on the Account page meanwhile is the one that counts.
-    const { client, proxy: carried } = connectClientFor(server);
+    const { client, proxy: carried } = connectClientFor(server, undefined, () => marks.current);
     try {
       if (mode === 'code') {
         const typed = code.trim();

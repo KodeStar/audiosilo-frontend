@@ -6,7 +6,7 @@ import { BackHandler, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useProxyNotice } from '@/api/proxy-refusal';
+import { useProxyNotice, useProxyRefusals } from '@/api/proxy-refusal';
 import type { Book } from '@/api/types';
 import type { PlayTarget } from '@/components/player/play-route';
 import { RECONNECT_STRIP_CLASS } from '@/components/layout/reconnect-banner';
@@ -106,6 +106,11 @@ export function KidsScreen() {
   // the headers typed for this sign-in (fe#295): the address's set is a grown-up's to update
   // (`ProxyRefusedBanner` in the shell).
   const proxyRefused = useProxyNotice(connectionId ?? undefined);
+  // A 401 may be the server's refusal of the kid's token with its mark dropped (WS-401-MARK):
+  // pairing the device again is then a grown-up's other way out.
+  const mayBeSignedOut = useProxyRefusals((s) =>
+    connectionId ? s.refused[connectionId] === 401 : false,
+  );
   const loaded = usePlayer((s) => s.nowPlaying !== null);
   const list = useRef<FlashListRef<KidsRow>>(null);
   const [outer, setOuter] = useState(0);
@@ -147,7 +152,10 @@ export function KidsScreen() {
       {signedOut ? (
         <SignedOutNotice name={name} />
       ) : proxyRefused ? (
-        <GrownUpNotice testID="kids-proxy-refused" text={t('proxyHeaders.askGrownUp')} />
+        <GrownUpNotice
+          testID="kids-proxy-refused"
+          text={t(mayBeSignedOut ? 'proxyHeaders.askGrownUpPair' : 'proxyHeaders.askGrownUp')}
+        />
       ) : null}
       <View className="flex-row flex-wrap items-center justify-between gap-3">
         <Text

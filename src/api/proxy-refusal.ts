@@ -3,37 +3,59 @@ import { create } from 'zustand';
 import { ownSetInUse, type ProxySets, type SignInProxySet } from '@/lib/proxy-headers';
 import { useSession } from '@/stores/session';
 
+import type { ProxyRefusalStatus } from './client';
+
 /**
  * The signed-in connections a proxy in front of their server is turning away now (fe#295):
  * a request through the connection's client answered with the proxy's own 401 or 403
  * (`ApiError.fromProxy`), and the server itself has answered none since. One episode per
- * connection: it starts at the first refusal and ends at the next answer the server gave (a
- * success, or its own error: the proxy let that request through), so the shell says it once
- * for the whole run of refusals (`ProxyRefusedBanner`), never once per request. Not a
- * sign-out and not a reconnect: the server never judged the token, and the way past is the
- * proxy headers (the Account page's card). In memory only: a launch starts with none, and a
+ * connection: it starts at the first refusal and ends at the next answer the server gave past
+ * its token check (a success, or its own error but a 401, to a request carrying the token the
+ * connection holds: the proxy let it through; never a public route's, `ApiClient`'s
+ * `onProxyAnswer`), so the shell says it once for the whole run of refusals
+ * (`ProxyRefusedBanner`), never once per request. Not a sign-out and not a reconnect: the
+ * server never judged the token, and the way past is the proxy headers (the Account page's
+ * card). In memory only: a launch starts with none, and a
  * connection signed out or removed takes its episode with it (the provider's
  * `onConnectionRemoved`), and one another tab's identity migration renamed carries it to its
- * new id (`moveProxyRefusal`).
+ * new id (`moveProxyRefusal`). Each episode keeps its refusals' status: a 401 once any was
+ * (the server's own refusal of the token may be behind it, its mark dropped: WS-401-MARK, and
+ * Sign in again is offered), else a 403, which no sign-in gets past.
  */
-export const useProxyRefusals = create<{ refused: Readonly<Record<string, true>> }>(() => ({
+export const useProxyRefusals = create<{
+  refused: Readonly<Record<string, ProxyRefusalStatus>>;
+}>(() => ({
   refused: {},
 }));
 
 /** What one answer through `connectionId`'s client said of its proxy (`ApiClient`'s
- * `onProxyAnswer`): `refused` starts the connection's episode, an answer of the server's own
- * ends it (and tells `onProxyRefusalsOver`). Runs on every such answer, so one with nothing
- * refused returns at once. */
-export function noteProxyAnswer(connectionId: string, refused: boolean): void {
+ * `onProxyAnswer`): a refusal's status starts the connection's episode (or makes a 403
+ * episode a 401 one), an answer of the server's own ends it (and tells
+ * `onProxyRefusalsOver`). Runs on every such answer, so one that changes nothing returns at
+ * once. */
+export function noteProxyAnswer(connectionId: string, refused: ProxyRefusalStatus | false): void {
   const now = useProxyRefusals.getState().refused;
-  if (refused === (now[connectionId] === true)) return;
+  const was = now[connectionId];
   if (refused) {
-    useProxyRefusals.setState({ refused: { ...now, [connectionId]: true } });
+    if (was === 401 || was === refused) return;
+    useProxyRefusals.setState({ refused: { ...now, [connectionId]: refused } });
     return;
   }
+  if (was === undefined) return;
   const { [connectionId]: _ended, ...rest } = now;
   useProxyRefusals.setState({ refused: rest });
   refusalsOver(connectionId);
+}
+
+/** `connectionId` holds a new token (a Sign in again): its episode's 401, which may have been
+ * the old token's revoke with its mark dropped (WS-401-MARK), says nothing of the new one, so
+ * the episode goes on as a 403 one until the new token's own refusals say otherwise (a 401
+ * offers Sign in again once more). Without this, a proxy that answers the new token with 403s
+ * only would keep offering a sign-in that cannot help. The provider calls it on each change. */
+export function noteNewToken(connectionId: string): void {
+  const now = useProxyRefusals.getState().refused;
+  if (now[connectionId] !== 401) return;
+  useProxyRefusals.setState({ refused: { ...now, [connectionId]: 403 } });
 }
 
 const overListeners = new Set<(connectionId: string) => void>();
@@ -73,9 +95,10 @@ export function onProxyRefusalsOver(listener: (connectionId: string) => void): (
  * notice. Ended instead, with nothing to tell, when `to` is not signed in. */
 export function moveProxyRefusal(from: string, to: string): void {
   const now = useProxyRefusals.getState().refused;
-  if (!now[from]) return;
+  const status = now[from];
+  if (!status) return;
   const { [from]: _moved, ...rest } = now;
-  useProxyRefusals.setState({ refused: signedIn(to) ? { ...rest, [to]: true } : rest });
+  useProxyRefusals.setState({ refused: signedIn(to) ? { ...rest, [to]: status } : rest });
 }
 
 /**
@@ -87,11 +110,11 @@ export function moveProxyRefusal(from: string, to: string): void {
  */
 export function needsProxyNotice(
   connectionId: string,
-  refused: Readonly<Record<string, true>>,
+  refused: Readonly<Record<string, ProxyRefusalStatus>>,
   sets: ProxySets,
   own: Readonly<Record<string, SignInProxySet>>,
 ): boolean {
-  return refused[connectionId] === true || ownSetInUse(sets, own[connectionId]);
+  return refused[connectionId] !== undefined || ownSetInUse(sets, own[connectionId]);
 }
 
 /** `needsProxyNotice` for one connection, kept current: a sign-in's own set only while the
@@ -105,6 +128,19 @@ export function useProxyNotice(connectionId: string | undefined): boolean {
     if (conn?.needsReconnect) return false;
     return needsProxyNotice(connectionId, refused, s.proxySets, conn ? s.signInProxySets : {});
   });
+}
+
+/** Whether a proxy is turning `connectionId`'s requests away now (its episode), and it does
+ * not need signing in again: why a read failed, where `useProxyNotice` also counts a sign-in's
+ * own set gone stale, which turns nothing away. */
+export function useProxyRefused(connectionId: string | undefined): boolean {
+  const refused = useProxyRefusals((s) =>
+    connectionId ? s.refused[connectionId] !== undefined : false,
+  );
+  const needsReconnect = useSession(
+    (s) => !!s.connections.find((c) => c.id === connectionId)?.needsReconnect,
+  );
+  return refused && !needsReconnect;
 }
 
 /** Tests: no connection refused. */

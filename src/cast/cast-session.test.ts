@@ -15,6 +15,7 @@ jest.mock('@/playback/store', () => ({
 jest.mock('@/stores/session', () => ({
   onConnectionRemoved: () => () => {},
   onConnectionRenamed: () => () => {},
+  useSession: { subscribe: () => () => {} },
 }));
 
 /* eslint-disable import/first */

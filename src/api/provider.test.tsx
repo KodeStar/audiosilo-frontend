@@ -251,6 +251,36 @@ describe('buildClients', () => {
     }
   });
 
+  // WS-401-MARK: the clients read `unauthorized_mark` from the cache's `/server` answer.
+  it("reads a 401 by the server's mark flag as the cache holds it, with no request for it", async () => {
+    const set = { origin: 'https://m', headers: [{ name: 'X-Proxy', value: 'one' }] };
+    const realFetch = globalThis.fetch;
+    const fetchMock = jest.fn(async () => ({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      text: async () => '{"error":"invalid or expired token"}',
+    }));
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+    try {
+      const client = buildClients(conns, {}, new Map(), { 'https://m': set }).get('c2')!.client;
+      // Nothing known of the server yet: its exact body is its own refusal.
+      await expect(client.me()).rejects.toMatchObject({ status: 401, fromProxy: false });
+      // Its `/server` answer says it marks its 401s: an unmarked one is the proxy's.
+      queryClient.setQueryData(qk.server('c2'), { capabilities: { unauthorized_mark: true } });
+      await expect(client.me()).rejects.toMatchObject({ status: 401, fromProxy: true });
+      // Another connection's answer says nothing of this one.
+      queryClient.setQueryData(qk.server('c2'), { capabilities: {} });
+      queryClient.setQueryData(qk.server('c1'), { capabilities: { unauthorized_mark: true } });
+      await expect(client.me()).rejects.toMatchObject({ status: 401, fromProxy: false });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      globalThis.fetch = realFetch;
+      queryClient.removeQueries({ queryKey: qk.server('c1') });
+      queryClient.removeQueries({ queryKey: qk.server('c2') });
+    }
+  });
+
   it('drops a removed connection', () => {
     const first = buildClients(conns, {}, new Map(), {});
     expect([...buildClients([conns[0]], {}, first, {}).keys()]).toEqual(['c1']);

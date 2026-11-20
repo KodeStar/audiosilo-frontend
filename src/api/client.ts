@@ -125,13 +125,15 @@ export class ApiError extends Error {
      * status; a date or a header the browser can't expose cross-origin reads as absent).
      * Bridge Phase 2d-2: the discovery and OPML limits. */
     public retryAfterSeconds?: number,
-    /** A 401 or 403 that is not the AudioSilo server's own (its every refusal is JSON with
-     * an `error` string): a proxy in front of it turning the request away (fe#295, fe#280).
-     * The server never judged the request, so it is no sign the connection is signed out
+    /** A 401 or 403 that is not the AudioSilo server's own: a proxy in front of it turning
+     * the request away (fe#295, fe#280; whose a refusal is: `unauthorizedOrigin`). The
+     * server never judged the request, so it is no sign the connection is signed out
      * (`isSignedOutError`) nor of a library the listener may not open (`accessRefusal`). */
     public fromProxy = false,
     /** The answer is the AudioSilo server's own: its error envelope, a JSON body with an
-     * `error` string. Whatever stands in front of the server let this request through
+     * `error` string (a 401 as `unauthorizedOrigin` reads it: its mark, or while the server
+     * is not known to mark its 401s, its exact body or any `error` where the request carried
+     * no proxy headers). Whatever stands in front of the server let this request through
      * (`onProxyAnswer`); an error status without it (a gateway's page) says nothing of that. */
     public fromServer = false,
   ) {
@@ -155,11 +157,26 @@ export function isRefusedForGood(e: unknown): e is ApiError {
   );
 }
 
+/** The server's 401 for a wrong current password (`POST /auth/password`): the session token
+ * was taken, only the typed password was wrong. */
+const WRONG_CURRENT_PASSWORD = 'current_password_incorrect';
+
+/** Whether `e` is the server's 401 for a wrong current password (`WRONG_CURRENT_PASSWORD`):
+ * the form asks for it again, under its field. */
+export function isWrongCurrentPassword(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 401 && e.code === WRONG_CURRENT_PASSWORD;
+}
+
 /** Whether `e` is the server refusing the session token (a 401): the connection needs
  * signing in again, not another try (frontend#124). Never an auth proxy's 401
- * (`ApiError.fromProxy`, fe#295): signing in to the server again can't get past the proxy. */
+ * (`ApiError.fromProxy`, fe#295): signing in to the server again can't get past the proxy.
+ * Nor the server's 401 for a wrong current password (`WRONG_CURRENT_PASSWORD`, its body's
+ * code or its mark's): the server names it so the session is kept and the form asks again
+ * (a server before the code sends a plain 401, read as before). */
 export function isSignedOutError(e: unknown): boolean {
-  return e instanceof ApiError && e.status === 401 && !e.fromProxy;
+  return (
+    e instanceof ApiError && e.status === 401 && !e.fromProxy && e.code !== WRONG_CURRENT_PASSWORD
+  );
 }
 
 /** Whether `e` is a proxy in front of the server turning the request away with a 401 or a
@@ -169,6 +186,17 @@ export function isSignedOutError(e: unknown): boolean {
 export function isProxyRefusal(e: unknown): boolean {
   return e instanceof ApiError && e.fromProxy;
 }
+
+/** The status of a proxy's own refusal (`isProxyRefusal`): a 401 may be the server's refusal
+ * of the token with its mark dropped (WS-401-MARK), so signing in again may help; a 403 never
+ * is. */
+export type ProxyRefusalStatus = 401 | 403;
+
+/** Whether the server's own error `status`, to a request that carried the session token,
+ * says it took the token (`ApiClient`'s `onProxyAnswer`): never its 401 (the token refused),
+ * nor a 429 or a 503, which it writes before or instead of checking the token (the address's
+ * rate limit, a token it could not check). */
+const tokenTaken = (status: number) => status !== 401 && status !== 429 && status !== 503;
 
 /** Whether `e` is the server saying the content isn't there for this caller: a 404 (no
  * such book or folder), a 403 (a library not shared with them) or a 400 (a path the
@@ -355,13 +383,97 @@ function retryAfterOf(res: Response, fetch: PodcastFetchStatus): number {
   return typeof body === 'number' && Number.isFinite(body) && body >= 0 ? body : 2;
 }
 
+/** The header the server marks every 401 of its own with (WS-401-MARK): the body's
+ * `code` when the 401 has one, else `UNAUTHORIZED_PLAIN`. A proxy's own 401 has none, and
+ * a proxy that rewrites the server's error page keeps it while it passes the server's headers
+ * on (one that serves an error page of its own in place of the answer, nginx's `error_page`,
+ * drops it). Cross-origin the server exposes it; a server before it sends none
+ * (`unauthorizedOrigin`). */
+export const UNAUTHORIZED_HEADER = 'X-AudioSilo-Unauthorized';
+/** `UNAUTHORIZED_HEADER`'s value on a 401 without a code. */
+const UNAUTHORIZED_PLAIN = 'unauthorized';
+
+/** The server's mark on a 401 answer (`UNAUTHORIZED_HEADER`), else undefined. */
+function unauthorizedMark(res: Response): string | undefined {
+  if (res.status !== 401) return undefined;
+  return res.headers?.get?.(UNAUTHORIZED_HEADER)?.trim() || undefined;
+}
+
+type Server401Code = ApiErrorCode | typeof WRONG_CURRENT_PASSWORD;
+
+/** The codes a server's own 401 has ever carried (`writeErrorCode`): a server before the
+ * mark is told by them (`serverUnauthorizedBody`). A later server marks its 401s, so a new
+ * code needs no entry here. */
+const SERVER_401_CODES: ReadonlySet<string> = new Set<Server401Code>([
+  'invite_used',
+  'invite_expired',
+  WRONG_CURRENT_PASSWORD,
+  'oidc_no_sign_in',
+  'oidc_sign_in_expired',
+]);
+
+/** Whether `data` is exactly the body the server writes on a 401 (`writeError`,
+ * `writeErrorCode`): `{error}`, or `{error, code}` with one of its 401 codes, and nothing
+ * else. A proxy's own JSON (Authelia's `{status, message}`, anything with other keys) is
+ * not. */
+function serverUnauthorizedBody(data: unknown): boolean {
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) return false;
+  const { error, code, ...rest } = data as Record<string, unknown>;
+  if (typeof error !== 'string' || !error || Object.keys(rest).length > 0) return false;
+  return code === undefined || (typeof code === 'string' && SERVER_401_CODES.has(code));
+}
+
+/** The answers to requests that carried proxy headers (`send`), for `unauthorizedOrigin`. */
+const proxiedAnswers = new WeakSet<Response>();
+/** The 401s of a server known to mark its own (`send`: capability `unauthorized_mark` on
+ * its last `/server` answer), for `unauthorizedOrigin`. */
+const markingServerAnswers = new WeakSet<Response>();
+
+/**
+ * Whose a 401 or 403 answer is: `server` (its own refusal: act on it), `proxy` (an auth
+ * proxy in front of it turned the request away: never a sign-out) or `unknown` for any
+ * other status. A 401 is the server's when it carries the mark, whatever its body (a proxy
+ * that rewrote the server's page), or when its body is exactly the server's
+ * (`serverUnauthorizedBody`: a server before the mark, CROSS-REPO §15, or a proxy that
+ * passed the body on and dropped the header). A server known to mark its 401s
+ * (`markingServerAnswers`) never sends one without the mark, so an unmarked one is
+ * something in front of it refusing the request, whatever its body and whether or not the
+ * request carried proxy headers: no sign-out, the proxy notice instead (a real revoke that a
+ * header-dropping proxy hides has the notice's Sign in again). Else a 401 to a request that
+ * carried proxy headers is the proxy's, even with a JSON `error`. Otherwise (the mark not
+ * known, or an older server), and for every 403, the body says: the server's every refusal
+ * is JSON with an `error` string, so one without it is the proxy's (fe#295). `mark` is the
+ * answer's `unauthorizedMark`.
+ */
+function unauthorizedOrigin(
+  res: Response,
+  mark: string | undefined,
+  data: unknown,
+  hasServerError: boolean,
+): 'server' | 'proxy' | 'unknown' {
+  if (res.status !== 401 && res.status !== 403) return 'unknown';
+  if (res.status === 401) {
+    if (mark !== undefined) return 'server';
+    if (markingServerAnswers.has(res)) return 'proxy';
+    if (serverUnauthorizedBody(data)) return 'server';
+    if (proxiedAnswers.has(res)) return 'proxy';
+  }
+  return hasServerError ? 'server' : 'proxy';
+}
+
 /** The error a non-2xx answer with a JSON (or empty) body `data` is: its `error` and
- * `code`, or for a 503 about an episode still on its way, a `PodcastFetchPendingError`
- * keeping its `fetch`. */
+ * `code` (on a 401, the server's mark names the code when the body lost it), or for a 503
+ * about an episode still on its way, a `PodcastFetchPendingError` keeping its `fetch`. */
 function apiErrorOf(res: Response, data: unknown, fallbackMsg: string): ApiError {
   const body = data as { error?: unknown; code?: unknown; fetch?: unknown } | undefined;
   const msg = typeof body?.error === 'string' ? body.error : '';
-  const code = typeof body?.code === 'string' && body.code ? body.code : undefined;
+  const mark = unauthorizedMark(res);
+  const code =
+    typeof body?.code === 'string' && body.code
+      ? body.code
+      : mark !== undefined && mark !== UNAUTHORIZED_PLAIN
+        ? mark
+        : undefined;
   if (
     res.status === 503 &&
     code !== undefined &&
@@ -377,15 +489,15 @@ function apiErrorOf(res: Response, data: unknown, fallbackMsg: string): ApiError
       retryAfterOf(res, fetch),
     );
   }
+  const origin = unauthorizedOrigin(res, mark, data, !!msg);
   return new ApiError(
     res.status,
     msg || fallbackMsg,
     code,
     retryAfterHeader(res),
-    // A 401 or 403 without the server's `error`: a proxy's own (JSON, Authelia's for one,
-    // or a page).
-    (res.status === 401 || res.status === 403) && !msg,
-    !!msg,
+    // A proxy's own 401 or 403 (JSON, Authelia's for one, or a page).
+    origin === 'proxy',
+    origin === 'server' || (origin === 'unknown' && !!msg),
   );
 }
 
@@ -402,7 +514,8 @@ async function readJson<T>(res: Response): Promise<T> {
   try {
     data = text ? JSON.parse(text) : undefined;
   } catch {
-    // Not JSON: a reverse proxy's page. A 401 or 403 of that kind is the proxy's (`fromProxy`).
+    // Not JSON: a reverse proxy's page. A 401 or 403 of that kind is the proxy's (`fromProxy`)
+    // unless the server marked it (a proxy that rewrote the server's page).
     throw apiErrorOf(res, undefined, fallbackMsg);
   }
   if (!res.ok) throw apiErrorOf(res, data, fallbackMsg);
@@ -645,7 +758,8 @@ export class ApiClient {
   private readonly timeoutMs: number;
   private readonly onAuthError?: () => void;
   private readonly onAnswer?: (at: string) => void;
-  private readonly onProxyAnswer?: (refused: boolean) => void;
+  private readonly onProxyAnswer?: (refused: ProxyRefusalStatus | false) => void;
+  private readonly marksUnauthorized?: () => boolean | undefined;
   /** The batch loader behind `seriesBooksPage`, one per `libraryId:limit` (so bounded
    * by libraries x page sizes), created on first use. */
   private readonly seriesLoaders = new Map<string, (name: string) => Promise<BookPage>>();
@@ -686,14 +800,27 @@ export class ApiClient {
    * client's address is their origin (`proxyHeaderRecord`), so a client on the server's home
    * address, an http fallback or any other address sends none.
    *
-   * `onProxyAnswer` is told what each answer says of a proxy in front of the server: `true`
-   * when the proxy turned the request away (`isProxyRefusal`: its own 401 or 403), `false`
-   * when the server itself answered, so the proxy let the request through: a success, or the
-   * server's own error (`ApiError.fromServer`: its 401, a 404, a 500 in its envelope). Any
-   * other failure (no answer, a gateway's page) says nothing. A signed-in connection's
+   * `onProxyAnswer` is told what each answer says of a proxy in front of the server: the
+   * refusal's status when the proxy turned the request away (`isProxyRefusal`: its own 401 or
+   * 403), `false` when the server itself took the session token, so the proxy let the request
+   * through and the token is good: a success, or the server's own error other than a 401
+   * (`ApiError.fromServer`: a 403, a 404, a 500 in its envelope), to a request that carried
+   * the token to a route that checks it. A public route's answer (`/server`, the sign-in
+   * routes: `publicRoute`) says nothing of the token: a revoked one behind a proxy that drops
+   * the server's 401 mark reads as a refusal everywhere else, and `/server` answering would
+   * end that episode and raise it again at the next request (WS-401-MARK). Any other failure
+   * (no answer, a gateway's page) says nothing. A signed-in connection's
    * client passes it on, so the shell can say the proxy headers need updating while the
    * refusals last (`noteProxyAnswer`, `ProxyRefusedBanner`). Never a sign-out: the server
    * never judged the token.
+   *
+   * `marksUnauthorized` says whether the server is known to mark every 401 of its own
+   * (capability `unauthorized_mark` on its last `/server` answer), asked when a 401
+   * arrives and never by a request: a signed-in connection's client reads the flag the
+   * app already holds. True: a 401 without the mark is not the server's, whatever its body
+   * and whether or not the request carried proxy headers (`unauthorizedOrigin`). Anything
+   * else (not known yet, an older server, a bare client in the connect flow): the 401's body
+   * is read as before.
    */
   constructor(
     baseUrl: string,
@@ -702,7 +829,8 @@ export class ApiClient {
     onAuthError?: () => void,
     onAnswer?: (at: string) => void,
     proxy?: ProxyHeaders | null,
-    onProxyAnswer?: (refused: boolean) => void,
+    onProxyAnswer?: (refused: ProxyRefusalStatus | false) => void,
+    marksUnauthorized?: () => boolean | undefined,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.token = token;
@@ -710,6 +838,7 @@ export class ApiClient {
     this.onAuthError = onAuthError;
     this.onAnswer = onAnswer;
     this.onProxyAnswer = onProxyAnswer;
+    this.marksUnauthorized = marksUnauthorized;
     const page = webOrigin();
     this.clientHeaders = shouldIdentify(this.baseUrl, Platform.OS, page)
       ? { [CLIENT_HEADER]: clientIdentity(APP_VERSION, Platform.OS) }
@@ -739,8 +868,12 @@ export class ApiClient {
    * cover, a podcast directory's artwork). Undefined unless this client sends some and `url`
    * is on their origin. */
   proxyHeadersFor(url: string): Record<string, string> | undefined {
-    if (!this.proxyOrigin || originOf(url) !== this.proxyOrigin) return undefined;
-    return { ...this.proxyHeaders };
+    return this.sendsProxyHeadersTo(url) ? { ...this.proxyHeaders } : undefined;
+  }
+
+  /** Whether a request of `url` carries this client's proxy headers. */
+  private sendsProxyHeadersTo(url: string): boolean {
+    return this.proxyOrigin !== null && originOf(url) === this.proxyOrigin;
   }
 
   private request<T>(
@@ -752,6 +885,9 @@ export class ApiClient {
       signal?: AbortSignal;
       timeoutMs?: number;
       keepalive?: boolean;
+      /** A route the server answers whoever asks (`/server`, the sign-in routes): its
+       * answer says nothing of the session token (`onProxyAnswer`). */
+      publicRoute?: boolean;
     } = {},
   ): Promise<T> {
     const headers: Record<string, string> = { ...this.clientHeaders, ...this.authHeaders() };
@@ -772,9 +908,13 @@ export class ApiClient {
       timeoutMs?: number;
       /** The request outlives the page (web: a tab closing). */
       keepalive?: boolean;
+      /** `request`'s: the route never checks the token. */
+      publicRoute?: boolean;
     },
     read: (res: Response, touch: () => void) => Promise<T>,
   ): Promise<T> {
+    // Whether an answer the server gave says the token was taken (`onProxyAnswer`).
+    const tokenChecked = !opts.publicRoute && headers.Authorization !== undefined;
     // Abort after timeoutMs (the client's, unless this request sets its own) so a
     // frozen/unreachable server can't hang the caller (and the periodic save loop)
     // indefinitely; still honour a caller-supplied signal.
@@ -828,8 +968,12 @@ export class ApiClient {
         throw new NetworkError(e);
       }
       this.onAnswer?.(this.baseUrl);
+      // A 401 to a request that carried proxy headers may be the proxy's (`unauthorizedOrigin`).
+      if (!res.ok && this.sendsProxyHeadersTo(url)) proxiedAnswers.add(res);
+      // And one from a server known to mark its own is told by the mark alone.
+      if (res.status === 401 && this.marksUnauthorized?.() === true) markingServerAnswers.add(res);
       const answer = await read(res, touch);
-      this.onProxyAnswer?.(false);
+      if (tokenChecked) this.onProxyAnswer?.(false);
       return answer;
     } catch (e) {
       // Our timeout fired (not a caller cancel, and not a real server answer in
@@ -837,14 +981,20 @@ export class ApiClient {
       if (timedOut && !(e instanceof ApiError)) throw new TimeoutError(timeoutMs);
       // A 401 ApiError means the server answered and rejected our token - fire the
       // dead-token callback (every ApiError the readers throw lands here). A proxy's own
-      // 401 is not (`fromProxy`): signing in again can't get past it. A 403 is a scope
+      // 401 is not (`fromProxy`): signing in again can't get past it. Nor is the server's
+      // 401 for a wrong current password (`isSignedOutError`). A 403 is a scope
       // denial (valid token, forbidden) or a proxy's, and a network/timeout failure has no
       // status, so none is a dead token - the full rationale is on the constructor doc above.
       if (isSignedOutError(e)) this.onAuthError?.();
       // What the answer says of a proxy in front (`onProxyAnswer`): its own refusal, or the
-      // server's own error, which the proxy let through as it does a success.
-      if (isProxyRefusal(e)) this.onProxyAnswer?.(true);
-      else if (e instanceof ApiError && e.fromServer) this.onProxyAnswer?.(false);
+      // server's own error past the token check, which the proxy let through as it does a
+      // success (never its 401: the token refused, or a wrong current password's; nor a 429
+      // or a 503, which the server writes before or instead of checking the token: its
+      // address's rate limit, which a revoked token's 401s fill, or a token it could not
+      // check, so ending the episode there would raise it again at the next 401).
+      if (isProxyRefusal(e)) this.onProxyAnswer?.((e as ApiError).status === 403 ? 403 : 401);
+      else if (tokenChecked && e instanceof ApiError && e.fromServer && tokenTaken(e.status))
+        this.onProxyAnswer?.(false);
       throw e;
     } finally {
       settled = true;
@@ -855,16 +1005,18 @@ export class ApiClient {
 
   // --- Discovery & auth (public) -------------------------------------------
   serverInfo(signal?: AbortSignal) {
-    return this.request<ServerInfo>('GET', '/server', { signal });
+    return this.request<ServerInfo>('GET', '/server', { signal, publicRoute: true });
   }
   redeemCode(code: string) {
-    return this.request<PairingPayload>('POST', '/auth/redeem', { body: { code } }).then(
-      withCleanAddresses,
-    );
+    return this.request<PairingPayload>('POST', '/auth/redeem', {
+      body: { code },
+      publicRoute: true,
+    }).then(withCleanAddresses);
   }
   exchange(pairingToken: string, deviceName: string) {
     return this.request<AuthSession>('POST', '/auth/exchange', {
       body: { pairing_token: pairingToken, device_name: deviceName },
+      publicRoute: true,
     }).then(withCleanAddresses);
   }
   /** Where the web player sends the browser (a full page load, never a fetch) to sign in
@@ -891,6 +1043,7 @@ export class ApiClient {
   oidcFinish(deviceName: string, intent?: string, flow?: string) {
     return this.request<AuthSession>('POST', '/auth/oidc/finish', {
       body: { device_name: deviceName, ...(intent ? { intent } : {}), ...(flow ? { flow } : {}) },
+      publicRoute: true,
     }).then(withCleanAddresses);
   }
   /** Sign in with a password. `deviceId`: this install's own random sign-in key for this
@@ -906,6 +1059,7 @@ export class ApiClient {
           device_name: deviceName,
           ...(withId && deviceId ? { device_id: deviceId } : {}),
         },
+        publicRoute: true,
       }).then(withCleanAddresses);
     try {
       return await send(true);
@@ -920,6 +1074,7 @@ export class ApiClient {
   demoSession(deviceName: string) {
     return this.request<DemoSession>('POST', '/demo/session', {
       body: { device_name: deviceName },
+      publicRoute: true,
     }).then(withCleanAddresses);
   }
 

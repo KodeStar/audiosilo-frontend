@@ -1,19 +1,22 @@
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
+import type { ProxyRefusalStatus } from '@/api/client';
 import { needsProxyNotice, useProxyRefusals } from '@/api/proxy-refusal';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { isKidAccount } from '@/lib/account';
+import { useLayout } from '@/lib/layout';
 import { pushInShell } from '@/lib/open';
 import { accountHref } from '@/lib/paths';
-import { canManageProxySet, connectionProxySet } from '@/lib/proxy-headers';
+import { canManageProxySet, connectionProxySet, isLimitedAccount } from '@/lib/proxy-headers';
 import { currentNavState, focusedRoute, type NavState } from '@/lib/root-stack';
 import { cn } from '@/lib/utils';
 import { useProfileConnections } from '@/stores/profiles';
-import { useSession } from '@/stores/session';
+import { type Connection, useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { BANNER_STRIP_CLASS, RECONNECT_STRIP_CLASS } from './reconnect-banner';
+import { BANNER_STRIP_CLASS, RECONNECT_STRIP_CLASS, SignInAgainButton } from './reconnect-banner';
 
 /** The Account page's route name in the shell's stacks (`src/app/(app)/.../account.tsx`). */
 const ACCOUNT_ROUTE = 'account';
@@ -24,6 +27,23 @@ export function onAccountPage(state: NavState | undefined, connectionId: string)
   const route = focusedRoute(state);
   const params = (route?.params ?? {}) as Record<string, unknown>;
   return route?.name === ACCOUNT_ROUTE && params.connection === connectionId;
+}
+
+/** The banner's words (their key): what the account can do about the refusal
+ * (`ProxyRefusedBanner`). A 401 may be the server's refusal of the token with its mark dropped
+ * (WS-401-MARK), so a kid's account is told who can pair it again; a proxy's 403 never is. */
+function bannerKey(
+  canManage: boolean,
+  status: ProxyRefusalStatus | undefined,
+  user: Connection['user'],
+) {
+  if (canManage)
+    return isKidAccount(user) && status === 401
+      ? 'proxyHeaders.refusedBannerPair'
+      : 'proxyHeaders.refusedBanner';
+  if (user?.is_demo) return 'proxyHeaders.refusedPlain';
+  if (status === undefined) return 'proxyHeaders.askGrownUp';
+  return status === 401 ? 'proxyHeaders.refusedAskGrownUpPair' : 'proxyHeaders.refusedAskGrownUp';
 }
 
 /**
@@ -39,11 +59,17 @@ export function onAccountPage(state: NavState | undefined, connectionId: string)
  * headers typed for its sign-in (`signInProxySets`, the kept set stale), until a grown-up
  * updates the address's set. A connection that needs signing in again shows the reconnect
  * banner only. The first such connection, in connection order. On that connection's Account
- * page already, a tap pushes nothing (`onAccountPage`).
+ * page already, a tap pushes nothing (`onAccountPage`). A full account's 401 refusal also
+ * offers Sign in again (`reconnectConnection`, the reconnect banner's flow): a server known to
+ * mark its 401s has every unmarked one read as a refusal (WS-401-MARK), so a real revoke
+ * behind a proxy that drops the mark lands here, and signing in again is its way out. A kid's
+ * account, which never signs itself in, is told to ask a grown-up to pair it again; a
+ * proxy's 403 offers neither (no sign-in gets past it).
  */
 export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
   const themed = useThemeColors();
   const { t } = useTranslation();
+  const phone = useLayout() === 'phone';
   const refused = useProxyRefusals((s) => s.refused);
   const connections = useSession((s) => s.connections);
   const sets = useSession((s) => s.proxySets);
@@ -53,22 +79,22 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
   );
   if (!conn) return null;
 
+  const status = refused[conn.id];
   const canManage =
-    !!refused[conn.id] && canManageProxySet(conn, connectionProxySet(sets, conn), connections);
+    status !== undefined && canManageProxySet(conn, connectionProxySet(sets, conn), connections);
+  // A 401 may be the server's refusal of the token with its mark dropped (WS-401-MARK): a
+  // full account signs in again here, a kid's account (which never signs itself in) is told
+  // who can pair it again. A proxy's 403 is no such thing.
+  const mayBeSignedOut = status === 401;
   const content = (
     <>
       <Icon name="key" size={13} color={themed.brand} />
       <Text variant="caption" className="flex-1 text-brand-ink">
-        {canManage
-          ? t('proxyHeaders.refusedBanner', { name: conn.name })
-          : conn.user?.is_demo
-            ? t('proxyHeaders.refusedPlain', { name: conn.name })
-            : refused[conn.id]
-              ? t('proxyHeaders.refusedAskGrownUp', { name: conn.name })
-              : t('proxyHeaders.askGrownUp')}
+        {t(bannerKey(canManage, status, conn.user), { name: conn.name })}
       </Text>
     </>
   );
+
   const strip = cn(BANNER_STRIP_CLASS, RECONNECT_STRIP_CLASS, className);
 
   if (!canManage) {
@@ -78,18 +104,59 @@ export function ProxyRefusedBanner({ className }: { className?: string } = {}) {
       </View>
     );
   }
-  return (
+  // Never a kid's or a demo's account (which may still manage a set no full account
+  // reaches): they sign in some other way.
+  const signInAgain = mayBeSignedOut && !isLimitedAccount(conn.user);
+  const openAccount = () => {
+    if (!onAccountPage(currentNavState(), conn.id)) pushInShell(accountHref(conn.id));
+  };
+  const toAccount = (
     <Pressable
       testID="proxy-refused-banner"
       accessibilityRole="button"
       accessibilityHint={t('proxyHeaders.refusedBannerHint')}
-      onPress={() => {
-        if (!onAccountPage(currentNavState(), conn.id)) pushInShell(accountHref(conn.id));
-      }}
-      className={cn(strip, 'active:opacity-80')}
+      onPress={openAccount}
+      className={cn(
+        // Beside Sign in again: the strip's own row and padding, and on a phone the whole
+        // first line, so the button wraps under the words rather than squeezing them into a
+        // column a few words wide.
+        signInAgain
+          ? cn(
+              'min-w-[200px] flex-1 flex-row items-center gap-2 self-stretch px-3 py-2',
+              phone && 'basis-full',
+            )
+          : strip,
+        'active:opacity-80',
+      )}
     >
       {content}
-      <Icon name="chevron-right" size={13} color={themed.brand} />
+      {/* Beside Sign in again, a chevron would read as the button's. */}
+      {signInAgain ? null : <Icon name="chevron-right" size={13} color={themed.brand} />}
+    </Pressable>
+  );
+  if (!signInAgain) return toAccount;
+  // The whole strip but the button opens Account, its edges and the room around the button
+  // too. Only the words are the button screen readers meet: the strip around them is just more
+  // of it to tap.
+  return (
+    <Pressable
+      testID="proxy-refused-strip"
+      accessible={false}
+      focusable={false}
+      onPress={openAccount}
+      className={cn(
+        'flex-row flex-wrap items-center border-b border-b-border',
+        RECONNECT_STRIP_CLASS,
+        className,
+      )}
+    >
+      {toAccount}
+      <SignInAgainButton
+        conn={conn}
+        size="sm"
+        variant="ghost"
+        className={cn('mx-1', phone && 'mb-1')}
+      />
     </Pressable>
   );
 }

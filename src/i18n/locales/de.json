@@ -131,6 +131,7 @@
         "set": "Festgelegt",
         "notSet": "Nicht festgelegt",
         "current": "Aktuelles Passwort",
+        "currentWrong": "Das ist nicht dein aktuelles Passwort.",
         "currentPlaceholder": "Dein aktuelles Passwort",
         "new": "Neues Passwort",
         "newPlaceholder": "Mindestens {{min}} Zeichen",
@@ -1930,7 +1931,8 @@
       "hint": "Deine Anmeldung bei {{name}} ist beendet, darum kann es deine Bücher hier nicht zeigen. Nichts ist verloren.",
       "titleReset": "{{name}} wurde zurückgesetzt",
       "hintReset": "Kopple dieses Gerät erneut mit {{name}}, um deine Bücher hier zu sehen."
-    }
+    },
+    "signInAgainTo": "Wieder anmelden bei {{name}}"
   },
   "nav": {
     "home": "Start",
@@ -2427,10 +2429,15 @@
       "value": "Gib einen Wert in einer Zeile ein."
     },
     "refusedBanner": "Der Anmelde-Proxy für {{name}} hat dieses Gerät abgewiesen: Aktualisiere die Proxy-Header unter Konto",
+    "refusedBannerPair": "Der Anmelde-Proxy für {{name}} hat dieses Gerät abgewiesen: Aktualisiere die Proxy-Header unter Konto oder bitte einen Erwachsenen, dieses Gerät neu zu koppeln",
     "refusedBannerHint": "Öffnet das Konto für diesen Server",
     "refusedAskGrownUp": "Der Anmelde-Proxy für {{name}} hat dieses Gerät abgewiesen: Bitte einen Erwachsenen, die Proxy-Header zu aktualisieren",
+    "refusedAskGrownUpPair": "Der Anmelde-Proxy für {{name}} hat dieses Gerät abgewiesen: Bitte einen Erwachsenen, die Proxy-Header zu aktualisieren oder dieses Gerät neu zu koppeln",
     "refusedPlain": "Der Anmelde-Proxy für {{name}} hat dieses Gerät abgewiesen",
-    "askGrownUp": "Bitte einen Erwachsenen, die Proxy-Header zu aktualisieren."
+    "askGrownUp": "Bitte einen Erwachsenen, die Proxy-Header zu aktualisieren.",
+    "askGrownUpPair": "Bitte einen Erwachsenen, die Proxy-Header zu aktualisieren oder dieses Gerät neu zu koppeln.",
+    "signInAgainBody": "Wenn die Proxy-Header stimmen, ist deine Anmeldung bei {{name}} vielleicht abgelaufen: Melde dich wieder an.",
+    "refusedRetry": "Der Anmelde-Proxy für {{name}} hat dieses Gerät abgewiesen. Nichts geht verloren: Versuch es noch einmal, sobald der Proxy es durchlässt."
   },
   "year": {
     "eyebrow": "Dein Hörjahr",

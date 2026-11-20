@@ -204,6 +204,30 @@ describe('password card and dialog', () => {
     expect(mockForgetPair).not.toHaveBeenCalled();
   });
 
+  // The server names a wrong current password (`current_password_incorrect`): said in the
+  // listener's language under the Current password field, never the server's English under
+  // the new one.
+  it('says a wrong current password under its own field, in words of its own', async () => {
+    mockUser = user({ has_password: true });
+    mockApi.setPassword.mockRejectedValue(
+      new ApiError(401, 'current password is incorrect', 'current_password_incorrect'),
+    );
+    await mountWithPortal(<Harness />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Change password' }));
+    await fireEvent.changeText(screen.getByLabelText('Current password'), 'wrongpassword');
+    await fireEvent.changeText(screen.getByLabelText('New password'), 'newpassword');
+    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText("That isn't your current password.")).toBeTruthy();
+    expect(screen.queryByText('current password is incorrect')).toBeNull();
+    expect(screen.getByLabelText('Current password').props['aria-invalid']).toBe(true);
+    expect(screen.getByLabelText('New password').props['aria-invalid']).toBeUndefined();
+    // Another try clears it.
+    mockApi.setPassword.mockResolvedValue(undefined);
+    await fireEvent.changeText(screen.getByLabelText('Current password'), 'rightpassword');
+    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.queryByText("That isn't your current password.")).toBeNull());
+  });
+
   it('says only what is true of an account without a password, never "an invite code" (D8)', async () => {
     mockUser = user({ has_password: false });
     const view = await mountWithPortal(<Harness />);

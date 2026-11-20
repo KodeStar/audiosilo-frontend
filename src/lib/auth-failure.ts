@@ -35,6 +35,11 @@ export function isServerInfoKey(key: readonly unknown[]): boolean {
   return key[0] === 'server';
 }
 
+/** A connection's `/server` query key (`qk.server`), for a reader below the hooks. */
+export function serverInfoKey(cid: string) {
+  return ['server', cid] as const;
+}
+
 /**
  * The connection id to flag as `server-reset`, given a `/server` response for a known
  * connection key. If the server now reports a different `server_id` than the connection's

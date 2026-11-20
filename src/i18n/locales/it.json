@@ -131,6 +131,7 @@
         "set": "Impostata",
         "notSet": "Non impostata",
         "current": "Password attuale",
+        "currentWrong": "Questa non è la tua password attuale.",
         "currentPlaceholder": "La tua password attuale",
         "new": "Nuova password",
         "newPlaceholder": "Almeno {{min}} caratteri",
@@ -1930,7 +1931,8 @@
       "hint": "Il tuo accesso a {{name}} è terminato, quindi non può mostrare qui i tuoi libri. Non si è perso nulla.",
       "titleReset": "{{name}} è stato reimpostato",
       "hintReset": "Associa di nuovo questo dispositivo a {{name}} per vedere qui i tuoi libri."
-    }
+    },
+    "signInAgainTo": "Accedi di nuovo a {{name}}"
   },
   "nav": {
     "home": "Home",
@@ -2427,10 +2429,15 @@
       "value": "Inserisci un valore su una sola riga."
     },
     "refusedBanner": "Il proxy di accesso di {{name}} ha respinto questo dispositivo: aggiorna le intestazioni proxy in Account",
+    "refusedBannerPair": "Il proxy di accesso di {{name}} ha respinto questo dispositivo: aggiorna le intestazioni proxy in Account, oppure chiedi a un adulto di abbinare di nuovo questo dispositivo",
     "refusedBannerHint": "Apre l'account di questo server",
     "refusedAskGrownUp": "Il proxy di accesso di {{name}} ha respinto questo dispositivo: chiedi a un adulto di aggiornare le intestazioni proxy",
+    "refusedAskGrownUpPair": "Il proxy di accesso di {{name}} ha respinto questo dispositivo: chiedi a un adulto di aggiornare le intestazioni proxy o di abbinare di nuovo questo dispositivo",
     "refusedPlain": "Il proxy di accesso di {{name}} ha respinto questo dispositivo",
-    "askGrownUp": "Chiedi a un adulto di aggiornare le intestazioni proxy."
+    "askGrownUp": "Chiedi a un adulto di aggiornare le intestazioni proxy.",
+    "askGrownUpPair": "Chiedi a un adulto di aggiornare le intestazioni proxy o di abbinare di nuovo questo dispositivo.",
+    "signInAgainBody": "Se le intestazioni proxy sono corrette, il tuo accesso a {{name}} potrebbe essere scaduto: accedi di nuovo.",
+    "refusedRetry": "Il proxy di accesso di {{name}} ha respinto questo dispositivo. Non si perde nulla: riprova quando il proxy lo lascia passare."
   },
   "year": {
     "eyebrow": "Il tuo anno di ascolto",

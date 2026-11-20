@@ -50,11 +50,14 @@ const mockApi = {
 const mockBases: string[] = [];
 // The proxy headers (fe#167) each client was built with (its sixth argument).
 const mockProxies: unknown[] = [];
+// What each client was told of the server's 401 mark (its eighth argument).
+const mockMarks: (undefined | (() => boolean | undefined))[] = [];
 jest.mock('@/api/client', () => ({
   ...jest.requireActual('@/api/client'),
   ApiClient: function ApiClient(base: string, ...rest: unknown[]) {
     mockBases.push(base);
     mockProxies.push(rest[4] ?? null);
+    mockMarks.push(rest[6] as undefined | (() => boolean | undefined));
     // Sends a set whenever it is given one (connect-client.test.ts holds the origin rule).
     return Object.assign(Object.create(mockApi), {
       proxyHeadersFor: () => (rest[4] ? {} : undefined),
@@ -83,6 +86,7 @@ beforeEach(async () => {
   mockApi.serverInfo.mockResolvedValue({ capabilities: {}, auth: { methods: [] } });
   mockBases.length = 0;
   mockProxies.length = 0;
+  mockMarks.length = 0;
   useSession.setState({
     status: 'unauthenticated',
     connections: [],
@@ -203,6 +207,49 @@ it('says the name or password is wrong, and stays', async () => {
   ).toBeTruthy();
   expect(screen.queryByText('invalid credentials')).toBeNull();
   expect(mockReplace).not.toHaveBeenCalled();
+});
+
+// WS-401-MARK: a server whose `/server` says it marks its own 401s never sends one without
+// the mark, so the sign-in's client reads an unmarked one as something in front of it
+// refusing (client.test.ts holds that rule): the words then are the proxy's, not a wrong
+// password.
+describe("the server's 401 mark", () => {
+  it('tells the sign-in what /server said, and words an unmarked 401 as a refusal', async () => {
+    mockApi.serverInfo.mockResolvedValue({
+      capabilities: { unauthorized_mark: true },
+      auth: { methods: [] },
+    });
+    mockApi.login.mockRejectedValue(
+      new ApiError(401, 'invalid credentials', undefined, undefined, true),
+    );
+    await render(<SignInStep server={AWAY} />);
+    await waitFor(() => expect(mockApi.serverInfo).toHaveBeenCalled());
+    await signInWith('chris', 'nope');
+    expect(
+      await screen.findByText(
+        "The server's sign-in proxy turned this device away. Check the proxy headers for this address, then try again.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/username or password is wrong/)).toBeNull();
+    // The sign-in's client (built as it is sent) reads the flag.
+    expect(mockMarks.at(-1)?.()).toBe(true);
+  });
+
+  it.each([
+    ['an older server', { capabilities: {}, auth: { methods: [] } }],
+    ['a server that did not answer', null],
+  ])('leaves the 401 to its body for %s', async (_, info) => {
+    if (info) mockApi.serverInfo.mockResolvedValue(info);
+    else mockApi.serverInfo.mockRejectedValue(new Error('offline'));
+    mockApi.login.mockRejectedValue(new ApiError(401, 'invalid credentials'));
+    await render(<SignInStep server={AWAY} />);
+    await waitFor(() => expect(mockApi.serverInfo).toHaveBeenCalled());
+    await signInWith('chris', 'nope');
+    expect(
+      await screen.findByText('The username or password is wrong. Check them and try again.'),
+    ).toBeTruthy();
+    expect(mockMarks.at(-1)?.()).toBeUndefined();
+  });
 });
 
 it("names the limiter's wait from Retry-After", async () => {
@@ -372,6 +419,26 @@ it('a reconnect away from home: "At home and away" up front, and the paired addr
   // Not the first connection: straight back to the app.
   await waitFor(() => expect(mockDismissTo).toHaveBeenCalledWith('/'));
   expect(conn('srv-1')).toMatchObject({ serverUrl: HOME, token: 'fresh' });
+});
+
+// Sign in again (the reconnect banner, the proxy banner) opens on the account's own way in.
+it('a reconnect opens on the password for an account that has one', async () => {
+  await useSession.getState().setSession({ serverUrl: AWAY, serverId: 'srv-1', token: 't', user });
+  await render(<SignInStep server={AWAY} reconnectId="srv-1.1" />);
+  expect(screen.getByLabelText('Username')).toBeTruthy();
+});
+
+// Denied: an account paired by code alone has no password to type (a plain sign-in opens on
+// the code too: 'prompts for an empty invite code').
+it('a reconnect opens on the code for an account with no password', async () => {
+  await useSession.getState().setSession({
+    serverUrl: AWAY,
+    serverId: 'srv-1',
+    token: 't',
+    user: { ...user, has_password: false },
+  });
+  await render(<SignInStep server={AWAY} reconnectId="srv-1.1" />);
+  expect(screen.queryByLabelText('Username')).toBeNull();
 });
 
 it("a reconnect signs in with the set kept for the address, whoever's sign-in kept it (fe#295)", async () => {
@@ -626,11 +693,13 @@ describe('single sign-on', () => {
   it.each([
     ['in the app or under the Metro dev server (no served origin)', () => (mockServed = null)],
     ['for a server on another origin', () => (mockServed = 'https://other.example.com')],
-  ])('is not offered, nor asked about, %s', async (_, arrange) => {
+  ])('is not offered %s, though the server says it is on', async (_, arrange) => {
     arrange();
     mockApi.serverInfo.mockResolvedValue(serverInfo(true, 'Keycloak'));
     await render(<SignInStep server={AWAY} />);
-    expect(mockApi.serverInfo).not.toHaveBeenCalled();
+    // Asked all the same, for its 401 mark (WS-401-MARK), and its answer in.
+    await waitFor(() => expect(mockApi.serverInfo).toHaveBeenCalled());
+    await act(async () => {});
     expect(screen.queryByTestId('sign-in-oidc')).toBeNull();
   });
 

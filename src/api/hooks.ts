@@ -28,6 +28,7 @@ import {
   SIDECARS_GENERATE,
 } from '@/lib/bridge-jobs';
 import { afterPaint } from '@/lib/after-paint';
+import { serverInfoKey } from '@/lib/auth-failure';
 import { byPosition } from '@/lib/by-position';
 import { parseConnectionId, serverIdOf } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
@@ -143,7 +144,7 @@ import type {
  * a cache entry; the shape is unified with the cross-connection fan-out hooks below so
  * the single- and multi-server views share one cache. */
 export const qk = {
-  server: (cid: string) => ['server', cid] as const,
+  server: serverInfoKey,
   libraries: (cid: string) => ['libraries', cid] as const,
   /** Every folder listing of a library (a prefix of `browse`: whatever its path). */
   folders: (cid: string, lib: number) => ['browse', cid, lib] as const,

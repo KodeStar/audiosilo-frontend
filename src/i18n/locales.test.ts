@@ -33,6 +33,15 @@ describe('locales', () => {
     expect(Object.values(hints).every(Boolean)).toBe(true);
   });
 
+  // A button's screen-reader name starts with the words it shows (WCAG label in name), so a
+  // voice command of the label finds it: Sign in again beside a proxy's refusal is named for
+  // its server after its own label (WS-401-MARK; de/es/fr/pt once said other words).
+  it.each(Object.entries(LOCALES))('%s names Sign in again by the label it shows', (_, l) => {
+    const name = l.reconnect.signInAgainTo.replace('{{name}}', 'X');
+    expect(name.startsWith(l.profiles.signIn.action)).toBe(true);
+    expect(name).toContain('X');
+  });
+
   // The output pill opens AirPlay (iOS, Safari) or Android's output switcher; casting has
   // its own button (src/cast). Its name must not promise Cast.
   it.each(Object.entries(LOCALES))('%s names the output pill without Cast', (_, l) => {

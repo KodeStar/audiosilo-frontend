@@ -480,11 +480,31 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   grown-up to update the proxy headers (`useProxyNotice`, `ProxyRefusedBanner`). A pairing QR or link
   pairs with them when its address is the field's: type the address and the headers first, then
   scan.
-- **A proxy's 401 is not a sign-out, nor its 403 no access.** The server's own 401s and 403s
-  always carry its JSON `error`; a 401 or 403 without one (a page, an empty body, someone else's
-  JSON) is the proxy's (`ApiError.fromProxy`). `isSignedOutError` is false for it, and so is
+- **A proxy's 401 is not a sign-out, nor its 403 no access.** The server marks every 401 of its
+  own with `X-AudioSilo-Unauthorized` (WS-401-MARK; the body's `code`, or `unauthorized`; exposed
+  cross-origin), and the mark decides first: a marked 401 is the server's whatever its body (a
+  proxy that rewrote the server's page), the mark's code standing in for a lost body `code`.
+  Next a body exactly the server's (`serverUnauthorizedBody`: `{error}` or `{error, code}` with
+  one of its 401 codes, nothing else) is the server's: a server before the mark (§15 of
+  CROSS-REPO.md, shipped clients meet older servers), or a proxy that passed it on. Not once the
+  connection's last `/server` answer says the server marks its 401s (capability
+  `unauthorized_mark`, read from the query cache by `connectionClient`, never a request on the
+  401 path; unknown or false keeps the steps below): an unmarked 401 is then never the
+  server's, whatever its body and whether or not the request carried proxy headers, so
+  something in front of it answering in the server's exact shape signs nobody out (the proxy
+  notice instead; a real revoke behind a proxy that drops the mark has its Sign in again,
+  below). Else a 401 to an address the request carried proxy headers to is the proxy's even
+  with a JSON `error` (`send` notes the answer, `unauthorizedOrigin` reads it, so every reader
+  gets it). Else the body decides, as for every 403: the server's own always carry its JSON
+  `error`; one without it (a page, an empty body, someone else's JSON) is the proxy's
+  (`ApiError.fromProxy`, `unauthorizedOrigin`).
+  `isSignedOutError` is false for it (and for the server's own 401 `current_password_incorrect`:
+  a wrong current password on `POST /auth/password` keeps the session), and so is
   `accessRefusal`'s no access (fe#280), so no reconnect banner and no sign-out, and the sign-in step
   says the proxy refused the request (`isProxyRefusal`, `connect.signIn.errors.proxyRefused`).
+  The sign-in step asks `/server` once as it opens and hands its client the mark flag
+  (`connectClientFor`'s `marksUnauthorized`): on a server that marks its 401s an unmarked one to
+  the redeem, the exchange or the login is that refusal, never a wrong code or password.
   Nor is its 403 "not in the library" (`isNotInLibraryError` is never a proxy's: the book, browse
   and player pages keep their Retry, read-along its Try again, and a podcast show's page never
   reads it as a bad link), and `accessRefusal` names it
@@ -495,12 +515,20 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   **Signed in, it is said once per run** (`src/api/proxy-refusal.ts`): every signed-in
   connection's client tells, per answer, whether the proxy refused it or let it through
   (`ApiClient`'s `onProxyAnswer` -> `noteProxyAnswer`); the first refusal starts the
-  connection's episode and the next answer the server itself gave ends it: a success, or its own
-  error envelope (`ApiError.fromServer`: its 401, a 404, a 500), since the proxy let that request
-  through; a gateway's page or no answer says nothing (memory only; a removed connection's goes
+  connection's episode (keeping its status: a 401 once any was, `ProxyRefusalStatus`, back to a
+  403 when the connection signs in again, `noteNewToken`) and the
+  next answer the server gave past its token check ends it: a success, or its own error envelope
+  but a 401, a 429 or a 503, which it writes before or instead of its token check (`ApiError.fromServer`:
+  a 403, a 404, a 500), to a request that carried the token the
+  connection holds, since the proxy let that request through and the token was taken. A public
+  route's answer (`/server`, the sign-in routes: `request`'s `publicRoute`) says nothing: a
+  revoked token behind a proxy that drops the mark is refused everywhere else while `/server`
+  answers 200, and ending the episode there raised it again at the next request and had every
+  queue send again each time. A gateway's page or no answer says nothing either (memory only; a removed connection's goes
   with it, and a renamed one's moves to its new id, or ends there when that is not signed in,
   `moveProxyRefusal`; an answer to a request sent with a set the connection no longer sends there counts for
-  nothing, `connectionClient`). Its end tells the stored queues (`onProxyRefusalsOver`, a signed-in
+  nothing, and so does a refusal of a token it no longer holds (sent before a Sign in again),
+  `connectionClient`). Its end tells the stored queues (`onProxyRefusalsOver`, a signed-in
   connection only): bookmarks, progress, reading places and listening events each send what the
   refusals held at once, by the same kick as a 429's end. While it lasts the shell shows `ProxyRefusedBanner` beside the reconnect banner (not
   for a connection that needs signing in again): it opens the connection's Account page when the
@@ -508,7 +536,19 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   `onAccountPage`), else asks a grown-up, as kids mode does over the stories (`useProxyNotice`,
   by the same rule: never for a connection that needs signing in again). A demo account that
   may not edit the set is only told what happened (`proxyHeaders.refusedPlain`): no grown-up is
-  behind a demo.
+  behind a demo. A full account's banner, and the Account page's Proxy headers card while a 401
+  episode lasts, also offer Sign in again (`reconnectConnection`, the reconnect banner's flow;
+  its screen-reader name starts with its label, `reconnect.signInAgainTo`): a real revoke that a
+  proxy dropping the mark turned into a refusal is otherwise a dead end. A proxy's 403 offers
+  none (no sign-in gets past it); a kid's account, which never signs itself in, is told to ask a
+  grown-up to pair the device again (`proxyHeaders.refusedBannerPair`,
+  `refusedAskGrownUpPair`, kids mode's `askGrownUpPair`). The whole strip but the button opens
+  Account, its padding and edges too; beside the button no chevron is drawn, and on a phone the
+  button always wraps under the words. Sign in again opens the sign-in step on the password for
+  an account that has one (`has_password`), else on the code. The
+  Library's load errors say the proxy refused, with their Retry (`proxyHeaders.refusedRetry`),
+  not that the server did not answer, while a refusal lasts (`useProxyRefused`: never for a sign-in's
+  own set gone stale alone).
   Nor is it refused for good (`isRefusedForGood`): the server never saw the request, so a
   progress or reading save it turned away is queued for once the headers are fixed, never dropped
   (nor is the car's bookmark, `addCarBookmark`, nor a waiting one: a replay stops at it as at a
