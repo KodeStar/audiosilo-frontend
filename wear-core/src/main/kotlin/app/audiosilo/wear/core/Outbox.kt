@@ -121,7 +121,8 @@ class Outbox(
     withContext(Dispatchers.IO) {
       val landed = writer?.drain() == true
       val (account, ticket) = synchronized(lock) {
-        if (generation != discards) throw IOException("Account changed before sync")
+        // The account left: sendChunk stops on the same check.
+        if (generation != discards) return@withContext
         if (landed && !stuck) {
           if (checkpointToRetire) removeCheckpoint()
           return@withContext
@@ -132,7 +133,7 @@ class Outbox(
       // Only the sync thread and the writer touch this lock. Appending a cut on the player
       // thread can proceed while the fallback syncs its bytes.
       synchronized(checkpointLock) {
-        if (ticket != checkpointGeneration) throw IOException("Account changed before sync")
+        if (ticket != checkpointGeneration) return@withContext
         val kept =
           when (val saved = file.load()) {
             JsonLoad.Missing -> emptyList()
