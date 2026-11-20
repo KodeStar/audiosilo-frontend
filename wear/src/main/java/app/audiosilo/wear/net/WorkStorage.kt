@@ -15,12 +15,17 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
 internal fun Throwable.isWorkStorageFailure(): Boolean =
-  generateSequence(this) { it.cause }.any {
+  // Bounded: a cause chain can loop back on itself (initCause across two throwables).
+  generateSequence(this) { it.cause }.take(MAX_CAUSES).any {
     it is SQLiteFullException || it is SQLiteDiskIOException || it is SQLiteCantOpenDatabaseException ||
-      it is IOException ||
+      // A file error only when it names a storage errno: a broken pipe or a bug stays a crash.
+      (it is IOException && it.message?.let(STORAGE_ERRNO::containsMatchIn) == true) ||
       // SQLite may auto-rollback on SQLITE_FULL, masking the original error at endTransaction.
       (it is SQLiteException && it.message?.startsWith("cannot rollback - no transaction is active") == true)
   }
+
+private const val MAX_CAUSES = 16
+private val STORAGE_ERRNO = Regex("""\b(ENOSPC|EDQUOT|EIO|EROFS)\b""")
 
 /** Cleanup after a job and force-stop reconciliation can throw outside an Operation. */
 internal fun storageAwareExecutor(delegate: Executor, failed: (Throwable) -> Unit) =

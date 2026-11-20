@@ -7,6 +7,7 @@ import androidx.work.Configuration
 import app.audiosilo.wear.net.WorkRequests
 import app.audiosilo.wear.net.isWorkStorageFailure
 import app.audiosilo.wear.net.storageAwareExecutor
+import java.io.IOException
 import java.util.concurrent.CompletionException
 import java.util.concurrent.Executor
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +52,11 @@ class WorkStorageTest {
     for (failure in listOf(rollback, init)) executor.execute { throw failure }
     assertEquals(listOf(rollback, init), failures)
     assertFalse(SQLiteException().isWorkStorageFailure())
+    assertTrue(IllegalStateException(IOException("write failed: ENOSPC (No space left on device)")).isWorkStorageFailure())
+    assertFalse("not a storage failure", IllegalStateException(IOException("Broken pipe")).isWorkStorageFailure())
+    val looped = RuntimeException()
+    looped.initCause(RuntimeException(looped))
+    assertFalse("a cause cycle ends", looped.isWorkStorageFailure())
     assertThrows(IllegalArgumentException::class.java) { executor.execute { throw IllegalArgumentException("invalid work") } }
   }
 

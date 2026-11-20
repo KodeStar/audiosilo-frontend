@@ -22,7 +22,9 @@ import kotlinx.coroutines.launch
  * listener finds it ready, then starts PhoneLink (it reads what the phone left at every start).
  */
 class AudioSiloApp : Application(), Configuration.Provider {
-  private val workScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+  // Posted, never immediate: a request made on the main thread must not overtake one a worker
+  // thread made just before it (a sign-out's cancel ahead of the backstop it supersedes).
+  private val workScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
   private val requests = WorkRequests(workScope) { noBackupFilesDir.usableSpace > 0 }
 
   override val workManagerConfiguration: Configuration by lazy {
