@@ -121,7 +121,9 @@ class TokenStore(private val file: File, private val cipher: TokenCipher) {
       return !file.exists() || file.delete()
     }
     return try {
-      JsonFile.atomicWrite(file, cipher.seal(token.toByteArray(Charsets.UTF_8)))
+      // Synced: a power cut must not bring back the empty sign-out marker (`signOutPending`), which
+      // a launch reads as a sign-out and removes the new account's listening.
+      JsonFile.atomicWrite(file, cipher.seal(token.toByteArray(Charsets.UTF_8)), durable = true)
       opened = token
       true
     } catch (_: Exception) {

@@ -125,7 +125,8 @@ class AppModel private constructor(private val context: Context) {
   val files = Files(context)
   private val tokens = TokenStore(files.session, KeystoreCipher())
   val deviceId: String = DeviceIdentity.deviceId(files.deviceIdFile)
-  private val accountFile = JsonFile(files.account, Account.serializer())
+  /** Durable: it names whose listening a launch recovers and which token it sends (`startSession`). */
+  private val accountFile = JsonFile(files.account, Account.serializer(), durable = true)
   private val serverFile = JsonFile(files.server, ServerInfo.serializer())
 
   /** The model's own work: the main thread, so the screens' flows change where they read them. */
