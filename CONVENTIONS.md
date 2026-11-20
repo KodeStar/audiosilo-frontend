@@ -4236,11 +4236,15 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   `SpanRecorder.playingTick`, `recover(carry)`, `keep(heardAt)` and the cut's (`tick`, `cut`), `move`'s `acknowledge`,
   `OpenSpan.fromHeard`, the recorder's `keepPlace` and the stalled-span rule (`Spans.STALL`),
   `PlaceStore.set(save:)` and `PlaceStore.recover`, the `DurableWriter`, and the outbox removing
-  its file when empty. `JsonFile(durable = true)`
+  its file when empty. Also Wear-only, for a full disk: `Resume.plan`'s `clockSkewMs` (this
+  watch's own newer row, `LocalPlace.fromRow`), `PlaceStore.recoverCuts`, `Outbox.recoverListening`
+  with its sent-places fallback (`sentPlacesFile`, `accountId`), `SpanRecorder.forgetAccount`, and
+  `AccountRules.awaitSignOut` in place of the Apple Watch's `signOut` gate. `JsonFile(durable = true)`
   syncs the bytes before its rename and the folder after (a battery death never empties the file): only
-  `outbox.json`, `open-span.json`, `open-span-move.json` and `places.json`, whose loss loses listening; the rest
-  (caches, sync status, acks, the account) is rebuilt from the server or the phone, so it skips
-  the sync. The rate while playing (asked on the main looper, written off it): a plain 5 s tick syncs the open
+  `outbox.json`, `open-span.json`, `open-span-move.json`, `places.json` and `sent-places.json`, whose loss
+  loses listening, and `account.json`, which names whose listening a launch recovers (the token,
+  `session.bin`, is synced too: its emptied form is the sign-out marker); the rest (caches, sync
+  status, acks) is rebuilt from the server or the phone, so it skips the sync. The rate while playing (asked on the main looper, written off it): a plain 5 s tick syncs the open
   span only; the 15 s cut syncs the outbox, then the next span over the closed one (no keep, no
   removal first: the event is kept before the span file changes) and the place. **The place rule**:
   `places.json` is synced on a pause, seek, stop, rate change, the end, a call's hold, a span
