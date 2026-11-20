@@ -353,7 +353,7 @@ class PlaceStore(file: File?, writer: DurableWriter? = null) {
     for (cut in cuts) {
       val at = cut.time ?: continue
       val previous = updated[cut.ref.key]
-      if (cut.start == ListeningStart.RESUME && abs(cut.toPos - cut.fromPos) < Spans.EMPTY_SPAN) continue
+      if (!cut.heardPlace) continue
       if (previous != null && previous.at >= at) continue
       updated[cut.ref.key] = LocalPlace(cut.toPos, cut.toFile, cut.toFilePos, at, cut.playbackSpeed ?: 1.0)
     }
@@ -379,3 +379,7 @@ class PlaceStore(file: File?, writer: DurableWriter? = null) {
     val SERIALIZER = MapSerializer(String.serializer(), LocalPlace.serializer())
   }
 }
+
+/** A play's span that never moved carries the loaded place, not one this watch heard. */
+internal val SpanEvent.heardPlace: Boolean
+  get() = start != ListeningStart.RESUME || abs(toPos - fromPos) >= Spans.EMPTY_SPAN

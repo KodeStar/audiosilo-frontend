@@ -71,6 +71,30 @@ class OutboxTest {
   }
 
   @Test
+  fun aLaterPlayThatNeverMovedDoesNotHideTheSentCutFromTheFallback() = runBlocking {
+    val dir = tempDir()
+    try {
+      val normal = File(dir, "files").apply { writeText("unwritable directory") }
+      val fallback = File(dir, "no_backup/sent-places.json")
+      fun open() = Outbox(normal, acks, DEVICE_ID, DurableWriter(retryAfter = { _, _ -> }), fallback, { "a" }) { clock.now }
+      val heard = (listen("heard", endedAt = "2026-10-25T07:30:00Z") as SpanEvent).copy(fromPos = 625.48, toPos = 640.73)
+      // The next play opened at a place loaded from another device and stopped before it moved.
+      val unmoved = (listen("unmoved", endedAt = "2026-10-25T07:40:00Z") as SpanEvent).copy(fromPos = 100.0, toPos = 100.0)
+      val box = open()
+      box.append(listOf(heard))
+      box.flush(FakeTransport())
+      box.append(listOf(unmoved))
+      box.flush(FakeTransport())
+      val places = PlaceStore(null)
+      val relaunched = open()
+      relaunched.recoverListening("a", places, SpanRecorder(MemorySpanStore(), acks, emit = relaunched::append))
+      assertEquals(640.73, places.place(ref)!!.position, 0.0)
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
   fun aCutIsSentWhenNeitherDirectoryCanKeepItsPlace() = runBlocking {
     val dir = tempDir()
     try {

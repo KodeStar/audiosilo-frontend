@@ -117,7 +117,8 @@ class Outbox(
    */
   private suspend fun protectPlaces(sent: List<ListeningEvent>, generation: Int) {
     val file = sentFile ?: return
-    val cuts = sent.filterIsInstance<SpanEvent>()
+    // The rule recoverCuts reads them by: a newer empty resume must not hide a heard cut.
+    val cuts = sent.filterIsInstance<SpanEvent>().filter { it.heardPlace }
     if (cuts.isEmpty()) return
     withContext(Dispatchers.IO) {
       val landed = writer?.drain() == true
