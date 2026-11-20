@@ -155,6 +155,40 @@ describe('password card and dialog', () => {
     expect(mockReadDevices).toHaveBeenCalledTimes(1);
   });
 
+  // server#285 Q22: a server since 2.7.0 says how many it signed out; the toast names that,
+  // whatever the devices list says (here it still shows another device).
+  it.each<[number, string]>([
+    [2, 'Signed out of 2 other devices. This one stays signed in.'],
+    [1, 'Signed out of 1 other device. This one stays signed in.'],
+    [0, 'This device stays signed in.'],
+  ])('names the %d devices the server says it signed out', async (n, description) => {
+    mockApi.setPassword.mockResolvedValue({ signed_out: n });
+    mockReadDevices.mockResolvedValue([device({ id: 9, current: true }), device({ id: 3 })]);
+    await changePassword();
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith({ title: 'Password changed', description }),
+    );
+    // The list is still read again, to clear the ended devices from it.
+    expect(mockReadDevices).toHaveBeenCalledTimes(1);
+    expect(mockForgetPair).toHaveBeenCalledWith('c');
+  });
+
+  it('says nothing of other devices for a first password, whatever the answer', async () => {
+    mockApi.setPassword.mockResolvedValue({ signed_out: 0 });
+    mockUser = user({ has_password: false });
+    await mountWithPortal(<Harness />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Set a password' }));
+    await fireEvent.changeText(screen.getByLabelText('New password'), 'longenough');
+    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith({
+        title: 'Password set',
+        description: 'Your other devices stay signed in.',
+      }),
+    );
+    expect(mockReadDevices).not.toHaveBeenCalled();
+  });
+
   // server#285: "signed out" only when the change ended some: never with no other device.
   it.each<[string, MyDevice[] | undefined]>([
     ['no other device was signed in', [device({ id: 9, current: true })]],

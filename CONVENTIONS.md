@@ -252,7 +252,11 @@ identifies; native has no CORS. `authHeaders()` (media layers) does not carry it
 
 **Self-service password.** A signed-in user can set/change a password
 (`client.setPassword`) from the per-server account screen so they can get back in on any
-device after signing out without an admin. Sign-out is guarded
+device after signing out without an admin. A change's toast names what it signed out:
+a server since server#285 answers `{signed_out}` (`PasswordChange`), the account's own
+other devices, and the toast counts them; an older one answers 204 with nothing, and the
+toast falls back to comparing the devices list before and after (`use-password-editor.ts`).
+Sign-out is guarded
 (`src/lib/account.ts` `needsPasswordWarning`): a non-admin, non-demo user with **neither a
 password nor a recovery code** (`has_password === false && has_recovery === false`) is
 warned before their only credential (the session token) is revoked - a legacy user who

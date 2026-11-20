@@ -260,6 +260,8 @@
       "doneChanged": "Palavra-passe alterada",
       "doneBody": "Os seus outros dispositivos mantêm a sessão iniciada.",
       "doneSignedOut": "A sessão foi terminada nos seus outros dispositivos. Este mantém a sessão iniciada.",
+      "doneSignedOutCount_one": "A sessão foi terminada em {{count}} outro dispositivo. Este mantém a sessão iniciada.",
+      "doneSignedOutCount_other": "A sessão foi terminada em {{count}} outros dispositivos. Este mantém a sessão iniciada.",
       "doneThisDevice": "Este dispositivo mantém a sessão iniciada.",
       "bodyMember": "{{owner}} configurou esta conta, por isso ainda não tem palavra-passe. Defina uma para iniciar sessão por conta própria num novo dispositivo.",
       "bodyKid": "Uma conta de criança não tem palavra-passe. {{owner}} inicia a sessão da conta num novo dispositivo.",

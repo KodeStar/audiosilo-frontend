@@ -230,6 +230,17 @@ describe('ApiClient', () => {
     expect(JSON.parse(init.body as string)).toEqual({ password: 'longenough' });
   });
 
+  it("answers what a password change ended (server#285), or nothing from an older server's 204", async () => {
+    installFetch(() => ({ status: 200, body: { signed_out: 2 } }));
+    expect(await new ApiClient('https://h', 'tok').setPassword('newpass12', 'oldpass12')).toEqual({
+      signed_out: 2,
+    });
+    installFetch(() => ({ status: 204 }));
+    expect(await new ApiClient('https://h', 'tok').setPassword('newpass12', 'oldpass12')).toBe(
+      undefined,
+    );
+  });
+
   it('includes current_password when changing an existing password', async () => {
     const fetchMock = installFetch(() => ({ status: 204 }));
     await new ApiClient('https://h', 'tok').setPassword('newpass12', 'oldpass12');

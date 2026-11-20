@@ -260,6 +260,8 @@
       "doneChanged": "Passwort geändert",
       "doneBody": "Deine anderen Geräte bleiben angemeldet.",
       "doneSignedOut": "Deine anderen Geräte sind abgemeldet. Dieses bleibt angemeldet.",
+      "doneSignedOutCount_one": "Auf {{count}} anderen Gerät abgemeldet. Dieses bleibt angemeldet.",
+      "doneSignedOutCount_other": "Auf {{count}} anderen Geräten abgemeldet. Dieses bleibt angemeldet.",
       "doneThisDevice": "Dieses Gerät bleibt angemeldet.",
       "bodyMember": "{{owner}} hat dieses Konto eingerichtet, daher hat es noch kein Passwort. Leg eines fest, um dich selbst auf einem neuen Gerät anzumelden.",
       "bodyKid": "Ein Kinderkonto hat kein Passwort. {{owner}} meldet es auf einem neuen Gerät an.",

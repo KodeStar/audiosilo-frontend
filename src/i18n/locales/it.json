@@ -260,6 +260,8 @@
       "doneChanged": "Password cambiata",
       "doneBody": "Gli altri tuoi dispositivi restano connessi.",
       "doneSignedOut": "Gli altri tuoi dispositivi sono stati disconnessi. Questo resta connesso.",
+      "doneSignedOutCount_one": "Disconnesso da {{count}} altro dispositivo. Questo resta connesso.",
+      "doneSignedOutCount_other": "Disconnesso da altri {{count}} dispositivi. Questo resta connesso.",
       "doneThisDevice": "Questo dispositivo resta connesso.",
       "bodyMember": "{{owner}} ha creato questo account, quindi non ha ancora una password. Impostane una per accedere in autonomia da un nuovo dispositivo.",
       "bodyKid": "Un account per bambini non ha password. {{owner}} lo collega su un nuovo dispositivo.",
