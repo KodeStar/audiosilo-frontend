@@ -21,10 +21,10 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.audiosilo.wear.AppModel
+import app.audiosilo.wear.AudioSiloApp
 import app.audiosilo.wear.R
 import app.audiosilo.wear.core.AddressPicker
 import app.audiosilo.wear.core.BookDownload
@@ -155,24 +155,27 @@ class BookWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
      * phone's connection, or Try again).
      */
     fun enqueue(context: Context, ref: BookRef, restart: Boolean = false) {
-      val request =
-        OneTimeWorkRequestBuilder<BookWorker>()
-          .setInputData(workDataOf(KEY_LIBRARY to ref.libraryId, KEY_PATH to ref.path))
-          .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-          .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
-          .addTag(TAG)
-          .build()
-      WorkManager.getInstance(context)
-        .enqueueUniqueWork(workName(ref), if (restart) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request)
+      val name = workName(ref)
+      AudioSiloApp.submitWork(context, name) { wm ->
+        val request =
+          OneTimeWorkRequestBuilder<BookWorker>()
+            .setInputData(workDataOf(KEY_LIBRARY to ref.libraryId, KEY_PATH to ref.path))
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
+            .addTag(TAG)
+            .build()
+        wm.enqueueUniqueWork(name, if (restart) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request)
+      }
     }
 
     fun cancel(context: Context, ref: BookRef) {
-      WorkManager.getInstance(context).cancelUniqueWork(workName(ref))
+      val name = workName(ref)
+      AudioSiloApp.submitWork(context, name, cancel = true) { it.cancelUniqueWork(name) }
     }
 
     /** The account was left: no book of it goes on. */
     fun cancelAll(context: Context) {
-      WorkManager.getInstance(context).cancelAllWorkByTag(TAG)
+      AudioSiloApp.submitWork(context, TAG, dropPrefix = "book:") { it.cancelAllWorkByTag(TAG) }
     }
   }
 }

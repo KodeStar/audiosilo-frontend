@@ -6,6 +6,10 @@
 // whose rules are SyncScheduleTest's.
 package app.audiosilo.wear.core
 
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -228,12 +232,29 @@ class ResumeTest {
   }
 
   @Test
-  fun theWatchsOwnPlaceStandsOverItsOwnRow() {
+  fun aNewerMoveHereKeepsItsFileOverTheWatchsOwnRow() {
     val local = LocalPlace(300.0, "a.mp3", 300.0, at)
     assertEquals(
       plan(300.0, "a.mp3", 300.0),
-      Resume.plan(local, row(device = "watch"), "watch", 2, 1800.0),
+      Resume.plan(local, row(device = "watch", updatedAt = "2026-10-25T07:59:58Z"), "watch", 2, 1800.0),
     )
+  }
+
+  @Test
+  fun relaunchAfterFailedWritesResumesAtTheNewerCutThisWatchSent() {
+    val local = LocalPlace(571.945, "a.mp3", 571.945, at)
+    val sent = row(position = 640.73, device = "watch", version = 29)
+    for (ack in listOf(25, 29)) {
+      assertEquals(plan(640.73, tookRow = true), Resume.plan(local, sent, "watch", ack, 1800.0))
+    }
+  }
+
+  @Test
+  fun aServerClockAheadOfTheWatchDoesNotUndoALaterRewind() {
+    val local = LocalPlace(300.0, at = at)
+    val sent = row(position = 640.73, device = "watch", version = 29, updatedAt = "2026-10-25T08:00:10Z")
+    val p = Resume.plan(local, sent, "watch", 29, 1800.0, clockSkewMs = 15_000.0)
+    assertEquals(plan(300.0), p)
   }
 
   @Test
@@ -430,6 +451,27 @@ class SleepTimerTest {
 
 class AccountRulesTest {
   @Test
+  fun oneSignOutTapSendsTheSpanClosedByStopAndLeavesWhenItIsSent() = runTest {
+    val waiting = MutableStateFlow(1)
+    AccountRules.awaitSignOut(waiting, discard = false) { waiting.value = 0 }
+    assertEquals(0, waiting.value)
+  }
+
+  @Test
+  fun aFinalSpanThatCouldNotBeSentKeepsTheNotSyncedCountForConfirmation() = runTest {
+    val waiting = MutableStateFlow(1)
+    val signOut = launch(start = CoroutineStart.UNDISPATCHED) {
+      AccountRules.awaitSignOut(waiting, discard = false) { /* offline */ }
+    }
+    assertFalse(signOut.isCompleted)
+    assertEquals(1, waiting.value)
+    waiting.value = 0
+    signOut.join()
+    assertFalse(signOut.isCancelled)
+    AccountRules.awaitSignOut(MutableStateFlow(1), discard = true) { error("already confirmed") }
+  }
+
+  @Test
   fun aPairForAnotherAccountIsBlockedWhileEventsWaitUnlessDiscarded() {
     assertEquals(AccountChange.SignIn, AccountRules.change(null, "s.1", 3))
     assertEquals(AccountChange.SameAccount, AccountRules.change("s.1", "s.1", 3))
@@ -439,10 +481,8 @@ class AccountRulesTest {
   }
 
   @Test
-  fun signingOutIsBlockedWhileEventsWaitUnlessDiscarded() {
-    assertEquals(SignOutGate.Blocked(2), AccountRules.signOut(2, discard = false))
-    assertEquals(SignOutGate.Allowed, AccountRules.signOut(2, discard = true))
-    assertEquals(SignOutGate.Allowed, AccountRules.signOut(0, discard = false))
+  fun signingOutWithNoEventsToSendNeedsNoNetwork() = runTest {
+    AccountRules.awaitSignOut(MutableStateFlow(0), discard = false) { error("nothing to send") }
   }
 
   /**

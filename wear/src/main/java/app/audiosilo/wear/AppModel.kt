@@ -34,8 +34,10 @@ import app.audiosilo.wear.core.FileSpanStore
 import app.audiosilo.wear.core.HeldBook
 import app.audiosilo.wear.core.HeldBooks
 import app.audiosilo.wear.core.JsonFile
+import app.audiosilo.wear.core.JsonLoad
 import app.audiosilo.wear.core.ListeningStart
 import app.audiosilo.wear.core.OfferThrottle
+import app.audiosilo.wear.core.LocalPlace
 import app.audiosilo.wear.core.Offers
 import app.audiosilo.wear.core.Outbox
 import app.audiosilo.wear.core.PairMessage
@@ -47,7 +49,6 @@ import app.audiosilo.wear.core.ProgressRow
 import app.audiosilo.wear.core.RemoveTicket
 import app.audiosilo.wear.core.Resume
 import app.audiosilo.wear.core.ServerInfo
-import app.audiosilo.wear.core.SignOutGate
 import app.audiosilo.wear.core.SpanRecorder
 import app.audiosilo.wear.core.StatePublication
 import app.audiosilo.wear.core.SyncSchedule
@@ -59,6 +60,7 @@ import app.audiosilo.wear.net.ApiClient
 import app.audiosilo.wear.net.BookWorker
 import app.audiosilo.wear.net.ContinueListening
 import app.audiosilo.wear.net.SyncWorker
+import app.audiosilo.wear.net.WorkRequests
 import app.audiosilo.wear.playback.LoadedBook
 import app.audiosilo.wear.playback.PlayerEngine
 import app.audiosilo.wear.storage.DeviceIdentity
@@ -81,6 +83,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 
 /** Another device's place offered for the loaded book (Jump / Stay). */
 data class OfferPrompt(val ref: BookRef, val offer: PlaceOffer, val row: ProgressRow)
@@ -138,7 +141,8 @@ class AppModel private constructor(private val context: Context) {
    */
   private val durable = DurableWriter()
   val acks = AckStore(files.acks, durable)
-  val outbox = Outbox(files.root, acks, deviceId, writer = durable)
+  val outbox =
+    Outbox(files.root, acks, deviceId, writer = durable, sentPlacesFile = files.sentPlaces, accountId = { account.value?.accountId })
   private val held = HeldBooks(files.heldBooks)
   val places = PlaceStore(files.places, durable)
 
@@ -184,6 +188,9 @@ class AppModel private constructor(private val context: Context) {
   private val _syncRevision = MutableStateFlow(0)
   val syncRevision: StateFlow<Int> = _syncRevision.asStateFlow()
 
+  private val _unsent = MutableStateFlow(outbox.unsentCount)
+  val unsent: StateFlow<Int> = _unsent.asStateFlow()
+
   /** In front now (written on the main thread; the workers and PhoneLink read the model from theirs). */
   @Volatile private var inForeground = false
 
@@ -200,6 +207,7 @@ class AppModel private constructor(private val context: Context) {
 
   /** Whether the backstop is scheduled, as far as this process knows (null: not asked yet). */
   private var backstopOn: Boolean? = null
+  private var storageRetry: Job? = null
 
   /** Whether an expedite enqueues a worker run (once per run, after any run going). */
   private val expedites = ExpediteGate()
@@ -216,7 +224,9 @@ class AppModel private constructor(private val context: Context) {
 
   init {
     val token = tokens.token()
-    val account = if (token == null) null else accountFile.read()
+    val storedAccount = accountFile.load()
+    val owner = (storedAccount as? JsonLoad.Value)?.value
+    val account = owner.takeIf { token != null }
     val server = serverFile.read()
     _account.value = account
     _server.value = server
@@ -227,6 +237,7 @@ class AppModel private constructor(private val context: Context) {
         else -> Phase.Ready
       }
     outbox.onChange = {
+      _unsent.value = outbox.unsentCount
       _syncRevision.value += 1
       publishState()
     }
@@ -239,7 +250,14 @@ class AppModel private constructor(private val context: Context) {
     // worker when this start is a background one), and its place, newer than the saved one when the
     // kill came between two saves (the 5 s tick keeps the place in memory only), becomes the book's
     // before the span leaves its file. Its own event, when the last process kept it, ends it.
-    spans.recover { left -> places.recover(left, outbox.events) }
+    if (tokens.signOutPending || (storedAccount == JsonLoad.Missing && token != null)) {
+      forgetAccount()
+    } else if (owner != null) {
+      outbox.recoverListening(owner.accountId, places, spans)
+    } else if (storedAccount == JsonLoad.Missing) {
+      // A kill can interrupt sign-out's removals. Nobody owns this listening any more.
+      forgetListening()
+    }
     // Held across a kill: aged, and queued if a sign-in finished just before it.
     releaseHeld()
     // Book folders no record names (a kill inside a removal) go, off the main thread.
@@ -424,6 +442,7 @@ class AppModel private constructor(private val context: Context) {
       _syncing.value = true
       try {
         for (round in 1..SyncSchedule.WORKER_ROUNDS) {
+          if (_account.value?.accountId != a.accountId) break
           outbox.flush(api)
           if (outbox.unsentCount == 0 || outbox.lastFlushFailed) break
         }
@@ -438,6 +457,17 @@ class AppModel private constructor(private val context: Context) {
 
   /** A SyncWorker run threw: the runs appended after it fail with it, so none waits to start. */
   fun syncRunFailed() = expedites.cancelled()
+
+  /** A WorkManager task failed outside our enqueue. Check what the current account still needs. */
+  internal fun retrySyncAfterStorageFailure() {
+    if (storageRetry?.isActive == true) return
+    storageRetry = scope.launch {
+      delay(WorkRequests.RETRY_MS)
+      expedites.cancelled()
+      backstopOn = null
+      schedule(SyncSchedule.Trigger.TIMER)
+    }
+  }
 
   // Playing
 
@@ -478,6 +508,7 @@ class AppModel private constructor(private val context: Context) {
         Pulled.NoAnswer -> listOfNotNull(library.keptPlace(record.ref), cache.serverPlace).maxByOrNull { it.version }
       }
     val kept = places.place(record.ref)
+    val skew = outbox.state.clockSkewMs ?: 0.0
     val plan =
       Resume.plan(
         kept,
@@ -486,8 +517,14 @@ class AppModel private constructor(private val context: Context) {
         acks.ackVersion(record.ref),
         timeline.total,
         waiting = outbox.events.any { it.ref == record.ref },
+        clockSkewMs = skew,
       )
-    if (plan.tookRow && row != null) acks.ackResume(row)
+    if (plan.tookRow && row != null) {
+      if (row.deviceId == deviceId && !row.finished) {
+        LocalPlace.fromRow(row, skew)?.let { places.set(record.ref, it) }
+      }
+      acks.ackResume(row)
+    }
     engine.load(LoadedBook(record.ref, record.title, record.author, timeline, local), plan, Resume.savedSpeed(plan, kept, row))
     // Offered only from the server's answer, never from a kept place.
     if (!plan.tookRow && pulled is Pulled.Answered && pulled.row != null) checkOffer(listOf(pulled.row))
@@ -770,17 +807,15 @@ class AppModel private constructor(private val context: Context) {
         return
       }
     val session = exchanged.answer
-    if (change == AccountChange.Replace) {
-      // Its token ends on its server too (as Sign out does): this watch forgets it now. A sign-in
-      // again for the same account exchanges only without the server's word for its token (D6,
-      // above).
-      leaveAccount()
-    } else if (change == AccountChange.SignIn && accountFile.read()?.accountId != p.accountId) {
-      // The token was lost, and what is here is another account's: never sent under this one.
-      forgetAccount()
-    }
-    if (!tokens.setToken(session.token)) {
-      failed("The watch could not keep its sign-in.")
+    if (_account.value?.accountId != current?.accountId) return
+    val cleared =
+      when {
+        change == AccountChange.Replace -> leaveAccount()
+        change == AccountChange.SignIn && (tokens.signOutPending || accountFile.read()?.accountId != p.accountId) -> forgetAccount()
+        else -> true
+      }
+    if (!cleared) {
+      failed("The watch could not remove the previous account's listening. Free some space and send again from your phone.")
       publishState()
       return
     }
@@ -794,7 +829,11 @@ class AppModel private constructor(private val context: Context) {
         addresses = AddressPicker.merge(p.addresses, session.addresses),
         signedInAt = Instant.now(),
       )
-    accountFile.write(a)
+    if (!tokens.startSession(a, accountFile, session.token)) {
+      failed("The watch could not keep its sign-in.")
+      publishState()
+      return
+    }
     _account.value = a
     router.start(if (AddressPicker.isOwn(exchanged.base, a.serverUrl, a.addresses)) exchanged.base else null)
     _phase.value = Phase.Ready
@@ -858,44 +897,59 @@ class AppModel private constructor(private val context: Context) {
    * Sign out (decision 3): the player stops first (its span closes), then blocked while events wait
    * unless `discard`.
    */
-  fun signOut(discard: Boolean): SignOutGate {
+  suspend fun signOut(discard: Boolean): Boolean {
+    val mine = ++playGeneration
     engine.stop()
-    val gate = AccountRules.signOut(outbox.unsentCount, discard)
-    if (gate != SignOutGate.Allowed) return gate
+    AccountRules.awaitSignOut(unsent, discard, ::flush)
+    // A waiting request can wake inside an outbox callback. Finish applying its answer first.
+    yield()
+    // Playback started again, or another sign-out or account switch won while the final send ran.
+    if (mine != playGeneration || (!discard && outbox.unsentCount > 0)) return true
     leaveAccount()
+    if (_account.value != null) return false
     _phase.value = Phase.Setup(SetupStatus.Waiting)
     publishState()
-    return gate
+    return true
   }
 
   /**
    * Forget the account and end its token on its server too. The client is taken first: forgetting
    * drops the token it needs. Quiet when the server can't be told (the watch has forgotten it).
    */
-  private fun leaveAccount() {
+  private fun leaveAccount(): Boolean {
     val leaving = client()
-    forgetAccount()
-    if (leaving != null) scope.launch { orNull { leaving.logout() } }
+    val cleared = forgetAccount()
+    if (leaving != null && _account.value == null) scope.launch { orNull { leaving.logout() } }
+    return cleared
   }
 
   /** The account's files on the `durable` writer. */
   private fun accountFiles(): List<File> = listOf(files.acks, files.places, files.openSpan, files.openSpanMove) + outbox.files
 
-  /** Drop everything of the account (AccountRules was asked first). */
-  internal fun forgetAccount() {
+  private fun forgetListening() {
+    durable.forget(accountFiles().map { JsonFile.writerKey(it) })
+    spans.forgetAccount()
+    outbox.discardAll()
+    acks.clear()
+    places.clear()
+  }
+
+  /** Drop this account. A new account may take its place once its files have gone. */
+  private fun forgetAccount(): Boolean {
+    playGeneration++
     engine.stop()
+    val previousOwner = _account.value?.accountId ?: accountFile.read()?.accountId
+    // A kill during removal must relaunch signed out. The empty session file distinguishes
+    // explicit sign-out from a lost token whose owner can still re-pair and recover listening.
+    if (!tokens.beginSignOut() && !accountFile.write(null)) return false
     // Definitely gone now (a blocked or failed replace never gets here): no titles of it stay.
-    held.forget(_account.value?.accountId ?: accountFile.read()?.accountId, Instant.now())
+    held.forget(previousOwner, Instant.now())
     removeAllBooks()
     library.clear()
     files.items.deleteRecursively()
     // The account's listening writes still queued go, its files removed next: one a full disk
     // still refuses neither holds the removals back nor keeps the main looper on its tries.
-    durable.forget(accountFiles().map { JsonFile.writerKey(it) })
-    acks.clear()
-    places.clear()
-    spans.forgetMove()
-    outbox.discardAll()
+    forgetListening()
     SyncWorker.cancelAll(context)
     expedites.cancelled()
     backstopOn = false
@@ -905,13 +959,12 @@ class AppModel private constructor(private val context: Context) {
     _server.value = null
     _pendingReplace.value = null
     pendingPair = null
-    // The account's listening is off the disk before the account is: a kill in between must not
-    // leave its outbox to be sent under the next one. Each removal above is tried once, in order;
-    // a write that fails is not waited for (`drain` answers at once, the writer tries it again).
-    durable.drain()
-    tokens.setToken(null)
-    accountFile.write(null)
+    // A failed removal keeps retrying after sign-out. A replacement token waits for the drain,
+    // and a signed-out launch asks for the removals again before it can recover listening.
+    durable.submit(JsonFile.writerKey(files.account)) { accountFile.write(null) }
+    durable.submit(JsonFile.writerKey(files.session)) { tokens.setToken(null) }
     _account.value = null
+    return durable.drain()
   }
 
   // The phone's view of the watch

@@ -250,9 +250,15 @@ class SpanRecorder(
     store.saveMove(move)
   }
 
-  /** The account left the watch: a move it recovered is no other account's. */
-  fun forgetMove() {
+  /** The account left. Re-ask both removals even if the writer dropped the stop's pending one. */
+  fun forgetAccount() {
+    recovered = true
+    span = null
     recoveredMove = null
+    nextStart = ListeningStart.RESUME
+    unfinishDue = false
+    finishSent = null
+    store.save(null)
     store.saveMove(null)
   }
 

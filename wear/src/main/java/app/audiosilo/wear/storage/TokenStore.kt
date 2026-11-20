@@ -5,8 +5,10 @@ package app.audiosilo.wear.storage
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import app.audiosilo.wear.core.Account
 import app.audiosilo.wear.core.JsonFile
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -75,11 +77,32 @@ class TokenStore(private val file: File, private val cipher: TokenCipher) {
    */
   private var opened: String? = null
 
+  /** An empty session file marks an explicit sign-out whose account files still need removing. */
+  val signOutPending: Boolean
+    @Synchronized get() = file.isFile && file.length() == 0L
+
+  /** Revoke in place. Truncation needs no new data block, even if the directory refuses unlinks. */
+  @Synchronized
+  fun beginSignOut(): Boolean {
+    opened = null
+    if (signOutPending) return true
+    return try {
+      FileOutputStream(file).use { it.fd.sync() }
+      true
+    } catch (_: IOException) {
+      false
+    }
+  }
+
+  /** On relaunch the account file identifies whose listening the token can send. Keep it first. */
+  fun startSession(account: Account, accountFile: JsonFile<Account>, token: String): Boolean =
+    accountFile.write(account) && setToken(token)
+
   /** The token, or null when there is none or it no longer opens (the key went with a reset). */
   @Synchronized
   fun token(): String? {
     opened?.let { return it }
-    if (!file.exists()) return null
+    if (!file.exists() || signOutPending) return null
     return try {
       String(cipher.open(file.readBytes()), Charsets.UTF_8).also { opened = it }
     } catch (_: Exception) {

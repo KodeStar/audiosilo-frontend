@@ -2,7 +2,9 @@
 // the device id, and the file names.
 package app.audiosilo.wear
 
+import app.audiosilo.wear.core.Account
 import app.audiosilo.wear.core.BookRef
+import app.audiosilo.wear.core.JsonFile
 import app.audiosilo.wear.storage.DeviceIdentity
 import app.audiosilo.wear.storage.Files
 import app.audiosilo.wear.storage.KeystoreCipher
@@ -10,6 +12,7 @@ import app.audiosilo.wear.storage.TokenCipher
 import app.audiosilo.wear.storage.TokenStore
 import java.io.File
 import java.nio.file.Files as NioFiles
+import java.time.Instant
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import org.junit.After
@@ -49,6 +52,39 @@ class TokenStoreTest {
     assertNull(store.token())
     assertFalse(file.exists())
     assertTrue("deleting nothing is fine", store.setToken(null))
+  }
+
+  @Test
+  fun aNewTokenIsInstalledOnlyOnceTheOwnerCanBeKeptOnDisk() {
+    val account = Account("server", "Home", 1, "reader", "https://home.invalid", signedInAt = Instant.EPOCH)
+    val accountFile = JsonFile(File(dir, "account.json"), Account.serializer())
+    val store = TokenStore(File(dir, "session.bin"), PlainCipher())
+    val blocked = File(dir, ".account.json.tmp").apply { mkdir() }
+    assertFalse(store.startSession(account, accountFile, "new token"))
+    assertNull(store.token())
+    blocked.delete()
+    assertTrue(store.startSession(account, accountFile, "new token"))
+    assertEquals(account, accountFile.read())
+    assertEquals("new token", store.token())
+  }
+
+  @Test
+  fun signingOutSurvivesARelaunchWhenTheAccountAndTokenCannotBeUnlinked() {
+    fun undeletable(name: String) = object : File(dir, name) {
+      override fun delete() = false
+    }
+    val metadata = undeletable("account.json").apply { writeText("previous account") }
+    val session = undeletable("session.bin")
+    val cipher = PlainCipher()
+    val store = TokenStore(session, cipher)
+    assertTrue(store.setToken("old token"))
+    assertTrue(store.beginSignOut())
+    assertFalse(metadata.delete())
+    assertFalse(store.setToken(null))
+    val relaunched = TokenStore(session, cipher)
+    assertTrue("continue removing the old listening, even though the old metadata survived", relaunched.signOutPending)
+    assertNull(relaunched.token())
+    assertFalse("a missing token can still be repaired by its owner", TokenStore(File(dir, "missing"), cipher).signOutPending)
   }
 
   @Test
@@ -125,10 +161,11 @@ class FilesTest {
   }
 
   @Test
-  fun everythingButTheTokenAndIdLivesUnderFiles() {
+  fun theTokenDeviceIdAndSentPlacesHaveNoBackupPaths() {
     val f = Files(File("/data/files"), File("/data/no_backup"))
     assertEquals(File("/data/no_backup/session.bin"), f.session)
     assertEquals(File("/data/no_backup/device-id"), f.deviceIdFile)
+    assertEquals(File("/data/no_backup/sent-places.json"), f.sentPlaces)
     assertEquals(File("/data/files/downloads.json"), f.downloadsIndex)
     assertTrue(f.item(BookRef(1, "A/B")).path.startsWith("/data/files/items/"))
   }

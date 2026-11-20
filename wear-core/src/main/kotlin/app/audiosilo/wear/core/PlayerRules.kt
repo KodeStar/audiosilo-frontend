@@ -199,6 +199,10 @@ data class LocalPlace(
   companion object {
     fun of(end: SpanEnd, at: Instant, speed: Double? = null) =
       LocalPlace(end.pos, end.file, end.filePos, at, speed)
+
+    /** A cut this watch sent, dated on the watch's clock so a later local seek still wins. */
+    fun fromRow(row: ProgressRow, clockSkewMs: Double): LocalPlace? =
+      ISOTime.parse(row.updatedAt)?.let { LocalPlace(row.position, at = it.minusMillis(clockSkewMs.toLong()), speed = row.playbackSpeed) }
   }
 }
 
@@ -219,9 +223,9 @@ data class ResumePlan(
 
 object Resume {
   /**
-   * Pull before play (CROSS-REPO section 25): the watch's own place unless the server holds a newer
-   * one from another device at a version this watch has not seen; the server's when the watch has
-   * none. A place at the end (or a finished row taken) starts again from 0 with an `unfinish` and a
+   * Pull before play (CROSS-REPO section 25): use the newest place this watch heard, including a
+   * cut the server received while local writes failed. Another device's newer place is taken at
+   * an unseen version. A place at the end (or a finished row taken) starts again with an `unfinish` and a
    * `restart` span. A place the watch keeps over the row may still be offered (`Offers.offerOf`).
    * `waiting`: the book has events still to send (this watch's own unfinish may be among them, so
    * the server's finished row is not news).
@@ -233,11 +237,12 @@ object Resume {
     ackVersion: Int?,
     total: Double,
     waiting: Boolean = false,
+    clockSkewMs: Double = 0.0,
   ): ResumePlan {
     var take: ResumePlan
     if (
       row != null &&
-        (shouldTake(row, local, deviceId, ackVersion) || finishWins(row, local, ackVersion, waiting))
+        (shouldTake(row, local, deviceId, ackVersion, clockSkewMs) || finishWins(row, local, ackVersion, waiting))
     ) {
       take = ResumePlan(row.position, null, null, ListeningStart.RESUME, unfinish = false, tookRow = true)
       if (row.finished) return restart(tookRow = true)
@@ -260,13 +265,18 @@ object Resume {
     return take
   }
 
-  private fun shouldTake(row: ProgressRow, local: LocalPlace?, deviceId: String, ackVersion: Int?): Boolean {
+  private fun shouldTake(row: ProgressRow, local: LocalPlace?, deviceId: String, ackVersion: Int?, clockSkewMs: Double): Boolean {
     if (local == null) return true
     val device = row.deviceId
-    if (device.isNullOrEmpty() || device == deviceId) return false
-    if (row.version <= (ackVersion ?: 0)) return false
+    if (device.isNullOrEmpty()) return false
+    if (device == deviceId) {
+      // A finished row follows finishWins, including its pending unfinish check. Keep this
+      // watch's file at an equal place. An ack alone says nothing about which place survived.
+      val sent = LocalPlace.fromRow(row, clockSkewMs) ?: return false
+      return !row.finished && row.position != local.position && row.version >= (ackVersion ?: 0) && sent.at > local.at
+    }
     val updated = ISOTime.parse(row.updatedAt) ?: return false
-    return updated > local.at
+    return row.version > (ackVersion ?: 0) && updated > local.at
   }
 
   /**
@@ -334,6 +344,23 @@ class PlaceStore(file: File?, writer: DurableWriter? = null) {
     val at = closed?.let { ISOTime.parse(it.endedAt) } ?: span.endedAt
     if (!span.fromHeard && abs(to.pos - span.from.pos) < Spans.EMPTY_SPAN) return
     set(span.ref, LocalPlace.of(to, at, span.speed))
+  }
+
+  /** A cut can reach the outbox or the server before its place lands. Newer local seeks stand. */
+  @Synchronized
+  fun recoverCuts(cuts: List<SpanEvent>) {
+    val updated = places.toMutableMap()
+    for (cut in cuts) {
+      val at = cut.time ?: continue
+      val previous = updated[cut.ref.key]
+      if (cut.start == ListeningStart.RESUME && abs(cut.toPos - cut.fromPos) < Spans.EMPTY_SPAN) continue
+      if (previous != null && previous.at >= at) continue
+      updated[cut.ref.key] = LocalPlace(cut.toPos, cut.toFile, cut.toFilePos, at, cut.playbackSpeed ?: 1.0)
+    }
+    if (updated != places) {
+      places = updated
+      file?.write(places)
+    }
   }
 
   @Synchronized

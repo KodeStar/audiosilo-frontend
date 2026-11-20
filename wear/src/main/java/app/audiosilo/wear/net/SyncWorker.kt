@@ -22,9 +22,9 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import app.audiosilo.wear.AppModel
+import app.audiosilo.wear.AudioSiloApp
 import app.audiosilo.wear.R
 import app.audiosilo.wear.core.SyncSchedule
 import java.util.concurrent.TimeUnit
@@ -79,32 +79,38 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
      * run (`ExpediteGate`): a run still waiting to start sends everything when it does.
      */
     fun expedite(context: Context) {
-      val request =
-        OneTimeWorkRequestBuilder<SyncWorker>()
-          .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-          .setConstraints(connected)
-          .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-          .build()
-      WorkManager.getInstance(context).enqueueUniqueWork(SyncSchedule.UNIQUE_WORK, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+      AudioSiloApp.submitWork(context, SyncSchedule.UNIQUE_WORK) { wm ->
+        // Enqueue can commit before scheduling fails. A retry must append a new work ID.
+        val request =
+          OneTimeWorkRequestBuilder<SyncWorker>()
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .setConstraints(connected)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+            .build()
+        wm.enqueueUniqueWork(SyncSchedule.UNIQUE_WORK, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+      }
     }
 
     /** The 15 minute backstop while events wait (on), or not (off). */
     fun backstop(context: Context, on: Boolean) {
-      val wm = WorkManager.getInstance(context)
       if (!on) {
-        wm.cancelUniqueWork(SyncSchedule.PERIODIC_WORK)
+        cancel(context, SyncSchedule.PERIODIC_WORK)
         return
       }
-      val request =
-        PeriodicWorkRequestBuilder<SyncWorker>(SyncSchedule.PERIODIC_MINUTES, TimeUnit.MINUTES).setConstraints(connected).build()
-      wm.enqueueUniquePeriodicWork(SyncSchedule.PERIODIC_WORK, ExistingPeriodicWorkPolicy.KEEP, request)
+      AudioSiloApp.submitWork(context, SyncSchedule.PERIODIC_WORK) { wm ->
+        val request =
+          PeriodicWorkRequestBuilder<SyncWorker>(SyncSchedule.PERIODIC_MINUTES, TimeUnit.MINUTES).setConstraints(connected).build()
+        wm.enqueueUniquePeriodicWork(SyncSchedule.PERIODIC_WORK, ExistingPeriodicWorkPolicy.KEEP, request)
+      }
     }
 
     /** Signed out: nothing of the account is sent any more. */
     fun cancelAll(context: Context) {
-      val wm = WorkManager.getInstance(context)
-      wm.cancelUniqueWork(SyncSchedule.UNIQUE_WORK)
-      wm.cancelUniqueWork(SyncSchedule.PERIODIC_WORK)
+      cancel(context, SyncSchedule.UNIQUE_WORK)
+      cancel(context, SyncSchedule.PERIODIC_WORK)
     }
+
+    private fun cancel(context: Context, name: String) =
+      AudioSiloApp.submitWork(context, name, cancel = true) { it.cancelUniqueWork(name) }
   }
 }

@@ -80,10 +80,13 @@ class JsonFileTest {
     assertTrue("outbox.json" in synced)
     assertFalse("sync-state.json" in synced)
     assertEquals(listOf("e1"), Outbox(dir, AckStore(null), DEVICE_ID).events.map { it.id })
-    // discardAll writes the status too: it lands, unsynced.
+    outbox.apply(SyncResponse(results = listOf(SyncResult("e1", "applied"))), outbox.events, null, null)
+    assertTrue(File(dir, "sync-state.json").isFile)
+    assertFalse("sync-state.json" in synced)
+    outbox.append(listOf(listen("e2")))
     synced.clear()
     outbox.discardAll()
-    assertTrue(File(dir, "sync-state.json").isFile)
+    assertFalse(File(dir, "sync-state.json").exists())
     assertEquals(listOf("outbox.json"), synced)
     assertEquals(emptyList<String>(), leftovers())
   }
@@ -259,7 +262,7 @@ class DurableRateTest {
     }
 
     /** The launch's recovery, as AppModel runs it. */
-    fun recover() = spans.recover { left -> places.recover(left, outbox.events) }
+    fun recover() = outbox.recoverListening("a", places, spans)
   }
 
   private fun syncedBy(block: () -> Unit): List<String> {

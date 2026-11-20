@@ -248,6 +248,52 @@ class DurableWriterTest {
     }
   }
 
+  @Test
+  fun leavingTheAccountRemovesTheSpanEvenWhenForgetDroppedTheStopsRemoval() {
+    val writer = DurableWriter(retryAfter = { _, _ -> })
+    val stores = Stores(dir, writer)
+    stores.spans.open(book, at(0.0), 1.0)
+    assertTrue(writer.drain())
+    val span = File(dir, "open-span.json")
+    val outbox = File(dir, "outbox.json")
+    assertTrue(span.exists())
+    writer.submit(JsonFile.writerKey(outbox)) { false }
+    clock.advance(12.0)
+    stores.spans.close(at(12.0))
+    assertFalse(writer.drain())
+    writer.forget(listOf(span, outbox, File(dir, "places.json")).map { JsonFile.writerKey(it) })
+    stores.spans.forgetAccount()
+    stores.outbox.discardAll()
+    stores.places.clear()
+    assertTrue(writer.drain())
+    assertFalse("the old account's span is gone before another account can recover it", span.exists())
+    val next = Stores(dir, null)
+    next.spans.recover()
+    assertTrue(next.outbox.events.isEmpty())
+  }
+
+  @Test
+  fun aRefusedSignOutRemovalIsRetriedWhenTheFileCanBeRemoved() {
+    val retries = Retries()
+    val writer = DurableWriter(retryAfter = retries::after)
+    val stores = Stores(dir, writer)
+    val span = File(dir, "open-span.json").apply { mkdir() }
+    val blocker = File(span, "held").apply { createNewFile() }
+    val aside = File(dir, "outbox-unread-1.json").apply { mkdir() }
+    val asideBlocker = File(aside, "held").apply { createNewFile() }
+    stores.spans.forgetAccount()
+    stores.outbox.discardAll()
+    assertFalse("a replacement account cannot start yet", writer.drain())
+    blocker.delete()
+    assertTrue(retries.fire())
+    assertFalse("the old outbox also has to go", writer.drain())
+    asideBlocker.delete()
+    assertTrue(retries.fire())
+    assertTrue(writer.drain())
+    assertFalse(span.exists())
+    assertFalse(aside.exists())
+  }
+
   // A full disk (fe#285): the outbox write of a close fails. The place and the span's removal
   // asked after it wait for it rather than land without it (a kill then would lose the span: gone
   // from its file, its event in no outbox); it is tried again with a growing wait, and once the

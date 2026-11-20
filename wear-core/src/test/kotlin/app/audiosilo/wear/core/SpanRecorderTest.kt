@@ -697,11 +697,24 @@ class SpanRecorderTest {
     store.move = RecoveredMove(BookRef(2, "A/Folder"), ListeningStart.JUMP)
     val s = recorder()
     s.recover()
-    s.forgetMove()
+    s.forgetAccount()
     assertNull("the account left", store.move)
     s.prepareStart(ListeningStart.RESUME)
     s.open(book, at(10.0), 1.0)
     assertEquals(ListeningStart.RESUME, s.span?.start)
+  }
+
+  @Test
+  fun aSignedOutLaunchDropsALeftoverSpanWithoutRecoveringItIntoTheNextAccount() {
+    val old = recorder()
+    old.open(book, at(15.0), 1.0)
+    clock.advance(5.0)
+    old.keep(at(20.0))
+    val next = recorder()
+    next.forgetAccount()
+    next.recover()
+    assertNull(store.stored)
+    assertTrue(emitted.isEmpty())
   }
 
   @Test

@@ -9,6 +9,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.wear.compose.foundation.lazy.items
@@ -95,11 +96,15 @@ fun SyncNowButton(model: AppModel, syncing: Boolean, waiting: Int) {
 
 @Composable
 fun SignOutScreen(model: AppModel) {
-  val revision by model.syncRevision.collectAsState()
+  val scope = rememberCoroutineScope()
+  val waiting by model.unsent.collectAsState()
   val syncing by model.syncing.collectAsState()
   val account by model.account.collectAsState()
   var confirming by remember { mutableStateOf(false) }
-  val waiting = remember(revision) { model.outbox.unsentCount }
+  var storageProblem by remember { mutableStateOf(false) }
+  val signOut: (Boolean) -> Unit = { discard ->
+    scope.launch { storageProblem = !model.signOut(discard) }
+  }
   ListScreen {
     item { ListHeader { Text("Sign out") } }
     account?.let { a -> item { Note("Signed in as ${a.userName} on ${a.serverName}.") } }
@@ -110,9 +115,9 @@ fun SignOutScreen(model: AppModel) {
         FilledTonalButton(onClick = { confirming = true }, modifier = Modifier.fillMaxWidth(), label = { Text("Discard and sign out") })
       }
     } else {
-      // Blocked (stopping the player closed a span), the count above takes over at once.
-      item { Button(onClick = { model.signOut(discard = false) }, modifier = Modifier.fillMaxWidth(), label = { Text("Sign out") }) }
+      item { Button(onClick = { signOut(false) }, modifier = Modifier.fillMaxWidth(), label = { Text("Sign out") }) }
     }
+    if (storageProblem) item { Note("The watch could not remove its sign-in. Free some space and try again.") }
     item { Note(SIGN_OUT_REMOVES) }
   }
   ConfirmDialog(
@@ -120,7 +125,7 @@ fun SignOutScreen(model: AppModel) {
     title = DISCARD_QUESTION,
     onConfirm = {
       confirming = false
-      model.signOut(discard = true)
+      signOut(true)
     },
     onDismiss = { confirming = false },
   )

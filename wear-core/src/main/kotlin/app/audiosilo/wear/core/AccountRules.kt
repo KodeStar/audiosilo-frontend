@@ -3,6 +3,9 @@
 // blocks both until it has gone or the listener explicitly discards it (Track W binding rule).
 package app.audiosilo.wear.core
 
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+
 sealed interface AccountChange {
   /** Nobody signed in: sign in. */
   data object SignIn : AccountChange
@@ -15,12 +18,6 @@ sealed interface AccountChange {
 
   /** Another account while events wait: not until they have gone or are discarded. */
   data class Blocked(val unsent: Int) : AccountChange
-}
-
-sealed interface SignOutGate {
-  data object Allowed : SignOutGate
-
-  data class Blocked(val unsent: Int) : SignOutGate
 }
 
 object AccountRules {
@@ -42,7 +39,11 @@ object AccountRules {
    */
   fun keepsToken(meUserId: Long?, userId: Long): Boolean = meUserId == userId
 
-  /** Whether signing out may go ahead now. */
-  fun signOut(unsent: Int, discard: Boolean): SignOutGate =
-    if (unsent > 0 && !discard) SignOutGate.Blocked(unsent) else SignOutGate.Allowed
+  /** Stopping can close one last span. Give it a send on the same tap that asked to leave. */
+  suspend fun awaitSignOut(unsent: StateFlow<Int>, discard: Boolean, flush: suspend () -> Unit) {
+    if (discard || unsent.value == 0) return
+    flush()
+    // A later Sync now or timer can finish the request while the sign-out screen is still open.
+    unsent.first { it == 0 }
+  }
 }

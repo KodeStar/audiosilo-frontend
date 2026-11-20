@@ -22,9 +22,12 @@
 package app.audiosilo.wear.core
 
 import java.io.File
+import java.io.IOException
 import java.time.Instant
 import kotlin.math.max
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 
@@ -40,6 +43,10 @@ data class SyncState(
   /** How far ahead of the watch's clock the server's was at the last answer (ms). */
   val clockSkewMs: Double? = null,
 )
+
+/** When filesDir is unwritable, noBackupFilesDir can still keep a place before its POST. */
+@Serializable
+private data class SentPlaces(val account: String, val cuts: List<SpanEvent>)
 
 /**
  * Sends one batch: the ApiClient in the app, a fake in the tests. Throws `APIError` for a server's
@@ -58,16 +65,85 @@ class Outbox(
    * the couldn't-sync list lands there one write before it leaves the outbox, so a kill between the
    * two sends it again, never loses it); null: on the caller's thread.
    */
-  writer: DurableWriter? = null,
+  private val writer: DurableWriter? = null,
+  sentPlacesFile: File? = null,
+  private val accountId: () -> String? = { null },
   private val clock: () -> Instant = Instant::now,
 ) {
   private val lock = Any()
   private val eventsFile = directory?.let { JsonFile(File(it, "outbox.json"), EVENTS, durable = true, writer = writer) }
   private val stateFile = directory?.let { JsonFile(File(it, "sync-state.json"), SyncState.serializer(), writer = writer) }
+  private val sentFile = sentPlacesFile?.let { JsonFile(it, SentPlaces.serializer(), durable = true) }
+  private val checkpointLock = Any()
+  @Volatile private var checkpointGeneration = 0L
+  private var checkpointToRetire = false
 
   /** The files it keeps (signing out forgets their writes: `DurableWriter.forget`). */
   val files: List<File>
-    get() = listOfNotNull(eventsFile?.file, stateFile?.file)
+    get() = listOfNotNull(eventsFile?.file, stateFile?.file, sentFile?.file)
+
+  /** Restore the listener's place and close a span left open before a launch can send anything. */
+  fun recoverListening(account: String, places: PlaceStore, spans: SpanRecorder) {
+    val queued = events
+    places.recoverCuts(queued.filterIsInstance<SpanEvent>())
+    // An open span was written after older queued cuts, even across a wall clock change.
+    // Its own closed event, when present, carries its final end.
+    spans.recover { left -> places.recover(left, queued) }
+    synchronized(lock) {
+      val checkpoint = sentFile?.read()?.takeIf { it.account == account }
+      if (checkpoint != null) {
+        places.recoverCuts(checkpoint.cuts)
+        removeCheckpoint()
+      }
+    }
+  }
+
+  private fun removeCheckpoint() {
+    val file = sentFile ?: return
+    // Ordered after the places just restored, or the account's forget. A fresh fallback must
+    // survive a removal that waited behind a failed write.
+    checkpointGeneration++
+    checkpointToRetire = false
+    val generation = checkpointGeneration
+    val remove = { synchronized(checkpointLock) { generation != checkpointGeneration || file.write(null) } }
+    if (writer != null) writer.submit(JsonFile.writerKey(file.file), remove) else remove()
+  }
+
+  /**
+   * Usually the queued outbox write already protects this cut. If it failed, keep the newest
+   * cut per book in the alternate directory before sending. A kill can lose even the HTTP
+   * answer. When both directories are full, the events wait in memory for another sync.
+   */
+  private suspend fun protectPlaces(sent: List<ListeningEvent>, generation: Int) {
+    val file = sentFile ?: return
+    val cuts = sent.filterIsInstance<SpanEvent>()
+    if (cuts.isEmpty()) return
+    withContext(Dispatchers.IO) {
+      val landed = writer?.drain() == true
+      val (account, ticket) = synchronized(lock) {
+        if (generation != discards) throw IOException("Account changed before sync")
+        if (landed && !stuck) {
+          if (checkpointToRetire) removeCheckpoint()
+          return@withContext
+        }
+        checkpointToRetire = true
+        (accountId() ?: throw IOException("Signed out before sync")) to ++checkpointGeneration
+      }
+      // Only the sync thread and the writer touch this lock. Appending a cut on the player
+      // thread can proceed while the fallback syncs its bytes.
+      synchronized(checkpointLock) {
+        if (ticket != checkpointGeneration) throw IOException("Account changed before sync")
+        val kept =
+          when (val saved = file.load()) {
+            JsonLoad.Missing -> emptyList()
+            is JsonLoad.Value -> saved.value.takeIf { it.account == account }?.cuts.orEmpty()
+            else -> throw IOException("Could not read the last sent places")
+          }
+        val latest = (kept + cuts).groupBy { it.ref }.values.map { book -> book.maxBy { it.time ?: Instant.MIN } }
+        if (!file.write(SentPlaces(account, latest))) throw IOException("Could not save the places for sync")
+      }
+    }
+  }
 
   /**
    * The outbox file is there, but could be neither read nor moved aside (`kept`; set before
@@ -212,11 +288,14 @@ class Outbox(
       // Nothing waits, so nothing failed: the 15 s cut runs again (the cold-start state).
       lastFlushFailed = false
       // Never joined to another account's outbox at a later launch.
-      eventsFile?.asides(ASIDE_PREFIX)?.forEach { it.delete() }
+      eventsFile?.asides(ASIDE_PREFIX)?.forEach {
+        JsonFile(it, EVENTS, durable = true, writer = writer).write(null)
+      }
       // A file still in the way goes with them: the listener chose to drop what waits.
       stuck = false
       saveEventsLocked()
-      stateFile?.write(state)
+      stateFile?.write(null)
+      removeCheckpoint()
     }
     onChange?.invoke()
   }
@@ -331,6 +410,8 @@ class Outbox(
   private suspend fun sendChunk(chunk: List<ListeningEvent>, transport: ListeningSyncTransport): Next {
     val sentBefore = discardsNow()
     try {
+      protectPlaces(chunk, sentBefore)
+      if (sentBefore != discardsNow()) return Next.STOP
       val sentAt = clock()
       val answer = transport.syncListening(body(chunk))
       if (sentBefore != discardsNow()) return Next.STOP

@@ -19,7 +19,8 @@
 //   books/<folder>/     each book's rendition files (BookDownload)
 //
 // And under noBackupFilesDir (decision 11): session.bin (the token, sealed by the Keystore key)
-// and device-id (this watch's device_id, a UUID made once).
+// and device-id (this watch's device_id, a UUID made once). sent-places.json holds the
+// account's latest outgoing cuts when its normal listening files cannot be written.
 package app.audiosilo.wear.storage
 
 import android.content.Context
@@ -48,6 +49,7 @@ class Files(val root: File, val noBackup: File) : BookStorage {
   /** The sealed session token. */
   val session: File get() = File(noBackup, "session.bin")
   val deviceIdFile: File get() = File(noBackup, "device-id")
+  val sentPlaces: File get() = File(noBackup, "sent-places.json")
 
   /** A book's item cache file. */
   fun item(ref: BookRef): File = File(items, safeName(ref.key) + ".json")
