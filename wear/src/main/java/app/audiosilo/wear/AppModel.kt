@@ -810,7 +810,15 @@ class AppModel private constructor(private val context: Context) {
         return
       }
     val session = exchanged.answer
-    if (_account.value?.accountId != current?.accountId) return
+    // A session the watch does not keep ends on its server too, as Sign out ends one (`leaveAccount`).
+    fun endSession() {
+      scope.launch { orNull { ApiClient(exchanged.base, session.token).logout() } }
+    }
+    if (_account.value?.accountId != current?.accountId) {
+      // Signed out or switched while it was exchanged: not for the watch as it is now.
+      endSession()
+      return
+    }
     val cleared =
       when {
         change == AccountChange.Replace -> leaveAccount()
@@ -818,6 +826,7 @@ class AppModel private constructor(private val context: Context) {
         else -> true
       }
     if (!cleared) {
+      endSession()
       failed("The watch could not remove the previous account's listening. Free some space and send again from your phone.")
       publishState()
       return
@@ -833,6 +842,8 @@ class AppModel private constructor(private val context: Context) {
         signedInAt = Instant.now(),
       )
     if (!tokens.startSession(a, accountFile, session.token)) {
+      // The token was not kept (`setToken` moves it in whole or not at all).
+      endSession()
       failed("The watch could not keep its sign-in.")
       publishState()
       return
