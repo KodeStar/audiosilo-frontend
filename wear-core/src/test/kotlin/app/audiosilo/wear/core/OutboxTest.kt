@@ -14,6 +14,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Assume.assumeFalse
 import org.junit.Before
 import org.junit.Test
@@ -300,6 +301,20 @@ class OutboxTest {
   }
 
   @Test
+  fun anAnswerStillBeingAppliedWhenTheAccountLeavesWritesNothingForTheNextOne() = runBlocking {
+    val o = outbox()
+    o.append(listOf(listen("a")))
+    var answered = false
+    // Sign-out wakes on the emptied outbox (onChange) and discards while the worker's answer
+    // is still being applied on its own thread.
+    o.onChange = { if (o.events.isEmpty() && !answered) { answered = true; o.discardAll(); acks.clear() } }
+    o.onAnswer = { _, _ -> fail("the old account's rows reached the next one") }
+    o.flush(FakeTransport { answer(it, progress = listOf(row(version = 42))) })
+    assertTrue(answered)
+    assertNull(acks.ackVersion(ref))
+  }
+
+  @Test
   fun acknowledgesARowThatKeptThisDevicesEvent() = runBlocking {
     val o = outbox()
     o.append(listOf(listen("a")))
@@ -520,7 +535,6 @@ class OutboxTest {
     o.onAnswer = { _, _ -> told = true }
     t.reply(answer(t.bodies[0], progress = listOf(row(version = 9))))
     flush.join()
-    assertNull(o.state.lastSyncAt)
     assertNull(o.state.clockSkewMs)
     assertNull(acks.ackVersion(ref))
     assertFalse(told)

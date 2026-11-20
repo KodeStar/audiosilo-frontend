@@ -4303,7 +4303,9 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   try (`writeNow`, `DurableWriter.attempt`): it deletes what it joined only once that try lands;
   one that fails stays queued and is tried again in the background, the asides kept for the next
   launch. Signing out drops queued account writes with `DurableWriter.forget`, then requests
-  removal of both span files, the outbox and its set-aside files, the saved places and the acks.
+  removal of both span files, the outbox and its set-aside files, the sync state, the sent-places
+  fallback, the saved places and the acks. An answer that lands after the discard writes nothing
+  (`Outbox.apply`'s generation).
   An emptied `session.bin` records an interrupted sign-out before cleanup begins. The writer
   retries failed removals, and a launch that finds the marker resumes cleanup. A replacement
   account waits for cleanup before it can sign in.
