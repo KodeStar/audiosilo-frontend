@@ -238,7 +238,9 @@ class AppModel private constructor(private val context: Context) {
         else -> Phase.Ready
       }
     outbox.onChange = {
-      _unsent.value = outbox.unsentCount
+      // Read and set under one lock: a worker's answer and a span closed on the main thread can
+      // both call this, and a stale count written last would leave the sign-out wait stuck.
+      synchronized(_unsent) { _unsent.value = outbox.unsentCount }
       _syncRevision.value += 1
       publishState()
     }
@@ -895,15 +897,19 @@ class AppModel private constructor(private val context: Context) {
   }
 
   /**
-   * Sign out (decision 3): the player stops first (its span closes), then blocked while events wait
-   * unless `discard`.
+   * Sign out (decision 3): the player stops first (its span closes), then what waits is sent and
+   * the sign-out waits for it to go, unless `discard`. False when the watch could not record the
+   * sign-out at all (the account stays).
    */
   suspend fun signOut(discard: Boolean): Boolean {
     val mine = ++playGeneration
     engine.stop()
-    AccountRules.awaitSignOut(unsent, discard, ::flush)
+    // The send runs in the model's scope: leaving the screen cancels the wait, never a flush that
+    // other callers (a worker run) may be waiting on.
+    AccountRules.awaitSignOut(unsent, discard) { scope.launch { flush() } }
     // A waiting request can wake inside an outbox callback. Finish applying its answer first.
-    yield()
+    // Discarding waits for nothing, and a yield would let the span closed above start a send.
+    if (!discard) yield()
     // Playback started again, or another sign-out or account switch won while the final send ran.
     if (mine != playGeneration || (!discard && outbox.unsentCount > 0)) return true
     leaveAccount()
