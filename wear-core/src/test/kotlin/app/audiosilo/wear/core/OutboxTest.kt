@@ -71,7 +71,7 @@ class OutboxTest {
   }
 
   @Test
-  fun aCutWaitsInMemoryWhileNeitherDirectoryCanKeepItsPlace() = runBlocking {
+  fun aCutIsSentWhenNeitherDirectoryCanKeepItsPlace() = runBlocking {
     val dir = tempDir()
     try {
       val normal = File(dir, "files").apply { writeText("") }
@@ -82,11 +82,9 @@ class OutboxTest {
       o.append(listOf(cut))
       val server = FakeTransport()
       o.flush(server)
-      assertTrue(server.bodies.isEmpty())
-      assertEquals(listOf(cut), o.events)
-      fallback.delete()
-      o.flush(server)
+      // A kill could lose what only memory holds. The server keeps it.
       assertEquals(listOf(cut), server.bodies.single().events)
+      assertTrue(o.events.isEmpty())
     } finally {
       dir.deleteRecursively()
     }

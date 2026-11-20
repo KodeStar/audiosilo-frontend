@@ -112,7 +112,8 @@ class Outbox(
   /**
    * Usually the queued outbox write already protects this cut. If it failed, keep the newest
    * cut per book in the alternate directory before sending. A kill can lose even the HTTP
-   * answer. When both directories are full, the events wait in memory for another sync.
+   * answer. When both directories are full the events are sent anyway: the server is then the
+   * only copy a kill cannot lose.
    */
   private suspend fun protectPlaces(sent: List<ListeningEvent>, generation: Int) {
     val file = sentFile ?: return
@@ -134,14 +135,10 @@ class Outbox(
       // thread can proceed while the fallback syncs its bytes.
       synchronized(checkpointLock) {
         if (ticket != checkpointGeneration) return@withContext
-        val kept =
-          when (val saved = file.load()) {
-            JsonLoad.Missing -> emptyList()
-            is JsonLoad.Value -> saved.value.takeIf { it.account == account }?.cuts.orEmpty()
-            else -> throw IOException("Could not read the last sent places")
-          }
+        // An unreadable fallback is replaced by these cuts. A refused write still sends them.
+        val kept = (file.load() as? JsonLoad.Value)?.value?.takeIf { it.account == account }?.cuts.orEmpty()
         val latest = (kept + cuts).groupBy { it.ref }.values.map { book -> book.maxBy { it.time ?: Instant.MIN } }
-        if (!file.write(SentPlaces(account, latest))) throw IOException("Could not save the places for sync")
+        file.write(SentPlaces(account, latest))
       }
     }
   }

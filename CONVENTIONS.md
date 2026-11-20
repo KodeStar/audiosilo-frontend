@@ -4395,8 +4395,8 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   cut it sent while local writes were failing. A newer row from this watch can also restore its
   place in the pull before play, even if a replayed event has already acknowledged that version.
   When the listening writer fails, Wear keeps a per-account copy of the cuts needed for resume
-  in `noBackupFilesDir` before posting. If neither directory can keep the place, the events wait
-  for a later send.
+  in `noBackupFilesDir` before posting. If neither directory can keep the place, the events are
+  sent anyway: the server's copy is the one a kill cannot lose.
 - **Sync (decision 9)**: `AppModel.schedule(trigger)` runs `SyncSchedule.plan`: in front it
   flushes (launch after `spans.recover()`, foreground, each closed span, the 60 s timer, a
   network coming up); in the background `SyncWorker.expedite` (unique `sync`,
