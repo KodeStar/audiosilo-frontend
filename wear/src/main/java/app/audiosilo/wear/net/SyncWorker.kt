@@ -28,13 +28,24 @@ import app.audiosilo.wear.AppModel
 import app.audiosilo.wear.R
 import app.audiosilo.wear.core.SyncSchedule
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
   override suspend fun doWork(): Result {
     val model = withContext(Dispatchers.Main) { AppModel.get(applicationContext) }
-    val outcome = withContext(Dispatchers.Main) { model.syncInBackground() }
+    val outcome =
+      try {
+        withContext(Dispatchers.Main) { model.syncInBackground() }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Throwable) {
+        // A run that throws fails, and so does every run appended after it (APPEND_OR_REPLACE):
+        // none of them starts, so the gate must not wait on one (fe#285).
+        withContext(Dispatchers.Main) { model.syncRunFailed() }
+        throw e
+      }
     return when (outcome) {
       SyncSchedule.Outcome.DONE -> Result.success()
       SyncSchedule.Outcome.RETRY -> Result.retry()
@@ -63,8 +74,9 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
     private val connected = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 
     /**
-     * Send what waits from the background now. KEEP: a run already queued or running flushes until
-     * nothing new waits (`AppModel.syncInBackground`), so a second one adds nothing.
+     * Send what waits from the background now, after any run already going (`APPEND_OR_REPLACE`:
+     * KEEP dropped this while a run was past its last look at the outbox, fe#285). Asked once per
+     * run (`ExpediteGate`): a run still waiting to start sends everything when it does.
      */
     fun expedite(context: Context) {
       val request =
@@ -73,7 +85,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
           .setConstraints(connected)
           .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
           .build()
-      WorkManager.getInstance(context).enqueueUniqueWork(SyncSchedule.UNIQUE_WORK, ExistingWorkPolicy.KEEP, request)
+      WorkManager.getInstance(context).enqueueUniqueWork(SyncSchedule.UNIQUE_WORK, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
 
     /** The 15 minute backstop while events wait (on), or not (off). */

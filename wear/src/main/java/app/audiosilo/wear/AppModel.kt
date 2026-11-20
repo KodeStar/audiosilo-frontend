@@ -28,6 +28,8 @@ import app.audiosilo.wear.core.BookRef
 import app.audiosilo.wear.core.ContinueRow
 import app.audiosilo.wear.core.DownloadIndex
 import app.audiosilo.wear.core.DownloadRecord
+import app.audiosilo.wear.core.DurableWriter
+import app.audiosilo.wear.core.ExpediteGate
 import app.audiosilo.wear.core.FileSpanStore
 import app.audiosilo.wear.core.HeldBook
 import app.audiosilo.wear.core.HeldBooks
@@ -129,21 +131,29 @@ class AppModel private constructor(private val context: Context) {
   val router = AddressRouter(scope)
   val library = ContinueListening(files)
   val downloads = DownloadIndex(files.downloadsIndex)
-  val acks = AckStore(files.acks)
-  val outbox = Outbox(files.root, acks, deviceId)
+
+  /**
+   * The listening's durable files (outbox, open span, places), and the acks and sync state whose
+   * order against them matters, are written off the main looper, in order.
+   */
+  private val durable = DurableWriter()
+  val acks = AckStore(files.acks, durable)
+  val outbox = Outbox(files.root, acks, deviceId, writer = durable)
   private val held = HeldBooks(files.heldBooks)
-  val places = PlaceStore(files.places)
+  val places = PlaceStore(files.places, durable)
 
   /** Closed spans go into the outbox, then a send is scheduled (SyncSchedule's SPAN_CLOSED). */
   val spans =
     SpanRecorder(
-      FileSpanStore(files.openSpan, files.openSpanMove),
+      FileSpanStore(files.openSpan, files.openSpanMove, durable),
       acks,
       emit = { events ->
         outbox.append(events)
         // Posted, not run inside the recorder's own call (a cut opens the next span after this).
         scope.launch(Dispatchers.Main) { schedule(SyncSchedule.Trigger.SPAN_CLOSED) }
       },
+      // The places a close or a move keeps, written in the files' order (fe#285).
+      keepPlace = { ref, place -> places.set(ref, place) },
     )
   val engine = PlayerEngine(context, spans, places)
   private val offers = OfferThrottle()
@@ -191,6 +201,9 @@ class AppModel private constructor(private val context: Context) {
   /** Whether the backstop is scheduled, as far as this process knows (null: not asked yet). */
   private var backstopOn: Boolean? = null
 
+  /** Whether an expedite enqueues a worker run (once per run, after any run going). */
+  private val expedites = ExpediteGate()
+
   /** A network coming up while in front: a trigger only, never a gate (decision 3). */
   private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
@@ -229,10 +242,12 @@ class AppModel private constructor(private val context: Context) {
     spans.recover { left -> places.recover(left, outbox.events) }
     // Held across a kill: aged, and queued if a sign-in finished just before it.
     releaseHeld()
-    // The launch's publish (the flow's first value), then each move of a book's stage: news for the
-    // phone (its Preparing and Downloading rows), whoever moved it, a BookWorker run with the app
-    // closed too, as this model is the process's.
-    scope.launch { downloads.stages.collect { publishState() } }
+    // Book folders no record names (a kill inside a removal) go, off the main thread.
+    scope.launch(Dispatchers.IO) { downloads.dropOrphans(files.books) }
+    // The launch's publish (the flow's first value), then each move of a book's stage, or of
+    // whether the index was saved: news for the phone (its Preparing and Downloading rows),
+    // whoever moved it, a BookWorker run with the app closed too, as this model is the process's.
+    scope.launch { downloads.news.collect { publishState() } }
   }
 
   /** The session token, null when signed out (or it no longer opens). */
@@ -362,7 +377,7 @@ class AppModel private constructor(private val context: Context) {
     if (!canSync) return
     val plan = SyncSchedule.plan(trigger, outbox.unsentCount, inForeground)
     if (plan.flushNow) scope.launch { flush() }
-    if (plan.expedite) SyncWorker.expedite(context)
+    if (plan.expedite && expedites.ask()) SyncWorker.expedite(context)
     setBackstop(plan.backstop)
   }
 
@@ -392,6 +407,8 @@ class AppModel private constructor(private val context: Context) {
    * Flushed again while spans close meanwhile, a few rounds at most.
    */
   suspend fun syncInBackground(): SyncSchedule.Outcome {
+    // From here this run reads the outbox: a span closed later enqueues a run after it.
+    expedites.started()
     val a = _account.value
     val token = tokens.token()
     if (!canSync || a == null || token == null) {
@@ -418,6 +435,9 @@ class AppModel private constructor(private val context: Context) {
     publishState()
     return SyncSchedule.outcome(canSync, outbox.unsentCount, outbox.lastFlushFailed)
   }
+
+  /** A SyncWorker run threw: the runs appended after it fail with it, so none waits to start. */
+  fun syncRunFailed() = expedites.cancelled()
 
   // Playing
 
@@ -513,11 +533,22 @@ class AppModel private constructor(private val context: Context) {
     _offerPrompt.value = OfferPrompt(ref, offer, row)
   }
 
-  /** Jump: move to the offered place (acknowledging the row). */
+  /**
+   * Jump: move to the offered place (acknowledging the row). Acknowledged in memory once the span
+   * the move ends is closed, on the version it was heard on, and before the move's own (on the
+   * row's: `SpanRecorder.move`'s `acknowledge`), and written after the move (fe#285): a kill
+   * between the two leaves the move without its acknowledgement (the watch is at the offered place,
+   * or is offered it again), never the acknowledgement without the move (the old place resumed on
+   * the other device's version, which sends that place back).
+   */
   fun jump(p: OfferPrompt) {
-    acks.answerOffer(p.ref, p.row, p.offer.key)
     _offerPrompt.value = null
-    if (engine.loadedBook == p.ref) engine.seek(p.offer.position, ListeningStart.JUMP)
+    if (engine.loadedBook != p.ref) {
+      acks.answerOffer(p.ref, p.row, p.offer.key)
+      return
+    }
+    engine.seek(p.offer.position, ListeningStart.JUMP) { acks.answerOffer(p.ref, p.row, p.offer.key, save = false) }
+    acks.save()
   }
 
   /**
@@ -560,23 +591,26 @@ class AppModel private constructor(private val context: Context) {
 
   /** Remove a book from the watch: its work, its files, its item and its record. */
   fun removeBook(ref: BookRef) {
-    val r = downloads.record(ref) ?: return
+    downloads.record(ref) ?: return
     // Removing the playing book stops it and closes its span first (decision 3).
     willRemove(ref)
     BookWorker.cancel(context, ref)
-    files.folder(r).deleteRecursively()
-    files.item(ref).delete()
-    downloads.remove(ref)
+    // The record, then its files, under the index's lock: a run still going never makes the
+    // folder again after (`DownloadIndex.whileKept`, fe#285).
+    downloads.remove(ref) { r ->
+      files.folder(r).deleteRecursively()
+      files.item(ref).delete()
+    }
   }
 
-  /** Remove every book (the account was left). */
+  /**
+   * Remove every book (the account was left). No `willRemove` per book: `forgetAccount` has stopped
+   * the player and clears the places and the offer, so a durable write per book would only lengthen
+   * the sign-out's drain on the main thread.
+   */
   private fun removeAllBooks() {
     BookWorker.cancelAll(context)
-    for (r in downloads.removeAll()) {
-      willRemove(r.ref)
-      files.folder(r).deleteRecursively()
-    }
-    files.books.deleteRecursively()
+    downloads.removeAll { files.books.deleteRecursively() }
   }
 
   private fun willRemove(ref: BookRef) {
@@ -844,6 +878,9 @@ class AppModel private constructor(private val context: Context) {
     if (leaving != null) scope.launch { orNull { leaving.logout() } }
   }
 
+  /** The account's files on the `durable` writer. */
+  private fun accountFiles(): List<File> = listOf(files.acks, files.places, files.openSpan, files.openSpanMove) + outbox.files
+
   /** Drop everything of the account (AccountRules was asked first). */
   internal fun forgetAccount() {
     engine.stop()
@@ -852,11 +889,15 @@ class AppModel private constructor(private val context: Context) {
     removeAllBooks()
     library.clear()
     files.items.deleteRecursively()
+    // The account's listening writes still queued go, its files removed next: one a full disk
+    // still refuses neither holds the removals back nor keeps the main looper on its tries.
+    durable.forget(accountFiles().map { JsonFile.writerKey(it) })
     acks.clear()
     places.clear()
     spans.forgetMove()
     outbox.discardAll()
     SyncWorker.cancelAll(context)
+    expedites.cancelled()
     backstopOn = false
     _offerPrompt.value = null
     router.reset()
@@ -864,6 +905,10 @@ class AppModel private constructor(private val context: Context) {
     _server.value = null
     _pendingReplace.value = null
     pendingPair = null
+    // The account's listening is off the disk before the account is: a kill in between must not
+    // leave its outbox to be sent under the next one. Each removal above is tried once, in order;
+    // a write that fails is not waited for (`drain` answers at once, the writer tries it again).
+    durable.drain()
     tokens.setToken(null)
     accountFile.write(null)
     _account.value = null

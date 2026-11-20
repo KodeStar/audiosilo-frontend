@@ -216,6 +216,15 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
   }
 
   /**
+   * Close the span at `at`. A span closed keeps the place itself, between its event and its file's
+   * removal (fe#285); with none open the place is saved here, stamped when the audio last moved:
+   * playing with no span (held by a call, or stalled, SpanRecorder.tick) nothing was heard since.
+   */
+  private fun closeSpan(at: Instant?) {
+    if (spans.close(spanEnd(), at) == null) savePlace(at ?: lastAdvance)
+  }
+
+  /**
    * Kept only as the book plays or moves, with the time that happened (`at`, else now): a place
    * stamped later than it was heard would read as newer than another device's real one. `save`
    * false (the plain 5 s tick) keeps it in memory only: the open span stored on that tick carries
@@ -346,8 +355,7 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     playing = false
     exo?.pause()
     pausedAt = stoppedAt ?: Instant.now()
-    spans.close(spanEnd(), stoppedAt)
-    savePlace(stoppedAt)
+    closeSpan(stoppedAt)
     sleep = sleep?.paused(Instant.now())
     publish()
   }
@@ -375,27 +383,31 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     publish()
   }
 
-  /** Move to `target` (whole-book seconds). `reason` null: a jump, or moved back when behind. */
-  fun seek(target: Double, reason: ListeningStart? = null) {
-    val b = book ?: return
+  /**
+   * Move to `target` (whole-book seconds). `reason` null: a jump, or moved back when behind.
+   * `acknowledge`: an offer's Jump, run between the span the move ends and its own
+   * (`SpanRecorder.move`); at once when nothing moves.
+   */
+  fun seek(target: Double, reason: ListeningStart? = null, acknowledge: () -> Unit = {}) {
+    val b = book ?: return acknowledge()
     val to = Skips.target(target, 0.0, b.timeline.total)
     val place = b.timeline.locate(to)
     val end = b.timeline.spanEnd(place.index, place.positionInTrack)
     // Previous at the book's start: nothing moves, so no span and no newer time on the place.
     val from = spanEnd()
-    if (reason == null && Spans.movesNowhere(from, end) && abs(position - to) < ChapterNav.AT_START) return
+    if (reason == null && Spans.movesNowhere(from, end) && abs(position - to) < ChapterNav.AT_START) return acknowledge()
     // Moved back into a book that played to its end: it is finished on the server and a listen
     // never unfinishes, so the next play sends the `unfinish` (its reason stays the move's).
     if (ended) spans.prepareStart(spans.nextStart, unfinish = true)
-    spans.move(b.playing, end, from, reason, playing, rate)
+    spans.move(b.playing, end, from, reason, playing, rate, acknowledge)
     ended = false
     val p = player()
     if (p.mediaItemCount == 0) setItems(b, place.index, place.positionInTrack) else p.seekTo(place.index, ms(place.positionInTrack))
     position = to
     // A chapter timer's stop crossed while paused has nothing left to stop.
     if (!playing && sleep?.due(to) == true) sleep = null
+    // The move kept its target as the place (`SpanRecorder.move`, in the files' order).
     val now = Instant.now()
-    end?.let { places.set(b.ref, LocalPlace.of(it, now, rate)) }
     lastKeep = now
     lastCut = now
     lastAdvance = now
@@ -488,8 +500,7 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
         if (!playing) return
         if (SystemPause.keepsPlaying(halt)) {
           // A call or an alert holds the audio: the span ends where it last moved, the wish to play stays.
-          spans.close(spanEnd(), lastAdvance)
-          savePlace(lastAdvance)
+          closeSpan(lastAdvance)
           return
         }
         systemPause(halt)
@@ -563,9 +574,15 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     where()?.let { w ->
       val p = b.timeline.bookPosition(w.index, w.positionInTrack)
       if (p.isFinite()) {
-        if (playing && p != position) {
+        if (audioMoved(playing, exo?.isPlaying == true, p, position)) {
           lastAdvance = now
           awaitingAudio = false
+          // Moving again after a stall closed its span (SpanRecorder.tick): a player that stood
+          // still while it said it played never calls onIsPlayingChanged again, so the span opens
+          // here, not at the next 15 s cut with what was heard until then lost (fe#285).
+          if (spans.span == null) {
+            b.timeline.spanEnd(w.index, w.positionInTrack)?.let { spans.open(b.playing, it, rate) }
+          }
         }
         position = p
       }
@@ -597,7 +614,10 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     // Held by a call or an alert nothing moved: the place keeps the time the audio last did
     // (the hold saved it at `lastAdvance`), or it would look newer than another device's. Saved
     // to the disk when a span closed; on the plain 5 s tick the stored open span carries it.
-    if (exo?.isPlaying == true) savePlace(save = cut)
+    // Stamped when the audio last moved: a player that says it plays but stands still (stalled,
+    // SpanRecorder.tick) heard nothing since. A stalled span closed with none after it kept this
+    // place itself (`keepPlace`): in memory only here, not written twice.
+    if (exo?.isPlaying == true) savePlace(lastAdvance, save = cut && spans.span != null)
   }
 
   // Now Playing
@@ -623,5 +643,14 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     private const val SPEAKER_KEY = "speakerConfirmed"
 
     fun ms(seconds: Double): Long = if (seconds.isFinite() && seconds > 0) (seconds * 1000).roundToLong() else 0L
+
+    /**
+     * Whether a tick saw the audio move (`lastAdvance`): the player plays (`audioPlaying`), not only
+     * the wish to (`wish`). Held by a call or an alert the wish stays, and the place a tick reads
+     * after the hold began (up to one tick past the last one) would stamp the hold later than its
+     * own stamp.
+     */
+    fun audioMoved(wish: Boolean, audioPlaying: Boolean, at: Double, last: Double): Boolean =
+      wish && audioPlaying && at != last
   }
 }

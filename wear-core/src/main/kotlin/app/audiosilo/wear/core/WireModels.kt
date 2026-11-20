@@ -65,7 +65,7 @@ data class ServerInfo(
     get() = capabilities?.listeningSync == true && (renditions ?: emptyList()).contains("watch")
 }
 
-@Serializable data class WireUser(val id: Int, val username: String, val displayName: String? = null)
+@Serializable data class WireUser(val id: Long, val username: String, val displayName: String? = null)
 
 /** `POST /auth/exchange` answer. */
 @Serializable
@@ -144,7 +144,7 @@ data class Chapter(
 /** `GET /libraries/{id}/item` (the fields the watch uses). */
 @Serializable
 data class Book(
-  val libraryId: Int? = null,
+  val libraryId: Long? = null,
   val relPath: String,
   val title: String,
   val author: String? = null,
@@ -177,7 +177,7 @@ data class OtherPlace(
 /** A book's progress row (`Progress` in types.ts). */
 @Serializable
 data class ProgressRow(
-  val libraryId: Int,
+  val libraryId: Long,
   val path: String,
   val position: Double,
   val duration: Double,
@@ -200,7 +200,7 @@ data class ProgressRow(
 
 /** A book by its identity (CROSS-REPO section 1: path is the identity, never a DB id). */
 @Serializable
-data class BookRef(val libraryId: Int, val path: String) {
+data class BookRef(val libraryId: Long, val path: String) {
   /** One string per book, for file names and map keys. */
   val key: String
     get() = "$libraryId\u0000$path"
@@ -227,7 +227,7 @@ enum class ListeningStart {
 sealed interface ListeningEvent {
   val id: String
   val kind: String
-  val libraryId: Int
+  val libraryId: Long
   val path: String
   val baseVersion: Int?
 
@@ -254,7 +254,7 @@ sealed interface ListeningEvent {
 data class SpanEvent(
   override val id: String,
   override val kind: String = "listen",
-  override val libraryId: Int,
+  override val libraryId: Long,
   override val path: String,
   val fromPos: Double,
   val toPos: Double,
@@ -284,7 +284,7 @@ data class SpanEvent(
 data class FinishEvent(
   override val id: String,
   override val kind: String,
-  override val libraryId: Int,
+  override val libraryId: Long,
   override val path: String,
   val at: String,
   override val baseVersion: Int? = null,

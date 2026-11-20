@@ -451,6 +451,14 @@ export async function appendInTurn(
   }
 }
 
+/** Run `op` in the outbox's turn for `connectionId`: after every close (`closeSpan`) and
+ * append in turn (`appendInTurn`) asked before it, before any asked after it. An offer
+ * answered by a move acknowledges its row there, once the span it ends is in the outbox
+ * (`answerAfterSpan` in store.ts). */
+export function afterInTurn(connectionId: string, op: () => Promise<void>): Promise<void> {
+  return inTurn(connectionId, [], op);
+}
+
 /** Run `op` in its turn (`spanOps`, after a crashed tab's span is recovered), with `events`
  * waiting in `queued` until it ends, so the web's `pagehide` carries them meanwhile. `op`
  * gets the connection's sign-in at the call (`since`): what it appends belongs to that one. */

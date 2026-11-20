@@ -39,14 +39,14 @@ import kotlinx.serialization.json.put
  * connection id, `connectionIdOf` in src/lib/connection-id.ts). The one spelling, so the ids
  * compared always agree.
  */
-fun accountIdOf(serverId: String, userId: Int): String = "$serverId.$userId"
+fun accountIdOf(serverId: String, userId: Long): String = "$serverId.$userId"
 
 /** `pair`: sign the watch in (the phone minted the pairing token with `POST /auth/pair {"ttl_seconds":600}`). */
 data class PairMessage(
   val serverId: String,
   /** The phone's display label, including the address only for colliding saved server names. */
   val serverName: String,
-  val userId: Int,
+  val userId: Long,
   val userName: String,
   /** Where to exchange first (the pairing payload's `base_url`). */
   val baseUrl: String,
@@ -71,7 +71,7 @@ data class PairMessage(
 @Serializable
 data class BookMessage(
   val serverId: String,
-  val userId: Int,
+  val userId: Long,
   val ref: BookRef,
   val title: String,
   val author: String? = null,
@@ -94,7 +94,7 @@ data class BookMessage(
  */
 data class RemoveMessage(
   val serverId: String,
-  val userId: Int,
+  val userId: Long,
   val ref: BookRef,
   /** When the phone sent it (Wear): an older remove than the download it would remove is ignored. */
   val sentAt: Instant? = null,
@@ -136,7 +136,7 @@ data class WatchStateBook(val ref: BookRef, val title: String, val state: State,
 data class WatchState(
   val signedIn: Boolean,
   val serverId: String? = null,
-  val userId: Int? = null,
+  val userId: Long? = null,
   val appVersion: String,
   val books: List<WatchStateBook>,
   val unsentEvents: Int,
@@ -232,7 +232,7 @@ data class TakenReceipt(val path: String, val sentAt: String?) {
  * the item; path identity is in the payload.
  */
 object BookKey {
-  fun of(accountId: String, libraryId: Int, path: String): String =
+  fun of(accountId: String, libraryId: Long, path: String): String =
     MessageDigest.getInstance("SHA-256")
       .digest("$accountId|$libraryId|$path".toByteArray(Charsets.UTF_8))
       .joinToString("") { "%02x".format(it) }
@@ -293,7 +293,7 @@ object PhoneMessages {
 
   private fun decodePair(m: JsonObject): PairMessage? {
     val serverId = nonEmpty(m["server_id"]) ?: return null
-    val userId = int(m["user_id"]) ?: return null
+    val userId = id(m["user_id"]) ?: return null
     val base = httpURL(m["base_url"]) ?: return null
     val token = nonEmpty(m["pairing_token"]) ?: return null
     val expires = date(m["expires_at"]) ?: return null
@@ -314,8 +314,8 @@ object PhoneMessages {
 
   private fun decodeBook(m: JsonObject): BookMessage? {
     val serverId = nonEmpty(m["server_id"]) ?: return null
-    val userId = int(m["user_id"]) ?: return null
-    val lib = int(m["library_id"]) ?: return null
+    val userId = id(m["user_id"]) ?: return null
+    val lib = id(m["library_id"]) ?: return null
     val path = nonEmpty(m["path"]) ?: return null
     return BookMessage(
       serverId = serverId,
@@ -382,6 +382,24 @@ object PhoneMessages {
     if (p.isString) return p.content.toIntOrNull()
     val d = p.doubleOrNull ?: return null
     return if (d == kotlin.math.floor(d) && d >= Int.MIN_VALUE && d <= Int.MAX_VALUE) d.toInt() else null
+  }
+
+  /**
+   * The largest id a message carries exactly: the phone builds its messages in JavaScript, whose
+   * numbers are exact to 2^53 - 1 (`Number.MAX_SAFE_INTEGER`).
+   */
+  const val MAX_ID: Long = 9_007_199_254_740_991L
+
+  /**
+   * A user or library id (fe#285): any whole number to `MAX_ID` either way (the server's are 64
+   * bits, the phone's exact to 2^53; 32 bits refused a real account), read from its own digits so
+   * none is rounded; past that, or not whole, it is no id.
+   */
+  fun id(v: JsonElement?): Long? {
+    val p = v as? JsonPrimitive ?: return null
+    // A Double past a Long saturates to one, which the range refuses.
+    val n = p.content.toLongOrNull() ?: p.takeUnless { it.isString }?.doubleOrNull?.takeIf { it == kotlin.math.floor(it) }?.toLong()
+    return n?.takeIf { it in -MAX_ID..MAX_ID }
   }
 
   private fun string(v: JsonElement?): String? = (v as? JsonPrimitive)?.takeIf { it.isString }?.content

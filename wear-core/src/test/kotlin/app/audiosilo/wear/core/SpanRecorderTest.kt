@@ -27,6 +27,7 @@ class SpanRecorderTest {
   private lateinit var store: MemorySpanStore
   private lateinit var acks: AckStore
   private val emitted = ArrayList<ListeningEvent>()
+  private val kept = ArrayList<LocalPlace>()
   private var ids = 0
 
   @Before
@@ -35,6 +36,7 @@ class SpanRecorderTest {
     store = MemorySpanStore()
     acks = AckStore(null)
     emitted.clear()
+    kept.clear()
     ids = 0
   }
 
@@ -48,6 +50,7 @@ class SpanRecorderTest {
         "e$ids"
       },
       emit = { emitted += it },
+      keepPlace = { _, p -> kept += p },
     )
 
   private val listens: List<SpanEvent>
@@ -743,8 +746,67 @@ class SpanRecorderTest {
     assertEquals(clock.now, store.stored?.endedAt)
   }
 
+  // fe#285: a span a cut opened while buffering starts after the audio last moved. Paused (or held,
+  // or failed) at that moment, its place is stamped then, not at the span's start as its event is:
+  // a place stamped later than it was heard reads as newer than another device's.
+  @Test
+  fun aSpanClosedWithNoneAfterItKeepsThePlaceWhenTheAudioStopped() {
+    val r = recorder()
+    r.open(book, at(0.0), 1.0)
+    clock.advance(10.0)
+    val heard = clock.now
+    r.keep(at(10.0), heardAt = heard)
+    clock.advance(4.0)
+    assertTrue(r.tick(book, at(10.0), playing = true, reachable = true, speed = 1.0, heardAt = heard))
+    val cutAt = clock.now
+    clock.advance(1.0)
+    r.close(at(10.0), stoppedAt = heard)
+    assertEquals(10.0, kept.last().position, 0.0)
+    assertEquals(heard, kept.last().at)
+    assertTrue(heard < cutAt)
+    // Stopped now (the listener's pause): stamped now.
+    r.open(book, at(10.0), 1.0)
+    clock.advance(3.0)
+    r.close(at(13.0))
+    assertEquals(clock.now, kept.last().at)
+  }
+
+  // fe#285: a stalled span (the audio still for `Spans.STALL` at the 15 s tick) is never cut: it
+  // closes where and when the audio last moved, no span opens while it stays still, and one opens
+  // where it stands once it moves again.
+  @Test
+  fun aStalledSpanClosesWhereTheAudioLastMovedAndNoneFollowsUntilItMoves() {
+    val r = recorder()
+    r.open(book, at(0.0), 1.0)
+    clock.advance(10.0)
+    val heard = clock.now
+    r.keep(at(10.0), heardAt = heard)
+    clock.advance(4.0)
+    // Still for 4 s: an ordinary cut.
+    assertTrue(r.tick(book, at(10.0), playing = true, reachable = true, speed = 1.0, heardAt = heard))
+    assertNotNull(r.span)
+    clock.advance(1.0)
+    assertTrue(r.tick(book, at(10.0), playing = true, reachable = true, speed = 1.0, heardAt = heard))
+    assertNull(r.span)
+    assertNull(store.stored)
+    // The span the cut opened heard nothing: closed then, it says nothing (no 15 s claimed).
+    assertEquals(listOf(0.0 to 10.0), listens.map { it.fromPos to it.toPos })
+    // Still stalled, offline too: nothing opens, nothing is sent.
+    for (reachable in listOf(true, false)) {
+      clock.advance(15.0)
+      assertFalse(r.tick(book, at(10.0), playing = true, reachable = reachable, speed = 1.0, heardAt = heard))
+      assertNull(r.span)
+    }
+    assertEquals(1, listens.size)
+    // It moves again: a span opens where it stands.
+    clock.advance(1.0)
+    r.tick(book, at(11.0), playing = true, reachable = true, speed = 1.0, heardAt = clock.now)
+    assertEquals(11.0, r.span!!.from.pos, 0.0)
+    assertEquals(clock.now, r.span!!.startedAt)
+  }
+
   // fe#285: a span that opens where the closed one ended (a cut, a playing Stay) starts at a place
-  // heard; a move's starts at its target, and a play's at the loaded place.
+  // heard, and a playing move's at its target, a place too; a play's at the loaded place.
   @Test
   fun aCutOrAPlayingStayOpensFromAPlaceHeard() {
     val r = recorder()
@@ -755,7 +817,7 @@ class SpanRecorderTest {
     assertTrue(store.stored!!.fromHeard)
     clock.advance(1.0)
     r.move(book, to = at(40.0), from = at(17.0), playing = true, speed = 1.0)
-    assertFalse(store.stored!!.fromHeard)
+    assertTrue(store.stored!!.fromHeard)
     clock.advance(5.0)
     r.standBy(book, at(45.0), playing = true, speed = 1.0, stay = true)
     assertTrue(store.stored!!.fromHeard)
@@ -796,6 +858,36 @@ class SpanRecorderTest {
     assertEquals(44, listens[0].baseVersion)
     acks.ack(folder, 40) // never lowers
     assertEquals(44, acks.ackVersion(folder))
+  }
+
+  // An offer's Jump (fe#285): the span it ends was heard on the version this watch knew, so it goes
+  // on that one; only the move's own span (playing) or event (paused) goes on the offered row's. On
+  // the row's, the place left behind would replace the other device's newer one on the server, and
+  // a kill before the move's own writes sends it alone.
+  @Test
+  fun aJumpsClosingSpanGoesOnTheVersionBeforeTheOffer() {
+    acks.ack(folder, 41)
+    val offered = row(lib = folder.libraryId, path = folder.path, version = 44, device = "other")
+    val answer = { acks.answerOffer(folder, offered, "other|t", save = false) }
+    val r = recorder()
+    r.open(book, at(10.0), 1.0)
+    clock.advance(20.0)
+    r.move(book, to = at(80.0), from = at(30.0), reason = ListeningStart.JUMP, playing = true, speed = 1.0, acknowledge = answer)
+    assertEquals("the span the jump ends", listOf(41), listens.map { it.baseVersion })
+    clock.advance(5.0)
+    r.close(at(85.0))
+    assertEquals(listOf(41, 44), listens.map { it.baseVersion })
+    assertEquals(listOf(ListeningStart.RESUME, ListeningStart.JUMP), listens.map { it.start })
+
+    // Paused: the move's event alone, on the row's version.
+    acks.clear()
+    acks.ack(folder, 50)
+    emitted.clear()
+    val later = row(lib = folder.libraryId, path = folder.path, version = 52, device = "other")
+    r.move(book, to = at(20.0), from = at(85.0), reason = ListeningStart.JUMP, playing = false, speed = 1.0) {
+      acks.answerOffer(folder, later, "other|u", save = false)
+    }
+    assertEquals(listOf(52), listens.map { it.baseVersion })
   }
 
   // The open span survives a kill as JSON (Files' open-span.json).

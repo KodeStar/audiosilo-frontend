@@ -54,6 +54,16 @@ class PlaybackTest {
     assertEquals(3_600_001L, PlayerEngine.ms(3600.0005))
   }
 
+  // A call's hold keeps the wish to play while the player stops: the tick that reads the stopped
+  // place after it is not the audio moving, so the hold keeps its own stamp.
+  @Test
+  fun onlyAPlayingPlayerMovesTheAudio() {
+    assertEquals(true, PlayerEngine.audioMoved(wish = true, audioPlaying = true, at = 10.4, last = 10.0))
+    assertEquals(false, PlayerEngine.audioMoved(wish = true, audioPlaying = false, at = 10.4, last = 10.0))
+    assertEquals(false, PlayerEngine.audioMoved(wish = false, audioPlaying = true, at = 10.4, last = 10.0))
+    assertEquals(false, PlayerEngine.audioMoved(wish = true, audioPlaying = true, at = 10.0, last = 10.0))
+  }
+
   @Test
   fun nowPlayingFiguresAndSleep() {
     val s = PlayerState(position = 95.0, rate = 1.5, times = NowPlayingTimes(0, "One", 65.4, 600.0))

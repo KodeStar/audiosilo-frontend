@@ -179,16 +179,20 @@ object WearRules {
   /** A blank id is no id, as on the watch (PhoneMessages' `nonEmpty`): never sent, never matched. */
   private fun id(v: Any?): String? = (v as? String)?.takeIf { it.isNotBlank() }
 
+  /** The largest id the watch reads (PhoneMessages' `MAX_ID`): JavaScript's numbers are exact to it. */
+  const val MAX_ID: Long = 9_007_199_254_740_991L
+
   /**
-   * A user or library id as the watch reads it (PhoneMessages' `int`, 32 bits): one past that is
-   * never taken there, so it is never sent, never matched.
+   * A user or library id as the watch reads it (PhoneMessages' `id`): a whole number to 2^53 - 1
+   * either way (it read 32 bits until fe#285). One past that is never taken there, so it is never
+   * sent, never matched.
    */
-  private fun watchInt(v: Any?): Long? = integer(v)?.takeIf { it in Int.MIN_VALUE..Int.MAX_VALUE }
+  private fun watchId(v: Any?): Long? = integer(v)?.takeIf { it in -MAX_ID..MAX_ID }
 
   private fun bookOf(m: Map<String, Any?>): NamedBook? {
     val serverId = id(m["server_id"]) ?: return null
-    val userId = watchInt(m["user_id"]) ?: return null
-    val libraryId = watchInt(m["library_id"]) ?: return null
+    val userId = watchId(m["user_id"]) ?: return null
+    val libraryId = watchId(m["library_id"]) ?: return null
     val path = id(m["path"]) ?: return null
     return NamedBook(serverId, userId, libraryId, path)
   }
@@ -204,12 +208,12 @@ object WearRules {
     if ((message["sent_at"] as? String).isNullOrEmpty()) return null
     return when (message["type"]) {
       // Its ids and its time as the watch's `decodePair` reads them: a pair with a blank id, a user
-      // id past 32 bits or no readable `expires_at` is never taken (and would be put with no alarm).
+      // id past 2^53 or no readable `expires_at` is never taken (and would be put with no alarm).
       "pair" ->
         WearPaths.PAIR.takeIf {
           id(message["server_id"]) != null &&
             id(message["pairing_token"]) != null &&
-            watchInt(message["user_id"]) != null &&
+            watchId(message["user_id"]) != null &&
             expiresAt(message) != null
         }
       "book", "remove" ->
@@ -256,6 +260,16 @@ object WearRules {
       }
       .map { it.path }
 
+  /** How many times an alarm's sweep that did not get through is tried again (fe#285). */
+  const val PRUNE_RETRIES = 6
+
+  /**
+   * How long before the prune sweep's `attempt`th retry (1, 2, 4 ... 32 minutes, about an hour in
+   * all), or null once they are spent: a Data Layer that failed or did not answer (just after a
+   * boot, Play services updating) would otherwise leave the pair until the app next starts.
+   */
+  fun pruneRetryDelayMs(attempt: Int): Long? = if (attempt in 1..PRUNE_RETRIES) 60_000L shl (attempt - 1) else null
+
   /**
    * When the first `pair` in `own` runs out (epoch ms), null with none: the time of the prune that
    * drops it with the app idle (WearLink's alarm), so a pairing token never sits in the Data Layer
@@ -300,7 +314,7 @@ object WearRules {
   fun integer(v: Any?): Long? =
     when (v) {
       is Long -> v
-      is Double -> if (v == Math.floor(v) && !v.isInfinite() && Math.abs(v) <= 9.007199254740991E15) v.toLong() else null
+      is Double -> if (v == Math.floor(v) && !v.isInfinite() && Math.abs(v) <= MAX_ID) v.toLong() else null
       is Number -> integer(v.toDouble())
       else -> null
     }

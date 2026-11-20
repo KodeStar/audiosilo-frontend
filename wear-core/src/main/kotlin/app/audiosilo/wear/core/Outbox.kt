@@ -17,6 +17,8 @@
 // that can't be moved either stays in the way, unwritten, until a later save can (`stuck`).
 //
 // Thread-safe: the app's main thread and the SyncWorker may both call it; one flush runs at a time.
+// Given a `DurableWriter`, `outbox.json` and `sync-state.json` are written there, in the order the
+// changes were made (each write is queued under the lock that made its change).
 package app.audiosilo.wear.core
 
 import java.io.File
@@ -51,11 +53,21 @@ class Outbox(
   private val directory: File?,
   private val acks: AckStore,
   private val deviceId: String,
+  /**
+   * Where `outbox.json`'s writes run, and `sync-state.json`'s in order with them (an event moved to
+   * the couldn't-sync list lands there one write before it leaves the outbox, so a kill between the
+   * two sends it again, never loses it); null: on the caller's thread.
+   */
+  writer: DurableWriter? = null,
   private val clock: () -> Instant = Instant::now,
 ) {
   private val lock = Any()
-  private val eventsFile = directory?.let { JsonFile(File(it, "outbox.json"), EVENTS, durable = true) }
-  private val stateFile = directory?.let { JsonFile(File(it, "sync-state.json"), SyncState.serializer()) }
+  private val eventsFile = directory?.let { JsonFile(File(it, "outbox.json"), EVENTS, durable = true, writer = writer) }
+  private val stateFile = directory?.let { JsonFile(File(it, "sync-state.json"), SyncState.serializer(), writer = writer) }
+
+  /** The files it keeps (signing out forgets their writes: `DurableWriter.forget`). */
+  val files: List<File>
+    get() = listOfNotNull(eventsFile?.file, stateFile?.file)
 
   /**
    * The outbox file is there, but could be neither read nor moved aside (`kept`; set before
@@ -123,20 +135,20 @@ class Outbox(
    * there, joined in memory alone).
    */
   private fun restoredEvents(main: JsonFile<List<ListeningEvent>>): List<ListeningEvent> {
-    val directory = checkNotNull(main.file.parentFile)
     val current = kept(main)
     val have = (current ?: emptyList()).map { it.id }.toMutableSet()
     val older = ArrayList<ListeningEvent>()
     val joined = ArrayList<File>()
-    for (file in asideFiles(directory)) {
+    for (file in main.asides(ASIDE_PREFIX)) {
       val more = JsonFile(file, EVENTS).read() ?: continue
       older += more.filter { have.add(it.id) }
       joined += file
     }
     val events = older + (current ?: emptyList())
     if (joined.isEmpty() || stuck) return events
-    // Gone only once they are safely in the outbox (a full disk: tried again next launch).
-    if (main.save(events)) joined.forEach { it.delete() }
+    // Gone only once they are safely in the outbox. Waits for the write's first try alone: one
+    // that fails is tried again in the background, and what it joined stays for the next launch.
+    if (main.writeNow(events.ifEmpty { null })) joined.forEach { it.delete() }
     return events
   }
 
@@ -200,7 +212,7 @@ class Outbox(
       // Nothing waits, so nothing failed: the 15 s cut runs again (the cold-start state).
       lastFlushFailed = false
       // Never joined to another account's outbox at a later launch.
-      directory?.let { d -> asideFiles(d).forEach { it.delete() } }
+      eventsFile?.asides(ASIDE_PREFIX)?.forEach { it.delete() }
       // A file still in the way goes with them: the listener chose to drop what waits.
       stuck = false
       saveEventsLocked()
@@ -439,11 +451,7 @@ class Outbox(
      * Store what waits: nothing waiting removes the file (one folder sync, not a synced `[]`); a
      * missing file reads as an empty outbox at launch.
      */
-    private fun JsonFile<List<ListeningEvent>>.save(events: List<ListeningEvent>): Boolean =
-      write(events.ifEmpty { null })
-
-    private fun asideFiles(directory: File): List<File> =
-      directory.listFiles { f -> f.name.startsWith(ASIDE_PREFIX) }?.toList() ?: emptyList()
+    private fun JsonFile<List<ListeningEvent>>.save(events: List<ListeningEvent>): Boolean = write(events.ifEmpty { null })
 
     /** Whether a couldn't-sync entry is still kept (30 days). */
     private fun stillKept(f: CouldNotSync, now: Instant): Boolean = now.secondsSince(f.at) < COULD_NOT_SYNC_KEEP

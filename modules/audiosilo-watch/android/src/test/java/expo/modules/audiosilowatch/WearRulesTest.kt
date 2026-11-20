@@ -111,16 +111,21 @@ class PathForTest {
     assertNull(pathFor(pair - "pairing_token", "w1"))
   }
 
-  // The watch reads a user or library id as 32 bits (PhoneMessages' `int`) and takes no pair
-  // without a time it can read, so the phone sends neither: the item would wait there untaken.
+  // The watch reads a user or library id to 2^53 - 1 (PhoneMessages' `id`; 32 bits until fe#285)
+  // and takes no pair without a time it can read, so the phone sends neither past that: the item
+  // would wait there untaken.
   @Test
   fun refusesAnIdOrAPairTheWatchCannotRead() {
     val book = message("book", "path" to "A/B")
-    assertNotNull(pathFor(book + ("user_id" to 2147483647.0), "w1"))
-    assertNull(pathFor(book + ("user_id" to 2147483648.0), "w1"))
-    assertNull(pathFor(book + ("library_id" to 4294967296.0), "w1"))
-    assertNull(pathFor(message("remove", "path" to "A/B", "library_id" to -2147483649.0), "w1"))
-    assertNull(pathFor(pair + ("user_id" to 2147483648.0), "w1"))
+    assertNotNull(pathFor(book + ("user_id" to 2147483648.0), "w1"))
+    assertNotNull(pathFor(book + ("library_id" to 4294967296.0), "w1"))
+    assertNotNull(pathFor(book + ("library_id" to 9007199254740991.0), "w1"))
+    assertNotNull(pathFor(message("remove", "path" to "A/B", "library_id" to -2147483649.0), "w1"))
+    assertNotNull(pathFor(pair + ("user_id" to 2147483648.0), "w1"))
+    assertNull(pathFor(book + ("user_id" to 9007199254740992.0), "w1"))
+    assertNull(pathFor(book + ("library_id" to 9007199254740992L), "w1"))
+    assertNull(pathFor(message("remove", "path" to "A/B", "library_id" to -9007199254740992.0), "w1"))
+    assertNull(pathFor(pair + ("user_id" to 9007199254740993L), "w1"))
     assertNull(pathFor(pair - "user_id", "w1"))
     assertNull(pathFor(pair - "expires_at", "w1"))
     assertNull(pathFor(pair + ("expires_at" to "soon"), "w1"))
@@ -381,5 +386,140 @@ class JsonTest {
     assertNull(Json.decodeObject("{\"a\":".toByteArray()))
     assertNull(Json.decodeObject("{\"a\":1} x".toByteArray()))
     assertNull(Json.decodeObject("nope".toByteArray()))
+  }
+}
+
+// fe#285: the pair prune outlives a sweep that did not get through, and a boot.
+class PruneAlarmTest {
+  @Test
+  fun aSweepThatDidNotGetThroughIsTriedAgainForAboutAnHour() {
+    val delays = (1..WearRules.PRUNE_RETRIES).map { WearRules.pruneRetryDelayMs(it) }
+    assertEquals(listOf(1L, 2L, 4L, 8L, 16L, 32L).map { it * 60_000L }, delays)
+    assertNull("then the next start's sweep", WearRules.pruneRetryDelayMs(WearRules.PRUNE_RETRIES + 1))
+    assertNull("the alarm at an expiry is no retry", WearRules.pruneRetryDelayMs(0))
+  }
+
+  /** What a `PruneAlarm` did to the phone, in order. */
+  private class Phone(var alarms: Boolean = true) : PruneAlarm.Device {
+    val did = ArrayList<String>()
+    var receiverOn = false
+    var alarmAt: Long? = null
+
+    override fun alarm(at: Long?, attempt: Int): Boolean {
+      if (!alarms) return false
+      alarmAt = at
+      did += if (at == null) "cancel" else "alarm $at try $attempt"
+      return true
+    }
+
+    override fun bootReceiver(on: Boolean) {
+      receiverOn = on
+      did += if (on) "receiver on" else "receiver off"
+    }
+  }
+
+  // The boot receiver is on exactly while an alarm is set, each pair of steps under the one lock.
+  @Test
+  fun theBootReceiverIsOnOnlyWhileAnAlarmIsSet() {
+    val phone = Phone()
+    val alarm = PruneAlarm(phone)
+    // A new process applies its first answer whatever it is: an earlier one's alarm outlived it.
+    alarm.arm(null)
+    assertEquals(listOf("cancel", "receiver off"), phone.did)
+    alarm.arm(1_000L)
+    alarm.arm(1_000L)
+    assertEquals(listOf("alarm 1000 try 0", "receiver on"), phone.did.drop(2))
+    alarm.arm(null)
+    assertEquals(listOf("cancel", "receiver off"), phone.did.drop(4))
+    assertEquals(6, phone.did.size)
+  }
+
+  // The alarm went off and its sweep found no pair left: the sweep's own `arm` (under the link's
+  // lock, where a send arms too) turns the receiver off, so nothing after it can undo a send's.
+  @Test
+  fun theSweepOfAnAlarmGoneTurnsTheReceiverOffItself() {
+    val phone = Phone()
+    val alarm = PruneAlarm(phone)
+    alarm.arm(1_000L)
+    alarm.due()
+    alarm.arm(null)
+    assertFalse(phone.receiverOn)
+    assertNull(phone.alarmAt)
+    // A send after that sweep arms its pair's alarm, and nothing is left to turn the receiver off.
+    alarm.arm(5_000L)
+    assertTrue(phone.receiverOn)
+    assertEquals(5_000L, phone.alarmAt)
+  }
+
+  // An alarm a moment early finds its pair not stale yet: the same time is set again, not skipped.
+  @Test
+  fun anAlarmGoneIsSetAgainForTheSameTime() {
+    val phone = Phone()
+    val alarm = PruneAlarm(phone)
+    alarm.arm(1_000L)
+    alarm.due()
+    alarm.arm(1_000L)
+    assertEquals(listOf("alarm 1000 try 0", "receiver on", "alarm 1000 try 0", "receiver on"), phone.did)
+    // A send that armed while the alarm's sweep waited is not set twice.
+    alarm.due()
+    alarm.arm(2_000L)
+    alarm.arm(2_000L)
+    assertEquals(6, phone.did.size)
+  }
+
+  @Test
+  fun aRetryTakesTheAlarmsPlaceAndKeepsTheReceiverOn() {
+    val phone = Phone()
+    val alarm = PruneAlarm(phone)
+    alarm.arm(1_000L)
+    alarm.due()
+    alarm.retry(61_000L, 1)
+    assertEquals(listOf("alarm 61000 try 1", "receiver on"), phone.did.drop(2))
+    // The retry's sweep got through: the pair's own time again, or none.
+    alarm.due()
+    alarm.arm(null)
+    assertFalse(phone.receiverOn)
+  }
+
+  // No alarm service: nothing is recorded as set, so the next answer tries again.
+  @Test
+  fun anAlarmThatCouldNotBeSetIsTriedAtTheNextAnswer() {
+    val phone = Phone(alarms = false)
+    val alarm = PruneAlarm(phone)
+    alarm.arm(1_000L)
+    assertTrue(phone.did.isEmpty())
+    phone.alarms = true
+    alarm.arm(1_000L)
+    assertEquals(listOf("alarm 1000 try 0", "receiver on"), phone.did)
+  }
+
+  @Test
+  fun aBootOrAnUpdateSetsTheAlarmAgainAndNothingElseDoes() {
+    assertTrue(PairPruneBootReceiver.handles("android.intent.action.BOOT_COMPLETED"))
+    assertTrue(PairPruneBootReceiver.handles("android.intent.action.MY_PACKAGE_REPLACED"))
+    assertFalse(PairPruneBootReceiver.handles("android.intent.action.LOCKED_BOOT_COMPLETED"))
+    assertFalse(PairPruneBootReceiver.handles(null))
+  }
+
+  // The manifest the app merges: the boot receiver takes only the system's two broadcasts, starts
+  // off (WearLink turns it on while a prune is due), and the alarm's own receiver stays private.
+  @Test
+  fun theManifestWiresTheBootReceiver() {
+    val doc =
+      javax.xml.parsers.DocumentBuilderFactory.newInstance()
+        .apply { isNamespaceAware = true }
+        .newDocumentBuilder()
+        .parse(java.io.File("src/main/AndroidManifest.xml"))
+    val ns = "http://schemas.android.com/apk/res/android"
+    fun elements(tag: String) =
+      doc.getElementsByTagName(tag).let { l -> (0 until l.length).map { l.item(it) as org.w3c.dom.Element } }
+    assertTrue(elements("uses-permission").any { it.getAttributeNS(ns, "name") == "android.permission.RECEIVE_BOOT_COMPLETED" })
+    val receivers = elements("receiver").associateBy { it.getAttributeNS(ns, "name").substringAfterLast('.') }
+    val boot = receivers.getValue("PairPruneBootReceiver")
+    assertEquals("false", boot.getAttributeNS(ns, "enabled"))
+    assertEquals("true", boot.getAttributeNS(ns, "exported"))
+    val actions = boot.getElementsByTagName("action").let { l -> (0 until l.length).map { (l.item(it) as org.w3c.dom.Element).getAttributeNS(ns, "name") } }
+    assertEquals(PairPruneBootReceiver.ACTIONS, actions.toSet())
+    assertEquals("false", receivers.getValue("PairPruneReceiver").getAttributeNS(ns, "exported"))
   }
 }

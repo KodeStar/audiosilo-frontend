@@ -41,7 +41,7 @@ interface BookServer {
    * A file's watch rendition from byte `from` (0: all of it), with `If-Range: ifRange` when
    * resuming. Throws `APIError` for any answer but 200 or 206, `IOException` for no answer.
    */
-  suspend fun download(libraryId: Int, file: String, from: Long, ifRange: String?): Fetched
+  suspend fun download(libraryId: Long, file: String, from: Long, ifRange: String?): Fetched
 }
 
 /** Where a book's run keeps things (wear's Files). */
@@ -152,7 +152,9 @@ class BookDownload(
     val serverPlace = orNull { server.progress(ref) }
     currentCoroutineContext().ensureActive()
     val cache = ItemCache(book, chapters, serverPlace)
-    storage.saveItem(ref, cache)
+    // Not for a book removed meanwhile (its item went with it).
+    val r = index.record(ref) ?: return
+    index.whileKept(r) { storage.saveItem(ref, cache) } ?: return
     val timeline = cache.timeline
     index.update(ref) { rec ->
       rec.copy(
@@ -228,7 +230,9 @@ class BookDownload(
     val f = r.files.firstOrNull { it.path == file.path } ?: return FileResult.LANDED
     if (f.done) return FileResult.LANDED
     val folder = storage.folder(r)
-    if (!folder.isDirectory && !folder.mkdirs()) return keepFailed()
+    // Made only while the book is here: a removal meanwhile never finds it made again after.
+    val made = index.whileKept(r) { folder.isDirectory || folder.mkdirs() } ?: return FileResult.GONE
+    if (!made) return keepFailed()
     val out = File(folder, f.local)
     val part = File(folder, f.local + PART)
     val etagFile = File(folder, f.local + ETAG)
@@ -259,9 +263,20 @@ class BookDownload(
       // A whole file's old bytes go before its ETag is kept: killed between the two, the next run
       // must not resume the old bytes under the new ETag.
       if (!resumed) etagFile.delete()
-      RandomAccessFile(part, "rw").use { raf ->
-        if (resumed) raf.seek(from) else raf.setLength(0)
-        if (answer.etag != null && isStrong(answer.etag)) etagFile.writeText(answer.etag) else etagFile.delete()
+      // Opened (made) only while the book is here; written after, into a file already there.
+      val opened =
+        index.whileKept(r) {
+          val raf = RandomAccessFile(part, "rw")
+          try {
+            if (resumed) raf.seek(from) else raf.setLength(0)
+            if (answer.etag != null && isStrong(answer.etag)) etagFile.writeText(answer.etag) else etagFile.delete()
+            raf
+          } catch (e: Exception) {
+            raf.close()
+            throw e
+          }
+        } ?: return FileResult.GONE
+      opened.use { raf ->
         var written = if (resumed) from else 0L
         val buf = ByteArray(64 * 1024)
         var told = written
@@ -284,7 +299,8 @@ class BookDownload(
       throw IOException("short file: ${part.length()} of $expected bytes")
     }
     out.delete()
-    if (!part.renameTo(out)) return keepFailed()
+    val moved = index.whileKept(r) { part.renameTo(out) } ?: return FileResult.GONE
+    if (!moved) return keepFailed()
     etagFile.delete()
     val size = out.length()
     index.update(ref) { rec -> rec.copy(files = rec.files.map { if (it.path == file.path) it.copy(bytes = size, done = true) else it }) }

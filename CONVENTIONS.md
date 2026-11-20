@@ -3013,7 +3013,18 @@ media GETs only.
     `duration` is the audio's own length (`BookQueue.audio`, never a timeline a chapter
     overhangs: the server refuses a span more than 10 s off, `duration_mismatch`); a place that
     is not a finite number never reaches a span or an event (`finiteEnd`, `eventIsFinite`).
-    `base_version` is the mirror's `ack_version` at the close (0 when none: a cold start).
+    `base_version` is the mirror's `ack_version` at the close (0 when none: a cold start). An
+    offer answered by a move (the toast's Jump, the book page's Play from there), and a move to
+    another device's newer row (`decide` in `place-reconcile.ts`), cuts that
+    book's open span first and acknowledges the row in the outbox's turn after its close
+    (`answerAfterSpan`, `afterInTurn`; in turn with no span open too, behind a close already
+    on its way), so what was heard before the answer never goes on the row's version (the
+    place left behind would replace the other device's newer one, sent alone after a kill;
+    fe#285); the span the cut opens begins again where the engine is once the answer is in,
+    and is stored then (what it heard meanwhile would close on the row's at the old place, a
+    keep's copy too after a kill); the move goes on the row's (`decide` makes it only if the
+    book and the listener's moves are as they were). The Wear OS app does the same (`SpanRecorder.move`'s `acknowledge`); the Apple Watch
+    still acknowledges before the move.
   - *Storage* (all connection-scoped, in `SCOPED_STORAGE_KEYS` and the identity migration, purged
     with the connection): `audiosilo.listeningOutbox` (closed events with their `connectionId`,
     immutable once there; a `finish` entry also carries its sends' marks, see *Across tabs*),
@@ -4026,8 +4037,9 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     book's row. The exceptions spell out their codes (R8 renames the classes). Each message is a DataItem of UTF-8 JSON (`pair` at `/audiosilo/v1/to/<node>/pair`,
     `book`/`remove` sharing `/audiosilo/v1/to/<node>/book/<sha256 of server_id.user_id|library_id|path>`),
     every one with `sent_at` (`watch-model.ts`; an identical put sends nothing; a blank `server_id`,
-    `path` or `pairing_token`, a user or library id past 32 bits and a pair with no readable
-    `expires_at` are refused, as the watch refuses them). The watch never
+    `path` or `pairing_token`, a user or library id past 2^53 - 1 (JavaScript's exact range; the
+    watch read 32 bits until fe#285, its ids are Longs now, `PhoneMessages.id`) and a pair with no
+    readable `expires_at` are refused, as the watch refuses them). The watch never
     deletes them: it puts a receipt at `/audiosilo/v1/from/<node>/taken/<last segment>`
     (`{v:1,type:"taken",path,sent_at}`), and the phone deletes its own item only when the path and
     the `sent_at` text match what it holds (a newer send stays), from `WearLinkService` (Play
@@ -4035,11 +4047,19 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     sweep at start. So `outstanding` is the phone's own book items still there, never `failed`
     (the 7-day hold ends one the watch never takes), and "delivered" means the watch app took it.
     Pairs are pruned past `expires_at` at every snapshot, send and start, and at an alarm set for the
-    first pair's `expires_at` (`PairPruneReceiver`, inexact and allowed while idle; a reboot or a
-    force stop drops it and the next start sets it again), so an idle phone holds one past its life
-    only when the alarm was lost that way or its prune could not finish (the Data Layer gave no
-    answer in the receiver's 9 s, and nothing tries again), until the app next starts; a new pair drops any
-    held for another watch. One watch at a time: of the nodes with the app (capability
+    first pair's `expires_at` (`PairPruneReceiver`, inexact and allowed while idle). A boot or the
+    app's update drops the alarm: `PairPruneBootReceiver` (BOOT_COMPLETED, MY_PACKAGE_REPLACED;
+    `RECEIVE_BOOT_COMPLETED`) runs the sweep again, enabled only while a prune is due (`armPrune`
+    and `armRetry` turn it on, a sweep that leaves nothing to prune turns it off, there under the
+    link's `lock` where a send arms too; `PruneAlarm` sets the alarm and the receiver under one
+    lock, so the receiver is never off with an alarm set), so a phone with
+    no pair held is not woken at boot. A sweep that does not get through (the Data Layer failed or
+    gave no answer in the receiver's 9 s, or the Wearable API did not answer: Play services not
+    ready after a boot or an update, as a prune is due only after a pair was sent) sets a retry
+    alarm, 1, 2, 4 ... 32 minutes
+    (`WearRules.pruneRetryDelayMs`, `PRUNE_RETRIES` 6, fe#285). An idle phone holds one past its
+    life only after a force stop (no alarm survives it) or the retries spent, until the app next
+    starts; a new pair drops any held for another watch. One watch at a time: of the nodes with the app (capability
     `audiosilo_wear_app`, or a `watch-state`), the one whose `watch-state` this phone saw last
     (kept in prefs), else one nearby; `watch_id` is its node id. The phone advertises
     `audiosilo_phone_app` (`res/values/wear.xml`), kept through release resource shrinking by
@@ -4213,13 +4233,14 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   run), `SystemPause` (a pause the system made, from Media3's reasons), `PhoneInbox` (PhoneLink's
   sweep and event plans), `FileSpanStore` and `Labels`. Wear-only additions to ported files, for
   the sync rate below (the Apple Watch writes `places.json` every 5 s, unsynced, so it needs none):
-  `SpanRecorder.playingTick`, `recover(carry)`, `keep(heardAt)` and the cut's (`tick`, `cut`),
-  `OpenSpan.fromHeard`, `PlaceStore.set(save:)` and `PlaceStore.recover`, and the outbox removing
+  `SpanRecorder.playingTick`, `recover(carry)`, `keep(heardAt)` and the cut's (`tick`, `cut`), `move`'s `acknowledge`,
+  `OpenSpan.fromHeard`, the recorder's `keepPlace` and the stalled-span rule (`Spans.STALL`),
+  `PlaceStore.set(save:)` and `PlaceStore.recover`, the `DurableWriter`, and the outbox removing
   its file when empty. `JsonFile(durable = true)`
   syncs the bytes before its rename and the folder after (a battery death never empties the file): only
   `outbox.json`, `open-span.json`, `open-span-move.json` and `places.json`, whose loss loses listening; the rest
   (caches, sync status, acks, the account) is rebuilt from the server or the phone, so it skips
-  the sync. The rate while playing (all on the main looper): a plain 5 s tick syncs the open
+  the sync. The rate while playing (asked on the main looper, written off it): a plain 5 s tick syncs the open
   span only; the 15 s cut syncs the outbox, then the next span over the closed one (no keep, no
   removal first: the event is kept before the span file changes) and the place. **The place rule**:
   `places.json` is synced on a pause, seek, stop, rate change, the end, a call's hold, a span
@@ -4230,13 +4251,25 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   the outbox already holds it (a kill between a close's append and the span file's change), else
   its last keep's `to` and `endedAt`. Only a place heard: one the span moved to (a second or more,
   `Spans.EMPTY_SPAN`), or its start when
-  a cut or a playing Stay opened it where the closed span ended (`fromHeard`); a play's span that
-  never moved carries the loaded place, a move's its target (saved by the seek). Never by the
+  a cut or a playing Stay opened it where the closed span ended, or a move made while playing at
+  its target (`fromHeard`); a play's span that never moved carries the loaded place. **The write
+  order** (fe#285) is the recorder's, not the engine's: a span closed with nothing to follow it (a
+  pause, a hold, a stop, the end) keeps its place (`keepPlace`, `PlaceStore.set`) after its event
+  is in the outbox and before it leaves its file, so a kill finds the span again or the place,
+  never neither; a move while playing writes the event, then its span over the closed one, then
+  the target as the place (a kill before that recovers it from the span); a paused move keeps the
+  target before its event, so the watch never resumes behind a move the server is sent. Never by the
   clock: a book's place is saved only as its span opens, so the span a kill left is the newer, and
   a wall clock set back would hide it. The keep, and the span a cut opens (the tick's, a speed
   change's, the background's, whose place is stamped the same), end when the
   audio last moved (`heardAt` = the engine's `lastAdvance`), so buffering never stamps the place
-  later than it was heard. The book's last span and its `finish` go into the outbox in one append
+  later than it was heard. A stalled span (the audio still for `Spans.STALL`, 5 s, at the 15 s
+  tick) is never cut (fe#285): it closes where and when the audio last moved, and no span opens
+  until it moves again (the engine's `onIsPlayingChanged`, or its 500 ms tick seeing the audio
+  move while no span is open, for a player that stood still while it said it played), so a stall
+  sends no span every 15 s with nothing heard, and none of what is heard after it is lost. A span
+  closed with nothing to follow keeps its place stamped when the audio stopped (`stoppedAt`), not
+  held to the span's start as its event is. The book's last span and its `finish` go into the outbox in one append
   (`SpanRecorder.finish`): the span's event alone would recover the book's end as the place with
   no `finish` behind it. A move a kill cut short (`recoveredMove`) is kept in `open-span-move.json` until a span
   opens (it takes it or drops it), `loadsFromRow` drops it, and so does sign-out
@@ -4245,7 +4278,35 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   event goes again under its one id (`duplicate`), and its place is taken over the saved one (the
   write order above, which a place saved while the span's own writes failed would break). An
   outbox with nothing waiting removes `outbox.json` (a folder sync) rather than syncing `[]`; a
-  missing file is an empty outbox at launch. Moving these writes off the main looper is a follow-up.
+  missing file is an empty outbox at launch. **The serial writer** (fe#285): these four files are
+  written on one background thread (`DurableWriter`, given to `Outbox`, `PlaceStore` and
+  `FileSpanStore`), and with them, unsynced, the two whose order against them matters: `acks.json`
+  (`AckStore`: a Jump is acknowledged in memory once the span its move ends is closed, on the
+  version that span was heard on, and before the move's own, which goes on the row's version
+  (`SpanRecorder.move`'s `acknowledge`), and written after the move, `AppModel.jump`; the
+  acknowledgement on the disk without the move would resume at the old place on the other device's
+  version) and `sync-state.json` (an event
+  moved to the couldn't-sync list lands there one write before it leaves the outbox, so a kill
+  between the two sends it again, never loses it); one write at a time in the order asked across the files (each queued under the
+  lock that made its change, the value immutable), so the main looper never waits on an fsync and a
+  kill leaves a state the in-order writes pass through: the write order above still holds. A write
+  that fails (a full disk) stays first and is tried again before anything asked after it, with a
+  doubling wait from 0.5 s capped at 30 s, until it lands (`retryDelayMs`,
+  `MAX_RETRY_DELAY_MS`); a write asked meanwhile never tries it sooner. While it fails, a write
+  asked behind it replaces the last one waiting only when that one writes the same file (the
+  open span's 5 s keeps), and is queued after it otherwise: once the disk has room the files catch
+  up in the order asked, as the outbox, the span and the place depend on each other's order (the
+  latest of each file in another order loses a span's event, or lands a place the span left
+  behind after the outbox sent the newer one). The queue so grows by a few writes every 15 s
+  while the disk stays full. Nothing waits on a failing write: a `now` behind it
+  is told `Stuck` at once (its op not run), and the launch's join of an outbox set aside makes one
+  try (`writeNow`, `DurableWriter.attempt`): it deletes what it joined only once that try lands;
+  one that fails stays queued and is tried again in the background, the asides kept for the next
+  launch. Signing out drops every write of the account's files still queued
+  (`DurableWriter.forget`, with the retry the first waits for; one being tried is gone once that
+  try ends; other files' writes keep their order), then asks the removals and drains the writer
+  (each removal tried once, nothing waited out) before the account and token go, so a kill
+  between them never leaves one account's outbox to the next.
 - **Downloads (decision 8)**: one WorkManager `BookWorker` per book (unique `book:<safe name>`,
   KEEP; `CONNECTED`; exponential backoff from 1 min) runs `BookDownload`: item + chapters (kept
   in `items/`), `POST .../renditions`, polls at `retry_after_seconds` (15 s at least) for up to
@@ -4260,7 +4321,17 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   resume the server answers 416 (a part already whole) starts that file again from 0. A success
   the watch can't decode (another build's format, a proxy's page) fails the book with "Your server
   sent something this watch can't read." (`RenditionPlan.UNREADABLE`, the Apple Watch's words): no
-  wait on the connection, and Try again asks afresh.
+  wait on the connection, and Try again asks afresh. **Remove vs a run** (fe#285): a run makes the
+  book's folder, opens each part file, renames it and keeps the item only inside
+  `DownloadIndex.whileKept` (the index's lock, while the record is still there in that folder), and
+  a removal takes the record, then deletes the files, under the same lock (`remove(ref) { files }`),
+  so a run going on never makes the folder again after (an index a full disk refused is written
+  again once the files made room); a kill between the record and the files
+  leaves a folder no record names, which the next launch drops (`dropOrphans`, off the main thread).
+  Not at a launch whose index could not be read, and not while one set aside
+  (`downloads-unread-*.json`) is still there: it is never joined back, so the index written since
+  reads cleanly without the books that one named, and their folders stay rather than go as
+  orphans. Leaving the account removes them and it (`DownloadIndex.removeAll`); nothing else does.
 - **Storage (decision 11)**: `TokenStore` seals the token with a non-exportable Keystore
   AES-GCM key (`audiosilo.session`), ciphertext and `device_id` in `noBackupFilesDir`;
   `allowBackup=false` and `data_extraction_rules.xml` exclude every domain. `device_name` is
@@ -4295,7 +4366,9 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   replaces). `watch-state` is put under its own lock, always `StatePublication.due` (an older
   state never lands last); `AppModel.publishState` works it out on the main thread only (posted
   from a worker or PhoneLink, never locked: `HeldBooks.finishRemove` publishes under its lock);
-  a book's stage moving publishes on its own (`DownloadIndex.stages`, collected once per process).
+  a book's stage moving publishes on its own, and so does the index's `saved` flipping with no
+  stage moving (a full disk, or space back; fe#285): `DownloadIndex.news`, bumped once both are
+  set, collected once per process.
   It sends none of the Apple Watch's optional "how far" fields (`progress`, `files_ready`,
   `files_total`, `waiting`, fe#241): bytes landing are no change here, so the phone's row keeps
   the plain phase for a Wear OS watch.
@@ -4320,9 +4393,12 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   place is saved by the tick only while the audio moves (a hold keeps `lastAdvance`'s time).
 - **Sync (decision 9)**: `AppModel.schedule(trigger)` runs `SyncSchedule.plan`: in front it
   flushes (launch after `spans.recover()`, foreground, each closed span, the 60 s timer, a
-  network coming up); in the background `SyncWorker.expedite` (unique `sync`, KEEP, CONNECTED,
-  `RUN_AS_NON_EXPEDITED` out of quota) and the 15 min `sync-periodic` backstop while events
-  wait. A worker run (`AppModel.syncInBackground`) picks its own address with the probe (home
+  network coming up); in the background `SyncWorker.expedite` (unique `sync`,
+  `APPEND_OR_REPLACE`, CONNECTED, `RUN_AS_NON_EXPEDITED` out of quota) and the 15 min
+  `sync-periodic` backstop while events wait. An expedite goes after any run already going, once
+  per run (`ExpediteGate`: a run still waiting to start sends everything when it does; KEEP dropped
+  the ask of a span closed after a running run's last look, fe#285). A run that throws fails every
+  run appended after it, so it opens the gate again (`AppModel.syncRunFailed`). A worker run (`AppModel.syncInBackground`) picks its own address with the probe (home
   allowed), flushes up to `WORKER_ROUNDS` while spans close, and retries with backoff only on
   no answer (`SyncSchedule.outcome`). Sign out (`AppModel.signOut`) stops the player first, then
   is blocked while events wait unless discarded; a replacing account likewise (pass 1).

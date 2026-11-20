@@ -108,7 +108,7 @@ class ApiClient(base: String, private val token: String?, private val http: OkHt
    * `GET /me`: the id of the user this token signs in as (an `APIError` 401 once it no longer does),
    * null from a body with no id.
    */
-  suspend fun me(): Int? = PhoneMessages.int(send(request("GET", "/me"), JsonObject.serializer())["id"])
+  suspend fun me(): Long? = PhoneMessages.id(send(request("GET", "/me"), JsonObject.serializer())["id"])
 
   /** `GET /addresses`: the server's addresses as seen from here (capability `addresses`). */
   suspend fun addresses(): ServerAddresses = send(request("GET", "/addresses"), ServerAddresses.serializer())
@@ -143,7 +143,7 @@ class ApiClient(base: String, private val token: String?, private val http: OkHt
    * A file's watch rendition as a download (Bearer, `?rendition=watch&download=1`), from byte
    * `from` with `If-Range` when resuming. No overall time limit: a stall is the read timeout.
    */
-  override suspend fun download(libraryId: Int, file: String, from: Long, ifRange: String?): Fetched {
+  override suspend fun download(libraryId: Long, file: String, from: Long, ifRange: String?): Fetched {
     val b = request("GET", "/libraries/$libraryId/stream", mapOf("path" to file, "rendition" to "watch", "download" to "1")).newBuilder()
     if (from > 0) {
       b.header("Range", "bytes=$from-")

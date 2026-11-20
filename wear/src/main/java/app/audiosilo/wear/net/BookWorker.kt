@@ -39,7 +39,8 @@ import kotlinx.coroutines.withContext
 
 class BookWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
   override suspend fun doWork(): Result {
-    val libraryId = inputData.getInt(KEY_LIBRARY, -1)
+    // A Long since ids went past 32 bits (fe#285); work an older build queued holds an Int.
+    val libraryId = (inputData.keyValueMap[KEY_LIBRARY] as? Number)?.toLong() ?: -1L
     val path = inputData.getString(KEY_PATH) ?: return Result.success()
     val ref = BookRef(libraryId, path)
     val model = AppModel.get(applicationContext)
@@ -84,7 +85,7 @@ class BookWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
       }
     } finally {
       wifi?.close()
-      // Stage moves publish themselves (AppModel's `stages`); a failed index write (`saved`) does not.
+      // Stage moves and `saved` flips publish themselves (AppModel's `news`); this is the run's end.
       model.publishState()
     }
   }

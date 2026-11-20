@@ -86,4 +86,21 @@ class SyncScheduleTest {
     }
     assertFalse("no 60 s timer in the background", SyncSchedule.foregroundTimer(3, false))
   }
+
+  // fe#285: an expedite while a run is going enqueues one after it (KEEP dropped it, and a span
+  // closed after that run's last look waited for the backstop); one still waiting to start is enough.
+  @Test
+  fun anExpediteFollowsARunGoingOnceAndARunWaitingIsEnough() {
+    val gate = ExpediteGate()
+    assertTrue("nothing enqueued: enqueue", gate.ask())
+    assertFalse("that run has not started: it sends this too", gate.ask())
+    gate.started()
+    assertTrue("a span closed while it runs: one run after it", gate.ask())
+    assertFalse(gate.ask())
+    gate.started()
+    gate.started()
+    assertTrue(gate.ask())
+    gate.cancelled()
+    assertTrue("signed out, the runs cancelled: enqueue again", gate.ask())
+  }
 }

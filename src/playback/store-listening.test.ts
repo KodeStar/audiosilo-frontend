@@ -166,6 +166,7 @@ jest.mock('./listening-outbox', () => {
       base?: () => Promise<number | undefined>,
     ) => mockAppendInTurn(cid, events, base),
     connectionGeneration: () => mockGeneration,
+    afterInTurn: (_cid: string, op: () => Promise<void>) => op(),
     waitingInTurn: () => mockWaitingInTurn,
     flushOutbox: (...a: unknown[]) => mockFlushOutbox(...a),
     sendOnPageHide: (...a: unknown[]) => mockSendOnPageHide(...a),
@@ -219,6 +220,7 @@ import {
 import { closeSpan } from './listening-outbox';
 import { cutPlayingSpan } from './span-cut';
 import {
+  answerAfterSpan,
   cutListeningSpanNow,
   flushHistoryOnHide,
   holdSaves,
@@ -2301,6 +2303,29 @@ describe('the open span is kept every 5 s', () => {
     standByPlace();
     await settle();
     expect(stored()).toEqual([['jump', 30, 30]]);
+  });
+
+  // fe#285: the span a Jump's cut opens begins again where the engine is once the answer is
+  // in; a kill before the next keep recovers that copy, not a keep's from the place left.
+  it("an offer's answer stores the span it begins again at once", async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 30));
+    await settle();
+    let release: () => void = () => {};
+    const answered = answerAfterSpan(
+      { connectionId: 'c1', libraryId: 2, path: folder },
+      () => new Promise<void>((r) => (release = r)),
+    );
+    // A keep while the answer waits stores the cut's span from the place left.
+    pushSnapshot(snap('playing', 0, 35));
+    jest.advanceTimersByTime(5_000);
+    await settle();
+    expect(stored().at(-1)).toEqual(['continue', 30, 35]);
+    pushSnapshot(snap('playing', 0, 36));
+    release();
+    await answered;
+    await settle();
+    expect(stored().at(-1)).toEqual(['continue', 36, 36]);
   });
 
   it('a cut stores nothing at once: the keep does', async () => {

@@ -293,9 +293,12 @@ object Resume {
     ResumePlan(0.0, null, null, ListeningStart.RESTART, unfinish = true, tookRow = tookRow)
 }
 
-/** The places this watch played to, per book (`places.json`). Thread-safe. */
-class PlaceStore(file: File?) {
-  private val file = file?.let { JsonFile(it, SERIALIZER, durable = true) }
+/**
+ * The places this watch played to, per book (`places.json`). Thread-safe. Given a `DurableWriter`,
+ * the file is written there, each write queued under the lock that made its change.
+ */
+class PlaceStore(file: File?, writer: DurableWriter? = null) {
+  private val file = file?.let { JsonFile(it, SERIALIZER, durable = true, writer = writer) }
   private var places: Map<String, LocalPlace> = this.file?.read() ?: emptyMap()
 
   @Synchronized fun place(ref: BookRef): LocalPlace? = places[ref.key]
@@ -317,10 +320,10 @@ class PlaceStore(file: File?) {
    * kept the event and before the span file changed (a cut's next span, a pause's removal); else
    * its last keep. Taken only when that is a place heard: it moved a second or more from where the
    * span opened (`Spans.EMPTY_SPAN`, so a player settling a hair off the place it was given is no
-   * listening), or the span opened where the one before it ended (`fromHeard`: a cut's, a kill
-   * between the cut's span write and its place write). A play's span that never moved carries the
-   * loaded place, stamped later than it was heard; a move's carries its target, which the move
-   * saved itself.
+   * listening), or the span's `from` is a place in its own right (`fromHeard`: where the one before
+   * it ended, a cut's, or a playing move's target; a kill between that span's write and its place
+   * write). A play's span that never moved carries the loaded place, stamped later than it was
+   * heard.
    * Never by the clock: while a span is open its book's place is saved only as it opens (a cut, a
    * seek), so the span the kill left is the newer, and a wall clock set back since would hide it.
    */

@@ -31,6 +31,7 @@ import {
   type ProgressSave,
 } from './progress-sync';
 import {
+  answerAfterSpan,
   engineHoldsOtherBook,
   holdSaves,
   localMoveCount,
@@ -243,8 +244,10 @@ export async function offerLoadedPlace(
       action: {
         label: t('player.placeOffer.jump'),
         onPress: () => {
-          // Acknowledged first: the span the jump opens is sent on the row it answered.
-          void answer().then(() => {
+          // Acknowledged before the move, so the span the jump opens is sent on the row it
+          // answered, and after the span heard here closes, so that one is not
+          // (`answerAfterSpan`).
+          void answerAfterSpan(np, answer).then(() => {
             if (selectBookKey(usePlayer.getState()) === bookKey) {
               quietly(usePlayer.getState().seekBook(offer.position));
             }
@@ -472,13 +475,23 @@ async function decide(
     await offerLoadedPlace(bookKey, server, deviceId, mirror);
     return false;
   }
-  // The row it moved to is the place this device has now seen (Sync v2's ack).
+  // The row it moved to is the place this device has now seen (Sync v2's ack), acknowledged
+  // as a Jump is (`answerAfterSpan`): once the span heard before the move is in, so that span
+  // goes on the version it was heard on and only the move's own on the row's.
   if (server && server.version > 0) {
-    void ackVersion(np.connectionId, np.libraryId, np.path, server.version, server).catch(
-      () => undefined,
-    );
+    // The answer waits its turn: another book, or a move of the listener's own, since wins,
+    // and then the row is not acknowledged either (this device never moved to it).
+    const overtaken = () =>
+      selectBookKey(usePlayer.getState()) !== bookKey || localMoveCount() !== moves;
+    await answerAfterSpan(np, async () => {
+      if (overtaken()) return;
+      await ackVersion(np.connectionId, np.libraryId, np.path, server.version, server).catch(
+        () => undefined,
+      );
+    });
+    if (overtaken()) return false;
   }
-  await now.seekBook(to);
+  await usePlayer.getState().seekBook(to);
   tell(bookKey, from, to);
   return true;
 }

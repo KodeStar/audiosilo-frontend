@@ -22,9 +22,17 @@ data class BookAck(
   val answered: List<String> = emptyList(),
 )
 
-/** The acknowledged versions, kept in a file (`acks.json`). Thread-safe. */
-class AckStore(file: File?) {
-  private val file = file?.let { JsonFile(it, SERIALIZER) }
+/**
+ * The acknowledged versions, kept in a file (`acks.json`). Thread-safe. Given the listening's
+ * `DurableWriter` (Wear, fe#285), the file is written there, in the order asked with the outbox
+ * and the places. An offer's Jump is acknowledged in memory between the span its move ends and the
+ * move's own (`SpanRecorder.move`'s `acknowledge`: only the move's events go on the row's version)
+ * and written after the move (`answerOffer(save = false)`, then `save`): the acknowledgement on the
+ * disk without the move would resume at the old place on the other device's version after a kill,
+ * sending that place back.
+ */
+class AckStore(file: File?, writer: DurableWriter? = null) {
+  private val file = file?.let { JsonFile(it, SERIALIZER, writer = writer) }
   private var books: Map<String, BookAck> = this.file?.read() ?: emptyMap()
 
   @Synchronized fun ackVersion(ref: BookRef): Int? = books[ref.key]?.ackVersion
@@ -42,10 +50,11 @@ class AckStore(file: File?) {
 
   /**
    * An offer answered (Jump or Stay): the row's version acknowledged (never lowered) and the
-   * offer's key noted, the newest `MAX_ANSWERED` kept.
+   * offer's key noted, the newest `MAX_ANSWERED` kept. `save` false keeps it in memory only until
+   * `save` (a Jump, whose move is written first).
    */
   @Synchronized
-  fun answerOffer(ref: BookRef, row: ProgressRow, key: String) {
+  fun answerOffer(ref: BookRef, row: ProgressRow, key: String, save: Boolean = true) {
     val b = books[ref.key] ?: BookAck()
     put(
       ref,
@@ -53,7 +62,14 @@ class AckStore(file: File?) {
         ackVersion = max(b.ackVersion ?: row.version, row.version),
         answered = (b.answered.filter { it != key } + key).takeLast(MAX_ANSWERED),
       ),
+      save,
     )
+  }
+
+  /** Write what `answerOffer(save = false)` kept in memory. */
+  @Synchronized
+  fun save() {
+    file?.write(books)
   }
 
   /**
@@ -83,9 +99,9 @@ class AckStore(file: File?) {
     file?.write(null)
   }
 
-  private fun put(ref: BookRef, ack: BookAck) {
+  private fun put(ref: BookRef, ack: BookAck, save: Boolean = true) {
     books = books + (ref.key to ack)
-    file?.write(books)
+    if (save) file?.write(books)
   }
 
   companion object {

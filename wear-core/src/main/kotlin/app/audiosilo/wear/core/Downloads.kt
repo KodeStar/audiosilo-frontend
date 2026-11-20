@@ -6,12 +6,9 @@ package app.audiosilo.wear.core
 
 import java.io.File
 import java.time.Instant
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 
@@ -21,7 +18,7 @@ data class Account(
   val serverId: String,
   /** The phone's server label, including its address when saved server names collide. */
   val serverName: String,
-  val userId: Int,
+  val userId: Long,
   val userName: String,
   /** The paired URL (the phone connection's). */
   val serverUrl: String,
@@ -182,21 +179,35 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
    * reads it): nothing is written over it, and each commit tries the move again.
    */
   private var inTheWay = false
+
+  /**
+   * This launch read the index cleanly (it read, or there was none), so the records are every book
+   * on the disk (`dropOrphans`). Not after one that could not be read, moved aside or not: the
+   * books it named are unknown, and their folders are kept.
+   */
+  private var readCleanly = file == null
   private val flow = MutableStateFlow(this.file?.let(::restored) ?: emptyList())
 
   val records: StateFlow<List<DownloadRecord>> = flow.asStateFlow()
-
-  /**
-   * The books as `watch-state` reports them, each time that changes: a stage moving (queued,
-   * preparing, downloading, ready, failed) is news, from whichever thread changed it; bytes landing
-   * or a row's message are not.
-   */
-  val stages: Flow<List<WatchStateBook>> = flow.map { rs -> rs.map { it.stateBook() } }.distinctUntilChanged()
 
   /** False when the last write failed (a full disk): `records` would not survive a kill. */
   @Volatile
   var saved: Boolean = true
     private set
+
+  /** What `watch-state` was last told of the books: each one's stage, and `saved`. */
+  private var told: Pair<List<WatchStateBook>, Boolean> = flow.value.map { it.stateBook() } to saved
+
+  private val newsFlow = MutableStateFlow(0)
+
+  /**
+   * Bumped once a change moves what `watch-state` is made of, after both parts are set: a stage
+   * moving (queued, preparing, downloading, ready, failed; not bytes landing or a row's message),
+   * from whichever thread moved it, or `saved` flipping (fe#285), which settles the phone's held
+   * books or keeps them with no stage moving (a full disk filling up while bytes land, or space
+   * coming back), so the phone hears of it then, not when the book's run ends.
+   */
+  val news: StateFlow<Int> = newsFlow.asStateFlow()
 
   fun record(ref: BookRef): DownloadRecord? = flow.value.firstOrNull { it.ref == ref }
 
@@ -241,21 +252,64 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
       next
     }
 
-  /** Forget a book's record (its files are the caller's). Returns the record it was. */
-  fun remove(ref: BookRef): DownloadRecord? =
+  /**
+   * Forget a book's record, then remove its files (`files`, the caller's) under the same lock, so a
+   * book's run never makes its folder again after (`whileKept`, fe#285). Returns the record it was.
+   * The record goes first: a kill between the two leaves a folder no record names, which the next
+   * launch drops (`dropOrphans`), never a record whose files are gone. An index a full disk would
+   * not take is written again once the files are gone (they made room), or that kill would bring
+   * the record back without them.
+   */
+  fun remove(ref: BookRef, files: (DownloadRecord) -> Unit = {}): DownloadRecord? =
     synchronized(lock) {
       val r = record(ref) ?: return null
       commit(flow.value.filter { it.ref != ref })
+      files(r)
+      if (!saved) commit(flow.value)
       r
     }
 
-  /** Forget every record (the account was left). Returns what they were. */
-  fun removeAll(): List<DownloadRecord> =
+  /**
+   * Forget every record (the account was left), then remove their files (`files`) under the lock,
+   * and after them any index set aside as unreadable: the folders it kept from `dropOrphans` are
+   * gone with the account, and a kill before leaves them kept, not half dropped.
+   */
+  fun removeAll(files: () -> Unit = {}) {
     synchronized(lock) {
-      val all = flow.value
       commit(emptyList())
-      all
+      files()
+      file?.asides(ASIDE_PREFIX)?.forEach { it.delete() }
     }
+  }
+
+  /**
+   * Run `block` under the index's lock while `record`'s book is still here in that same folder
+   * (removed, or removed and queued again into a new one: null). A book's run makes its folder and
+   * each file in it only this way, so a removal (`remove`, the same lock) never leaves one behind
+   * (fe#285). Keep `block` short: the index waits on it.
+   */
+  fun <T> whileKept(record: DownloadRecord, block: () -> T): T? =
+    synchronized(lock) {
+      if (record(record.ref)?.folder != record.folder) return null
+      block()
+    }
+
+  /**
+   * Delete the book folders in `books` no record names (fe#285): a kill between a record's removal
+   * and its folder's, or a run that made its folder again before `whileKept`. Only after an index
+   * read cleanly at this launch (`readCleanly`): one that could not be read, set aside or still in
+   * the way, says nothing of which books are here, so every folder stays. And not while an index
+   * set aside at an earlier launch is still there: it is never joined back, so the index written
+   * since reads cleanly without the books that one named, and their folders would all go as
+   * orphans. Leaving the account removes it (`removeAll`), the only thing that does.
+   */
+  fun dropOrphans(books: File) {
+    synchronized(lock) {
+      if (!readCleanly || file?.asides(ASIDE_PREFIX)?.isNotEmpty() == true) return
+      val named = flow.value.map { it.folder }.toSet()
+      books.listFiles()?.filter { it.isDirectory && it.name !in named }?.forEach { it.deleteRecursively() }
+    }
+  }
 
   /**
    * The index kept. One that exists but can't be read or decoded is moved aside
@@ -264,8 +318,8 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
    */
   private fun restored(file: JsonFile<List<DownloadRecord>>): List<DownloadRecord> =
     when (val kept = file.load()) {
-      is JsonLoad.Value -> kept.value
-      JsonLoad.Missing -> emptyList()
+      is JsonLoad.Value -> kept.value.also { readCleanly = true }
+      JsonLoad.Missing -> emptyList<DownloadRecord>().also { readCleanly = true }
       JsonLoad.Unreadable,
       JsonLoad.Corrupt -> {
         inTheWay = !file.setAside(ASIDE_PREFIX)
@@ -276,10 +330,15 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
   private fun commit(next: List<DownloadRecord>) {
     // Never over an index still in the way: aside now if it moves, else these stay in memory alone.
     if (inTheWay) inTheWay = file?.setAside(ASIDE_PREFIX) == false
-    // Saved before the flow moves: the `stages` collector (AppModel's publish) reads `saved`, and it
-    // can run inside the assignment below (on the main thread) or while a worker's write is still on.
+    // Saved before the flow moves: a `news` collector reads `saved`, and it can run inside the
+    // assignment below (on the main thread) or while a worker's write is still on.
     saved = if (inTheWay) false else file?.write(next.ifEmpty { null }) ?: true
     flow.value = next
+    val now = next.map { it.stateBook() } to saved
+    if (now != told) {
+      told = now
+      newsFlow.value += 1
+    }
   }
 
   private companion object {
