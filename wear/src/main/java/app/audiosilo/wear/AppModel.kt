@@ -161,7 +161,8 @@ class AppModel private constructor(private val context: Context) {
       keepPlace = { ref, place -> places.set(ref, place) },
     )
   val engine = PlayerEngine(context, spans, places)
-  private val offers = OfferThrottle()
+  /** Per account: signing out starts a new one (`forgetAccount`). */
+  private var offers = OfferThrottle()
 
   /** What `watch-state` the phone is owed (PhoneLink puts it). */
   val statePublication = StatePublication()
@@ -972,6 +973,7 @@ class AppModel private constructor(private val context: Context) {
     expedites.cancelled()
     backstopOn = false
     _offerPrompt.value = null
+    offers = OfferThrottle()
     router.reset()
     serverFile.write(null)
     _server.value = null
