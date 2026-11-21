@@ -169,6 +169,24 @@ extension LocalPlace {
   init(_ end: SpanEnd, at: Date, speed: Double? = nil) {
     self.init(position: end.pos, file: end.file, filePos: end.filePos, at: at, speed: speed)
   }
+
+  static func newer(_ kept: LocalPlace, _ cut: LocalPlace) -> LocalPlace {
+    cut.at > kept.at ? cut : kept
+  }
+
+  /// Each book's last heard cut in outbox order, including a deliberate move while paused.
+  static func lastHeard(in events: [ListeningEvent]) -> [String: LocalPlace] {
+    var places: [String: LocalPlace] = [:]
+    for case .listen(let cut) in events {
+      guard cut.start != .resume || abs(cut.toPos - cut.fromPos) >= Spans.EMPTY_SPAN,
+        let at = ISOTime.parse(cut.endedAt)
+      else { continue }
+      let ref = BookRef(libraryId: cut.libraryId, path: cut.path)
+      places[ref.key] = LocalPlace(position: cut.toPos, file: cut.toFile, filePos: cut.toFilePos,
+                                   at: at, speed: cut.playbackSpeed ?? 1)
+    }
+    return places
+  }
 }
 
 /// Where a book starts when it is loaded, and how its first span begins.
@@ -185,17 +203,17 @@ struct ResumePlan: Equatable {
 }
 
 enum Resume {
-  /// Pull before play (CROSS-REPO section 25): the watch's own place unless the server holds a
-  /// newer one from another device at a version this watch has not seen; the server's when the
-  /// watch has none. A place at the end (or a finished row taken) starts again from 0 with an
-  /// `unfinish` and a `restart` span. A place the watch keeps over the row may still be offered
+  /// Pull before play (CROSS-REPO section 25): take a newer place from another device at an unseen
+  /// version, or this watch's newer cut at or above its acknowledged version. Take the server's
+  /// place when the watch has none. A place at the end (or a finished row taken) starts again
+  /// from 0 with an `unfinish` and a `restart` span. A place the watch keeps over the row may still be offered
   /// (`Offers.offerOf`). `waiting`: the book has events still to send (this watch's own unfinish
   /// may be among them, so the server's finished row is not news).
   static func plan(local: LocalPlace?, row: ProgressRow?, deviceId: String, ackVersion: Int?, total: Double,
-                   waiting: Bool = false) -> ResumePlan
+                   waiting: Bool = false, clockSkewMs: Double = 0) -> ResumePlan
   {
     var take: ResumePlan
-    if let row, shouldTake(row, local: local, deviceId: deviceId, ackVersion: ackVersion)
+    if let row, shouldTake(row, local: local, deviceId: deviceId, ackVersion: ackVersion, clockSkewMs: clockSkewMs)
       || finishWins(row, local: local, ackVersion: ackVersion, waiting: waiting)
     {
       take = ResumePlan(position: row.position, file: nil, filePos: nil, start: .resume, unfinish: false, tookRow: true)
@@ -222,11 +240,16 @@ enum Resume {
     return take
   }
 
-  private static func shouldTake(_ row: ProgressRow, local: LocalPlace?, deviceId: String, ackVersion: Int?) -> Bool {
+  private static func shouldTake(_ row: ProgressRow, local: LocalPlace?, deviceId: String, ackVersion: Int?,
+                                 clockSkewMs: Double) -> Bool {
     guard let local else { return true }
-    guard let device = row.deviceId, !device.isEmpty, device != deviceId else { return false }
-    guard row.version > (ackVersion ?? 0), let updated = ISOTime.parse(row.updatedAt) else { return false }
-    return updated > local.at
+    guard let device = row.deviceId, !device.isEmpty, let updated = ISOTime.parse(row.updatedAt) else { return false }
+    if device == deviceId {
+      // Compare the server's cut on the watch's clock. Its ack can survive a failed place write.
+      let sentAt = updated.addingTimeInterval(-clockSkewMs.rounded(.towardZero) / 1000)
+      return !row.finished && row.position != local.position && row.version >= (ackVersion ?? 0) && sentAt > local.at
+    }
+    return row.version > (ackVersion ?? 0) && updated > local.at
   }
 
   /// The phone's `serverFinishWins`: the server's finished row beats a newer place here when the
@@ -269,6 +292,14 @@ final class PlaceStore {
   }
 
   func place(_ ref: BookRef) -> LocalPlace? { places[ref.key] }
+
+  /// A cut can reach the outbox before its place lands. A later local move or speed change stands.
+  func recover(_ cuts: [String: LocalPlace]) {
+    let restored = places.merging(cuts, uniquingKeysWith: LocalPlace.newer)
+    guard restored != places else { return }
+    places = restored
+    file?.write(places)
+  }
 
   func set(_ ref: BookRef, _ place: LocalPlace) {
     guard place.position.isFinite else { return }

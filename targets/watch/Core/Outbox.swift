@@ -24,12 +24,21 @@ struct CouldNotSync: Codable, Equatable, Sendable {
   var at: Date
 }
 
+/// The last heard cut queued for each book, kept after its event leaves the outbox.
+struct SentPlaces: Codable, Equatable, Sendable {
+  var accountId: String
+  var books: [String: LocalPlace] = [:]
+  /// A removed download can still have listening waiting to send. Replaying it must not restore its place.
+  var removed: Set<String> = []
+}
+
 /// What Sync status shows, and the server's clock skew.
 struct SyncState: Codable, Equatable, Sendable {
   var lastSyncAt: Date?
   var failed: [CouldNotSync] = []
   /// How far ahead of the watch's clock the server's was at the last answer (ms).
   var clockSkewMs: Double?
+  var sentPlaces: SentPlaces?
 }
 
 /// Sends one batch. `APIClient` in the app; a fake in the tests. Throws `APIError` for a
@@ -55,6 +64,7 @@ final class Outbox {
   private let deviceIdOf: () -> String
   private var deviceId: String { deviceIdOf() }
   private let clock: () -> Date
+  private var placeAccount: String?
 
   private(set) var events: [ListeningEvent]
   private(set) var state: SyncState
@@ -162,6 +172,54 @@ final class Outbox {
     if more { saveEvents() } else { onChange?() }
   }
 
+  /// Restore the queue in its original order. The one open span recovered at launch can be an
+  /// older span whose removal failed, so compare its end with the cut already in the queue.
+  func restorePlaces(for accountId: String?, into places: PlaceStore, recoverSpan: () -> Void = {}) {
+    guard let accountId, placeAccount != accountId else {
+      recoverSpan()
+      return
+    }
+    var cuts = LocalPlace.lastHeard(in: events)
+    let lastId = events.last?.id
+    recoverSpan()
+    if let recovered = events.last, recovered.id != lastId {
+      cuts.merge(LocalPlace.lastHeard(in: [recovered]), uniquingKeysWith: LocalPlace.newer)
+    }
+    placeAccount = accountId
+    var kept = state.sentPlaces ?? SentPlaces(accountId: accountId)
+    guard kept.accountId == accountId else { return }
+    kept.removed.formIntersection(cuts.keys)
+    for key in kept.removed { cuts.removeValue(forKey: key) }
+    kept.books.merge(cuts, uniquingKeysWith: LocalPlace.newer)
+    savePlaces(kept)
+    places.recover(kept.books)
+  }
+
+  /// Record fresh cuts as they enter the queue. A retry or a late upload answer cannot reorder them.
+  private func recordPlaces(in events: [ListeningEvent]) {
+    guard let placeAccount else { return }
+    let cuts = LocalPlace.lastHeard(in: events)
+    guard !cuts.isEmpty else { return }
+    var kept = state.sentPlaces ?? SentPlaces(accountId: placeAccount)
+    if kept.accountId != placeAccount { kept = SentPlaces(accountId: placeAccount) }
+    kept.removed.subtract(cuts.keys)
+    kept.books.merge(cuts) { _, cut in cut }
+    savePlaces(kept)
+  }
+
+  func forgetPlace(_ ref: BookRef) {
+    guard var kept = state.sentPlaces, kept.accountId == placeAccount else { return }
+    kept.books.removeValue(forKey: ref.key)
+    if events.contains(where: { $0.ref == ref }) { kept.removed.insert(ref.key) }
+    savePlaces(kept)
+  }
+
+  private func savePlaces(_ kept: SentPlaces) {
+    guard kept != state.sentPlaces else { return }
+    state.sentPlaces = kept
+    stateFile?.write(state)
+  }
+
   /// Append closed events (immutable from here); one with a number that is not one, or an id
   /// already waiting, is dropped.
   func append(_ given: [ListeningEvent]) {
@@ -170,6 +228,7 @@ final class Outbox {
     guard !add.isEmpty else { return }
     events += add
     saveEvents()
+    recordPlaces(in: add)
   }
 
   /// Every event waiting (signing out is blocked while any is, decision 9).
@@ -199,6 +258,7 @@ final class Outbox {
     again = false
     events = []
     state = SyncState()
+    placeAccount = nil
     chunkSize = Self.MAX_CHUNK
     // Nothing waits, so nothing failed: the 15 s cut runs again (the cold-start state).
     lastFlushFailed = false
