@@ -396,10 +396,19 @@ final class AppModel: ObservableObject {
     case .noAnswer: row = [library.keptPlace(record.ref), cache.serverPlace].compactMap { $0 }.max { $0.version < $1.version }
     }
     let local = places.place(record.ref)
-    let plan = Resume.plan(local: local, row: row, deviceId: Files.deviceId, ackVersion: acks.ackVersion(record.ref),
+    let me = Files.deviceId
+    let skew = outbox.state.clockSkewMs ?? 0
+    let plan = Resume.plan(local: local, row: row, deviceId: me, ackVersion: acks.ackVersion(record.ref),
                            total: timeline.total, waiting: outbox.events.contains { $0.ref == record.ref },
-                           clockSkewMs: outbox.state.clockSkewMs ?? 0)
-    if plan.tookRow, let row { acks.ackResume(row) }
+                           clockSkewMs: skew)
+    if plan.tookRow, let row {
+      // This watch's own cut, which the place here missed, becomes its place (as on Wear OS): a play
+      // that never saves one must not leave the stale place for an offline relaunch to resume.
+      if row.deviceId == me, !row.finished, let sent = LocalPlace.fromRow(row, clockSkewMs: skew) {
+        places.set(record.ref, sent)
+      }
+      acks.ackResume(row)
+    }
     engine.load(LoadedBook(ref: record.ref, title: record.title, author: record.author, timeline: timeline, urls: urls),
                 plan: plan, savedSpeed: Resume.savedSpeed(plan, local: local, row: row))
     // Offered only from the server's answer, never from a kept place.
