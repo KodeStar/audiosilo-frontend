@@ -174,19 +174,29 @@ extension LocalPlace {
     cut.at > kept.at ? cut : kept
   }
 
+  /// A cut this watch sent, dated on the watch's clock so a later local seek still wins.
+  static func fromRow(_ row: ProgressRow, clockSkewMs: Double) -> LocalPlace? {
+    ISOTime.parse(row.updatedAt).map {
+      LocalPlace(position: row.position, at: $0.addingTimeInterval(-clockSkewMs.rounded(.towardZero) / 1000),
+                 speed: row.playbackSpeed)
+    }
+  }
+
   /// Each book's last heard cut in outbox order, including a deliberate move while paused.
   static func lastHeard(in events: [ListeningEvent]) -> [String: LocalPlace] {
     var places: [String: LocalPlace] = [:]
-    for case .listen(let cut) in events {
-      guard cut.start != .resume || abs(cut.toPos - cut.fromPos) >= Spans.EMPTY_SPAN,
-        let at = ISOTime.parse(cut.endedAt)
-      else { continue }
-      let ref = BookRef(libraryId: cut.libraryId, path: cut.path)
-      places[ref.key] = LocalPlace(position: cut.toPos, file: cut.toFile, filePos: cut.toFilePos,
-                                   at: at, speed: cut.playbackSpeed ?? 1)
+    for event in events {
+      guard case .listen(let cut) = event, cut.heardPlace, let at = event.time else { continue }
+      places[event.ref.key] = LocalPlace(position: cut.toPos, file: cut.toFile, filePos: cut.toFilePos,
+                                         at: at, speed: cut.playbackSpeed ?? 1)
     }
     return places
   }
+}
+
+extension SpanEvent {
+  /// A play's span that never moved carries the loaded place, not one this watch heard.
+  var heardPlace: Bool { start != .resume || abs(toPos - fromPos) >= Spans.EMPTY_SPAN }
 }
 
 /// Where a book starts when it is loaded, and how its first span begins.
@@ -243,12 +253,14 @@ enum Resume {
   private static func shouldTake(_ row: ProgressRow, local: LocalPlace?, deviceId: String, ackVersion: Int?,
                                  clockSkewMs: Double) -> Bool {
     guard let local else { return true }
-    guard let device = row.deviceId, !device.isEmpty, let updated = ISOTime.parse(row.updatedAt) else { return false }
+    guard let device = row.deviceId, !device.isEmpty else { return false }
     if device == deviceId {
-      // Compare the server's cut on the watch's clock. Its ack can survive a failed place write.
-      let sentAt = updated.addingTimeInterval(-clockSkewMs.rounded(.towardZero) / 1000)
-      return !row.finished && row.position != local.position && row.version >= (ackVersion ?? 0) && sentAt > local.at
+      // A finished row follows finishWins. Compare the server's cut on the watch's clock: its ack
+      // can survive a failed place write, so the ack alone says nothing about which place survived.
+      guard let sent = LocalPlace.fromRow(row, clockSkewMs: clockSkewMs) else { return false }
+      return !row.finished && row.position != local.position && row.version >= (ackVersion ?? 0) && sent.at > local.at
     }
+    guard let updated = ISOTime.parse(row.updatedAt) else { return false }
     return row.version > (ackVersion ?? 0) && updated > local.at
   }
 

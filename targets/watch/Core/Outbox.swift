@@ -179,12 +179,10 @@ final class Outbox {
       recoverSpan()
       return
     }
-    var cuts = LocalPlace.lastHeard(in: events)
-    let lastId = events.last?.id
+    let queued = events.count
     recoverSpan()
-    if let recovered = events.last, recovered.id != lastId {
-      cuts.merge(LocalPlace.lastHeard(in: [recovered]), uniquingKeysWith: LocalPlace.newer)
-    }
+    var cuts = LocalPlace.lastHeard(in: Array(events.prefix(queued)))
+    cuts.merge(LocalPlace.lastHeard(in: Array(events.dropFirst(queued))), uniquingKeysWith: LocalPlace.newer)
     placeAccount = accountId
     var kept = state.sentPlaces ?? SentPlaces(accountId: accountId)
     guard kept.accountId == accountId else { return }
