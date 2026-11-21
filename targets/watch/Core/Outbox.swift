@@ -172,8 +172,9 @@ final class Outbox {
     if more { saveEvents() } else { onChange?() }
   }
 
-  /// Restore the queue in its original order. The one open span recovered at launch can be an
-  /// older span whose removal failed, so compare its end with the cut already in the queue.
+  /// Restore each book's place from the account's kept cuts and the last heard cut per book in
+  /// queue order. The one open span recovered at launch can be an older span whose removal
+  /// failed, so compare its end with the cut already in the queue.
   func restorePlaces(for accountId: String?, into places: PlaceStore, recoverSpan: () -> Void = {}) {
     guard let accountId, placeAccount != accountId else {
       recoverSpan()

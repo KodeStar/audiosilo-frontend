@@ -204,6 +204,16 @@ final class ResumeTests: XCTestCase {
     }
   }
 
+  // A finished row of this watch's is finishWins' alone: a newer row time is not a finish newer
+  // than the place here.
+  func testTheWatchsOwnFinishedRowIsNotTakenAsANewerPlace() {
+    let local = LocalPlace(position: 300, file: "a.mp3", filePos: 20, at: at)
+    var r = row(position: 1800, finished: true, version: 29, device: "watch")
+    r.finishedAt = "2026-10-25T07:00:00Z"
+    let p = Resume.plan(local: local, row: r, deviceId: "watch", ackVersion: 29, total: 1800)
+    XCTAssertEqual(p, ResumePlan(position: 300, file: "a.mp3", filePos: 20, start: .jump, unfinish: true, tookRow: false))
+  }
+
   func testAServerClockAheadOfTheWatchDoesNotUndoALaterRewind() {
     let local = LocalPlace(position: 300, at: at)
     let sent = row(position: 640.73, version: 29, device: "watch", updatedAt: "2026-10-25T08:00:10Z")
