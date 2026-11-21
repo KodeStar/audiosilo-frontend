@@ -4236,11 +4236,15 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   `SpanRecorder.playingTick`, `recover(carry)`, `keep(heardAt)` and the cut's (`tick`, `cut`), `move`'s `acknowledge`,
   `OpenSpan.fromHeard`, the recorder's `keepPlace` and the stalled-span rule (`Spans.STALL`),
   `PlaceStore.set(save:)` and `PlaceStore.recover`, the `DurableWriter`, and the outbox removing
-  its file when empty. `JsonFile(durable = true)`
+  its file when empty. Also Wear-only, for a full disk: `Resume.plan`'s `clockSkewMs` (this
+  watch's own newer row, `LocalPlace.fromRow`), `PlaceStore.recoverCuts`, `Outbox.recoverListening`
+  with its sent-places fallback (`sentPlacesFile`, `accountId`), `SpanRecorder.forgetAccount`, and
+  `AccountRules.awaitSignOut` in place of the Apple Watch's `signOut` gate. `JsonFile(durable = true)`
   syncs the bytes before its rename and the folder after (a battery death never empties the file): only
-  `outbox.json`, `open-span.json`, `open-span-move.json` and `places.json`, whose loss loses listening; the rest
-  (caches, sync status, acks, the account) is rebuilt from the server or the phone, so it skips
-  the sync. The rate while playing (asked on the main looper, written off it): a plain 5 s tick syncs the open
+  `outbox.json`, `open-span.json`, `open-span-move.json`, `places.json` and `sent-places.json`, whose loss
+  loses listening, and `account.json`, which names whose listening a launch recovers (the token,
+  `session.bin`, is synced too: its emptied form is the sign-out marker); the rest (caches, sync
+  status, acks) is rebuilt from the server or the phone, so it skips the sync. The rate while playing (asked on the main looper, written off it): a plain 5 s tick syncs the open
   span only; the 15 s cut syncs the outbox, then the next span over the closed one (no keep, no
   removal first: the event is kept before the span file changes) and the place. **The place rule**:
   `places.json` is synced on a pause, seek, stop, rate change, the end, a call's hold, a span
@@ -4273,7 +4277,7 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   (`SpanRecorder.finish`): the span's event alone would recover the book's end as the place with
   no `finish` behind it. A move a kill cut short (`recoveredMove`) is kept in `open-span-move.json` until a span
   opens (it takes it or drops it), `loadsFromRow` drops it, and so does sign-out
-  (`SpanRecorder.forgetMove`): a background launch that never plays keeps it. A
+  (`SpanRecorder.forgetAccount`): a background launch that never plays keeps it. A
   next span that can't be written (a full disk) leaves the closed one in the file: recovered, its
   event goes again under its one id (`duplicate`), and its place is taken over the saved one (the
   write order above, which a place saved while the span's own writes failed would break). An
@@ -4302,11 +4306,13 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   is told `Stuck` at once (its op not run), and the launch's join of an outbox set aside makes one
   try (`writeNow`, `DurableWriter.attempt`): it deletes what it joined only once that try lands;
   one that fails stays queued and is tried again in the background, the asides kept for the next
-  launch. Signing out drops every write of the account's files still queued
-  (`DurableWriter.forget`, with the retry the first waits for; one being tried is gone once that
-  try ends; other files' writes keep their order), then asks the removals and drains the writer
-  (each removal tried once, nothing waited out) before the account and token go, so a kill
-  between them never leaves one account's outbox to the next.
+  launch. Signing out drops queued account writes with `DurableWriter.forget`, then requests
+  removal of both span files, the outbox and its set-aside files, the sync state, the sent-places
+  fallback, the saved places and the acks. An answer that lands after the discard writes nothing
+  (`Outbox.apply`'s generation).
+  An emptied `session.bin` records an interrupted sign-out before cleanup begins. The writer
+  retries failed removals, and a launch that finds the marker resumes cleanup. A replacement
+  account waits for cleanup before it can sign in.
 - **Downloads (decision 8)**: one WorkManager `BookWorker` per book (unique `book:<safe name>`,
   KEEP; `CONNECTED`; exponential backoff from 1 min) runs `BookDownload`: item + chapters (kept
   in `items/`), `POST .../renditions`, polls at `retry_after_seconds` (15 s at least) for up to
@@ -4391,6 +4397,12 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   still stands after it. A book is finished only when it played to its end (`STATE_ENDED` while
   playing); a paused move onto the end sends nothing until `play`, which ends it there. The
   place is saved by the tick only while the audio moves (a hold keeps `lastAdvance`'s time).
+  On relaunch, Wear checks the recovered place against the watch's queued cuts and the last
+  cut it sent while local writes were failing. A newer row from this watch can also restore its
+  place in the pull before play, even if a replayed event has already acknowledged that version.
+  When the listening writer fails, Wear keeps a per-account copy of the cuts needed for resume
+  in `noBackupFilesDir` before posting. If neither directory can keep the place, the events are
+  sent anyway: the server's copy is the one a kill cannot lose.
 - **Sync (decision 9)**: `AppModel.schedule(trigger)` runs `SyncSchedule.plan`: in front it
   flushes (launch after `spans.recover()`, foreground, each closed span, the 60 s timer, a
   network coming up); in the background `SyncWorker.expedite` (unique `sync`,
@@ -4400,8 +4412,13 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   the ask of a span closed after a running run's last look, fe#285). A run that throws fails every
   run appended after it, so it opens the gate again (`AppModel.syncRunFailed`). A worker run (`AppModel.syncInBackground`) picks its own address with the probe (home
   allowed), flushes up to `WORKER_ROUNDS` while spans close, and retries with backoff only on
-  no answer (`SyncSchedule.outcome`). Sign out (`AppModel.signOut`) stops the player first, then
-  is blocked while events wait unless discarded; a replacing account likewise (pass 1).
+  no answer (`SyncSchedule.outcome`). WorkManager opens its database on demand. A full volume
+  or a storage error during enqueue or cancellation defers the request for another try in 30 s.
+  The configured task executor and initialization handler also catch storage failures during
+  job cleanup and launch reconciliation. Sign out stops playback and tries to send the
+  final span on the same tap. If listening still waits, the screen shows the count and offers
+  sync or confirmed discard. If a retry sends it while the screen is open, the original tap
+  completes sign-out. Pending listening also blocks an incoming replacement account.
 - **Debug sign-in (debug builds only)**: `src/debug/.../debug/DebugSignIn.kt` reads intent
   extras on MainActivity (`debug_pair`, `debug_book`, `debug_remove`: v1 messages as JSON taken
   as if the phone sent them; `--es debug_play 1` plays the first book on the watch).

@@ -199,6 +199,10 @@ data class LocalPlace(
   companion object {
     fun of(end: SpanEnd, at: Instant, speed: Double? = null) =
       LocalPlace(end.pos, end.file, end.filePos, at, speed)
+
+    /** A cut this watch sent, dated on the watch's clock so a later local seek still wins. */
+    fun fromRow(row: ProgressRow, clockSkewMs: Double): LocalPlace? =
+      ISOTime.parse(row.updatedAt)?.let { LocalPlace(row.position, at = it.minusMillis(clockSkewMs.toLong()), speed = row.playbackSpeed) }
   }
 }
 
@@ -219,9 +223,9 @@ data class ResumePlan(
 
 object Resume {
   /**
-   * Pull before play (CROSS-REPO section 25): the watch's own place unless the server holds a newer
-   * one from another device at a version this watch has not seen; the server's when the watch has
-   * none. A place at the end (or a finished row taken) starts again from 0 with an `unfinish` and a
+   * Pull before play (CROSS-REPO section 25): use the newest place this watch heard, including a
+   * cut the server received while local writes failed. Another device's newer place is taken at
+   * an unseen version. A place at the end (or a finished row taken) starts again with an `unfinish` and a
    * `restart` span. A place the watch keeps over the row may still be offered (`Offers.offerOf`).
    * `waiting`: the book has events still to send (this watch's own unfinish may be among them, so
    * the server's finished row is not news).
@@ -233,11 +237,12 @@ object Resume {
     ackVersion: Int?,
     total: Double,
     waiting: Boolean = false,
+    clockSkewMs: Double = 0.0,
   ): ResumePlan {
     var take: ResumePlan
     if (
       row != null &&
-        (shouldTake(row, local, deviceId, ackVersion) || finishWins(row, local, ackVersion, waiting))
+        (shouldTake(row, local, deviceId, ackVersion, clockSkewMs) || finishWins(row, local, ackVersion, waiting))
     ) {
       take = ResumePlan(row.position, null, null, ListeningStart.RESUME, unfinish = false, tookRow = true)
       if (row.finished) return restart(tookRow = true)
@@ -260,13 +265,18 @@ object Resume {
     return take
   }
 
-  private fun shouldTake(row: ProgressRow, local: LocalPlace?, deviceId: String, ackVersion: Int?): Boolean {
+  private fun shouldTake(row: ProgressRow, local: LocalPlace?, deviceId: String, ackVersion: Int?, clockSkewMs: Double): Boolean {
     if (local == null) return true
     val device = row.deviceId
-    if (device.isNullOrEmpty() || device == deviceId) return false
-    if (row.version <= (ackVersion ?: 0)) return false
+    if (device.isNullOrEmpty()) return false
+    if (device == deviceId) {
+      // A finished row follows finishWins, including its pending unfinish check. Keep this
+      // watch's file at an equal place. An ack alone says nothing about which place survived.
+      val sent = LocalPlace.fromRow(row, clockSkewMs) ?: return false
+      return !row.finished && row.position != local.position && row.version >= (ackVersion ?: 0) && sent.at > local.at
+    }
     val updated = ISOTime.parse(row.updatedAt) ?: return false
-    return updated > local.at
+    return row.version > (ackVersion ?: 0) && updated > local.at
   }
 
   /**
@@ -336,6 +346,28 @@ class PlaceStore(file: File?, writer: DurableWriter? = null) {
     set(span.ref, LocalPlace.of(to, at, span.speed))
   }
 
+  /**
+   * A cut can reach the outbox or the server before its place lands. Newer local seeks stand.
+   * Among `cuts` the last heard one per book is taken, in the order given (the outbox's, the order
+   * they happened): a wall clock set back between two of them must not pick the older.
+   */
+  @Synchronized
+  fun recoverCuts(cuts: List<SpanEvent>) {
+    val last = LinkedHashMap<String, SpanEvent>()
+    for (cut in cuts) if (cut.heardPlace && cut.time != null) last[cut.ref.key] = cut
+    val updated = places.toMutableMap()
+    for ((key, cut) in last) {
+      val at = cut.time ?: continue
+      val previous = updated[key]
+      if (previous != null && previous.at >= at) continue
+      updated[key] = LocalPlace(cut.toPos, cut.toFile, cut.toFilePos, at, cut.playbackSpeed ?: 1.0)
+    }
+    if (updated != places) {
+      places = updated
+      file?.write(places)
+    }
+  }
+
   @Synchronized
   fun remove(ref: BookRef) {
     places = places - ref.key
@@ -352,3 +384,7 @@ class PlaceStore(file: File?, writer: DurableWriter? = null) {
     val SERIALIZER = MapSerializer(String.serializer(), LocalPlace.serializer())
   }
 }
+
+/** A play's span that never moved carries the loaded place, not one this watch heard. */
+internal val SpanEvent.heardPlace: Boolean
+  get() = start != ListeningStart.RESUME || abs(toPos - fromPos) >= Spans.EMPTY_SPAN

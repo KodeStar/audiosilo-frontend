@@ -29,6 +29,15 @@
     android:supportsRtl="true"
     android:theme="@android:style/Theme.DeviceDefault">
 
+    <!-- WorkManager opens its database on demand with the watch's storage handlers. -->
+    <provider
+      android:name="androidx.startup.InitializationProvider"
+      android:authorities="${applicationId}.androidx-startup"
+      android:exported="false"
+      tools:node="merge">
+      <meta-data android:name="androidx.work.WorkManagerInitializer" tools:node="remove" />
+    </provider>
+
     <uses-library
       android:name="com.google.android.wearable"
       android:required="false" />

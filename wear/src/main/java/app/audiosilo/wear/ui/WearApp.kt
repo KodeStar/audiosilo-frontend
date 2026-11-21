@@ -317,8 +317,7 @@ private fun ScalingLazyListScope.replaceRows(model: AppModel, state: AppModel.Pe
   when (state) {
     AppModel.PendingReplace.Waiting ->
       item {
-        val revision by model.syncRevision.collectAsState()
-        val waiting = remember(revision) { model.outbox.unsentCount }
+        val waiting by model.unsent.collectAsState()
         var confirming by remember { mutableStateOf(false) }
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (waiting > 0) {

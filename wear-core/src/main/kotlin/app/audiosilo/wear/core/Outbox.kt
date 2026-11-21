@@ -22,9 +22,12 @@
 package app.audiosilo.wear.core
 
 import java.io.File
+import java.io.IOException
 import java.time.Instant
 import kotlin.math.max
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 
@@ -40,6 +43,10 @@ data class SyncState(
   /** How far ahead of the watch's clock the server's was at the last answer (ms). */
   val clockSkewMs: Double? = null,
 )
+
+/** When filesDir is unwritable, noBackupFilesDir can still keep a place before its POST. */
+@Serializable
+private data class SentPlaces(val account: String, val cuts: List<SpanEvent>)
 
 /**
  * Sends one batch: the ApiClient in the app, a fake in the tests. Throws `APIError` for a server's
@@ -58,16 +65,84 @@ class Outbox(
    * the couldn't-sync list lands there one write before it leaves the outbox, so a kill between the
    * two sends it again, never loses it); null: on the caller's thread.
    */
-  writer: DurableWriter? = null,
+  private val writer: DurableWriter? = null,
+  sentPlacesFile: File? = null,
+  private val accountId: () -> String? = { null },
   private val clock: () -> Instant = Instant::now,
 ) {
   private val lock = Any()
   private val eventsFile = directory?.let { JsonFile(File(it, "outbox.json"), EVENTS, durable = true, writer = writer) }
   private val stateFile = directory?.let { JsonFile(File(it, "sync-state.json"), SyncState.serializer(), writer = writer) }
+  private val sentFile = sentPlacesFile?.let { JsonFile(it, SentPlaces.serializer(), durable = true) }
+  private val checkpointLock = Any()
+  @Volatile private var checkpointGeneration = 0L
+  private var checkpointToRetire = false
 
   /** The files it keeps (signing out forgets their writes: `DurableWriter.forget`). */
   val files: List<File>
-    get() = listOfNotNull(eventsFile?.file, stateFile?.file)
+    get() = listOfNotNull(eventsFile?.file, stateFile?.file, sentFile?.file)
+
+  /** Restore the listener's place and close a span left open before a launch can send anything. */
+  fun recoverListening(account: String, places: PlaceStore, spans: SpanRecorder) {
+    val queued = events
+    places.recoverCuts(queued.filterIsInstance<SpanEvent>())
+    // An open span was written after older queued cuts, even across a wall clock change.
+    // Its own closed event, when present, carries its final end.
+    spans.recover { left -> places.recover(left, queued) }
+    synchronized(lock) {
+      val checkpoint = sentFile?.read()?.takeIf { it.account == account }
+      if (checkpoint != null) {
+        places.recoverCuts(checkpoint.cuts)
+        removeCheckpoint()
+      }
+    }
+  }
+
+  private fun removeCheckpoint() {
+    val file = sentFile ?: return
+    // Ordered after the places just restored, or the account's forget. A fresh fallback must
+    // survive a removal that waited behind a failed write.
+    checkpointGeneration++
+    checkpointToRetire = false
+    val generation = checkpointGeneration
+    val remove = { synchronized(checkpointLock) { generation != checkpointGeneration || file.write(null) } }
+    if (writer != null) writer.submit(JsonFile.writerKey(file.file), remove) else remove()
+  }
+
+  /**
+   * Usually the queued outbox write already protects this cut. If it failed, keep the newest
+   * cut per book in the alternate directory before sending. A kill can lose even the HTTP
+   * answer. When both directories are full the events are sent anyway: the server is then the
+   * only copy a kill cannot lose.
+   */
+  private suspend fun protectPlaces(sent: List<ListeningEvent>, generation: Int) {
+    val file = sentFile ?: return
+    // The rule recoverCuts reads them by: a newer empty resume must not hide a heard cut.
+    val cuts = sent.filterIsInstance<SpanEvent>().filter { it.heardPlace }
+    if (cuts.isEmpty()) return
+    withContext(Dispatchers.IO) {
+      val landed = writer?.drain() == true
+      val (account, ticket) = synchronized(lock) {
+        // The account left: sendChunk stops on the same check.
+        if (generation != discards) return@withContext
+        if (landed && !stuck) {
+          if (checkpointToRetire) removeCheckpoint()
+          return@withContext
+        }
+        checkpointToRetire = true
+        (accountId() ?: throw IOException("Signed out before sync")) to ++checkpointGeneration
+      }
+      // Only the sync thread and the writer touch this lock. Appending a cut on the player
+      // thread can proceed while the fallback syncs its bytes.
+      synchronized(checkpointLock) {
+        if (ticket != checkpointGeneration) return@withContext
+        // An unreadable fallback is replaced by these cuts. A refused write still sends them.
+        val kept = (file.load() as? JsonLoad.Value)?.value?.takeIf { it.account == account }?.cuts.orEmpty()
+        val latest = (kept + cuts).groupBy { it.ref }.values.map { book -> book.maxBy { it.time ?: Instant.MIN } }
+        file.write(SentPlaces(account, latest))
+      }
+    }
+  }
 
   /**
    * The outbox file is there, but could be neither read nor moved aside (`kept`; set before
@@ -212,18 +287,23 @@ class Outbox(
       // Nothing waits, so nothing failed: the 15 s cut runs again (the cold-start state).
       lastFlushFailed = false
       // Never joined to another account's outbox at a later launch.
-      eventsFile?.asides(ASIDE_PREFIX)?.forEach { it.delete() }
+      eventsFile?.asides(ASIDE_PREFIX)?.forEach {
+        JsonFile(it, EVENTS, durable = true, writer = writer).write(null)
+      }
       // A file still in the way goes with them: the listener chose to drop what waits.
       stuck = false
       saveEventsLocked()
-      stateFile?.write(state)
+      stateFile?.write(null)
+      removeCheckpoint()
     }
     onChange?.invoke()
   }
 
-  private fun moveToFailed(items: List<Pair<ListeningEvent, String>>) {
+  /** `generation`: the `discards` the events were sent under; a discard since makes this a no-op. */
+  private fun moveToFailed(items: List<Pair<ListeningEvent, String>>, generation: Int? = null) {
     if (items.isEmpty()) return
     synchronized(lock) {
+      if (generation != null && generation != discards) return
       val now = clock()
       val ids = items.map { it.first.id }.toSet()
       val kept = state.failed.filter { stillKept(it, now) && it.event.id !in ids }
@@ -305,7 +385,8 @@ class Outbox(
   private suspend fun flushOnce() {
     giveUpOld()
     repeat(MAX_ROUNDS) {
-      val (chunk, via) =
+      // The generation is read with the chunk: a discard in between must not send it as current.
+      val (chunk, via, generation) =
         synchronized(lock) {
           if (events.isEmpty()) {
             // Nothing waits, so nothing failed.
@@ -313,9 +394,9 @@ class Outbox(
             return
           }
           val t = transport ?: return
-          events.take(chunkSize) to t
+          Triple(events.take(chunkSize), t, discards)
         }
-      if (sendChunk(chunk, via) == Next.STOP) return
+      if (sendChunk(chunk, via, generation) == Next.STOP) return
     }
   }
 
@@ -328,13 +409,15 @@ class Outbox(
 
   private fun discardsNow(): Int = synchronized(lock) { discards }
 
-  private suspend fun sendChunk(chunk: List<ListeningEvent>, transport: ListeningSyncTransport): Next {
-    val sentBefore = discardsNow()
+  /** `sentBefore`: the `discards` the chunk was taken under (`flushOnce`). */
+  private suspend fun sendChunk(chunk: List<ListeningEvent>, transport: ListeningSyncTransport, sentBefore: Int): Next {
     try {
+      protectPlaces(chunk, sentBefore)
+      if (sentBefore != discardsNow()) return Next.STOP
       val sentAt = clock()
       val answer = transport.syncListening(body(chunk))
       if (sentBefore != discardsNow()) return Next.STOP
-      apply(answer, chunk, sentAt, clock())
+      apply(answer, chunk, sentAt, clock(), sentBefore)
       return Next.MORE
     } catch (e: APIError) {
       if (sentBefore != discardsNow()) return Next.STOP
@@ -343,10 +426,10 @@ class Outbox(
           synchronized(lock) { chunkSize = max(1, chunk.size / 2) }
           return Next.MORE
         }
-        moveToFailed(listOf(chunk[0] to "too_large"))
+        moveToFailed(listOf(chunk[0] to "too_large"), sentBefore)
         return Next.MORE
       }
-      if (e.status == 400) return sendOneByOne(chunk, transport)
+      if (e.status == 400) return sendOneByOne(chunk, transport, sentBefore)
       // 401, 403, 404/405, 5xx: keep them for a later try.
       lastFlushFailed = true
       return Next.STOP
@@ -359,24 +442,23 @@ class Outbox(
     }
   }
 
-  private suspend fun sendOneByOne(chunk: List<ListeningEvent>, transport: ListeningSyncTransport): Next {
+  private suspend fun sendOneByOne(chunk: List<ListeningEvent>, transport: ListeningSyncTransport, sentBefore: Int): Next {
     if (chunk.size == 1) {
-      moveToFailed(listOf(chunk[0] to "invalid"))
+      moveToFailed(listOf(chunk[0] to "invalid"), sentBefore)
       return Next.MORE
     }
-    val sentBefore = discardsNow()
     for (event in chunk) {
       try {
         val answer = transport.syncListening(body(listOf(event)))
         if (sentBefore != discardsNow()) return Next.STOP
-        apply(answer, listOf(event), null, null)
+        apply(answer, listOf(event), null, null, sentBefore)
       } catch (e: APIError) {
         if (sentBefore != discardsNow()) return Next.STOP
         if (e.status != 400) {
           lastFlushFailed = true
           return Next.STOP
         }
-        moveToFailed(listOf(event to "invalid"))
+        moveToFailed(listOf(event to "invalid"), sentBefore)
       } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
       } catch (_: Exception) {
@@ -391,9 +473,11 @@ class Outbox(
   /**
    * Apply a sync answer for the events `sent`: each answered one leaves (rejected to the list), the
    * skew is measured when the request's times are known, and a row that kept this device's event
-   * has its version acknowledged.
+   * has its version acknowledged. `generation`: the `discards` it was sent under; once the account's
+   * listening is discarded (another thread, sign-out), the rest of the answer is not written, so
+   * the next account inherits none of its state or acks.
    */
-  fun apply(answer: SyncResponse, sent: List<ListeningEvent>, sentAt: Instant?, answeredAt: Instant?) {
+  fun apply(answer: SyncResponse, sent: List<ListeningEvent>, sentAt: Instant?, answeredAt: Instant?, generation: Int? = null) {
     // The server answered: reachable, so the 15 s cuts run again.
     lastFlushFailed = false
     val results = LinkedHashMap<String, SyncResult>()
@@ -404,15 +488,21 @@ class Outbox(
       val r = results[event.id] ?: continue // no result: try again later
       if (r.status == "rejected") rejected += event to (r.reason ?: "invalid") else done += event.id
     }
-    synchronized(lock) { removeLocked(done) }
-    moveToFailed(rejected)
+    fun discarded() = generation != null && generation != discards
     synchronized(lock) {
+      if (discarded()) return
+      removeLocked(done)
+    }
+    moveToFailed(rejected, generation)
+    synchronized(lock) {
+      if (discarded()) return
       val skew =
         if (sentAt != null && answeredAt != null) ClockSkew.of(answer.serverTime, sentAt, answeredAt) else null
       state = state.copy(lastSyncAt = clock(), clockSkewMs = skew ?: state.clockSkewMs)
       stateFile?.write(state)
     }
     onChange?.invoke()
+    if (generation != null && generation != discardsNow()) return
     val rows = answer.progress ?: emptyList()
     for (row in rows) {
       if (AckRules.keptMine(row, deviceId, sent, results)) acks.ack(row.ref, row.version)

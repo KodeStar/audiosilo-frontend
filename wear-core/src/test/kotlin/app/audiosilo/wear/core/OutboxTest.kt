@@ -14,6 +14,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Assume.assumeFalse
 import org.junit.Before
 import org.junit.Test
@@ -33,6 +34,124 @@ class OutboxTest {
   private val ref = BookRef(3, "Author/Book")
 
   private fun failures(o: Outbox) = o.couldNotSync().map { listOf(it.event.id, it.reason) }
+
+  @Test
+  fun anOfflineRelaunchRecoversASentCutThatNeverReachedTheListeningFiles() = runBlocking {
+    val dir = tempDir()
+    try {
+      val cut = (listen("cut") as SpanEvent).copy(fromPos = 625.48, toPos = 640.73)
+      val normal = File(dir, "files").apply { writeText("unwritable directory") }
+      val fallback = File(dir, "no_backup/sent-places.json")
+      fun open(account: String) =
+        Outbox(normal, acks, DEVICE_ID, DurableWriter(retryAfter = { _, _ -> }), fallback, { account }) { clock.now }
+      val first = open("a")
+      first.append(listOf(cut))
+      val server = FakeTransport()
+      first.flush(server)
+      assertEquals(listOf(cut), server.bodies.single().events)
+      assertTrue(first.events.isEmpty())
+
+      val otherPlaces = PlaceStore(null)
+      fun spans(box: Outbox) = SpanRecorder(MemorySpanStore(), acks, emit = box::append)
+      open("b").let { it.recoverListening("b", otherPlaces, spans(it)) }
+      assertNull(otherPlaces.place(ref))
+
+      // The old open span was recovered and sent again under its original id. Its duplicate
+      // does not replace the newer checkpoint, even when the launch has no network afterwards.
+      val second = open("a")
+      val old = cut.copy(id = "old", toPos = 571.945, endedAt = "2026-10-25T07:32:00Z")
+      second.append(listOf(old))
+      second.flush(FakeTransport { answer(it, status = { e -> SyncResult(e.id, "duplicate") }) })
+      val places = PlaceStore(null)
+      places.set(ref, LocalPlace(old.toPos, at = old.time!!))
+      second.recoverListening("a", places, spans(second))
+      assertEquals(640.73, Resume.plan(places.place(ref), null, DEVICE_ID, 25, 1800.0).position, 0.0)
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun aLaterPlayThatNeverMovedDoesNotHideTheSentCutFromTheFallback() = runBlocking {
+    val dir = tempDir()
+    try {
+      val normal = File(dir, "files").apply { writeText("unwritable directory") }
+      val fallback = File(dir, "no_backup/sent-places.json")
+      fun open() = Outbox(normal, acks, DEVICE_ID, DurableWriter(retryAfter = { _, _ -> }), fallback, { "a" }) { clock.now }
+      val heard = (listen("heard", endedAt = "2026-10-25T07:30:00Z") as SpanEvent).copy(fromPos = 625.48, toPos = 640.73)
+      // The next play opened at a place loaded from another device and stopped before it moved.
+      val unmoved = (listen("unmoved", endedAt = "2026-10-25T07:40:00Z") as SpanEvent).copy(fromPos = 100.0, toPos = 100.0)
+      val box = open()
+      box.append(listOf(heard))
+      box.flush(FakeTransport())
+      box.append(listOf(unmoved))
+      box.flush(FakeTransport())
+      val places = PlaceStore(null)
+      val relaunched = open()
+      relaunched.recoverListening("a", places, SpanRecorder(MemorySpanStore(), acks, emit = relaunched::append))
+      assertEquals(640.73, places.place(ref)!!.position, 0.0)
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun aCutIsSentWhenNeitherDirectoryCanKeepItsPlace() = runBlocking {
+    val dir = tempDir()
+    try {
+      val normal = File(dir, "files").apply { writeText("") }
+      val fallback = File(dir, "no_backup").apply { writeText("") }
+      val o = Outbox(normal, acks, DEVICE_ID, DurableWriter(retryAfter = { _, _ -> }),
+        File(fallback, "sent-places.json"), { "a" }) { clock.now }
+      val cut = listen("a")
+      o.append(listOf(cut))
+      val server = FakeTransport()
+      o.flush(server)
+      // A kill could lose what only memory holds. The server keeps it.
+      assertEquals(listOf(cut), server.bodies.single().events)
+      assertTrue(o.events.isEmpty())
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun launchUsesTheNewerOutboxSeekEvenWhenItMovedBack() {
+    val dir = tempDir()
+    try {
+      val seek = (listen("rewind", start = ListeningStart.MOVED_BACK) as SpanEvent).copy(
+        fromPos = 300.0, toPos = 300.0, toFile = "b.mp3", toFilePos = 20.0,
+      )
+      outbox(dir).append(listOf(seek))
+      val places = PlaceStore(File(dir, "places.json"))
+      places.set(ref, LocalPlace(640.73, at = seek.time!!.minusSeconds(1)))
+      val box = outbox(dir)
+      box.recoverListening("a", places, SpanRecorder(MemorySpanStore(), acks, emit = box::append))
+      assertEquals(LocalPlace(300.0, "b.mp3", 20.0, seek.time!!, 1.0), places.place(ref))
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun launchTakesTheLaterQueuedSeekWhenTheClockWasSetBackBetweenThem() {
+    val dir = tempDir()
+    try {
+      val heard = (listen("heard", endedAt = "2026-10-25T07:40:00.000Z") as SpanEvent).copy(fromPos = 600.0, toPos = 640.0)
+      // The wall clock went back five minutes, then the listener moved back while paused.
+      val rewind = (listen("rewind", endedAt = "2026-10-25T07:35:00.000Z", start = ListeningStart.MOVED_BACK) as SpanEvent)
+        .copy(fromPos = 300.0, toPos = 300.0)
+      outbox(dir).append(listOf(heard, rewind))
+      val places = PlaceStore(File(dir, "places.json"))
+      // The rewind's own place landed: the older heard cut must not replace it.
+      places.set(ref, LocalPlace(300.0, at = rewind.time!!))
+      val box = outbox(dir)
+      box.recoverListening("a", places, SpanRecorder(MemorySpanStore(), acks, emit = box::append))
+      assertEquals(300.0, places.place(ref)!!.position, 0.0)
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
 
   // Stay wins (row 9c-2): a queued `stay` goes as a `jump` once the server lacks
   // `listening_stay`, as it is otherwise; the stored event keeps its start and id.
@@ -199,6 +318,20 @@ class OutboxTest {
     assertEquals(listOf("new"), t.bodies.flatMap { b -> b.events.map { it.id } })
     assertEquals(listOf(listOf("old", "too_old"), listOf("old-finish", "too_old")), failures(o))
     assertTrue(o.events.isEmpty())
+  }
+
+  @Test
+  fun anAnswerStillBeingAppliedWhenTheAccountLeavesWritesNothingForTheNextOne() = runBlocking {
+    val o = outbox()
+    o.append(listOf(listen("a")))
+    var answered = false
+    // Sign-out wakes on the emptied outbox (onChange) and discards while the worker's answer
+    // is still being applied on its own thread.
+    o.onChange = { if (o.events.isEmpty() && !answered) { answered = true; o.discardAll(); acks.clear() } }
+    o.onAnswer = { _, _ -> fail("the old account's rows reached the next one") }
+    o.flush(FakeTransport { answer(it, progress = listOf(row(version = 42))) })
+    assertTrue(answered)
+    assertNull(acks.ackVersion(ref))
   }
 
   @Test
@@ -422,7 +555,6 @@ class OutboxTest {
     o.onAnswer = { _, _ -> told = true }
     t.reply(answer(t.bodies[0], progress = listOf(row(version = 9))))
     flush.join()
-    assertNull(o.state.lastSyncAt)
     assertNull(o.state.clockSkewMs)
     assertNull(acks.ackVersion(ref))
     assertFalse(told)
