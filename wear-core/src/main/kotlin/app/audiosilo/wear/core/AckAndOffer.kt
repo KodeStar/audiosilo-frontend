@@ -132,7 +132,8 @@ object AckRules {
    * The books whose `stay` this answer held: the server kept the stored row over it (`diverged`,
    * `kept: stored`), another device's Stay holding it (CROSS-REPO section 25 "Stay wins", S2). Their
    * kept place is offered again at once (`OfferThrottle.shouldShow`'s `stayHeld`; the phone's
-   * `staysHeld`).
+   * `heldListens` names these too, and also a held listen or resume, which the phone alone offers
+   * again after a new play or move).
    */
   fun staysHeld(sent: List<ListeningEvent>, results: Map<String, SyncResult>): Set<BookRef> =
     sent

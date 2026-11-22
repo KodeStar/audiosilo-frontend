@@ -1,4 +1,4 @@
-import { memo, type ReactNode, useEffect, useRef, useState } from 'react';
+import { memo, type ReactNode, useEffect, useReducer, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AppState,
@@ -76,6 +76,15 @@ import {
 const SAVE_DEBOUNCE_MS = 2000;
 /** A section that lays out quicker than this shows no spinner. */
 const SPINNER_DELAY_MS = 300;
+
+/** A late save may report the same version while the reader is writing its acknowledgement. */
+function latestAnswer(previous: ReadingSaved | null, incoming: ReadingSaved): ReadingSaved {
+  if (!previous) return incoming;
+  const before = previous.saved.reading_progress.version;
+  const after = incoming.saved.reading_progress.version;
+  if (before === after && previous.seen) return previous;
+  return before > after ? previous : incoming;
+}
 
 /** Why the reader shows a message instead of the book. `signedOut`: the server refused the
  * session (a 401), shown as the sign-in state with Reconnect while the connection needs
@@ -226,16 +235,18 @@ export function ReaderScreen({
   // offered at once, as a save's answer would (fe#173), unless a newer answer was heard
   // while the place was looked up (a close-save still on its way as the book reopened).
   const [opening, setOpening] = useState<ReadingPlaceLookup | null>(null);
-  const [answer, setAnswer] = useState<ReadingSaved | null>(null);
+  const [answer, recordAnswer] = useReducer(latestAnswer, null);
   if (!opening && place.data) {
     setOpening(place.data);
     const unseen = place.data.unseen;
     if (unseen) {
-      setAnswer((prev) =>
-        prev && prev.saved.reading_progress.version >= unseen.version
-          ? prev
-          : { connectionId, libraryId, path, saved: { reading_progress: unseen }, seen: false },
-      );
+      recordAnswer({
+        connectionId,
+        libraryId,
+        path,
+        saved: { reading_progress: unseen },
+        seen: false,
+      });
     }
   }
   // Where Try again reopens: where the reader was, not where this screen first opened.
@@ -326,11 +337,7 @@ export function ReaderScreen({
       onReadingSaved((heard) => {
         if (!sameBook(heard, connectionId, libraryId, path)) return;
         setUnsaved(null);
-        setAnswer((prev) =>
-          prev && prev.saved.reading_progress.version > heard.saved.reading_progress.version
-            ? prev
-            : heard,
-        );
+        recordAnswer(heard);
       }),
     [connectionId, libraryId, path],
   );
@@ -447,11 +454,9 @@ export function ReaderScreen({
   const offer = answer && here ? jumpOffer(answer, here) : null;
   const notSaved = show && (unsaved === 'shown' || (unsaved !== null && signedOut !== undefined));
   const acknowledge = useLatest((): Promise<void> => {
-    const adopted = answer
-      ? adoptServerPlace(connectionId, libraryId, path, answer.saved.reading_progress)
-      : Promise.resolve();
-    setAnswer(null);
-    return adopted;
+    if (!answer) return Promise.resolve();
+    recordAnswer({ ...answer, seen: true });
+    return adoptServerPlace(connectionId, libraryId, path, answer.saved.reading_progress);
   });
   // Stay: the page on screen is saved at once, on the version just acknowledged, as a
   // listening Stay is sent at once (fe#321). Left to the next page turn, the other device's

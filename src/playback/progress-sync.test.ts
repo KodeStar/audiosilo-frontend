@@ -27,6 +27,7 @@ import {
   positionOn,
   withLocalPlaces,
   noteClockSkew,
+  knownSkew,
   noteUndoneFinish,
   onFinishUndoneElsewhere,
   pendingSaveCount,
@@ -1180,6 +1181,54 @@ describe('readLocalPlaces / resumeLookupOf', () => {
 
   const at = (updated_at: string, position: number) => ({ ...save, updated_at, position });
 
+  it('chooses live and mirrored server rows against captures on the device clock, including ties', () => {
+    const local = at('2026-01-02T00:00:10Z', 75);
+    const row = makeProgress({ position: 150, updated_at: '2026-01-02T00:00:20Z' });
+    const places: LocalPlaces = {
+      mirror: { 'c1:1:A/Book': local },
+      queue: [],
+      pending: new Set(),
+      skews: { c1: 20_000 },
+    };
+    const lookup = () => resumeLookupOf(row, places, 'c1', 1, 'A/Book');
+    expect(lookup()).toMatchObject({ progress: { position: 75 }, unchecked: true });
+    places.skews = { c1: 10_000 };
+    expect(lookup()).toMatchObject({ progress: row });
+    places.skews = { c1: -20_000 };
+    places.mirror['c1:1:A/Book'] = at('2026-01-02T00:00:30Z', 75);
+    expect(lookup()).toMatchObject({ progress: row });
+
+    // The mirror holds the server's row. A queued capture with the same raw timestamp
+    // still took place later here, and the car gets that capture's device time.
+    places.mirror['c1:1:A/Book'] = progressToSave('c1', 1, 'A/Book', row);
+    places.queue = [at(row.updated_at, 90)];
+    places.skews = { c1: 20_000 };
+    const queued = resumeLookupOf(undefined, places, 'c1', 1, 'A/Book');
+    expect(queued).toMatchObject({ progress: { position: 90 } });
+    expect(placeSavedAt(queued, undefined, places, 'c1', 1, 'A/Book')).toBe(
+      Date.parse(row.updated_at),
+    );
+  });
+
+  it('compares a previously acknowledged finish with the local restart on the same clock', () => {
+    const row = makeProgress({
+      finished: true,
+      version: 5,
+      updated_at: '2026-01-02T00:00:20Z',
+      finished_at: '2026-01-02T00:00:19Z',
+    });
+    const mine = { ...at('2026-01-02T00:00:05Z', 20), ack_version: 5 };
+    const places = {
+      mirror: { 'c1:1:A/Book': mine },
+      queue: [],
+      pending: new Set<string>(),
+      skews: { c1: 20_000 },
+    };
+    expect(resumeLookupOf(row, places, 'c1', 1, 'A/Book')).toMatchObject({
+      progress: { finished: false, position: 20 },
+    });
+  });
+
   it('resolves each book from the mirror and the queue read once', async () => {
     await AsyncStorage.setItem(
       MIRROR_KEY,
@@ -1529,7 +1578,7 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
       expect(resumeLookupOf(echo, await readLocalPlaces(), 'c1', 1, 'A/Book')).toMatchObject({
         file: { path: 'A/Book/02.mp3', pos: 600 },
       });
-      await writeMirror({ ...save, position: 4100, updated_at: '2026-01-02T00:00:22Z' });
+      await writeMirror(progressToSave('c1', 1, 'A/Book', echo));
       expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ file: 'A/Book/02.mp3' });
     });
 
@@ -1541,6 +1590,21 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
       expect(resumeLookupOf(echo, await readLocalPlaces(), 'c1', 1, 'A/Book')).not.toHaveProperty(
         'file',
       );
+    });
+
+    it('drops a stale file place when a slow server stamps its newer row before the capture', async () => {
+      await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ 'c1:1:A/Book': filed }));
+      noteClockSkew('c1', -20_000);
+      const row = { ...echo, updated_at: '2026-01-01T23:59:55Z' }; // 00:00:15 here
+      const lookup = await loadInitialProgress(
+        fakeGetApi(async () => row),
+        'c1',
+        1,
+        'A/Book',
+      );
+      expect(lookup).toMatchObject({ progress: row });
+      expect(lookup).not.toHaveProperty('file');
+      expect(await readMirrorOf('c1', 1, 'A/Book')).not.toHaveProperty('file');
     });
 
     it('a cold launch merges with the stored skew before any sync answer', async () => {
@@ -1556,6 +1620,24 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
       );
       expect(r).toMatchObject({ file: { path: 'A/Book/02.mp3', pos: 600 } });
       expect(await readMirrorOf(cid, 1, 'A/Book')).toMatchObject({ file: 'A/Book/02.mp3' });
+    });
+
+    it('concurrent cold checks both await the same stored skew', async () => {
+      const cid = 'c-concurrent-skew';
+      let release!: (values: Record<string, number>) => void;
+      const read = jest.fn(
+        () => new Promise<Record<string, number>>((resolve) => (release = resolve)),
+      );
+      provideStoredSkews(read);
+      try {
+        const first = knownSkew(cid);
+        const second = knownSkew(cid);
+        release({ [cid]: 20_000 });
+        expect(await Promise.all([first, second])).toEqual([20_000, 20_000]);
+        expect(read).toHaveBeenCalledTimes(1);
+      } finally {
+        provideStoredSkews(async () => stored);
+      }
     });
 
     // fe#259: keep-newest compared the server's stamp with this device's, so with the
@@ -1646,8 +1728,12 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
     await ignoreOffer('c1', 1, 'A/Book', row, 'watch|a');
     expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({
       ack_version: 3,
-      answered: ['watch|a'],
+      ignored: ['watch|a'],
     });
+    await writeMirror({ ...save, updated_at: '2026-02-01T00:00:00Z' });
+    const mirror = await readMirrorOf('c1', 1, 'A/Book');
+    expect(mirror?.ignored).toEqual(['watch|a']);
+    expect(mirror?.answered).toBeUndefined();
   });
 
   it('ackVersion never lowers; it creates the record from the row when none exists', async () => {

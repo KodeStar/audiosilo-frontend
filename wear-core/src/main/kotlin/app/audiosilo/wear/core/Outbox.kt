@@ -468,11 +468,11 @@ class Outbox(
     }
   }
 
-  private fun body(events: List<ListeningEvent>) =
+  private fun body(events: List<ListeningEvent>, takesStay: Boolean) =
     SyncRequest(
       deviceId = deviceId,
       sentAt = ISOTime.string(clock()),
-      events = asServerTakes(events, takesStay()),
+      events = asServerTakes(events, takesStay),
     )
 
   private fun discardsNow(): Int = synchronized(lock) { discards }
@@ -488,9 +488,10 @@ class Outbox(
       }
       if (sentBefore != discardsNow()) return Next.STOP
       val sentAt = clock()
-      val answer = transport.syncListening(body(chunk))
+      val tookStay = takesStay()
+      val answer = transport.syncListening(body(chunk, tookStay))
       if (sentBefore != discardsNow()) return Next.STOP
-      apply(answer, chunk, sentAt, clock(), sentBefore)
+      apply(answer, chunk, sentAt, clock(), tookStay, sentBefore)
       return Next.MORE
     } catch (e: APIError) {
       if (sentBefore != discardsNow()) return Next.STOP
@@ -522,9 +523,10 @@ class Outbox(
     }
     for (event in chunk) {
       try {
-        val answer = transport.syncListening(body(listOf(event)))
+        val tookStay = takesStay()
+        val answer = transport.syncListening(body(listOf(event), tookStay))
         if (sentBefore != discardsNow()) return Next.STOP
-        apply(answer, listOf(event), null, null, sentBefore)
+        apply(answer, listOf(event), null, null, tookStay, sentBefore)
       } catch (e: APIError) {
         if (sentBefore != discardsNow()) return Next.STOP
         if (e.status != 400) {
@@ -550,7 +552,14 @@ class Outbox(
    * listening is discarded (another thread, sign-out), the rest of the answer is not written, so
    * the next account inherits none of its state or acks.
    */
-  fun apply(answer: SyncResponse, sent: List<ListeningEvent>, sentAt: Instant?, answeredAt: Instant?, generation: Int? = null) {
+  fun apply(
+    answer: SyncResponse,
+    sent: List<ListeningEvent>,
+    sentAt: Instant?,
+    answeredAt: Instant?,
+    tookStay: Boolean,
+    generation: Int? = null,
+  ) {
     // The server answered: reachable, so the 15 s cuts run again.
     lastFlushFailed = false
     val results = LinkedHashMap<String, SyncResult>()
@@ -581,7 +590,7 @@ class Outbox(
       if (AckRules.keptMine(row, deviceId, sent, results)) acks.ack(row.ref, row.version)
     }
     // As sent: a `stay` that went as a `jump` (the flag gone) was held by the usual rule.
-    onAnswer?.invoke(rows, AckRules.staysHeld(asServerTakes(sent, takesStay()), results))
+    onAnswer?.invoke(rows, if (tookStay) AckRules.staysHeld(sent, results) else emptySet())
   }
 
   companion object {

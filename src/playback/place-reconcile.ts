@@ -5,17 +5,17 @@ import type { ApiClient } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
 import { isReachable, onReconnect } from '@/api/reachability';
 import type { Chapter, Progress } from '@/api/types';
-import { toast } from '@/components/ui/toast';
+import { dismissToast, toast } from '@/components/ui/toast';
 import { contradictedTitle } from '@/lib/chapter-label';
 import { sameConnection } from '@/lib/connection-id';
-import { contentKeyOf } from '@/lib/content-key';
+import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { formatClock } from '@/lib/format';
 import { quietly } from '@/lib/quietly';
 import { sharedStart } from '@/lib/shared-start';
 import { onForeground, whenActive } from '@/lib/when-active';
 
 import { selectUndoFor, undoJump, useJumpUndo } from './jump-undo';
-import { onSyncAnswer, usesListeningSync } from './listening-outbox';
+import { type HeldListen, onSyncAnswer, usesListeningSync } from './listening-outbox';
 import {
   ackVersion,
   answerOffer,
@@ -24,10 +24,13 @@ import {
   GUARD_SLACK_S,
   guardHolds,
   ignoreOffer,
+  knownSkew,
+  localTimeOf,
   onHeldSave,
   type LatePlace,
   placeKey,
   readMirror,
+  serverTimeOf,
   type ProgressSave,
 } from './progress-sync';
 import {
@@ -35,6 +38,7 @@ import {
   engineHoldsOtherBook,
   holdSaves,
   localMoveCount,
+  localPlayAskedAt,
   type NowPlaying,
   onLatePlace,
   onPickedUpAgain,
@@ -117,18 +121,23 @@ const timeOf = (iso: string | undefined): number => {
 export function placeToMoveTo(input: {
   server: Progress | null;
   deviceId: string;
-  mirror: Pick<ProgressSave, 'updated_at' | 'device_id'> | null;
+  mirror: Pick<ProgressSave, 'updated_at' | 'device_id' | 'server_clock'> | null;
   enginePosition: number;
+  skewMs?: number;
   /** A late place (`applyLatePlace`): a record with no device id counts (`byAnotherDevice`). */
   late?: boolean;
 }): number | null {
-  const { server, deviceId, mirror, enginePosition, late = false } = input;
+  const { server, deviceId, mirror, enginePosition, skewMs = 0, late = false } = input;
   if (!server || server.finished || !(server.position > 0)) return null;
   if (!byAnotherDevice(server.device_id, deviceId, late)) return null;
   // A late place with no device id stands in for the start's lookup, which took the newest of
   // the row and the record the start read, whoever's: not newer than that record, it stays.
   const weighed = !server.device_id || mirror?.device_id === deviceId ? mirror : null;
-  if (weighed && timeOf(server.updated_at) <= timeOf(weighed.updated_at)) return null;
+  if (
+    weighed &&
+    (serverTimeOf(server.updated_at, skewMs) || 0) <= (localTimeOf(weighed, skewMs) || 0)
+  )
+    return null;
   if (Math.abs(server.position - enginePosition) <= MOVE_THRESHOLD_S) return null;
   return server.position;
 }
@@ -153,6 +162,14 @@ export type PlaceOffer = {
   /** `device_id|updated_at` of the offered place. */
   key: string;
 };
+
+/** The offer keys a mirror record has settled: answered (Jump, Stay) or timed out
+ * (`ignored`). Neither is offered again (`offerOf`'s `answered`). */
+export function settledOffers(
+  record: Pick<ProgressSave, 'answered' | 'ignored'> | null | undefined,
+): string[] {
+  return [...(record?.answered ?? []), ...(record?.ignored ?? [])];
+}
 
 export function offerOf(
   row: Progress | null | undefined,
@@ -180,13 +197,13 @@ export function offerOf(
   return kept ?? (row.other_place ? candidate(row.other_place) : null);
 }
 
-/** Offers shown this launch (`bookKey|key`): each is shown once, answered or not. */
+/** Offers shown this launch (`bookKey|key`), including ones that timed out. */
 const shownOffers = new Set<string>();
 /** A device's places are offered at most once in this long for a book: one that plays on
  * moves its place (a new key) with each span it sends, a new offer every sync. */
 export const OFFER_REPEAT_MS = 10 * 60_000;
-/** When each device's place was last offered (`bookKey|device_id`). */
-const offeredAt = new Map<string, number>();
+/** When each device's place was last offered and the local play/move it was shown on. */
+const offeredAt = new Map<string, { at: number; play: number; moves: number; toastId?: number }>();
 
 /**
  * Offer the loaded book another device's place from `row` (the server's row for it), when
@@ -201,16 +218,16 @@ const offeredAt = new Map<string, number>();
  * Stay saves this device's place at once (and lifts the session's guard), and a toast that
  * times out answers nothing: the place stays held, and is offered again next launch.
  *
- * `stayHeld`: this device's Stay came back held (`staysHeld`: another device's Stay holds
- * the row), so the place it kept is offered now, not `OFFER_REPEAT_MS` after that device's
- * last offer: the listener's Stay did not stand, and every span after it is held too.
+ * `heldListen`: the sync answer kept the stored row over a listen from here. A new local
+ * play or move offers that row again, even if its toast timed out. A held Stay also offers
+ * a new key at once. Continuing to listen through save ticks keeps the same repeat cap.
  */
 export async function offerLoadedPlace(
   bookKey: string,
   row: Progress | null,
   deviceId: string,
-  mirror: Pick<ProgressSave, 'ack_version' | 'answered'> | null,
-  { held = false, stayHeld = false }: { held?: boolean; stayHeld?: boolean } = {},
+  mirror: Pick<ProgressSave, 'ack_version' | 'answered' | 'ignored'> | null,
+  { held = false, heldListen }: { held?: boolean; heldListen?: HeldListen } = {},
 ): Promise<boolean> {
   const player = usePlayer.getState();
   const np = player.nowPlaying;
@@ -218,26 +235,44 @@ export async function offerLoadedPlace(
   // A Sync v2 offer, or a held save's: an older server keeps last-write-wins and its own
   // move (above).
   if (!held && !usesListeningSync(np.connectionId)) return false;
+  const play = localPlayAskedAt();
+  const moves = localMoveCount();
+  const keptKey = placeKey(row);
+  const previous = offeredAt.get(`${bookKey}|${row.device_id}`);
+  const changed = heldListen && (!previous || previous.play !== play || previous.moves !== moves);
+  const ignored = (mirror?.ignored ?? []).filter((key) => !changed || key !== keptKey);
   const offer = offerOf(
     row,
     deviceId,
     held ? undefined : mirror?.ack_version,
     selectBookPosition(player),
-    mirror?.answered,
+    settledOffers({ answered: mirror?.answered, ignored }),
   );
-  if (!offer || shownOffers.has(`${bookKey}|${offer.key}`)) return false;
+  if (!offer) return false;
+  const repeat = changed && offer.key === keptKey;
+  if (!repeat && shownOffers.has(`${bookKey}|${offer.key}`)) return false;
   // The key is `device_id|updated_at`; an ISO time has no `|`.
   const fromDevice = `${bookKey}|${offer.key.slice(0, offer.key.lastIndexOf('|'))}`;
   const last = offeredAt.get(fromDevice);
-  if (!stayHeld && last !== undefined && Date.now() - last < OFFER_REPEAT_MS) return false;
+  if (
+    !repeat &&
+    !(heldListen === 'stay' && offer.key === keptKey) &&
+    last &&
+    Date.now() - last.at < OFFER_REPEAT_MS
+  )
+    return false;
   shownOffers.add(`${bookKey}|${offer.key}`);
-  offeredAt.set(fromDevice, Date.now());
+  const latest = { at: Date.now(), play, moves, toastId: last?.toastId };
+  offeredAt.set(fromDevice, latest);
   const answer = () => answerOffer(np.connectionId, np.libraryId, np.path, row, offer.key);
   whenActive(() => {
     const now = usePlayer.getState();
-    if (selectBookKey(now) !== bookKey || !now.nowPlaying) return;
+    if (selectBookKey(now) !== bookKey || !now.nowPlaying || offeredAt.get(fromDevice) !== latest)
+      return;
     const place = describePlace(now.nowPlaying.queue.chapters, offer.position, { bare: true });
-    toast({
+    // A new play or move can re-offer before the previous toast timed out.
+    if (latest.toastId !== undefined) dismissToast(latest.toastId);
+    latest.toastId = toast({
       title: offer.deviceName
         ? t('player.placeOffer.device', { device: offer.deviceName, place })
         : t('player.placeOffer.unknown', { place }),
@@ -276,9 +311,12 @@ export async function offerLoadedPlace(
   return true;
 }
 
-/** The sync answer's row for the loaded book, offered (never moved to); at once when the
- * answer held this device's Stay on it (`stayHeld`). */
-function offerFromAnswer(connectionId: string, rows: Progress[], staysHeld: ReadonlySet<string>) {
+/** The sync answer's row for the loaded book, offered with the outcome of its own listens. */
+function offerFromAnswer(
+  connectionId: string,
+  rows: Progress[],
+  held: ReadonlyMap<string, HeldListen>,
+) {
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   const bookKey = selectBookKey(player);
@@ -286,9 +324,11 @@ function offerFromAnswer(connectionId: string, rows: Progress[], staysHeld: Read
   const row = rows.find((r) => r.library_id === np.libraryId && r.path === np.path);
   // This device's own row with no other place offers nothing (`offerOf`): no reads then.
   if (!row || (row.device_id === cachedDeviceId() && !row.other_place)) return;
-  const stayHeld = staysHeld.has(bookKey);
+  // Keyed by the answer's connection id (`heldListens`): the id the loaded book's connection
+  // was migrated from or to answers for it too (`sameConnection`).
+  const heldListen = held.get(contentKey(connectionId, np.libraryId, np.path));
   void Promise.all([getDeviceId(), readMirror(np.connectionId, np.libraryId, np.path)])
-    .then(([deviceId, mirror]) => offerLoadedPlace(bookKey, row, deviceId, mirror, { stayHeld }))
+    .then(([deviceId, mirror]) => offerLoadedPlace(bookKey, row, deviceId, mirror, { heldListen }))
     .catch(() => undefined);
 }
 
@@ -344,13 +384,14 @@ async function checkLoadedPlace(np: NowPlaying, bookKey: string, client: ApiClie
   const timer = setTimeout(() => abort.abort(), CHECK_TIMEOUT_MS);
   let moved = false;
   try {
-    const [server, deviceId, mirror] = await Promise.all([
+    const [server, deviceId, mirror, skewMs] = await Promise.all([
       client.getProgress(np.libraryId, np.path, abort.signal),
       getDeviceId(),
       readMirror(np.connectionId, np.libraryId, np.path),
+      knownSkew(np.connectionId),
     ]);
     if (abort.signal.aborted) return;
-    moved = await moveOrOffer(np, bookKey, moves, server, deviceId, mirror);
+    moved = await moveOrOffer(np, bookKey, moves, server, deviceId, mirror, skewMs);
   } catch {
     // Unreachable, refused or too slow: stay where the engine is; the saves go on.
   } finally {
@@ -424,6 +465,7 @@ async function moveOrOffer(
   server: Progress | null,
   deviceId: string,
   mirror: ProgressSave | null,
+  skewMs: number,
   { late = false }: { late?: boolean } = {},
 ): Promise<boolean> {
   const waiting = tickAnswers.get(bookKey);
@@ -440,7 +482,7 @@ async function moveOrOffer(
   for (let before = deciding.get(bookKey); before; before = deciding.get(bookKey)) {
     await before.catch(() => false);
   }
-  const decided = decide(np, bookKey, moves, server, deviceId, mirror, late);
+  const decided = decide(np, bookKey, moves, server, deviceId, mirror, skewMs, late);
   answer.settle(decided.catch(() => false));
   deciding.set(bookKey, decided);
   try {
@@ -458,6 +500,7 @@ async function decide(
   server: Progress | null,
   deviceId: string,
   mirror: ProgressSave | null,
+  skewMs: number,
   late: boolean,
 ): Promise<boolean> {
   const now = usePlayer.getState();
@@ -468,7 +511,7 @@ async function decide(
   // or an offer's Jump, would seek that book, not this one.
   if (engineHoldsOtherBook()) return false;
   const from = selectBookPosition(now);
-  const to = placeToMoveTo({ server, deviceId, mirror, enginePosition: from, late });
+  const to = placeToMoveTo({ server, deviceId, mirror, enginePosition: from, skewMs, late });
   if (to === null) {
     // Sync v2: a place another device left that the server did not move to is offered (never
     // one with no device id, a late place's neither).
@@ -514,12 +557,15 @@ async function applyLatePlace(
   const np = usePlayer.getState().nowPlaying;
   if (!np) return;
   try {
-    const [deviceId, current] = await Promise.all([
+    const [deviceId, current, skewMs] = await Promise.all([
       getDeviceId(),
       readMirror(np.connectionId, np.libraryId, np.path),
+      knownSkew(np.connectionId),
     ]);
     if (answeredSince(bookKey, server, current)) return;
-    const moved = await moveOrOffer(np, bookKey, moves, server, deviceId, mirror, { late: true });
+    const moved = await moveOrOffer(np, bookKey, moves, server, deviceId, mirror, skewMs, {
+      late: true,
+    });
     // The start's place is checked now (the replay guard, fe#198): unless the answer holds
     // another device's place further on that the book stayed short of (the listener's own
     // seek won, or it was offered), its saves go unguarded.
@@ -538,12 +584,12 @@ async function applyLatePlace(
 function answeredSince(
   bookKey: string,
   row: Progress | null,
-  current: Pick<ProgressSave, 'ack_version' | 'answered'> | null,
+  current: Pick<ProgressSave, 'ack_version' | 'answered' | 'ignored'> | null,
 ): boolean {
   if (!row) return false;
   const key = placeKey(row);
   if (shownOffers.has(`${bookKey}|${key}`)) return true;
-  if (current?.answered?.includes(key)) return true;
+  if (settledOffers(current).includes(key)) return true;
   return row.version > 0 && (current?.ack_version ?? 0) >= row.version;
 }
 

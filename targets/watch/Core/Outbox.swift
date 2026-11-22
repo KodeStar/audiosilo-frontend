@@ -417,10 +417,10 @@ final class Outbox {
     }
   }
 
-  private func body(_ events: [ListeningEvent]) -> SyncRequest {
+  private func body(_ events: [ListeningEvent], takesStay: Bool) -> SyncRequest {
     SyncRequest(
       deviceId: deviceId, sentAt: ISOTime.string(clock()), clockOffset: nil,
-      events: Self.asServerTakes(events, stay: takesStay()))
+      events: Self.asServerTakes(events, stay: takesStay))
   }
 
   /// The events as the server takes them now: a `stay` queued while it had `listening_stay` goes
@@ -439,9 +439,10 @@ final class Outbox {
     let sentBefore = discards
     do {
       let sentAt = clock()
-      let answer = try await transport.syncListening(body(chunk))
+      let tookStay = takesStay()
+      let answer = try await transport.syncListening(body(chunk, takesStay: tookStay))
       guard sentBefore == discards else { return .stop }
-      apply(answer, sent: chunk, sentAt: sentAt, answeredAt: clock())
+      apply(answer, sent: chunk, sentAt: sentAt, answeredAt: clock(), tookStay: tookStay)
       return .more
     } catch let e as APIError {
       guard sentBefore == discards else { return .stop }
@@ -472,9 +473,10 @@ final class Outbox {
     let sentBefore = discards
     for event in chunk {
       do {
-        let answer = try await transport.syncListening(body([event]))
+        let tookStay = takesStay()
+        let answer = try await transport.syncListening(body([event], takesStay: tookStay))
         guard sentBefore == discards else { return .stop }
-        apply(answer, sent: [event], sentAt: nil, answeredAt: nil)
+        apply(answer, sent: [event], sentAt: nil, answeredAt: nil, tookStay: tookStay)
       } catch let e as APIError where e.status == 400 {
         guard sentBefore == discards else { return .stop }
         moveToFailed([(event, "invalid")])
@@ -490,7 +492,7 @@ final class Outbox {
   /// Apply a sync answer for the events `sent`: each answered one leaves (rejected to the
   /// list), the skew is measured when the request's times are known, and a row that kept this
   /// device's event has its version acknowledged.
-  func apply(_ answer: SyncResponse, sent: [ListeningEvent], sentAt: Date?, answeredAt: Date?) {
+  func apply(_ answer: SyncResponse, sent: [ListeningEvent], sentAt: Date?, answeredAt: Date?, tookStay: Bool) {
     // The server answered: reachable, so the 15 s cuts run again.
     lastFlushFailed = false
     let results = Dictionary((answer.results ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -512,7 +514,7 @@ final class Outbox {
       acks.ack(row.ref, version: row.version)
     }
     // As sent: a `stay` that went as a `jump` (the flag gone) was held by the usual rule.
-    onAnswer?(rows, AckRules.staysHeld(sent: Self.asServerTakes(sent, stay: takesStay()), results: results))
+    onAnswer?(rows, tookStay ? AckRules.staysHeld(sent: sent, results: results) : [])
   }
 
   // MARK: - The background upload (decision 10; SyncUploader sends it)
@@ -529,8 +531,8 @@ final class Outbox {
 
   /// Apply the answer to a background upload of these event ids (those still waiting; one a
   /// foreground send answered meanwhile has gone). No skew: the request's times are unknown.
-  func applyBackground(_ answer: SyncResponse, sentIds: [String]) {
+  func applyBackground(_ answer: SyncResponse, tag: SyncUploadTag) {
     let byId = Dictionary(events.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    apply(answer, sent: sentIds.compactMap { byId[$0] }, sentAt: nil, answeredAt: nil)
+    apply(answer, sent: tag.ids.compactMap { byId[$0] }, sentAt: nil, answeredAt: nil, tookStay: tag.sentStay == true)
   }
 }

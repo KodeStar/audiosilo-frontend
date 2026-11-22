@@ -80,7 +80,7 @@ class JsonFileTest {
     assertTrue("outbox.json" in synced)
     assertFalse("sync-state.json" in synced)
     assertEquals(listOf("e1"), Outbox(dir, AckStore(null), DEVICE_ID).events.map { it.id })
-    outbox.apply(SyncResponse(results = listOf(SyncResult("e1", "applied"))), outbox.events, null, null)
+    outbox.apply(SyncResponse(results = listOf(SyncResult("e1", "applied"))), outbox.events, null, null, tookStay = false)
     assertTrue(File(dir, "sync-state.json").isFile)
     assertFalse("sync-state.json" in synced)
     outbox.append(listOf(listen("e2")))
@@ -666,7 +666,7 @@ class DurableRateTest {
 
   private fun answered(outbox: Outbox, id: String) {
     val sent = listOf(listen(id))
-    outbox.apply(answer(SyncRequest(DEVICE_ID, events = sent)), sent, null, null)
+    outbox.apply(answer(SyncRequest(DEVICE_ID, events = sent)), sent, null, null, tookStay = false)
   }
 
   @Test

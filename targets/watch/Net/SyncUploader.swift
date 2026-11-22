@@ -36,7 +36,7 @@ final class SyncUploader: NSObject, URLSessionDataDelegate, @unchecked Sendable 
 
   /// Hand `body` to the system for `api`'s server, replacing any upload not yet answered.
   func enqueue(_ body: SyncRequest, api: APIClient, accountId: String) {
-    guard let tagText = BackgroundSync.describe(SyncUploadTag(accountId: accountId, ids: body.events.map(\.id))),
+    guard let tagText = BackgroundSync.describe(SyncUploadTag(accountId: accountId, events: body.events)),
       let data = try? Wire.encoder.encode(body),
       var request = try? api.request("POST", "/me/listening/sync")
     else { return }

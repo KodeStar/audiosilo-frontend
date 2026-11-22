@@ -608,6 +608,24 @@ describe('ReaderScreen', () => {
     });
   });
 
+  it('keeps a Stay offer dismissed when an earlier save answers during acknowledgement', async () => {
+    let adopted = () => {};
+    jest
+      .mocked(adoptServerPlace)
+      .mockImplementationOnce(() => new Promise<void>((resolve) => (adopted = resolve)));
+    await mount();
+    await opened();
+    await answered(row({ version: 9 }));
+    await fireEvent.press(screen.getByText('Stay'));
+    await answered(row({ version: 9 }));
+    expect(screen.queryByText('Stay')).toBeNull();
+    await answered(row({ version: 8 }));
+    expect(screen.queryByText('Stay')).toBeNull();
+    await act(async () => adopted());
+    await answered(row({ version: 10, progression: 0.7 }));
+    expect(screen.getByText('On Pixel 8 you were at 70%. Jump there?')).toBeTruthy();
+  });
+
   // fe#172: the page it landed on starts before the place it opened at (here 0.25 into the
   // book, on the page from 0.2); a Stay before any move saves that place, not the page start.
   it('Stay before any move saves the place it opened at, not the page it landed on', async () => {

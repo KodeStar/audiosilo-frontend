@@ -323,6 +323,38 @@ class ResumeTest {
     )
   }
 
+  // The phone's "compares a previously acknowledged finish with the local restart on the same
+  // clock": a finish stamped 10 s after the place here by a server 15 s ahead came before it.
+  @Test
+  fun aFinishIsComparedWithThePlaceHereOnTheWatchsClock() {
+    val local = LocalPlace(300.0, at = at)
+    val r =
+      row(
+        position = 1800.0,
+        finished = true,
+        version = 5,
+        device = "watch",
+        updatedAt = "2026-10-25T08:00:10.000Z",
+        finishedAt = "2026-10-25T08:00:10Z",
+      )
+    assertEquals(
+      plan(300.0, start = ListeningStart.JUMP, unfinish = true),
+      Resume.plan(local, r, "watch", 5, 1800.0, clockSkewMs = 15_000.0),
+    )
+    assertEquals(
+      plan(0.0, start = ListeningStart.RESTART, unfinish = true, tookRow = true),
+      Resume.plan(local, r, "watch", 5, 1800.0),
+    )
+  }
+
+  @Test
+  fun anotherDevicesRowIsComparedWithThePlaceHereOnTheWatchsClock() {
+    val local = LocalPlace(300.0, at = at)
+    val r = row(version = 6, updatedAt = "2026-10-25T08:00:10.000Z")
+    assertEquals(plan(300.0), Resume.plan(local, r, "watch", 5, 1800.0, clockSkewMs = 15_000.0))
+    assertEquals(plan(900.0, tookRow = true), Resume.plan(local, r, "watch", 5, 1800.0))
+  }
+
   @Test
   fun aFinishAtAVersionNotSeenHereStartsTheBookAgain() {
     val local = LocalPlace(300.0, at = at)

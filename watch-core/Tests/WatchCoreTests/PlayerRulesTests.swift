@@ -267,6 +267,27 @@ final class ResumeTests: XCTestCase {
     XCTAssertEqual(p, ResumePlan(position: 0, file: nil, filePos: nil, start: .restart, unfinish: true, tookRow: true))
   }
 
+  // The phone's "compares a previously acknowledged finish with the local restart on the same
+  // clock": a finish stamped 10 s after the place here by a server 15 s ahead came before it.
+  func testAFinishIsComparedWithThePlaceHereOnTheWatchsClock() {
+    let local = LocalPlace(position: 300, file: nil, filePos: nil, at: at)
+    var r = row(position: 1800, finished: true, version: 5, device: "watch", updatedAt: "2026-10-25T08:00:10.000Z")
+    r.finishedAt = "2026-10-25T08:00:10Z"
+    let ahead = Resume.plan(local: local, row: r, deviceId: "watch", ackVersion: 5, total: 1800, clockSkewMs: 15_000)
+    XCTAssertEqual(ahead, ResumePlan(position: 300, file: nil, filePos: nil, start: .jump, unfinish: true, tookRow: false))
+    let level = Resume.plan(local: local, row: r, deviceId: "watch", ackVersion: 5, total: 1800)
+    XCTAssertEqual(level, ResumePlan(position: 0, file: nil, filePos: nil, start: .restart, unfinish: true, tookRow: true))
+  }
+
+  func testAnotherDevicesRowIsComparedWithThePlaceHereOnTheWatchsClock() {
+    let local = LocalPlace(position: 300, file: nil, filePos: nil, at: at)
+    let r = row(version: 6, updatedAt: "2026-10-25T08:00:10.000Z")
+    let ahead = Resume.plan(local: local, row: r, deviceId: "watch", ackVersion: 5, total: 1800, clockSkewMs: 15_000)
+    XCTAssertEqual(ahead.position, 300)
+    XCTAssertFalse(ahead.tookRow)
+    XCTAssertTrue(Resume.plan(local: local, row: r, deviceId: "watch", ackVersion: 5, total: 1800).tookRow)
+  }
+
   func testAFinishAtAVersionNotSeenHereStartsTheBookAgain() {
     let local = LocalPlace(position: 300, file: nil, filePos: nil, at: at)
     var r = row(position: 1800, finished: true, version: 6, updatedAt: "2026-10-25T07:00:00.000Z")
@@ -458,13 +479,13 @@ final class BackgroundSyncTests: XCTestCase {
   }
 
   func testTheTagRoundTripsAndAppliesOnlyToItsAccount() {
-    let tag = SyncUploadTag(accountId: "s.1", ids: ["a", "b"])
+    let tag = SyncUploadTag(accountId: "s.1", events: [listen("a"), listen("b")])
     XCTAssertEqual(BackgroundSync.tag(BackgroundSync.describe(tag)), tag)
     XCTAssertNil(BackgroundSync.tag("not json", as: SyncUploadTag.self))
     XCTAssertTrue(BackgroundSync.applies(tag, accountId: "s.1"))
     XCTAssertFalse(BackgroundSync.applies(tag, accountId: "s.2"))
     XCTAssertFalse(BackgroundSync.applies(tag, accountId: nil))
-    XCTAssertFalse(BackgroundSync.applies(SyncUploadTag(accountId: "s.1", ids: []), accountId: "s.1"))
+    XCTAssertFalse(BackgroundSync.applies(SyncUploadTag(accountId: "s.1", events: []), accountId: "s.1"))
   }
 
   func testABackgroundAnswerIsAppliedLikeAForegroundOne() async throws {
@@ -475,7 +496,7 @@ final class BackgroundSyncTests: XCTestCase {
     XCTAssertNil(body.sentAt)
     // A foreground flush answered "c" meanwhile.
     o.apply(SyncResponse(serverTime: nil, results: [SyncResult(id: "c", status: "applied")], progress: nil),
-            sent: o.events.filter { $0.id == "c" }, sentAt: nil, answeredAt: nil)
+            sent: o.events.filter { $0.id == "c" }, sentAt: nil, answeredAt: nil, tookStay: false)
     let answer = SyncResponse(
       serverTime: "2026-10-25T08:00:00Z",
       results: [SyncResult(id: "a", status: "applied"), SyncResult(id: "b", status: "rejected", reason: "no_access"),
@@ -483,7 +504,7 @@ final class BackgroundSyncTests: XCTestCase {
       progress: [row(version: 9)])
     var rows: [ProgressRow] = []
     o.onAnswer = { r, _ in rows = r }
-    o.applyBackground(answer, sentIds: body.events.map(\.id))
+    o.applyBackground(answer, tag: SyncUploadTag(accountId: "s.1", events: body.events))
     XCTAssertTrue(o.events.isEmpty)
     XCTAssertEqual(o.couldNotSync().map(\.event.id), ["b"])
     XCTAssertEqual(o.couldNotSync().first?.reason, "no_access")

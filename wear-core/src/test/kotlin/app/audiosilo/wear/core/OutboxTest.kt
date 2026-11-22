@@ -139,7 +139,7 @@ class OutboxTest {
     val move = old.copy(id = "move", start = ListeningStart.MOVED_BACK, fromPos = 40.0, toPos = 40.0,
       endedAt = "2026-10-25T07:30:00Z")
     box.append(listOf(move))
-    box.apply(SyncResponse(results = listOf(SyncResult(old.id, "applied"))), listOf(old), null, null)
+    box.apply(SyncResponse(results = listOf(SyncResult(old.id, "applied"))), listOf(old), null, null, tookStay = false)
     val next = launch()
     assertEquals(listOf(unfinish, empty, move), next.events)
     assertEquals(40.0, restore(next).place(ref)!!.position, 0.0)
@@ -153,7 +153,7 @@ class OutboxTest {
     val first = launch()
     restore(first)
     first.append(listOf(old, other, finish))
-    first.apply(SyncResponse(results = listOf(SyncResult(finish.id, "applied"))), listOf(finish), null, null)
+    first.apply(SyncResponse(results = listOf(SyncResult(finish.id, "applied"))), listOf(finish), null, null, tookStay = false)
 
     val next = launch()
     val places = restore(next)
@@ -533,6 +533,7 @@ class OutboxTest {
     o.onAnswer = { _, h -> held = h }
     o.flush(
       FakeTransport { body ->
+        o.takesStay = { false }
         answer(body, status = { e -> if (e.id == "b") null else SyncResult(e.id, "diverged", kept = "stored") })
       }
     )
@@ -547,8 +548,29 @@ class OutboxTest {
     o.takesStay = { false }
     var held = setOf(BookRef(0, ""))
     o.onAnswer = { _, h -> held = h }
-    o.flush(FakeTransport { body -> answer(body, status = { e -> SyncResult(e.id, "diverged", kept = "stored") }) })
+    o.flush(FakeTransport { body ->
+      o.takesStay = { true }
+      answer(body, status = { e -> SyncResult(e.id, "diverged", kept = "stored") })
+    })
     assertEquals(emptySet<BookRef>(), held)
+  }
+
+  @Test
+  fun eachRetryJudgesAHeldStayByItsOwnRequest() = runBlocking {
+    val o = outbox()
+    val a = listen("a", start = ListeningStart.STAY)
+    val b = listen("b", path = "Other", start = ListeningStart.STAY)
+    o.append(listOf(a, b))
+    var takes = false
+    o.takesStay = { takes }
+    val held = mutableListOf<Set<BookRef>>()
+    o.onAnswer = { _, books -> held.add(books) }
+    o.flush(FakeTransport { body ->
+      takes = !takes
+      if (body.events.size > 1) throw APIError(400)
+      answer(body, status = { e -> SyncResult(e.id, "diverged", kept = "stored") })
+    })
+    assertEquals(listOf(setOf(a.ref), emptySet()), held)
   }
 
   @Test
@@ -812,7 +834,7 @@ class OutboxTest {
       assumeFalse(dir.canWrite())
       val o = outbox(dir)
       o.append(listOf(listen("first")))
-      o.apply(answer(SyncRequest(DEVICE_ID, events = o.events)), o.events, null, null)
+      o.apply(answer(SyncRequest(DEVICE_ID, events = o.events)), o.events, null, null, tookStay = false)
       assertTrue(o.events.isEmpty())
       assertEquals("not this build's format", main.readText())
       dir.setWritable(true)
