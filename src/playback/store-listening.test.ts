@@ -896,6 +896,24 @@ describe('with listening_sync', () => {
       expect(usePlayer.getState().snapshot.position).toBe(12);
     });
 
+    it('keeps the book ended when the read confirms an engine that played it out', async () => {
+      const loaded = { ...car, trackIndex: 0, position: 30, rate: 1, playing: false };
+      await usePlayer.getState().adoptLoaded(loaded);
+      playAsked();
+      pushSnapshot(snap('loading', 0, 30));
+      const end = { ...snap('ended', 2, 300), duration: 300 };
+      pushSnapshot(end);
+      const confirm = pendingBookConfirmation();
+      (mockSvc.getSnapshot as jest.Mock).mockImplementation(() => ({ ...end }));
+      try {
+        confirm?.({ ...loaded, trackIndex: 2, position: 300 });
+        await settle();
+        expect(usePlayer.getState().snapshot).toMatchObject({ state: 'ended', trackIndex: 2 });
+      } finally {
+        (mockSvc.getSnapshot as jest.Mock).mockImplementation(() => ({ ...INITIAL }));
+      }
+    });
+
     it('requires adoption before taking a confirmed place in a different file order', async () => {
       const loaded = { ...car, trackIndex: 0, position: 30, rate: 1, playing: false };
       await usePlayer.getState().adoptLoaded(loaded);

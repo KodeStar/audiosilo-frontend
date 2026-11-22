@@ -3691,13 +3691,17 @@ async function createService(): Promise<PlaybackService> {
       namedQueue = null;
       pausedAsk = null;
       const { trackIndex, position, playing, rate } = loaded;
-      const liveState = svc.getSnapshot().state === 'loading' ? 'loading' : 'playing';
+      const engine = svc.getSnapshot();
+      const liveState = engine.state === 'loading' ? 'loading' : 'playing';
       const verified: PlaybackSnapshot = {
-        state: playing ? liveState : 'paused',
+        // An engine that played the book to its end reads as not playing: still its end.
+        state: playing ? liveState : engine.state === 'ended' ? 'ended' : 'paused',
         trackIndex,
         position,
         rate,
-        duration: np.queue.tracks[trackIndex]?.duration ?? 0,
+        // The engine's own measure of that file, none when it last reported another: taken
+        // through `onReport`, the server's length would be noted as the engine's.
+        duration: engine.trackIndex === trackIndex ? engine.duration : 0,
       };
       // The next native state event inherits its file and position from the bridge.
       svc.adoptPlace?.(verified);
